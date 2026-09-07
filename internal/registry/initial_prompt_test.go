@@ -555,10 +555,19 @@ func TestHandedOverAtCreate(t *testing.T) {
 		})
 	}
 }
-func TestArgvPromptStripsPercentOnWindowsOnly(t *testing.T) {
-	const note = "why is coverage only 80% and is %GITHUB_TOKEN% set?"
-	if got := argvPrompt("windows", note); strings.Contains(got, "%") {
+func TestArgvPromptStripsCmdMetacharactersOnWindowsOnly(t *testing.T) {
+	const note = `why is coverage only 80% and is %GITHUB_TOKEN% set? fix the "start" button`
+	got := argvPrompt("windows", note)
+	if strings.Contains(got, "%") {
 		t.Errorf("argvPrompt(windows) = %q, still carries a %% for cmd.exe to expand", got)
+	}
+	// A double quote is the same class of bug: cmdExeEscape emits an
+	// embedded quote as \" per CommandLineToArgvW, which cmd.exe does
+	// not honour — it counts quotes, so one in the note flips the
+	// parity and the tail of the line lands outside quotes where & | >
+	// are live. `x" & calc` would be command execution.
+	if strings.Contains(got, `"`) {
+		t.Errorf("argvPrompt(windows) = %q, still carries a quote for cmd.exe to miscount", got)
 	}
 	// Unix reaches execve with no shell in between, so mangling the
 	// note there would be damage for nothing.

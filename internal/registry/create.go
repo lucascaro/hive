@@ -150,6 +150,10 @@ func (r *Registry) finishCreate(ctx context.Context, e *Entry, spec wire.CreateS
 		// event is `updated`, not `added` — beginCreate already
 		// announced this entry.
 		e.LastError = err.Error()
+		// No process ever existed, so there is nothing to paste into
+		// and never will be. Left set, the offer would render on a dead
+		// tile and refuse every click with ErrNoLiveSession.
+		e.pendingPrompt = ""
 		e.Phase = wire.PhaseReady
 		info := e.Info()
 		r.broadcastLocked(wire.SessionEventUpdated, info)
@@ -640,7 +644,25 @@ func sanitizePrompt(s string) string {
 func argvPrompt(goos, s string) string {
 	s = sanitizePrompt(s)
 	if goos == "windows" {
-		s = strings.ReplaceAll(s, "%", "")
+		// Both characters cmd.exe reinterprets, and for the same
+		// reason: internal/session hands the escaped line to
+		// `cmd.exe /S /C`, and cmd.exe is not the parser cmdExeEscape
+		// quotes for.
+		//
+		//   %  — expands %VAR% even inside double quotes.
+		//   "  — cmdExeEscape emits an embedded quote as \" per
+		//        CommandLineToArgvW's rules, which cmd.exe does not
+		//        honour: it COUNTS quote characters. One quote in the
+		//        note flips the parity, so the tail of the line lands
+		//        outside quotes where & | > are live again. A note
+		//        reading `x" & calc` is command execution; a note
+		//        reading `fix the "start" button` merely breaks the
+		//        spawn.
+		//
+		// Stripped rather than escaped because there is no escape
+		// cmd.exe honours on a /C line, and platform-conditional
+		// because on Unix argv reaches execve with no shell at all.
+		s = strings.NewReplacer("%", "", `"`, "").Replace(s)
 	}
 	return s
 }

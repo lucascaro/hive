@@ -540,8 +540,11 @@ func (r *Registry) announceStateLocked(e *Entry, prev agentstate.Snapshot, reaso
 // can.
 //
 // Pasted, never submitted: the text lands in the agent's input box and
-// the user presses Enter. Clearing first and unconditionally means the
-// affordance cannot fire twice, and a failed write does not strand it.
+// the user presses Enter.
+//
+// A live process is required BEFORE anything is cleared — see
+// ErrNoLiveSession. Past that check the clear is unconditional, so the
+// affordance cannot fire twice and a failed write does not strand it.
 func (r *Registry) ResolvePrompt(id string, paste bool) error {
 	r.mu.Lock()
 	e, ok := r.entries[id]

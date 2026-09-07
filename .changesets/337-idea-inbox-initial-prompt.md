@@ -13,11 +13,7 @@ bump: minor
   note as the subject — and editable right there in the launcher, since
   the note was jotted down mid-task and this is the last moment to
   sharpen it (sharpening it does not change the stored note). Claude and
-  Pi receive it as their opening argument; every other agent has it
-  typed into the terminal as soon as the session settles — left in the
-  input box for you to send, rather than submitted for you, so it can
-  never answer an agent's own startup prompt on your behalf. For Claude
-  and Pi the idea flips to *started* and links back to its session,
+  Pi receive it as their opening argument, and for them the idea flips to *started* and links back to its session,
   whose sidebar row carries a small idea glyph. Every other agent gets
   the prompt **offered** instead of typed in: a bar above the grid
   shows the note with **Paste** and **Dismiss**, so you place it once

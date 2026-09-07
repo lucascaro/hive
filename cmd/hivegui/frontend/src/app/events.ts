@@ -928,6 +928,17 @@ export function wireDaemonEvents(injected: EventsDeps) {
       flashStatus(`worktree kept: ${e.message}`, true);
       return;
     }
+    // Pasting an opening prompt into a session whose process is gone
+    // (restarting, or it just exited). The offer is deliberately left
+    // standing by the daemon so it can be clicked again — say that,
+    // rather than showing the raw sentinel text.
+    if (e.code === 'resolve_prompt_failed') {
+      flashStatus(
+        'the session has no running process yet — try again once it is up',
+        true,
+      );
+      return;
+    }
     flashStatus(`${e.code}: ${e.message}`, true);
     console.warn('hived control error:', e);
   });

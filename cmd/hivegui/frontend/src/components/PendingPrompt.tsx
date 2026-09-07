@@ -29,7 +29,11 @@ export function PendingPrompt(): ReactNode {
   // snake_case on the wire, camelCase tolerated at the boundary — the
   // convention every SessionInfo reader in this app follows.
   const prompt = session?.pending_prompt ?? session?.pendingPrompt ?? '';
-  if (!session || !prompt) return null;
+  // Only once there is something to paste INTO. The daemon refuses a
+  // paste with no live process (ErrNoLiveSession) and keeps the offer,
+  // so showing the bar while the session is still spawning would just
+  // be a button that fails until it does not.
+  if (!session || !prompt || !session.alive) return null;
 
   const resolve = (paste: boolean) =>
     ResolvePrompt(session.id, paste).catch(
@@ -43,7 +47,11 @@ export function PendingPrompt(): ReactNode {
       {/* Says what each button does, since "Paste" alone does not
           convey that Hive stops short of pressing Enter. */}
       <span className="hv-pending-prompt__label">
-        Opening prompt — paste it when the agent is ready; you press Enter
+        {/* Names the session: in grid view several terminals are on
+            screen at once, and "when the agent is ready" is ambiguous
+            without saying which one this lands in. */}
+        Opening prompt for {session.name ?? 'this session'} — paste it when the
+        agent is ready; you press Enter
       </span>
       {/* The whole note, scrollable rather than clamped: this is the
           last look at it before it goes to an agent. */}

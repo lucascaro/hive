@@ -178,6 +178,7 @@ func TestRPCsRequireAControlConnection(t *testing.T) {
 		"AddIdea":                func() error { return a.AddIdea("s", "p", "idea", "t") },
 		"UpdateIdea":             func() error { return a.UpdateIdea("i", "t", "done", "", "", "") },
 		"RemoveIdea":             func() error { return a.RemoveIdea("i") },
+		"ResolvePrompt":          func() error { return a.ResolvePrompt("s", true) },
 		"UpdateProject":          func() error { return a.UpdateProject("p", "n", "#fff", "/tmp", 0) },
 		"ListWorktrees":          func() error { return a.ListWorktrees("p") },
 		"CreateWorktree":         func() error { return a.CreateWorktree("p", "b") },

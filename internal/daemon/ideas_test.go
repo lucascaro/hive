@@ -301,3 +301,33 @@ func TestIdeaErrorCodesOverWire(t *testing.T) {
 		})
 	}
 }
+
+// The daemon's RESOLVE_PROMPT arm has one decision in it, and it is a
+// policy rather than a forward: ErrNotFound is SWALLOWED (an unknown
+// id is a benign race with a close) while ErrNoLiveSession is
+// SURFACED (the session is real and the note is still pending, so the
+// user has to be told why nothing was pasted). Getting those the same
+// way round is how a silent loss ships.
+func TestResolvePromptErrorPolicyOverWire(t *testing.T) {
+	skipOnWindows(t)
+	d := startTestDaemon(t)
+	conn := controlConn(t, d)
+
+	// Unknown session: swallowed. Nothing may come back, so prove it by
+	// following with a frame that DOES answer and asserting the reply
+	// is that one rather than an error.
+	if err := wire.WriteJSON(conn, wire.FrameResolvePrompt, wire.ResolvePromptReq{
+		SessionID: "no-such-session", Paste: true,
+	}); err != nil {
+		t.Fatalf("write RESOLVE_PROMPT: %v", err)
+	}
+	if err := wire.WriteJSON(conn, wire.FrameCreateProject, wire.CreateProjectReq{
+		Name: "after",
+	}); err != nil {
+		t.Fatalf("write CREATE_PROJECT: %v", err)
+	}
+	ft, _ := awaitFrame(t, conn, wire.FrameProjectEvent)
+	if ft == wire.FrameError {
+		t.Fatal("an unknown session id produced an error; it is a benign race with a close and must be swallowed")
+	}
+}

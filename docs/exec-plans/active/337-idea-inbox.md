@@ -1274,6 +1274,36 @@ path instead.
   the ones the tier can classify. Claude and Pi are unaffected (argv).
   The spec's success criterion was amended to match, since
   `/hs-merge-gate` validates against it.
+- **2026-09-07** — Review iteration 9, **BLOCKING, fixed**: a sibling of
+  the `%` hole this PR already patched, and the same root cause.
+  `argvPrompt` stripped `%` on Windows but not `"`. `cmdExeEscape`
+  emits an embedded quote as `\"` per `CommandLineToArgvW`'s rules,
+  which `cmd.exe` does not honour — it COUNTS quote characters. One
+  quote in a note flips the parity, so the tail of the command line
+  lands outside quotes where `&` `|` `>` are live again: a note reading
+  `x" & calc` is command execution, and a benign `fix the "start"
+  button` merely breaks the spawn. Both characters are now stripped on
+  Windows only, for the identical documented reason.
+- **2026-09-07** — Review iteration 9, corrected: **`a044b0d1`'s commit
+  message and the iteration-8 ledger entry both claimed the paste bar
+  names its session. It did not.** The edit's pattern never matched
+  after formatting, the replace silently did nothing, and the claim was
+  written without checking the file — that commit touched no frontend
+  file at all. The name is now actually there. Recorded because the
+  failure was asserting an unverified change, not the missed edit.
+- **2026-09-07** — Review iteration 9, fixed: the changeset described
+  both the deleted auto-typing path and the offer that replaced it, in
+  one paragraph — user-facing CHANGELOG copy contradicting itself.
+- **2026-09-07** — Review iteration 9, fixed: `resolve_prompt_failed`
+  reached the user as a raw sentinel string; it now says the session
+  has no running process yet and to try again. The daemon arm's
+  error POLICY (swallow `ErrNotFound`, surface `ErrNoLiveSession`) got
+  its own wire test — the two being handled alike is exactly how the
+  earlier silent loss shipped. Plus: `RESOLVE_PROMPT` joined the
+  frame-identity and `controlEvents` pins, the nil-control table gained
+  `ResolvePrompt`, a spawn failure now clears the offer (no process
+  will ever exist, so it would refuse every click forever), and the bar
+  waits for `alive` rather than rendering over a starting session.
 - **2026-09-07** — Review of the offer redesign, fixed: `ResolvePrompt`
   cleared the pending prompt and broadcast BEFORE checking for a live
   PTY, then returned `ErrNotFound` — which the daemon deliberately

@@ -126,6 +126,46 @@ func TestUpdateIdeaReqPointerSemantics(t *testing.T) {
 // The re-file patch: kind and project_id are the fields the inbox
 // corrects a mis-filed note with, and their wire spelling is
 // snake_case like every other id on this protocol.
+// RESOLVE_PROMPT is a C→S request like the four idea verbs, so it must
+// have a String() and must NOT appear in controlEvents — an entry there
+// would make the client dispatch a request frame as if it were a server
+// event. The idea frames pin this; 0x29 arrived after and escaped it.
+func TestResolvePromptFrameIdentity(t *testing.T) {
+	if got := FrameResolvePrompt.String(); got != "RESOLVE_PROMPT" {
+		t.Errorf("String() = %q, want RESOLVE_PROMPT", got)
+	}
+	if name, ok := controlEvents[FrameResolvePrompt]; ok {
+		t.Errorf("RESOLVE_PROMPT maps to the event %q; request frames must not", name)
+	}
+}
+
+func TestResolvePromptReqRoundTrip(t *testing.T) {
+	b, err := json.Marshal(ResolvePromptReq{SessionID: "s1", Paste: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(b), `"session_id":"s1"`) ||
+		!strings.Contains(string(b), `"paste":true`) {
+		t.Fatalf("encoded as %s", b)
+	}
+	var back ResolvePromptReq
+	if err := json.Unmarshal(b, &back); err != nil {
+		t.Fatal(err)
+	}
+	if back.SessionID != "s1" || !back.Paste {
+		t.Errorf("round trip = %+v", back)
+	}
+	// Dismiss must be distinguishable from "field absent" on the wire:
+	// paste has no omitempty, so false is transmitted.
+	b, err = json.Marshal(ResolvePromptReq{SessionID: "s1"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(b), `"paste":false`) {
+		t.Errorf("dismiss encoded as %s; the flag must survive", b)
+	}
+}
+
 func TestUpdateIdeaReqCarriesKindAndProject(t *testing.T) {
 	kind, project := IdeaKindBug, "p7"
 	b, err := json.Marshal(UpdateIdeaReq{ID: "i", Kind: &kind, ProjectID: &project})
