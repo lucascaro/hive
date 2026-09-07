@@ -4,7 +4,7 @@
 - **Issue:** #374
 - **PR:** #378
 - **Branch:** `feature/374-sign-and-notarize-macos-releases`
-- **Status:** active
+- **Status:** completed
 
 ## Summary
 
@@ -502,6 +502,7 @@ Per the loop's one-retry rule the reviewer was not run a third time.
 
 ## Progress
 
+- **2026-09-06** — Gate NEEDS_FOLLOWUP; criteria 1 and 2 deferred to #380 pending the Apple certificate. Operator elected to advance to DONE.
 - **2026-09-06** — Spec advanced BACKLOG → RESEARCH; research recorded.
 - **2026-09-06** — Plan approved after two reviewer rounds and one operator
   revision round (Team ID committed rather than stamped; `--adhoc` added).
@@ -514,6 +515,16 @@ Per the loop's one-retry rule the reviewer was not run a third time.
 - **2026-09-06** — Plan item 8 (README/CONTRIBUTING right-click-Open text)
   dropped: no such text exists in either file. It came from a reviewer's guess
   at the blast radius, not from the tree.
+
+## Gate verdict
+
+- **2026-09-06** — verdict: NEEDS_FOLLOWUP; phase: —; checks: 3 passed / 0 failed / 2 followups; followups: #380; one-line: implementation and docs are complete and in scope, but two success criteria cannot be demonstrated until an Apple Developer ID certificate exists; operator elected to advance and track them.
+  - 2026-09-06 dimensions:
+    - acceptance — NEEDS_FOLLOWUP — criteria 3, 4, 5 PASS (release.sh aborts under `set -e` before any upload; `TestStageReleaseRejectsUnverifiedSignature` proves the refusal is signature-specific and not confusable with the checksum error; the `:75` supply-chain disclaimer is gone). Criteria 1 and 2 need a real certificate: `security find-identity -v -p codesigning` reports 0 valid identities, so `sign-macos.sh` refuses before reaching `stapler staple`. Mechanism verified read-only — an ad-hoc bundle fails the OU-pinned requirement with exit 3. Tracked in #380.
+    - non-goals — PASS — all six respected. Linux/Windows signing is `uname -s` gated; the SHA-256 manifest is kept and still verified; no reproducible-build or key-rotation tooling was added; the Gatekeeper-disabled path stays advisory with the Team ID pin load-bearing. The latest-channel exclusion was independently mutation-tested: deleting the `isDownloadedStaging` guard at its use site fails `TestApplyStagedBundleSkipsVerifyForLatestChannel`.
+    - doc accuracy — PASS — every claim in `docs/releasing-signed-macos.md` cross-checked against the code (env var names, the `signingTeamID` pin and the sed both scripts read it with, the password-free `store-credentials` invocation, the verification commands, and the Team-ID-stability rotation claim). `site/features.json` builds through both renderers (site/build.mjs, whats-new.ts 20/20). No stale `unsigned` / `zip -rq` / login-item claims outside historical completed plans. README and CONTRIBUTING carry no Gatekeeper install text to go stale.
+
+**Gate methodology note.** The three dimension validators ran in parallel against a single worktree, and two of them temporarily pinned a Team ID in `internal/buildinfo/signing.go` to exercise the verification paths. The doc-accuracy validator read that file mid-mutation and reported its tool output as tampered. It was not — this was a race introduced by dispatching parallel validators onto one checkout. Each validator restored the file, the final tree was clean at `var signingTeamID = ""`, and the doc validator confirmed ground truth independently via `git diff`. Future gate runs on a mutating dimension should give each validator its own worktree.
 
 ## PR convergence ledger
 

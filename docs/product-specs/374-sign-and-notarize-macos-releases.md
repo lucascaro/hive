@@ -1,11 +1,12 @@
 ---
 issue: 374
 pr: 378
+shipped: 2026-09-06
 title: "Sign and notarize macOS releases"
 type: enhancement
 complexity: M
 priority: P2
-stage: GATE
+stage: DONE
 ---
 
 # Sign and notarize macOS releases
@@ -14,7 +15,7 @@ stage: GATE
 - **Type:** enhancement
 - **Complexity:** M
 - **Priority:** P2
-- **Exec plan:** [docs/exec-plans/active/374-sign-and-notarize-macos-releases.md](../exec-plans/active/374-sign-and-notarize-macos-releases.md)
+- **Exec plan:** [docs/exec-plans/completed/374-sign-and-notarize-macos-releases.md](../exec-plans/completed/374-sign-and-notarize-macos-releases.md)
 
 ## Problem
 
