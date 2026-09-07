@@ -128,8 +128,8 @@ type Entry struct {
 	//
 	// In-memory only, like Phase and state: it is not in MetaFile, and
 	// Revive rebuilds argv without it. A daemon restart between create
-	// and the first idle edge therefore loses the prompt — which is
-	// why ideaID below is not resolved until delivery happens.
+	// and the user placing it therefore loses the prompt — which is
+	// why ideaID below is not resolved until the paste happens.
 	pendingPrompt string
 	// ideaID is CreateSpec.IdeaID: the idea this session was started
 	// from, flipped to `started` once the prompt is delivered. Also
@@ -1220,12 +1220,14 @@ func (r *Registry) watchSessionExit(id string, sess *session.Session) {
 		e.captureCancel()
 		e.captureCancel = nil
 	}
-	// An opening prompt that never got its idle edge dies with the
-	// session. Loud, because the user asked for a session seeded with
-	// that text and did not get one — and the idea stays `open`, so
-	// the note itself is not lost.
+	// An opening prompt the user never placed dies with the session,
+	// which is also what makes the offer safe against a session that
+	// exits while the bar is up: the affordance is withdrawn with the
+	// same broadcast that reports the exit. Loud, because the user
+	// asked for a session seeded with that text and did not get one —
+	// and the idea stays `open`, so the note itself is not lost.
 	if e.pendingPrompt != "" {
-		log.Printf("registry: session %s exited before its opening prompt could be typed; dropping it", id)
+		log.Printf("registry: session %s exited before its opening prompt was placed; dropping it", id)
 		e.pendingPrompt = ""
 	}
 	info := e.Info()

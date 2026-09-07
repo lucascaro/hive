@@ -668,7 +668,8 @@ const (
 	promptNone promptDelivery = iota
 	// promptArgv: a bare positional on the spawn command line.
 	promptArgv
-	// promptTyped: written into the PTY on the first idle edge.
+	// promptTyped: offered to the user on SessionInfo.PendingPrompt
+	// and written into the PTY only when they paste it.
 	promptTyped
 )
 

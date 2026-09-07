@@ -523,8 +523,8 @@ func TestHandedOverAtCreate(t *testing.T) {
 			want: true,
 		},
 		{
-			// Still queued for the PTY; deliverPendingPromptLocked
-			// links it once it lands.
+			// Still offered to the user; ResolvePrompt links it
+			// once they paste it.
 			name: "codex is typed, so the link waits",
 			spec: wire.CreateSpec{Agent: "codex", InitialPrompt: "fix the grid"},
 			want: false,

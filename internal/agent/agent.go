@@ -69,8 +69,9 @@ type Def struct {
 	// PTY for both users: `claude --session-id <uuid> "text"` and
 	// `pi --session-id <id> "text"` each enter the alt screen, render
 	// the text as the first turn and dispatch it. Agents without it
-	// get the prompt typed into the PTY once the session goes idle
-	// (see Registry.deliverPendingPromptLocked).
+	// have the prompt offered to the user instead, on
+	// SessionInfo.PendingPrompt, and it reaches the PTY only when the
+	// user pastes it (see Registry.ResolvePrompt).
 	//
 	// A bool, not a func: both implementations are []string{prompt}.
 	// Widen it when an agent needs a flag rather than a positional.

@@ -1290,9 +1290,12 @@ path instead.
   the idea — the user asked for it with the terminal in front of them;
   Dismiss clears it and leaves the note in the inbox. **Deleted with
   it:** `deliverPendingPromptLocked` and its hook in
-  `announceStateLocked`, `promptDeliveryWindow`, `Entry.promptQueuedAt`,
-  the waiting-state drop and the drop-on-exit clause — every one of
-  which existed to make a guess safe. The argv path is untouched.
+  `announceStateLocked`, `promptDeliveryWindow`, `Entry.promptQueuedAt`
+  and the waiting-state drop — every one of which existed to make a
+  guess safe. The **drop-on-exit clause stays**: under the offer it is
+  what withdraws the bar when a session dies while it is up, so it went
+  from making a guess safe to making the offer safe. The argv path is
+  untouched.
 - **2026-09-07** — **The typed path no longer claims the idea**, and
   this came from the operator asking the obvious question none of the
   five review iterations had: *does typing it even work?* Measured, on
