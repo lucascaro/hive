@@ -785,8 +785,11 @@ func TestPromptDroppedWhenTheSessionAsksForInput(t *testing.T) {
 			r.mu.Lock()
 			prev := e.stateSnapshot()
 			r.announceStateLocked(e, prev, "test")
-			// Drive the waiting edge directly: the heuristic tier cannot
-			// produce these, they come from the hook/extension tier.
+			// Drive the waiting edge directly. On the hook/extension tier
+			// it arrives as an agent event; on the heuristic tier — which
+			// is where every typed-prompt agent runs — the only producer
+			// is agentstate.Machine.Bell, so a gate that draws silently
+			// never reaches here. See the Decision log.
 			r.deliverPendingPromptLocked(e, prev, agentstate.Snapshot{State: state})
 			r.mu.Unlock()
 

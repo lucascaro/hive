@@ -355,8 +355,8 @@ function LauncherBody({
       // Arrows move the agent selection — except inside the prompt
       // box, where they are how you move the caret through four rows of
       // text. Tab does NOT stand in for them there; see the Tab branch
-      // below, which hands Tab to the browser whenever a prompt box
-      // exists so the textarea is reachable at all.
+      // below, which cycles the popup's own text fields whenever a
+      // prompt box exists so the textarea is reachable at all.
       const inPrompt = e.target === promptRef.current;
       if (e.key === 'ArrowDown' && !inPrompt)
         return handle(() => moveSelection(+1));
@@ -367,8 +367,8 @@ function LauncherBody({
       // reaches that textarea from the keyboard: focus starts in the
       // filter box and the arrows belong to the list. A feature whose
       // headline is "editable right there in the launcher" cannot be
-      // mouse-only, so in prompt mode Tab is left to the browser and
-      // the arrows stay the list's navigation.
+      // mouse-only, so in prompt mode Tab cycles the popup's own text
+      // fields and the arrows stay the list's navigation.
       if (e.key === 'Tab' && !hasPrompt)
         return handle(() => moveSelection(e.shiftKey ? -1 : +1));
       // In prompt mode Tab CYCLES the popup's own text fields rather

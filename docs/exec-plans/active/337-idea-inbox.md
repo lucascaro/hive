@@ -1221,8 +1221,11 @@ path instead.
   Windows.
 - **2026-09-07** — Review iteration 5, fixed: the delivery predicate
   now DROPS the prompt when the session reaches `waiting_input` or
-  `waiting_permission`. This closes the open question from iteration 4
-  from the other side. An agent's "do you trust this folder?" gate is
+  `waiting_permission`. This narrows the open question from iteration 4
+  from the other side — narrows, not closes: every typed-prompt agent
+  is on the heuristic tier, where only `Machine.Bell` produces those
+  states, so a trust gate that draws without ringing is still typed
+  into. See Open questions. An agent's "do you trust this folder?" gate is
   drawn (working) and then waits — and the old predicate fired only on
   `working→idle`, so such a session skipped delivery, stayed armed, and
   landed the note in the middle of the user's OWN first turn later,
@@ -1544,20 +1547,26 @@ collision is under Open questions.
 - **2026-09-07 iter 4b** — the operator took all of them but one (the `validate` option, kept by decision above). Iteration 3's three focus items all re-verified correct. One finding — a typed prompt plus Enter auto-answering an agent's startup trust dialog — is a design decision and is under Open questions.
 
 - **2026-09-07 iter 5** — verdict: COMMENT coerced to REQUEST_CHANGES; mergeable: MERGEABLE (was CONFLICTING — `main` landed #378 mid-run; merged and resolved as `3801c4cb`); findings_hash: e58a5b4d63816a6a1fa03c871dc8e5c4ad9b597604fe9171f80cdc13153bb3d4; threads_open: 0; action: autofix+push (3 safe fixes as `101d7d4d` — the live region mounted with the prompt box rather than created with its text, a comment stating the opposite of the Tab branch below it, and a mis-named argv test), then escalated:max-iterations-with-risky-findings (0 BLOCKING, 5 IMPORTANT); head_sha: 3801c4cb.
+- **2026-09-07 iter 6 (confirmation pass over `569aadef`)** — verdict: COMMENT coerced to REQUEST_CHANGES; mergeable: MERGEABLE; findings_hash: 71d7c3ce6d0753259a8a3196642b47dd4b3dfc17b37681c9b34c1a13ba31dc7c; threads_open: 0; 0 BLOCKING, 3 IMPORTANT. The Windows `%` strip, `maxPromptBytes` and `handedOverAtCreate` all verified correct on their merits. Autofixed the three documentation halves (two stale Tab comments, the test comment claiming the heuristic tier cannot produce `waiting_*`, and the Open-questions entry that read "Resolved"). Left standing for the operator: the Tab cycle judges visibility by `offsetParent`, which `lib/focus-trap.ts` documents as the rule that makes jsdom tests vacuous — and it does, so the new cycle test proves only "Tab focuses the prompt".
 - **2026-09-07 iter 5b** — the loop's budget is spent, so this is where it stops. All four RISKY findings were taken by the operator rather than left standing (Windows `%` expansion, the Tab-escapes-the-launcher regression from iteration 4, the missed `waiting_input` edge, and the 4 KiB cap eating a full-size note). The three remaining MINORs are recorded in the Decision log as deliberate or are test-wording nits.
 
 ## Open questions
 
-- ~~**A typed opening prompt ends with Enter, which could auto-answer
-  an agent's startup trust/permission dialog.**~~ **Resolved
-  2026-09-07 by review iteration 5**, and from a better angle than
-  either option originally weighed: the prompt is now *dropped* when
+- **A typed opening prompt ends with Enter, which could auto-answer an
+  agent's startup trust/permission dialog. NARROWED, not closed, on
+  2026-09-07 by review iteration 5**: the prompt is now *dropped* when
   the session reaches `waiting_input` or `waiting_permission`, so a
-  gate is never answered on the user's behalf and the note is not left
-  armed to land mid-conversation later. The trailing Enter stays for
-  the ordinary case, so the one-click feel survives. Kept below for the
-  record.
-- **(resolved, above) A typed opening prompt ends with Enter, which
+  gate Hive can *see* is never answered on the user's behalf and the
+  note is not left armed to land mid-conversation later. The residual
+  gap is a gate Hive cannot see: every typed-prompt agent (codex /
+  gemini / copilot / aider) runs on the heuristic tier, and there the
+  only producer of `waiting_input` is `agentstate.Machine.Bell` — a
+  trust dialog that draws without ringing still reads as
+  working→idle, and the note is still typed with a trailing `\r`. The
+  2-minute window still bounds the exposure. The trailing Enter stays
+  for the ordinary case, so the one-click feel survives. Full detail
+  below.
+- **(narrowed, above) A typed opening prompt ends with Enter, which
   could auto-answer an agent's startup trust/permission dialog.** Raised by review iteration
   4 (`registry.go:546`). The typed path is codex / gemini / copilot /
   aider; several of those show a "do you trust this folder?" style
