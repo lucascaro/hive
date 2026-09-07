@@ -575,7 +575,7 @@ func (r *Registry) deliverPendingPromptLocked(e *Entry, prev, cur agentstate.Sna
 		e.pendingPrompt = ""
 		return
 	}
-	prompt, sess, id, ideaID := e.pendingPrompt, e.sess, e.ID, e.ideaID
+	prompt, sess, id := e.pendingPrompt, e.sess, e.ID
 	e.pendingPrompt = ""
 	go func() {
 		// NO trailing carriage return. The note is typed into the
@@ -607,7 +607,24 @@ func (r *Registry) deliverPendingPromptLocked(e *Entry, prev, cur agentstate.Sna
 			log.Printf("registry: opening prompt for %s not delivered: %v", id, err)
 			return
 		}
-		r.linkIdeaToSession(ideaID, id)
+		// The write succeeding does NOT mean the agent received it, and
+		// on this path we cannot tell. Measured: codex in a fresh
+		// directory (every worktree this feature creates) is sitting on
+		// its trust gate at the first idle edge, and that gate is a
+		// numbered menu — it swallows arbitrary text and echoes
+		// nothing. A probe typing a unique marker found ZERO
+		// occurrences of it anywhere in the PTY stream afterwards.
+		//
+		// So the idea is deliberately NOT claimed here. Claiming it on
+		// a successful Write cost the user both halves at once: the
+		// note vanished into the gate AND left the inbox, which is the
+		// same failure the shell agent had, through a different door.
+		// Unclaimed, the worst case is a session without its prompt and
+		// a note still sitting where they left it.
+		//
+		// The argv path (Claude, Pi) claims at create, because there
+		// the text is in the process's own command line and delivery
+		// is not in question.
 	}()
 }
 

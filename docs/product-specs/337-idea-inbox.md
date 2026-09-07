@@ -103,8 +103,17 @@ it.
   security gate whose own text warns about prompt injection. Agents
   that cannot take a prompt at all (the plain shell, custom agents)
   receive nothing and leave the idea in the inbox.
-- The idea's `status` becomes `started` and `session_id` is set on
-  creation; the sidebar row of the session shows the idea glyph.
+- The idea's `status` becomes `started` and `session_id` is set when
+  the prompt was actually handed over — for Claude and Pi (argv) that
+  is at creation, and the sidebar row shows the idea glyph. Amended
+  2026-09-07: on the typed path the idea is deliberately NOT claimed,
+  because a successful PTY write does not prove the agent received it
+  (measured: codex sits on its trust gate at the first idle edge, and
+  that gate swallows arbitrary text and echoes nothing — a probe found
+  zero occurrences of a unique marker afterwards). Claiming it there
+  lost both halves at once: the note vanished into the gate and left
+  the inbox. Unclaimed, the worst case is a session without its prompt
+  and the note still where the user left it.
 - Playwright mock e2e: capture → count → start → prompt visible in the
   fake PTY. Go tests: registry persistence, wire round-trip, CLI.
 

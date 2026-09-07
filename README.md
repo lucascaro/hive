@@ -55,12 +55,14 @@ What works:
   knows what to do with it rather than only what was noticed. The
   prompt is editable in the launcher before you pick the agent —
   sharpening it there does not change the stored note. Claude and Pi
-  get it as their opening argument; every other agent has it typed into
-  the terminal once the session settles — except the plain shell and
-  custom agents, which cannot be handed one at all: the launcher says
-  so before you start, and the idea stays in the inbox. The
-  idea then links back to the session it started, and that session's
-  sidebar row carries a small idea glyph
+  get it as their opening argument, and their idea is linked to the new
+  session; every other agent has it typed into the terminal once the
+  session settles, left there for you to send rather than submitted for
+  you — those keep the note in the inbox, because Hive cannot tell
+  whether the agent actually took it. The plain shell and custom
+  agents cannot be handed one at all: the launcher says so before you
+  start, and the idea stays in the inbox. A linked idea's session
+  carries a small idea glyph on its sidebar row
 
 - In-app updates (macOS): pick a release or latest-commit channel in
   Settings, then Update → Reload (or Restart, when the daemon changed)

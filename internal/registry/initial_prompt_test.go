@@ -197,11 +197,16 @@ func TestPendingPromptTypedOnIdleAfterWorking(t *testing.T) {
 	if got := pendingPromptOf(r, e.ID); got != "" {
 		t.Errorf("pendingPrompt = %q after delivery, want it cleared", got)
 	}
-	waitFor(t, "the idea to be linked", func() bool {
-		return ideaStatus(t, r, idea.ID).Status == wire.IdeaStatusStarted
-	})
-	if got := ideaStatus(t, r, idea.ID).SessionID; got != e.ID {
-		t.Errorf("idea session_id = %q, want %q", got, e.ID)
+	// The idea is deliberately NOT claimed on this path. A successful
+	// Write does not mean the agent received it — measured: codex sits
+	// on its trust gate at the first idle edge and that gate swallows
+	// arbitrary text, echoing nothing. Claiming here lost the user both
+	// halves: the note vanished AND left the inbox.
+	time.Sleep(200 * time.Millisecond)
+	if got := ideaStatus(t, r, idea.ID); got.Status != wire.IdeaStatusOpen || got.SessionID != "" {
+		t.Errorf("idea = {status:%q session:%q}; the typed path cannot confirm "+
+			"receipt, so it must leave the note in the inbox",
+			got.Status, got.SessionID)
 	}
 }
 

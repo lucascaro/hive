@@ -1274,6 +1274,24 @@ path instead.
   the ones the tier can classify. Claude and Pi are unaffected (argv).
   The spec's success criterion was amended to match, since
   `/hs-merge-gate` validates against it.
+- **2026-09-07** — **The typed path no longer claims the idea**, and
+  this came from the operator asking the obvious question none of the
+  five review iterations had: *does typing it even work?* Measured, on
+  the default path (a fresh directory, which is every worktree this
+  feature creates): a probe queued a unique marker as the opening
+  prompt, delivery fired at t=3.6s, and the marker appeared **zero**
+  times anywhere in the PTY stream afterwards. Codex is still sitting
+  on its trust gate at the first idle edge, and that gate is a numbered
+  menu — it swallows arbitrary text and echoes nothing. The write
+  succeeds, so `linkIdeaToSession` fired and the note both vanished
+  into the gate AND left the inbox: the identical failure the shell
+  agent had, through a different door. A successful `Write` is not
+  evidence of receipt, so the typed path now delivers best-effort and
+  leaves the note where the user put it. Worst case is a session
+  without its prompt and a note still in the inbox. The argv path is
+  unaffected — the text is in the process's own command line, and
+  Claude and Pi were measured working on 2026-09-07. Spec criterion,
+  README and changeset amended.
 - **2026-09-07** — Confirmation review, fixed: the Tab cycle judged
   field visibility with `el.offsetParent !== null` — the exact rule
   `lib/focus-trap.ts` warns against, because jsdom has no layout. So in
