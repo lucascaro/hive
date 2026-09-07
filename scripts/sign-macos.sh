@@ -30,6 +30,15 @@ set -euo pipefail
 
 BUNDLE_NAME="hivegui.app"
 
+# The pinned Team ID is read from a repo file, but $ZIP and the --adhoc
+# app path belong to the caller and may be relative to wherever they
+# ran this from. So the repo file is resolved from this script's own
+# location rather than by cd'ing to the repo root like sibling scripts
+# do: a cd would silently break every relative path argument, and
+# resolving against $PWD would break when run from outside the repo.
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+SIGNING_GO="$SCRIPT_DIR/../internal/buildinfo/signing.go"
+
 die() { echo "error: $*" >&2; exit 1; }
 
 # sign_inside_out signs every Mach-O in the bundle before the bundle
@@ -100,9 +109,10 @@ IDENTITY_TEAM_ID="$(sed -n 's/.*(\([A-Z0-9]\{10\}\))$/\1/p' <<<"$HIVE_SIGN_IDENT
 # the release is unusable: every client would reject an update signed
 # by a team its binary does not trust. TestSigningTeamIDMatchesSource
 # asserts this extraction agrees with what the Go code sees.
-PINNED_TEAM_ID="$(sed -n 's/^var signingTeamID = "\(.*\)"$/\1/p' internal/buildinfo/signing.go)"
+[[ -f "$SIGNING_GO" ]] || die "cannot find $SIGNING_GO — run this from inside the hive repo"
+PINNED_TEAM_ID="$(sed -n 's/^var signingTeamID = "\(.*\)"$/\1/p' "$SIGNING_GO")"
 [[ -n "$PINNED_TEAM_ID" ]] \
-    || die "internal/buildinfo/signing.go pins no Team ID — a release built from it would skip signature verification for every user. Set signingTeamID first."
+    || die "$SIGNING_GO pins no Team ID — a release built from it would skip signature verification for every user. Set signingTeamID first."
 [[ "$PINNED_TEAM_ID" == "$IDENTITY_TEAM_ID" ]] \
     || die "Team ID mismatch: signing with $IDENTITY_TEAM_ID but the binary pins $PINNED_TEAM_ID. No client could install this release."
 

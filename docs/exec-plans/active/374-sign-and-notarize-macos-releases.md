@@ -460,6 +460,32 @@ Per the loop's one-retry rule the reviewer was not run a third time.
 - **2026-09-06** — Signing pre-flight moved ahead of the commit/tag step. Why:
   failing after `git tag` leaves a local release commit and tag with no
   documented unwind.
+- **2026-09-06** — spctl is enforced on a real rejection and advisory only when
+  assessments are disabled. Why: review-loop iteration 2 found that a `codesign`
+  signature with a secure timestamp stays valid after the certificate is
+  revoked, so the Team ID pin alone cannot tell a stolen-and-revoked key from a
+  good one — making the revocation step this feature's own docs prescribe a
+  no-op. spctl is the only revocation-aware check in the path. The
+  master-disable accommodation is kept by distinguishing its non-answer
+  ("assessments are disabled") from a verdict.
+- **2026-09-06** — Verification runs on its own deadline
+  (`context.WithoutCancel`), not the caller's. Why: it inherited stageRelease's
+  whole-download budget, so a slow download could surface as "this update is not
+  signed by the Hive developer" — accusing the developer of tampering because a
+  timer expired.
+- **2026-09-06** — The staged bundle is re-verified in `applyStagedBundle`
+  before the swap. Why: it was verified once at stage time and installed later,
+  leaving a writable gap. Same-uid only, so defense in depth, and it costs one
+  call.
+- **2026-09-06** — `sign-macos.sh` resolves `signing.go` from the script's own
+  location rather than `cd`-ing to the repo root like sibling scripts. Why: a
+  `cd` would break the caller's relative zip/app path, and resolving against
+  `$PWD` breaks when run from outside the repo.
+- **2026-09-06** — Added a `shellcheck` CI job over `scripts/*.sh` + `build.sh`,
+  and fixed the two pre-existing warnings (SC2046 in `release.sh`, SC2164 in
+  `check-plan-lifecycle.sh`) that would have made it red on day one. Why:
+  operator asked for it; release-critical bash first executes live, after a
+  commit and tag already exist.
 
 ## Progress
 
@@ -471,6 +497,7 @@ Per the loop's one-retry rule the reviewer was not run a third time.
   left alone: `TestTerminalQueriesAreNotWork` (internal/registry) and
   `stateLockPoll is unused` (GOOS=windows staticcheck, internal/daemon).
 - **2026-09-06** — PR #378 opened.
+- **2026-09-06** — Review loop iter 1-2; operator approved 6 escalated RISKY items.
 - **2026-09-06** — Plan item 8 (README/CONTRIBUTING right-click-Open text)
   dropped: no such text exists in either file. It came from a reviewer's guess
   at the blast radius, not from the tree.
@@ -480,7 +507,7 @@ Per the loop's one-retry rule the reviewer was not run a third time.
 <Append-only. One line per `/hs-review-loop` iteration.>
 
 - **2026-09-06 iter 1** — verdict: COMMENT; mergeable: MERGEABLE; findings_hash: cf0fbed9; threads_open: 0; action: autofix+push; head_sha: 08d4c378.
-- **2026-09-06 iter 2** — verdict: COMMENT; mergeable: MERGEABLE; findings_hash: 0540e4ae; threads_open: 0; action: autofix+push, 6 RISKY surfaced for decision; head_sha: pending.
+- **2026-09-06 iter 2** — verdict: COMMENT; mergeable: MERGEABLE; findings_hash: 0540e4ae; threads_open: 0; action: autofix+push, 6 RISKY surfaced for decision; head_sha: 732127de.
 
 ## Open questions
 

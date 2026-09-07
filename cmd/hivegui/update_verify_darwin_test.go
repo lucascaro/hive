@@ -122,21 +122,115 @@ func TestVerifyDeveloperIDSignatureRefusesOnCodesignFailure(t *testing.T) {
 	}
 }
 
-// TestVerifyDeveloperIDSignatureTreatsFailingSpctlAsAdvisory pins the
-// decision that spctl does not get a veto. Under `spctl
-// --master-disable` it reports "assessments are disabled" rather than
-// evaluating; enforcing that would refuse updates on a machine whose
-// owner already opted out of Gatekeeper globally. The Team ID pin is
-// what actually gates, and it still ran.
-func TestVerifyDeveloperIDSignatureTreatsFailingSpctlAsAdvisory(t *testing.T) {
+// captureArgvOut is captureArgv with control over stdout, needed to
+// distinguish spctl's "assessments are disabled" non-answer from a
+// real rejection.
+func captureArgvOut(t *testing.T, results ...struct {
+	out string
+	err error
+}) *[][]string {
+	t.Helper()
+	var calls [][]string
+	prev := runArgv
+	i := 0
+	runArgv = func(_ context.Context, name string, args ...string) (string, error) {
+		calls = append(calls, append([]string{name}, args...))
+		var r struct {
+			out string
+			err error
+		}
+		if i < len(results) {
+			r = results[i]
+		}
+		i++
+		return r.out, r.err
+	}
+	t.Cleanup(func() { runArgv = prev })
+	return &calls
+}
+
+type argvResult = struct {
+	out string
+	err error
+}
+
+// TestVerifyDeveloperIDSignatureAllowsDisabledAssessments pins the
+// accommodation: `spctl --master-disable` makes --assess answer
+// "assessments are disabled" for everything. That is a non-answer,
+// and refusing on it would break updates for a machine whose owner
+// already opted out of Gatekeeper globally.
+func TestVerifyDeveloperIDSignatureAllowsDisabledAssessments(t *testing.T) {
 	defer buildinfo.SetSigningTeamIDForTest("ABCDE12345")()
-	calls := captureArgv(t, nil, errors.New("assessments are disabled"))
+	calls := captureArgvOut(t,
+		argvResult{"", nil},
+		argvResult{"/tmp/x.app: assessments are disabled", errors.New("exit status 1")},
+	)
 
 	if err := verifyDeveloperIDSignature(context.Background(), "/tmp/x.app"); err != nil {
 		t.Fatalf("verifyDeveloperIDSignature = %v; a disabled Gatekeeper must not block updates", err)
 	}
-	if len(*calls) != 2 || (*calls)[0][0] != codesignBin {
+	if len(*calls) != 2 || (*calls)[0][0] != codesignBin || (*calls)[1][0] != spctlBin {
 		t.Fatalf("expected codesign then spctl, got %v", *calls)
+	}
+}
+
+// TestVerifyDeveloperIDSignatureRefusesRealSpctlRejection is the
+// revocation defense. A codesign signature made with a secure
+// timestamp stays valid after the certificate is revoked — that is
+// what timestamping is for — so the Team ID pin alone cannot tell a
+// stolen-and-revoked key from a good one. spctl is the only
+// revocation-aware check in this path, so a real rejection from it
+// must refuse the update rather than being logged and ignored.
+func TestVerifyDeveloperIDSignatureRefusesRealSpctlRejection(t *testing.T) {
+	defer buildinfo.SetSigningTeamIDForTest("ABCDE12345")()
+	captureArgvOut(t,
+		argvResult{"", nil},
+		argvResult{"/tmp/x.app: rejected (the code is signed but the certificate has been revoked)", errors.New("exit status 3")},
+	)
+
+	err := verifyDeveloperIDSignature(context.Background(), "/tmp/x.app")
+	if err == nil {
+		t.Fatal("verifyDeveloperIDSignature = nil for a revoked certificate, want a refusal")
+	}
+	if !strings.Contains(err.Error(), "notarization") {
+		t.Errorf("error = %q, want it to name the notarization check", err)
+	}
+}
+
+func TestAssessmentsDisabled(t *testing.T) {
+	for _, tc := range []struct {
+		out  string
+		want bool
+	}{
+		{"/x.app: assessments are disabled", true},
+		{"/x.app: ASSESSMENTS ARE DISABLED", true},
+		{"/x.app: rejected (the code is signed but the certificate has been revoked)", false},
+		{"/x.app: rejected", false},
+		{"", false},
+	} {
+		if got := assessmentsDisabled(tc.out); got != tc.want {
+			t.Errorf("assessmentsDisabled(%q) = %v, want %v", tc.out, got, tc.want)
+		}
+	}
+}
+
+// TestVerifyDeveloperIDSignatureDoesNotInheritCallerDeadline guards
+// against a slow download surfacing as a tampering accusation: if
+// verification inherited stageRelease's nearly-spent whole-download
+// deadline, an expired timer would produce "this update is not signed
+// by the Hive developer" for a perfectly good build.
+func TestVerifyDeveloperIDSignatureDoesNotInheritCallerDeadline(t *testing.T) {
+	defer buildinfo.SetSigningTeamIDForTest("ABCDE12345")()
+	calls := captureArgv(t)
+
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel() // already dead, as an exhausted download budget would be
+
+	if err := verifyDeveloperIDSignature(ctx, "/tmp/x.app"); err != nil {
+		t.Fatalf("verifyDeveloperIDSignature = %v; a spent caller deadline must not read as tampering", err)
+	}
+	if len(*calls) == 0 {
+		t.Error("verification did not run under an already-cancelled caller context")
 	}
 }
 

@@ -56,14 +56,24 @@ func teamIDRequirement(teamID string) string {
 //
 //   - codesign with the Team ID requirement is load-bearing. A failure
 //     always refuses the update.
+//
 //   - spctl --assess reports on notarization, and is advisory. Under
 //     `spctl --master-disable` it does not evaluate at all — it prints
-//     "assessments are disabled" — so treating its non-answer as a
-//     failure would refuse updates on a machine whose owner has
-//     already opted out of Gatekeeper globally, and treating it as
-//     authoritative would let that same setting silently turn this
-//     half of the check into a no-op. It is logged, not enforced; the
-//     Team ID pin still holds either way.
+//     "assessments are disabled" — so refusing on that would break
+//     updates for a machine whose owner already opted out of
+//     Gatekeeper globally.
+//
+//     But it must not be merely advisory either, and the reason is
+//     revocation. A `codesign` signature made with a secure timestamp
+//     stays valid after the certificate is revoked — that is what
+//     timestamping is for. So the Team ID pin alone cannot tell a
+//     stolen-and-revoked key from a good one, and revoking a
+//     compromised Developer ID (which docs/releasing-signed-macos.md
+//     prescribes) would do nothing for the updater. spctl is the only
+//     revocation-aware check in this path.
+//
+//     So the two cases are separated: a non-evaluating spctl is
+//     advisory, an actively rejecting one refuses the update.
 //
 // Returns nil when this build has no pin (see buildinfo.signingTeamID).
 func verifyDeveloperIDSignature(ctx context.Context, bundle string) error {
@@ -72,7 +82,13 @@ func verifyDeveloperIDSignature(ctx context.Context, bundle string) error {
 		return nil
 	}
 
-	ctx, cancel := context.WithTimeout(ctx, verifyTimeout)
+	// Deliberately detached from the caller's context. stageRelease's
+	// ctx carries the whole-download deadline, which by this point may
+	// have minutes or seconds left; inheriting it would let a slow
+	// download surface as "this update is not signed by the Hive
+	// developer" — accusing the developer of tampering because a
+	// timer ran out. Verification gets its own budget.
+	ctx, cancel := context.WithTimeout(context.WithoutCancel(ctx), verifyTimeout)
 	defer cancel()
 
 	out, err := runArgv(ctx, codesignBin,
@@ -88,8 +104,25 @@ func verifyDeveloperIDSignature(ctx context.Context, bundle string) error {
 	}
 
 	if out, err := runArgv(ctx, spctlBin, "--assess", "--type", "execute", bundle); err != nil {
-		log.Printf("hivegui: notarization assessment did not pass for %s (advisory, Team ID pin held): %v: %s",
-			bundle, err, strings.TrimSpace(out))
+		detail := strings.TrimSpace(out)
+		if assessmentsDisabled(detail) {
+			log.Printf("hivegui: Gatekeeper assessments are disabled on this machine, so notarization "+
+				"could not be checked for %s. The Team ID pin passed and the update was accepted; "+
+				"a revoked certificate would not be detected.", bundle)
+			return nil
+		}
+		return fmt.Errorf("this update failed Apple's notarization check — download discarded: %s", detail)
 	}
 	return nil
+}
+
+// assessmentsDisabled reports whether spctl declined to evaluate
+// rather than actually rejecting the bundle.
+//
+// `spctl --master-disable` makes --assess answer "assessments are
+// disabled" for everything. That is a non-answer, not a verdict, and
+// it must not be confused with a real rejection — one means "this
+// machine opted out of Gatekeeper", the other means "Apple says no".
+func assessmentsDisabled(out string) bool {
+	return strings.Contains(strings.ToLower(out), "assessments are disabled")
 }

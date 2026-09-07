@@ -210,7 +210,9 @@ fi
 # asset names GitHub serves.
 echo "Writing checksums..."
 SUMS="release/checksums.txt"
-( cd release && shasum -a 256 $(printf '%s\n' "${ARTIFACTS[@]}" | xargs -n1 basename) ) > "$SUMS"
+ARTIFACT_NAMES=()
+for f in "${ARTIFACTS[@]}"; do ARTIFACT_NAMES+=("$(basename "$f")"); done
+( cd release && shasum -a 256 "${ARTIFACT_NAMES[@]}" ) > "$SUMS"
 ARTIFACTS+=("$SUMS")
 
 # ---- PUSH ----------------------------------------------------------------

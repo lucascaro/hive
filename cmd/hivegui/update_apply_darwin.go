@@ -542,6 +542,14 @@ func applyStagedBundle(staged string) error {
 	if installed == "" {
 		return fmt.Errorf("not running from an .app bundle — rebuild and relaunch manually")
 	}
+	// Re-verify immediately before the swap. stageRelease already
+	// checked this bundle, but that was a separate step and the
+	// staging directory is writable in between — a verify-to-install
+	// gap. Same-uid only, so this is defense in depth rather than a
+	// hole in the stated threat model, and it costs one call.
+	if err := verifySignatureFn(context.Background(), staged); err != nil {
+		return err
+	}
 	return swapBundle(staged, installed)
 }
 
