@@ -1,6 +1,8 @@
 package registry
 
 import (
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -33,11 +35,19 @@ func TestPositionalPromptIsAppendedOnlyForItsAgents(t *testing.T) {
 				Agent: tc.agent, InitialPrompt: "seed me",
 			}, "sid-1")
 			last := ""
-			if len(cmd) > 0 {
-				last = cmd[len(cmd)-1]
+			sep := ""
+			if n := len(cmd); n > 0 {
+				last = cmd[n-1]
+				if n > 1 {
+					sep = cmd[n-2]
+				}
 			}
 			if got := last == "seed me"; got != tc.want {
 				t.Errorf("argv = %v; prompt appended = %v, want %v", cmd, got, tc.want)
+			}
+			// Guarded by "--", or a prompt starting with "-" is a flag.
+			if tc.want && sep != "--" {
+				t.Errorf("argv = %v; want the prompt behind a -- separator", cmd)
 			}
 		})
 	}
@@ -54,8 +64,40 @@ func TestPositionalPromptSkipsExplicitCmd(t *testing.T) {
 	if cmd := r.resolveAgentCmd(spec, "sid-1"); len(cmd) != 2 {
 		t.Errorf("argv = %v, want the caller's two elements untouched", cmd)
 	}
-	if takesPositionalPrompt(spec) {
-		t.Error("an explicit Cmd must fall to the typed path")
+	if got := deliveryFor(spec); got != promptNone {
+		t.Errorf("deliveryFor = %v, want promptNone: raw argv from a client "+
+			"that does not speak agent IDs is not a prompt box", got)
+	}
+}
+
+// deliveryFor is the one decision about where an opening prompt goes,
+// and its DEFAULT is the security-relevant half: anything not known to
+// present a prompt box gets nothing typed at it.
+func TestPromptDeliveryMatrix(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		spec wire.CreateSpec
+		want promptDelivery
+	}{
+		{"claude takes argv", wire.CreateSpec{Agent: "claude", InitialPrompt: "p"}, promptArgv},
+		{"pi takes argv", wire.CreateSpec{Agent: "pi", InitialPrompt: "p"}, promptArgv},
+		{"codex is typed", wire.CreateSpec{Agent: "codex", InitialPrompt: "p"}, promptTyped},
+		{"gemini is typed", wire.CreateSpec{Agent: "gemini", InitialPrompt: "p"}, promptTyped},
+		{"copilot is typed", wire.CreateSpec{Agent: "copilot", InitialPrompt: "p"}, promptTyped},
+		{"aider is typed", wire.CreateSpec{Agent: "aider", InitialPrompt: "p"}, promptTyped},
+		// The whole reason the default is promptNone: a shell is not a
+		// prompt box, it is a command interpreter.
+		{"the shell agent gets nothing", wire.CreateSpec{Agent: "shell", InitialPrompt: "p"}, promptNone},
+		{"an unknown agent gets nothing", wire.CreateSpec{Agent: "not-an-agent", InitialPrompt: "p"}, promptNone},
+		{"no agent gets nothing", wire.CreateSpec{InitialPrompt: "p"}, promptNone},
+		{"raw argv gets nothing", wire.CreateSpec{Agent: "claude", Cmd: []string{"x"}, InitialPrompt: "p"}, promptNone},
+		{"no prompt is no delivery", wire.CreateSpec{Agent: "claude"}, promptNone},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := deliveryFor(tc.spec); got != tc.want {
+				t.Errorf("deliveryFor = %v, want %v", got, tc.want)
+			}
+		})
 	}
 }
 
@@ -70,6 +112,21 @@ func ptyText(sess *session.Session) string {
 		return nil
 	})
 	return out
+}
+
+// queuePrompt puts an entry into the state beginCreate would have left
+// it in for a promptTyped agent, without spawning that agent's binary.
+// Codex and friends are not installed on CI, and a delivery-mechanics
+// test has no business depending on whether they are: WHICH agents get
+// a typed prompt is deliveryFor's decision and is table-tested in
+// TestPromptDeliveryMatrix.
+func queuePrompt(r *Registry, id, prompt, ideaID string) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if e, ok := r.entries[id]; ok {
+		e.pendingPrompt = prompt
+		e.ideaID = ideaID
+	}
 }
 
 func pendingPromptOf(r *Registry, id string) string {
@@ -107,10 +164,8 @@ func TestPendingPromptTypedOnIdleAfterWorking(t *testing.T) {
 		t.Fatalf("AddIdea: %v", err)
 	}
 
-	e, sess := liveSession(t, r, wire.CreateSpec{
-		Name: "seeded", ProjectID: p.ID,
-		InitialPrompt: "fix the sidebar", IdeaID: idea.ID,
-	})
+	e, sess := liveSession(t, r, wire.CreateSpec{Name: "seeded", ProjectID: p.ID})
+	queuePrompt(r, e.ID, "fix the sidebar", idea.ID)
 
 	// t=0. Every machine starts idle (attachSessionHooks), so a naive
 	// "first time it is idle" predicate would fire here — before the
@@ -152,9 +207,8 @@ func TestPendingPromptTypedOnIdleAfterWorking(t *testing.T) {
 func TestPendingPromptDeliveredOnlyOnce(t *testing.T) {
 	skipOnWindows(t)
 	r := freshRegistry(t)
-	e, sess := liveSession(t, r, wire.CreateSpec{
-		Name: "seeded", InitialPrompt: "once",
-	})
+	e, sess := liveSession(t, r, wire.CreateSpec{Name: "seeded"})
+	queuePrompt(r, e.ID, "once", "")
 
 	now := time.Now()
 	paint(t, e, sess, "thinking\n")
@@ -200,10 +254,8 @@ func TestPendingPromptDroppedWhenSessionGoesAway(t *testing.T) {
 	if err != nil {
 		t.Fatalf("AddIdea: %v", err)
 	}
-	e, _ := liveSession(t, r, wire.CreateSpec{
-		Name: "doomed", ProjectID: p.ID,
-		InitialPrompt: "never delivered", IdeaID: idea.ID,
-	})
+	e, _ := liveSession(t, r, wire.CreateSpec{Name: "doomed", ProjectID: p.ID})
+	queuePrompt(r, e.ID, "never delivered", idea.ID)
 	// Never sampled, so the session has not reached an idle edge and
 	// the prompt is still pending.
 	if got := pendingPromptOf(r, e.ID); got == "" {
@@ -293,6 +345,15 @@ func TestPromptSanitization(t *testing.T) {
 			wantArgv:  "oops",
 			wantTyped: "oops",
 		},
+		{
+			// Nothing left to deliver. finishCreate branches on the
+			// empty result, so the idea links at create rather than
+			// waiting forever for a delivery that cannot happen.
+			name:      "a note of nothing but control characters empties",
+			in:        "\x00\x01\x02",
+			wantArgv:  "",
+			wantTyped: "",
+		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			if got := sanitizePrompt(tc.in); got != tc.wantArgv {
@@ -343,6 +404,151 @@ func TestIdeaNotLinkedToAKilledSession(t *testing.T) {
 	}
 	// The state finishCreate's caller would reach after a kill landed
 	// in the window between the spawn and the link.
+	r.linkIdeaToSession(idea.ID, e.ID)
+
+	got := ideaStatus(t, r, idea.ID)
+	if got.Status != wire.IdeaStatusOpen || got.SessionID != "" {
+		t.Errorf("idea = {status:%q session:%q}, want it untouched",
+			got.Status, got.SessionID)
+	}
+}
+
+// The regression test for a real command execution, not a theoretical
+// one: before Def.TypedPrompt existed, the shell agent fell through to
+// the typed path and `prompt + "\r"` was written into a bare shell —
+// which ran it. `$(…)` in a note therefore executed, and notes are
+// agent-authored too (ADD_IDEA is reachable on the session-mode
+// socket), so one agent could plant text another user's shell ran.
+//
+// Sanitizing was never the fix. Stripping control characters does
+// nothing when the receiver is a command interpreter; the fix is not
+// typing at it at all.
+func TestShellNeverReceivesATypedPrompt(t *testing.T) {
+	skipOnWindows(t)
+	r := freshRegistry(t)
+	marker := filepath.Join(t.TempDir(), "executed")
+	e, sess := liveSession(t, r, wire.CreateSpec{
+		Name: "shell", Agent: "shell", Shell: "/bin/sh",
+		InitialPrompt: "An idea was captured. The idea: $(touch " + marker + ")",
+	})
+
+	// Nothing was even queued — the guard is at create, not at delivery.
+	if got := pendingPromptOf(r, e.ID); got != "" {
+		t.Fatalf("queued %q for a shell session", got)
+	}
+
+	// Drive the edge that WOULD have delivered it.
+	now := time.Now()
+	paint(t, e, sess, "\n")
+	sample(r, e, now)
+	sample(r, e, now.Add(agentstate.QuietAfter))
+
+	deadline := time.Now().Add(2 * time.Second)
+	for time.Now().Before(deadline) {
+		if _, err := os.Stat(marker); err == nil {
+			t.Fatalf("the shell executed the note: %s was created", marker)
+		}
+		time.Sleep(25 * time.Millisecond)
+	}
+}
+
+// A session started from an idea that can receive no prompt still links
+// the idea: there is no delivery to wait for, so holding the note open
+// forever would strand it.
+func TestIdeaLinksWhenThereIsNoDeliveryToWaitFor(t *testing.T) {
+	skipOnWindows(t)
+	// The shell agent, because it is the case that reaches a user: it
+	// is the launcher's default selection, and it can receive no prompt
+	// at all. (The other no-delivery route — a note that sanitizes away
+	// to nothing — is covered by TestPromptSanitization; both land on an
+	// empty pendingPrompt, which is what finishCreate branches on.)
+	r, p := ideaRegistry(t)
+	idea, err := r.AddIdea(IdeaSpec{ProjectID: p.ID, Text: "note"})
+	if err != nil {
+		t.Fatalf("AddIdea: %v", err)
+	}
+	e, _ := liveSession(t, r, wire.CreateSpec{
+		Name: "s", ProjectID: p.ID, Agent: "shell", Shell: "/bin/sh",
+		InitialPrompt: "An idea was captured. The idea: x", IdeaID: idea.ID,
+	})
+	waitFor(t, "the idea to be linked", func() bool {
+		return ideaStatus(t, r, idea.ID).Status == wire.IdeaStatusStarted
+	})
+	if got := ideaStatus(t, r, idea.ID).SessionID; got != e.ID {
+		t.Errorf("idea session_id = %q, want %q", got, e.ID)
+	}
+}
+
+// The drop-on-exit clause in watchSessionExit. Reached by closing the
+// PTY rather than by Kill: Kill removes the entry, so watchSessionExit
+// returns at its `!ok` guard before the clause runs — which is why the
+// branch had no coverage. Close makes the master read fail, which is
+// the one exit signal internal/session has on every platform (see
+// issue #379).
+func TestPendingPromptClearedWhenTheSessionEnds(t *testing.T) {
+	skipOnWindows(t)
+	r, p := ideaRegistry(t)
+	idea, err := r.AddIdea(IdeaSpec{ProjectID: p.ID, Text: "never delivered"})
+	if err != nil {
+		t.Fatalf("AddIdea: %v", err)
+	}
+	e, sess := liveSession(t, r, wire.CreateSpec{Name: "dying", ProjectID: p.ID})
+	queuePrompt(r, e.ID, "seeded", idea.ID)
+	if got := pendingPromptOf(r, e.ID); got == "" {
+		t.Fatal("nothing queued to drop")
+	}
+
+	if err := sess.Close(); err != nil {
+		t.Fatalf("Close: %v", err)
+	}
+	waitFor(t, "the pending prompt to be dropped", func() bool {
+		return pendingPromptOf(r, e.ID) == ""
+	})
+	// The entry outlives the process here, so this is the real
+	// assertion: the idea was never claimed by a session that did no
+	// work with it.
+	if got := ideaStatus(t, r, idea.ID).Status; got != wire.IdeaStatusOpen {
+		t.Errorf("idea status = %q, want %q", got, wire.IdeaStatusOpen)
+	}
+}
+
+// A prompt that begins with "-" must reach the agent as text, not as a
+// flag. CreateSpec.InitialPrompt is a wire field: our own prompts start
+// with a word, but nothing makes another client's do so.
+func TestLeadingDashPromptIsNotAFlag(t *testing.T) {
+	r := freshRegistry(t)
+	cmd := r.resolveAgentCmd(wire.CreateSpec{
+		Agent: "claude", InitialPrompt: "--dangerously-skip-permissions",
+	}, "sid-1")
+	sep := -1
+	for i, a := range cmd {
+		if a == "--" {
+			sep = i
+			break
+		}
+	}
+	if sep < 0 || sep != len(cmd)-2 || cmd[len(cmd)-1] != "--dangerously-skip-permissions" {
+		t.Fatalf("argv = %v; want the prompt as the sole argument after --", cmd)
+	}
+}
+
+// The idea and the session must belong to the same project. The
+// launcher pins the idea's project, so a mismatch means a client sent
+// an idea_id that does not go with this session — and idea_id is
+// reachable by any client, not just ours.
+func TestIdeaNotLinkedAcrossProjects(t *testing.T) {
+	skipOnWindows(t)
+	r, p := ideaRegistry(t)
+	other, err := r.CreateProject(wire.CreateProjectReq{Name: "other", Cwd: t.TempDir()})
+	if err != nil {
+		t.Fatalf("CreateProject: %v", err)
+	}
+	idea, err := r.AddIdea(IdeaSpec{ProjectID: other.ID, Text: "belongs elsewhere"})
+	if err != nil {
+		t.Fatalf("AddIdea: %v", err)
+	}
+	e, _ := liveSession(t, r, wire.CreateSpec{Name: "s", ProjectID: p.ID})
+
 	r.linkIdeaToSession(idea.ID, e.ID)
 
 	got := ideaStatus(t, r, idea.ID)

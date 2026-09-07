@@ -91,7 +91,10 @@ func (r *Registry) beginCreate(spec wire.CreateSpec) (*Entry, createPlan, error)
 	// and delivery loses the prompt, which is exactly why the idea is
 	// not flipped to `started` until the prompt has actually landed.
 	e.ideaID = spec.IdeaID
-	if spec.InitialPrompt != "" && !takesPositionalPrompt(spec) {
+	if deliveryFor(spec) == promptTyped {
+		// May come back empty if the note was nothing but control
+		// characters; then there is no delivery to wait for and the
+		// idea links at create like any other prompt-less session.
 		e.pendingPrompt = typedPrompt(spec.InitialPrompt)
 	}
 	info := e.Info()
@@ -167,13 +170,19 @@ func (r *Registry) finishCreate(ctx context.Context, e *Entry, spec wire.CreateS
 		return ErrNotFound
 	}
 	r.broadcast(wire.SessionEventUpdated, info)
-	// The argv path is delivered the moment the process exists, so the
-	// idea can be linked now. The typed path links from
-	// deliverPendingPromptLocked instead, once the text has actually
-	// reached the PTY — a session that dies before its first idle edge
-	// leaves the idea open rather than claiming work that never
-	// started.
-	if spec.InitialPrompt == "" || takesPositionalPrompt(spec) {
+	// Anything already delivered — or never going to be — links the
+	// idea now. Only a prompt still queued for the PTY waits, and it
+	// links from deliverPendingPromptLocked once the text has actually
+	// landed, so a session that dies before its first idle edge leaves
+	// the idea open rather than claiming work that never started.
+	//
+	// Read under the lock rather than recomputed from the spec: an
+	// empty result from typedPrompt is exactly the case a second
+	// deliveryFor call would get wrong.
+	r.mu.Lock()
+	waiting := e.pendingPrompt != ""
+	r.mu.Unlock()
+	if !waiting {
 		r.linkIdeaToSession(spec.IdeaID, p.id)
 	}
 	go r.watchSessionExit(p.id, sess)
@@ -193,10 +202,28 @@ func (r *Registry) linkIdeaToSession(ideaID, sessionID string) {
 		return
 	}
 	r.mu.Lock()
-	_, live := r.entries[sessionID]
+	e, live := r.entries[sessionID]
+	var sessionProject string
+	if live {
+		sessionProject = e.ProjectID
+	}
+	ideaProject := ""
+	if f, ok := r.ideas[ideaID]; ok {
+		ideaProject = f.ProjectID
+	}
 	r.mu.Unlock()
 	if !live {
 		log.Printf("registry: not linking idea %s: session %s is already gone", ideaID, sessionID)
+		return
+	}
+	// An idea belongs to a project and the launcher pins that project,
+	// so a mismatch means the client sent an idea_id that does not go
+	// with this session. Refuse rather than file the link: it would put
+	// one project's idea into another project's session, and the wire
+	// field is reachable by any client.
+	if ideaProject != "" && sessionProject != ideaProject {
+		log.Printf("registry: not linking idea %s (project %s) to session %s (project %s): different projects",
+			ideaID, ideaProject, sessionID, sessionProject)
 		return
 	}
 	started := wire.IdeaStatusStarted
@@ -479,9 +506,16 @@ func (r *Registry) resolveAgentCmd(spec wire.CreateSpec, id string) []string {
 	// appendSpawnArgs — a restart or revive rebuilds argv from the same
 	// helper, and re-sending the opening prompt would replay the first
 	// turn every time the user restarted the session.
-	if spec.InitialPrompt != "" && def.PositionalPrompt {
+	if deliveryFor(spec) == promptArgv {
 		if p := sanitizePrompt(spec.InitialPrompt); p != "" {
-			cmd = append(append([]string(nil), cmd...), p)
+			// "--" first: without it a prompt beginning with "-" is
+			// parsed as a flag, and CreateSpec.InitialPrompt is a wire
+			// field — our own prompts start with a word, but nothing
+			// makes another client's do so. Verified against both
+			// users before adding: `claude --print -- "…"` answers
+			// normally, and `pi --help` documents `[--]` as "End option
+			// parsing; treat remaining arguments as messages/files".
+			cmd = append(append([]string(nil), cmd...), "--", p)
 		}
 	}
 	return cmd
@@ -544,21 +578,48 @@ func typedPrompt(s string) string {
 	return strings.Join(strings.Fields(sanitizePrompt(s)), " ")
 }
 
-// takesPositionalPrompt reports whether the agent this spec resolves to
-// will receive InitialPrompt through argv. The complement is the typed
-// path (Entry.pendingPrompt), and beginCreate needs the answer before
-// resolveAgentCmd has run — hence a predicate rather than a return
-// value threaded out of it.
+// promptDelivery says how an opening prompt can reach the agent this
+// spec resolves to — or that it cannot, which is the default.
+type promptDelivery int
+
+const (
+	// promptNone: nothing to deliver, or nowhere safe to put it.
+	promptNone promptDelivery = iota
+	// promptArgv: a bare positional on the spawn command line.
+	promptArgv
+	// promptTyped: written into the PTY on the first idle edge.
+	promptTyped
+)
+
+// deliveryFor is the ONE decision about where an opening prompt goes.
+// resolveAgentCmd, beginCreate and finishCreate all route through it,
+// so the argv branch, the typed branch and "when may the idea be
+// linked" can never disagree about the same spec.
 //
-// An explicit spec.Cmd is the "raw argv from a client that doesn't
-// speak agent IDs" case: we don't append to user-supplied argv here
-// any more than resolveAgentCmd injects SessionIDFlag into it.
-func takesPositionalPrompt(spec wire.CreateSpec) bool {
-	if len(spec.Cmd) > 0 || spec.Agent == "" {
-		return false
+// Everything unrecognised lands on promptNone, deliberately:
+//
+//   - an explicit spec.Cmd is raw argv from a client that does not
+//     speak agent IDs, and we no more append to it than resolveAgentCmd
+//     injects SessionIDFlag into it;
+//   - the shell agent has no Cmd, and typing into a shell is not
+//     prompting an agent, it is running a command — see Def.TypedPrompt;
+//   - a user-defined custom agent is an unknown program, and an unknown
+//     program is exactly the case the default must be safe for.
+func deliveryFor(spec wire.CreateSpec) promptDelivery {
+	if spec.InitialPrompt == "" || len(spec.Cmd) > 0 || spec.Agent == "" {
+		return promptNone
 	}
 	def, ok := agent.Get(agent.ID(spec.Agent))
-	return ok && len(def.Cmd) > 0 && def.PositionalPrompt
+	if !ok || len(def.Cmd) == 0 {
+		return promptNone
+	}
+	switch {
+	case def.PositionalPrompt:
+		return promptArgv
+	case def.TypedPrompt:
+		return promptTyped
+	}
+	return promptNone
 }
 
 // materializeWorktree runs the heavy `git worktree add` and promotes

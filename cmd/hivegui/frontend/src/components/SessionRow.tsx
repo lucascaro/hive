@@ -85,6 +85,14 @@ export function SessionRow(p: SessionRowProps) {
   const sub = subtitleFor(s, p.state);
   const code = agentCode(s.agent);
   const wtBranch = s.worktreeBranch ?? s.worktree_branch;
+  // A note can be 4 KiB. A tooltip is a glance and a screen reader
+  // announces the label in full, so both take the first line's worth
+  // and stop.
+  const ideaLabel = p.ideaText
+    ? `Started from an idea: ${
+        p.ideaText.length > 80 ? `${p.ideaText.slice(0, 80)}…` : p.ideaText
+      }`
+    : '';
   const hint = p.index === null ? null : `[${p.index}]`;
   // Restart is only offered where it means something (exited/error): a
   // running session's restart is the tile's job, not a one-click sidebar
@@ -166,8 +174,8 @@ export function SessionRow(p: SessionRowProps) {
         <span
           className="hv-session-row__idea"
           role="img"
-          title={`Started from an idea: ${p.ideaText}`}
-          aria-label={`Started from an idea: ${p.ideaText}`}
+          title={ideaLabel}
+          aria-label={ideaLabel}
         >
           <Icon name="idea" size={12} />
         </span>

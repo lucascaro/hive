@@ -341,10 +341,18 @@ function LauncherBody({
         e.stopPropagation();
         fn();
       };
-      if (e.key === 'ArrowDown' || (e.key === 'Tab' && !e.shiftKey))
+      // Arrows move the agent selection — except inside the prompt
+      // box, where they are how you move the caret through four rows of
+      // text. Tab still moves the selection there: it is the popup's
+      // only other navigation key and a literal tab is not something
+      // anyone types into a brief.
+      const inPrompt = e.target === promptRef.current;
+      if (e.key === 'ArrowDown' && !inPrompt)
         return handle(() => moveSelection(+1));
-      if (e.key === 'ArrowUp' || (e.key === 'Tab' && e.shiftKey))
+      if (e.key === 'ArrowUp' && !inPrompt)
         return handle(() => moveSelection(-1));
+      if (e.key === 'Tab')
+        return handle(() => moveSelection(e.shiftKey ? -1 : +1));
       // Enter launches from anywhere in the popup, including the two
       // text boxes — that is what the branch box already did. ⇧Enter
       // inside the prompt is a newline instead, the same convention
@@ -446,7 +454,15 @@ function LauncherBody({
           worktree row because it is context for the choice below it. */}
       {req.ideaId || req.initialPrompt ? (
         <label className="launcher-prompt">
-          <span className="launcher-prompt__label">Opening prompt</span>
+          <span className="launcher-prompt__label">
+            Opening prompt
+            {/* AGENTS.md › Key Discoverability: the key goes next to
+                the thing it acts on. Enter launching from inside a
+                four-row edit box is surprising without it. */}
+            <span className="launcher-prompt__hint">
+              <Kbd>[⇧enter]</Kbd> newline <Kbd>[enter]</Kbd> launch
+            </span>
+          </span>
           <textarea
             ref={promptRef}
             id="launcher-prompt"

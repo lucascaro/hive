@@ -75,6 +75,21 @@ type Def struct {
 	// A bool, not a func: both implementations are []string{prompt}.
 	// Widen it when an agent needs a flag rather than a positional.
 	PositionalPrompt bool
+	// TypedPrompt reports that this agent presents a prompt box that an
+	// opening prompt can safely be TYPED into and submitted with Enter,
+	// for agents that do not take one as argv.
+	//
+	// Opt-in, and that is load-bearing rather than tidy. The default
+	// (false) has to be "do not type", because the thing on the other
+	// end of the PTY may not be an agent at all: the shell agent's Cmd
+	// is nil, so a note typed into it is a COMMAND LINE the shell
+	// executes — `$(…)` and backticks included — and notes are
+	// agent-authored too (ADD_IDEA is reachable on the session-mode
+	// socket), so one agent could plant text another user's shell runs.
+	// A user-defined custom agent is unknown for the same reason and
+	// gets the same answer. Proven by
+	// TestShellNeverReceivesATypedPrompt.
+	TypedPrompt bool
 }
 
 // SpawnInfo is what an adapter may need at spawn time to build
@@ -132,6 +147,7 @@ var (
 				return []string{"codex", "resume", id}
 			},
 			CaptureSessionIDFn: codexCaptureSessionID,
+			TypedPrompt:        true,
 		},
 		IDGemini: {
 			ID:            IDGemini,
@@ -144,6 +160,7 @@ var (
 			ResumeArgs: func(id, _ string) []string {
 				return []string{"gemini", "--resume", id}
 			},
+			TypedPrompt: true,
 		},
 		IDCopilot: {
 			ID:         IDCopilot,
@@ -156,13 +173,15 @@ var (
 				return []string{"copilot", "--resume=" + id}
 			},
 			CaptureSessionIDFn: copilotCaptureSessionID,
+			TypedPrompt:        true,
 		},
 		IDAider: {
-			ID:         IDAider,
-			Name:       "Aider",
-			Cmd:        []string{"aider"},
-			Color:      "#ec4899",
-			InstallCmd: []string{"pip", "install", "aider-chat"},
+			ID:          IDAider,
+			Name:        "Aider",
+			Cmd:         []string{"aider"},
+			Color:       "#ec4899",
+			InstallCmd:  []string{"pip", "install", "aider-chat"},
+			TypedPrompt: true,
 		},
 		IDPi: {
 			ID:        IDPi,

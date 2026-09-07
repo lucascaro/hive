@@ -612,6 +612,45 @@ describe('launcher branch name', () => {
     expect(createSession).toHaveBeenCalled();
   });
 
+  it('leaves the arrows to the caret inside the prompt box', async () => {
+    // Four rows of editable text: ArrowUp/Down are how you move
+    // through it. Moving the agent selection instead makes the box
+    // unusable for anything but a one-liner.
+    await open({ initialPrompt: 'seeded', ideaId: 'i7' });
+    const box = promptBox();
+    box.focus();
+    for (const key of ['ArrowDown', 'ArrowUp']) {
+      const ev = new window.KeyboardEvent('keydown', {
+        key,
+        bubbles: true,
+        cancelable: true,
+      });
+      act(() => {
+        box.dispatchEvent(ev);
+      });
+      expect(ev.defaultPrevented).toBe(false);
+    }
+    // Outside the box they still move the selection.
+    const ev = new window.KeyboardEvent('keydown', {
+      key: 'ArrowDown',
+      bubbles: true,
+      cancelable: true,
+    });
+    act(() => {
+      launcher().dispatchEvent(ev);
+    });
+    expect(ev.defaultPrevented).toBe(true);
+  });
+
+  it('shows the keys that act on the prompt box', async () => {
+    // AGENTS.md › Key Discoverability — Enter launching from inside an
+    // edit box is surprising without the hint.
+    await open({ initialPrompt: 'seeded', ideaId: 'i7' });
+    const label = document.querySelector('.launcher-prompt__hint');
+    expect(label?.textContent).toContain('⇧enter');
+    expect(label?.textContent).toContain('newline');
+  });
+
   it('takes digits in the prompt as text, not as row shortcuts', async () => {
     await open({ initialPrompt: 'seeded', ideaId: 'i7' });
     const box = promptBox();
