@@ -1,10 +1,10 @@
 package registry
 
 import (
-	"context"
 	"strings"
 	"testing"
 	"time"
+	"unicode/utf8"
 
 	"github.com/lucascaro/hive/internal/agentstate"
 	"github.com/lucascaro/hive/internal/session"
@@ -179,31 +179,55 @@ func TestPendingPromptDeliveredOnlyOnce(t *testing.T) {
 	}
 }
 
-// A session that dies before its first idle edge takes the prompt with
-// it. The idea stays open, so the note is not lost and the user can
-// start it again.
-func TestPendingPromptDroppedOnExit(t *testing.T) {
+// A session that goes away before its first idle edge never receives
+// the prompt, and the idea it came from stays open — the note is not
+// lost, and the user can start it again.
+//
+// Killed rather than left to exit on its own, and that is not a
+// convenience: a child that exits by itself is not detected on Linux
+// at all. internal/session's read loop closes Done() only when the PTY
+// master read fails, and on Linux it never does — measured on the CI
+// runner and again under docker golang:1.27.1, against origin/main
+// with no part of this feature in the tree, for both an instant
+// `/usr/bin/true` and a 0.3s sleeper. That is a pre-existing platform
+// gap this feature neither introduces nor can paper over (it is filed
+// separately); Kill reaches the same "gone before delivery" state
+// through a path that works on every platform.
+func TestPendingPromptDroppedWhenSessionGoesAway(t *testing.T) {
 	skipOnWindows(t)
 	r, p := ideaRegistry(t)
 	idea, err := r.AddIdea(IdeaSpec{ProjectID: p.ID, Text: "never delivered"})
 	if err != nil {
 		t.Fatalf("AddIdea: %v", err)
 	}
-	e, err := r.Create(context.Background(), wire.CreateSpec{
-		Name: "doomed", ProjectID: p.ID, Cols: 80, Rows: 24,
-		Shell:         "/usr/bin/true",
+	e, _ := liveSession(t, r, wire.CreateSpec{
+		Name: "doomed", ProjectID: p.ID,
 		InitialPrompt: "never delivered", IdeaID: idea.ID,
 	})
-	if err != nil {
-		t.Fatalf("Create: %v", err)
+	// Never sampled, so the session has not reached an idle edge and
+	// the prompt is still pending.
+	if got := pendingPromptOf(r, e.ID); got == "" {
+		t.Fatal("prompt was already delivered before any idle edge")
 	}
 
-	waitFor(t, "the session to exit", func() bool {
-		return pendingPromptOf(r, e.ID) == ""
-	})
+	if err := r.Kill(e.ID, true); err != nil {
+		t.Fatalf("Kill: %v", err)
+	}
+
+	// The entry is gone, so nothing can deliver the prompt later...
+	r.mu.Lock()
+	_, stillThere := r.entries[e.ID]
+	r.mu.Unlock()
+	if stillThere {
+		t.Fatal("killed session still in the registry")
+	}
+	// ...and the idea was never claimed by a session that did no work.
 	if got := ideaStatus(t, r, idea.ID).Status; got != wire.IdeaStatusOpen {
 		t.Errorf("idea status = %q; a session that never received the "+
 			"prompt must not claim the idea", got)
+	}
+	if got := ideaStatus(t, r, idea.ID).SessionID; got != "" {
+		t.Errorf("idea session_id = %q, want it unset", got)
 	}
 }
 
@@ -227,5 +251,103 @@ func TestIdeaLinkedImmediatelyOnTheArgvPath(t *testing.T) {
 	})
 	if got := ideaStatus(t, r, idea.ID).SessionID; got != e.ID {
 		t.Errorf("idea session_id = %q, want %q", got, e.ID)
+	}
+}
+
+// The opening prompt is a trust boundary. It arrives on the wire, and
+// the text behind it is authored by a user OR by an agent (`hive idea
+// add` runs inside sessions), so it is never assumed safe. On the
+// typed path it is written straight into a PTY, where a bare ESC is a
+// sequence the terminal executes and a stray \r submits a half-formed
+// turn.
+func TestPromptSanitization(t *testing.T) {
+	for _, tc := range []struct {
+		name, in, wantArgv, wantTyped string
+	}{
+		{
+			name:      "control characters are stripped on both paths",
+			in:        "fix \x1b[31mthe\x07 grid\x00",
+			wantArgv:  "fix [31mthe grid",
+			wantTyped: "fix [31mthe grid",
+		},
+		{
+			name: "a carriage return cannot submit an early turn",
+			in:   "first\rsecond",
+			// \r is a control character: gone before it can reach the
+			// PTY as a submit.
+			wantArgv:  "firstsecond",
+			wantTyped: "firstsecond",
+		},
+		{
+			name: "argv keeps the note's layout; the typed path flattens it",
+			in:   "line one\nline two\tindented",
+			// argv is not a terminal, so a newline is just a newline.
+			wantArgv: "line one\nline two\tindented",
+			// The PTY write appends \r, so an embedded newline would
+			// submit the turn early and land the rest in the next one.
+			wantTyped: "line one line two indented",
+		},
+		{
+			name:      "DEL is not a printable character either",
+			in:        "oops\x7f",
+			wantArgv:  "oops",
+			wantTyped: "oops",
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := sanitizePrompt(tc.in); got != tc.wantArgv {
+				t.Errorf("sanitizePrompt = %q, want %q", got, tc.wantArgv)
+			}
+			if got := typedPrompt(tc.in); got != tc.wantTyped {
+				t.Errorf("typedPrompt = %q, want %q", got, tc.wantTyped)
+			}
+		})
+	}
+}
+
+// CreateSpec.InitialPrompt is its own entry point — it arrives on the
+// wire and never has to have been an idea, so AddIdea's 4 KiB cap does
+// not cover it.
+func TestPromptIsBounded(t *testing.T) {
+	long := strings.Repeat("x", wire.MaxIdeaText+500)
+	if got := len(sanitizePrompt(long)); got != wire.MaxIdeaText {
+		t.Errorf("len = %d, want %d", got, wire.MaxIdeaText)
+	}
+	// The cut lands on a rune boundary, so the agent never receives an
+	// invalid UTF-8 tail. "é" is two bytes, so a byte-wise cut at the
+	// cap is guaranteed to split one.
+	multi := strings.Repeat("é", wire.MaxIdeaText)
+	got := sanitizePrompt(multi)
+	if len(got) > wire.MaxIdeaText {
+		t.Errorf("len = %d, over the cap", len(got))
+	}
+	if !utf8.ValidString(got) {
+		t.Error("truncation split a codepoint")
+	}
+}
+
+// A kill that lands between the spawn and the link must not leave the
+// idea pointing at a session id no client can resolve — an inbox row
+// reading "in <gone>", with the idea out of the open list and no way
+// back to it.
+func TestIdeaNotLinkedToAKilledSession(t *testing.T) {
+	skipOnWindows(t)
+	r, p := ideaRegistry(t)
+	idea, err := r.AddIdea(IdeaSpec{ProjectID: p.ID, Text: "raced"})
+	if err != nil {
+		t.Fatalf("AddIdea: %v", err)
+	}
+	e, _ := liveSession(t, r, wire.CreateSpec{Name: "raced", ProjectID: p.ID})
+	if err := r.Kill(e.ID, true); err != nil {
+		t.Fatalf("Kill: %v", err)
+	}
+	// The state finishCreate's caller would reach after a kill landed
+	// in the window between the spawn and the link.
+	r.linkIdeaToSession(idea.ID, e.ID)
+
+	got := ideaStatus(t, r, idea.ID)
+	if got.Status != wire.IdeaStatusOpen || got.SessionID != "" {
+		t.Errorf("idea = {status:%q session:%q}, want it untouched",
+			got.Status, got.SessionID)
 	}
 }

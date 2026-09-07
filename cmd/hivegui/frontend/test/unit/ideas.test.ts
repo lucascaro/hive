@@ -157,13 +157,21 @@ describe('ideaPrompt', () => {
     );
   });
 
-  it('stays on one line, whatever the kind', () => {
-    // The typed-delivery path sends this followed by a carriage
-    // return; TUIs disagree about whether an embedded newline submits
-    // early.
+  it('keeps a multi-line note intact rather than flattening it', () => {
+    // Asserted with real multi-line text, not 'x': the note is
+    // interpolated verbatim and the capture sheet takes ⇧Enter, so
+    // this is the ordinary case, not a corner. Claude and Pi receive
+    // the prompt as argv and handle newlines fine; flattening for the
+    // typed path is the daemon's job (typedPrompt in
+    // internal/registry/create.go), and doing it here as well would
+    // strip paragraph breaks from the agents that can use them.
+    const note = 'first paragraph\n\nsecond paragraph';
     for (const kind of ['idea', 'bug', 'feedback', 'epic']) {
-      expect(ideaPrompt({ kind, text: 'x' })).not.toContain('\n');
+      expect(ideaPrompt({ kind, text: note })).toContain(note);
     }
+    // The verb itself never introduces a break.
+    const p = ideaPrompt({ kind: 'bug', text: 'x' });
+    expect(p).not.toContain('\n');
   });
 
   it('falls back to the idea verb for a kind it does not recognise', () => {

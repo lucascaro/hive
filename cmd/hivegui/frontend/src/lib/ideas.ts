@@ -55,9 +55,14 @@ export function ideaTextTooLong(text: string): boolean {
 // the verb; the note itself is passed through verbatim at the end,
 // where the agent reads it as the subject rather than as orders.
 //
-// One line, deliberately: the typed-delivery path (agents without
-// Def.PositionalPrompt) sends this followed by a carriage return, and
-// TUIs disagree about whether an embedded newline submits early.
+// The verb is one line, but the note is interpolated verbatim and a
+// note can be multi-line (the capture sheet takes ⇧Enter, and so does
+// the launcher's prompt box). Keeping the layout is the right call
+// here: the daemon decides what the agent can actually receive, and it
+// flattens only the typed-into-a-PTY path — see typedPrompt in
+// internal/registry/create.go. Do NOT flatten here as well; that would
+// silently strip paragraph breaks from Claude and Pi, which take the
+// prompt as argv and handle newlines fine.
 //
 // The idea verb for anything unrecognised: kind is a closed set the
 // daemon validates, and a note that reaches here with a strange one is

@@ -1003,6 +1003,58 @@ path instead.
   screen. The bounding-box comparison is kept as a Playwright test
   rather than thrown away, because a reasoned CSS fix here is worth
   nothing: the broken version passed every jsdom assertion.
+- **2026-09-07** — Review iteration 1, fixed: the opening prompt is
+  sanitized before it reaches either delivery path. It is a trust
+  boundary and was being written into a PTY raw. The text is not only
+  human-typed — `hive idea add` runs INSIDE sessions, so an agent can
+  file a note that another agent is later launched with — and the
+  launcher's prompt box advertises ⇧Enter for a newline, so multi-line
+  is reachable by design rather than by accident. `sanitizePrompt`
+  strips C0 and DEL (keeping newline and tab) for the argv path;
+  `typedPrompt` additionally collapses whitespace runs for the PTY
+  path, where the write appends `\r` and an embedded newline would
+  submit a half-formed turn and scatter the rest across the next ones.
+  Bracketed paste is named as the upgrade path rather than taken now:
+  it assumes every TUI supports it, and a wrong guess prints raw escape
+  sequences into the agent's input.
+- **2026-09-07** — Review iteration 1, fixed: `CreateSpec.InitialPrompt`
+  is capped at `wire.MaxIdeaText` server-side. It is a separate entry
+  point — it arrives on the wire and never has to have been an idea —
+  so `AddIdea`'s cap does not cover it. Truncated on a rune boundary
+  rather than refused: unlike a captured note, nothing is lost the user
+  cannot see and retype, and failing the create over a long prompt is
+  the worse outcome.
+- **2026-09-07** — Review iteration 1, fixed: `linkIdeaToSession`
+  re-checks the entry. Every caller reaches it off `r.mu`, so a Kill can
+  land in the window; linking then left the idea `started` and pointing
+  at a session id no client can resolve — an inbox row reading
+  "in <gone>", out of the open list, with no way back.
+- **2026-09-07** — Review iteration 1, corrected rather than fixed:
+  `ideaPrompt`'s "one line, deliberately" claim was wrong, and its
+  test hid that by asserting the invariant with `text: 'x'`. The note
+  is interpolated verbatim and can be multi-line. Flattening belongs at
+  delivery and only on the typed path — doing it in `ideaPrompt` would
+  strip paragraph breaks from Claude and Pi, which take the prompt as
+  argv and handle newlines fine. Comment corrected, test now uses real
+  multi-line text.
+- **2026-09-07** — Review iteration 1, CI: `TestPendingPromptDroppedOnExit`
+  timed out on Linux (10s), and the cause is NOT this feature.
+  `internal/session`'s read loop closes `Done()` only when the PTY
+  master read fails, and on Linux it never does — so a child that exits
+  on its own is never detected and `watchSessionExit` never runs there.
+  Measured three ways: the CI runner, docker `golang:1.27.1` in this
+  worktree, and docker against a clean `origin/main` checkout with no
+  part of this feature in the tree, for both an instant `/usr/bin/true`
+  and a 0.3s sleeper. macOS detects it fine. The test was rewritten to
+  reach the same "gone before delivery" state through `Kill`, which
+  works everywhere, and to assert the user-visible outcome (the idea
+  stays `open`) rather than the private field. **The underlying gap is
+  a real Linux daemon bug — an agent that quits is never marked exited
+  — and needs its own spec; it is out of scope here.**
+- **2026-09-07** — Review iteration 1, not this PR's to fix:
+  `verify-generated` fails on `docs/product-specs/374-sign-and-notarize-macos-releases.md`
+  (`invalid stage 'BACKLOG'`). That spec is on `origin/main` and this
+  diff does not touch it, so the check is red on `main` independently.
 - **2026-09-07** — The `pi` "No project session found with id" warning
   found while probing on 2026-09-06 is left alone. It is pi's own
   pre-alt-screen line for a fresh `--session-id`, it is not made worse
@@ -1290,6 +1342,10 @@ Converged after 5 iterations. Nothing left standing above MINOR. The
 two MINORs kept by decision (`RowButton` duplication, `LIST_IDEAS`
 returning done ideas) are in the Decision log; the Ctrl+I / Tab
 collision is under Open questions.
+
+### Phase 3 (PR #377)
+
+- **2026-09-07 iter 1** — verdict: REQUEST_CHANGES (COMMENT coerced — non-empty findings hash); mergeable: MERGEABLE; findings_hash: c6003b73e77736db8b3a86fa613ad8e77ac490db8de661a72513150697b808d0; threads_open: 0; action: autofix+push (one SAFE item — a Go test pinning `InitialPrompt`/`IdeaID` onto the wire frame, which nothing covered), then escalated:ci-check-failed + risky-fix-needs-human-decision (4 items); head_sha: 73ccb37.
 
 ## Open questions
 

@@ -6,6 +6,7 @@ import (
 	"slices"
 	"strings"
 	"time"
+	"unicode/utf8"
 
 	"github.com/google/uuid"
 
@@ -91,7 +92,7 @@ func (r *Registry) beginCreate(spec wire.CreateSpec) (*Entry, createPlan, error)
 	// not flipped to `started` until the prompt has actually landed.
 	e.ideaID = spec.IdeaID
 	if spec.InitialPrompt != "" && !takesPositionalPrompt(spec) {
-		e.pendingPrompt = spec.InitialPrompt
+		e.pendingPrompt = typedPrompt(spec.InitialPrompt)
 	}
 	info := e.Info()
 	r.broadcastLocked(wire.SessionEventAdded, info)
@@ -182,8 +183,20 @@ func (r *Registry) finishCreate(ctx context.Context, e *Entry, spec wire.CreateS
 // linkIdeaToSession flips the idea a session was started from to
 // `started` and records which session serves it. No-op without an
 // idea. Must NOT be called with r.mu held — UpdateIdea takes it.
+//
+// The entry is re-checked because every caller reaches here off the
+// lock, and a Kill can land in between: linking then would leave the
+// idea pointing at a session id no client can resolve, which renders
+// as an inbox row saying "in <gone>" with no way back to open.
 func (r *Registry) linkIdeaToSession(ideaID, sessionID string) {
 	if ideaID == "" {
+		return
+	}
+	r.mu.Lock()
+	_, live := r.entries[sessionID]
+	r.mu.Unlock()
+	if !live {
+		log.Printf("registry: not linking idea %s: session %s is already gone", ideaID, sessionID)
 		return
 	}
 	started := wire.IdeaStatusStarted
@@ -467,9 +480,68 @@ func (r *Registry) resolveAgentCmd(spec wire.CreateSpec, id string) []string {
 	// helper, and re-sending the opening prompt would replay the first
 	// turn every time the user restarted the session.
 	if spec.InitialPrompt != "" && def.PositionalPrompt {
-		cmd = append(append([]string(nil), cmd...), spec.InitialPrompt)
+		if p := sanitizePrompt(spec.InitialPrompt); p != "" {
+			cmd = append(append([]string(nil), cmd...), p)
+		}
 	}
 	return cmd
+}
+
+// promptControlChars strips the C0 control characters (and DEL) that an
+// opening prompt has no business carrying, leaving newline and tab.
+//
+// This is a trust boundary, not a formality. The text is user-authored
+// AND agent-authored — `hive idea add` runs inside sessions, so an
+// agent can file a note that another agent is later launched with —
+// and on the typed path it is written straight into a PTY. A bare ESC
+// in it is an ANSI sequence the receiving terminal executes, and a
+// stray \r submits a half-formed turn.
+func promptControlChars(r rune) rune {
+	if r == '\n' || r == '\t' {
+		return r
+	}
+	if r < 0x20 || r == 0x7f {
+		return -1
+	}
+	return r
+}
+
+// sanitizePrompt is the argv form: control characters out, layout kept.
+// argv is not a terminal, so a newline here is just a newline in the
+// agent's own prompt string.
+func sanitizePrompt(s string) string {
+	s = strings.Map(promptControlChars, s)
+	// Bounded at the same 4 KiB the registry bounds an idea's text by,
+	// because CreateSpec.InitialPrompt is a separate entry point: it
+	// arrives on the wire and never has to have been an idea at all, so
+	// AddIdea's cap does not cover it. Truncated rather than refused —
+	// unlike a captured note, nothing is lost that the user cannot see
+	// and retype, and failing the session create over a long prompt is
+	// the worse outcome.
+	if len(s) > wire.MaxIdeaText {
+		// By rune, so the cut cannot land mid-codepoint and hand the
+		// agent an invalid UTF-8 tail.
+		cut := wire.MaxIdeaText
+		for cut > 0 && !utf8.RuneStart(s[cut]) {
+			cut--
+		}
+		s = s[:cut]
+	}
+	return s
+}
+
+// typedPrompt is the PTY form. Same stripping, and then newlines and
+// tabs collapse to spaces, because this is delivered as
+// `prompt + "\r"` into whatever TUI the agent is running: an embedded
+// newline submits the turn early and the rest of the note lands in the
+// next one, in pieces.
+//
+// ponytail: collapsing loses the note's paragraph breaks. The real fix
+// is bracketed paste (ESC[200~ … ESC[201~), which every modern TUI
+// treats as literal text — do that when an agent actually needs
+// multi-line, rather than now on the assumption they all support it.
+func typedPrompt(s string) string {
+	return strings.Join(strings.Fields(sanitizePrompt(s)), " ")
 }
 
 // takesPositionalPrompt reports whether the agent this spec resolves to
