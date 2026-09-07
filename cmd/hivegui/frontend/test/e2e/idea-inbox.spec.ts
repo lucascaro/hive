@@ -316,3 +316,50 @@ test('dismissing the prompt keeps the idea in the inbox', async ({ page }) => {
   await expect(page.locator('.hv-session-row__idea')).toHaveCount(0);
   await expect(badge(page)).toHaveText('1');
 });
+
+// The capability warning appears and disappears with the selection,
+// which changes the popup's height — and the rows move under a
+// STATIONARY cursor, firing mouseenter, which changes the selection
+// again. That loop did not settle. Two guards: the warning's space is
+// reserved so the height stops moving, and mouseenter is honoured only
+// after real pointer movement.
+test('the capability warning does not change the launcher\u2019s geometry', async ({
+  page,
+}) => {
+  // The reported symptom was the popup reflowing endlessly as the
+  // selection moved. The mechanism: the warning appears and disappears
+  // with the selected agent, that changed the popup's height, the rows
+  // moved under a stationary cursor, mouseenter fired, and the
+  // selection changed again. This pins the half that is measurable —
+  // the geometry must not depend on the warning at all, so there is
+  // nothing for a pointer to chase.
+  await boot(page);
+  await capture(page, 'a note worth keeping', 'bug');
+  await badge(page).click();
+  await rows(page)
+    .first()
+    .getByRole('button', { name: 'Start session' })
+    .click();
+  const launcher = page.locator('#launcher');
+  await expect(launcher).toBeVisible();
+
+  // Shell is selected first and cannot take a prompt: warning showing.
+  await expect(page.locator('#launcher-prompt-warn')).toContainText(
+    'cannot take an opening prompt',
+  );
+  const warned = await launcher.boundingBox();
+
+  // Move to an agent that can take one: the warning empties.
+  await page.keyboard.press('ArrowDown');
+  await expect(page.locator('#launcher-prompt-warn')).toHaveText('');
+  const quiet = await launcher.boundingBox();
+  expect(quiet?.height).toBe(warned?.height);
+  expect(quiet?.width).toBe(warned?.width);
+  expect(quiet?.y).toBe(warned?.y);
+
+  // And back again, so it is invariant rather than merely settled.
+  await page.keyboard.press('ArrowUp');
+  await expect(page.locator('#launcher-prompt-warn')).not.toHaveText('');
+  const again = await launcher.boundingBox();
+  expect(again?.height).toBe(warned?.height);
+});

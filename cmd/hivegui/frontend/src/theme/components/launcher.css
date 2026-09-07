@@ -90,10 +90,19 @@
   flex-direction: column;
   gap: 2px;
   margin: 0 0 var(--space-2);
-  /* Widens the popup (which is shrink-to-fit) when there is a brief to
-     edit: 220px is right for a filter box and cramped for three
-     sentences. Bounded by #launcher's max-width above. */
-  min-width: 340px;
+  /* A FIXED width, not a minimum. #launcher is shrink-to-fit, so with a
+     minimum the popup was sized by its widest content — and the
+     capability warning below is long enough to push it to #launcher's
+     max-width and back again as the selection moved. Measured: 430px
+     wide with the warning showing, 350px without, swinging on every
+     selection change. That width swing is what reflowed the list under
+     the pointer. Pinning it makes the popup's box independent of which
+     agent is selected; the warning wraps inside it.
+
+     220px is right for a bare filter box and cramped for three
+     sentences, which is why prompt mode is wider at all. */
+  width: 340px;
+  max-width: 100%;
 }
 .launcher-prompt__label {
   display: flex;
@@ -150,6 +159,21 @@
   color: var(--state-attention);
   font-size: var(--text-xs);
   line-height: 1.4;
+  /* Space is RESERVED whether or not there is a message. The element is
+     always mounted (a live region created together with its text is
+     missed by screen readers), so only its content toggles — and that
+     alone changed the popup's height as the selection moved, which
+     moved the rows under a stationary pointer. Two lines is what the
+     message wraps to at this width; clamped to the same two so a long
+     agent name cannot grow the box either.
+
+     `display: block` is load-bearing, not tidiness: this is a <span>,
+     and min-height/max-height do not apply to inline boxes at all — the
+     first version of this reserve silently did nothing. */
+  display: block;
+  min-height: 2.8em;
+  max-height: 2.8em;
+  overflow: hidden;
 }
 
 /* Inline rename inside a worktree row. */

@@ -135,6 +135,22 @@ function LauncherBody({
   // beats the user to the checkbox.
   const [isGit, setIsGit] = useState<boolean | null>(null);
 
+  // Where the pointer last actually was. `mouseenter` fires when the
+  // element moves under a STATIONARY cursor too, and the rows do move:
+  // the capability warning appears and disappears with the selection,
+  // which changes the popup's height. Selection → warning → reflow →
+  // a different row lands under the cursor → mouseenter → selection is
+  // a loop that does not settle. Honouring only real pointer movement
+  // breaks it at the source; the reserved space below merely stops the
+  // jitter being visible.
+  const pointerAt = useRef<{ x: number; y: number } | null>(null);
+  const pointerMoved = (e: { clientX: number; clientY: number }) => {
+    const last = pointerAt.current;
+    const moved = !last || last.x !== e.clientX || last.y !== e.clientY;
+    pointerAt.current = { x: e.clientX, y: e.clientY };
+    return moved;
+  };
+
   const searchRef = useRef<HTMLInputElement | null>(null);
   const branchRef = useRef<HTMLInputElement | null>(null);
   const promptRef = useRef<HTMLTextAreaElement | null>(null);
@@ -625,7 +641,9 @@ function LauncherBody({
             data-available={a.available ? undefined : 'false'}
             style={{ ['--agent-color' as string]: a.color }}
             onClick={() => launchSelected(a.id)}
-            onMouseEnter={() => setSelected(idx)}
+            onMouseEnter={(e) => {
+              if (pointerMoved(e)) setSelected(idx);
+            }}
           >
             {/* Number keys 1–9 select that row directly; 10+ rows show no
                 number. While a query is active the digits type into it
