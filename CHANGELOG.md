@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.7.0] — 2026-09-07
+
 ### Added
 - Claude Code sessions now report their own state instead of relying on
   a guess from terminal output alone. Every session Hive spawns gets
@@ -1297,7 +1299,8 @@ own session daemon, replacing the v1 tmux + Bubble Tea architecture.
   sidebar/grid and fire an OS notification.
 - No telemetry in shipped binaries.
 
-[Unreleased]: https://github.com/lucascaro/hive/compare/v2.6.0...HEAD
+[Unreleased]: https://github.com/lucascaro/hive/compare/v2.7.0...HEAD
+[2.7.0]: https://github.com/lucascaro/hive/compare/v2.6.0...v2.7.0
 [2.6.0]: https://github.com/lucascaro/hive/compare/v2.5.0...v2.6.0
 [2.5.0]: https://github.com/lucascaro/hive/compare/v2.4.0...v2.5.0
 [2.4.0]: https://github.com/lucascaro/hive/compare/v2.3.0...v2.4.0
