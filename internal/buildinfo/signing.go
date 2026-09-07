@@ -28,8 +28,9 @@ var signingTeamID = ""
 func SigningTeamID() string { return signingTeamID }
 
 // SetSigningTeamIDForTest overrides SigningTeamID() for the lifetime
-// of the caller's test. Use t.Cleanup with the returned restore
-// function. Tests that mutate this must not run with t.Parallel().
+// of the caller's test. Defer the returned restore function (or pass
+// it to t.Cleanup). Tests that mutate this must not run with
+// t.Parallel().
 func SetSigningTeamIDForTest(value string) (restore func()) {
 	prev := signingTeamID
 	signingTeamID = value

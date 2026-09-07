@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
@@ -649,6 +650,14 @@ func TestStageLatestStopsOnPullFailure(t *testing.T) {
 // refusal, so nothing proved a good release actually installs.
 func TestStageReleaseSucceedsAndLeavesAUsableBundle(t *testing.T) {
 	isolateStateDir(t)
+
+	// The subject here is staging, not signing. Stub the signature seam
+	// so this stays green once signingTeamID is pinned — otherwise the
+	// real verifier would run codesign against an unsigned stub bundle
+	// and this test would break on the commit that enables the feature.
+	prevVerify := verifySignatureFn
+	verifySignatureFn = func(context.Context, string) error { return nil }
+	t.Cleanup(func() { verifySignatureFn = prevVerify })
 
 	// A real zip of a real (stub) bundle, packed the way build.sh packs.
 	src := t.TempDir()

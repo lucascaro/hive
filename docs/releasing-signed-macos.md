@@ -67,6 +67,11 @@ silently skip signature verification on every release they later downloaded.
 
 `scripts/release.sh` refuses to publish while this is empty.
 
+Setting it also switches the updater's signature check on everywhere, tests
+included: any test that drives `stageRelease` end to end must stub
+`verifySignatureFn`, or it will shell out to `codesign` against an unsigned
+fixture bundle and fail.
+
 ### 3. Store notarization credentials
 
 Create an app-specific password at <https://appleid.apple.com> (Sign-In and
