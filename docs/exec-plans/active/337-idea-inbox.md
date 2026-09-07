@@ -3,10 +3,16 @@
 - **Spec:** [docs/product-specs/337-idea-inbox.md](../../product-specs/337-idea-inbox.md)
 - **Design:** [docs/design-docs/control-plane.md](../../design-docs/control-plane.md)
 - **Issue:** —
-- **Branch:** `cedar-light` (phase 1), `feature/337-idea-inbox-gui` (phase 2)
-- **PR:** [#352](https://github.com/lucascaro/hive/pull/352) (phase 1),
-  [#358](https://github.com/lucascaro/hive/pull/358) (phase 2)
-- **Phase:** 2 of 3 (see `### Phasing`)
+- **Branch:** —
+- **PR:** —
+- **Shipped:** phase 1 → [#352](https://github.com/lucascaro/hive/pull/352)
+  (branch `cedar-light`), phase 2 → [#358](https://github.com/lucascaro/hive/pull/358)
+  (branch `feature/337-idea-inbox-gui`). `Branch:` and `PR:` above are
+  cleared between phases on purpose: `/hs-merge-gate` and
+  `/hs-feature-implement` both resolve the plan's `PR:` field, and a
+  merged one left there short-circuits the next phase straight back to
+  `GATE` before it has built anything.
+- **Phase:** 3 of 3 (see `### Phasing`)
 - **Status:** active
 
 ## Summary
@@ -1003,6 +1009,17 @@ path instead.
   e2e suite (279 passed / 31 skipped, first attempt), `ui-lint.sh` and
   `ui-contrast.mjs` all clean. Phase 3 (`initial_prompt`, Start
   session, the `CreateSession` options struct) not started.
+- **2026-09-07** — Phase 2 merged as #358 (`4f53fbe6`). Reset for phase
+  3: spec `stage:` back to `IMPLEMENT`, plan `Phase:` to `3 of 3`,
+  `Branch:`/`PR:` cleared. Phase 3's scope is now four things — the
+  original `initial_prompt` + Start session + `CreateSession`
+  options-struct refactor, plus re-kind and re-project, added to the
+  spec on 2026-09-06 after the feature was exercised by hand. **Nothing
+  should be built before the Claude/Pi interactive check in `###
+  Initial prompt delivery` is run by hand**: the whole argv path
+  (`Def.PositionalPrompt`) rests on an assertion nothing in this tree
+  proves, and if either agent drops to one-shot print mode the design
+  changes rather than the implementation.
 
 ## Gate verdict
 

@@ -5,7 +5,7 @@ title: "Idea inbox: capture ideas mid-session, start a session from one later"
 type: enhancement
 complexity: M
 priority: P1
-stage: GATE
+stage: IMPLEMENT
 ---
 
 # Idea inbox: capture ideas mid-session, start a session from one later
