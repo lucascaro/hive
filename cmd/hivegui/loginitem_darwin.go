@@ -27,9 +27,11 @@ static int hive_login_item_status(const char *identifier) {
 // hive_login_item_set registers or unregisters the helper. Returns NULL
 // on success, or a strdup'd error description the caller must free.
 //
-// The error string matters more here than in most cgo shims: on an
-// unsigned build this call is expected to fail, and the user needs to
-// see WHY rather than a silent toggle that springs back.
+// The error string matters more here than in most cgo shims. Release
+// builds are signed and notarized, so this works — but a local build
+// is unsigned unless `scripts/sign-macos.sh --adhoc` was run over it,
+// and then this call fails. The user needs to see WHY rather than a
+// silent toggle that springs back.
 static char *hive_login_item_set(const char *identifier, int enable) {
   if (@available(macOS 13.0, *)) {
     NSString *ident = [NSString stringWithUTF8String:identifier];

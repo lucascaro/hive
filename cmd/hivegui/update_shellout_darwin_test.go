@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
@@ -175,9 +176,6 @@ func TestDittoExtractPreservesModeBitsAndSymlinks(t *testing.T) {
 	if _, err := exec.LookPath("ditto"); err != nil {
 		t.Skip("ditto not available")
 	}
-	if _, err := exec.LookPath("zip"); err != nil {
-		t.Skip("zip not available")
-	}
 
 	src := t.TempDir()
 	macos := filepath.Join(src, bundleName, "Contents", "MacOS")
@@ -201,10 +199,10 @@ func TestDittoExtractPreservesModeBitsAndSymlinks(t *testing.T) {
 
 	// Same invocation build.sh uses.
 	zipPath := filepath.Join(t.TempDir(), "Hive-test-macos-universal.zip")
-	cmd := exec.Command("zip", "-rq", "--symlinks", zipPath, bundleName)
+	cmd := exec.Command("ditto", "-c", "-k", "--keepParent", bundleName, zipPath)
 	cmd.Dir = src
 	if out, err := cmd.CombinedOutput(); err != nil {
-		t.Fatalf("zip: %v: %s", err, out)
+		t.Fatalf("ditto: %v: %s", err, out)
 	}
 
 	dest := filepath.Join(t.TempDir(), "app")
@@ -650,15 +648,23 @@ func TestStageLatestStopsOnPullFailure(t *testing.T) {
 func TestStageReleaseSucceedsAndLeavesAUsableBundle(t *testing.T) {
 	isolateStateDir(t)
 
+	// The subject here is staging, not signing. Stub the signature seam
+	// so this stays green once signingTeamID is pinned — otherwise the
+	// real verifier would run codesign against an unsigned stub bundle
+	// and this test would break on the commit that enables the feature.
+	prevVerify := verifySignatureFn
+	verifySignatureFn = func(context.Context, string) error { return nil }
+	t.Cleanup(func() { verifySignatureFn = prevVerify })
+
 	// A real zip of a real (stub) bundle, packed the way build.sh packs.
 	src := t.TempDir()
 	stubBundle(t, src, "new")
 	zipName := "Hive-9.9.9-macos-universal.zip"
 	zipPath := filepath.Join(t.TempDir(), zipName)
-	cmd := exec.Command("zip", "-rq", zipPath, bundleName)
+	cmd := exec.Command("ditto", "-c", "-k", "--keepParent", bundleName, zipPath)
 	cmd.Dir = src
 	if out, err := cmd.CombinedOutput(); err != nil {
-		t.Skipf("zip unavailable: %v: %s", err, out)
+		t.Skipf("ditto unavailable: %v: %s", err, out)
 	}
 	body, err := os.ReadFile(zipPath)
 	if err != nil {

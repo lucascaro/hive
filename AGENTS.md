@@ -285,6 +285,14 @@ The script handles everything: version bump, changelog stamp, commit, tag, relea
 
 **Prerequisites:** clean working tree, `gh` CLI authenticated, `[Unreleased]` section in CHANGELOG.md.
 
+On macOS the script also signs, notarizes and staples the `.app`, and refuses to
+release without credentials. Export `HIVE_SIGN_IDENTITY` and
+`HIVE_NOTARY_PROFILE`, and pin the Team ID in `internal/buildinfo/signing.go` —
+one-time setup in **[docs/releasing-signed-macos.md](docs/releasing-signed-macos.md)**.
+Budget 2-15 minutes for notarization. To exercise the hardened runtime on a
+local build without a certificate, run
+`scripts/sign-macos.sh --adhoc cmd/hivegui/build/bin/hivegui.app`.
+
 **Version scheme:** [Semantic Versioning](https://semver.org/) — bump minor for new features, patch for bug fixes.
 
 ## Feature Pipeline
