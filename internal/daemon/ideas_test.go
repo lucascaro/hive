@@ -2,6 +2,8 @@ package daemon
 
 import (
 	"encoding/json"
+	"errors"
+	"fmt"
 	"net"
 	"testing"
 	"time"
@@ -303,19 +305,27 @@ func TestIdeaErrorCodesOverWire(t *testing.T) {
 }
 
 // The daemon's RESOLVE_PROMPT arm has one decision in it, and it is a
-// policy rather than a forward: ErrNotFound is SWALLOWED (an unknown
-// id is a benign race with a close) while ErrNoLiveSession is
-// SURFACED (the session is real and the note is still pending, so the
-// user has to be told why nothing was pasted). Getting those the same
-// way round is how a silent loss ships.
+// policy rather than a forward: ErrNotFound is SWALLOWED (an unknown id
+// is a benign race with a close) while ErrNoLiveSession is SURFACED
+// (the session is real, the offer is still standing, and the user has
+// to be told why nothing was pasted). Handling those alike is exactly
+// how the earlier silent loss shipped.
+//
+// The first version of this test asserted nothing: awaitFrame LOOPS
+// PAST every frame not in its want list, FrameError included, so the
+// `ft == FrameError` check after it was unreachable and the test
+// passed whether or not the daemon swallowed anything. Both halves now
+// name FrameError in the want list, which is what makes the assertion
+// reachable at all.
 func TestResolvePromptErrorPolicyOverWire(t *testing.T) {
 	skipOnWindows(t)
 	d := startTestDaemon(t)
 	conn := controlConn(t, d)
 
-	// Unknown session: swallowed. Nothing may come back, so prove it by
-	// following with a frame that DOES answer and asserting the reply
-	// is that one rather than an error.
+	// Unknown session: swallowed. Proven by following it with a frame
+	// that DOES answer and requiring the reply to be that one — with
+	// FrameError in the want list, so an error would win the race
+	// rather than being skipped over.
 	if err := wire.WriteJSON(conn, wire.FrameResolvePrompt, wire.ResolvePromptReq{
 		SessionID: "no-such-session", Paste: true,
 	}); err != nil {
@@ -326,8 +336,32 @@ func TestResolvePromptErrorPolicyOverWire(t *testing.T) {
 	}); err != nil {
 		t.Fatalf("write CREATE_PROJECT: %v", err)
 	}
-	ft, _ := awaitFrame(t, conn, wire.FrameProjectEvent)
+	ft, _ := awaitFrame(t, conn, wire.FrameProjectEvent, wire.FrameError)
 	if ft == wire.FrameError {
 		t.Fatal("an unknown session id produced an error; it is a benign race with a close and must be swallowed")
+	}
+
+}
+
+// The other half of the same policy: WHICH code a failure is reported
+// under. Tested on the mapping rather than over the wire because
+// reaching a session whose process has died requires registry
+// internals this package cannot reach — and the mapping is the part
+// that matters, since the client tells "the note is safe, try again"
+// from "the note is gone" by this code alone.
+func TestResolvePromptErrorCode(t *testing.T) {
+	if got := resolvePromptErrorCode(registry.ErrNoLiveSession); got != wire.ErrCodeNoLiveSession {
+		t.Errorf("ErrNoLiveSession -> %q, want %q", got, wire.ErrCodeNoLiveSession)
+	}
+	// Wrapped, because the registry returns fmt.Errorf-wrapped errors
+	// elsewhere on this path and errors.Is is what the arm relies on.
+	wrapped := fmt.Errorf("resolving: %w", registry.ErrNoLiveSession)
+	if got := resolvePromptErrorCode(wrapped); got != wire.ErrCodeNoLiveSession {
+		t.Errorf("wrapped ErrNoLiveSession -> %q, want %q", got, wire.ErrCodeNoLiveSession)
+	}
+	// Anything else has already cleared the prompt, so it must NOT be
+	// reported as the retryable one.
+	if got := resolvePromptErrorCode(errors.New("pty gone")); got != "resolve_prompt_failed" {
+		t.Errorf("generic failure -> %q, want resolve_prompt_failed", got)
 	}
 }

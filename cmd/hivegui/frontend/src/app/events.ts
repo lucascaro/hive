@@ -928,15 +928,22 @@ export function wireDaemonEvents(injected: EventsDeps) {
       flashStatus(`worktree kept: ${e.message}`, true);
       return;
     }
-    // Pasting an opening prompt into a session whose process is gone
-    // (restarting, or it just exited). The offer is deliberately left
-    // standing by the daemon so it can be clicked again — say that,
-    // rather than showing the raw sentinel text.
-    if (e.code === 'resolve_prompt_failed') {
+    // No live process to paste into (restarting, or it just exited).
+    // The daemon deliberately leaves the offer standing here, so "try
+    // again" is true advice and the note is safe.
+    if (e.code === 'resolve_prompt_no_live_session') {
       flashStatus(
         'the session has no running process yet — try again once it is up',
         true,
       );
+      return;
+    }
+    // Any OTHER resolve failure has already cleared the prompt, so the
+    // note is gone. Saying "try again" here would point at an
+    // affordance that no longer exists — the same silent-loss shape
+    // this feature has been fixed for twice already.
+    if (e.code === 'resolve_prompt_failed') {
+      flashStatus(`the opening prompt was not pasted: ${e.message}`, true);
       return;
     }
     flashStatus(`${e.code}: ${e.message}`, true);

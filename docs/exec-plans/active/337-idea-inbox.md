@@ -1274,6 +1274,42 @@ path instead.
   the ones the tier can classify. Claude and Pi are unaffected (argv).
   The spec's success criterion was amended to match, since
   `/hs-merge-gate` validates against it.
+- **2026-09-07** — Review iteration 10, **BLOCKING, fixed — and the
+  approach changed rather than the patch repeating.** A newline was the
+  THIRD sibling of `%` and `"`: `sanitizePrompt` deliberately keeps
+  `\n`, notes are multi-line by design, and `cmd.exe /S /C` re-parses a
+  batch argument line — the agents it spawns are `.cmd` shims — so the
+  tail after a newline becomes the NEXT command. That is
+  CVE-2024-27980's shape; Node fixed it by refusing `\r`/`\n` when
+  spawning `.bat`/`.cmd`. Two siblings patched into `argvPrompt` one
+  round apart was the signal that the prompt was the wrong place: the
+  guard now lives in **`cmdExeEscape`**, the single choke point every
+  Windows spawn passes through, so every caller is covered and not just
+  this feature's. A fourth, `!VAR!` delayed expansion, is closed the
+  way `cmdExeEscape`'s own doc comment always said to — `newWindowsCmd`
+  now passes `/V:OFF /D` — which needs no text mangling at all.
+- **2026-09-07** — Review iteration 10, fixed: `resolve_prompt_failed`
+  covered two outcomes that differ in the only way the user cares
+  about. With no live process the offer is still standing and the note
+  is safe ("try again" is true); on any other failure the prompt has
+  already been cleared and the note is gone, and "try again" would
+  point at an affordance that no longer exists — the same silent-loss
+  shape this feature has now been fixed for three times.
+  `wire.ErrCodeNoLiveSession` splits them.
+- **2026-09-07** — Review iteration 10, fixed: **the daemon test added
+  last round asserted nothing.** `awaitFrame` loops past every frame
+  not in its want list, `FrameError` included, so the `ft ==
+  FrameError` check after it was unreachable and the test passed
+  whether or not the daemon swallowed anything. That is the THIRD
+  vacuous test in this feature (after the Tab cycle and the first
+  reflow attempt), and the same root cause each time: asserting on a
+  helper's output without checking the helper could produce the failing
+  case. Now `FrameError` is in the want list, and the fix is verified
+  by mutation — removing the swallow makes it fail. The other half of
+  the policy (which code a failure is reported under) is tested on an
+  extracted `resolvePromptErrorCode`, because reaching a dead-process
+  session over the wire needs registry internals the daemon package
+  cannot touch.
 - **2026-09-07** — Review iteration 9, **BLOCKING, fixed**: a sibling of
   the `%` hole this PR already patched, and the same root cause.
   `argvPrompt` stripped `%` on Windows but not `"`. `cmdExeEscape`
@@ -1677,6 +1713,7 @@ collision is under Open questions.
 - **2026-09-07 iter 8 (over `caa4146b`, the offer redesign)** — verdict: COMMENT coerced to REQUEST_CHANGES; mergeable: MERGEABLE; findings_hash: 735023f693031776df4446c817f4d521000cc5608128342a512c8a04fa978833; threads_open: 0; action: autofix+push (`4501650e`, five files of prose left behind by the removal, plus the missing `testclient.ResolvePrompt`), then operator-fixed. 0 BLOCKING, 1 real behaviour gap: `ResolvePrompt` cleared and broadcast before checking for a live PTY and returned an error the daemon swallows, so a paste into a restarted session lost the note silently. Fixed in `a044b0d1` with `ErrNoLiveSession`, the offer left standing, plus the restored drop-on-exit test and the session name on the bar.
 - **2026-09-07 — gate refused** — `/hs-merge-gate 337` declined at its cold-start guard, correctly: `stage:` was `REVIEW` (review never converged, so `/hs-review-loop` §4a never advanced it) and the ledger's latest entry was not a convergence. Rebuilt the missing entries above by hand rather than bypassing the guard, and ran another pass over `a044b0d1`.
 - **2026-09-07 iter 9 (convergence pass over `a044b0d1`)** — verdict: REQUEST_CHANGES; mergeable: MERGEABLE; findings_hash: f9b3dd3aa9249607d0c5e10d158bc186132a361a06be86946690d44e9b12bddf; threads_open: 0; action: escalated:risky-fix-needs-human-decision (1 BLOCKING, 3 IMPORTANT, 5 MINOR; autofix applied and pushed nothing — the blocking fix is security-sensitive input validation). All findings taken by the operator in `7d605a5d`. The BLOCKING was the Windows `"` sibling of the `%` hole; two of the IMPORTANTs were false claims in this PR's own commit message and ledger.
+- **2026-09-07 iter 10 (convergence pass over `7d605a5d`)** — verdict: REQUEST_CHANGES; mergeable: MERGEABLE; findings_hash: a11747a70f7490a7a853ac7069ec7a7c066166b9b53c97d0380d9b5b64f88978; threads_open: 0; action: escalated:risky-fix-needs-human-decision (1 BLOCKING, 3 IMPORTANT; autofix applied and pushed nothing). All taken by the operator. The BLOCKING was the newline — a third `cmd.exe` sibling — which moved the guard from `argvPrompt` into `cmdExeEscape` for every caller; `/V:OFF /D` closed a fourth. Iteration 9's new daemon test was found to assert nothing.
 
 ## Open questions
 

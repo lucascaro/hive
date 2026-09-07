@@ -797,6 +797,14 @@ const (
 	// ErrCodeIdeaTooLong is returned when an idea's text exceeds
 	// MaxIdeaText. Rejected rather than truncated: a silently
 	// half-saved note is worse than one the user is told to shorten.
+	// ErrCodeNoLiveSession: RESOLVE_PROMPT(paste) reached a session with
+	// no running process. Distinct from the generic failure because the
+	// outcomes differ in the one way that matters to the user: here the
+	// offer is still standing and the note is safe, so "try again" is
+	// true advice. On the generic failure the prompt has already been
+	// cleared and the note is gone, and telling them to try again would
+	// point at an affordance that no longer exists.
+	ErrCodeNoLiveSession = "resolve_prompt_no_live_session"
 	ErrCodeIdeaTooLong = "idea_too_long"
 	// ErrCodeProjectHasIdeas is returned when deleting a project would
 	// destroy ideas that are still open. Overridable by force
