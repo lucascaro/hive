@@ -16,6 +16,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/lucascaro/hive/internal/buildinfo"
 	"github.com/lucascaro/hive/internal/registry"
 )
 
@@ -44,15 +45,21 @@ var buildTimeout = 30 * time.Minute
 // Seams for tests, mirroring looksLikeHivedFn in restart_unix.go.
 var (
 	// extractZipFn unpacks a release zip into a directory. ditto is the
-	// macOS-native answer: archive/zip loses the symlinks and mode bits
-	// an .app bundle needs, and a bundle whose binary lost its +x is a
-	// broken install with no in-app way back.
+	// macOS-native answer, and the counterpart to the `ditto -c -k`
+	// that build.sh packages with: archive/zip loses the symlinks and
+	// mode bits an .app bundle needs, and a bundle whose binary lost
+	// its +x is a broken install with no in-app way back. It also
+	// preserves the stapled notarization ticket, which the signature
+	// check below depends on.
 	extractZipFn = dittoExtract
 	// copyBundleFn duplicates a bundle. Used to land the staged app
 	// next to the installed one before the rename swap.
 	copyBundleFn = dittoCopy
 	// runBuildFn runs ./build.sh in a checkout, streaming progress.
 	runBuildFn = runBuildScript
+	// verifySignatureFn refuses a staged bundle not signed by Hive's
+	// Apple Developer team. Seamed so tests need no real signature.
+	verifySignatureFn = verifyDeveloperIDSignature
 )
 
 // stageUpdate prepares the new build and returns the staged bundle
@@ -72,14 +79,24 @@ type releaseAsset struct {
 	URL  string `json:"browser_download_url"`
 }
 
-// stageRelease downloads the macOS zip for the newest release, verifies
-// it against the published SHA-256 manifest, and unpacks it.
+// stageRelease downloads the macOS zip for the newest release,
+// verifies it, and unpacks it.
 //
-// The checksum is not a supply-chain defense — the bundle is neither
-// signed nor notarized, and a compromised release would publish a
-// matching manifest. It is there so a truncated or corrupted download
-// fails loudly here instead of becoming a broken hivegui.app that the
-// user can only fix by reinstalling by hand.
+// Two independent checks, in order of what they catch:
+//
+//   - The SHA-256 manifest catches a truncated or corrupted download,
+//     cheaply, and is the error users actually hit. It is NOT a
+//     supply-chain defense: the zip and the manifest come from the
+//     same release, so whoever can publish one publishes the other.
+//   - The Developer ID signature check is the supply-chain defense. It
+//     pins the bundle to Hive's Apple Developer team, so a release
+//     signed by anyone else — including an attacker with their own
+//     Apple account — is refused before it can be applied.
+//
+// The signature is checked after unpacking because codesign and spctl
+// read a bundle, not a zip stream. Staging is still fail-closed with
+// respect to the installed app: everything lands in a temp directory
+// that the deferred cleanup below removes unless every check passed.
 func stageRelease(info UpdateInfo, progress func(string)) (string, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), downloadTimeout)
 	defer cancel()
@@ -144,6 +161,16 @@ func stageRelease(info UpdateInfo, progress func(string)) (string, error) {
 	}
 	bundle := filepath.Join(appDir, bundleName)
 	if err := verifyBundle(bundle); err != nil {
+		return "", err
+	}
+
+	// Only announce the step that actually runs: verification is a no-op
+	// on a build with no pin, and claiming otherwise tells the user a
+	// signature was checked when none was.
+	if buildinfo.SigningTeamID() != "" {
+		progress("Verifying signature…")
+	}
+	if err := verifySignatureFn(ctx, bundle); err != nil {
 		return "", err
 	}
 	// The zip is tens of MB and has served its purpose; the bundle is
@@ -501,6 +528,15 @@ func runBuildScript(repo string, progress func(string)) error {
 
 // ------------------------------- apply -----------------------------------
 
+// isDownloadedStaging reports whether a staged bundle came from
+// stageRelease — i.e. we downloaded it into our own staging area —
+// rather than from stageLatest, which returns a path inside the
+// user's git checkout.
+func isDownloadedStaging(staged string) bool {
+	root := updatesRoot()
+	return strings.HasPrefix(staged, root+string(filepath.Separator))
+}
+
 // applyStagedBundle replaces the installed app with the staged one.
 //
 // Refuses when the running binary is not inside a .app: a `wails dev`
@@ -514,6 +550,25 @@ func applyStagedBundle(staged string) error {
 	installed := enclosingAppBundle(self)
 	if installed == "" {
 		return fmt.Errorf("not running from an .app bundle — rebuild and relaunch manually")
+	}
+	// Re-verify immediately before the swap. stageRelease already
+	// checked this bundle, but that was a separate step and the
+	// staging directory is writable in between — a verify-to-install
+	// gap. Same-uid only, so this is defense in depth rather than a
+	// hole in the stated threat model, and it costs one call.
+	//
+	// Release stagings only. applyStagedBundle serves both channels,
+	// and a latest-channel bundle was built locally from a git
+	// checkout with no credentials, so it carries no Developer ID at
+	// all — stageLatest deliberately skips this check, its trust root
+	// being verifyUpstreamRemote. Verifying it here would tell a user
+	// who just waited out a multi-minute build that their own build is
+	// "not signed by the Hive developer", and it would only start
+	// doing so the day a Team ID is pinned.
+	if isDownloadedStaging(staged) {
+		if err := verifySignatureFn(context.Background(), staged); err != nil {
+			return err
+		}
 	}
 	return swapBundle(staged, installed)
 }
@@ -576,8 +631,9 @@ func verifyBundle(bundle string) error {
 }
 
 // dittoExtract unpacks a zip. `ditto -x -k` is the macOS counterpart to
-// the `zip -rq` build.sh packages with, and unlike archive/zip it
-// preserves the symlinks and permissions an .app bundle depends on.
+// the `ditto -c -k --keepParent` build.sh packages with, and unlike
+// archive/zip it preserves the symlinks and permissions an .app bundle
+// depends on.
 func dittoExtract(zipPath, dest string) error {
 	if err := os.MkdirAll(dest, 0o755); err != nil {
 		return err

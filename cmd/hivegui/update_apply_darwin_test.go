@@ -2,9 +2,11 @@ package main
 
 import (
 	"archive/zip"
+	"context"
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
@@ -276,5 +278,81 @@ func TestStagingDirSanitizesVersion(t *testing.T) {
 	}
 	if filepath.Dir(dir) != updatesRoot() {
 		t.Errorf("stagingDir = %q, want it inside %q", dir, updatesRoot())
+	}
+}
+
+// TestStageReleaseRejectsUnverifiedSignature covers the fail-closed
+// path for a bundle that downloads and checksums cleanly but is not
+// signed by Hive. The staging directory must not survive: a later run
+// finding it there could mistake it for verified.
+func TestStageReleaseRejectsUnverifiedSignature(t *testing.T) {
+	isolateStateDir(t)
+	body := zipOfBundle(t)
+	name := "Hive-9.9.9-macos-universal.zip"
+	releaseServer(t, map[string][]byte{
+		name:           body,
+		checksumsAsset: []byte(sha256Of(body) + "  " + name + "\n"),
+	}, nil)
+
+	prevExtract := extractZipFn
+	extractZipFn = func(_, dest string) error {
+		stubBundle(t, dest, "staged")
+		return nil
+	}
+	t.Cleanup(func() { extractZipFn = prevExtract })
+
+	prevVerify := verifySignatureFn
+	verifySignatureFn = func(context.Context, string) error {
+		return errors.New("this update is not signed by the Hive developer (team ABCDE12345) — download discarded")
+	}
+	t.Cleanup(func() { verifySignatureFn = prevVerify })
+
+	_, err := stageRelease(UpdateInfo{Channel: ChannelRelease, Latest: "9.9.9"}, func(string) {})
+	if err == nil {
+		t.Fatal("stageRelease = nil error for an unsigned bundle, want a refusal")
+	}
+	if !strings.Contains(err.Error(), "not signed by the Hive developer") {
+		t.Errorf("error = %q, want the signature-specific message", err)
+	}
+	if strings.Contains(err.Error(), "checksum") {
+		t.Errorf("error = %q, must be distinguishable from a checksum failure", err)
+	}
+	if _, statErr := os.Stat(filepath.Join(updatesRoot(), "9.9.9")); statErr == nil {
+		t.Error("staging dir survived a failed signature check")
+	}
+}
+
+// TestStageReleaseAcceptsVerifiedSignature is the other half: the new
+// check must not refuse a good bundle.
+func TestStageReleaseAcceptsVerifiedSignature(t *testing.T) {
+	isolateStateDir(t)
+	body := zipOfBundle(t)
+	name := "Hive-9.9.9-macos-universal.zip"
+	releaseServer(t, map[string][]byte{
+		name:           body,
+		checksumsAsset: []byte(sha256Of(body) + "  " + name + "\n"),
+	}, nil)
+
+	prevExtract := extractZipFn
+	extractZipFn = func(_, dest string) error {
+		stubBundle(t, dest, "staged")
+		return nil
+	}
+	t.Cleanup(func() { extractZipFn = prevExtract })
+
+	called := false
+	prevVerify := verifySignatureFn
+	verifySignatureFn = func(context.Context, string) error { called = true; return nil }
+	t.Cleanup(func() { verifySignatureFn = prevVerify })
+
+	bundle, err := stageRelease(UpdateInfo{Channel: ChannelRelease, Latest: "9.9.9"}, func(string) {})
+	if err != nil {
+		t.Fatalf("stageRelease = %v, want a staged bundle", err)
+	}
+	if !called {
+		t.Error("signature verification was never invoked for a release download")
+	}
+	if bundle == "" {
+		t.Error("stageRelease returned an empty bundle path")
 	}
 }

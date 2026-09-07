@@ -25,6 +25,26 @@ concurrency:
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
+  shellcheck:
+    name: Shellcheck
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+
+      # scripts/release.sh and scripts/sign-macos.sh are release-critical
+      # and first execute live, after a commit and tag exist. A syntax
+      # error or an unquoted expansion there is discovered at the worst
+      # possible moment, so lint them here instead.
+      - name: Shellcheck scripts/
+        run: |
+          sudo apt-get update -qq && sudo apt-get install -y -qq shellcheck
+          # -S warning: match what these scripts already pass locally.
+          # Info/style notes on long-standing scripts are not this gate's job.
+          shopt -s nullglob
+          files=(scripts/*.sh scripts/hooks/* build.sh)
+          printf 'linting %d file(s)\n' "${#files[@]}"
+          shellcheck -S warning "${files[@]}"
+
   build:
     name: Build, Vet & Test (${{ matrix.label }})
     runs-on: ${{ matrix.os }}
