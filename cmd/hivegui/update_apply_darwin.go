@@ -364,12 +364,12 @@ func stageLatest(info UpdateInfo, progress func(string)) (string, error) {
 // verifyUpstreamRemote refuses a checkout whose tracked branch does not
 // come from this project's own repository.
 //
-// remoteIsUpstream matches host and path whole, so both SSH
-// (git@github.com:lucascaro/hive.git) and HTTPS spellings pass and a
-// trailing .git or slash is tolerated, while a host that merely
-// contains "github.com" does not. A fork would be rejected — that is
-// the intended trade: this button pulls and *executes*, so "close
-// enough" is not the bar.
+// The remote URL is matched on host and path whole (see
+// remoteIsUpstream), so both SSH (git@github.com:lucascaro/hive.git)
+// and HTTPS spellings pass and a trailing .git or slash is tolerated,
+// while a host that merely contains "github.com" does not. A fork
+// would be rejected — that is the intended trade: this button pulls
+// and *executes*, so "close enough" is not the bar.
 func verifyUpstreamRemote(repo string) error {
 	upstream, err := runGitFn(repo, "rev-parse", "--abbrev-ref", "--symbolic-full-name", "@{upstream}")
 	if err != nil {
