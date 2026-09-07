@@ -143,6 +143,13 @@ test('Start session seeds the new session with the note', async ({ page }) => {
     /sidebar drag handle is 1px off/,
   );
 
+  // Down to Claude first. Shell is the first row and cannot be handed
+  // a prompt at all, so launching it here would assert delivery the
+  // daemon refuses — which is exactly what this test used to do, and
+  // it stayed green because the mock delivered unconditionally.
+  await expect(page.locator('#launcher-prompt-warn')).toBeVisible();
+  await page.keyboard.press('ArrowDown');
+  await expect(page.locator('#launcher-prompt-warn')).toHaveCount(0);
   await page.keyboard.press('Enter');
   await expect(launcher).toBeHidden();
 
@@ -220,4 +227,36 @@ test('Edit corrects the note, its kind and its project', async ({ page }) => {
   await badge(page).click();
   await expect(rows(page).first()).toContainText('sharper wording');
   await expect(rows(page).first().locator('.idea-kind')).toHaveText('bug');
+});
+
+// The other half of the same rule, and the one a user hits by accident:
+// Shell is the launcher's first row, so Start session → Enter lands on
+// it. Nothing is delivered, and — the part that matters — the note
+// stays in the inbox instead of being marked started for work that
+// never happened.
+test('an agent that cannot take the prompt keeps the idea in the inbox', async ({
+  page,
+}) => {
+  await boot(page);
+  await capture(page, 'do not lose this note', 'bug');
+  await badge(page).click();
+  await rows(page)
+    .first()
+    .getByRole('button', { name: 'Start session' })
+    .click();
+
+  await expect(page.locator('#launcher-prompt-warn')).toContainText(
+    'cannot take an opening prompt',
+  );
+  // Shell is still selected: launch it exactly as an unwary user would.
+  await page.keyboard.press('Enter');
+  await expect(page.locator('#launcher')).toBeHidden();
+
+  // The session exists, but no idea glyph — nothing was handed over.
+  await expect(page.locator('.hv-session-row')).not.toHaveCount(0);
+  await expect(page.locator('.hv-session-row__idea')).toHaveCount(0);
+  // And the note is still there to start again.
+  await expect(badge(page)).toHaveText('1');
+  await badge(page).click();
+  await expect(rows(page).first()).toContainText('do not lose this note');
 });

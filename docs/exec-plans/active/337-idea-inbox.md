@@ -1153,6 +1153,59 @@ path instead.
   them, and `agent.Get` checks built-ins first so a custom agent cannot
   shadow one. `resolveAgentCmd` is reached only from `finishCreate`, so
   no restart or revive path replays a prompt.
+- **2026-09-07** — Review iteration 4, fixed, and the worst of the run
+  was in the TESTS rather than the code. The flagship Playwright e2e
+  launched **Shell** — the default-selected first row, `takesPrompt:
+  false` — with a prompt and asserted the prompt was delivered and the
+  idea flipped: the exact opposite of the shipped daemon rule. It
+  stayed green only because the mock's `deliverInitialPrompt` ignored
+  the capability, while the DOM test one file over asserted that Shell
+  *warns*. Two tests of the same feature asserting opposite things, both
+  passing. The mock now models `deliveryFor` (undeliverable ⇒ no PTY
+  write, no link), the e2e moves to Claude before launching, and a
+  second e2e covers the Shell case a user actually hits by accident:
+  nothing delivered, no glyph, note still in the inbox.
+- **2026-09-07** — Review iteration 4, fixed: the argv arm of the
+  "claim the idea now?" decision had **zero** coverage — the test named
+  for it passed no prompt and so took the `InitialPrompt == ""`
+  disjunct. Pulled out of `finishCreate` as `handedOverAtCreate` and
+  table-tested, because exercising the argv arm for real means spawning
+  claude or pi. Doing so surfaced a genuine inconsistency the review
+  also flagged: it tested `sanitizePrompt != ""`, so a whitespace-only
+  prompt claimed the idea on the argv path while the typed path
+  (`typedPrompt`, which collapses whitespace) did not. Now both use
+  `typedPrompt`.
+- **2026-09-07** — Review iteration 4, fixed: the opening-prompt
+  textarea was unreachable by keyboard. Tab was intercepted
+  unconditionally to move the agent selection — a change made in
+  iteration 2 — so the feature's headline ("editable right there in the
+  launcher") was mouse-only. Tab now moves the selection only when
+  there is no prompt box; in prompt mode it is left to the browser and
+  the arrows remain the list's navigation. The capability warning also
+  gained `role="status"` and an `aria-describedby` link from the
+  textarea: it appears in response to moving the selection, so a
+  screen-reader user had no signal that their text was about to be
+  dropped.
+- **2026-09-07** — Review iteration 4, fixed: the pending prompt is now
+  bounded by `promptDeliveryWindow` (2 minutes). Delivery fires on the
+  first idle edge AFTER a working period, so an agent that never goes
+  working left the text armed for the life of the session — landing
+  mid-turn in whatever conversation the user had since started
+  themselves. Past the window it is dropped and logged, and the idea
+  stays open.
+- **2026-09-07** — Review iteration 4, fixed: `TestPendingPromptDeliveredOnlyOnce`
+  snapshotted the echo count the instant the text appeared. The tty
+  echo and `cat`'s echo of it arrive as separate PTY reads, so the
+  snapshot could catch 1 where the steady state is 2 and then fail for
+  a reason unrelated to a second delivery. It now waits for the count
+  to settle.
+- **2026-09-07** — Review iteration 4, kept deliberately:
+  `inline-rename.ts`'s `validate` option has no production caller since
+  phase 3 replaced the inbox's inline edit with the capture sheet. It
+  stays. It is a documented optional parameter on a shared helper with
+  its own test suite, and stripping an exported option out of a module
+  four other call sites use — to satisfy a MINOR in a feature PR — is
+  churn the next caller needing a refusable commit would simply undo.
 - **2026-09-07** — The `pi` "No project session found with id" warning
   found while probing on 2026-09-06 is left alone. It is pi's own
   pre-alt-screen line for a fresh `--session-id`, it is not made worse
@@ -1451,7 +1504,24 @@ collision is under Open questions.
 - **2026-09-07 iter 3** — verdict: COMMENT coerced to REQUEST_CHANGES (non-empty findings hash); mergeable: MERGEABLE; findings_hash: cbf7bb46d1266ee2fbfa05ae5cb481064b45a0e37b937ba08982cccb812ed797; threads_open: 0; action: escalated:risky-fix-needs-human-decision (0 BLOCKING, 2 IMPORTANT, 2 MINOR; autofix applied and pushed nothing); head_sha: 145ce57. Iteration 2's BLOCKING fix was re-verified clean, custom agents included.
 - **2026-09-07 iter 3b** — all four were taken by the operator. The UX one was the important one: it was a consequence of iteration 2's own fix (prompt offered for agents that cannot receive it, and the idea claimed anyway).
 
+- **2026-09-07 iter 4** — verdict: REQUEST_CHANGES; mergeable: MERGEABLE; findings_hash: 7291f3301be4bd242e8d578a1fae8b867ca22ff9640f6b96c45506dc9c6dbc87; threads_open: 0; action: autofix+push (5 safe doc corrections, `1e5e34f5` — the largest a factual error repeated in README, `CreateSpec.InitialPrompt` and the contract-7 history, all claiming every non-Claude/Pi agent gets the prompt typed in), then escalated:risky-fix-needs-human-decision (0 BLOCKING, 8 IMPORTANT); head_sha: 1e5e34f5.
+- **2026-09-07 iter 4b** — the operator took all of them but one (the `validate` option, kept by decision above). Iteration 3's three focus items all re-verified correct. One finding — a typed prompt plus Enter auto-answering an agent's startup trust dialog — is a design decision and is under Open questions.
+
 ## Open questions
+
+- **A typed opening prompt ends with Enter, which could auto-answer an
+  agent's startup trust/permission dialog.** Raised by review iteration
+  4 (`registry.go:546`). The typed path is codex / gemini / copilot /
+  aider; several of those show a "do you trust this folder?" style
+  prompt on first run in a new directory, and it is drawn (working) and
+  then waits (idle) — exactly the edge delivery fires on. The 2-minute
+  window added in iteration 4 bounds the exposure but does not remove
+  it. The alternative is to type the note WITHOUT the trailing `\r`,
+  leaving it in the agent's input box for the user to read and submit:
+  strictly safer, and arguably better (you see what is about to be
+  sent), but it contradicts the spec's "followed by Enter" and costs
+  the one-click feel the feature was written for. Not decided; the
+  argv path (Claude, Pi) is unaffected either way.
 
 - **Ctrl+I collides with the terminal's Tab byte on Windows and Linux.**
   ⌘I maps to Ctrl+I off macOS, and the capture-phase window handler

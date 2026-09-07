@@ -63,6 +63,11 @@ func SetStartSessionForTest(fn func(session.Options) (*session.Session, error)) 
 	}
 }
 
+// promptDeliveryWindow bounds how long a queued opening prompt stays
+// armed. Generous next to how long an agent takes to draw its first
+// screen and settle (seconds), and short next to a working session.
+const promptDeliveryWindow = 2 * time.Minute
+
 // ErrWorktreeDirty is returned by Kill when the session is backed by
 // a worktree with uncommitted changes and force=false. Callers (the
 // daemon) translate this into a wire.FrameError with code
@@ -135,6 +140,14 @@ type Entry struct {
 	// from, flipped to `started` once the prompt is delivered. Also
 	// in-memory only, and for the same reason.
 	ideaID string
+	// promptQueuedAt is when pendingPrompt was queued, and it is what
+	// stops the prompt being an unbounded liability. Delivery fires on
+	// the first idle edge AFTER a working period; an agent that never
+	// goes working never fires it, and the text would then sit armed
+	// for the life of the session — landing in the middle of whatever
+	// conversation the user had started themselves by the time some
+	// later edge finally arrived. See promptDeliveryWindow.
+	promptQueuedAt time.Time
 }
 
 // Project is the registry-side representation of a project.
@@ -533,6 +546,17 @@ func (r *Registry) deliverPendingPromptLocked(e *Entry, prev, cur agentstate.Sna
 		return
 	}
 	if cur.State != wire.StateIdle || prev.State != wire.StateWorking {
+		return
+	}
+	// An opening prompt is only an opening prompt for as long as the
+	// session is still opening. Past the window the user has had the
+	// terminal for minutes and may be mid-turn; typing a stale note
+	// into it and pressing Enter would interrupt them with something
+	// they asked for long ago and have already moved on from.
+	if age := time.Since(e.promptQueuedAt); age > promptDeliveryWindow {
+		log.Printf("registry: dropping the opening prompt for %s: %s since it was queued, past the %s window",
+			e.ID, age.Round(time.Second), promptDeliveryWindow)
+		e.pendingPrompt = ""
 		return
 	}
 	prompt, sess, id, ideaID := e.pendingPrompt, e.sess, e.ID, e.ideaID

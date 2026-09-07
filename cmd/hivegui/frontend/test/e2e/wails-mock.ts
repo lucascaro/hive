@@ -405,7 +405,7 @@ export async function CreateSession(o: Partial<MockCreateSessionOpts> = {}) {
       s.phase = '';
       s.alive = true;
       emit('session:event', JSON.stringify({ kind: 'updated', session: s }));
-      deliverInitialPrompt(id, o.initialPrompt ?? '', o.ideaId ?? '');
+      deliverInitialPrompt(id, agentID, o.initialPrompt ?? '', o.ideaId ?? '');
     });
   });
   return id;
@@ -416,12 +416,33 @@ export async function CreateSession(o: Partial<MockCreateSessionOpts> = {}) {
 // session's output, and only THEN does the idea flip to `started`. The
 // GUI never does this itself — CREATE_SESSION is fire-and-forget and
 // nothing correlates the SESSION_EVENT(added) with the request.
+// Agents the daemon will hand an opening prompt to at all. Mirrors
+// registry.deliveryFor: the shell agent is a command interpreter, not a
+// prompt box, and a custom agent is an unknown program — both get
+// nothing, and their idea is NOT claimed. Modelled here because a mock
+// that delivers unconditionally lets a test assert the opposite of the
+// shipped rule and stay green, which is exactly what happened.
+const AGENTS_TAKING_PROMPTS = new Set([
+  'claude',
+  'pi',
+  'codex',
+  'gemini',
+  'copilot',
+  'aider',
+]);
+
 function deliverInitialPrompt(
   sessionID: string,
+  agentID: string,
   prompt: string,
   ideaID: string,
 ) {
   if (!prompt) return;
+  if (!AGENTS_TAKING_PROMPTS.has(agentID)) {
+    // Undeliverable: no PTY write, and the idea stays in the inbox so
+    // it can be started again against an agent that can receive it.
+    return;
+  }
   emit('pty:data', sessionID, btoa(unescape(encodeURIComponent(prompt))));
   const idea = state.ideas.find((i) => i.id === ideaID);
   if (!idea) return;

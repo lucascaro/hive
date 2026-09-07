@@ -162,6 +162,9 @@ function LauncherBody({
   // user wrote. Only asked while there is a prompt to lose.
   const promptDropped =
     prompt.trim() !== '' && matches[selected]?.takesPrompt === false;
+  // Whether the prompt box is on screen at all — it changes the
+  // keyboard model (see the Tab branch below), so it is derived once.
+  const hasPrompt = !!(req.ideaId || req.initialPrompt);
 
   // Position and focus, before the first paint: the popup is anchored
   // under the resolved project's card header so the user can see which
@@ -359,7 +362,14 @@ function LauncherBody({
         return handle(() => moveSelection(+1));
       if (e.key === 'ArrowUp' && !inPrompt)
         return handle(() => moveSelection(-1));
-      if (e.key === 'Tab')
+      // Tab moves the agent selection — EXCEPT when there is a prompt
+      // box, where it has to be the way in and out of it. Nothing else
+      // reaches that textarea from the keyboard: focus starts in the
+      // filter box and the arrows belong to the list. A feature whose
+      // headline is "editable right there in the launcher" cannot be
+      // mouse-only, so in prompt mode Tab is left to the browser and
+      // the arrows stay the list's navigation.
+      if (e.key === 'Tab' && !hasPrompt)
         return handle(() => moveSelection(e.shiftKey ? -1 : +1));
       // Enter launches from anywhere in the popup, including the two
       // text boxes — that is what the branch box already did. ⇧Enter
@@ -460,7 +470,7 @@ function LauncherBody({
           on it. Edits here do NOT touch the stored idea: the record is
           what was noticed, this is the brief for one session. Above the
           worktree row because it is context for the choice below it. */}
-      {req.ideaId || req.initialPrompt ? (
+      {hasPrompt ? (
         <label className="launcher-prompt">
           <span className="launcher-prompt__label">
             Opening prompt
@@ -477,6 +487,9 @@ function LauncherBody({
             className="launcher-prompt__text"
             rows={4}
             aria-label="Opening prompt"
+            aria-describedby={
+              promptDropped ? 'launcher-prompt-warn' : undefined
+            }
             autoComplete="off"
             value={prompt}
             onChange={(e) => setPrompt(e.target.value)}
@@ -487,7 +500,15 @@ function LauncherBody({
               idea stays in the inbox in that case, which is what makes
               "start it again" true rather than consoling. */}
           {promptDropped ? (
-            <span className="launcher-prompt__warn" id="launcher-prompt-warn">
+            <span
+              className="launcher-prompt__warn"
+              id="launcher-prompt-warn"
+              // Announced, not just drawn: it appears in response to
+              // moving the selection, so a screen-reader user who
+              // cannot see it changing gets no other signal that the
+              // text they typed is about to be dropped.
+              role="status"
+            >
               {matches[selected]?.name ?? 'This agent'} cannot take an opening
               prompt — it will not be sent, and the idea stays in the inbox.
             </span>

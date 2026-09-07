@@ -97,6 +97,7 @@ func (r *Registry) beginCreate(spec wire.CreateSpec) (*Entry, createPlan, error)
 		// requested and nothing can be handed over, so finishCreate
 		// leaves the idea in the inbox rather than claiming it.
 		e.pendingPrompt = typedPrompt(spec.InitialPrompt)
+		e.promptQueuedAt = time.Now()
 	}
 	info := e.Info()
 	r.broadcastLocked(wire.SessionEventAdded, info)
@@ -191,13 +192,35 @@ func (r *Registry) finishCreate(ctx context.Context, e *Entry, spec wire.CreateS
 	r.mu.Lock()
 	waiting := e.pendingPrompt != ""
 	r.mu.Unlock()
-	delivered := spec.InitialPrompt == "" ||
-		(deliveryFor(spec) == promptArgv && sanitizePrompt(spec.InitialPrompt) != "")
-	if !waiting && delivered {
+	if !waiting && handedOverAtCreate(spec) {
 		r.linkIdeaToSession(spec.IdeaID, p.id)
 	}
 	go r.watchSessionExit(p.id, sess)
 	return nil
+}
+
+// handedOverAtCreate reports whether the session already has whatever
+// prompt it was going to get by the time it is running — so the idea it
+// came from can be claimed immediately.
+//
+// True in exactly two cases: nothing was asked for, or the argv path
+// put real text on the command line. The typed path is false here and
+// links later, from deliverPendingPromptLocked. Everything else — the
+// shell agent, a custom agent, a prompt that sanitizes away — is a
+// prompt that was REQUESTED and cannot be delivered, and must not claim
+// the note.
+//
+// A function rather than an expression inline because the argv arm was
+// otherwise unreachable from any test: exercising it for real means
+// spawning claude or pi.
+func handedOverAtCreate(spec wire.CreateSpec) bool {
+	if spec.InitialPrompt == "" {
+		return true
+	}
+	// typedPrompt, not sanitizePrompt: a whitespace-only note survives
+	// sanitizing but collapses to nothing on the way to an agent, and
+	// the two paths must agree that nothing was handed over.
+	return deliveryFor(spec) == promptArgv && typedPrompt(spec.InitialPrompt) != ""
 }
 
 // linkIdeaToSession flips the idea a session was started from to

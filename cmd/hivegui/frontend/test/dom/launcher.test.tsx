@@ -669,7 +669,30 @@ describe('launcher branch name', () => {
   });
 
   it('does not warn when there is no prompt to lose', async () => {
+    // Two different reasons the warning can be absent, and only the
+    // second one is this test's subject — asserting it with no prompt
+    // box on screen at all would pass even if the warning were broken.
     await open();
+    expect(promptBox()).toBeNull();
+    expect(document.getElementById('launcher-prompt-warn')).toBeNull();
+
+    // Prompt box present, on an agent that CAN take it: still silent.
+    await open({ initialPrompt: 'seeded', ideaId: 'i7' });
+    act(() => {
+      launcher().dispatchEvent(
+        new window.KeyboardEvent('keydown', {
+          key: 'ArrowDown',
+          bubbles: true,
+        }),
+      );
+    });
+    expect(promptBox()).not.toBeNull();
+    expect(document.getElementById('launcher-prompt-warn')).toBeNull();
+
+    // And emptying the box silences it even on an agent that cannot.
+    await open({ initialPrompt: 'seeded', ideaId: 'i7' });
+    expect(document.getElementById('launcher-prompt-warn')).not.toBeNull();
+    fireEvent.change(promptBox(), { target: { value: '   ' } });
     expect(document.getElementById('launcher-prompt-warn')).toBeNull();
   });
 

@@ -126,6 +126,9 @@ func queuePrompt(r *Registry, id, prompt, ideaID string) {
 	if e, ok := r.entries[id]; ok {
 		e.pendingPrompt = prompt
 		e.ideaID = ideaID
+		// beginCreate stamps this; without it the entry reads as queued
+		// at the zero time and every delivery is past the window.
+		e.promptQueuedAt = time.Now()
 	}
 }
 
@@ -220,7 +223,22 @@ func TestPendingPromptDeliveredOnlyOnce(t *testing.T) {
 	// Counted, not compared to 1: the tty line discipline echoes the
 	// write and `cat` then prints it again, so ONE delivery already
 	// shows up twice. The invariant is that the number stops growing.
-	delivered := strings.Count(ptyText(sess), "once")
+	//
+	// Let the count SETTLE before snapshotting it. The echo and the
+	// echo of the echo arrive as separate PTY reads, so a snapshot
+	// taken the instant the text first appears can catch 1 where the
+	// steady state is 2 — and then "it did not grow" fails for a
+	// reason that has nothing to do with a second delivery.
+	delivered := 0
+	waitFor(t, "the echo count to settle", func() bool {
+		n := strings.Count(ptyText(sess), "once")
+		if n == delivered && n > 0 {
+			return true
+		}
+		delivered = n
+		time.Sleep(50 * time.Millisecond)
+		return false
+	})
 
 	later := now.Add(2 * agentstate.QuietAfter)
 	paint(t, e, sess, "more\n")
@@ -610,5 +628,105 @@ func TestIdeaNotLinkedAcrossProjects(t *testing.T) {
 	if got.Status != wire.IdeaStatusOpen || got.SessionID != "" {
 		t.Errorf("idea = {status:%q session:%q}, want it untouched",
 			got.Status, got.SessionID)
+	}
+}
+
+// handedOverAtCreate is the "may the idea be claimed now?" decision.
+// Table-tested because its argv arm is otherwise unreachable: taking it
+// for real means spawning claude or pi, so the branch that matters most
+// to a user starting a Claude session from an idea had no coverage at
+// all until it was pulled out of finishCreate.
+func TestHandedOverAtCreate(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		spec wire.CreateSpec
+		want bool
+	}{
+		{
+			name: "no prompt asked for: an ordinary create",
+			spec: wire.CreateSpec{Agent: "claude"},
+			want: true,
+		},
+		{
+			// The argv arm. The text is in the process's own command
+			// line, so it is delivered the moment the process exists.
+			name: "claude gets it as argv, so it is already handed over",
+			spec: wire.CreateSpec{Agent: "claude", InitialPrompt: "fix the grid"},
+			want: true,
+		},
+		{
+			name: "pi likewise",
+			spec: wire.CreateSpec{Agent: "pi", InitialPrompt: "fix the grid"},
+			want: true,
+		},
+		{
+			// Still queued for the PTY; deliverPendingPromptLocked
+			// links it once it lands.
+			name: "codex is typed, so the link waits",
+			spec: wire.CreateSpec{Agent: "codex", InitialPrompt: "fix the grid"},
+			want: false,
+		},
+		{
+			name: "the shell agent can never receive it",
+			spec: wire.CreateSpec{Agent: "shell", InitialPrompt: "fix the grid"},
+			want: false,
+		},
+		{
+			// Both paths must agree that nothing was handed over. This
+			// is why the check is typedPrompt and not sanitizePrompt:
+			// whitespace survives sanitizing and collapses on delivery.
+			name: "a whitespace-only prompt is not a hand-over on either path",
+			spec: wire.CreateSpec{Agent: "claude", InitialPrompt: "   \t  "},
+			want: false,
+		},
+		{
+			name: "nor is one that is all control characters",
+			spec: wire.CreateSpec{Agent: "claude", InitialPrompt: "\x00\x01"},
+			want: false,
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := handedOverAtCreate(tc.spec); got != tc.want {
+				t.Errorf("handedOverAtCreate = %v, want %v", got, tc.want)
+			}
+		})
+	}
+}
+
+// Past the window the prompt is dropped rather than delivered. An
+// opening prompt is only an opening prompt while the session is still
+// opening: delivery fires on the first idle edge AFTER a working
+// period, so an agent that never goes working leaves the text armed
+// indefinitely, and it would otherwise land in the middle of whatever
+// the user had since started typing themselves.
+func TestStalePromptIsDroppedRatherThanTyped(t *testing.T) {
+	skipOnWindows(t)
+	r, p := ideaRegistry(t)
+	idea, err := r.AddIdea(IdeaSpec{ProjectID: p.ID, Text: "stale"})
+	if err != nil {
+		t.Fatalf("AddIdea: %v", err)
+	}
+	e, sess := liveSession(t, r, wire.CreateSpec{Name: "slow", ProjectID: p.ID})
+	queuePrompt(r, e.ID, "long forgotten", idea.ID)
+	// Queued just outside the window.
+	r.mu.Lock()
+	r.entries[e.ID].promptQueuedAt = time.Now().Add(-promptDeliveryWindow - time.Second)
+	r.mu.Unlock()
+
+	now := time.Now()
+	paint(t, e, sess, "thinking\n")
+	sample(r, e, now)
+	sample(r, e, now.Add(agentstate.QuietAfter))
+
+	waitFor(t, "the stale prompt to be dropped", func() bool {
+		return pendingPromptOf(r, e.ID) == ""
+	})
+	time.Sleep(200 * time.Millisecond)
+	if strings.Contains(ptyText(sess), "long forgotten") {
+		t.Error("a stale opening prompt was typed into a session the user has been working in")
+	}
+	// Dropped, not delivered — so the note stays startable.
+	if got := ideaStatus(t, r, idea.ID).Status; got != wire.IdeaStatusOpen {
+		t.Errorf("idea status = %q, want %q", got, wire.IdeaStatusOpen)
 	}
 }
