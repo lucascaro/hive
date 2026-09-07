@@ -1,6 +1,6 @@
 ---
 issue: null
-pr: null
+pr: 365
 type: fixed
 bump: patch
 ---
