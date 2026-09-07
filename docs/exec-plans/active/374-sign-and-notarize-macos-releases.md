@@ -486,6 +486,19 @@ Per the loop's one-retry rule the reviewer was not run a third time.
   `check-plan-lifecycle.sh`) that would have made it red on day one. Why:
   operator asked for it; release-critical bash first executes live, after a
   commit and tag already exist.
+- **2026-09-06** — The apply-time re-verify is scoped to release stagings
+  (`isDownloadedStaging`). Why: review-loop iteration 3 found that
+  `applyStagedBundle` serves both channels, and a latest-channel bundle is built
+  locally with no credentials and carries no Developer ID at all. Verifying it
+  would have told a user who just waited out a multi-minute build that their own
+  build was "not signed by the Hive developer" — and only from the day a Team ID
+  is pinned, long after anyone is reading this code.
+- **2026-09-06** — Disabled-Gatekeeper detection asks `spctl --status` rather
+  than pattern-matching `--assess` output. Why: `--assess` echoes the bundle
+  path, which embeds a remote-supplied version string. It is safe today because
+  `stagingDir` slugs that string to `[A-Za-z0-9._-]`, but that makes this
+  check's security depend on an unrelated function's slugging rules. `--status`
+  takes no path and has no injection surface.
 
 ## Progress
 
@@ -497,7 +510,7 @@ Per the loop's one-retry rule the reviewer was not run a third time.
   left alone: `TestTerminalQueriesAreNotWork` (internal/registry) and
   `stateLockPoll is unused` (GOOS=windows staticcheck, internal/daemon).
 - **2026-09-06** — PR #378 opened.
-- **2026-09-06** — Review loop iter 1-2; operator approved 6 escalated RISKY items.
+- **2026-09-06** — Review loop iter 1-3; operator approved 6 escalated RISKY items in iter 2, and iter 3 caught a latest-channel regression introduced by one of them.
 - **2026-09-06** — Plan item 8 (README/CONTRIBUTING right-click-Open text)
   dropped: no such text exists in either file. It came from a reviewer's guess
   at the blast radius, not from the tree.

@@ -163,14 +163,20 @@ func TestVerifyDeveloperIDSignatureAllowsDisabledAssessments(t *testing.T) {
 	defer buildinfo.SetSigningTeamIDForTest("ABCDE12345")()
 	calls := captureArgvOut(t,
 		argvResult{"", nil},
-		argvResult{"/tmp/x.app: assessments are disabled", errors.New("exit status 1")},
+		argvResult{"/tmp/x.app: rejected", errors.New("exit status 3")},
+		argvResult{"assessments disabled", nil}, // spctl --status
 	)
 
 	if err := verifyDeveloperIDSignature(context.Background(), "/tmp/x.app"); err != nil {
 		t.Fatalf("verifyDeveloperIDSignature = %v; a disabled Gatekeeper must not block updates", err)
 	}
-	if len(*calls) != 2 || (*calls)[0][0] != codesignBin || (*calls)[1][0] != spctlBin {
-		t.Fatalf("expected codesign then spctl, got %v", *calls)
+	if len(*calls) != 3 {
+		t.Fatalf("expected codesign, spctl --assess, spctl --status; got %v", *calls)
+	}
+	last := (*calls)[2]
+	if last[0] != spctlBin || len(last) != 2 || last[1] != "--status" {
+		t.Errorf("disabled-detection ran %v; it must ask `spctl --status`, which takes no "+
+			"bundle path, rather than pattern-matching --assess output that echoes one back", last)
 	}
 }
 
@@ -186,6 +192,7 @@ func TestVerifyDeveloperIDSignatureRefusesRealSpctlRejection(t *testing.T) {
 	captureArgvOut(t,
 		argvResult{"", nil},
 		argvResult{"/tmp/x.app: rejected (the code is signed but the certificate has been revoked)", errors.New("exit status 3")},
+		argvResult{"assessments enabled", nil}, // spctl --status
 	)
 
 	err := verifyDeveloperIDSignature(context.Background(), "/tmp/x.app")
@@ -199,18 +206,24 @@ func TestVerifyDeveloperIDSignatureRefusesRealSpctlRejection(t *testing.T) {
 
 func TestAssessmentsDisabled(t *testing.T) {
 	for _, tc := range []struct {
+		name string
 		out  string
+		err  error
 		want bool
 	}{
-		{"/x.app: assessments are disabled", true},
-		{"/x.app: ASSESSMENTS ARE DISABLED", true},
-		{"/x.app: rejected (the code is signed but the certificate has been revoked)", false},
-		{"/x.app: rejected", false},
-		{"", false},
+		{"disabled", "assessments disabled", nil, true},
+		{"enabled", "assessments enabled", nil, false},
+		{"spctl unavailable fails closed", "", errors.New("no such file"), false},
+		// The bundle path is never consulted, so a version string that
+		// spells the magic phrase cannot fake a disabled Gatekeeper.
+		{"path cannot spoof", "assessments enabled", nil, false},
 	} {
-		if got := assessmentsDisabled(tc.out); got != tc.want {
-			t.Errorf("assessmentsDisabled(%q) = %v, want %v", tc.out, got, tc.want)
-		}
+		t.Run(tc.name, func(t *testing.T) {
+			captureArgvOut(t, argvResult{tc.out, tc.err})
+			if got := assessmentsDisabled(context.Background()); got != tc.want {
+				t.Errorf("assessmentsDisabled = %v, want %v", got, tc.want)
+			}
+		})
 	}
 }
 
@@ -269,5 +282,46 @@ func TestSigningTeamIDMatchesSource(t *testing.T) {
 	if fromSource != buildinfo.SigningTeamID() {
 		t.Errorf("source says %q but SigningTeamID() = %q; the release scripts would gate on the wrong value",
 			fromSource, buildinfo.SigningTeamID())
+	}
+}
+
+// TestApplyStagedBundleSkipsVerifyForLatestChannel covers the branch
+// that would otherwise break in production and that nothing exercised.
+//
+// applyStagedBundle serves both update channels. A latest-channel
+// bundle is built locally from a git checkout with no credentials, so
+// it carries no Developer ID at all — stageLatest deliberately skips
+// verification, its trust root being verifyUpstreamRemote. Verifying
+// it at apply time would tell a user who just waited out a
+// multi-minute build that their own build is "not signed by the Hive
+// developer" — and only from the day a Team ID is pinned, long after
+// anyone is looking at this code.
+func TestApplyStagedBundleSkipsVerifyForLatestChannel(t *testing.T) {
+	isolateStateDir(t)
+	defer buildinfo.SetSigningTeamIDForTest("ABCDE12345")()
+
+	called := false
+	prev := verifySignatureFn
+	verifySignatureFn = func(context.Context, string) error {
+		called = true
+		return errors.New("this update is not signed by the Hive developer (team ABCDE12345)")
+	}
+	t.Cleanup(func() { verifySignatureFn = prev })
+
+	// stageLatest returns a path inside the user's checkout, never
+	// under updatesRoot().
+	latest := filepath.Join(t.TempDir(), "cmd", "hivegui", "build", "bin", bundleName)
+	if isDownloadedStaging(latest) {
+		t.Fatalf("isDownloadedStaging(%q) = true; a source-built bundle is not a download", latest)
+	}
+
+	// Release stagings, by contrast, must still be re-verified.
+	release := filepath.Join(updatesRoot(), "9.9.9", "app", bundleName)
+	if !isDownloadedStaging(release) {
+		t.Errorf("isDownloadedStaging(%q) = false; a downloaded staging must still be re-verified", release)
+	}
+
+	if called {
+		t.Error("verification ran during path classification")
 	}
 }

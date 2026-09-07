@@ -23,7 +23,8 @@ const (
 	spctlBin    = "/usr/sbin/spctl"
 )
 
-// verifyTimeout bounds each verification command. spctl contacts
+// verifyTimeout bounds verification as a whole — both commands below
+// share one context, so this is a combined budget, not per-command. spctl contacts
 // Apple's notary service when a staple is missing or unreadable, and
 // on a captive-portal network that call can hang indefinitely — which
 // would wedge the staging goroutine rather than failing it. Var so a
@@ -105,7 +106,7 @@ func verifyDeveloperIDSignature(ctx context.Context, bundle string) error {
 
 	if out, err := runArgv(ctx, spctlBin, "--assess", "--type", "execute", bundle); err != nil {
 		detail := strings.TrimSpace(out)
-		if assessmentsDisabled(detail) {
+		if assessmentsDisabled(ctx) {
 			log.Printf("hivegui: Gatekeeper assessments are disabled on this machine, so notarization "+
 				"could not be checked for %s. The Team ID pin passed and the update was accepted; "+
 				"a revoked certificate would not be detected.", bundle)
@@ -116,13 +117,27 @@ func verifyDeveloperIDSignature(ctx context.Context, bundle string) error {
 	return nil
 }
 
-// assessmentsDisabled reports whether spctl declined to evaluate
-// rather than actually rejecting the bundle.
+// assessmentsDisabled reports whether Gatekeeper assessment is turned
+// off on this machine, meaning spctl declined to evaluate rather than
+// actually rejecting the bundle.
 //
 // `spctl --master-disable` makes --assess answer "assessments are
 // disabled" for everything. That is a non-answer, not a verdict, and
-// it must not be confused with a real rejection — one means "this
-// machine opted out of Gatekeeper", the other means "Apple says no".
-func assessmentsDisabled(out string) bool {
-	return strings.Contains(strings.ToLower(out), "assessments are disabled")
+// must not be confused with a real rejection — one means "this machine
+// opted out of Gatekeeper", the other means "Apple says no".
+//
+// It asks `spctl --status` rather than pattern-matching the --assess
+// output, because --assess echoes the bundle path back and that path
+// contains a remote-supplied version string. It is safe today — the
+// version is slugged down to [A-Za-z0-9._-] in stagingDir, so it
+// cannot contain the phrase — but that makes the security of this
+// check depend on the slugging rules of an unrelated function, which
+// is exactly the coupling that rots. --status takes no path and so
+// has no injection surface at all.
+func assessmentsDisabled(ctx context.Context) bool {
+	out, err := runArgv(ctx, spctlBin, "--status")
+	if err != nil {
+		return false
+	}
+	return strings.Contains(strings.ToLower(out), "assessments disabled")
 }

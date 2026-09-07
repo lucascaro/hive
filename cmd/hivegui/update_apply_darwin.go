@@ -533,6 +533,15 @@ func runBuildScript(repo string, progress func(string)) error {
 // Refuses when the running binary is not inside a .app: a `wails dev`
 // or `go run` process has no bundle to swap, and guessing at one would
 // mean writing over something we did not install.
+// isDownloadedStaging reports whether a staged bundle came from
+// stageRelease — i.e. we downloaded it into our own staging area —
+// rather than from stageLatest, which returns a path inside the
+// user's git checkout.
+func isDownloadedStaging(staged string) bool {
+	root := updatesRoot()
+	return strings.HasPrefix(staged, root+string(filepath.Separator))
+}
+
 func applyStagedBundle(staged string) error {
 	self, err := executablePath()
 	if err != nil {
@@ -547,8 +556,19 @@ func applyStagedBundle(staged string) error {
 	// staging directory is writable in between — a verify-to-install
 	// gap. Same-uid only, so this is defense in depth rather than a
 	// hole in the stated threat model, and it costs one call.
-	if err := verifySignatureFn(context.Background(), staged); err != nil {
-		return err
+	//
+	// Release stagings only. applyStagedBundle serves both channels,
+	// and a latest-channel bundle was built locally from a git
+	// checkout with no credentials, so it carries no Developer ID at
+	// all — stageLatest deliberately skips this check, its trust root
+	// being verifyUpstreamRemote. Verifying it here would tell a user
+	// who just waited out a multi-minute build that their own build is
+	// "not signed by the Hive developer", and it would only start
+	// doing so the day a Team ID is pinned.
+	if isDownloadedStaging(staged) {
+		if err := verifySignatureFn(context.Background(), staged); err != nil {
+			return err
+		}
 	}
 	return swapBundle(staged, installed)
 }
