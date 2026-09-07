@@ -401,16 +401,28 @@ func TestPromptSanitization(t *testing.T) {
 // wire and never has to have been an idea, so AddIdea's 4 KiB cap does
 // not cover it.
 func TestPromptIsBounded(t *testing.T) {
-	long := strings.Repeat("x", wire.MaxIdeaText+500)
-	if got := len(sanitizePrompt(long)); got != wire.MaxIdeaText {
-		t.Errorf("len = %d, want %d", got, wire.MaxIdeaText)
+	// The bound is maxPromptBytes, NOT wire.MaxIdeaText: what arrives
+	// is ideaPrompt()'s preamble plus a note that may itself be exactly
+	// at the idea cap, so bounding the sum by the idea cap silently ate
+	// the tail of every maximum-length note.
+	long := strings.Repeat("x", maxPromptBytes+500)
+	if got := len(sanitizePrompt(long)); got != maxPromptBytes {
+		t.Errorf("len = %d, want %d", got, maxPromptBytes)
+	}
+	// The case that regressed: a full-size note plus a preamble must
+	// survive whole.
+	full := strings.Repeat("y", wire.MaxIdeaText)
+	withPreamble := "An idea was captured for this project. The idea: " + full
+	if got := sanitizePrompt(withPreamble); got != withPreamble {
+		t.Errorf("a maximum-length note lost %d bytes to the cap",
+			len(withPreamble)-len(got))
 	}
 	// The cut lands on a rune boundary, so the agent never receives an
 	// invalid UTF-8 tail. "é" is two bytes, so a byte-wise cut at the
 	// cap is guaranteed to split one.
-	multi := strings.Repeat("é", wire.MaxIdeaText)
+	multi := strings.Repeat("é", maxPromptBytes)
 	got := sanitizePrompt(multi)
-	if len(got) > wire.MaxIdeaText {
+	if len(got) > maxPromptBytes {
 		t.Errorf("len = %d, over the cap", len(got))
 	}
 	if !utf8.ValidString(got) {
@@ -731,5 +743,63 @@ func TestStalePromptIsDroppedRatherThanTyped(t *testing.T) {
 	// Dropped, not delivered — so the note stays startable.
 	if got := ideaStatus(t, r, idea.ID).Status; got != wire.IdeaStatusOpen {
 		t.Errorf("idea status = %q, want %q", got, wire.IdeaStatusOpen)
+	}
+}
+
+// Windows spawns argv through `cmd.exe /S /C`, and cmdExeEscape does
+// not escape `%` — cmd.exe expands `%VAR%` even inside double quotes,
+// which is exactly what that helper's doc comment warns callers about.
+// A prompt is user- AND agent-authored, so a note reading
+// `%GITHUB_TOKEN%` would otherwise be expanded out of the daemon's
+// environment straight into the agent's first turn.
+func TestArgvPromptStripsPercentOnWindowsOnly(t *testing.T) {
+	const note = "why is coverage only 80% and is %GITHUB_TOKEN% set?"
+	if got := argvPrompt("windows", note); strings.Contains(got, "%") {
+		t.Errorf("argvPrompt(windows) = %q, still carries a %% for cmd.exe to expand", got)
+	}
+	// Unix reaches execve with no shell in between, so mangling the
+	// note there would be damage for nothing.
+	for _, goos := range []string{"darwin", "linux"} {
+		if got := argvPrompt(goos, note); got != note {
+			t.Errorf("argvPrompt(%s) = %q, want it untouched", goos, got)
+		}
+	}
+}
+
+// A session that asks for input before delivery is showing something we
+// must not answer — an agent's "do you trust this folder?" gate is
+// drawn, then waits. The prompt is dropped rather than left armed: left
+// armed it would skip this edge and land later, mid-conversation.
+func TestPromptDroppedWhenTheSessionAsksForInput(t *testing.T) {
+	skipOnWindows(t)
+	for _, state := range []string{wire.StateWaitingInput, wire.StateWaitingPermission} {
+		t.Run(state, func(t *testing.T) {
+			r, p := ideaRegistry(t)
+			idea, err := r.AddIdea(IdeaSpec{ProjectID: p.ID, Text: "not an answer"})
+			if err != nil {
+				t.Fatalf("AddIdea: %v", err)
+			}
+			e, sess := liveSession(t, r, wire.CreateSpec{Name: "gated", ProjectID: p.ID})
+			queuePrompt(r, e.ID, "definitely not a yes", idea.ID)
+
+			r.mu.Lock()
+			prev := e.stateSnapshot()
+			r.announceStateLocked(e, prev, "test")
+			// Drive the waiting edge directly: the heuristic tier cannot
+			// produce these, they come from the hook/extension tier.
+			r.deliverPendingPromptLocked(e, prev, agentstate.Snapshot{State: state})
+			r.mu.Unlock()
+
+			if got := pendingPromptOf(r, e.ID); got != "" {
+				t.Errorf("pendingPrompt = %q; a session waiting for input must not stay armed", got)
+			}
+			time.Sleep(150 * time.Millisecond)
+			if strings.Contains(ptyText(sess), "definitely not a yes") {
+				t.Error("typed a prompt into a session that was waiting for input")
+			}
+			if got := ideaStatus(t, r, idea.ID).Status; got != wire.IdeaStatusOpen {
+				t.Errorf("idea status = %q, want %q", got, wire.IdeaStatusOpen)
+			}
+		})
 	}
 }

@@ -3,6 +3,7 @@ package registry
 import (
 	"context"
 	"log"
+	"runtime"
 	"slices"
 	"strings"
 	"time"
@@ -217,10 +218,14 @@ func handedOverAtCreate(spec wire.CreateSpec) bool {
 	if spec.InitialPrompt == "" {
 		return true
 	}
-	// typedPrompt, not sanitizePrompt: a whitespace-only note survives
-	// sanitizing but collapses to nothing on the way to an agent, and
-	// the two paths must agree that nothing was handed over.
-	return deliveryFor(spec) == promptArgv && typedPrompt(spec.InitialPrompt) != ""
+	// Both forms have to be non-empty, and they are not the same
+	// function: a whitespace-only note survives sanitizing but collapses
+	// on the typed path, and on Windows a note of nothing but `%` is
+	// emptied by argvPrompt alone. Whatever the reason, if the argv
+	// actually appended nothing then nothing was handed over.
+	return deliveryFor(spec) == promptArgv &&
+		argvPrompt(runtime.GOOS, spec.InitialPrompt) != "" &&
+		typedPrompt(spec.InitialPrompt) != ""
 }
 
 // linkIdeaToSession flips the idea a session was started from to
@@ -541,7 +546,7 @@ func (r *Registry) resolveAgentCmd(spec wire.CreateSpec, id string) []string {
 	// helper, and re-sending the opening prompt would replay the first
 	// turn every time the user restarted the session.
 	if deliveryFor(spec) == promptArgv {
-		if p := sanitizePrompt(spec.InitialPrompt); p != "" {
+		if p := argvPrompt(runtime.GOOS, spec.InitialPrompt); p != "" {
 			// "--" first: without it a prompt beginning with "-" is
 			// parsed as a flag, and CreateSpec.InitialPrompt is a wire
 			// field — our own prompts start with a word, but nothing
@@ -554,6 +559,12 @@ func (r *Registry) resolveAgentCmd(spec wire.CreateSpec, id string) []string {
 	}
 	return cmd
 }
+
+// maxPromptBytes bounds a delivered opening prompt. An idea's text is
+// capped at wire.MaxIdeaText; the prompt built from it is that text
+// plus ideaPrompt()'s preamble, so this has to be the larger of the
+// two or a maximum-length note loses its ending.
+const maxPromptBytes = wire.MaxIdeaText + 1024
 
 // promptControlChars strips the C0 control characters (and DEL) that an
 // opening prompt has no business carrying, leaving newline and tab.
@@ -588,21 +599,49 @@ func promptControlChars(r rune) rune {
 // agent's own prompt string.
 func sanitizePrompt(s string) string {
 	s = strings.Map(promptControlChars, s)
-	// Bounded at the same 4 KiB the registry bounds an idea's text by,
-	// because CreateSpec.InitialPrompt is a separate entry point: it
-	// arrives on the wire and never has to have been an idea at all, so
-	// AddIdea's cap does not cover it. Truncated rather than refused —
-	// unlike a captured note, nothing is lost that the user cannot see
-	// and retype, and failing the session create over a long prompt is
-	// the worse outcome.
-	if len(s) > wire.MaxIdeaText {
+	// Bounded, because CreateSpec.InitialPrompt is a separate entry
+	// point: it arrives on the wire and never has to have been an idea
+	// at all, so AddIdea's cap does not cover it. Truncated rather than
+	// refused — unlike a captured note, nothing is lost the user cannot
+	// see and retype, and failing the create over a long prompt is the
+	// worse outcome.
+	//
+	// NOT wire.MaxIdeaText: what arrives here is ideaPrompt()'s
+	// instruction preamble PLUS a note that may itself be exactly at
+	// that cap, so bounding the sum by it silently ate the tail of
+	// every maximum-length note. maxPromptBytes leaves room for the
+	// preamble.
+	if len(s) > maxPromptBytes {
 		// By rune, so the cut cannot land mid-codepoint and hand the
 		// agent an invalid UTF-8 tail.
-		cut := wire.MaxIdeaText
+		cut := maxPromptBytes
 		for cut > 0 && !utf8.RuneStart(s[cut]) {
 			cut--
 		}
 		s = s[:cut]
+	}
+	return s
+}
+
+// argvPrompt is the argv form for a given platform.
+//
+// On Windows only, `%` goes too. internal/session spawns argv through
+// `cmd.exe /S /C` there, and cmdExeEscape's own doc comment states the
+// precondition: it does NOT escape `%`, because cmd.exe expands
+// `%VAR%` even inside double quotes. A prompt is user- AND
+// agent-authored (`hive idea add` runs inside sessions), so a note
+// reading `%GITHUB_TOKEN%` would otherwise be expanded out of the
+// daemon's environment and handed to the agent as its first turn.
+//
+// Stripped rather than escaped because cmd.exe has no quoting that
+// neutralizes `%` on a /C line, and platform-conditional because on
+// Unix argv reaches execve with no shell in between — mangling every
+// "50% of the time" everywhere to fix a Windows-only hole would be the
+// wrong trade.
+func argvPrompt(goos, s string) string {
+	s = sanitizePrompt(s)
+	if goos == "windows" {
+		s = strings.ReplaceAll(s, "%", "")
 	}
 	return s
 }

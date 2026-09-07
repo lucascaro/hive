@@ -1206,6 +1206,42 @@ path instead.
   its own test suite, and stripping an exported option out of a module
   four other call sites use — to satisfy a MINOR in a feature PR — is
   churn the next caller needing a refusable commit would simply undo.
+- **2026-09-07** — Review iteration 5, fixed, **security**: on Windows
+  the argv prompt reached `cmd.exe /S /C`, and `cmdExeEscape`'s own doc
+  comment states the precondition it broke — it does not escape `%`,
+  because cmd.exe expands `%VAR%` even inside double quotes. A prompt
+  is user- AND agent-authored, so a note reading `%GITHUB_TOKEN%` would
+  have been expanded out of the daemon's environment straight into the
+  agent's first turn. `argvPrompt(goos, s)` strips `%` on Windows only:
+  cmd.exe has no quoting that neutralizes it on a `/C` line, and on
+  Unix argv reaches `execve` with no shell in between, so mangling
+  every "50% of the time" everywhere to close a Windows-only hole
+  would be the wrong trade. The comment that hid this said "Quoted
+  nothing: this is argv, not a shell string" — true on Unix, false on
+  Windows.
+- **2026-09-07** — Review iteration 5, fixed: the delivery predicate
+  now DROPS the prompt when the session reaches `waiting_input` or
+  `waiting_permission`. This closes the open question from iteration 4
+  from the other side. An agent's "do you trust this folder?" gate is
+  drawn (working) and then waits — and the old predicate fired only on
+  `working→idle`, so such a session skipped delivery, stayed armed, and
+  landed the note in the middle of the user's OWN first turn later,
+  flipping the idea to `started` off that stray write. Dropping on the
+  waiting edge fixes both halves: we never answer a gate on the user's
+  behalf, and nothing stays armed to fire late.
+- **2026-09-07** — Review iteration 5, fixed: the prompt cap was
+  `wire.MaxIdeaText`, but what is delivered is `ideaPrompt()`'s ~230
+  byte preamble PLUS a note that may itself be exactly at that cap — so
+  every maximum-length note silently lost its tail. `maxPromptBytes`
+  (`MaxIdeaText + 1024`) leaves room for the preamble.
+- **2026-09-07** — Review iteration 5, fixed — a regression from
+  iteration 4's own fix. Making Tab native in prompt mode did reach the
+  textarea, but nothing traps focus in `#launcher` and its `focusout`
+  handler closes the popup when focus leaves: one Tab past the last
+  field dismissed the launcher and discarded the sharpened brief, two
+  keystrokes from open to gone. Tab now CYCLES the popup's own text
+  fields (filter → prompt → branch) instead of being handed to the
+  browser, and the cycle is tested in both directions.
 - **2026-09-07** — The `pi` "No project session found with id" warning
   found while probing on 2026-09-06 is left alone. It is pi's own
   pre-alt-screen line for a fresh `--session-id`, it is not made worse
@@ -1507,10 +1543,22 @@ collision is under Open questions.
 - **2026-09-07 iter 4** — verdict: REQUEST_CHANGES; mergeable: MERGEABLE; findings_hash: 7291f3301be4bd242e8d578a1fae8b867ca22ff9640f6b96c45506dc9c6dbc87; threads_open: 0; action: autofix+push (5 safe doc corrections, `1e5e34f5` — the largest a factual error repeated in README, `CreateSpec.InitialPrompt` and the contract-7 history, all claiming every non-Claude/Pi agent gets the prompt typed in), then escalated:risky-fix-needs-human-decision (0 BLOCKING, 8 IMPORTANT); head_sha: 1e5e34f5.
 - **2026-09-07 iter 4b** — the operator took all of them but one (the `validate` option, kept by decision above). Iteration 3's three focus items all re-verified correct. One finding — a typed prompt plus Enter auto-answering an agent's startup trust dialog — is a design decision and is under Open questions.
 
+- **2026-09-07 iter 5** — verdict: COMMENT coerced to REQUEST_CHANGES; mergeable: MERGEABLE (was CONFLICTING — `main` landed #378 mid-run; merged and resolved as `3801c4cb`); findings_hash: e58a5b4d63816a6a1fa03c871dc8e5c4ad9b597604fe9171f80cdc13153bb3d4; threads_open: 0; action: autofix+push (3 safe fixes as `101d7d4d` — the live region mounted with the prompt box rather than created with its text, a comment stating the opposite of the Tab branch below it, and a mis-named argv test), then escalated:max-iterations-with-risky-findings (0 BLOCKING, 5 IMPORTANT); head_sha: 3801c4cb.
+- **2026-09-07 iter 5b** — the loop's budget is spent, so this is where it stops. All four RISKY findings were taken by the operator rather than left standing (Windows `%` expansion, the Tab-escapes-the-launcher regression from iteration 4, the missed `waiting_input` edge, and the 4 KiB cap eating a full-size note). The three remaining MINORs are recorded in the Decision log as deliberate or are test-wording nits.
+
 ## Open questions
 
-- **A typed opening prompt ends with Enter, which could auto-answer an
-  agent's startup trust/permission dialog.** Raised by review iteration
+- ~~**A typed opening prompt ends with Enter, which could auto-answer
+  an agent's startup trust/permission dialog.**~~ **Resolved
+  2026-09-07 by review iteration 5**, and from a better angle than
+  either option originally weighed: the prompt is now *dropped* when
+  the session reaches `waiting_input` or `waiting_permission`, so a
+  gate is never answered on the user's behalf and the note is not left
+  armed to land mid-conversation later. The trailing Enter stays for
+  the ordinary case, so the one-click feel survives. Kept below for the
+  record.
+- **(resolved, above) A typed opening prompt ends with Enter, which
+  could auto-answer an agent's startup trust/permission dialog.** Raised by review iteration
   4 (`registry.go:546`). The typed path is codex / gemini / copilot /
   aider; several of those show a "do you trust this folder?" style
   prompt on first run in a new directory, and it is drawn (working) and

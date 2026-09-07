@@ -705,6 +705,38 @@ describe('launcher branch name', () => {
     expect(warn()?.textContent).toBe('');
   });
 
+  it('cycles Tab through the popup\u2019s own fields without closing it', async () => {
+    // Handing Tab to the browser was the obvious fix for "the textarea
+    // is unreachable" and it was wrong: nothing traps focus here and
+    // focusout closes the popup, so one Tab past the last field
+    // dismissed the launcher and discarded the brief.
+    await open({ initialPrompt: 'seeded', ideaId: 'i7' });
+    expect(document.activeElement).toBe(searchBox());
+
+    const tab = (shift = false) => {
+      act(() => {
+        (document.activeElement ?? launcher()).dispatchEvent(
+          new window.KeyboardEvent('keydown', {
+            key: 'Tab',
+            shiftKey: shift,
+            bubbles: true,
+          }),
+        );
+      });
+    };
+
+    tab();
+    expect(document.activeElement).toBe(promptBox());
+    // Round the cycle and back to the start — never out of the popup.
+    tab();
+    tab();
+    expect(launcher().contains(document.activeElement)).toBe(true);
+    expect(launcher().classList.contains('hidden')).toBe(false);
+    // And backwards.
+    tab(true);
+    expect(launcher().contains(document.activeElement)).toBe(true);
+  });
+
   it('shows the keys that act on the prompt box', async () => {
     // AGENTS.md › Key Discoverability — Enter launching from inside an
     // edit box is surprising without the hint.

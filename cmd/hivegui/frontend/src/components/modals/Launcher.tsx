@@ -371,6 +371,26 @@ function LauncherBody({
       // the arrows stay the list's navigation.
       if (e.key === 'Tab' && !hasPrompt)
         return handle(() => moveSelection(e.shiftKey ? -1 : +1));
+      // In prompt mode Tab CYCLES the popup's own text fields rather
+      // than being handed to the browser. Handing it over was the
+      // obvious fix for "the textarea is unreachable" and it was
+      // wrong: nothing traps focus in #launcher, and the focusout
+      // handler below closes the popup the moment focus leaves — so
+      // one Tab past the last field dismissed the launcher and threw
+      // away the sharpened brief. Two keystrokes from open to gone.
+      if (e.key === 'Tab' && hasPrompt) {
+        const fields = [searchRef.current, promptRef.current, branchRef.current]
+          .filter((el): el is HTMLInputElement | HTMLTextAreaElement => !!el)
+          .filter((el) => el.offsetParent !== null || el === promptRef.current);
+        if (fields.length > 0) {
+          const at = fields.indexOf(
+            e.target as HTMLInputElement | HTMLTextAreaElement,
+          );
+          const next =
+            (at + (e.shiftKey ? -1 : 1) + fields.length) % fields.length;
+          return handle(() => fields[next]?.focus());
+        }
+      }
       // Enter launches from anywhere in the popup, including the two
       // text boxes — that is what the branch box already did. ⇧Enter
       // inside the prompt is a newline instead, the same convention

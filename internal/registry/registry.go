@@ -545,6 +545,22 @@ func (r *Registry) deliverPendingPromptLocked(e *Entry, prev, cur agentstate.Sna
 	if e.pendingPrompt == "" || e.sess == nil {
 		return
 	}
+	// A session that ASKS for input before we have delivered is a
+	// session showing something we must not answer — an agent's
+	// "do you trust this folder?" gate is drawn, then waits. Typing a
+	// note and pressing Enter into that would accept it on the user's
+	// behalf. Drop the prompt instead.
+	//
+	// Dropping, not deferring: left armed, the note skips this edge and
+	// lands on the user's OWN first working→idle edge later, typed into
+	// the middle of a conversation they had already started, and flips
+	// the idea to `started` off that stray delivery.
+	if cur.State == wire.StateWaitingInput || cur.State == wire.StateWaitingPermission {
+		log.Printf("registry: dropping the opening prompt for %s: the session is waiting for input (%q), and answering that is not ours to do",
+			e.ID, cur.State)
+		e.pendingPrompt = ""
+		return
+	}
 	if cur.State != wire.StateIdle || prev.State != wire.StateWorking {
 		return
 	}
