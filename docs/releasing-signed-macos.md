@@ -80,12 +80,15 @@ Security → App-Specific Passwords), then:
 ```bash
 xcrun notarytool store-credentials hive-notary \
     --apple-id you@example.com \
-    --team-id ABCDE12345 \
-    --password <app-specific-password>
+    --team-id ABCDE12345
 ```
 
-This writes to your login keychain. The password never appears in the repo or
-in a release command.
+`store-credentials` prompts for the app-specific password and reads it without
+echo. Do not pass it with `--password`: that puts the credential in your shell
+history and exposes it in `ps` output for the duration of the call.
+
+This writes to your login keychain. The password never appears in the repo, in
+your shell history, or in a release command.
 
 ### 4. Export the two variables
 

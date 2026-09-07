@@ -345,7 +345,7 @@ Manual, gated on the certificate existing (see `docs/releasing-signed-macos.md`)
 export HIVE_SIGN_IDENTITY="Developer ID Application: <Name> (<TEAMID>)"
 export HIVE_NOTARY_PROFILE=hive-notary
 ./build.sh --zip --version 0.0.0-signtest --platform macos
-scripts/sign-macos.sh cmd/hivegui/build/bin/hivegui.app release/Hive-0.0.0-signtest-macos-universal.zip
+scripts/sign-macos.sh release/Hive-0.0.0-signtest-macos-universal.zip
 
 ditto -x -k release/Hive-0.0.0-signtest-macos-universal.zip /tmp/signtest
 codesign --verify --deep --strict --verbose /tmp/signtest/hivegui.app
@@ -474,6 +474,13 @@ Per the loop's one-retry rule the reviewer was not run a third time.
 - **2026-09-06** — Plan item 8 (README/CONTRIBUTING right-click-Open text)
   dropped: no such text exists in either file. It came from a reviewer's guess
   at the blast radius, not from the tree.
+
+## PR convergence ledger
+
+<Append-only. One line per `/hs-review-loop` iteration.>
+
+- **2026-09-06 iter 1** — verdict: COMMENT; mergeable: MERGEABLE; findings_hash: cf0fbed9; threads_open: 0; action: autofix+push; head_sha: 08d4c378.
+- **2026-09-06 iter 2** — verdict: COMMENT; mergeable: MERGEABLE; findings_hash: 0540e4ae; threads_open: 0; action: autofix+push, 6 RISKY surfaced for decision; head_sha: pending.
 
 ## Open questions
 

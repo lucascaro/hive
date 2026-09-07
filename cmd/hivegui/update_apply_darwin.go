@@ -16,6 +16,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/lucascaro/hive/internal/buildinfo"
 	"github.com/lucascaro/hive/internal/registry"
 )
 
@@ -163,7 +164,12 @@ func stageRelease(info UpdateInfo, progress func(string)) (string, error) {
 		return "", err
 	}
 
-	progress("Verifying signature…")
+	// Only announce the step that actually runs: verification is a no-op
+	// on a build with no pin, and claiming otherwise tells the user a
+	// signature was checked when none was.
+	if buildinfo.SigningTeamID() != "" {
+		progress("Verifying signature…")
+	}
 	if err := verifySignatureFn(ctx, bundle); err != nil {
 		return "", err
 	}
@@ -597,8 +603,9 @@ func verifyBundle(bundle string) error {
 }
 
 // dittoExtract unpacks a zip. `ditto -x -k` is the macOS counterpart to
-// the `zip -rq` build.sh packages with, and unlike archive/zip it
-// preserves the symlinks and permissions an .app bundle depends on.
+// the `ditto -c -k --keepParent` build.sh packages with, and unlike
+// archive/zip it preserves the symlinks and permissions an .app bundle
+// depends on.
 func dittoExtract(zipPath, dest string) error {
 	if err := os.MkdirAll(dest, 0o755); err != nil {
 		return err
