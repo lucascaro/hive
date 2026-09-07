@@ -13,7 +13,7 @@
   merged one left there short-circuits the next phase straight back to
   `GATE` before it has built anything.
 - **Phase:** 3 of 3 (see `### Phasing`)
-- **Status:** active
+- **Status:** completed
 
 ## Summary
 
@@ -1615,8 +1615,29 @@ path instead.
   permission classifier, twice. Per the skill it does not block the
   implementation, but this run had no prior-lesson pass over the files
   it touched.
+- **2026-09-07** — PR #377 was merged by the operator as `fbcbecca`
+  while the spec was still at `REVIEW`. Review never converged — ten
+  passes, each finding something real — so `/hs-review-loop` §4a never
+  advanced the stage, and `/hs-merge-gate` refused on that basis
+  earlier. The feature therefore shipped **ungated**: nothing has
+  validated it against the spec's `## Success criteria`, which were
+  amended twice during the work on the strength of measurements.
+  Advancing to `GATE` by hand so the gate can run its degraded
+  post-merge path over `fbcbecca~1..fbcbecca`. Recorded rather than
+  done quietly: this is a stage write the pipeline would not have made
+  on its own, and any failure it now finds becomes a follow-up issue
+  rather than a fix in the PR, because the code has shipped.
 
 ## Gate verdict
+
+- **2026-09-07** — verdict: PASS; phase: 3/3; checks: 8 passed / 0 failed / 0 followups; followups: none; one-line: all eight success criteria verified against the SHIPPED code, including both 2026-09-07 amendments, by running the suites rather than reading comments.
+  - 2026-09-07 dimensions:
+    - acceptance — PASS — each criterion exercised, not inspected: 13 Playwright e2e, 126 vitest, and the Go registry/wire/daemon/`cmd/hived` suites were run. The two amended criteria (offer-instead-of-auto-type, and `started` only on actual delivery) are implemented by `deliveryFor`/`handedOverAtCreate`/`ResolvePrompt` and confirmed by the e2e cases that a typed-path agent is *offered* the prompt and that dismissing keeps the idea in the inbox.
+    - non-goals — PASS — all seven negative checks hold; `cmd/hived/idea.go` untouched, so `add`/`list` only. The one arguable scope call — guarding `cmdExeEscape` and `newWindowsCmd` for EVERY Windows caller rather than just this feature — was judged justified: a root-cause fix at the single choke point, with the decision recorded.
+    - doc accuracy — PASS — README, changeset, spec criteria and `site/features.json` each checked against the code rather than taken on trust, which mattered here: two documentation claims in this PR were false during the work and are now correct. `regression_of: declared-absent` (the changeset is `type: added`, so the field does not apply).
+  - **Gated after the merge, not before.** Review never converged (ten passes), so the stage never reached `GATE` and the gate refused while the PR was open; the operator merged on their own judgement and the gate ran over `fbcbecca~1..fbcbecca` afterwards. It passed, so nothing was lost — but the ordering meant a FAIL here would have become a follow-up issue against shipped code instead of a fix in the PR.
+  - Independently confirmed while gating: `TestTerminalQueriesAreNotWork` fails identically on `fbcbecca~1` in a throwaway worktree, and `state_test.go` was never touched by this diff. That closes out the pre-existing-failure claim this session made repeatedly, with evidence from outside the session.
+
 
 Append-only, one entry per `/hs-merge-gate` run.
 
