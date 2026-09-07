@@ -15,13 +15,12 @@ package buildinfo
 // building on a second machine or from a fork. Baking the ID in means
 // a credential-free build still verifies the releases it downloads.
 //
-// Empty disables verification, which is the state of this repo until
-// the Developer ID certificate exists. scripts/release.sh refuses to
-// publish while it is empty, so an unpinned build cannot reach users.
+// Empty disables verification. scripts/release.sh refuses to publish
+// while it is empty, so an unpinned build cannot reach users.
 //
 // A var rather than a const so tests can override it; nothing else
 // writes to it.
-var signingTeamID = ""
+var signingTeamID = "2ZY25TNMX6"
 
 // SigningTeamID returns the Apple Developer Team ID that release
 // builds are signed with, or "" when this build has no pin.
