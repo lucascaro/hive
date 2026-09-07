@@ -682,3 +682,81 @@ func TestResolvePromptUnknownSession(t *testing.T) {
 		t.Errorf("err = %v, want ErrNotFound", err)
 	}
 }
+
+// Paste with no running process must keep the offer and say why.
+//
+// The bug this pins: ResolvePrompt cleared pendingPrompt and broadcast
+// BEFORE checking for a live PTY, then returned an error the daemon
+// swallowed. The bar vanished exactly as it does on success, the note
+// never reached a terminal, and the user was told nothing. Reachable
+// without any exit race — Restart nils e.sess while a prompt is still
+// pending.
+func TestResolvePromptRefusesWithNoLiveSession(t *testing.T) {
+	skipOnWindows(t)
+	r, p := ideaRegistry(t)
+	idea, err := r.AddIdea(IdeaSpec{ProjectID: p.ID, Text: "still mine"})
+	if err != nil {
+		t.Fatalf("AddIdea: %v", err)
+	}
+	e, sess := liveSession(t, r, wire.CreateSpec{Name: "restarting", ProjectID: p.ID})
+	queuePrompt(r, e.ID, "still mine", idea.ID)
+	// The state Restart leaves behind: entry alive, process gone.
+	if err := sess.Close(); err != nil {
+		t.Fatalf("Close: %v", err)
+	}
+	waitFor(t, "the session to be seen as gone", func() bool {
+		r.mu.Lock()
+		defer r.mu.Unlock()
+		return r.entries[e.ID].sess == nil
+	})
+	// watchSessionExit clears a pending prompt on a real exit, so put
+	// it back to model the restart case, where the entry outlives the
+	// process and the offer should still stand.
+	queuePrompt(r, e.ID, "still mine", idea.ID)
+
+	if err := r.ResolvePrompt(e.ID, true); !errors.Is(err, ErrNoLiveSession) {
+		t.Fatalf("err = %v, want ErrNoLiveSession", err)
+	}
+	// The offer survives, so it can be clicked again once the process
+	// is back.
+	if got := pendingPromptOf(r, e.ID); got != "still mine" {
+		t.Errorf("pendingPrompt = %q, want the offer left standing", got)
+	}
+	if got := ideaStatus(t, r, idea.ID).Status; got != wire.IdeaStatusOpen {
+		t.Errorf("idea status = %q, want %q", got, wire.IdeaStatusOpen)
+	}
+	// Dismiss still works with no process — there is nothing to write.
+	if err := r.ResolvePrompt(e.ID, false); err != nil {
+		t.Fatalf("dismiss with no process: %v", err)
+	}
+	if got := pendingPromptOf(r, e.ID); got != "" {
+		t.Errorf("pendingPrompt = %q after dismiss, want it cleared", got)
+	}
+}
+
+// The drop-on-exit clause in watchSessionExit is still live code, and
+// its only test went out with the auto-typing machinery it used to
+// belong to. Reached by closing the PTY rather than by Kill: Kill
+// removes the entry, so watchSessionExit returns at its `!ok` guard
+// before the clause runs.
+func TestPendingPromptWithdrawnWhenTheSessionEnds(t *testing.T) {
+	skipOnWindows(t)
+	r, p := ideaRegistry(t)
+	idea, err := r.AddIdea(IdeaSpec{ProjectID: p.ID, Text: "too late"})
+	if err != nil {
+		t.Fatalf("AddIdea: %v", err)
+	}
+	e, sess := liveSession(t, r, wire.CreateSpec{Name: "dying", ProjectID: p.ID})
+	queuePrompt(r, e.ID, "too late", idea.ID)
+
+	if err := sess.Close(); err != nil {
+		t.Fatalf("Close: %v", err)
+	}
+	waitFor(t, "the offer to be withdrawn", func() bool {
+		return pendingPromptOf(r, e.ID) == ""
+	})
+	// Withdrawn, not delivered: the note stays startable.
+	if got := ideaStatus(t, r, idea.ID).Status; got != wire.IdeaStatusOpen {
+		t.Errorf("idea status = %q, want %q", got, wire.IdeaStatusOpen)
+	}
+}

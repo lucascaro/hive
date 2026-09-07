@@ -69,6 +69,15 @@ func SetStartSessionForTest(fn func(session.Options) (*session.Session, error)) 
 // wire.ErrCodeWorktreeDirty so the GUI can confirm with the user.
 var ErrWorktreeDirty = errors.New("registry: worktree has uncommitted changes")
 
+// ErrNoLiveSession is returned by ResolvePrompt when the session is
+// known but has no running process to paste into — it is being
+// restarted, or it exited in the window between the offer being drawn
+// and the user clicking Paste. Distinct from ErrNotFound on purpose:
+// the daemon swallows ErrNotFound (an unknown id is a benign race with
+// a close), and swallowing this one too would take the note away with
+// no explanation at all.
+var ErrNoLiveSession = errors.New("registry: session has no running process")
+
 // Entry pairs persisted metadata with the live session. The session is
 // nil for entries loaded from disk that haven't been started this run.
 type Entry struct {
@@ -545,6 +554,19 @@ func (r *Registry) ResolvePrompt(id string, paste bool) error {
 		r.mu.Unlock()
 		return nil
 	}
+	// Checked BEFORE anything is cleared. Clearing first and finding
+	// out afterwards was the whole bug: the bar vanished exactly as it
+	// does on success, the note never reached the terminal, and the
+	// error was swallowed downstream — so the user lost the note and
+	// was told nothing. Reachable without any exit race, because
+	// Restart nils e.sess while a prompt is still pending.
+	//
+	// The offer is deliberately LEFT STANDING so it can be clicked
+	// again once the process is back.
+	if paste && sess == nil {
+		r.mu.Unlock()
+		return ErrNoLiveSession
+	}
 	e.pendingPrompt = ""
 	info := e.Info()
 	r.broadcastLocked(wire.SessionEventUpdated, info)
@@ -556,10 +578,6 @@ func (r *Registry) ResolvePrompt(id string, paste bool) error {
 		// again.
 		log.Printf("registry: opening prompt for %s dismissed", id)
 		return nil
-	}
-	if sess == nil {
-		log.Printf("registry: cannot paste the opening prompt for %s: no live session", id)
-		return ErrNotFound
 	}
 	if _, err := sess.Write([]byte(prompt)); err != nil {
 		log.Printf("registry: pasting the opening prompt for %s: %v", id, err)

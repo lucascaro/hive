@@ -1381,6 +1381,11 @@ func (d *Daemon) handleControlFrame(ctx context.Context, ops controlOps, ft wire
 		if !ok {
 			return false
 		}
+		// ErrNotFound alone is swallowed: an unknown id here is a
+		// benign race with a close. ErrNoLiveSession is NOT — the
+		// session is real and the note is still pending, so the user
+		// has to be told why nothing was pasted, or it looks exactly
+		// like a successful paste that vanished.
 		if err := d.reg.ResolvePrompt(req.SessionID, req.Paste); err != nil &&
 			!errors.Is(err, registry.ErrNotFound) {
 			ops.sendError("resolve_prompt_failed", err.Error())

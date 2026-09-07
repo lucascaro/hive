@@ -1274,6 +1274,18 @@ path instead.
   the ones the tier can classify. Claude and Pi are unaffected (argv).
   The spec's success criterion was amended to match, since
   `/hs-merge-gate` validates against it.
+- **2026-09-07** — Review of the offer redesign, fixed: `ResolvePrompt`
+  cleared the pending prompt and broadcast BEFORE checking for a live
+  PTY, then returned `ErrNotFound` — which the daemon deliberately
+  swallows as a benign race with a close. So pasting into a session
+  whose process was gone withdrew the bar exactly as a success does,
+  never wrote the note, and said nothing: the user lost it silently.
+  Not an exit race either — `Restart` nils `e.sess` while a prompt is
+  still pending. The check now happens before anything is cleared, the
+  offer is left standing so it can be clicked again once the process is
+  back, and a new `ErrNoLiveSession` is surfaced rather than swallowed.
+  Dismiss still works with no process, because there is nothing to
+  write.
 - **2026-09-07** — **Automatic typing is gone; the prompt is now
   offered.** Requested by the operator after the measurement below —
   "instead of typing, add a paste / dismiss button so I can paste the
