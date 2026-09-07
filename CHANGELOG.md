@@ -170,6 +170,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   same "restart to finish updating" banner it shows for any out-of-date
   daemon; restarting from there shuts the old one down and starts the new
   one. Nothing to do by hand.
+- The "latest" update channel now checks that the source checkout's
+  remote is exactly github.com/lucascaro/hive before pulling and
+  building from it. A URL that merely contained that text used to pass.
 
 ## [2.6.0] — 2026-09-04
 
