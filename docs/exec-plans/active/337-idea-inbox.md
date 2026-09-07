@@ -1414,6 +1414,9 @@ collision is under Open questions.
 
 - **2026-09-07 iter 1** — verdict: REQUEST_CHANGES (COMMENT coerced — non-empty findings hash); mergeable: MERGEABLE; findings_hash: c6003b73e77736db8b3a86fa613ad8e77ac490db8de661a72513150697b808d0; threads_open: 0; action: autofix+push (one SAFE item — a Go test pinning `InitialPrompt`/`IdeaID` onto the wire frame, which nothing covered), then escalated:ci-check-failed + risky-fix-needs-human-decision (4 items); head_sha: 73ccb37.
 
+- **2026-09-07 iter 2** — verdict: REQUEST_CHANGES; mergeable: MERGEABLE; findings_hash: 67c463e7171509f8aabbc625df06d9ce20755ca217c3571b5160f79ce5cd918f; threads_open: 0; action: autofix+push (4 safe doc/comment fixes, `a2e1855c`), then escalated:risky-fix-needs-human-decision (1 BLOCKING + 7); head_sha: a2e1855c.
+- **2026-09-07 iter 2b** — all eight were taken by the operator rather than left standing, and the BLOCKING one was reproduced first (a note containing `$(touch <marker>)` created the marker). See the Decision log entries of the same date. Fixed in `d9874a83`.
+
 ## Open questions
 
 - **Ctrl+I collides with the terminal's Tab byte on Windows and Linux.**
