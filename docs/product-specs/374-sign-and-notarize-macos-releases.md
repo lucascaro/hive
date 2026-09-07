@@ -5,7 +5,7 @@ title: "Sign and notarize macOS releases"
 type: enhancement
 complexity: M
 priority: P2
-stage: BACKLOG
+stage: TRIAGE
 ---
 
 # Sign and notarize macOS releases
