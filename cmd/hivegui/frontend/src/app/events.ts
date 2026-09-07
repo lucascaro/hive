@@ -18,9 +18,10 @@ import {
   onSessionRemoved,
   onSessionRestored,
 } from './undo-close.js';
-import type { SessionInfo, ProjectInfo } from './state.js';
+import type { IdeaInfo, SessionInfo, ProjectInfo } from './state.js';
 import { readNeedsAttention } from './state.js';
 import {
+  addIdea,
   addProject,
   addSession,
   clearDismissedDead,
@@ -31,8 +32,11 @@ import {
   setActiveId,
   setAlive,
   applyProjectList,
+  removeIdea,
+  setIdeas,
   setSessionPhase,
   setSessions,
+  updateIdea,
   updateProject,
   updateSession,
 } from '../store/store.js';
@@ -41,7 +45,9 @@ import { appStore } from '../store/store.js';
 import { setStatus, flashStatus, reportFailure, setBootState } from './dom.js';
 import { orderedSessions } from './selectors.js';
 import { handleWorktreesPayload } from './modals/worktrees.js';
+import { refreshIdeas } from './modals/idea-inbox.js';
 import { openChoiceDialog } from './modals/choice-dialog.js';
+import { KillProject } from '../bridge.js';
 import type { WorktreesPayload } from '../lib/worktrees.js';
 import { PHASE, phaseOf, isReady, isClosing } from '../lib/phase-steps.js';
 import { pruneNav } from '../lib/nav-history.js';
@@ -112,10 +118,18 @@ interface SessionEvent {
   session: SessionInfo;
 }
 
+interface IdeaEvent {
+  kind: 'added' | 'removed' | 'updated';
+  idea: IdeaInfo;
+}
+
 interface ControlError {
   code?: string;
   message?: string;
   session_id?: string;
+  // Set on project_has_ideas, so the confirm knows which project to
+  // re-issue the delete for without guessing from the focused one.
+  project_id?: string;
 }
 
 interface PtyError {
@@ -142,6 +156,9 @@ export async function reconnectControl(
       try {
         await ConnectControl();
         setStatus('connected');
+        // A reconnect is a fresh control connection, so it needs the
+        // same one-shot idea fetch boot does — see main.tsx.
+        refreshIdeas();
         try {
           LogFrontend('control reconnected');
         } catch {
@@ -377,6 +394,33 @@ export function wireDaemonEvents(injected: EventsDeps) {
       return;
     }
     handleWorktreesPayload(payload);
+  });
+
+  // The daemon does not push ideas in its initial snapshot — the GUI
+  // asks once per connection (app/modals/idea-inbox.ts refreshIdeas)
+  // and the fan-out below keeps it current from then on.
+  EventsOn('idea:list', (jsonStr: string) => {
+    let payload: { ideas?: IdeaInfo[] };
+    try {
+      payload = JSON.parse(jsonStr) as { ideas?: IdeaInfo[] };
+    } catch {
+      flashStatus('bad idea payload', true);
+      return;
+    }
+    setIdeas(payload.ideas || []);
+  });
+
+  EventsOn('idea:event', (jsonStr: string) => {
+    let ev: IdeaEvent;
+    try {
+      ev = JSON.parse(jsonStr) as IdeaEvent;
+    } catch {
+      flashStatus('bad idea event', true);
+      return;
+    }
+    if (ev.kind === 'added') addIdea(ev.idea);
+    else if (ev.kind === 'removed') removeIdea(ev.idea.id);
+    else if (ev.kind === 'updated') updateIdea(ev.idea);
   });
 
   EventsOn('project:event', (jsonStr: string) => {
@@ -834,6 +878,44 @@ export function wireDaemonEvents(injected: EventsDeps) {
       }
       noteLocalClose(e.session_id, sessName);
       KillSession(e.session_id, true).catch(reportFailure('force kill'));
+      return;
+    }
+    // Deleting a project destroys its ideas, so the daemon refuses
+    // while any is still open and this is the confirmation that
+    // overrides it — the same refuse-then-force contract as
+    // worktree_dirty above. killSessions is recomputed exactly as
+    // confirmAndDeleteProject (app/keyboard.ts) computes it, so the
+    // retry carries the same answer the first attempt did.
+    if (e.code === 'project_has_ideas' && e.project_id) {
+      const proj = appData().projects.find((p) => p.id === e.project_id);
+      const answer = await openChoiceDialog({
+        title: 'Delete this project and its ideas?',
+        detail: proj?.name ?? 'Project',
+        bullets: [e.message ?? 'It still has open ideas.'],
+        note: 'The ideas captured for it are deleted with it — nothing else can reach them once the project is gone. This cannot be undone.',
+        choices: [
+          { label: 'Cancel', value: 'cancel' },
+          { label: 'Delete project and ideas', value: 'delete', danger: true },
+        ],
+      });
+      if (answer !== 'delete') return;
+      // The dialog is async and modal: the project may be gone (another
+      // window deleted it) by the time it resolves.
+      if (!appData().projects.some((p) => p.id === e.project_id)) return;
+      const sessions = appData().sessions.filter(
+        (s) => (s.projectId ?? s.project_id) === e.project_id,
+      );
+      KillProject(e.project_id, sessions.length > 0, true).catch(
+        reportFailure('delete project'),
+      );
+      return;
+    }
+    // The capture sheet refuses an oversize note before sending, so
+    // this is the case that outruns it — another client, or a note
+    // that grew past the cap between the check and the write. Named,
+    // because the generic fallback below prints the raw code.
+    if (e.code === 'idea_too_long') {
+      flashStatus('idea is too long — shorten it and try again', true);
       return;
     }
     // Worktree-browser refusals. worktree_in_use is not overridable,

@@ -136,6 +136,19 @@ export type MockBranch = {
   merged?: boolean;
 };
 
+/** One captured idea, mirroring wire.IdeaInfo (snake_case). */
+export type MockIdea = {
+  id: string;
+  project_id: string;
+  kind: string;
+  text: string;
+  status: string;
+  created: string;
+  updated: string;
+  source_session_id?: string;
+  session_id?: string;
+};
+
 /** One closed session the mock can still reopen. */
 export type MockClosed = {
   session: MockSession;
@@ -154,6 +167,7 @@ const state: {
   // <stateDir>/closed/. `degraded` is what the daemon would report on
   // SESSION_RESTORED for this particular close.
   closed: MockClosed[];
+  ideas: MockIdea[];
 } = {
   projects: [
     {
@@ -186,6 +200,9 @@ const state: {
   orphanBranches: [],
   deletedRemotes: [],
   closed: [],
+  // Seeded empty, like worktrees: a spec that needs ideas files them
+  // through the UI or seeds them with window.__hive.seedIdeas.
+  ideas: [],
 };
 
 function broadcast() {
@@ -601,7 +618,7 @@ export async function SaveCustomAgents(list: CustomAgent[] | null) {
 }
 // Project mutations are positional too, matching the real bindings
 // (cmd/hivegui/app.go): CreateProject(name, color, cwd),
-// KillProject(id, killSessions), UpdateProject(id, name, color, cwd,
+// KillProject(id, killSessions, deleteIdeas), UpdateProject(id, name, color, cwd,
 // order). The old object-shaped/no-op forms silently no-op'd every
 // project create/save/delete driven through the UI — the same defect
 // UpdateSession had.
@@ -624,10 +641,37 @@ export async function CreateProject(name: string, color: string, cwd: string) {
   emit('project:event', JSON.stringify({ kind: 'added', project: p }));
   return id;
 }
-export async function KillProject(id: string, killSessions: boolean) {
+export async function KillProject(
+  id: string,
+  killSessions: boolean,
+  deleteIdeas: boolean,
+) {
   maybeFail('KillProject');
   const i = state.projects.findIndex((p) => p.id === id);
   if (i < 0) return '';
+  // The daemon refuses while the project still holds open ideas and
+  // takes deleteIdeas as the after-confirmation override
+  // (registry/projects.go KillProject). The GUI's confirm branch is in
+  // app/events.ts.
+  const open = state.ideas.filter(
+    (x) => x.project_id === id && x.status !== 'done',
+  );
+  if (open.length > 0 && !deleteIdeas) {
+    emit(
+      'control:error',
+      JSON.stringify({
+        code: 'project_has_ideas',
+        message: `${open.length} open`,
+        project_id: id,
+      }),
+    );
+    return '';
+  }
+  for (let j = state.ideas.length - 1; j >= 0; j--) {
+    if (state.ideas[j].project_id !== id) continue;
+    const [gone] = state.ideas.splice(j, 1);
+    emit('idea:event', JSON.stringify({ kind: 'removed', idea: gone }));
+  }
   // The daemon reassigns the orphaned sessions to the first surviving
   // project rather than leaving them pointing at a deleted one
   // (registry/projects.go KillProject).
@@ -674,6 +718,75 @@ export async function UpdateProject(
   emit('project:event', JSON.stringify({ kind: 'updated', project: p }));
   return '';
 }
+
+// --- ideas ---
+//
+// The daemon owns these (internal/registry/ideas.go); the mock keeps
+// just enough to drive the GUI: a list request answered with IDEAS,
+// and three mutations each answered with the IDEA_EVENT fan-out the
+// real daemon sends to every control connection.
+let nextIdeaSeq = 0;
+export async function ListIdeas(projectID: string) {
+  maybeFail('ListIdeas');
+  const ideas = projectID
+    ? state.ideas.filter((i) => i.project_id === projectID)
+    : state.ideas;
+  emit('idea:list', JSON.stringify({ ideas }));
+  return '';
+}
+export async function AddIdea(
+  sessionID: string,
+  projectID: string,
+  kind: string,
+  text: string,
+) {
+  maybeFail('AddIdea');
+  // The daemon resolves an empty project from the filing session's live
+  // registry entry, and falls back to the default project.
+  const fromSession = state.sessions.find((s) => s.id === sessionID);
+  const pid =
+    projectID || fromSession?.project_id || state.projects[0]?.id || '';
+  nextIdeaSeq += 1;
+  const now = new Date().toISOString();
+  const idea: MockIdea = {
+    id: `i-${nextIdeaSeq}`,
+    project_id: pid,
+    kind: kind || 'idea',
+    text,
+    status: 'open',
+    created: now,
+    updated: now,
+    source_session_id: sessionID || undefined,
+  };
+  state.ideas.push(idea);
+  emit('idea:event', JSON.stringify({ kind: 'added', idea }));
+  return '';
+}
+export async function UpdateIdea(
+  id: string,
+  text: string,
+  status: string,
+  sessionID: string,
+) {
+  maybeFail('UpdateIdea');
+  const idea = state.ideas.find((i) => i.id === id);
+  if (!idea) return '';
+  if (text) idea.text = text;
+  if (status) idea.status = status;
+  if (sessionID) idea.session_id = sessionID;
+  idea.updated = new Date().toISOString();
+  emit('idea:event', JSON.stringify({ kind: 'updated', idea }));
+  return '';
+}
+export async function RemoveIdea(id: string) {
+  maybeFail('RemoveIdea');
+  const i = state.ideas.findIndex((x) => x.id === id);
+  if (i < 0) return '';
+  const [gone] = state.ideas.splice(i, 1);
+  emit('idea:event', JSON.stringify({ kind: 'removed', idea: gone }));
+  return '';
+}
+
 export async function LaunchDir() {
   return '';
 }
@@ -964,6 +1077,12 @@ if (typeof window !== 'undefined') {
     },
     createSessionWithWorktree(name: string, branch?: string) {
       return CreateSession('', 'p1', name, '', 0, 0, true, undefined, branch);
+    },
+    // Ideas the daemon already knew about when this window connected —
+    // the boot LIST_IDEAS is what delivers them, so seed before it.
+    seedIdeas(ideas: MockIdea[]) {
+      state.ideas.length = 0;
+      state.ideas.push(...ideas);
     },
     seedWorktrees(worktrees: MockWorktree[], branches: MockBranch[] = []) {
       state.worktrees.length = 0;

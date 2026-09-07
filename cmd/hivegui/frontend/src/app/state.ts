@@ -79,6 +79,27 @@ export function readNeedsAttention(s: SessionInfo): boolean {
   return s.needs_attention === true;
 }
 
+/** One captured idea (internal/wire/control.go IdeaInfo).
+ *
+ * Single-spelled snake_case like `needs_attention`: these arrive as
+ * raw JSON on the control connection, where the daemon's struct tags
+ * are the only spelling that exists. `external_ref` is deliberately
+ * absent — the daemon persists it but does not put it on the wire. */
+export interface IdeaInfo {
+  id: string;
+  project_id: string;
+  kind: string;
+  text: string;
+  status: string;
+  /** RFC 3339. */
+  created: string;
+  updated: string;
+  /** The session it was filed from, when it was filed from one. */
+  source_session_id?: string;
+  /** The session started from it, set together with status=started. */
+  session_id?: string;
+}
+
 export interface ProjectInfo {
   id: string;
   name?: string;

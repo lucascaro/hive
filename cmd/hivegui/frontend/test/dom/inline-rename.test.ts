@@ -82,3 +82,87 @@ describe('cancelInlineRenameFor', () => {
     expect(inlineRenameActive()).toBe(false);
   });
 });
+
+// validate is what lets a caller whose commit can be REJECTED — not
+// merely fail — keep the user's text: finish() unmounts before onCommit
+// ever runs, so without it a refused value is gone by the time anyone
+// knows it was refused. The idea inbox's 4 KiB cap is the first user.
+describe('validate', () => {
+  function startValidated(ok: (next: string) => boolean, value = 'name') {
+    const host = document.createElement('div');
+    document.body.append(host);
+    const onCommit = vi.fn();
+    const onDone = vi.fn();
+    const validate = vi.fn(ok);
+    const input = beginInlineRename({
+      value,
+      className: 'name-input',
+      mount: (el) => host.append(el),
+      unmount: (el) => el.remove(),
+      onCommit,
+      onDone,
+      validate,
+    });
+    return { input, onCommit, onDone, validate };
+  }
+  const enter = (input: HTMLInputElement) =>
+    input.dispatchEvent(
+      new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }),
+    );
+
+  it('keeps the editor open, focused and holding the text it refused', () => {
+    const { input, onCommit, onDone } = startValidated(() => false);
+    input.value = 'refused';
+    enter(input);
+    expect(onCommit).not.toHaveBeenCalled();
+    expect(onDone).not.toHaveBeenCalled();
+    expect(input.isConnected).toBe(true);
+    expect(input.value).toBe('refused');
+    expect(document.activeElement).toBe(input);
+    expect(inlineRenameActive()).toBe(true);
+  });
+
+  it('refuses a blur commit too, rather than letting it slip through', () => {
+    const { input, onCommit } = startValidated(() => false);
+    input.value = 'refused';
+    input.dispatchEvent(new FocusEvent('blur'));
+    expect(onCommit).not.toHaveBeenCalled();
+    expect(input.isConnected).toBe(true);
+  });
+
+  it('never validates Escape — backing out is always allowed', () => {
+    const { input, onCommit, onDone, validate } = startValidated(() => false);
+    input.value = 'refused';
+    input.dispatchEvent(
+      new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }),
+    );
+    expect(validate).not.toHaveBeenCalled();
+    expect(onCommit).not.toHaveBeenCalled();
+    expect(onDone).toHaveBeenCalled();
+    expect(input.isConnected).toBe(false);
+  });
+
+  it('is not consulted for an unchanged or empty value', () => {
+    const { input, validate, onDone } = startValidated(() => false, 'name');
+    // Unchanged: finish() short-circuits before onCommit, so there is
+    // nothing to gate.
+    enter(input);
+    expect(validate).not.toHaveBeenCalled();
+    expect(onDone).toHaveBeenCalled();
+    expect(input.isConnected).toBe(false);
+  });
+
+  it('commits normally once the value passes', () => {
+    const { input, onCommit, onDone } = startValidated(
+      (next) => next !== 'refused',
+    );
+    input.value = 'refused';
+    enter(input);
+    expect(onCommit).not.toHaveBeenCalled();
+    input.value = 'fine';
+    enter(input);
+    expect(onCommit).toHaveBeenCalledWith('fine');
+    expect(onDone).toHaveBeenCalled();
+    expect(input.isConnected).toBe(false);
+  });
+});

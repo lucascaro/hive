@@ -47,6 +47,12 @@ import {
 } from './modals/command-palette.js';
 import { openSettings, closeSettings } from './modals/settings.js';
 import { openWorktrees, closeWorktrees } from './modals/worktrees.js';
+import { openQuickIdea, closeQuickIdea } from './modals/quick-idea.js';
+import {
+  openIdeaInbox,
+  closeIdeaInbox,
+  ideaInboxProjectId,
+} from './modals/idea-inbox.js';
 import {
   choiceDialogOpen,
   dismissChoiceDialog,
@@ -231,6 +237,60 @@ window.addEventListener(
       }
       return; // the worktree browser owns the keyboard while open
     }
+    if (isModalOpen('quick-idea')) {
+      // Same shape as settings: a form with its own fields, so Tab is
+      // left to walk them. ⌘I toggles it closed, which is what makes
+      // the capture sheet feel like a sheet rather than a dialog.
+      if (
+        e.key === 'Escape' ||
+        (cmdOrCtrl(e) && !e.shiftKey && (e.key === 'i' || e.key === 'I'))
+      ) {
+        e.preventDefault();
+        e.stopPropagation();
+        closeQuickIdea();
+      } else if (
+        cmdOrCtrl(e) &&
+        e.shiftKey &&
+        (e.key === 'i' || e.key === 'I')
+      ) {
+        // ⇧⌘I from the sheet goes to the inbox, which closes the sheet
+        // on the way. Without this arm the gate returns and trapFocus
+        // swallows the chord — but only off macOS, where the keydown
+        // path is the only path: on mac the native accelerator reaches
+        // toggleIdeaInbox() regardless. Same chord, two behaviours, and
+        // the platform split this pair exists to prevent.
+        e.preventDefault();
+        e.stopPropagation();
+        toggleIdeaInbox();
+      } else if (trapFocus(pageEl('quick-idea'), e)) {
+        e.stopPropagation();
+      }
+      return; // the capture sheet owns the keyboard while open
+    }
+    // NOTE: the idea-inbox gate below and the ⌘I / ⇧⌘I bindings further
+    // down both route through captureIdea() / toggleIdeaInbox(). Those
+    // two functions are ALSO the menu handlers, and on macOS they are
+    // the only path that runs — see their doc comments.
+    if (isModalOpen('idea-inbox')) {
+      // ⇧⌘I toggles closed.
+      if (
+        e.key === 'Escape' ||
+        (cmdOrCtrl(e) && e.shiftKey && (e.key === 'i' || e.key === 'I'))
+      ) {
+        e.preventDefault();
+        e.stopPropagation();
+        closeIdeaInbox();
+        return;
+      }
+      if (cmdOrCtrl(e) && !e.shiftKey && (e.key === 'i' || e.key === 'I')) {
+        e.preventDefault();
+        e.stopPropagation();
+        captureIdea();
+        return;
+      }
+      if (trapFocus(pageEl('idea-inbox'), e)) e.stopPropagation();
+      return; // the inbox owns the keyboard while open
+    }
     if (isModalOpen('help')) {
       if (e.key === 'Escape' || isHelpOverlayKey(e)) {
         e.preventDefault();
@@ -380,6 +440,10 @@ window.addEventListener(
     } else if (e.key === 'e' || e.key === 'E') {
       swallow();
       openWorktreesForActiveProject();
+    } else if (e.key === 'i' || e.key === 'I') {
+      swallow();
+      if (e.shiftKey) toggleIdeaInbox();
+      else captureIdea();
     } else if (e.key === 's' || e.key === 'S') {
       swallow();
       // Route through toggleSidebar so the keyboard path stays in
@@ -744,6 +808,16 @@ const menuActions = {
   'menu:command-palette': () => openCommandPalette(),
   'menu:settings': () => openSettings(),
   'menu:worktrees': () => openWorktreesForActiveProject(),
+  // Toggles, and modal-aware, for the same reason
+  // 'menu:keyboard-shortcuts' is: the native ⌘I / ⇧⌘I accelerators
+  // (menu_darwin.go) intercept the chord before the webview on macOS,
+  // so on that platform these ARE the handlers — the window listener's
+  // ⌘I branches never run. A bare open() here would reopen the sheet
+  // over itself (discarding the typed note), open it behind the inbox,
+  // and prefill the wrong project, which is the whole class of bug the
+  // keydown branches exist to avoid.
+  'menu:quick-idea': () => captureIdea(),
+  'menu:idea-inbox': () => toggleIdeaInbox(),
   'menu:close-session': () => closeActiveSession(),
   'menu:reopen-closed-session': () => reopenLastClosedSession(),
   'menu:zoom-in': () => deps.bumpFontSize(+1),
@@ -795,7 +869,11 @@ export async function confirmAndDeleteProject(
     : `Delete project "${proj.name}"?`;
   const ok = await Confirm('Delete project', msg);
   if (!ok) return;
-  KillProject(proj.id, sessions.length > 0).catch(
+  // deleteIdeas=false: the daemon refuses with project_has_ideas when
+  // the project still holds open ideas, and app/events.ts asks that
+  // second question — losing captured notes is a separate consent from
+  // losing the project.
+  KillProject(proj.id, sessions.length > 0, false).catch(
     reportFailure('delete project'),
   );
 }
@@ -811,6 +889,80 @@ export function deleteActiveProject() {
 export function openWorktreesForActiveProject() {
   const pid = activeProjectId();
   openWorktrees(appData().projects.find((p) => p.id === pid) ?? null);
+}
+
+// The inbox is per-project too, so it resolves the project the same
+// way. With no project at all this opens nothing rather than falling
+// back to the first one: ⇧⌘I is a stray-keystroke away from ⌘I, and an
+// unrelated project's inbox is a worse answer than none.
+export function openIdeaInboxForActiveProject() {
+  const pid = activeProjectId();
+  openIdeaInbox(appData().projects.find((p) => p.id === pid) ?? null);
+}
+
+// ---------- ⌘I / ⇧⌘I ----------
+//
+// One implementation each, called from BOTH the window keydown handler
+// and the native menu. On macOS the menu accelerator swallows the chord
+// before the webview (see menuActions, and the same note on
+// 'menu:keyboard-shortcuts'), so these functions are the only path that
+// runs there; on Windows and Linux there is no menu at all and only the
+// keydown path runs. Keeping the decision in one place is what stops
+// the two platforms from behaving differently — the first version of
+// this feature put it in the keydown branch alone and was inert on mac.
+
+// ideaKeysBlocked mirrors the window handler's modal ladder for the
+// menu path. Every gate above the ⌘I binding returns before reaching
+// it, so a menu item that punched through them would give macOS a
+// behaviour no other platform has — a capture sheet over the settings
+// dialog, or over a question about deleting a worktree.
+function ideaKeysBlocked(): boolean {
+  if (choiceDialogOpen() || inlineRenameActive()) return true;
+  return (
+    isModalOpen('launcher') ||
+    isModalOpen('project-editor') ||
+    isModalOpen('command-palette') ||
+    isModalOpen('settings') ||
+    isModalOpen('worktrees') ||
+    isModalOpen('help') ||
+    isModalOpen('whats-new')
+  );
+}
+
+// captureIdea is ⌘I: open the capture sheet, close it if it is already
+// up, and — from the inbox — close the inbox first and carry ITS
+// project into the sheet. That last part is two bugs avoided rather
+// than a nicety: every .hv-dialog shares z-index 40 and #idea-inbox is
+// later in index.html, so a sheet left over it paints BEHIND it; and
+// openQuickIdea() with no argument prefills activeProjectId(), the
+// focused session's project, so filing from another project's inbox
+// would land the note somewhere the user never looked.
+export function captureIdea() {
+  if (ideaKeysBlocked()) return;
+  if (isModalOpen('quick-idea')) {
+    closeQuickIdea();
+    return;
+  }
+  if (isModalOpen('idea-inbox')) {
+    const projectId = ideaInboxProjectId();
+    closeIdeaInbox();
+    openQuickIdea(projectId);
+    return;
+  }
+  openQuickIdea();
+}
+
+// toggleIdeaInbox is ⇧⌘I. The capture sheet closes first: it is the
+// smaller thing and it is what the user just came from, and leaving it
+// up would put it behind the panel.
+export function toggleIdeaInbox() {
+  if (ideaKeysBlocked()) return;
+  if (isModalOpen('idea-inbox')) {
+    closeIdeaInbox();
+    return;
+  }
+  if (isModalOpen('quick-idea')) closeQuickIdea();
+  openIdeaInboxForActiveProject();
 }
 
 // moveActiveSession walks the (project_order, session_order) list.
