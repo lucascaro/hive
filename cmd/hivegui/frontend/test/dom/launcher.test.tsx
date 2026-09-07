@@ -705,36 +705,61 @@ describe('launcher branch name', () => {
     expect(warn()?.textContent).toBe('');
   });
 
+  const tab = (shift = false) => {
+    act(() => {
+      (document.activeElement ?? launcher()).dispatchEvent(
+        new window.KeyboardEvent('keydown', {
+          key: 'Tab',
+          shiftKey: shift,
+          bubbles: true,
+        }),
+      );
+    });
+  };
+
   it('cycles Tab through the popup\u2019s own fields without closing it', async () => {
     // Handing Tab to the browser was the obvious fix for "the textarea
     // is unreachable" and it was wrong: nothing traps focus here and
     // focusout closes the popup, so one Tab past the last field
     // dismissed the launcher and discarded the brief.
+    //
+    // The worktree toggle is ON, so the branch field is in the cycle —
+    // the full search → prompt → branch → search rotation, asserted by
+    // element and not merely by "focus is still somewhere inside".
+    localStorage.setItem('hive.worktree', '1');
     await open({ initialPrompt: 'seeded', ideaId: 'i7' });
     expect(document.activeElement).toBe(searchBox());
 
-    const tab = (shift = false) => {
-      act(() => {
-        (document.activeElement ?? launcher()).dispatchEvent(
-          new window.KeyboardEvent('keydown', {
-            key: 'Tab',
-            shiftKey: shift,
-            bubbles: true,
-          }),
-        );
-      });
-    };
+    tab();
+    expect(document.activeElement).toBe(promptBox());
+    tab();
+    expect(document.activeElement).toBe(branchBox());
+    tab();
+    expect(document.activeElement).toBe(searchBox());
+    // Never out of the popup, so it never closes.
+    expect(launcher().classList.contains('hidden')).toBe(false);
+
+    // And backwards, all the way round.
+    tab(true);
+    expect(document.activeElement).toBe(branchBox());
+    tab(true);
+    expect(document.activeElement).toBe(promptBox());
+  });
+
+  it('drops the branch field from the cycle when the worktree toggle is off', async () => {
+    // The reason the visibility test has to be this app's `.hidden`
+    // convention rather than offsetParent: jsdom has no layout, so an
+    // offsetParent rule collapses the field list and makes the test
+    // above assert nothing. With the toggle off the branch box carries
+    // `.hidden`, so the cycle is search → prompt → search.
+    localStorage.setItem('hive.worktree', '0');
+    await open({ initialPrompt: 'seeded', ideaId: 'i7' });
+    expect(branchBox().classList.contains('hidden')).toBe(true);
 
     tab();
     expect(document.activeElement).toBe(promptBox());
-    // Round the cycle and back to the start — never out of the popup.
     tab();
-    tab();
-    expect(launcher().contains(document.activeElement)).toBe(true);
-    expect(launcher().classList.contains('hidden')).toBe(false);
-    // And backwards.
-    tab(true);
-    expect(launcher().contains(document.activeElement)).toBe(true);
+    expect(document.activeElement).toBe(searchBox());
   });
 
   it('shows the keys that act on the prompt box', async () => {

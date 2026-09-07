@@ -35,6 +35,7 @@ import {
 import { flashStatus, reportFailure } from '../../app/dom.js';
 import { activeProjectId } from '../../app/selectors.js';
 
+import { focusableWithin } from '../../lib/focus-trap.js';
 import { cmdOrCtrl } from '../../lib/platform.js';
 import {
   bumpAgentUsage,
@@ -379,13 +380,23 @@ function LauncherBody({
       // one Tab past the last field dismissed the launcher and threw
       // away the sharpened brief. Two keystrokes from open to gone.
       if (e.key === 'Tab' && hasPrompt) {
-        const fields = [searchRef.current, promptRef.current, branchRef.current]
-          .filter((el): el is HTMLInputElement | HTMLTextAreaElement => !!el)
-          .filter((el) => el.offsetParent !== null || el === promptRef.current);
+        // focusableWithin, not a hand-rolled visibility test. The first
+        // version of this judged the branch field by `offsetParent`,
+        // which is precisely the rule lib/focus-trap.ts warns against:
+        // jsdom has no layout, so offsetParent is always null there and
+        // the field list silently collapsed — making the cycle test
+        // assert nothing at all. This app's convention is the `.hidden`
+        // class, which `.launcher-branch.hidden` already uses, so the
+        // branch field joins and leaves the cycle with the worktree
+        // toggle for free.
+        const fields = focusableWithin(root).filter(
+          (el) =>
+            el === searchRef.current ||
+            el === promptRef.current ||
+            el === branchRef.current,
+        );
         if (fields.length > 0) {
-          const at = fields.indexOf(
-            e.target as HTMLInputElement | HTMLTextAreaElement,
-          );
+          const at = fields.indexOf(e.target as HTMLElement);
           const next =
             (at + (e.shiftKey ? -1 : 1) + fields.length) % fields.length;
           return handle(() => fields[next]?.focus());
