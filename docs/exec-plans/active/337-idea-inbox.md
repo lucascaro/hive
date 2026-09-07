@@ -3,8 +3,8 @@
 - **Spec:** [docs/product-specs/337-idea-inbox.md](../../product-specs/337-idea-inbox.md)
 - **Design:** [docs/design-docs/control-plane.md](../../design-docs/control-plane.md)
 - **Issue:** —
-- **Branch:** —
-- **PR:** —
+- **Branch:** `feature/337-idea-inbox-initial-prompt`
+- **PR:** [#377](https://github.com/lucascaro/hive/pull/377)
 - **Shipped:** phase 1 → [#352](https://github.com/lucascaro/hive/pull/352)
   (branch `cedar-light`), phase 2 → [#358](https://github.com/lucascaro/hive/pull/358)
   (branch `feature/337-idea-inbox-gui`). `Branch:` and `PR:` above are
