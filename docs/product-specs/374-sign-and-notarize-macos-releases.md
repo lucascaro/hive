@@ -1,11 +1,11 @@
 ---
 issue: 374
-pr: null
+pr: 378
 title: "Sign and notarize macOS releases"
 type: enhancement
 complexity: M
 priority: P2
-stage: IMPLEMENT
+stage: REVIEW
 ---
 
 # Sign and notarize macOS releases

@@ -2,6 +2,8 @@
 
 - **Spec:** [docs/product-specs/374-sign-and-notarize-macos-releases.md](../../product-specs/374-sign-and-notarize-macos-releases.md)
 - **Issue:** #374
+- **PR:** #378
+- **Branch:** `feature/374-sign-and-notarize-macos-releases`
 - **Status:** active
 
 ## Summary
@@ -468,6 +470,7 @@ Per the loop's one-retry rule the reviewer was not run a third time.
   Two pre-existing failures confirmed against a clean `origin/main` checkout and
   left alone: `TestTerminalQueriesAreNotWork` (internal/registry) and
   `stateLockPoll is unused` (GOOS=windows staticcheck, internal/daemon).
+- **2026-09-06** — PR #378 opened.
 - **2026-09-06** — Plan item 8 (README/CONTRIBUTING right-click-Open text)
   dropped: no such text exists in either file. It came from a reviewer's guess
   at the blast radius, not from the tree.

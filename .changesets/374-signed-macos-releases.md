@@ -1,6 +1,6 @@
 ---
 issue: 374
-pr: null
+pr: 378
 type: security
 bump: minor
 ---
