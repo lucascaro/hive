@@ -34,6 +34,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   Hive reads the state from what the terminal actually renders, so it
   works for every agent and for plain shells, and a session that is
   waiting on you keeps saying so until you look at it.
+- Ideas in the GUI: **⌘I** opens a capture sheet from anywhere — type
+  the note, pick idea / bug / feedback, pick the project (the one you
+  are working in, prefilled) — and Enter files it and hands focus
+  straight back to the terminal. Each project card shows a badge with
+  how many ideas are waiting; clicking it, or **⇧⌘I**, opens that
+  project's inbox, where a row can be edited in place, marked done
+  (the note is kept, it just leaves the inbox) or deleted behind a
+  confirm. Ideas filed from a session's shell with `hived idea add`
+  show up in the same list, live. Deleting a project now asks before
+  it discards the ideas captured for it.
 - Ideas: capture a note against a project without interrupting what
   you are doing. From inside any Hive session's shell,
   `hived idea add "the grid loses focus"` files one against that
