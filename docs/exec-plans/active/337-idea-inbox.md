@@ -355,15 +355,20 @@ it). Add each when something actually needs it.
   both the repo pattern and the smaller diff. List of open ideas, newest
   first, with kind chip, text, relative age, source session name (if
   still open) and, for `started`, a link that focuses the session. Row
-  actions: Start session, Edit (inline, reuse `inline-rename.ts`), Done,
+  actions: Start session, Edit (reopens the ⌘I capture sheet in edit
+  mode, so text, kind and project are all correctable — see the
+  decision log entry of 2026-09-07), Done,
   Delete (confirm). No open/all filter — one predicate; add the toggle
   when someone asks to review completed ideas.
 - **Start session:** opens the launcher modal with project locked and a
-  read-only "Opening prompt" preview (an instruction built from the
+  an EDITABLE "Opening prompt" box (an instruction built from the
   kind, with the note as its subject — see the decision log entry of
-  2026-09-07 and `lib/ideas.ts` › `ideaPrompt`); the modal's
-  create call passes `initial_prompt`. On success the GUI sends
-  `UPDATE_IDEA{status:started, session_id}`. Worktree checkbox honoured;
+  2026-09-07 and `lib/ideas.ts` › `ideaPrompt`; sharpening it there
+  does not write back to the stored idea); the modal's create call
+  passes `initial_prompt` and `idea_id`. The DAEMON, not the GUI,
+  flips the idea to `started` once the prompt is actually delivered —
+  `CREATE_SESSION` is fire-and-forget, so the GUI never learns the new
+  session's id. Worktree checkbox honoured;
   the branch field keeps the launcher's existing default (no slugging —
   unicode/punctuation/collision edge cases for behaviour the spec never
   asked for).

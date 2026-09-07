@@ -53,8 +53,9 @@ export interface LauncherOpts {
   // conversation in that worktree instead of starting a new one.
   continueConversation?: boolean;
   // initialPrompt seeds the new session's first turn — the inbox's
-  // Start session. Shown read-only above the agent list so the user
-  // can see what the session will open with before picking an agent.
+  // Start session. Shown above the agent list and EDITABLE, so the
+  // note can be sharpened before an agent acts on it; what is sent is
+  // whatever the box holds, and edits do not write back to the idea.
   initialPrompt?: string;
   // ideaId is the idea being started. It travels to the daemon, which
   // flips the idea to `started` once the prompt has been delivered.

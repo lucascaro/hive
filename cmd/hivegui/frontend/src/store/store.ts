@@ -175,8 +175,10 @@ export interface LauncherRequest {
   worktreePath: string;
   continueConversation: boolean;
   // Set when the launcher was opened from the inbox's Start session.
-  // The prompt is shown read-only above the agent list and sent as
-  // CreateSpec.initial_prompt; ideaId rides along so the DAEMON can
+  // This seeds an EDITABLE box above the agent list; whatever it holds
+  // at launch is sent as CreateSpec.initial_prompt, and editing it
+  // does not write back to the stored idea. ideaId rides along so the
+  // DAEMON can
   // flip the idea to `started` once the prompt is actually delivered.
   // The GUI cannot do that itself: CREATE_SESSION is fire-and-forget
   // and nothing correlates the SESSION_EVENT(added) that follows with
