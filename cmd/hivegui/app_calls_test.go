@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bytes"
 	"encoding/json"
 	"net"
 	"strings"
@@ -108,6 +109,48 @@ func TestCreateSessionWithoutWorktreePathKeepsTheRequest(t *testing.T) {
 	}
 	if !spec.UseWorktree {
 		t.Error("a plain new-worktree session lost its UseWorktree flag")
+	}
+}
+
+// TestCreateSessionCarriesTheOpeningPrompt pins the two idea-inbox
+// fields onto the wire. Every frontend test mocks CreateSession, so a
+// field dropped or crossed in the CreateSpec literal would otherwise
+// ship green — and the failure is silent: a session that starts with
+// no prompt, or an idea that never leaves the inbox.
+func TestCreateSessionCarriesTheOpeningPrompt(t *testing.T) {
+	a, next := appWithControl(t)
+	go func() {
+		_ = a.CreateSession(CreateSessionOpts{
+			Agent: "claude", Project: "proj-1", Cols: 80, Rows: 24,
+			InitialPrompt: "A bug was reported. The report: grid loses focus",
+			IdeaID:        "idea-7",
+		})
+	}()
+	_, payload := next(t)
+	var spec wire.CreateSpec
+	if err := json.Unmarshal(payload, &spec); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	if spec.InitialPrompt != "A bug was reported. The report: grid loses focus" {
+		t.Errorf("InitialPrompt = %q, want the opening prompt", spec.InitialPrompt)
+	}
+	if spec.IdeaID != "idea-7" {
+		t.Errorf("IdeaID = %q, want %q", spec.IdeaID, "idea-7")
+	}
+}
+
+// TestCreateSessionOmitsUnsetIdeaFields is the control: an ordinary
+// opening carries neither field, so an older daemon never sees keys it
+// would have to ignore.
+func TestCreateSessionOmitsUnsetIdeaFields(t *testing.T) {
+	a, next := appWithControl(t)
+	go func() {
+		_ = a.CreateSession(CreateSessionOpts{Agent: "claude", Cols: 80, Rows: 24})
+	}()
+	_, payload := next(t)
+	if bytes.Contains(payload, []byte("initial_prompt")) ||
+		bytes.Contains(payload, []byte("idea_id")) {
+		t.Errorf("an ordinary create carried idea fields: %s", payload)
 	}
 }
 
