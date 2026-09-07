@@ -1615,6 +1615,18 @@ path instead.
   permission classifier, twice. Per the skill it does not block the
   implementation, but this run had no prior-lesson pass over the files
   it touched.
+- **2026-09-07** — PR #377 was merged by the operator as `fbcbecca`
+  while the spec was still at `REVIEW`. Review never converged — ten
+  passes, each finding something real — so `/hs-review-loop` §4a never
+  advanced the stage, and `/hs-merge-gate` refused on that basis
+  earlier. The feature therefore shipped **ungated**: nothing has
+  validated it against the spec's `## Success criteria`, which were
+  amended twice during the work on the strength of measurements.
+  Advancing to `GATE` by hand so the gate can run its degraded
+  post-merge path over `fbcbecca~1..fbcbecca`. Recorded rather than
+  done quietly: this is a stage write the pipeline would not have made
+  on its own, and any failure it now finds becomes a follow-up issue
+  rather than a fix in the PR, because the code has shipped.
 
 ## Gate verdict
 
