@@ -5,7 +5,7 @@ title: "Sign and notarize macOS releases"
 type: enhancement
 complexity: M
 priority: P2
-stage: BACKLOG
+stage: IMPLEMENT
 ---
 
 # Sign and notarize macOS releases
@@ -14,7 +14,7 @@ stage: BACKLOG
 - **Type:** enhancement
 - **Complexity:** M
 - **Priority:** P2
-- **Exec plan:** —
+- **Exec plan:** [docs/exec-plans/active/374-sign-and-notarize-macos-releases.md](../exec-plans/active/374-sign-and-notarize-macos-releases.md)
 
 ## Problem
 
@@ -43,10 +43,18 @@ Gatekeeper warning and no right-click workaround. `spctl --assess` accepts the
 bundle offline, because the notarization ticket is stapled to it.
 
 **Update.** The in-app updater refuses to stage a build whose signature does not
-verify. A tampered or re-zipped bundle fails with a distinct, honest message
-("this update is not signed by the Hive developer") rather than the generic
-checksum-mismatch error, and the running app is left untouched — same
-fail-closed shape the current checksum path already has.
+verify against Hive's Apple **Team ID** — not merely against a valid Apple
+Developer ID, which anyone with a $99 account holds. A tampered or re-zipped
+bundle fails with a distinct, honest message ("this update is not signed by the
+Hive developer") rather than the generic checksum-mismatch error, and the
+running app is left untouched — same fail-closed shape the current checksum
+path already has.
+
+The check runs on the unpacked bundle in the temp staging directory, not on the
+zip: `codesign` and `spctl` read a bundle, not an archive stream, so a
+"before `ditto -x`" check is not achievable. Fail-closed is preserved where it
+matters — staging happens in a temp directory that is removed unless every
+check passes, so the *installed* app is never touched by an unverified build.
 
 **Release.** `scripts/release.sh` signs, notarizes, and staples as part of the
 normal release run, and refuses to publish if any of those steps fail. The
@@ -79,6 +87,11 @@ environment, never from the repo.
   download cheaply, and it is the error users see most.
 - **Key rotation automation.** Document the rotation procedure; do not build
   tooling for it until there is a second key.
+- **Gatekeeper-disabled machines.** Under `spctl --master-disable` the
+  notarization assessment does not evaluate. The Team ID pin remains
+  load-bearing and still refuses a bad signature; the advisory assessment is
+  logged, not enforced. Refusing updates outright on such a machine is not a
+  goal — its owner has already opted out of Gatekeeper globally.
 
 ## Notes
 

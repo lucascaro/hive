@@ -44,15 +44,21 @@ var buildTimeout = 30 * time.Minute
 // Seams for tests, mirroring looksLikeHivedFn in restart_unix.go.
 var (
 	// extractZipFn unpacks a release zip into a directory. ditto is the
-	// macOS-native answer: archive/zip loses the symlinks and mode bits
-	// an .app bundle needs, and a bundle whose binary lost its +x is a
-	// broken install with no in-app way back.
+	// macOS-native answer, and the counterpart to the `ditto -c -k`
+	// that build.sh packages with: archive/zip loses the symlinks and
+	// mode bits an .app bundle needs, and a bundle whose binary lost
+	// its +x is a broken install with no in-app way back. It also
+	// preserves the stapled notarization ticket, which the signature
+	// check below depends on.
 	extractZipFn = dittoExtract
 	// copyBundleFn duplicates a bundle. Used to land the staged app
 	// next to the installed one before the rename swap.
 	copyBundleFn = dittoCopy
 	// runBuildFn runs ./build.sh in a checkout, streaming progress.
 	runBuildFn = runBuildScript
+	// verifySignatureFn refuses a staged bundle not signed by Hive's
+	// Apple Developer team. Seamed so tests need no real signature.
+	verifySignatureFn = verifyDeveloperIDSignature
 )
 
 // stageUpdate prepares the new build and returns the staged bundle
@@ -72,14 +78,24 @@ type releaseAsset struct {
 	URL  string `json:"browser_download_url"`
 }
 
-// stageRelease downloads the macOS zip for the newest release, verifies
-// it against the published SHA-256 manifest, and unpacks it.
+// stageRelease downloads the macOS zip for the newest release,
+// verifies it, and unpacks it.
 //
-// The checksum is not a supply-chain defense — the bundle is neither
-// signed nor notarized, and a compromised release would publish a
-// matching manifest. It is there so a truncated or corrupted download
-// fails loudly here instead of becoming a broken hivegui.app that the
-// user can only fix by reinstalling by hand.
+// Two independent checks, in order of what they catch:
+//
+//   - The SHA-256 manifest catches a truncated or corrupted download,
+//     cheaply, and is the error users actually hit. It is NOT a
+//     supply-chain defense: the zip and the manifest come from the
+//     same release, so whoever can publish one publishes the other.
+//   - The Developer ID signature check is the supply-chain defense. It
+//     pins the bundle to Hive's Apple Developer team, so a release
+//     signed by anyone else — including an attacker with their own
+//     Apple account — is refused before it can be applied.
+//
+// The signature is checked after unpacking because codesign and spctl
+// read a bundle, not a zip stream. Staging is still fail-closed with
+// respect to the installed app: everything lands in a temp directory
+// that the deferred cleanup below removes unless every check passed.
 func stageRelease(info UpdateInfo, progress func(string)) (string, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), downloadTimeout)
 	defer cancel()
@@ -144,6 +160,11 @@ func stageRelease(info UpdateInfo, progress func(string)) (string, error) {
 	}
 	bundle := filepath.Join(appDir, bundleName)
 	if err := verifyBundle(bundle); err != nil {
+		return "", err
+	}
+
+	progress("Verifying signature…")
+	if err := verifySignatureFn(ctx, bundle); err != nil {
 		return "", err
 	}
 	// The zip is tens of MB and has served its purpose; the bundle is

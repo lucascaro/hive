@@ -62,6 +62,41 @@ command -v gh >/dev/null || { echo "Error: gh (GitHub CLI) required"; exit 1; }
 ! git rev-parse "$TAG" &>/dev/null || { echo "Error: tag $TAG already exists"; exit 1; }
 grep -q '## \[Unreleased\]' CHANGELOG.md || { echo "Error: CHANGELOG.md has no [Unreleased] section"; exit 1; }
 
+# macOS signing pre-flight. Deliberately here, next to the other refusals,
+# rather than next to the signing call further down: everything below the
+# commit/tag step is expensive to unwind, and a missing certificate or an
+# unset keychain profile is knowable now. Notarization itself can still fail
+# late (it is a network call to Apple); sign-macos.sh prints the unwind
+# recipe when it does.
+if [[ "$(uname -s)" == "Darwin" ]]; then
+    : "${HIVE_SIGN_IDENTITY:?set HIVE_SIGN_IDENTITY to your Developer ID (see docs/releasing-signed-macos.md)}"
+    : "${HIVE_NOTARY_PROFILE:?set HIVE_NOTARY_PROFILE to your notarytool keychain profile (see docs/releasing-signed-macos.md)}"
+
+    # Refuse to publish a build that pins no team: it would skip signature
+    # verification for every user who installs it, permanently.
+    pinned_team_id="$(sed -n 's/^var signingTeamID = "\(.*\)"$/\1/p' internal/buildinfo/signing.go)"
+    if [[ -z "$pinned_team_id" ]]; then
+        echo "Error: internal/buildinfo/signing.go pins no Team ID." >&2
+        echo "  A release built from it would skip update signature verification for" >&2
+        echo "  every user. Set signingTeamID — see docs/releasing-signed-macos.md." >&2
+        exit 1
+    fi
+
+    identity_team_id="$(sed -n 's/.*(\([A-Z0-9]\{10\}\))$/\1/p' <<<"$HIVE_SIGN_IDENTITY")"
+    [[ "$identity_team_id" == "$pinned_team_id" ]] || {
+        echo "Error: signing identity team ($identity_team_id) does not match the pinned team ($pinned_team_id)." >&2
+        echo "  No client could install this release." >&2
+        exit 1
+    }
+
+    security find-identity -v -p codesigning | grep -qF "$HIVE_SIGN_IDENTITY" || {
+        echo "Error: signing identity not in keychain: $HIVE_SIGN_IDENTITY" >&2
+        exit 1
+    }
+    command -v xcrun >/dev/null || { echo "Error: xcrun required for notarization"; exit 1; }
+    echo "Signing pre-flight OK (team ${pinned_team_id})."
+fi
+
 # Non-blocking reminder: shipped exec-plans should move active/ -> completed/
 # (PLANS.md lifecycle) at merge time. Surface any stragglers before a release.
 active_plans=$(find docs/exec-plans/active -maxdepth 1 -name '*.md' 2>/dev/null | wc -l | tr -d ' ')
@@ -160,6 +195,13 @@ for f in \
     [[ -f "$f" ]] || { echo "Error: expected artifact missing: $f"; exit 1; }
     ARTIFACTS+=("$f")
 done
+
+# Sign, notarize and staple before the manifest is written, so the checksums
+# describe the artifact that actually ships.
+if [[ "$(uname -s)" == "Darwin" ]]; then
+    echo "Signing and notarizing the macOS artifact..."
+    ./scripts/sign-macos.sh "release/Hive-${VERSION}-macos-universal.zip"
+fi
 
 # SHA-256 manifest. The GUI's in-app updater downloads this alongside
 # the macOS zip and refuses to install on a mismatch — without it, a
