@@ -1245,6 +1245,47 @@ path instead.
   keystrokes from open to gone. Tab now CYCLES the popup's own text
   fields (filter → prompt → branch) instead of being handed to the
   browser, and the cycle is tested in both directions.
+- **2026-09-07** — **The typed opening prompt is no longer submitted.**
+  The confirmation review showed the waiting-state guard was narrower
+  than the previous entry claimed, so `codex` was MEASURED rather than
+  reasoned about: spawned through Hive's own session and state
+  machinery, in a fresh git repo, sampled the way the daemon's ticker
+  does. Result — codex opens on a trust gate:
+
+      Do you trust the contents of this directory?
+      Working with untrusted contents comes with higher risk of prompt
+      injection.
+      > 1. Yes, continue   2. No, quit
+      Press enter to continue
+
+  "Yes, continue" is preselected and the footer says "Press enter to
+  continue", so an automatic Enter answers a security gate whose own
+  text warns about prompt injection. And the guard does not fire: `Bell`
+  does set `waiting_input`, but codex redraws continuously, so the next
+  `sampleStateLocked` calls `Output()` and overwrites it — across a 20s
+  probe the tier reported **only** idle and working, never
+  `waiting_input`. The first `working→idle` edge therefore lands with
+  the gate on screen. This is the default path, not a corner: the
+  worktree checkbox means Start session routinely creates a brand-new
+  directory, which is precisely what triggers the gate.
+  `deliverPendingPromptLocked` now writes the note with no trailing
+  `\r`, leaving it in the input box for the user to send. Costs one
+  keystroke; safe against every dialog of this shape rather than only
+  the ones the tier can classify. Claude and Pi are unaffected (argv).
+  The spec's success criterion was amended to match, since
+  `/hs-merge-gate` validates against it.
+- **2026-09-07** — Confirmation review, fixed: the Tab cycle judged
+  field visibility with `el.offsetParent !== null` — the exact rule
+  `lib/focus-trap.ts` warns against, because jsdom has no layout. So in
+  the DOM tests the field list collapsed to the prompt box alone
+  (through an `|| el === promptRef.current` escape hatch added to make
+  it work) and the cycle test asserted nothing: forward, wrap-around
+  and Shift-Tab passed regardless. Now uses `focusableWithin()` and
+  this app's `.hidden` convention, which `.launcher-branch.hidden`
+  already carries, so the branch field joins and leaves the cycle with
+  the worktree toggle. The rewritten test asserts the rotation by
+  element with the toggle both on and off, and was verified
+  non-vacuous by restoring the old rule: both cases fail under it.
 - **2026-09-07** — The `pi` "No project session found with id" warning
   found while probing on 2026-09-06 is left alone. It is pi's own
   pre-alt-screen line for a fresh `--session-id`, it is not made worse
@@ -1552,20 +1593,22 @@ collision is under Open questions.
 
 ## Open questions
 
-- **A typed opening prompt ends with Enter, which could auto-answer an
-  agent's startup trust/permission dialog. NARROWED, not closed, on
-  2026-09-07 by review iteration 5**: the prompt is now *dropped* when
-  the session reaches `waiting_input` or `waiting_permission`, so a
-  gate Hive can *see* is never answered on the user's behalf and the
-  note is not left armed to land mid-conversation later. The residual
-  gap is a gate Hive cannot see: every typed-prompt agent (codex /
-  gemini / copilot / aider) runs on the heuristic tier, and there the
-  only producer of `waiting_input` is `agentstate.Machine.Bell` — a
-  trust dialog that draws without ringing still reads as
-  working→idle, and the note is still typed with a trailing `\r`. The
-  2-minute window still bounds the exposure. The trailing Enter stays
-  for the ordinary case, so the one-click feel survives. Full detail
-  below.
+- ~~**A typed opening prompt ends with Enter, which could auto-answer
+  an agent's startup trust/permission dialog.**~~ **CLOSED 2026-09-07
+  by measuring `codex`**, after two earlier attempts at closing it
+  overstated their fix. Neither the 2-minute window nor the
+  waiting-state drop covers this. A real codex spawned through Hive's
+  own session and state machinery, in a fresh git repo, opens on "Do
+  you trust the contents of this directory? … Press enter to continue"
+  with "Yes, continue" preselected — and across a 20s probe the
+  heuristic tier reported **only** idle and working, never
+  `waiting_input`, because codex's continuous redraws make the next
+  `Output()` overwrite the bell-set state. So the first working→idle
+  edge lands with the gate on screen, on the DEFAULT path (the worktree
+  checkbox creates exactly the fresh directory that triggers it). The
+  prompt is now typed **without** a trailing Enter and left in the
+  input box for the user to send; the spec's success criterion was
+  amended to match. Claude and Pi are unaffected. Full history below.
 - **(narrowed, above) A typed opening prompt ends with Enter, which
   could auto-answer an agent's startup trust/permission dialog.** Raised by review iteration
   4 (`registry.go:546`). The typed path is codex / gemini / copilot /

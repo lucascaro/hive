@@ -220,15 +220,13 @@ func TestPendingPromptDeliveredOnlyOnce(t *testing.T) {
 	waitFor(t, "the first delivery", func() bool {
 		return strings.Contains(ptyText(sess), "once")
 	})
-	// Counted, not compared to 1: the tty line discipline echoes the
-	// write and `cat` then prints it again, so ONE delivery already
-	// shows up twice. The invariant is that the number stops growing.
-	//
-	// Let the count SETTLE before snapshotting it. The echo and the
-	// echo of the echo arrive as separate PTY reads, so a snapshot
-	// taken the instant the text first appears can catch 1 where the
-	// steady state is 2 — and then "it did not grow" fails for a
-	// reason that has nothing to do with a second delivery.
+	// The prompt is typed WITHOUT a trailing carriage return, so `cat`
+	// holds it in its line buffer until some later newline flushes it.
+	// Flush it here, deliberately, before snapshotting: otherwise the
+	// count grows on the next paint for a reason that has nothing to
+	// do with a second delivery — which is exactly how this test read
+	// as a regression when submission was removed.
+	paint(t, e, sess, "\n")
 	delivered := 0
 	waitFor(t, "the echo count to settle", func() bool {
 		n := strings.Count(ptyText(sess), "once")

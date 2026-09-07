@@ -84,8 +84,9 @@ type CreateSpec struct {
 	// InitialPrompt is the opening turn for the agent. Agents whose
 	// Def.PositionalPrompt is set (Claude, Pi) receive it as a bare
 	// argv positional at spawn; an agent whose Def.TypedPrompt is set
-	// has it typed into the PTY, followed by Enter, on the first idle
-	// edge after the session has been seen working. Everything else —
+	// has it typed into the PTY — and left there unsubmitted, for the
+	// user to send — on the first idle edge after the session has been
+	// seen working. Everything else —
 	// the plain shell, a custom agent, an explicit Cmd — is handed
 	// nothing at all, and the idea it came from is not claimed. See
 	// registry.deliveryFor, which is the one decision.

@@ -14,8 +14,9 @@ bump: minor
   the note was jotted down mid-task and this is the last moment to
   sharpen it (sharpening it does not change the stored note). Claude and
   Pi receive it as their opening argument; every other agent has it
-  typed into the terminal, followed by Enter, as soon as the session
-  settles. The idea then flips to
+  typed into the terminal as soon as the session settles — left in the
+  input box for you to send, rather than submitted for you, so it can
+  never answer an agent's own startup prompt on your behalf. The idea then flips to
   *started* and links back to the session, and that session's sidebar
   row carries a small idea glyph so you can see at a glance what it is
   for. Agents that cannot be handed an opening prompt — the plain shell,

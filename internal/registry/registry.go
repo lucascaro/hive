@@ -578,12 +578,32 @@ func (r *Registry) deliverPendingPromptLocked(e *Entry, prev, cur agentstate.Sna
 	prompt, sess, id, ideaID := e.pendingPrompt, e.sess, e.ID, e.ideaID
 	e.pendingPrompt = ""
 	go func() {
-		// ponytail: one trailing \r submits one line. A multi-line
-		// prompt is typed verbatim and TUIs disagree about whether an
-		// embedded \r submits early; switch to bracketed paste
-		// (ESC[200~ … ESC[201~) if multi-line opening prompts ever
-		// matter. Codex and Gemini both accept a single line.
-		if _, err := sess.Write([]byte(prompt + "\r")); err != nil {
+		// NO trailing carriage return. The note is typed into the
+		// agent's input box and left there for the user to send.
+		//
+		// Measured, not assumed. `codex` in a fresh directory — which
+		// is every worktree this feature creates — opens on:
+		//
+		//	Do you trust the contents of this directory?
+		//	Working with untrusted contents comes with higher risk of
+		//	prompt injection.
+		//	> 1. Yes, continue   2. No, quit
+		//	Press enter to continue
+		//
+		// An Enter there answers "Yes, continue". The waiting-state
+		// guard above does not save us either: Bell does set
+		// waiting_input, but codex redraws continuously, so the next
+		// sampleStateLocked sees a changed screen, calls Output() and
+		// overwrites it — across a 20s probe the tier reported only
+		// idle and working, never waiting_input. The first working→idle
+		// edge therefore arrives with the gate still on screen.
+		//
+		// Auto-accepting a trust gate is not a cost worth saving one
+		// keystroke, and not submitting is safe against every dialog of
+		// this shape rather than only the ones we can classify. Claude
+		// and Pi are unaffected: they take the prompt as argv and never
+		// reach this path.
+		if _, err := sess.Write([]byte(prompt)); err != nil {
 			log.Printf("registry: opening prompt for %s not delivered: %v", id, err)
 			return
 		}
