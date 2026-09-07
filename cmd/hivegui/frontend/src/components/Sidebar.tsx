@@ -41,7 +41,7 @@ import { openWhatsNew } from '../app/modals/whats-new.js';
 import { openWorktrees } from '../app/modals/worktrees.js';
 import { openIdeaInbox } from '../app/modals/idea-inbox.js';
 import { activeProjectId, orderedSessions } from '../app/selectors.js';
-import type { ProjectInfo, SessionInfo } from '../app/state.js';
+import type { IdeaInfo, ProjectInfo, SessionInfo } from '../app/state.js';
 import { noteLocalClose } from '../app/undo-close.js';
 import {
   beginDrag,
@@ -54,6 +54,7 @@ import { hasUnread, latestVersion } from '../lib/whats-new.js';
 import { readProjectId } from '../lib/wire.js';
 import {
   appStore,
+  ideaForSession,
   openIdeasOf,
   toggleCollapsed,
   useAppStore,
@@ -194,6 +195,8 @@ interface SessionItemProps {
   // prop, where `() => switchTo(s.id)` would be a fresh function on
   // every parent render and would defeat the memo below.
   sidebar: SidebarProps;
+  /** The idea this session was started from, if any. */
+  ideaText: string;
 }
 
 // memo, and every other prop a primitive or the session's own object
@@ -241,6 +244,7 @@ const SessionItem = memo(function SessionItem(p: SessionItemProps) {
   return (
     <SessionRow
       session={p.session}
+      ideaText={p.ideaText}
       state={sessionState(p.session)}
       selected={p.selected}
       minimized={p.minimized}
@@ -317,6 +321,8 @@ interface ProjectItemProps {
   activeId: string | null;
   /** Open ideas for this project — the header badge's count. */
   ideaCount: number;
+  /** Every idea, for the per-row "started from an idea" glyph. */
+  ideas: IdeaInfo[];
 }
 
 function ProjectItem(o: ProjectItemProps) {
@@ -434,6 +440,10 @@ function ProjectItem(o: ProjectItemProps) {
           index={o.hints.get(s.id) ?? null}
           selected={s.id === o.activeId}
           minimized={o.minimizedSessions.has(s.id)}
+          // A string, not the IdeaInfo: SessionItem is memoized on
+          // primitives, and a fresh object here would re-render every
+          // row on every unrelated idea event.
+          ideaText={ideaForSession(o.ideas, s.id)?.text ?? ''}
           sidebar={o.props}
         />
       ))}
@@ -493,6 +503,7 @@ export function Sidebar(props: SidebarProps) {
           minimizedSessions={minimized}
           activeId={activeId}
           ideaCount={openIdeasOf(ideas, p.id).length}
+          ideas={ideas}
         />
       ))}
       {tray

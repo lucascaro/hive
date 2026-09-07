@@ -1,11 +1,11 @@
 ---
 issue: null
-pr: 358
+pr: 377
 title: "Idea inbox: capture ideas mid-session, start a session from one later"
 type: enhancement
 complexity: M
 priority: P1
-stage: IMPLEMENT
+stage: REVIEW
 ---
 
 # Idea inbox: capture ideas mid-session, start a session from one later
@@ -56,9 +56,16 @@ whatever session happened to be focused, so filing into the wrong one
 is an ordinary mistake, and delete-and-retype is not a correction.
 
 **Start.** Every open idea has a **Start session** action: it opens the
-existing agent launcher with the project fixed and the idea text as
-the opening prompt (prefixed with the kind: "Bug report: …"), with the
-worktree checkbox honoured. The new session is linked back to the idea,
+existing agent launcher with the project fixed and an opening prompt
+built from the idea, with the worktree checkbox honoured. The prompt is
+an instruction rather than a label: the kind picks the verb (a bug asks
+the agent to reproduce it and find the root cause before touching code;
+an idea asks it to propose a plan first) and the note itself is the
+subject. A bare "Idea: …" tells the agent what was noticed and nothing
+about what to do with it. The prompt is editable in the launcher before
+the agent is picked — the note was captured mid-task, and this is the
+last moment to make it a brief; editing it there does not rewrite the
+stored idea, which is the record of what was noticed. The new session is linked back to the idea,
 the idea flips to `started`, and the inbox shows the link. Closing the
 session leaves the idea `started`; marking it done is an inbox action.
 Nothing is lost on session close — the idea outlives it. What must not
@@ -85,10 +92,34 @@ it.
   inbox, without losing the note.
 - Start session creates a session through the existing `CREATE_SESSION`
   path with `initial_prompt`; Claude and Pi receive it as their opening
-  prompt argument; every other agent receives it typed into the PTY
-  once the session reaches `idle` (spec 336) followed by Enter.
-- The idea's `status` becomes `started` and `session_id` is set on
-  creation; the sidebar row of the session shows the idea glyph.
+  prompt argument; every other agent that can take one receives it
+  **offered** to the user — Hive surfaces it on the session and the
+  user pastes it into the agent's input box (unsubmitted) or dismisses
+  it, when they can see the agent is ready.
+  Amended twice on 2026-09-07, both times because a real `codex`
+  startup was measured. First it said "followed by Enter"; In a fresh directory — which is
+  every worktree this feature creates — codex opens on "Do you trust
+  the contents of this directory? … Press enter to continue", with
+  "Yes, continue" preselected, so an automatic Enter answered a
+  security gate whose own text warns about prompt injection. Typing
+  without Enter did not survive either: a probe found the note appeared
+  ZERO times in the PTY stream afterwards, because the gate is a
+  numbered menu that swallows arbitrary text. No signal available to
+  the daemon distinguishes a prompt box from a startup gate, so the
+  person looking at the terminal decides — hence paste/dismiss. Agents
+  that cannot take a prompt at all (the plain shell, custom agents)
+  receive nothing and leave the idea in the inbox.
+- The idea's `status` becomes `started` and `session_id` is set when
+  the prompt was actually handed over — for Claude and Pi (argv) that
+  is at creation, and the sidebar row shows the idea glyph. Amended
+  2026-09-07: on the typed path the idea is deliberately NOT claimed,
+  because a successful PTY write does not prove the agent received it
+  (measured: codex sits on its trust gate at the first idle edge, and
+  that gate swallows arbitrary text and echoes nothing — a probe found
+  zero occurrences of a unique marker afterwards). Claiming it there
+  lost both halves at once: the note vanished into the gate and left
+  the inbox. Unclaimed, the worst case is a session without its prompt
+  and the note still where the user left it.
 - Playwright mock e2e: capture → count → start → prompt visible in the
   fake PTY. Go tests: registry persistence, wire round-trip, CLI.
 

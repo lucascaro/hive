@@ -34,8 +34,15 @@ func newWindowsCmd(ptmx pty.Pty, wrapper, line string) *pty.Cmd {
 	// Quote the wrapper path in case ComSpec lives under a path with
 	// spaces (rare for cmd.exe — Windows installs it under
 	// %SystemRoot%\System32 — but cheap insurance).
+	// /V:OFF disables `!VAR!` delayed expansion, and /D skips AutoRun
+	// commands from the registry. Both are about what cmd.exe does to
+	// the line BEFORE the child sees it: delayed expansion would
+	// interpolate the daemon's environment out of any `!VAR!` in an
+	// argument — the same disclosure as the `%VAR%` caveat on
+	// cmdExeEscape, but reachable even inside quotes and enabled by a
+	// registry setting we do not control.
 	c.SysProcAttr = &syscall.SysProcAttr{
-		CmdLine: `"` + wrapper + `" /S /C "` + line + `"`,
+		CmdLine: `"` + wrapper + `" /V:OFF /D /S /C "` + line + `"`,
 	}
 	return c
 }

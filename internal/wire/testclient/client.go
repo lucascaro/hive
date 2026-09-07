@@ -192,6 +192,13 @@ func (c *Client) RemoveIdea(req wire.RemoveIdeaReq) error {
 	return c.cli.WriteJSON(wire.FrameRemoveIdea, req)
 }
 
+// ResolvePrompt sends RESOLVE_PROMPT, settling a session's pending
+// opening prompt: paste=true places it in the agent's input box
+// unsubmitted, paste=false discards it. Either way the offer is gone.
+func (c *Client) ResolvePrompt(req wire.ResolvePromptReq) error {
+	return c.cli.WriteJSON(wire.FrameResolvePrompt, req)
+}
+
 // ListIdeas sends LIST_IDEAS. Use AwaitIdeas to consume the response.
 func (c *Client) ListIdeas(projectID string) error {
 	return c.cli.WriteJSON(wire.FrameListIdeas, wire.ListIdeasReq{ProjectID: projectID})

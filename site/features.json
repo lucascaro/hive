@@ -1,5 +1,11 @@
 [
   {
+    "title": "Idea inbox",
+    "blurb": "Press ⌘I anywhere to capture a note against a project, then start a session from it later — the launcher opens with the note as the agent's opening prompt.",
+    "status": "shipped",
+    "since": "Unreleased"
+  },
+  {
     "title": "Signed and notarized macOS releases",
     "blurb": "Downloads are signed with an Apple Developer ID and notarized, so a fresh install opens without the \"unidentified developer\" warning. The in-app updater refuses any release not signed by Hive, and says so plainly instead of reporting a checksum error.",
     "status": "shipped",

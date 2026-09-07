@@ -503,9 +503,24 @@ func shellEscape(argv []string) string {
 // environment-variable expansion even inside double quotes. Callers
 // must not pass user-controlled `%` characters expecting them to
 // survive verbatim. For agent argv (`claude`, flag-value pairs) this
-// is fine because `%` is not used; if a future caller needs `%`,
-// disable expansion by invoking cmd.exe with `/V:OFF` and `/D`, or
-// pre-escape outside this helper.
+// is fine because `%` is not used. (`!VAR!` delayed expansion is
+// handled for every caller instead: newWindowsCmd passes /V:OFF /D.)
+//
+// CR and LF are DROPPED here, for every caller, and that is a security
+// guard rather than tidying. The line below is handed to
+// `cmd.exe /S /C`, and the agents this spawns are `.cmd` batch shims —
+// cmd.exe re-parses a batch argument line, so a raw newline ends the
+// command and everything after it is taken as the NEXT one. That is
+// CVE-2024-27980's shape (Node fixed it by refusing `\r`/`\n` when
+// spawning .bat/.cmd). No argv element has a legitimate reason to
+// carry one, and dropping is safe where escaping is not: cmd.exe has
+// no escape for a newline inside a quoted argument.
+//
+// It lives HERE rather than at any one call site because it is the
+// single choke point every Windows spawn passes through. The prompt
+// path had `%` and `"` patched into it one review round apart; a
+// third sibling patched in the same place would have left every other
+// caller exposed.
 func cmdExeEscape(argv []string) string {
 	out := make([]byte, 0, 32)
 	for i, a := range argv {
@@ -520,6 +535,9 @@ func cmdExeEscape(argv []string) string {
 		bs := 0
 		for j := 0; j < len(a); j++ {
 			c := a[j]
+			if c == '\r' || c == '\n' {
+				continue
+			}
 			switch c {
 			case '\\':
 				bs++

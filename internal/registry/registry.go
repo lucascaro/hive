@@ -69,6 +69,15 @@ func SetStartSessionForTest(fn func(session.Options) (*session.Session, error)) 
 // wire.ErrCodeWorktreeDirty so the GUI can confirm with the user.
 var ErrWorktreeDirty = errors.New("registry: worktree has uncommitted changes")
 
+// ErrNoLiveSession is returned by ResolvePrompt when the session is
+// known but has no running process to paste into — it is being
+// restarted, or it exited in the window between the offer being drawn
+// and the user clicking Paste. Distinct from ErrNotFound on purpose:
+// the daemon swallows ErrNotFound (an unknown id is a benign race with
+// a close), and swallowing this one too would take the note away with
+// no explanation at all.
+var ErrNoLiveSession = errors.New("registry: session has no running process")
+
 // Entry pairs persisted metadata with the live session. The session is
 // nil for entries loaded from disk that haven't been started this run.
 type Entry struct {
@@ -120,6 +129,21 @@ type Entry struct {
 	// goroutine when the session exits before capture completes.
 	// nil when no capture is in flight.
 	captureCancel context.CancelFunc
+
+	// pendingPrompt is CreateSpec.InitialPrompt waiting for the user to
+	// place it — agents that do not take a positional prompt. Surfaced
+	// on SessionInfo so the client can offer paste/dismiss, and cleared
+	// by ResolvePrompt either way.
+	//
+	// In-memory only, like Phase and state: it is not in MetaFile, and
+	// Revive rebuilds argv without it. A daemon restart between create
+	// and the user placing it therefore loses the prompt — which is
+	// why ideaID below is not resolved until the paste happens.
+	pendingPrompt string
+	// ideaID is CreateSpec.IdeaID: the idea this session was started
+	// from, flipped to `started` once the prompt is delivered. Also
+	// in-memory only, and for the same reason.
+	ideaID string
 }
 
 // Project is the registry-side representation of a project.
@@ -206,6 +230,7 @@ func (e *Entry) Info() wire.SessionInfo {
 		WorktreePath:   e.WorktreePath,
 		WorktreeBranch: e.WorktreeBranch,
 		LastError:      e.LastError,
+		PendingPrompt:  e.pendingPrompt,
 		Phase:          e.Phase,
 		Title:          e.title(),
 		NeedsAttention: needsAttention(st.State),
@@ -498,6 +523,74 @@ func (r *Registry) announceStateLocked(e *Entry, prev agentstate.Snapshot, reaso
 		r.broadcastLocked(wire.SessionEventAttention, e.Info())
 	}
 	r.broadcastLocked(wire.SessionEventState, e.Info())
+}
+
+// ResolvePrompt settles a session's pending opening prompt: paste it
+// into the PTY, or discard it.
+//
+// The user decides when, and that is the whole design. Hive used to
+// type the prompt itself on the first idle edge after the session had
+// been working, which is not a signal that the agent is ready for
+// input: measured, `codex` in a fresh directory is still sitting on
+// its "do you trust the contents of this directory?" gate at that
+// edge, and that gate is a numbered menu — it swallowed a unique
+// marker whole, echoing nothing, while an automatic Enter would have
+// answered it "Yes, continue". No heuristic available here can tell a
+// prompt box from a startup gate. The person looking at the terminal
+// can.
+//
+// Pasted, never submitted: the text lands in the agent's input box and
+// the user presses Enter.
+//
+// A live process is required BEFORE anything is cleared — see
+// ErrNoLiveSession. Past that check the clear is unconditional, so the
+// affordance cannot fire twice and a failed write does not strand it.
+func (r *Registry) ResolvePrompt(id string, paste bool) error {
+	r.mu.Lock()
+	e, ok := r.entries[id]
+	if !ok {
+		r.mu.Unlock()
+		return ErrNotFound
+	}
+	prompt, sess, ideaID := e.pendingPrompt, e.sess, e.ideaID
+	if prompt == "" {
+		r.mu.Unlock()
+		return nil
+	}
+	// Checked BEFORE anything is cleared. Clearing first and finding
+	// out afterwards was the whole bug: the bar vanished exactly as it
+	// does on success, the note never reached the terminal, and the
+	// error was swallowed downstream — so the user lost the note and
+	// was told nothing. Reachable without any exit race, because
+	// Restart nils e.sess while a prompt is still pending.
+	//
+	// The offer is deliberately LEFT STANDING so it can be clicked
+	// again once the process is back.
+	if paste && sess == nil {
+		r.mu.Unlock()
+		return ErrNoLiveSession
+	}
+	e.pendingPrompt = ""
+	info := e.Info()
+	r.broadcastLocked(wire.SessionEventUpdated, info)
+	r.mu.Unlock()
+
+	if !paste {
+		// Dismissed. The idea is deliberately left open: nothing was
+		// handed over, so the note stays where the user can start it
+		// again.
+		log.Printf("registry: opening prompt for %s dismissed", id)
+		return nil
+	}
+	if _, err := sess.Write([]byte(prompt)); err != nil {
+		log.Printf("registry: pasting the opening prompt for %s: %v", id, err)
+		return err
+	}
+	// Claimed on paste, unlike the old automatic path: the user asked
+	// for this one with the terminal in front of them, so the note has
+	// demonstrably reached where they wanted it.
+	r.linkIdeaToSession(ideaID, id)
+	return nil
 }
 
 // SetAttention records whether a session still wants the user's
@@ -1147,6 +1240,16 @@ func (r *Registry) watchSessionExit(id string, sess *session.Session) {
 	if e.captureCancel != nil {
 		e.captureCancel()
 		e.captureCancel = nil
+	}
+	// An opening prompt the user never placed dies with the session,
+	// which is also what makes the offer safe against a session that
+	// exits while the bar is up: the affordance is withdrawn with the
+	// same broadcast that reports the exit. Loud, because the user
+	// asked for a session seeded with that text and did not get one —
+	// and the idea stays `open`, so the note itself is not lost.
+	if e.pendingPrompt != "" {
+		log.Printf("registry: session %s exited before its opening prompt was placed; dropping it", id)
+		e.pendingPrompt = ""
 	}
 	info := e.Info()
 	r.mu.Unlock()

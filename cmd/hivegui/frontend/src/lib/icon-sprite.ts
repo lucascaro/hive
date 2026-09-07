@@ -33,6 +33,7 @@ export const ICON_NAMES = [
   'download',
   'check',
   'gift',
+  'idea',
   'state-running',
   'state-working',
   'state-attention',

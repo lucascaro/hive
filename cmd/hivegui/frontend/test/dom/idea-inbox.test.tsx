@@ -7,8 +7,10 @@
 //   • the list is this project's OPEN ideas, newest first
 //   • Done marks done rather than deleting — the note survives
 //   • Delete is gated by the confirm, and cancelling sends nothing
-//   • the inline edit commits through UpdateIdea and an emptied field
-//     does not destroy the note
+//   • Edit hands the row to the capture sheet, and the module-boundary
+//     guards refuse a blank or oversize correction
+//   • Start session opens the launcher with the prompt, the project
+//     pinned and the idea id along for the daemon to link
 import { describe, it, expect, vi, beforeAll, beforeEach } from 'vitest';
 import type { Mock } from 'vitest';
 import { act, fireEvent, render } from '@testing-library/react';
@@ -17,8 +19,14 @@ import type { IdeaInfo } from '../../src/app/state.js';
 
 const ListIdeas = vi.fn((_p: string): Promise<void> => Promise.resolve());
 const UpdateIdea = vi.fn(
-  (_id: string, _t: string, _s: string, _sess: string): Promise<void> =>
-    Promise.resolve(),
+  (
+    _id: string,
+    _t: string,
+    _s: string,
+    _sess: string,
+    _kind: string,
+    _project: string,
+  ): Promise<void> => Promise.resolve(),
 );
 const RemoveIdea = vi.fn((_id: string): Promise<void> => Promise.resolve());
 const flashStatus = vi.fn();
@@ -33,6 +41,13 @@ vi.mock('../../src/app/dom.js', () => ({
   flashStatus: (...a: unknown[]) => flashStatus(...a),
   setStatus: vi.fn(),
   reportFailure: () => () => {},
+}));
+
+// The launcher drags in the focus pipeline and the agent list; Start
+// session only needs to know what it was asked to open.
+const openLauncher = vi.fn();
+vi.mock('../../src/app/modals/launcher.js', () => ({
+  openLauncher: (...a: unknown[]) => openLauncher(...a),
 }));
 
 // switchTo pulls in the whole view/terminal pipeline; the inbox only
@@ -57,7 +72,6 @@ let refocusActiveTerm: Mock<() => void>;
 let setFocusedTile: Mock<(id: string | null) => void>;
 let IdeaInbox: typeof import('../../src/components/modals/IdeaInbox.js')['IdeaInbox'];
 let ChoiceDialog: typeof import('../../src/components/modals/ChoiceDialog.js')['ChoiceDialog'];
-let inlineRenameActive: typeof import('../../src/app/inline-rename.js')['inlineRenameActive'];
 
 beforeAll(async () => {
   document.body.innerHTML = MARKUP;
@@ -68,14 +82,20 @@ beforeAll(async () => {
   ({ ChoiceDialog } = await import(
     '../../src/components/modals/ChoiceDialog.js'
   ));
-  ({ inlineRenameActive } = await import('../../src/app/inline-rename.js'));
   refocusActiveTerm = vi.fn();
   setFocusedTile = vi.fn();
   initIdeaInbox({ setFocusedTile, refocusActiveTerm });
 });
 
 beforeEach(() => {
-  for (const m of [ListIdeas, UpdateIdea, RemoveIdea, flashStatus, switchTo]) {
+  for (const m of [
+    ListIdeas,
+    UpdateIdea,
+    RemoveIdea,
+    flashStatus,
+    switchTo,
+    openLauncher,
+  ]) {
     m.mockReset();
   }
   ListIdeas.mockResolvedValue(undefined);
@@ -152,7 +172,7 @@ describe('idea inbox', () => {
     await openWith([idea()]);
     fireEvent.click(button(rows()[0], 'Done'));
     await flush();
-    expect(UpdateIdea).toHaveBeenCalledWith('i1', '', 'done', '');
+    expect(UpdateIdea).toHaveBeenCalledWith('i1', '', 'done', '', '', '');
     expect(RemoveIdea).not.toHaveBeenCalled();
   });
 
@@ -171,97 +191,83 @@ describe('idea inbox', () => {
     expect(RemoveIdea).toHaveBeenCalledWith('i1');
   });
 
-  it('commits an inline edit through UpdateIdea', async () => {
-    await openWith([idea()]);
+  it('Edit hands the row to the capture sheet, pre-filled', async () => {
+    const { modalEntry } = await import('../../src/store/store.js');
+    await openWith([idea({ kind: 'bug', project_id: 'p1' })]);
     fireEvent.click(button(rows()[0], 'Edit'));
     await flush();
-    // The shared imperative editor owns the keyboard while it is up,
-    // which is what makes Escape cancel the edit rather than close the
-    // panel (app/keyboard.ts checks this first).
-    expect(inlineRenameActive()).toBe(true);
-    const input = rows()[0].querySelector('input') as HTMLInputElement;
-    fireEvent.input(input, { target: { value: 'sharper wording' } });
-    fireEvent.keyDown(input, { key: 'Enter' });
-    await flush();
-    expect(UpdateIdea).toHaveBeenCalledWith('i1', 'sharper wording', '', '');
+    const entry = modalEntry('quick-idea');
+    expect(entry).toBeTruthy();
+    expect(entry?.projectId).toBe('p1');
+    expect(entry?.idea?.id).toBe('i1');
+    // The inbox gives way: this app never stacks two dialogs, and a
+    // sheet layered under the panel has no clickable controls.
+    expect(modalEntry('idea-inbox')).toBeFalsy();
   });
 
-  it('refuses a blank edit at the module boundary too', async () => {
-    // The inline editor trims and drops a whitespace-only commit before
-    // it ever reaches editIdeaText, so the row-level test above passes
-    // whether or not this guard exists. Call it directly: it is what
-    // stands between a stray commit and a blanked note.
-    const { editIdeaText } = await import('../../src/app/modals/idea-inbox.js');
-    editIdeaText('i1', '   ');
-    editIdeaText('i1', '');
+  it('refuses a blank correction at the module boundary', async () => {
+    // The sheet's Save is disabled on an empty field, so the row-level
+    // path passes whether or not this guard exists. Call it directly:
+    // it is what stands between a stray commit and a blanked note.
+    const { saveIdeaEdit } = await import('../../src/app/modals/idea-inbox.js');
+    expect(saveIdeaEdit('i1', '   ', 'idea', 'p1')).toBe(false);
+    expect(saveIdeaEdit('i1', '', 'idea', 'p1')).toBe(false);
     expect(UpdateIdea).not.toHaveBeenCalled();
-    editIdeaText('i1', '  kept  ');
-    expect(UpdateIdea).toHaveBeenCalledWith('i1', 'kept', '', '');
+    expect(saveIdeaEdit('i1', '  kept  ', 'bug', 'p2')).toBe(true);
+    expect(UpdateIdea).toHaveBeenCalledWith('i1', 'kept', '', '', 'bug', 'p2');
   });
 
-  it('refuses an edit past the 4 KiB cap and keeps what was typed', async () => {
+  it('refuses a correction past the 4 KiB cap', async () => {
+    const { saveIdeaEdit } = await import('../../src/app/modals/idea-inbox.js');
     const { MAX_IDEA_TEXT } = await import('../../src/lib/ideas.js');
-    await openWith([idea()]);
-    fireEvent.click(button(rows()[0], 'Edit'));
-    await flush();
-    const input = rows()[0].querySelector('input') as HTMLInputElement;
-    const long = 'x'.repeat(MAX_IDEA_TEXT + 1);
-    fireEvent.input(input, { target: { value: long } });
-    fireEvent.keyDown(input, { key: 'Enter' });
-    await flush();
     // Not sent — the daemon rejects rather than truncates and nothing
-    // here awaits the answer.
+    // here awaits the answer, so the text would simply be gone.
+    expect(
+      saveIdeaEdit('i1', 'x'.repeat(MAX_IDEA_TEXT + 1), 'idea', 'p1'),
+    ).toBe(false);
     expect(UpdateIdea).not.toHaveBeenCalled();
     expect(flashStatus).toHaveBeenCalledWith(
       expect.stringContaining('too long'),
       true,
     );
-    // The editor stays open on what was typed — there is nowhere else
-    // it survives — and keeps the keyboard.
-    expect(rows()[0].querySelector('input')).toBe(input);
-    expect(input.value).toBe(long);
-    expect(document.activeElement).toBe(input);
-
-    // A blur does not sneak it through either.
-    fireEvent.blur(input);
-    await flush();
-    expect(UpdateIdea).not.toHaveBeenCalled();
-    expect(rows()[0].querySelector('input')).toBe(input);
-
-    // Shortening it commits normally.
-    fireEvent.input(input, { target: { value: 'short enough' } });
-    fireEvent.keyDown(input, { key: 'Enter' });
-    await flush();
-    expect(UpdateIdea).toHaveBeenCalledWith('i1', 'short enough', '', '');
-    expect(rows()[0].querySelector('input')).toBeNull();
   });
 
-  it('lets Escape out of an edit the validator refuses', async () => {
-    const { MAX_IDEA_TEXT } = await import('../../src/lib/ideas.js');
-    await openWith([idea()]);
-    fireEvent.click(button(rows()[0], 'Edit'));
+  it('Start session opens the launcher with the prompt and the project pinned', async () => {
+    const { modalEntry } = await import('../../src/store/store.js');
+    await openWith([idea({ kind: 'bug', text: 'sidebar is 1px off' })]);
+    fireEvent.click(button(rows()[0], 'Start session'));
     await flush();
-    const input = rows()[0].querySelector('input') as HTMLInputElement;
-    fireEvent.input(input, {
-      target: { value: 'x'.repeat(MAX_IDEA_TEXT + 1) },
+    expect(openLauncher).toHaveBeenCalledWith('p1', {
+      // An instruction, with the note as its subject — see ideaPrompt.
+      initialPrompt: expect.stringContaining('sidebar is 1px off'),
+      ideaId: 'i1',
+      lockProject: true,
     });
-    // Backing out is never validated, or an over-long edit would be a
-    // trap with no way to leave it.
-    fireEvent.keyDown(input, { key: 'Escape' });
-    await flush();
+    expect(openLauncher.mock.calls[0][1].initialPrompt).toContain(
+      'find the root cause',
+    );
+    // The launcher anchors under the project's card, which is behind
+    // this panel.
+    expect(modalEntry('idea-inbox')).toBeFalsy();
+    // Nothing is flipped from here: the daemon links the idea once the
+    // prompt has actually been delivered.
     expect(UpdateIdea).not.toHaveBeenCalled();
-    expect(rows()[0].querySelector('input')).toBeNull();
   });
 
-  it('does not destroy the note when the edit is emptied', async () => {
-    await openWith([idea()]);
-    fireEvent.click(button(rows()[0], 'Edit'));
-    await flush();
-    const input = rows()[0].querySelector('input') as HTMLInputElement;
-    fireEvent.input(input, { target: { value: '   ' } });
-    fireEvent.keyDown(input, { key: 'Enter' });
-    await flush();
-    expect(UpdateIdea).not.toHaveBeenCalled();
-    expect(RemoveIdea).not.toHaveBeenCalled();
+  it('offers Start session only while the idea has no live session', async () => {
+    const { setSessions } = await import('../../src/store/store.js');
+    await openWith([idea({ status: 'started', session_id: 's9' })]);
+    // The link to the session is right there in the row; a second way
+    // to start the same note beside it is just confusing.
+    act(() => {
+      setSessions([
+        {
+          id: 's9',
+          name: 'working on it',
+          project_id: 'p1',
+        } as unknown as Parameters<typeof setSessions>[0][0],
+      ]);
+    });
+    expect(button(rows()[0], 'Start session')).toBeUndefined();
   });
 });

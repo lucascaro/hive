@@ -120,6 +120,13 @@ func TestCmdExeEscape(t *testing.T) {
 		// it to survive.
 		{"percent passes through verbatim (not escaped)", []string{"echo", "100%done"}, `"echo" "100%done"`},
 		{"embedded double quote", []string{"echo", `she said "hi"`}, `"echo" "she said \"hi\""`},
+		// CR and LF are dropped for every caller. cmd.exe re-parses a
+		// batch argument line, so a raw newline ends the command and the
+		// tail becomes the next one — CVE-2024-27980's shape. There is
+		// no escape for a newline inside a quoted argument, so dropping
+		// is the only safe answer.
+		{"newline dropped, not escaped", []string{"echo", "one\ntwo"}, `"echo" "onetwo"`},
+		{"carriage return dropped too", []string{"echo", "one\r\ntwo"}, `"echo" "onetwo"`},
 		{"trailing backslashes get doubled before closing quote", []string{"x", `c:\path\`}, `"x" "c:\path\\"`},
 		{"backslash before quote", []string{"x", `a\"b`}, `"x" "a\\\"b"`},
 	}

@@ -11,8 +11,10 @@
 
 import { flushSync } from 'react-dom';
 import { ListIdeas, RemoveIdea, UpdateIdea } from '../../bridge.js';
+import { openLauncher } from './launcher.js';
+import { openQuickIdea } from './quick-idea.js';
+import { ideaPrompt, ideaTextTooLong, MAX_IDEA_TEXT } from '../../lib/ideas.js';
 import { flashStatus, reportFailure } from '../dom.js';
-import { ideaTextTooLong, MAX_IDEA_TEXT } from '../../lib/ideas.js';
 import { openChoiceDialog, dismissChoiceDialog } from './choice-dialog.js';
 import {
   anyModalOpen,
@@ -81,11 +83,31 @@ export function closeIdeaInbox(): void {
   deps.refocusActiveTerm();
 }
 
-// editIdeaText commits an inline edit. The editor is kept open on a
-// refused value by `validate` (see IdeaInbox.tsx), not by this return —
-// what stays here is the module-boundary guard, for callers that reach
-// it without one. The boolean reports whether anything was sent.
-export function editIdeaText(id: string, text: string): boolean {
+// editIdea opens the capture sheet on an existing note. All three of
+// the things capture asked for are correctable — the text, the kind,
+// and the project — because the sheet pre-fills the project from
+// whatever session was focused, so a mis-filed note is the default
+// being wrong rather than user error.
+//
+// The inbox gives way to it rather than sitting underneath. This app
+// never stacks two dialogs — ⌘I from the open inbox already closes it
+// and opens the sheet — and a sheet layered over the panel is not just
+// inconsistent: the panel is above it in the stack, so every control on
+// the sheet is unclickable. (Measured in a browser; jsdom has no
+// layout and reported the overlay as perfectly usable.)
+export function editIdea(idea: IdeaInfo): void {
+  closeIdeaInbox();
+  openQuickIdea(idea.project_id, idea);
+}
+
+// saveIdeaEdit commits a correction. The boolean reports whether
+// anything was sent, so the sheet can stay open on a refusal.
+export function saveIdeaEdit(
+  id: string,
+  text: string,
+  kind: string,
+  projectId: string,
+): boolean {
   const trimmed = text.trim();
   // Empty is not a delete: Delete is its own row action, behind a
   // confirm, and a blur on an emptied field must not destroy the note.
@@ -93,18 +115,46 @@ export function editIdeaText(id: string, text: string): boolean {
   // The same 4 KiB cap the capture sheet enforces. The daemon applies
   // it to the update path too (registry/ideas.go), rejecting rather
   // than truncating, and this does not await the answer — so without
-  // the check the editor tears down, the row reverts to the stale
-  // text, and the edit is gone.
+  // the check the sheet closes, the row reverts to the stale text, and
+  // the edit is gone.
   if (ideaTextTooLong(trimmed)) {
     flashStatus(`idea is too long (max ${MAX_IDEA_TEXT / 1024} KiB)`, true);
     return false;
   }
-  UpdateIdea(id, trimmed, '', '').catch(reportFailure('edit idea'));
+  UpdateIdea(id, trimmed, '', '', kind, projectId).catch(
+    reportFailure('edit idea'),
+  );
   return true;
 }
 
 export function markIdeaDone(idea: IdeaInfo): void {
-  UpdateIdea(idea.id, '', 'done', '').catch(reportFailure('mark idea done'));
+  UpdateIdea(idea.id, '', 'done', '', '', '').catch(
+    reportFailure('mark idea done'),
+  );
+}
+
+// startSessionFromIdea opens the agent launcher with the idea's project
+// pinned and its text as the opening prompt. The link back to the idea
+// is made by the DAEMON, never here: the GUI never learns the new
+// session's id, because CREATE_SESSION is fire-and-forget and nothing
+// correlates the SESSION_EVENT(added) that follows with the request
+// that caused it.
+//
+// The daemon links it only once the prompt has actually been handed
+// over — and NOT at all when it cannot be (the shell agent, a custom
+// agent), which is the case the launcher warns about before the
+// launch. The note then stays in the inbox, which is what makes
+// starting it again against a different agent possible.
+//
+// The inbox closes first: the launcher anchors itself under the
+// project's card, which is behind this panel.
+export function startSessionFromIdea(idea: IdeaInfo): void {
+  closeIdeaInbox();
+  openLauncher(idea.project_id, {
+    initialPrompt: ideaPrompt(idea),
+    ideaId: idea.id,
+    lockProject: true,
+  });
 }
 
 // confirmAndDeleteIdea removes one idea outright. Confirmed because the

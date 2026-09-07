@@ -25,6 +25,10 @@ type CustomAgent = main.CustomAgent;
 export type MockSession = SessionInfo & {
   created: string;
   continued?: boolean;
+  // Which idea an offered opening prompt belongs to, so RESOLVE_PROMPT
+  // can link it on paste. Daemon-side this is Entry.ideaID, which is
+  // in-memory and never on the wire.
+  pending_idea?: string;
 };
 export type MockProject = ProjectInfo & { created: string };
 
@@ -311,23 +315,36 @@ function emitUpdatedExcept(skipId: string) {
     emit('session:event', JSON.stringify({ kind: 'updated', session: other }));
   }
 }
-// Positional args matching the real Wails binding:
-// CreateSession(agentID, projectID, name, color, cols, rows, useWorktree,
-// insertAfter, branch, worktreePath, continueConversation).
-export async function CreateSession(
-  agentID: string,
-  projectID: string,
-  name: string,
-  color: string,
-  _cols: number,
-  _rows: number,
-  _useWorktree: boolean,
-  insertAfter?: string,
-  branch?: string,
-  worktreePath?: string,
-  continueConversation?: boolean,
-) {
+// One options struct, matching the real Wails binding
+// (main.CreateSessionOpts). Every field optional here: the mock is
+// called from this file's own helpers too, and spelling out thirteen
+// fields at each of them would bury what each one is actually testing.
+export interface MockCreateSessionOpts {
+  agent: string;
+  project: string;
+  name: string;
+  color: string;
+  cols: number;
+  rows: number;
+  useWorktree: boolean;
+  insertAfter: string;
+  branch: string;
+  worktreePath: string;
+  continueConversation: boolean;
+  initialPrompt: string;
+  ideaId: string;
+}
+export async function CreateSession(o: Partial<MockCreateSessionOpts> = {}) {
   maybeFail('CreateSession');
+  const agentID = o.agent ?? '';
+  const projectID = o.project ?? '';
+  const name = o.name ?? '';
+  const color = o.color ?? '';
+  const insertAfter = o.insertAfter;
+  const branch = o.branch;
+  const worktreePath = o.worktreePath;
+  const continueConversation = o.continueConversation;
+  const _useWorktree = o.useWorktree;
   // Monotonic, NOT derived from the current length: after a kill the
   // length rewinds and a length-based id collides with a session that
   // is still alive, which silently drops the new row from the sidebar.
@@ -392,9 +409,67 @@ export async function CreateSession(
       s.phase = '';
       s.alive = true;
       emit('session:event', JSON.stringify({ kind: 'updated', session: s }));
+      deliverInitialPrompt(id, agentID, o.initialPrompt ?? '', o.ideaId ?? '');
     });
   });
   return id;
+}
+
+// The daemon's half of "start a session from an idea", modelled at the
+// one point it is observable from the GUI: the prompt appears in the
+// session's output, and only THEN does the idea flip to `started`. The
+// GUI never does this itself — CREATE_SESSION is fire-and-forget and
+// nothing correlates the SESSION_EVENT(added) with the request.
+// Agents the daemon will hand an opening prompt to at all. Mirrors
+// registry.deliveryFor: the shell agent is a command interpreter, not a
+// prompt box, and a custom agent is an unknown program — both get
+// nothing, and their idea is NOT claimed. Modelled here because a mock
+// that delivers unconditionally lets a test assert the opposite of the
+// shipped rule and stay green, which is exactly what happened.
+const AGENTS_TAKING_PROMPTS = new Set([
+  'claude',
+  'pi',
+  'codex',
+  'gemini',
+  'copilot',
+  'aider',
+]);
+// The two that take it as an argv positional, so it is delivered at
+// spawn and never offered.
+const ARGV_PROMPT_AGENTS = new Set(['claude', 'pi']);
+
+function deliverInitialPrompt(
+  sessionID: string,
+  agentID: string,
+  prompt: string,
+  ideaID: string,
+) {
+  if (!prompt) return;
+  if (!AGENTS_TAKING_PROMPTS.has(agentID)) {
+    // Undeliverable: nothing offered, and the idea stays in the inbox
+    // so it can be started again against an agent that can take one.
+    return;
+  }
+  // Claude and Pi take the prompt as argv, so it is already delivered
+  // and the idea is linked at create. Everything else has it OFFERED:
+  // the daemon surfaces it on SessionInfo and waits for the user to
+  // paste or dismiss it (RESOLVE_PROMPT).
+  if (!ARGV_PROMPT_AGENTS.has(agentID)) {
+    const s = state.sessions.find((x) => x.id === sessionID);
+    if (s) {
+      s.pending_prompt = prompt;
+      s.pending_idea = ideaID;
+      emit('session:event', JSON.stringify({ kind: 'updated', session: s }));
+    }
+    return;
+  }
+  emit('pty:data', sessionID, btoa(unescape(encodeURIComponent(prompt))));
+  const idea = state.ideas.find((i) => i.id === ideaID);
+  if (!idea) return;
+  idea.status = 'started';
+  idea.session_id = sessionID;
+  idea.updated = new Date().toISOString();
+  emit('idea:event', JSON.stringify({ kind: 'updated', idea }));
 }
 // Positional: DuplicateSession(agentID, projectID, cwd, insertAfter).
 export async function DuplicateSession(
@@ -404,7 +479,12 @@ export async function DuplicateSession(
   insertAfter?: string,
 ) {
   maybeFail('DuplicateSession');
-  return CreateSession(agentID, projectID, 'dup', '', 0, 0, false, insertAfter);
+  return CreateSession({
+    agent: agentID,
+    project: projectID,
+    name: 'dup',
+    insertAfter,
+  });
 }
 export async function KillSessionAndWorktree(id: string) {
   maybeFail('KillSessionAndWorktree');
@@ -574,6 +654,10 @@ export async function ListAgents(): Promise<AgentInfo[]> {
       color: '#888',
       available: true,
       installCmd: [],
+      // A shell is a command interpreter, not a prompt box — the
+      // daemon refuses to hand it an opening prompt at all
+      // (registry.deliveryFor).
+      takesPrompt: false,
     },
     // Second built-in so the launcher's filter box has something to
     // narrow. Order matters: several specs assert the FIRST
@@ -585,6 +669,19 @@ export async function ListAgents(): Promise<AgentInfo[]> {
       color: '#d97757',
       available: true,
       installCmd: [],
+      takesPrompt: true,
+    },
+    // A typed-path agent: it can take an opening prompt, but by having
+    // it typed in rather than as argv — so Hive OFFERS it and the user
+    // pastes it. Without one here the paste/dismiss bar has no e2e
+    // coverage at all.
+    {
+      id: 'codex',
+      name: 'Codex',
+      color: '#10b981',
+      available: true,
+      installCmd: [],
+      takesPrompt: true,
     },
     ...customAgents.map((a) => ({
       id: a.id,
@@ -592,6 +689,10 @@ export async function ListAgents(): Promise<AgentInfo[]> {
       color: a.color,
       available: true,
       installCmd: [],
+      // Custom agents are unknown programs; validateCustom builds
+      // their Def without either prompt flag, so this is false by
+      // construction Go-side too.
+      takesPrompt: false,
     })),
   ];
 }
@@ -767,6 +868,8 @@ export async function UpdateIdea(
   text: string,
   status: string,
   sessionID: string,
+  kind?: string,
+  projectID?: string,
 ) {
   maybeFail('UpdateIdea');
   const idea = state.ideas.find((i) => i.id === id);
@@ -774,10 +877,37 @@ export async function UpdateIdea(
   if (text) idea.text = text;
   if (status) idea.status = status;
   if (sessionID) idea.session_id = sessionID;
+  if (kind) idea.kind = kind;
+  if (projectID) idea.project_id = projectID;
   idea.updated = new Date().toISOString();
   emit('idea:event', JSON.stringify({ kind: 'updated', idea }));
   return '';
 }
+// The user placing (or discarding) a pending opening prompt. Paste
+// writes it to the fake PTY and links the idea; dismiss clears it and
+// leaves the note in the inbox. Either way the offer is gone.
+export async function ResolvePrompt(sessionID: string, paste: boolean) {
+  maybeFail('ResolvePrompt');
+  const s = state.sessions.find((x) => x.id === sessionID);
+  if (!s?.pending_prompt) return '';
+  // Both captured BEFORE clearing — the idea lookup below needs the id.
+  const prompt = s.pending_prompt;
+  const ideaID = s.pending_idea;
+  s.pending_prompt = '';
+  s.pending_idea = '';
+  emit('session:event', JSON.stringify({ kind: 'updated', session: s }));
+  if (!paste) return '';
+  emit('pty:data', sessionID, btoa(unescape(encodeURIComponent(prompt))));
+  const idea = state.ideas.find((i) => i.id === ideaID);
+  if (idea) {
+    idea.status = 'started';
+    idea.session_id = sessionID;
+    idea.updated = new Date().toISOString();
+    emit('idea:event', JSON.stringify({ kind: 'updated', idea }));
+  }
+  return '';
+}
+
 export async function RemoveIdea(id: string) {
   maybeFail('RemoveIdea');
   const i = state.ideas.findIndex((x) => x.id === id);
@@ -1064,19 +1194,19 @@ if (typeof window !== 'undefined') {
     // r.order that interleaves projects, which is where display position
     // and .order diverge.
     addSession(name: string, insertAfter?: string, projectId?: string) {
-      return CreateSession(
-        '',
-        projectId || 'p1',
+      return CreateSession({
+        project: projectId || 'p1',
         name,
-        '',
-        0,
-        0,
-        false,
         insertAfter,
-      );
+      });
     },
     createSessionWithWorktree(name: string, branch?: string) {
-      return CreateSession('', 'p1', name, '', 0, 0, true, undefined, branch);
+      return CreateSession({
+        project: 'p1',
+        name,
+        useWorktree: true,
+        branch,
+      });
     },
     // Ideas the daemon already knew about when this window connected —
     // the boot LIST_IDEAS is what delivers them, so seed before it.

@@ -80,6 +80,27 @@ type CreateSpec struct {
 	// Ignored (append) when empty, unknown, or owned by a different
 	// project.
 	InsertAfterSessionID string `json:"insert_after_session_id,omitempty"`
+
+	// InitialPrompt is the opening turn for the agent. Agents whose
+	// Def.PositionalPrompt is set (Claude, Pi) receive it as a bare
+	// argv positional at spawn; an agent whose Def.TypedPrompt is set
+	// has it surfaced on SessionInfo.PendingPrompt instead, and it
+	// reaches the PTY — unsubmitted, for the user to send — only when
+	// a client answers with RESOLVE_PROMPT and paste=true. Hive never
+	// places it on its own: no signal here distinguishes an agent's
+	// prompt box from its startup gate. Everything else —
+	// the plain shell, a custom agent, an explicit Cmd — is handed
+	// nothing at all, and the idea it came from is not claimed. See
+	// registry.deliveryFor, which is the one decision.
+	InitialPrompt string `json:"initial_prompt,omitempty"`
+
+	// IdeaID names the idea this session is being started from. The
+	// daemon flips that idea to status=started with session_id set
+	// once the prompt has actually been delivered — the GUI cannot do
+	// it itself, because CREATE_SESSION is fire-and-forget and nothing
+	// correlates the SESSION_EVENT(added) that follows with the
+	// request that caused it. Empty for every ordinary create.
+	IdeaID string `json:"idea_id,omitempty"`
 }
 
 // Hello is the first frame the client sends after connecting.
@@ -140,6 +161,13 @@ type SessionInfo struct {
 	WorktreePath   string `json:"worktree_path,omitempty"`   // absolute path; "" = no worktree
 	WorktreeBranch string `json:"worktree_branch,omitempty"` // branch backing the worktree
 	LastError      string `json:"last_error,omitempty"`      // human-readable error from last failed Start/Revive
+	// PendingPrompt is an opening prompt waiting for the user to place
+	// it. Non-empty only for a session started from an idea whose agent
+	// takes its prompt by typing rather than as argv. The client shows
+	// a paste/dismiss affordance for it; Hive never types it in by
+	// itself, because only the user can see whether the agent is at a
+	// prompt box or still on a startup gate that would swallow it.
+	PendingPrompt string `json:"pending_prompt,omitempty"`
 	// Phase is the session's lifecycle phase. Empty means ready (the
 	// steady state), which keeps the field omitempty on the wire and
 	// makes every entry loaded from disk ready by default. See the
@@ -640,13 +668,36 @@ type AddIdeaReq struct {
 }
 
 // UpdateIdeaReq mutates one idea. Pointer fields opt in, matching
-// UpdateProjectReq. There is no Kind (nothing re-kinds an idea) and
-// SessionID rides along with a Status change to "started".
+// UpdateProjectReq. SessionID rides along with a Status change to
+// "started".
+//
+// Kind and ProjectID are here because the capture sheet pre-fills the
+// project from whatever session was focused, so filing into the wrong
+// one is the default behaviour being wrong rather than user error —
+// and an idea that can only be corrected by deleting and retyping it
+// punishes the note-taking this feature exists to encourage. Both are
+// validated by the registry against the same closed sets AddIdea uses.
 type UpdateIdeaReq struct {
 	ID        string  `json:"id"`
 	Text      *string `json:"text,omitempty"`
 	Status    *string `json:"status,omitempty"`
 	SessionID *string `json:"session_id,omitempty"`
+	Kind      *string `json:"kind,omitempty"`
+	ProjectID *string `json:"project_id,omitempty"`
+}
+
+// ResolvePromptReq settles a session's pending opening prompt.
+//
+// Paste writes it into the PTY (unsubmitted — the user presses Enter);
+// false discards it. Either way the pending prompt is cleared, so the
+// affordance disappears and cannot fire twice.
+//
+// The daemon does the writing, not the client: the GUI never opens a
+// PTY (DESIGN.md), and routing it here keeps one code path for "what
+// text does this session's agent receive".
+type ResolvePromptReq struct {
+	SessionID string `json:"session_id"`
+	Paste     bool   `json:"paste"`
 }
 
 // RemoveIdeaReq is the REMOVE_IDEA payload.
@@ -746,6 +797,14 @@ const (
 	// ErrCodeIdeaTooLong is returned when an idea's text exceeds
 	// MaxIdeaText. Rejected rather than truncated: a silently
 	// half-saved note is worse than one the user is told to shorten.
+	// ErrCodeNoLiveSession: RESOLVE_PROMPT(paste) reached a session with
+	// no running process. Distinct from the generic failure because the
+	// outcomes differ in the one way that matters to the user: here the
+	// offer is still standing and the note is safe, so "try again" is
+	// true advice. On the generic failure the prompt has already been
+	// cleared and the note is gone, and telling them to try again would
+	// point at an affordance that no longer exists.
+	ErrCodeNoLiveSession = "resolve_prompt_no_live_session"
 	ErrCodeIdeaTooLong = "idea_too_long"
 	// ErrCodeProjectHasIdeas is returned when deleting a project would
 	// destroy ideas that are still open. Overridable by force

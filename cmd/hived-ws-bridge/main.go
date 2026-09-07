@@ -389,6 +389,13 @@ func (s *session) dispatch(req rpcReq) {
 			return
 		}
 		s.respond(req.ID, "", s.controlWriteJSON(wire.FrameUpdateIdea, p))
+	case "ResolvePrompt":
+		var p wire.ResolvePromptReq
+		if err := json.Unmarshal(req.Params, &p); err != nil {
+			s.respond(req.ID, err.Error(), nil)
+			return
+		}
+		s.respond(req.ID, "", s.controlWriteJSON(wire.FrameResolvePrompt, p))
 	case "RemoveIdea":
 		var p wire.RemoveIdeaReq
 		if err := parseParams(req.Params, &p); err != nil {
