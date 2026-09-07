@@ -62,7 +62,10 @@ an instruction rather than a label: the kind picks the verb (a bug asks
 the agent to reproduce it and find the root cause before touching code;
 an idea asks it to propose a plan first) and the note itself is the
 subject. A bare "Idea: …" tells the agent what was noticed and nothing
-about what to do with it. The new session is linked back to the idea,
+about what to do with it. The prompt is editable in the launcher before
+the agent is picked — the note was captured mid-task, and this is the
+last moment to make it a brief; editing it there does not rewrite the
+stored idea, which is the record of what was noticed. The new session is linked back to the idea,
 the idea flips to `started`, and the inbox shows the link. Closing the
 session leaves the idea `started`; marking it done is an inbox action.
 Nothing is lost on session close — the idea outlives it. What must not

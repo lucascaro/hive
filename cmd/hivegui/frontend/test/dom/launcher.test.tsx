@@ -556,20 +556,75 @@ describe('launcher branch name', () => {
     });
   });
 
+  const promptBox = () =>
+    document.getElementById('launcher-prompt') as HTMLTextAreaElement;
+
   it('carries an opening prompt and its idea to the daemon', async () => {
-    // Started from the inbox: the prompt is shown read-only above the
-    // agent list, and idea_id rides along so the DAEMON can link the
-    // idea once the prompt has actually been delivered.
-    await open({ initialPrompt: 'Bug report: 1px off', ideaId: 'i7' });
-    expect(document.getElementById('launcher-prompt')?.textContent).toContain(
-      'Bug report: 1px off',
-    );
+    // Started from the inbox: the prompt is seeded from the note above
+    // the agent list, and idea_id rides along so the DAEMON can link
+    // the idea once the prompt has actually been delivered.
+    await open({ initialPrompt: 'reproduce it: 1px off', ideaId: 'i7' });
+    expect(promptBox().value).toBe('reproduce it: 1px off');
     press('Enter');
-    expect(sent().initialPrompt).toBe('Bug report: 1px off');
+    expect(sent().initialPrompt).toBe('reproduce it: 1px off');
     expect(sent().ideaId).toBe('i7');
   });
 
-  it('shows no prompt row for an ordinary opening', async () => {
+  it('sends what the user sharpened it into, not the note it opened on', async () => {
+    // The note was jotted mid-task; this is the last moment to make it
+    // a brief before an agent acts on it.
+    await open({ initialPrompt: 'seeded', ideaId: 'i7' });
+    fireEvent.change(promptBox(), { target: { value: '  sharpened  ' } });
+    press('Enter');
+    // Trimmed, like the branch box.
+    expect(sent().initialPrompt).toBe('sharpened');
+  });
+
+  it('starts a plain session when the prompt is emptied', async () => {
+    await open({ initialPrompt: 'seeded', ideaId: 'i7' });
+    fireEvent.change(promptBox(), { target: { value: '' } });
+    press('Enter');
+    expect(sent().initialPrompt).toBe('');
+    // Still the idea's session: with no prompt there is no delivery to
+    // wait for, so the daemon links it immediately.
+    expect(sent().ideaId).toBe('i7');
+  });
+
+  it('takes ⇧Enter in the prompt as a newline, and Enter as launch', async () => {
+    await open({ initialPrompt: 'line one', ideaId: 'i7' });
+    const box = promptBox();
+    box.focus();
+    act(() => {
+      box.dispatchEvent(
+        new window.KeyboardEvent('keydown', {
+          key: 'Enter',
+          shiftKey: true,
+          bubbles: true,
+        }),
+      );
+    });
+    expect(createSession).not.toHaveBeenCalled();
+    act(() => {
+      box.dispatchEvent(
+        new window.KeyboardEvent('keydown', { key: 'Enter', bubbles: true }),
+      );
+    });
+    expect(createSession).toHaveBeenCalled();
+  });
+
+  it('takes digits in the prompt as text, not as row shortcuts', async () => {
+    await open({ initialPrompt: 'seeded', ideaId: 'i7' });
+    const box = promptBox();
+    box.focus();
+    act(() => {
+      box.dispatchEvent(
+        new window.KeyboardEvent('keydown', { key: '2', bubbles: true }),
+      );
+    });
+    expect(createSession).not.toHaveBeenCalled();
+  });
+
+  it('shows no prompt box for an ordinary opening', async () => {
     await open();
     expect(document.getElementById('launcher-prompt')).toBeNull();
   });

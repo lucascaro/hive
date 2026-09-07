@@ -4,8 +4,12 @@
   border: 1px solid var(--hover);
   border-radius: var(--radius-md);
   padding: 4px;
-  /* Wide enough that the filter box's placeholder isn't clipped. */
+  /* Wide enough that the filter box's placeholder isn't clipped, and
+     bounded so the opening-prompt field (a textarea, whose intrinsic
+     max-content width is its default `cols`) cannot stretch the popup
+     past the sidebar it is anchored under. */
   min-width: 220px;
+  max-width: min(420px, calc(100vw - 32px));
   box-shadow: 0 8px 24px rgba(0,0,0,0.6);
   /* Must clear #sidebar-resizer (z-index 20). Neither #sidebar
      (position: relative, no z-index) nor #app (plain grid, no
@@ -78,18 +82,18 @@
   outline-offset: 1px;
 }
 
-/* What the session will open with, when it was started from an idea.
-   Read-only context for the choice below it, not another control — so
-   it takes the muted label/value pairing the other passive metadata in
-   this app uses rather than an input's chrome. */
+/* What the session will open with, when it was started from an idea —
+   an editable brief, so it takes a real field's chrome (matching
+   .launcher-branch below) under a muted label. */
 .launcher-prompt {
   display: flex;
   flex-direction: column;
   gap: 2px;
   margin: 0 0 var(--space-2);
-  padding: 4px 6px;
-  background: var(--surface-raised);
-  border-radius: var(--radius-sm);
+  /* Widens the popup (which is shrink-to-fit) when there is a brief to
+     edit: 220px is right for a filter box and cramped for three
+     sentences. Bounded by #launcher's max-width above. */
+  min-width: 340px;
 }
 .launcher-prompt__label {
   color: var(--fg-subtle);
@@ -98,14 +102,32 @@
   letter-spacing: 0.04em;
 }
 .launcher-prompt__text {
-  /* Clamped, not scrolled: an idea can be 4 KiB and the launcher is a
-     popup anchored under a card. The full note is one panel away. */
-  display: -webkit-box;
-  -webkit-line-clamp: 3;
-  -webkit-box-orient: vertical;
-  overflow: hidden;
+  /* Scrolls rather than growing: an idea can be 4 KiB and this is a
+     popup anchored under a project card. Resizable so a long brief can
+     be worked on in place. */
+  box-sizing: border-box;
+  display: block;
+  width: 100%;
+  /* Both bounds, because this theme sets box-sizing per rule rather
+     than globally and a textarea also carries an intrinsic `cols`
+     width — without them the field's padding and border pushed it out
+     through the right edge of the popup. */
+  max-width: 100%;
+  min-height: 3.5em;
+  max-height: 40vh;
+  padding: 4px 6px;
+  background: var(--surface-raised);
+  border: 1px solid var(--hover);
+  border-radius: var(--radius-sm);
   color: var(--fg);
   font-size: var(--text-sm);
+  font-family: inherit;
+  line-height: 1.4;
+  resize: vertical;
+}
+.launcher-prompt__text:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
 }
 
 /* Inline rename inside a worktree row. */

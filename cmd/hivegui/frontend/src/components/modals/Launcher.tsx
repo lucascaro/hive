@@ -125,6 +125,10 @@ function LauncherBody({
   const [loading, setLoading] = useState(true);
   const [useWorktree, setUseWorktree] = useState(req.useWorktree);
   const [branch, setBranch] = useState('');
+  // The opening prompt, seeded from the idea and editable. Per-open
+  // state like every other field here, so reopening the launcher over
+  // an edited one starts from the note again.
+  const [prompt, setPrompt] = useState(req.initialPrompt);
   // Null until the IsGitRepo probe answers; false disables the worktree
   // row. The row renders enabled meanwhile — the probe almost always
   // beats the user to the checkbox.
@@ -132,6 +136,7 @@ function LauncherBody({
 
   const searchRef = useRef<HTMLInputElement | null>(null);
   const branchRef = useRef<HTMLInputElement | null>(null);
+  const promptRef = useRef<HTMLTextAreaElement | null>(null);
   const selectedRef = useRef<HTMLDivElement | null>(null);
 
   // In duplicate mode the cwd is fixed to the source session, so the
@@ -304,7 +309,10 @@ function LauncherBody({
         branch: branch.trim(),
         worktreePath: req.worktreePath,
         continueConversation: req.continueConversation,
-        initialPrompt: req.initialPrompt,
+        // Trimmed for the same reason branch is. Emptied entirely
+        // means "just start the session" — and the daemon still links
+        // the idea, since there is no delivery left to wait for.
+        initialPrompt: prompt.trim(),
         ideaId: req.ideaId,
       }).catch(reportFailure('new session'));
     }
@@ -337,7 +345,14 @@ function LauncherBody({
         return handle(() => moveSelection(+1));
       if (e.key === 'ArrowUp' || (e.key === 'Tab' && e.shiftKey))
         return handle(() => moveSelection(-1));
-      if (e.key === 'Enter') return handle(() => activateAt(selected));
+      // Enter launches from anywhere in the popup, including the two
+      // text boxes — that is what the branch box already did. ⇧Enter
+      // inside the prompt is a newline instead, the same convention
+      // spec 217 settled on for every multi-line input in this app.
+      if (e.key === 'Enter') {
+        if (e.shiftKey && e.target === promptRef.current) return;
+        return handle(() => activateAt(selected));
+      }
       if (e.key === 'Escape') return handle(closeLauncher);
       if (cmdOrCtrl(e) && (e.key === 'n' || e.key === 'N'))
         return handle(closeLauncher);
@@ -363,7 +378,8 @@ function LauncherBody({
         !e.altKey &&
         /^[1-9]$/.test(e.key) &&
         query === '' &&
-        e.target !== branchRef.current
+        e.target !== branchRef.current &&
+        e.target !== promptRef.current
       ) {
         const i = parseInt(e.key, 10) - 1;
         if (i < matches.length) {
@@ -374,7 +390,7 @@ function LauncherBody({
         }
       }
     }
-    // Nothing but the two text boxes may take focus. Clicking anything
+    // Nothing but the text boxes may take focus. Clicking anything
     // else would blur them, and the keydown listener above only fires
     // while focus is inside #launcher — so the search would silently
     // stop responding to typing. preventDefault on mousedown suppresses
@@ -382,7 +398,12 @@ function LauncherBody({
     // agent rows still launch and the worktree checkbox still toggles.
     function onMouseDown(e: MouseEvent) {
       const target = e.target as Element | null;
-      if (target === searchRef.current || target === branchRef.current) return;
+      if (
+        target === searchRef.current ||
+        target === branchRef.current ||
+        target === promptRef.current
+      )
+        return;
       e.preventDefault();
     }
     // Focus leaving the launcher closes it: keyboard.ts bails out for the
@@ -418,15 +439,25 @@ function LauncherBody({
         onChange={(e) => setQuery(e.target.value)}
       />
       {/* What the session will open with, when it was started from an
-          idea. Read-only: the note is edited in the inbox, and a second
-          editable copy of it here would be a second thing to keep in
-          agreement with the record. Above the worktree row because it
-          is context for the choice below it, not another control. */}
-      {req.initialPrompt ? (
-        <div className="launcher-prompt" id="launcher-prompt">
+          idea — and editable, because the note was jotted down mid-task
+          and this is the last moment to sharpen it before an agent acts
+          on it. Edits here do NOT touch the stored idea: the record is
+          what was noticed, this is the brief for one session. Above the
+          worktree row because it is context for the choice below it. */}
+      {req.ideaId || req.initialPrompt ? (
+        <label className="launcher-prompt">
           <span className="launcher-prompt__label">Opening prompt</span>
-          <span className="launcher-prompt__text">{req.initialPrompt}</span>
-        </div>
+          <textarea
+            ref={promptRef}
+            id="launcher-prompt"
+            className="launcher-prompt__text"
+            rows={4}
+            aria-label="Opening prompt"
+            autoComplete="off"
+            value={prompt}
+            onChange={(e) => setPrompt(e.target.value)}
+          />
+        </label>
       ) : null}
       {/* Between the filter box and the list, and only once the agent
           list has landed — the same order and timing the imperative

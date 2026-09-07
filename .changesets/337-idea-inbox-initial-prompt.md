@@ -10,7 +10,10 @@ bump: minor
   checkbox and all. The prompt is an instruction, not a label — a bug
   asks the agent to reproduce it and find the root cause before
   touching code, an idea asks it to propose a plan first — with your
-  note as the subject. Claude and Pi receive it as their opening
+  note as the subject — and editable right there in the launcher, since
+  the note was jotted down mid-task and this is the last moment to
+  sharpen it (sharpening it does not change the stored note). Claude
+  and Pi receive it as their opening
   argument; every other agent has it typed into the terminal, followed
   by Enter, as soon as the session settles. The idea then flips to
   *started* and links back to the session, and that session's sidebar

@@ -129,17 +129,18 @@ test('Start session seeds the new session with the note', async ({ page }) => {
     .getByRole('button', { name: 'Start session' })
     .click();
 
-  // The launcher takes over, showing what the session will open with —
-  // read-only, and shaped as an instruction so the agent knows what to
-  // DO with the note rather than just what was noticed.
+  // The launcher takes over, seeded with what the session will open
+  // with — shaped as an instruction so the agent knows what to DO with
+  // the note rather than just what was noticed, and editable, because
+  // the note was jotted mid-task.
   await expect(inbox(page)).toBeHidden();
   const launcher = page.locator('#launcher');
   await expect(launcher).toBeVisible();
-  await expect(page.locator('#launcher-prompt')).toContainText(
-    'find the root cause',
+  await expect(page.locator('#launcher-prompt')).toHaveValue(
+    /find the root cause/,
   );
-  await expect(page.locator('#launcher-prompt')).toContainText(
-    'sidebar drag handle is 1px off',
+  await expect(page.locator('#launcher-prompt')).toHaveValue(
+    /sidebar drag handle is 1px off/,
   );
 
   await page.keyboard.press('Enter');
@@ -154,6 +155,49 @@ test('Start session seeds the new session with the note', async ({ page }) => {
   // Started is not done: the idea outlives the session by design, and
   // taking it out of the inbox stays an explicit action.
   await expect(badge(page)).toHaveText('1');
+});
+
+// A layout assertion, and it has to be a real browser: vitest has no
+// CSS at all, and this theme sets box-sizing per rule rather than
+// globally — so the field's own padding and border pushed it out
+// through the right edge of the popup while every jsdom test stayed
+// green. Measured at 354px inside a 350px popup before the fix.
+test('the opening prompt stays inside the launcher popup', async ({ page }) => {
+  await boot(page);
+  await capture(
+    page,
+    'the sidebar drag handle is one pixel off and the whole row jumps ' +
+      'when you grab it near the bottom edge of a collapsed project card',
+    'bug',
+  );
+  await badge(page).click();
+  await rows(page)
+    .first()
+    .getByRole('button', { name: 'Start session' })
+    .click();
+
+  const field = await page.locator('#launcher-prompt').boundingBox();
+  const popup = await page.locator('#launcher').boundingBox();
+  expect(field).not.toBeNull();
+  expect(popup).not.toBeNull();
+  if (!field || !popup) return;
+  expect(field.x).toBeGreaterThanOrEqual(popup.x - 0.5);
+  expect(field.x + field.width).toBeLessThanOrEqual(
+    popup.x + popup.width + 0.5,
+  );
+  expect(field.y + field.height).toBeLessThanOrEqual(
+    popup.y + popup.height + 0.5,
+  );
+  // The popup itself stays on screen, and nothing scrolls sideways.
+  expect(popup.x + popup.width).toBeLessThanOrEqual(
+    page.viewportSize()?.width ?? 0,
+  );
+  expect(
+    await page.evaluate(() => {
+      const el = document.getElementById('launcher');
+      return el ? el.scrollWidth - el.clientWidth : 0;
+    }),
+  ).toBeLessThanOrEqual(1);
 });
 
 test('Edit corrects the note, its kind and its project', async ({ page }) => {

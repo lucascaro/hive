@@ -52,7 +52,9 @@ What works:
   the project pinned and an opening prompt built from the note — an
   instruction shaped by its kind ("reproduce it first, find the root
   cause…" for a bug), with the note itself as the subject, so the agent
-  knows what to do with it rather than only what was noticed. Claude and Pi get it as their opening argument; every other
+  knows what to do with it rather than only what was noticed. The
+  prompt is editable in the launcher before you pick the agent —
+  sharpening it there does not change the stored note. Claude and Pi get it as their opening argument; every other
   agent has it typed into the terminal once the session settles. The
   idea then links back to the session it started, and that session's
   sidebar row carries a small idea glyph

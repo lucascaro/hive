@@ -976,6 +976,33 @@ path instead.
   typed-delivery path appends a carriage return and TUIs disagree about
   whether an embedded newline submits early. Spec and `### GUI` amended
   to match.
+- **2026-09-07** — The launcher's opening prompt is EDITABLE, not the
+  read-only preview `### GUI` specified. Raised by the user: the note
+  was jotted down mid-task against a different problem, and the
+  launcher is the last moment to turn it into a brief before an agent
+  starts acting on it. A `<textarea>` seeded from `ideaPrompt(idea)`,
+  per-open state like `branch`, trimmed on submit; emptying it starts
+  an ordinary session (and the idea still links, because with no
+  prompt there is no delivery to wait for). Edits here deliberately do
+  NOT write back to the idea — the record is what was noticed, this is
+  the brief for one session — which is also why the sheet's Edit stays
+  the way to change the note itself. Enter still launches from inside
+  the box (as it already did in the branch box); ⇧Enter is a newline,
+  and digits are text rather than row shortcuts.
+- **2026-09-07** — Two layout bugs found by MEASURING in Chromium, both
+  invisible to the 1174-test jsdom suite, which has no CSS at all:
+  (1) the field overflowed the popup by 14px (354px wide inside a 350px
+  popup) because this theme sets `box-sizing` per rule rather than
+  globally, so `width: 100%` plus padding and border overran — fixed
+  with `box-sizing: border-box` + `max-width: 100%`; (2) the popup is
+  shrink-to-fit with `min-width: 220px`, which is right for a filter
+  box and cramped for a three-sentence brief — `.launcher-prompt` now
+  carries `min-width: 340px` to widen it, bounded by a new
+  `max-width: min(420px, calc(100vw - 32px))` on `#launcher` so a
+  textarea's intrinsic `cols` width can never push the popup off
+  screen. The bounding-box comparison is kept as a Playwright test
+  rather than thrown away, because a reasoned CSS fix here is worth
+  nothing: the broken version passed every jsdom assertion.
 - **2026-09-07** — The `pi` "No project session found with id" warning
   found while probing on 2026-09-06 is left alone. It is pi's own
   pre-alt-screen line for a fresh `--session-id`, it is not made worse
