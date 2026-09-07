@@ -346,6 +346,16 @@ func TestPromptSanitization(t *testing.T) {
 			wantTyped: "oops",
 		},
 		{
+			// Not ASCII, and exactly as executable: U+009B is the
+			// Control Sequence Introducer, and xterm-family terminals
+			// decode the UTF-8 encoding of C1 back into control
+			// functions.
+			name:      "C1 controls are stripped too, not just C0",
+			in:        "before\u009b31mafter\u0085",
+			wantArgv:  "before31mafter",
+			wantTyped: "before31mafter",
+		},
+		{
 			// Nothing left to deliver. finishCreate branches on the
 			// empty result, so the idea links at create rather than
 			// waiting forever for a delivery that cannot happen.
@@ -452,30 +462,75 @@ func TestShellNeverReceivesATypedPrompt(t *testing.T) {
 	}
 }
 
-// A session started from an idea that can receive no prompt still links
-// the idea: there is no delivery to wait for, so holding the note open
-// forever would strand it.
-func TestIdeaLinksWhenThereIsNoDeliveryToWaitFor(t *testing.T) {
+// The idea is claimed only when the work was actually handed over.
+//
+// The failure this pins is worse than losing the prompt: the note also
+// left the inbox. A user picks Shell (the launcher's first row),
+// their sharpened text goes nowhere, and the idea is marked `started`
+// against a session that never received it — so the one record of what
+// they wanted is out of the open list with nothing to show for it.
+func TestIdeaClaimedOnlyWhenThePromptWasHandedOver(t *testing.T) {
 	skipOnWindows(t)
-	// The shell agent, because it is the case that reaches a user: it
-	// is the launcher's default selection, and it can receive no prompt
-	// at all. (The other no-delivery route — a note that sanitizes away
-	// to nothing — is covered by TestPromptSanitization; both land on an
-	// empty pendingPrompt, which is what finishCreate branches on.)
-	r, p := ideaRegistry(t)
-	idea, err := r.AddIdea(IdeaSpec{ProjectID: p.ID, Text: "note"})
-	if err != nil {
-		t.Fatalf("AddIdea: %v", err)
-	}
-	e, _ := liveSession(t, r, wire.CreateSpec{
-		Name: "s", ProjectID: p.ID, Agent: "shell", Shell: "/bin/sh",
-		InitialPrompt: "An idea was captured. The idea: x", IdeaID: idea.ID,
-	})
-	waitFor(t, "the idea to be linked", func() bool {
-		return ideaStatus(t, r, idea.ID).Status == wire.IdeaStatusStarted
-	})
-	if got := ideaStatus(t, r, idea.ID).SessionID; got != e.ID {
-		t.Errorf("idea session_id = %q, want %q", got, e.ID)
+	for _, tc := range []struct {
+		name   string
+		spec   wire.CreateSpec
+		linked bool
+	}{
+		{
+			// No prompt asked for: an ordinary Start session. Nothing
+			// to deliver, so nothing to wait for.
+			name:   "no prompt at all links immediately",
+			spec:   wire.CreateSpec{Agent: "shell", Shell: "/bin/sh"},
+			linked: true,
+		},
+		{
+			// A prompt was REQUESTED and cannot be delivered. The note
+			// stays in the inbox so it can be started again against an
+			// agent that can receive it.
+			name: "a prompt the shell agent cannot receive does not link",
+			spec: wire.CreateSpec{
+				Agent: "shell", Shell: "/bin/sh",
+				InitialPrompt: "An idea was captured. The idea: x",
+			},
+			linked: false,
+		},
+		{
+			// Same shape: sanitizing left nothing to hand over.
+			name: "a prompt that sanitizes away to nothing does not link",
+			spec: wire.CreateSpec{
+				Agent: "shell", Shell: "/bin/sh", InitialPrompt: "\x00\x01\x02",
+			},
+			linked: false,
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			r, p := ideaRegistry(t)
+			idea, err := r.AddIdea(IdeaSpec{ProjectID: p.ID, Text: "note"})
+			if err != nil {
+				t.Fatalf("AddIdea: %v", err)
+			}
+			spec := tc.spec
+			spec.Name, spec.ProjectID, spec.IdeaID = "s", p.ID, idea.ID
+			e, _ := liveSession(t, r, spec)
+
+			if tc.linked {
+				waitFor(t, "the idea to be linked", func() bool {
+					return ideaStatus(t, r, idea.ID).Status == wire.IdeaStatusStarted
+				})
+				if got := ideaStatus(t, r, idea.ID).SessionID; got != e.ID {
+					t.Errorf("idea session_id = %q, want %q", got, e.ID)
+				}
+				return
+			}
+			// Give a wrong link every chance to happen before denying it.
+			time.Sleep(300 * time.Millisecond)
+			got := ideaStatus(t, r, idea.ID)
+			if got.Status != wire.IdeaStatusOpen || got.SessionID != "" {
+				t.Errorf("idea = {status:%q session:%q}; a prompt that was "+
+					"never handed over must leave the note in the inbox",
+					got.Status, got.SessionID)
+			}
+		})
 	}
 }
 

@@ -136,10 +136,16 @@ export function markIdeaDone(idea: IdeaInfo): void {
 
 // startSessionFromIdea opens the agent launcher with the idea's project
 // pinned and its text as the opening prompt. The link back to the idea
-// is made by the DAEMON once that prompt is actually delivered — the
-// GUI never learns the new session's id, because CREATE_SESSION is
-// fire-and-forget and nothing correlates the SESSION_EVENT(added) that
-// follows with the request that caused it.
+// is made by the DAEMON, never here: the GUI never learns the new
+// session's id, because CREATE_SESSION is fire-and-forget and nothing
+// correlates the SESSION_EVENT(added) that follows with the request
+// that caused it.
+//
+// The daemon links it only once the prompt has actually been handed
+// over — and NOT at all when it cannot be (the shell agent, a custom
+// agent), which is the case the launcher warns about before the
+// launch. The note then stays in the inbox, which is what makes
+// starting it again against a different agent possible.
 //
 // The inbox closes first: the launcher anchors itself under the
 // project's card, which is behind this panel.

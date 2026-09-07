@@ -613,6 +613,10 @@ export async function ListAgents(): Promise<AgentInfo[]> {
       color: '#888',
       available: true,
       installCmd: [],
+      // A shell is a command interpreter, not a prompt box — the
+      // daemon refuses to hand it an opening prompt at all
+      // (registry.deliveryFor).
+      takesPrompt: false,
     },
     // Second built-in so the launcher's filter box has something to
     // narrow. Order matters: several specs assert the FIRST
@@ -624,6 +628,7 @@ export async function ListAgents(): Promise<AgentInfo[]> {
       color: '#d97757',
       available: true,
       installCmd: [],
+      takesPrompt: true,
     },
     ...customAgents.map((a) => ({
       id: a.id,
@@ -631,6 +636,10 @@ export async function ListAgents(): Promise<AgentInfo[]> {
       color: a.color,
       available: true,
       installCmd: [],
+      // Custom agents are unknown programs; validateCustom builds
+      // their Def without either prompt flag, so this is false by
+      // construction Go-side too.
+      takesPrompt: false,
     })),
   ];
 }

@@ -1122,6 +1122,37 @@ path instead.
   `Kill` — Kill removes the entry, so `watchSessionExit` returns at its
   `!ok` guard before the clause runs, which is exactly why that branch
   had no coverage.
+- **2026-09-07** — Review iteration 3, fixed — and this one is a
+  consequence of iteration 2's own fix, not an independent defect.
+  Making delivery opt-in was right, but the UI kept offering the prompt
+  box for every agent, and `finishCreate` still linked the idea when
+  there was nothing queued. So picking **Shell** (the launcher's FIRST
+  row, the likeliest accidental pick) silently discarded the user's
+  sharpened text *and* marked the note `started` — the one record of
+  what they wanted, out of the inbox, with nothing handed over. Worse
+  than losing the prompt. Fixed at both ends: the daemon now claims the
+  idea only when the work was actually handed over (no prompt asked
+  for, or the argv path really put text on the command line), and
+  `AgentInfo` gained `takesPrompt` so the launcher warns before the
+  launch and the note stays startable. `AgentInfo` is a GUI-side struct
+  built from `agent.All()`, so this needed no wire field and no second
+  contract bump.
+- **2026-09-07** — Review iteration 3, fixed: `promptControlChars` now
+  strips C1 (U+0080–U+009F) as well as C0 and DEL. Easy to miss because
+  they are not ASCII and just as executable — U+009B *is* the Control
+  Sequence Introducer, and xterm-family terminals decode the UTF-8
+  encoding of C1 back into control functions. No legitimate use in
+  prose, so there was nothing to weigh. Taken rather than deferred
+  despite the reviewer's 5/10 confidence: it is one line on a path the
+  code's own comment calls a trust boundary.
+- **2026-09-07** — Review iteration 3 re-verified iteration 2's
+  BLOCKING fix rather than assuming it, including the case I had not
+  traced myself: **custom agents**. `validateCustom` builds each `Def`
+  from a literal carrying only `ID`/`Name`/`Cmd`/`Color`, so
+  `TypedPrompt` and `PositionalPrompt` are false by construction for
+  them, and `agent.Get` checks built-ins first so a custom agent cannot
+  shadow one. `resolveAgentCmd` is reached only from `finishCreate`, so
+  no restart or revive path replays a prompt.
 - **2026-09-07** — The `pi` "No project session found with id" warning
   found while probing on 2026-09-06 is left alone. It is pi's own
   pre-alt-screen line for a fresh `--session-id`, it is not made worse
@@ -1416,6 +1447,9 @@ collision is under Open questions.
 
 - **2026-09-07 iter 2** — verdict: REQUEST_CHANGES; mergeable: MERGEABLE; findings_hash: 67c463e7171509f8aabbc625df06d9ce20755ca217c3571b5160f79ce5cd918f; threads_open: 0; action: autofix+push (4 safe doc/comment fixes, `a2e1855c`), then escalated:risky-fix-needs-human-decision (1 BLOCKING + 7); head_sha: a2e1855c.
 - **2026-09-07 iter 2b** — all eight were taken by the operator rather than left standing, and the BLOCKING one was reproduced first (a note containing `$(touch <marker>)` created the marker). See the Decision log entries of the same date. Fixed in `d9874a83`.
+
+- **2026-09-07 iter 3** — verdict: COMMENT coerced to REQUEST_CHANGES (non-empty findings hash); mergeable: MERGEABLE; findings_hash: cbf7bb46d1266ee2fbfa05ae5cb481064b45a0e37b937ba08982cccb812ed797; threads_open: 0; action: escalated:risky-fix-needs-human-decision (0 BLOCKING, 2 IMPORTANT, 2 MINOR; autofix applied and pushed nothing); head_sha: 145ce57. Iteration 2's BLOCKING fix was re-verified clean, custom agents included.
+- **2026-09-07 iter 3b** — all four were taken by the operator. The UX one was the important one: it was a consequence of iteration 2's own fix (prompt offered for agents that cannot receive it, and the idea claimed anyway).
 
 ## Open questions
 

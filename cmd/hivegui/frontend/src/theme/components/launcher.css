@@ -143,6 +143,15 @@
   outline-offset: 1px;
 }
 
+/* Shown when the selected agent cannot receive the prompt. Warning
+   colour, not error: nothing has gone wrong yet, and the launch is
+   still a perfectly reasonable thing to do. */
+.launcher-prompt__warn {
+  color: var(--state-attention);
+  font-size: var(--text-xs);
+  line-height: 1.4;
+}
+
 /* Inline rename inside a worktree row. */
 .worktree-rename {
   width: 100%;

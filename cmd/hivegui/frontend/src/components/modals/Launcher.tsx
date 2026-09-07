@@ -155,6 +155,14 @@ function LauncherBody({
     ? agents.filter((a) => a.name.toLowerCase().includes(q))
     : agents;
 
+  // Whether the row the user is about to launch can be handed an
+  // opening prompt at all. The shell agent and any custom agent cannot
+  // (registry.deliveryFor), and Shell is the FIRST row — so without
+  // this the most likely accidental pick silently discards what the
+  // user wrote. Only asked while there is a prompt to lose.
+  const promptDropped =
+    prompt.trim() !== '' && matches[selected]?.takesPrompt === false;
+
   // Position and focus, before the first paint: the popup is anchored
   // under the resolved project's card header so the user can see which
   // project the new session lands in. The header, not its + button: the
@@ -473,6 +481,17 @@ function LauncherBody({
             value={prompt}
             onChange={(e) => setPrompt(e.target.value)}
           />
+          {/* Said before the launch, not after: the daemon simply will
+              not deliver this, and a note the user then has to retype
+              is the outcome this whole feature exists to prevent. The
+              idea stays in the inbox in that case, which is what makes
+              "start it again" true rather than consoling. */}
+          {promptDropped ? (
+            <span className="launcher-prompt__warn" id="launcher-prompt-warn">
+              {matches[selected]?.name ?? 'This agent'} cannot take an opening
+              prompt — it will not be sent, and the idea stays in the inbox.
+            </span>
+          ) : null}
         </label>
       ) : null}
       {/* Between the filter box and the list, and only once the agent

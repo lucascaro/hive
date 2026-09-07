@@ -29,6 +29,14 @@ type AgentInfo struct {
 	Color      string   `json:"color"`
 	Available  bool     `json:"available"`
 	InstallCmd []string `json:"installCmd,omitempty"`
+	// TakesPrompt reports whether this agent can be handed an opening
+	// prompt at all — either as argv or typed into its prompt box. The
+	// launcher needs it because it offers the prompt box BEFORE the
+	// agent is chosen: without it, picking the shell agent (the first
+	// row) silently discards what the user wrote. The daemon is still
+	// the authority; this only stops the GUI promising something it
+	// will refuse.
+	TakesPrompt bool `json:"takesPrompt"`
 }
 
 // ListAgents returns every agent definition — built-ins plus the
@@ -44,6 +52,11 @@ func (a *App) ListAgents() []AgentInfo {
 			Color:      d.Color,
 			Available:  d.Available(),
 			InstallCmd: d.InstallCmd,
+			// Mirrors registry.deliveryFor's two positive cases. A
+			// custom agent is neither: validateCustom builds its Def
+			// with ID/Name/Cmd/Color only, so both flags are false by
+			// construction.
+			TakesPrompt: d.PositionalPrompt || d.TypedPrompt,
 		})
 	}
 	return out

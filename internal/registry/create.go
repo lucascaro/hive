@@ -170,19 +170,29 @@ func (r *Registry) finishCreate(ctx context.Context, e *Entry, spec wire.CreateS
 		return ErrNotFound
 	}
 	r.broadcast(wire.SessionEventUpdated, info)
-	// Anything already delivered — or never going to be — links the
-	// idea now. Only a prompt still queued for the PTY waits, and it
-	// links from deliverPendingPromptLocked once the text has actually
-	// landed, so a session that dies before its first idle edge leaves
-	// the idea open rather than claiming work that never started.
+	// The idea is claimed only when the work was actually handed over.
+	// Three cases, and only the first two are that:
 	//
-	// Read under the lock rather than recomputed from the spec: an
-	// empty result from typedPrompt is exactly the case a second
-	// deliveryFor call would get wrong.
+	//   - no prompt was asked for at all: an ordinary Start session,
+	//     nothing to deliver, so the link is immediate;
+	//   - argv: the text is in the process's own command line, so it is
+	//     delivered the moment the process exists;
+	//   - typed: still queued, and linked by
+	//     deliverPendingPromptLocked once it has reached the PTY.
+	//
+	// Everything else is a prompt that was REQUESTED and cannot be
+	// delivered — the shell agent, a custom agent, a note that
+	// sanitized away to nothing. Those must not claim the idea: no
+	// work was handed over, so the note stays in the inbox where the
+	// user can start it again against an agent that can receive it.
+	// (An earlier revision linked here, which marked a note as started
+	// for a session that never got it.)
 	r.mu.Lock()
 	waiting := e.pendingPrompt != ""
 	r.mu.Unlock()
-	if !waiting {
+	delivered := spec.InitialPrompt == "" ||
+		(deliveryFor(spec) == promptArgv && sanitizePrompt(spec.InitialPrompt) != "")
+	if !waiting && delivered {
 		r.linkIdeaToSession(spec.IdeaID, p.id)
 	}
 	go r.watchSessionExit(p.id, sess)
@@ -534,7 +544,16 @@ func promptControlChars(r rune) rune {
 	if r == '\n' || r == '\t' {
 		return r
 	}
+	// C0 and DEL.
 	if r < 0x20 || r == 0x7f {
+		return -1
+	}
+	// C1 (U+0080–U+009F). Easy to forget because they are not ASCII,
+	// and they are exactly as executable: U+009B IS the Control
+	// Sequence Introducer, and xterm-family terminals decode the UTF-8
+	// encoding of these back into control functions. They have no
+	// legitimate use in prose, so there is nothing to weigh here.
+	if r >= 0x80 && r <= 0x9f {
 		return -1
 	}
 	return r

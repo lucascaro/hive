@@ -29,6 +29,8 @@ const AGENTS: main.AgentInfo[] = [
     color: '#888',
     available: true,
     installCmd: [],
+    // A shell cannot be handed an opening prompt (deliveryFor).
+    takesPrompt: false,
   },
   {
     id: 'claude',
@@ -36,6 +38,7 @@ const AGENTS: main.AgentInfo[] = [
     color: '#d97757',
     available: true,
     installCmd: [],
+    takesPrompt: true,
   },
   {
     id: 'codex',
@@ -43,6 +46,7 @@ const AGENTS: main.AgentInfo[] = [
     color: '#4a9',
     available: true,
     installCmd: [],
+    takesPrompt: true,
   },
 ] as main.AgentInfo[];
 
@@ -640,6 +644,33 @@ describe('launcher branch name', () => {
       launcher().dispatchEvent(ev);
     });
     expect(ev.defaultPrevented).toBe(true);
+  });
+
+  it('warns before launching an agent that cannot receive the prompt', async () => {
+    // Shell is the FIRST row, so it is the most likely accidental
+    // pick — and the daemon will not deliver a prompt to it. Saying so
+    // before the launch is the difference between "the idea is still
+    // in your inbox" and "retype what you wrote".
+    await open({ initialPrompt: 'Bug report: 1px off', ideaId: 'i7' });
+    const warn = () => document.getElementById('launcher-prompt-warn');
+    expect(warn()?.textContent).toContain('cannot take an opening prompt');
+    expect(warn()?.textContent).toContain('Shell');
+
+    // Moving to an agent that can take it clears the warning.
+    act(() => {
+      launcher().dispatchEvent(
+        new window.KeyboardEvent('keydown', {
+          key: 'ArrowDown',
+          bubbles: true,
+        }),
+      );
+    });
+    expect(warn()).toBeNull();
+  });
+
+  it('does not warn when there is no prompt to lose', async () => {
+    await open();
+    expect(document.getElementById('launcher-prompt-warn')).toBeNull();
   });
 
   it('shows the keys that act on the prompt box', async () => {
