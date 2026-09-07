@@ -13,9 +13,8 @@ import { flushSync } from 'react-dom';
 import { ListIdeas, RemoveIdea, UpdateIdea } from '../../bridge.js';
 import { openLauncher } from './launcher.js';
 import { openQuickIdea } from './quick-idea.js';
-import { ideaPrompt } from '../../lib/ideas.js';
+import { ideaPrompt, ideaTextTooLong, MAX_IDEA_TEXT } from '../../lib/ideas.js';
 import { flashStatus, reportFailure } from '../dom.js';
-import { ideaTextTooLong, MAX_IDEA_TEXT } from '../../lib/ideas.js';
 import { openChoiceDialog, dismissChoiceDialog } from './choice-dialog.js';
 import {
   anyModalOpen,

@@ -26,8 +26,9 @@ package buildinfo
 //
 //	7 — Starting a session from an idea. CreateSpec gained
 //	    initial_prompt (delivered as an argv positional to Claude and
-//	    Pi, typed into the PTY on the first idle edge for every other
-//	    agent) and idea_id (the daemon flips that idea to `started`
+//	    Pi, typed into the PTY on the first idle edge for the agents
+//	    that present a prompt box, and refused outright for the shell
+//	    and custom agents) and idea_id (the daemon flips that idea to `started`
 //	    once the prompt lands). UPDATE_IDEA gained kind and project_id,
 //	    so the inbox can correct a mis-filed note. Both directions are
 //	    silent-wrong without the bump, which is why it is one: an older

@@ -93,8 +93,9 @@ func (r *Registry) beginCreate(spec wire.CreateSpec) (*Entry, createPlan, error)
 	e.ideaID = spec.IdeaID
 	if deliveryFor(spec) == promptTyped {
 		// May come back empty if the note was nothing but control
-		// characters; then there is no delivery to wait for and the
-		// idea links at create like any other prompt-less session.
+		// characters. That is NOT the prompt-less case: a prompt was
+		// requested and nothing can be handed over, so finishCreate
+		// leaves the idea in the inbox rather than claiming it.
 		e.pendingPrompt = typedPrompt(spec.InitialPrompt)
 	}
 	info := e.Info()

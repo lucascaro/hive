@@ -54,8 +54,11 @@ What works:
   cause…" for a bug), with the note itself as the subject, so the agent
   knows what to do with it rather than only what was noticed. The
   prompt is editable in the launcher before you pick the agent —
-  sharpening it there does not change the stored note. Claude and Pi get it as their opening argument; every other
-  agent has it typed into the terminal once the session settles. The
+  sharpening it there does not change the stored note. Claude and Pi
+  get it as their opening argument; every other agent has it typed into
+  the terminal once the session settles — except the plain shell and
+  custom agents, which cannot be handed one at all: the launcher says
+  so before you start, and the idea stays in the inbox. The
   idea then links back to the session it started, and that session's
   sidebar row carries a small idea glyph
 
