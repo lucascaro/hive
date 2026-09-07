@@ -859,6 +859,35 @@ path instead.
   matching success criterion; the work is assigned to phase 3 above.
   Recorded rather than fixed in phase 2 because it is a wire and
   registry change, and phase 2's PR had already gated.
+- **2026-09-07** — **The Claude/Pi interactive check is done, and both
+  pass.** `### Initial prompt delivery` asked for this before phase 3
+  was built, because the whole argv path rests on it and nothing in the
+  tree proved it. Measured under a real PTY (a throwaway probe using
+  the `go-pty` dependency `scripts/vtcapture` already pulls in; the
+  distinguishing signal is simply whether the process exits on its own):
+  - `claude --session-id <uuid> "text"` — **interactive, and it submits
+    the text as the first turn.** Alt screen (`\e[?1049h`), full clear,
+    mouse tracking, the Claude Code banner and status line; still
+    running after 25s. The capture shows `❯ reply with the single word
+    ok` → `⏺ ok` → an idle prompt, so the positional is not merely
+    seeded into the input box, it is dispatched.
+  - `pi --session-id <id> "text"` — **interactive, and it submits too.**
+    Same markers, still running after 25s, the prompt rendered into the
+    session and dispatched to the model. Its turn then failed with
+    `Error: Connection error.` — the probe machine had no backend for
+    pi's configured local MLX model. That is environmental and says
+    nothing about the mode question.
+  So `Def.PositionalPrompt` has its two users as the spec assumed, and
+  the typed-at-idle fallback is for the other agents only. Phase 3 is
+  unblocked on its own terms.
+- **2026-09-07** — Found while probing: `pi` prints a plain-text
+  warning **before** entering the alt screen when `--session-id` names
+  a session it has not seen — `Warning: No project session found with
+  id '<id>'; creating a new session with that id.` Hive passes a fresh
+  id for every new session, so this lands in the scrollback of every pi
+  session it starts. Harmless, but it is the first thing the user sees,
+  and it will be read as Hive having done something wrong. Worth a line
+  in phase 3's notes rather than a fix here.
 
 ## Review log
 
