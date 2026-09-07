@@ -1019,6 +1019,13 @@ Append-only, one entry per `/hs-merge-gate` run.
     - acceptance — PASS (phase-2 scope) — criterion 2 (⌘I prefills the focused session's project, Enter files it and returns focus) MET, verified by `quick-idea.test.tsx` 12/12 plus the Playwright capture leg; criterion 4 (sidebar open count, inbox list/edit/done/delete) MET, `idea-inbox.test.tsx` 9/9 plus the Playwright badge/Done/Delete legs. Criteria 1 and 3 MET by phase 1 and still holding (`TestIdeasSurviveReload`, `TestIdeaEventsBroadcast`, `cmd/hived` idea tests all pass unchanged). Criteria 5 and 6 DEFERRED (phase 3 — `initial_prompt`, Start session, the `status=started` write); criterion 7 MET for its capture→count→edit→done→delete legs and its Go half, start→prompt-visible DEFERRED with them.
     - non-goals — PASS — all seven respected. `external_ref` untouched and unexposed; no priority/order/tags/kanban; no capture surface outside Hive; no attachments; every `AddIdea` resolves a project (falling back to the default) so no idea can exist without one; the project-delete cascade confirms before destroying open ideas; `cmd/hived/idea.go` untouched and still exactly `add`/`list`. No scope bleed: `internal/agent/` and `internal/registry/create.go` are not in the diff, and the only non-GUI file touched is `cmd/hived-ws-bridge/main.go` (forwarding the four idea methods so the real-e2e harness can reach them).
     - doc accuracy — PASS — the changeset describes only what phase 2 ships; README's Keybinds table carries ⌘I and ⇧⌘I; every surface AGENTS.md › Keybindings Policy names was updated (handler, both `shortcuts.ts` functions, the palette table, `menu_darwin.go`, README); the help overlay and palette derive from those functions so they follow automatically; modal hints use the `[…]`/`(…)` convention and the platform-aware `mod()` rather than a hardcoded ⌘; no doc claims phase-3 behavior as shipped. `regression_of` is not applicable — the changeset is `type: added`.
+  - 2026-09-06 addition, after the verdict: `scripts/dev-iso.sh --stop`.
+    Not spec scope and not user-visible — a contributor script — added
+    at the user's request while exercising the isolated build, which is
+    where the need showed up (closing the GUI window leaves `hived` and
+    its agent PTYs running for the next run to inherit). Recorded here
+    because the gated diff and the merged diff should not differ
+    silently.
   - 2026-09-06 amendment, after the verdict: the spec gained an eighth
     success criterion (an idea's kind and project are editable after
     capture) when the feature was exercised by hand in the isolated

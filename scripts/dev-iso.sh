@@ -6,6 +6,7 @@
 # Usage:
 #   scripts/dev-iso.sh           # build + run
 #   scripts/dev-iso.sh --reset   # stop the iso daemon and wipe its state
+#   scripts/dev-iso.sh --stop    # stop the iso daemon, keep its state
 #   scripts/dev-iso.sh --no-build  # skip ./build.sh, just relaunch
 #   scripts/dev-iso.sh --dir /tmp/foo  # use a custom iso dir
 #
@@ -65,11 +66,13 @@ iso_slug=${iso_slug//[^A-Za-z0-9._-]/-}
 iso_dir=/tmp/hive-iso-${iso_slug:-default}
 do_build=1
 do_reset=0
+do_stop=0
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --dir)      iso_dir="$2"; shift 2 ;;
     --reset)    do_reset=1; shift ;;
+    --stop)     do_stop=1; shift ;;
     --no-build) do_build=0; shift ;;
     -h|--help)
       # Every comment line after the shebang, up to the first line of
@@ -79,6 +82,29 @@ while [[ $# -gt 0 ]]; do
     *) echo "unknown flag: $1" >&2; exit 2 ;;
   esac
 done
+
+# --stop is the half of --reset you want after closing the window:
+# closing it leaves hived (and any agent PTYs under it) running, which
+# the next run then inherits. Stopping without wiping keeps the
+# sessions and ideas you were looking at, so `--stop` then
+# `--no-build` is a clean restart rather than a fresh slate.
+#
+# Refused together with --reset rather than given a precedence: --reset
+# already stops, so asking for both means one of the two was a mistake,
+# and guessing which would either destroy state or fail to.
+if [[ $do_stop -eq 1 && $do_reset -eq 1 ]]; then
+  echo "refusing: --stop and --reset together — --reset already stops the daemon (and wipes its state)" >&2
+  exit 2
+fi
+
+if [[ $do_stop -eq 1 ]]; then
+  stop_iso_daemon "$iso_dir"
+  # True whether one was running or not; the "==> Stopping hived …"
+  # line above is what distinguishes the two.
+  echo "==> No iso daemon left on $iso_dir/hived.sock"
+  echo "    State kept at $iso_dir/state — relaunch with --no-build"
+  exit 0
+fi
 
 if [[ $do_reset -eq 1 ]]; then
   # Guard against catastrophic --dir values. --reset must only ever
