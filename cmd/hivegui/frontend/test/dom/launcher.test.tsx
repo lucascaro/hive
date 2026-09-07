@@ -656,7 +656,11 @@ describe('launcher branch name', () => {
     expect(warn()?.textContent).toContain('cannot take an opening prompt');
     expect(warn()?.textContent).toContain('Shell');
 
-    // Moving to an agent that can take it clears the warning.
+    // Moving to an agent that can take it clears the warning. The live
+    // region itself STAYS mounted and only its text goes: a
+    // role="status" inserted at the same moment as its content is
+    // routinely missed by screen readers, which would leave exactly
+    // the user it is for with no signal.
     act(() => {
       launcher().dispatchEvent(
         new window.KeyboardEvent('keydown', {
@@ -665,18 +669,23 @@ describe('launcher branch name', () => {
         }),
       );
     });
-    expect(warn()).toBeNull();
+    expect(warn()).not.toBeNull();
+    expect(warn()?.textContent).toBe('');
   });
 
   it('does not warn when there is no prompt to lose', async () => {
     // Two different reasons the warning can be absent, and only the
     // second one is this test's subject — asserting it with no prompt
     // box on screen at all would pass even if the warning were broken.
+    const warn = () => document.getElementById('launcher-prompt-warn');
     await open();
     expect(promptBox()).toBeNull();
-    expect(document.getElementById('launcher-prompt-warn')).toBeNull();
+    // No prompt box at all, so not even the empty live region.
+    expect(warn()).toBeNull();
 
     // Prompt box present, on an agent that CAN take it: still silent.
+    // Silent means EMPTY, not absent — the region is mounted with the
+    // box so an announcement has somewhere to land.
     await open({ initialPrompt: 'seeded', ideaId: 'i7' });
     act(() => {
       launcher().dispatchEvent(
@@ -687,13 +696,13 @@ describe('launcher branch name', () => {
       );
     });
     expect(promptBox()).not.toBeNull();
-    expect(document.getElementById('launcher-prompt-warn')).toBeNull();
+    expect(warn()?.textContent).toBe('');
 
     // And emptying the box silences it even on an agent that cannot.
     await open({ initialPrompt: 'seeded', ideaId: 'i7' });
-    expect(document.getElementById('launcher-prompt-warn')).not.toBeNull();
+    expect(warn()?.textContent).toContain('cannot take an opening prompt');
     fireEvent.change(promptBox(), { target: { value: '   ' } });
-    expect(document.getElementById('launcher-prompt-warn')).toBeNull();
+    expect(warn()?.textContent).toBe('');
   });
 
   it('shows the keys that act on the prompt box', async () => {

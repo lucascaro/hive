@@ -301,9 +301,12 @@ func TestPendingPromptDroppedWhenSessionGoesAway(t *testing.T) {
 	}
 }
 
-// The argv path does not wait: the prompt is in the process's own
-// command line, so the idea is linked as soon as the process exists.
-func TestIdeaLinkedImmediatelyOnTheArgvPath(t *testing.T) {
+// Nothing queued means nothing to wait for: the idea is linked as soon
+// as the process exists. Named for what it actually exercises — the
+// `InitialPrompt == ""` arm of handedOverAtCreate, not the argv arm,
+// which would mean spawning a real agent binary and is covered by
+// TestHandedOverAtCreate instead.
+func TestIdeaLinkedImmediatelyWhenNothingIsQueued(t *testing.T) {
 	skipOnWindows(t)
 	r, p := ideaRegistry(t)
 	idea, err := r.AddIdea(IdeaSpec{ProjectID: p.ID, Text: "argv path"})

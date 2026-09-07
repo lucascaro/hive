@@ -354,9 +354,9 @@ function LauncherBody({
       };
       // Arrows move the agent selection — except inside the prompt
       // box, where they are how you move the caret through four rows of
-      // text. Tab still moves the selection there: it is the popup's
-      // only other navigation key and a literal tab is not something
-      // anyone types into a brief.
+      // text. Tab does NOT stand in for them there; see the Tab branch
+      // below, which hands Tab to the browser whenever a prompt box
+      // exists so the textarea is reachable at all.
       const inPrompt = e.target === promptRef.current;
       if (e.key === 'ArrowDown' && !inPrompt)
         return handle(() => moveSelection(+1));
@@ -487,9 +487,7 @@ function LauncherBody({
             className="launcher-prompt__text"
             rows={4}
             aria-label="Opening prompt"
-            aria-describedby={
-              promptDropped ? 'launcher-prompt-warn' : undefined
-            }
+            aria-describedby="launcher-prompt-warn"
             autoComplete="off"
             value={prompt}
             onChange={(e) => setPrompt(e.target.value)}
@@ -499,20 +497,25 @@ function LauncherBody({
               is the outcome this whole feature exists to prevent. The
               idea stays in the inbox in that case, which is what makes
               "start it again" true rather than consoling. */}
-          {promptDropped ? (
-            <span
-              className="launcher-prompt__warn"
-              id="launcher-prompt-warn"
-              // Announced, not just drawn: it appears in response to
-              // moving the selection, so a screen-reader user who
-              // cannot see it changing gets no other signal that the
-              // text they typed is about to be dropped.
-              role="status"
-            >
-              {matches[selected]?.name ?? 'This agent'} cannot take an opening
-              prompt — it will not be sent, and the idea stays in the inbox.
-            </span>
-          ) : null}
+          <span
+            className="launcher-prompt__warn"
+            id="launcher-prompt-warn"
+            // Announced, not just drawn: it appears in response to
+            // moving the selection, so a screen-reader user who cannot
+            // see it changing gets no other signal that the text they
+            // typed is about to be dropped.
+            //
+            // Mounted whether or not there is anything to say, and only
+            // the TEXT swaps — the same shape BootState and StatusBar
+            // use. A live region inserted at the same moment as its
+            // content is routinely missed by NVDA and VoiceOver, which
+            // would leave exactly the user this is for with no signal.
+            role="status"
+          >
+            {promptDropped
+              ? `${matches[selected]?.name ?? 'This agent'} cannot take an opening prompt — it will not be sent, and the idea stays in the inbox.`
+              : ''}
+          </span>
         </label>
       ) : null}
       {/* Between the filter box and the list, and only once the agent

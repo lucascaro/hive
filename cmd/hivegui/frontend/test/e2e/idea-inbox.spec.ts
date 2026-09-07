@@ -147,9 +147,13 @@ test('Start session seeds the new session with the note', async ({ page }) => {
   // a prompt at all, so launching it here would assert delivery the
   // daemon refuses — which is exactly what this test used to do, and
   // it stayed green because the mock delivered unconditionally.
-  await expect(page.locator('#launcher-prompt-warn')).toBeVisible();
+  await expect(page.locator('#launcher-prompt-warn')).toContainText(
+    'cannot take an opening prompt',
+  );
   await page.keyboard.press('ArrowDown');
-  await expect(page.locator('#launcher-prompt-warn')).toHaveCount(0);
+  // Empties rather than unmounting: the live region has to predate its
+  // own content or screen readers miss the announcement.
+  await expect(page.locator('#launcher-prompt-warn')).toHaveText('');
   await page.keyboard.press('Enter');
   await expect(launcher).toBeHidden();
 
