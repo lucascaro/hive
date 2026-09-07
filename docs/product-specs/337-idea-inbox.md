@@ -1,11 +1,12 @@
 ---
 issue: null
 pr: 377
+shipped: 2026-09-07
 title: "Idea inbox: capture ideas mid-session, start a session from one later"
 type: enhancement
 complexity: M
 priority: P1
-stage: GATE
+stage: DONE
 ---
 
 # Idea inbox: capture ideas mid-session, start a session from one later
@@ -14,7 +15,7 @@ stage: GATE
 - **Type:** enhancement
 - **Complexity:** M
 - **Priority:** P1
-- **Exec plan:** [docs/exec-plans/active/337-idea-inbox.md](../exec-plans/active/337-idea-inbox.md)
+- **Exec plan:** [docs/exec-plans/completed/337-idea-inbox.md](../exec-plans/completed/337-idea-inbox.md)
 - **Design:** [docs/design-docs/control-plane.md](../design-docs/control-plane.md)
 
 ## Problem
