@@ -214,9 +214,11 @@ func TestAssessmentsDisabled(t *testing.T) {
 		{"disabled", "assessments disabled", nil, true},
 		{"enabled", "assessments enabled", nil, false},
 		{"spctl unavailable fails closed", "", errors.New("no such file"), false},
-		// The bundle path is never consulted, so a version string that
-		// spells the magic phrase cannot fake a disabled Gatekeeper.
-		{"path cannot spoof", "assessments enabled", nil, false},
+		// The bundle path is never consulted, so a rejection that
+		// echoes back a path spelling the magic phrase — the shape a
+		// remote-supplied version string could take — cannot fake a
+		// disabled Gatekeeper.
+		{"path cannot spoof", "/tmp/hive-assessments-are-disabled.app: rejected", nil, false},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			captureArgvOut(t, argvResult{tc.out, tc.err})
@@ -296,32 +298,53 @@ func TestSigningTeamIDMatchesSource(t *testing.T) {
 // multi-minute build that their own build is "not signed by the Hive
 // developer" — and only from the day a Team ID is pinned, long after
 // anyone is looking at this code.
+// It drives applyStagedBundle end to end rather than asserting the
+// path classifier alone: deleting the isDownloadedStaging guard has to
+// make this fail, or the guard is unguarded.
 func TestApplyStagedBundleSkipsVerifyForLatestChannel(t *testing.T) {
 	isolateStateDir(t)
 	defer buildinfo.SetSigningTeamIDForTest("ABCDE12345")()
 
-	called := false
-	prev := verifySignatureFn
+	verifyErr := errors.New("this update is not signed by the Hive developer (team ABCDE12345)")
+	verified := 0
+	prevVerify := verifySignatureFn
 	verifySignatureFn = func(context.Context, string) error {
-		called = true
-		return errors.New("this update is not signed by the Hive developer (team ABCDE12345)")
+		verified++
+		return verifyErr
 	}
-	t.Cleanup(func() { verifySignatureFn = prev })
+	t.Cleanup(func() { verifySignatureFn = prevVerify })
+
+	installed := stubBundle(t, t.TempDir(), "old")
+	prevExe := executablePath
+	executablePath = func() (string, error) {
+		return filepath.Join(installed, "Contents", "MacOS", "hivegui"), nil
+	}
+	t.Cleanup(func() { executablePath = prevExe })
 
 	// stageLatest returns a path inside the user's checkout, never
-	// under updatesRoot().
-	latest := filepath.Join(t.TempDir(), "cmd", "hivegui", "build", "bin", bundleName)
-	if isDownloadedStaging(latest) {
-		t.Fatalf("isDownloadedStaging(%q) = true; a source-built bundle is not a download", latest)
+	// under updatesRoot(), so the swap must go through untouched.
+	latest := stubBundle(t, filepath.Join(t.TempDir(), "cmd", "hivegui", "build", "bin"), "new")
+	if err := applyStagedBundle(latest); err != nil {
+		t.Fatalf("applyStagedBundle(latest-channel bundle) = %v; a locally built bundle carries no "+
+			"Developer ID and must not be re-verified at apply time", err)
+	}
+	if verified != 0 {
+		t.Errorf("verification ran %d times on a latest-channel bundle, want 0", verified)
+	}
+	if got := readMarker(t, installed); got != "new" {
+		t.Errorf("installed binary = %q after apply, want %q", got, "new")
 	}
 
-	// Release stagings, by contrast, must still be re-verified.
-	release := filepath.Join(updatesRoot(), "9.9.9", "app", bundleName)
-	if !isDownloadedStaging(release) {
-		t.Errorf("isDownloadedStaging(%q) = false; a downloaded staging must still be re-verified", release)
+	// A downloaded staging, by contrast, must still be re-verified —
+	// and a failed verification must abort the swap.
+	release := stubBundle(t, filepath.Join(updatesRoot(), "9.9.9"), "downloaded")
+	if err := applyStagedBundle(release); !errors.Is(err, verifyErr) {
+		t.Fatalf("applyStagedBundle(downloaded staging) = %v, want the verification error", err)
 	}
-
-	if called {
-		t.Error("verification ran during path classification")
+	if verified != 1 {
+		t.Errorf("verification ran %d times on a downloaded staging, want 1", verified)
+	}
+	if got := readMarker(t, installed); got == "downloaded" {
+		t.Error("the swap ran despite verification failing")
 	}
 }

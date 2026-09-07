@@ -528,11 +528,6 @@ func runBuildScript(repo string, progress func(string)) error {
 
 // ------------------------------- apply -----------------------------------
 
-// applyStagedBundle replaces the installed app with the staged one.
-//
-// Refuses when the running binary is not inside a .app: a `wails dev`
-// or `go run` process has no bundle to swap, and guessing at one would
-// mean writing over something we did not install.
 // isDownloadedStaging reports whether a staged bundle came from
 // stageRelease — i.e. we downloaded it into our own staging area —
 // rather than from stageLatest, which returns a path inside the
@@ -542,6 +537,11 @@ func isDownloadedStaging(staged string) bool {
 	return strings.HasPrefix(staged, root+string(filepath.Separator))
 }
 
+// applyStagedBundle replaces the installed app with the staged one.
+//
+// Refuses when the running binary is not inside a .app: a `wails dev`
+// or `go run` process has no bundle to swap, and guessing at one would
+// mean writing over something we did not install.
 func applyStagedBundle(staged string) error {
 	self, err := executablePath()
 	if err != nil {
