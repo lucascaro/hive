@@ -62,15 +62,15 @@ jobs:
       PLAYWRIGHT_BROWSERS_PATH: ${{ github.workspace }}/.playwright-browsers
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
 
       - name: Set up Go
-        uses: actions/setup-go@v5
+        uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5
         with:
           go-version-file: go.mod
 
       - name: Set up Node
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
           node-version: '24'
 
@@ -175,7 +175,7 @@ jobs:
         # unconditional install overwrites whatever was restored and the
         # cache buys nothing but its own latency. Keyed on the pinned
         # versions, so a bump misses exactly once.
-        uses: actions/cache@v4
+        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
         with:
           path: ~/go/bin
           key: go-analysis-tools-${{ runner.os }}-staticcheck2026.2.1-govulncheck1.7.0
@@ -268,7 +268,7 @@ jobs:
         # when the browsers are present, and skipping it on cache-hit would
         # leave a leg with no browser if a cache were ever partial. On Linux
         # it also installs the apt deps, which are not cacheable.
-        uses: actions/cache@v4
+        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
         with:
           path: ${{ github.workspace }}/.playwright-browsers
           key: playwright-${{ runner.os }}-${{ hashFiles('cmd/hivegui/frontend/package-lock.json') }}
@@ -325,7 +325,7 @@ jobs:
         # CI-only e2e failure (retain-on-failure traces land in
         # test-results/). Without this step they die with the runner.
         if: failure()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: playwright-test-results-${{ matrix.label }}
           path: cmd/hivegui/frontend/test-results/
