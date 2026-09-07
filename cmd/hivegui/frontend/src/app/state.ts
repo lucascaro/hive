@@ -71,6 +71,13 @@ export interface SessionInfo {
   // tier, which cannot know either.
   last_prompt?: string;
   last_summary?: string;
+  /** An opening prompt waiting for the user to place it. Set only for a
+   *  session started from an idea whose agent takes its prompt by
+   *  typing; the paste/dismiss bar renders from this. Hive never types
+   *  it in on its own — see components/PendingPrompt.tsx. */
+  pending_prompt?: string;
+  /** camelCase tolerated at the boundary, like every other reader. */
+  pendingPrompt?: string;
 }
 
 /** Reads the daemon's attention flag off a session, defaulting to false

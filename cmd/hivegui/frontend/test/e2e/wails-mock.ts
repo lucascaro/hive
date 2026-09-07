@@ -25,6 +25,10 @@ type CustomAgent = main.CustomAgent;
 export type MockSession = SessionInfo & {
   created: string;
   continued?: boolean;
+  // Which idea an offered opening prompt belongs to, so RESOLVE_PROMPT
+  // can link it on paste. Daemon-side this is Entry.ideaID, which is
+  // in-memory and never on the wire.
+  pending_idea?: string;
 };
 export type MockProject = ProjectInfo & { created: string };
 
@@ -430,6 +434,9 @@ const AGENTS_TAKING_PROMPTS = new Set([
   'copilot',
   'aider',
 ]);
+// The two that take it as an argv positional, so it is delivered at
+// spawn and never offered.
+const ARGV_PROMPT_AGENTS = new Set(['claude', 'pi']);
 
 function deliverInitialPrompt(
   sessionID: string,
@@ -439,8 +446,21 @@ function deliverInitialPrompt(
 ) {
   if (!prompt) return;
   if (!AGENTS_TAKING_PROMPTS.has(agentID)) {
-    // Undeliverable: no PTY write, and the idea stays in the inbox so
-    // it can be started again against an agent that can receive it.
+    // Undeliverable: nothing offered, and the idea stays in the inbox
+    // so it can be started again against an agent that can take one.
+    return;
+  }
+  // Claude and Pi take the prompt as argv, so it is already delivered
+  // and the idea is linked at create. Everything else has it OFFERED:
+  // the daemon surfaces it on SessionInfo and waits for the user to
+  // paste or dismiss it (RESOLVE_PROMPT).
+  if (!ARGV_PROMPT_AGENTS.has(agentID)) {
+    const s = state.sessions.find((x) => x.id === sessionID);
+    if (s) {
+      s.pending_prompt = prompt;
+      s.pending_idea = ideaID;
+      emit('session:event', JSON.stringify({ kind: 'updated', session: s }));
+    }
     return;
   }
   emit('pty:data', sessionID, btoa(unescape(encodeURIComponent(prompt))));
@@ -651,6 +671,18 @@ export async function ListAgents(): Promise<AgentInfo[]> {
       installCmd: [],
       takesPrompt: true,
     },
+    // A typed-path agent: it can take an opening prompt, but by having
+    // it typed in rather than as argv — so Hive OFFERS it and the user
+    // pastes it. Without one here the paste/dismiss bar has no e2e
+    // coverage at all.
+    {
+      id: 'codex',
+      name: 'Codex',
+      color: '#10b981',
+      available: true,
+      installCmd: [],
+      takesPrompt: true,
+    },
     ...customAgents.map((a) => ({
       id: a.id,
       name: a.name,
@@ -851,6 +883,31 @@ export async function UpdateIdea(
   emit('idea:event', JSON.stringify({ kind: 'updated', idea }));
   return '';
 }
+// The user placing (or discarding) a pending opening prompt. Paste
+// writes it to the fake PTY and links the idea; dismiss clears it and
+// leaves the note in the inbox. Either way the offer is gone.
+export async function ResolvePrompt(sessionID: string, paste: boolean) {
+  maybeFail('ResolvePrompt');
+  const s = state.sessions.find((x) => x.id === sessionID);
+  if (!s?.pending_prompt) return '';
+  // Both captured BEFORE clearing — the idea lookup below needs the id.
+  const prompt = s.pending_prompt;
+  const ideaID = s.pending_idea;
+  s.pending_prompt = '';
+  s.pending_idea = '';
+  emit('session:event', JSON.stringify({ kind: 'updated', session: s }));
+  if (!paste) return '';
+  emit('pty:data', sessionID, btoa(unescape(encodeURIComponent(prompt))));
+  const idea = state.ideas.find((i) => i.id === ideaID);
+  if (idea) {
+    idea.status = 'started';
+    idea.session_id = sessionID;
+    idea.updated = new Date().toISOString();
+    emit('idea:event', JSON.stringify({ kind: 'updated', idea }));
+  }
+  return '';
+}
+
 export async function RemoveIdea(id: string) {
   maybeFail('RemoveIdea');
   const i = state.ideas.findIndex((x) => x.id === id);

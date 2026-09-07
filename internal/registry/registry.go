@@ -63,11 +63,6 @@ func SetStartSessionForTest(fn func(session.Options) (*session.Session, error)) 
 	}
 }
 
-// promptDeliveryWindow bounds how long a queued opening prompt stays
-// armed. Generous next to how long an agent takes to draw its first
-// screen and settle (seconds), and short next to a working session.
-const promptDeliveryWindow = 2 * time.Minute
-
 // ErrWorktreeDirty is returned by Kill when the session is backed by
 // a worktree with uncommitted changes and force=false. Callers (the
 // daemon) translate this into a wire.FrameError with code
@@ -126,10 +121,10 @@ type Entry struct {
 	// nil when no capture is in flight.
 	captureCancel context.CancelFunc
 
-	// pendingPrompt is CreateSpec.InitialPrompt awaiting delivery on
-	// the typed path — agents that do not take a positional prompt.
-	// Cleared the moment it is handed to the PTY, and dropped if the
-	// session exits first.
+	// pendingPrompt is CreateSpec.InitialPrompt waiting for the user to
+	// place it — agents that do not take a positional prompt. Surfaced
+	// on SessionInfo so the client can offer paste/dismiss, and cleared
+	// by ResolvePrompt either way.
 	//
 	// In-memory only, like Phase and state: it is not in MetaFile, and
 	// Revive rebuilds argv without it. A daemon restart between create
@@ -140,14 +135,6 @@ type Entry struct {
 	// from, flipped to `started` once the prompt is delivered. Also
 	// in-memory only, and for the same reason.
 	ideaID string
-	// promptQueuedAt is when pendingPrompt was queued, and it is what
-	// stops the prompt being an unbounded liability. Delivery fires on
-	// the first idle edge AFTER a working period; an agent that never
-	// goes working never fires it, and the text would then sit armed
-	// for the life of the session — landing in the middle of whatever
-	// conversation the user had started themselves by the time some
-	// later edge finally arrived. See promptDeliveryWindow.
-	promptQueuedAt time.Time
 }
 
 // Project is the registry-side representation of a project.
@@ -234,6 +221,7 @@ func (e *Entry) Info() wire.SessionInfo {
 		WorktreePath:   e.WorktreePath,
 		WorktreeBranch: e.WorktreeBranch,
 		LastError:      e.LastError,
+		PendingPrompt:  e.pendingPrompt,
 		Phase:          e.Phase,
 		Title:          e.title(),
 		NeedsAttention: needsAttention(st.State),
@@ -526,106 +514,62 @@ func (r *Registry) announceStateLocked(e *Entry, prev agentstate.Snapshot, reaso
 		r.broadcastLocked(wire.SessionEventAttention, e.Info())
 	}
 	r.broadcastLocked(wire.SessionEventState, e.Info())
-	r.deliverPendingPromptLocked(e, prev, cur)
 }
 
-// deliverPendingPromptLocked types a session's opening prompt into its
-// PTY, for the agents that do not take one as an argv positional. It
-// hangs off announceStateLocked because agentstate.Machine has no
-// Subscribe — this is the one funnel every transition passes through.
+// ResolvePrompt settles a session's pending opening prompt: paste it
+// into the PTY, or discard it.
 //
-// The edge is "idle, having been working", NOT "the first time it is
-// idle": wire.StateIdle is the empty string and attachSessionHooks
-// gives every session a fresh machine, so the naive predicate matches
-// at t=0 — before the agent's TUI has drawn an input box to type into.
+// The user decides when, and that is the whole design. Hive used to
+// type the prompt itself on the first idle edge after the session had
+// been working, which is not a signal that the agent is ready for
+// input: measured, `codex` in a fresh directory is still sitting on
+// its "do you trust the contents of this directory?" gate at that
+// edge, and that gate is a numbered menu — it swallowed a unique
+// marker whole, echoing nothing, while an automatic Enter would have
+// answered it "Yes, continue". No heuristic available here can tell a
+// prompt box from a startup gate. The person looking at the terminal
+// can.
 //
-// Must be called with r.mu held (every caller does). The PTY write is
-// handed to a goroutine so the registry mutex is never held across it.
-func (r *Registry) deliverPendingPromptLocked(e *Entry, prev, cur agentstate.Snapshot) {
-	if e.pendingPrompt == "" || e.sess == nil {
-		return
+// Pasted, never submitted: the text lands in the agent's input box and
+// the user presses Enter. Clearing first and unconditionally means the
+// affordance cannot fire twice, and a failed write does not strand it.
+func (r *Registry) ResolvePrompt(id string, paste bool) error {
+	r.mu.Lock()
+	e, ok := r.entries[id]
+	if !ok {
+		r.mu.Unlock()
+		return ErrNotFound
 	}
-	// A session that ASKS for input before we have delivered is a
-	// session showing something we must not answer — an agent's
-	// "do you trust this folder?" gate is drawn, then waits. Typing a
-	// note and pressing Enter into that would accept it on the user's
-	// behalf. Drop the prompt instead.
-	//
-	// Dropping, not deferring: left armed, the note skips this edge and
-	// lands on the user's OWN first working→idle edge later, typed into
-	// the middle of a conversation they had already started, and flips
-	// the idea to `started` off that stray delivery.
-	if cur.State == wire.StateWaitingInput || cur.State == wire.StateWaitingPermission {
-		log.Printf("registry: dropping the opening prompt for %s: the session is waiting for input (%q), and answering that is not ours to do",
-			e.ID, cur.State)
-		e.pendingPrompt = ""
-		return
+	prompt, sess, ideaID := e.pendingPrompt, e.sess, e.ideaID
+	if prompt == "" {
+		r.mu.Unlock()
+		return nil
 	}
-	if cur.State != wire.StateIdle || prev.State != wire.StateWorking {
-		return
-	}
-	// An opening prompt is only an opening prompt for as long as the
-	// session is still opening. Past the window the user has had the
-	// terminal for minutes and may be mid-turn; typing a stale note
-	// into it and pressing Enter would interrupt them with something
-	// they asked for long ago and have already moved on from.
-	if age := time.Since(e.promptQueuedAt); age > promptDeliveryWindow {
-		log.Printf("registry: dropping the opening prompt for %s: %s since it was queued, past the %s window",
-			e.ID, age.Round(time.Second), promptDeliveryWindow)
-		e.pendingPrompt = ""
-		return
-	}
-	prompt, sess, id := e.pendingPrompt, e.sess, e.ID
 	e.pendingPrompt = ""
-	go func() {
-		// NO trailing carriage return. The note is typed into the
-		// agent's input box and left there for the user to send.
-		//
-		// Measured, not assumed. `codex` in a fresh directory — which
-		// is every worktree this feature creates — opens on:
-		//
-		//	Do you trust the contents of this directory?
-		//	Working with untrusted contents comes with higher risk of
-		//	prompt injection.
-		//	> 1. Yes, continue   2. No, quit
-		//	Press enter to continue
-		//
-		// An Enter there answers "Yes, continue". The waiting-state
-		// guard above does not save us either: Bell does set
-		// waiting_input, but codex redraws continuously, so the next
-		// sampleStateLocked sees a changed screen, calls Output() and
-		// overwrites it — across a 20s probe the tier reported only
-		// idle and working, never waiting_input. The first working→idle
-		// edge therefore arrives with the gate still on screen.
-		//
-		// Auto-accepting a trust gate is not a cost worth saving one
-		// keystroke, and not submitting is safe against every dialog of
-		// this shape rather than only the ones we can classify. Claude
-		// and Pi are unaffected: they take the prompt as argv and never
-		// reach this path.
-		if _, err := sess.Write([]byte(prompt)); err != nil {
-			log.Printf("registry: opening prompt for %s not delivered: %v", id, err)
-			return
-		}
-		// The write succeeding does NOT mean the agent received it, and
-		// on this path we cannot tell. Measured: codex in a fresh
-		// directory (every worktree this feature creates) is sitting on
-		// its trust gate at the first idle edge, and that gate is a
-		// numbered menu — it swallows arbitrary text and echoes
-		// nothing. A probe typing a unique marker found ZERO
-		// occurrences of it anywhere in the PTY stream afterwards.
-		//
-		// So the idea is deliberately NOT claimed here. Claiming it on
-		// a successful Write cost the user both halves at once: the
-		// note vanished into the gate AND left the inbox, which is the
-		// same failure the shell agent had, through a different door.
-		// Unclaimed, the worst case is a session without its prompt and
-		// a note still sitting where they left it.
-		//
-		// The argv path (Claude, Pi) claims at create, because there
-		// the text is in the process's own command line and delivery
-		// is not in question.
-	}()
+	info := e.Info()
+	r.broadcastLocked(wire.SessionEventUpdated, info)
+	r.mu.Unlock()
+
+	if !paste {
+		// Dismissed. The idea is deliberately left open: nothing was
+		// handed over, so the note stays where the user can start it
+		// again.
+		log.Printf("registry: opening prompt for %s dismissed", id)
+		return nil
+	}
+	if sess == nil {
+		log.Printf("registry: cannot paste the opening prompt for %s: no live session", id)
+		return ErrNotFound
+	}
+	if _, err := sess.Write([]byte(prompt)); err != nil {
+		log.Printf("registry: pasting the opening prompt for %s: %v", id, err)
+		return err
+	}
+	// Claimed on paste, unlike the old automatic path: the user asked
+	// for this one with the terminal in front of them, so the note has
+	// demonstrably reached where they wanted it.
+	r.linkIdeaToSession(ideaID, id)
+	return nil
 }
 
 // SetAttention records whether a session still wants the user's

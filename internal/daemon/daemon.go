@@ -1376,6 +1376,15 @@ func (d *Daemon) handleControlFrame(ctx context.Context, ops controlOps, ft wire
 		if err := d.reg.RemoveIdea(req.ID); err != nil {
 			ops.sendError(ideaErrorCode(err, "remove_idea_failed"), err.Error())
 		}
+	case wire.FrameResolvePrompt:
+		req, ok := decodeReq[wire.ResolvePromptReq](payload, ops.sendError)
+		if !ok {
+			return false
+		}
+		if err := d.reg.ResolvePrompt(req.SessionID, req.Paste); err != nil &&
+			!errors.Is(err, registry.ErrNotFound) {
+			ops.sendError("resolve_prompt_failed", err.Error())
+		}
 	case wire.FrameClientCommand:
 		cmd, ok := decodeReq[wire.ClientCommand](payload, ops.sendError)
 		if !ok {

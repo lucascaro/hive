@@ -159,6 +159,13 @@ type SessionInfo struct {
 	WorktreePath   string `json:"worktree_path,omitempty"`   // absolute path; "" = no worktree
 	WorktreeBranch string `json:"worktree_branch,omitempty"` // branch backing the worktree
 	LastError      string `json:"last_error,omitempty"`      // human-readable error from last failed Start/Revive
+	// PendingPrompt is an opening prompt waiting for the user to place
+	// it. Non-empty only for a session started from an idea whose agent
+	// takes its prompt by typing rather than as argv. The client shows
+	// a paste/dismiss affordance for it; Hive never types it in by
+	// itself, because only the user can see whether the agent is at a
+	// prompt box or still on a startup gate that would swallow it.
+	PendingPrompt string `json:"pending_prompt,omitempty"`
 	// Phase is the session's lifecycle phase. Empty means ready (the
 	// steady state), which keeps the field omitempty on the wire and
 	// makes every entry loaded from disk ready by default. See the
@@ -675,6 +682,20 @@ type UpdateIdeaReq struct {
 	SessionID *string `json:"session_id,omitempty"`
 	Kind      *string `json:"kind,omitempty"`
 	ProjectID *string `json:"project_id,omitempty"`
+}
+
+// ResolvePromptReq settles a session's pending opening prompt.
+//
+// Paste writes it into the PTY (unsubmitted — the user presses Enter);
+// false discards it. Either way the pending prompt is cleared, so the
+// affordance disappears and cannot fire twice.
+//
+// The daemon does the writing, not the client: the GUI never opens a
+// PTY (DESIGN.md), and routing it here keeps one code path for "what
+// text does this session's agent receive".
+type ResolvePromptReq struct {
+	SessionID string `json:"session_id"`
+	Paste     bool   `json:"paste"`
 }
 
 // RemoveIdeaReq is the REMOVE_IDEA payload.

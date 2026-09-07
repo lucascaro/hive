@@ -93,14 +93,20 @@ it.
 - Start session creates a session through the existing `CREATE_SESSION`
   path with `initial_prompt`; Claude and Pi receive it as their opening
   prompt argument; every other agent that can take one receives it
-  typed into the PTY once the session reaches `idle` (spec 336), left
-  in the input box **without** being submitted, for the user to send.
-  Amended 2026-09-07: this criterion said "followed by Enter" until a
-  real `codex` startup was measured. In a fresh directory — which is
+  **offered** to the user — Hive surfaces it on the session and the
+  user pastes it into the agent's input box (unsubmitted) or dismisses
+  it, when they can see the agent is ready.
+  Amended twice on 2026-09-07, both times because a real `codex`
+  startup was measured. First it said "followed by Enter"; In a fresh directory — which is
   every worktree this feature creates — codex opens on "Do you trust
   the contents of this directory? … Press enter to continue", with
   "Yes, continue" preselected, so an automatic Enter answered a
-  security gate whose own text warns about prompt injection. Agents
+  security gate whose own text warns about prompt injection. Typing
+  without Enter did not survive either: a probe found the note appeared
+  ZERO times in the PTY stream afterwards, because the gate is a
+  numbered menu that swallows arbitrary text. No signal available to
+  the daemon distinguishes a prompt box from a startup gate, so the
+  person looking at the terminal decides — hence paste/dismiss. Agents
   that cannot take a prompt at all (the plain shell, custom agents)
   receive nothing and leave the idea in the inbox.
 - The idea's `status` becomes `started` and `session_id` is set when

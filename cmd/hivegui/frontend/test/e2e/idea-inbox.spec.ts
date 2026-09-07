@@ -157,9 +157,9 @@ test('Start session seeds the new session with the note', async ({ page }) => {
   await page.keyboard.press('Enter');
   await expect(launcher).toBeHidden();
 
-  // The prompt reaches the PTY — the mock plays the daemon's half —
-  // and only then does the idea flip, which is what puts the glyph on
-  // the new session's row and takes it off the badge.
+  // Claude takes the prompt as argv, so it is delivered at spawn and
+  // the idea links immediately — no paste bar for this one.
+  await expect(page.locator('#pending-prompt')).toHaveCount(0);
   const term = page.locator('.hv-session-row__idea').first();
   await expect(term).toHaveCount(1);
   await expect(term).toHaveAttribute('title', /sidebar drag handle is 1px off/);
@@ -263,4 +263,56 @@ test('an agent that cannot take the prompt keeps the idea in the inbox', async (
   await expect(badge(page)).toHaveText('1');
   await badge(page).click();
   await expect(rows(page).first()).toContainText('do not lose this note');
+});
+
+// The typed agents do not get the note typed in for them. Hive offers
+// it and the user places it when the agent is actually ready — because
+// nothing here can tell an agent's prompt box from its startup gate,
+// and a real codex sits on a trust gate at exactly the moment the old
+// code typed into it.
+test('a typed-path agent is offered the prompt, not given it', async ({
+  page,
+}) => {
+  await boot(page);
+  await capture(page, 'the grid loses focus', 'bug');
+  await badge(page).click();
+  await rows(page)
+    .first()
+    .getByRole('button', { name: 'Start session' })
+    .click();
+  // Codex: takes a prompt, but by typing rather than argv.
+  await page.locator('.launcher-search').fill('Codex');
+  await page.keyboard.press('Enter');
+  await expect(page.locator('#launcher')).toBeHidden();
+
+  const bar = page.locator('#pending-prompt');
+  await expect(bar).toBeVisible();
+  await expect(page.locator('#pending-prompt-text')).toContainText(
+    'the grid loses focus',
+  );
+  // Not handed over yet, so the note is still in the inbox.
+  await expect(badge(page)).toHaveText('1');
+
+  await page.locator('#pending-prompt-paste').click();
+  // The offer is gone and the idea is now linked to the session.
+  await expect(bar).toHaveCount(0);
+  await expect(page.locator('.hv-session-row__idea')).toHaveCount(1);
+});
+
+test('dismissing the prompt keeps the idea in the inbox', async ({ page }) => {
+  await boot(page);
+  await capture(page, 'not right now', 'idea');
+  await badge(page).click();
+  await rows(page)
+    .first()
+    .getByRole('button', { name: 'Start session' })
+    .click();
+  await page.locator('.launcher-search').fill('Codex');
+  await page.keyboard.press('Enter');
+
+  await page.locator('#pending-prompt-dismiss').click();
+  await expect(page.locator('#pending-prompt')).toHaveCount(0);
+  // Nothing was handed over: no glyph, and the note is still there.
+  await expect(page.locator('.hv-session-row__idea')).toHaveCount(0);
+  await expect(badge(page)).toHaveText('1');
 });

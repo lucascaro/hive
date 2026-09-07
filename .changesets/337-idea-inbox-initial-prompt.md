@@ -17,13 +17,16 @@ bump: minor
   typed into the terminal as soon as the session settles — left in the
   input box for you to send, rather than submitted for you, so it can
   never answer an agent's own startup prompt on your behalf. For Claude
-  and Pi the idea then flips to *started* and links back to its
-  session, whose sidebar row carries a small idea glyph so you can see
-  at a glance what it is for. For the typed agents the note stays in
-  the inbox, because Hive cannot tell whether the agent actually took
-  it — mark it done yourself once you see it land. Agents that cannot
-  be handed a prompt at all — the plain shell, and your own custom
-  agents — say so in the launcher before you start.
+  and Pi the idea flips to *started* and links back to its session,
+  whose sidebar row carries a small idea glyph. Every other agent gets
+  the prompt **offered** instead of typed in: a bar above the grid
+  shows the note with **Paste** and **Dismiss**, so you place it once
+  you can see the agent is actually ready — Hive cannot tell an agent's
+  input box from its startup "do you trust this directory?" gate, and
+  you can. Paste drops it in without sending it and links the idea;
+  Dismiss leaves the note in the inbox. The plain shell and your own
+  custom agents get no prompt at all, and the launcher says so before
+  you start.
 - **A mis-filed idea can be corrected.** The inbox's Edit now opens the
   same sheet you captured it with, so the note, its kind *and* the
   project it belongs to are all editable — the capture sheet fills the

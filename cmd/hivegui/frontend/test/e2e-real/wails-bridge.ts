@@ -219,6 +219,11 @@ export async function UpdateIdea(
   if (projectID) params.project_id = projectID;
   return call('UpdateIdea', params);
 }
+// The user placing (or discarding) a session's pending opening prompt.
+// The daemon owns the PTY write — the GUI never opens one.
+export async function ResolvePrompt(sessionID: string, paste: boolean) {
+  return call('ResolvePrompt', { session_id: sessionID, paste: !!paste });
+}
 export async function RemoveIdea(id: string) {
   return call('RemoveIdea', { id });
 }

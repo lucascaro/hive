@@ -620,6 +620,23 @@ func (a *App) UpdateIdea(id, text, status, sessionID, kind, projectID string) er
 	return cs.WriteJSON(wire.FrameUpdateIdea, req)
 }
 
+// ResolvePrompt settles a session's pending opening prompt: paste
+// places it in the agent's input box (unsubmitted — the user presses
+// Enter), dismiss discards it. Either way the affordance goes away.
+//
+// The daemon does the writing. The GUI never opens a PTY (DESIGN.md),
+// and this keeps one code path for what text a session's agent
+// receives.
+func (a *App) ResolvePrompt(sessionID string, paste bool) error {
+	cs, err := a.requireControl()
+	if err != nil {
+		return err
+	}
+	return cs.WriteJSON(wire.FrameResolvePrompt, wire.ResolvePromptReq{
+		SessionID: sessionID, Paste: paste,
+	})
+}
+
 // RemoveIdea deletes one idea outright. The GUI confirms first.
 func (a *App) RemoveIdea(id string) error {
 	cs, err := a.requireControl()

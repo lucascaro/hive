@@ -98,7 +98,6 @@ func (r *Registry) beginCreate(spec wire.CreateSpec) (*Entry, createPlan, error)
 		// requested and nothing can be handed over, so finishCreate
 		// leaves the idea in the inbox rather than claiming it.
 		e.pendingPrompt = typedPrompt(spec.InitialPrompt)
-		e.promptQueuedAt = time.Now()
 	}
 	info := e.Info()
 	r.broadcastLocked(wire.SessionEventAdded, info)
@@ -180,8 +179,8 @@ func (r *Registry) finishCreate(ctx context.Context, e *Entry, spec wire.CreateS
 	//     nothing to deliver, so the link is immediate;
 	//   - argv: the text is in the process's own command line, so it is
 	//     delivered the moment the process exists;
-	//   - typed: still queued, and linked by
-	//     deliverPendingPromptLocked once it has reached the PTY.
+	//   - typed: waiting for the user to paste it (ResolvePrompt),
+	//     which is where that idea is claimed instead.
 	//
 	// Everything else is a prompt that was REQUESTED and cannot be
 	// delivered — the shell agent, a custom agent, a note that
@@ -206,7 +205,7 @@ func (r *Registry) finishCreate(ctx context.Context, e *Entry, spec wire.CreateS
 //
 // True in exactly two cases: nothing was asked for, or the argv path
 // put real text on the command line. The typed path is false here and
-// links later, from deliverPendingPromptLocked. Everything else — the
+// is claimed later, by ResolvePrompt. Everything else — the
 // shell agent, a custom agent, a prompt that sanitizes away — is a
 // prompt that was REQUESTED and cannot be delivered, and must not claim
 // the note.

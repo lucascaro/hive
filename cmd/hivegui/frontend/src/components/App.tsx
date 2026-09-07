@@ -30,6 +30,7 @@
 // applied by each component's layout effect: they sit on the portal
 // target, outside this tree.
 import { createPortal } from 'react-dom';
+import { PendingPrompt } from './PendingPrompt.js';
 import type { ReactNode } from 'react';
 import { mustEl } from '../app/el.js';
 import { confirmAndDeleteProject } from '../app/keyboard.js';
@@ -131,6 +132,11 @@ export function App(): ReactNode {
           banners stay direct children of the #app grid and keep their
           row placement. */}
       {createPortal(<Banners />, mustEl('banners'))}
+      {/* Into #banners too: it is `display: contents` and is the
+          full-width notice slot above the grid, which is exactly what
+          this is. App's other children are portals, so a bare element
+          here would have no layout host at all. */}
+      {createPortal(<PendingPrompt />, mustEl('banners'))}
       {createPortal(<StatusBar root={status} />, status)}
       {createPortal(<BootState root={bootState} />, bootState)}
       {createPortal(<EmptyState root={emptyState} />, emptyState)}

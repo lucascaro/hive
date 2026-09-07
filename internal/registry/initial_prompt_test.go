@@ -1,6 +1,7 @@
 package registry
 
 import (
+	"errors"
 	"os"
 	"path/filepath"
 	"strings"
@@ -115,7 +116,8 @@ func ptyText(sess *session.Session) string {
 }
 
 // queuePrompt puts an entry into the state beginCreate would have left
-// it in for a promptTyped agent, without spawning that agent's binary.
+// it in for a promptTyped agent — a prompt offered, waiting for the
+// user — without spawning that agent's binary.
 // Codex and friends are not installed on CI, and a delivery-mechanics
 // test has no business depending on whether they are: WHICH agents get
 // a typed prompt is deliveryFor's decision and is table-tested in
@@ -126,19 +128,7 @@ func queuePrompt(r *Registry, id, prompt, ideaID string) {
 	if e, ok := r.entries[id]; ok {
 		e.pendingPrompt = prompt
 		e.ideaID = ideaID
-		// beginCreate stamps this; without it the entry reads as queued
-		// at the zero time and every delivery is past the window.
-		e.promptQueuedAt = time.Now()
 	}
-}
-
-func pendingPromptOf(r *Registry, id string) string {
-	r.mu.Lock()
-	defer r.mu.Unlock()
-	if e, ok := r.entries[id]; ok {
-		return e.pendingPrompt
-	}
-	return ""
 }
 
 func ideaStatus(t *testing.T, r *Registry, id string) wire.IdeaInfo {
@@ -152,122 +142,14 @@ func ideaStatus(t *testing.T, r *Registry, id string) wire.IdeaInfo {
 	return wire.IdeaInfo{}
 }
 
-// The typed path, end to end: the prompt lands on the first idle edge
-// AFTER the session has been working, and the idea it came from is not
-// claimed until then.
-//
-// `cat` echoes whatever is written to its PTY, so the delivered text
-// shows up on the screen — which is the only observation that proves
-// the bytes actually reached the child rather than a buffer.
-func TestPendingPromptTypedOnIdleAfterWorking(t *testing.T) {
-	skipOnWindows(t)
-	r, p := ideaRegistry(t)
-	idea, err := r.AddIdea(IdeaSpec{ProjectID: p.ID, Text: "fix the sidebar"})
-	if err != nil {
-		t.Fatalf("AddIdea: %v", err)
+func pendingPromptOf(r *Registry, id string) string {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if e, ok := r.entries[id]; ok {
+		return e.pendingPrompt
 	}
-
-	e, sess := liveSession(t, r, wire.CreateSpec{Name: "seeded", ProjectID: p.ID})
-	queuePrompt(r, e.ID, "fix the sidebar", idea.ID)
-
-	// t=0. Every machine starts idle (attachSessionHooks), so a naive
-	// "first time it is idle" predicate would fire here — before the
-	// agent has drawn anything to type into.
-	now := time.Now()
-	sample(r, e, now)
-	sample(r, e, now.Add(agentstate.QuietAfter))
-	if got := pendingPromptOf(r, e.ID); got == "" {
-		t.Fatal("prompt was delivered at t=0, before the session ever worked")
-	}
-	if got := ideaStatus(t, r, idea.ID).Status; got != wire.IdeaStatusOpen {
-		t.Errorf("idea status = %q before delivery, want %q", got, wire.IdeaStatusOpen)
-	}
-
-	// Working, then quiet: the edge the delivery hangs off.
-	paint(t, e, sess, "thinking\n")
-	sample(r, e, now)
-	if got := pendingPromptOf(r, e.ID); got == "" {
-		t.Fatal("prompt was delivered on the working edge, not the idle one")
-	}
-	sample(r, e, now.Add(agentstate.QuietAfter))
-
-	waitFor(t, "the prompt to reach the PTY", func() bool {
-		return strings.Contains(ptyText(sess), "fix the sidebar")
-	})
-	if got := pendingPromptOf(r, e.ID); got != "" {
-		t.Errorf("pendingPrompt = %q after delivery, want it cleared", got)
-	}
-	// The idea is deliberately NOT claimed on this path. A successful
-	// Write does not mean the agent received it — measured: codex sits
-	// on its trust gate at the first idle edge and that gate swallows
-	// arbitrary text, echoing nothing. Claiming here lost the user both
-	// halves: the note vanished AND left the inbox.
-	time.Sleep(200 * time.Millisecond)
-	if got := ideaStatus(t, r, idea.ID); got.Status != wire.IdeaStatusOpen || got.SessionID != "" {
-		t.Errorf("idea = {status:%q session:%q}; the typed path cannot confirm "+
-			"receipt, so it must leave the note in the inbox",
-			got.Status, got.SessionID)
-	}
+	return ""
 }
-
-// Exactly once. The prompt is cleared as it is handed over, so every
-// later idle edge — and this session will have many — is a no-op.
-func TestPendingPromptDeliveredOnlyOnce(t *testing.T) {
-	skipOnWindows(t)
-	r := freshRegistry(t)
-	e, sess := liveSession(t, r, wire.CreateSpec{Name: "seeded"})
-	queuePrompt(r, e.ID, "once", "")
-
-	now := time.Now()
-	paint(t, e, sess, "thinking\n")
-	sample(r, e, now)
-	sample(r, e, now.Add(agentstate.QuietAfter))
-	waitFor(t, "the first delivery", func() bool {
-		return strings.Contains(ptyText(sess), "once")
-	})
-	// The prompt is typed WITHOUT a trailing carriage return, so `cat`
-	// holds it in its line buffer until some later newline flushes it.
-	// Flush it here, deliberately, before snapshotting: otherwise the
-	// count grows on the next paint for a reason that has nothing to
-	// do with a second delivery — which is exactly how this test read
-	// as a regression when submission was removed.
-	paint(t, e, sess, "\n")
-	delivered := 0
-	waitFor(t, "the echo count to settle", func() bool {
-		n := strings.Count(ptyText(sess), "once")
-		if n == delivered && n > 0 {
-			return true
-		}
-		delivered = n
-		time.Sleep(50 * time.Millisecond)
-		return false
-	})
-
-	later := now.Add(2 * agentstate.QuietAfter)
-	paint(t, e, sess, "more\n")
-	sample(r, e, later)
-	sample(r, e, later.Add(agentstate.QuietAfter))
-	// Give a second delivery every chance to happen before denying it.
-	time.Sleep(200 * time.Millisecond)
-	if n := strings.Count(ptyText(sess), "once"); n != delivered {
-		t.Errorf("prompt occurrences grew %d -> %d across a second idle edge", delivered, n)
-	}
-}
-
-// A session that goes away before its first idle edge never receives
-// the prompt, and the idea it came from stays open — the note is not
-// lost, and the user can start it again.
-//
-// Killed rather than left to exit on its own, and that is not a
-// convenience: a child that exits by itself is not detected on Linux
-// at all. internal/session's read loop closes Done() only when the PTY
-// master read fails, and on Linux it never does — measured on the CI
-// runner and again under docker golang:1.27.1, against origin/main
-// with no part of this feature in the tree, for both an instant
-// `/usr/bin/true` and a 0.3s sleeper. That is a pre-existing platform
-// gap this feature neither introduces nor can paper over (it is filed
-// separately); Kill reaches the same "gone before delivery" state
-// through a path that works on every platform.
 func TestPendingPromptDroppedWhenSessionGoesAway(t *testing.T) {
 	skipOnWindows(t)
 	r, p := ideaRegistry(t)
@@ -569,43 +451,6 @@ func TestIdeaClaimedOnlyWhenThePromptWasHandedOver(t *testing.T) {
 		})
 	}
 }
-
-// The drop-on-exit clause in watchSessionExit. Reached by closing the
-// PTY rather than by Kill: Kill removes the entry, so watchSessionExit
-// returns at its `!ok` guard before the clause runs — which is why the
-// branch had no coverage. Close makes the master read fail, which is
-// the one exit signal internal/session has on every platform (see
-// issue #379).
-func TestPendingPromptClearedWhenTheSessionEnds(t *testing.T) {
-	skipOnWindows(t)
-	r, p := ideaRegistry(t)
-	idea, err := r.AddIdea(IdeaSpec{ProjectID: p.ID, Text: "never delivered"})
-	if err != nil {
-		t.Fatalf("AddIdea: %v", err)
-	}
-	e, sess := liveSession(t, r, wire.CreateSpec{Name: "dying", ProjectID: p.ID})
-	queuePrompt(r, e.ID, "seeded", idea.ID)
-	if got := pendingPromptOf(r, e.ID); got == "" {
-		t.Fatal("nothing queued to drop")
-	}
-
-	if err := sess.Close(); err != nil {
-		t.Fatalf("Close: %v", err)
-	}
-	waitFor(t, "the pending prompt to be dropped", func() bool {
-		return pendingPromptOf(r, e.ID) == ""
-	})
-	// The entry outlives the process here, so this is the real
-	// assertion: the idea was never claimed by a session that did no
-	// work with it.
-	if got := ideaStatus(t, r, idea.ID).Status; got != wire.IdeaStatusOpen {
-		t.Errorf("idea status = %q, want %q", got, wire.IdeaStatusOpen)
-	}
-}
-
-// A prompt that begins with "-" must reach the agent as text, not as a
-// flag. CreateSpec.InitialPrompt is a wire field: our own prompts start
-// with a word, but nothing makes another client's do so.
 func TestLeadingDashPromptIsNotAFlag(t *testing.T) {
 	r := freshRegistry(t)
 	cmd := r.resolveAgentCmd(wire.CreateSpec{
@@ -710,51 +555,6 @@ func TestHandedOverAtCreate(t *testing.T) {
 		})
 	}
 }
-
-// Past the window the prompt is dropped rather than delivered. An
-// opening prompt is only an opening prompt while the session is still
-// opening: delivery fires on the first idle edge AFTER a working
-// period, so an agent that never goes working leaves the text armed
-// indefinitely, and it would otherwise land in the middle of whatever
-// the user had since started typing themselves.
-func TestStalePromptIsDroppedRatherThanTyped(t *testing.T) {
-	skipOnWindows(t)
-	r, p := ideaRegistry(t)
-	idea, err := r.AddIdea(IdeaSpec{ProjectID: p.ID, Text: "stale"})
-	if err != nil {
-		t.Fatalf("AddIdea: %v", err)
-	}
-	e, sess := liveSession(t, r, wire.CreateSpec{Name: "slow", ProjectID: p.ID})
-	queuePrompt(r, e.ID, "long forgotten", idea.ID)
-	// Queued just outside the window.
-	r.mu.Lock()
-	r.entries[e.ID].promptQueuedAt = time.Now().Add(-promptDeliveryWindow - time.Second)
-	r.mu.Unlock()
-
-	now := time.Now()
-	paint(t, e, sess, "thinking\n")
-	sample(r, e, now)
-	sample(r, e, now.Add(agentstate.QuietAfter))
-
-	waitFor(t, "the stale prompt to be dropped", func() bool {
-		return pendingPromptOf(r, e.ID) == ""
-	})
-	time.Sleep(200 * time.Millisecond)
-	if strings.Contains(ptyText(sess), "long forgotten") {
-		t.Error("a stale opening prompt was typed into a session the user has been working in")
-	}
-	// Dropped, not delivered — so the note stays startable.
-	if got := ideaStatus(t, r, idea.ID).Status; got != wire.IdeaStatusOpen {
-		t.Errorf("idea status = %q, want %q", got, wire.IdeaStatusOpen)
-	}
-}
-
-// Windows spawns argv through `cmd.exe /S /C`, and cmdExeEscape does
-// not escape `%` — cmd.exe expands `%VAR%` even inside double quotes,
-// which is exactly what that helper's doc comment warns callers about.
-// A prompt is user- AND agent-authored, so a note reading
-// `%GITHUB_TOKEN%` would otherwise be expanded out of the daemon's
-// environment straight into the agent's first turn.
 func TestArgvPromptStripsPercentOnWindowsOnly(t *testing.T) {
 	const note = "why is coverage only 80% and is %GITHUB_TOKEN% set?"
 	if got := argvPrompt("windows", note); strings.Contains(got, "%") {
@@ -769,43 +569,116 @@ func TestArgvPromptStripsPercentOnWindowsOnly(t *testing.T) {
 	}
 }
 
-// A session that asks for input before delivery is showing something we
-// must not answer — an agent's "do you trust this folder?" gate is
-// drawn, then waits. The prompt is dropped rather than left armed: left
-// armed it would skip this edge and land later, mid-conversation.
-func TestPromptDroppedWhenTheSessionAsksForInput(t *testing.T) {
+// The prompt waits for the user rather than being typed on a guess.
+//
+// Hive used to type it on the first idle edge after the session had
+// been working, which is not a signal that the agent wants input:
+// measured, codex in a fresh directory is still on its trust gate at
+// that edge, and the gate swallowed a unique marker whole. So the
+// prompt is surfaced on SessionInfo and the person looking at the
+// terminal decides.
+func TestPendingPromptIsOfferedNotTyped(t *testing.T) {
 	skipOnWindows(t)
-	for _, state := range []string{wire.StateWaitingInput, wire.StateWaitingPermission} {
-		t.Run(state, func(t *testing.T) {
-			r, p := ideaRegistry(t)
-			idea, err := r.AddIdea(IdeaSpec{ProjectID: p.ID, Text: "not an answer"})
-			if err != nil {
-				t.Fatalf("AddIdea: %v", err)
-			}
-			e, sess := liveSession(t, r, wire.CreateSpec{Name: "gated", ProjectID: p.ID})
-			queuePrompt(r, e.ID, "definitely not a yes", idea.ID)
+	r, p := ideaRegistry(t)
+	idea, err := r.AddIdea(IdeaSpec{ProjectID: p.ID, Text: "fix the sidebar"})
+	if err != nil {
+		t.Fatalf("AddIdea: %v", err)
+	}
+	e, sess := liveSession(t, r, wire.CreateSpec{Name: "seeded", ProjectID: p.ID})
+	queuePrompt(r, e.ID, "fix the sidebar", idea.ID)
 
-			r.mu.Lock()
-			prev := e.stateSnapshot()
-			r.announceStateLocked(e, prev, "test")
-			// Drive the waiting edge directly. On the hook/extension tier
-			// it arrives as an agent event; on the heuristic tier — which
-			// is where every typed-prompt agent runs — the only producer
-			// is agentstate.Machine.Bell, so a gate that draws silently
-			// never reaches here. See the Decision log.
-			r.deliverPendingPromptLocked(e, prev, agentstate.Snapshot{State: state})
-			r.mu.Unlock()
+	// Drive the edge that USED to deliver. Nothing may reach the PTY.
+	now := time.Now()
+	paint(t, e, sess, "thinking\n")
+	sample(r, e, now)
+	sample(r, e, now.Add(agentstate.QuietAfter))
+	time.Sleep(250 * time.Millisecond)
 
-			if got := pendingPromptOf(r, e.ID); got != "" {
-				t.Errorf("pendingPrompt = %q; a session waiting for input must not stay armed", got)
-			}
-			time.Sleep(150 * time.Millisecond)
-			if strings.Contains(ptyText(sess), "definitely not a yes") {
-				t.Error("typed a prompt into a session that was waiting for input")
-			}
-			if got := ideaStatus(t, r, idea.ID).Status; got != wire.IdeaStatusOpen {
-				t.Errorf("idea status = %q, want %q", got, wire.IdeaStatusOpen)
-			}
-		})
+	if strings.Contains(ptyText(sess), "fix the sidebar") {
+		t.Fatal("the prompt was typed into the session on a state edge")
+	}
+	// It is offered instead — the client renders paste/dismiss from this.
+	if got := r.Get(e.ID).Info().PendingPrompt; got != "fix the sidebar" {
+		t.Errorf("SessionInfo.PendingPrompt = %q, want the note", got)
+	}
+	if got := ideaStatus(t, r, idea.ID).Status; got != wire.IdeaStatusOpen {
+		t.Errorf("idea status = %q before the user acts, want %q", got, wire.IdeaStatusOpen)
+	}
+}
+
+func TestResolvePromptPastes(t *testing.T) {
+	skipOnWindows(t)
+	r, p := ideaRegistry(t)
+	idea, err := r.AddIdea(IdeaSpec{ProjectID: p.ID, Text: "fix the sidebar"})
+	if err != nil {
+		t.Fatalf("AddIdea: %v", err)
+	}
+	e, sess := liveSession(t, r, wire.CreateSpec{Name: "seeded", ProjectID: p.ID})
+	queuePrompt(r, e.ID, "fix the sidebar", idea.ID)
+
+	if err := r.ResolvePrompt(e.ID, true); err != nil {
+		t.Fatalf("ResolvePrompt: %v", err)
+	}
+	waitFor(t, "the prompt to reach the PTY", func() bool {
+		return strings.Contains(ptyText(sess), "fix the sidebar")
+	})
+	// Pasted, NOT submitted: no carriage return follows it.
+	if strings.Contains(ptyText(sess), "fix the sidebar\r") {
+		t.Error("the paste submitted the prompt; the user presses Enter")
+	}
+	// Cleared, so the affordance cannot fire twice.
+	if got := r.Get(e.ID).Info().PendingPrompt; got != "" {
+		t.Errorf("PendingPrompt = %q after pasting, want it cleared", got)
+	}
+	// Claimed on paste: the user asked for it with the terminal in
+	// front of them.
+	waitFor(t, "the idea to be linked", func() bool {
+		return ideaStatus(t, r, idea.ID).Status == wire.IdeaStatusStarted
+	})
+	if got := ideaStatus(t, r, idea.ID).SessionID; got != e.ID {
+		t.Errorf("idea session_id = %q, want %q", got, e.ID)
+	}
+
+	// A second resolve is a no-op rather than a second paste.
+	if err := r.ResolvePrompt(e.ID, true); err != nil {
+		t.Fatalf("second ResolvePrompt: %v", err)
+	}
+	time.Sleep(150 * time.Millisecond)
+	if n := strings.Count(ptyText(sess), "fix the sidebar"); n > 2 {
+		t.Errorf("prompt appears %d times; a cleared prompt must not paste again", n)
+	}
+}
+
+func TestResolvePromptDismisses(t *testing.T) {
+	skipOnWindows(t)
+	r, p := ideaRegistry(t)
+	idea, err := r.AddIdea(IdeaSpec{ProjectID: p.ID, Text: "not now"})
+	if err != nil {
+		t.Fatalf("AddIdea: %v", err)
+	}
+	e, sess := liveSession(t, r, wire.CreateSpec{Name: "seeded", ProjectID: p.ID})
+	queuePrompt(r, e.ID, "not now", idea.ID)
+
+	if err := r.ResolvePrompt(e.ID, false); err != nil {
+		t.Fatalf("ResolvePrompt: %v", err)
+	}
+	time.Sleep(200 * time.Millisecond)
+	if strings.Contains(ptyText(sess), "not now") {
+		t.Error("a dismissed prompt was written to the PTY")
+	}
+	if got := r.Get(e.ID).Info().PendingPrompt; got != "" {
+		t.Errorf("PendingPrompt = %q after dismissing, want it cleared", got)
+	}
+	// Nothing was handed over, so the note stays where it can be
+	// started again.
+	if got := ideaStatus(t, r, idea.ID); got.Status != wire.IdeaStatusOpen || got.SessionID != "" {
+		t.Errorf("idea = {status:%q session:%q}, want it untouched", got.Status, got.SessionID)
+	}
+}
+
+func TestResolvePromptUnknownSession(t *testing.T) {
+	r := freshRegistry(t)
+	if err := r.ResolvePrompt("nope", true); !errors.Is(err, ErrNotFound) {
+		t.Errorf("err = %v, want ErrNotFound", err)
 	}
 }

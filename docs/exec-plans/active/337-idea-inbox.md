@@ -1274,6 +1274,25 @@ path instead.
   the ones the tier can classify. Claude and Pi are unaffected (argv).
   The spec's success criterion was amended to match, since
   `/hs-merge-gate` validates against it.
+- **2026-09-07** — **Automatic typing is gone; the prompt is now
+  offered.** Requested by the operator after the measurement below —
+  "instead of typing, add a paste / dismiss button so I can paste the
+  prompt once the agents are ready" — and it is the right shape,
+  because it retires the guess entirely. No signal available to the
+  daemon distinguishes an agent's prompt box from its startup gate: the
+  idle edge does not (codex is on its trust gate there), and the state
+  tier does not (codex never reports `waiting_input`, because its
+  redraws overwrite the bell). The person looking at the terminal can,
+  so they decide. `SessionInfo` gained `pending_prompt`, the new
+  `RESOLVE_PROMPT` frame settles it either way, and
+  `components/PendingPrompt.tsx` renders a bar above the grid with
+  Paste and Dismiss. Paste writes it to the PTY unsubmitted and links
+  the idea — the user asked for it with the terminal in front of them;
+  Dismiss clears it and leaves the note in the inbox. **Deleted with
+  it:** `deliverPendingPromptLocked` and its hook in
+  `announceStateLocked`, `promptDeliveryWindow`, `Entry.promptQueuedAt`,
+  the waiting-state drop and the drop-on-exit clause — every one of
+  which existed to make a guess safe. The argv path is untouched.
 - **2026-09-07** — **The typed path no longer claims the idea**, and
   this came from the operator asking the obvious question none of the
   five review iterations had: *does typing it even work?* Measured, on

@@ -56,13 +56,15 @@ What works:
   prompt is editable in the launcher before you pick the agent —
   sharpening it there does not change the stored note. Claude and Pi
   get it as their opening argument, and their idea is linked to the new
-  session; every other agent has it typed into the terminal once the
-  session settles, left there for you to send rather than submitted for
-  you — those keep the note in the inbox, because Hive cannot tell
-  whether the agent actually took it. The plain shell and custom
-  agents cannot be handed one at all: the launcher says so before you
-  start, and the idea stays in the inbox. A linked idea's session
-  carries a small idea glyph on its sidebar row
+  session. For every other agent the prompt is **offered** rather than
+  typed in: a bar above the grid shows the note with **Paste** and
+  **Dismiss**, so you place it once you can see the agent is ready for
+  input — Hive cannot tell an agent's prompt box from its startup
+  "do you trust this directory?" gate, and you can. Paste puts it in
+  the input box without sending it, and links the idea; Dismiss leaves
+  the note in the inbox. The plain shell and custom agents get no
+  prompt at all: the launcher says so before you start. A linked
+  idea's session carries a small idea glyph on its sidebar row
 
 - In-app updates (macOS): pick a release or latest-commit channel in
   Settings, then Update → Reload (or Restart, when the daemon changed)
