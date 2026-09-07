@@ -10,7 +10,6 @@ The *what* and *why* of work this project plans to do. Each spec describes user 
 |----------|-------|-------|-------|------|
 | P1 | #379 | Session exit is never detected on Linux | TRIAGE | [379-session-exit-undetected-on-linux](379-session-exit-undetected-on-linux.md) |
 | P1 | — | Sidebar and grid repaints silently drop keyboard focus | REVIEW | [257-mock-e2e-worktree-glyph-loses-focus](257-mock-e2e-worktree-glyph-loses-focus.md) |
-| P1 | — | Idea inbox: capture ideas mid-session, start a session from one later | REVIEW | [337-idea-inbox](337-idea-inbox.md) |
 | P2 | — | A red CI check name should say which stage failed | TRIAGE | [256-ci-check-names-identify-the-failing-stage](256-ci-check-names-identify-the-failing-stage.md) |
 | P2 | — | Session messaging: hand a session a message, get told when it idles | PLAN | [338-session-messaging](338-session-messaging.md) |
 | P2 | — | In-house VT emulator (replace hinshun/vt10x) | IMPLEMENT | [in-house-vt-emulator](in-house-vt-emulator.md) |
@@ -24,6 +23,7 @@ The *what* and *why* of work this project plans to do. Each spec describes user 
 
 | Issue | Title | PR | Shipped | Spec |
 |-------|-------|----|---------|------|
+| — | Idea inbox: capture ideas mid-session, start a session from one later | #377 | 2026-09-07 | [337-idea-inbox](337-idea-inbox.md) |
 | #351 | Show a user-facing changelog behind a gift icon in the sidebar | #357 | 2026-09-06 | [351-user-facing-changelog-modal](351-user-facing-changelog-modal.md) |
 | #353 | Commit frontend package-lock.json and install with npm ci | #356 | 2026-09-06 | [353-frontend-lockfile-and-npm-ci](353-frontend-lockfile-and-npm-ci.md) |
 | #359 | Bump the Go toolchain to 1.27.1 (1.25 is end of life) | #360 | 2026-09-06 | [359-bump-go-toolchain-to-1-27-1](359-bump-go-toolchain-to-1-27-1.md) |
