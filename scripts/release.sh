@@ -259,18 +259,45 @@ if [[ "$CURRENT_REMOTE_SHA" != "$RELEASE_SHA" ]]; then
     exit 1
 fi
 
-echo "Pushing to origin..."
-git push origin HEAD "$TAG"
-
 # ---- ARTIFACTS -----------------------------------------------------------
+#
+# The two paths push DIFFERENT things, and that is the whole trick.
+#
+# CI path: push the commit AND the tag. The tag push is the trigger; every-
+# thing after it happens on a runner.
+#
+# --local-artifacts: push only the commit, never the tag. Build, sign and
+# publish locally, and let `gh release create --target` create the remote
+# tag as part of publishing — by which point the release already exists
+# with all three assets, so the workflow that fires stands down (see the
+# "Skip if this release is already complete" step in release.yml).
+#
+# Pushing the tag ourselves here would trigger release.yml and then race it:
+# two macOS builds signing and `gh release upload --clobber`-ing the same
+# assets at once, with --clobber quietly making the collision look like
+# success. Publishing first also restores the pre-split failure mode, which
+# was the better one — a build that fails leaves no tag on the remote at
+# all, rather than a dangling tag with no release behind it.
 
 if [[ "$local_artifacts" == "1" ]]; then
+    echo "Pushing the release commit (not the tag — see above)..."
+    git push origin HEAD
+
     echo "Building and publishing artifacts locally (--local-artifacts)..."
     ./scripts/release-artifacts.sh "$VERSION"
+
+    # The remote tag now exists (created by `gh release create --target`).
+    # Line the local ref up with it so a follow-up `git push --tags` is a
+    # no-op rather than a surprise.
+    git fetch origin --tags --quiet
+
     echo ""
     echo "Released ${TAG} successfully!"
     echo "  https://github.com/${REPO}/releases/tag/${TAG}"
 else
+    echo "Pushing to origin..."
+    git push origin HEAD "$TAG"
+
     echo ""
     echo "Pushed ${TAG}. The release build is running on GitHub Actions."
     # A run URL would need a run id, which does not exist until the workflow

@@ -132,7 +132,13 @@ if gh release view "$TAG" --repo "$REPO" >/dev/null 2>&1; then
     gh release upload "$TAG" --repo "$REPO" --clobber "${ARTIFACTS[@]}"
 else
     echo "Creating GitHub release ${TAG}..."
-    gh release create "$TAG" --repo "$REPO" --title "$TAG" --notes "$NOTES" "${ARTIFACTS[@]}"
+    # --target matters only on the local path, where the tag deliberately has
+    # not been pushed: it makes `gh` create the remote tag here, as part of
+    # publishing, so a complete release exists the instant the tag appears
+    # and the workflow that fires stands down instead of racing this build.
+    # In CI the tag already exists and --target is ignored.
+    gh release create "$TAG" --repo "$REPO" --title "$TAG" --notes "$NOTES" \
+        --target "$(git rev-parse HEAD)" "${ARTIFACTS[@]}"
 fi
 
 echo ""

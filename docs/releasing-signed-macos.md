@@ -183,6 +183,18 @@ certificate in your keychain, and it blocks your terminal through
 notarization. It runs the same `scripts/release-artifacts.sh` the workflow
 does, so the two paths cannot drift.
 
+It pushes the release **commit** but deliberately not the tag: the remote tag
+is created by `gh release create --target` as part of publishing. That
+ordering is what keeps the two paths from racing — by the time the tag
+appears and triggers `release.yml`, a complete release already exists, and
+the workflow's first step sees all three assets and stands down. Push the tag
+yourself and you get two macOS builds notarizing and clobbering the same
+assets at once, which `--clobber` would make look like success.
+
+The stand-down check requires **all three** assets. A release left partial by
+a run that died mid-publish is republished rather than skipped — that is the
+case `gh workflow run release.yml -f tag=<tag>` exists to repair.
+
 ## Testing hardened runtime without a certificate
 
 Notarization requires the hardened runtime, which restricts what a process may

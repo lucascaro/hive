@@ -504,6 +504,12 @@ URL. Left as-is: the workflow's `npm ci && npm run build` step, which the
 reviewer noted overlaps `build.sh` — it matches `ci.yml:102-108` and dropping it
 risks the "no index.html" failure mode recorded in the prior lessons.
 
+## PR convergence ledger
+
+Append-only. One line per `/hs-review-loop` iteration.
+
+- **2026-09-08 iter 1** — verdict: COMMENT; mergeable: MERGEABLE; findings_hash: ed7b26e2; threads_open: 0; action: autofix+push; head_sha: 358dfa85.
+
 ## Progress
 
 - **2026-09-08** — Spec #382 created; draft design doc reshaped into this plan.
@@ -520,6 +526,25 @@ risks the "no index.html" failure mode recorded in the prior lessons.
   workflows hold actions to.
 - **2026-09-08** — `--allow-unsigned` replaced the planned `--no-publish`,
   which had no caller.
+- **2026-09-08** — Review iter 1 raised two IMPORTANT findings, both real.
+  (a) Four of the twelve selftest assertions were `uname`-gated to Darwin
+  while CI runs the script on ubuntu only, so the guards against publishing
+  an unsigned zip printed "skip" on every CI run. Fixed by stubbing `uname`
+  in the fixture rather than adding a macOS CI leg: all four assert control
+  flow, and codesign/notarytool are already behind stubs, so there is no real
+  Apple tooling to exercise — a macOS runner would have cost minutes to test
+  the same stubs.
+  (b) `--local-artifacts` published *after* `git push origin HEAD "$TAG"`,
+  and that tag push is what triggers `release.yml` — so the fallback raced
+  the CI build it had just started, two notarizations clobbering the same
+  assets, with `--clobber` making the collision look like success. Note the
+  first fix attempted (build before pushing) only reordered the race; the
+  push still triggers the workflow. The actual fix has three parts: the local
+  path pushes the commit but **not** the tag, `gh release create --target`
+  creates the remote tag as part of publishing, and `release.yml` gained a
+  stand-down step that exits when the release already carries all three
+  assets. The stand-down deliberately requires *all three* — a release left
+  partial by a died run must still be republishable by re-dispatch.
 - **2026-09-08** — Second-opinion round 1: `revise` (confidence 8), 6 must-fix,
   6 applied. Round 2: `revise` (confidence 8), 5 must-fix, 5 applied — three of
   them contradictions introduced by the round-1 edits. See `## Second opinion`.

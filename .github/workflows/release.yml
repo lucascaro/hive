@@ -52,17 +52,56 @@ jobs:
         with:
           ref: ${{ inputs.tag && inputs.tag || github.ref }}
 
+      # scripts/release.sh --local-artifacts publishes from the maintainer's
+      # Mac and lets `gh release create --target` create the remote tag, so a
+      # COMPLETE release already exists by the time the tag push reaches us.
+      # Without this step we would rebuild, re-notarize and clobber assets
+      # that are already published and stapled — and `--clobber` would make
+      # that collision look like success.
+      #
+      # "Complete" means all three expected assets. A partial release (a run
+      # that died mid-publish) must NOT stand down: that is exactly the case
+      # a re-dispatch exists to repair.
+      - name: Skip if this release is already complete
+        id: standdown
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          if ! gh release view "$TAG" --json assets >/dev/null 2>&1; then
+            echo "no release for $TAG yet — proceeding"
+            echo "skip=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          names="$(gh release view "$TAG" --json assets --jq '[.assets[].name] | sort | join(" ")')"
+          version="${TAG#v}"
+          expected="Hive-${version}-macos-universal.zip Hive-${version}-windows-amd64.zip checksums.txt"
+          expected="$(tr ' ' '\n' <<<"$expected" | sort | tr '\n' ' ' | sed 's/ $//')"
+          if [ "$names" = "$expected" ]; then
+            echo "release $TAG is already complete — standing down."
+            echo "  assets: $names"
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "release $TAG exists but is incomplete — republishing."
+            echo "  have:     $names"
+            echo "  expected: $expected"
+            echo "skip=false" >> "$GITHUB_OUTPUT"
+          fi
+
       - name: Set up Go
+        if: steps.standdown.outputs.skip != 'true'
         uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5
         with:
           go-version-file: go.mod
 
       - name: Set up Node
+        if: steps.standdown.outputs.skip != 'true'
         uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
           node-version: '24'
 
       - name: Bootstrap Wails (seed dist, install CLI, generate bindings)
+        if: steps.standdown.outputs.skip != 'true'
         # Single source of truth for the pinned Wails version; build.sh reads
         # the pin back out of this script and refuses to run against a
         # drifting CLI. A fresh runner has no wailsjs/ bindings, so this is
@@ -70,6 +109,7 @@ jobs:
         run: ./scripts/ci-bootstrap.sh
 
       - name: Build frontend
+        if: steps.standdown.outputs.skip != 'true'
         # cmd/hivegui/main.go embeds frontend/dist via go:embed, so the dist
         # tree must exist before any go build. Mirrors ci.yml.
         working-directory: cmd/hivegui/frontend
@@ -83,6 +123,7 @@ jobs:
       # deletes, so nothing persists on the runner image.
 
       - name: Import the Developer ID certificate
+        if: steps.standdown.outputs.skip != 'true'
         env:
           MACOS_CERT_P12: ${{ secrets.MACOS_CERT_P12 }}
           MACOS_CERT_PASSWORD: ${{ secrets.MACOS_CERT_PASSWORD }}
@@ -128,6 +169,7 @@ jobs:
           security find-identity -v -p codesigning "$KEYCHAIN"
 
       - name: Store notarization credentials
+        if: steps.standdown.outputs.skip != 'true'
         env:
           NOTARY_API_KEY: ${{ secrets.NOTARY_API_KEY }}
           NOTARY_KEY_ID: ${{ secrets.NOTARY_KEY_ID }}
@@ -154,6 +196,7 @@ jobs:
       # ---- The release itself --------------------------------------------
 
       - name: Build, sign, notarize and publish
+        if: steps.standdown.outputs.skip != 'true'
         env:
           HIVE_SIGN_IDENTITY: ${{ vars.HIVE_SIGN_IDENTITY }}
           HIVE_NOTARY_PROFILE: ${{ vars.HIVE_NOTARY_PROFILE }}
@@ -167,7 +210,7 @@ jobs:
           ./scripts/release-artifacts.sh "${TAG#v}"
 
       - name: Clean up credentials
-        if: always()
+        if: always() && steps.standdown.outputs.skip != 'true'
         run: |
           security default-keychain -s login.keychain || true
           security list-keychains -d user -s login.keychain || true

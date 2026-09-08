@@ -81,6 +81,24 @@ SH
 echo "sign" >> "$ORDER_LOG"
 SIGN
 
+    # The signing assertions below are the reason this script exists, and
+    # release-artifacts.sh reaches them only under `uname -s` == Darwin. CI
+    # runs this on ubuntu (changesets.yml, and there is no macOS leg), so
+    # gating them on the real platform meant the four checks that guard
+    # against publishing an unsigned zip printed "skip" on every CI run —
+    # the exact regressions the script was written to catch went unguarded.
+    #
+    # Stub `uname` instead. Nothing here needs real Apple tooling: codesign
+    # and notarytool are already behind the sign-macos.sh stub above, so
+    # these assert control flow (refuse when credentials are missing, never
+    # publish unsigned, sign before shasum) which is platform-independent.
+    cat > "$WORK/bin/uname" <<'UN'
+#!/usr/bin/env bash
+[[ "${1:-}" == "-s" ]] && { echo Darwin; exit 0; }
+exec /usr/bin/uname "$@"
+UN
+    chmod +x "$WORK/bin/uname"
+
     chmod +x "$WORK/bin/gh" "$WORK/bin/shasum" scripts/sign-macos.sh scripts/release-artifacts.sh
     export PATH="$WORK/bin:$PATH"
     export GH_LOG="$WORK/gh.log" ORDER_LOG="$WORK/order.log"
@@ -135,7 +153,8 @@ if grep -q 'gh release create' "$GH_LOG"; then bad "must not also create when on
 # 5. Missing credentials on Darwin are fatal, not a silent skip. "Sign if the
 #    credentials happen to be present" would turn a mis-set repo secret into a
 #    green run that publishes an unsigned, un-notarized zip.
-if [[ "$(uname -s)" == "Darwin" ]]; then
+#
+#    Runs everywhere, via the stubbed `uname` in setup() — see the note there.
     setup
     out="$(SKIP_BUILD=1 REPO=owner/repo env -u HIVE_SIGN_IDENTITY -u HIVE_NOTARY_PROFILE \
         bash scripts/release-artifacts.sh 9.9.9 2>&1 || true)"
@@ -153,9 +172,6 @@ if [[ "$(uname -s)" == "Darwin" ]]; then
     setup
     run 9.9.9 >/dev/null
     check "sign runs before shasum" "$(tr '\n' ' ' < "$ORDER_LOG" | sed 's/ $//')" "sign shasum"
-else
-    echo "  skip signing assertions (not macOS)"
-fi
 
 # 7. The release workflow must never gain a pull_request trigger: it can read
 #    the signing certificate and the notary key. actionlint validates syntax
