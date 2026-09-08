@@ -171,5 +171,7 @@ jobs:
         run: |
           security default-keychain -s login.keychain || true
           security list-keychains -d user -s login.keychain || true
-          [ -n "${KEYCHAIN:-}" ] && security delete-keychain "$KEYCHAIN" || true
+          if [ -n "${KEYCHAIN:-}" ]; then
+            security delete-keychain "$KEYCHAIN" || true
+          fi
           rm -f "$RUNNER_TEMP/cert.p12" "$RUNNER_TEMP/notary.p8"
