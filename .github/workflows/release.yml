@@ -68,23 +68,11 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           set -euo pipefail
-          if ! gh release view "$TAG" --json assets >/dev/null 2>&1; then
-            echo "no release for $TAG yet — proceeding"
-            echo "skip=false" >> "$GITHUB_OUTPUT"
-            exit 0
-          fi
-          names="$(gh release view "$TAG" --json assets --jq '[.assets[].name] | sort | join(" ")')"
-          version="${TAG#v}"
-          expected="Hive-${version}-macos-universal.zip Hive-${version}-windows-amd64.zip checksums.txt"
-          expected="$(tr ' ' '\n' <<<"$expected" | sort | tr '\n' ' ' | sed 's/ $//')"
-          if [ "$names" = "$expected" ]; then
-            echo "release $TAG is already complete — standing down."
-            echo "  assets: $names"
+          decision="$(scripts/release-standdown.sh "$TAG")"
+          echo "stand-down decision for $TAG: $decision"
+          if [ "$decision" = "skip" ]; then
             echo "skip=true" >> "$GITHUB_OUTPUT"
           else
-            echo "release $TAG exists but is incomplete — republishing."
-            echo "  have:     $names"
-            echo "  expected: $expected"
             echo "skip=false" >> "$GITHUB_OUTPUT"
           fi
 

@@ -37,6 +37,10 @@ setup() {
     git init -q . && git config user.email t@t && git config user.name t
 
     cp "$REPO_ROOT/scripts/release-artifacts.sh" scripts/
+    cp "$REPO_ROOT/scripts/release-standdown.sh" scripts/
+    cp "$REPO_ROOT/scripts/release.sh" scripts/
+    mkdir -p internal/buildinfo
+    printf 'var signingTeamID = "AAAAAAAAAA"\n' > internal/buildinfo/signing.go
     printf 'zip-macos\n'   > release/Hive-9.9.9-macos-universal.zip
     printf 'zip-windows\n' > release/Hive-9.9.9-windows-amd64.zip
 
@@ -58,7 +62,10 @@ CL
     # a shared order log so their relative order is observable.
     cat > "$WORK/bin/gh" <<'GH'
 #!/usr/bin/env bash
-echo "gh $*" >> "$GH_LOG"
+# Squash newlines: --notes carries a multi-line changelog body, and a raw
+# `echo "gh $*"` would spread one invocation across several log lines, so a
+# per-line grep would never see the tag and a flag together.
+{ printf 'gh %s' "$*" | tr '\n' ' '; printf '\n'; } >> "$GH_LOG"
 if [[ "$1" == "release" && "$2" == "view" ]]; then
     [[ "${GH_RELEASE_EXISTS:-0}" == "1" ]] && exit 0 || exit 1
 fi
@@ -99,7 +106,16 @@ exec /usr/bin/uname "$@"
 UN
     chmod +x "$WORK/bin/uname"
 
-    chmod +x "$WORK/bin/gh" "$WORK/bin/shasum" scripts/sign-macos.sh scripts/release-artifacts.sh
+    chmod +x "$WORK/bin/gh" "$WORK/bin/shasum" scripts/sign-macos.sh \
+        scripts/release-artifacts.sh scripts/release-standdown.sh scripts/release.sh
+
+    # A real commit, so `git rev-parse HEAD` resolves. Without one it exits
+    # 128 and prints the literal string "HEAD" — which release-artifacts.sh
+    # then passed to `--target`, and the assertion below still matched on a
+    # substring. The bug was invisible precisely because it was untested.
+    git add -A >/dev/null && git commit -qm init
+    FIXTURE_SHA="$(git rev-parse HEAD)"
+    export FIXTURE_SHA
     export PATH="$WORK/bin:$PATH"
     export GH_LOG="$WORK/gh.log" ORDER_LOG="$WORK/order.log"
     : > "$GH_LOG"; : > "$ORDER_LOG"
@@ -150,6 +166,26 @@ GH_RELEASE_EXISTS=1 run 9.9.9 >/dev/null
 if grep -q 'gh release upload v9.9.9 .*--clobber' "$GH_LOG"; then ok "existing release -> upload --clobber"; else bad "existing release -> upload --clobber"; fi
 if grep -q 'gh release create' "$GH_LOG"; then bad "must not also create when one exists"; else ok "must not also create when one exists"; fi
 
+# 4b. A new release must be created as a DRAFT, populated, and only then
+#     published. A draft creates no git tag, so the tag springs into being
+#     with the release already complete — which is the whole reason the
+#     local path cannot race the CI build the tag push triggers. Creating it
+#     public-first would reopen that race silently.
+setup
+GH_RELEASE_EXISTS=0 run 9.9.9 >/dev/null
+if grep 'gh release create v9.9.9' "$GH_LOG" | grep -q -- '--draft'; then ok "new release is created as a draft"; else bad "new release is created as a draft"; fi
+if grep -q 'gh release edit v9.9.9 .*--draft=false' "$GH_LOG"; then ok "draft is published after upload"; else bad "draft is published after upload"; fi
+check "create -> upload -> publish, in that order" \
+    "$(grep -o 'release \(create\|upload\|edit\)' "$GH_LOG" | tr '\n' ' ' | sed 's/ $//')" \
+    "release create release upload release edit"
+if grep -q 'gh release create .*--draft.*[0-9a-f]\{40\}' "$GH_LOG" || \
+   grep -q -- "--target ${FIXTURE_SHA}" "$GH_LOG"; then
+    ok "--target carries a real commit sha"
+else
+    bad "--target carries a real commit sha"
+fi
+if grep -q -- '--target HEAD' "$GH_LOG"; then bad "--target must not be the literal string HEAD"; else ok "--target must not be the literal string HEAD"; fi
+
 # 5. Missing credentials on Darwin are fatal, not a silent skip. "Sign if the
 #    credentials happen to be present" would turn a mis-set repo secret into a
 #    green run that publishes an unsigned, un-notarized zip.
@@ -172,6 +208,54 @@ if grep -q 'gh release create' "$GH_LOG"; then bad "must not also create when on
     setup
     run 9.9.9 >/dev/null
     check "sign runs before shasum" "$(tr '\n' ' ' < "$ORDER_LOG" | sed 's/ $//')" "sign shasum"
+
+# 6b. The stand-down decision. A sort or whitespace bug that wrongly answered
+#     "skip" would turn a repair dispatch into a silent no-op, and a draft or
+#     partial release must never stand down — finishing exactly those is why
+#     workflow_dispatch exists.
+standdown() {
+    cat > "$WORK/bin/gh" <<GHS
+#!/usr/bin/env bash
+if [[ "\$3" == "--repo" ]]; then :; fi
+case "\$*" in
+  *"--json isDraft"*) echo '$2'; exit 0 ;;
+  *"--json assets"*)  [[ -n '$1' ]] || exit 1; printf '%s\n' '$1' | tr ' ' '\n' | LC_ALL=C sort | tr '\n' ' ' | sed 's/ \$//'; echo; exit 0 ;;
+esac
+exit 0
+GHS
+    chmod +x "$WORK/bin/gh"
+    REPO=o/r bash "$REPO_ROOT/scripts/release-standdown.sh" v9.9.9
+}
+setup
+check "complete release -> skip" \
+    "$(standdown 'Hive-9.9.9-macos-universal.zip Hive-9.9.9-windows-amd64.zip checksums.txt' false)" "skip"
+check "missing checksums -> run" \
+    "$(standdown 'Hive-9.9.9-macos-universal.zip Hive-9.9.9-windows-amd64.zip' false)" "run"
+check "complete but draft -> run" \
+    "$(standdown 'Hive-9.9.9-macos-universal.zip Hive-9.9.9-windows-amd64.zip checksums.txt' true)" "run"
+check "no release at all -> run" "$(standdown '' false)" "run"
+
+# 6c. The relocated Team-ID pin guard. Moving it out of the `uname` Darwin
+#     block was one of this change's riskier edits: it is what stops a build
+#     that pins no team — and would therefore skip update signature
+#     verification for every user — from ever being released. --check-preflight
+#     exists so this can be asserted without cutting a real release.
+cd "$WORK/repo"
+out="$(env -u HIVE_SIGN_IDENTITY -u HIVE_NOTARY_PROFILE bash scripts/release.sh --check-preflight 9.9.9 2>&1 || true)"
+if grep -q 'preflight ok: team=AAAAAAAAAA signing=off' <<<"$out"; then
+    ok "preflight runs without any signing credentials"
+else
+    bad "preflight runs without any signing credentials"; printf '       %s\n' "$out"
+fi
+
+printf 'var signingTeamID = ""\n' > internal/buildinfo/signing.go
+out="$(env -u HIVE_SIGN_IDENTITY -u HIVE_NOTARY_PROFILE bash scripts/release.sh --check-preflight 9.9.9 2>&1 || true)"
+if grep -q 'pins no Team ID' <<<"$out"; then
+    ok "empty Team ID pin is refused (and not gated on macOS)"
+else
+    bad "empty Team ID pin is refused (and not gated on macOS)"; printf '       %s\n' "$out"
+fi
+cd "$REPO_ROOT"
 
 # 7. The release workflow must never gain a pull_request trigger: it can read
 #    the signing certificate and the notary key. actionlint validates syntax

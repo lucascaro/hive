@@ -7,7 +7,7 @@ package buildinfo
 //
 // The in-app updater refuses a downloaded release whose signature does
 // not chain to this team (see cmd/hivegui/update_verify_darwin.go). If
-// the value arrived via -ldflags from scripts/release.sh, then every
+// the value arrived via -ldflags from the release scripts, then every
 // build made without those flags would carry an empty pin and silently
 // skip that check — and those builds are not rare. The GUI's
 // latest-commit updater rebuilds from a git checkout by running
@@ -15,8 +15,9 @@ package buildinfo
 // building on a second machine or from a fork. Baking the ID in means
 // a credential-free build still verifies the releases it downloads.
 //
-// Empty disables verification. scripts/release.sh refuses to publish
-// while it is empty, so an unpinned build cannot reach users.
+// Empty disables verification. Both scripts/release.sh (pre-flight, on every
+// platform) and scripts/sign-macos.sh refuse while it is empty, so an
+// unpinned build cannot reach users.
 //
 // A var rather than a const so tests can override it; nothing else
 // writes to it.

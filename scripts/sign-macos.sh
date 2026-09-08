@@ -7,7 +7,9 @@
 #   sign-macos.sh <release-zip>
 #       Release path. Signs with the Developer ID identity, notarizes,
 #       staples the ticket, and rewrites the zip in place. Requires
-#       credentials. Called by scripts/release.sh.
+#       credentials. Called by scripts/release-artifacts.sh, which runs
+#       either on the CI macOS runner or locally via
+#       `scripts/release.sh --local-artifacts`.
 #
 #   sign-macos.sh --adhoc <app-dir>
 #       Local path. Signs with an ad-hoc identity and the hardened
@@ -136,13 +138,20 @@ if ! xcrun notarytool submit "$WORK/notarize.zip" \
         --keychain-profile "$HIVE_NOTARY_PROFILE" --wait; then
     cat >&2 <<UNWIND
 
-Notarization failed. This ran after the release commit and tag were
-created, so unwind before retrying:
+Notarization failed. Do NOT reset or delete the tag: the release commit is
+already on origin by the time this runs, so a reset would be undone by the
+next pull, and re-running scripts/release.sh would re-bump the version and
+re-stamp the changelog on top of a commit that is already published.
 
-  git reset --hard HEAD~1 && git tag -d <tag> && git pull --ff-only
+Fix the cause, then re-publish the artifacts for the existing tag:
 
-Then re-run scripts/release.sh once the cause is fixed. If notarytool
-reported "Invalid", fetch the detail with:
+  scripts/release-artifacts.sh <version>          # local
+  gh workflow run release.yml -f tag=<tag>        # CI
+
+Both are safe to repeat — publishing is idempotent (it updates an existing
+release's assets rather than failing on one).
+
+If notarytool reported "Invalid", fetch the detail with:
 
   xcrun notarytool log <submission-id> --keychain-profile $HIVE_NOTARY_PROFILE
 UNWIND

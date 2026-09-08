@@ -127,18 +127,40 @@ ARTIFACTS+=("$SUMS")
 NOTES=$(awk "/^## \[${VERSION}\]/{found=1; next} found && /^## \[/{exit} found" CHANGELOG.md)
 [[ -n "$NOTES" ]] || echo "note: no '## [${VERSION}]' section in CHANGELOG.md — publishing with empty notes."
 
+# Publish as a DRAFT first, upload, then flip it public.
+#
+# This is not cosmetic. A draft release does not create the git tag ref —
+# GitHub creates it only when the release is published. So the ordering is:
+# no tag exists while the assets upload, and the tag springs into existence
+# at the instant the release becomes complete and public.
+#
+# That is what makes the local path safe. `gh release create --target` alone
+# creates the tag ref immediately and uploads assets afterwards, so the
+# `push: tags` webhook fires against a release with ZERO assets — and
+# release.yml's stand-down step, which skips only on a complete release,
+# would correctly conclude "incomplete" and start a full 90-minute rebuild
+# racing the local upload. checksums.txt uploads last, so that window also
+# publishes a manifest that disagrees with the zip beside it, which the
+# in-app updater rejects.
+#
+# Drafting helps CI too: a run that dies mid-upload leaves an unpublished
+# draft rather than a half-populated public release users can download.
+
 if gh release view "$TAG" --repo "$REPO" >/dev/null 2>&1; then
     echo "Release ${TAG} exists — updating its assets..."
     gh release upload "$TAG" --repo "$REPO" --clobber "${ARTIFACTS[@]}"
+    # A previous run may have died before un-drafting. Idempotent either way.
+    gh release edit "$TAG" --repo "$REPO" --draft=false >/dev/null
 else
-    echo "Creating GitHub release ${TAG}..."
-    # --target matters only on the local path, where the tag deliberately has
-    # not been pushed: it makes `gh` create the remote tag here, as part of
-    # publishing, so a complete release exists the instant the tag appears
-    # and the workflow that fires stands down instead of racing this build.
-    # In CI the tag already exists and --target is ignored.
+    echo "Creating GitHub release ${TAG} (draft)..."
+    # --target is used only when the tag does not exist remotely (the local
+    # path); in CI the tag is already there and it is ignored.
     gh release create "$TAG" --repo "$REPO" --title "$TAG" --notes "$NOTES" \
-        --target "$(git rev-parse HEAD)" "${ARTIFACTS[@]}"
+        --draft --target "$(git rev-parse HEAD)"
+    echo "Uploading artifacts..."
+    gh release upload "$TAG" --repo "$REPO" --clobber "${ARTIFACTS[@]}"
+    echo "Publishing (this is what creates the tag)..."
+    gh release edit "$TAG" --repo "$REPO" --draft=false >/dev/null
 fi
 
 echo ""

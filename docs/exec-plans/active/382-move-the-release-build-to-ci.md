@@ -1,3 +1,34 @@
+
+- **2026-09-08** — Review iter 2 showed the iter-1 race fix did not deliver
+  what its own comments claimed. `gh release create --target` creates the tag
+  ref *first* and uploads assets afterwards, so the `push: tags` webhook fires
+  against a release with zero assets; the stand-down (which skips only on a
+  complete release) would correctly say "incomplete" and start a full rebuild
+  racing the local upload. `checksums.txt` uploads last, so that window also
+  publishes a manifest disagreeing with the zip beside it — which the in-app
+  updater rejects. Fixed by publishing as a **draft** first: a draft creates
+  no tag ref, so the tag appears only at `--draft=false`, with the release
+  already complete. Applied on both paths, which also makes a died CI run
+  leave an unpublished draft rather than a half-public release.
+- **2026-09-08** — Three test gaps from iter 2, all real. The selftest fixture
+  ran `git init` with no commit, so `git rev-parse HEAD` exited 128 and printed
+  the literal string `HEAD`; `--target HEAD` was passed and the assertion still
+  matched on a substring, so the newest fix had zero coverage. The stand-down
+  comparison was inline workflow bash, unreachable from any test — extracted to
+  `scripts/release-standdown.sh`, and writing its test immediately found a
+  latent bug: jq's `sort` is bytewise while shell `sort` is locale-collated, so
+  `checksums.txt` and `Hive-…` ordered differently and the comparison could
+  never match. Pinned with `LC_ALL=C`. And `--check-preflight` was a dead hook
+  whose comment claimed a test grepped for it; the pin-guard and no-credentials
+  checks are now assertions in the selftest, so that claim is true. 12 → 23
+  assertions.
+- **2026-09-08** — Deviated from the "do not change `sign-macos.sh`" non-goal,
+  deliberately. Its failure message told the operator to `git reset --hard
+  HEAD~1 && git tag -d && git pull --ff-only`, which this change made actively
+  harmful: under `--local-artifacts` the release commit is already on origin,
+  so the pull undoes the reset and a re-run would re-stamp on top of a
+  published commit. Message and header comment only, no behaviour change.
+
 # Move the release build to CI
 
 - **Spec:** [docs/product-specs/382-move-the-release-build-to-ci.md](../../product-specs/382-move-the-release-build-to-ci.md)
@@ -509,6 +540,7 @@ risks the "no index.html" failure mode recorded in the prior lessons.
 Append-only. One line per `/hs-review-loop` iteration.
 
 - **2026-09-08 iter 1** — verdict: COMMENT; mergeable: MERGEABLE; findings_hash: ed7b26e2; threads_open: 0; action: autofix+push; head_sha: 358dfa85.
+- **2026-09-08 iter 2** — verdict: REQUEST_CHANGES; mergeable: MERGEABLE; findings_hash: 95392a29; threads_open: 0; action: escalated:risky-fix-needs-human-decision; head_sha: b4d62177.
 
 ## Progress
 
