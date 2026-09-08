@@ -2,6 +2,8 @@
 
 - **Spec:** [docs/product-specs/382-move-the-release-build-to-ci.md](../../product-specs/382-move-the-release-build-to-ci.md)
 - **Issue:** #382
+- **PR:** #383
+- **Branch:** `feature/382-move-the-release-build-to-ci`
 - **Status:** active
 
 ## Summary

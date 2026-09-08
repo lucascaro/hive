@@ -1,10 +1,11 @@
 ---
 issue: 382
+pr: 383
 title: Move the release build to CI
 type: enhancement
 complexity: M
 priority: P2
-stage: IMPLEMENT
+stage: REVIEW
 ---
 
 # Move the release build to CI
