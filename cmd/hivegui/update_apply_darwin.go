@@ -24,8 +24,8 @@ import (
 // release zip. Keep in sync with build.sh's `wails build` output.
 const bundleName = "hivegui.app"
 
-// checksumsAsset is the SHA-256 manifest scripts/release.sh attaches
-// alongside the binaries.
+// checksumsAsset is the SHA-256 manifest scripts/release-artifacts.sh
+// attaches alongside the binaries.
 const checksumsAsset = "checksums.txt"
 
 // maxDownloadBytes caps what we will pull from a release asset. The

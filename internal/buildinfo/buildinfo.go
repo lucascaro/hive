@@ -27,7 +27,7 @@ var buildIDOverride = ""
 //	go build -ldflags "-X github.com/lucascaro/hive/internal/buildinfo.versionOverride=0.4.1"
 //
 // It is set by ./build.sh when invoked with --version, and by
-// scripts/release.sh during a tagged release. Plain `go build` and
+// scripts/release-artifacts.sh during a tagged release. Plain `go build` and
 // `./build.sh` (no --version) leave this empty, in which case
 // Version() reports "dev" — the GUI's update checker treats "dev" as
 // "skip update check" so untagged local builds don't get pestered
