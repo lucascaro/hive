@@ -3,7 +3,8 @@ set -euo pipefail
 
 # release.sh — cut a release for this project.
 #
-# Usage: ./scripts/release.sh <version>     e.g. ./scripts/release.sh 0.2.0
+# Usage: ./scripts/release.sh <version> [--local-artifacts]
+#        e.g. ./scripts/release.sh 0.2.0
 #
 # What it does:
 #   1. Validates inputs and working tree
@@ -11,9 +12,16 @@ set -euo pipefail
 #   3. Rolls .changesets/*.md into a stamped CHANGELOG section and deletes
 #      them (falls back to a plain date stamp if the repo has no changesets)
 #   4. Commits and tags
-#   5. (Optional) cross-compiles artifacts via BUILD_CMD
-#   6. Creates a GitHub release with artifacts attached
-#   7. Pushes the commit and tag
+#   5. Verifies origin/main has not advanced, then pushes the commit and tag
+#
+# The tag push triggers .github/workflows/release.yml, which builds, signs,
+# notarizes and publishes on a macOS runner. That is where notarization's
+# unbounded wait now happens, instead of on your terminal.
+#
+# Flags:
+#   --local-artifacts  Do the build/sign/publish half here instead of in CI,
+#                      via scripts/release-artifacts.sh. Requires the signing
+#                      credentials this script otherwise does not need.
 #
 # Configuration — edit the variables below for your project.
 
@@ -40,16 +48,37 @@ VERSION_SED="${VERSION_SED:-}"
 
 # Hive's release artifacts are produced by ./build.sh (Wails .app for
 # macOS + cross-compiled Windows zip), not by the generic per-platform
-# loop the hivesmith template provides. The BUILD_CMD/PLATFORMS knobs
-# from the template have been removed; see "BUILD ARTIFACTS" below.
+# loop the hivesmith template provides. The BUILD_CMD/PLATFORMS knobs from
+# the template have been removed. That half of the release now lives in
+# scripts/release-artifacts.sh, run on a macOS runner by
+# .github/workflows/release.yml (or here, with --local-artifacts).
 
 # ---- VALIDATION ----------------------------------------------------------
 
 cd "$(git rev-parse --show-toplevel)"
 
-VERSION="${1:-}"
+VERSION=""
+local_artifacts=0
+check_preflight=0
+while [[ $# -gt 0 ]]; do
+    case "$1" in
+        --local-artifacts) local_artifacts=1; shift ;;
+        # Test hook: run the pre-flight, print a marker describing what it
+        # concluded, and stop before mutating anything. The marker matters —
+        # a flag that merely exited 0 would also be satisfied by a version
+        # that short-circuits before reaching any pre-flight logic at all,
+        # so scripts/release-artifacts-selftest.sh greps for this line
+        # rather than trusting the exit code.
+        --check-preflight) check_preflight=1; shift ;;
+        -h|--help) sed -n '4,24p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
+        -*) echo "unknown flag: $1" >&2; exit 2 ;;
+        *)  [[ -z "$VERSION" ]] || { echo "unexpected argument: $1" >&2; exit 2; }
+            VERSION="$1"; shift ;;
+    esac
+done
+
 if [[ -z "$VERSION" ]]; then
-    echo "Usage: $0 <version>"
+    echo "Usage: $0 <version> [--local-artifacts]"
     echo "  e.g. $0 0.2.0"
     exit 1
 fi
@@ -58,29 +87,47 @@ TAG="v${VERSION}"
 TODAY=$(date +%Y-%m-%d)
 
 command -v gh >/dev/null || { echo "Error: gh (GitHub CLI) required"; exit 1; }
-[[ -z "$(git status --porcelain)" ]] || { echo "Error: working tree not clean"; exit 1; }
-! git rev-parse "$TAG" &>/dev/null || { echo "Error: tag $TAG already exists"; exit 1; }
-grep -q '## \[Unreleased\]' CHANGELOG.md || { echo "Error: CHANGELOG.md has no [Unreleased] section"; exit 1; }
+# --check-preflight never mutates the tree, so it does not need a clean one —
+# and must not require it: the pin-guard test below mutates signing.go inside
+# a scratch worktree, and a clean-tree refusal there would mask the very
+# guard the test is trying to exercise.
+if [[ "$check_preflight" == "0" ]]; then
+    [[ -z "$(git status --porcelain)" ]] || { echo "Error: working tree not clean"; exit 1; }
+    ! git rev-parse "$TAG" &>/dev/null || { echo "Error: tag $TAG already exists"; exit 1; }
+    grep -q '## \[Unreleased\]' CHANGELOG.md || { echo "Error: CHANGELOG.md has no [Unreleased] section"; exit 1; }
+fi
 
-# macOS signing pre-flight. Deliberately here, next to the other refusals,
-# rather than next to the signing call further down: everything below the
-# commit/tag step is expensive to unwind, and a missing certificate or an
-# unset keychain profile is knowable now. Notarization itself can still fail
-# late (it is a network call to Apple); sign-macos.sh prints the unwind
-# recipe when it does.
-if [[ "$(uname -s)" == "Darwin" ]]; then
+# ---- PRE-FLIGHT ----------------------------------------------------------
+#
+# Deliberately here, next to the other refusals, rather than next to the
+# work it guards: everything below the commit/tag step is expensive to
+# unwind, and these are all knowable now.
+#
+# The block splits in two, and the split is not cosmetic. Under
+# `set -euo pipefail`, touching $HIVE_SIGN_IDENTITY when it is unset is a
+# hard crash — so every line that reads it has to sit behind the flag that
+# promises it exists.
+
+# Credential-FREE, and deliberately outside any `uname` test: refuse to
+# publish a build that pins no team. It would skip signature verification
+# for every user who installs it, permanently — which is true no matter
+# which machine or OS produced the build, so this must also fire on the
+# Linux CI legs where the selftest runs.
+pinned_team_id="$(sed -n 's/^var signingTeamID = "\(.*\)"$/\1/p' internal/buildinfo/signing.go)"
+if [[ -z "$pinned_team_id" ]]; then
+    echo "Error: internal/buildinfo/signing.go pins no Team ID." >&2
+    echo "  A release built from it would skip update signature verification for" >&2
+    echo "  every user. Set signingTeamID — see docs/releasing-signed-macos.md." >&2
+    exit 1
+fi
+
+# Credential-DEPENDENT. Only the local-artifacts path signs here; the default
+# path pushes a tag and lets the macOS runner sign, so it needs no
+# certificate, no keychain profile and no xcrun. Requiring them by default
+# would defeat the entire point of moving the build to CI.
+if [[ "$local_artifacts" == "1" && "$(uname -s)" == "Darwin" ]]; then
     : "${HIVE_SIGN_IDENTITY:?set HIVE_SIGN_IDENTITY to your Developer ID (see docs/releasing-signed-macos.md)}"
     : "${HIVE_NOTARY_PROFILE:?set HIVE_NOTARY_PROFILE to your notarytool keychain profile (see docs/releasing-signed-macos.md)}"
-
-    # Refuse to publish a build that pins no team: it would skip signature
-    # verification for every user who installs it, permanently.
-    pinned_team_id="$(sed -n 's/^var signingTeamID = "\(.*\)"$/\1/p' internal/buildinfo/signing.go)"
-    if [[ -z "$pinned_team_id" ]]; then
-        echo "Error: internal/buildinfo/signing.go pins no Team ID." >&2
-        echo "  A release built from it would skip update signature verification for" >&2
-        echo "  every user. Set signingTeamID — see docs/releasing-signed-macos.md." >&2
-        exit 1
-    fi
 
     identity_team_id="$(sed -n 's/.*(\([A-Z0-9]\{10\}\))$/\1/p' <<<"$HIVE_SIGN_IDENTITY")"
     [[ "$identity_team_id" == "$pinned_team_id" ]] || {
@@ -95,6 +142,12 @@ if [[ "$(uname -s)" == "Darwin" ]]; then
     }
     command -v xcrun >/dev/null || { echo "Error: xcrun required for notarization"; exit 1; }
     echo "Signing pre-flight OK (team ${pinned_team_id})."
+fi
+
+if [[ "$check_preflight" == "1" ]]; then
+    if [[ "$local_artifacts" == "1" ]]; then signing=on; else signing=off; fi
+    echo "preflight ok: team=${pinned_team_id} signing=${signing}"
+    exit 0
 fi
 
 # Non-blocking reminder: shipped exec-plans should move active/ -> completed/
@@ -179,45 +232,22 @@ fi
 git commit -m "release: ${TAG}"
 git tag "$TAG"
 
-# ---- BUILD ARTIFACTS -----------------------------------------------------
-#
-# Hive uses Wails for the GUI and a separate `hived` daemon binary, so the
-# generic GOOS/GOARCH loop in the hivesmith template can't produce the
-# right .app/.exe bundles. Delegate to build.sh, which knows how to
-# assemble the macOS universal .app and the Windows amd64 zip.
-
-ARTIFACTS=()
-echo "Building release artifacts via build.sh..."
-./build.sh --zip --version "$VERSION" --platform all
-for f in \
-    "release/Hive-${VERSION}-macos-universal.zip" \
-    "release/Hive-${VERSION}-windows-amd64.zip"; do
-    [[ -f "$f" ]] || { echo "Error: expected artifact missing: $f"; exit 1; }
-    ARTIFACTS+=("$f")
-done
-
-# Sign, notarize and staple before the manifest is written, so the checksums
-# describe the artifact that actually ships.
-if [[ "$(uname -s)" == "Darwin" ]]; then
-    echo "Signing and notarizing the macOS artifact..."
-    ./scripts/sign-macos.sh "release/Hive-${VERSION}-macos-universal.zip"
-fi
-
-# SHA-256 manifest. The GUI's in-app updater downloads this alongside
-# the macOS zip and refuses to install on a mismatch — without it, a
-# truncated download becomes a broken Hive.app the user can only fix by
-# reinstalling by hand. Names are basenamed so the manifest matches the
-# asset names GitHub serves.
-echo "Writing checksums..."
-SUMS="release/checksums.txt"
-ARTIFACT_NAMES=()
-for f in "${ARTIFACTS[@]}"; do ARTIFACT_NAMES+=("$(basename "$f")"); done
-( cd release && shasum -a 256 "${ARTIFACT_NAMES[@]}" ) > "$SUMS"
-ARTIFACTS+=("$SUMS")
-
 # ---- PUSH ----------------------------------------------------------------
+#
+# The push is now the LAST local step, not a step between signing and
+# publishing. Pushing the tag is what triggers
+# .github/workflows/release.yml, so everything after this happens on a
+# macOS runner.
+#
+# The consequence is worth stating plainly: a CI run that fails leaves the
+# tag pushed and no GitHub release behind it. That is why
+# release-artifacts.sh publishes idempotently (create-or-clobber) and why
+# the workflow accepts a workflow_dispatch — the repair is a re-dispatch,
+# not deleting and re-pushing a tag.
 
-# Pin check: refuse to push if main advanced after we started.
+# Pin check: refuse to push if main advanced after we started. This is the
+# reason the commit/tag half stays local at all — a runner has no way to
+# know whether main moved under the maintainer mid-release.
 echo "Verifying release base is still tip of main..."
 git fetch origin main --quiet
 CURRENT_REMOTE_SHA="$(git rev-parse origin/main)"
@@ -232,14 +262,25 @@ fi
 echo "Pushing to origin..."
 git push origin HEAD "$TAG"
 
-# ---- GITHUB RELEASE ------------------------------------------------------
+# ---- ARTIFACTS -----------------------------------------------------------
 
-echo "Creating GitHub release ${TAG}..."
-NOTES=$(awk "/^## \[${VERSION}\]/{found=1; next} found && /^## \[/{exit} found" CHANGELOG.md)
-gh release create "$TAG" --title "$TAG" --notes "$NOTES" ${ARTIFACTS[@]+"${ARTIFACTS[@]}"}
-
-# ---- CLEANUP -------------------------------------------------------------
-
-echo ""
-echo "Released ${TAG} successfully!"
-echo "  https://github.com/${REPO}/releases/tag/${TAG}"
+if [[ "$local_artifacts" == "1" ]]; then
+    echo "Building and publishing artifacts locally (--local-artifacts)..."
+    ./scripts/release-artifacts.sh "$VERSION"
+    echo ""
+    echo "Released ${TAG} successfully!"
+    echo "  https://github.com/${REPO}/releases/tag/${TAG}"
+else
+    echo ""
+    echo "Pushed ${TAG}. The release build is running on GitHub Actions."
+    # A run URL would need a run id, which does not exist until the workflow
+    # is queued — and cannot be known here. Point at the workflow instead.
+    echo "  https://github.com/${REPO}/actions/workflows/release.yml"
+    echo ""
+    echo "It builds, signs, notarizes and publishes the release. Notarization"
+    echo "alone can take anywhere from 2 minutes to over an hour, entirely on"
+    echo "Apple's side. Nothing further is required from you."
+    echo ""
+    echo "If the run fails, fix the cause and re-publish without re-tagging:"
+    echo "  gh workflow run release.yml -f tag=${TAG}"
+fi

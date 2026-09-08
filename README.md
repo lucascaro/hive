@@ -78,8 +78,8 @@ What works:
   window closed
 
 Not yet shipping: scrollback resume across daemon restart, splits
-inside grid cells, workflows / agent teams, code signing and
-notarization, platform installers, in-app updates on Windows/Linux.
+inside grid cells, workflows / agent teams, platform installers,
+in-app updates on Windows/Linux.
 
 ## Build
 
@@ -190,11 +190,10 @@ by walking up from its own binary, which works for a locally built app;
 for an installed `Hive.app` you point at the directory yourself. It
 refuses to pull over a dirty working tree or a detached HEAD.
 
-The SHA-256 manifest is an **integrity** check, not a provenance one: it
-is published in the same release as the zip, and the bundle is neither
-signed nor notarized, so it catches a truncated or corrupted download —
-not a compromised release. Signing and notarization are tracked
-separately.
+The SHA-256 manifest is an **integrity** check: it is published in the
+same release as the zip, so it catches a truncated or corrupted download.
+Provenance is a separate mechanism — macOS builds are signed with a
+Developer ID, notarized and stapled, and the updater pins the Team ID.
 
 **Nothing is downloaded or built until you press Update.** The button
 shows progress while it works, then becomes either **Reload** or

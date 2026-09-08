@@ -45,6 +45,24 @@ jobs:
           printf 'linting %d file(s)\n' "${#files[@]}"
           shellcheck -S warning "${files[@]}"
 
+      # Same reasoning as the shellcheck step above, applied to workflows.
+      # .github/workflows/release.yml first executes live, after a tag
+      # already exists — a bad expression or an unknown key there is
+      # discovered at the worst possible moment.
+      - name: Set up Go
+        uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5
+        with:
+          go-version-file: go.mod
+
+      - name: Actionlint workflows
+        # `go install` at a pinned version, rather than the upstream
+        # curl|bash installer: the module proxy and GOSUMDB verify it, which
+        # is the same standard the pinned action SHAs in these workflows hold
+        # everything else to.
+        run: |
+          go install github.com/rhysd/actionlint/cmd/actionlint@v1.7.7
+          "$(go env GOPATH)/bin/actionlint" -color
+
   build:
     name: Build, Vet & Test (${{ matrix.label }})
     runs-on: ${{ matrix.os }}
@@ -247,9 +265,13 @@ jobs:
         # vars below + testclient.RequireIsolation; never touches real
         # hive state. See docs/exec-plans/completed/210-real-e2e-tests.md.
         run: |
-          export HOME="$(mktemp -d)"
-          export HIVE_STATE_DIR="$(mktemp -d)"
-          export HIVE_SOCKET="$(mktemp -d)/hived.sock"
+          # Declared and assigned separately (SC2155): `export X="$(cmd)"`
+          # masks a failing mktemp behind export's own exit status, so a
+          # failure would surface as an unset dir rather than a failed step.
+          HOME="$(mktemp -d)"
+          HIVE_STATE_DIR="$(mktemp -d)"
+          HIVE_SOCKET="$(mktemp -d)/hived.sock"
+          export HOME HIVE_STATE_DIR HIVE_SOCKET
           go test -tags=e2e -timeout 180s ./cmd/hived/...
         env:
           TERM: dumb
