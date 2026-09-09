@@ -1,5 +1,7 @@
 import { expect, type Page, test } from '@playwright/test';
 
+const MOD = process.platform === 'darwin' ? 'Meta' : 'Control';
+
 // The shared-worktree cue, in a real browser (spec 384).
 //
 // jsdom is CSS-blind: the dom tests can only assert that `data-wt-shared`
@@ -134,5 +136,82 @@ test.describe('shared worktree cue', () => {
     );
     const first = flags.indexOf(true);
     expect(flags[first + 1]).toBe(true);
+  });
+
+  // The bug this ordering exists to prevent, reported from the running app:
+  // "cmd up/down iterate not in the order I see but the order the daemon
+  // still holds". Clustering used to happen only where the sidebar painted,
+  // so orderedSessions() — which drives ⌘↑/⌘↓, ⌘1-9, the tray and the
+  // palette — still walked the daemon's flat r.order. Two orders is the bug;
+  // this asserts there is one.
+  test('keyboard navigation walks the order the rows are painted in', async ({
+    page,
+  }) => {
+    await boot(page);
+    // Seed so the two orders genuinely DISAGREE: alpha takes a worktree,
+    // gamma is created next (so it sits between them in r.order), and beta
+    // then joins alpha's worktree. r.order is alpha,gamma,beta; the rows
+    // paint alpha,beta,gamma. A fixture where the two coincide would pass
+    // against the very bug this test exists for.
+    await page.evaluate(() =>
+      window.__hive.createSessionWithWorktree?.('alpha', 'feat/x'),
+    );
+    await page.waitForFunction(() =>
+      (window.__hive.state?.sessions ?? []).some((s) => !!s.worktree_path),
+    );
+    const wt = await page.evaluate(
+      () =>
+        (window.__hive.state?.sessions ?? []).find((s) => !!s.worktree_path)
+          ?.worktree_path ?? '',
+    );
+    await page.evaluate(() => window.__hive.addSession?.('gamma'));
+    await page.waitForFunction(() =>
+      (window.__hive.state?.sessions ?? []).some((s) => s.name === 'gamma'),
+    );
+    await page.evaluate(
+      (p) => window.__hive.createSessionInWorktree?.('beta', p),
+      wt,
+    );
+    await page.waitForFunction(
+      () =>
+        document.querySelectorAll('li.hv-session-row[data-wt-shared]')
+          .length === 2,
+    );
+
+    // Guard the fixture itself: if r.order ever matched the painted order,
+    // this test would prove nothing.
+    const daemonOrder = await page.evaluate(() =>
+      [...(window.__hive.state?.sessions ?? [])]
+        .sort((a, b) => (a.order ?? 0) - (b.order ?? 0))
+        .map((s) => s.id),
+    );
+
+    const painted = await page.evaluate(() =>
+      Array.from(
+        document.querySelectorAll<HTMLElement>('li.hv-session-row'),
+      ).map((li) => li.dataset.sid ?? ''),
+    );
+    expect(painted).not.toEqual(daemonOrder);
+
+    // Walk with ⌘↓ from the top and record where selection lands.
+    const visited: string[] = [];
+    for (let i = 0; i < painted.length; i++) {
+      const sid = await page.evaluate(
+        () =>
+          document.querySelector<HTMLElement>(
+            'li.hv-session-row[data-selected]',
+          )?.dataset.sid ?? '',
+      );
+      if (sid) visited.push(sid);
+      await page.keyboard.press(`${MOD}+ArrowDown`);
+    }
+
+    // The walk is cyclic, so compare as a rotation of the painted order.
+    const start = painted.indexOf(visited[0]);
+    const expected = [
+      ...painted.slice(start),
+      ...painted.slice(0, start),
+    ].slice(0, visited.length);
+    expect(visited).toEqual(expected);
   });
 });

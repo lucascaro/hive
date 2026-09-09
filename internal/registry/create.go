@@ -346,25 +346,35 @@ func (r *Registry) resolveCreateTarget(spec wire.CreateSpec) createPlan {
 	// worktree badge and Kill can keep the worktree alive until the
 	// last session in it goes away.
 	if !spec.UseWorktree && p.cwd != "" {
+		// r.entries is a map, so "the first match" is whatever iteration
+		// order hands back. Pick the lowest-Order occupant instead: it is
+		// the group's anchor in the sidebar, and once a user recolours one
+		// member the members disagree, at which point map order would make
+		// the inherited colour differ run to run.
+		var adopt *Entry
 		for _, other := range r.entries {
-			if other.ProjectID == p.projectID && other.WorktreePath != "" && other.WorktreePath == p.cwd {
-				p.adoptedPath = other.WorktreePath
-				p.adoptedBranch = other.WorktreeBranch
-				// Sessions sharing one worktree share one colour:
-				// that is the sidebar's link between them (spec
-				// 384). This reads the "color is session
-				// identity" rule above as identity of the WORK,
-				// not of the process — two sessions editing the
-				// same files are one piece of work. An explicit
-				// spec.Color still wins, and the inherited
-				// colour becomes lastSessionColor so the next
-				// freshly-picked session steers away from it
-				// rather than colliding with the group.
-				if spec.Color == "" && other.Color != "" {
-					p.color = other.Color
-					r.lastSessionColor = p.color
-				}
-				break
+			if other.ProjectID != p.projectID || other.WorktreePath == "" || other.WorktreePath != p.cwd {
+				continue
+			}
+			if adopt == nil || other.Order < adopt.Order {
+				adopt = other
+			}
+		}
+		if adopt != nil {
+			p.adoptedPath = adopt.WorktreePath
+			p.adoptedBranch = adopt.WorktreeBranch
+			// Sessions sharing one worktree share one colour: that is
+			// the sidebar's link between them (spec 384). This reads
+			// the "color is session identity" rule above as identity
+			// of the WORK, not of the process — two sessions editing
+			// the same files are one piece of work. An explicit
+			// spec.Color still wins, and the inherited colour becomes
+			// lastSessionColor so the next freshly-picked session
+			// steers away from it rather than colliding with the
+			// group.
+			if spec.Color == "" && adopt.Color != "" {
+				p.color = adopt.Color
+				r.lastSessionColor = p.color
 			}
 		}
 	}

@@ -91,6 +91,11 @@ export function SessionRow(p: SessionRowProps) {
   const code = agentCode(s.agent);
   const wtBranch = s.worktreeBranch ?? s.worktree_branch;
   const shared = p.worktreeShared;
+  // A detached worktree has no branch (internal/worktree: inventory), and the
+  // glyph is where the count and the words live. Without this the cue on such
+  // a row would be the colour bar alone — which is the one thing
+  // patterns.md > Selection vs attention says it must never be.
+  const wtLabel = wtBranch || 'detached HEAD';
   // A note can be 4 KiB. A tooltip is a glance and a screen reader
   // announces the label in full, so both take the first line's worth
   // and stop.
@@ -187,16 +192,16 @@ export function SessionRow(p: SessionRowProps) {
           <Icon name="idea" size={12} />
         </span>
       ) : null}
-      {wtBranch ? (
+      {wtBranch || shared > 1 ? (
         <span className="hv-session-row__worktree-slot">
           <IconButton
             icon="branch"
             label={
               shared > 1
-                ? `Worktree: ${wtBranch} — shared with ${shared - 1} other ${
+                ? `Worktree: ${wtLabel} — shared with ${shared - 1} other ${
                     shared === 2 ? 'session' : 'sessions'
                   } — manage worktrees`
-                : `Worktree: ${wtBranch} — manage worktrees`
+                : `Worktree: ${wtLabel} — manage worktrees`
             }
             className="hv-session-row__worktree"
             onClick={(e) => {

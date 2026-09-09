@@ -12,8 +12,17 @@
 //
 // The colour of the group is the session colour: a session that adopts a
 // sibling's worktree inherits its colour (internal/registry/create.go), so
-// membership is already visible without a per-group palette. This file only
-// decides WHO is in a group, WHERE the group paints, and what a drag does.
+// membership is already visible without a per-group palette.
+//
+// THE ONE ORDER. Grouping introduces a second candidate order — `.order`
+// (the daemon's flat r.order) and the clustered order rows actually paint in
+// — and the first cut of this file kept both, resolving drop slots in
+// `.order` space while the user dragged in painted space. Every drag
+// involving a group then landed a slot off, or did nothing at all. So:
+// `clusterSessions()` IS the order. `app/selectors.ts` clusters, the sidebar
+// paints what it is handed, and every reorder below computes its target as a
+// painted ARRAY and derives the moves that make the daemon's list equal it.
+// No index arithmetic in two spaces, because that was the bug.
 import { readProjectId } from './wire.js';
 
 interface OrderedSession {
@@ -75,9 +84,9 @@ export function worktreeGroups(
 // Anchoring at the lowest-order member (rather than, say, the most recently
 // touched one) is what makes this stable: the anchor only moves when that
 // member's own order moves, so a re-render never reshuffles rows on its own.
-// It is also why the drag path has to move whole clusters — moving a
-// non-anchor member alone changes nothing the eye can see, since this
-// function puts it straight back next to its group.
+// It is also idempotent — clustering an already-clustered list changes
+// nothing — which is what lets a reorder simply make r.order equal the
+// painted array and know the next paint will agree.
 export function clusterSessions<T extends OrderedSession>(sessions: T[]): T[] {
   const sorted = sessions
     .slice()
@@ -114,11 +123,11 @@ export interface ReorderOp {
 }
 
 // moveInOrder is the daemon's delete-then-clamp-then-insert (internal/
-// registry: moveInOrder), replicated so clusterDropOps can simulate the
-// sequence of moves it is about to request. Simulating is not optional: each
-// UpdateSession is a separate round-trip that re-broadcasts, so the ops must
-// be computed up front against a predicted list rather than recomputed from
-// state arriving between calls.
+// registry: moveInOrder), replicated so the ops below can be simulated as
+// they are generated. Simulating is not optional: each UpdateSession is a
+// separate round-trip that re-broadcasts, so the ops must be computed up
+// front against a predicted list rather than recomputed from state arriving
+// between calls.
 function moveInOrder(order: string[], id: string, newOrder: number): string[] {
   const cur = order.indexOf(id);
   if (cur < 0) return order;
@@ -129,19 +138,85 @@ function moveInOrder(order: string[], id: string, newOrder: number): string[] {
   return out;
 }
 
+// opsToReach returns the moves that turn `current` into `target` — the same
+// id set in two orders.
+//
+// It walks left to right and fixes the first slot that disagrees, which is
+// what makes it obviously correct: moveInOrder deletes from a position at or
+// after the slot being fixed and re-inserts AT it, so the already-agreeing
+// prefix never shifts and each op settles one more slot permanently. That
+// beats deriving an index in the daemon's space by hand, which is precisely
+// where the spec-305 off-by-one lived.
+function opsToReach(current: string[], target: string[]): ReorderOp[] {
+  const ops: ReorderOp[] = [];
+  let now = current.slice();
+  for (let i = 0; i < target.length; i++) {
+    if (now[i] === target[i]) continue;
+    ops.push({ id: target[i], order: i });
+    now = moveInOrder(now, target[i], i);
+  }
+  return ops;
+}
+
+// globalTarget splices one project's painted ids back into the global list at
+// the positions that project already occupies, leaving every other project
+// untouched. The daemon's r.order is one flat list spanning all projects, and
+// a reorder is only ever within a project.
+function globalTarget(
+  globalSorted: OrderedSession[],
+  pid: string,
+  projectPainted: string[],
+): string[] {
+  let n = 0;
+  return globalSorted.map((s) =>
+    readProjectId(s) === pid ? projectPainted[n++] : s.id,
+  );
+}
+
+// The painted rows of one project, plus the groups within it.
+function paintedProject(sessions: OrderedSession[], pid: string) {
+  const painted = clusterSessions(
+    sessions.filter((s) => readProjectId(s) === pid),
+  );
+  return {
+    painted,
+    ids: painted.map((s) => s.id),
+    groups: worktreeGroups(painted),
+  };
+}
+
+// The block a drag on `id` moves: its whole shared-worktree group, or just
+// itself.
+function moversFor(
+  painted: OrderedSession[],
+  groups: Map<string, string[]>,
+  id: string,
+): string[] {
+  const s = painted.find((x) => x.id === id);
+  if (!s) return [];
+  return groups.get(worktreeKey(s)) ?? [id];
+}
+
 // clusterDropOps turns a drop onto `targetID` into the moves that place the
-// dragged session — and, when it belongs to a shared-worktree group, its
-// whole group — at the drop slot, contiguously.
+// dragged session at the drop slot.
+//
+// Two gestures, told apart by where the drop lands — which is the only
+// signal a drag carries, and reads the way the rows look:
+//
+//   • onto a row OUTSIDE the dragged session's group → the whole group
+//     moves, staying contiguous. Dragging one member somewhere else while
+//     its group stayed put would be meaningless: the next paint pulls it
+//     straight back beside them.
+//   • onto another member of its OWN group → the group stays where it is and
+//     the two members swap places inside it. The block is contiguous, so
+//     there is nowhere else such a drop could mean.
+//
+// The slot is resolved in PAINTED space, because that is the space the user
+// dropped in: `above` means the painted row above, not anything in `.order`.
 //
 // It returns ops rather than performing them so the caller can issue them in
 // order and stop on the first failure; a half-applied cluster is the one way
 // this feature can visibly go wrong.
-//
-// The drop slot is resolved against the sibling list with EVERY mover
-// removed — otherwise a group's own trailing members shift the target and the
-// block lands beside itself. Each individual move index is then read from the
-// list with just that mover removed, which is what the daemon actually
-// splices into.
 export function clusterDropOps(
   sessions: OrderedSession[],
   draggedID: string,
@@ -149,77 +224,122 @@ export function clusterDropOps(
   above: boolean,
 ): ReorderOp[] {
   if (draggedID === targetID) return [];
-  const globalOrdered = sessions
+  const globalSorted = sessions
     .slice()
     .sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
-  const dragged = globalOrdered.find((s) => s.id === draggedID);
-  const target = globalOrdered.find((s) => s.id === targetID);
+  const dragged = globalSorted.find((s) => s.id === draggedID);
+  const target = globalSorted.find((s) => s.id === targetID);
   if (!dragged || !target) return [];
 
   const pid = readProjectId(target);
   if (readProjectId(dragged) !== pid) return [];
 
-  const groups = worktreeGroups(
-    globalOrdered.filter((s) => readProjectId(s) === pid),
-  );
-  const movers = groups.get(worktreeKey(dragged)) ?? [draggedID];
-  // Dropping a group onto one of its own members is a no-op, not a
-  // rearrangement of the group's interior.
-  if (movers.includes(targetID)) return [];
+  const { painted, ids, groups } = paintedProject(globalSorted, pid);
+  const movers = moversFor(painted, groups, draggedID);
+  if (movers.length === 0) return [];
+
+  // Within the group: move the one session, leave the block where it is.
+  // Because the block is contiguous in the painted list, moving a member
+  // relative to another member cannot take it out of the block.
+  if (movers.includes(targetID)) {
+    const rest = ids.filter((id) => id !== draggedID);
+    const at = rest.indexOf(targetID);
+    if (at < 0) return [];
+    const slot = above ? at : at + 1;
+    const wanted = [...rest.slice(0, slot), draggedID, ...rest.slice(slot)];
+    return opsToReach(
+      globalSorted.map((s) => s.id),
+      globalTarget(globalSorted, pid, wanted),
+    );
+  }
 
   const moving = new Set(movers);
-  const sibs = globalOrdered.filter(
-    (s) => readProjectId(s) === pid && !moving.has(s.id),
-  );
-  const targetIdx = sibs.findIndex((s) => s.id === targetID);
+  const sibs = ids.filter((id) => !moving.has(id));
+  const targetIdx = sibs.indexOf(targetID);
   if (targetIdx < 0) return [];
   const slot = above ? targetIdx : targetIdx + 1;
-  // The sibling the group lands in front of, or the last one it lands after.
-  const anchorID =
-    slot >= sibs.length ? sibs[sibs.length - 1]?.id : sibs[slot]?.id;
-  if (!anchorID) return [];
 
-  // Where the block ends up, expressed against the list with every mover
-  // removed. Comparing that projection with the current list is what lets a
-  // drop that changes nothing cost nothing.
-  const ids = globalOrdered.map((s) => s.id);
-  const remaining = ids.filter((x) => !moving.has(x));
-  const at = remaining.indexOf(anchorID) + (slot >= sibs.length ? 1 : 0);
-  const desired = [
-    ...remaining.slice(0, at),
-    ...movers,
-    ...remaining.slice(at),
-  ];
-  if (desired.every((id, i) => ids[i] === id)) return [];
+  const wanted = [...sibs.slice(0, slot), ...movers, ...sibs.slice(slot)];
+  return opsToReach(
+    globalSorted.map((s) => s.id),
+    globalTarget(globalSorted, pid, wanted),
+  );
+}
 
-  // The head moves first. Its index is read from the list with the head —
-  // and only the head — removed, because that is the list the daemon splices
-  // into: moveInOrder deletes one id, not the whole group. The other movers
-  // are still in place at this point and are pulled in afterwards.
-  const ops: ReorderOp[] = [];
-  let now = ids;
-  const head = movers[0];
-  const withoutHead = now.filter((x) => x !== head);
-  const headAt = withoutHead.indexOf(anchorID) + (slot >= sibs.length ? 1 : 0);
-  if (headAt >= 0 && now[headAt] !== head) {
-    ops.push({ id: head, order: headAt });
-    now = moveInOrder(now, head, headAt);
+// clusterReorderOps is the keyboard half of the same idea: ⇧⌘↑/⇧⌘↓ moves the
+// active session one painted slot up or down inside its project, wrapping at
+// the ends.
+//
+// For a session in a shared worktree the key does two jobs, in this order:
+//
+//   1. While the session has somewhere to go INSIDE its group, it moves
+//      there — one place up or down among its own members.
+//   2. Once it is at the group's edge and the next press would take it out,
+//      the WHOLE group moves instead. A member cannot leave: membership is
+//      which worktree it runs in, not where it sits.
+//
+// Escalating at the edge is what keeps the key from ever being a dead press,
+// and it is reachable: to move the group, walk the member to the end first.
+// The mouse tells the two apart by where you drop instead (clusterDropOps).
+//
+// It replaces reorderTarget, which returned a single `.order` index and so
+// could not express "move this block of rows". For a session in no group it
+// behaves exactly as that did: one row at a time, wrapping within the
+// project.
+export function clusterReorderOps(
+  sessions: OrderedSession[],
+  activeID: string | null,
+  delta: number,
+): ReorderOp[] {
+  if (!activeID || delta === 0) return [];
+  const globalSorted = sessions
+    .slice()
+    .sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
+  const active = globalSorted.find((s) => s.id === activeID);
+  if (!active) return [];
+  const pid = readProjectId(active);
+
+  const { painted, ids, groups } = paintedProject(globalSorted, pid);
+  const movers = moversFor(painted, groups, activeID);
+  if (movers.length === 0) return [];
+
+  // Step 1: move within the group while there is room.
+  const within = movers.indexOf(activeID);
+  const step = Math.sign(delta);
+  if (
+    movers.length > 1 &&
+    within + step >= 0 &&
+    within + step < movers.length
+  ) {
+    const rest = ids.filter((id) => id !== activeID);
+    const neighbour = movers[within + step];
+    const at = rest.indexOf(neighbour);
+    if (at < 0) return [];
+    const slot = step < 0 ? at : at + 1;
+    const wanted = [...rest.slice(0, slot), activeID, ...rest.slice(slot)];
+    return opsToReach(
+      globalSorted.map((s) => s.id),
+      globalTarget(globalSorted, pid, wanted),
+    );
   }
 
-  // Then each remaining member is pulled in directly behind its predecessor,
-  // its index likewise read from the list with that member already removed.
-  // Computing it before the delete lands the member one slot too far
-  // whenever it currently sits above where it is going — the spec-305
-  // off-by-one, in its cluster-shaped form.
-  for (let i = 1; i < movers.length; i++) {
-    const id = movers[i];
-    const without = now.filter((x) => x !== id);
-    const prevIdx = without.indexOf(movers[i - 1]);
-    if (prevIdx < 0) continue;
-    const want = prevIdx + 1;
-    if (now[want] === id) continue; // already in place; no round-trip
-    ops.push({ id, order: want });
-    now = moveInOrder(now, id, want);
-  }
-  return ops;
+  // Step 2: at the group's edge — the whole block moves.
+  const moving = new Set(movers);
+  const sibs = ids.filter((id) => !moving.has(id));
+  if (sibs.length === 0) return []; // the project is one group; nowhere to go
+
+  // The block currently sits after this many siblings. Insertion slots run
+  // 0…sibs.length, so a block at the bottom wraps to the top of its own
+  // project — the same wrap the single-row version had.
+  const headIdx = ids.indexOf(movers[0]);
+  const cur = ids.slice(0, headIdx).filter((id) => !moving.has(id)).length;
+  const slots = sibs.length + 1;
+  const next = (((cur + delta) % slots) + slots) % slots;
+  if (next === cur) return [];
+
+  const wanted = [...sibs.slice(0, next), ...movers, ...sibs.slice(next)];
+  return opsToReach(
+    globalSorted.map((s) => s.id),
+    globalTarget(globalSorted, pid, wanted),
+  );
 }

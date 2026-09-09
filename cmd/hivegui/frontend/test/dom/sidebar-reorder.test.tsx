@@ -14,7 +14,6 @@
 // is always false: every drop below reads as "insert after the target".
 import { describe, it, expect, vi, beforeAll, beforeEach } from 'vitest';
 import { appStore } from '../../src/store/store.js';
-import { dropTargetIndex } from '../../src/lib/reorder.js';
 import { loadSidebar, mountSidebar, row, seed } from './sidebar-harness.js';
 
 const sessionOrders: Array<[string, number]> = [];
@@ -100,16 +99,12 @@ function cardFor(pid: string): HTMLElement {
 }
 
 describe('sidebar session reorder', () => {
-  it('forwards exactly what dropTargetIndex resolves', () => {
+  it('drops a session below the row it landed on', () => {
+    // [a,b,c] with c dropped below a → [a,c,b]. The index is pinned rather
+    // than re-derived from the helper under test, so a broken helper cannot
+    // agree with itself.
     dropOn(row('a'), 'text/x-hive-session', 'c');
-    const expected = dropTargetIndex(
-      appStore.getState().sessions,
-      'c',
-      'a',
-      false,
-    );
-    expect(expected).toBe(1); // pinned, so a broken helper can't agree
-    expect(sessionOrders).toEqual([['c', expected]]);
+    expect(sessionOrders).toEqual([['c', 1]]);
   });
 
   it('does nothing when a session is dropped on itself', () => {
@@ -190,6 +185,24 @@ describe('sidebar reorder with a shared worktree', () => {
   // drain before asserting on the full sequence.
   const flush = () => new Promise((r) => setTimeout(r, 0));
 
+  // Assertions are on the ORDER the captured ops produce, not on which
+  // sessions they name: a reorder computes the target order and emits the
+  // shortest sequence of daemon moves that reaches it, so the moved ids are
+  // an implementation detail while the resulting list is the behaviour.
+  const moveInOrder = (ids: string[], id: string, at: number) => {
+    const cur = ids.indexOf(id);
+    if (cur < 0) return ids;
+    const out = ids.slice();
+    out.splice(cur, 1);
+    out.splice(Math.min(Math.max(at, 0), out.length), 0, id);
+    return out;
+  };
+  const resultOrder = () =>
+    sessionOrders.reduce(
+      (ids, [id, at]) => moveInOrder(ids, id, at),
+      ['a', 'b', 'c', 'e'],
+    );
+
   beforeEach(() => {
     sessionOrders.length = 0;
     seedShared();
@@ -208,31 +221,31 @@ describe('sidebar reorder with a shared worktree', () => {
   it('moves the whole group when any member is dragged', async () => {
     dropOn(row('e'), 'text/x-hive-session', 'a');
     await flush();
-    expect(sessionOrders).toEqual([
-      ['a', 3],
-      ['c', 3],
-    ]);
+    // a and c land below e, still adjacent.
+    expect(resultOrder()).toEqual(['b', 'e', 'a', 'c']);
   });
 
   it('moves the group identically when dragged by a non-head member', async () => {
     dropOn(row('e'), 'text/x-hive-session', 'c');
     await flush();
-    expect(sessionOrders).toEqual([
-      ['a', 3],
-      ['c', 3],
-    ]);
+    expect(resultOrder()).toEqual(['b', 'e', 'a', 'c']);
   });
 
-  it('does nothing when the drop lands inside the dragged group', async () => {
+  it('reorders within the group when the drop lands on a fellow member', async () => {
+    // a and c share a worktree. Dropping a below c swaps the two inside
+    // the group; b and e must not move.
     dropOn(row('c'), 'text/x-hive-session', 'a');
     await flush();
-    expect(sessionOrders).toEqual([]);
+    expect(resultOrder()).toEqual(['c', 'a', 'b', 'e']);
   });
 
   it('stops after a failed op rather than half-applying the rest', async () => {
     failAt = 1;
     dropOn(row('e'), 'text/x-hive-session', 'a');
     await flush();
-    expect(sessionOrders).toEqual([['a', 3]]);
+    // The move needs two ops; the first rejects, so the second is never
+    // issued. Half a cluster move is bad, but a cluster move that keeps
+    // going after the daemon refused is worse.
+    expect(sessionOrders).toHaveLength(1);
   });
 });

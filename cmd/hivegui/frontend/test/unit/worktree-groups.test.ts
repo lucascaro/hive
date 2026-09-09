@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
-import { dropTargetIndex } from '../../src/lib/reorder.js';
 import {
   clusterDropOps,
+  clusterReorderOps,
   clusterSessions,
   worktreeGroups,
   worktreeKey,
@@ -99,6 +99,20 @@ describe('clusterSessions', () => {
   });
 });
 
+// Re-cluster a replayed order the way the next paint would, so assertions
+// read as "what the user ends up seeing".
+const paintedAfter = <T extends { id: string; order: number }>(
+  base: T[],
+  ops: { id: string; order: number }[],
+  replayFn: (b: T[], o: { id: string; order: number }[]) => string[],
+) =>
+  clusterSessions(
+    replayFn(base, ops).map((id, i) => ({
+      ...(base.find((s) => s.id === id) as T),
+      order: i,
+    })),
+  ).map((s) => s.id);
+
 describe('clusterDropOps', () => {
   // a and c share a worktree; b and d do not. r.order is a…d = 0…3.
   const sessions = [
@@ -108,21 +122,43 @@ describe('clusterDropOps', () => {
     S('d', 'A', 3),
   ];
 
-  it('matches dropTargetIndex exactly for an unshared session', () => {
+  it('moves a single unshared session to the painted slot', () => {
+    // Painted order is a,c,b,d. Dropping d above the painted b row puts it
+    // between c and b. The ops may not name `d` — opsToReach emits the
+    // shortest prefix-fixing sequence, and it also normalises the stored
+    // order onto the painted one — so the assertion is on the resulting
+    // order, which is the thing the user sees.
     const ops = clusterDropOps(sessions, 'd', 'b', true);
-    expect(ops).toEqual([
-      { id: 'd', order: dropTargetIndex(sessions, 'd', 'b', true) as number },
-    ]);
+    expect(replay(sessions, ops)).toEqual(['a', 'c', 'd', 'b']);
+  });
+
+  it('leaves the stored order equal to the painted order', () => {
+    // The invariant that lets clusterSessions be idempotent on what comes
+    // back: after any drop, r.order IS the paint order, so the next
+    // broadcast cannot re-shuffle the rows.
+    const ops = clusterDropOps(sessions, 'd', 'b', true);
+    const after = replay(sessions, ops);
+    expect(
+      clusterSessions(
+        after.map((id, i) => ({
+          ...(sessions.find((s) => s.id === id) as (typeof sessions)[number]),
+          order: i,
+        })),
+      ).map((s) => s.id),
+    ).toEqual(after);
   });
 
   it('moves the whole group below a target, contiguously', () => {
     const ops = clusterDropOps(sessions, 'a', 'd', false);
-    expect(ops.map((o) => o.id)).toEqual(['a', 'c']);
     expect(replay(sessions, ops)).toEqual(['b', 'd', 'a', 'c']);
   });
 
   it('moves the whole group above a target, contiguously', () => {
-    // Drag the group up: b is above nothing, so drop above b.
+    // The group already paints above b, so the rows do not move — but the
+    // stored order is still normalised onto the painted one, which is the
+    // point of having a single order. A drop that changes nothing VISIBLE
+    // may still cost one write; a drop that changes nothing at all costs
+    // none (see the no-round-trip case below).
     const ops = clusterDropOps(sessions, 'c', 'b', true);
     expect(replay(sessions, ops)).toEqual(['a', 'c', 'b', 'd']);
   });
@@ -138,20 +174,72 @@ describe('clusterDropOps', () => {
     expect(replay(sessions, ops).slice(-2)).toEqual(['a', 'c']);
   });
 
-  it('keeps a group contiguous when it starts split', () => {
-    // a and d share a worktree with b and c wedged between them.
-    const split = [
+  it('keeps other projects untouched', () => {
+    const cross = [...sessions, S('z', 'B', 4), S('y', 'B', 5)];
+    const ops = clusterDropOps(cross, 'a', 'd', false);
+    expect(replay(cross, ops).slice(-2)).toEqual(['z', 'y']);
+  });
+
+  it('keeps a group contiguous when its stored order starts split', () => {
+    // a and d share a worktree with b and c wedged between them in
+    // `.order`; they already paint as a,d,b,c.
+    const wedged = [
       S('a', 'A', 0, '/wt/x'),
       S('b', 'A', 1),
       S('c', 'A', 2),
       S('d', 'A', 3, '/wt/x'),
     ];
-    const ops = clusterDropOps(split, 'a', 'c', false);
-    expect(replay(split, ops)).toEqual(['b', 'c', 'a', 'd']);
+    const ops = clusterDropOps(wedged, 'a', 'c', false);
+    expect(replay(wedged, ops)).toEqual(['b', 'c', 'a', 'd']);
   });
 
-  it('is a no-op when the target is inside the dragged group', () => {
-    expect(clusterDropOps(sessions, 'a', 'c', false)).toEqual([]);
+  // The bug review found: the drop slot used to be resolved in `.order`
+  // space while the user dragged in painted space, so any drop past a group
+  // landed one painted row off — or did nothing at all. Both fixtures below
+  // paint as a,c,b,d,e while `.order` says a,b,c,d,e, which is exactly where
+  // the two spaces disagree.
+  const split = [
+    S('a', 'A', 0, '/wt/x'),
+    S('b', 'A', 1),
+    S('c', 'A', 2, '/wt/x'),
+    S('d', 'A', 3),
+    S('e', 'A', 4),
+  ];
+  const paintedIds = (
+    ss: typeof split | typeof sessions,
+    ops: { id: string; order: number }[],
+  ) => paintedAfter(ss, ops, replay);
+
+  it('lands where the painted row was, not where .order put it', () => {
+    // Dropped below the painted `c` row, e belongs between c and b.
+    const ops = clusterDropOps(split, 'e', 'c', false);
+    expect(paintedIds(split, ops)).toEqual(['a', 'c', 'e', 'b', 'd']);
+  });
+
+  it('is not a no-op when the painted neighbour differs from the .order one', () => {
+    // d below c: identical in `.order` (so the old math emitted nothing),
+    // a real move in painted space.
+    const ops = clusterDropOps(split, 'd', 'c', false);
+    expect(ops.length).toBeGreaterThan(0);
+    expect(paintedIds(split, ops)).toEqual(['a', 'c', 'd', 'b', 'e']);
+  });
+
+  // Dropping on your own group member reorders INSIDE the group — the
+  // block is contiguous, so there is nothing else such a drop could mean,
+  // and it used to be a dead gesture.
+  it('reorders within the group when dropped on a fellow member', () => {
+    const ops = clusterDropOps(sessions, 'a', 'c', false);
+    expect(paintedIds(sessions, ops)).toEqual(['c', 'a', 'b', 'd']);
+  });
+
+  it('keeps the group in place when reordering inside it', () => {
+    // b and d must not move: only the two members swap.
+    const ops = clusterDropOps(sessions, 'a', 'c', false);
+    const after = paintedIds(sessions, ops);
+    expect(after.slice(2)).toEqual(['b', 'd']);
+  });
+
+  it('is a no-op when dropped on itself', () => {
     expect(clusterDropOps(sessions, 'a', 'a', false)).toEqual([]);
   });
 
@@ -160,13 +248,94 @@ describe('clusterDropOps', () => {
     expect(clusterDropOps(cross, 'a', 'z', true)).toEqual([]);
   });
 
-  it('spends no round-trip on a member already in place', () => {
-    // Dropping the group where it already sits: a is at 0, c follows.
+  it('spends no round-trip when the drop changes nothing', () => {
     const inPlace = [
       S('a', 'A', 0, '/wt/x'),
       S('c', 'A', 1, '/wt/x'),
       S('b', 'A', 2),
     ];
     expect(clusterDropOps(inPlace, 'a', 'b', true)).toEqual([]);
+  });
+});
+
+describe('clusterReorderOps', () => {
+  // Painted order is a,c,b,d — `.order` is a,b,c,d. This is the keyboard
+  // half of the same "one order" rule: ⌘↑/⌘↓ used to walk `.order`, which
+  // made a move on a grouped row a silent no-op.
+  const sessions = [
+    S('a', 'A', 0, '/wt/x'),
+    S('b', 'A', 1),
+    S('c', 'A', 2, '/wt/x'),
+    S('d', 'A', 3),
+  ];
+  const paintedAfter = (ops: { id: string; order: number }[]) =>
+    clusterSessions(
+      replay(sessions, ops).map((id, i) => ({
+        ...(sessions.find((s) => s.id === id) as (typeof sessions)[number]),
+        order: i,
+      })),
+    ).map((s) => s.id);
+
+  it('moves an ungrouped session one painted slot down', () => {
+    expect(paintedAfter(clusterReorderOps(sessions, 'b', +1))).toEqual([
+      'a',
+      'c',
+      'd',
+      'b',
+    ]);
+  });
+
+  // Step 1 of the two-step rule: while the member has room inside its own
+  // group, that is what moves.
+  it('moves a member within its group before moving the group', () => {
+    const ops = clusterReorderOps(sessions, 'a', +1);
+    expect(ops.length).toBeGreaterThan(0);
+    // a and c swap; b and d stay put.
+    expect(paintedAfter(ops)).toEqual(['c', 'a', 'b', 'd']);
+  });
+
+  it('moves a member back up within its group', () => {
+    expect(paintedAfter(clusterReorderOps(sessions, 'c', -1))).toEqual([
+      'c',
+      'a',
+      'b',
+      'd',
+    ]);
+  });
+
+  // Step 2: at the group's edge the block moves, so the key is never a dead
+  // press — and the group is reachable by walking the member to the end.
+  it('moves the whole group once the member is at the group edge', () => {
+    expect(paintedAfter(clusterReorderOps(sessions, 'c', +1))).toEqual([
+      'b',
+      'a',
+      'c',
+      'd',
+    ]);
+  });
+
+  it('wraps within the project rather than escaping it', () => {
+    expect(paintedAfter(clusterReorderOps(sessions, 'd', +1))).toEqual([
+      'd',
+      'a',
+      'c',
+      'b',
+    ]);
+  });
+
+  it('reorders a group that is the whole project', () => {
+    const solo = [S('a', 'A', 0, '/wt/x'), S('b', 'A', 1, '/wt/x')];
+    expect(replay(solo, clusterReorderOps(solo, 'a', +1))).toEqual(['b', 'a']);
+  });
+
+  it('does nothing at the top of a group that is the whole project', () => {
+    // No room inside the group, and no siblings for the block to move past.
+    const solo = [S('a', 'A', 0, '/wt/x'), S('b', 'A', 1, '/wt/x')];
+    expect(clusterReorderOps(solo, 'a', -1)).toEqual([]);
+  });
+
+  it('does nothing for delta 0 or an unknown session', () => {
+    expect(clusterReorderOps(sessions, 'a', 0)).toEqual([]);
+    expect(clusterReorderOps(sessions, 'zz', +1)).toEqual([]);
   });
 });

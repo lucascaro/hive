@@ -80,7 +80,7 @@ import { manualUpdateCheck, reloadGui, restartHive } from './banners.js';
 import { clearAttention } from './events.js';
 import { goBack, goForward } from '../lib/nav-history.js';
 import { readProjectId } from '../lib/wire.js';
-import { reorderTarget } from '../lib/reorder.js';
+import { clusterReorderOps } from '../lib/worktree-groups.js';
 import { scrollTrace } from './trace.js';
 import { mustEl, pageEl } from './el.js';
 import type { ProjectInfo } from './state.js';
@@ -983,13 +983,28 @@ export function moveActiveSession(delta: number, reorder: boolean) {
     return;
   }
   if (reorder) {
-    // reorderTarget returns an index into the GLOBAL ordered list, which
-    // is the index space the daemon's Update expects. Sending a
-    // per-project index here is what used to scatter sessions across
-    // project boundaries.
-    const target = reorderTarget(ord, appData().activeId, delta);
-    if (target == null) return;
-    UpdateSession(ord[idx].id, '', '', target).catch(reportFailure('reorder'));
+    // Moving one row can take several UpdateSession calls: a session in a
+    // shared worktree moves with its whole group, and each call is one
+    // delete-then-insert in the daemon's flat r.order. The indices are
+    // computed up front against a simulated list (lib/worktree-groups.ts),
+    // so they must be applied in order — and the sequence stops at the
+    // first failure rather than leaving the group scattered.
+    const ops = clusterReorderOps(
+      appData().sessions,
+      appData().activeId,
+      delta,
+    );
+    if (ops.length === 0) return;
+    void (async () => {
+      for (const op of ops) {
+        try {
+          await UpdateSession(op.id, '', '', op.order);
+        } catch (err) {
+          reportFailure('reorder')(err);
+          return;
+        }
+      }
+    })();
     return;
   }
   // Step OVER minimized sessions (their own tray, or their project's):
@@ -997,7 +1012,8 @@ export function moveActiveSession(delta: number, reorder: boolean) {
   // in a grid view landing on one has no tile and drops you to single.
   // The walk is over the full ordered list, not a filtered one, because
   // orderedSessions() is shared with the sidebar, tray, palette and
-  // ⌘1-9, all of which still list everything.
+  // ⌘1-9, all of which still list everything — and all of which now see
+  // the same clustered order the sidebar paints.
   // Math.sign: the walk visits every slot for any delta, not only ±1.
   const step = Math.sign(delta) || 1;
   for (let i = 1; i < n; i++) {

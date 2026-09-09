@@ -248,6 +248,33 @@ run Playwright with `CI=1` so it does not reuse a stale dev server.
 
 ## Decision log
 
+- **2026-09-08** — Review round 1 found the design flaw and the operator chose
+  the root fix: `clusterSessions()` is now THE order. `orderedSessions()`
+  clusters, so ⌘1-9, ⌘↑/⌘↓, the tray and the palette all follow the painted
+  order; the operator independently hit this in the running app ("cmd up/down
+  iterate not in the order I see"). Why: two orders was the bug — the drop slot
+  was resolved in `.order` space while the user dragged in painted space.
+- **2026-09-08** — Reorder targets are computed as a painted ARRAY and turned
+  into daemon moves by `opsToReach`, which fixes the first disagreeing slot and
+  simulates forward. Why: it removes hand-derived indices in the daemon's
+  space, which is where the spec-305 off-by-one lived. Consequence: the emitted
+  moves may name a sibling rather than the dragged session — same resulting
+  order, sometimes one fewer round-trip.
+- **2026-09-08** — Reordering *within* a group is supported on operator
+  request, and the gesture picks which: dropping on a fellow member (or a
+  reorder key with room left inside the group) moves the member; dropping
+  outside the group (or a reorder key at the group's edge) moves the block.
+  Why: dragging one member elsewhere while its group stayed put would be
+  undone by the next paint, and edge-escalation keeps the key from ever being
+  a dead press.
+- **2026-09-08** — `lib/reorder.ts` (`dropTargetIndex`, `reorderTarget`) is
+  deleted. Why: production-dead once both paths route through
+  `worktree-groups.ts`, and keeping it would leave the slot math in two places.
+- **2026-09-08** — CI `daemon-contract` is satisfied with the
+  `daemon-contract-override` label rather than a `DaemonContract` bump. Why:
+  operator call — the change alters a value inside an existing field, not the
+  protocol, and a bump costs every user their running sessions.
+
 - **2026-09-08** — The daemon's `pickColor` "differ from the last one" rule is
   preserved for adopted sessions by recording the inherited colour as
   `lastSessionColor`. Why: without it the next freshly-picked session could
@@ -281,11 +308,21 @@ run Playwright with `CI=1` so it does not reuse a stale dev server.
   session colour on operator review.
 - **2026-09-08** — Implemented on `feature/384-shared-worktree-cue`. Go, unit,
   dom and e2e layers green; `ui-lint` and `--contrast` clean; typecheck clean.
+- **2026-09-08** — Review iteration 1 escalated (5 IMPORTANT, all from the
+  two-orders flaw plus two independent ones). Reworked: one order, cluster-aware
+  keyboard reorder, within-group reordering, branchless-worktree cue,
+  deterministic inherited colour, `reorder.ts` retired.
 - **2026-09-08** — Open question 2 (right-edge crowding) resolved in a real
   browser, not by reasoning: `test/e2e/shared-worktree-cue.spec.ts` asserts the
   `::after` computes to 3px of the session colour, that both members resolve to
   the same fill, and that a hit test at the row's right edge still lands inside
   the row. jsdom cannot see any of that.
+
+## PR convergence ledger
+
+_Append-only. One line per `/hs-review-loop` iteration._
+
+- **2026-09-08 iter 1** — verdict: COMMENT; mergeable: MERGEABLE; findings_hash: 9c0cd8fd72897015973cce62cd79f3a7be61862f458e2c511b346df4d116ead7; threads_open: 0; action: escalated:risky-fix-needs-human-decision; head_sha: 2b87a834.
 
 ## Open questions
 
