@@ -46,8 +46,17 @@ with sorting and manual reordering is defined rather than accidental.
 - A solo session, and a session with no worktree, shows neither bar nor count.
 - Sessions sharing a worktree paint adjacently inside their project, whatever
   their stored `.order`.
-- Dragging any member of a shared group moves the whole group; after the drop
-  the group's members hold contiguous `.order` values in the daemon's list.
+- Dragging a member of a shared group onto a row outside the group moves the
+  whole group; after the drop its members hold contiguous `.order` values in
+  the daemon's list.
+- Dragging a member onto another member of its own group reorders it inside the
+  group, leaving the group's position unchanged.
+- The reorder keys do the same two jobs: they move the session within its group
+  while it has room there, and move the whole group once it is at the group's
+  edge. Neither gesture is ever a silent no-op.
+- Navigation follows the painted order: ⌘1-9, ⌘↑/⌘↓, the tray, the command
+  palette and grid tiling all list sessions in the order the sidebar rows show,
+  not the daemon's stored order.
 - The worktrees modal names the sessions occupying each worktree, not just how
   many.
 

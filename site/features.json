@@ -1,5 +1,11 @@
 [
   {
+    "title": "Linked sessions for a shared worktree",
+    "blurb": "Sessions working in the same git worktree share a colour, show it as a bar on the row, and sit together in the sidebar — so you can see at a glance which ones are editing the same files.",
+    "status": "shipped",
+    "since": "Unreleased"
+  },
+  {
     "title": "Idea inbox",
     "blurb": "Press ⌘I anywhere to capture a note against a project, then start a session from it later — the launcher opens with the note as the agent's opening prompt.",
     "status": "shipped",

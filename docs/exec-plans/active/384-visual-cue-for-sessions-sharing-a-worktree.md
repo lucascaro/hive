@@ -37,7 +37,7 @@ auto-group adjacent so drag reordering moves the cluster as a unit.
 - `SessionInfo.order` (`app/state.ts:28`) is a position in the daemon's single **flat, cross-project** `r.order` list (`lib/reorder.ts:5-16`). There is no per-project order.
 - `Sidebar.tsx:496-498` is the *single* call site computing paint order per project: filter by project id, sort by `.order`. This is where render-side clustering goes.
 - `Sidebar.tsx:176-184` (`reorderDroppedSession`) → `lib/reorder.ts:66-107` (`dropTargetIndex`) decides the committed `.order`. Cluster drag means moving a whole set, i.e. one `UpdateSession` per cluster member.
-- `lib/reorder.ts:29-49` (`reorderTarget`) is the keyboard reorder path with the identical "index is the sibling's `.order`, not its array position" invariant — any cluster change must be mirrored there or the two paths disagree.
+- `lib/reorder.ts:29-49` (`reorderTarget`) is the keyboard reorder path with the identical "index is the sibling's `.order`, not its array position" invariant — any cluster change must be mirrored there or the two paths disagree. *(Research-time state. This PR deleted `lib/reorder.ts`; both paths now live in `lib/worktree-groups.ts` — see Approach.)*
 - **Constraint from spec 305**: the shipped invariant is "compute the drop slot against the sibling list with the dragged item already removed" (`lib/reorder.ts:79-89`). Cluster moves must do the same delete-before-insert bookkeeping for *every* member or reintroduce the off-by-one 305 fixed. Spec 305 explicitly non-goaled touching `moveInOrder`/`reindexLocked`.
 - Daemon side: `internal/registry/persist.go:16,35-36` (`sessions/index.json` is the ordering authority), `registry.go:1567-1582` (`moveInOrder`), `1596-1634` (`reindexLocked`), `create.go:484-488` (`InsertAfterSessionID`).
 
@@ -93,26 +93,44 @@ behavioural gain.
 
 Two channels carry the cue, because colour alone is not an accessible signal:
 
-1. **A 3px bar on the right edge** of each row in a shared group, coloured from
-   a new `--worktree-accent-1..6` token family. The left edge is unavailable —
+1. **A 3px bar on the right edge** of each row in a shared group, in the
+   session's own colour (see below). The left edge is unavailable —
    `[data-selected]::before` owns it and `docs/design-docs/ui/patterns.md:5-12`
    forbids two indicators sharing a position.
 2. **A count on the worktree glyph** plus the sharing stated in that button's
    accessible label, so the group is legible without colour.
 
-Adjacency is enforced where the rows are painted, not in the daemon. The
-sidebar's one per-project sort (`Sidebar.tsx:496-498`) clusters shared sessions,
-anchoring each cluster at its lowest-order member. That makes grouping robust
-without touching `moveInOrder`/`reindexLocked`, which spec 305 explicitly
-non-goaled. It also makes a cluster-aware *drag* necessary rather than
-optional: with render-side clustering, dragging one member of a group produces
-no visible movement unless the whole group moves, so the drop path commits one
-`UpdateSession` per member and lands them contiguous. The keyboard reorder path
-(`reorderTarget`) is deliberately left alone — render-side clustering already
-hides any cluster it breaks, and mirroring cluster logic into a second path is
-where spec 305's off-by-one class of bug lives.
+**The clustered order is the only order.** `clusterSessions()` groups a
+project's shared sessions, anchored at each group's lowest-order member, and
+`app/selectors.ts`'s `orderedSessions()` applies it — so the sidebar, ⌘1-9,
+⌘↑/⌘↓, the tray, the command palette and `grid-layout.ts`'s project grid all
+read the same list the rows are painted from. This is the correction review
+forced twice, and the operator hit it in the running app: an earlier cut
+clustered only where the sidebar painted, leaving every other consumer on the
+daemon's flat `r.order`, and resolved drop slots in `.order` space while the
+user dragged in painted space. Nothing does index arithmetic in two spaces now
+— reorders compute a target painted ARRAY and `opsToReach` derives the daemon
+moves that reach it. `moveInOrder`/`reindexLocked` stay untouched, as spec 305
+non-goaled.
 
-The group colour is the **session colour**, not a new token family. Session
+Insertion slots run between **blocks**, never inside one: a group is one unit.
+A slot inside a group is not a position the list can hold — the next paint
+pulls the group back together — so a move resolving there emitted no ops at all
+and the gesture died silently.
+
+Both reorder paths are cluster-aware, and the gesture says which thing moves:
+
+- **Within the group** — drop on a fellow member, or press the reorder key
+  while the session still has room among its own members.
+- **The whole group** — drop outside the group, or press the reorder key once
+  the member is at the group's edge.
+
+A member never leaves its group: membership is which worktree it runs in.
+`app/reorder-runner.ts` applies one sequence at a time and drops concurrent
+presses, so key auto-repeat cannot interleave two sequences.
+
+The group colour is the **session colour**, and no new token family is added.
+Session
 colours are never unset — `create.go:321-324` auto-assigns one via
 `pickColor(r.lastSessionColor, projectColor)` — and the adoption branch at
 `create.go:340-352` already holds the sibling entry it is joining, so a session
@@ -135,15 +153,14 @@ Three costs, accepted knowingly:
 A user can re-colour one member and break the link by hand; the count badge is
 what keeps that non-fatal.
 
-**Risk — the cluster drop is N round-trips, not one.** `UpdateSession` is one
-call per member and each one triggers a daemon `moveInOrder` plus a re-broadcast,
-so the ops must be computed up front against a simulated list and issued in a
-fixed sequence; recomputing from incoming state between calls would race the
-broadcast. `clusterDropOps` therefore returns the whole op list, and the caller
-awaits them in order and stops on the first failure rather than fanning out.
-Clusters are small (a duplicated session or two), so the round-trips are
-bounded by group size, but this is the one place the feature could visibly
-half-apply.
+**Risk — a reorder is N round-trips, not one.** Each `UpdateSession` triggers a
+daemon `moveInOrder` plus a re-broadcast, so the ops are computed up front
+against a simulated list and issued in a fixed sequence; recomputing from
+incoming state between calls would race the broadcast. `clusterDropOps` and
+`clusterReorderOps` therefore return the whole op list, and
+`app/reorder-runner.ts` applies them in order, stops at the first failure, and
+refuses to start a second sequence while one is in flight. Sequences are short,
+but this is the one place the feature could visibly half-apply.
 
 ### Files to change
 
@@ -294,8 +311,10 @@ run Playwright with `CI=1` so it does not reuse a stale dev server.
   preserved for adopted sessions by recording the inherited colour as
   `lastSessionColor`. Why: without it the next freshly-picked session could
   land on the group's colour and read as a member.
-- **2026-09-08** — The keyboard reorder path (`reorderTarget`) is left
-  cluster-unaware. Why: render-side clustering repaints any cluster it breaks,
+- **2026-09-08** — ~~The keyboard reorder path (`reorderTarget`) is left
+  cluster-unaware.~~ **Superseded** the same day by the "one order" decision
+  below: `reorderTarget` is gone and the keyboard path is cluster-aware. Kept
+  because this log is append-only. Original reasoning: Why: render-side clustering repaints any cluster it breaks,
   and a second copy of the cluster math is where spec 305's off-by-one would
   come back.
 - **2026-09-08** — `clusterDropOps` returns an op list the caller issues
@@ -319,6 +338,12 @@ run Playwright with `CI=1` so it does not reuse a stale dev server.
 ## Progress
 
 - **2026-09-08** — Spec created, triaged M/P2, research dispatched.
+- **2026-09-08** — Gate round 1: acceptance PASS, non-goals PASS, doc accuracy
+  FAIL. The plan's `## Approach` still described the abandoned
+  `--worktree-accent-*` token design and claimed `reorderTarget` was left
+  alone; the spec's success criteria omitted within-group reordering and the
+  painted-order rule; `site/features.json` had no entry despite `bump: minor`
+  (AGENTS.md requires one). All fixed on the branch, gate re-run.
 - **2026-09-08** — Plan approved (round 2), colour source changed to the
   session colour on operator review.
 - **2026-09-08** — Implemented on `feature/384-shared-worktree-cue`. Go, unit,
