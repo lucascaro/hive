@@ -33,11 +33,14 @@ auto-group adjacent so drag reordering moves the cluster as a unit.
 - `docs/design-docs/ui/patterns.md:5-12` — selection and attention "never share a position (bar at left edge vs icon in the state column)". The left edge is spoken for; the group bar goes on the right.
 - `ProjectCard.tsx:203` — session rows live in one `<ul class="hv-project-card__body">` per project, so clustering never crosses cards. `ProjectCard.tsx:136-150` + `project-card.css:129-152` (`.hv-project-card__ideas`) is the existing numeric-count-pill precedent.
 
-**Ordering**
+**Ordering** — *a snapshot of the code as it stood at research time. This PR
+deleted `lib/reorder.ts`; both reorder paths now live in
+`lib/worktree-groups.ts`. Kept unedited because Research records what was
+found, not what was built — see Approach for the shipped design.*
 - `SessionInfo.order` (`app/state.ts:28`) is a position in the daemon's single **flat, cross-project** `r.order` list (`lib/reorder.ts:5-16`). There is no per-project order.
 - `Sidebar.tsx:496-498` is the *single* call site computing paint order per project: filter by project id, sort by `.order`. This is where render-side clustering goes.
 - `Sidebar.tsx:176-184` (`reorderDroppedSession`) → `lib/reorder.ts:66-107` (`dropTargetIndex`) decides the committed `.order`. Cluster drag means moving a whole set, i.e. one `UpdateSession` per cluster member.
-- `lib/reorder.ts:29-49` (`reorderTarget`) is the keyboard reorder path with the identical "index is the sibling's `.order`, not its array position" invariant — any cluster change must be mirrored there or the two paths disagree. *(Research-time state. This PR deleted `lib/reorder.ts`; both paths now live in `lib/worktree-groups.ts` — see Approach.)*
+- `lib/reorder.ts:29-49` (`reorderTarget`) is the keyboard reorder path with the identical "index is the sibling's `.order`, not its array position" invariant — any cluster change must be mirrored there or the two paths disagree.
 - **Constraint from spec 305**: the shipped invariant is "compute the drop slot against the sibling list with the dragged item already removed" (`lib/reorder.ts:79-89`). Cluster moves must do the same delete-before-insert bookkeeping for *every* member or reintroduce the off-by-one 305 fixed. Spec 305 explicitly non-goaled touching `moveInOrder`/`reindexLocked`.
 - Daemon side: `internal/registry/persist.go:16,35-36` (`sessions/index.json` is the ordering authority), `registry.go:1567-1582` (`moveInOrder`), `1596-1634` (`reindexLocked`), `create.go:484-488` (`InsertAfterSessionID`).
 
@@ -331,7 +334,7 @@ run Playwright with `CI=1` so it does not reuse a stale dev server.
 - **2026-09-08** — "Shared" means two or more sessions with the same non-empty worktree path. Sessions sharing a plain project cwd are not marked. Why: operator choice; matches the daemon's existing `WorktreeShared` notion and avoids marking the common all-sessions-in-one-project case.
 
 - **2026-09-08** — The shared-worktree bar goes on the **right** edge of the row. Why: `[data-selected]::before` owns the left edge and `patterns.md:5-12` forbids sharing a position between indicators.
-- **2026-09-08** — Group colors come from new `--worktree-accent-1..6` theme tokens defined across all 19 presets. Why: operator chose correctness in every theme over cycling terminal-tuned `--ansi-*` slots; the cost is 19x6 token values plus contrast gating on the 6 default presets.
+- **2026-09-08** — ~~Group colors come from new `--worktree-accent-1..6` theme tokens defined across all 19 presets.~~ **Superseded** the same day at plan review: the group colour is the per-session colour, inherited on worktree adoption, and no new tokens ship. Kept because this log is append-only. Original reasoning: operator chose correctness in every theme over cycling terminal-tuned `--ansi-*` slots; the cost is 19x6 token values plus contrast gating on the 6 default presets.
 - **2026-09-08** — Adjacency is render-side clustering in `Sidebar.tsx:496-498` plus a cluster-aware drag that commits one `UpdateSession` per member. Why: no daemon change, and spec 305 non-goaled touching `moveInOrder`/`reindexLocked`; stored-vs-painted divergence is accepted and self-heals on the next drag.
 - **2026-09-08** — No new wire field for "shared". Why: `worktree_path` is already broadcast, and the daemon's own `worktreeShared` is a transient kill-time bool, not session identity.
 

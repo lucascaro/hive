@@ -1584,11 +1584,10 @@ func (r *Registry) moveLocked(id string, newOrder int) {
 
 // reindexLocked re-derives every entry's Order from its position in
 // r.order. Call it after ANY mutation of r.order — insert, delete, or
-// move. Order is not independent state: both GUI reorder paths
-// (frontend lib/reorder.ts and app/sidebar.ts) convert a display
-// position into a global index by reading a sibling's .order and
-// handing it back as UpdateSessionReq.Order, which moveInOrder splices
-// at positionally. The moment Order stops equalling the index, every
+// move. Order is not independent state: both GUI reorder paths (drag
+// and keyboard, frontend lib/worktree-groups.ts) convert a display
+// position into a global index and hand it back as
+// UpdateSessionReq.Order, which moveInOrder splices at positionally. The moment Order stops equalling the index, every
 // move lands in the wrong slot (or clamps to the end), and an append
 // can even hand out an Order another entry already holds, which makes
 // the frontend's sort-by-order ambiguous.
