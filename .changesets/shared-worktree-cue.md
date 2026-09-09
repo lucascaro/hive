@@ -2,6 +2,7 @@
 type: added
 bump: minor
 issue: 384
+pr: 385
 ---
 
 Sessions that share a git worktree are now linked in the sidebar. They take the

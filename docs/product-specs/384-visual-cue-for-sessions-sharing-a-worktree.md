@@ -1,11 +1,11 @@
 ---
 issue: 384
-pr: null
+pr: 385
 title: "Show a visual cue when sessions share a worktree"
 type: enhancement
 complexity: M
 priority: P2
-stage: IMPLEMENT
+stage: REVIEW
 ---
 
 # Show a visual cue when sessions share a worktree

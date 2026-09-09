@@ -3,6 +3,8 @@
 - **Spec:** [docs/product-specs/384-visual-cue-for-sessions-sharing-a-worktree.md](../../product-specs/384-visual-cue-for-sessions-sharing-a-worktree.md)
 - **Issue:** #384
 - **Status:** active
+- **PR:** #385
+- **Branch:** feature/384-shared-worktree-cue
 
 ## Summary
 
