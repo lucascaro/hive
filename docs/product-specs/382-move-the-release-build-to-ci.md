@@ -61,6 +61,12 @@ means a bot pushing to `main`.
   re-runnable without re-tagging.
 - The workflow never runs on `pull_request` or `pull_request_target`, so the
   signing secrets are unreachable from a fork PR.
+- The signing certificate and notary key are **environment**-scoped, not
+  repository-scoped, so a collaborator cannot reach them by editing a workflow
+  in a pull request. The release job declares `environment: release`, that
+  environment requires a reviewer, and its deployment policy admits only `v*`
+  tags — so `workflow_dispatch --ref <branch>` cannot run a modified
+  `release.yml` with the credentials loaded.
 - `docs/releasing-signed-macos.md` documents the CI path, every required secret
   and variable, and how to still release entirely locally.
 

@@ -355,8 +355,13 @@ grep -q 'pins no Team ID' <<<"$err" && echo PIN_GUARD_OK || \
   { echo "PIN_GUARD_LOST or wrong-reason exit:"; echo "$err"; }
 git worktree remove --force "$tmp"
 
-# 5. End-to-end, on the PR branch, once the secrets are in place:
-gh workflow run release.yml --ref <branch> -f tag=v2.7.1-rc1
+# 5. End-to-end, once the secrets are in the `release` environment.
+#    NOT `--ref <branch>`: the environment's deployment policy allows only
+#    `v*` TAGS, which is exactly what stops a modified release.yml on a branch
+#    from running with the certificate. Tag the PR head and push the tag.
+git tag v2.7.1-rc1 && git push origin v2.7.1-rc1
+#    The run then WAITS for a required reviewer — approve it in the Actions UI
+#    (or `gh run watch` and approve) before any step executes.
 gh run watch
 gh release view v2.7.1-rc1 --json assets --jq '.assets[].name'   # 3 assets
 # and the real proof the signature survived CI:
@@ -624,4 +629,23 @@ Append-only. One line per `/hs-review-loop` iteration.
   `v2.7.1-rc1` dispatched against the PR branch — meaning a keychain fault is a
   fix in this PR rather than a broken live release. Stage stays GATE; nothing
   merged.
+- **2026-09-09** — Hardened the credential model after the operator confirmed
+  the repo has collaborators, which turns a theoretical risk into a live one.
+  Repository secrets are readable by any workflow the repo runs, and `ci.yml`
+  triggers on `pull_request` — pull requests from branches *in this repo* do
+  receive repository secrets. So a repo-level `MACOS_CERT_P12` was reachable by
+  anyone who could open a PR editing a workflow. Forks were never the exposure;
+  collaborators were.
+  The five secrets are now environment-scoped to a `release` environment with
+  a required reviewer, and the release job declares `environment: release`.
+  The environment's deployment policy admits only `v*` **tags**, which is what
+  closes `workflow_dispatch --ref <branch>` — that flag runs the workflow file
+  from the named branch, so without the policy a modified `release.yml` on a
+  branch would have executed with the certificate loaded. Consequence: the rc
+  rehearsal is now a pushed tag, not a branch dispatch; verification step 5
+  updated. A selftest assertion guards the `environment:` line, because
+  deleting it re-exposes the credentials silently with CI still green.
+  Also noted for the operator: `HIVE_SIGN_IDENTITY` and `HIVE_NOTARY_PROFILE`
+  had been created as *secrets*, but the workflow reads them as `vars.*`, so
+  they would have resolved empty and tripped the `:?` guard mid-release.
 

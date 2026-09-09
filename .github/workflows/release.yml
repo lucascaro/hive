@@ -35,6 +35,28 @@ jobs:
   release:
     name: Build, sign, notarize and publish
     runs-on: macos-latest
+
+    # The signing certificate and the notary key live in this environment,
+    # not in repo-wide secrets, and that is the difference between "anyone
+    # with write access can use the Developer ID" and "a human approves each
+    # release".
+    #
+    # Two protections do the work, and they cover different holes:
+    #
+    #   Required reviewer — the job pauses before ANY step runs, so the
+    #   secrets are not materialised until a maintainer approves the run.
+    #
+    #   Deployment branch policy, restricted to `v*` TAGS — this is the one
+    #   that closes `workflow_dispatch --ref <branch>`. That flag runs the
+    #   workflow file *from that branch*, so without the policy a collaborator
+    #   could push a branch carrying a modified release.yml and have it run
+    #   with the certificate loaded. A tag-only policy means a run from any
+    #   branch gets no secrets at all, approval or not.
+    #
+    # Consequence for rehearsals: dispatch from a branch no longer works.
+    # Push a real prerelease tag (`v2.7.1-rc1`) at the commit you want to
+    # exercise instead — see docs/releasing-signed-macos.md.
+    environment: release
     # Notarization is an unbounded wait on Apple's Notary Service. v2.7.0 sat
     # "In Progress" for over 90 minutes with no incident posted. The default
     # 360-minute cap would survive that, but an explicit budget documents the

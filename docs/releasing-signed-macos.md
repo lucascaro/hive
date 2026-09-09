@@ -137,8 +137,13 @@ release's assets with `gh release upload --clobber` rather than failing on
 
 ### One-time CI setup
 
-Seven repository settings, all under **Settings → Secrets and variables →
-Actions**. Variables are not secret; secrets are.
+Seven settings. **Where each one lives is a security decision, not
+bookkeeping** — see *Why the secrets are environment-scoped* below.
+
+The five secrets go in the **`release` environment**
+(Settings → Environments → release → Environment secrets). The two variables
+are repo-level (Settings → Secrets and variables → Actions → Variables) and
+are not sensitive.
 
 | Kind | Name | What it is |
 |---|---|---|
@@ -168,7 +173,40 @@ base64 -i AuthKey_XXXXXXXXXX.p8 | pbcopy   # paste as NOTARY_API_KEY
 
 An API key rather than an app-specific password because it is revocable on its
 own, without touching anyone's Apple ID, and it does not expire on a password
-rotation.
+rotation. **Generate it with the `Developer` role** — that is all `notarytool`
+needs, and an `Admin` or `App Manager` key would hand its holder far more of
+the App Store Connect account than the signing certificate ever could.
+
+### Why the secrets are environment-scoped
+
+They are **environment** secrets, not repository secrets, and moving them
+repo-level would quietly undo the protection.
+
+A repository secret is readable by any workflow the repo runs — including
+`ci.yml`, which triggers on `pull_request`. Pull requests from branches *in
+this repository* (what a collaborator pushes) do receive repository secrets.
+So a repo-level `MACOS_CERT_P12` is reachable by anyone who can open a PR
+that edits a workflow file. Forks are not a concern here — they never get
+secrets — but collaborators are.
+
+Environment secrets are only visible to a job that declares
+`environment: release`, and that job is covered by two protections:
+
+- **A required reviewer.** The job pauses before any step runs, so nothing is
+  materialised until a maintainer approves the run.
+- **A deployment branch policy limited to `v*` tags.** This is what closes
+  `workflow_dispatch --ref <branch>`: that flag runs the workflow file *from
+  that branch*, so without the policy a collaborator could push a branch with
+  a modified `release.yml` and have it execute with the certificate loaded.
+  With a tag-only policy, a run from any branch gets no secrets at all —
+  approval or not.
+
+`scripts/release-artifacts-selftest.sh` asserts the `environment:` line is
+still present, because deleting it re-exposes the credentials silently and
+with CI still green.
+
+Worth pairing with a **tag ruleset on `v*`** (Settings → Rules → Rulesets) so
+only maintainers can create release tags in the first place.
 
 ### Releasing entirely locally
 

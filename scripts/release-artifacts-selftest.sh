@@ -300,5 +300,16 @@ else
     ok "release.yml has no pull_request trigger"
 fi
 
+# 8. The signing credentials are gated behind a protected environment. The
+#    job-level `environment:` key is what makes the required reviewer and the
+#    tag-only deployment policy apply; delete the line and the secrets become
+#    available to any run again, silently and with CI still green. This
+#    assertion is the only thing standing between that edit and a release.
+if grep -Eq '^\s{4}environment:\s*release\s*$' .github/workflows/release.yml; then
+    ok "release job is gated behind the 'release' environment"
+else
+    bad "release job is gated behind the 'release' environment"
+fi
+
 printf '\n%d passed, %d failed\n' "$pass" "$fail"
 [[ "$fail" -eq 0 ]]
