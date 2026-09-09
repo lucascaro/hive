@@ -67,12 +67,34 @@ jobs:
       TAG: ${{ inputs.tag && inputs.tag || github.ref_name }}
 
     steps:
+      # The dispatch input reaches a `ref:` below, so validate it before it
+      # can select what code runs with the signing key. `v[0-9]...` only.
+      #
+      # Without this, `tag:` was free-form: an actor with write access could
+      # dispatch against an EXISTING `v*` tag — which satisfies the
+      # environment's deployment policy, and needs no admin action because
+      # reusing a tag is not tag *creation* — while pointing `tag:` at a
+      # branch they pushed. The job would then run that branch's scripts with
+      # the certificate loaded. The deployment policy constrains the ref the
+      # workflow FILE comes from; it says nothing about this input.
+      - name: Validate the tag input
+        run: |
+          set -euo pipefail
+          if [[ ! "$TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+(-[A-Za-z0-9.]+)?$ ]]; then
+            echo "Error: refusing to release from '$TAG' — expected a v<semver> tag." >&2
+            exit 1
+          fi
+          echo "tag ok: $TAG"
+
       # A workflow_dispatch checks out the DISPATCH BRANCH by default, not
       # the tag. Left implicit, a dispatched rehearsal would build the branch
       # tip and publish it under the tag's name.
+      #
+      # `refs/tags/` is explicit so the input can only ever resolve to a tag,
+      # never to a branch or a bare SHA.
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
-          ref: ${{ inputs.tag && inputs.tag || github.ref }}
+          ref: ${{ inputs.tag && format('refs/tags/{0}', inputs.tag) || github.ref }}
 
       # scripts/release.sh --local-artifacts publishes from the maintainer's
       # Mac and lets `gh release create --target` create the remote tag, so a
@@ -127,6 +149,21 @@ jobs:
           npm ci --no-audit --no-fund
           npm run build
 
+      # Build BEFORE any credential exists on this runner.
+      #
+      # This ordering is a security boundary, not a preference.
+      # `release-artifacts.sh` calls `build.sh`, which runs its own
+      # `npm ci` (build.sh:89) — so with the build inside the credentialed
+      # window, every third-party npm lifecycle script in the frontend
+      # dependency tree would execute *after* the Developer ID key was
+      # imported, with the keychain unlocked and partition-listed for
+      # `codesign:`. One compromised transitive dependency could then sign
+      # arbitrary code as us. Building first means the only thing running
+      # once the key is present is our own sign/notarize/publish path.
+      - name: Build release artifacts (no credentials yet)
+        if: steps.standdown.outputs.skip != 'true'
+        run: ./build.sh --zip --version "${TAG#v}" --platform all
+
       # ---- Credentials ---------------------------------------------------
       #
       # Everything below lands in a throwaway keychain that the cleanup step
@@ -146,9 +183,13 @@ jobs:
           # Random, single-use, never leaves the runner. The keychain is
           # deleted in the cleanup step regardless of outcome.
           KEYCHAIN_PASSWORD="$(openssl rand -base64 24)"
-          echo "KEYCHAIN=$KEYCHAIN" >> "$GITHUB_ENV"
           echo "::add-mask::$KEYCHAIN_PASSWORD"
-          echo "KEYCHAIN_PASSWORD=$KEYCHAIN_PASSWORD" >> "$GITHUB_ENV"
+          # KEYCHAIN (the path) is exported because the cleanup step needs it.
+          # KEYCHAIN_PASSWORD deliberately is NOT: nothing after this step
+          # uses it — `store-credentials` takes `--keychain`, and
+          # `delete-keychain` needs no password — so exporting it would only
+          # widen its reach to every later step for no benefit.
+          echo "KEYCHAIN=$KEYCHAIN" >> "$GITHUB_ENV"
 
           security create-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN"
           security set-keychain-settings -lut 21600 "$KEYCHAIN"
@@ -210,12 +251,15 @@ jobs:
 
       # ---- The release itself --------------------------------------------
 
-      - name: Build, sign, notarize and publish
+      - name: Sign, notarize and publish
         if: steps.standdown.outputs.skip != 'true'
         env:
           HIVE_SIGN_IDENTITY: ${{ vars.HIVE_SIGN_IDENTITY }}
           HIVE_NOTARY_PROFILE: ${{ vars.HIVE_NOTARY_PROFILE }}
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # The zips were built by the step above, before any credential
+          # existed. This is the same knob the selftest uses.
+          SKIP_BUILD: '1'
         run: |
           set -euo pipefail
           : "${HIVE_SIGN_IDENTITY:?repo variable HIVE_SIGN_IDENTITY is not set}"

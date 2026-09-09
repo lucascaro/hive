@@ -311,5 +311,50 @@ else
     bad "release job is gated behind the 'release' environment"
 fi
 
+# 9. Credential-blast-radius invariants in release.yml. Each of these was a
+#    real finding from the pre-merge security audit; each would re-open
+#    silently, with CI green, if the line were edited away.
+wf=.github/workflows/release.yml
+
+# 9a. The dispatch input selects what code runs with the signing key, so it
+#     must resolve to a TAG, never a branch or a bare SHA. Without the
+#     refs/tags/ prefix an actor could dispatch against an existing v* tag
+#     (satisfying the environment's deployment policy, and needing no admin
+#     action since reusing a tag is not tag creation) while pointing `tag:`
+#     at a branch they pushed.
+if grep -q "format('refs/tags/{0}', inputs.tag)" "$wf"; then
+    ok "checkout ref is constrained to refs/tags/"
+else
+    bad "checkout ref is constrained to refs/tags/"
+fi
+
+# 9b. ...and the input is validated, so `refs/tags/<anything>` cannot select
+#     a non-release tag that any writer is free to create.
+if grep -q 'refusing to release from' "$wf"; then
+    ok "tag input is validated against a semver pattern"
+else
+    bad "tag input is validated against a semver pattern"
+fi
+
+# 9c. The keychain password must not reach $GITHUB_ENV: nothing after the
+#     import step needs it, and exporting it hands it to every later step.
+if grep -q 'KEYCHAIN_PASSWORD=.*GITHUB_ENV' "$wf"; then
+    bad "keychain password must not be exported to \$GITHUB_ENV"
+else
+    ok "keychain password is not exported to \$GITHUB_ENV"
+fi
+
+# 9d. The build must finish BEFORE the certificate is imported. build.sh runs
+#     its own `npm ci`, so building afterwards would execute every
+#     third-party lifecycle script in the frontend dependency tree while the
+#     Developer ID key sits in an unlocked, codesign-partitioned keychain.
+build_line=$(grep -n 'name: Build release artifacts' "$wf" | cut -d: -f1)
+cert_line=$(grep -n 'name: Import the Developer ID certificate' "$wf" | cut -d: -f1)
+if [[ -n "$build_line" && -n "$cert_line" && "$build_line" -lt "$cert_line" ]]; then
+    ok "build completes before the certificate is imported"
+else
+    bad "build completes before the certificate is imported"
+fi
+
 printf '\n%d passed, %d failed\n' "$pass" "$fail"
 [[ "$fail" -eq 0 ]]

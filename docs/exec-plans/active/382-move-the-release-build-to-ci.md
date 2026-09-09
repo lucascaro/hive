@@ -740,4 +740,34 @@ Append-only. One line per `/hs-review-loop` iteration.
   `/hs-merge-gate` reads `## Approach` and `### Tests` to know what the plan
   promised, so a stale design section degrades the next gate run, which is due
   right after the rc rehearsal.
+- **2026-09-09** — Pre-merge credential audit (two bounded subagents: static
+  over the workflow and scripts, live over the run logs and published assets).
+  The live audit came back clean — no key material in 598 log lines, masking
+  engaged on every secret in scope, no `set -x`, no uploaded artifacts, and
+  the published zip carries no credential files. The static audit found two
+  real MEDIUM issues, both verified against the files before fixing:
+  1. **The dispatch input was unconstrained.** The environment's deployment
+     policy gates the ref the *workflow file* comes from, not the `tag:` input
+     that reaches `ref:` on the checkout. So a writer could dispatch against
+     an existing `v*` tag — no admin action needed, because reusing a tag is
+     not tag *creation* — while pointing `tag:` at a branch they pushed, and
+     the job would run that branch's scripts with the certificate loaded.
+     Fixed by forcing `format('refs/tags/{0}', inputs.tag)` and validating the
+     input against a `v<semver>` pattern; the prefix alone was insufficient,
+     since any writer can create a non-`v` tag.
+  2. **The build ran inside the credentialed window.** `release-artifacts.sh`
+     calls `build.sh`, which runs its own `npm ci` (`build.sh:89`), so every
+     third-party npm lifecycle script executed *after* the Developer ID import
+     with the keychain unlocked and partition-listed for `codesign:`. Fixed by
+     moving the build ahead of the credential steps and passing `SKIP_BUILD=1`
+     to the publish step — the same knob the selftest uses. Nothing but our
+     own sign/notarize/publish path now runs while the key is present.
+  Also stopped exporting `KEYCHAIN_PASSWORD` via `$GITHUB_ENV`: nothing after
+  the import step uses it (`store-credentials` takes `--keychain`,
+  `delete-keychain` needs no password), so exporting only widened its reach.
+  Four assertions added for these invariants — each would otherwise re-open
+  silently with CI green. 29 → 33.
+  The `security import -P` argv exposure was re-confirmed as accepted: Apple
+  offers no stdin path, and with the build no longer running post-import there
+  is nothing else in the job to observe it.
 
