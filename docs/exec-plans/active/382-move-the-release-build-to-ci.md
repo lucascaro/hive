@@ -770,4 +770,15 @@ Append-only. One line per `/hs-review-loop` iteration.
   The `security import -P` argv exposure was re-confirmed as accepted: Apple
   offers no stdin path, and with the build no longer running post-import there
   is nothing else in the job to observe it.
+- **2026-09-09** — Fixed `scripts/hooks/pre-push` gating tag pushes. The gate
+  answers "does this branch add a changeset relative to main?" by inspecting
+  `HEAD`; it never sees the refs being pushed. So `git push origin v1.2.3` was
+  judged on the current branch's changeset status, which has nothing to do with
+  a tag. This PR makes tag pushes a routine release step — `release.sh` ends
+  with one, and every rc rehearsal is one — so a hook that demands
+  `--no-verify` for each of them is a defect this change creates the need to
+  fix, not unrelated drift. The hook now reads the refs git supplies on stdin
+  and skips when every one is `refs/tags/*`; a mixed push still gates, and
+  empty stdin falls through to the gate rather than silently passing.
+  `check-changeset.sh` reads no stdin, so consuming it in the hook is safe.
 
