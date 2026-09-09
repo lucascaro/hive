@@ -1,11 +1,12 @@
 ---
 issue: 382
 pr: 383
+shipped: 2026-09-09
 title: Move the release build to CI
 type: enhancement
 complexity: M
 priority: P2
-stage: GATE
+stage: DONE
 ---
 
 # Move the release build to CI
@@ -14,7 +15,7 @@ stage: GATE
 - **Type:** enhancement
 - **Complexity:** M
 - **Priority:** P2
-- **Exec plan:** [docs/exec-plans/active/382-move-the-release-build-to-ci.md](../exec-plans/active/382-move-the-release-build-to-ci.md)
+- **Exec plan:** [docs/exec-plans/completed/382-move-the-release-build-to-ci.md](../exec-plans/completed/382-move-the-release-build-to-ci.md)
 
 ## Problem
 

@@ -4,7 +4,7 @@
 - **Issue:** #382
 - **PR:** #383
 - **Branch:** `feature/382-move-the-release-build-to-ci`
-- **Status:** active
+- **Status:** completed
 
 ## Summary
 
@@ -654,6 +654,12 @@ risks the "no index.html" failure mode recorded in the prior lessons.
     - non-goals — PASS (one validator item overruled, with evidence) — no CI-side version/changelog/commit/tag, no build matrix, no Linux artifacts, no auto-release on merge. Deviations judged justified: `sign-macos.sh` (message and header only — verified no logic change — and this PR is what made the old unwind advice harmful), the pre-push hook (this PR makes tag pushes routine), and the comment-only reference updates. The validator called the `ci.yml` SC2155 fix unjustified drive-by; **overruled on measurement**: `actionlint` exits 1 without it and 0 with it, and the CI step runs `actionlint -color` with no `|| true`, so the gate this PR adds would fail on its first run without the fix. Fixing a linter's existing findings is a prerequisite of adding the linter, not scope creep.
     - doc accuracy — PASS — the seven settings and their placement, the tag-based rehearsal (no stale `--ref` command survives), recovery, local fallback, `AGENTS.md`, `DESIGN.md:117`, both README lines, and the `no-changeset` label all check out. It also caught a pre-existing misattribution in the troubleshooting table — `Team ID mismatch` is emitted by `sign-macos.sh:119`, not `release.sh`, which emits different wording at `:134` — fixed here, since this PR touches both files and that row.
 
+- **2026-09-09** — verdict: PASS; phase: —; checks: 19 passed / 0 failed / 0 followups; followups: none; one-line: the `--prerelease` fix is now proven by a live run, closing the last held criterion; all ten success criteria and all non-goals verified.
+  - 2026-09-09 dimensions:
+    - acceptance — PASS — the held criterion closed on durable, live evidence: run `34372737438` (tag `v2.7.1-rc3`, success) logs `Creating GitHub release v2.7.1-rc3 (prerelease) (draft)...`, while run `34312157280` (rc2, before `f55f9437`) has no such marker — a direct before/after on the real code path. The published rc3 read `isPrerelease=true`, `draft=false`, three assets, listed as `Pre-release`, and `/releases/latest` stayed `v2.7.0` — the endpoint `cmd/hivegui/update.go:26` polls. Workflow run logs are permanent and survive release deletion, so this evidence remains checkable. **Recorded honestly:** the signed/notarized/stapled criterion was verified in-session against the rc2 artifact (`spctl` → `accepted` / `source=Notarized Developer ID`, `stapler validate` passed, `TeamIdentifier=2ZY25TNMX6`, and the published `checksums.txt` matched the downloaded zip byte-for-byte — which also proves signing preceded the manifest). The maintainer has since deleted the rehearsal releases and their remote tags as cleanup, so that check is attested from this session rather than independently re-runnable today. The next real release exercises the same path.
+    - non-goals — PASS — carried from the 2026-09-09 run; no code changed since. One validator item overruled on measurement (the `ci.yml` SC2155 fix: `actionlint` exits 1 without it, 0 with it, and the CI step has no `|| true`, so the gate this PR adds would fail on its first run — fixing a linter's existing findings is a prerequisite of adding it). The dissent stands recorded above.
+    - doc accuracy — PASS — carried from the 2026-09-09 run, plus the misattributed troubleshooting row it found (`Team ID mismatch` comes from `sign-macos.sh:119`, not `release.sh`) fixed in `docs/releasing-signed-macos.md:307-308`.
+
 ## PR convergence ledger
 
 Append-only. One line per `/hs-review-loop` iteration.
@@ -803,4 +809,7 @@ Append-only. One line per `/hs-review-loop` iteration.
   pipeline was wrong. The defect was only visible in what the release *meant*
   to a client polling the API, which no exit code could have reported.
 - **2026-09-09** — Gate NEEDS_FOLLOWUP; the `--prerelease` fix has no live exercise (it postdates both rc runs), and the rc releases were deleted so `spctl` cannot be independently re-verified from the published artifacts.
+- **2026-09-09** — Gate PASS. Three rehearsal releases (rc1/rc2/rc3) were
+  published and then deleted by the maintainer as cleanup; the workflow runs
+  and their logs persist and carry the evidence.
 
