@@ -1,19 +1,18 @@
 // @vitest-environment jsdom
 //
 // Drag-to-reorder from the sidebar (components/Sidebar.tsx →
-// src/lib/reorder.ts).
+// src/lib/worktree-groups.ts).
 //
 // The index math is NOT re-derived here: a drop hands its target and
-// side to dropTargetIndex() and forwards whatever comes back. That is
+// side to clusterDropOps() and forwards whatever comes back. That is
 // the invariant this file pins — the off-by-one that spec 305 fixed
 // lives in the pure function and is table-tested next to it
-// (test/unit/reorder.test.ts), and a second copy of the arithmetic in
-// the component is exactly how the two drift apart.
+// (test/unit/worktree-groups.test.ts), and a second copy of the
+// arithmetic in the component is exactly how the two drift apart.
 //
 // jsdom gives every element a zero rect, so `clientY - top < height / 2`
 // is always false: every drop below reads as "insert after the target".
 import { describe, it, expect, vi, beforeAll, beforeEach } from 'vitest';
-import { appStore } from '../../src/store/store.js';
 import { loadSidebar, mountSidebar, row, seed } from './sidebar-harness.js';
 
 const sessionOrders: Array<[string, number]> = [];

@@ -65,6 +65,7 @@ import { Chip } from './Chip.js';
 import { Icon } from './Icon.js';
 import { IconButton } from './IconButton.js';
 import { ProjectCard } from './ProjectCard.js';
+import { runReorder } from '../app/reorder-runner.js';
 import { SessionRow } from './SessionRow.js';
 import {
   clusterDropOps,
@@ -174,10 +175,10 @@ function reorderDroppedProject(
 }
 
 // reorderDroppedSession hands the drop to lib/worktree-groups.ts's
-// clusterDropOps and forwards the result. The index math lives there, resting
-// on the same invariant as lib/reorder.ts's keyboard path — a session's
-// .order IS its index in the daemon's r.order — and because a pure function
-// is the only way to table-test the off-by-one this used to have.
+// clusterDropOps and forwards the result. The index math lives there, next to
+// the keyboard path's clusterReorderOps, because both rest on the same
+// invariant — the painted order IS the order — and because a pure function is
+// the only way to table-test the off-by-one this used to have.
 function reorderDroppedSession(
   draggedID: string,
   targetID: string,
@@ -185,23 +186,12 @@ function reorderDroppedSession(
 ) {
   // Sessions sharing a worktree paint as a block (clusterSessions), so
   // moving one member alone would look like nothing happened — the cluster
-  // rule puts it straight back. The whole group moves, as one op per member.
+  // rule puts it straight back. Which block moves, and whether the drop
+  // reorders inside a group instead, is clusterDropOps' call; runReorder
+  // owns applying the ops in order and refusing to interleave two drops.
   const ops = clusterDropOps(appData().sessions, draggedID, targetID, above);
   if (ops.length === 0) return;
-  // Sequential, and stopping on the first failure: each call re-broadcasts,
-  // and the indices were computed against a simulated list, so firing them
-  // in parallel would race. Bailing out leaves the group split rather than
-  // scattered, and the next drop puts it right.
-  void (async () => {
-    for (const op of ops) {
-      try {
-        await UpdateSession(op.id, '', '', op.order);
-      } catch (err) {
-        reportFailure('reorder')(err);
-        return;
-      }
-    }
-  })();
+  void runReorder(ops);
 }
 
 // ---------- session row ----------

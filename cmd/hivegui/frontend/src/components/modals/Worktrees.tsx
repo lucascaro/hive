@@ -250,7 +250,8 @@ function WorktreeRow({
   // events, so an id with no live session is expected and is dropped.
   // Selected as the raw array and mapped in a memo — returning a fresh
   // array from the selector itself would hand useSyncExternalStore a new
-  // snapshot on every render.
+  // snapshot on every render, and the memo keeps the id->name walk off
+  // every unrelated session event.
   const allSessions = useAppStore((st) => st.sessions);
   const occupants = useMemo(
     () => sessionNames(w, allSessions),

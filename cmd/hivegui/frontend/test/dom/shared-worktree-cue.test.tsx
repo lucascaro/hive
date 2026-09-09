@@ -101,7 +101,22 @@ describe('shared-worktree cue', () => {
     ).toBe('Worktree: feat/x — manage worktrees');
   });
 
-  it('renders no worktree glyph at all without a worktree', () => {
+  // A detached worktree has no branch (internal/worktree: inventory), and the
+  // glyph is where the count and the words live. Without this the cue on such
+  // a row is the colour bar alone — the one thing patterns.md says it must
+  // never be.
+  it('still shows the glyph and count when the worktree has no branch', () => {
+    const li = rowOf(props({}, { worktreeShared: 2 }));
+    expect(li.hasAttribute('data-wt-shared')).toBe(true);
+    expect(
+      li.querySelector('.hv-session-row__worktree-count')?.textContent,
+    ).toBe('2');
+    expect(
+      li.querySelector('.hv-session-row__worktree')?.getAttribute('aria-label'),
+    ).toContain('shared with 1 other session');
+  });
+
+  it('renders no worktree glyph at all for an unshared session without one', () => {
     const li = rowOf(props({}, { worktreeShared: 1 }));
     expect(li.querySelector('.hv-session-row__worktree')).toBeNull();
     expect(li.hasAttribute('data-wt-shared')).toBe(false);

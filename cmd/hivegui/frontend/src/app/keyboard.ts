@@ -81,6 +81,7 @@ import { clearAttention } from './events.js';
 import { goBack, goForward } from '../lib/nav-history.js';
 import { readProjectId } from '../lib/wire.js';
 import { clusterReorderOps } from '../lib/worktree-groups.js';
+import { runReorder } from './reorder-runner.js';
 import { scrollTrace } from './trace.js';
 import { mustEl, pageEl } from './el.js';
 import type { ProjectInfo } from './state.js';
@@ -995,16 +996,7 @@ export function moveActiveSession(delta: number, reorder: boolean) {
       delta,
     );
     if (ops.length === 0) return;
-    void (async () => {
-      for (const op of ops) {
-        try {
-          await UpdateSession(op.id, '', '', op.order);
-        } catch (err) {
-          reportFailure('reorder')(err);
-          return;
-        }
-      }
-    })();
+    void runReorder(ops);
     return;
   }
   // Step OVER minimized sessions (their own tray, or their project's):

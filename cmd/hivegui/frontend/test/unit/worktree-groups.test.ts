@@ -339,3 +339,100 @@ describe('clusterReorderOps', () => {
     expect(clusterReorderOps(sessions, 'zz', +1)).toEqual([]);
   });
 });
+
+// The bug class the contiguous fixtures above cannot see: a session sitting
+// directly beside a group, where the only "slot" between its neighbours is
+// one INSIDE that group. A slot space that enumerates rows resolves there,
+// the next paint undoes it, and the gesture dies silently — forever, not
+// just once.
+describe('slots are between blocks, never inside one', () => {
+  // Painted [a,c,b,e]; a and c are one block.
+  const beside = [
+    S('a', 'A', 0, '/wt/x'),
+    S('b', 'A', 1),
+    S('c', 'A', 2, '/wt/x'),
+    S('e', 'A', 3),
+  ];
+  const painted = (ops: { id: string; order: number }[]) =>
+    paintedAfter(beside, ops, replay);
+
+  it('keyboard: a session beside a group can move past it', () => {
+    const ops = clusterReorderOps(beside, 'b', -1);
+    expect(ops.length).toBeGreaterThan(0); // not a dead press
+    expect(painted(ops)).toEqual(['b', 'a', 'c', 'e']);
+  });
+
+  it('keyboard: and back down again', () => {
+    const up = clusterReorderOps(beside, 'b', -1);
+    const moved = replay(beside, up).map((id, i) => ({
+      ...(beside.find((s) => s.id === id) as (typeof beside)[number]),
+      order: i,
+    }));
+    expect(
+      paintedAfter(moved, clusterReorderOps(moved, 'b', +1), replay),
+    ).toEqual(['a', 'c', 'b', 'e']);
+  });
+
+  it('drag: dropping a non-member inside a group snaps past the block', () => {
+    // e dropped below the painted `a` row — a row-slot inside the a/c block.
+    const ops = clusterDropOps(beside, 'e', 'a', false);
+    expect(ops.length).toBeGreaterThan(0);
+    expect(painted(ops)).toEqual(['a', 'c', 'e', 'b']);
+  });
+
+  it('drag: dropping above a group member lands above the whole block', () => {
+    const ops = clusterDropOps(beside, 'e', 'c', true);
+    expect(painted(ops)).toEqual(['e', 'a', 'c', 'b']);
+  });
+});
+
+// The regression class the deleted reorder.test.ts covered: r.order
+// interleaves projects, so display position and `.order` disagree even
+// without any grouping. globalTarget's splice-back is what has to hold.
+describe('interleaved projects', () => {
+  const mixed = [
+    S('a0', 'A', 0),
+    S('b0', 'B', 1),
+    S('a1', 'A', 2),
+    S('b1', 'B', 3),
+    S('a2', 'A', 4),
+  ];
+
+  it('reorders within one project without disturbing the other', () => {
+    const ops = clusterDropOps(mixed, 'a2', 'a0', true);
+    const after = replay(mixed, ops);
+    // Project B keeps both its members and their relative order.
+    expect(after.filter((id) => id.startsWith('b'))).toEqual(['b0', 'b1']);
+    expect(after.filter((id) => id.startsWith('a'))).toEqual([
+      'a2',
+      'a0',
+      'a1',
+    ]);
+  });
+
+  it('keeps a group contiguous across an interleaved list', () => {
+    const grouped = [
+      S('a0', 'A', 0, '/wt/x'),
+      S('b0', 'B', 1),
+      S('a1', 'A', 2),
+      S('b1', 'B', 3),
+      S('a2', 'A', 4, '/wt/x'),
+    ];
+    const ops = clusterDropOps(grouped, 'a0', 'a1', false);
+    const after = replay(grouped, ops);
+    const as = after.filter((id) => id.startsWith('a'));
+    expect(as).toEqual(['a1', 'a0', 'a2']);
+    expect(after.filter((id) => id.startsWith('b'))).toEqual(['b0', 'b1']);
+  });
+
+  it('keyboard reorder stays inside its project', () => {
+    const ops = clusterReorderOps(mixed, 'a0', +1);
+    const after = replay(mixed, ops);
+    expect(after.filter((id) => id.startsWith('b'))).toEqual(['b0', 'b1']);
+    expect(after.filter((id) => id.startsWith('a'))).toEqual([
+      'a1',
+      'a0',
+      'a2',
+    ]);
+  });
+});

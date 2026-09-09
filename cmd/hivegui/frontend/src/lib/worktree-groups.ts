@@ -185,6 +185,33 @@ function paintedProject(sessions: OrderedSession[], pid: string) {
   };
 }
 
+// paintedUnits splits one project's painted rows into the blocks a reorder
+// can move: each shared-worktree group is ONE unit, every other session is a
+// unit of its own.
+//
+// This is the slot space. Insertion positions run between units, never inside
+// one, because a position inside a group is not a position the list can hold
+// — clusterSessions pulls the group back together on the next paint, so a
+// move that resolved there produced no ops and the gesture died silently.
+function paintedUnits(
+  ids: string[],
+  groups: Map<string, string[]>,
+): string[][] {
+  const memberOf = new Map<string, string[]>();
+  for (const members of groups.values()) {
+    for (const id of members) memberOf.set(id, members);
+  }
+  const units: string[][] = [];
+  const seen = new Set<string>();
+  for (const id of ids) {
+    if (seen.has(id)) continue;
+    const unit = memberOf.get(id) ?? [id];
+    for (const m of unit) seen.add(m);
+    units.push(unit);
+  }
+  return units;
+}
+
 // The block a drag on `id` moves: its whole shared-worktree group, or just
 // itself.
 function moversFor(
@@ -253,13 +280,18 @@ export function clusterDropOps(
     );
   }
 
-  const moving = new Set(movers);
-  const sibs = ids.filter((id) => !moving.has(id));
-  const targetIdx = sibs.indexOf(targetID);
-  if (targetIdx < 0) return [];
-  const slot = above ? targetIdx : targetIdx + 1;
+  // Outside the group: the slots are BETWEEN BLOCKS, never inside one. A
+  // slot in a group's interior is not a position the rows can take — the
+  // next paint pulls the group back together — so a move that resolved to
+  // one silently did nothing at all. Dropping on a group you are not in
+  // therefore lands above or below the whole of it.
+  const units = paintedUnits(ids, groups);
+  const rest = units.filter((u) => !u.includes(draggedID));
+  const targetUnit = rest.findIndex((u) => u.includes(targetID));
+  if (targetUnit < 0) return [];
+  const slot = above ? targetUnit : targetUnit + 1;
 
-  const wanted = [...sibs.slice(0, slot), ...movers, ...sibs.slice(slot)];
+  const wanted = [...rest.slice(0, slot), movers, ...rest.slice(slot)].flat();
   return opsToReach(
     globalSorted.map((s) => s.id),
     globalTarget(globalSorted, pid, wanted),
@@ -323,21 +355,24 @@ export function clusterReorderOps(
     );
   }
 
-  // Step 2: at the group's edge — the whole block moves.
-  const moving = new Set(movers);
-  const sibs = ids.filter((id) => !moving.has(id));
-  if (sibs.length === 0) return []; // the project is one group; nowhere to go
+  // Step 2: at the group's edge — the whole block moves, one BLOCK at a
+  // time. Counting sibling rows instead of blocks is what made this a dead
+  // press: a row-slot that lands inside another group is not a position the
+  // list can hold (the next paint undoes it), so the move resolved to no ops
+  // and the key did nothing, however many times it was pressed.
+  const units = paintedUnits(ids, groups);
+  const cur = units.findIndex((u) => u.includes(activeID));
+  if (cur < 0) return [];
+  const rest = units.filter((_, i) => i !== cur);
+  if (rest.length === 0) return []; // the project is one group; nowhere to go
 
-  // The block currently sits after this many siblings. Insertion slots run
-  // 0…sibs.length, so a block at the bottom wraps to the top of its own
-  // project — the same wrap the single-row version had.
-  const headIdx = ids.indexOf(movers[0]);
-  const cur = ids.slice(0, headIdx).filter((id) => !moving.has(id)).length;
-  const slots = sibs.length + 1;
+  // Insertion slots run 0…rest.length, so a block at the bottom wraps to the
+  // top of its own project — the same wrap the single-row version had.
+  const slots = rest.length + 1;
   const next = (((cur + delta) % slots) + slots) % slots;
   if (next === cur) return [];
 
-  const wanted = [...sibs.slice(0, next), ...movers, ...sibs.slice(next)];
+  const wanted = [...rest.slice(0, next), movers, ...rest.slice(next)].flat();
   return opsToReach(
     globalSorted.map((s) => s.id),
     globalTarget(globalSorted, pid, wanted),

@@ -248,6 +248,21 @@ run Playwright with `CI=1` so it does not reuse a stale dev server.
 
 ## Decision log
 
+- **2026-09-08** — Reorder slots enumerate painted BLOCKS, not rows. Why:
+  review round 2 found a slot inside a group is not a position the list can
+  hold — the next paint undoes it — so a move resolving there emitted zero ops
+  and the gesture died silently. ⇧⌘↑ on a row beside a group was a permanently
+  dead press; a drop into a group's interior now snaps past the block.
+- **2026-09-08** — One reorder sequence at a time (`app/reorder-runner.ts`);
+  concurrent presses are DROPPED, not queued. Why: a reorder is now a list of
+  moves computed against a simulated list, so key auto-repeat would interleave
+  two sequences into an order neither press asked for. A queue would replay a
+  move computed against an order the user can no longer see.
+- **2026-09-08** — `grid-layout.ts`'s `grid-project` scope routes through
+  `clusterSessions` too. Why: `grid-all` reaches it via `orderedSessions()`,
+  so leaving the project grid on raw `.order` would have this PR create the
+  exact divergence its own "One order" rule forbids.
+
 - **2026-09-08** — Review round 1 found the design flaw and the operator chose
   the root fix: `clusterSessions()` is now THE order. `orderedSessions()`
   clusters, so ⌘1-9, ⌘↑/⌘↓, the tray and the palette all follow the painted
@@ -308,6 +323,13 @@ run Playwright with `CI=1` so it does not reuse a stale dev server.
   session colour on operator review.
 - **2026-09-08** — Implemented on `feature/384-shared-worktree-cue`. Go, unit,
   dom and e2e layers green; `ui-lint` and `--contrast` clean; typecheck clean.
+- **2026-09-08** — Review iteration 2 escalated on a BLOCKING defect in the
+  round-1 rewrite (row-shaped slot space) plus 6 IMPORTANT. Fixed: block-shaped
+  slots, in-flight guard, grid-project clustering, and the three missing test
+  classes — the branchless glyph, the lowest-Order colour tiebreak (verified
+  red against a map-order pick), and interleaved-project fixtures. The last was
+  the reason the BLOCKING survived round 1: every fixture was
+  project-contiguous, so no test placed a non-member beside a group.
 - **2026-09-08** — Review iteration 1 escalated (5 IMPORTANT, all from the
   two-orders flaw plus two independent ones). Reworked: one order, cluster-aware
   keyboard reorder, within-group reordering, branchless-worktree cue,
@@ -322,6 +344,7 @@ run Playwright with `CI=1` so it does not reuse a stale dev server.
 
 _Append-only. One line per `/hs-review-loop` iteration._
 
+- **2026-09-08 iter 2** — verdict: REQUEST_CHANGES; mergeable: MERGEABLE; findings_hash: daa044659e4b5aa9a12f386bec767443031f773454607c84792c992a3f4fc1bc; threads_open: 0; action: escalated:risky-fix-needs-human-decision; head_sha: dabc4108.
 - **2026-09-08 iter 1** — verdict: COMMENT; mergeable: MERGEABLE; findings_hash: 9c0cd8fd72897015973cce62cd79f3a7be61862f458e2c511b346df4d116ead7; threads_open: 0; action: escalated:risky-fix-needs-human-decision; head_sha: 2b87a834.
 
 ## Open questions

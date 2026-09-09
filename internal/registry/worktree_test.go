@@ -650,3 +650,76 @@ func TestCreate_AdoptedWorktree_InheritsSiblingColor(t *testing.T) {
 		t.Errorf("a non-adopting create should steer away from the group colour %q", src.Color)
 	}
 }
+
+// TestAdoptWorktreeColor_LowestOrderWins pins the tiebreak, which the
+// happy-path test above cannot see: it only ever has ONE occupant to inherit
+// from, so it passes just as well against a map-iteration pick. Here three
+// sessions occupy the worktree with three different colours, so a pick that
+// depends on Go's map order fails this within a few runs.
+//
+// Lowest Order is the group's anchor row in the sidebar, which is what makes
+// the inherited colour the one the user sees at the top of the block.
+func TestAdoptWorktreeColor_LowestOrderWins(t *testing.T) {
+	skipNonPosix(t)
+	r, p := freshRegistryWithProject(t)
+
+	src, err := r.Create(context.Background(), wire.CreateSpec{
+		ProjectID: p.ID, Shell: "/bin/bash", Agent: "claude", UseWorktree: true,
+	})
+	if err != nil {
+		t.Fatalf("Create source: %v", err)
+	}
+	defer r.Kill(src.ID, true)
+	wtPath := src.WorktreePath
+	if wtPath == "" {
+		t.Fatalf("expected source to have a worktree")
+	}
+	time.Sleep(80 * time.Millisecond)
+
+	// Two more occupants, each with a colour of its own. After this the
+	// worktree has three sessions and three distinct colours, and only the
+	// Order field says which one is the anchor.
+	var later []string
+	for _, hex := range []string{"#111111", "#222222"} {
+		s, err := r.Create(context.Background(), wire.CreateSpec{
+			ProjectID: p.ID, Shell: "/bin/bash", Agent: "claude",
+			Cwd: wtPath, UseWorktree: false, Color: hex,
+		})
+		if err != nil {
+			t.Fatalf("Create occupant %s: %v", hex, err)
+		}
+		defer r.Kill(s.ID, true)
+		later = append(later, s.ID)
+	}
+	if len(later) != 2 {
+		t.Fatalf("expected two extra occupants, got %d", len(later))
+	}
+
+	// Recolour the anchor so the right answer is not also the default: if
+	// the pick were map order, it would land on one of the #111111 /
+	// #222222 sessions most of the time.
+	const anchorHex = "#abcdef"
+	anchorColor := anchorHex
+	if _, err := r.Update(wire.UpdateSessionReq{
+		SessionID: src.ID, Color: &anchorColor,
+	}); err != nil {
+		t.Fatalf("recolour anchor: %v", err)
+	}
+
+	// A fourth session joining the same worktree must take the anchor's
+	// colour, run after run.
+	for i := 0; i < 8; i++ {
+		joined, err := r.Create(context.Background(), wire.CreateSpec{
+			ProjectID: p.ID, Shell: "/bin/bash", Agent: "claude",
+			Cwd: wtPath, UseWorktree: false,
+		})
+		if err != nil {
+			t.Fatalf("Create joiner %d: %v", i, err)
+		}
+		got := joined.Color
+		r.Kill(joined.ID, true)
+		if got != anchorHex {
+			t.Fatalf("joiner %d inherited %q; want the lowest-Order occupant's %q", i, got, anchorHex)
+		}
+	}
+}
