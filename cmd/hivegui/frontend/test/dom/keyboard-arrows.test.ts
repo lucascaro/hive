@@ -228,8 +228,16 @@ describe('cmd+Enter focuses the active session from grid', () => {
 describe('shift+cmd vertical arrows reorder within the project', () => {
   it('moves down to the next sibling’s global index', () => {
     press('ArrowDown', { shiftKey: true });
-    // b1 → swaps with b2, whose current global index is 4.
-    expect(UpdateSession).toHaveBeenCalledWith('b1', '', '', 4);
+    // b1 and b2 swap: [a0,a1,b0,b1,b2] → [a0,a1,b0,b2,b1].
+    //
+    // The call names b2, not b1. Reordering now works by computing the
+    // target ORDER and emitting the shortest sequence of daemon moves that
+    // reaches it (lib/worktree-groups.ts: opsToReach), because a session in
+    // a shared worktree moves as a block and "swap with the next sibling"
+    // cannot express that. Pulling b2 up to index 3 is the one-move way to
+    // reach the same list; asserting the whole call array is what keeps a
+    // second, redundant move from creeping in.
+    expect(UpdateSession.mock.calls).toEqual([['b2', '', '', 3]]);
   });
 
   it('moves up to the previous sibling’s global index', () => {
@@ -246,7 +254,10 @@ describe('shift+cmd vertical arrows reorder within the project', () => {
   it("wraps from a project's first session to its last", () => {
     state.activeId = 'b0';
     press('ArrowUp', { shiftKey: true });
-    expect(UpdateSession).toHaveBeenCalledWith('b0', '', '', 4);
+    // b0 wraps to the bottom of project B: [b0,b1,b2] → [b1,b2,b0], reached
+    // by lifting b1 to b0's slot. See the note above on why the call names
+    // a sibling rather than the moved session.
+    expect(UpdateSession.mock.calls).toEqual([['b1', '', '', 2]]);
   });
 
   it('never targets a session in another project', () => {
@@ -268,7 +279,7 @@ describe('Session-menu arrow actions', () => {
   it('menu:move-session-forward reorders while in grid mode', () => {
     state.view = 'grid-all';
     fire('menu:move-session-forward');
-    expect(UpdateSession).toHaveBeenCalledWith('b1', '', '', 4);
+    expect(UpdateSession.mock.calls).toEqual([['b2', '', '', 3]]);
     expect(gridSpatialMove).not.toHaveBeenCalled();
   });
 

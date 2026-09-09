@@ -29,7 +29,7 @@
 import { describe, it, expect, vi, beforeAll, beforeEach } from 'vitest';
 import type { Mock } from 'vitest';
 import { act, fireEvent, render } from '@testing-library/react';
-import { resetStore } from '../../src/store/store.js';
+import { resetStore, setSessions } from '../../src/store/store.js';
 import { inlineRenameActive } from '../../src/app/inline-rename.js';
 import { dismissChoiceDialog } from '../../src/app/modals/choice-dialog.js';
 
@@ -406,6 +406,31 @@ describe('deleting', () => {
     branch: 'busy',
     session_ids: ['s1', 's2'],
   };
+
+  // The count says "occupied"; the names say WHICH of your sessions, which
+  // is the question a row with a disabled Delete button actually raises.
+  it('names the sessions occupying a worktree', async () => {
+    act(() => {
+      setSessions([
+        { id: 's1', name: 'api' },
+        { id: 's2', name: 'worker' },
+      ] as never);
+    });
+    await openWith(payload({ worktrees: [busy] }));
+    expect(rows()[0].querySelector('.worktree-sessions')?.textContent).toBe(
+      'api, worker',
+    );
+  });
+
+  it('drops an occupant id with no live session rather than showing it raw', async () => {
+    act(() => {
+      setSessions([{ id: 's2', name: 'worker' }] as never);
+    });
+    await openWith(payload({ worktrees: [busy] }));
+    expect(rows()[0].querySelector('.worktree-sessions')?.textContent).toBe(
+      'worker',
+    );
+  });
 
   it('disables Delete for a worktree with live sessions and says why', async () => {
     await openWith(payload({ worktrees: [busy] }));

@@ -389,6 +389,15 @@ export async function CreateSession(o: Partial<MockCreateSessionOpts> = {}) {
       const existing = state.worktrees.find((w) => w.path === worktreePath);
       s.worktree_path = worktreePath;
       s.worktree_branch = existing?.branch || '';
+      // Sessions sharing a worktree share a colour — the daemon assigns
+      // the adopted sibling's colour rather than picking a fresh one
+      // (internal/registry/create.go), and that colour is what links the
+      // rows in the sidebar. A mock that kept picking its own would make
+      // the link untestable here.
+      const sibling = state.sessions.find(
+        (x) => x.id !== id && x.worktree_path === worktreePath,
+      );
+      if (sibling?.color) s.color = sibling.color;
       s.continued = !!continueConversation;
       if (existing)
         existing.session_ids = [...(existing.session_ids ?? []), id];
@@ -1207,6 +1216,12 @@ if (typeof window !== 'undefined') {
         useWorktree: true,
         branch,
       });
+    },
+    // The "resume this worktree" path: a second session in a worktree
+    // another session already occupies, which is what makes the two
+    // share one.
+    createSessionInWorktree(name: string, worktreePath: string) {
+      return CreateSession({ project: 'p1', name, worktreePath });
     },
     // Ideas the daemon already knew about when this window connected —
     // the boot LIST_IDEAS is what delivers them, so seed before it.
