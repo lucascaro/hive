@@ -12,4 +12,26 @@ set -euo pipefail
 
 gate="$(git rev-parse --show-toplevel)/scripts/check-changeset.sh"
 [[ -f "$gate" ]] || exit 0
+
+# Skip a push that carries only tags.
+#
+# The gate answers "does this branch add a changeset relative to main?" by
+# looking at HEAD — it never sees what is actually being pushed. So
+# `git push origin v1.2.3` from a feature branch was judged on that branch's
+# changeset status, which has nothing to do with the tag. Releases push tags
+# routinely (scripts/release.sh, and the rc rehearsals), and every one of them
+# hit a --no-verify prompt for a question that did not apply.
+#
+# git feeds pre-push one line per ref on stdin:
+#   <local ref> <local sha> <remote ref> <remote sha>
+# check-changeset.sh reads no stdin, so consuming it here is safe.
+#
+# A mixed push (`git push origin HEAD v1.2.3`) still gates: it carries a
+# branch. Empty stdin falls through to the gate rather than skipping it —
+# a hook that silently passes when it cannot tell is the wrong default.
+refs="$(cat)"
+if [[ -n "$refs" ]] && ! awk '{ print $3 }' <<<"$refs" | grep -qv '^refs/tags/'; then
+    exit 0
+fi
+
 exec bash "$gate"

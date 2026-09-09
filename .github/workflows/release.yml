@@ -1,0 +1,279 @@
+name: Release
+
+# Tag push and manual dispatch ONLY.
+#
+# This workflow can read the Developer ID certificate and the App Store
+# Connect notary key. `pull_request` would expose them to any fork PR and
+# `pull_request_target` is worse still — neither trigger may ever be added
+# here. scripts/release-artifacts-selftest.sh asserts their absence, because
+# actionlint checks a workflow's syntax but not which triggers it declares.
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Existing tag to build and publish (e.g. v2.7.1)'
+        required: true
+        type: string
+
+permissions:
+  contents: write   # gh release create / upload
+
+# Normalized to a BARE TAG in both branches. `github.ref` is
+# `refs/tags/v1.2.3` on a tag push but the dispatch input is `v1.2.3`, so
+# using the raw values would put the two in different concurrency groups —
+# and a dispatch could then race the tag-push run for the same release,
+# both writing through `gh release upload --clobber`.
+concurrency:
+  group: release-${{ inputs.tag && inputs.tag || github.ref_name }}
+  # Never cancel: a run in flight may be mid-notarization, and Apple's queue
+  # does not care that we changed our minds.
+  cancel-in-progress: false
+
+jobs:
+  release:
+    name: Build, sign, notarize and publish
+    runs-on: macos-latest
+
+    # The signing certificate and the notary key live in this environment,
+    # not in repo-wide secrets, and that is the difference between "anyone
+    # with write access can use the Developer ID" and "a human approves each
+    # release".
+    #
+    # Two protections do the work, and they cover different holes:
+    #
+    #   Required reviewer — the job pauses before ANY step runs, so the
+    #   secrets are not materialised until a maintainer approves the run.
+    #
+    #   Deployment branch policy, restricted to `v*` TAGS — this is the one
+    #   that closes `workflow_dispatch --ref <branch>`. That flag runs the
+    #   workflow file *from that branch*, so without the policy a collaborator
+    #   could push a branch carrying a modified release.yml and have it run
+    #   with the certificate loaded. A tag-only policy means a run from any
+    #   branch gets no secrets at all, approval or not.
+    #
+    # Consequence for rehearsals: dispatch from a branch no longer works.
+    # Push a real prerelease tag (`v2.7.1-rc1`) at the commit you want to
+    # exercise instead — see docs/releasing-signed-macos.md.
+    environment: release
+    # Notarization is an unbounded wait on Apple's Notary Service. v2.7.0 sat
+    # "In Progress" for over 90 minutes with no incident posted. The default
+    # 360-minute cap would survive that, but an explicit budget documents the
+    # expectation and still cuts off a truly wedged run.
+    timeout-minutes: 180
+
+    env:
+      TAG: ${{ inputs.tag && inputs.tag || github.ref_name }}
+
+    steps:
+      # The dispatch input reaches a `ref:` below, so validate it before it
+      # can select what code runs with the signing key. `v[0-9]...` only.
+      #
+      # Without this, `tag:` was free-form: an actor with write access could
+      # dispatch against an EXISTING `v*` tag — which satisfies the
+      # environment's deployment policy, and needs no admin action because
+      # reusing a tag is not tag *creation* — while pointing `tag:` at a
+      # branch they pushed. The job would then run that branch's scripts with
+      # the certificate loaded. The deployment policy constrains the ref the
+      # workflow FILE comes from; it says nothing about this input.
+      - name: Validate the tag input
+        run: |
+          set -euo pipefail
+          if [[ ! "$TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+(-[A-Za-z0-9.]+)?$ ]]; then
+            echo "Error: refusing to release from '$TAG' — expected a v<semver> tag." >&2
+            exit 1
+          fi
+          echo "tag ok: $TAG"
+
+      # A workflow_dispatch checks out the DISPATCH BRANCH by default, not
+      # the tag. Left implicit, a dispatched rehearsal would build the branch
+      # tip and publish it under the tag's name.
+      #
+      # `refs/tags/` is explicit so the input can only ever resolve to a tag,
+      # never to a branch or a bare SHA.
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          ref: ${{ inputs.tag && format('refs/tags/{0}', inputs.tag) || github.ref }}
+
+      # scripts/release.sh --local-artifacts publishes from the maintainer's
+      # Mac and lets `gh release create --target` create the remote tag, so a
+      # COMPLETE release already exists by the time the tag push reaches us.
+      # Without this step we would rebuild, re-notarize and clobber assets
+      # that are already published and stapled — and `--clobber` would make
+      # that collision look like success.
+      #
+      # "Complete" means all three expected assets. A partial release (a run
+      # that died mid-publish) must NOT stand down: that is exactly the case
+      # a re-dispatch exists to repair.
+      - name: Skip if this release is already complete
+        id: standdown
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          decision="$(scripts/release-standdown.sh "$TAG")"
+          echo "stand-down decision for $TAG: $decision"
+          if [ "$decision" = "skip" ]; then
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "skip=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Set up Go
+        if: steps.standdown.outputs.skip != 'true'
+        uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5
+        with:
+          go-version-file: go.mod
+
+      - name: Set up Node
+        if: steps.standdown.outputs.skip != 'true'
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: '24'
+
+      - name: Bootstrap Wails (seed dist, install CLI, generate bindings)
+        if: steps.standdown.outputs.skip != 'true'
+        # Single source of truth for the pinned Wails version; build.sh reads
+        # the pin back out of this script and refuses to run against a
+        # drifting CLI. A fresh runner has no wailsjs/ bindings, so this is
+        # not optional.
+        run: ./scripts/ci-bootstrap.sh
+
+      - name: Build frontend
+        if: steps.standdown.outputs.skip != 'true'
+        # cmd/hivegui/main.go embeds frontend/dist via go:embed, so the dist
+        # tree must exist before any go build. Mirrors ci.yml.
+        working-directory: cmd/hivegui/frontend
+        run: |
+          npm ci --no-audit --no-fund
+          npm run build
+
+      # Build BEFORE any credential exists on this runner.
+      #
+      # This ordering is a security boundary, not a preference.
+      # `release-artifacts.sh` calls `build.sh`, which runs its own
+      # `npm ci` (build.sh:89) — so with the build inside the credentialed
+      # window, every third-party npm lifecycle script in the frontend
+      # dependency tree would execute *after* the Developer ID key was
+      # imported, with the keychain unlocked and partition-listed for
+      # `codesign:`. One compromised transitive dependency could then sign
+      # arbitrary code as us. Building first means the only thing running
+      # once the key is present is our own sign/notarize/publish path.
+      - name: Build release artifacts (no credentials yet)
+        if: steps.standdown.outputs.skip != 'true'
+        run: ./build.sh --zip --version "${TAG#v}" --platform all
+
+      # ---- Credentials ---------------------------------------------------
+      #
+      # Everything below lands in a throwaway keychain that the cleanup step
+      # deletes, so nothing persists on the runner image.
+
+      - name: Import the Developer ID certificate
+        if: steps.standdown.outputs.skip != 'true'
+        env:
+          MACOS_CERT_P12: ${{ secrets.MACOS_CERT_P12 }}
+          MACOS_CERT_PASSWORD: ${{ secrets.MACOS_CERT_PASSWORD }}
+        run: |
+          set -euo pipefail
+          : "${MACOS_CERT_P12:?repo secret MACOS_CERT_P12 is not set}"
+          : "${MACOS_CERT_PASSWORD:?repo secret MACOS_CERT_PASSWORD is not set}"
+
+          KEYCHAIN="$RUNNER_TEMP/build.keychain-db"
+          # Random, single-use, never leaves the runner. The keychain is
+          # deleted in the cleanup step regardless of outcome.
+          KEYCHAIN_PASSWORD="$(openssl rand -base64 24)"
+          echo "::add-mask::$KEYCHAIN_PASSWORD"
+          # KEYCHAIN (the path) is exported because the cleanup step needs it.
+          # KEYCHAIN_PASSWORD deliberately is NOT: nothing after this step
+          # uses it — `store-credentials` takes `--keychain`, and
+          # `delete-keychain` needs no password — so exporting it would only
+          # widen its reach to every later step for no benefit.
+          echo "KEYCHAIN=$KEYCHAIN" >> "$GITHUB_ENV"
+
+          security create-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN"
+          security set-keychain-settings -lut 21600 "$KEYCHAIN"
+          # A LOCKED keychain does not prompt on a runner — codesign simply
+          # blocks, and the job burns its entire timeout before anyone finds
+          # out why. -lut 21600 keeps it unlocked past the 180-minute budget.
+          security unlock-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN"
+
+          cert="$RUNNER_TEMP/cert.p12"
+          echo "$MACOS_CERT_P12" | base64 --decode > "$cert"
+          # -P puts the password on argv, visible to `ps` for the life of the
+          # call. `security import` offers no stdin alternative, and the
+          # runner is ephemeral and single-tenant, so this is accepted rather
+          # than worked around — noted so a future reader does not mistake it
+          # for an oversight.
+          security import "$cert" -k "$KEYCHAIN" -P "$MACOS_CERT_PASSWORD" \
+              -T /usr/bin/codesign -T /usr/bin/security
+          rm -f "$cert"
+
+          # Without this, codesign blocks on a GUI keychain prompt that can
+          # never be answered on a runner. It is the step everyone forgets.
+          security set-key-partition-list -S apple-tool:,apple:,codesign: \
+              -s -k "$KEYCHAIN_PASSWORD" "$KEYCHAIN" >/dev/null
+
+          # sign-macos.sh resolves the identity with `security find-identity`,
+          # which searches the keychain SEARCH LIST — not a --keychain
+          # argument. And notarytool store-credentials (next step) writes its
+          # profile into the DEFAULT keychain, so both settings are required
+          # or the profile lookup fails after the build has already run.
+          security list-keychains -d user -s "$KEYCHAIN" login.keychain
+          security default-keychain -s "$KEYCHAIN"
+
+          security find-identity -v -p codesigning "$KEYCHAIN"
+
+      - name: Store notarization credentials
+        if: steps.standdown.outputs.skip != 'true'
+        env:
+          NOTARY_API_KEY: ${{ secrets.NOTARY_API_KEY }}
+          NOTARY_KEY_ID: ${{ secrets.NOTARY_KEY_ID }}
+          NOTARY_ISSUER_ID: ${{ secrets.NOTARY_ISSUER_ID }}
+          HIVE_NOTARY_PROFILE: ${{ vars.HIVE_NOTARY_PROFILE }}
+        run: |
+          set -euo pipefail
+          : "${NOTARY_API_KEY:?repo secret NOTARY_API_KEY is not set}"
+          : "${NOTARY_KEY_ID:?repo secret NOTARY_KEY_ID is not set}"
+          : "${NOTARY_ISSUER_ID:?repo secret NOTARY_ISSUER_ID is not set}"
+          : "${HIVE_NOTARY_PROFILE:?repo variable HIVE_NOTARY_PROFILE is not set}"
+
+          key="$RUNNER_TEMP/notary.p8"
+          echo "$NOTARY_API_KEY" | base64 --decode > "$key"
+          # An App Store Connect API key rather than an app-specific
+          # password: revocable per key, and not tied to anyone's Apple ID.
+          xcrun notarytool store-credentials "$HIVE_NOTARY_PROFILE" \
+              --key "$key" \
+              --key-id "$NOTARY_KEY_ID" \
+              --issuer "$NOTARY_ISSUER_ID" \
+              --keychain "$KEYCHAIN"
+          rm -f "$key"
+
+      # ---- The release itself --------------------------------------------
+
+      - name: Sign, notarize and publish
+        if: steps.standdown.outputs.skip != 'true'
+        env:
+          HIVE_SIGN_IDENTITY: ${{ vars.HIVE_SIGN_IDENTITY }}
+          HIVE_NOTARY_PROFILE: ${{ vars.HIVE_NOTARY_PROFILE }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # The zips were built by the step above, before any credential
+          # existed. This is the same knob the selftest uses.
+          SKIP_BUILD: '1'
+        run: |
+          set -euo pipefail
+          : "${HIVE_SIGN_IDENTITY:?repo variable HIVE_SIGN_IDENTITY is not set}"
+          # release-artifacts.sh refuses to publish unsigned artifacts when
+          # these are absent, so a mis-set secret fails the run instead of
+          # shipping a zip every client's updater pin would reject.
+          ./scripts/release-artifacts.sh "${TAG#v}"
+
+      - name: Clean up credentials
+        if: always() && steps.standdown.outputs.skip != 'true'
+        run: |
+          security default-keychain -s login.keychain || true
+          security list-keychains -d user -s login.keychain || true
+          if [ -n "${KEYCHAIN:-}" ]; then
+            security delete-keychain "$KEYCHAIN" || true
+          fi
+          rm -f "$RUNNER_TEMP/cert.p12" "$RUNNER_TEMP/notary.p8"

@@ -97,26 +97,141 @@ export HIVE_SIGN_IDENTITY="Developer ID Application: Your Name (ABCDE12345)"
 export HIVE_NOTARY_PROFILE=hive-notary
 ```
 
-Put them in your shell profile. `scripts/release.sh` checks both before it
-commits or tags anything.
+Put them in your shell profile. They are needed only for a **local** release
+(`--local-artifacts`, below) — the normal path signs on a CI runner and needs
+nothing in your environment.
 
 ## Releasing
-
-Nothing changes:
 
 ```bash
 ./scripts/release.sh 0.5.0
 ```
 
-Signing pre-flight runs alongside the existing clean-tree and tag checks.
-After the build, `scripts/sign-macos.sh` signs, notarizes, staples, and
-rewrites the zip in place — so the SHA-256 manifest describes the artifact that
-actually ships.
+That bumps the version, stamps the changelog from `.changesets/`, commits,
+tags, verifies `origin/main` has not advanced, and pushes. **Then it exits**
+and prints the Actions URL.
 
-Budget **2–15 minutes** for notarization. It is a network round trip to Apple
-and it is now on the critical path of every release. Apple has occasional
-outages; check <https://developer.apple.com/system-status/> before assuming the
-build is at fault.
+Pushing the `v*` tag triggers `.github/workflows/release.yml`, which on a
+`macos-latest` runner builds every artifact, signs and notarizes the macOS
+zip, writes the checksum manifest and creates the GitHub release. Nothing
+further is required from you, and you need no certificate on the machine you
+released from.
+
+Budget **anywhere from 2 minutes to over an hour** for notarization — it is a
+queue on Apple's side, not a build step. The v2.7.0 release sat `In Progress`
+for over 90 minutes with nothing posted on
+<https://developer.apple.com/system-status/>, which is exactly why this moved
+off a human's terminal. The job's `timeout-minutes: 180` is the ceiling.
+
+### If the run fails
+
+The tag is already pushed, so the fix is to re-publish, not to re-tag:
+
+```bash
+gh workflow run release.yml -f tag=v0.5.0
+```
+
+`scripts/release-artifacts.sh` publishes idempotently — it updates an existing
+release's assets with `gh release upload --clobber` rather than failing on
+"release already exists" — so a re-dispatch repairs a half-finished publish.
+
+### One-time CI setup
+
+Seven settings. **Where each one lives is a security decision, not
+bookkeeping** — see *Why the secrets are environment-scoped* below.
+
+The five secrets go in the **`release` environment**
+(Settings → Environments → release → Environment secrets). The two variables
+are repo-level (Settings → Secrets and variables → Actions → Variables) and
+are not sensitive.
+
+| Kind | Name | What it is |
+|---|---|---|
+| Variable | `HIVE_SIGN_IDENTITY` | `Developer ID Application: Your Name (ABCDE12345)` |
+| Variable | `HIVE_NOTARY_PROFILE` | Any name, e.g. `hive-notary`. The workflow creates the profile under it. |
+| Secret | `MACOS_CERT_P12` | Base64 of the exported `.p12` (certificate **and** private key). |
+| Secret | `MACOS_CERT_PASSWORD` | The password you set when exporting the `.p12`. |
+| Secret | `NOTARY_API_KEY` | Base64 of the App Store Connect `AuthKey_<KEYID>.p8`. |
+| Secret | `NOTARY_KEY_ID` | The key's 10-character ID. |
+| Secret | `NOTARY_ISSUER_ID` | The issuer UUID from App Store Connect. |
+
+**Export the certificate.** In Keychain Access, select the *Developer ID
+Application* certificate **with its private key** (expand the triangle and
+select both rows), right-click → Export → `.p12`, and set a password. Then:
+
+```bash
+base64 -i certificate.p12 | pbcopy    # paste as MACOS_CERT_P12
+```
+
+**Create the notary key.** App Store Connect → Users and Access → Integrations
+→ App Store Connect API → generate a key with the **Developer** role. The
+`.p8` downloads exactly once. Then:
+
+```bash
+base64 -i AuthKey_XXXXXXXXXX.p8 | pbcopy   # paste as NOTARY_API_KEY
+```
+
+An API key rather than an app-specific password because it is revocable on its
+own, without touching anyone's Apple ID, and it does not expire on a password
+rotation. **Generate it with the `Developer` role** — that is all `notarytool`
+needs, and an `Admin` or `App Manager` key would hand its holder far more of
+the App Store Connect account than the signing certificate ever could.
+
+### Why the secrets are environment-scoped
+
+They are **environment** secrets, not repository secrets, and moving them
+repo-level would quietly undo the protection.
+
+A repository secret is readable by any workflow the repo runs — including
+`ci.yml`, which triggers on `pull_request`. Pull requests from branches *in
+this repository* (what a collaborator pushes) do receive repository secrets.
+So a repo-level `MACOS_CERT_P12` is reachable by anyone who can open a PR
+that edits a workflow file. Forks are not a concern here — they never get
+secrets — but collaborators are.
+
+Environment secrets are only visible to a job that declares
+`environment: release`, and that job is covered by two protections:
+
+- **A required reviewer.** The job pauses before any step runs, so nothing is
+  materialised until a maintainer approves the run.
+- **A deployment branch policy limited to `v*` tags.** This is what closes
+  `workflow_dispatch --ref <branch>`: that flag runs the workflow file *from
+  that branch*, so without the policy a collaborator could push a branch with
+  a modified `release.yml` and have it execute with the certificate loaded.
+  With a tag-only policy, a run from any branch gets no secrets at all —
+  approval or not.
+
+`scripts/release-artifacts-selftest.sh` asserts the `environment:` line is
+still present, because deleting it re-exposes the credentials silently and
+with CI still green.
+
+Worth pairing with a **tag ruleset on `v*`** (Settings → Rules → Rulesets) so
+only maintainers can create release tags in the first place.
+
+### Releasing entirely locally
+
+The old behaviour, kept as a fallback for when CI is unavailable:
+
+```bash
+./scripts/release.sh 0.5.0 --local-artifacts
+```
+
+This needs `HIVE_SIGN_IDENTITY` and `HIVE_NOTARY_PROFILE` exported and the
+certificate in your keychain, and it blocks your terminal through
+notarization. It runs the same `scripts/release-artifacts.sh` the workflow
+does, so the two paths cannot drift.
+
+It pushes the release **commit** but deliberately not the tag: the remote tag
+is created by `gh release create --target` as part of publishing. That
+ordering is what keeps the two paths from racing — by the time the tag
+appears and triggers `release.yml`, a complete release already exists, and
+the workflow's first step sees all three assets and stands down. Push the tag
+yourself and you get two macOS builds notarizing and clobbering the same
+assets at once, which `--clobber` would make look like success.
+
+The stand-down check requires **all three** assets. A release left partial by
+a run that died mid-publish is republished rather than skipped — that is the
+case `gh workflow run release.yml -f tag=<tag>` exists to repair.
 
 ## Testing hardened runtime without a certificate
 
@@ -189,7 +304,11 @@ that warns first.
 | Symptom | Cause |
 |---|---|
 | `0 valid identities found` | Certificate not installed, or installed on a Mac without the CSR's private key. |
-| `Team ID mismatch` from `release.sh` | `HIVE_SIGN_IDENTITY` and `signingTeamID` disagree. Fix whichever is wrong — publishing with a mismatch produces a release no client can install. |
+| `Team ID mismatch` from `sign-macos.sh` | `HIVE_SIGN_IDENTITY` and `signingTeamID` disagree. Fix whichever is wrong — publishing with a mismatch produces a release no client can install. |
+| `signing identity team (…) does not match the pinned team (…)` from `release.sh` | The same disagreement, caught earlier by the `--local-artifacts` pre-flight, before anything is built. Same fix. |
 | `notarytool` returns `Invalid` | Run `xcrun notarytool log <submission-id> --keychain-profile hive-notary` for the per-file reason. Usually an unsigned nested binary or a missing hardened runtime. |
 | `The staple and validate action failed` | The bundle was re-signed after stapling. Signing invalidates a ticket — staple last, and never re-sign afterwards. |
-| Notarization fails after `git tag` | `sign-macos.sh` prints the unwind recipe. Reset the commit, delete the tag, fix, re-run. |
+| Notarization fails **in CI** | The tag is already pushed. Never reset or delete it — fix the cause and re-publish with `gh workflow run release.yml -f tag=<tag>`. Publishing is idempotent, so repeating it is safe. |
+| Notarization fails during `--local-artifacts` | The release commit is on `origin` but no tag exists yet (the tag is created when the release is published). Fix the cause and re-run `scripts/release-artifacts.sh <version>`. Do **not** reset the commit or re-run `release.sh`: the commit is already published, so a re-run would re-bump the version and re-stamp the changelog on top of it. |
+| `codesign` hangs in CI with no output | A keychain step was dropped. All four of `unlock-keychain`, `set-key-partition-list`, `list-keychains -d user -s` and `default-keychain -s` are required; the workflow comments explain what each one prevents. |
+| `refusing to publish unsigned` | `HIVE_SIGN_IDENTITY` / `HIVE_NOTARY_PROFILE` are not reaching `release-artifacts.sh`. In CI, check the repo **variables** (not secrets). This refusal is deliberate — publishing unsigned would produce a release every client's updater pin rejects. |
