@@ -23,6 +23,7 @@ The *what* and *why* of work this project plans to do. Each spec describes user 
 
 | Issue | Title | PR | Shipped | Spec |
 |-------|-------|----|---------|------|
+| #382 | Move the release build to CI | #383 | 2026-09-09 | [382-move-the-release-build-to-ci](382-move-the-release-build-to-ci.md) |
 | #384 | Show a visual cue when sessions share a worktree | #385 | 2026-09-08 | [384-visual-cue-for-sessions-sharing-a-worktree](384-visual-cue-for-sessions-sharing-a-worktree.md) |
 | — | Idea inbox: capture ideas mid-session, start a session from one later | #377 | 2026-09-07 | [337-idea-inbox](337-idea-inbox.md) |
 | #351 | Show a user-facing changelog behind a gift icon in the sidebar | #357 | 2026-09-06 | [351-user-facing-changelog-modal](351-user-facing-changelog-modal.md) |
