@@ -166,11 +166,18 @@ keeps working unchanged.
    `workflow_dispatch` with a required `tag` input. `runs-on: macos-latest`,
    `timeout-minutes: 180`, `permissions: contents: write`.
 
-   Two details that are wrong by default and must be written explicitly:
+   **`environment: release`** on the job. Added during review, once the repo's
+   collaborators made a repo-level certificate a live exposure: the five
+   credentials are environment secrets, the environment requires a reviewer,
+   and its deployment policy admits only `v*` tags. See the Decision log.
+
+   Three details that are wrong by default and must be written explicitly:
    - **`with: ref: ${{ inputs.tag || github.ref }}` on the checkout.** A
      `workflow_dispatch` checks out the *dispatch branch*, not the tag. Left
-     default, the rehearsal in verification step 5 would build the branch tip
-     and publish it under the tag's name.
+     default, a dispatch would build the branch tip and publish it under the
+     tag's name. (The environment's tag-only policy now blocks branch
+     dispatch from reaching the secrets at all, so this is defence in depth
+     rather than the sole guard.)
    - **`concurrency.group` must normalize to a bare tag** —
      `release-${{ inputs.tag || github.ref_name }}`, not `github.ref`. A
      dispatch yields `v1.2.3` while a tag push yields `refs/tags/v1.2.3`, so
@@ -178,8 +185,10 @@ keeps working unchanged.
      `gh release upload --clobber` for the same release. `cancel-in-progress:
      false` — never kill a run that may already be mid-notarization.
 
-   Steps: checkout at that ref (pinned SHA, matching
-   `ci.yml:32`) → setup-go (`go-version-file: go.mod`) → setup-node 24 →
+   Steps: checkout at that ref (pinned SHA, matching `ci.yml:32`) → **stand
+   down if the release is already complete** (`scripts/release-standdown.sh`;
+   gates every step below it) → setup-go (`go-version-file: go.mod`) →
+   setup-node 24 →
    `./scripts/ci-bootstrap.sh` → `npm ci && npm run build` in
    `cmd/hivegui/frontend` → import the certificate into a temporary keychain →
    `store-credentials` for the notary profile → `./scripts/release-artifacts.sh
@@ -267,38 +276,52 @@ keeps working unchanged.
 
 - `.github/workflows/release.yml` — the CI half.
 - `scripts/release-artifacts.sh` — build/sign/checksum/publish, one copy.
-- `scripts/release-artifacts-selftest.sh` — red/green proof for the above.
+- `scripts/release-standdown.sh` — decides whether a run should skip because
+  the release is already published in full. **Added during review** (iter 2):
+  it began as inline workflow bash, which no test could reach, and extracting
+  it immediately exposed a latent collation bug.
+- `scripts/release-artifacts-selftest.sh` — red/green proof for all of the
+  above.
 
 ### Tests
 
 The change is shell and YAML, so the tests are the repo's existing
 script-selftest shape, not Go or vitest.
 
-1. `scripts/release-artifacts-selftest.sh` — runs `release-artifacts.sh` under
-   `DRY_RUN=1` in a `mktemp -d` sandbox and asserts:
-   - **checksum manifest is basenamed** — seeded fake zips produce a
-     `checksums.txt` whose lines end in `Hive-9.9.9-macos-universal.zip`, not a
-     `release/` path. (Fails if someone drops the `cd release` subshell — which
-     would silently break the in-app updater's manifest lookup.)
-   - **notes extraction stops at the next section** — a fixture `CHANGELOG.md`
-     with `## [9.9.9]` followed by `## [9.9.8]` yields only the 9.9.9 body.
-     (Fails on an `awk` that drops the `/^## \[/{exit}` guard.)
-   - **missing artifact is fatal** — with one zip absent the script exits
-     non-zero. (Fails if the `[[ -f "$f" ]]` assertions are lost in the move.)
-   - **publish is idempotent** — with a stubbed `gh` on `PATH` reporting an
-     existing release, the script calls `release upload --clobber`; reporting
-     none, it calls `release create`. (Fails on a straight `gh release create`,
-     the exact regression that makes a re-dispatch useless.)
-   - **missing credentials on Darwin are fatal** — with `HIVE_SIGN_IDENTITY`
-     unset and no `--allow-unsigned`, the script exits non-zero with
-     `refusing to publish unsigned`. (Fails on a "sign if creds are present"
-     implementation, which would publish an unsigned zip from a green run.)
-   - **signing runs before the checksum manifest** — stub `sign-macos.sh` and
-     `shasum` on `PATH`, each appending its name to an order log; assert the log
-     reads `sign` then `shasum`. (Fails on a reordering, which would publish a
-     `checksums.txt` describing the *pre*-signature zip and break the in-app
-     updater's integrity check for every user — `release.sh:199-215` documents
-     exactly this ordering requirement.)
+1. `scripts/release-artifacts-selftest.sh` — **29 assertions** (the plan
+   approved 6; review added the rest, each named for the regression it
+   catches). Runs in a `mktemp -d` git fixture with `gh`, `shasum`,
+   `sign-macos.sh` and `uname` stubbed on a prepended `PATH`. Two knobs, not
+   one: `SKIP_BUILD=1` skips `build.sh`, while `gh` is **always** invoked so
+   the create-vs-clobber branch stays observable. The `uname` stub reports
+   Darwin so the signing assertions run on the ubuntu CI leg — without it four
+   of them printed "skip" on every CI run. Groups:
+   - **Manifest and notes** — checksums are basenamed (dropping the `cd
+     release` subshell would break the updater's manifest lookup); notes
+     extraction stops at the next `## [` section; a missing artifact is fatal.
+   - **Publish flow** — a new release is created as a **draft**, populated,
+     then `--draft=false`; the calls happen in that order; `--target` carries
+     the fixture's real sha and never the literal string `HEAD`; an existing
+     release takes `upload --clobber` and is not re-created.
+   - **Signing safety** — missing credentials on Darwin are fatal
+     (`refusing to publish unsigned`) and publish nothing; `--allow-unsigned`
+     publishes anyway; signing runs *before* `shasum`, so the manifest
+     describes the artifact that ships.
+   - **Stand-down** (`scripts/release-standdown.sh`) — a complete release
+     skips; a missing asset, an extra asset, a draft, and no release at all
+     all run. Order-independent, so the jq-vs-shell collation bug cannot
+     return.
+   - **Pre-flight** — the Team-ID pin is refused when empty and is not gated
+     on macOS; a no-credentials run reaches the marker; `--local-artifacts`
+     demands credentials and refuses a mismatched identity.
+   - **Workflow invariants** — `release.yml` carries no `pull_request`
+     trigger, and still declares `environment: release`. Deleting either
+     re-exposes the signing credentials silently, with CI green.
+
+   Wired into `.github/workflows/changesets.yml` beside the two existing
+   selftests — `ci.yml`'s `scripts/*.sh` glob only *lints*, it does not
+   execute. Passes under `/bin/bash` 3.2 as well as modern bash, because the
+   macOS release runner ships 3.2.
 2. `release.sh --check-preflight <version>` — an early-exit path that runs the
    pre-flight block and then prints `preflight ok: team=<pinned> signing=<on|off>`
    instead of bumping anything. The marker matters: a flag that short-circuits
@@ -309,11 +332,12 @@ script-selftest shape, not Go or vitest.
 3. `actionlint .github/workflows/release.yml` in CI — catches a malformed
    `concurrency`, an unknown `runs-on`, or a bad expression before a tag exists.
 4. `shellcheck -S warning` — automatic, via the existing `scripts/*.sh` glob.
-5. **Trigger allow-list** — `actionlint` does not check *which* triggers a
-   workflow declares, so nothing would catch spec criterion 7 regressing. One
-   grep in the selftest: `release.yml` must contain neither `pull_request` nor
-   `pull_request_target`. Cheap, and it is the difference between the signing
-   secrets being unreachable from a fork and being one careless edit away.
+5. **Workflow invariants** — `actionlint` validates syntax but not *which*
+   triggers a workflow declares, nor that the environment gate is still
+   present, so neither spec criterion would be caught regressing. Two greps in
+   the selftest cover both. Cheap, and each is the difference between the
+   signing credentials being reachable only by an approved tag run and being
+   one careless edit away.
 
 ### Verification
 
@@ -707,4 +731,13 @@ Append-only. One line per `/hs-review-loop` iteration.
   secrets must be **deleted**, not merely duplicated into the environment —
   until they are gone the environment gate is cosmetic, because `ci.yml` runs
   on `pull_request` and same-repo branch PRs receive repository secrets.
+- **2026-09-09** — Brought the design sections back in line with what shipped.
+  The Decision log and Progress had tracked every change, but `### Files to
+  change`, `### New files` and `### Tests` still described the plan as
+  approved: no `environment: release`, no stand-down step, no
+  `scripts/release-standdown.sh`, a `DRY_RUN` knob that became `SKIP_BUILD`,
+  and 6 assertions where there are now 29. That is not cosmetic —
+  `/hs-merge-gate` reads `## Approach` and `### Tests` to know what the plan
+  promised, so a stale design section degrades the next gate run, which is due
+  right after the rc rehearsal.
 
