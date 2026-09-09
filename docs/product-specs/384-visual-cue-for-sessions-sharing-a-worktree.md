@@ -1,11 +1,12 @@
 ---
 issue: 384
 pr: 385
+shipped: 2026-09-08
 title: "Show a visual cue when sessions share a worktree"
 type: enhancement
 complexity: M
 priority: P2
-stage: GATE
+stage: DONE
 ---
 
 # Show a visual cue when sessions share a worktree
@@ -14,6 +15,7 @@ stage: GATE
 - **Type:** enhancement
 - **Complexity:** M
 - **Priority:** P2
+- **Exec plan:** [docs/exec-plans/completed/384-visual-cue-for-sessions-sharing-a-worktree.md](../exec-plans/completed/384-visual-cue-for-sessions-sharing-a-worktree.md)
 
 ## Problem
 

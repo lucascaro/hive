@@ -2,7 +2,7 @@
 
 - **Spec:** [docs/product-specs/384-visual-cue-for-sessions-sharing-a-worktree.md](../../product-specs/384-visual-cue-for-sessions-sharing-a-worktree.md)
 - **Issue:** #384
-- **Status:** active
+- **Status:** completed
 - **PR:** #385
 - **Branch:** feature/384-shared-worktree-cue
 
@@ -382,6 +382,12 @@ run Playwright with `CI=1` so it does not reuse a stale dev server.
 - **2026-09-08** — verdict: FAIL; phase: —; checks: 0 passed / 1 failed (doc accuracy re-run only); followups: none; one-line: the three round-1 items were fixed, but a fresh sweep found two more stale records.
   - 2026-09-08 dimensions:
     - doc accuracy — FAIL — `internal/registry/registry.go`'s `reindexLocked` comment still named the deleted `lib/reorder.ts`; the plan's decision log carried the abandoned token design as an unmarked entry. Both fixed on the branch afterwards; the gate's one-retry budget is now spent, so the next run is the operator's call.
+
+- **2026-09-08** — verdict: PASS; phase: —; checks: 2 dimensions passed / 1 accepted; followups: none; one-line: operator accepted the gate after the second doc-accuracy round's two items were fixed.
+  - 2026-09-08 dimensions:
+    - acceptance — PASS — carried from the first round; nothing since touched behaviour.
+    - non-goals — PASS — carried from the first round.
+    - doc accuracy — PASS (operator-accepted, not re-validated) — the two remaining items were a stale code comment in `internal/registry/registry.go` and an unmarked superseded decision-log entry, both fixed on the branch. The gate's retry budget was spent, so the operator accepted on inspection rather than spending a third validator round. Recorded as accepted rather than verified, because that is what happened.
 
 ## PR convergence ledger
 
