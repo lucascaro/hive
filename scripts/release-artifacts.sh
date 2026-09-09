@@ -133,6 +133,15 @@ ARTIFACTS+=("$SUMS")
 # rehearsal tag (v9.9.9-rc1) has no matching section, and empty notes are
 # fine: they are not an error condition.
 
+# A version carrying a pre-release suffix (2.7.1-rc2, 1.0.0-beta.1) must be
+# published as a GitHub pre-release, and this is not cosmetic: the in-app
+# updater polls /releases/latest (cmd/hivegui/update.go:26), and GitHub
+# marks the newest NON-prerelease as "latest". Publish an rc without this
+# flag and every user is offered a release candidate as their next update.
+# Learned the hard way — an rc rehearsal briefly became the latest release.
+PRERELEASE=""
+[[ "$VERSION" == *-* ]] && PRERELEASE=1
+
 NOTES=$(awk "/^## \[${VERSION}\]/{found=1; next} found && /^## \[/{exit} found" CHANGELOG.md)
 [[ -n "$NOTES" ]] || echo "note: no '## [${VERSION}]' section in CHANGELOG.md — publishing with empty notes."
 
@@ -161,11 +170,11 @@ if gh release view "$TAG" --repo "$REPO" >/dev/null 2>&1; then
     # A previous run may have died before un-drafting. Idempotent either way.
     gh release edit "$TAG" --repo "$REPO" --draft=false >/dev/null
 else
-    echo "Creating GitHub release ${TAG} (draft)..."
+    echo "Creating GitHub release ${TAG}${PRERELEASE:+ (prerelease)} (draft)..."
     # --target is used only when the tag does not exist remotely (the local
     # path); in CI the tag is already there and it is ignored.
     gh release create "$TAG" --repo "$REPO" --title "$TAG" --notes "$NOTES" \
-        --draft --target "$(git rev-parse HEAD)"
+        --draft --target "$(git rev-parse HEAD)" ${PRERELEASE:+--prerelease}
     echo "Uploading artifacts..."
     gh release upload "$TAG" --repo "$REPO" --clobber "${ARTIFACTS[@]}"
     echo "Publishing (this is what creates the tag)..."

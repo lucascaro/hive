@@ -61,6 +61,10 @@ means a bot pushing to `main`.
   re-runnable without re-tagging.
 - The workflow never runs on `pull_request` or `pull_request_target`, so the
   signing secrets are unreachable from a fork PR.
+- A version carrying a pre-release suffix (`2.7.1-rc2`) is published as a
+  GitHub **pre-release**, so `/releases/latest` — which the in-app updater
+  polls (`cmd/hivegui/update.go:26`) — keeps returning the newest real
+  release and no user is offered a release candidate as an update.
 - The signing certificate and notary key are **environment**-scoped, not
   repository-scoped, so a collaborator cannot reach them by editing a workflow
   in a pull request. The release job declares `environment: release`, that

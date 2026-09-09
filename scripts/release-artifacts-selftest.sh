@@ -187,6 +187,31 @@ else
 fi
 if grep -q -- '--target HEAD' "$GH_LOG"; then bad "--target must not be the literal string HEAD"; else ok "--target must not be the literal string HEAD"; fi
 
+# 4c. A pre-release version must be published as a GitHub pre-release. The
+#     in-app updater polls /releases/latest (cmd/hivegui/update.go:26), and
+#     GitHub serves the newest NON-prerelease there — so publishing an rc
+#     without the flag offers a release candidate to every user as their next
+#     update. This happened once, during the rc rehearsal for this feature.
+setup
+# The fixture seeds 9.9.9-named zips; this case releases 9.9.9-rc1, so give it
+# artifacts under that name or it aborts on "expected artifact missing"
+# before it ever reaches `gh release create`.
+cp release/Hive-9.9.9-macos-universal.zip release/Hive-9.9.9-rc1-macos-universal.zip
+cp release/Hive-9.9.9-windows-amd64.zip   release/Hive-9.9.9-rc1-windows-amd64.zip
+GH_RELEASE_EXISTS=0 run 9.9.9-rc1 >/dev/null
+if grep 'gh release create v9.9.9-rc1' "$GH_LOG" | grep -q -- '--prerelease'; then
+    ok "a -rc version is published as a prerelease"
+else
+    bad "a -rc version is published as a prerelease"
+fi
+setup
+GH_RELEASE_EXISTS=0 run 9.9.9 >/dev/null
+if grep 'gh release create v9.9.9' "$GH_LOG" | grep -q -- '--prerelease'; then
+    bad "a plain version must NOT be a prerelease"
+else
+    ok "a plain version must NOT be a prerelease"
+fi
+
 # 5. Missing credentials on Darwin are fatal, not a silent skip. "Sign if the
 #    credentials happen to be present" would turn a mis-set repo secret into a
 #    green run that publishes an unsigned, un-notarized zip.

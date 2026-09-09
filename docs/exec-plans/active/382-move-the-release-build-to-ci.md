@@ -781,4 +781,19 @@ Append-only. One line per `/hs-review-loop` iteration.
   and skips when every one is `refs/tags/*`; a mixed push still gates, and
   empty stdin falls through to the gate rather than silently passing.
   `check-changeset.sh` reads no stdin, so consuming it in the hook is safe.
+- **2026-09-09** — The rc2 rehearsal exposed a real defect, caught by checking
+  the published state rather than the run's exit code. `release-artifacts.sh`
+  never passed `--prerelease`, so both rc tags published as full releases and
+  GitHub marked `v2.7.1-rc2` as **Latest**. The in-app updater polls
+  `/releases/latest` (`cmd/hivegui/update.go:26`), so for roughly 45 minutes
+  every user's update check would have offered them a release candidate.
+  Contained immediately (`gh release edit --prerelease` on both; the endpoint
+  returns `v2.7.0` again), then fixed at the root: the script now sets
+  `--prerelease` whenever the version carries a `-suffix`. Two assertions
+  added — an rc gets the flag, a plain version does not — plus a spec success
+  criterion, so the gate checks it rather than trusting it. 33 → 35.
+  Worth naming the near-miss: the run succeeded, the artifact was correctly
+  signed, notarized and stapled, and every assertion passed. Nothing in the
+  pipeline was wrong. The defect was only visible in what the release *meant*
+  to a client polling the API, which no exit code could have reported.
 
