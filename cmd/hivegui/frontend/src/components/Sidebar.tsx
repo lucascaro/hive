@@ -48,7 +48,6 @@ import {
   endDrag,
   moveTo as movePlaceholder,
 } from '../lib/drag-placeholder.js';
-import { dropTargetIndex } from '../lib/reorder.js';
 import { attentionSummary, sessionState } from '../lib/session-state.js';
 import { hasUnread, latestVersion } from '../lib/whats-new.js';
 import { readProjectId } from '../lib/wire.js';
@@ -67,6 +66,12 @@ import { Icon } from './Icon.js';
 import { IconButton } from './IconButton.js';
 import { ProjectCard } from './ProjectCard.js';
 import { SessionRow } from './SessionRow.js';
+import {
+  clusterDropOps,
+  clusterSessions,
+  worktreeGroups,
+  worktreeKey,
+} from '../lib/worktree-groups.js';
 
 // Per-module, not a shared deps union: the sidebar wants
 // refocusActiveTerm where view wants focusActiveTerm, and one union type
@@ -168,9 +173,9 @@ function reorderDroppedProject(
   );
 }
 
-// reorderDroppedSession hands the drop to lib/reorder.ts's dropTargetIndex
-// and forwards the result. The index math lives there, next to the keyboard
-// path's reorderTarget, because both rest on the same invariant — a session's
+// reorderDroppedSession hands the drop to lib/worktree-groups.ts's
+// clusterDropOps and forwards the result. The index math lives there, resting
+// on the same invariant as lib/reorder.ts's keyboard path — a session's
 // .order IS its index in the daemon's r.order — and because a pure function
 // is the only way to table-test the off-by-one this used to have.
 function reorderDroppedSession(
@@ -178,9 +183,25 @@ function reorderDroppedSession(
   targetID: string,
   above: boolean,
 ) {
-  const order = dropTargetIndex(appData().sessions, draggedID, targetID, above);
-  if (order === null) return;
-  UpdateSession(draggedID, '', '', order).catch(reportFailure('reorder'));
+  // Sessions sharing a worktree paint as a block (clusterSessions), so
+  // moving one member alone would look like nothing happened — the cluster
+  // rule puts it straight back. The whole group moves, as one op per member.
+  const ops = clusterDropOps(appData().sessions, draggedID, targetID, above);
+  if (ops.length === 0) return;
+  // Sequential, and stopping on the first failure: each call re-broadcasts,
+  // and the indices were computed against a simulated list, so firing them
+  // in parallel would race. Bailing out leaves the group split rather than
+  // scattered, and the next drop puts it right.
+  void (async () => {
+    for (const op of ops) {
+      try {
+        await UpdateSession(op.id, '', '', op.order);
+      } catch (err) {
+        reportFailure('reorder')(err);
+        return;
+      }
+    }
+  })();
 }
 
 // ---------- session row ----------
@@ -197,6 +218,10 @@ interface SessionItemProps {
   sidebar: SidebarProps;
   /** The idea this session was started from, if any. */
   ideaText: string;
+  /** How many sessions share this one's worktree. A number, not the group:
+      SessionItem is memoized on primitives, and handing it the member list
+      would re-render every row on every unrelated session event. */
+  worktreeShared: number;
 }
 
 // memo, and every other prop a primitive or the session's own object
@@ -249,6 +274,7 @@ const SessionItem = memo(function SessionItem(p: SessionItemProps) {
       selected={p.selected}
       minimized={p.minimized}
       index={p.index}
+      worktreeShared={p.worktreeShared}
       nameRef={nameRef}
       onSelect={() => p.sidebar.switchTo(id)}
       onMinimize={() => p.sidebar.minimizeSession(id)}
@@ -332,6 +358,10 @@ function ProjectItem(o: ProjectItemProps) {
   // Same helper the minimized chip uses, so the collapsed card's
   // "k waiting on you" and the chip's alert count can never disagree.
   const attentionCount = attentionSummary(o.sessions).count;
+  // Which of this card's rows share a worktree. Project-scoped because
+  // worktree paths are, and because a group can only paint adjacently
+  // inside one card's <ul>.
+  const groups = worktreeGroups(o.sessions);
 
   // dragstart bubbles, so a session-row drag fires here too after its own
   // handler runs. We must not preventDefault in that case (it would
@@ -444,6 +474,7 @@ function ProjectItem(o: ProjectItemProps) {
           // primitives, and a fresh object here would re-render every
           // row on every unrelated idea event.
           ideaText={ideaForSession(o.ideas, s.id)?.text ?? ''}
+          worktreeShared={groups.get(worktreeKey(s))?.length ?? 1}
           sidebar={o.props}
         />
       ))}
@@ -493,9 +524,9 @@ export function Sidebar(props: SidebarProps) {
         <ProjectItem
           key={p.id}
           project={p}
-          sessions={sessions
-            .filter((s) => readProjectId(s) === p.id)
-            .sort((a, b) => (a.order ?? 0) - (b.order ?? 0))}
+          sessions={clusterSessions(
+            sessions.filter((s) => readProjectId(s) === p.id),
+          )}
           activePID={activePID}
           collapsed={collapsed.has(p.id)}
           props={props}

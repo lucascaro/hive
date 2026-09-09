@@ -18,6 +18,8 @@ import { dropTargetIndex } from '../../src/lib/reorder.js';
 import { loadSidebar, mountSidebar, row, seed } from './sidebar-harness.js';
 
 const sessionOrders: Array<[string, number]> = [];
+// 1-based index of the UpdateSession call that should reject, or null.
+let failAt: number | null = null;
 const projectOrders: Array<[string, number]> = [];
 
 vi.mock('../../src/bridge.js', async (orig) => {
@@ -26,6 +28,9 @@ vi.mock('../../src/bridge.js', async (orig) => {
     ...real,
     UpdateSession: (id: string, _n: string, _c: string, order: number) => {
       sessionOrders.push([id, order]);
+      if (failAt !== null && sessionOrders.length === failAt) {
+        return Promise.reject(new Error('daemon said no'));
+      }
       return Promise.resolve();
     },
     UpdateProject: (
@@ -48,6 +53,7 @@ beforeAll(async () => {
 });
 
 beforeEach(() => {
+  failAt = null;
   sessionOrders.length = 0;
   projectOrders.length = 0;
   seed({
@@ -142,5 +148,91 @@ describe('sidebar project reorder', () => {
   it('ignores a drop whose payload is not a project', () => {
     dropOn(cardFor('p2'), 'text/x-hive-session', 'p1');
     expect(projectOrders).toEqual([]);
+  });
+});
+
+// Sessions that share a worktree paint as a block (lib/worktree-groups.ts:
+// clusterSessions), so a drag has to move the block. Moving one member
+// alone would look like nothing happened: the cluster rule puts it straight
+// back beside its group on the next paint.
+describe('sidebar reorder with a shared worktree', () => {
+  const WT = '/repo/.worktrees/feat';
+
+  // a and c share a worktree; b and e do not. r.order is a,b,c,e = 0…3.
+  const seedShared = () =>
+    seed({
+      projects: [{ id: 'p1', name: 'one', order: 0 }],
+      sessions: [
+        {
+          id: 'a',
+          name: 'a',
+          project_id: 'p1',
+          order: 0,
+          alive: true,
+          worktree_path: WT,
+        },
+        { id: 'b', name: 'b', project_id: 'p1', order: 1, alive: true },
+        {
+          id: 'c',
+          name: 'c',
+          project_id: 'p1',
+          order: 2,
+          alive: true,
+          worktree_path: WT,
+        },
+        { id: 'e', name: 'e', project_id: 'p1', order: 3, alive: true },
+      ],
+      collapsed: new Set(),
+      activeId: null,
+    });
+
+  // The ops after the first are issued from a microtask, so let the queue
+  // drain before asserting on the full sequence.
+  const flush = () => new Promise((r) => setTimeout(r, 0));
+
+  beforeEach(() => {
+    sessionOrders.length = 0;
+    seedShared();
+    mountSidebar(Sidebar);
+  });
+
+  it('paints the group together, at its lowest-order member', () => {
+    const ids = [
+      ...document.querySelectorAll<HTMLElement>(
+        '.hv-project-card[data-pid="p1"] .hv-session-row',
+      ),
+    ].map((el) => el.dataset.sid);
+    expect(ids).toEqual(['a', 'c', 'b', 'e']);
+  });
+
+  it('moves the whole group when any member is dragged', async () => {
+    dropOn(row('e'), 'text/x-hive-session', 'a');
+    await flush();
+    expect(sessionOrders).toEqual([
+      ['a', 3],
+      ['c', 3],
+    ]);
+  });
+
+  it('moves the group identically when dragged by a non-head member', async () => {
+    dropOn(row('e'), 'text/x-hive-session', 'c');
+    await flush();
+    expect(sessionOrders).toEqual([
+      ['a', 3],
+      ['c', 3],
+    ]);
+  });
+
+  it('does nothing when the drop lands inside the dragged group', async () => {
+    dropOn(row('c'), 'text/x-hive-session', 'a');
+    await flush();
+    expect(sessionOrders).toEqual([]);
+  });
+
+  it('stops after a failed op rather than half-applying the rest', async () => {
+    failAt = 1;
+    dropOn(row('e'), 'text/x-hive-session', 'a');
+    await flush();
+    expect(sessionOrders).toEqual([['a', 3]]);
   });
 });

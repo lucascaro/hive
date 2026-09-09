@@ -23,6 +23,7 @@ const base = {
   onDragOver: noop,
   onDrop: noop,
   ideaText: '',
+  worktreeShared: 1,
 };
 
 function props(

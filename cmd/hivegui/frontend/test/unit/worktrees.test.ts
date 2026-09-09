@@ -5,6 +5,7 @@ import {
   canDelete,
   canRename,
   needsConfirm,
+  sessionNames,
   statusLabel,
   sortWorktrees,
   sortBranches,
@@ -342,5 +343,28 @@ describe('wire field readers', () => {
     expect(readWorktrees({})).toEqual([]);
     expect(readOrphanBranches({})).toEqual([]);
     expect(readRepoRoot({})).toBe('');
+  });
+});
+
+describe('sessionNames', () => {
+  const w = { path: '/wt/x', session_ids: ['s1', 's2'] };
+
+  it('resolves occupant ids to names, in the daemon order', () => {
+    expect(
+      sessionNames(w, [
+        { id: 's2', name: 'b' },
+        { id: 's1', name: 'a' },
+      ]),
+    ).toEqual(['a', 'b']);
+  });
+
+  it('drops ids with no live session rather than showing a raw id', () => {
+    expect(sessionNames(w, [{ id: 's2', name: 'b' }])).toEqual(['b']);
+  });
+
+  it('is empty for an unoccupied worktree', () => {
+    expect(sessionNames({ path: '/wt/y' }, [{ id: 's1', name: 'a' }])).toEqual(
+      [],
+    );
   });
 });

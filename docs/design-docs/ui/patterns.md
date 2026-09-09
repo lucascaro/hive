@@ -11,6 +11,12 @@ Two independent facts, two independent channels:
 
 They never share a colour (`--accent` ≠ `--state-attention` in every non-monochrome preset) and never share a position (bar at left edge vs icon in the state column).
 
+A third fact, added by spec 384, takes the one edge left over:
+
+- **Shared worktree** = this session and at least one other are editing the same files. 3px `--session-color` bar at the **right** edge + a count on the branch glyph. Many rows may have it, in several distinct groups.
+
+The right edge is not a stylistic choice: the left is selection's, and one indicator per position is the rule above. Colour alone never carries it either — the count and the button's label say it in words, which is what makes the cue survive a monochrome preset and a colourblind reader.
+
 ## Attention bubbling
 
 Attention on a session propagates *up* to every container that can hide it: project card header (swatch ring), collapsed project ("k need you" count), minimized session chip, minimized project chip (state icon + "k" alert count, and the label colour / dot pulse). The collapsed card and the minimized chip both derive their number from one helper, `attentionSummary()` in `lib/session-state.ts`, so the two cannot disagree; it resolves through `sessionState()`, which means a session that is still starting or already gone stops bubbling even if its last-known `needs_attention` flag was set. It propagates *nowhere else* — no window-level flashing, no dock badge beyond what `internal/notify` already does. Clearing: attention clears when the session receives input or is selected, as today; every bubbled indicator clears with it in the same render.

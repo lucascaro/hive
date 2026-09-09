@@ -350,6 +350,20 @@ func (r *Registry) resolveCreateTarget(spec wire.CreateSpec) createPlan {
 			if other.ProjectID == p.projectID && other.WorktreePath != "" && other.WorktreePath == p.cwd {
 				p.adoptedPath = other.WorktreePath
 				p.adoptedBranch = other.WorktreeBranch
+				// Sessions sharing one worktree share one colour:
+				// that is the sidebar's link between them (spec
+				// 384). This reads the "color is session
+				// identity" rule above as identity of the WORK,
+				// not of the process — two sessions editing the
+				// same files are one piece of work. An explicit
+				// spec.Color still wins, and the inherited
+				// colour becomes lastSessionColor so the next
+				// freshly-picked session steers away from it
+				// rather than colliding with the group.
+				if spec.Color == "" && other.Color != "" {
+					p.color = other.Color
+					r.lastSessionColor = p.color
+				}
 				break
 			}
 		}

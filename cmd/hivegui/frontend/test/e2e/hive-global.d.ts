@@ -54,6 +54,7 @@ interface HiveTestApi {
   setSessionState?(id: string, next: string, source?: string): void;
   ringBell?(id: string): void;
   createSessionWithWorktree?(name: string, branch?: string): Promise<string>;
+  createSessionInWorktree?(name: string, worktreePath: string): Promise<string>;
   seedWorktrees?(worktrees: MockWorktree[], branches?: MockBranch[]): void;
   seedIdeas?(ideas: MockIdea[]): void;
   replayLog?: { id: string; t: number }[];

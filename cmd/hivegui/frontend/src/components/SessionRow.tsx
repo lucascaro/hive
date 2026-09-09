@@ -48,6 +48,11 @@ export interface SessionRowProps {
   onDrop: (e: DragEvent<HTMLLIElement>) => void;
   /** The idea this session was started from, when it came from one. */
   ideaText: string;
+  /** How many sessions share this row's worktree; 1 (or 0) when it is not
+      shared. The row is linked to its group by colour — sessions inherit the
+      colour of the worktree they adopt — and colour alone is not a signal
+      everyone can read, so the count is the second channel. */
+  worktreeShared: number;
 }
 
 // Line 2 when the program has published no window title. One channel per
@@ -85,6 +90,7 @@ export function SessionRow(p: SessionRowProps) {
   const sub = subtitleFor(s, p.state);
   const code = agentCode(s.agent);
   const wtBranch = s.worktreeBranch ?? s.worktree_branch;
+  const shared = p.worktreeShared;
   // A note can be 4 KiB. A tooltip is a glance and a screen reader
   // announces the label in full, so both take the first line's worth
   // and stop.
@@ -126,6 +132,7 @@ export function SessionRow(p: SessionRowProps) {
       data-state={p.state}
       data-selected={p.selected ? '' : undefined}
       data-minimized={p.minimized ? '' : undefined}
+      data-wt-shared={shared > 1 ? '' : undefined}
       draggable
       style={style}
       onClick={(e) => {
@@ -181,15 +188,28 @@ export function SessionRow(p: SessionRowProps) {
         </span>
       ) : null}
       {wtBranch ? (
-        <IconButton
-          icon="branch"
-          label={`Worktree: ${wtBranch} — manage worktrees`}
-          className="hv-session-row__worktree"
-          onClick={(e) => {
-            e.stopPropagation();
-            p.onWorktrees();
-          }}
-        />
+        <span className="hv-session-row__worktree-slot">
+          <IconButton
+            icon="branch"
+            label={
+              shared > 1
+                ? `Worktree: ${wtBranch} — shared with ${shared - 1} other ${
+                    shared === 2 ? 'session' : 'sessions'
+                  } — manage worktrees`
+                : `Worktree: ${wtBranch} — manage worktrees`
+            }
+            className="hv-session-row__worktree"
+            onClick={(e) => {
+              e.stopPropagation();
+              p.onWorktrees();
+            }}
+          />
+          {shared > 1 ? (
+            <span className="hv-session-row__worktree-count" aria-hidden="true">
+              {shared}
+            </span>
+          ) : null}
+        </span>
       ) : null}
       <span className="hv-session-row__meta">
         {hint ? <Kbd>{hint}</Kbd> : null}

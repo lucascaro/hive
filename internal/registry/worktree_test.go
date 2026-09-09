@@ -580,3 +580,73 @@ func TestDisposeWorktree_RemovesManagedWorktree(t *testing.T) {
 		t.Errorf("pristine managed worktree survived teardown: err=%v", err)
 	}
 }
+
+// TestCreate_AdoptedWorktree_InheritsSiblingColor pins the sidebar's link
+// between sessions that share a worktree (spec 384): the colour IS the link,
+// so a session adopting a sibling's worktree takes that sibling's colour
+// instead of picking a fresh one. A plain create still gets its own colour —
+// without that half, the assertion would pass on an implementation that
+// simply stopped varying colours at all.
+func TestCreate_AdoptedWorktree_InheritsSiblingColor(t *testing.T) {
+	skipNonPosix(t)
+	r, p := freshRegistryWithProject(t)
+
+	src, err := r.Create(context.Background(), wire.CreateSpec{
+		ProjectID: p.ID, Shell: "/bin/bash", Agent: "claude", UseWorktree: true,
+	})
+	if err != nil {
+		t.Fatalf("Create source: %v", err)
+	}
+	defer r.Kill(src.ID, true)
+	wtPath := src.WorktreePath
+	if wtPath == "" {
+		t.Fatalf("expected source to have a worktree")
+	}
+	if src.Color == "" {
+		t.Fatalf("expected source to be auto-assigned a colour")
+	}
+	time.Sleep(80 * time.Millisecond)
+
+	// The ⌘P duplicate payload: explicit cwd inside the sibling's worktree.
+	dup, err := r.Create(context.Background(), wire.CreateSpec{
+		ProjectID: p.ID, Shell: "/bin/bash", Agent: "claude",
+		Cwd: wtPath, UseWorktree: false,
+	})
+	if err != nil {
+		t.Fatalf("Create dup: %v", err)
+	}
+	defer r.Kill(dup.ID, true)
+
+	if dup.Color != src.Color {
+		t.Errorf("adopted session should inherit the sibling's colour %q; got %q", src.Color, dup.Color)
+	}
+
+	// An explicit colour still wins over the inheritance.
+	pick, err := r.Create(context.Background(), wire.CreateSpec{
+		ProjectID: p.ID, Shell: "/bin/bash", Agent: "claude",
+		Cwd: wtPath, UseWorktree: false, Color: "#123456",
+	})
+	if err != nil {
+		t.Fatalf("Create explicit-colour: %v", err)
+	}
+	defer r.Kill(pick.ID, true)
+	if pick.Color != "#123456" {
+		t.Errorf("explicit colour should win over inheritance; got %q", pick.Color)
+	}
+
+	// A session that adopts nothing still gets a colour of its own, and
+	// the inherited colour did not freeze the picker onto one hue.
+	solo, err := r.Create(context.Background(), wire.CreateSpec{
+		ProjectID: p.ID, Shell: "/bin/bash", Agent: "claude",
+	})
+	if err != nil {
+		t.Fatalf("Create solo: %v", err)
+	}
+	defer r.Kill(solo.ID, true)
+	if solo.Color == "" {
+		t.Errorf("a non-adopting create should still be assigned a colour")
+	}
+	if solo.Color == src.Color {
+		t.Errorf("a non-adopting create should steer away from the group colour %q", src.Color)
+	}
+}
