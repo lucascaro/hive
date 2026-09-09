@@ -22,10 +22,22 @@ vi.mock('../../src/app/dom.js', () => ({
   reportFailure: () => () => {},
 }));
 
-const { runReorder } = await import('../../src/app/reorder-runner.js');
+const { runReorder, reorderInFlight } = await import(
+  '../../src/app/reorder-runner.js'
+);
 
 describe('runReorder', () => {
-  beforeEach(() => {
+  beforeEach(async () => {
+    // The in-flight flag is module state, so a test that left a sequence
+    // unsettled would make the NEXT test's runReorder a silent no-op and
+    // pass for the wrong reason. Drain before clearing the log.
+    while (reorderInFlight() && resolveNext) {
+      resolveNext();
+      resolveNext = null;
+      await Promise.resolve();
+      await Promise.resolve();
+    }
+    expect(reorderInFlight()).toBe(false);
     calls.length = 0;
     resolveNext = null;
   });

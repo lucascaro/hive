@@ -5,7 +5,7 @@ title: "Show a visual cue when sessions share a worktree"
 type: enhancement
 complexity: M
 priority: P2
-stage: REVIEW
+stage: GATE
 ---
 
 # Show a visual cue when sessions share a worktree

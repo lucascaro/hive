@@ -323,6 +323,10 @@ run Playwright with `CI=1` so it does not reuse a stale dev server.
   session colour on operator review.
 - **2026-09-08** — Implemented on `feature/384-shared-worktree-cue`. Go, unit,
   dom and e2e layers green; `ui-lint` and `--contrast` clean; typecheck clean.
+- **2026-09-08** — Review iteration 3: APPROVE, no BLOCKING or IMPORTANT
+  findings, zero threads. Its two MINORs (a `title` on the truncated occupant
+  list, a reset hook for the runner's module-level in-flight flag) were fixed
+  after the approving review.
 - **2026-09-08** — Review iteration 2 escalated on a BLOCKING defect in the
   round-1 rewrite (row-shaped slot space) plus 6 IMPORTANT. Fixed: block-shaped
   slots, in-flight guard, grid-project clustering, and the three missing test
@@ -344,6 +348,7 @@ run Playwright with `CI=1` so it does not reuse a stale dev server.
 
 _Append-only. One line per `/hs-review-loop` iteration._
 
+- **2026-09-08 iter 3** — verdict: APPROVE; mergeable: MERGEABLE; findings_hash: empty; threads_open: 0; action: stop; head_sha: be491758.
 - **2026-09-08 iter 2** — verdict: REQUEST_CHANGES; mergeable: MERGEABLE; findings_hash: daa044659e4b5aa9a12f386bec767443031f773454607c84792c992a3f4fc1bc; threads_open: 0; action: escalated:risky-fix-needs-human-decision; head_sha: dabc4108.
 - **2026-09-08 iter 1** — verdict: COMMENT; mergeable: MERGEABLE; findings_hash: 9c0cd8fd72897015973cce62cd79f3a7be61862f458e2c511b346df4d116ead7; threads_open: 0; action: escalated:risky-fix-needs-human-decision; head_sha: 2b87a834.
 
