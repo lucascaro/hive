@@ -317,6 +317,57 @@ script-selftest shape, not Go or vitest.
 
 ### Verification
 
+#### Operator setup (blocks step 5 only)
+
+Seven settings. The five secrets are **environment**-scoped; the two
+identifiers are repo **variables**, because the workflow reads them as
+`vars.*` and a secret there would resolve empty and trip the `:?` guard
+mid-release. Commands are `fish` (the maintainer's shell) — the only
+bash-ism avoided is process substitution, replaced by a pipe.
+
+The `release` environment already exists, created with a required reviewer
+(`lucascaro`) and a deployment policy admitting only `v*` tags:
+
+```fish
+# 1. Identifiers -> repo VARIABLES. Neither is sensitive; the Team ID is
+#    already public in internal/buildinfo/signing.go and in every release
+#    binary. Get the identity string from:
+#      security find-identity -v -p codesigning
+gh variable set HIVE_SIGN_IDENTITY --body "Developer ID Application: … (2ZY25TNMX6)"
+gh variable set HIVE_NOTARY_PROFILE --body "hive-notary"
+gh secret delete HIVE_SIGN_IDENTITY    # if previously created as a secret
+gh secret delete HIVE_NOTARY_PROFILE
+
+# 2. The five real credentials -> the `release` ENVIRONMENT, never repo-wide.
+base64 -i certificate.p12       | gh secret set MACOS_CERT_P12 --env release
+base64 -i AuthKey_XXXXXXXXXX.p8 | gh secret set NOTARY_API_KEY --env release
+gh secret set MACOS_CERT_PASSWORD --env release   # these three prompt
+gh secret set NOTARY_KEY_ID       --env release
+gh secret set NOTARY_ISSUER_ID    --env release
+
+# 3. Delete any repo-level copies. Until these are gone the environment gate
+#    is cosmetic: ci.yml runs on pull_request, and a PR from a branch IN this
+#    repo (what a collaborator pushes) receives repository secrets — so a
+#    repo-level cert is readable by anyone who can edit a workflow in a PR.
+gh secret delete MACOS_CERT_P12
+gh secret delete MACOS_CERT_PASSWORD
+
+# 4. Verify placement.
+gh secret list --env release   # expect 5
+gh secret list                 # expect none of the 5, and no HIVE_* secrets
+gh variable list               # expect HIVE_SIGN_IDENTITY, HIVE_NOTARY_PROFILE
+```
+
+Generate the App Store Connect key with the **`Developer`** role — that is all
+`notarytool` needs, and an `Admin` key would hand its holder far more of the
+account than the signing certificate ever could.
+
+Recommended alongside, not required by this plan: a **tag ruleset on `v*`**
+(Settings → Rules → Rulesets). The environment stops a collaborator *using*
+the certificate; the ruleset stops them starting a release at all.
+
+#### Checks
+
 ```bash
 # 1. Lint — new script and workflow. Exit code, not output.
 shellcheck -S warning scripts/release-artifacts.sh scripts/release.sh \
@@ -384,12 +435,11 @@ calling this done.
 
 ## Open questions / risks
 
-- **Secrets must exist before the workflow can be proven.** Six repo settings:
-  variables `HIVE_SIGN_IDENTITY`, `HIVE_NOTARY_PROFILE`; secrets
-  `MACOS_CERT_P12`, `MACOS_CERT_PASSWORD`, `NOTARY_API_KEY` (base64 `.p8`),
-  `NOTARY_KEY_ID`, `NOTARY_ISSUER_ID`. Producing the `.p12` and the App Store
-  Connect key is manual, maintainer-only work. **This blocks verification step 5,
-  not the PR.**
+- **Credentials must exist before the workflow can be proven.** Seven settings,
+  and *where each lives is a security decision* — see **Operator setup** under
+  Verification for the exact commands. Producing the `.p12` and the App Store
+  Connect key is manual, maintainer-only work. **This blocks verification
+  step 5, not the PR.**
 - **A half-failed run leaves a tag with no release.** Mitigated by the
   create-or-clobber publish and `workflow_dispatch`, not eliminated: a run that
   dies mid-notarization still needs a re-dispatch.
@@ -648,4 +698,13 @@ Append-only. One line per `/hs-review-loop` iteration.
   Also noted for the operator: `HIVE_SIGN_IDENTITY` and `HIVE_NOTARY_PROFILE`
   had been created as *secrets*, but the workflow reads them as `vars.*`, so
   they would have resolved empty and tripped the `:?` guard mid-release.
+- **2026-09-09** — Recorded the operator credential setup as runnable commands
+  in Verification → Operator setup, rather than prose scattered across the
+  risks bullet and the docs. Two things it pins that were previously implicit:
+  `HIVE_SIGN_IDENTITY` / `HIVE_NOTARY_PROFILE` must be **variables** (the
+  workflow reads `vars.*`; as secrets they resolve empty and trip the `:?`
+  guard mid-release), and the repo-level copies of the two `MACOS_CERT_*`
+  secrets must be **deleted**, not merely duplicated into the environment —
+  until they are gone the environment gate is cosmetic, because `ci.yml` runs
+  on `pull_request` and same-repo branch PRs receive repository secrets.
 
