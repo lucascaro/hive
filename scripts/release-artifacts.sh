@@ -95,8 +95,17 @@ if [[ "$(uname -s)" == "Darwin" ]]; then
         echo "  Pass --allow-unsigned only for a deliberate throwaway build." >&2
         exit 1
     fi
+elif [[ "$allow_unsigned" == "1" ]]; then
+    echo "warning: not macOS — the macOS artifact cannot be signed here. NOT releasable." >&2
 else
-    echo "Not macOS — skipping signing (the macOS artifact must be built on macOS)."
+    # Unreachable from the workflow (macos-latest only), but reachable by
+    # hand. Refuse for the same reason the Darwin branch does: whoever runs
+    # this on Linux still ends up publishing an unsigned macOS zip that every
+    # client's updater pin rejects. Silence would make that a surprise.
+    echo "Error: refusing to publish an unsigned macOS artifact from $(uname -s)." >&2
+    echo "  The macOS zip can only be signed on macOS. Run this there, or pass" >&2
+    echo "  --allow-unsigned for a deliberate throwaway build." >&2
+    exit 1
 fi
 
 # ---- CHECKSUMS -----------------------------------------------------------

@@ -551,6 +551,17 @@ risks the "no index.html" failure mode recorded in the prior lessons.
   Replaced with a `while read` loop; the selftest now passes under both
   `/bin/bash` 3.2 and modern bash. 23 → 25 assertions.
 
+- **2026-09-08** — Review iter 4: APPROVE, no BLOCKING or IMPORTANT, CI green.
+  Applied the five MINOR nits in the same PR per AGENTS.md's boil-the-lake
+  rule: tightened the `--target` assertion to the exact fixture sha (a loose
+  40-hex pattern would have accepted a wrong sha), added an extra-asset case so
+  `-ne` cannot silently become `-lt`, covered the credential-dependent
+  `--local-artifacts` pre-flight branch, and made the non-Darwin path refuse to
+  publish an unsigned artifact rather than skip signing silently. The cert
+  password on `security import`'s argv is accepted and documented — `security
+  import` has no stdin alternative and the runner is ephemeral. 25 → 28
+  assertions.
+
 ## PR convergence ledger
 
 Append-only. One line per `/hs-review-loop` iteration.
@@ -558,6 +569,7 @@ Append-only. One line per `/hs-review-loop` iteration.
 - **2026-09-08 iter 1** — verdict: COMMENT; mergeable: MERGEABLE; findings_hash: ed7b26e2; threads_open: 0; action: autofix+push; head_sha: 358dfa85.
 - **2026-09-08 iter 2** — verdict: REQUEST_CHANGES; mergeable: MERGEABLE; findings_hash: 95392a29; threads_open: 0; action: escalated:risky-fix-needs-human-decision; head_sha: b4d62177.
 - **2026-09-08 iter 3** — verdict: REQUEST_CHANGES; mergeable: MERGEABLE; findings_hash: 4d542a35; threads_open: 0; action: escalated:risky-fix-needs-human-decision; head_sha: 39423662.
+- **2026-09-08 iter 4** — verdict: APPROVE; mergeable: MERGEABLE; findings_hash: empty; threads_open: 0; action: stop; head_sha: ff8209da.
 
 ## Progress
 

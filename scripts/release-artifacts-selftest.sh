@@ -178,11 +178,12 @@ if grep -q 'gh release edit v9.9.9 .*--draft=false' "$GH_LOG"; then ok "draft is
 check "create -> upload -> publish, in that order" \
     "$(grep -o 'release \(create\|upload\|edit\)' "$GH_LOG" | tr '\n' ' ' | sed 's/ $//')" \
     "release create release upload release edit"
-if grep -q 'gh release create .*--draft.*[0-9a-f]\{40\}' "$GH_LOG" || \
-   grep -q -- "--target ${FIXTURE_SHA}" "$GH_LOG"; then
-    ok "--target carries a real commit sha"
+# Exact sha, not a loose 40-hex pattern: a wrong-but-hex value would satisfy
+# the pattern and the assertion would prove nothing.
+if grep -q -- "--target ${FIXTURE_SHA}" "$GH_LOG"; then
+    ok "--target carries the fixture's real commit sha"
 else
-    bad "--target carries a real commit sha"
+    bad "--target carries the fixture's real commit sha"
 fi
 if grep -q -- '--target HEAD' "$GH_LOG"; then bad "--target must not be the literal string HEAD"; else ok "--target must not be the literal string HEAD"; fi
 
@@ -243,6 +244,10 @@ check "asset order does not matter -> skip" \
     "$(standdown 'checksums.txt Hive-9.9.9-windows-amd64.zip Hive-9.9.9-macos-universal.zip' false)" "skip"
 check "a wrong-but-count-3 asset set -> run" \
     "$(standdown 'checksums.txt Hive-9.9.9-macos-universal.zip Hive-9.9.8-windows-amd64.zip' false)" "run"
+# The upper bound matters too: with `-lt` instead of `-ne` a release carrying
+# an unexpected extra asset would stand down, and the suite would not notice.
+check "an extra asset -> run" \
+    "$(standdown 'checksums.txt Hive-9.9.9-macos-universal.zip Hive-9.9.9-windows-amd64.zip stray.txt' false)" "run"
 
 # 6c. The relocated Team-ID pin guard. Moving it out of the `uname` Darwin
 #     block was one of this change's riskier edits: it is what stops a build
@@ -255,6 +260,25 @@ if grep -q 'preflight ok: team=AAAAAAAAAA signing=off' <<<"$out"; then
     ok "preflight runs without any signing credentials"
 else
     bad "preflight runs without any signing credentials"; printf '       %s\n' "$out"
+fi
+
+# The credential-dependent branch: --local-artifacts + a mismatched identity
+# must be refused. `uname` is stubbed to Darwin, so this reaches the block
+# that plain --check-preflight deliberately skips.
+out="$(HIVE_SIGN_IDENTITY='Developer ID Application: T (BBBBBBBBBB)' HIVE_NOTARY_PROFILE=p \
+    bash scripts/release.sh --local-artifacts --check-preflight 9.9.9 2>&1 || true)"
+if grep -q 'does not match the pinned team' <<<"$out"; then
+    ok "mismatched signing identity is refused"
+else
+    bad "mismatched signing identity is refused"; printf '       %s\n' "$out"
+fi
+
+out="$(env -u HIVE_SIGN_IDENTITY -u HIVE_NOTARY_PROFILE \
+    bash scripts/release.sh --local-artifacts --check-preflight 9.9.9 2>&1 || true)"
+if grep -q 'HIVE_SIGN_IDENTITY' <<<"$out"; then
+    ok "--local-artifacts demands credentials"
+else
+    bad "--local-artifacts demands credentials"; printf '       %s\n' "$out"
 fi
 
 printf 'var signingTeamID = ""\n' > internal/buildinfo/signing.go

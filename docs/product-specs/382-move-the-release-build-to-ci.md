@@ -5,7 +5,7 @@ title: Move the release build to CI
 type: enhancement
 complexity: M
 priority: P2
-stage: REVIEW
+stage: GATE
 ---
 
 # Move the release build to CI

@@ -137,6 +137,11 @@ jobs:
 
           cert="$RUNNER_TEMP/cert.p12"
           echo "$MACOS_CERT_P12" | base64 --decode > "$cert"
+          # -P puts the password on argv, visible to `ps` for the life of the
+          # call. `security import` offers no stdin alternative, and the
+          # runner is ephemeral and single-tenant, so this is accepted rather
+          # than worked around — noted so a future reader does not mistake it
+          # for an oversight.
           security import "$cert" -k "$KEYCHAIN" -P "$MACOS_CERT_PASSWORD" \
               -T /usr/bin/codesign -T /usr/bin/security
           rm -f "$cert"
