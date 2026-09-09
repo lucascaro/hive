@@ -535,12 +535,29 @@ URL. Left as-is: the workflow's `npm ci && npm run build` step, which the
 reviewer noted overlaps `build.sh` — it matches `ci.yml:102-108` and dropping it
 risks the "no index.html" failure mode recorded in the prior lessons.
 
+- **2026-09-08** — Review iter 3, two findings. The troubleshooting rows in
+  `docs/releasing-signed-macos.md` had gone stale in the *other* direction:
+  they described an unwind recipe `sign-macos.sh` no longer prints, and one row
+  still claimed the push precedes the build under `--local-artifacts`, which
+  the draft-publish change reversed. And the `LC_ALL=C` collation pin could not
+  be exercised — CI's locale is already C, so no assertion could distinguish
+  the pinned code from the broken code.
+  Rather than test around the collation, removed it: the stand-down now asks
+  "is each expected asset present, and are there exactly three?" instead of
+  comparing two sorted joined strings. There is no ordering left to get wrong,
+  so nothing locale-dependent remains to test. Rewriting it immediately caught
+  a second portability bug — `mapfile` is bash 4+, and macOS (including the
+  release runner) ships bash 3.2, so the script silently produced no output.
+  Replaced with a `while read` loop; the selftest now passes under both
+  `/bin/bash` 3.2 and modern bash. 23 → 25 assertions.
+
 ## PR convergence ledger
 
 Append-only. One line per `/hs-review-loop` iteration.
 
 - **2026-09-08 iter 1** — verdict: COMMENT; mergeable: MERGEABLE; findings_hash: ed7b26e2; threads_open: 0; action: autofix+push; head_sha: 358dfa85.
 - **2026-09-08 iter 2** — verdict: REQUEST_CHANGES; mergeable: MERGEABLE; findings_hash: 95392a29; threads_open: 0; action: escalated:risky-fix-needs-human-decision; head_sha: b4d62177.
+- **2026-09-08 iter 3** — verdict: REQUEST_CHANGES; mergeable: MERGEABLE; findings_hash: 4d542a35; threads_open: 0; action: escalated:risky-fix-needs-human-decision; head_sha: 39423662.
 
 ## Progress
 

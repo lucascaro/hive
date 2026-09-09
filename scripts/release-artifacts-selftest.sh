@@ -219,7 +219,7 @@ standdown() {
 if [[ "\$3" == "--repo" ]]; then :; fi
 case "\$*" in
   *"--json isDraft"*) echo '$2'; exit 0 ;;
-  *"--json assets"*)  [[ -n '$1' ]] || exit 1; printf '%s\n' '$1' | tr ' ' '\n' | LC_ALL=C sort | tr '\n' ' ' | sed 's/ \$//'; echo; exit 0 ;;
+  *"--json assets"*)  [[ -n '$1' ]] || exit 1; printf '%s\n' '$1' | tr ' ' '\n'; exit 0 ;;
 esac
 exit 0
 GHS
@@ -234,6 +234,15 @@ check "missing checksums -> run" \
 check "complete but draft -> run" \
     "$(standdown 'Hive-9.9.9-macos-universal.zip Hive-9.9.9-windows-amd64.zip checksums.txt' true)" "run"
 check "no release at all -> run" "$(standdown '' false)" "run"
+# Order must not matter. The previous revision compared sorted joined strings
+# and could never match, because jq sorts bytewise and shell `sort` collates by
+# locale — so the stand-down silently never fired and every local release got
+# rebuilt by CI. Feeding the names in a different order proves the comparison
+# is by membership now, with no collation left to get wrong.
+check "asset order does not matter -> skip" \
+    "$(standdown 'checksums.txt Hive-9.9.9-windows-amd64.zip Hive-9.9.9-macos-universal.zip' false)" "skip"
+check "a wrong-but-count-3 asset set -> run" \
+    "$(standdown 'checksums.txt Hive-9.9.9-macos-universal.zip Hive-9.9.8-windows-amd64.zip' false)" "run"
 
 # 6c. The relocated Team-ID pin guard. Moving it out of the `uname` Darwin
 #     block was one of this change's riskier edits: it is what stops a build
