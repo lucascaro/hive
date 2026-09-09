@@ -561,6 +561,14 @@ risks the "no index.html" failure mode recorded in the prior lessons.
   import` has no stdin alternative and the runner is ephemeral. 25 → 28
   assertions.
 
+## Gate verdict
+
+- **2026-09-08** — verdict: NEEDS_FOLLOWUP; phase: —; checks: 15 passed / 0 failed / 1 followup; followups: pending; one-line: every criterion verifiable without Apple credentials passes; the signed/notarized/stapled criterion needs the seven repo secrets and a real notarization round trip, which do not exist yet.
+  - 2026-09-08 dimensions:
+    - acceptance — NEEDS_FOLLOWUP — 7 of 8 success criteria PASS with live evidence (selftest 28/28, shellcheck + actionlint clean, `--check-preflight` prints `preflight ok: team=2ZY25TNMX6 signing=off` with credentials unset, `on:` carries only `push: tags` and `workflow_dispatch`, one copy of the build/sign/publish half). Criterion 3 — the published zip is signed, notarized, stapled and accepted by `spctl` — is not runnable in this repo: it needs `MACOS_CERT_P12`, `MACOS_CERT_PASSWORD`, `NOTARY_API_KEY`, `NOTARY_KEY_ID`, `NOTARY_ISSUER_ID` and the two `HIVE_*` variables, plus a macOS runner and an Apple round trip.
+    - non-goals — PASS — no version/changelog/commit/tag work moved into CI; no per-platform matrix (`build.sh --platform all`, one `macos-latest` job); no Linux artifacts; no auto-release on merge. The one deviation is disclosed and judged load-bearing: `scripts/sign-macos.sh` changed, but `git diff main...HEAD -- scripts/sign-macos.sh` is header comment and the UNWIND message only, no logic, and the old advice became actively harmful under the new ordering.
+    - doc accuracy — PASS — `docs/releasing-signed-macos.md` matches the scripts as written (7 secrets, the commit-not-tag ordering, the rewritten recovery text, the all-three-assets stand-down); AGENTS.md, DESIGN.md:117 and the two README lines corrected; no stale `release.sh` reference describes work that moved. `no-changeset` judged legitimate — release infrastructure only, and README's corrected signing claim documents behaviour that shipped in d281c819, not this PR.
+
 ## PR convergence ledger
 
 Append-only. One line per `/hs-review-loop` iteration.
@@ -608,3 +616,12 @@ Append-only. One line per `/hs-review-loop` iteration.
 - **2026-09-08** — Second-opinion round 1: `revise` (confidence 8), 6 must-fix,
   6 applied. Round 2: `revise` (confidence 8), 5 must-fix, 5 applied — three of
   them contradictions introduced by the round-1 edits. See `## Second opinion`.
+- **2026-09-08** — Gate NEEDS_FOLLOWUP; the signed/notarized/stapled criterion cannot be exercised until the seven repo secrets exist and a rehearsal tag is dispatched.
+- **2026-09-08** — Operator chose to HOLD at GATE rather than advance to DONE.
+  No follow-up issue filed: the open item is not tracked debt, it is the
+  rehearsal that closes the gate, and it runs on this branch before the merge.
+  `workflow_dispatch` accepts `--ref`, so the seven secrets can be created and
+  `v2.7.1-rc1` dispatched against the PR branch — meaning a keychain fault is a
+  fix in this PR rather than a broken live release. Stage stays GATE; nothing
+  merged.
+
