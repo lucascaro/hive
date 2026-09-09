@@ -304,7 +304,8 @@ that warns first.
 | Symptom | Cause |
 |---|---|
 | `0 valid identities found` | Certificate not installed, or installed on a Mac without the CSR's private key. |
-| `Team ID mismatch` from `release.sh` | `HIVE_SIGN_IDENTITY` and `signingTeamID` disagree. Fix whichever is wrong — publishing with a mismatch produces a release no client can install. |
+| `Team ID mismatch` from `sign-macos.sh` | `HIVE_SIGN_IDENTITY` and `signingTeamID` disagree. Fix whichever is wrong — publishing with a mismatch produces a release no client can install. |
+| `signing identity team (…) does not match the pinned team (…)` from `release.sh` | The same disagreement, caught earlier by the `--local-artifacts` pre-flight, before anything is built. Same fix. |
 | `notarytool` returns `Invalid` | Run `xcrun notarytool log <submission-id> --keychain-profile hive-notary` for the per-file reason. Usually an unsigned nested binary or a missing hardened runtime. |
 | `The staple and validate action failed` | The bundle was re-signed after stapling. Signing invalidates a ticket — staple last, and never re-sign afterwards. |
 | Notarization fails **in CI** | The tag is already pushed. Never reset or delete it — fix the cause and re-publish with `gh workflow run release.yml -f tag=<tag>`. Publishing is idempotent, so repeating it is safe. |
