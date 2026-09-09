@@ -230,7 +230,7 @@ applies to `docs/product-specs/index.md`.
   renaming a private variable). Use judgment.
 - To catch a missing changeset before pushing, install the local gate once per
   clone (shared by every worktree):
-  `cp scripts/hooks/pre-push "$(git rev-parse --git-common-dir)/hooks/pre-push"`.
+  `./scripts/dev-setup.sh`.
 
 Versioning still happens at release time; nothing here creates a versioned
 section by hand.
