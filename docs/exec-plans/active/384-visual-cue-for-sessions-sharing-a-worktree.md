@@ -372,6 +372,17 @@ run Playwright with `CI=1` so it does not reuse a stale dev server.
   the same fill, and that a hit test at the row's right edge still lands inside
   the row. jsdom cannot see any of that.
 
+## Gate verdict
+
+- **2026-09-08** — verdict: FAIL; phase: —; checks: 2 dimensions passed / 1 failed / 0 followups; followups: none; one-line: acceptance and non-goals clean; doc accuracy failed on durable records that still described the pre-review design.
+  - 2026-09-08 dimensions:
+    - acceptance — PASS — all 7 success criteria observable and each backed by a test that fails on regression (unit, dom, Playwright real-browser, Go).
+    - non-goals — PASS — no wire change, `moveInOrder`/`reindexLocked` untouched, no new theme tokens, tile and chip rendering unchanged, plain-cwd sharing not marked.
+    - doc accuracy — FAIL — plan `## Approach` still described the abandoned `--worktree-accent-*` tokens and claimed `reorderTarget` was left alone; spec success criteria omitted within-group reordering and the painted-order rule; `site/features.json` had no entry despite `bump: minor`.
+- **2026-09-08** — verdict: FAIL; phase: —; checks: 0 passed / 1 failed (doc accuracy re-run only); followups: none; one-line: the three round-1 items were fixed, but a fresh sweep found two more stale records.
+  - 2026-09-08 dimensions:
+    - doc accuracy — FAIL — `internal/registry/registry.go`'s `reindexLocked` comment still named the deleted `lib/reorder.ts`; the plan's decision log carried the abandoned token design as an unmarked entry. Both fixed on the branch afterwards; the gate's one-retry budget is now spent, so the next run is the operator's call.
+
 ## PR convergence ledger
 
 _Append-only. One line per `/hs-review-loop` iteration._
