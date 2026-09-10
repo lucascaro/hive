@@ -386,7 +386,24 @@ func (a *App) Confirm(title, message string) bool {
 	if err != nil {
 		return false
 	}
-	return res == "OK"
+	return confirmAccepted(res)
+}
+
+// confirmAccepted reports whether a MessageDialog result is the
+// affirmative answer. The label we get back is the backend's choice,
+// not ours: macOS honours the Buttons slice above and returns "OK", but
+// Wails' Windows backend ignores Buttons entirely — a QuestionDialog
+// becomes MB_YESNO, so the user sees native Yes/No and the Win32 code
+// is mapped through a fixed table whose affirmatives are "Yes" (IDYES)
+// and "Ok" (IDOK, lowercase k — "OK" never appears). Matching only
+// "OK" made Confirm return false forever on Windows, silently
+// no-opping every confirm-gated action. See TestConfirmAccepted.
+func confirmAccepted(res string) bool {
+	switch res {
+	case "OK", "Ok", "Yes":
+		return true
+	}
+	return false
 }
 
 // OpenNewWindow spawns a second Hive GUI process. Wails v2 does not
