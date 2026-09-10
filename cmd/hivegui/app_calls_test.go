@@ -404,3 +404,46 @@ func checkStrPtr(t *testing.T, name string, got, want *string) {
 		t.Errorf("%s = %q, want %q", name, *got, *want)
 	}
 }
+
+// TestConfirmAccepted pins the affirmative answers Confirm has to
+// recognise. The set is not ours to choose: each platform's Wails
+// backend decides both the buttons and the string it hands back, and
+// Windows ignores our Buttons slice entirely.
+//
+// On Windows (internal/frontend/desktop/windows/dialog.go)
+// calculateMessageDialogFlags never reads options.Buttons — a
+// QuestionDialog becomes MB_YESNO, so the user sees native Yes/No and
+// the Win32 code is mapped through a fixed table:
+//
+//	[]string{"", "Ok", "Cancel", "Abort", "Retry", "Ignore", "Yes", "No", ...}
+//
+// MB_YESNO can only return IDYES(6) or IDNO(7), so the answer is "Yes"
+// or "No" and never the "OK" we asked for. Note index 1 is "Ok", not
+// "OK" — no Windows dialog type can produce "OK" at all.
+//
+// Getting this wrong is silent: Confirm returns false forever, every
+// confirm-gated action (delete project, kill a live session, restart,
+// apply an update) no-ops with no error and nothing reaches the daemon.
+func TestConfirmAccepted(t *testing.T) {
+	for _, tc := range []struct {
+		res  string
+		want bool
+		why  string
+	}{
+		{"OK", true, "macOS honours our Buttons slice"},
+		{"Yes", true, "Windows MB_YESNO IDYES"},
+		{"Ok", true, "Windows responses table index 1"},
+		{"No", false, "Windows MB_YESNO IDNO"},
+		{"Cancel", false, "macOS cancel button"},
+		{"", false, "dialog dismissed without a choice"},
+		{"Error", false, "Windows out-of-range button code"},
+		{"ok", false, "not a string any backend returns"},
+	} {
+		t.Run(tc.res, func(t *testing.T) {
+			if got := confirmAccepted(tc.res); got != tc.want {
+				t.Errorf("confirmAccepted(%q) = %v, want %v (%s)",
+					tc.res, got, tc.want, tc.why)
+			}
+		})
+	}
+}
