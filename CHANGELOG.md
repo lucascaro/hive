@@ -20,6 +20,13 @@ navigation, ⌘1-9, the tray and the command palette now all follow the order th
 rows are actually painted in.
 
 ### Fixed
+`Ctrl+Shift+V` pastes once instead of twice. The terminal read the clipboard and
+wrote it to the session itself, but never cancelled the keypress, so the webview
+also ran its own paste on top — the same text arrived twice on every use. The
+paste now also goes through xterm's paste path, so multi-line clipboard content
+keeps its newline normalisation and bracketed-paste framing instead of being
+written raw, which had agents submitting once per pasted line.
+
 Confirmation dialogs now work on Windows. Deleting a project, killing a live
 session, restarting Hive and applying an update all go through a native
 confirmation, and every one of them silently did nothing on Windows: the dialog
