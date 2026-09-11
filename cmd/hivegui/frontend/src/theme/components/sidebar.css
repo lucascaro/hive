@@ -34,10 +34,18 @@
   white-space: nowrap;
 }
 
+/* The pinned project label's height: the group header's sticky offset is
+   read off it, so the two can never disagree. */
+#projects { --sidebar-project-header-h: 26px; }
+
 #sessions, #projects {
   list-style: none;
   margin: 0;
-  padding: 4px 0;
+  /* The right gutter clears #sidebar-resizer (layout.css: 5px wide,
+     z-index 20, pinned to the sidebar's right edge). Without it the row's
+     colour bar — which is also the colour picker — sits underneath the
+     resizer and cannot be clicked at all. */
+  padding: 4px var(--space-2) 4px 0;
   flex: 1;
   overflow-y: auto;
   overflow-x: hidden;
@@ -76,8 +84,10 @@
    box that never scrolls — doing nothing at all, invisibly. The header
    rounds its own corners instead. */
 .hv-worktree-group__header {
+  /* Nested under the project label, not over it: scrolled to any point
+     inside a group you can see both the project and the branch. */
   position: sticky;
-  top: var(--sidebar-sticky-top, 0px);
+  top: var(--sidebar-project-header-h);
   z-index: 2;
   display: grid;
   grid-template-columns: 14px minmax(0, 1fr) auto;

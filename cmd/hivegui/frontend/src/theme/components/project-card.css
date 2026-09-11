@@ -1,29 +1,41 @@
 /* Project card — docs/design-docs/ui/components.md › projectCard.
    --project-color is data (a user-picked colour), not a token. */
+/* The project is a LABEL, not a card. The worktree group panel
+   (sidebar.css) is the only box in the tree, so boxing means exactly one
+   thing: these sessions share a working directory. */
 .hv-project-card {
   position: relative;
   list-style: none;
-  margin: var(--space-1) var(--space-2) var(--space-2);
-  background: var(--surface-raised);
-  border: 1px solid var(--border);
-  border-radius: var(--radius-md);
+  margin: var(--space-2) 0 var(--space-1);
 }
-.hv-project-card[data-active] { border-color: color-mix(in srgb, var(--accent) 45%, var(--border)); }
 
 .hv-project-card__header {
+  /* Pinned: a project's rows are never on screen without the project
+     they belong to. The group header pins directly beneath it —
+     sidebar.css owns that offset. */
+  position: sticky;
+  top: 0;
+  z-index: 3;
   display: flex;
   align-items: center;
   gap: var(--space-2);
-  height: 30px;
-  padding: 0 var(--space-2);
-  color: var(--fg);
-  font-size: var(--text-md);
-  font-weight: 500;
+  height: var(--sidebar-project-header-h);
+  padding: 0 var(--space-3);
+  background: var(--surface);
+  border-bottom: 1px solid var(--border);
+  color: var(--fg-muted);
+  font-size: var(--text-xs);
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
   cursor: pointer;
   user-select: none;
   min-width: 0;
 }
 .hv-project-card__header:hover { background: var(--hover); }
+/* The active project was marked by the card's border, which is gone with
+   the card. The label itself takes the accent instead. */
+.hv-project-card[data-active] .hv-project-card__header { color: var(--accent); }
 
 .hv-project-card__chevron {
   display: flex;
