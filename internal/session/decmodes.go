@@ -114,17 +114,8 @@ type decModeTracker struct {
 }
 
 // feed scans p for private mode changes, recording the latest state of
-// every mode in stickyDECModes. A soft reset (DECSTR, \x1b[!p) or a full
-// reset (RIS, \x1bc) from the program clears the tracked state.
-//
-// That is deliberately more than the receiving terminal does: xterm.js's
-// softReset() resets coreService.decPrivateModes (1, 1004, 2004) but
-// leaves the mouse protocol and encoding alone, and only a full reset
-// clears those too. We drop everything on either, because a program that
-// resets its terminal has abandoned the modes it set, and re-asserting
-// them on the next attach would push modes onto a program that never
-// asked — the failure mode that is actually visible to the user (a plain
-// shell receiving \x1b[200~-wrapped pastes and mouse escapes).
+// every mode in stickyDECModes. A reset from the program clears tracked
+// state, but the two resets clear different amounts — see softReset.
 func (t *decModeTracker) feed(p []byte) {
 	for _, b := range p {
 		switch t.state {
@@ -179,8 +170,9 @@ func (t *decModeTracker) feed(p []byte) {
 		case decBang:
 			switch b {
 			case 'p':
-				// DECSTR — soft reset clears every private mode.
-				t.enabled = t.enabled[:0]
+				// DECSTR — soft reset clears only the ungrouped modes;
+				// see softReset for why the mouse slots survive.
+				t.softReset()
 				t.state = decGround
 			case 0x1b:
 				t.state = decEsc
@@ -189,6 +181,30 @@ func (t *decModeTracker) feed(p []byte) {
 			}
 		}
 	}
+}
+
+// softReset drops the modes a program-issued DECSTR (\x1b[!p) actually
+// clears in the receiving terminal, and only those.
+//
+// The tracker exists to mirror the real client, so it has to split the
+// two resets the way xterm.js 5.5.0 does. softReset() (InputHandler.ts)
+// calls _coreService.reset(), which restores DEFAULT_DEC_PRIVATE_MODES —
+// applicationCursorKeys (1), sendFocus (1004), bracketedPasteMode (2004),
+// i.e. exactly our decGroupNone members. It never touches
+// CoreMouseService, so activeProtocol (9/1000/1002/1003) and
+// activeEncoding (1005/1006/1015) survive a DECSTR. Only RIS clears
+// those: ESC c -> fullReset() -> CoreTerminal.reset(), which calls
+// coreMouseService.reset() as well.
+//
+// Clearing the mouse slots here too would leave the tracker believing
+// mouse reporting is off while the program still has it on, and no
+// replay path would re-assert it — a reattach would silently kill mouse
+// reporting for the life of that tile, which is the same class of bug
+// this file was written to fix.
+func (t *decModeTracker) softReset() {
+	t.enabled = slices.DeleteFunc(t.enabled, func(m int) bool {
+		return decModeGroup[m] == decGroupNone
+	})
 }
 
 // set records each sticky mode named in a ";"-separated parameter list.

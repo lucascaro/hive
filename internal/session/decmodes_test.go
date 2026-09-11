@@ -91,6 +91,45 @@ func TestReplayBytesAppendsModesAfterRing(t *testing.T) {
 	}
 }
 
+// appendRing only normalises the FRONT of the ring to a safe replay
+// boundary. The tail is wherever the last PTY read stopped, so the ring
+// routinely ends mid-sequence — and a mode restore concatenated straight
+// onto that is consumed as the unterminated sequence's payload, which is
+// the restore silently doing nothing. CAN (0x18) aborts whatever the cut
+// left open, in every parser state, and is inert in plain text.
+func TestReplayAbortsAnUnterminatedRingTail(t *testing.T) {
+	for _, tc := range []struct{ name, tail string }{
+		{"mid-CSI", "\x1b[3"},
+		{"mid-CSI-private", "\x1b[?10"},
+		{"mid-OSC", "\x1b]0;a par"},
+		{"mid-DCS", "\x1bP1;2|payloa"},
+		{"clean text", "all done"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			v := NewVT(80, 24)
+			v.Write([]byte("\x1b[?2004h"))
+			v.Write([]byte(tc.tail))
+
+			want := "\x18\x1b[?2004h"
+			if got := v.ReplayBytes(); !bytes.HasSuffix(got, []byte(want)) {
+				t.Fatalf("replay must end with CAN + the mode restore so a cut\n"+
+					"sequence cannot swallow it; got tail %q", tail(got, 24))
+			}
+		})
+	}
+}
+
+// No modes set means nothing to protect, so no CAN either — a bare
+// re-replay of the ring must stay byte-identical to the ring.
+func TestReplayWithNoModesIsJustTheRing(t *testing.T) {
+	v := NewVT(80, 24)
+	v.Write([]byte("plain output\r\n"))
+
+	if got, want := v.ReplayBytes(), v.RingBytes(); !bytes.Equal(got, want) {
+		t.Fatalf("got %q, want %q", got, want)
+	}
+}
+
 // The ring is capped, so on a long session the original mode sequences
 // scroll out of it entirely. That is precisely when a re-replay used to
 // produce a tile with bracketed paste off, and it is why ReplayBytes
@@ -162,20 +201,40 @@ func TestRestoreDropsTheWholeGroupOnReset(t *testing.T) {
 // resets the terminal, the modes are gone in the receiving terminal too,
 // and re-asserting them would push bracketed paste onto a plain shell
 // that never enabled it — pastes then arrive wrapped in literal \x1b[200~.
-func TestTrackerClearsOnProgramReset(t *testing.T) {
-	for name, reset := range map[string]string{
-		"DECSTR": "\x1b[!p",
-		"RIS":    "\x1bc",
-	} {
-		t.Run(name, func(t *testing.T) {
-			v := NewVT(80, 24)
-			v.Write([]byte("\x1b[?2004h\x1b[?1002h"))
-			v.Write([]byte(reset))
+//
+// The two resets are NOT the same amount, and the tracker has to mirror
+// the real client rather than pick the tidier rule. In xterm.js 5.5.0
+// softReset() resets coreService.decPrivateModes only (1, 1004, 2004)
+// and leaves CoreMouseService alone; fullReset() goes through
+// CoreTerminal.reset(), which resets the mouse service too.
+func TestTrackerClearsUngroupedModesOnDECSTR(t *testing.T) {
+	v := NewVT(80, 24)
+	v.Write([]byte("\x1b[?1h\x1b[?1004h\x1b[?2004h\x1b[?1002h\x1b[?1006h"))
+	v.Write([]byte("\x1b[!p"))
 
-			if got := v.decModes.restoreBytes(); len(got) != 0 {
-				t.Fatalf("modes survived a %s from the program: %q", name, got)
-			}
-		})
+	got := v.decModes.restoreBytes()
+	for _, gone := range []string{"\x1b[?1h", "\x1b[?1004h", "\x1b[?2004h"} {
+		if bytes.Contains(got, []byte(gone)) {
+			t.Errorf("DECSTR should have cleared %q; restore is %q", gone, got)
+		}
+	}
+	// The mouse slots survive a DECSTR in the real client. Forgetting
+	// them here would leave a reattach unable to re-assert mouse
+	// reporting the program still has on.
+	for _, kept := range []string{"\x1b[?1002h", "\x1b[?1006h"} {
+		if !bytes.Contains(got, []byte(kept)) {
+			t.Errorf("DECSTR must not clear %q; restore is %q", kept, got)
+		}
+	}
+}
+
+func TestTrackerClearsEverythingOnRIS(t *testing.T) {
+	v := NewVT(80, 24)
+	v.Write([]byte("\x1b[?1h\x1b[?1004h\x1b[?2004h\x1b[?1002h\x1b[?1006h"))
+	v.Write([]byte("\x1bc"))
+
+	if got := v.decModes.restoreBytes(); len(got) != 0 {
+		t.Fatalf("modes survived a RIS from the program: %q", got)
 	}
 }
 

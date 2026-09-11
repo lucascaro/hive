@@ -498,6 +498,19 @@ func (v *VT) RingBytes() []byte {
 // long-lived session the original set sequences have usually been
 // trimmed off the front. Appending the live state rather than trusting
 // the ring makes the outcome independent of how much history survived.
+//
+// CAN (0x18) separates the two. appendRing only normalises the FRONT of
+// the ring to a safe replay boundary; the tail is wherever the last PTY
+// read happened to stop, which can be mid-CSI, mid-OSC or mid-DCS. Our
+// mode bytes would then be swallowed as that sequence's payload and the
+// restore would silently do nothing — the exact failure this whole file
+// exists to prevent. CAN aborts any in-progress sequence: xterm.js
+// registers it as an "anywhere" rule for every parser state (and it is
+// excluded from EXECUTABLES, so the OSC/SOS overrides do not shadow it),
+// landing the parser in GROUND with no handler bound to it, i.e. inert.
+// ST ("\x1b\\") is weaker — it terminates only string sequences, and in
+// xterm.js an ESC inside OSC dispatches OSC_END into GROUND, so the
+// trailing backslash would print as literal text.
 func (v *VT) ReplayBytes() []byte {
 	v.mu.Lock()
 	defer v.mu.Unlock()
@@ -505,9 +518,12 @@ func (v *VT) ReplayBytes() []byte {
 	if len(v.ring) == 0 && len(modes) == 0 {
 		return nil
 	}
-	out := make([]byte, 0, len(v.ring)+len(modes))
+	out := make([]byte, 0, len(v.ring)+len(modes)+1)
 	out = append(out, v.ring...)
-	out = append(out, modes...)
+	if len(modes) > 0 {
+		out = append(out, 0x18) // CAN — abort any sequence the ring cut in half
+		out = append(out, modes...)
+	}
 	return out
 }
 
