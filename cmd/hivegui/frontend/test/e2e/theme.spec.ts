@@ -852,3 +852,73 @@ test.describe('Settings > Appearance', () => {
       .toBe('#123456');
   });
 });
+
+// Attention pulses the row's ground; selection owns the static one
+// (patterns.md › Selection vs attention). With motion disabled the pulse
+// becomes a static tint and BOTH grounds are on screen at once, so the
+// tint's alpha has to stay below --sel — otherwise a selected row that
+// wants attention stops reading as selected. Asserted rather than
+// commented, because the failure is a judgement call no unit test sees.
+test('the attention tint stays quieter than the selection ground', async ({
+  page,
+}) => {
+  await page.emulateMedia({ reducedMotion: 'reduce' });
+  await boot(page);
+  const shift = await page.evaluate(() => {
+    const probe = document.createElement('span');
+    document.body.appendChild(probe);
+    // color-mix() computes to `color(srgb r g b)` (0..1) while a plain hex
+    // computes to `rgb(r, g, b)` (0..255); read both.
+    const rgb = (value: string) => {
+      probe.style.backgroundColor = '';
+      probe.style.backgroundColor = value;
+      const painted = getComputedStyle(probe).backgroundColor;
+      const nums = painted.match(/-?[\d.]+/g);
+      if (!nums || nums.length < 3) {
+        throw new Error(`unresolved colour: ${value} -> ${painted}`);
+      }
+      const [r, g, b] = nums.slice(0, 3).map(Number.parseFloat);
+      return painted.startsWith('color(')
+        ? [r * 255, g * 255, b * 255]
+        : [r, g, b];
+    };
+    // Both tints composited over the sidebar's own ground, so the
+    // comparison is what the eye actually sees.
+    const lum = (c: number[]) => 0.2126 * c[0] + 0.7152 * c[1] + 0.0722 * c[2];
+    const ground = lum(rgb('var(--surface)'));
+    const attention = lum(
+      rgb('color-mix(in srgb, var(--state-attention) 9%, var(--surface))'),
+    );
+    const sel = lum(rgb('var(--sel)'));
+    probe.remove();
+    return {
+      attention: Math.abs(attention - ground),
+      sel: Math.abs(sel - ground),
+    };
+  });
+  expect(shift.attention).toBeLessThan(shift.sel);
+});
+
+// The pulse itself: a row wanting attention carries an animated overlay,
+// and that overlay is an ::after on the row — not the row's own
+// background, which selection owns.
+test('an attention row pulses an overlay, not its own background', async ({
+  page,
+}) => {
+  await boot(page);
+  await page.evaluate(() => {
+    const s = window.__hive.state?.sessions[0];
+    if (!s) throw new Error('no mock session');
+    s.needs_attention = true;
+    window.__hive.emit(
+      'session:event',
+      JSON.stringify({ kind: 'attention', session: s }),
+    );
+  });
+  const row = page.locator('#projects .hv-session-row').first();
+  await expect(row).toHaveAttribute('data-state', 'attention');
+  const name = await row.evaluate(
+    (el) => getComputedStyle(el, '::after').animationName,
+  );
+  expect(name).toBe('hv-attn-tint');
+});

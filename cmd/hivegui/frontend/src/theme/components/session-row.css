@@ -46,6 +46,38 @@
 
 .hv-session-row:hover { background: var(--hover); color: var(--fg); }
 
+/* Attention: a pulsing ground, so a session that wants you is visible
+   from the corner of the eye without reading any row. Selection owns the
+   row's STATIC background and the left edge; attention uses neither —
+   pulsing is a channel of its own (patterns.md › Selection vs
+   attention). Declared before selection so a selected row still reads as
+   selected while it pulses. */
+@keyframes hv-attn-tint {
+  0%, 100% { background-color: transparent; }
+  50% { background-color: color-mix(in srgb, var(--state-attention) 12%, transparent); }
+}
+/* An overlay, not the row's own background: an animation's value beats a
+   normal declaration, so pulsing `background-color` on the row itself
+   would win over [data-selected]'s --sel and a selected row would stop
+   reading as selected for as long as it wanted attention. The overlay
+   composites ON TOP of whichever ground the row has. */
+.hv-session-row[data-state='attention']::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  animation: hv-attn-tint var(--motion-pulse) ease-in-out infinite;
+}
+/* With motion off the tint has to be static, and then BOTH grounds are on
+   screen at once — so this alpha stays below --sel, or a selected row
+   stops reading as selected. test/e2e/theme.spec.ts asserts the ordering. */
+@media (prefers-reduced-motion: reduce) {
+  .hv-session-row[data-state='attention']::after {
+    animation: none;
+    background-color: color-mix(in srgb, var(--state-attention) 9%, transparent);
+  }
+}
+
 /* Selection: --sel ground + a 2px accent bar at the left edge. Attention
    never uses either channel (patterns.md › Selection vs attention). */
 .hv-session-row[data-selected] {
@@ -237,6 +269,8 @@
    those buttons. */
 .hv-session-row__colour {
   position: absolute;
+  /* Above the attention overlay, which spans the whole row. */
+  z-index: 1;
   right: 0;
   top: 1px;
   bottom: 1px;
