@@ -362,16 +362,6 @@ jobs:
           CI: 'true'
           TERM: dumb
 
-      - name: PROBE (throwaway) force artifact upload path
-        if: matrix.label == 'Linux'
-        working-directory: cmd/hivegui/frontend
-        run: |
-          mkdir -p test-results/probe-trace
-          head -c 200000 /dev/urandom > test-results/probe-trace/trace.bin
-          echo "probe" > test-results/probe-note.txt
-          ls -laR test-results
-          exit 1
-
       - name: Upload Playwright failure artifacts
         # Traces + scrolltrace attachments are the only way to debug a
         # CI-only e2e failure (retain-on-failure traces land in
