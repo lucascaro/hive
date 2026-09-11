@@ -45,10 +45,8 @@ func TestSnapshotRestoresMouseAndCursorModes(t *testing.T) {
 	}
 }
 
-func TestSnapshotOmitsDisabledModes(t *testing.T) {
+func TestSnapshotResetsDisabledModes(t *testing.T) {
 	v := NewVT(80, 24)
-	// Enabled then disabled: DECSTR already leaves the client with the
-	// mode off, so re-asserting anything would be wrong.
 	v.Write([]byte("\x1b[?2004h\x1b[?1002h"))
 	v.Write([]byte("\x1b[?2004l"))
 
@@ -56,8 +54,50 @@ func TestSnapshotOmitsDisabledModes(t *testing.T) {
 	if bytes.Contains(snap, []byte("\x1b[?2004h")) {
 		t.Error("snapshot re-enables a mode the program turned off")
 	}
+	if !bytes.Contains(snap, []byte("\x1b[?2004l")) {
+		t.Error("snapshot must state the off mode explicitly, not stay silent")
+	}
 	if !bytes.Contains(snap, []byte("\x1b[?1002h")) {
 		t.Error("snapshot dropped a mode that is still on")
+	}
+}
+
+// The defect the ever-seen gate closes, and the one an "omits disabled
+// modes" assertion written only against 2004 could never catch.
+//
+// The ordinary reattach path does NOT term.reset() the tile — it reuses
+// the live xterm and leans on the snapshot's DECSTR preamble. But
+// xterm's softReset() restores coreService.decPrivateModes only; it
+// never calls into CoreMouseService. So for 2004 silence happens to be
+// correct, and for 1002/1006 it is a bug: a TUI that enables mouse
+// tracking, then exits and sends the reset while the sink is
+// unregistered, leaves the reattached tile still reporting clicks —
+// \x1b[<0;12;5M typed into a plain shell.
+func TestSnapshotResetsDisabledGroupedModes(t *testing.T) {
+	v := NewVT(80, 24)
+	// A TUI's opening, then its exit sequence.
+	v.Write([]byte("\x1b[?1002h\x1b[?1006h"))
+	v.Write([]byte("\x1b[?1006l\x1b[?1002l"))
+
+	snap := v.RenderSnapshot()
+	for _, want := range []string{"\x1b[?1002l", "\x1b[?1006l"} {
+		if !bytes.Contains(snap, []byte(want)) {
+			t.Errorf("snapshot must turn %q off explicitly; DECSTR does not "+
+				"reach xterm's CoreMouseService.\nsnapshot: %q", want, snap)
+		}
+	}
+}
+
+// Never-seen modes stay silent. This is what keeps a session that used
+// no sticky mode replaying byte-identical to the ring (and emitting no
+// CAN either) — see TestReplayWithNoModesIsJustTheRing.
+func TestRestoreIsSilentForUntouchedModes(t *testing.T) {
+	v := NewVT(80, 24)
+	v.Write([]byte("\x1b[?2004h\x1b[?2004l"))
+
+	got := v.decModes.restoreBytes()
+	if want := "\x1b[?2004l"; string(got) != want {
+		t.Fatalf("only the touched mode should speak: got %q, want %q", got, want)
 	}
 }
 
@@ -125,7 +165,7 @@ func TestReplayWithNoModesIsJustTheRing(t *testing.T) {
 	v := NewVT(80, 24)
 	v.Write([]byte("plain output\r\n"))
 
-	if got, want := v.ReplayBytes(), v.RingBytes(); !bytes.Equal(got, want) {
+	if got, want := v.ReplayBytes(), v.ringBytes(); !bytes.Equal(got, want) {
 		t.Fatalf("got %q, want %q", got, want)
 	}
 }
@@ -143,7 +183,7 @@ func TestReplayRestoresModesAfterRingOverflow(t *testing.T) {
 		v.Write(chunk)
 	}
 
-	if bytes.Contains(v.RingBytes(), []byte("\x1b[?2004h")) {
+	if bytes.Contains(v.ringBytes(), []byte("\x1b[?2004h")) {
 		t.Fatal("ring did not overflow past the mode sequence; this test is no " +
 			"longer exercising the case it exists for — check ringCap and the write loop")
 	}
@@ -180,18 +220,22 @@ func TestRestoreKeepsOnlyTheLastModeOfAnExclusiveGroup(t *testing.T) {
 // memory of an earlier member. Uncovering the previous occupant would
 // turn mouse reporting back on for a program that switched it off, and
 // the client would then feed it mouse escapes as keyboard input.
+// The group is ONE slot, so a reset of any member leaves the group with
+// one thing to say and it is `l` — never an `h` for some earlier member
+// uncovered by the reset, and never silence (see
+// TestSnapshotResetsDisabledGroupedModes for why silence is wrong).
 func TestRestoreDropsTheWholeGroupOnReset(t *testing.T) {
-	for _, tc := range []struct{ name, in string }{
-		{"reset the current member", "\x1b[?1000h\x1b[?1002h\x1b[?1002l"},
-		{"reset a superseded member", "\x1b[?1000h\x1b[?1002h\x1b[?1000l"},
-		{"encoding group", "\x1b[?1015h\x1b[?1006h\x1b[?1006l"},
+	for _, tc := range []struct{ name, in, want string }{
+		{"reset the current member", "\x1b[?1000h\x1b[?1002h\x1b[?1002l", "\x1b[?1002l"},
+		{"reset a superseded member", "\x1b[?1000h\x1b[?1002h\x1b[?1000l", "\x1b[?1000l"},
+		{"encoding group", "\x1b[?1015h\x1b[?1006h\x1b[?1006l", "\x1b[?1006l"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			v := NewVT(80, 24)
 			v.Write([]byte(tc.in))
 
-			if got := v.decModes.restoreBytes(); len(got) != 0 {
-				t.Fatalf("mouse mode survived a group reset: %q", got)
+			if got := v.decModes.restoreBytes(); !bytes.Equal(got, []byte(tc.want)) {
+				t.Fatalf("got %q, want %q", got, tc.want)
 			}
 		})
 	}
@@ -213,9 +257,9 @@ func TestTrackerClearsUngroupedModesOnDECSTR(t *testing.T) {
 	v.Write([]byte("\x1b[!p"))
 
 	got := v.decModes.restoreBytes()
-	for _, gone := range []string{"\x1b[?1h", "\x1b[?1004h", "\x1b[?2004h"} {
-		if bytes.Contains(got, []byte(gone)) {
-			t.Errorf("DECSTR should have cleared %q; restore is %q", gone, got)
+	for _, off := range []string{"\x1b[?1l", "\x1b[?1004l", "\x1b[?2004l"} {
+		if !bytes.Contains(got, []byte(off)) {
+			t.Errorf("DECSTR should have cleared %q; restore is %q", off, got)
 		}
 	}
 	// The mouse slots survive a DECSTR in the real client. Forgetting
@@ -233,8 +277,17 @@ func TestTrackerClearsEverythingOnRIS(t *testing.T) {
 	v.Write([]byte("\x1b[?1h\x1b[?1004h\x1b[?2004h\x1b[?1002h\x1b[?1006h"))
 	v.Write([]byte("\x1bc"))
 
-	if got := v.decModes.restoreBytes(); len(got) != 0 {
-		t.Fatalf("modes survived a RIS from the program: %q", got)
+	// RIS clears every enabled flag, but the modes stay SEEN: the client
+	// we reattach is not the one the program RIS'd, so the snapshot still
+	// has to say "off" out loud.
+	got := v.decModes.restoreBytes()
+	if bytes.ContainsRune(got, 'h') {
+		t.Fatalf("a mode survived a RIS from the program: %q", got)
+	}
+	for _, off := range []string{"\x1b[?1l", "\x1b[?1004l", "\x1b[?2004l", "\x1b[?1002l", "\x1b[?1006l"} {
+		if !bytes.Contains(got, []byte(off)) {
+			t.Errorf("RIS restore is missing %q; got %q", off, got)
+		}
 	}
 }
 

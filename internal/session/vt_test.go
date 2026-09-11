@@ -153,7 +153,7 @@ func TestInitialReplayBytesAltScreen(t *testing.T) {
 	if _, err := v.Write(big); err != nil {
 		t.Fatalf("write: %v", err)
 	}
-	ring := v.RingBytes()
+	ring := v.ringBytes()
 	initial, snapshot := v.InitialReplayBytes()
 	if len(ring) < 50_000 {
 		t.Fatalf("test setup: ring too small (%d) to prove the point", len(ring))
@@ -187,7 +187,7 @@ func TestInitialReplayBytesNormalScreen(t *testing.T) {
 			t.Fatalf("write: %v", err)
 		}
 	}
-	ring := v.RingBytes()
+	ring := v.ringBytes()
 	if len(ring) < 2<<20 {
 		t.Fatalf("test setup: ring too small (%d B) to prove the point", len(ring))
 	}
@@ -619,7 +619,7 @@ func TestVT_RingCapturesAllBytes(t *testing.T) {
 		}
 		want.Write(c)
 	}
-	got := v.RingBytes()
+	got := v.ringBytes()
 	if !bytes.Equal(got, want.Bytes()) {
 		t.Errorf("ring mismatch:\n  got  %q\n  want %q", got, want.Bytes())
 	}
@@ -641,7 +641,7 @@ func TestVT_RingOverflowDropsAtSafeBoundary(t *testing.T) {
 	if _, err := v.Write(stream.Bytes()); err != nil {
 		t.Fatalf("write: %v", err)
 	}
-	got := v.RingBytes()
+	got := v.ringBytes()
 	if len(got) == 0 {
 		t.Fatalf("ring empty after overflowing write")
 	}
@@ -675,7 +675,7 @@ func TestVT_ReplayReproducesScreen(t *testing.T) {
 			t.Fatalf("write: %v", err)
 		}
 	}
-	ring := src.RingBytes()
+	ring := src.ringBytes()
 	if len(ring) == 0 {
 		t.Fatal("ring empty")
 	}
@@ -739,7 +739,7 @@ func TestVT_RingOverflowPrefersNewlineBoundary(t *testing.T) {
 	if _, err := v.Write(stream.Bytes()); err != nil {
 		t.Fatalf("write: %v", err)
 	}
-	got := v.RingBytes()
+	got := v.ringBytes()
 	if len(got) == 0 {
 		t.Fatalf("ring empty")
 	}

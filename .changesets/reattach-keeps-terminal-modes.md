@@ -13,4 +13,7 @@ for the life of that tile. Bracketed paste was the visible casualty: without it
 agents guess where a paste starts and ends, and anything over about 1 KiB
 arrived as several separate pastes, because that is where the operating system
 splits a write to the terminal. The daemon now tracks those modes and re-asserts
-whatever was live, both in the reattach snapshot and in the resize replay.
+whatever was live, both in the reattach snapshot and in the resize replay — and
+turns off the ones the program switched off while nobody was attached, so a
+finished TUI no longer leaves mouse tracking on and spraying click codes into
+the shell that follows it.

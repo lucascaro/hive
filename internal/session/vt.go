@@ -474,10 +474,13 @@ func (v *VT) InitialReplayBytes() (replay []byte, snapshot bool) {
 	return v.RenderSnapshot(), true
 }
 
-// RingBytes returns a defensive copy of the raw-byte scrollback ring.
-// Callers can stream the result to a client that wants to repaint
-// xterm.js from a clean slate after a width-changing resize.
-func (v *VT) RingBytes() []byte {
+// ringBytes returns a defensive copy of the raw-byte scrollback ring.
+//
+// Unexported on purpose: nothing outside this package streams the bare
+// ring any more. Every replay path goes through ReplayBytes, which
+// appends the DEC mode restore the ring cannot be trusted to contain.
+// This accessor exists so the ring's own tests can inspect it.
+func (v *VT) ringBytes() []byte {
 	v.mu.Lock()
 	defer v.mu.Unlock()
 	if len(v.ring) == 0 {

@@ -111,6 +111,19 @@ type decModeTracker struct {
 	// (see decModeGroup) is ever present; set order is kept only so the
 	// restore bytes are deterministic.
 	enabled []int
+	// seen holds one entry per mode SLOT the program has ever touched —
+	// set OR reset — carrying the member that touched it last. Ungrouped
+	// modes are their own slot; each exclusive group is one slot, so it
+	// gets one entry and therefore one sequence in the restore.
+	//
+	// enabled alone cannot drive the restore: the reattach path does not
+	// term.reset() the tile, and xterm's softReset() leaves
+	// CoreMouseService alone, so a mode the program turned OFF while the
+	// sink was unregistered stays ON in the client unless the snapshot
+	// says otherwise. seen is what lets restoreBytes answer "off"
+	// explicitly for exactly the modes that need an answer, while a
+	// session that never touched a mode still emits nothing at all.
+	seen []int
 }
 
 // feed scans p for private mode changes, recording the latest state of
@@ -128,7 +141,9 @@ func (t *decModeTracker) feed(p []byte) {
 			case '[':
 				t.state = decCSI
 			case 'c':
-				// RIS — the terminal drops everything.
+				// RIS — the terminal drops everything. `seen` survives:
+				// it records which modes still need an explicit answer in
+				// the snapshot, and after a RIS that answer is `l`.
 				t.enabled = t.enabled[:0]
 				t.state = decGround
 			case 0x1b:
@@ -201,6 +216,10 @@ func (t *decModeTracker) feed(p []byte) {
 // replay path would re-assert it — a reattach would silently kill mouse
 // reporting for the life of that tile, which is the same class of bug
 // this file was written to fix.
+//
+// Only `enabled` is touched; `seen` survives both resets. A mode the
+// program used at all still needs an explicit statement in the snapshot,
+// and after a reset that statement is `l`.
 func (t *decModeTracker) softReset() {
 	t.enabled = slices.DeleteFunc(t.enabled, func(m int) bool {
 		return decModeGroup[m] == decGroupNone
@@ -219,34 +238,49 @@ func (t *decModeTracker) set(params []byte, enabled bool) {
 			continue
 		}
 		group := decModeGroup[n]
-		t.enabled = slices.DeleteFunc(t.enabled, func(m int) bool {
+		sameSlot := func(m int) bool {
 			return m == n || (group != decGroupNone && decModeGroup[m] == group)
-		})
+		}
+		t.enabled = slices.DeleteFunc(t.enabled, sameSlot)
 		if enabled {
 			t.enabled = append(t.enabled, n)
 		}
+		// One seen entry per slot, holding the member that touched it
+		// last — that is the member whose h/l the restore must speak.
+		t.seen = append(slices.DeleteFunc(t.seen, sameSlot), n)
 	}
 }
 
-// restoreBytes returns the sequences needed to re-assert every sticky
-// mode currently enabled, in the order the program set them — which
-// makes the output deterministic (tests compare it byte-for-byte).
-// Order carries no meaning beyond that: at most one member of each
-// exclusive group is ever enabled, so no replay order can land the
-// terminal in a mode the program did not ask for.
+// restoreBytes states the CURRENT value of every mode slot the program
+// has ever touched: `h` if it is on, `l` if it is off. Slots the program
+// never touched emit nothing, so a session that used no sticky mode
+// replays byte-identical to the ring.
 //
-// Disabled modes emit nothing: a snapshot's DECSTR has already cleared
-// them in the receiving terminal, so an explicit reset would be bytes
-// spent to reach the state we are already in.
+// The `l` half is not redundant. The ordinary reattach path reuses the
+// existing xterm rather than term.reset()ing it, and xterm's softReset()
+// — all a snapshot's DECSTR preamble reaches — never touches
+// CoreMouseService. So a program that sets 1002, then exits and sends
+// 1002l while no sink is attached, leaves a tile with mouse tracking
+// still on: the next plain shell gets `\x1b[<0;12;5M` typed into it on
+// every click. Only an explicit reset in the snapshot closes that.
+//
+// Output order is the slots' last-touched order, which makes the bytes
+// deterministic (tests compare them byte-for-byte). Order carries no
+// meaning beyond that: one sequence per slot, so no replay order can
+// land the terminal in a state the program did not ask for.
 func (t *decModeTracker) restoreBytes() []byte {
-	if len(t.enabled) == 0 {
+	if len(t.seen) == 0 {
 		return nil
 	}
 	var buf bytes.Buffer
-	for _, mode := range t.enabled {
+	for _, mode := range t.seen {
 		buf.WriteString("\x1b[?")
 		buf.WriteString(strconv.Itoa(mode))
-		buf.WriteString("h")
+		if slices.Contains(t.enabled, mode) {
+			buf.WriteString("h")
+		} else {
+			buf.WriteString("l")
+		}
 	}
 	return buf.Bytes()
 }
