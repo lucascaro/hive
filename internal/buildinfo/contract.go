@@ -24,6 +24,19 @@ package buildinfo
 // History (newest first), so a bump is a decision with a record and
 // not just a number going up:
 //
+//	8 — DEC private modes survive a reattach. The snapshot and the
+//	    resize replay now end by re-asserting whatever the program had
+//	    set — bracketed paste (2004), mouse tracking (9/1000/1002/1003),
+//	    mouse encoding (1005/1006/1015), app-cursor keys (1) and focus
+//	    reporting (1004). The snapshot's DECSTR had been clearing all of
+//	    them while only alt-screen and cursor visibility were restored,
+//	    so a reattached tile lost them for the life of the session. No
+//	    frame or field changed, and that is exactly why it needs the
+//	    bump: the fix lives entirely in the daemon, so without one the
+//	    GUI offers its cheap reload, the user keeps the hived they
+//	    already had, and a >1 KiB paste still arrives split in three
+//	    while they believe they have the fix. The bump forces the
+//	    daemon restart that actually delivers it.
 //	7 — Starting a session from an idea. CreateSpec gained
 //	    initial_prompt (delivered as an argv positional to Claude and
 //	    Pi, typed into the PTY on the first idle edge for the agents
@@ -70,7 +83,7 @@ package buildinfo
 //	    before this cannot see or clear the flag.
 //	1 — first contract; everything up to and including the
 //	    CLIENT_COMMAND relay.
-const DaemonContract = 7
+const DaemonContract = 8
 
 // Identity is this binary's full build identity. `hived --version
 // --json` prints it, and Welcome carries the same three values, so a

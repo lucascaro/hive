@@ -82,6 +82,11 @@ type VT struct {
 	// mid-multibyte rune. Used by clients to repaint xterm.js from a
 	// clean slate after a width-changing resize.
 	ring []byte
+
+	// decModes tracks the DEC private modes a reattaching client has to
+	// be told about again, because our snapshot preamble (DECSTR) clears
+	// them and the program never re-sends them. See decmodes.go.
+	decModes decModeTracker
 }
 
 // Title returns the window title the program most recently set via
@@ -137,6 +142,7 @@ func (v *VT) Write(p []byte) (int, error) {
 	defer v.mu.Unlock()
 
 	v.appendRing(p)
+	v.decModes.feed(p)
 
 	cols, rows := v.term.Size()
 	// The eviction heuristic can only see rows-1 lines of scroll per pass
@@ -468,10 +474,13 @@ func (v *VT) InitialReplayBytes() (replay []byte, snapshot bool) {
 	return v.RenderSnapshot(), true
 }
 
-// RingBytes returns a defensive copy of the raw-byte scrollback ring.
-// Callers can stream the result to a client that wants to repaint
-// xterm.js from a clean slate after a width-changing resize.
-func (v *VT) RingBytes() []byte {
+// ringBytes returns a defensive copy of the raw-byte scrollback ring.
+//
+// Unexported on purpose: nothing outside this package streams the bare
+// ring any more. Every replay path goes through ReplayBytes, which
+// appends the DEC mode restore the ring cannot be trusted to contain.
+// This accessor exists so the ring's own tests can inspect it.
+func (v *VT) ringBytes() []byte {
 	v.mu.Lock()
 	defer v.mu.Unlock()
 	if len(v.ring) == 0 {
@@ -479,6 +488,45 @@ func (v *VT) RingBytes() []byte {
 	}
 	out := make([]byte, len(v.ring))
 	copy(out, v.ring)
+	return out
+}
+
+// ReplayBytes returns the ring followed by the DEC private modes that
+// are currently set — what a client should render to rebuild a tile
+// from scratch on a width-changing re-replay.
+//
+// The mode bytes go last, and they are needed even though the ring is a
+// full byte history, for two reasons: the client term.reset()s before
+// consuming the replay, and the ring is capped (ringCap), so on a
+// long-lived session the original set sequences have usually been
+// trimmed off the front. Appending the live state rather than trusting
+// the ring makes the outcome independent of how much history survived.
+//
+// CAN (0x18) separates the two. appendRing only normalises the FRONT of
+// the ring to a safe replay boundary; the tail is wherever the last PTY
+// read happened to stop, which can be mid-CSI, mid-OSC or mid-DCS. Our
+// mode bytes would then be swallowed as that sequence's payload and the
+// restore would silently do nothing — the exact failure this whole file
+// exists to prevent. CAN aborts any in-progress sequence: xterm.js
+// registers it as an "anywhere" rule for every parser state (and it is
+// excluded from EXECUTABLES, so the OSC/SOS overrides do not shadow it),
+// landing the parser in GROUND with no handler bound to it, i.e. inert.
+// ST ("\x1b\\") is weaker — it terminates only string sequences, and in
+// xterm.js an ESC inside OSC dispatches OSC_END into GROUND, so the
+// trailing backslash would print as literal text.
+func (v *VT) ReplayBytes() []byte {
+	v.mu.Lock()
+	defer v.mu.Unlock()
+	modes := v.decModes.restoreBytes()
+	if len(v.ring) == 0 && len(modes) == 0 {
+		return nil
+	}
+	out := make([]byte, 0, len(v.ring)+len(modes)+1)
+	out = append(out, v.ring...)
+	if len(modes) > 0 {
+		out = append(out, 0x18) // CAN — abort any sequence the ring cut in half
+		out = append(out, modes...)
+	}
 	return out
 }
 
@@ -581,6 +629,13 @@ func (v *VT) RenderSnapshot() []byte {
 	} else {
 		buf.WriteString("\x1b[?25l")
 	}
+
+	// Last, so nothing above can clobber it: re-assert the DEC private
+	// modes the program set and our own \x1b[!p just cleared. Without
+	// this a reattached tile loses bracketed paste, mouse tracking and
+	// app-cursor keys for the life of the session — the program has no
+	// idea a new client arrived and never sends them again.
+	buf.Write(v.decModes.restoreBytes())
 
 	return buf.Bytes()
 }

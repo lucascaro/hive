@@ -166,6 +166,47 @@ describe('Ctrl+Shift+V paste', () => {
   });
 });
 
+// Reattach / width-changing replay repaints a tile from the daemon's
+// snapshot, which opens with DECSTR (\x1b[!p). DECSTR clears DEC private
+// modes, including bracketed paste — and the running program never
+// re-sends them, because it has no idea a new client attached. Unless
+// the snapshot re-asserts them, the tile pastes unframed for the rest of
+// the session, and a >1 KiB paste then splits at the macOS PTY
+// input-buffer boundary into several "pasted text" chunks in the agent.
+//
+// These two tests are the receiving end of internal/session/decmodes.go:
+// that one proves the daemon emits the restore bytes, this one proves
+// xterm actually honours them.
+describe('DEC private modes across a snapshot repaint', () => {
+  // The shape of what the daemon sends on reattach: soft reset, erase,
+  // home, then (with the fix) the restore of whatever was set.
+  const SNAPSHOT_PREAMBLE = '\x1b[!p\x1b[3J\x1b[2J\x1b[H';
+
+  it('loses bracketed paste when the snapshot does not re-assert it', async () => {
+    clipboardText = 'hello';
+    const { st, textarea } = mount();
+    await new Promise<void>((r) => st.term.write('\x1b[?2004h', r));
+    // A repaint with no mode restore — the pre-fix daemon behaviour.
+    await new Promise<void>((r) => st.term.write(SNAPSHOT_PREAMBLE, r));
+    textarea.dispatchEvent(ctrlShiftKey('v'));
+    await settle();
+    // Unframed. This is the bug, pinned so the mechanism stays visible.
+    expect(writes).toEqual(['hello']);
+  });
+
+  it('keeps bracketed paste when the snapshot re-asserts it', async () => {
+    clipboardText = 'hello';
+    const { st, textarea } = mount();
+    await new Promise<void>((r) => st.term.write('\x1b[?2004h', r));
+    await new Promise<void>((r) =>
+      st.term.write(SNAPSHOT_PREAMBLE + '\x1b[?2004h', r),
+    );
+    textarea.dispatchEvent(ctrlShiftKey('v'));
+    await settle();
+    expect(writes).toEqual(['\x1b[200~hello\x1b[201~']);
+  });
+});
+
 describe('Ctrl+Shift+C / Ctrl+Shift+A', () => {
   it('cancel their keydown default too', () => {
     const { textarea } = mount();

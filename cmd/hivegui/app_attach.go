@@ -180,7 +180,10 @@ func (a *App) ResizeSession(id string, cols, rows int) error {
 //
 // Distinct from RenderSnapshot / SubscribeAtomicSnapshot — the bytes
 // streamed back are the raw PTY ring, not the vt10x-synthesized
-// repaint.
+// repaint. The one synthesized part is the tail: the DEC private modes
+// still in force are re-asserted after the ring, because the client
+// resets its terminal first and the ring may have trimmed the original
+// set sequences away.
 func (a *App) RequestScrollbackReplay(id string) error {
 	cs, err := a.attachFor(id)
 	if err != nil {
