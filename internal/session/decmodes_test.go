@@ -113,29 +113,48 @@ func TestReplayRestoresModesAfterRingOverflow(t *testing.T) {
 	}
 }
 
-// 1000/1002/1003 are an exclusive group: the terminal honours whichever
-// was set last. A program that downgrades 1003 -> 1002 without sending
-// \x1b[?1003l leaves both marked on, so replaying them in numeric order
-// would end on 1003 and feed the program motion events it never asked
-// for. The restore has to replay in set order.
-func TestRestoreKeepsSetOrderWithinExclusiveGroup(t *testing.T) {
-	v := NewVT(80, 24)
-	v.Write([]byte("\x1b[?1003h\x1b[?1002h"))
+// 9/1000/1002/1003 share one slot in the receiving terminal
+// (xterm.js: coreMouseService.activeProtocol), so setting one supersedes
+// whichever was on. A program that downgrades 1003 -> 1002 without
+// sending \x1b[?1003l must not have 1003 replayed at it, in any order.
+func TestRestoreKeepsOnlyTheLastModeOfAnExclusiveGroup(t *testing.T) {
+	for _, tc := range []struct{ name, in, want string }{
+		{"protocol downgrade", "\x1b[?1003h\x1b[?1002h", "\x1b[?1002h"},
+		{"protocol re-set", "\x1b[?1002h\x1b[?1003h\x1b[?1002h", "\x1b[?1002h"},
+		{"x10 supersedes", "\x1b[?1000h\x1b[?9h", "\x1b[?9h"},
+		{"encoding group", "\x1b[?1015h\x1b[?1006h", "\x1b[?1006h"},
+		{"groups are independent", "\x1b[?1002h\x1b[?1006h", "\x1b[?1002h\x1b[?1006h"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			v := NewVT(80, 24)
+			v.Write([]byte(tc.in))
 
-	got := v.decModes.restoreBytes()
-	if want := []byte("\x1b[?1003h\x1b[?1002h"); !bytes.Equal(got, want) {
-		t.Fatalf("restore reordered an exclusive group: got %q, want %q", got, want)
+			if got := v.decModes.restoreBytes(); !bytes.Equal(got, []byte(tc.want)) {
+				t.Fatalf("got %q, want %q", got, tc.want)
+			}
+		})
 	}
 }
 
-// Re-setting a mode that is already on makes it the most recent again.
-func TestRestoreMovesResetModeToTheEnd(t *testing.T) {
-	v := NewVT(80, 24)
-	v.Write([]byte("\x1b[?1002h\x1b[?1003h\x1b[?1002h"))
+// Resetting ANY member of an exclusive group empties the slot — xterm.js
+// maps 9/1000/1002/1003 in DECRST to activeProtocol="NONE" flat, with no
+// memory of an earlier member. Uncovering the previous occupant would
+// turn mouse reporting back on for a program that switched it off, and
+// the client would then feed it mouse escapes as keyboard input.
+func TestRestoreDropsTheWholeGroupOnReset(t *testing.T) {
+	for _, tc := range []struct{ name, in string }{
+		{"reset the current member", "\x1b[?1000h\x1b[?1002h\x1b[?1002l"},
+		{"reset a superseded member", "\x1b[?1000h\x1b[?1002h\x1b[?1000l"},
+		{"encoding group", "\x1b[?1015h\x1b[?1006h\x1b[?1006l"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			v := NewVT(80, 24)
+			v.Write([]byte(tc.in))
 
-	got := v.decModes.restoreBytes()
-	if want := []byte("\x1b[?1003h\x1b[?1002h"); !bytes.Equal(got, want) {
-		t.Fatalf("got %q, want %q", got, want)
+			if got := v.decModes.restoreBytes(); len(got) != 0 {
+				t.Fatalf("mouse mode survived a group reset: %q", got)
+			}
+		})
 	}
 }
 

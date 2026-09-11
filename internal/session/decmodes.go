@@ -24,8 +24,12 @@ import (
 // chunks. Mouse tracking and app-cursor keys fail the same way, just
 // more visibly.
 //
-// vt10x models none of these (see VT.Write), so we sniff them off the
-// byte stream ourselves.
+// vt10x models some of these (1, 1000/1002/1003, 1004, 1006 all reach
+// its setMode) but not the one that bites — 2004 falls through to
+// "unknown private set/reset mode", as do 1005 and 1015 — and it exposes
+// only a coarse ModeFlag bitmask, not the mode numbers to replay. So we
+// sniff the whole set off the byte stream ourselves rather than stitch
+// two sources of truth together.
 //
 // Deliberately NOT here:
 //   - 25 (DECTCEM) and 1049 (alt screen), which RenderSnapshot already
@@ -36,6 +40,7 @@ import (
 //     rare enough not to pay for.
 var stickyDECModes = map[int]bool{
 	1:    true, // DECCKM — application cursor keys
+	9:    true, // mouse: X10 compatibility
 	1000: true, // mouse: normal tracking (press/release)
 	1002: true, // mouse: button-event tracking (drag)
 	1003: true, // mouse: any-event tracking (motion)
@@ -44,6 +49,34 @@ var stickyDECModes = map[int]bool{
 	1006: true, // mouse encoding: SGR
 	1015: true, // mouse encoding: urxvt
 	2004: true, // bracketed paste
+}
+
+// Exclusive groups. The receiving terminal keeps ONE slot per group, not
+// a flag per mode: xterm.js parks 9/1000/1002/1003 in
+// coreMouseService.activeProtocol and 1005/1006/1015 in activeEncoding.
+// So setting any member supersedes whichever member was on, and
+// resetting ANY member clears the slot outright — `\x1b[?1002l` sets the
+// protocol to NONE even if 1000 was set earlier and never reset.
+//
+// Tracking the group rather than the individual modes is what keeps the
+// restore honest in the reset direction: without it, a program that
+// downgrades 1000 -> 1002 -> 1002l leaves 1000 marked on, and the
+// reattach snapshot turns mouse reporting back on for a program that
+// switched it off — the client then feeds it mouse escapes as input.
+const (
+	decGroupNone = iota
+	decGroupMouseProtocol
+	decGroupMouseEncoding
+)
+
+var decModeGroup = map[int]int{
+	9:    decGroupMouseProtocol,
+	1000: decGroupMouseProtocol,
+	1002: decGroupMouseProtocol,
+	1003: decGroupMouseProtocol,
+	1005: decGroupMouseEncoding,
+	1006: decGroupMouseEncoding,
+	1015: decGroupMouseEncoding,
 }
 
 // maxDECParams caps the parameter bytes we buffer for one sequence. A
@@ -74,19 +107,24 @@ type decModeTracker struct {
 	state  decScanState
 	params []byte
 	// enabled holds the sticky modes currently on, in the order the
-	// program turned them on. Order is the state, not decoration:
-	// 1000/1002/1003 (and the 1005/1006/1015 encodings) are mutually
-	// exclusive groups where the last one set wins, so replaying them in
-	// any other order can leave the terminal in a mode the program never
-	// asked for.
+	// program turned them on. At most one member of each exclusive group
+	// (see decModeGroup) is ever present; set order is kept only so the
+	// restore bytes are deterministic.
 	enabled []int
 }
 
 // feed scans p for private mode changes, recording the latest state of
 // every mode in stickyDECModes. A soft reset (DECSTR, \x1b[!p) or a full
-// reset (RIS, \x1bc) from the program clears the tracked state: the
-// receiving terminal drops every private mode on those, so re-asserting
-// afterwards would push modes the program had abandoned.
+// reset (RIS, \x1bc) from the program clears the tracked state.
+//
+// That is deliberately more than the receiving terminal does: xterm.js's
+// softReset() resets coreService.decPrivateModes (1, 1004, 2004) but
+// leaves the mouse protocol and encoding alone, and only a full reset
+// clears those too. We drop everything on either, because a program that
+// resets its terminal has abandoned the modes it set, and re-asserting
+// them on the next attach would push modes onto a program that never
+// asked — the failure mode that is actually visible to the user (a plain
+// shell receiving \x1b[200~-wrapped pastes and mouse escapes).
 func (t *decModeTracker) feed(p []byte) {
 	for _, b := range p {
 		switch t.state {
@@ -154,16 +192,20 @@ func (t *decModeTracker) feed(p []byte) {
 }
 
 // set records each sticky mode named in a ";"-separated parameter list.
-// Re-setting a mode that is already on moves it to the end: within an
-// exclusive group the terminal honours whichever was set last, so the
-// tracker has to remember which that was.
+// A mode in an exclusive group takes its group's slot: setting it evicts
+// whichever member held the slot, and resetting any member empties the
+// slot rather than uncovering the previous occupant — see decModeGroup
+// for why the terminal behaves that way.
 func (t *decModeTracker) set(params []byte, enabled bool) {
 	for _, field := range bytes.Split(params, []byte(";")) {
 		n, err := strconv.Atoi(string(field))
 		if err != nil || !stickyDECModes[n] {
 			continue
 		}
-		t.enabled = slices.DeleteFunc(t.enabled, func(m int) bool { return m == n })
+		group := decModeGroup[n]
+		t.enabled = slices.DeleteFunc(t.enabled, func(m int) bool {
+			return m == n || (group != decGroupNone && decModeGroup[m] == group)
+		})
 		if enabled {
 			t.enabled = append(t.enabled, n)
 		}
@@ -171,10 +213,11 @@ func (t *decModeTracker) set(params []byte, enabled bool) {
 }
 
 // restoreBytes returns the sequences needed to re-assert every sticky
-// mode currently enabled, in the order the program set them — which is
-// both deterministic (tests compare it byte-for-byte) and the only
-// ordering that reproduces the program's intent across the exclusive
-// mode groups.
+// mode currently enabled, in the order the program set them — which
+// makes the output deterministic (tests compare it byte-for-byte).
+// Order carries no meaning beyond that: at most one member of each
+// exclusive group is ever enabled, so no replay order can land the
+// terminal in a mode the program did not ask for.
 //
 // Disabled modes emit nothing: a snapshot's DECSTR has already cleared
 // them in the receiving terminal, so an explicit reset would be bytes

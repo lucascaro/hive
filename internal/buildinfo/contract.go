@@ -26,7 +26,7 @@ package buildinfo
 //
 //	8 — DEC private modes survive a reattach. The snapshot and the
 //	    resize replay now end by re-asserting whatever the program had
-//	    set — bracketed paste (2004), mouse tracking (1000/1002/1003),
+//	    set — bracketed paste (2004), mouse tracking (9/1000/1002/1003),
 //	    mouse encoding (1005/1006/1015), app-cursor keys (1) and focus
 //	    reporting (1004). The snapshot's DECSTR had been clearing all of
 //	    them while only alt-screen and cursor visibility were restored,
