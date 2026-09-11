@@ -1,0 +1,299 @@
+<!DOCTYPE html><html lang="en" data-theme="dark"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Worktree group — flatten &amp; reclaim side space</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap">
+<style>
+  :root { --page-bg:#141414; --page-fg:#e8e6e1; --page-muted:#9a978f; --page-rule:#2a2a2a; --page-accent:#f0a04b; --page-card:#1b1b1b; --page-ok:#5fd7a5; --page-bad:#d05a4a; }
+  * { box-sizing:border-box; }
+  body { background:var(--page-bg); color:var(--page-fg); font:14px/1.55 "IBM Plex Sans",system-ui,sans-serif; margin:0; }
+  .wrap { max-width:1240px; margin:0 auto; padding:40px 20px 120px; }
+  h1 { font-size:28px; font-weight:600; margin:0 0 6px; letter-spacing:-.01em; }
+  .lede { color:var(--page-muted); max-width:74ch; margin:0 0 10px; }
+  section { margin:52px 0 0; padding-top:28px; border-top:1px solid var(--page-rule); }
+  h2 { font-size:19px; font-weight:600; margin:0 0 4px; display:flex; align-items:center; gap:10px; flex-wrap:wrap; }
+  h2 .num { font:500 12px "JetBrains Mono",monospace; color:var(--page-accent); letter-spacing:.08em; }
+  .sub { color:var(--page-muted); margin:0 0 22px; max-width:78ch; font-size:13.5px; }
+  .note { border-left:3px solid var(--page-accent); padding:8px 0 8px 12px; margin:0 0 22px; font-size:13px; color:var(--page-muted); max-width:78ch; }
+  .note b { color:var(--page-fg); font-weight:600; }
+  code { font:11.5px "JetBrains Mono",monospace; background:rgba(128,128,128,.16); padding:1px 5px; border-radius:4px; }
+  .opts { display:grid; grid-template-columns:repeat(auto-fit,minmax(280px,300px)); gap:18px; align-items:stretch; justify-content:start; }
+  .opt { background:var(--page-card); border:1px solid var(--page-rule); border-radius:10px; overflow:hidden; display:flex; flex-direction:column; }
+  .opt.pick { border-color:color-mix(in srgb, var(--page-ok) 55%, var(--page-rule)); }
+  .opt > h3 { margin:0; padding:12px 14px 6px; font-size:13.5px; font-weight:600; display:flex; align-items:baseline; gap:8px; }
+  .opt > h3 .tag { font:500 10px "JetBrains Mono",monospace; letter-spacing:.1em; text-transform:uppercase; color:var(--page-accent); }
+  .opt > h3 .rec { font:500 10px "JetBrains Mono",monospace; letter-spacing:.06em; color:var(--page-ok); margin-left:auto; }
+  .opt > p { margin:0; padding:0 14px 12px; color:var(--page-muted); font-size:12.5px; min-height:6.2em; }
+  .opt .frame { border-top:1px solid var(--page-rule); border-left:0; border-right:0; border-radius:0; }
+  .notes { margin:0 0 auto; padding:10px 14px 12px; border-top:1px solid var(--page-rule); font-size:12px; color:var(--page-muted); }
+  .notes ul { margin:0; padding-left:16px; }
+  .notes li { margin:3px 0; }
+  .notes .win { color:var(--page-ok); }
+  .notes .lose { color:var(--page-bad); }
+  .frame { border:1px solid var(--page-rule); border-radius:8px; overflow:hidden; position:relative; }
+  .measure { font:500 10px "JetBrains Mono",monospace; letter-spacing:.06em; text-transform:uppercase; color:var(--page-muted);
+             padding:8px 14px; border-top:1px solid var(--page-rule); display:flex; gap:14px; flex-wrap:wrap; }
+  .measure b { color:var(--page-fg); font-weight:500; }
+  .measure .delta { color:var(--page-bad); }
+  .measure .delta.ok { color:var(--page-ok); }
+
+  /* ---------- sidebar mock: values copied from theme/tokens.css (hive-dark) ---------- */
+  .sb {
+    --bg:#0f1014; --surface:#13141a; --surface-raised:#0f1015; --border:#22242e;
+    --fg:#e6e7ee; --fg-muted:#a5a8b8; --fg-subtle:#5f6273; --accent:#ffb454;
+    --sel:#1c1e28; --hover:color-mix(in srgb, var(--sel) 60%, transparent);
+    --btn-border:#2b2e3b; --state-running:#5fd7a5; --state-attention:#ff9f43;
+    --text-xs:11px; --text-sm:12px; --text-md:13px;
+    --space-1:4px; --space-2:8px; --space-3:12px;
+    --radius-sm:4px; --radius-md:6px;
+    --row-pad-x:var(--space-3);     /* the knob section 02 turns */
+    --list-gutter:var(--space-2);
+    --font-mono:"JetBrains Mono",monospace;
+    /* The real sidebar's default width. Never draw a mock wider than the
+       thing it depicts or the truncation it shows is fiction. */
+    width:260px; background:var(--surface); color:var(--fg);
+    font:13px/1.4 "IBM Plex Sans",system-ui,sans-serif;
+    position:relative; overflow:hidden;
+  }
+  /* #projects */
+  .sb .projects { --sidebar-project-header-h:26px; list-style:none; margin:0; padding:4px var(--list-gutter) 4px 0; max-height:none; }
+  /* .hv-project-card — flat label, full bleed */
+  .sb .proj { list-style:none; margin:var(--space-2) 0 var(--space-3); }
+  .sb .phdr { position:sticky; top:0; z-index:3; display:flex; align-items:center; gap:var(--space-2);
+              height:26px; padding:0 var(--space-3); background:var(--surface); border-bottom:1px solid var(--border);
+              color:var(--fg-muted); font-size:var(--text-xs); font-weight:600; letter-spacing:.04em; text-transform:uppercase; }
+  .sb .psw { width:8px; height:8px; border-radius:2px; background:#6ea8fe; flex:none; }
+  .sb .pname { flex:1; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .sb .pcount { color:var(--fg-subtle); font:var(--text-xs)/1 var(--font-mono); }
+  .sb .prows { list-style:none; margin:0; padding:0; }
+
+  /* .hv-worktree-group — SHIPPED: rounded, bordered, inset card */
+  .sb .grp { position:relative; list-style:none; margin:var(--space-1) var(--space-2);
+             border:1px solid var(--border); border-radius:var(--radius-md); background:var(--surface); }
+  .sb .ghdr { position:sticky; top:26px; z-index:2; display:grid; grid-template-columns:14px minmax(0,1fr) auto;
+              align-items:center; column-gap:var(--space-2); padding:var(--space-1) var(--space-2);
+              background:var(--surface-raised); border-bottom:1px solid var(--border);
+              border-radius:var(--radius-md) var(--radius-md) 0 0; }
+  .sb .gbranch { display:inline-flex; align-items:center; gap:var(--space-1); min-width:0; overflow:hidden;
+                 text-overflow:ellipsis; white-space:nowrap; color:var(--fg-muted); font-size:var(--text-sm); }
+  .sb .gcount { color:var(--fg-subtle); font:var(--text-xs)/1 var(--font-mono); font-variant-numeric:tabular-nums; }
+  .sb .gchev { display:inline-flex; color:var(--fg-subtle); }
+  .sb .grows { list-style:none; margin:0; padding:0; }
+  .sb .grp::after { content:''; position:absolute; right:0; top:0; bottom:0; width:3px;
+                    border-radius:0 var(--radius-md) var(--radius-md) 0; background:var(--wt,#7fb3d5); }
+  .sb .grp .colour { background:transparent; }
+
+  /* .hv-session-row */
+  .sb .row { position:relative; display:grid; grid-template-columns:14px minmax(0,1fr) auto auto auto;
+             align-items:center; row-gap:1px; min-height:40px; padding:0 var(--row-pad-x);
+             color:var(--fg-muted); font-size:var(--text-md); cursor:default; }
+  .sb .row > * + * { margin-left:var(--space-2); }
+  .sb .state { grid-column:1; grid-row:1; display:inline-flex; }
+  .sb .name { grid-column:2; grid-row:1; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .sb .wtslot { grid-column:4; grid-row:1; display:inline-flex; align-items:center; gap:2px; color:var(--fg-subtle); }
+  .sb .meta { grid-column:5; grid-row:1; display:flex; align-items:center; justify-content:flex-end; gap:var(--space-1); color:var(--fg-subtle); }
+  .sb .sub { grid-column:2 / -1; grid-row:2; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;
+             font-size:var(--text-sm); color:var(--fg-subtle); line-height:1.4; }
+  .sb .colour { position:absolute; z-index:1; right:0; top:1px; bottom:1px; width:3px;
+                border-radius:var(--radius-sm); background:var(--sc,var(--fg-subtle)); }
+  .sb .row.sel { background:var(--sel); color:var(--fg); font-weight:500; }
+  .sb .row.sel::before { content:''; position:absolute; left:0; top:0; bottom:0; width:2px; background:var(--accent); }
+  .sb .dot { width:8px; height:8px; border-radius:50%; }
+  .sb .dot.run { background:var(--state-running); } .sb .dot.attn { background:var(--state-attention); } .sb .dot.idle { background:var(--fg-subtle); }
+  .sb .ag { font:var(--text-xs)/1.5 var(--font-mono); color:var(--fg); border-radius:var(--radius-sm);
+            padding:1px var(--space-1); background:color-mix(in srgb, var(--agc,#f59e0b) 18%, transparent); }
+  .sb .ico { width:12px; height:12px; flex:none; fill:none; stroke:currentColor; stroke-width:1.75; stroke-linecap:round; stroke-linejoin:round; }
+
+  /* =========== VARIANT A — left rail + flat full-bleed header =========== */
+  .sb.v-rail .grp { margin:0; border:0; border-radius:0; background:none; }
+  .sb.v-rail .ghdr { border-radius:0; padding:var(--space-1) var(--space-3); background:var(--surface-raised); }
+  .sb.v-rail .grows { position:relative; padding-left:var(--space-2); }
+  .sb.v-rail .grows::before { content:''; position:absolute; left:calc(var(--row-pad-x) - 2px); top:0; bottom:0; width:2px;
+                              border-radius:1px; background:color-mix(in srgb, var(--wt,#7fb3d5) 70%, transparent); }
+  .sb.v-rail .grp::after { display:none; }
+  .sb.v-rail .grp .colour { background:var(--sc,var(--fg-subtle)); }
+
+  /* =========== VARIANT B — header only, rows flush =========== */
+  .sb.v-flat .grp { margin:0; border:0; border-radius:0; background:none; }
+  .sb.v-flat .ghdr { border-radius:0; padding:var(--space-1) var(--space-3); background:var(--surface-raised); }
+  .sb.v-flat .grp::after { top:26px; border-radius:0; }
+  .sb.v-flat .grows { border-bottom:1px solid var(--border); }
+
+  /* =========== VARIANT C — square, full-bleed box (your pick) =========== */
+  .sb.v-square .grp { margin:0; border:0; border-top:1px solid var(--border); border-bottom:1px solid var(--border);
+                      border-radius:0; background:var(--surface-raised); }
+  .sb.v-square .ghdr { border-radius:0; padding:var(--space-1) var(--space-3); background:transparent; }
+  .sb.v-square .grp::after { border-radius:0; }
+
+  /* =========== SECTION 02 — side-space trim =========== */
+  .sb.t-all { --row-pad-x:var(--space-2); --list-gutter:var(--space-1); }
+  .sb.t-all .phdr { padding:0 var(--space-2); }
+  .sb.t-all .ghdr { padding:var(--space-1) var(--space-2); }
+
+  /* content-start guide: a hairline at the ungrouped row's content x */
+  .guide { position:absolute; inset:0; pointer-events:none; z-index:5; }
+  .guide::before { content:''; position:absolute; left:12px; top:0; bottom:0; width:1px;
+                   background:repeating-linear-gradient(#f0a04b 0 4px, transparent 4px 8px); opacity:.85; }
+  .frame.noguide .guide { display:none; }
+  .legend { font:500 10px "JetBrains Mono",monospace; color:var(--page-muted); margin:8px 0 16px; letter-spacing:.06em; }
+  .legend i { display:inline-block; width:16px; border-top:2px dashed var(--page-accent); vertical-align:middle; margin-right:6px; }
+</style>
+</head><body>
+<svg width="0" height="0" style="position:absolute" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+  <symbol id="i-branch" viewBox="0 0 24 24"><circle cx="7" cy="6" r="2"/><circle cx="7" cy="18" r="2"/><circle cx="17" cy="7" r="2"/><path d="M7 8v8M17 9v1a4 4 0 0 1-4 4H9"/></symbol>
+  <symbol id="i-down" viewBox="0 0 24 24"><path d="M6 9l6 6 6-6"/></symbol>
+</svg>
+<div class="wrap">
+
+<h1>Worktree group — flatten &amp; reclaim side space</h1>
+<p class="lede">Issue #392, follow-up to the sidebar redesign (#390). Everything below is drawn with the shipped values from <code>theme/tokens.css</code>, <code>sidebar.css</code>, <code>project-card.css</code> and <code>session-row.css</code>, at the sidebar's real 260px width. The measurement strip under each frame is computed from the live DOM on load, not typed in by hand.</p>
+<p class="legend"><i></i> dashed line = where an <b>ungrouped</b> row's content starts (12px). Anything to the right of it inside a group is the inset this issue is about.</p>
+
+<!-- ============ 00 BASELINE ============ -->
+<section style="border-top:0">
+  <h2><span class="num">00</span>Shipped today</h2>
+  <p class="sub">The project is a flat, square, full-bleed label. The group directly under it is a rounded, bordered card inset 8px per side. Two different visual languages, one tree.</p>
+  <div class="opts" style="grid-template-columns:minmax(280px,300px)">
+    <div class="opt">
+      <h3><span class="tag">now</span>Rounded inset card</h3>
+      <p>The 8px side margin plus the 1px border push a grouped row's content to 21px while an ungrouped row starts at 12px, and cost the same again on the right — on top of the row's own 12px padding and the list's 8px gutter.</p>
+      <div class="frame" data-sb><div class="guide"></div><div class="sb" id="f-now"></div></div>
+      <div class="measure"></div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ 01 GROUP CUE ============ -->
+<section>
+  <h2><span class="num">01</span>What marks a group once the rounded box is gone</h2>
+  <p class="sub">Same data in all three. The question is whether containment still reads without a rounded card, and what it costs in width.</p>
+  <div class="opts">
+
+    <div class="opt">
+      <h3><span class="tag">A</span>Left rail + flat header</h3>
+      <p>Group header becomes a flat full-bleed sub-label. Members get a 2px vertical accent line in the branch colour and an 8px indent. Strongest containment read of the three; the indent is now deliberate rather than an accident of borders.</p>
+      <div class="frame" data-sb><div class="guide"></div><div class="sb v-rail" id="f-rail"></div></div>
+      <div class="measure"></div>
+      <div class="notes"><ul>
+        <li class="win">Reads as a tree, matching the flat project label.</li>
+        <li class="win">Right edge fully reclaimed.</li>
+        <li class="lose">Rows still indent 8px, so the left is only half reclaimed.</li>
+        <li>Group colour moves from the right bar to the rail; per-row colour bars come back.</li>
+      </ul></div>
+    </div>
+
+    <div class="opt">
+      <h3><span class="tag">B</span>Header only, no indent</h3>
+      <p>Flat sub-header, rows flush with ungrouped rows, a hairline rule closing the group. Maximum width reclaimed on both edges — grouping is carried by the header plus the shared colour bar on the right.</p>
+      <div class="frame" data-sb><div class="guide"></div><div class="sb v-flat" id="f-flat"></div></div>
+      <div class="measure"></div>
+      <div class="notes"><ul>
+        <li class="win">Grouped and ungrouped rows start at the same x. Nothing wasted.</li>
+        <li class="lose">Weakest containment: where the group <em>ends</em> rests entirely on one hairline.</li>
+        <li class="lose">Furthest from <code>components.md</code>'s "the one box in the tree".</li>
+      </ul></div>
+    </div>
+
+    <div class="opt pick">
+      <h3><span class="tag">C</span>Square full-bleed box<span class="rec">your pick</span></h3>
+      <p>Keep the box, drop <code>border-radius</code> and the side margins; top and bottom hairlines only, running edge to edge with a slightly raised ground. Smallest diff, still unmistakably a container.</p>
+      <div class="frame" data-sb><div class="guide"></div><div class="sb v-square" id="f-square"></div></div>
+      <div class="measure"></div>
+      <div class="notes"><ul>
+        <li class="win">Containment as strong as today; no rounding to clash with the square project label.</li>
+        <li class="win">Both edges reclaimed — rows line up with ungrouped rows.</li>
+        <li>Raised ground does the work the side borders used to.</li>
+      </ul></div>
+    </div>
+
+  </div>
+</section>
+
+<!-- ============ 02 TRIM ============ -->
+<section>
+  <h2><span class="num">02</span>How far the side trim goes</h2>
+  <p class="sub">Both frames use option C. The only difference is whether the row's own padding is touched. The long window title on row 2 is the thing that gets more or less room — it is the line that tells two sessions on one worktree apart.</p>
+  <div class="note"><b>What "tighten every row" actually changes:</b> row side padding <code>12px → 8px</code> and the list's right gutter <code>8px → 4px</code>. Measured on this page, that is <b>+12px</b> of title per row — the row moves 4px left and the title's right edge gains the 4px of padding plus the 4px of gutter. It also moves every ungrouped row and the project label, so it needs a browser pass against all three density presets.</div>
+  <div class="opts">
+
+    <div class="opt pick">
+      <h3><span class="tag">1</span>Group inset only</h3>
+      <p>Fix only the inset the group adds. Row padding, list gutter and the project label are untouched — nothing outside a group moves a pixel.</p>
+      <div class="frame" data-sb><div class="guide"></div><div class="sb v-square" id="f-trim1"></div></div>
+      <div class="measure"></div>
+      <div class="notes"><ul>
+        <li class="win">Blast radius is one CSS block; the density presets cannot be affected.</li>
+        <li class="lose">If 12px still feels airy to you, this does not address it.</li>
+      </ul></div>
+    </div>
+
+    <div class="opt">
+      <h3><span class="tag">2</span>Also tighten every row</h3>
+      <p>On top of option 1: row padding to 8px, list gutter to 4px, project label to 8px. Every row in the sidebar gains width, grouped or not.</p>
+      <div class="frame" data-sb><div class="guide"></div><div class="sb v-square t-all" id="f-trim2"></div></div>
+      <div class="measure"></div>
+      <div class="notes"><ul>
+        <li class="win">The whole sidebar gets tighter, not just groups.</li>
+        <li class="lose">Touches the sidebar's rhythm — needs a real-browser check at normal/tight/compact.</li>
+        <li class="lose">4px gutter is the colour-bar hit target's clearance from the resizer; needs verifying, not assuming.</li>
+      </ul></div>
+    </div>
+
+  </div>
+</section>
+
+</div>
+<script>
+// One data set, rendered into every frame, so the frames can only differ by CSS.
+const P = { name: 'hive', count: 5 };
+const GROUP = { branch: 'feat/sidebar-flatten', color: '#7fb3d5', rows: [
+  { state:'run',  name:'sidebar redesign',     sub:'Claude — cmd/hivegui/frontend/src/theme', agent:'cl', agc:'#f59e0b', sel:true },
+  { state:'attn', name:'flatten the group box', sub:'Claude — waiting for your reply on the rail option', agent:'cl', agc:'#f59e0b' },
+  { state:'idle', name:'run the e2e suite',     sub:'Codex — playwright sidebar-sticky.spec.ts', agent:'cx', agc:'#10b981' },
+]};
+const LOOSE = [
+  { state:'run',  name:'release notes', sub:'Claude — docs/CHANGELOG.md', agent:'cl', agc:'#f59e0b', sc:'#ffb454' },
+  { state:'idle', name:'scratch',       sub:'shell — ~/checkout/hive',    agent:'sh', agc:'#9ca3af', sc:'#5fd7a5' },
+];
+const svg = (id, s) => `<svg class="ico" width="${s}" height="${s}" aria-hidden="true"><use href="#${id}"/></svg>`;
+const row = (r) => `<li class="row${r.sel ? ' sel' : ''}">
+  <span class="state"><span class="dot ${r.state}"></span></span>
+  <span class="name">${r.name}</span>
+  <span class="wtslot"></span>
+  <span class="meta"><span class="ag" style="--agc:${r.agc}">${r.agent}</span></span>
+  <span class="sub">${r.sub}</span>
+  <span class="colour" style="--sc:${r.sc || '#5f6273'}"></span></li>`;
+const markup = `<ul class="projects"><li class="proj">
+  <div class="phdr">${svg('i-down', 12)}<span class="psw"></span><span class="pname">${P.name}</span><span class="pcount">${P.count}</span></div>
+  <ul class="prows">
+    <li class="grp" style="--wt:${GROUP.color}">
+      <div class="ghdr"><span class="gchev">${svg('i-down', 12)}</span>
+        <span class="gbranch">${svg('i-branch', 12)}${GROUP.branch}</span>
+        <span class="gcount">${GROUP.rows.length}</span></div>
+      <ul class="grows">${GROUP.rows.map(row).join('')}</ul>
+    </li>
+    ${LOOSE.map(row).join('')}
+  </ul></li></ul>`;
+for (const sb of document.querySelectorAll('.sb')) sb.innerHTML = markup;
+
+// Measure the live DOM rather than restating the CSS in prose: a number
+// typed by hand is a number that goes stale the first time a token moves.
+for (const frame of document.querySelectorAll('[data-sb]')) {
+  const sb = frame.querySelector('.sb');
+  const strip = frame.parentElement.querySelector('.measure');
+  const x = (el) => el.getBoundingClientRect();
+  const base = x(sb);
+  const grouped = x(sb.querySelector('.grows .row .state'));
+  const loose = x(sb.querySelector('.prows > .row .state'));
+  const gSub = x(sb.querySelector('.grows .row .sub'));
+  const lSub = x(sb.querySelector('.prows > .row .sub'));
+  const dLeft = Math.round(grouped.left - loose.left);
+  const dTitle = Math.round(gSub.width - lSub.width);
+  const ok = (n) => Math.abs(n) <= 4 ? ' ok' : '';
+  strip.innerHTML =
+    `<span>grouped content x <b>${Math.round(grouped.left - base.left)}px</b></span>` +
+    `<span>ungrouped <b>${Math.round(loose.left - base.left)}px</b></span>` +
+    `<span class="delta${ok(dLeft)}">indent ${dLeft >= 0 ? '+' : ''}${dLeft}px</span>` +
+    `<span class="delta${ok(dTitle)}">title width ${dTitle >= 0 ? '+' : ''}${dTitle}px</span>` +
+    `<span>title <b>${Math.round(gSub.width)}px</b></span>`;
+}
+</script>
+</body></html>

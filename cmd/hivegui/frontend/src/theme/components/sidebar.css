@@ -69,20 +69,31 @@
 
 
 /* Worktree group — docs/design-docs/ui/components.md › worktreeGroup.
-   The one box in the sidebar tree, so boxing means one thing: these
-   sessions share a working directory. */
+   The one CONTAINER in the sidebar tree, so containment means one thing:
+   these sessions share a working directory.
+
+   A band, not a card. It was a rounded, bordered box inset 8px per side,
+   which was the last of the card vocabulary the project label dropped —
+   and next to a square, edge-to-edge label the rounding read as a
+   leftover. It also cost a member row 9px on the left and 9px on the
+   right against an ungrouped row, i.e. 18px of window title, in the one
+   place the redesign was widening. Full bleed now: the band runs the
+   width of the list, so member rows start exactly where ungrouped rows
+   start and `::after`'s colour bar lands on the same x as a row's own.
+   The list's 8px right padding still clears #sidebar-resizer for both —
+   the group lives inside that padding box. Containment is carried by
+   the two hairlines plus the ground shift against --surface. */
 .hv-worktree-group {
   position: relative;
   list-style: none;
-  margin: var(--space-1) var(--space-2);
-  border: 1px solid var(--border);
-  border-radius: var(--radius-md);
-  background: var(--surface);
+  margin: var(--space-1) 0;
+  border-top: 1px solid var(--border);
+  border-bottom: 1px solid var(--border);
+  background: var(--surface-raised);
 }
 /* NOT `overflow: hidden`. Clipping would make the panel the nearest
    scroll container, and the sticky header below would then stick to a
-   box that never scrolls — doing nothing at all, invisibly. The header
-   rounds its own corners instead. */
+   box that never scrolls — doing nothing at all, invisibly. */
 .hv-worktree-group__header {
   /* Nested under the project label, not over it: scrolled to any point
      inside a group you can see both the project and the branch. */
@@ -93,10 +104,16 @@
   grid-template-columns: 14px minmax(0, 1fr) auto;
   align-items: center;
   column-gap: var(--space-2);
-  padding: var(--space-1) var(--space-2);
+  /* --space-3, matching .hv-session-row's own side padding: the 8px side
+     margin used to supply that offset, so without this the branch name
+     would sit 4px left of the names it heads. */
+  padding: var(--space-1) var(--space-3);
+  /* Opaque, and stated here rather than inherited even though the panel
+     resolves to the same ground: the header is sticky and member rows
+     scroll UNDER it. A transparent sticky header shows them through.
+     test/e2e/sidebar-group-flatten.spec.ts asserts alpha 1. */
   background: var(--surface-raised);
   border-bottom: 1px solid var(--border);
-  border-radius: var(--radius-md) var(--radius-md) 0 0;
 }
 .hv-worktree-group__branch {
   display: inline-flex;
@@ -173,7 +190,6 @@
   top: 0;
   bottom: 0;
   width: 3px;
-  border-radius: 0 var(--radius-md) var(--radius-md) 0;
   background: var(--session-color, var(--fg-subtle));
 }
 .hv-worktree-group .hv-session-row__colour { background: transparent; }

@@ -2,8 +2,9 @@
 
 - **Spec:** [docs/product-specs/385-sidebar-redesign.md](../../product-specs/385-sidebar-redesign.md)
 - **Issue:** —
-- **Stage:** REVIEW
-- **Status:** active
+- **Status:** completed
+- **PR:** #390
+- **Shipped:** 2026-09-11
 
 ## Summary
 
@@ -201,6 +202,8 @@ export function displayName(s: { name?: string; agent?: string }): string {
 .hv-worktree-group__header { border-radius: var(--radius-md) var(--radius-md) 0 0; }
 ```
 
+> **Superseded by #392.** The `overflow: hidden` constraint still holds and is still in the CSS. The rounding does not: the group is now a square, full-bleed band with `border-top` + `border-bottom` only, so the header has no corners of its own to round. The snippet above is kept as the record of what this plan built — see `docs/exec-plans/completed/392-flatten-worktree-groups-and-reclaim-side-space.md` for why it changed. Read the live CSS, not this block.
+
 - [x] Run the DOM tests; run `test/dom/sidebar-reorder.test.tsx` unchanged — drag-reorder across a group boundary must still pass.
 - [x] Update snapshots, `biome ci`, commit: `feat(gui): render worktree groups as a panel with a branch header`
 
@@ -290,3 +293,7 @@ export function displayName(s: { name?: string; agent?: string }): string {
 ## Open questions
 
 None. Both were resolved in review — headers nest (project at `top: 0`, group at `top: 26px`), and the colour bar is itself the picker.
+
+## Gate verdict
+
+- **2026-09-11** — verdict: —; phase: —; checks: not run; followups: none; one-line: shipped as PR #390 without passing through `/hs-merge-gate`, and the bookkeeping was completed retroactively during #392's gate. Recorded as-is rather than back-dating a PASS that never happened.

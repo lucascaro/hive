@@ -1,8 +1,10 @@
 /* Project card — docs/design-docs/ui/components.md › projectCard.
    --project-color is data (a user-picked colour), not a token. */
-/* The project is a LABEL, not a card. The worktree group panel
-   (sidebar.css) is the only box in the tree, so boxing means exactly one
-   thing: these sessions share a working directory. */
+/* The project is a LABEL, not a card. The worktree group band
+   (sidebar.css) is the only container in the tree, so containment means
+   exactly one thing: these sessions share a working directory. Both are
+   square and full-bleed — a rule plus a header band is the sidebar's
+   whole grouping vocabulary. */
 .hv-project-card {
   position: relative;
   list-style: none;

@@ -1,4 +1,5 @@
 import { test, expect, type Page } from '@playwright/test';
+import { seedScrollableGroup } from './fixtures/seed-worktree-group.js';
 
 // Both sidebar headers pin, and they nest: the project label at the top of
 // the scroller, a worktree group's branch header directly beneath it. The
@@ -12,42 +13,6 @@ async function boot(page: Page) {
   await page.waitForFunction(
     () => document.querySelectorAll('#projects li').length > 0,
   );
-}
-
-// A group with enough plain sessions BEFORE it to push it down the list,
-// and more after it so the list scrolls past. Sessions before the group
-// are load-bearing: with the group at the top, scrolling its rows into
-// view clamps scrollTop to 0 and the sticky assertions would hold for a
-// header that never left its laid-out position.
-async function seedScrollableGroup(page: Page) {
-  for (let i = 0; i < 8; i++) {
-    await page.evaluate((n) => window.__hive.addSession?.(n), `before${i}`);
-  }
-  await page.waitForFunction(
-    () => (window.__hive.state?.sessions.length ?? 0) >= 9,
-  );
-  await page.evaluate(() =>
-    window.__hive.createSessionWithWorktree?.('alpha', 'feat/sticky'),
-  );
-  await page.waitForFunction(() =>
-    (window.__hive.state?.sessions ?? []).some((s) => !!s.worktree_path),
-  );
-  const wt = await page.evaluate(
-    () =>
-      (window.__hive.state?.sessions ?? []).find((s) => !!s.worktree_path)
-        ?.worktree_path ?? '',
-  );
-  await page.evaluate(
-    (p) => window.__hive.createSessionInWorktree?.('beta', p),
-    wt,
-  );
-  for (let i = 0; i < 8; i++) {
-    await page.evaluate((n) => window.__hive.addSession?.(n), `after${i}`);
-  }
-  await page.waitForFunction(
-    () => (window.__hive.state?.sessions.length ?? 0) >= 19,
-  );
-  await page.waitForSelector('.hv-worktree-group__header');
 }
 
 test.describe('worktree group panel', () => {
