@@ -26,6 +26,14 @@ also ran its own paste on top — the same text arrived twice on every use. The
 paste now also goes through xterm's paste path, so multi-line clipboard content
 keeps its newline normalisation and bracketed-paste framing instead of being
 written raw, which had agents submitting once per pasted line.
+Sessions no longer render monochrome when the GUI happened to be launched from
+a shell with `NO_COLOR` set. Hive built every session's environment from the
+daemon's own, overriding only `TERM`, so a `NO_COLOR` that reached `hivegui` by
+inheritance was handed down to every agent and shell in every tile and stayed
+there for the life of the daemon — with no setting anywhere to explain it. A
+tile is a colour-capable xterm.js terminal whatever the GUI was started under,
+so the variable is now dropped when a session's environment is built, for the
+same reason `TERM` is already forced.
 Confirmation dialogs now work on Windows. Deleting a project, killing a live
 session, restarting Hive and applying an update all go through a native
 confirmation, and every one of them silently did nothing on Windows: the dialog
