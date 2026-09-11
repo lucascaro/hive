@@ -12,7 +12,6 @@ The *what* and *why* of work this project plans to do. Each spec describes user 
 | P1 | — | Sidebar and grid repaints silently drop keyboard focus | REVIEW | [257-mock-e2e-worktree-glyph-loses-focus](257-mock-e2e-worktree-glyph-loses-focus.md) |
 | P2 | — | A red CI check name should say which stage failed | TRIAGE | [256-ci-check-names-identify-the-failing-stage](256-ci-check-names-identify-the-failing-stage.md) |
 | P2 | — | Session messaging: hand a session a message, get told when it idles | PLAN | [338-session-messaging](338-session-messaging.md) |
-| P2 | — | Sidebar redesign: readable rows, real worktree groups, density setting | REVIEW | [385-sidebar-redesign](385-sidebar-redesign.md) |
 | P2 | — | Orchestrator grant: a session you name can message its siblings | PLAN | [389-orchestrator-grant-and-session-msg](389-orchestrator-grant-and-session-msg.md) |
 | P2 | — | In-house VT emulator (replace hinshun/vt10x) | IMPLEMENT | [in-house-vt-emulator](in-house-vt-emulator.md) |
 | — | #142 | vt snapshot: CJK / wide-char column misalignment | TRIAGE | [142-vt-snapshot-cjk-wide-char-column-misalignment](142-vt-snapshot-cjk-wide-char-column-misalignment.md) |
@@ -27,6 +26,8 @@ The *what* and *why* of work this project plans to do. Each spec describes user 
 
 | Issue | Title | PR | Shipped | Spec |
 |-------|-------|----|---------|------|
+| — | Sidebar redesign: readable rows, real worktree groups, density setting | #390 | 2026-09-11 | [385-sidebar-redesign](385-sidebar-redesign.md) |
+| #392 | Sidebar: flatten worktree groups and reclaim side space | #393 | 2026-09-11 | [392-flatten-worktree-groups-and-reclaim-side-space](392-flatten-worktree-groups-and-reclaim-side-space.md) |
 | #382 | Move the release build to CI | #383 | 2026-09-09 | [382-move-the-release-build-to-ci](382-move-the-release-build-to-ci.md) |
 | #384 | Show a visual cue when sessions share a worktree | #385 | 2026-09-08 | [384-visual-cue-for-sessions-sharing-a-worktree](384-visual-cue-for-sessions-sharing-a-worktree.md) |
 | — | Idea inbox: capture ideas mid-session, start a session from one later | #377 | 2026-09-07 | [337-idea-inbox](337-idea-inbox.md) |

@@ -54,6 +54,12 @@ taking the accent colour. Both the project label and a worktree group's branch
 header stay on screen while you scroll, the group header pinned directly under
 the project label, so rows are never visible without the project and branch
 they belong to.
+The worktree group in the sidebar is now a flat band rather than a rounded,
+inset card: a hairline above and below, running the full width of the list.
+It matches the project label directly above it, which stopped being a card in
+the same release, and it gives the width back — sessions inside a group line
+up with the sessions outside one and their window titles get 18px more room
+instead of being the narrowest rows in the sidebar.
 The window title under a sidebar session name now uses the full width of the
 row. It was boxed into the name's column and truncated early, while the space
 beside it went to icons that only line 1 uses. Row height is unchanged.
