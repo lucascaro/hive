@@ -180,7 +180,7 @@ func Start(opts Options) (*Session, error) {
 		cmd = ptmx.Command(shell)
 		log.Printf("session: spawn %s (cwd=%s)", shell, opts.Cwd)
 	}
-	cmd.Env = append(os.Environ(), "TERM=xterm-256color")
+	cmd.Env = sessionEnv(os.Environ())
 	if len(opts.Env) > 0 {
 		cmd.Env = append(cmd.Env, opts.Env...)
 	}
