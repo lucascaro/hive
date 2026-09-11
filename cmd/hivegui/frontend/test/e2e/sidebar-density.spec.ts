@@ -66,16 +66,59 @@ test.describe('sidebar density', () => {
     expect(tight).toBeGreaterThan(compact);
   });
 
-  test('compact shows one line; tight keeps both', async ({ page }) => {
+  test('compact keeps the window title and drops the name', async ({
+    page,
+  }) => {
     await boot(page);
-    const sub = page.locator('#projects .hv-session-row__sub').first();
-    await expect(sub).toBeVisible();
+    const row = page.locator('#projects .hv-session-row').first();
+    await expect(row.locator('.hv-session-row__name')).toBeVisible();
+    await expect(row.locator('.hv-session-row__sub')).toBeVisible();
 
     await setDensity(page, 'compact');
-    await expect(sub).toBeHidden();
+    // The title is the line that tells two sessions on one worktree
+    // apart, so it is the one that survives.
+    await expect(row.locator('.hv-session-row__sub')).toBeVisible();
+    await expect(row.locator('.hv-session-row__sub')).toHaveText(
+      'npm run build --watch',
+    );
+    await expect(row.locator('.hv-session-row__name')).toBeHidden();
+    // …and it sits on line 1, where the name was.
+    const [sub, state] = await Promise.all([
+      row.locator('.hv-session-row__sub').boundingBox(),
+      row.locator('.hv-session-row__state').boundingBox(),
+    ]);
+    if (!sub || !state) throw new Error('row not laid out');
+    expect(
+      Math.abs(sub.y + sub.height / 2 - (state.y + state.height / 2)),
+    ).toBeLessThan(4);
 
     await setDensity(page, 'tight');
-    await expect(sub).toBeVisible();
+    await expect(row.locator('.hv-session-row__name')).toBeVisible();
+    await expect(row.locator('.hv-session-row__sub')).toBeVisible();
+  });
+
+  // subtitleFor() leaves line 2 empty for a running session that has
+  // published no title. Compact must not then show a row with no line at
+  // all — the name comes back.
+  test('compact falls back to the name when there is no title', async ({
+    page,
+  }) => {
+    await boot(page);
+    await page.evaluate(() => {
+      const s = window.__hive.state?.sessions[0];
+      if (!s) throw new Error('no mock session');
+      s.title = '';
+      window.__hive.emit(
+        'session:event',
+        JSON.stringify({ kind: 'title', session: s }),
+      );
+    });
+    const row = page.locator('#projects .hv-session-row').first();
+    await expect(row.locator('.hv-session-row__sub')).toHaveText('');
+
+    await setDensity(page, 'compact');
+    await expect(row.locator('.hv-session-row__name')).toBeVisible();
+    await expect(row.locator('.hv-session-row__name')).not.toHaveText('');
   });
 
   test('remembers the choice across a reload', async ({ page }) => {

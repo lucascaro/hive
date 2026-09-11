@@ -278,6 +278,7 @@ export function displayName(s: { name?: string; agent?: string }): string {
 ## Progress
 
 - **2026-09-10** — Spec written; exec plan opened at RESEARCH.
+- **2026-09-11** — Review fix: compact density now keeps the window title as its one line, not the name. Reported from the running build.
 - **2026-09-11** — All seven slices implemented, one commit each. `biome ci`, `tsc --noEmit`, 1237 vitest tests and 309 Playwright tests pass. Stage → REVIEW.
 
 ## Open questions

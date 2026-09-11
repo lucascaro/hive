@@ -336,8 +336,9 @@
 /* ---------- density (theme/density.ts) ----------
    Normal is the two-line 40px row above. `tight` keeps both lines and
    takes the air out; `compact` drops to one line — the window title,
-   which is the line that tells two sessions on one worktree apart — and
-   fits at least 40% more rows in the same height. */
+   which is the line that tells two sessions on one worktree apart, with
+   the name as the fallback where there is no title — and fits at least
+   40% more rows in the same height. */
 :root[data-density='tight'] .hv-session-row {
   min-height: 34px;
   font-size: var(--text-sm);
@@ -351,8 +352,42 @@
   min-height: 28px;
   font-size: var(--text-sm);
 }
-/* One line, and it is the SUBTITLE that goes: line 1 carries the name,
-   the state and the meta column, and a row with no name is not
-   identifiable outside a group. Inside a group the name is already the
-   title (SessionRow's titleOnly), so compact loses nothing there. */
-:root[data-density='compact'] .hv-session-row__sub { display: none; }
+/* One line, and it is the window TITLE that survives — the line that
+   tells two sessions on one worktree apart. The title moves up into line
+   1's cell and the name steps aside.
+
+   Except when there is no title to show: subtitleFor() leaves line 2
+   empty for a running session that has published none, and a row inside a
+   group renders no subtitle element at all (SessionRow's titleOnly puts
+   the title in the name). Both cases are "no non-empty subtitle", and
+   both keep the name — a row with neither line is not identifiable at
+   all. */
+:root[data-density='compact'] .hv-session-row__sub {
+  grid-column: 2;
+  grid-row: 1;
+  font-size: var(--text-sm);
+  color: inherit;
+}
+:root[data-density='compact'] .hv-session-row__name { display: none; }
+:root[data-density='compact']
+  .hv-session-row:not(:has(.hv-session-row__sub:not(:empty)))
+  .hv-session-row__name {
+  display: block;
+}
+/* The state colours live on the name, so line 1 keeps them whichever
+   element is currently line 1. */
+:root[data-density='compact']
+  .hv-session-row[data-state='attention']
+  .hv-session-row__sub {
+  color: var(--state-attention);
+  font-weight: 500;
+}
+:root[data-density='compact']
+  .hv-session-row[data-state='exited']
+  .hv-session-row__sub,
+:root[data-density='compact']
+  .hv-session-row[data-state='error']
+  .hv-session-row__sub {
+  color: var(--fg-subtle);
+  text-decoration: line-through;
+}

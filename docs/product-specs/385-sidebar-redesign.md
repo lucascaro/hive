@@ -47,7 +47,7 @@ The bar *is* the colour picker: on hover or keyboard focus it widens from 3px to
 
 **Attention is visible from the corner of the eye.** A session wanting attention pulses its row background at up to a 12% tint of `--state-attention` on the existing `--motion-pulse` cadence, degrading to a flat 9% static tint under `prefers-reduced-motion`.
 
-**Density is a setting.** `Settings › Appearance › Sidebar density` offers normal (40px, two lines — the default), tight (~34px, 10.5px subtitle) and compact (28px, one line).
+**Density is a setting.** `Settings › Appearance › Sidebar density` offers normal (40px, two lines — the default), tight (~34px, 10.5px subtitle) and compact (28px, one line). The one line compact keeps is the **window title**, not the name: the title is what tells two sessions on one worktree apart, which is the whole reason line 2 exists. A row with no title — a running session that has published none — falls back to its name, and so does a row inside a group panel, whose name already is its title.
 
 ## Success criteria
 
