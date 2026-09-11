@@ -332,3 +332,27 @@
   outline: 2px solid var(--accent);
   outline-offset: 1px;
 }
+
+/* ---------- density (theme/density.ts) ----------
+   Normal is the two-line 40px row above. `tight` keeps both lines and
+   takes the air out; `compact` drops to one line — the window title,
+   which is the line that tells two sessions on one worktree apart — and
+   fits at least 40% more rows in the same height. */
+:root[data-density='tight'] .hv-session-row {
+  min-height: 34px;
+  font-size: var(--text-sm);
+}
+:root[data-density='tight'] .hv-session-row__sub {
+  font-size: var(--text-xs);
+  line-height: 1.3;
+}
+
+:root[data-density='compact'] .hv-session-row {
+  min-height: 28px;
+  font-size: var(--text-sm);
+}
+/* One line, and it is the SUBTITLE that goes: line 1 carries the name,
+   the state and the meta column, and a row with no name is not
+   identifiable outside a group. Inside a group the name is already the
+   title (SessionRow's titleOnly), so compact loses nothing there. */
+:root[data-density='compact'] .hv-session-row__sub { display: none; }

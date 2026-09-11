@@ -4,7 +4,7 @@ title: "Sidebar redesign: readable rows, real worktree groups, density setting"
 type: enhancement
 complexity: L
 priority: P2
-stage: RESEARCH
+stage: REVIEW
 ---
 
 # Sidebar redesign: readable rows, real worktree groups, density setting
@@ -12,7 +12,7 @@ stage: RESEARCH
 - **Issue:** — (no tracking issue; number taken as the next free spec number)
 - **Type:** enhancement
 - **Complexity:** L
-- **Stage:** RESEARCH
+- **Stage:** REVIEW
 - **Priority:** P2
 - **Exec plan:** [docs/exec-plans/active/385-sidebar-redesign.md](../exec-plans/active/385-sidebar-redesign.md)
 - **Design review:** [docs/design-docs/ui/mocks/sidebar-redesign.html](../design-docs/ui/mocks/sidebar-redesign.html) — the signed-off composite. The rejected options are kept alongside it in `sidebar-redesign-options.html`.

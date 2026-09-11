@@ -26,6 +26,7 @@
 //                   way of first paint.
 
 import './theme/theme';
+import './theme/density';
 import '@xterm/xterm/css/xterm.css';
 
 import {
