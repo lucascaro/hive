@@ -18,6 +18,52 @@ whole group; dropping it on another member, or pressing the reorder keys while
 it has room among its own members, reorders it inside the group. Keyboard
 navigation, ⌘1-9, the tray and the command palette now all follow the order the
 rows are actually painted in.
+A session that needs your attention now pulses its sidebar row, so it is
+noticeable without reading any row. The pulse is an overlay on whatever ground
+the row already has, so a selected row still reads as selected; with animation
+disabled it settles to a static tint that stays quieter than the selection
+background.
+Collapsing a project or a worktree group in the sidebar now animates open and
+shut instead of snapping. Collapsed content leaves the keyboard tab order, and
+the animation respects the system "reduce motion" setting.
+
+### Changed
+New sessions are no longer named after the agent they run. An auto-generated
+name is now just `adjective-noun`, and a session started in a worktree takes the
+branch name alone — every surface that shows a name shows the agent beside it,
+so carrying it in the name said the same thing twice. Sessions created before
+this change keep the names they have, and renaming is unaffected.
+Sidebar rows no longer print the agent twice. An auto-generated session name
+ends in the agent's own id ("rising-shore claude"), which the row then repeated
+as a two-letter code; the name now drops that trailing id at display time — the
+stored name is untouched, so rename, search and the `hive` CLI are unaffected,
+and a name you chose yourself is never altered. The two-letter code now carries
+the agent's own colour as a tint, so the agent is visible at a glance without
+reading the row. Agents that declare no colour render the code plain.
+A session's colour is now a bar on the right edge of its sidebar row instead of
+a filled square in its own column, and the bar is the colour control: hover it
+or tab to it and it widens, and clicking opens the same colour picker as before.
+The row reserves the widened width at all times, so nothing moves when it grows.
+The compact sidebar density keeps the window title as its single line instead of
+the session name. The title is what tells apart two sessions that share a
+worktree — they are named after the branch — so it is the line worth keeping. A
+session that has published no title still shows its name.
+The project header in the sidebar is now a flat uppercase label with a hairline
+rule instead of a bordered card, and the active project is marked by the label
+taking the accent colour. Both the project label and a worktree group's branch
+header stay on screen while you scroll, the group header pinned directly under
+the project label, so rows are never visible without the project and branch
+they belong to.
+The window title under a sidebar session name now uses the full width of the
+row. It was boxed into the name's column and truncated early, while the space
+beside it went to icons that only line 1 uses. Row height is unchanged.
+Sessions that share a git worktree now render as a group: a bordered panel
+headed by the branch name and the number of sessions in it, collapsible from
+the header. Because a worktree session is named after its branch, those rows
+used to be identical to each other; inside the panel each row leads with its
+window title instead, and the branch is stated once at the top. A session you
+renamed yourself keeps its name. The colour bar belongs to the panel — the
+whole group shares one colour — while the colour picker stays on each row.
 
 ### Fixed
 `Ctrl+Shift+V` pastes once instead of twice. The terminal read the clipboard and
@@ -34,6 +80,13 @@ there for the life of the daemon — with no setting anywhere to explain it. A
 tile is a colour-capable xterm.js terminal whatever the GUI was started under,
 so the variable is now dropped when a session's environment is built, for the
 same reason `TERM` is already forced.
+Review fixes for the sidebar redesign: sessions sharing a worktree no longer
+paint a second colour bar on every row, a shell session's name drops its
+repeated "shell" suffix like every other agent's (so two shells on one worktree
+are told apart), a grouped session with no window title shows its name instead
+of an empty line, the agent glyph stays legible on light themes, and a collapsed
+worktree group reports any session inside it that needs you rather than hiding
+it.
 Confirmation dialogs now work on Windows. Deleting a project, killing a live
 session, restarting Hive and applying an update all go through a native
 confirmation, and every one of them silently did nothing on Windows: the dialog
