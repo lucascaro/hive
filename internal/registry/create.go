@@ -3,9 +3,11 @@ package registry
 import (
 	"context"
 	"log"
+	"runtime"
 	"slices"
 	"strings"
 	"time"
+	"unicode/utf8"
 
 	"github.com/google/uuid"
 
@@ -86,6 +88,17 @@ func (r *Registry) beginCreate(spec wire.CreateSpec) (*Entry, createPlan, error)
 	}
 	r.mu.Lock()
 	e.Phase = wire.PhaseStarting
+	// Both in-memory only (see Entry): a daemon restart between here
+	// and delivery loses the prompt, which is exactly why the idea is
+	// not flipped to `started` until the prompt has actually landed.
+	e.ideaID = spec.IdeaID
+	if deliveryFor(spec) == promptTyped {
+		// May come back empty if the note was nothing but control
+		// characters. That is NOT the prompt-less case: a prompt was
+		// requested and nothing can be handed over, so finishCreate
+		// leaves the idea in the inbox rather than claiming it.
+		e.pendingPrompt = typedPrompt(spec.InitialPrompt)
+	}
 	info := e.Info()
 	r.broadcastLocked(wire.SessionEventAdded, info)
 	r.mu.Unlock()
@@ -137,6 +150,10 @@ func (r *Registry) finishCreate(ctx context.Context, e *Entry, spec wire.CreateS
 		// event is `updated`, not `added` — beginCreate already
 		// announced this entry.
 		e.LastError = err.Error()
+		// No process ever existed, so there is nothing to paste into
+		// and never will be. Left set, the offer would render on a dead
+		// tile and refuse every click with ErrNoLiveSession.
+		e.pendingPrompt = ""
 		e.Phase = wire.PhaseReady
 		info := e.Info()
 		r.broadcastLocked(wire.SessionEventUpdated, info)
@@ -159,8 +176,106 @@ func (r *Registry) finishCreate(ctx context.Context, e *Entry, spec wire.CreateS
 		return ErrNotFound
 	}
 	r.broadcast(wire.SessionEventUpdated, info)
+	// The idea is claimed only when the work was actually handed over.
+	// Three cases, and only the first two are that:
+	//
+	//   - no prompt was asked for at all: an ordinary Start session,
+	//     nothing to deliver, so the link is immediate;
+	//   - argv: the text is in the process's own command line, so it is
+	//     delivered the moment the process exists;
+	//   - typed: waiting for the user to paste it (ResolvePrompt),
+	//     which is where that idea is claimed instead.
+	//
+	// Everything else is a prompt that was REQUESTED and cannot be
+	// delivered — the shell agent, a custom agent, a note that
+	// sanitized away to nothing. Those must not claim the idea: no
+	// work was handed over, so the note stays in the inbox where the
+	// user can start it again against an agent that can receive it.
+	// (An earlier revision linked here, which marked a note as started
+	// for a session that never got it.)
+	r.mu.Lock()
+	waiting := e.pendingPrompt != ""
+	r.mu.Unlock()
+	if !waiting && handedOverAtCreate(spec) {
+		r.linkIdeaToSession(spec.IdeaID, p.id)
+	}
 	go r.watchSessionExit(p.id, sess)
 	return nil
+}
+
+// handedOverAtCreate reports whether the session already has whatever
+// prompt it was going to get by the time it is running — so the idea it
+// came from can be claimed immediately.
+//
+// True in exactly two cases: nothing was asked for, or the argv path
+// put real text on the command line. The typed path is false here and
+// is claimed later, by ResolvePrompt. Everything else — the
+// shell agent, a custom agent, a prompt that sanitizes away — is a
+// prompt that was REQUESTED and cannot be delivered, and must not claim
+// the note.
+//
+// A function rather than an expression inline because the argv arm was
+// otherwise unreachable from any test: exercising it for real means
+// spawning claude or pi.
+func handedOverAtCreate(spec wire.CreateSpec) bool {
+	if spec.InitialPrompt == "" {
+		return true
+	}
+	// Both forms have to be non-empty, and they are not the same
+	// function: a whitespace-only note survives sanitizing but collapses
+	// on the typed path, and on Windows a note of nothing but `%` is
+	// emptied by argvPrompt alone. Whatever the reason, if the argv
+	// actually appended nothing then nothing was handed over.
+	return deliveryFor(spec) == promptArgv &&
+		argvPrompt(runtime.GOOS, spec.InitialPrompt) != "" &&
+		typedPrompt(spec.InitialPrompt) != ""
+}
+
+// linkIdeaToSession flips the idea a session was started from to
+// `started` and records which session serves it. No-op without an
+// idea. Must NOT be called with r.mu held — UpdateIdea takes it.
+//
+// The entry is re-checked because every caller reaches here off the
+// lock, and a Kill can land in between: linking then would leave the
+// idea pointing at a session id no client can resolve, which renders
+// as an inbox row saying "in <gone>" with no way back to open.
+func (r *Registry) linkIdeaToSession(ideaID, sessionID string) {
+	if ideaID == "" {
+		return
+	}
+	r.mu.Lock()
+	e, live := r.entries[sessionID]
+	var sessionProject string
+	if live {
+		sessionProject = e.ProjectID
+	}
+	ideaProject := ""
+	if f, ok := r.ideas[ideaID]; ok {
+		ideaProject = f.ProjectID
+	}
+	r.mu.Unlock()
+	if !live {
+		log.Printf("registry: not linking idea %s: session %s is already gone", ideaID, sessionID)
+		return
+	}
+	// An idea belongs to a project and the launcher pins that project,
+	// so a mismatch means the client sent an idea_id that does not go
+	// with this session. Refuse rather than file the link: it would put
+	// one project's idea into another project's session, and the wire
+	// field is reachable by any client.
+	if ideaProject != "" && sessionProject != ideaProject {
+		log.Printf("registry: not linking idea %s (project %s) to session %s (project %s): different projects",
+			ideaID, ideaProject, sessionID, sessionProject)
+		return
+	}
+	started := wire.IdeaStatusStarted
+	if _, err := r.UpdateIdea(wire.UpdateIdeaReq{
+		ID: ideaID, Status: &started, SessionID: &sessionID,
+	}); err != nil {
+		// Not fatal to the session: the user has a session with the
+		// right prompt in it, and an idea still sitting in the inbox.
+		log.Printf("registry: linking idea %s to session %s: %v", ideaID, sessionID, err)
+	}
 }
 
 // discardWorktree removes a worktree that finishCreate materialized
@@ -231,11 +346,35 @@ func (r *Registry) resolveCreateTarget(spec wire.CreateSpec) createPlan {
 	// worktree badge and Kill can keep the worktree alive until the
 	// last session in it goes away.
 	if !spec.UseWorktree && p.cwd != "" {
+		// r.entries is a map, so "the first match" is whatever iteration
+		// order hands back. Pick the lowest-Order occupant instead: it is
+		// the group's anchor in the sidebar, and once a user recolours one
+		// member the members disagree, at which point map order would make
+		// the inherited colour differ run to run.
+		var adopt *Entry
 		for _, other := range r.entries {
-			if other.ProjectID == p.projectID && other.WorktreePath != "" && other.WorktreePath == p.cwd {
-				p.adoptedPath = other.WorktreePath
-				p.adoptedBranch = other.WorktreeBranch
-				break
+			if other.ProjectID != p.projectID || other.WorktreePath == "" || other.WorktreePath != p.cwd {
+				continue
+			}
+			if adopt == nil || other.Order < adopt.Order {
+				adopt = other
+			}
+		}
+		if adopt != nil {
+			p.adoptedPath = adopt.WorktreePath
+			p.adoptedBranch = adopt.WorktreeBranch
+			// Sessions sharing one worktree share one colour: that is
+			// the sidebar's link between them (spec 384). This reads
+			// the "color is session identity" rule above as identity
+			// of the WORK, not of the process — two sessions editing
+			// the same files are one piece of work. An explicit
+			// spec.Color still wins, and the inherited colour becomes
+			// lastSessionColor so the next freshly-picked session
+			// steers away from it rather than colliding with the
+			// group.
+			if spec.Color == "" && adopt.Color != "" {
+				p.color = adopt.Color
+				r.lastSessionColor = p.color
 			}
 		}
 	}
@@ -428,7 +567,187 @@ func (r *Registry) resolveAgentCmd(spec wire.CreateSpec, id string) []string {
 			cmd = append(append([]string(nil), cmd...), extra...)
 		}
 	}
+	// The opening prompt, last, as a bare positional. Quoted nothing:
+	// this is argv, not a shell string. Deliberately here and NOT in
+	// appendSpawnArgs — a restart or revive rebuilds argv from the same
+	// helper, and re-sending the opening prompt would replay the first
+	// turn every time the user restarted the session.
+	if deliveryFor(spec) == promptArgv {
+		if p := argvPrompt(runtime.GOOS, spec.InitialPrompt); p != "" {
+			// "--" first: without it a prompt beginning with "-" is
+			// parsed as a flag, and CreateSpec.InitialPrompt is a wire
+			// field — our own prompts start with a word, but nothing
+			// makes another client's do so. Verified against both
+			// users before adding: `claude --print -- "…"` answers
+			// normally, and `pi --help` documents `[--]` as "End option
+			// parsing; treat remaining arguments as messages/files".
+			cmd = append(append([]string(nil), cmd...), "--", p)
+		}
+	}
 	return cmd
+}
+
+// maxPromptBytes bounds a delivered opening prompt. An idea's text is
+// capped at wire.MaxIdeaText; the prompt built from it is that text
+// plus ideaPrompt()'s preamble, so this has to be the larger of the
+// two or a maximum-length note loses its ending.
+const maxPromptBytes = wire.MaxIdeaText + 1024
+
+// promptControlChars strips the C0 control characters (and DEL) that an
+// opening prompt has no business carrying, leaving newline and tab.
+//
+// This is a trust boundary, not a formality. The text is user-authored
+// AND agent-authored — `hive idea add` runs inside sessions, so an
+// agent can file a note that another agent is later launched with —
+// and on the typed path it is written straight into a PTY. A bare ESC
+// in it is an ANSI sequence the receiving terminal executes, and a
+// stray \r submits a half-formed turn.
+func promptControlChars(r rune) rune {
+	if r == '\n' || r == '\t' {
+		return r
+	}
+	// C0 and DEL.
+	if r < 0x20 || r == 0x7f {
+		return -1
+	}
+	// C1 (U+0080–U+009F). Easy to forget because they are not ASCII,
+	// and they are exactly as executable: U+009B IS the Control
+	// Sequence Introducer, and xterm-family terminals decode the UTF-8
+	// encoding of these back into control functions. They have no
+	// legitimate use in prose, so there is nothing to weigh here.
+	if r >= 0x80 && r <= 0x9f {
+		return -1
+	}
+	return r
+}
+
+// sanitizePrompt is the argv form: control characters out, layout kept.
+// argv is not a terminal, so a newline here is just a newline in the
+// agent's own prompt string.
+func sanitizePrompt(s string) string {
+	s = strings.Map(promptControlChars, s)
+	// Bounded, because CreateSpec.InitialPrompt is a separate entry
+	// point: it arrives on the wire and never has to have been an idea
+	// at all, so AddIdea's cap does not cover it. Truncated rather than
+	// refused — unlike a captured note, nothing is lost the user cannot
+	// see and retype, and failing the create over a long prompt is the
+	// worse outcome.
+	//
+	// NOT wire.MaxIdeaText: what arrives here is ideaPrompt()'s
+	// instruction preamble PLUS a note that may itself be exactly at
+	// that cap, so bounding the sum by it silently ate the tail of
+	// every maximum-length note. maxPromptBytes leaves room for the
+	// preamble.
+	if len(s) > maxPromptBytes {
+		// By rune, so the cut cannot land mid-codepoint and hand the
+		// agent an invalid UTF-8 tail.
+		cut := maxPromptBytes
+		for cut > 0 && !utf8.RuneStart(s[cut]) {
+			cut--
+		}
+		s = s[:cut]
+	}
+	return s
+}
+
+// argvPrompt is the argv form for a given platform.
+//
+// On Windows only, `%` goes too. internal/session spawns argv through
+// `cmd.exe /S /C` there, and cmdExeEscape's own doc comment states the
+// precondition: it does NOT escape `%`, because cmd.exe expands
+// `%VAR%` even inside double quotes. A prompt is user- AND
+// agent-authored (`hive idea add` runs inside sessions), so a note
+// reading `%GITHUB_TOKEN%` would otherwise be expanded out of the
+// daemon's environment and handed to the agent as its first turn.
+//
+// Stripped rather than escaped because cmd.exe has no quoting that
+// neutralizes `%` on a /C line, and platform-conditional because on
+// Unix argv reaches execve with no shell in between — mangling every
+// "50% of the time" everywhere to fix a Windows-only hole would be the
+// wrong trade.
+func argvPrompt(goos, s string) string {
+	s = sanitizePrompt(s)
+	if goos == "windows" {
+		// Both characters cmd.exe reinterprets, and for the same
+		// reason: internal/session hands the escaped line to
+		// `cmd.exe /S /C`, and cmd.exe is not the parser cmdExeEscape
+		// quotes for.
+		//
+		//   %  — expands %VAR% even inside double quotes.
+		//   "  — cmdExeEscape emits an embedded quote as \" per
+		//        CommandLineToArgvW's rules, which cmd.exe does not
+		//        honour: it COUNTS quote characters. One quote in the
+		//        note flips the parity, so the tail of the line lands
+		//        outside quotes where & | > are live again. A note
+		//        reading `x" & calc` is command execution; a note
+		//        reading `fix the "start" button` merely breaks the
+		//        spawn.
+		//
+		// Stripped rather than escaped because there is no escape
+		// cmd.exe honours on a /C line, and platform-conditional
+		// because on Unix argv reaches execve with no shell at all.
+		s = strings.NewReplacer("%", "", `"`, "").Replace(s)
+	}
+	return s
+}
+
+// typedPrompt is the PTY form. Same stripping, and then newlines and
+// tabs collapse to spaces, because this is delivered as
+// `prompt + "\r"` into whatever TUI the agent is running: an embedded
+// newline submits the turn early and the rest of the note lands in the
+// next one, in pieces.
+//
+// ponytail: collapsing loses the note's paragraph breaks. The real fix
+// is bracketed paste (ESC[200~ … ESC[201~), which every modern TUI
+// treats as literal text — do that when an agent actually needs
+// multi-line, rather than now on the assumption they all support it.
+func typedPrompt(s string) string {
+	return strings.Join(strings.Fields(sanitizePrompt(s)), " ")
+}
+
+// promptDelivery says how an opening prompt can reach the agent this
+// spec resolves to — or that it cannot, which is the default.
+type promptDelivery int
+
+const (
+	// promptNone: nothing to deliver, or nowhere safe to put it.
+	promptNone promptDelivery = iota
+	// promptArgv: a bare positional on the spawn command line.
+	promptArgv
+	// promptTyped: offered to the user on SessionInfo.PendingPrompt
+	// and written into the PTY only when they paste it.
+	promptTyped
+)
+
+// deliveryFor is the ONE decision about where an opening prompt goes.
+// resolveAgentCmd, beginCreate and finishCreate all route through it,
+// so the argv branch, the typed branch and "when may the idea be
+// linked" can never disagree about the same spec.
+//
+// Everything unrecognised lands on promptNone, deliberately:
+//
+//   - an explicit spec.Cmd is raw argv from a client that does not
+//     speak agent IDs, and we no more append to it than resolveAgentCmd
+//     injects SessionIDFlag into it;
+//   - the shell agent has no Cmd, and typing into a shell is not
+//     prompting an agent, it is running a command — see Def.TypedPrompt;
+//   - a user-defined custom agent is an unknown program, and an unknown
+//     program is exactly the case the default must be safe for.
+func deliveryFor(spec wire.CreateSpec) promptDelivery {
+	if spec.InitialPrompt == "" || len(spec.Cmd) > 0 || spec.Agent == "" {
+		return promptNone
+	}
+	def, ok := agent.Get(agent.ID(spec.Agent))
+	if !ok || len(def.Cmd) == 0 {
+		return promptNone
+	}
+	switch {
+	case def.PositionalPrompt:
+		return promptArgv
+	case def.TypedPrompt:
+		return promptTyped
+	}
+	return promptNone
 }
 
 // materializeWorktree runs the heavy `git worktree add` and promotes

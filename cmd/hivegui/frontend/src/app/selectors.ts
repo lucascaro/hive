@@ -4,22 +4,42 @@
 import type { SessionInfo } from './state.js';
 import { readNeedsAttention } from './state.js';
 import { appStore } from '../store/store.js';
+import { clusterSessions } from '../lib/worktree-groups.js';
 
 // Live read of the store. A function, not a destructured snapshot: this
 // module runs inside event handlers and must never cache a slice across
 // a store write.
 const appData = () => appStore.getState();
 
-// orderedSessions returns sessions sorted by (project order, session order)
-// so navigation always matches what the user sees.
+// orderedSessions returns sessions in the order they are PAINTED: by project
+// order, then by the sidebar's clustered order within each project.
+//
+// The clustering is not a sidebar detail that leaked in here — it is the
+// other way round. This function's contract is "navigation always matches
+// what the user sees", and once shared-worktree sessions paint as a block
+// (lib/worktree-groups.ts), sorting by `.order` here stopped satisfying it:
+// ⌘↑/⌘↓, ⌘1-9, the tray and the command palette all walked the daemon's flat
+// r.order while the rows on screen sat in a different one. Clustering in one
+// place is what keeps every consumer honest; see the header comment in
+// lib/worktree-groups.ts on why two orders is the bug.
 export function orderedSessions(): SessionInfo[] {
   const projOrder = new Map(appData().projects.map((p, i) => [p.id, i]));
-  return [...appData().sessions].sort((a, b) => {
-    const pa = projOrder.get(a.projectId ?? a.project_id ?? '') ?? 1e9;
-    const pb = projOrder.get(b.projectId ?? b.project_id ?? '') ?? 1e9;
-    if (pa !== pb) return pa - pb;
-    return (a.order ?? 0) - (b.order ?? 0);
-  });
+  const byProject = new Map<string, SessionInfo[]>();
+  const pids: string[] = [];
+  for (const s of appData().sessions) {
+    const pid = s.projectId ?? s.project_id ?? '';
+    const bucket = byProject.get(pid);
+    if (bucket) bucket.push(s);
+    else {
+      byProject.set(pid, [s]);
+      pids.push(pid);
+    }
+  }
+  pids.sort((a, b) => (projOrder.get(a) ?? 1e9) - (projOrder.get(b) ?? 1e9));
+  const out: SessionInfo[] = [];
+  for (const pid of pids)
+    out.push(...clusterSessions(byProject.get(pid) ?? []));
+  return out;
 }
 
 // nextAttentionId returns the id of the next session with an unread

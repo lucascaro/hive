@@ -24,6 +24,17 @@ package buildinfo
 // History (newest first), so a bump is a decision with a record and
 // not just a number going up:
 //
+//	7 — Starting a session from an idea. CreateSpec gained
+//	    initial_prompt (delivered as an argv positional to Claude and
+//	    Pi, typed into the PTY on the first idle edge for the agents
+//	    that present a prompt box, and refused outright for the shell
+//	    and custom agents) and idea_id (the daemon flips that idea to `started`
+//	    once the prompt lands). UPDATE_IDEA gained kind and project_id,
+//	    so the inbox can correct a mis-filed note. Both directions are
+//	    silent-wrong without the bump, which is why it is one: an older
+//	    daemon drops the unknown JSON fields, so a newer GUI would show
+//	    a session that never got its prompt and a re-kind that never
+//	    happened — a wrong answer, not an empty one.
 //	6 — Narrowed socket for agent children. The daemon binds a second
 //	    listener next to the control socket (<sock>.events) serving only
 //	    HELLO{mode:event} (one state report) and the new
@@ -59,7 +70,7 @@ package buildinfo
 //	    before this cannot see or clear the flag.
 //	1 — first contract; everything up to and including the
 //	    CLIENT_COMMAND relay.
-const DaemonContract = 6
+const DaemonContract = 7
 
 // Identity is this binary's full build identity. `hived --version
 // --json` prints it, and Welcome carries the same three values, so a

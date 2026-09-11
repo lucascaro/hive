@@ -35,6 +35,7 @@ import {
 import { flashStatus, reportFailure } from '../../app/dom.js';
 import { activeProjectId } from '../../app/selectors.js';
 
+import { focusableWithin } from '../../lib/focus-trap.js';
 import { cmdOrCtrl } from '../../lib/platform.js';
 import {
   bumpAgentUsage,
@@ -125,13 +126,34 @@ function LauncherBody({
   const [loading, setLoading] = useState(true);
   const [useWorktree, setUseWorktree] = useState(req.useWorktree);
   const [branch, setBranch] = useState('');
+  // The opening prompt, seeded from the idea and editable. Per-open
+  // state like every other field here, so reopening the launcher over
+  // an edited one starts from the note again.
+  const [prompt, setPrompt] = useState(req.initialPrompt);
   // Null until the IsGitRepo probe answers; false disables the worktree
   // row. The row renders enabled meanwhile — the probe almost always
   // beats the user to the checkbox.
   const [isGit, setIsGit] = useState<boolean | null>(null);
 
+  // Where the pointer last actually was. `mouseenter` fires when the
+  // element moves under a STATIONARY cursor too, and the rows do move:
+  // the capability warning appears and disappears with the selection,
+  // which changes the popup's height. Selection → warning → reflow →
+  // a different row lands under the cursor → mouseenter → selection is
+  // a loop that does not settle. Honouring only real pointer movement
+  // breaks it at the source; the reserved space below merely stops the
+  // jitter being visible.
+  const pointerAt = useRef<{ x: number; y: number } | null>(null);
+  const pointerMoved = (e: { clientX: number; clientY: number }) => {
+    const last = pointerAt.current;
+    const moved = !last || last.x !== e.clientX || last.y !== e.clientY;
+    pointerAt.current = { x: e.clientX, y: e.clientY };
+    return moved;
+  };
+
   const searchRef = useRef<HTMLInputElement | null>(null);
   const branchRef = useRef<HTMLInputElement | null>(null);
+  const promptRef = useRef<HTMLTextAreaElement | null>(null);
   const selectedRef = useRef<HTMLDivElement | null>(null);
 
   // In duplicate mode the cwd is fixed to the source session, so the
@@ -149,6 +171,17 @@ function LauncherBody({
   const matches = q
     ? agents.filter((a) => a.name.toLowerCase().includes(q))
     : agents;
+
+  // Whether the row the user is about to launch can be handed an
+  // opening prompt at all. The shell agent and any custom agent cannot
+  // (registry.deliveryFor), and Shell is the FIRST row — so without
+  // this the most likely accidental pick silently discards what the
+  // user wrote. Only asked while there is a prompt to lose.
+  const promptDropped =
+    prompt.trim() !== '' && matches[selected]?.takesPrompt === false;
+  // Whether the prompt box is on screen at all — it changes the
+  // keyboard model (see the Tab branch below), so it is derived once.
+  const hasPrompt = !!(req.ideaId || req.initialPrompt);
 
   // Position and focus, before the first paint: the popup is anchored
   // under the resolved project's card header so the user can see which
@@ -286,21 +319,30 @@ function LauncherBody({
         anchor,
       ).catch(reportFailure('duplicate session'));
     } else {
-      CreateSession(
-        agentId,
-        req.projectId || activeProjectId(),
-        '',
-        '',
-        0,
-        0,
-        !!useWorktree,
-        anchor,
+      CreateSession({
+        agent: agentId,
+        // An idea belongs to a project, so a locked opening must not
+        // fall back to whatever is focused.
+        project: req.lockProject
+          ? req.projectId || ''
+          : req.projectId || activeProjectId(),
+        name: '',
+        color: '',
+        cols: 0,
+        rows: 0,
+        useWorktree: !!useWorktree,
+        insertAfter: anchor,
         // Trimmed here rather than on every keystroke so the box stays
         // typable; a blank name means "let the daemon generate one".
-        branch.trim(),
-        req.worktreePath,
-        req.continueConversation,
-      ).catch(reportFailure('new session'));
+        branch: branch.trim(),
+        worktreePath: req.worktreePath,
+        continueConversation: req.continueConversation,
+        // Trimmed for the same reason branch is. Emptied entirely
+        // means "just start the session" — and the daemon still links
+        // the idea, since there is no delivery left to wait for.
+        initialPrompt: prompt.trim(),
+        ideaId: req.ideaId,
+      }).catch(reportFailure('new session'));
     }
     closeLauncher();
   }
@@ -327,11 +369,63 @@ function LauncherBody({
         e.stopPropagation();
         fn();
       };
-      if (e.key === 'ArrowDown' || (e.key === 'Tab' && !e.shiftKey))
+      // Arrows move the agent selection — except inside the prompt
+      // box, where they are how you move the caret through four rows of
+      // text. Tab does NOT stand in for them there; see the Tab branch
+      // below, which cycles the popup's own text fields whenever a
+      // prompt box exists so the textarea is reachable at all.
+      const inPrompt = e.target === promptRef.current;
+      if (e.key === 'ArrowDown' && !inPrompt)
         return handle(() => moveSelection(+1));
-      if (e.key === 'ArrowUp' || (e.key === 'Tab' && e.shiftKey))
+      if (e.key === 'ArrowUp' && !inPrompt)
         return handle(() => moveSelection(-1));
-      if (e.key === 'Enter') return handle(() => activateAt(selected));
+      // Tab moves the agent selection — EXCEPT when there is a prompt
+      // box, where it has to be the way in and out of it. Nothing else
+      // reaches that textarea from the keyboard: focus starts in the
+      // filter box and the arrows belong to the list. A feature whose
+      // headline is "editable right there in the launcher" cannot be
+      // mouse-only, so in prompt mode Tab cycles the popup's own text
+      // fields and the arrows stay the list's navigation.
+      if (e.key === 'Tab' && !hasPrompt)
+        return handle(() => moveSelection(e.shiftKey ? -1 : +1));
+      // In prompt mode Tab CYCLES the popup's own text fields rather
+      // than being handed to the browser. Handing it over was the
+      // obvious fix for "the textarea is unreachable" and it was
+      // wrong: nothing traps focus in #launcher, and the focusout
+      // handler below closes the popup the moment focus leaves — so
+      // one Tab past the last field dismissed the launcher and threw
+      // away the sharpened brief. Two keystrokes from open to gone.
+      if (e.key === 'Tab' && hasPrompt) {
+        // focusableWithin, not a hand-rolled visibility test. The first
+        // version of this judged the branch field by `offsetParent`,
+        // which is precisely the rule lib/focus-trap.ts warns against:
+        // jsdom has no layout, so offsetParent is always null there and
+        // the field list silently collapsed — making the cycle test
+        // assert nothing at all. This app's convention is the `.hidden`
+        // class, which `.launcher-branch.hidden` already uses, so the
+        // branch field joins and leaves the cycle with the worktree
+        // toggle for free.
+        const fields = focusableWithin(root).filter(
+          (el) =>
+            el === searchRef.current ||
+            el === promptRef.current ||
+            el === branchRef.current,
+        );
+        if (fields.length > 0) {
+          const at = fields.indexOf(e.target as HTMLElement);
+          const next =
+            (at + (e.shiftKey ? -1 : 1) + fields.length) % fields.length;
+          return handle(() => fields[next]?.focus());
+        }
+      }
+      // Enter launches from anywhere in the popup, including the two
+      // text boxes — that is what the branch box already did. ⇧Enter
+      // inside the prompt is a newline instead, the same convention
+      // spec 217 settled on for every multi-line input in this app.
+      if (e.key === 'Enter') {
+        if (e.shiftKey && e.target === promptRef.current) return;
+        return handle(() => activateAt(selected));
+      }
       if (e.key === 'Escape') return handle(closeLauncher);
       if (cmdOrCtrl(e) && (e.key === 'n' || e.key === 'N'))
         return handle(closeLauncher);
@@ -357,7 +451,8 @@ function LauncherBody({
         !e.altKey &&
         /^[1-9]$/.test(e.key) &&
         query === '' &&
-        e.target !== branchRef.current
+        e.target !== branchRef.current &&
+        e.target !== promptRef.current
       ) {
         const i = parseInt(e.key, 10) - 1;
         if (i < matches.length) {
@@ -368,7 +463,7 @@ function LauncherBody({
         }
       }
     }
-    // Nothing but the two text boxes may take focus. Clicking anything
+    // Nothing but the text boxes may take focus. Clicking anything
     // else would blur them, and the keydown listener above only fires
     // while focus is inside #launcher — so the search would silently
     // stop responding to typing. preventDefault on mousedown suppresses
@@ -376,7 +471,12 @@ function LauncherBody({
     // agent rows still launch and the worktree checkbox still toggles.
     function onMouseDown(e: MouseEvent) {
       const target = e.target as Element | null;
-      if (target === searchRef.current || target === branchRef.current) return;
+      if (
+        target === searchRef.current ||
+        target === branchRef.current ||
+        target === promptRef.current
+      )
+        return;
       e.preventDefault();
     }
     // Focus leaving the launcher closes it: keyboard.ts bails out for the
@@ -411,6 +511,60 @@ function LauncherBody({
         value={query}
         onChange={(e) => setQuery(e.target.value)}
       />
+      {/* What the session will open with, when it was started from an
+          idea — and editable, because the note was jotted down mid-task
+          and this is the last moment to sharpen it before an agent acts
+          on it. Edits here do NOT touch the stored idea: the record is
+          what was noticed, this is the brief for one session. Above the
+          worktree row because it is context for the choice below it. */}
+      {hasPrompt ? (
+        <label className="launcher-prompt">
+          <span className="launcher-prompt__label">
+            Opening prompt
+            {/* AGENTS.md › Key Discoverability: the key goes next to
+                the thing it acts on. Enter launching from inside a
+                four-row edit box is surprising without it. */}
+            <span className="launcher-prompt__hint">
+              <Kbd>[⇧enter]</Kbd> newline <Kbd>[enter]</Kbd> launch
+            </span>
+          </span>
+          <textarea
+            ref={promptRef}
+            id="launcher-prompt"
+            className="launcher-prompt__text"
+            rows={4}
+            aria-label="Opening prompt"
+            aria-describedby="launcher-prompt-warn"
+            autoComplete="off"
+            value={prompt}
+            onChange={(e) => setPrompt(e.target.value)}
+          />
+          {/* Said before the launch, not after: the daemon simply will
+              not deliver this, and a note the user then has to retype
+              is the outcome this whole feature exists to prevent. The
+              idea stays in the inbox in that case, which is what makes
+              "start it again" true rather than consoling. */}
+          <span
+            className="launcher-prompt__warn"
+            id="launcher-prompt-warn"
+            // Announced, not just drawn: it appears in response to
+            // moving the selection, so a screen-reader user who cannot
+            // see it changing gets no other signal that the text they
+            // typed is about to be dropped.
+            //
+            // Mounted whether or not there is anything to say, and only
+            // the TEXT swaps — the same shape BootState and StatusBar
+            // use. A live region inserted at the same moment as its
+            // content is routinely missed by NVDA and VoiceOver, which
+            // would leave exactly the user this is for with no signal.
+            role="status"
+          >
+            {promptDropped
+              ? `${matches[selected]?.name ?? 'This agent'} cannot take an opening prompt — it will not be sent, and the idea stays in the inbox.`
+              : ''}
+          </span>
+        </label>
+      ) : null}
       {/* Between the filter box and the list, and only once the agent
           list has landed — the same order and timing the imperative
           version inserted it with. */}
@@ -487,7 +641,9 @@ function LauncherBody({
             data-available={a.available ? undefined : 'false'}
             style={{ ['--agent-color' as string]: a.color }}
             onClick={() => launchSelected(a.id)}
-            onMouseEnter={() => setSelected(idx)}
+            onMouseEnter={(e) => {
+              if (pointerMoved(e)) setSelected(idx);
+            }}
           >
             {/* Number keys 1–9 select that row directly; 10+ rows show no
                 number. While a query is active the digits type into it

@@ -25,6 +25,44 @@ concurrency:
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
+  shellcheck:
+    name: Shellcheck
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+
+      # scripts/release.sh and scripts/sign-macos.sh are release-critical
+      # and first execute live, after a commit and tag exist. A syntax
+      # error or an unquoted expansion there is discovered at the worst
+      # possible moment, so lint them here instead.
+      - name: Shellcheck scripts/
+        run: |
+          sudo apt-get update -qq && sudo apt-get install -y -qq shellcheck
+          # -S warning: match what these scripts already pass locally.
+          # Info/style notes on long-standing scripts are not this gate's job.
+          shopt -s nullglob
+          files=(scripts/*.sh scripts/hooks/* build.sh)
+          printf 'linting %d file(s)\n' "${#files[@]}"
+          shellcheck -S warning "${files[@]}"
+
+      # Same reasoning as the shellcheck step above, applied to workflows.
+      # .github/workflows/release.yml first executes live, after a tag
+      # already exists — a bad expression or an unknown key there is
+      # discovered at the worst possible moment.
+      - name: Set up Go
+        uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5
+        with:
+          go-version-file: go.mod
+
+      - name: Actionlint workflows
+        # `go install` at a pinned version, rather than the upstream
+        # curl|bash installer: the module proxy and GOSUMDB verify it, which
+        # is the same standard the pinned action SHAs in these workflows hold
+        # everything else to.
+        run: |
+          go install github.com/rhysd/actionlint/cmd/actionlint@v1.7.7
+          "$(go env GOPATH)/bin/actionlint" -color
+
   build:
     name: Build, Vet & Test (${{ matrix.label }})
     runs-on: ${{ matrix.os }}
@@ -70,7 +108,7 @@ jobs:
           go-version-file: go.mod
 
       - name: Set up Node
-        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
           node-version: '24'
 
@@ -175,7 +213,7 @@ jobs:
         # unconditional install overwrites whatever was restored and the
         # cache buys nothing but its own latency. Keyed on the pinned
         # versions, so a bump misses exactly once.
-        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: ~/go/bin
           key: go-analysis-tools-${{ runner.os }}-staticcheck2026.2.1-govulncheck1.7.0
@@ -227,9 +265,13 @@ jobs:
         # vars below + testclient.RequireIsolation; never touches real
         # hive state. See docs/exec-plans/completed/210-real-e2e-tests.md.
         run: |
-          export HOME="$(mktemp -d)"
-          export HIVE_STATE_DIR="$(mktemp -d)"
-          export HIVE_SOCKET="$(mktemp -d)/hived.sock"
+          # Declared and assigned separately (SC2155): `export X="$(cmd)"`
+          # masks a failing mktemp behind export's own exit status, so a
+          # failure would surface as an unset dir rather than a failed step.
+          HOME="$(mktemp -d)"
+          HIVE_STATE_DIR="$(mktemp -d)"
+          HIVE_SOCKET="$(mktemp -d)/hived.sock"
+          export HOME HIVE_STATE_DIR HIVE_SOCKET
           go test -tags=e2e -timeout 180s ./cmd/hived/...
         env:
           TERM: dumb
@@ -268,7 +310,7 @@ jobs:
         # when the browsers are present, and skipping it on cache-hit would
         # leave a leg with no browser if a cache were ever partial. On Linux
         # it also installs the apt deps, which are not cacheable.
-        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: ${{ github.workspace }}/.playwright-browsers
           key: playwright-${{ runner.os }}-${{ hashFiles('cmd/hivegui/frontend/package-lock.json') }}

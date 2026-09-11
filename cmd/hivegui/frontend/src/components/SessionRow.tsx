@@ -19,7 +19,7 @@ import {
   type DragEvent,
   type Ref,
 } from 'react';
-import { StateIcon } from './Icon.js';
+import { Icon, StateIcon } from './Icon.js';
 import { IconButton } from './IconButton.js';
 import { Kbd } from './Kbd.js';
 import { isClosing, phaseOf } from '../lib/phase-steps.js';
@@ -46,6 +46,13 @@ export interface SessionRowProps {
   onDragEnd: (e: DragEvent<HTMLLIElement>) => void;
   onDragOver: (e: DragEvent<HTMLLIElement>) => void;
   onDrop: (e: DragEvent<HTMLLIElement>) => void;
+  /** The idea this session was started from, when it came from one. */
+  ideaText: string;
+  /** How many sessions share this row's worktree; 1 (or 0) when it is not
+      shared. The row is linked to its group by colour — sessions inherit the
+      colour of the worktree they adopt — and colour alone is not a signal
+      everyone can read, so the count is the second channel. */
+  worktreeShared: number;
 }
 
 // Line 2 when the program has published no window title. One channel per
@@ -83,6 +90,20 @@ export function SessionRow(p: SessionRowProps) {
   const sub = subtitleFor(s, p.state);
   const code = agentCode(s.agent);
   const wtBranch = s.worktreeBranch ?? s.worktree_branch;
+  const shared = p.worktreeShared;
+  // A detached worktree has no branch (internal/worktree: inventory), and the
+  // glyph is where the count and the words live. Without this the cue on such
+  // a row would be the colour bar alone — which is the one thing
+  // patterns.md > Selection vs attention says it must never be.
+  const wtLabel = wtBranch || 'detached HEAD';
+  // A note can be 4 KiB. A tooltip is a glance and a screen reader
+  // announces the label in full, so both take the first line's worth
+  // and stop.
+  const ideaLabel = p.ideaText
+    ? `Started from an idea: ${
+        p.ideaText.length > 80 ? `${p.ideaText.slice(0, 80)}…` : p.ideaText
+      }`
+    : '';
   const hint = p.index === null ? null : `[${p.index}]`;
   // Restart is only offered where it means something (exited/error): a
   // running session's restart is the tile's job, not a one-click sidebar
@@ -116,6 +137,7 @@ export function SessionRow(p: SessionRowProps) {
       data-state={p.state}
       data-selected={p.selected ? '' : undefined}
       data-minimized={p.minimized ? '' : undefined}
+      data-wt-shared={shared > 1 ? '' : undefined}
       draggable
       style={style}
       onClick={(e) => {
@@ -154,16 +176,45 @@ export function SessionRow(p: SessionRowProps) {
           clicked, and tabbing to it would display:none the focused
           element out from under the browser. It is both an indicator and
           a control, so it gets its own always-on slot outside the swap. */}
-      {wtBranch ? (
-        <IconButton
-          icon="branch"
-          label={`Worktree: ${wtBranch} — manage worktrees`}
-          className="hv-session-row__worktree"
-          onClick={(e) => {
-            e.stopPropagation();
-            p.onWorktrees();
-          }}
-        />
+      {/* Where the session came from. An indicator, not a control —
+          the inbox is reached from the project card's badge, and a
+          second route to it from every row would put the same action
+          in two places. Beside the worktree slot rather than in `meta`
+          for the same reason that one is: `meta` is display:none the
+          moment the pointer enters the row. */}
+      {p.ideaText ? (
+        <span
+          className="hv-session-row__idea"
+          role="img"
+          title={ideaLabel}
+          aria-label={ideaLabel}
+        >
+          <Icon name="idea" size={12} />
+        </span>
+      ) : null}
+      {wtBranch || shared > 1 ? (
+        <span className="hv-session-row__worktree-slot">
+          <IconButton
+            icon="branch"
+            label={
+              shared > 1
+                ? `Worktree: ${wtLabel} — shared with ${shared - 1} other ${
+                    shared === 2 ? 'session' : 'sessions'
+                  } — manage worktrees`
+                : `Worktree: ${wtLabel} — manage worktrees`
+            }
+            className="hv-session-row__worktree"
+            onClick={(e) => {
+              e.stopPropagation();
+              p.onWorktrees();
+            }}
+          />
+          {shared > 1 ? (
+            <span className="hv-session-row__worktree-count" aria-hidden="true">
+              {shared}
+            </span>
+          ) : null}
+        </span>
       ) : null}
       <span className="hv-session-row__meta">
         {hint ? <Kbd>{hint}</Kbd> : null}

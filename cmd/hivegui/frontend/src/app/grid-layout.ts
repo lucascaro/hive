@@ -20,6 +20,7 @@ import { readNeedsAttention } from './state.js';
 import { appStore } from '../store/store.js';
 import { termsHost } from './dom.js';
 import { orderedSessions, activeProjectId } from './selectors.js';
+import { clusterSessions } from '../lib/worktree-groups.js';
 import { getTerm, termsMap } from '../store/terms.js';
 import {
   buildGridLayout,
@@ -296,9 +297,16 @@ export function gridScopeFor(view: ViewMode, projectId?: string) {
     );
   }
   if (view === 'grid-project') {
-    const scoped = appData()
-      .sessions.filter((s) => (s.projectId ?? s.project_id) === projectId)
-      .sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
+    // clusterSessions, not a plain `.order` sort: grid-all reaches here
+    // through orderedSessions(), which clusters, so sorting raw `.order`
+    // here would tile one project's grid in a different order from the same
+    // sessions in grid-all and from the sidebar rows beside them.
+    // patterns.md > One order.
+    const scoped = clusterSessions(
+      appData().sessions.filter(
+        (s) => (s.projectId ?? s.project_id) === projectId,
+      ),
+    );
     return filterHidden(
       scoped,
       appData().minimized,

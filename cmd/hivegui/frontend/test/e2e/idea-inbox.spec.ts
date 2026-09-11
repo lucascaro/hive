@@ -115,3 +115,251 @@ test('ideas the daemon already had show up at boot', async ({ page }) => {
   );
   await expect(badge(page)).toHaveText('1');
 });
+
+// The spec's headline flow, end to end in a browser: capture → count →
+// start → the prompt actually in the session's output. jsdom can show
+// the calls; only this can show the launcher opening under the right
+// card and the daemon's answer painting into a terminal.
+test('Start session seeds the new session with the note', async ({ page }) => {
+  await boot(page);
+  await capture(page, 'sidebar drag handle is 1px off', 'bug');
+  await badge(page).click();
+  await rows(page)
+    .first()
+    .getByRole('button', { name: 'Start session' })
+    .click();
+
+  // The launcher takes over, seeded with what the session will open
+  // with — shaped as an instruction so the agent knows what to DO with
+  // the note rather than just what was noticed, and editable, because
+  // the note was jotted mid-task.
+  await expect(inbox(page)).toBeHidden();
+  const launcher = page.locator('#launcher');
+  await expect(launcher).toBeVisible();
+  await expect(page.locator('#launcher-prompt')).toHaveValue(
+    /find the root cause/,
+  );
+  await expect(page.locator('#launcher-prompt')).toHaveValue(
+    /sidebar drag handle is 1px off/,
+  );
+
+  // Down to Claude first. Shell is the first row and cannot be handed
+  // a prompt at all, so launching it here would assert delivery the
+  // daemon refuses — which is exactly what this test used to do, and
+  // it stayed green because the mock delivered unconditionally.
+  await expect(page.locator('#launcher-prompt-warn')).toContainText(
+    'cannot take an opening prompt',
+  );
+  await page.keyboard.press('ArrowDown');
+  // Empties rather than unmounting: the live region has to predate its
+  // own content or screen readers miss the announcement.
+  await expect(page.locator('#launcher-prompt-warn')).toHaveText('');
+  await page.keyboard.press('Enter');
+  await expect(launcher).toBeHidden();
+
+  // Claude takes the prompt as argv, so it is delivered at spawn and
+  // the idea links immediately — no paste bar for this one.
+  await expect(page.locator('#pending-prompt')).toHaveCount(0);
+  const term = page.locator('.hv-session-row__idea').first();
+  await expect(term).toHaveCount(1);
+  await expect(term).toHaveAttribute('title', /sidebar drag handle is 1px off/);
+  // Started is not done: the idea outlives the session by design, and
+  // taking it out of the inbox stays an explicit action.
+  await expect(badge(page)).toHaveText('1');
+});
+
+// A layout assertion, and it has to be a real browser: vitest has no
+// CSS at all, and this theme sets box-sizing per rule rather than
+// globally — so the field's own padding and border pushed it out
+// through the right edge of the popup while every jsdom test stayed
+// green. Measured at 354px inside a 350px popup before the fix.
+test('the opening prompt stays inside the launcher popup', async ({ page }) => {
+  await boot(page);
+  await capture(
+    page,
+    'the sidebar drag handle is one pixel off and the whole row jumps ' +
+      'when you grab it near the bottom edge of a collapsed project card',
+    'bug',
+  );
+  await badge(page).click();
+  await rows(page)
+    .first()
+    .getByRole('button', { name: 'Start session' })
+    .click();
+
+  const field = await page.locator('#launcher-prompt').boundingBox();
+  const popup = await page.locator('#launcher').boundingBox();
+  expect(field).not.toBeNull();
+  expect(popup).not.toBeNull();
+  if (!field || !popup) return;
+  expect(field.x).toBeGreaterThanOrEqual(popup.x - 0.5);
+  expect(field.x + field.width).toBeLessThanOrEqual(
+    popup.x + popup.width + 0.5,
+  );
+  expect(field.y + field.height).toBeLessThanOrEqual(
+    popup.y + popup.height + 0.5,
+  );
+  // The popup itself stays on screen, and nothing scrolls sideways.
+  expect(popup.x + popup.width).toBeLessThanOrEqual(
+    page.viewportSize()?.width ?? 0,
+  );
+  expect(
+    await page.evaluate(() => {
+      const el = document.getElementById('launcher');
+      return el ? el.scrollWidth - el.clientWidth : 0;
+    }),
+  ).toBeLessThanOrEqual(1);
+});
+
+test('Edit corrects the note, its kind and its project', async ({ page }) => {
+  await boot(page);
+  await capture(page, 'misfiled note');
+  await badge(page).click();
+  await rows(page).first().getByRole('button', { name: 'Edit' }).click();
+
+  // The same three controls capture offered, pre-filled — the fields
+  // capture asked for are exactly the fields that can be wrong. The
+  // inbox gives way to it: this app never stacks two dialogs.
+  await expect(inbox(page)).toBeHidden();
+  await expect(sheet(page)).toBeVisible();
+  await expect(page.locator('#quick-idea-text')).toHaveValue('misfiled note');
+  await page.locator('#quick-idea-text').fill('sharper wording');
+  await page.locator('#quick-idea-kind [data-kind="bug"]').click();
+  await page.locator('#quick-idea-save').click();
+  await expect(sheet(page)).toBeHidden();
+
+  await badge(page).click();
+  await expect(rows(page).first()).toContainText('sharper wording');
+  await expect(rows(page).first().locator('.idea-kind')).toHaveText('bug');
+});
+
+// The other half of the same rule, and the one a user hits by accident:
+// Shell is the launcher's first row, so Start session → Enter lands on
+// it. Nothing is delivered, and — the part that matters — the note
+// stays in the inbox instead of being marked started for work that
+// never happened.
+test('an agent that cannot take the prompt keeps the idea in the inbox', async ({
+  page,
+}) => {
+  await boot(page);
+  await capture(page, 'do not lose this note', 'bug');
+  await badge(page).click();
+  await rows(page)
+    .first()
+    .getByRole('button', { name: 'Start session' })
+    .click();
+
+  await expect(page.locator('#launcher-prompt-warn')).toContainText(
+    'cannot take an opening prompt',
+  );
+  // Shell is still selected: launch it exactly as an unwary user would.
+  await page.keyboard.press('Enter');
+  await expect(page.locator('#launcher')).toBeHidden();
+
+  // The session exists, but no idea glyph — nothing was handed over.
+  await expect(page.locator('.hv-session-row')).not.toHaveCount(0);
+  await expect(page.locator('.hv-session-row__idea')).toHaveCount(0);
+  // And the note is still there to start again.
+  await expect(badge(page)).toHaveText('1');
+  await badge(page).click();
+  await expect(rows(page).first()).toContainText('do not lose this note');
+});
+
+// The typed agents do not get the note typed in for them. Hive offers
+// it and the user places it when the agent is actually ready — because
+// nothing here can tell an agent's prompt box from its startup gate,
+// and a real codex sits on a trust gate at exactly the moment the old
+// code typed into it.
+test('a typed-path agent is offered the prompt, not given it', async ({
+  page,
+}) => {
+  await boot(page);
+  await capture(page, 'the grid loses focus', 'bug');
+  await badge(page).click();
+  await rows(page)
+    .first()
+    .getByRole('button', { name: 'Start session' })
+    .click();
+  // Codex: takes a prompt, but by typing rather than argv.
+  await page.locator('.launcher-search').fill('Codex');
+  await page.keyboard.press('Enter');
+  await expect(page.locator('#launcher')).toBeHidden();
+
+  const bar = page.locator('#pending-prompt');
+  await expect(bar).toBeVisible();
+  await expect(page.locator('#pending-prompt-text')).toContainText(
+    'the grid loses focus',
+  );
+  // Not handed over yet, so the note is still in the inbox.
+  await expect(badge(page)).toHaveText('1');
+
+  await page.locator('#pending-prompt-paste').click();
+  // The offer is gone and the idea is now linked to the session.
+  await expect(bar).toHaveCount(0);
+  await expect(page.locator('.hv-session-row__idea')).toHaveCount(1);
+});
+
+test('dismissing the prompt keeps the idea in the inbox', async ({ page }) => {
+  await boot(page);
+  await capture(page, 'not right now', 'idea');
+  await badge(page).click();
+  await rows(page)
+    .first()
+    .getByRole('button', { name: 'Start session' })
+    .click();
+  await page.locator('.launcher-search').fill('Codex');
+  await page.keyboard.press('Enter');
+
+  await page.locator('#pending-prompt-dismiss').click();
+  await expect(page.locator('#pending-prompt')).toHaveCount(0);
+  // Nothing was handed over: no glyph, and the note is still there.
+  await expect(page.locator('.hv-session-row__idea')).toHaveCount(0);
+  await expect(badge(page)).toHaveText('1');
+});
+
+// The capability warning appears and disappears with the selection,
+// which changes the popup's height — and the rows move under a
+// STATIONARY cursor, firing mouseenter, which changes the selection
+// again. That loop did not settle. Two guards: the warning's space is
+// reserved so the height stops moving, and mouseenter is honoured only
+// after real pointer movement.
+test('the capability warning does not change the launcher\u2019s geometry', async ({
+  page,
+}) => {
+  // The reported symptom was the popup reflowing endlessly as the
+  // selection moved. The mechanism: the warning appears and disappears
+  // with the selected agent, that changed the popup's height, the rows
+  // moved under a stationary cursor, mouseenter fired, and the
+  // selection changed again. This pins the half that is measurable —
+  // the geometry must not depend on the warning at all, so there is
+  // nothing for a pointer to chase.
+  await boot(page);
+  await capture(page, 'a note worth keeping', 'bug');
+  await badge(page).click();
+  await rows(page)
+    .first()
+    .getByRole('button', { name: 'Start session' })
+    .click();
+  const launcher = page.locator('#launcher');
+  await expect(launcher).toBeVisible();
+
+  // Shell is selected first and cannot take a prompt: warning showing.
+  await expect(page.locator('#launcher-prompt-warn')).toContainText(
+    'cannot take an opening prompt',
+  );
+  const warned = await launcher.boundingBox();
+
+  // Move to an agent that can take one: the warning empties.
+  await page.keyboard.press('ArrowDown');
+  await expect(page.locator('#launcher-prompt-warn')).toHaveText('');
+  const quiet = await launcher.boundingBox();
+  expect(quiet?.height).toBe(warned?.height);
+  expect(quiet?.width).toBe(warned?.width);
+  expect(quiet?.y).toBe(warned?.y);
+
+  // And back again, so it is invariant rather than merely settled.
+  await page.keyboard.press('ArrowUp');
+  await expect(page.locator('#launcher-prompt-warn')).not.toHaveText('');
+  const again = await launcher.boundingBox();
+  expect(again?.height).toBe(warned?.height);
+});

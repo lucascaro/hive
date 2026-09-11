@@ -175,6 +175,25 @@ export function canRename(w: WorktreeInfo): boolean {
   );
 }
 
+// The names of the sessions occupying a worktree, in the order the daemon
+// lists them. Ids with no live session are dropped rather than rendered as
+// raw uuids: the payload and the session list arrive on separate events, so
+// a stale id is expected, not exceptional. Names are what the sidebar shows,
+// so "which of my sessions are in here" is answerable without matching
+// identifiers by eye.
+export function sessionNames(
+  w: WorktreeInfo,
+  sessions: { id: string; name?: string }[],
+): string[] {
+  const byId = new Map(sessions.map((s) => [s.id, s]));
+  const out: string[] = [];
+  for (const id of readSessionIds(w)) {
+    const name = byId.get(id)?.name;
+    if (name) out.push(name);
+  }
+  return out;
+}
+
 // One-line status for the row, e.g. "2 sessions · uncommitted changes".
 export function statusLabel(w: WorktreeInfo): string {
   const parts: string[] = [];
