@@ -64,7 +64,7 @@ describe('sidebar window titles', () => {
     expect(name?.parentElement).toBe(r);
     expect(sub?.parentElement).toBe(r);
     expect(r.querySelector('.hv-session-row__state')?.parentElement).toBe(r);
-    expect(r.querySelector('.hv-session-row__swatch')?.parentElement).toBe(r);
+    expect(r.querySelector('.hv-session-row__colour')?.parentElement).toBe(r);
   });
 
   // Line 2's WIDTH is the point of the redesign, and this suite cannot

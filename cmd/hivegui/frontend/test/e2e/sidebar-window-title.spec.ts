@@ -89,7 +89,7 @@ test.describe('#248 sidebar window titles', () => {
     // AGENTS.md: status dots must appear on every session row. A taller
     // row must not push them out or let the text column cover them —
     // elementFromPoint is the only honest check for that.
-    for (const sel of ['.hv-session-row__state', '.hv-session-row__swatch']) {
+    for (const sel of ['.hv-session-row__state', '.hv-session-row__colour']) {
       const box = await row.locator(sel).boundingBox();
       if (!box) throw new Error(`${sel} has no box`);
       const hit = await page.evaluate(

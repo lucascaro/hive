@@ -3,18 +3,20 @@
 .hv-session-row {
   position: relative;
   display: grid;
-  /* state | name | idea | worktree | meta+actions | swatch on grid row 1;
+  /* state | name | idea | worktree | meta+actions on grid row 1;
      the window title on grid row 2, spanning to the right edge. Every
      child is placed explicitly (below) because meta and actions SHARE
      the fifth cell — see the hover swap — and because an unplaced child
      auto-flows to a new line and wraps the row. Column gaps come from
      the children's own margins rather than `gap`, so a row with no
      worktree and no idea contributes no empty-column gaps. */
-  grid-template-columns: 14px minmax(0, 1fr) auto auto auto auto;
+  grid-template-columns: 14px minmax(0, 1fr) auto auto auto;
   align-items: center;
   row-gap: 1px;
   min-height: 40px;
-  padding: 0 var(--space-2) 0 var(--space-3);
+  /* The right gutter is the colour bar's expanded width, reserved at all
+     times: the bar grows into it on hover instead of pushing anything. */
+  padding: 0 var(--space-3);
   color: var(--fg-muted);
   font-size: var(--text-md);
   cursor: pointer;
@@ -27,7 +29,6 @@
 .hv-session-row__name { grid-column: 2; grid-row: 1; }
 .hv-session-row__idea { grid-column: 3; grid-row: 1; }
 .hv-session-row__worktree-slot { grid-column: 4; grid-row: 1; }
-.hv-session-row__swatch { grid-column: 6; grid-row: 1; }
 /* The whole point of the redesign's line 2: the window title runs from
    the name's column to the row's right edge, under the meta column
    rather than stopping before it. */
@@ -189,18 +190,31 @@
   pointer-events: auto;
 }
 
-.hv-session-row__swatch {
-  position: relative;
-  width: 12px;
-  height: 12px;
-  flex-shrink: 0;
+/* The colour bar. Out of the grid's flow entirely — absolutely placed
+   against the row's reserved right gutter — so widening it on hover
+   reflows nothing and the action buttons never move. It replaces the
+   12px chip that used to occupy its own grid column to the RIGHT of
+   those buttons. */
+.hv-session-row__colour {
+  position: absolute;
+  right: 0;
+  top: 1px;
+  bottom: 1px;
+  width: 3px;
   border-radius: var(--radius-sm);
   background: var(--session-color, var(--fg-subtle));
   cursor: pointer;
+  transition: width var(--motion-fast) ease;
 }
-.hv-session-row__swatch input[type='color'] {
+.hv-session-row:hover .hv-session-row__colour,
+.hv-session-row__colour:has(input:focus-visible) {
+  width: 12px;
+}
+.hv-session-row__colour input[type='color'] {
   position: absolute;
   inset: 0;
+  width: 100%;
+  height: 100%;
   opacity: 0;
   cursor: pointer;
 }
@@ -236,7 +250,7 @@
 }
 /* The colour input is `opacity: 0` and opacity applies to the outline
    too, so its own focus ring paints nothing. Ring the wrapper instead. */
-.hv-session-row__swatch:has(input:focus-visible) {
+.hv-session-row__colour:has(input:focus-visible) {
   outline: 2px solid var(--accent);
   outline-offset: 1px;
 }

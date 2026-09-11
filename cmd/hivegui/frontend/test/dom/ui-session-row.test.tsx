@@ -160,14 +160,14 @@ describe('SessionRow', () => {
     expect(onSelect).toHaveBeenCalledTimes(1);
   });
 
-  // The swatch opens the native colour picker; clicking it must not also
-  // switch sessions.
-  it('does not select the row when the colour swatch is clicked', () => {
+  // The colour bar opens the native colour picker; clicking it must not
+  // also switch sessions.
+  it('does not select the row when the colour bar is clicked', () => {
     const onSelect = vi.fn();
     const { el } = row({}, { onSelect });
-    el.querySelector<HTMLElement>('.hv-session-row__swatch')?.click();
+    el.querySelector<HTMLElement>('.hv-session-row__colour')?.click();
     el.querySelector<HTMLInputElement>(
-      '.hv-session-row__swatch input',
+      '.hv-session-row__colour input',
     )?.click();
     expect(onSelect).not.toHaveBeenCalled();
   });
@@ -223,13 +223,13 @@ describe('SessionRow', () => {
     const { el, rerender } = row({ color: '#ff0000' });
     expect(el.style.getPropertyValue('--session-color')).toBe('#ff0000');
     expect(
-      el.querySelector<HTMLInputElement>('.hv-session-row__swatch input')
+      el.querySelector<HTMLInputElement>('.hv-session-row__colour input')
         ?.value,
     ).toBe('#ff0000');
     rerender(<SessionRow {...props({ color: '#00ff00' })} />);
     expect(el.style.getPropertyValue('--session-color')).toBe('#00ff00');
     expect(
-      el.querySelector<HTMLInputElement>('.hv-session-row__swatch input')
+      el.querySelector<HTMLInputElement>('.hv-session-row__colour input')
         ?.value,
     ).toBe('#00ff00');
   });
@@ -241,7 +241,7 @@ describe('SessionRow', () => {
     const onColor = vi.fn();
     const { el, rerender } = row({ color: '#ff0000' }, { onColor });
     const input = el.querySelector<HTMLInputElement>(
-      '.hv-session-row__swatch input',
+      '.hv-session-row__colour input',
     );
     if (!input) throw new Error('no colour input');
     fireEvent.input(input, { target: { value: '#123456' } });

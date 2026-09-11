@@ -147,11 +147,11 @@ export function SessionRow(p: SessionRowProps) {
       draggable
       style={style}
       onClick={(e) => {
-        // The swatch opens the native picker; it must not also switch
-        // sessions.
+        // The colour bar opens the native picker; it must not also
+        // switch sessions.
         if (
           e.target instanceof Element &&
-          e.target.closest('.hv-session-row__swatch')
+          e.target.closest('.hv-session-row__colour')
         ) {
           return;
         }
@@ -274,7 +274,12 @@ export function SessionRow(p: SessionRowProps) {
           }}
         />
       </span>
-      <span className="hv-session-row__swatch">
+      {/* The session colour, and its control, are the same thing: a 3px
+          bar on the row's right edge that widens to 12px on hover or
+          keyboard focus and opens the native picker. The row reserves
+          that 12px permanently (session-row.css), so widening costs no
+          reflow and never moves the hover-revealed actions. */}
+      <span className="hv-session-row__colour">
         <input
           type="color"
           ref={colorRef}
