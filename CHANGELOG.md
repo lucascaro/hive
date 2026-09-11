@@ -36,6 +36,10 @@ A session's colour is now a bar on the right edge of its sidebar row instead of
 a filled square in its own column, and the bar is the colour control: hover it
 or tab to it and it widens, and clicking opens the same colour picker as before.
 The row reserves the widened width at all times, so nothing moves when it grows.
+The compact sidebar density keeps the window title as its single line instead of
+the session name. The title is what tells apart two sessions that share a
+worktree — they are named after the branch — so it is the line worth keeping. A
+session that has published no title still shows its name.
 The project header in the sidebar is now a flat uppercase label with a hairline
 rule instead of a bordered card, and the active project is marked by the label
 taking the accent colour. Both the project label and a worktree group's branch
