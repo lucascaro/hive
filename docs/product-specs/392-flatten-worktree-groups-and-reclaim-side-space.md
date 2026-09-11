@@ -5,7 +5,8 @@ type: enhancement
 complexity: S
 priority: P2
 pr: 393
-stage: GATE
+shipped: 2026-09-11
+stage: DONE
 ---
 
 # Sidebar: flatten worktree groups and reclaim side space
@@ -14,7 +15,7 @@ stage: GATE
 - **Type:** enhancement
 - **Complexity:** S
 - **Priority:** P2
-- **Exec plan:** [docs/exec-plans/active/392-flatten-worktree-groups-and-reclaim-side-space.md](../exec-plans/active/392-flatten-worktree-groups-and-reclaim-side-space.md)
+- **Exec plan:** [docs/exec-plans/completed/392-flatten-worktree-groups-and-reclaim-side-space.md](../exec-plans/completed/392-flatten-worktree-groups-and-reclaim-side-space.md)
 
 ## Problem
 

@@ -2,7 +2,7 @@
 
 - **Spec:** [docs/product-specs/392-flatten-worktree-groups-and-reclaim-side-space.md](../../product-specs/392-flatten-worktree-groups-and-reclaim-side-space.md)
 - **Issue:** #392
-- **Status:** active
+- **Status:** completed
 - **PR:** #393
 - **Branch:** `feature/392-flatten-worktree-groups`
 - **Worktree:** `.worktrees/flat-group` on `feature/392-flatten-worktree-groups`
@@ -144,6 +144,20 @@ All four nice-to-haves applied: the background assertion now checks **alpha === 
 - **Non-vacuity proven, not asserted.** With `sidebar.css` reverted to `HEAD`, three of the four new tests fail (left Δ, right Δ, radius) and the background one passes. With the new CSS but the header's `background` declaration deleted, only the background test fails. Each assertion fails for its own reason and nothing else's.
 - **Visual pass — all three presets read as a group.** Screenshots of the seeded sidebar (group expanded, group collapsed, a second group directly below) in `terminal`, `hive-dark` and `hive-light`. The band is carried by the header's own ground plus the closing hairline; the body's ground shift against `--surface` is the weakest of the three channels in every preset and effectively invisible in `terminal`, as predicted. It still reads, because the header band and the closing rule do not depend on it. If the sidebar ever grows a second full-width header band that is not a group, this is the cue to revisit.
 
+## Gate verdict
+
+- **2026-09-11** — verdict: NEEDS_FOLLOWUP; phase: —; checks: 2 dimensions passed / 0 failed / 1 followup; followups: pending operator decision; one-line: everything #392 owns passes; the one finding is #385's unfinished pipeline bookkeeping, inherited not introduced.
+  - 2026-09-11 dimensions:
+    - acceptance — PASS — all five success criteria independently re-verified, not taken from the plan's prose: ui-lint exit 0, 734 dom, 23 sidebar e2e, 16 ordering e2e, 19 sidebar dom; the validator drove its own Playwright script against the mock harness and took its own screenshots rather than trusting the implementation's visual pass. Noted, not a regression: no spec covers dragging *within* a group, and this diff does not touch the grouping logic that would make one necessary.
+    - non-goals — PASS — zero diff in `theme/density.ts`, `session-row.css`'s density block, `lib/worktree-groups.ts` and `internal/registry`; `project-card.css` is comment-only.
+    - doc accuracy — NEEDS_FOLLOWUP — changeset, `components.md` and `patterns.md` all match what shipped, and the options mock is correctly excluded as a historical record. The repo-wide sweep found one stale doc, **pre-existing**: `docs/exec-plans/active/385-sidebar-redesign.md:200-201` still documents `.hv-worktree-group { border-radius: var(--radius-md) }` as target CSS, and that plan is still `Status: active` / spec stage `REVIEW` despite having shipped as #390. #392 did not introduce it; #390's own gate bookkeeping was never completed.
+
+- **2026-09-11 (re-run)** — verdict: PASS; phase: —; checks: 3 dimensions passed / 0 failed / 0 followups; followups: none; one-line: the doc-accuracy followup is closed — #385's bookkeeping was completed in this PR at the operator's direction, and its stale CSS snippet is now marked superseded.
+  - 2026-09-11 dimensions:
+    - acceptance — PASS — unchanged from the first run; no code moved between the two.
+    - non-goals — PASS — unchanged.
+    - doc accuracy — PASS — `385-sidebar-redesign.md` moved to `completed/` with `Status: completed`, `PR: #390`, `Shipped: 2026-09-11`; its spec advanced to `stage: DONE` with `pr`/`shipped` set and its `Exec plan:` link repointed; the stale `border-radius` snippet is kept as the historical record of what #390 built and explicitly marked superseded by #392, pointing at the live CSS. Its `## Gate verdict` records honestly that it shipped without a gate rather than back-dating a PASS that never ran.
+
 ## PR convergence ledger
 
 - **2026-09-11 iter 1** — verdict: APPROVE; mergeable: MERGEABLE; findings_hash: empty; threads_open: 0; action: stop; head_sha: 780270d.
@@ -162,6 +176,8 @@ One MINOR, not actioned and recorded here instead: grouped-row body text moves f
 ## Progress
 
 - **2026-09-11** — Spec + mock written, issue #392 filed, worktree created, plan drafted.
+- **2026-09-11** — Gate PASS on re-run after closing the followup in-PR (operator's call). Spec advanced to DONE.
+- **2026-09-11** — Gate NEEDS_FOLLOWUP; sole item is #385's unfinished bookkeeping (plan still in `active/`, spec still `REVIEW`, plan text still documents the pre-#392 CSS). Nothing #392 owns is outstanding. CI green on all 14 checks.
 - **2026-09-11** — Plan approved after two second-opinion rounds. Implemented, all checks green, visual pass done. PR #393 opened; stage REVIEW.
 
 ## Open questions
