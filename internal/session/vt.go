@@ -82,6 +82,11 @@ type VT struct {
 	// mid-multibyte rune. Used by clients to repaint xterm.js from a
 	// clean slate after a width-changing resize.
 	ring []byte
+
+	// decModes tracks the DEC private modes a reattaching client has to
+	// be told about again, because our snapshot preamble (DECSTR) clears
+	// them and the program never re-sends them. See decmodes.go.
+	decModes decModeTracker
 }
 
 // Title returns the window title the program most recently set via
@@ -137,6 +142,7 @@ func (v *VT) Write(p []byte) (int, error) {
 	defer v.mu.Unlock()
 
 	v.appendRing(p)
+	v.decModes.feed(p)
 
 	cols, rows := v.term.Size()
 	// The eviction heuristic can only see rows-1 lines of scroll per pass
@@ -482,6 +488,29 @@ func (v *VT) RingBytes() []byte {
 	return out
 }
 
+// ReplayBytes returns the ring followed by the DEC private modes that
+// are currently set — what a client should render to rebuild a tile
+// from scratch on a width-changing re-replay.
+//
+// The mode bytes go last, and they are needed even though the ring is a
+// full byte history, for two reasons: the client term.reset()s before
+// consuming the replay, and the ring is capped (ringCap), so on a
+// long-lived session the original set sequences have usually been
+// trimmed off the front. Appending the live state rather than trusting
+// the ring makes the outcome independent of how much history survived.
+func (v *VT) ReplayBytes() []byte {
+	v.mu.Lock()
+	defer v.mu.Unlock()
+	modes := v.decModes.restoreBytes()
+	if len(v.ring) == 0 && len(modes) == 0 {
+		return nil
+	}
+	out := make([]byte, 0, len(v.ring)+len(modes))
+	out = append(out, v.ring...)
+	out = append(out, modes...)
+	return out
+}
+
 // Resize updates the emulator's grid dimensions. Returns nil for now;
 // vt10x.Resize doesn't surface errors. History rows captured at the old
 // width remain in the ring as-is — re-laying them out is not worth the
@@ -581,6 +610,13 @@ func (v *VT) RenderSnapshot() []byte {
 	} else {
 		buf.WriteString("\x1b[?25l")
 	}
+
+	// Last, so nothing above can clobber it: re-assert the DEC private
+	// modes the program set and our own \x1b[!p just cleared. Without
+	// this a reattached tile loses bracketed paste, mouse tracking and
+	// app-cursor keys for the life of the session — the program has no
+	// idea a new client arrived and never sends them again.
+	buf.Write(v.decModes.restoreBytes())
 
 	return buf.Bytes()
 }

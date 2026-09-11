@@ -424,7 +424,7 @@ func (s *Session) SubscribeWithAtomicReplay(sink Sink, writeFn func(replay []byt
 func (s *Session) EmitAtomicReplay(writeFn func(replay []byte) error) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	return writeFn(s.vt.RingBytes())
+	return writeFn(s.vt.ReplayBytes())
 }
 
 // Write forwards bytes from a client to the PTY (i.e. keystrokes).
