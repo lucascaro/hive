@@ -3,6 +3,8 @@
 - **Spec:** [docs/product-specs/392-flatten-worktree-groups-and-reclaim-side-space.md](../../product-specs/392-flatten-worktree-groups-and-reclaim-side-space.md)
 - **Issue:** #392
 - **Status:** active
+- **PR:** #393
+- **Branch:** `feature/392-flatten-worktree-groups`
 - **Worktree:** `.worktrees/flat-group` on `feature/392-flatten-worktree-groups`
 - **Design review:** [docs/design-docs/ui/mocks/sidebar-group-flatten-options.html](../../design-docs/ui/mocks/sidebar-group-flatten-options.html) — three group cues and two trim levels, measured from the live DOM.
 
@@ -154,6 +156,7 @@ All four nice-to-haves applied: the background assertion now checks **alpha === 
 ## Progress
 
 - **2026-09-11** — Spec + mock written, issue #392 filed, worktree created, plan drafted.
+- **2026-09-11** — Plan approved after two second-opinion rounds. Implemented, all checks green, visual pass done. PR #393 opened; stage REVIEW.
 
 ## Open questions
 

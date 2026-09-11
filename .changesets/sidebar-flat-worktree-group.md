@@ -2,7 +2,7 @@
 type: changed
 bump: patch
 issue: 392
-pr: null
+pr: 393
 ---
 
 The worktree group in the sidebar is now a flat band rather than a rounded,

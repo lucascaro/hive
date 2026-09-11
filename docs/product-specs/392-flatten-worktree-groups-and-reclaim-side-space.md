@@ -4,7 +4,8 @@ title: "Sidebar: flatten worktree groups and reclaim side space"
 type: enhancement
 complexity: S
 priority: P2
-stage: IMPLEMENT
+pr: 393
+stage: REVIEW
 ---
 
 # Sidebar: flatten worktree groups and reclaim side space
