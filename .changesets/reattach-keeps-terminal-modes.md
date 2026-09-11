@@ -1,7 +1,7 @@
 ---
 type: fixed
 bump: patch
-pr: TBD
+pr: 391
 ---
 
 Pasting, mouse tracking and arrow keys keep working after a session is
