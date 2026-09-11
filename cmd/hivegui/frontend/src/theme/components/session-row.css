@@ -3,26 +3,35 @@
 .hv-session-row {
   position: relative;
   display: grid;
-  /* state | text | idea | worktree | meta+actions | swatch. Every child
-     is placed explicitly (below) because meta and actions SHARE the
-     fifth cell — see the hover swap. Column gaps come from the
-     children's own margins rather than `gap`, so a row with no worktree
-     and no idea contributes no empty-column gaps. */
+  /* state | name | idea | worktree | meta+actions | swatch on grid row 1;
+     the window title on grid row 2, spanning to the right edge. Every
+     child is placed explicitly (below) because meta and actions SHARE
+     the fifth cell — see the hover swap — and because an unplaced child
+     auto-flows to a new line and wraps the row. Column gaps come from
+     the children's own margins rather than `gap`, so a row with no
+     worktree and no idea contributes no empty-column gaps. */
   grid-template-columns: 14px minmax(0, 1fr) auto auto auto auto;
   align-items: center;
-  row-gap: var(--space-2);
+  row-gap: 1px;
   min-height: 40px;
   padding: 0 var(--space-2) 0 var(--space-3);
   color: var(--fg-muted);
   font-size: var(--text-md);
   cursor: pointer;
 }
+/* The subtitle takes the same margin as the name, which is what keeps
+   the two lines in one column: both start at grid column 2, and column
+   gaps here are child margins rather than `gap`. */
 .hv-session-row > * + * { margin-left: var(--space-2); }
-.hv-session-row__state { grid-column: 1; }
-.hv-session-row__text { grid-column: 2; }
-.hv-session-row__idea { grid-column: 3; }
-.hv-session-row__worktree-slot { grid-column: 4; }
-.hv-session-row__swatch { grid-column: 6; }
+.hv-session-row__state { grid-column: 1; grid-row: 1; }
+.hv-session-row__name { grid-column: 2; grid-row: 1; }
+.hv-session-row__idea { grid-column: 3; grid-row: 1; }
+.hv-session-row__worktree-slot { grid-column: 4; grid-row: 1; }
+.hv-session-row__swatch { grid-column: 6; grid-row: 1; }
+/* The whole point of the redesign's line 2: the window title runs from
+   the name's column to the row's right edge, under the meta column
+   rather than stopping before it. */
+.hv-session-row__sub { grid-column: 2 / -1; grid-row: 2; }
 
 /* Where the session came from. Not a button: the inbox is reached from
    the project card's badge, and a second route to it on every row would
@@ -84,13 +93,6 @@
   line-height: 1;
 }
 
-.hv-session-row__text {
-  display: flex;
-  flex-direction: column;
-  justify-content: center;
-  min-width: 0;
-  gap: 1px;
-}
 .hv-session-row__name,
 .hv-session-row__sub {
   min-width: 0;
@@ -122,6 +124,11 @@
   /* Both live in the same cell so the swap below can be opacity rather
      than `display` — see the hover-swap comment. */
   grid-column: 5;
+  /* meta belongs to line 1, beside the name. The action buttons are
+     24px — taller than either line — so they span BOTH rows instead of
+     setting line 1's height and pushing the row past 40px; spanning
+     also leaves them vertically centred in the row, exactly where they
+     sit today. */
   grid-row: 1;
   display: flex;
   align-items: center;
@@ -135,6 +142,10 @@
    at all times; a click on it falls through to the row, which selects. */
 .hv-session-row__meta { pointer-events: none; }
 .hv-session-row__actions {
+  /* `span 2`, not `1 / -1`: the rows are implicit (only the columns are
+     templated), and -1 resolves to the EXPLICIT grid's last line — which
+     is line 1 — so `1 / -1` silently spans nothing. */
+  grid-row: 1 / span 2;
   opacity: 0;
   pointer-events: none;
 }
@@ -194,8 +205,13 @@
   cursor: pointer;
 }
 
-/* Inline rename: same metrics as line 1, so the row does not jump. */
+/* Inline rename: same metrics as line 1, so the row does not jump. The
+   input REPLACES the name span in the DOM (lib/inline-rename.ts), so it
+   has to claim the same grid cell — an unplaced grid child auto-flows to
+   a new line and wraps the row. */
 .hv-session-row .name-input {
+  grid-column: 2;
+  grid-row: 1;
   width: 100%;
   min-width: 0;
   padding: 2px var(--space-1);

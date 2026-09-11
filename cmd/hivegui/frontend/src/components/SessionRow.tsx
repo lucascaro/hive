@@ -168,13 +168,16 @@ export function SessionRow(p: SessionRowProps) {
         className="hv-session-row__state"
         detail={stateTooltip(s, p.state)}
       />
-      <span className="hv-session-row__text">
-        <span className="hv-session-row__name" ref={p.nameRef}>
-          {displayName(s)}
-        </span>
-        <span className="hv-session-row__sub" title={sub}>
-          {sub}
-        </span>
+      {/* Name and title are direct grid children, not a stacked column:
+          line 2 spans from the name's column to the row's right edge
+          (session-row.css), which a wrapper confined to column 2 could
+          never do. The wrapper was the reason the window title truncated
+          ~70px early. */}
+      <span className="hv-session-row__name" ref={p.nameRef}>
+        {displayName(s)}
+      </span>
+      <span className="hv-session-row__sub" title={sub}>
+        {sub}
       </span>
       {/* The worktree control is NOT in `meta`: meta is the half of the
           hover swap that disappears the moment the pointer enters the row

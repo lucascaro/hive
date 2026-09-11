@@ -54,19 +54,23 @@ describe('sidebar window titles', () => {
     withSessions([{ id: 'a', name: 'api', order: 0, title: 'npm run build' }]);
 
     const r = row('a');
-    // Name and title stack inside one wrapper; the dot and swatch stay
-    // siblings of that wrapper so they center against the taller row.
-    const text = r.querySelector('.hv-session-row__text');
-    expect(text).not.toBeNull();
-    expect(text?.querySelector('.hv-session-row__name')?.textContent).toBe(
-      'api',
-    );
-    expect(text?.querySelector('.hv-session-row__sub')?.textContent).toBe(
-      'npm run build',
-    );
+    // Name and title are siblings in the row's own grid — line 2 spans to
+    // the right edge, which it could not do from inside a wrapper pinned
+    // to column 2.
+    const name = r.querySelector<HTMLElement>('.hv-session-row__name');
+    const sub = r.querySelector<HTMLElement>('.hv-session-row__sub');
+    expect(name?.textContent).toBe('api');
+    expect(sub?.textContent).toBe('npm run build');
+    expect(name?.parentElement).toBe(r);
+    expect(sub?.parentElement).toBe(r);
     expect(r.querySelector('.hv-session-row__state')?.parentElement).toBe(r);
     expect(r.querySelector('.hv-session-row__swatch')?.parentElement).toBe(r);
   });
+
+  // Line 2's WIDTH is the point of the redesign, and this suite cannot
+  // see it: the dom tests mount no stylesheet, so every computed grid
+  // property here is ''. The measurement lives in
+  // test/e2e/sidebar-window-title.spec.ts, in a real browser.
 
   it('exposes the untruncated title as a tooltip', () => {
     const long = 'deploying '.repeat(30);
