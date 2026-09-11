@@ -33,6 +33,7 @@ const base = {
   onDrop: noop,
   ideaText: '',
   worktreeShared: 1,
+  titleOnly: false,
 };
 
 function props(

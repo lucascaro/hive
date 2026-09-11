@@ -50,6 +50,11 @@ export interface SessionRowProps {
   onDrop: (e: DragEvent<HTMLLIElement>) => void;
   /** The idea this session was started from, when it came from one. */
   ideaText: string;
+  /** Render the window title as the row's PRIMARY line and drop the
+      name. Set for a session inside a worktree group whose name is the
+      branch-derived default the panel header already states — a name the
+      user chose is never hidden. */
+  titleOnly: boolean;
   /** How many sessions share this row's worktree; 1 (or 0) when it is not
       shared. The row is linked to its group by colour — sessions inherit the
       colour of the worktree they adopt — and colour alone is not a signal
@@ -173,12 +178,18 @@ export function SessionRow(p: SessionRowProps) {
           (session-row.css), which a wrapper confined to column 2 could
           never do. The wrapper was the reason the window title truncated
           ~70px early. */}
-      <span className="hv-session-row__name" ref={p.nameRef}>
-        {displayName(s)}
+      <span
+        className="hv-session-row__name"
+        ref={p.nameRef}
+        title={p.titleOnly ? sub : undefined}
+      >
+        {p.titleOnly ? sub : displayName(s)}
       </span>
-      <span className="hv-session-row__sub" title={sub}>
-        {sub}
-      </span>
+      {p.titleOnly ? null : (
+        <span className="hv-session-row__sub" title={sub}>
+          {sub}
+        </span>
+      )}
       {/* The worktree control is NOT in `meta`: meta is the half of the
           hover swap that disappears the moment the pointer enters the row
           (or focus lands in it), so a button living there could never be

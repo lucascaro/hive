@@ -63,6 +63,46 @@
   background: var(--accent);
 }
 
+/* The shared-worktree bar that used to live here is now the group
+   panel's (sidebar.css › .hv-worktree-group::after): members share a
+   colour, and one bar per row was three marks for one fact. The row
+   keeps data-wt-shared for the branch glyph's count and label. */
+
+.hv-session-row__worktree-slot { grid-column: 4; grid-row: 1; }
+/* The whole point of the redesign's line 2: the window title runs from
+   the name's column to the row's right edge, under the meta column
+   rather than stopping before it. */
+.hv-session-row__sub { grid-column: 2 / -1; grid-row: 2; }
+
+/* Where the session came from. Not a button: the inbox is reached from
+   the project card's badge, and a second route to it on every row would
+   put one action in two places. Muted like the other passive metadata —
+   the row's loudest channel is its state dot. */
+.hv-session-row__idea {
+  display: inline-flex;
+  align-items: center;
+  color: var(--fg-subtle);
+}
+
+.hv-session-row:hover { background: var(--hover); color: var(--fg); }
+
+/* Selection: --sel ground + a 2px accent bar at the left edge. Attention
+   never uses either channel (patterns.md › Selection vs attention). */
+.hv-session-row[data-selected] {
+  background: var(--sel);
+  color: var(--fg);
+  font-weight: 500;
+}
+.hv-session-row[data-selected]::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  width: 2px;
+  background: var(--accent);
+}
+
 /* Shared worktree: a bar at the RIGHT edge, in the session's own colour.
    Sessions that adopt a worktree inherit the colour of the session they
    joined (internal/registry/create.go), so the bar is the same on every

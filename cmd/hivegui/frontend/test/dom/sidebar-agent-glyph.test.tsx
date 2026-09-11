@@ -37,6 +37,7 @@ function row(s: Partial<SessionInfo>) {
     onDrop: noop,
     ideaText: '',
     worktreeShared: 1,
+    titleOnly: false,
   };
   const r = render(<SessionRow {...props} />, {
     container: document.body.appendChild(document.createElement('ul')),

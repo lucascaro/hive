@@ -48,25 +48,29 @@ async function seedSharedPair(page: Page) {
   );
 }
 
-// The ::after bar's computed geometry and fill, plus whether a hit test at
-// the row's right edge still lands inside the row.
+// The group panel's ::after bar — its geometry and fill, plus whether a
+// hit test at the row's right edge still lands inside the panel. The bar
+// belongs to the PANEL now, not to each row: members share a colour, so a
+// bar per row would be three marks for one fact.
 function barOf(page: Page, nth: number) {
   return page.evaluate((n) => {
     const rows = document.querySelectorAll<HTMLElement>(
       'li.hv-session-row[data-wt-shared]',
     );
     const li = rows[n];
-    const cs = getComputedStyle(li, '::after');
+    const panel = li.closest<HTMLElement>('.hv-worktree-group');
+    if (!panel) throw new Error('member is not inside a group panel');
+    const cs = getComputedStyle(panel, '::after');
     const r = li.getBoundingClientRect();
     const hit = document.elementFromPoint(r.right - 1, r.top + r.height / 2);
     return {
       width: cs.width,
       background: cs.backgroundColor,
       content: cs.content,
-      sessionColor: getComputedStyle(li)
+      sessionColor: getComputedStyle(panel)
         .getPropertyValue('--session-color')
         .trim(),
-      hitInsideRow: !!hit && (hit === li || li.contains(hit)),
+      hitInsidePanel: !!hit && (hit === panel || panel.contains(hit)),
       sid: li.dataset.sid ?? '',
     };
   }, nth);
@@ -85,11 +89,9 @@ test.describe('shared worktree cue', () => {
     // Painted, not transparent, and not falling through to the fallback.
     expect(first.background).not.toBe('rgba(0, 0, 0, 0)');
     expect(first.sessionColor).not.toBe('');
-    // The row's right edge is still inside the row's own box — i.e. the
-    // bar is not sitting in an area clipped away by an ancestor's
-    // overflow. (It cannot be covered by the swatch that shares this end
-    // of the row: ::after paints above in-flow children.)
-    expect(first.hitInsideRow).toBe(true);
+    // The right edge is still inside the panel's own box — i.e. the bar
+    // is not in an area clipped away by an ancestor's overflow.
+    expect(first.hitInsidePanel).toBe(true);
   });
 
   test('gives both members of a group the same colour', async ({ page }) => {
@@ -98,6 +100,16 @@ test.describe('shared worktree cue', () => {
     const [a, b] = [await barOf(page, 0), await barOf(page, 1)];
     expect(a.sid).not.toBe(b.sid);
     expect(a.background).toBe(b.background);
+  });
+
+  test('names the branch once, at the top of the panel', async ({ page }) => {
+    await boot(page);
+    await seedSharedPair(page);
+    const header = page.locator('.hv-worktree-group__header').first();
+    await expect(header.locator('.hv-worktree-group__branch')).toContainText(
+      'feat/',
+    );
+    await expect(header.locator('.hv-worktree-group__count')).toHaveText('2');
   });
 
   test('shows the group size on the branch glyph', async ({ page }) => {
@@ -121,9 +133,9 @@ test.describe('shared worktree cue', () => {
         'li.hv-session-row:not([data-wt-shared])',
       );
       if (!li) return null;
-      return getComputedStyle(li, '::after').content;
+      return !!li.closest('.hv-worktree-group');
     });
-    expect(solo).toBe('none');
+    expect(solo).toBe(false);
   });
 
   test('paints the group as adjacent rows', async ({ page }) => {
