@@ -1,0 +1,616 @@
+<!DOCTYPE html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Sidebar Redesign — round 2</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap">
+<style>
+  :root { --page-bg:#f6f5f2; --page-fg:#1c1b19; --page-muted:#6b6862; --page-rule:#dcd9d2; --page-accent:#b4560a; --page-card:#fff; --page-ok:#2e9e6b; }
+  @media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) { --page-bg:#141414; --page-fg:#e8e6e1; --page-muted:#9a978f; --page-rule:#2a2a2a; --page-accent:#f0a04b; --page-card:#1b1b1b; --page-ok:#5fd7a5; } }
+  :root[data-theme="dark"] { --page-bg:#141414; --page-fg:#e8e6e1; --page-muted:#9a978f; --page-rule:#2a2a2a; --page-accent:#f0a04b; --page-card:#1b1b1b; --page-ok:#5fd7a5; }
+  * { box-sizing:border-box; }
+  body { background:var(--page-bg); color:var(--page-fg); font:14px/1.55 "IBM Plex Sans",system-ui,sans-serif; margin:0; }
+  .wrap { max-width:1240px; margin:0 auto; padding:40px 20px 120px; }
+  h1 { font-size:28px; font-weight:600; margin:0 0 6px; letter-spacing:-.01em; }
+  .lede { color:var(--page-muted); max-width:72ch; margin:0 0 10px; }
+  section { margin:52px 0 0; padding-top:28px; border-top:1px solid var(--page-rule); }
+  h2 { font-size:19px; font-weight:600; margin:0 0 4px; display:flex; align-items:center; gap:10px; flex-wrap:wrap; }
+  h2 .num { font:500 12px "JetBrains Mono",monospace; color:var(--page-accent); letter-spacing:.08em; }
+  .settled { font:500 10px "JetBrains Mono",monospace; letter-spacing:.08em; text-transform:uppercase; color:var(--page-ok); border:1px solid currentColor; border-radius:20px; padding:1px 8px; }
+  .sub { color:var(--page-muted); margin:0 0 22px; max-width:76ch; font-size:13.5px; }
+  .note { border-left:3px solid var(--page-accent); padding:8px 0 8px 12px; margin:0 0 22px; font-size:13px; color:var(--page-muted); max-width:76ch; }
+  .note b { color:var(--page-fg); font-weight:600; }
+  .opts { display:grid; grid-template-columns:repeat(auto-fit,minmax(260px,296px)); gap:18px; align-items:stretch; justify-content:start; }
+  .opt { background:var(--page-card); border:1px solid var(--page-rule); border-radius:10px; overflow:hidden; display:flex; flex-direction:column; }
+  .opt.win { border-color:color-mix(in srgb, var(--page-ok) 45%, var(--page-rule)); }
+  .opt > h3 { margin:0; padding:12px 14px 8px; font-size:13.5px; font-weight:600; display:flex; align-items:baseline; gap:8px; }
+  .opt > h3 .tag { font:500 10px "JetBrains Mono",monospace; letter-spacing:.1em; text-transform:uppercase; color:var(--page-accent); }
+  .opt > h3 .rec { font:500 10px "JetBrains Mono",monospace; letter-spacing:.06em; color:var(--page-ok); margin-left:auto; }
+  .opt > p { margin:0; padding:0 14px 12px; color:var(--page-muted); font-size:12.5px; min-height:5.2em; }
+  .opt .frame { border-top:1px solid var(--page-rule); border-left:0; border-right:0; border-radius:0; }
+  .notes { margin:0 0 auto; padding:10px 14px 12px; border-top:1px solid var(--page-rule); font-size:12px; color:var(--page-muted); }
+  .notes li { margin:3px 0; }
+  .pick { display:flex; gap:8px; align-items:center; padding:10px 14px; border-top:1px solid var(--page-rule); font-size:12.5px; }
+  .pick label { display:flex; gap:6px; align-items:center; cursor:pointer; }
+  textarea { width:100%; min-height:78px; resize:vertical; margin-top:14px; padding:10px 12px; border:1px solid var(--page-rule); border-radius:8px; background:var(--page-card); color:var(--page-fg); font:13px/1.5 "IBM Plex Sans",system-ui,sans-serif; }
+  textarea:focus { outline:2px solid var(--page-accent); outline-offset:-1px; }
+  .bar { position:sticky; bottom:0; margin-top:40px; background:var(--page-card); border:1px solid var(--page-rule); border-radius:10px; padding:12px 16px; display:flex; gap:12px; align-items:center; flex-wrap:wrap; box-shadow:0 -4px 24px rgba(0,0,0,.25); }
+  button { font:500 13px "IBM Plex Sans",system-ui,sans-serif; padding:8px 14px; border-radius:7px; border:1px solid var(--page-rule); background:var(--page-bg); color:var(--page-fg); cursor:pointer; }
+  button.primary { background:var(--page-accent); border-color:var(--page-accent); color:#fff; }
+  .status { color:var(--page-muted); font-size:12.5px; }
+  code { font:11.5px "JetBrains Mono",monospace; background:rgba(128,128,128,.16); padding:1px 5px; border-radius:4px; }
+  .two { display:grid; grid-template-columns:repeat(2,minmax(0,296px)); gap:18px; align-items:start; justify-content:start; }
+  @media (max-width:760px){ .two { grid-template-columns:1fr; } }
+  .ba { display:flex; flex-direction:column; gap:6px; }
+  /* The sidebar is 260px in the app; a mock stretched to the page column
+     lies about what truncates. Cap every frame at the real width. */
+  .ba .frame { max-width:280px; }
+  .ba .lbl { font:500 10px "JetBrains Mono",monospace; letter-spacing:.1em; text-transform:uppercase; color:var(--page-muted); }
+  .frame { border:1px solid var(--page-rule); border-radius:8px; overflow:hidden; }
+  h3.step { font-size:14px; margin:32px 0 6px; }
+  .clip { -webkit-mask-image:linear-gradient(#000 82%, transparent 100%); mask-image:linear-gradient(#000 82%, transparent 100%); }
+  .item { border:1px solid var(--page-rule); border-radius:10px; padding:16px 18px 14px; margin:0 0 18px; background:var(--page-card); }
+  .item.dropped { opacity:.72; }
+  .item > h3 { font-size:14px; margin:0 0 6px; display:flex; align-items:center; gap:10px; flex-wrap:wrap; }
+  .item > h3 .badge { font:500 10px "JetBrains Mono",monospace; letter-spacing:.08em; text-transform:uppercase; border:1px solid currentColor; border-radius:20px; padding:1px 8px; }
+  .item > h3 .badge.in { color:var(--page-ok); }
+  .item > h3 .badge.new { color:var(--page-accent); }
+  .item > h3 .badge.out { color:#d05a4a; }
+  .item > p { color:var(--page-muted); font-size:13px; margin:0 0 14px; max-width:78ch; }
+  .verdict { display:flex; gap:16px; align-items:center; flex-wrap:wrap; margin-top:14px; font-size:12.5px; }
+  .verdict label { display:flex; gap:6px; align-items:center; cursor:pointer; }
+  .verdict .vlbl { font:500 10px "JetBrains Mono",monospace; letter-spacing:.1em; text-transform:uppercase; color:var(--page-muted); }
+  .item textarea { min-height:56px; margin-top:10px; }
+  .scrolldemo { height:200px; overflow-y:auto; }
+  .scrolldemo .chdr { position:sticky; top:0; z-index:2; background:var(--raised); }
+  .plainhdr { display:flex; align-items:center; gap:8px; padding:10px 10px 4px; font:500 10px "JetBrains Mono",monospace; letter-spacing:.1em; text-transform:uppercase; color:var(--fg3); }
+  .plainhdr .line { flex:1; height:1px; background:var(--border); }
+  .noswatch .swatch { display:none; }
+
+  /* ---------- sidebar mock tokens (hive-dark, tokens.css) ---------- */
+  .sb { --bg:#0f1014; --surface:#13141a; --raised:#0f1015; --border:#22242e; --fg:#e6e7ee; --fg2:#a5a8b8; --fg3:#5f6273;
+        --accent:#ffb454; --attn:#ff9f43; --ok:#5fd7a5; --err:#ff6b6b; --sel:#1c1e28; --btn:#1a1c25; --btnb:#2b2e3b;
+        background:var(--surface); color:var(--fg); font:13px/1.4 "IBM Plex Sans",system-ui,sans-serif; padding:6px 0 10px;
+        /* The real sidebar is ~260px. Never render a mock wider than the
+           thing it depicts, or the truncation it shows is fiction. */
+        max-width:280px; margin:0 auto; }
+  .card { margin:4px 8px 8px; background:var(--raised); border:1px solid var(--border); border-radius:6px; }
+  .card.active { border-color:#5d4b31; }
+  .chdr { display:flex; align-items:center; gap:8px; height:30px; padding:0 8px; font-size:13px; font-weight:500; color:var(--fg); }
+  .chev { color:var(--fg3); width:12px; height:12px; flex:none; }
+  .ico { width:12px; height:12px; flex:none; }
+  .psw { width:8px; height:8px; border-radius:2px; flex:none; }
+  .cname { flex:1; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .ccount { font:10px "JetBrains Mono",monospace; color:var(--fg3); }
+  .body { padding:0 0 4px; }
+
+  .row { color:var(--fg2); }
+  .dot { width:8px; height:8px; border-radius:50%; flex:none; }
+  .dot.run { background:var(--ok); } .dot.attn { background:var(--attn); } .dot.idle { background:var(--fg3); } .dot.err { background:var(--err); }
+  .kbd { font:10px "JetBrains Mono",monospace; color:var(--fg3); border:1px solid var(--btnb); border-radius:3px; padding:0 3px; }
+  .ag { font:10px "JetBrains Mono",monospace; color:var(--fg3); }
+  .swatch { width:10px; height:10px; border-radius:2px; flex:none; }
+  .name { color:inherit; font-weight:500; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .ttl { font-size:11.5px; color:var(--fg3); overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .row.sel { background:var(--sel); color:var(--fg); font-weight:500; position:relative; }
+  .row.sel::before { content:''; position:absolute; left:0; top:0; bottom:0; width:2px; background:var(--accent); }
+  .row.attnrow .name, .row.attnrow .ttlmain { color:var(--attn); }
+
+  /* agent glyphs — colours are agent.Def.Color (internal/agent/agent.go) */
+  .gl { font:500 9px "JetBrains Mono",monospace; letter-spacing:.04em; flex:none;
+        display:inline-flex; align-items:center; justify-content:center; height:14px; min-width:18px; padding:0 4px;
+        border-radius:3px; color:var(--a); background:color-mix(in srgb, var(--a) 18%, transparent); }
+  .gl.mono1 { min-width:14px; width:14px; padding:0; text-transform:uppercase; font-size:9.5px; color:#0f1014; background:var(--a); }
+  .gl.plain { color:var(--fg3); background:none; border:1px solid var(--btnb); }
+  .gdot { width:7px; height:7px; border-radius:2px; background:var(--a); flex:none; }
+  .a-claude { --a:#f59e0b; } .a-codex { --a:#10b981; } .a-gemini { --a:#3b82f6; }
+  .a-copilot { --a:#8b5cf6; } .a-shell { --a:#9ca3af; } .a-pi { --a:#06b6d4; } .a-aider { --a:#ec4899; }
+
+  /* --- CURRENT baseline: mirrors .hv-session-row exactly --- */
+  .cur .row { position:relative; display:grid; grid-template-columns:14px minmax(0,1fr) auto auto auto auto; align-items:center; min-height:40px; padding:0 8px 0 12px; }
+  .cur .row > * + * { margin-left:8px; }
+  .cur .state { grid-column:1; } .cur .txt { grid-column:2; }
+  .cur .wtslot { grid-column:4; display:inline-flex; align-items:center; gap:2px; color:var(--fg3); }
+  .cur .meta { grid-column:5; display:flex; align-items:center; gap:4px; }
+  .cur .swatch { grid-column:6; width:12px; height:12px; }
+  .cur .txt { display:flex; flex-direction:column; justify-content:center; min-width:0; gap:1px; }
+  .cur .row.wt::after { content:''; position:absolute; right:0; top:0; bottom:0; width:3px; background:var(--wt); }
+
+  /* --- B1 comfortable: subtitle spans to the right edge --- */
+  /* Four explicit columns, and every child is placed. An unplaced child
+     auto-flows to a new grid line and wraps the row — the bug the real
+     .hv-session-row avoids by placing all six of its children. */
+  .b1 .row { position:relative; display:grid; grid-template-columns:12px minmax(0,1fr) auto auto; align-items:center; column-gap:8px; padding:3px 8px 3px 10px; }
+  .b1 .name, .b1 .ttlmain { grid-column:2; grid-row:1; }
+  .b1 .meta { grid-column:3; grid-row:1; display:flex; align-items:center; gap:6px; }
+  .b1 .swatch { grid-column:4; grid-row:1; }
+  .b1 .ttl { grid-column:2 / -1; grid-row:2; }
+  .b1 .ttlmain { color:inherit; font-weight:500; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+
+  /* --- compact: single line --- */
+  .cmp .row { position:relative; display:flex; align-items:center; gap:7px; padding:0 8px 0 10px; height:28px; }
+  .cmp .name { flex:none; max-width:46%; }
+  .cmp .ttl { flex:1; min-width:0; }
+
+  /* --- fixed, tabular meta column --- */
+  .fixmeta .meta { width:48px; justify-content:flex-end; font-variant-numeric:tabular-nums; }
+
+  /* --- groups --- */
+  .g .ghdr { display:grid; grid-template-columns:12px minmax(0,1fr) auto; align-items:center; column-gap:8px;
+             padding:4px 8px 4px 8px; font:10px "JetBrains Mono",monospace; color:var(--fg3); letter-spacing:.02em; }
+  .g .ghdr .br { min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; display:flex; align-items:center; gap:6px; }
+  .g .ghdr .n { border:1px solid var(--btnb); border-radius:3px; padding:0 3px; font-variant-numeric:tabular-nums; }
+  .g3 .grp { margin:3px 6px; border:1px solid var(--border); border-radius:5px; background:#15161d; overflow:hidden; }
+  .g3 .ghdr { background:#181a22; border-bottom:1px solid var(--border); }
+  .g3 .kids .row { padding-left:8px; }
+
+  /* --- attention: animated pulsing tint --- */
+  @keyframes hv-attn-tint {
+    0%, 100% { background-color:transparent; }
+    50% { background-color:color-mix(in srgb, var(--attn) 12%, transparent); }
+  }
+  .tinted .row.attnrow { animation:hv-attn-tint 1.6s ease-in-out infinite; }
+  @media (prefers-reduced-motion: reduce) {
+    .tinted .row.attnrow { animation:none; background-color:color-mix(in srgb, var(--attn) 9%, transparent); }
+  }
+
+  /* --- collapse transition demo --- */
+  .collapsedemo .body { display:grid; grid-template-rows:1fr; transition:grid-template-rows 120ms ease; }
+  .collapsedemo.shut .body { grid-template-rows:0fr; }
+  .collapsedemo .body > .inner { overflow:hidden; min-height:0; }
+</style>
+</head><body>
+<svg width="0" height="0" style="position:absolute" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+  <symbol id="hv-branch" viewBox="0 0 24 24"><circle cx="7" cy="6" r="2"/><circle cx="7" cy="18" r="2"/><circle cx="17" cy="7" r="2"/><path d="M7 8v8M17 9v1a4 4 0 0 1-4 4H9"/></symbol>
+  <symbol id="hv-chevron-down" viewBox="0 0 24 24"><path d="M6 9l6 6 6-6"/></symbol>
+  <symbol id="hv-chevron-right" viewBox="0 0 24 24"><path d="M9 6l6 6-6 6"/></symbol>
+</svg>
+<div class="wrap">
+
+<h1>Sidebar redesign — round 2</h1>
+<p class="lede">Your picks are folded in: <b>agent glyphs</b>, <b>B1 plus a compact setting</b>, <b>G3 nested panel</b>, and the five polish items mocked out. What's left to decide is narrower: glyph style, what compact means, and how a group's rows label themselves.</p>
+<div class="note"><b>Your correction, verified &mdash; and it's worse than you put it.</b> <code>internal/registry/create.go:475</code> names a worktree session after its <em>branch</em>, not randomly: <code>p.name = strings.ReplaceAll(p.wtBranch, "/", "-") + " " + suffix</code>. Nothing uniquifies it, so two Claude sessions on <code>feat/sidebar</code> are both named <code>feat-sidebar claude</code> &mdash; byte-identical. Every mock below uses real branch-derived names and the baseline shows the actual collision.</div>
+
+<!-- ============ 00 BASELINE ============ -->
+<section style="border-top:0">
+  <h2><span class="num">00</span>Where we are now</h2>
+  <p class="sub">A <code>hive</code> project: three sessions on the shared <code>feat/sidebar</code> worktree, two standalone. Rows 1&ndash;3 share a name because the name comes from the branch; rows 1 and 3 are indistinguishable because both run Claude.</p>
+  <div class="opts" style="grid-template-columns:minmax(260px,300px)">
+    <div class="opt">
+      <h3><span class="tag">current</span>As shipped</h3>
+      <p>Real grid, real icons, real colours &mdash; transcribed from <code>session-row.css</code> and <code>lib/icons.svg</code>.</p>
+      <div class="frame"><div class="sb cur">
+        <div class="card active">
+          <div class="chdr"><svg class="chev"><use href="#hv-chevron-down"/></svg><span class="psw" style="background:#ffb454"></span><span class="cname">hive</span><span class="ccount">5</span></div>
+          <div class="body">
+            <div class="row sel wt" style="--wt:#7fb3d5"><span class="dot run state"></span><span class="txt"><span class="name">feat-sidebar claude</span><span class="ttl">npm run build --…</span></span><span class="wtslot"><svg class="ico"><use href="#hv-branch"/></svg><span class="ag">3</span></span><span class="meta"><span class="kbd">[1]</span><span class="ag">cl</span></span><span class="swatch" style="background:#7fb3d5"></span></div>
+            <div class="row wt attnrow" style="--wt:#7fb3d5"><span class="dot attn state"></span><span class="txt"><span class="name">feat-sidebar codex</span><span class="ttl">git rebase -i ori…</span></span><span class="wtslot"><svg class="ico"><use href="#hv-branch"/></svg><span class="ag">3</span></span><span class="meta"><span class="kbd">[2]</span><span class="ag">co</span></span><span class="swatch" style="background:#7fb3d5"></span></div>
+            <div class="row wt" style="--wt:#7fb3d5"><span class="dot run state"></span><span class="txt"><span class="name">feat-sidebar claude</span><span class="ttl">vim internal/regi…</span></span><span class="wtslot"><svg class="ico"><use href="#hv-branch"/></svg><span class="ag">3</span></span><span class="meta"><span class="kbd">[3]</span><span class="ag">cl</span></span><span class="swatch" style="background:#7fb3d5"></span></div>
+            <div class="row"><span class="dot idle state"></span><span class="txt"><span class="name">bold-harbor claude</span><span class="ttl">Starting…</span></span><span class="meta"><span class="kbd">[4]</span><span class="ag">cl</span></span><span class="swatch" style="background:#5fd7a5"></span></div>
+            <div class="row"><span class="dot err state"></span><span class="txt"><span class="name" style="text-decoration:line-through;color:#5f6273">still-pine shell</span><span class="ttl">Exited — exit status 1</span></span><span class="meta"><span class="kbd">[5]</span><span class="ag">sh</span></span><span class="swatch" style="background:#ad7fa8"></span></div>
+          </div>
+        </div>
+      </div></div>
+      <ul class="notes">
+        <li>Rows 1 and 3: identical labels, different sessions.</li>
+        <li>Agent id printed in the name <em>and</em> in the meta code.</li>
+        <li>Title truncates ~70px early.</li>
+        <li>Group = a 3px stripe on the right edge.</li>
+      </ul>
+    </div>
+  </div>
+</section>
+
+<!-- ============ 01 AGENT GLYPH ============ -->
+<section>
+  <h2><span class="num">01</span>Agent identity &mdash; glyph, text fallback <span class="settled">settled: glyph</span></h2>
+  <p class="sub">The name loses its trailing agent id; the agent becomes a coloured glyph. No new data needed: <code>agent.Def.Color</code> already exists for every built-in (<code>claude #f59e0b</code>, <code>codex #10b981</code>, <code>gemini #3b82f6</code>, <code>copilot #8b5cf6</code>, <code>aider #ec4899</code>, <code>pi #06b6d4</code>, <code>shell #9ca3af</code>) <em>and</em> for user-defined agents (<code>agent/custom.go:165</code>). An agent with no colour falls back to the plain 2-letter code &mdash; bottom row of each mock.</p>
+  <div class="note"><b>Collision to settle.</b> Claude's <code>#f59e0b</code> sits between <code>--accent #ffb454</code> and <code>--state-attention #ff9f43</code>. With Claude on most rows, an amber glyph on every row competes with the one colour the sidebar reserves for &ldquo;needs you&rdquo;. A2 is the loudest and worst for this; A1 tints at 18% and stays quiet. Say the word if you'd rather re-key the agent palette than dim the glyph.</div>
+  <div class="opts">
+
+    <div class="opt win">
+      <h3><span class="tag">A1</span>Tinted code<span class="rec">recommended</span></h3>
+      <p>The existing 2-letter code on an 18% tint of the agent's colour. Reads as a label, not a status light. Unknown agent keeps the chip with a neutral border.</p>
+      <div class="frame"><div class="sb b1 fixmeta">
+        <div class="card active"><div class="chdr"><svg class="chev"><use href="#hv-chevron-down"/></svg><span class="psw" style="background:#ffb454"></span><span class="cname">hive</span><span class="ccount">6</span></div><div class="body">
+          <div class="row sel"><span class="dot run"></span><span class="name">feat-sidebar</span><span class="meta"><span class="kbd">[1]</span><span class="gl a-claude">cl</span></span><span class="ttl">npm run build --watch</span></div>
+          <div class="row"><span class="dot run"></span><span class="name">feat-sidebar</span><span class="meta"><span class="kbd">[2]</span><span class="gl a-codex">co</span></span><span class="ttl">git rebase -i origin/main</span></div>
+          <div class="row"><span class="dot run"></span><span class="name">bold-harbor</span><span class="meta"><span class="kbd">[3]</span><span class="gl a-gemini">ge</span></span><span class="ttl">pytest -q tests/</span></div>
+          <div class="row"><span class="dot idle"></span><span class="name">still-pine</span><span class="meta"><span class="kbd">[4]</span><span class="gl a-shell">sh</span></span><span class="ttl">~/checkout/hive</span></div>
+          <div class="row"><span class="dot run"></span><span class="name">calm-ridge</span><span class="meta"><span class="kbd">[5]</span><span class="gl a-pi">pi</span></span><span class="ttl">reviewing the diff</span></div>
+          <div class="row"><span class="dot run"></span><span class="name">lone-birch</span><span class="meta"><span class="kbd">[6]</span><span class="gl plain">my</span></span><span class="ttl">custom agent, no colour</span></div>
+        </div></div>
+      </div></div>
+      <ul class="notes"><li>Same 18px the code already occupies.</li><li>Colour is a hint; the letters still carry the fact.</li><li>Fallback is the same chip, so nothing shifts.</li></ul>
+      <div class="pick"><label><input type="radio" name="q1" value="A1" checked> Pick A1</label></div>
+    </div>
+
+    <div class="opt">
+      <h3><span class="tag">A2</span>Solid monogram</h3>
+      <p>One letter on a solid 14px square of the agent's colour. Loudest and fastest to scan &mdash; and the one that fights <code>--state-attention</code> hardest.</p>
+      <div class="frame"><div class="sb b1 fixmeta">
+        <div class="card active"><div class="chdr"><svg class="chev"><use href="#hv-chevron-down"/></svg><span class="psw" style="background:#ffb454"></span><span class="cname">hive</span><span class="ccount">6</span></div><div class="body">
+          <div class="row sel"><span class="dot run"></span><span class="name">feat-sidebar</span><span class="meta"><span class="kbd">[1]</span><span class="gl mono1 a-claude">c</span></span><span class="ttl">npm run build --watch</span></div>
+          <div class="row"><span class="dot run"></span><span class="name">feat-sidebar</span><span class="meta"><span class="kbd">[2]</span><span class="gl mono1 a-codex">x</span></span><span class="ttl">git rebase -i origin/main</span></div>
+          <div class="row"><span class="dot run"></span><span class="name">bold-harbor</span><span class="meta"><span class="kbd">[3]</span><span class="gl mono1 a-gemini">g</span></span><span class="ttl">pytest -q tests/</span></div>
+          <div class="row"><span class="dot idle"></span><span class="name">still-pine</span><span class="meta"><span class="kbd">[4]</span><span class="gl mono1 a-shell">$</span></span><span class="ttl">~/checkout/hive</span></div>
+          <div class="row"><span class="dot run"></span><span class="name">calm-ridge</span><span class="meta"><span class="kbd">[5]</span><span class="gl mono1 a-pi">p</span></span><span class="ttl">reviewing the diff</span></div>
+          <div class="row"><span class="dot run"></span><span class="name">lone-birch</span><span class="meta"><span class="kbd">[6]</span><span class="gl plain">my</span></span><span class="ttl">custom agent, no colour</span></div>
+        </div></div>
+      </div></div>
+      <ul class="notes"><li>Narrowest (14px) and boldest.</li><li>Claude and Codex both start with C, so it needs a hand-kept letter table &mdash; the thing <code>agentCode()</code> was written to avoid.</li><li>Worst offender for the amber collision.</li></ul>
+      <div class="pick"><label><input type="radio" name="q1" value="A2"> Pick A2</label></div>
+    </div>
+
+    <div class="opt">
+      <h3><span class="tag">A3</span>Dot + code</h3>
+      <p>A 7px colour chip beside the unchanged grey code. Colour and letters stay separate, so neither has to compromise for the other.</p>
+      <div class="frame"><div class="sb b1 fixmeta">
+        <div class="card active"><div class="chdr"><svg class="chev"><use href="#hv-chevron-down"/></svg><span class="psw" style="background:#ffb454"></span><span class="cname">hive</span><span class="ccount">6</span></div><div class="body">
+          <div class="row sel"><span class="dot run"></span><span class="name">feat-sidebar</span><span class="meta"><span class="kbd">[1]</span><span class="gdot a-claude"></span><span class="ag">cl</span></span><span class="ttl">npm run build --watch</span></div>
+          <div class="row"><span class="dot run"></span><span class="name">feat-sidebar</span><span class="meta"><span class="kbd">[2]</span><span class="gdot a-codex"></span><span class="ag">co</span></span><span class="ttl">git rebase -i origin/main</span></div>
+          <div class="row"><span class="dot run"></span><span class="name">bold-harbor</span><span class="meta"><span class="kbd">[3]</span><span class="gdot a-gemini"></span><span class="ag">ge</span></span><span class="ttl">pytest -q tests/</span></div>
+          <div class="row"><span class="dot idle"></span><span class="name">still-pine</span><span class="meta"><span class="kbd">[4]</span><span class="gdot a-shell"></span><span class="ag">sh</span></span><span class="ttl">~/checkout/hive</span></div>
+          <div class="row"><span class="dot run"></span><span class="name">calm-ridge</span><span class="meta"><span class="kbd">[5]</span><span class="gdot a-pi"></span><span class="ag">pi</span></span><span class="ttl">reviewing the diff</span></div>
+          <div class="row"><span class="dot run"></span><span class="name">lone-birch</span><span class="meta"><span class="kbd">[6]</span><span class="ag">my</span></span><span class="ttl">custom agent, no colour</span></div>
+        </div></div>
+      </div></div>
+      <ul class="notes"><li>Fallback is free: no colour, no dot.</li><li>Two small marks per row where A1 has one &mdash; busier meta column.</li><li>A square chip next to a round state dot can read as a second status light.</li></ul>
+      <div class="pick"><label><input type="radio" name="q1" value="A3"> Pick A3</label></div>
+    </div>
+
+  </div>
+  <textarea data-fb="01 agent glyph" placeholder="Glyph style, the amber collision, the fallback…"></textarea>
+</section>
+
+<!-- ============ 02 ROW LAYOUT ============ -->
+<section>
+  <h2><span class="num">02</span>Row layout &mdash; B1 plus a compact setting <span class="settled">settled: B1 + setting</span></h2>
+  <p class="sub">B1 is the default. The setting (<code>Settings &rsaquo; Appearance &rsaquo; Sidebar density</code>) switches to compact. One thing left: what compact <em>is</em>. Both panes are the same height, so you can count rows.</p>
+  <div class="opts">
+
+    <div class="opt win">
+      <h3><span class="tag">default</span>Comfortable (B1)<span class="rec">shipping</span></h3>
+      <p>Two lines at the same 40px height as today &mdash; the change is purely horizontal: the title stops at the right edge instead of at column&nbsp;2.</p>
+      <div class="frame"><div class="sb b1 fixmeta clip" style="height:250px">
+        <div class="card active"><div class="chdr"><svg class="chev"><use href="#hv-chevron-down"/></svg><span class="psw" style="background:#ffb454"></span><span class="cname">hive</span><span class="ccount">5</span></div><div class="body">
+          <div class="row sel"><span class="dot run"></span><span class="name">feat-sidebar</span><span class="meta"><span class="kbd">[1]</span><span class="gl a-claude">cl</span></span><span class="ttl">npm run build --watch --silent</span></div>
+          <div class="row attnrow"><span class="dot attn"></span><span class="name">feat-sidebar</span><span class="meta"><span class="kbd">[2]</span><span class="gl a-codex">co</span></span><span class="ttl">git rebase -i origin/main</span></div>
+          <div class="row"><span class="dot run"></span><span class="name">feat-sidebar</span><span class="meta"><span class="kbd">[3]</span><span class="gl a-claude">cl</span></span><span class="ttl">vim internal/registry/create.go</span></div>
+          <div class="row"><span class="dot idle"></span><span class="name">bold-harbor</span><span class="meta"><span class="kbd">[4]</span><span class="gl a-claude">cl</span></span><span class="ttl">Starting…</span></div>
+          <div class="row"><span class="dot err"></span><span class="name" style="text-decoration:line-through;color:#5f6273">still-pine</span><span class="meta"><span class="kbd">[5]</span><span class="gl a-shell">sh</span></span><span class="ttl">Exited — exit status 1</span></div>
+        </div></div>
+      </div></div>
+      <ul class="notes"><li>Full title and full name; neither truncates the other.</li><li>Mostly a CSS diff: the subtitle moves to <code>grid-column: 2 / -1</code>.</li></ul>
+      <div class="pick"><span style="color:var(--page-muted)">Decided &mdash; no vote needed.</span></div>
+    </div>
+
+    <div class="opt">
+      <h3><span class="tag">C1</span>Compact = single line<span class="rec">recommended</span></h3>
+      <p>28px, name and title sharing the line. Measured in the panes below: 7 rows fit where B1 fits 5 &mdash; a 40% gain, not the 60% I guessed first.</p>
+      <div class="frame"><div class="sb cmp fixmeta clip" style="height:250px">
+        <div class="card active"><div class="chdr"><svg class="chev"><use href="#hv-chevron-down"/></svg><span class="psw" style="background:#ffb454"></span><span class="cname">hive</span><span class="ccount">8</span></div><div class="body">
+          <div class="row sel"><span class="dot run"></span><span class="name">feat-sidebar</span><span class="ttl">npm run build --watch</span><span class="kbd">[1]</span><span class="gl a-claude">cl</span></div>
+          <div class="row attnrow"><span class="dot attn"></span><span class="name">feat-sidebar</span><span class="ttl">git rebase -i origin/…</span><span class="kbd">[2]</span><span class="gl a-codex">co</span></div>
+          <div class="row"><span class="dot run"></span><span class="name">feat-sidebar</span><span class="ttl">vim internal/registry/…</span><span class="kbd">[3]</span><span class="gl a-claude">cl</span></div>
+          <div class="row"><span class="dot idle"></span><span class="name">bold-harbor</span><span class="ttl">Starting…</span><span class="kbd">[4]</span><span class="gl a-claude">cl</span></div>
+          <div class="row"><span class="dot err"></span><span class="name" style="text-decoration:line-through;color:#5f6273">still-pine</span><span class="ttl">Exited — status 1</span><span class="kbd">[5]</span><span class="gl a-shell">sh</span></div>
+          <div class="row"><span class="dot run"></span><span class="name">calm-ridge</span><span class="ttl">pytest -q tests/</span><span class="kbd">[6]</span><span class="gl a-gemini">ge</span></div>
+          <div class="row"><span class="dot run"></span><span class="name">lone-birch</span><span class="ttl">docker compose up</span><span class="kbd">[7]</span><span class="gl a-codex">co</span></div>
+          <div class="row"><span class="dot idle"></span><span class="name">grey-fern</span><span class="ttl">~/checkout/hive</span><span class="kbd">[8]</span><span class="gl a-shell">sh</span></div>
+        </div></div>
+      </div></div>
+      <ul class="notes"><li>Two row layouts to maintain, but the second is small.</li><li>Title gets ~46% of the row width.</li></ul>
+      <div class="pick"><label><input type="radio" name="q2" value="C1" checked> Pick C1</label></div>
+    </div>
+
+    <div class="opt">
+      <h3><span class="tag">C2</span>Compact = tighter B1</h3>
+      <p>Same two-line structure, squeezed to ~34px: 10.5px subtitle, tighter padding and line-height. Six rows where B1 fits five.</p>
+      <div class="frame"><div class="sb b1 fixmeta clip" style="height:250px">
+        <div class="card active"><div class="chdr"><svg class="chev"><use href="#hv-chevron-down"/></svg><span class="psw" style="background:#ffb454"></span><span class="cname">hive</span><span class="ccount">6</span></div><div class="body" style="font-size:12px">
+          <div class="row sel" style="padding:2px 8px 2px 10px"><span class="dot run"></span><span class="name">feat-sidebar</span><span class="meta"><span class="kbd">[1]</span><span class="gl a-claude">cl</span></span><span class="ttl" style="font-size:10.5px">npm run build --watch --silent</span></div>
+          <div class="row attnrow" style="padding:2px 8px 2px 10px"><span class="dot attn"></span><span class="name">feat-sidebar</span><span class="meta"><span class="kbd">[2]</span><span class="gl a-codex">co</span></span><span class="ttl" style="font-size:10.5px">git rebase -i origin/main</span></div>
+          <div class="row" style="padding:2px 8px 2px 10px"><span class="dot run"></span><span class="name">feat-sidebar</span><span class="meta"><span class="kbd">[3]</span><span class="gl a-claude">cl</span></span><span class="ttl" style="font-size:10.5px">vim internal/registry/create.go</span></div>
+          <div class="row" style="padding:2px 8px 2px 10px"><span class="dot idle"></span><span class="name">bold-harbor</span><span class="meta"><span class="kbd">[4]</span><span class="gl a-claude">cl</span></span><span class="ttl" style="font-size:10.5px">Starting…</span></div>
+          <div class="row" style="padding:2px 8px 2px 10px"><span class="dot err"></span><span class="name" style="text-decoration:line-through;color:#5f6273">still-pine</span><span class="meta"><span class="kbd">[5]</span><span class="gl a-shell">sh</span></span><span class="ttl" style="font-size:10.5px">Exited — exit status 1</span></div>
+          <div class="row" style="padding:2px 8px 2px 10px"><span class="dot run"></span><span class="name">calm-ridge</span><span class="meta"><span class="kbd">[6]</span><span class="gl a-gemini">ge</span></span><span class="ttl" style="font-size:10.5px">pytest -q tests/</span></div>
+        </div></div>
+      </div></div>
+      <ul class="notes"><li>One layout, two metric sets &mdash; the smaller diff of the two.</li><li>Only a 20% density gain, and 10.5px subtitles are near the legible floor.</li></ul>
+      <div class="pick"><label><input type="radio" name="q2" value="C2"> Pick C2</label></div>
+    </div>
+
+  </div>
+  <textarea data-fb="02 compact setting" placeholder="What compact should mean, where the setting lives, the default…"></textarea>
+</section>
+
+<!-- ============ 03 GROUPS ============ -->
+<section>
+  <h2><span class="num">03</span>Worktree groups &mdash; G3, and what the rows say <span class="settled">settled: G3 panel</span></h2>
+  <p class="sub">G3 kept; the header alignment is fixed &mdash; it is now the same three-column grid as a row, so <code>feat/sidebar</code> starts on the name's x-position and the count lands in the meta column. What's left is the duplication you spotted: every row in the group carries the branch-derived name, so the name column is three copies of the header.</p>
+  <div class="opts">
+
+    <div class="opt">
+      <h3><span class="tag">G3a</span>Names kept</h3>
+      <p>G3 with the row untouched. Here so the redundancy is on the record: the header says <code>feat/sidebar</code>, then three rows say it again.</p>
+      <div class="frame"><div class="sb b1 fixmeta g g3">
+        <div class="card active"><div class="chdr"><svg class="chev"><use href="#hv-chevron-down"/></svg><span class="psw" style="background:#ffb454"></span><span class="cname">hive</span><span class="ccount">5</span></div><div class="body">
+          <div class="grp">
+            <div class="ghdr"><svg class="chev"><use href="#hv-chevron-down"/></svg><span class="br"><svg class="ico"><use href="#hv-branch"/></svg>feat/sidebar</span><span class="n">3</span></div>
+            <div class="kids">
+              <div class="row sel"><span class="dot run"></span><span class="name">feat-sidebar</span><span class="meta"><span class="kbd">[1]</span><span class="gl a-claude">cl</span></span><span class="ttl">npm run build --watch</span></div>
+              <div class="row attnrow"><span class="dot attn"></span><span class="name">feat-sidebar</span><span class="meta"><span class="kbd">[2]</span><span class="gl a-codex">co</span></span><span class="ttl">git rebase -i origin/main</span></div>
+              <div class="row"><span class="dot run"></span><span class="name">feat-sidebar</span><span class="meta"><span class="kbd">[3]</span><span class="gl a-claude">cl</span></span><span class="ttl">vim internal/registry/create.go</span></div>
+            </div>
+          </div>
+          <div class="row"><span class="dot idle"></span><span class="name">bold-harbor</span><span class="meta"><span class="kbd">[4]</span><span class="gl a-claude">cl</span></span><span class="ttl">Starting…</span></div>
+          <div class="row"><span class="dot err"></span><span class="name" style="text-decoration:line-through;color:#5f6273">still-pine</span><span class="meta"><span class="kbd">[5]</span><span class="gl a-shell">sh</span></span><span class="ttl">Exited — exit status 1</span></div>
+        </div></div>
+      </div></div>
+      <ul class="notes"><li>Nothing to build beyond the panel itself.</li><li>Three identical names, and the title is still the small quiet line.</li></ul>
+      <div class="pick"><label><input type="radio" name="q3" value="G3a"> Pick G3a</label></div>
+    </div>
+
+    <div class="opt">
+      <h3><span class="tag">G3b</span>Titles only</h3>
+      <p>Inside a group the name is dropped entirely. One line per session: state, window title, key hint, agent glyph. The header owns the identity.</p>
+      <div class="frame"><div class="sb b1 fixmeta g g3">
+        <div class="card active"><div class="chdr"><svg class="chev"><use href="#hv-chevron-down"/></svg><span class="psw" style="background:#ffb454"></span><span class="cname">hive</span><span class="ccount">5</span></div><div class="body">
+          <div class="grp">
+            <div class="ghdr"><svg class="chev"><use href="#hv-chevron-down"/></svg><span class="br"><svg class="ico"><use href="#hv-branch"/></svg>feat/sidebar</span><span class="n">3</span></div>
+            <div class="kids">
+              <div class="row sel"><span class="dot run"></span><span class="ttlmain">npm run build --watch</span><span class="meta"><span class="kbd">[1]</span><span class="gl a-claude">cl</span></span></div>
+              <div class="row attnrow"><span class="dot attn"></span><span class="ttlmain">git rebase -i origin/main</span><span class="meta"><span class="kbd">[2]</span><span class="gl a-codex">co</span></span></div>
+              <div class="row"><span class="dot run"></span><span class="ttlmain">vim internal/registry/create.go</span><span class="meta"><span class="kbd">[3]</span><span class="gl a-claude">cl</span></span></div>
+            </div>
+          </div>
+          <div class="row"><span class="dot idle"></span><span class="name">bold-harbor</span><span class="meta"><span class="kbd">[4]</span><span class="gl a-claude">cl</span></span><span class="ttl">Starting…</span></div>
+          <div class="row"><span class="dot err"></span><span class="name" style="text-decoration:line-through;color:#5f6273">still-pine</span><span class="meta"><span class="kbd">[5]</span><span class="gl a-shell">sh</span></span><span class="ttl">Exited — exit status 1</span></div>
+        </div></div>
+      </div></div>
+      <ul class="notes"><li>One line per session &mdash; tightest layout on the page.</li><li>Zero redundancy, and the title is finally the loud line.</li><li>A session you <em>renamed</em> loses that name. G3c fixes exactly this.</li></ul>
+      <div class="pick"><label><input type="radio" name="q3" value="G3b"> Pick G3b</label></div>
+    </div>
+
+    <div class="opt win">
+      <h3><span class="tag">G3c</span>Name only when it says something<span class="rec">recommended</span></h3>
+      <p>G3b with one rule: show the name only if it differs from the group's branch-derived default &mdash; i.e. only when you renamed it. Row 3 was renamed to <code>perf-spike</code>; rows 1&ndash;2 weren't.</p>
+      <div class="frame"><div class="sb b1 fixmeta g g3">
+        <div class="card active"><div class="chdr"><svg class="chev"><use href="#hv-chevron-down"/></svg><span class="psw" style="background:#ffb454"></span><span class="cname">hive</span><span class="ccount">5</span></div><div class="body">
+          <div class="grp">
+            <div class="ghdr"><svg class="chev"><use href="#hv-chevron-down"/></svg><span class="br"><svg class="ico"><use href="#hv-branch"/></svg>feat/sidebar</span><span class="n">3</span></div>
+            <div class="kids">
+              <div class="row sel"><span class="dot run"></span><span class="ttlmain">npm run build --watch</span><span class="meta"><span class="kbd">[1]</span><span class="gl a-claude">cl</span></span></div>
+              <div class="row attnrow"><span class="dot attn"></span><span class="ttlmain">git rebase -i origin/main</span><span class="meta"><span class="kbd">[2]</span><span class="gl a-codex">co</span></span></div>
+              <div class="row"><span class="dot run"></span><span class="name">perf-spike</span><span class="meta"><span class="kbd">[3]</span><span class="gl a-claude">cl</span></span><span class="ttl">vim internal/registry/create.go</span></div>
+            </div>
+          </div>
+          <div class="row"><span class="dot idle"></span><span class="name">bold-harbor</span><span class="meta"><span class="kbd">[4]</span><span class="gl a-claude">cl</span></span><span class="ttl">Starting…</span></div>
+          <div class="row"><span class="dot err"></span><span class="name" style="text-decoration:line-through;color:#5f6273">still-pine</span><span class="meta"><span class="kbd">[5]</span><span class="gl a-shell">sh</span></span><span class="ttl">Exited — exit status 1</span></div>
+        </div></div>
+      </div></div>
+      <ul class="notes"><li>One comparison: <code>name !== branch.replaceAll('/','-')</code>.</li><li>Degrades to G3b for every default-named session, which is nearly all of them.</li><li>Cost: rows inside a group aren't all the same height.</li></ul>
+      <div class="pick"><label><input type="radio" name="q3" value="G3c" checked> Pick G3c</label></div>
+    </div>
+
+    <div class="opt">
+      <h3><span class="tag">G3d</span>Titles only, uniform height</h3>
+      <p>G3c's rule, but a renamed session shows its name as a small <em>prefix</em> on the title line instead of a second line. Every row in a group stays one line.</p>
+      <div class="frame"><div class="sb b1 fixmeta g g3">
+        <div class="card active"><div class="chdr"><svg class="chev"><use href="#hv-chevron-down"/></svg><span class="psw" style="background:#ffb454"></span><span class="cname">hive</span><span class="ccount">5</span></div><div class="body">
+          <div class="grp">
+            <div class="ghdr"><svg class="chev"><use href="#hv-chevron-down"/></svg><span class="br"><svg class="ico"><use href="#hv-branch"/></svg>feat/sidebar</span><span class="n">3</span></div>
+            <div class="kids">
+              <div class="row sel"><span class="dot run"></span><span class="ttlmain">npm run build --watch</span><span class="meta"><span class="kbd">[1]</span><span class="gl a-claude">cl</span></span></div>
+              <div class="row attnrow"><span class="dot attn"></span><span class="ttlmain">git rebase -i origin/main</span><span class="meta"><span class="kbd">[2]</span><span class="gl a-codex">co</span></span></div>
+              <div class="row"><span class="dot run"></span><span class="ttlmain"><span style="color:var(--fg3);font-weight:400">perf-spike · </span>vim internal/regi…</span><span class="meta"><span class="kbd">[3]</span><span class="gl a-claude">cl</span></span></div>
+            </div>
+          </div>
+          <div class="row"><span class="dot idle"></span><span class="name">bold-harbor</span><span class="meta"><span class="kbd">[4]</span><span class="gl a-claude">cl</span></span><span class="ttl">Starting…</span></div>
+          <div class="row"><span class="dot err"></span><span class="name" style="text-decoration:line-through;color:#5f6273">still-pine</span><span class="meta"><span class="kbd">[5]</span><span class="gl a-shell">sh</span></span><span class="ttl">Exited — exit status 1</span></div>
+        </div></div>
+      </div></div>
+      <ul class="notes"><li>Perfectly even rhythm inside a group.</li><li>A renamed session costs the title ~80px.</li><li>Inline rename now edits a prefix inside a line &mdash; fiddliest of the four.</li></ul>
+      <div class="pick"><label><input type="radio" name="q3" value="G3d"> Pick G3d</label></div>
+    </div>
+
+  </div>
+  <textarea data-fb="03 groups" placeholder="Group header contents, the name rule, collapsed state, what a group does when it's the only thing in a project…"></textarea>
+</section>
+
+<!-- ============ 04 POLISH ============ -->
+<section>
+  <h2><span class="num">04</span>Polish items &mdash; all eight, each one selectable</h2>
+  <p class="sub">Every suggestion from round 1 is here, whether or not you ticked it, each with a mock, a verdict and its own notes box. Your five are pre-marked <em>In</em>; the three you skipped are unset so you can look at them properly. One is withdrawn &mdash; my error, explained on its card.</p>
+
+  <div class="item dropped">
+    <h3>1 &middot; Strip the project prefix from titles <span class="badge out">withdrawn &mdash; my error</span></h3>
+    <p>I proposed this off a sample title I invented. There is no project prefix: <code>internal/session/session.go:42</code> passes the program's OSC&nbsp;0/2 title straight through, and <code>lib/term-title.ts</code> only suppresses a title identical to the session name. Hive never prepends anything. Every sample title on this page has been corrected to drop the fake <code>hive&nbsp;&mdash;&nbsp;</code>. If your real titles <em>do</em> repeat a prefix, it's your shell or agent emitting it &mdash; stripping that is a different and riskier feature (we'd be editing text we don't own). Say the word and I'll scope it honestly.</p>
+    <div class="verdict"><span class="vlbl">Verdict</span><label><input type="radio" name="p1" value="in"> In</label><label><input type="radio" name="p1" value="rework"> Rework</label><label><input type="radio" name="p1" value="out"> Out</label></div>
+    <textarea data-fb="polish 1 — title prefix" placeholder="Do your titles actually repeat something? Paste a couple of real ones and I'll look…"></textarea>
+  </div>
+
+  <div class="item">
+    <h3>2 &middot; Attention as an animated pulsating tint <span class="badge in">you picked this</span></h3>
+    <p>1.6s ease-in-out peaking at a 12% tint of <code>--state-attention</code> &mdash; the same <code>--motion-pulse</code> the project-card swatch already uses, so a card and its rows breathe together. Under <code>prefers-reduced-motion</code> it holds at a flat 9% instead of animating.</p>
+    <div class="two">
+      <div class="ba"><span class="lbl">Dot only (today)</span><div class="frame"><div class="sb b1 fixmeta">
+        <div class="row"><span class="dot run"></span><span class="name">feat-sidebar</span><span class="meta"><span class="kbd">[1]</span><span class="gl a-claude">cl</span></span><span class="ttl">npm run build --watch</span></div>
+        <div class="row attnrow"><span class="dot attn"></span><span class="name">feat-sidebar</span><span class="meta"><span class="kbd">[2]</span><span class="gl a-codex">co</span></span><span class="ttl">waiting for your answer</span></div>
+        <div class="row"><span class="dot run"></span><span class="name">bold-harbor</span><span class="meta"><span class="kbd">[3]</span><span class="gl a-gemini">ge</span></span><span class="ttl">pytest -q tests/</span></div>
+      </div></div></div>
+      <div class="ba"><span class="lbl">Pulsing tint</span><div class="frame"><div class="sb b1 fixmeta tinted">
+        <div class="row"><span class="dot run"></span><span class="name">feat-sidebar</span><span class="meta"><span class="kbd">[1]</span><span class="gl a-claude">cl</span></span><span class="ttl">npm run build --watch</span></div>
+        <div class="row attnrow"><span class="dot attn"></span><span class="name">feat-sidebar</span><span class="meta"><span class="kbd">[2]</span><span class="gl a-codex">co</span></span><span class="ttl">waiting for your answer</span></div>
+        <div class="row"><span class="dot run"></span><span class="name">bold-harbor</span><span class="meta"><span class="kbd">[3]</span><span class="gl a-gemini">ge</span></span><span class="ttl">pytest -q tests/</span></div>
+      </div></div></div>
+    </div>
+    <div class="note" style="margin:14px 0 0"><b>Breaks a documented rule.</b> <code>patterns.md &rsaquo; Selection vs attention</code> gives the row background to <em>selection</em> and forbids attention from using it. A tint is a background. Either amend the rule so the pulse may ride on the selected ground, or keep it and pulse a left-edge bar instead. I'd amend it &mdash; a pulse and a static ground are easy to tell apart &mdash; but it's your principle.</div>
+    <div class="verdict"><span class="vlbl">Verdict</span><label><input type="radio" name="p2" value="in" checked> In</label><label><input type="radio" name="p2" value="rework"> Rework</label><label><input type="radio" name="p2" value="out"> Out</label></div>
+    <textarea data-fb="polish 2 — attention tint" placeholder="Pulse speed, strength, and which way to resolve the patterns.md conflict…"></textarea>
+  </div>
+
+  <div class="item">
+    <h3>3 &middot; Fixed, tabular meta column <span class="badge in">you picked this</span></h3>
+    <p>Smaller than it sounded, and I should say so: under B1 the title already spans the full row, so a fixed meta column cannot change where the <em>title</em> truncates. It only affects line&nbsp;1 &mdash; the meta column is <code>auto</code>, so <code>[10]</code> steals more from the name than <code>[9]</code>, and a row with no key hint steals nothing. With short names it is invisible; the pair below uses long ones. 48px and not 44, because <code>[10]&nbsp;co</code> is intrinsically ~48px and would blow through a smaller minimum. Worth doing, but it is a hairline fix.</p>
+    <div class="two">
+      <div class="ba"><span class="lbl">Before &mdash; ragged</span><div class="frame"><div class="sb b1">
+        <div class="row"><span class="dot run"></span><span class="name">release-2026-03-candidate-rc7-hotfix</span><span class="meta"><span class="kbd">[9]</span><span class="gl a-claude">cl</span></span><span class="ttl">npm run build --watch --silent</span></div>
+        <div class="row"><span class="dot run"></span><span class="name">release-2026-03-candidate-rc7-hotfix</span><span class="meta"><span class="kbd">[10]</span><span class="gl a-codex">co</span></span><span class="ttl">git rebase -i origin/main</span></div>
+        <div class="row"><span class="dot run"></span><span class="name">release-2026-03-candidate-rc7-hotfix</span><span class="meta"><span class="gl a-shell">sh</span></span><span class="ttl">~/checkout/hive</span></div>
+      </div></div></div>
+      <div class="ba"><span class="lbl">After &mdash; aligned</span><div class="frame"><div class="sb b1 fixmeta">
+        <div class="row"><span class="dot run"></span><span class="name">release-2026-03-candidate-rc7-hotfix</span><span class="meta"><span class="kbd">[9]</span><span class="gl a-claude">cl</span></span><span class="ttl">npm run build --watch --silent</span></div>
+        <div class="row"><span class="dot run"></span><span class="name">release-2026-03-candidate-rc7-hotfix</span><span class="meta"><span class="kbd">[10]</span><span class="gl a-codex">co</span></span><span class="ttl">git rebase -i origin/main</span></div>
+        <div class="row"><span class="dot run"></span><span class="name">release-2026-03-candidate-rc7-hotfix</span><span class="meta"><span class="gl a-shell">sh</span></span><span class="ttl">~/checkout/hive</span></div>
+      </div></div></div>
+    </div>
+    <div class="verdict"><span class="vlbl">Verdict</span><label><input type="radio" name="p3" value="in" checked> In</label><label><input type="radio" name="p3" value="rework"> Rework</label><label><input type="radio" name="p3" value="out"> Out</label></div>
+    <textarea data-fb="polish 3 — meta column" placeholder="Worth it at all? Column width?"></textarea>
+  </div>
+
+  <div class="item">
+    <h3>4 &middot; Animated collapse <span class="badge in">you picked this</span></h3>
+    <p><code>grid-template-rows: 1fr &rarr; 0fr</code> over 120ms (<code>--motion-fast</code>), instant under reduced motion. Click the header to try it. Applies to project cards and, if you take a collapsible group in &sect;03, to group headers too.</p>
+    <div style="max-width:280px"><div class="frame"><div class="sb b1 fixmeta">
+      <div class="card active collapsedemo" id="cdemo">
+        <div class="chdr" id="cdemo-hdr" style="cursor:pointer"><svg class="chev" id="cdemo-chev"><use href="#hv-chevron-down"/></svg><span class="psw" style="background:#ffb454"></span><span class="cname">hive &mdash; click me</span><span class="ccount">3</span></div>
+        <div class="body"><div class="inner">
+          <div class="row"><span class="dot run"></span><span class="name">feat-sidebar</span><span class="meta"><span class="kbd">[1]</span><span class="gl a-claude">cl</span></span><span class="ttl">npm run build --watch --silent</span><span class="swatch" style="background:#7fb3d5"></span></div>
+        <div class="row"><span class="dot run"></span><span class="name">bold-harbor</span><span class="meta"><span class="kbd">[2]</span><span class="gl a-codex">co</span></span><span class="ttl">git rebase -i origin/main</span><span class="swatch" style="background:#7fb3d5"></span></div>
+        <div class="row"><span class="dot idle"></span><span class="name">calm-ridge</span><span class="meta"><span class="kbd">[3]</span><span class="gl a-shell">sh</span></span><span class="ttl">~/checkout/hive</span><span class="swatch" style="background:#7fb3d5"></span></div>
+        </div></div>
+      </div>
+    </div></div></div>
+    <div class="verdict"><span class="vlbl">Verdict</span><label><input type="radio" name="p4" value="in" checked> In</label><label><input type="radio" name="p4" value="rework"> Rework</label><label><input type="radio" name="p4" value="out"> Out</label></div>
+    <textarea data-fb="polish 4 — collapse" placeholder="Timing, easing, whether groups animate too…"></textarea>
+  </div>
+
+  <div class="item">
+    <h3>5 &middot; Agent identity as a glyph <span class="badge in">you picked this</span></h3>
+    <p>Covered in &sect;01 with three styles and the unknown-agent fallback &mdash; pick the style there. This card is only here so the list is complete.</p>
+    <div class="verdict"><span class="vlbl">Verdict</span><label><input type="radio" name="p5" value="in" checked> In</label><label><input type="radio" name="p5" value="rework"> Rework</label><label><input type="radio" name="p5" value="out"> Out</label></div>
+    <textarea data-fb="polish 5 — agent glyph" placeholder="(style choice lives in §01)"></textarea>
+  </div>
+
+  <div class="item">
+    <h3>6 &middot; Quieter project header <span class="badge new">you skipped this &mdash; look again</span></h3>
+    <p>Today a project is a bordered card wrapping a bordered header wrapping the rows; add a group panel from &sect;03 and that's three nested borders at 260px. The alternative drops the card chrome entirely: the project becomes a small uppercase label with a hairline, and the rows sit directly on the sidebar. Less structure, more content, and it makes the &sect;03 group panel the <em>only</em> box in the tree &mdash; which is the thing you actually want boxed.</p>
+    <div class="two">
+      <div class="ba"><span class="lbl">Today &mdash; card</span><div class="frame"><div class="sb b1 fixmeta">
+        <div class="card active"><div class="chdr"><svg class="chev"><use href="#hv-chevron-down"/></svg><span class="psw" style="background:#ffb454"></span><span class="cname">hive</span><span class="ccount">3</span></div><div class="body">
+        <div class="row"><span class="dot run"></span><span class="name">feat-sidebar</span><span class="meta"><span class="kbd">[1]</span><span class="gl a-claude">cl</span></span><span class="ttl">npm run build --watch --silent</span><span class="swatch" style="background:#7fb3d5"></span></div>
+        <div class="row"><span class="dot run"></span><span class="name">bold-harbor</span><span class="meta"><span class="kbd">[2]</span><span class="gl a-codex">co</span></span><span class="ttl">git rebase -i origin/main</span><span class="swatch" style="background:#7fb3d5"></span></div>
+        <div class="row"><span class="dot idle"></span><span class="name">calm-ridge</span><span class="meta"><span class="kbd">[3]</span><span class="gl a-shell">sh</span></span><span class="ttl">~/checkout/hive</span><span class="swatch" style="background:#7fb3d5"></span></div>
+        </div></div>
+        <div class="card"><div class="chdr"><svg class="chev"><use href="#hv-chevron-down"/></svg><span class="psw" style="background:#7fb3d5"></span><span class="cname">dotfiles</span><span class="ccount">1</span></div><div class="body">
+          <div class="row"><span class="dot idle"></span><span class="name">grey-fern</span><span class="meta"><span class="kbd">[4]</span><span class="gl a-shell">sh</span></span><span class="ttl">nvim init.lua</span><span class="swatch" style="background:#ad7fa8"></span></div>
+        </div></div>
+      </div></div></div>
+      <div class="ba"><span class="lbl">Label + hairline</span><div class="frame"><div class="sb b1 fixmeta">
+        <div class="plainhdr"><span class="psw" style="background:#ffb454"></span><span>hive</span><span class="line"></span><span>3</span></div>
+        <div class="row"><span class="dot run"></span><span class="name">feat-sidebar</span><span class="meta"><span class="kbd">[1]</span><span class="gl a-claude">cl</span></span><span class="ttl">npm run build --watch --silent</span><span class="swatch" style="background:#7fb3d5"></span></div>
+        <div class="row"><span class="dot run"></span><span class="name">bold-harbor</span><span class="meta"><span class="kbd">[2]</span><span class="gl a-codex">co</span></span><span class="ttl">git rebase -i origin/main</span><span class="swatch" style="background:#7fb3d5"></span></div>
+        <div class="row"><span class="dot idle"></span><span class="name">calm-ridge</span><span class="meta"><span class="kbd">[3]</span><span class="gl a-shell">sh</span></span><span class="ttl">~/checkout/hive</span><span class="swatch" style="background:#7fb3d5"></span></div>
+        <div class="plainhdr" style="margin-top:6px"><span class="psw" style="background:#7fb3d5"></span><span>dotfiles</span><span class="line"></span><span>1</span></div>
+        <div class="row"><span class="dot idle"></span><span class="name">grey-fern</span><span class="meta"><span class="kbd">[4]</span><span class="gl a-shell">sh</span></span><span class="ttl">nvim init.lua</span><span class="swatch" style="background:#ad7fa8"></span></div>
+      </div></div></div>
+    </div>
+    <ul class="notes" style="border:0;padding-left:0;margin-top:10px"><li>Cost: the card border is also what marks the <em>active</em> project (<code>project-card.css</code> <code>[data-active]</code>) &mdash; that cue needs a new home, probably the label going accent-coloured.</li><li>Drag-to-reorder projects grabs the card; without one the drop target is the label strip.</li></ul>
+    <div class="verdict"><span class="vlbl">Verdict</span><label><input type="radio" name="p6" value="in"> In</label><label><input type="radio" name="p6" value="rework"> Rework</label><label><input type="radio" name="p6" value="out"> Out</label></div>
+    <textarea data-fb="polish 6 — project header" placeholder="Keep the card, or go flat? Where should 'active project' live?"></textarea>
+  </div>
+
+  <div class="item">
+    <h3>7 &middot; Hide default colour swatches <span class="badge new">you skipped this &mdash; and it has a catch</span></h3>
+    <p>Every row spends 10px plus its gap on a colour chip. The catch, checked before mocking it this time: <code>internal/registry/create.go:321</code> auto-assigns a colour to <em>every</em> session via <code>pickColor()</code>, and nothing anywhere records whether that colour was auto-picked or chosen by you. So &ldquo;hide the default ones&rdquo; is not free &mdash; it needs a new <code>colorExplicit</code> bit on the entry, set when the swatch is used, persisted with the session. Small, but it is a daemon change, not a CSS one. The cheap version is the right-hand mock: show the swatch on hover and on rows that belong to a shared worktree, hide it otherwise.</p>
+    <div class="two">
+      <div class="ba"><span class="lbl">Today &mdash; always</span><div class="frame"><div class="sb b1 fixmeta">
+        <div class="row"><span class="dot run"></span><span class="name">feat-sidebar</span><span class="meta"><span class="kbd">[1]</span><span class="gl a-claude">cl</span></span><span class="ttl">npm run build --watch --silent</span><span class="swatch" style="background:#7fb3d5"></span></div>
+        <div class="row"><span class="dot run"></span><span class="name">bold-harbor</span><span class="meta"><span class="kbd">[2]</span><span class="gl a-codex">co</span></span><span class="ttl">git rebase -i origin/main</span><span class="swatch" style="background:#7fb3d5"></span></div>
+        <div class="row"><span class="dot idle"></span><span class="name">calm-ridge</span><span class="meta"><span class="kbd">[3]</span><span class="gl a-shell">sh</span></span><span class="ttl">~/checkout/hive</span><span class="swatch" style="background:#7fb3d5"></span></div>
+      </div></div></div>
+      <div class="ba"><span class="lbl">Hidden unless meaningful</span><div class="frame"><div class="sb b1 fixmeta noswatch">
+        <div class="row"><span class="dot run"></span><span class="name">feat-sidebar</span><span class="meta"><span class="kbd">[1]</span><span class="gl a-claude">cl</span></span><span class="ttl">npm run build --watch --silent</span><span class="swatch" style="background:#7fb3d5"></span></div>
+        <div class="row"><span class="dot run"></span><span class="name">bold-harbor</span><span class="meta"><span class="kbd">[2]</span><span class="gl a-codex">co</span></span><span class="ttl">git rebase -i origin/main</span><span class="swatch" style="background:#7fb3d5"></span></div>
+        <div class="row"><span class="dot idle"></span><span class="name">calm-ridge</span><span class="meta"><span class="kbd">[3]</span><span class="gl a-shell">sh</span></span><span class="ttl">~/checkout/hive</span><span class="swatch" style="background:#7fb3d5"></span></div>
+      </div></div></div>
+    </div>
+    <div class="verdict"><span class="vlbl">Verdict</span><label><input type="radio" name="p7" value="in"> In</label><label><input type="radio" name="p7" value="rework"> Rework</label><label><input type="radio" name="p7" value="out"> Out</label></div>
+    <textarea data-fb="polish 7 — swatches" placeholder="Worth a daemon change, or take the hover-only version, or leave it alone?"></textarea>
+  </div>
+
+  <div class="item">
+    <h3>8 &middot; Sticky project header <span class="badge new">you skipped this &mdash; look again</span></h3>
+    <p>With many sessions you lose track of which project you have scrolled into. <code>position: sticky; top: 0</code> on the header pins it while its own rows scroll under it. Scroll the pane below &mdash; the <code>hive</code> header holds until <code>dotfiles</code> pushes it off.</p>
+    <div style="max-width:280px"><div class="frame"><div class="sb b1 fixmeta scrolldemo">
+      <div class="card active"><div class="chdr"><svg class="chev"><use href="#hv-chevron-down"/></svg><span class="psw" style="background:#ffb454"></span><span class="cname">hive</span><span class="ccount">7</span></div><div class="body">
+        <div class="row"><span class="dot run"></span><span class="name">feat-sidebar</span><span class="meta"><span class="kbd">[1]</span><span class="gl a-claude">cl</span></span><span class="ttl">npm run build --watch</span></div>
+        <div class="row"><span class="dot run"></span><span class="name">bold-harbor</span><span class="meta"><span class="kbd">[2]</span><span class="gl a-codex">co</span></span><span class="ttl">git rebase -i origin/main</span></div>
+        <div class="row"><span class="dot run"></span><span class="name">calm-ridge</span><span class="meta"><span class="kbd">[3]</span><span class="gl a-gemini">ge</span></span><span class="ttl">pytest -q tests/</span></div>
+        <div class="row"><span class="dot idle"></span><span class="name">lone-birch</span><span class="meta"><span class="kbd">[4]</span><span class="gl a-shell">sh</span></span><span class="ttl">~/checkout/hive</span></div>
+        <div class="row"><span class="dot run"></span><span class="name">grey-fern</span><span class="meta"><span class="kbd">[5]</span><span class="gl a-claude">cl</span></span><span class="ttl">docker compose up</span></div>
+        <div class="row"><span class="dot run"></span><span class="name">still-pine</span><span class="meta"><span class="kbd">[6]</span><span class="gl a-codex">co</span></span><span class="ttl">tail -f /var/log/hive.log</span></div>
+        <div class="row"><span class="dot idle"></span><span class="name">quiet-meadow</span><span class="meta"><span class="kbd">[7]</span><span class="gl a-shell">sh</span></span><span class="ttl">~/checkout/hive/docs</span></div>
+      </div></div>
+      <div class="card"><div class="chdr"><svg class="chev"><use href="#hv-chevron-down"/></svg><span class="psw" style="background:#7fb3d5"></span><span class="cname">dotfiles</span><span class="ccount">2</span></div><div class="body">
+        <div class="row"><span class="dot run"></span><span class="name">amber-fox</span><span class="meta"><span class="kbd">[8]</span><span class="gl a-claude">cl</span></span><span class="ttl">nvim init.lua</span></div>
+        <div class="row"><span class="dot idle"></span><span class="name">soft-cedar</span><span class="meta"><span class="kbd">[9]</span><span class="gl a-shell">sh</span></span><span class="ttl">~/dotfiles</span></div>
+      </div></div>
+    </div></div></div>
+    <div class="verdict"><span class="vlbl">Verdict</span><label><input type="radio" name="p8" value="in"> In</label><label><input type="radio" name="p8" value="rework"> Rework</label><label><input type="radio" name="p8" value="out"> Out</label></div>
+    <textarea data-fb="polish 8 — sticky header" placeholder="Useful, or just more chrome?"></textarea>
+  </div>
+
+</section>
+
+<div class="bar">
+  <button class="primary" id="copy">Copy all feedback</button>
+  <button id="clear">Clear</button>
+  <span class="status" id="status">Answers autosave in this browser.</span>
+</div>
+
+</div>
+<script>
+  const KEY = 'hive-sidebar-redesign-feedback-v2';
+  const load = () => { try {
+    const s = JSON.parse(localStorage.getItem(KEY) || '{}');
+    document.querySelectorAll('[data-fb]').forEach(t => { if (s.text?.[t.dataset.fb]) t.value = s.text[t.dataset.fb]; });
+    document.querySelectorAll('input[type=radio]').forEach(r => { if (s.radio?.[r.name] !== undefined) r.checked = s.radio[r.name] === r.value; });
+  } catch {} };
+  const save = () => { try {
+    const s = { text:{}, radio:{} };
+    document.querySelectorAll('[data-fb]').forEach(t => s.text[t.dataset.fb] = t.value);
+    document.querySelectorAll('input[type=radio]:checked').forEach(r => s.radio[r.name] = r.value);
+    localStorage.setItem(KEY, JSON.stringify(s));
+  } catch {} };
+  document.addEventListener('input', save);
+  load();
+
+  document.getElementById('cdemo-hdr')?.addEventListener('click', () => {
+    const card = document.getElementById('cdemo');
+    card.classList.toggle('shut');
+    document.getElementById('cdemo-chev').querySelector('use')
+      .setAttribute('href', card.classList.contains('shut') ? '#hv-chevron-right' : '#hv-chevron-down');
+  });
+
+  const report = () => {
+    const L = ['# Sidebar redesign feedback — round 2', ''];
+    const r = n => document.querySelector(`input[name=${n}]:checked`)?.value ?? '(none)';
+    L.push(`- Agent glyph style: ${r('q1')}`);
+    L.push(`- Compact mode means: ${r('q2')}`);
+    L.push(`- Group row labels: ${r('q3')}`);
+    L.push('');
+    const items = ['title prefix (withdrawn)','attention tint','meta column','animated collapse','agent glyph','quieter project header','hide default swatches','sticky project header'];
+    L.push('## polish verdicts');
+    items.forEach((label, i) => L.push(`- ${label}: ${r('p' + (i + 1))}`));
+    L.push('');
+    document.querySelectorAll('[data-fb]').forEach(t => { if (t.value.trim()) L.push(`## ${t.dataset.fb}`, t.value.trim(), ''); });
+    return L.join('\n');
+  };
+  document.getElementById('copy').onclick = async () => {
+    const txt = report();
+    try { await navigator.clipboard.writeText(txt); document.getElementById('status').textContent = 'Copied — paste it back to Claude.'; }
+    catch { const ta = document.createElement('textarea'); ta.value = txt; ta.style.cssText='position:fixed;left:0;bottom:0;width:100%;height:220px;z-index:99'; document.body.append(ta); ta.select(); document.getElementById('status').textContent = 'Clipboard blocked — copy from the box at the bottom.'; }
+  };
+  document.getElementById('clear').onclick = () => { localStorage.removeItem(KEY); location.reload(); };
+</script>
+</body></html>
