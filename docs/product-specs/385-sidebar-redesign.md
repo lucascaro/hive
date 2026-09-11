@@ -52,7 +52,7 @@ The bar *is* the colour picker: on hover or keyboard focus it widens from 3px to
 ## Success criteria
 
 - A project with three Claude sessions on one worktree shows one panel headed by the branch, and its three rows are told apart by their window titles without the user hovering or switching.
-- No row displays its agent's identity more than once.
+- No row displays its agent's identity more than once — for any session created after this change. A session named before it keeps the name it was given, agent id and all; nothing rewrites stored names (see Non-goals).
 - A session renamed by the user keeps that name everywhere, inside a worktree group included.
 - With the sidebar scrolled into the middle of a long project, the project label is still on screen.
 - A session needing attention is noticeable without reading any row, and remains noticeable with animation disabled.
