@@ -1,6 +1,7 @@
 ---
 type: fixed
 bump: patch
+pr: 388
 ---
 
 Sessions no longer render monochrome when the GUI happened to be launched from
