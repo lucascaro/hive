@@ -397,8 +397,9 @@ func (s *Session) SubscribeWithAtomicReplay(sink Sink, writeFn func(replay []byt
 	// types get a compact snapshot (alt-screen: one screen, no scrollback;
 	// normal: one screen + historyRows of history, sized to match xterm's
 	// own scrollback cap), avoiding the many-tile startup flood. Only the
-	// resize-driven re-replay (EmitAtomicReplay) still streams the raw ring,
-	// and only for reflow recovery.
+	// resize-driven re-replay (EmitAtomicReplay) streams the ring, and only
+	// for reflow recovery — with the live DEC private modes appended, since
+	// the ring may have trimmed the original set sequences away.
 	replay, snapshot := s.vt.InitialReplayBytes()
 	// Logged so hived.log proves which path ran per attach — a snapshot
 	// line here (vs a multi-MB ring) is the unconfounded signal that the
@@ -415,8 +416,9 @@ func (s *Session) SubscribeWithAtomicReplay(sink Sink, writeFn func(replay []byt
 	}, nil
 }
 
-// EmitAtomicReplay runs writeFn with the current ring snapshot under
-// s.mu, so no deliver runs while writeFn writes. Used by clients
+// EmitAtomicReplay runs writeFn with the current replay bytes (the ring
+// plus the DEC private modes still in force) under s.mu, so no deliver
+// runs while writeFn writes. Used by clients
 // asking for a re-replay mid-attach (FrameRequestReplay) where the
 // sink is already registered — we still need the snapshot to be
 // captured atomically with the wire write to prevent live bytes from

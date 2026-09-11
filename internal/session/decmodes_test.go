@@ -105,10 +105,58 @@ func TestReplayRestoresModesAfterRingOverflow(t *testing.T) {
 	}
 
 	if bytes.Contains(v.RingBytes(), []byte("\x1b[?2004h")) {
-		t.Skip("ring did not overflow past the mode sequence; test is not exercising the case")
+		t.Fatal("ring did not overflow past the mode sequence; this test is no " +
+			"longer exercising the case it exists for — check ringCap and the write loop")
 	}
 	if !bytes.Contains(v.ReplayBytes(), []byte("\x1b[?2004h")) {
 		t.Fatal("mode was trimmed out of the ring and never re-asserted")
+	}
+}
+
+// 1000/1002/1003 are an exclusive group: the terminal honours whichever
+// was set last. A program that downgrades 1003 -> 1002 without sending
+// \x1b[?1003l leaves both marked on, so replaying them in numeric order
+// would end on 1003 and feed the program motion events it never asked
+// for. The restore has to replay in set order.
+func TestRestoreKeepsSetOrderWithinExclusiveGroup(t *testing.T) {
+	v := NewVT(80, 24)
+	v.Write([]byte("\x1b[?1003h\x1b[?1002h"))
+
+	got := v.decModes.restoreBytes()
+	if want := []byte("\x1b[?1003h\x1b[?1002h"); !bytes.Equal(got, want) {
+		t.Fatalf("restore reordered an exclusive group: got %q, want %q", got, want)
+	}
+}
+
+// Re-setting a mode that is already on makes it the most recent again.
+func TestRestoreMovesResetModeToTheEnd(t *testing.T) {
+	v := NewVT(80, 24)
+	v.Write([]byte("\x1b[?1002h\x1b[?1003h\x1b[?1002h"))
+
+	got := v.decModes.restoreBytes()
+	if want := []byte("\x1b[?1003h\x1b[?1002h"); !bytes.Equal(got, want) {
+		t.Fatalf("got %q, want %q", got, want)
+	}
+}
+
+// The mirror image of the bug this file exists for: when the *program*
+// resets the terminal, the modes are gone in the receiving terminal too,
+// and re-asserting them would push bracketed paste onto a plain shell
+// that never enabled it — pastes then arrive wrapped in literal \x1b[200~.
+func TestTrackerClearsOnProgramReset(t *testing.T) {
+	for name, reset := range map[string]string{
+		"DECSTR": "\x1b[!p",
+		"RIS":    "\x1bc",
+	} {
+		t.Run(name, func(t *testing.T) {
+			v := NewVT(80, 24)
+			v.Write([]byte("\x1b[?2004h\x1b[?1002h"))
+			v.Write([]byte(reset))
+
+			if got := v.decModes.restoreBytes(); len(got) != 0 {
+				t.Fatalf("modes survived a %s from the program: %q", name, got)
+			}
+		})
 	}
 }
 

@@ -2,7 +2,7 @@ package session
 
 import (
 	"bytes"
-	"sort"
+	"slices"
 	"strconv"
 )
 
@@ -59,6 +59,7 @@ const (
 	decEsc                        // saw ESC
 	decCSI                        // saw ESC [
 	decPriv                       // saw ESC [ ?, collecting params
+	decBang                       // saw ESC [ !, expecting p (DECSTR)
 )
 
 // decModeTracker is a streaming scanner for DEC private mode set/reset
@@ -72,11 +73,20 @@ const (
 type decModeTracker struct {
 	state  decScanState
 	params []byte
-	on     map[int]bool
+	// enabled holds the sticky modes currently on, in the order the
+	// program turned them on. Order is the state, not decoration:
+	// 1000/1002/1003 (and the 1005/1006/1015 encodings) are mutually
+	// exclusive groups where the last one set wins, so replaying them in
+	// any other order can leave the terminal in a mode the program never
+	// asked for.
+	enabled []int
 }
 
 // feed scans p for private mode changes, recording the latest state of
-// every mode in stickyDECModes.
+// every mode in stickyDECModes. A soft reset (DECSTR, \x1b[!p) or a full
+// reset (RIS, \x1bc) from the program clears the tracked state: the
+// receiving terminal drops every private mode on those, so re-asserting
+// afterwards would push modes the program had abandoned.
 func (t *decModeTracker) feed(p []byte) {
 	for _, b := range p {
 		switch t.state {
@@ -88,6 +98,10 @@ func (t *decModeTracker) feed(p []byte) {
 			switch b {
 			case '[':
 				t.state = decCSI
+			case 'c':
+				// RIS — the terminal drops everything.
+				t.enabled = t.enabled[:0]
+				t.state = decGround
 			case 0x1b:
 				// Another ESC restarts the sequence.
 			default:
@@ -98,6 +112,8 @@ func (t *decModeTracker) feed(p []byte) {
 			case b == '?':
 				t.state = decPriv
 				t.params = t.params[:0]
+			case b == '!':
+				t.state = decBang
 			case b == 0x1b:
 				t.state = decEsc
 			default:
@@ -122,48 +138,53 @@ func (t *decModeTracker) feed(p []byte) {
 				// handle (e.g. \x1b[?25$p, a mode query). Not ours.
 				t.state = decGround
 			}
+		case decBang:
+			switch b {
+			case 'p':
+				// DECSTR — soft reset clears every private mode.
+				t.enabled = t.enabled[:0]
+				t.state = decGround
+			case 0x1b:
+				t.state = decEsc
+			default:
+				t.state = decGround
+			}
 		}
 	}
 }
 
 // set records each sticky mode named in a ";"-separated parameter list.
+// Re-setting a mode that is already on moves it to the end: within an
+// exclusive group the terminal honours whichever was set last, so the
+// tracker has to remember which that was.
 func (t *decModeTracker) set(params []byte, enabled bool) {
 	for _, field := range bytes.Split(params, []byte(";")) {
 		n, err := strconv.Atoi(string(field))
 		if err != nil || !stickyDECModes[n] {
 			continue
 		}
-		if t.on == nil {
-			t.on = make(map[int]bool, len(stickyDECModes))
+		t.enabled = slices.DeleteFunc(t.enabled, func(m int) bool { return m == n })
+		if enabled {
+			t.enabled = append(t.enabled, n)
 		}
-		t.on[n] = enabled
 	}
 }
 
 // restoreBytes returns the sequences needed to re-assert every sticky
-// mode currently enabled, in ascending mode order so the output is
-// deterministic (tests compare it byte-for-byte).
+// mode currently enabled, in the order the program set them — which is
+// both deterministic (tests compare it byte-for-byte) and the only
+// ordering that reproduces the program's intent across the exclusive
+// mode groups.
 //
 // Disabled modes emit nothing: a snapshot's DECSTR has already cleared
 // them in the receiving terminal, so an explicit reset would be bytes
 // spent to reach the state we are already in.
 func (t *decModeTracker) restoreBytes() []byte {
-	if len(t.on) == 0 {
+	if len(t.enabled) == 0 {
 		return nil
 	}
-	modes := make([]int, 0, len(t.on))
-	for mode, enabled := range t.on {
-		if enabled {
-			modes = append(modes, mode)
-		}
-	}
-	if len(modes) == 0 {
-		return nil
-	}
-	sort.Ints(modes)
-
 	var buf bytes.Buffer
-	for _, mode := range modes {
+	for _, mode := range t.enabled {
 		buf.WriteString("\x1b[?")
 		buf.WriteString(strconv.Itoa(mode))
 		buf.WriteString("h")
