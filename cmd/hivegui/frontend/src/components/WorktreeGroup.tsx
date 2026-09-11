@@ -12,8 +12,9 @@
 // (lib/worktree-groups.ts › THE ONE ORDER) — is unchanged by the
 // wrapping. Drag-reorder reads rows off the DOM by class and is
 // indifferent to the nesting.
-import { useState, type CSSProperties, type ReactNode } from 'react';
-import { Icon } from './Icon.js';
+import { useId, useState, type CSSProperties, type ReactNode } from 'react';
+import { Icon, StateIcon } from './Icon.js';
+import type { AttentionSummary } from '../lib/session-state.js';
 
 export interface WorktreeGroupProps {
   /** Branch name, or '' for a detached worktree. */
@@ -24,6 +25,12 @@ export interface WorktreeGroupProps {
       worktree it adopts (internal/registry/create.go), so the panel
       carries one bar for the group instead of one per row. */
   color: string;
+  /** Attention across the group's members, from `attentionSummary()` —
+      the same helper the project card and the minimized chip use, so the
+      three cannot disagree. Collapsing hides the members' own state
+      icons, and AGENTS.md does not allow a session to go silent to save
+      space, so the count takes over while the body is hidden. */
+  attention: AttentionSummary;
   children?: ReactNode;
 }
 
@@ -35,7 +42,9 @@ export function WorktreeGroup(p: WorktreeGroupProps) {
   // mounted while the group exists, so useState survives every re-render
   // that matters.
   const [collapsed, setCollapsed] = useState(false);
+  const bodyId = useId();
   const label = p.branch || 'detached HEAD';
+  const hidden = collapsed && p.attention.count > 0;
   const style = p.color
     ? ({ '--session-color': p.color } as CSSProperties)
     : undefined;
@@ -50,6 +59,7 @@ export function WorktreeGroup(p: WorktreeGroupProps) {
           type="button"
           className="hv-worktree-group__chevron"
           aria-expanded={!collapsed}
+          aria-controls={bodyId}
           aria-label={`${collapsed ? 'Expand' : 'Collapse'} ${label}`}
           onClick={() => setCollapsed((c) => !c)}
         >
@@ -62,9 +72,28 @@ export function WorktreeGroup(p: WorktreeGroupProps) {
           <Icon name="branch" size={12} />
           {label}
         </span>
-        <span className="hv-worktree-group__count">{p.count}</span>
+        {hidden ? (
+          <span
+            className="hv-worktree-group__alert"
+            title={`${p.attention.count} waiting on you`}
+          >
+            <StateIcon state={p.attention.state ?? 'attention'} />
+            {p.attention.count}
+          </span>
+        ) : null}
+        {/* A title, not aria-label: a bare <span> has no role that
+            supports one (biome a11y/useAriaPropsSupportedByRole), and the
+            chevron's own label already names the branch. */}
+        <span
+          className="hv-worktree-group__count"
+          title={`${p.count} sessions on ${label}`}
+        >
+          {p.count}
+        </span>
       </div>
-      <ul className="hv-worktree-group__body">{p.children}</ul>
+      <ul className="hv-worktree-group__body" id={bodyId}>
+        {p.children}
+      </ul>
     </li>
   );
 }

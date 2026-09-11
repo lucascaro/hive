@@ -181,9 +181,13 @@ export function SessionRow(p: SessionRowProps) {
       <span
         className="hv-session-row__name"
         ref={p.nameRef}
-        title={p.titleOnly ? sub : undefined}
+        title={p.titleOnly && sub ? sub : undefined}
       >
-        {p.titleOnly ? sub : displayName(s)}
+        {/* subtitleFor() is empty for a running session that has published
+            no window title, and displayTitle() suppresses one that just
+            echoes the name — so titleOnly falls back to the name rather
+            than rendering a row with no line at all. */}
+        {p.titleOnly && sub ? sub : displayName(s)}
       </span>
       {p.titleOnly ? null : (
         <span className="hv-session-row__sub" title={sub}>

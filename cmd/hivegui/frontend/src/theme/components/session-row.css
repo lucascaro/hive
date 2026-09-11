@@ -52,9 +52,13 @@
    pulsing is a channel of its own (patterns.md › Selection vs
    attention). Declared before selection so a selected row still reads as
    selected while it pulses. */
+/* opacity, not background-color: background-color is not
+   compositor-animatable, and this animation never ends on a list that is
+   always mounted. The tint itself is static; only the overlay's alpha
+   moves. */
 @keyframes hv-attn-tint {
-  0%, 100% { background-color: transparent; }
-  50% { background-color: color-mix(in srgb, var(--state-attention) 12%, transparent); }
+  0%, 100% { opacity: 0; }
+  50% { opacity: 1; }
 }
 /* An overlay, not the row's own background: an animation's value beats a
    normal declaration, so pulsing `background-color` on the row itself
@@ -66,6 +70,8 @@
   position: absolute;
   inset: 0;
   pointer-events: none;
+  background-color: color-mix(in srgb, var(--state-attention) 12%, transparent);
+  opacity: 0;
   animation: hv-attn-tint var(--motion-pulse) ease-in-out infinite;
 }
 /* With motion off the tint has to be static, and then BOTH grounds are on
@@ -74,6 +80,7 @@
 @media (prefers-reduced-motion: reduce) {
   .hv-session-row[data-state='attention']::after {
     animation: none;
+    opacity: 1;
     background-color: color-mix(in srgb, var(--state-attention) 9%, transparent);
   }
 }
@@ -99,58 +106,6 @@
    panel's (sidebar.css › .hv-worktree-group::after): members share a
    colour, and one bar per row was three marks for one fact. The row
    keeps data-wt-shared for the branch glyph's count and label. */
-
-.hv-session-row__worktree-slot { grid-column: 4; grid-row: 1; }
-/* The whole point of the redesign's line 2: the window title runs from
-   the name's column to the row's right edge, under the meta column
-   rather than stopping before it. */
-.hv-session-row__sub { grid-column: 2 / -1; grid-row: 2; }
-
-/* Where the session came from. Not a button: the inbox is reached from
-   the project card's badge, and a second route to it on every row would
-   put one action in two places. Muted like the other passive metadata —
-   the row's loudest channel is its state dot. */
-.hv-session-row__idea {
-  display: inline-flex;
-  align-items: center;
-  color: var(--fg-subtle);
-}
-
-.hv-session-row:hover { background: var(--hover); color: var(--fg); }
-
-/* Selection: --sel ground + a 2px accent bar at the left edge. Attention
-   never uses either channel (patterns.md › Selection vs attention). */
-.hv-session-row[data-selected] {
-  background: var(--sel);
-  color: var(--fg);
-  font-weight: 500;
-}
-.hv-session-row[data-selected]::before {
-  content: '';
-  position: absolute;
-  left: 0;
-  top: 0;
-  bottom: 0;
-  width: 2px;
-  background: var(--accent);
-}
-
-/* Shared worktree: a bar at the RIGHT edge, in the session's own colour.
-   Sessions that adopt a worktree inherit the colour of the session they
-   joined (internal/registry/create.go), so the bar is the same on every
-   member and reads as one group. The left edge is not available —
-   selection owns it, and patterns.md > Selection vs attention keeps the
-   two indicators off each other's position. Colour is never the only
-   channel: the count beside the branch glyph says the same thing. */
-.hv-session-row[data-wt-shared]::after {
-  content: '';
-  position: absolute;
-  right: 0;
-  top: 0;
-  bottom: 0;
-  width: 3px;
-  background: var(--session-color, var(--fg-subtle));
-}
 
 .hv-session-row__worktree-slot {
   display: inline-flex;
@@ -232,7 +187,11 @@
 .hv-session-row__agent {
   font-family: var(--font-mono);
   font-size: var(--text-xs);
-  color: var(--agent-color, var(--fg-subtle));
+  /* The TINT carries the agent's colour; the text stays --fg. As TEXT,
+     --agent-color fails WCAG AA on every light preset (Claude's #f59e0b
+     is 2.15:1 on white) and scripts/ui-contrast.mjs cannot catch it —
+     the value is data from internal/agent, not a token it enumerates. */
+  color: var(--fg);
   background: color-mix(in srgb, var(--agent-color, transparent) 18%, transparent);
   border-radius: var(--radius-sm);
   padding: 0 var(--space-1);

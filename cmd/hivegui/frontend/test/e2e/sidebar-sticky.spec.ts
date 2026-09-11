@@ -40,6 +40,51 @@ async function seedScrollableGroup(page: Page) {
   await page.waitForSelector('.hv-worktree-group__header');
 }
 
+test.describe('worktree group panel', () => {
+  test('the chevron actually hides the rows, and says so', async ({ page }) => {
+    await boot(page);
+    await seedScrollableGroup(page);
+    const panel = page.locator('.hv-worktree-group').first();
+    const rows = panel.locator('.hv-session-row');
+    await expect(rows.first()).toBeVisible();
+
+    await panel.locator('.hv-worktree-group__chevron').click();
+    await expect(rows.first()).toBeHidden();
+    await expect(panel.locator('.hv-worktree-group__chevron')).toHaveAttribute(
+      'aria-expanded',
+      'false',
+    );
+
+    await panel.locator('.hv-worktree-group__chevron').click();
+    await expect(rows.first()).toBeVisible();
+  });
+
+  // AGENTS.md: a session's state must never go silent to save space. The
+  // rows are display:none while collapsed, so the header carries the count.
+  test('a collapsed panel still reports attention inside it', async ({
+    page,
+  }) => {
+    await boot(page);
+    await seedScrollableGroup(page);
+    const panel = page.locator('.hv-worktree-group').first();
+    await panel.locator('.hv-worktree-group__chevron').click();
+    await expect(panel.locator('.hv-worktree-group__alert')).toHaveCount(0);
+
+    await page.evaluate(() => {
+      const s = (window.__hive.state?.sessions ?? []).find(
+        (x) => !!x.worktree_path,
+      );
+      if (!s) throw new Error('no worktree session');
+      s.needs_attention = true;
+      window.__hive.emit(
+        'session:event',
+        JSON.stringify({ kind: 'attention', session: s }),
+      );
+    });
+    await expect(panel.locator('.hv-worktree-group__alert')).toContainText('1');
+  });
+});
+
 test.describe('sticky sidebar headers', () => {
   test('keeps the project label and the group branch on screen', async ({
     page,
@@ -47,7 +92,6 @@ test.describe('sticky sidebar headers', () => {
     await boot(page);
     await seedScrollableGroup(page);
 
-    const scroller = page.locator('#projects');
     const label = page.locator('.hv-project-card__header').first();
     const header = page.locator('.hv-worktree-group__header').first();
 
@@ -79,8 +123,6 @@ test.describe('sticky sidebar headers', () => {
     expect(boxes.header.bottom).toBeLessThanOrEqual(boxes.scroller.bottom + 1);
     // …and nested, not stacked on top of each other.
     expect(boxes.header.top).toBeGreaterThanOrEqual(boxes.label.bottom - 1);
-
-    await expect(scroller).toBeVisible();
   });
 
   test('pins the project label at every scroll position', async ({ page }) => {

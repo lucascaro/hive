@@ -864,39 +864,64 @@ test('the attention tint stays quieter than the selection ground', async ({
 }) => {
   await page.emulateMedia({ reducedMotion: 'reduce' });
   await boot(page);
-  const shift = await page.evaluate(() => {
-    const probe = document.createElement('span');
-    document.body.appendChild(probe);
-    // color-mix() computes to `color(srgb r g b)` (0..1) while a plain hex
-    // computes to `rgb(r, g, b)` (0..255); read both.
-    const rgb = (value: string) => {
-      probe.style.backgroundColor = '';
-      probe.style.backgroundColor = value;
-      const painted = getComputedStyle(probe).backgroundColor;
-      const nums = painted.match(/-?[\d.]+/g);
-      if (!nums || nums.length < 3) {
-        throw new Error(`unresolved colour: ${value} -> ${painted}`);
-      }
-      const [r, g, b] = nums.slice(0, 3).map(Number.parseFloat);
-      return painted.startsWith('color(')
-        ? [r * 255, g * 255, b * 255]
-        : [r, g, b];
-    };
-    // Both tints composited over the sidebar's own ground, so the
-    // comparison is what the eye actually sees.
-    const lum = (c: number[]) => 0.2126 * c[0] + 0.7152 * c[1] + 0.0722 * c[2];
-    const ground = lum(rgb('var(--surface)'));
-    const attention = lum(
-      rgb('color-mix(in srgb, var(--state-attention) 9%, var(--surface))'),
+  // Read the REAL elements: a probe span painted with a hand-copied
+  // color-mix() only re-states the stylesheet, and deleting the
+  // @media (prefers-reduced-motion) block would leave such a test green.
+  await page.evaluate(() => window.__hive.addSession?.('second'));
+  await page.waitForFunction(
+    () => (window.__hive.state?.sessions.length ?? 0) >= 2,
+  );
+  await page.evaluate(() => {
+    const attention = (window.__hive.state?.sessions ?? [])[0];
+    if (!attention) throw new Error('no mock session');
+    attention.needs_attention = true;
+    window.__hive.emit(
+      'session:event',
+      JSON.stringify({ kind: 'attention', session: attention }),
     );
-    const sel = lum(rgb('var(--sel)'));
-    probe.remove();
+  });
+  const row = page.locator('#projects .hv-session-row').first();
+  await expect(row).toHaveAttribute('data-state', 'attention');
+
+  const paint = await row.evaluate((el) => {
+    const after = getComputedStyle(el, '::after');
+    const selected = document.querySelector<HTMLElement>(
+      '.hv-session-row[data-selected]',
+    );
+    const rgb = (painted: string) => {
+      const nums = painted.match(/-?[\d.]+/g);
+      if (!nums || nums.length < 3) throw new Error(`unparsed: ${painted}`);
+      const [r, g, b] = nums.slice(0, 3).map(Number.parseFloat);
+      const alpha = nums.length > 3 ? Number.parseFloat(nums[3]) : 1;
+      const scale = painted.startsWith('color(') ? 255 : 1;
+      return { r: r * scale, g: g * scale, b: b * scale, alpha };
+    };
     return {
-      attention: Math.abs(attention - ground),
-      sel: Math.abs(sel - ground),
+      animation: after.animationName,
+      opacity: Number.parseFloat(after.opacity),
+      tint: rgb(after.backgroundColor),
+      sel: selected
+        ? rgb(getComputedStyle(selected).backgroundColor)
+        : rgb(getComputedStyle(document.documentElement).backgroundColor),
+      ground: rgb(getComputedStyle(el).backgroundColor),
     };
   });
-  expect(shift.attention).toBeLessThan(shift.sel);
+
+  // Static, and actually painted — not an animation the media query only
+  // appeared to stop.
+  expect(paint.animation).toBe('none');
+  expect(paint.opacity).toBe(1);
+  expect(paint.tint.alpha).toBeGreaterThan(0);
+  // …and quieter than selection's ground, or a selected row that wants
+  // attention stops reading as selected.
+  const lum = (c: { r: number; g: number; b: number }) =>
+    0.2126 * c.r + 0.7152 * c.g + 0.0722 * c.b;
+  const overlaid =
+    lum(paint.ground) * (1 - paint.tint.alpha) +
+    lum(paint.tint) * paint.tint.alpha;
+  expect(Math.abs(overlaid - lum(paint.ground))).toBeLessThan(
+    Math.abs(lum(paint.sel) - lum(paint.ground)),
+  );
 });
 
 // The pulse itself: a row wanting attention carries an animated overlay,

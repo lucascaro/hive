@@ -142,6 +142,63 @@ describe('worktree group panel', () => {
     );
   });
 
+  // subtitleFor() is empty for a running session that has published no
+  // window title. A titleOnly row must not then render a blank line — it
+  // falls back to the name it would otherwise have hidden.
+  it('falls back to the name when a group member has no title', async () => {
+    // Ready and alive, so subtitleFor() has no state word to fall back on
+    // either — the genuinely empty line 2 this guards against.
+    const ul = await mount(
+      sessions(
+        {
+          name: 'feat-sidebar claude',
+          alive: true,
+          worktree_path: '/wt/a',
+          worktree_branch: 'feat/sidebar',
+        },
+        {
+          name: 'feat-sidebar codex',
+          agent: 'codex',
+          alive: true,
+          worktree_path: '/wt/a',
+          worktree_branch: 'feat/sidebar',
+        },
+      ),
+    );
+    const names = [
+      ...groups(ul)[0].querySelectorAll<HTMLElement>('.hv-session-row__name'),
+    ].map((n) => n.textContent);
+    expect(names).toEqual(['feat-sidebar', 'feat-sidebar']);
+  });
+
+  // Shell sessions carry the literal "shell" suffix with an EMPTY agent id
+  // (registry/create.go), so the dedupe and the titleOnly rule both have to
+  // handle them or a pair of shells stays byte-identical.
+  it('groups two shell sessions and leads with their titles', async () => {
+    const ul = await mount(
+      sessions(
+        {
+          name: 'feat-sidebar shell',
+          agent: '',
+          worktree_path: '/wt/a',
+          worktree_branch: 'feat/sidebar',
+          title: 'tail -f log',
+        },
+        {
+          name: 'feat-sidebar shell',
+          agent: '',
+          worktree_path: '/wt/a',
+          worktree_branch: 'feat/sidebar',
+          title: 'htop',
+        },
+      ),
+    );
+    const names = [
+      ...groups(ul)[0].querySelectorAll<HTMLElement>('.hv-session-row__name'),
+    ].map((n) => n.textContent);
+    expect(names).toEqual(['tail -f log', 'htop']);
+  });
+
   it('collapses and expands from the header chevron', async () => {
     const ul = await mount(
       sessions(

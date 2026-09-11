@@ -94,6 +94,26 @@ test.describe('shared worktree cue', () => {
     expect(first.hitInsidePanel).toBe(true);
   });
 
+  // The rule this replaced lived on the ROW, and a bad rebase once brought
+  // it back: both bars then painted, and on an attention row the stale
+  // rule and the pulse overlay fought over the same ::after. Assert the
+  // row's own ::after is gone, not just that the panel's exists.
+  test('paints no second bar on the member rows themselves', async ({
+    page,
+  }) => {
+    await boot(page);
+    await seedSharedPair(page);
+    const rowBars = await page.evaluate(() =>
+      Array.from(
+        document.querySelectorAll<HTMLElement>(
+          'li.hv-session-row[data-wt-shared]',
+        ),
+      ).map((li) => getComputedStyle(li, '::after').content),
+    );
+    expect(rowBars.length).toBeGreaterThan(0);
+    for (const content of rowBars) expect(content).toBe('none');
+  });
+
   test('gives both members of a group the same colour', async ({ page }) => {
     await boot(page);
     await seedSharedPair(page);

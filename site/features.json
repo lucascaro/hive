@@ -1,7 +1,13 @@
 [
   {
+    "title": "Sidebar redesign",
+    "blurb": "Rows say each thing once: the agent is a coloured glyph instead of a repeated name suffix, the window title spans the full row, and a session's colour is a bar on the edge that doubles as its colour picker. Project and branch headers stay on screen while you scroll, a session that needs you pulses, and a density setting fits up to 40% more sessions on screen.",
+    "status": "shipped",
+    "since": "Unreleased"
+  },
+  {
     "title": "Linked sessions for a shared worktree",
-    "blurb": "Sessions working in the same git worktree share a colour, show it as a bar on the row, and sit together in the sidebar — so you can see at a glance which ones are editing the same files.",
+    "blurb": "Sessions working in the same git worktree are grouped into one panel in the sidebar, headed by the branch they share and collapsible — so you can see at a glance which ones are editing the same files, and tell them apart by what each is actually doing.",
     "status": "shipped",
     "since": "Unreleased"
   },

@@ -399,6 +399,7 @@ function renderRows(
         branch={branch}
         count={run.length}
         color={head.color ?? ''}
+        attention={attentionSummary(run)}
       >
         {run.map((s) =>
           item(s, run.length, !!defaultName && displayName(s) === defaultName),
