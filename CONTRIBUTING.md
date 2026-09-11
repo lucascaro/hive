@@ -68,7 +68,7 @@ See [DESIGN.md](DESIGN.md) for a full description of every package and how they 
    labelled `regen-override`. A docs- or CI-only PR can skip the changeset with the
    `no-changeset` label. To catch a missing changeset before you push, install the local
    gate as a `pre-push` hook — once per clone, shared by every worktree:
-   `cp scripts/hooks/pre-push "$(git rev-parse --git-common-dir)/hooks/pre-push"`.
+   `./scripts/dev-setup.sh`.
 5. **Update `DESIGN.md`** if your change adds or removes packages, alters a major interface, or otherwise changes the high-level structure described there.
 6. Update any relevant files in `docs/` if the subsystem they describe has changed.
 7. Open a pull request with a clear description of the problem and solution.

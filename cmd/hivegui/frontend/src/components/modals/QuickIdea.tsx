@@ -18,11 +18,13 @@ import {
   submitIdea,
   type IdeaKind,
 } from '../../app/modals/quick-idea.js';
+import { saveIdeaEdit } from '../../app/modals/idea-inbox.js';
 import {
   ideaTextBytes,
   ideaTextTooLong,
   MAX_IDEA_TEXT,
 } from '../../lib/ideas.js';
+import type { IdeaInfo } from '../../app/state.js';
 import { useAppStore } from '../../store/store.js';
 import { Button } from '../Button.js';
 import { ModalShell } from './ModalShell.js';
@@ -38,21 +40,35 @@ export function QuickIdea({ root }: { root: HTMLElement | null }): ReactNode {
 
   if (!entry || !root) return null;
   return (
-    <QuickIdeaSheet key={entry.seq} root={root} projectId={entry.projectId} />
+    <QuickIdeaSheet
+      key={entry.seq}
+      root={root}
+      projectId={entry.projectId}
+      idea={entry.idea ?? null}
+    />
   );
 }
 
 function QuickIdeaSheet({
   root,
   projectId: initialProjectId,
+  idea,
 }: {
   root: HTMLElement;
   projectId: string;
+  idea: IdeaInfo | null;
 }): ReactNode {
   const projects = useAppStore((s) => s.projects);
   const activeId = useAppStore((s) => s.activeId);
-  const [text, setText] = useState('');
-  const [kind, setKind] = useState<IdeaKind>('idea');
+  const [text, setText] = useState(idea?.text ?? '');
+  // The daemon validates kind against a closed set, so a record
+  // carrying an unrecognised one falls back to the default rather than
+  // putting the segmented control in a state with nothing selected.
+  const [kind, setKind] = useState<IdeaKind>(
+    IDEA_KINDS.includes(idea?.kind as IdeaKind)
+      ? (idea?.kind as IdeaKind)
+      : 'idea',
+  );
   const [projectId, setProjectId] = useState(initialProjectId);
   const textRef = useRef<HTMLTextAreaElement>(null);
   // Measured in UTF-8 bytes, which is what the daemon bounds. Shown
@@ -71,6 +87,13 @@ function QuickIdeaSheet({
   }, []);
 
   function save() {
+    if (idea) {
+      // A refused save (empty or oversize) leaves the sheet up with the
+      // text still in it — the note is the whole record and there is
+      // nowhere else it survives.
+      if (saveIdeaEdit(idea.id, text, kind, projectId)) closeQuickIdea();
+      return;
+    }
     // The filing session is a provenance breadcrumb, not a parent: the
     // idea belongs to the project and outlives whatever was focused.
     submitIdea(projectId, kind, text, activeId ?? '');
@@ -92,7 +115,7 @@ function QuickIdeaSheet({
       id="quick-idea"
       root={root}
       size="sm"
-      title="Capture idea"
+      title={idea ? 'Edit idea' : 'Capture idea'}
       onClose={closeQuickIdea}
       // patterns.md › Keyboard hints: `[…]` for symbols, `(…)` for
       // letters, lowercase — same as every other modal.

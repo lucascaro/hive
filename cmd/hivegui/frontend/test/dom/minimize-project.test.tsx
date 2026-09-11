@@ -743,19 +743,20 @@ describe('keyboard navigation skips minimized things', () => {
   });
 
   it('⇧⌘↓ still reorders across a minimized sibling', () => {
-    // The reorder branch sends an index into the daemon's GLOBAL order
-    // space, which counts hidden sessions — filtering it would scatter
-    // sessions. s1b is minimized and must still be a valid target.
+    // The reorder branch sends indices into the daemon's GLOBAL order
+    // space, which counts hidden sessions — filtering them would scatter
+    // sessions. s1b is minimized and must still be a valid slot to move
+    // across. (The emitted move names s1b rather than s1: a reorder now
+    // computes the target order and emits the shortest sequence of daemon
+    // moves that reaches it, so swapping the pair by lifting the sibling is
+    // the same one-move result.)
     store.addSession({ id: 's1b', name: 's1b', project_id: 'p1', order: 1 });
     minimizeSession('s1b');
     state.activeId = 's1';
     reorderActive(+1);
-    expect(vi.mocked(bridge.UpdateSession)).toHaveBeenCalledWith(
-      's1',
-      '',
-      '',
-      1,
-    );
+    expect(vi.mocked(bridge.UpdateSession).mock.calls).toEqual([
+      ['s1b', '', '', 0],
+    ]);
   });
 
   it('⌘] skips a minimized project', () => {

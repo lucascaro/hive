@@ -8,6 +8,44 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+Sessions that share a git worktree are now linked in the sidebar. They take the
+colour of the session whose worktree they joined, show that colour as a bar on
+the right edge of the row, and carry a count on the branch icon; the worktrees
+browser names the sessions occupying each worktree instead of only counting
+them. Linked sessions also sit together in the sidebar. Dropping one outside its
+group — or pressing the reorder keys once it is at the group's edge — moves the
+whole group; dropping it on another member, or pressing the reorder keys while
+it has room among its own members, reorders it inside the group. Keyboard
+navigation, ⌘1-9, the tray and the command palette now all follow the order the
+rows are actually painted in.
+
+### Fixed
+`Ctrl+Shift+V` pastes once instead of twice. The terminal read the clipboard and
+wrote it to the session itself, but never cancelled the keypress, so the webview
+also ran its own paste on top — the same text arrived twice on every use. The
+paste now also goes through xterm's paste path, so multi-line clipboard content
+keeps its newline normalisation and bracketed-paste framing instead of being
+written raw, which had agents submitting once per pasted line.
+Sessions no longer render monochrome when the GUI happened to be launched from
+a shell with `NO_COLOR` set. Hive built every session's environment from the
+daemon's own, overriding only `TERM`, so a `NO_COLOR` that reached `hivegui` by
+inheritance was handed down to every agent and shell in every tile and stayed
+there for the life of the daemon — with no setting anywhere to explain it. A
+tile is a colour-capable xterm.js terminal whatever the GUI was started under,
+so the variable is now dropped when a session's environment is built, for the
+same reason `TERM` is already forced.
+Confirmation dialogs now work on Windows. Deleting a project, killing a live
+session, restarting Hive and applying an update all go through a native
+confirmation, and every one of them silently did nothing on Windows: the dialog
+appeared, but answering it always read as a refusal, so the action was abandoned
+before it reached the daemon — with no error to show why. Wails ignores our
+button labels on Windows and substitutes a native Yes/No, and Hive only
+recognised the macOS `OK` as consent. It now accepts the labels each platform
+actually reports.
+
+## [2.7.0] — 2026-09-07
+
+### Added
 - Claude Code sessions now report their own state instead of relying on
   a guess from terminal output alone. Every session Hive spawns gets
   `HIVE_SESSION_ID` / `HIVE_SOCKET` in its environment, and Claude
@@ -44,6 +82,30 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   confirm. Ideas filed from a session's shell with `hived idea add`
   show up in the same list, live. Deleting a project now asks before
   it discards the ideas captured for it.
+- **Start a session from an idea.** Every open note in the inbox gets a
+  **Start session** action: it opens the usual agent launcher with the
+  project pinned and an opening prompt built from the note, worktree
+  checkbox and all. The prompt is an instruction, not a label — a bug
+  asks the agent to reproduce it and find the root cause before
+  touching code, an idea asks it to propose a plan first — with your
+  note as the subject — and editable right there in the launcher, since
+  the note was jotted down mid-task and this is the last moment to
+  sharpen it (sharpening it does not change the stored note). Claude and
+  Pi receive it as their opening argument, and for them the idea flips to *started* and links back to its session,
+  whose sidebar row carries a small idea glyph. Every other agent gets
+  the prompt **offered** instead of typed in: a bar above the grid
+  shows the note with **Paste** and **Dismiss**, so you place it once
+  you can see the agent is actually ready — Hive cannot tell an agent's
+  input box from its startup "do you trust this directory?" gate, and
+  you can. Paste drops it in without sending it and links the idea;
+  Dismiss leaves the note in the inbox. The plain shell and your own
+  custom agents get no prompt at all, and the launcher says so before
+  you start.
+- **A mis-filed idea can be corrected.** The inbox's Edit now opens the
+  same sheet you captured it with, so the note, its kind *and* the
+  project it belongs to are all editable — the capture sheet fills the
+  project in from whatever session you happened to be in, so getting it
+  wrong is ordinary, and deleting and retyping was not a fix.
 - Ideas: capture a note against a project without interrupting what
   you are doing. From inside any Hive session's shell,
   `hived idea add "the grid loses focus"` files one against that
@@ -183,6 +245,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - The "latest" update channel now checks that the source checkout's
   remote is exactly github.com/lucascaro/hive before pulling and
   building from it. A URL that merely contained that text used to pass.
+
+### Security
+- macOS releases are now signed with an Apple Developer ID certificate,
+  notarized by Apple, and stapled. A fresh install no longer trips the
+  "unidentified developer" warning, and no right-click-Open workaround
+  is needed.
+- The in-app updater now refuses any downloaded release that is not
+  signed by Hive's Apple Developer team, and says so specifically
+  rather than reporting a generic checksum error. Previously the only
+  check was a SHA-256 manifest published alongside the download, which
+  catches a corrupted transfer but not a tampered one. The installed
+  app is left untouched when the check fails.
 
 ## [2.6.0] — 2026-09-04
 
@@ -1261,7 +1335,8 @@ own session daemon, replacing the v1 tmux + Bubble Tea architecture.
   sidebar/grid and fire an OS notification.
 - No telemetry in shipped binaries.
 
-[Unreleased]: https://github.com/lucascaro/hive/compare/v2.6.0...HEAD
+[Unreleased]: https://github.com/lucascaro/hive/compare/v2.7.0...HEAD
+[2.7.0]: https://github.com/lucascaro/hive/compare/v2.6.0...v2.7.0
 [2.6.0]: https://github.com/lucascaro/hive/compare/v2.5.0...v2.6.0
 [2.5.0]: https://github.com/lucascaro/hive/compare/v2.4.0...v2.5.0
 [2.4.0]: https://github.com/lucascaro/hive/compare/v2.3.0...v2.4.0

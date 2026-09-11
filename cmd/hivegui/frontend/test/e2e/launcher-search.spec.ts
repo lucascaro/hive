@@ -26,7 +26,7 @@ test('typing in the launcher narrows the agent list and Enter creates that sessi
   await page.keyboard.press(`${mod}+t`);
   const launcher = page.locator('#launcher');
   await expect(launcher).toBeVisible();
-  await expect(launcher.locator('.launcher-item')).toHaveCount(2);
+  await expect(launcher.locator('.launcher-item')).toHaveCount(3);
   // The filter box takes focus on open, so the keystrokes below need
   // no explicit click.
   await expect(launcher.locator('.launcher-search')).toBeFocused();
@@ -49,7 +49,7 @@ test('a digit selects a row only while the filter box is empty', async ({
   await boot(page);
   await page.keyboard.press(`${mod}+t`);
   const launcher = page.locator('#launcher');
-  await expect(launcher.locator('.launcher-item')).toHaveCount(2);
+  await expect(launcher.locator('.launcher-item')).toHaveCount(3);
 
   // Non-empty query: the digit is a character, not a shortcut, so the
   // launcher stays open and the query grows.

@@ -230,7 +230,7 @@ applies to `docs/product-specs/index.md`.
   renaming a private variable). Use judgment.
 - To catch a missing changeset before pushing, install the local gate once per
   clone (shared by every worktree):
-  `cp scripts/hooks/pre-push "$(git rev-parse --git-common-dir)/hooks/pre-push"`.
+  `./scripts/dev-setup.sh`.
 
 Versioning still happens at release time; nothing here creates a versioned
 section by hand.
@@ -281,9 +281,35 @@ Use the release script to publish a new version:
 ./scripts/release.sh <version>    # e.g. ./scripts/release.sh 0.3.0
 ```
 
-The script handles everything: version bump, changelog stamp, commit, tag, release artifacts via `build.sh --platform all` (macOS universal .app + `hived`, Windows amd64 `.exe` — Linux is a manual native build, see README), GitHub release with attached binaries, and push. Version/commit come from `internal/buildinfo` (stamped via ldflags at build time).
+The release is **split across two halves**, and the split is deliberate.
 
-**Prerequisites:** clean working tree, `gh` CLI authenticated, `[Unreleased]` section in CHANGELOG.md.
+**Local** (`scripts/release.sh`): version bump, changelog stamp from
+`.changesets/`, commit, tag, the `origin/main` drift check, push. Then it
+exits. These want a human, and the drift check is something a runner cannot
+evaluate.
+
+**CI** (`.github/workflows/release.yml`, triggered by the `v*` tag push): build
+via `build.sh --platform all` (macOS universal .app + `hived`, Windows amd64
+`.exe` — Linux is a manual native build, see README), codesign, notarize,
+staple, checksum manifest, GitHub release. Version/commit come from
+`internal/buildinfo` (stamped via ldflags at build time).
+
+Both halves call one script for the artifact work,
+`scripts/release-artifacts.sh`, so the workflow and the local fallback cannot
+drift. It publishes idempotently (create-or-clobber), which is what makes a
+failed run repairable with `gh workflow run release.yml -f tag=<tag>` rather
+than by deleting and re-pushing a tag.
+
+**Prerequisites:** clean working tree, `gh` CLI authenticated, `[Unreleased]`
+section in CHANGELOG.md. **No signing credentials are needed locally** — that
+is the point of the split. The seven repo secrets/variables CI needs, and the
+`--local-artifacts` fallback that does everything on your Mac, are documented
+in **[docs/releasing-signed-macos.md](docs/releasing-signed-macos.md)**. Pin
+the Team ID in `internal/buildinfo/signing.go`; `release.sh` refuses to
+release without one, on any platform. Notarization is an unbounded queue on
+Apple's side — minutes to over an hour — which is why it no longer runs on
+your terminal. To exercise the hardened runtime on a local build without a
+certificate, run `scripts/sign-macos.sh --adhoc cmd/hivegui/build/bin/hivegui.app`.
 
 **Version scheme:** [Semantic Versioning](https://semver.org/) — bump minor for new features, patch for bug fixes.
 

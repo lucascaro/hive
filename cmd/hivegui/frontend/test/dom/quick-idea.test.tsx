@@ -13,6 +13,7 @@
 import { describe, it, expect, vi, beforeAll, beforeEach } from 'vitest';
 import type { Mock } from 'vitest';
 import { act, fireEvent, render } from '@testing-library/react';
+import type { IdeaInfo } from '../../src/app/state.js';
 import {
   openModal,
   resetStore,
@@ -27,8 +28,22 @@ const AddIdea = vi.fn(
 
 // Forwarded variadically so a mock that drops an argument the real
 // binding gained still fails toHaveBeenCalledWith.
+const UpdateIdea = vi.fn(
+  (
+    _id: string,
+    _t: string,
+    _s: string,
+    _sess: string,
+    _k: string,
+    _p: string,
+  ): Promise<void> => Promise.resolve(),
+);
+
 vi.mock('../../src/bridge.js', () => ({
   AddIdea: (...a: Parameters<typeof AddIdea>) => AddIdea(...a),
+  UpdateIdea: (...a: Parameters<typeof UpdateIdea>) => UpdateIdea(...a),
+  ListIdeas: vi.fn(() => Promise.resolve()),
+  RemoveIdea: vi.fn(() => Promise.resolve()),
 }));
 
 vi.mock('../../src/app/dom.js', () => ({
@@ -65,6 +80,8 @@ beforeAll(async () => {
 beforeEach(() => {
   AddIdea.mockReset();
   AddIdea.mockResolvedValue(undefined);
+  UpdateIdea.mockReset();
+  UpdateIdea.mockResolvedValue(undefined);
   refocusActiveTerm.mockReset();
   setFocusedTile.mockReset();
   resetStore();
@@ -90,6 +107,24 @@ async function openOn(projectId: string, activeSessionId?: string) {
   if (activeSessionId) setActiveId(activeSessionId);
   await act(async () => {
     openQuickIdea(projectId);
+  });
+}
+
+// The inbox's Edit: the same sheet, opened on a record.
+async function openEditing(over: Partial<IdeaInfo> = {}) {
+  const idea: IdeaInfo = {
+    id: 'i1',
+    project_id: 'p1',
+    kind: 'idea',
+    text: 'the grid loses focus',
+    status: 'open',
+    created: '2026-09-05T10:00:00Z',
+    updated: '2026-09-05T10:00:00Z',
+    ...over,
+  };
+  // Opened on the idea's OWN project, the way editIdea does it.
+  await act(async () => {
+    openQuickIdea(idea.project_id, idea);
   });
 }
 
@@ -222,5 +257,77 @@ describe('quick idea capture', () => {
     });
     await openOn('p1');
     expect(textField().value).toBe('');
+  });
+});
+
+// The inbox's Edit reuses this sheet, because the fields capture asked
+// for are exactly the fields that can be wrong: the capture sheet
+// pre-fills the project from whatever session was focused, so a
+// mis-filed note is the default being wrong rather than user error.
+describe('quick idea in edit mode', () => {
+  it('pre-fills all three controls from the record', async () => {
+    await openEditing({ kind: 'bug', project_id: 'p2' });
+    expect(textField().value).toBe('the grid loses focus');
+    expect(el<HTMLSelectElement>('quick-idea-project').value).toBe('p2');
+    expect(
+      el('quick-idea-kind').querySelector<HTMLInputElement>(
+        'input[value="bug"]',
+      )?.checked,
+    ).toBe(true);
+  });
+
+  it('says it is editing rather than capturing', async () => {
+    await openEditing();
+    expect(el('quick-idea').textContent).toContain('Edit idea');
+  });
+
+  it('falls back to the default kind for an unrecognised one', async () => {
+    // The daemon validates kind against a closed set, so a record
+    // carrying something else must not leave the control with nothing
+    // selected.
+    await openEditing({ kind: 'epic' });
+    expect(
+      el('quick-idea-kind').querySelector<HTMLInputElement>(
+        'input[value="idea"]',
+      )?.checked,
+    ).toBe(true);
+  });
+
+  it('saves the text, the kind and the project in one patch', async () => {
+    await openEditing();
+    fireEvent.change(textField(), { target: { value: '  sharper  ' } });
+    const bug =
+      el('quick-idea-kind').querySelector<HTMLInputElement>(
+        'input[value="bug"]',
+      );
+    fireEvent.click(bug as HTMLInputElement);
+    fireEvent.change(el('quick-idea-project'), { target: { value: 'p2' } });
+    fireEvent.click(el('quick-idea-save'));
+    await flush();
+    expect(UpdateIdea).toHaveBeenCalledWith(
+      'i1',
+      'sharper',
+      '',
+      '',
+      'bug',
+      'p2',
+    );
+    // Never a second record: editing is not filing.
+    expect(AddIdea).not.toHaveBeenCalled();
+    expect(el('quick-idea').classList.contains('hidden')).toBe(true);
+  });
+
+  it('keeps what was typed when the daemon would refuse it', async () => {
+    const { MAX_IDEA_TEXT } = await import('../../src/lib/ideas.js');
+    await openEditing();
+    const long = 'x'.repeat(MAX_IDEA_TEXT + 1);
+    fireEvent.change(textField(), { target: { value: long } });
+    fireEvent.keyDown(textField(), { key: 'Enter' });
+    await flush();
+    // The daemon rejects rather than truncates and nothing here awaits
+    // the answer, so a sheet that closed would lose the text outright.
+    expect(UpdateIdea).not.toHaveBeenCalled();
+    expect(el('quick-idea').classList.contains('hidden')).toBe(false);
+    expect(textField().value).toBe(long);
   });
 });

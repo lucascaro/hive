@@ -8,7 +8,7 @@
 // with a fresh inventory, so there is nothing to patch — `null` is the
 // loading state and every arriving payload is a full repaint.
 
-import { useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import type { ReactNode } from 'react';
 import {
   beginInlineRename,
@@ -38,6 +38,7 @@ import {
   shortPath,
   sortBranches,
   sortWorktrees,
+  sessionNames,
   statusLabel,
   type BranchInfo,
   type WorktreeInfo,
@@ -245,6 +246,17 @@ function WorktreeRow({
   onEndRename: () => void;
 }): ReactNode {
   const mainRef = useRef<HTMLDivElement | null>(null);
+  // Names, not ids: session_ids and the session list arrive on separate
+  // events, so an id with no live session is expected and is dropped.
+  // Selected as the raw array and mapped in a memo — returning a fresh
+  // array from the selector itself would hand useSyncExternalStore a new
+  // snapshot on every render, and the memo keeps the id->name walk off
+  // every unrelated session event.
+  const allSessions = useAppStore((st) => st.sessions);
+  const occupants = useMemo(
+    () => sessionNames(w, allSessions),
+    [w, allSessions],
+  );
 
   // The rename is still the shared imperative helper, for two reasons a
   // React-owned input would lose: keyboard.ts asks inlineRenameActive()
@@ -318,6 +330,12 @@ function WorktreeRow({
               {w.branch || shortPath(w.path)}
             </span>
             <span className="worktree-status">{statusLabel(w)}</span>
+            {/* Which sessions, not just how many. The count in the status
+                line answers "is this occupied"; the names answer "can I
+                delete it", which is the question the row is here for. */}
+            {occupants.length > 0 ? (
+              <span className="worktree-sessions">{occupants.join(', ')}</span>
+            ) : null}
             <Subject subject={w.subject} />
           </>
         )}

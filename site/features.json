@@ -1,9 +1,27 @@
 [
   {
+    "title": "Linked sessions for a shared worktree",
+    "blurb": "Sessions working in the same git worktree share a colour, show it as a bar on the row, and sit together in the sidebar — so you can see at a glance which ones are editing the same files.",
+    "status": "shipped",
+    "since": "Unreleased"
+  },
+  {
+    "title": "Idea inbox",
+    "blurb": "Press ⌘I anywhere to capture a note against a project, then start a session from it later — the launcher opens with the note as the agent's opening prompt.",
+    "status": "shipped",
+    "since": "2.7.0"
+  },
+  {
+    "title": "Signed and notarized macOS releases",
+    "blurb": "Downloads are signed with an Apple Developer ID and notarized, so a fresh install opens without the \"unidentified developer\" warning. The in-app updater refuses any release not signed by Hive, and says so plainly instead of reporting a checksum error.",
+    "status": "shipped",
+    "since": "2.7.0"
+  },
+  {
     "title": "What's new",
     "blurb": "The gift in the sidebar header lists what shipped, newest release first, and carries a dot until you have read it.",
     "status": "shipped",
-    "since": "Unreleased"
+    "since": "2.7.0"
   },
   {
     "title": "Sessions outlive the GUI",

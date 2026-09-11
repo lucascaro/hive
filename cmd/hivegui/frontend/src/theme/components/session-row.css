@@ -3,12 +3,12 @@
 .hv-session-row {
   position: relative;
   display: grid;
-  /* state | text | worktree | meta+actions | swatch. Every child is
-     placed explicitly (below) because meta and actions SHARE the fourth
-     cell — see the hover swap. Column gaps come from the children's own
-     margins rather than `gap`, so a row with no worktree contributes no
-     empty-column gap. */
-  grid-template-columns: 14px minmax(0, 1fr) auto auto auto;
+  /* state | text | idea | worktree | meta+actions | swatch. Every child
+     is placed explicitly (below) because meta and actions SHARE the
+     fifth cell — see the hover swap. Column gaps come from the
+     children's own margins rather than `gap`, so a row with no worktree
+     and no idea contributes no empty-column gaps. */
+  grid-template-columns: 14px minmax(0, 1fr) auto auto auto auto;
   align-items: center;
   row-gap: var(--space-2);
   min-height: 40px;
@@ -20,8 +20,19 @@
 .hv-session-row > * + * { margin-left: var(--space-2); }
 .hv-session-row__state { grid-column: 1; }
 .hv-session-row__text { grid-column: 2; }
-.hv-session-row__worktree { grid-column: 3; }
-.hv-session-row__swatch { grid-column: 5; }
+.hv-session-row__idea { grid-column: 3; }
+.hv-session-row__worktree-slot { grid-column: 4; }
+.hv-session-row__swatch { grid-column: 6; }
+
+/* Where the session came from. Not a button: the inbox is reached from
+   the project card's badge, and a second route to it on every row would
+   put one action in two places. Muted like the other passive metadata —
+   the row's loudest channel is its state dot. */
+.hv-session-row__idea {
+  display: inline-flex;
+  align-items: center;
+  color: var(--fg-subtle);
+}
 
 .hv-session-row:hover { background: var(--hover); color: var(--fg); }
 
@@ -40,6 +51,37 @@
   bottom: 0;
   width: 2px;
   background: var(--accent);
+}
+
+/* Shared worktree: a bar at the RIGHT edge, in the session's own colour.
+   Sessions that adopt a worktree inherit the colour of the session they
+   joined (internal/registry/create.go), so the bar is the same on every
+   member and reads as one group. The left edge is not available —
+   selection owns it, and patterns.md > Selection vs attention keeps the
+   two indicators off each other's position. Colour is never the only
+   channel: the count beside the branch glyph says the same thing. */
+.hv-session-row[data-wt-shared]::after {
+  content: '';
+  position: absolute;
+  right: 0;
+  top: 0;
+  bottom: 0;
+  width: 3px;
+  background: var(--session-color, var(--fg-subtle));
+}
+
+.hv-session-row__worktree-slot {
+  display: inline-flex;
+  align-items: center;
+}
+/* Reads as an exponent on the branch glyph rather than a second control.
+   Modelled on the project card's idea count. */
+.hv-session-row__worktree-count {
+  color: var(--fg-subtle);
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+  font-variant-numeric: tabular-nums;
+  line-height: 1;
 }
 
 .hv-session-row__text {
@@ -79,7 +121,7 @@
 .hv-session-row__actions {
   /* Both live in the same cell so the swap below can be opacity rather
      than `display` — see the hover-swap comment. */
-  grid-column: 4;
+  grid-column: 5;
   grid-row: 1;
   display: flex;
   align-items: center;

@@ -9,7 +9,7 @@
 # Needs `gh` authenticated. Not wired into CI on purpose — CI has no gh token
 # for this and the answer changes without the tree changing.
 set -uo pipefail
-cd "$(dirname "$0")/.."
+cd "$(dirname "$0")/.." || exit 1
 
 drift=0
 # The PR header is written three ways across the plans in active/:
