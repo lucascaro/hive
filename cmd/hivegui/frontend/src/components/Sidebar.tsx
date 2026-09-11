@@ -68,7 +68,6 @@ import { ProjectCard } from './ProjectCard.js';
 import { runReorder } from '../app/reorder-runner.js';
 import { SessionRow } from './SessionRow.js';
 import { WorktreeGroup } from './WorktreeGroup.js';
-import { displayName } from '../lib/session-name.js';
 import {
   clusterDropOps,
   clusterSessions,
@@ -402,7 +401,7 @@ function renderRows(
         attention={attentionSummary(run)}
       >
         {run.map((s) =>
-          item(s, run.length, !!defaultName && displayName(s) === defaultName),
+          item(s, run.length, !!defaultName && (s.name ?? '') === defaultName),
         )}
       </WorktreeGroup>,
     );

@@ -21,7 +21,7 @@ stage: REVIEW
 
 The sidebar is the one surface that shows every session at once, and four things get in the way of reading it.
 
-**The agent name is printed twice per row.** `internal/agent/names.go:49` builds an auto-generated name as `adjective-noun <agentID>`, and the row then renders the agent again as a two-letter code in the meta column — `rising-shore claude … cl`.
+**The agent name is printed twice per row.** `internal/agent/names.go:49` built an auto-generated name as `adjective-noun <agentID>`, and the row then rendered the agent again as a two-letter code in the meta column — `rising-shore claude … cl`.
 
 **Sessions in a worktree share one name, so rows become indistinguishable.** When a session gets a worktree, `internal/registry/create.go:475` names it after the branch: `strings.ReplaceAll(p.wtBranch, "/", "-") + " " + suffix`. Nothing uniquifies the result, so two Claude sessions on `feat/sidebar` are both named `feat-sidebar claude` — byte-identical rows for two different sessions. The information that actually tells them apart, the window title, is on the quiet second line.
 
@@ -31,7 +31,7 @@ The sidebar is the one surface that shows every session at once, and four things
 
 ## Desired behavior
 
-**Rows say each thing once.** The session name drops a trailing agent id when that id is the row's own agent, at display time only; the stored name is untouched, so rename, search and the `hive` CLI are unaffected. A user-chosen name is never altered. The agent is shown as its existing two-letter code on an 18% tint of the agent's own colour (`agent.Def.Color`, which already exists for built-ins and for user-defined agents); an agent with no colour falls back to the plain code on a neutral border.
+**Rows say each thing once.** A generated session name no longer contains the agent id: `agent.RandomName` returns `adjective-noun`, and a worktree session is named after its branch alone. The fix is at the source rather than at display time — nothing on the wire distinguishes a generated name from one the user typed, so trimming a trailing agent id at render would silently rewrite a session deliberately named "weekly claude". Names already stored keep whatever they were created with. The agent is shown as its existing two-letter code on an 18% tint of the agent's own colour (`agent.Def.Color`, which already exists for built-ins and for user-defined agents); an agent with no colour falls back to the plain code on a neutral border.
 
 **The window title gets the whole row.** Line 2 spans from the name column to the row's right edge. Row height is unchanged at 40px — the change is purely horizontal.
 
@@ -63,7 +63,7 @@ The bar *is* the colour picker: on hover or keyboard focus it widens from 3px to
 
 ## Non-goals
 
-- **Renaming the naming scheme.** `agent.RandomName` and the branch-derived name in `create.go` keep producing what they produce today; this spec only changes how a name is displayed.
+- **Renaming existing sessions.** `agent.RandomName` and the branch-derived name in `create.go` stop appending the agent id, but nothing rewrites names already stored — a session created before this change keeps the name it has.
 - **Distinguishing auto-picked colours from user-chosen ones.** `create.go:321` assigns every session a colour via `pickColor()` and nothing records which were deliberate. Hiding "default" colours would need a new `colorExplicit` bit on the entry; the edge-bar treatment sidesteps it by showing every session's colour.
 - **Editing window titles.** Hive passes the program's OSC 0/2 title through untouched (`internal/session/session.go:42`) and will continue to. Stripping repeated prefixes from titles is a separate, riskier feature.
 - **Grid, tile and minimized-tray surfaces.** Unchanged beyond whatever falls out of shared tokens.
@@ -75,7 +75,7 @@ These were settled against mockups; the exec plan should not relitigate them.
 
 | Question | Decision |
 |---|---|
-| Agent identity | Two-letter code on an 18% tint of the agent colour; plain code for colourless agents |
+| Agent identity | Two-letter code on an 18% tint of the agent colour; plain code for colourless agents. The name itself stops carrying the agent (Go-side), rather than being trimmed at render |
 | Row layout | Two lines, subtitle spanning `grid-column: 2 / -1`, 40px unchanged |
 | Density | Three-value setting; **normal** is the default |
 | Worktree group | Bordered panel with branch header; rows show title only, name only when renamed |

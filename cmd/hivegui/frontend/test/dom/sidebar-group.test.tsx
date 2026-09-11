@@ -47,13 +47,13 @@ describe('worktree group panel', () => {
     const ul = await mount(
       sessions(
         {
-          name: 'feat-sidebar claude',
+          name: 'feat-sidebar',
           worktree_path: '/wt/a',
           worktree_branch: 'feat/sidebar',
           title: 'npm run build',
         },
         {
-          name: 'feat-sidebar codex',
+          name: 'feat-sidebar',
           agent: 'codex',
           worktree_path: '/wt/a',
           worktree_branch: 'feat/sidebar',
@@ -78,7 +78,7 @@ describe('worktree group panel', () => {
   it('leaves a lone worktree session as a plain row', async () => {
     const ul = await mount(
       sessions({
-        name: 'feat-sidebar claude',
+        name: 'feat-sidebar',
         worktree_path: '/wt/a',
         worktree_branch: 'feat/sidebar',
       }),
@@ -91,13 +91,13 @@ describe('worktree group panel', () => {
     const ul = await mount(
       sessions(
         {
-          name: 'feat-sidebar claude',
+          name: 'feat-sidebar',
           worktree_path: '/wt/a',
           worktree_branch: 'feat/sidebar',
           title: 'npm run build',
         },
         {
-          name: 'feat-sidebar codex',
+          name: 'feat-sidebar',
           agent: 'codex',
           worktree_path: '/wt/a',
           worktree_branch: 'feat/sidebar',
@@ -119,7 +119,7 @@ describe('worktree group panel', () => {
     const ul = await mount(
       sessions(
         {
-          name: 'feat-sidebar claude',
+          name: 'feat-sidebar',
           worktree_path: '/wt/a',
           worktree_branch: 'feat/sidebar',
           title: 'npm run build',
@@ -151,13 +151,13 @@ describe('worktree group panel', () => {
     const ul = await mount(
       sessions(
         {
-          name: 'feat-sidebar claude',
+          name: 'feat-sidebar',
           alive: true,
           worktree_path: '/wt/a',
           worktree_branch: 'feat/sidebar',
         },
         {
-          name: 'feat-sidebar codex',
+          name: 'feat-sidebar',
           agent: 'codex',
           alive: true,
           worktree_path: '/wt/a',
@@ -171,21 +171,20 @@ describe('worktree group panel', () => {
     expect(names).toEqual(['feat-sidebar', 'feat-sidebar']);
   });
 
-  // Shell sessions carry the literal "shell" suffix with an EMPTY agent id
-  // (registry/create.go), so the dedupe and the titleOnly rule both have to
-  // handle them or a pair of shells stays byte-identical.
+  // Two shells on one worktree get the SAME name — the branch, with no
+  // agent to tell them apart (that is why the panel leads with titles).
   it('groups two shell sessions and leads with their titles', async () => {
     const ul = await mount(
       sessions(
         {
-          name: 'feat-sidebar shell',
+          name: 'feat-sidebar',
           agent: '',
           worktree_path: '/wt/a',
           worktree_branch: 'feat/sidebar',
           title: 'tail -f log',
         },
         {
-          name: 'feat-sidebar shell',
+          name: 'feat-sidebar',
           agent: '',
           worktree_path: '/wt/a',
           worktree_branch: 'feat/sidebar',
@@ -203,12 +202,12 @@ describe('worktree group panel', () => {
     const ul = await mount(
       sessions(
         {
-          name: 'feat-sidebar claude',
+          name: 'feat-sidebar',
           worktree_path: '/wt/a',
           worktree_branch: 'feat/sidebar',
         },
         {
-          name: 'feat-sidebar codex',
+          name: 'feat-sidebar',
           agent: 'codex',
           worktree_path: '/wt/a',
           worktree_branch: 'feat/sidebar',

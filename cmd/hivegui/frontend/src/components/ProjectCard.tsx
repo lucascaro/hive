@@ -19,6 +19,7 @@ import type {
 import { isMac } from '../lib/platform.js';
 import { mod } from '../lib/shortcuts.js';
 import { Icon } from './Icon.js';
+import { useCollapseTransition } from '../lib/use-collapse.js';
 import { IconButton } from './IconButton.js';
 import type { ProjectInfo } from '../app/state.js';
 
@@ -61,6 +62,7 @@ function countText(p: ProjectCardProps): string {
 
 export function ProjectCard(p: ProjectCardProps) {
   const proj = p.project;
+  const animating = useCollapseTransition(p.collapsed);
   const name = proj.name ?? 'project';
   const style = proj.color
     ? ({ '--project-color': proj.color } as CSSProperties)
@@ -71,6 +73,7 @@ export function ProjectCard(p: ProjectCardProps) {
       className="hv-project-card"
       data-pid={proj.id}
       data-collapsed={p.collapsed ? '' : undefined}
+      data-animating={animating ? '' : undefined}
       data-active={p.active ? '' : undefined}
       data-state={p.attention ? 'attention' : undefined}
       draggable
@@ -200,7 +203,14 @@ export function ProjectCard(p: ProjectCardProps) {
           />
         </span>
       </div>
-      <ul className="hv-project-card__body">{p.children}</ul>
+      {/* A clip wrapper around the row list: the 0fr↔1fr collapse
+          transition needs ONE grid child, and the rows must stay in a
+          <ul> of their own (drag-reorder inserts its placeholder as a
+          sibling <li>). See lib/use-collapse.ts for why the clip is not
+          permanent. */}
+      <div className="hv-project-card__body">
+        <ul className="hv-project-card__rows">{p.children}</ul>
+      </div>
     </li>
   );
 }

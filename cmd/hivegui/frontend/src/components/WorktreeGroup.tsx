@@ -14,6 +14,7 @@
 // indifferent to the nesting.
 import { useId, useState, type CSSProperties, type ReactNode } from 'react';
 import { Icon, StateIcon } from './Icon.js';
+import { useCollapseTransition } from '../lib/use-collapse.js';
 import type { AttentionSummary } from '../lib/session-state.js';
 
 export interface WorktreeGroupProps {
@@ -42,6 +43,7 @@ export function WorktreeGroup(p: WorktreeGroupProps) {
   // mounted while the group exists, so useState survives every re-render
   // that matters.
   const [collapsed, setCollapsed] = useState(false);
+  const animating = useCollapseTransition(collapsed);
   const bodyId = useId();
   const label = p.branch || 'detached HEAD';
   const hidden = collapsed && p.attention.count > 0;
@@ -52,6 +54,7 @@ export function WorktreeGroup(p: WorktreeGroupProps) {
     <li
       className="hv-worktree-group"
       data-collapsed={collapsed ? '' : undefined}
+      data-animating={animating ? '' : undefined}
       style={style}
     >
       <div className="hv-worktree-group__header">
@@ -91,9 +94,10 @@ export function WorktreeGroup(p: WorktreeGroupProps) {
           {p.count}
         </span>
       </div>
-      <ul className="hv-worktree-group__body" id={bodyId}>
-        {p.children}
-      </ul>
+      {/* Clip wrapper; see ProjectCard and lib/use-collapse.ts. */}
+      <div className="hv-worktree-group__body" id={bodyId}>
+        <ul className="hv-worktree-group__rows">{p.children}</ul>
+      </div>
     </li>
   );
 }

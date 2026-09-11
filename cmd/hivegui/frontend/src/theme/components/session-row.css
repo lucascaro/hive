@@ -177,9 +177,9 @@
   opacity: 0;
   pointer-events: none;
 }
-/* The agent, said once. The name no longer repeats it (lib/session-name.ts
-   drops the trailing id), so this glyph is the only place the row states
-   which agent it is. An 18% tint rather than a solid fill: Claude's
+/* The agent, said once. A generated name no longer carries it
+   (internal/agent/names.go), so this glyph is the only place the row
+   states which agent it is. An 18% tint rather than a solid fill: Claude's
    #f59e0b sits between --accent and --state-attention, and a solid chip
    on every row would compete with both. --agent-color is data (the
    agent's own colour from internal/agent/agent.go), not a token; an agent

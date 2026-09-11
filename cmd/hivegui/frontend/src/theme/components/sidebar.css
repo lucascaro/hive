@@ -129,12 +129,38 @@
   outline: 2px solid var(--accent);
   outline-offset: 1px;
 }
+/* Same mechanism as the project card's body — and the same reason the
+   clip is conditional rather than permanent (lib/use-collapse.ts). */
 .hv-worktree-group__body {
+  display: grid;
+  grid-template-rows: 1fr;
+  /* `visibility` is stepped, not eased: it flips to visible immediately on
+     expand (delay 0) and only AFTER the slide on collapse (delay =
+     duration). Clipping alone would leave the hidden rows in the tab
+     order and readable by a screen reader — a collapsed panel has to be
+     gone, not merely invisible. */
+  visibility: visible;
+  transition:
+    grid-template-rows var(--motion-collapse) ease,
+    visibility 0s;
+}
+.hv-worktree-group__rows {
   list-style: none;
   margin: 0;
   padding: 0;
+  min-height: 0;
 }
-.hv-worktree-group[data-collapsed] .hv-worktree-group__body { display: none; }
+.hv-worktree-group[data-collapsed] .hv-worktree-group__body {
+  grid-template-rows: 0fr;
+  visibility: hidden;
+  transition:
+    grid-template-rows var(--motion-collapse) ease,
+    visibility 0s linear var(--motion-collapse);
+}
+.hv-worktree-group[data-collapsed] .hv-worktree-group__body,
+.hv-worktree-group[data-animating] .hv-worktree-group__body {
+  overflow: hidden;
+}
 
 /* One colour bar for the whole group: members share a colour, so a bar
    per row would be three marks for one fact. The per-row bar is hidden,

@@ -25,7 +25,6 @@ import { Kbd } from './Kbd.js';
 import { isClosing, phaseOf } from '../lib/phase-steps.js';
 import { type SessionState, stateTooltip } from '../lib/session-state.js';
 import { displayTitle } from '../lib/term-title.js';
-import { displayName } from '../lib/session-name.js';
 import { useAppStore } from '../store/store.js';
 import type { SessionInfo } from '../app/state.js';
 
@@ -187,7 +186,7 @@ export function SessionRow(p: SessionRowProps) {
             no window title, and displayTitle() suppresses one that just
             echoes the name — so titleOnly falls back to the name rather
             than rendering a row with no line at all. */}
-        {p.titleOnly && sub ? sub : displayName(s)}
+        {p.titleOnly && sub ? sub : name}
       </span>
       {p.titleOnly ? null : (
         <span className="hv-session-row__sub" title={sub}>

@@ -14,8 +14,18 @@ async function boot(page: Page) {
   );
 }
 
-// A group, plus enough plain sessions after it to make the list scroll.
+// A group with enough plain sessions BEFORE it to push it down the list,
+// and more after it so the list scrolls past. Sessions before the group
+// are load-bearing: with the group at the top, scrolling its rows into
+// view clamps scrollTop to 0 and the sticky assertions would hold for a
+// header that never left its laid-out position.
 async function seedScrollableGroup(page: Page) {
+  for (let i = 0; i < 8; i++) {
+    await page.evaluate((n) => window.__hive.addSession?.(n), `before${i}`);
+  }
+  await page.waitForFunction(
+    () => (window.__hive.state?.sessions.length ?? 0) >= 9,
+  );
   await page.evaluate(() =>
     window.__hive.createSessionWithWorktree?.('alpha', 'feat/sticky'),
   );
@@ -31,11 +41,11 @@ async function seedScrollableGroup(page: Page) {
     (p) => window.__hive.createSessionInWorktree?.('beta', p),
     wt,
   );
-  for (let i = 0; i < 14; i++) {
-    await page.evaluate((n) => window.__hive.addSession?.(n), `filler${i}`);
+  for (let i = 0; i < 8; i++) {
+    await page.evaluate((n) => window.__hive.addSession?.(n), `after${i}`);
   }
   await page.waitForFunction(
-    () => (window.__hive.state?.sessions.length ?? 0) >= 16,
+    () => (window.__hive.state?.sessions.length ?? 0) >= 19,
   );
   await page.waitForSelector('.hv-worktree-group__header');
 }
@@ -92,7 +102,6 @@ test.describe('sticky sidebar headers', () => {
     await boot(page);
     await seedScrollableGroup(page);
 
-    const label = page.locator('.hv-project-card__header').first();
     const header = page.locator('.hv-worktree-group__header').first();
 
     // Scroll to the middle of the group, so its rows are the ones in view.
@@ -101,6 +110,13 @@ test.describe('sticky sidebar headers', () => {
       const rows = panel?.querySelectorAll('.hv-session-row');
       rows?.[rows.length - 1]?.scrollIntoView({ block: 'center' });
     });
+    // The group sits near the top of the list, so centring its last row
+    // can clamp scrollTop to 0 — and then every assertion below would
+    // hold for a header that is merely sitting where it was laid out.
+    // Sticky is only under test once the list has actually scrolled.
+    expect(
+      await page.locator('#projects').evaluate((el) => el.scrollTop),
+    ).toBeGreaterThan(0);
 
     const boxes = await page.evaluate(() => {
       const r = (sel: string) =>

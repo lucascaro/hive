@@ -36,7 +36,7 @@ Seven slices, each one commit, each leaving the sidebar coherent on its own: (1)
 
 ### Files to change
 
-- `src/components/SessionRow.tsx` — `displayName()`, the agent glyph's colour, name/title as direct grid children, the colour bar, `titleOnly`
+- `src/components/SessionRow.tsx` — the agent glyph's colour, name/title as direct grid children, the colour bar, `titleOnly`
 - `src/components/Sidebar.tsx` — wraps each run of worktree-sharing sessions in a panel (`renderRows`)
 - `src/store/store.ts`, `src/main.tsx` — `agentColors`, filled at boot from `ListAgents()`; density stamped on import
 - `src/components/modals/Settings.tsx` — the density picker, beside the theme picker
@@ -45,7 +45,7 @@ Seven slices, each one commit, each leaving the sidebar coherent on its own: (1)
 
 ### New files
 
-- `src/lib/session-name.ts` — `displayName()`
+- `src/lib/use-collapse.ts` — `useCollapseTransition()`, the clip window for the collapse animation
 - `src/components/WorktreeGroup.tsx` — the panel
 - `src/theme/density.ts` — `Density`, `DENSITY_KEY`, `readDensity`, `applyDensity`
 
@@ -268,6 +268,8 @@ export function displayName(s: { name?: string; agent?: string }): string {
 - **2026-09-10** — Agent glyph is an 18% tint, not a solid fill. Why: Claude's `#f59e0b` would otherwise compete with `--state-attention` on most rows.
 - **2026-09-10** — Inside a group, a row shows its name only when it differs from the branch-derived default. Why: dropping the name unconditionally would hide a name the user deliberately chose.
 - **2026-09-10** — Group headers pin under the project label rather than scrolling away. Why: rows that scroll away from their branch header lose the thing the group exists to say.
+- **2026-09-11** — The agent id comes OUT of generated names (Go-side) instead of being trimmed at display time; `lib/session-name.ts` is deleted. Why: `nameFromBranch` is registry-internal (`create.go:53`) and nothing on the wire marks a name as generated, so a display-time trim rewrote a name the user typed — "weekly claude" rendered as "weekly", contradicting the spec's own guarantee. Existing names are left alone.
+- **2026-09-11** — Collapse animates a 0fr↔1fr grid row on a clip wrapper, and the clip is applied only while collapsed or mid-transition (`lib/use-collapse.ts` stamps `data-animating`). Why: a permanent `overflow: hidden` on the project body would make it the nearest scroll container and silently kill every sticky group header inside it. `visibility` flips on a delay so collapsed rows leave the tab order rather than being merely clipped.
 - **2026-09-11** — Worktree-group collapse is component state, not the store's `collapsed` set. Why: that set is keyed by project id and pruned against the project list on every `project:list`, which would silently drop a worktree key.
 - **2026-09-11** — The attention tint is an `::after` overlay, not the row's own `background-color`. Why: an animation's value beats a normal declaration, so pulsing the row would override `[data-selected]`'s `--sel` and a selected row would stop reading as selected for as long as it wanted attention.
 - **2026-09-11** — The action buttons span both grid rows. Why: at 24px they are taller than either line, and as a row-1 child they sized row 1 and pushed the row to 41.8px. (`grid-row: 1 / -1` does NOT work here — the rows are implicit, so `-1` resolves to the explicit grid's last line, which is line 1, and the span silently collapses. `span 2` is the working form.)
@@ -278,8 +280,10 @@ export function displayName(s: { name?: string; agent?: string }): string {
 ## Progress
 
 - **2026-09-10** — Spec written; exec plan opened at RESEARCH.
-- **2026-09-11** — Review fix: compact density now keeps the window title as its one line, not the name. Reported from the running build.
-- **2026-09-11** — All seven slices implemented, one commit each. `biome ci`, `tsc --noEmit`, 1237 vitest tests and 309 Playwright tests pass. Stage → REVIEW.
+- **2026-09-11** — All seven slices implemented, one commit each. Stage → REVIEW.
+- **2026-09-11** — Review fix: compact density keeps the window title as its one line, not the name. Reported from the running build.
+- **2026-09-11** — `/hs-review-pr` findings applied (see the decision log), then `/hs-autofix` on the CodeRabbit threads.
+- **2026-09-11** — Final verification: `biome ci`, `tsc --noEmit`, `go build ./...`, 1235 vitest tests and 316 Playwright tests pass. `internal/registry`'s `TestTerminalQueriesAreNotWork` fails identically on an untouched `main` checkout (a local timing test) and is unrelated to this work; CI is green on all 13 checks.
 
 ## Open questions
 

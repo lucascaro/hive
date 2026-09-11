@@ -1,9 +1,9 @@
 // @vitest-environment jsdom
 //
-// The agent is stated once per row: the glyph. Line 1 used to end in the
-// same agent id (internal/agent/names.go builds "adjective-noun <agentID>"),
-// so this suite pins both halves — the glyph carries the agent's colour,
-// and the name element renders displayName(), not the stored name.
+// The agent is stated once per row: the glyph. Generated names used to end
+// in the agent id too (internal/agent/names.go), and the fix is at the
+// source — the name no longer carries it — so the row renders the stored
+// name verbatim and the glyph is the only statement of which agent it is.
 import { describe, it, expect, beforeEach } from 'vitest';
 import { render } from '@testing-library/react';
 import {
@@ -78,10 +78,14 @@ describe('agent glyph', () => {
     );
   });
 
-  it('drops the agent id the glyph already states from line 1', () => {
-    const el = row({ name: 'rising-shore claude', agent: 'claude' });
+  // Never edited at display time: nothing on the wire tells a generated
+  // name from one the user typed, so a session deliberately named
+  // "weekly claude" has to survive intact. New sessions simply are not
+  // given the agent id (internal/agent/names.go).
+  it('renders the stored name verbatim, agent-looking tail and all', () => {
+    const el = row({ name: 'weekly claude', agent: 'claude' });
     expect(el.querySelector('.hv-session-row__name')?.textContent).toBe(
-      'rising-shore',
+      'weekly claude',
     );
   });
 });

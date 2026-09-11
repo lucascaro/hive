@@ -6,7 +6,7 @@
 .hv-project-card {
   position: relative;
   list-style: none;
-  margin: var(--space-2) 0 var(--space-1);
+  margin: var(--space-2) 0 var(--space-3);
 }
 
 .hv-project-card__header {
@@ -109,12 +109,43 @@
 .hv-project-card__header:hover .hv-project-card__actions,
 .hv-project-card__header:focus-within .hv-project-card__actions { display: flex; }
 
+/* Collapse animates the wrapper's single grid row from 1fr to 0fr. The
+   clip that makes that read as a slide is applied only while collapsed or
+   mid-transition (lib/use-collapse.ts stamps data-animating): a permanent
+   `overflow: hidden` here would make this box the nearest scroll
+   container and silently kill the sticky group headers inside it. */
 .hv-project-card__body {
+  display: grid;
+  grid-template-rows: 1fr;
+  /* `visibility` is stepped, not eased: it flips to visible immediately on
+     expand (delay 0) and only AFTER the slide on collapse (delay =
+     duration). Clipping alone would leave the hidden rows in the tab
+     order and readable by a screen reader — a collapsed panel has to be
+     gone, not merely invisible. */
+  visibility: visible;
+  transition:
+    grid-template-rows var(--motion-collapse) ease,
+    visibility 0s;
+}
+/* No padding of its own: padding survives a 0fr track (min-height: 0
+   removes the content's automatic minimum, not the box's own padding), so
+   a collapsed card would keep a 4px sliver. The gap between projects is
+   the card's margin instead. */
+.hv-project-card__rows {
   list-style: none;
   margin: 0;
-  padding: 0 0 var(--space-1);
+  padding: 0;
+  min-height: 0;
 }
-.hv-project-card[data-collapsed] .hv-project-card__body { display: none; }
+.hv-project-card[data-collapsed] .hv-project-card__body {
+  grid-template-rows: 0fr;
+  visibility: hidden;
+  transition:
+    grid-template-rows var(--motion-collapse) ease,
+    visibility 0s linear var(--motion-collapse);
+}
+.hv-project-card[data-collapsed] .hv-project-card__body,
+.hv-project-card[data-animating] .hv-project-card__body { overflow: hidden; }
 
 .hv-project-card .project-name-input {
   flex: 1;

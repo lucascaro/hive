@@ -39,26 +39,29 @@ func randomIndex(n int) int {
 	return rand.IntN(n)
 }
 
-// RandomName returns "<adjective>-<noun> <suffix>" where suffix is the
-// agent's canonical ID (or "shell" when id is empty / unknown).
+// RandomName returns "<adjective>-<noun>".
+//
+// The agent's id used to be appended, which made every surface that also
+// SHOWS the agent say it twice — the GUI sidebar renders it as a coloured
+// two-letter glyph beside the name. Stripping it back out at display time
+// was worse: nothing on the wire distinguishes a generated name from one
+// the user typed, so a session deliberately named "weekly claude" lost a
+// word. The name simply does not carry the agent any more.
+//
+// Names already stored keep whatever they were created with; this is the
+// name a NEW session gets.
 //
 // Examples:
 //
-//	"amber-falcon claude"
-//	"still-meadow shell"
-func RandomName(id ID) string {
-	suffix := string(id)
-	if suffix == "" {
-		suffix = "shell"
-	}
+//	"amber-falcon"
+//	"still-meadow"
+func RandomName(ID) string {
 	a := adjectives[randomIndex(len(adjectives))]
 	n := nouns[randomIndex(len(nouns))]
 	var b strings.Builder
-	b.Grow(len(a) + 1 + len(n) + 1 + len(suffix))
+	b.Grow(len(a) + 1 + len(n))
 	b.WriteString(a)
 	b.WriteByte('-')
 	b.WriteString(n)
-	b.WriteByte(' ')
-	b.WriteString(suffix)
 	return b.String()
 }
