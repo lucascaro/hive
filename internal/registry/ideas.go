@@ -143,6 +143,9 @@ func (r *Registry) UpdateIdea(req wire.UpdateIdeaReq) (wire.IdeaInfo, error) {
 	if req.Status != nil && !wire.IdeaStatuses[*req.Status] {
 		return wire.IdeaInfo{}, fmt.Errorf("%w: %q", ErrIdeaBadStatus, *req.Status)
 	}
+	if req.Kind != nil && !wire.IdeaKinds[*req.Kind] {
+		return wire.IdeaInfo{}, fmt.Errorf("%w: %q", ErrIdeaBadKind, *req.Kind)
+	}
 
 	r.mu.Lock()
 	f, ok := r.ideas[req.ID]
@@ -165,6 +168,20 @@ func (r *Registry) UpdateIdea(req wire.UpdateIdeaReq) (wire.IdeaInfo, error) {
 	}
 	if req.SessionID != nil {
 		next.SessionID = *req.SessionID
+	}
+	if req.Kind != nil {
+		next.Kind = *req.Kind
+	}
+	if req.ProjectID != nil {
+		// Checked against the live registry, not just for emptiness: a
+		// re-project onto an id no project owns would strand the note
+		// behind every project filter, reachable only by the reattach
+		// loadIdeas runs on the NEXT boot.
+		if _, ok := r.projects[*req.ProjectID]; !ok {
+			r.mu.Unlock()
+			return wire.IdeaInfo{}, ErrProjectNotFound
+		}
+		next.ProjectID = *req.ProjectID
 	}
 	next.Updated = time.Now().UTC()
 	if err := writeJSON(ideaPath(r.stateDir, next.ID), &next); err != nil {

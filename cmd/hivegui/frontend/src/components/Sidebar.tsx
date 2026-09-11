@@ -41,19 +41,19 @@ import { openWhatsNew } from '../app/modals/whats-new.js';
 import { openWorktrees } from '../app/modals/worktrees.js';
 import { openIdeaInbox } from '../app/modals/idea-inbox.js';
 import { activeProjectId, orderedSessions } from '../app/selectors.js';
-import type { ProjectInfo, SessionInfo } from '../app/state.js';
+import type { IdeaInfo, ProjectInfo, SessionInfo } from '../app/state.js';
 import { noteLocalClose } from '../app/undo-close.js';
 import {
   beginDrag,
   endDrag,
   moveTo as movePlaceholder,
 } from '../lib/drag-placeholder.js';
-import { dropTargetIndex } from '../lib/reorder.js';
 import { attentionSummary, sessionState } from '../lib/session-state.js';
 import { hasUnread, latestVersion } from '../lib/whats-new.js';
 import { readProjectId } from '../lib/wire.js';
 import {
   appStore,
+  ideaForSession,
   openIdeasOf,
   toggleCollapsed,
   useAppStore,
@@ -65,7 +65,14 @@ import { Chip } from './Chip.js';
 import { Icon } from './Icon.js';
 import { IconButton } from './IconButton.js';
 import { ProjectCard } from './ProjectCard.js';
+import { runReorder } from '../app/reorder-runner.js';
 import { SessionRow } from './SessionRow.js';
+import {
+  clusterDropOps,
+  clusterSessions,
+  worktreeGroups,
+  worktreeKey,
+} from '../lib/worktree-groups.js';
 
 // Per-module, not a shared deps union: the sidebar wants
 // refocusActiveTerm where view wants focusActiveTerm, and one union type
@@ -167,19 +174,24 @@ function reorderDroppedProject(
   );
 }
 
-// reorderDroppedSession hands the drop to lib/reorder.ts's dropTargetIndex
-// and forwards the result. The index math lives there, next to the keyboard
-// path's reorderTarget, because both rest on the same invariant — a session's
-// .order IS its index in the daemon's r.order — and because a pure function
-// is the only way to table-test the off-by-one this used to have.
+// reorderDroppedSession hands the drop to lib/worktree-groups.ts's
+// clusterDropOps and forwards the result. The index math lives there, next to
+// the keyboard path's clusterReorderOps, because both rest on the same
+// invariant — the painted order IS the order — and because a pure function is
+// the only way to table-test the off-by-one this used to have.
 function reorderDroppedSession(
   draggedID: string,
   targetID: string,
   above: boolean,
 ) {
-  const order = dropTargetIndex(appData().sessions, draggedID, targetID, above);
-  if (order === null) return;
-  UpdateSession(draggedID, '', '', order).catch(reportFailure('reorder'));
+  // Sessions sharing a worktree paint as a block (clusterSessions), so
+  // moving one member alone would look like nothing happened — the cluster
+  // rule puts it straight back. Which block moves, and whether the drop
+  // reorders inside a group instead, is clusterDropOps' call; runReorder
+  // owns applying the ops in order and refusing to interleave two drops.
+  const ops = clusterDropOps(appData().sessions, draggedID, targetID, above);
+  if (ops.length === 0) return;
+  void runReorder(ops);
 }
 
 // ---------- session row ----------
@@ -194,6 +206,12 @@ interface SessionItemProps {
   // prop, where `() => switchTo(s.id)` would be a fresh function on
   // every parent render and would defeat the memo below.
   sidebar: SidebarProps;
+  /** The idea this session was started from, if any. */
+  ideaText: string;
+  /** How many sessions share this one's worktree. A number, not the group:
+      SessionItem is memoized on primitives, and handing it the member list
+      would re-render every row on every unrelated session event. */
+  worktreeShared: number;
 }
 
 // memo, and every other prop a primitive or the session's own object
@@ -241,10 +259,12 @@ const SessionItem = memo(function SessionItem(p: SessionItemProps) {
   return (
     <SessionRow
       session={p.session}
+      ideaText={p.ideaText}
       state={sessionState(p.session)}
       selected={p.selected}
       minimized={p.minimized}
       index={p.index}
+      worktreeShared={p.worktreeShared}
       nameRef={nameRef}
       onSelect={() => p.sidebar.switchTo(id)}
       onMinimize={() => p.sidebar.minimizeSession(id)}
@@ -317,6 +337,8 @@ interface ProjectItemProps {
   activeId: string | null;
   /** Open ideas for this project — the header badge's count. */
   ideaCount: number;
+  /** Every idea, for the per-row "started from an idea" glyph. */
+  ideas: IdeaInfo[];
 }
 
 function ProjectItem(o: ProjectItemProps) {
@@ -326,6 +348,10 @@ function ProjectItem(o: ProjectItemProps) {
   // Same helper the minimized chip uses, so the collapsed card's
   // "k waiting on you" and the chip's alert count can never disagree.
   const attentionCount = attentionSummary(o.sessions).count;
+  // Which of this card's rows share a worktree. Project-scoped because
+  // worktree paths are, and because a group can only paint adjacently
+  // inside one card's <ul>.
+  const groups = worktreeGroups(o.sessions);
 
   // dragstart bubbles, so a session-row drag fires here too after its own
   // handler runs. We must not preventDefault in that case (it would
@@ -434,6 +460,11 @@ function ProjectItem(o: ProjectItemProps) {
           index={o.hints.get(s.id) ?? null}
           selected={s.id === o.activeId}
           minimized={o.minimizedSessions.has(s.id)}
+          // A string, not the IdeaInfo: SessionItem is memoized on
+          // primitives, and a fresh object here would re-render every
+          // row on every unrelated idea event.
+          ideaText={ideaForSession(o.ideas, s.id)?.text ?? ''}
+          worktreeShared={groups.get(worktreeKey(s))?.length ?? 1}
           sidebar={o.props}
         />
       ))}
@@ -483,9 +514,9 @@ export function Sidebar(props: SidebarProps) {
         <ProjectItem
           key={p.id}
           project={p}
-          sessions={sessions
-            .filter((s) => readProjectId(s) === p.id)
-            .sort((a, b) => (a.order ?? 0) - (b.order ?? 0))}
+          sessions={clusterSessions(
+            sessions.filter((s) => readProjectId(s) === p.id),
+          )}
           activePID={activePID}
           collapsed={collapsed.has(p.id)}
           props={props}
@@ -493,6 +524,7 @@ export function Sidebar(props: SidebarProps) {
           minimizedSessions={minimized}
           activeId={activeId}
           ideaCount={openIdeasOf(ideas, p.id).length}
+          ideas={ideas}
         />
       ))}
       {tray

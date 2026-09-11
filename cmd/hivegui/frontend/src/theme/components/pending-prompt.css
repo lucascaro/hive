@@ -1,0 +1,49 @@
+/* Pending opening prompt — the paste/dismiss bar.
+   docs/design-docs/ui/components.md › banner is the nearest relative:
+   same surface, same muted label.
+
+   Pinned to the BOTTOM, just above the status bar, because that is
+   where the agent's own input line is and where you are looking when
+   you decide it is ready for the note. Fixed rather than a grid row:
+   it appears and disappears with one session's state, and a bar that
+   reflowed the whole app each time would be worse than the problem it
+   solves — the launcher's own capability warning taught that lesson. */
+.hv-pending-prompt {
+  position: fixed;
+  left: 0;
+  right: 0;
+  /* Clears #status (24px + 1px border, components.md). */
+  bottom: 25px;
+  z-index: 15;
+  /* A <fieldset>, so its UA border/margin/padding are reset here. */
+  margin: 0;
+  border: 0;
+  border-top: 1px solid var(--border);
+  box-shadow: 0 -4px 12px rgba(0, 0, 0, 0.28);
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  padding: var(--space-2) var(--space-3);
+  background: var(--surface-raised);
+  font-size: var(--text-sm);
+}
+.hv-pending-prompt__label {
+  flex: none;
+  color: var(--fg-subtle);
+  font-size: var(--text-xs);
+}
+.hv-pending-prompt__text {
+  /* Scrolls rather than clamping: this is the last look at the note
+     before it goes to an agent, so none of it is hidden. */
+  flex: 1;
+  min-width: 0;
+  max-height: 4.5em;
+  overflow-y: auto;
+  color: var(--fg);
+  white-space: pre-wrap;
+}
+.hv-pending-prompt__actions {
+  display: flex;
+  flex: none;
+  gap: var(--space-2);
+}

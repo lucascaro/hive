@@ -1097,6 +1097,19 @@ func ideaErrorCode(err error, generic string) string {
 // handleControlFrame dispatches one control frame. It reports true
 // when the connection is finished (the client asked the daemon to shut
 // down), false to keep reading.
+// resolvePromptErrorCode picks the wire code for a RESOLVE_PROMPT
+// failure. Extracted so the choice is testable without a session whose
+// process has died — reaching that state over the wire needs registry
+// internals this package cannot touch, and the choice is the part that
+// matters: the client tells "the note is safe, try again" from "the
+// note is gone" by this code alone.
+func resolvePromptErrorCode(err error) string {
+	if errors.Is(err, registry.ErrNoLiveSession) {
+		return wire.ErrCodeNoLiveSession
+	}
+	return "resolve_prompt_failed"
+}
+
 func (d *Daemon) handleControlFrame(ctx context.Context, ops controlOps, ft wire.FrameType, payload []byte) bool {
 	// One gate for the whole verb set rather than a check per case: a
 	// verb added later is refused for a restricted client by default,
@@ -1375,6 +1388,26 @@ func (d *Daemon) handleControlFrame(ctx context.Context, ops controlOps, ft wire
 		}
 		if err := d.reg.RemoveIdea(req.ID); err != nil {
 			ops.sendError(ideaErrorCode(err, "remove_idea_failed"), err.Error())
+		}
+	case wire.FrameResolvePrompt:
+		req, ok := decodeReq[wire.ResolvePromptReq](payload, ops.sendError)
+		if !ok {
+			return false
+		}
+		// ErrNotFound alone is swallowed: an unknown id here is a
+		// benign race with a close. ErrNoLiveSession is NOT — the
+		// session is real and the note is still pending, so the user
+		// has to be told why nothing was pasted, or it looks exactly
+		// like a successful paste that vanished.
+		if err := d.reg.ResolvePrompt(req.SessionID, req.Paste); err != nil &&
+			!errors.Is(err, registry.ErrNotFound) {
+			// Two outcomes, and the client must tell them apart. With
+			// no live process the offer is STILL STANDING and the note
+			// is safe, so "try again" is true. Any other failure has
+			// already cleared the prompt, so the note is gone and
+			// telling the user to retry would point at an affordance
+			// that no longer exists.
+			ops.sendError(resolvePromptErrorCode(err), err.Error())
 		}
 	case wire.FrameClientCommand:
 		cmd, ok := decodeReq[wire.ClientCommand](payload, ops.sendError)

@@ -22,6 +22,8 @@ const base = {
   onDragEnd: noop,
   onDragOver: noop,
   onDrop: noop,
+  ideaText: '',
+  worktreeShared: 1,
 };
 
 function props(
@@ -246,5 +248,21 @@ describe('SessionRow', () => {
     expect(onColor).toHaveBeenCalledWith('#123456');
     rerender(<SessionRow {...props({ color: '#ff0000' }, { index: 2 })} />);
     expect(input.value).toBe('#123456');
+  });
+});
+
+describe('idea glyph', () => {
+  it('is absent for an ordinary session', () => {
+    render(<SessionRow {...props({})} />);
+    expect(document.querySelector('.hv-session-row__idea')).toBeNull();
+  });
+
+  it('names the idea a session was started from', () => {
+    render(<SessionRow {...props({}, { ideaText: 'sidebar is 1px off' })} />);
+    const el = document.querySelector('.hv-session-row__idea');
+    expect(el).not.toBeNull();
+    // The note itself, not just "from an idea": the row is where the
+    // user asks "what is this session for".
+    expect(el?.getAttribute('title')).toContain('sidebar is 1px off');
   });
 });

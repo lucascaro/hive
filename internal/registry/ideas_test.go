@@ -400,3 +400,72 @@ func TestUpdateIdeaRejectsOversizeText(t *testing.T) {
 		t.Errorf("Updated moved on a refused update: %q -> %q", info.Updated, got[0].Updated)
 	}
 }
+
+// Re-kind and re-project, the inbox's correction path. The capture
+// sheet pre-fills the project from whatever session was focused, so a
+// mis-filed note is the default behaviour being wrong rather than user
+// error — and deleting and retyping is not a correction.
+func TestUpdateIdeaReKindsAndReProjects(t *testing.T) {
+	r, p := ideaRegistry(t)
+	other, err := r.CreateProject(wire.CreateProjectReq{Name: "other", Cwd: t.TempDir()})
+	if err != nil {
+		t.Fatalf("CreateProject: %v", err)
+	}
+	idea, err := r.AddIdea(IdeaSpec{ProjectID: p.ID, Text: "misfiled"})
+	if err != nil {
+		t.Fatalf("AddIdea: %v", err)
+	}
+
+	kind, project := wire.IdeaKindBug, other.ID
+	got, err := r.UpdateIdea(wire.UpdateIdeaReq{ID: idea.ID, Kind: &kind, ProjectID: &project})
+	if err != nil {
+		t.Fatalf("UpdateIdea: %v", err)
+	}
+	if got.Kind != wire.IdeaKindBug || got.ProjectID != other.ID {
+		t.Errorf("idea = %+v, want kind=bug project=%s", got, other.ID)
+	}
+	if got.Text != "misfiled" {
+		t.Errorf("text = %q; correcting the filing must not touch the note", got.Text)
+	}
+
+	// It has actually moved, not just in the returned copy.
+	if n := len(r.ListIdeas(p.ID)); n != 0 {
+		t.Errorf("old project still lists %d idea(s)", n)
+	}
+	if n := len(r.ListIdeas(other.ID)); n != 1 {
+		t.Errorf("new project lists %d idea(s), want 1", n)
+	}
+}
+
+func TestUpdateIdeaRejectsUnknownKind(t *testing.T) {
+	r, p := ideaRegistry(t)
+	idea, err := r.AddIdea(IdeaSpec{ProjectID: p.ID, Text: "note"})
+	if err != nil {
+		t.Fatalf("AddIdea: %v", err)
+	}
+	bad := "epic"
+	if _, err := r.UpdateIdea(wire.UpdateIdeaReq{ID: idea.ID, Kind: &bad}); !errors.Is(err, ErrIdeaBadKind) {
+		t.Fatalf("err = %v, want ErrIdeaBadKind", err)
+	}
+	if got := r.ListIdeas("")[0].Kind; got != wire.IdeaKindIdea {
+		t.Errorf("kind = %q after a refused re-kind, want it unchanged", got)
+	}
+}
+
+// A re-project onto an id no project owns would strand the note behind
+// every project filter — reachable only by the reattach loadIdeas runs
+// on the NEXT boot, if there ever is one.
+func TestUpdateIdeaRejectsUnknownProject(t *testing.T) {
+	r, p := ideaRegistry(t)
+	idea, err := r.AddIdea(IdeaSpec{ProjectID: p.ID, Text: "note"})
+	if err != nil {
+		t.Fatalf("AddIdea: %v", err)
+	}
+	ghost := "no-such-project"
+	if _, err := r.UpdateIdea(wire.UpdateIdeaReq{ID: idea.ID, ProjectID: &ghost}); !errors.Is(err, ErrProjectNotFound) {
+		t.Fatalf("err = %v, want ErrProjectNotFound", err)
+	}
+	if got := r.ListIdeas("")[0].ProjectID; got != p.ID {
+		t.Errorf("project = %q after a refused re-project, want %q", got, p.ID)
+	}
+}

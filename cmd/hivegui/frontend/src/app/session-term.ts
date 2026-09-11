@@ -507,7 +507,15 @@ export class SessionTerm {
       // Ctrl+Shift+V pastes from the system clipboard.
       if (!e.ctrlKey || !e.shiftKey || e.altKey || e.metaKey) return true;
       const key = e.key.toLowerCase();
+      // Returning false only stops xterm's own keydown translation; it
+      // does NOT cancel the DOM default action. Each branch below fully
+      // owns its key, so it must preventDefault() as well (same as the
+      // Cmd+Backspace / Shift+Enter branches above). Ctrl+Shift+V is
+      // where this bit: the webview went on to run its native paste,
+      // xterm's helper-textarea 'paste' listener wrote the clipboard to
+      // the PTY a second time, and one keypress pasted twice.
       if (key === 'c') {
+        e.preventDefault();
         const sel = this.term.getSelection();
         // SetClipboardText (Go-side via atotto/clipboard) rather than
         // wails runtime.ClipboardSetText — the latter is broken on
@@ -516,14 +524,22 @@ export class SessionTerm {
         return false;
       }
       if (key === 'v') {
+        e.preventDefault();
         ClipboardGetText()
           .then((text) => {
-            if (text) this._writePty(text);
+            // term.paste() rather than a raw _writePty: it folds CRLF to
+            // CR and applies bracketed-paste framing when the running
+            // program asked for it (DECSET 2004). That framing used to
+            // arrive via the duplicate native paste we now suppress —
+            // writing the clipboard raw would make every multi-line
+            // paste submit once per line in Claude/Codex.
+            if (text) this.term.paste(text);
           })
           .catch(reportFailure('paste'));
         return false;
       }
       if (key === 'a') {
+        e.preventDefault();
         this.term.selectAll();
         return false;
       }

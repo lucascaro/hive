@@ -146,6 +146,11 @@ const (
 	FrameUpdateIdea FrameType = 0x26 // C → S, JSON, control
 	FrameRemoveIdea FrameType = 0x27 // C → S, JSON, control
 	FrameIdeaEvent  FrameType = 0x28 // S → C, JSON, control
+	// FrameResolvePrompt settles a session's pending opening prompt:
+	// paste it into the PTY, or discard it. The user decides WHEN,
+	// because only they can see whether the agent is at a prompt box
+	// or still on a startup gate — see SessionInfo.PendingPrompt.
+	FrameResolvePrompt FrameType = 0x29 // C → S, JSON, control
 )
 
 func (t FrameType) String() string {
@@ -228,6 +233,8 @@ func (t FrameType) String() string {
 		return "UPDATE_IDEA"
 	case FrameRemoveIdea:
 		return "REMOVE_IDEA"
+	case FrameResolvePrompt:
+		return "RESOLVE_PROMPT"
 	case FrameIdeaEvent:
 		return "IDEA_EVENT"
 	default:

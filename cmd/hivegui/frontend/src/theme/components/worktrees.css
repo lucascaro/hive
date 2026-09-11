@@ -104,6 +104,16 @@
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+/* Who is in the worktree. Subtler than the status line above it: the
+   count there is the fact, these are the details behind it. */
+.worktree-sessions {
+  display: block;
+  font-size: var(--text-xs);
+  color: var(--fg-subtle);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
 /* The tip commit subject: what is actually in the branch. Italic, not
    dimmer, sets it apart from the status line above it — so it shares
    --fg-muted with the status line rather than reaching for a second

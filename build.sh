@@ -145,8 +145,9 @@ build_macos() {
   # The menu bar agent ships as its own .app inside the GUI's bundle.
   # macOS will not show a status item for a bare binary, and
   # Contents/Library/LoginItems is where an embedded helper belongs —
-  # it is what SMAppService looks for, so the login-item toggle works
-  # the day Hive is code-signed.
+  # it is what SMAppService looks for. Release builds are signed and
+  # notarized (scripts/sign-macos.sh), so the login-item toggle works;
+  # for a local build, sign first with `scripts/sign-macos.sh --adhoc`.
   BAR="cmd/hivegui/build/bin/hivegui.app/Contents/Library/LoginItems/hivebar.app"
   mkdir -p "$BAR/Contents/MacOS"
   lipo -create -output "$BAR/Contents/MacOS/hivebar" \
@@ -166,7 +167,12 @@ build_macos() {
     mkdir -p release
     out="release/Hive-${version}-macos-universal.zip"
     rm -f "$out"
-    ( cd cmd/hivegui/build/bin && zip -rq "../../../../$out" hivegui.app )
+    # ditto, not zip: it is Apple's packaging for signed bundles and
+    # the counterpart to the `ditto -x -k` the updater unpacks with.
+    # zip -r follows symlinks and drops metadata, which invalidates a
+    # code signature; --keepParent keeps hivegui.app as the archive
+    # root, matching what stageRelease expects to find.
+    ( cd cmd/hivegui/build/bin && ditto -c -k --keepParent hivegui.app "../../../../$out" )
     echo "==> [macos] Packaged $out ($(du -h "$out" | cut -f1))"
   fi
 

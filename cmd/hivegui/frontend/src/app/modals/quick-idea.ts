@@ -10,6 +10,7 @@
 
 import { flushSync } from 'react-dom';
 import { AddIdea } from '../../bridge.js';
+import type { IdeaInfo } from '../state.js';
 import { flashStatus, reportFailure } from '../dom.js';
 import {
   anyModalOpen,
@@ -38,12 +39,20 @@ let deps: QuickIdeaDeps = {
 export const IDEA_KINDS = ['idea', 'bug', 'feedback'] as const;
 export type IdeaKind = (typeof IDEA_KINDS)[number];
 
-export function openQuickIdea(projectId?: string): void {
+// `idea` switches the sheet into edit mode: the same three controls,
+// pre-filled, saving through UPDATE_IDEA instead of ADD_IDEA. One
+// component, because the fields capture asked for are exactly the
+// fields that can be wrong — see app/modals/idea-inbox.ts › editIdea.
+export function openQuickIdea(projectId?: string, idea?: IdeaInfo): void {
   // activeProjectId() is the same resolution every other
   // project-scoped action uses, and it already ends at the first
   // project — which is the default project — when nothing is focused.
   // So capture works with no session open, which is most of the point.
-  openModal({ id: 'quick-idea', projectId: projectId || activeProjectId() });
+  openModal({
+    id: 'quick-idea',
+    projectId: projectId || activeProjectId(),
+    idea: idea ?? null,
+  });
   deps.setFocusedTile(null);
 }
 
