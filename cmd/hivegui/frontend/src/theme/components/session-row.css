@@ -138,9 +138,24 @@
   opacity: 0;
   pointer-events: none;
 }
+/* The agent, said once. The name no longer repeats it (lib/session-name.ts
+   drops the trailing id), so this glyph is the only place the row states
+   which agent it is. An 18% tint rather than a solid fill: Claude's
+   #f59e0b sits between --accent and --state-attention, and a solid chip
+   on every row would compete with both. --agent-color is data (the
+   agent's own colour from internal/agent/agent.go), not a token; an agent
+   that declares none gets the plain code. */
 .hv-session-row__agent {
   font-family: var(--font-mono);
   font-size: var(--text-xs);
+  color: var(--agent-color, var(--fg-subtle));
+  background: color-mix(in srgb, var(--agent-color, transparent) 18%, transparent);
+  border-radius: var(--radius-sm);
+  padding: 0 var(--space-1);
+}
+.hv-session-row__agent--plain {
+  color: var(--fg-subtle);
+  background: transparent;
 }
 
 /* Actions replace the meta column rather than pushing the text

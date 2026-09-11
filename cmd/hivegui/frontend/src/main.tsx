@@ -31,6 +31,7 @@ import '@xterm/xterm/css/xterm.css';
 import {
   ConnectControl,
   StateDirID,
+  ListAgents,
   OpenNewWindow,
   CloseWindow,
   OpenTerminalAt,
@@ -544,6 +545,19 @@ flushSync(() => createRoot(mustEl('react-root')).render(<App />));
     // projects and sessions); one request per connection seeds them and
     // the IDEA_EVENT fan-out keeps them current.
     refreshIdeas();
+    // Agent colours for the sidebar's agent glyph. Static for the life of
+    // the daemon, so one call at boot. A failure is not fatal: every glyph
+    // falls back to the neutral code, which is what a colourless custom
+    // agent renders anyway.
+    ListAgents()
+      .then((list) => {
+        const m = new Map<string, string>();
+        for (const a of list || []) if (a.color) m.set(a.id, a.color);
+        store.setAgentColors(m);
+      })
+      .catch(() => {
+        /* ignore — glyphs stay neutral */
+      });
     try {
       const dt = (() => {
         try {

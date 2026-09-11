@@ -25,6 +25,8 @@ import { Kbd } from './Kbd.js';
 import { isClosing, phaseOf } from '../lib/phase-steps.js';
 import { type SessionState, stateTooltip } from '../lib/session-state.js';
 import { displayTitle } from '../lib/term-title.js';
+import { displayName } from '../lib/session-name.js';
+import { useAppStore } from '../store/store.js';
 import type { SessionInfo } from '../app/state.js';
 
 export interface SessionRowProps {
@@ -89,6 +91,10 @@ export function SessionRow(p: SessionRowProps) {
   const name = s.name ?? 'session';
   const sub = subtitleFor(s, p.state);
   const code = agentCode(s.agent);
+  // The agent's own colour, from the catalog ListAgents() returned at
+  // boot. Undefined before that reply lands and for a custom agent that
+  // declares none — both render the plain code, never an invented hue.
+  const agentColor = useAppStore((st) => st.agentColors.get(s.agent ?? ''));
   const wtBranch = s.worktreeBranch ?? s.worktree_branch;
   const shared = p.worktreeShared;
   // A detached worktree has no branch (internal/worktree: inventory), and the
@@ -164,7 +170,7 @@ export function SessionRow(p: SessionRowProps) {
       />
       <span className="hv-session-row__text">
         <span className="hv-session-row__name" ref={p.nameRef}>
-          {s.name ?? ''}
+          {displayName(s)}
         </span>
         <span className="hv-session-row__sub" title={sub}>
           {sub}
@@ -218,7 +224,20 @@ export function SessionRow(p: SessionRowProps) {
       ) : null}
       <span className="hv-session-row__meta">
         {hint ? <Kbd>{hint}</Kbd> : null}
-        {code ? <span className="hv-session-row__agent">{code}</span> : null}
+        {code ? (
+          <span
+            className={`hv-session-row__agent${
+              agentColor ? '' : ' hv-session-row__agent--plain'
+            }`}
+            style={
+              agentColor
+                ? ({ '--agent-color': agentColor } as CSSProperties)
+                : undefined
+            }
+          >
+            {code}
+          </span>
+        ) : null}
       </span>
       <span className="hv-session-row__actions">
         <IconButton

@@ -115,6 +115,11 @@ export interface AppData {
   // fans out single-idea events that a map would have to find the right
   // bucket for anyway.
   ideas: IdeaInfo[];
+  // agent id -> the agent's own colour (internal/agent/agent.go Def.Color,
+  // and custom.go for user-defined agents). Filled once at boot from
+  // ListAgents(); empty until then, and an agent missing from it renders
+  // its code with no tint rather than an invented colour.
+  agentColors: ReadonlyMap<string, string>;
   // The choice dialog is not in `modals`: it is mounted over any of
   // them, and its answer travels back to the caller through a promise
   // rather than through a component. `seq` remounts the body on a
@@ -454,6 +459,7 @@ function initialData(): AppData {
     modals: [],
     worktreesPayload: null,
     ideas: [],
+    agentColors: new Map(),
     choiceDialog: null,
   };
 }
@@ -1068,6 +1074,11 @@ function byCreatedDesc(list: IdeaInfo[]): IdeaInfo[] {
     if (a.created !== b.created) return a.created < b.created ? 1 : -1;
     return a.id < b.id ? -1 : a.id > b.id ? 1 : 0;
   });
+}
+
+// Boot-time only; ListAgents() is static for the life of the daemon.
+export function setAgentColors(colors: ReadonlyMap<string, string>): void {
+  set({ agentColors: colors });
 }
 
 export function setIdeas(ideas: IdeaInfo[]): void {
