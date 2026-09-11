@@ -5,7 +5,7 @@ type: enhancement
 complexity: S
 priority: P2
 pr: 393
-stage: REVIEW
+stage: GATE
 ---
 
 # Sidebar: flatten worktree groups and reclaim side space

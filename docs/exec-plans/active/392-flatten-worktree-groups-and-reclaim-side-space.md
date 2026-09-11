@@ -144,6 +144,12 @@ All four nice-to-haves applied: the background assertion now checks **alpha === 
 - **Non-vacuity proven, not asserted.** With `sidebar.css` reverted to `HEAD`, three of the four new tests fail (left Δ, right Δ, radius) and the background one passes. With the new CSS but the header's `background` declaration deleted, only the background test fails. Each assertion fails for its own reason and nothing else's.
 - **Visual pass — all three presets read as a group.** Screenshots of the seeded sidebar (group expanded, group collapsed, a second group directly below) in `terminal`, `hive-dark` and `hive-light`. The band is carried by the header's own ground plus the closing hairline; the body's ground shift against `--surface` is the weakest of the three channels in every preset and effectively invisible in `terminal`, as predicted. It still reads, because the header band and the closing rule do not depend on it. If the sidebar ever grows a second full-width header band that is not a group, this is the cue to revisit.
 
+## PR convergence ledger
+
+- **2026-09-11 iter 1** — verdict: APPROVE; mergeable: MERGEABLE; findings_hash: empty; threads_open: 0; action: stop; head_sha: 780270d.
+
+One MINOR, not actioned and recorded here instead: grouped-row body text moves from `--surface` to `--surface-raised`, and `--fg-subtle` on that ground falls below 3:1 in `dracula` (2.73) and `catppuccin-mocha` (2.94). Both presets are `--contrast-exempt`, so `ui-lint.sh --contrast` is green and no enforced preset regresses. The transferable part is the gap, not this PR: the contrast table pairs `--fg*` against `--surface` and `--state-*` against `--surface-raised`, so body text on `--surface-raised` is a combination it never checks. Worth a table entry the next time that script is touched.
+
 ## Decision log
 
 - **2026-09-11** — Group cue: square full-bleed box, over "left rail + flat header" and "header only". Why: operator's pick from the mock; it keeps containment as strong as today, drops the rounding that clashes with the flat project label, and reclaims both edges.
