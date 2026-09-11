@@ -1,0 +1,452 @@
+<!DOCTYPE html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Sidebar Redesign — round 3</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap">
+<style>
+  :root { --page-bg:#f6f5f2; --page-fg:#1c1b19; --page-muted:#6b6862; --page-rule:#dcd9d2; --page-accent:#b4560a; --page-card:#fff; --page-ok:#2e9e6b; }
+  @media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) { --page-bg:#141414; --page-fg:#e8e6e1; --page-muted:#9a978f; --page-rule:#2a2a2a; --page-accent:#f0a04b; --page-card:#1b1b1b; --page-ok:#5fd7a5; } }
+  :root[data-theme="dark"] { --page-bg:#141414; --page-fg:#e8e6e1; --page-muted:#9a978f; --page-rule:#2a2a2a; --page-accent:#f0a04b; --page-card:#1b1b1b; --page-ok:#5fd7a5; }
+  * { box-sizing:border-box; }
+  body { background:var(--page-bg); color:var(--page-fg); font:14px/1.55 "IBM Plex Sans",system-ui,sans-serif; margin:0; }
+  .wrap { max-width:1240px; margin:0 auto; padding:40px 20px 140px; }
+  h1 { font-size:28px; font-weight:600; margin:0 0 6px; letter-spacing:-.01em; }
+  .lede { color:var(--page-muted); max-width:74ch; margin:0 0 20px; }
+  section { margin:52px 0 0; padding-top:28px; border-top:1px solid var(--page-rule); }
+  h2 { font-size:19px; font-weight:600; margin:0 0 4px; display:flex; align-items:center; gap:10px; flex-wrap:wrap; }
+  h2 .num { font:500 12px "JetBrains Mono",monospace; color:var(--page-accent); letter-spacing:.08em; }
+  .settled { font:500 10px "JetBrains Mono",monospace; letter-spacing:.08em; text-transform:uppercase; color:var(--page-ok); border:1px solid currentColor; border-radius:20px; padding:1px 8px; }
+  .open { font:500 10px "JetBrains Mono",monospace; letter-spacing:.08em; text-transform:uppercase; color:var(--page-accent); border:1px solid currentColor; border-radius:20px; padding:1px 8px; }
+  .sub { color:var(--page-muted); margin:0 0 20px; max-width:78ch; font-size:13.5px; }
+  .note { border-left:3px solid var(--page-accent); padding:8px 0 8px 12px; margin:0 0 20px; font-size:13px; color:var(--page-muted); max-width:78ch; }
+  .note b { color:var(--page-fg); font-weight:600; }
+  code { font:11.5px "JetBrains Mono",monospace; background:rgba(128,128,128,.16); padding:1px 5px; border-radius:4px; }
+
+  /* decisions ledger */
+  .ledger { display:grid; grid-template-columns:repeat(auto-fit,minmax(190px,1fr)); gap:10px; margin:0 0 8px; }
+  .led { border:1px solid var(--page-rule); border-radius:8px; padding:9px 12px; background:var(--page-card); font-size:12.5px; }
+  .led .k { font:500 10px "JetBrains Mono",monospace; letter-spacing:.08em; text-transform:uppercase; color:var(--page-muted); display:block; margin-bottom:2px; }
+  .led .v { font-weight:600; }
+  .led.warn { border-color:color-mix(in srgb, var(--page-accent) 50%, var(--page-rule)); }
+
+  /* live composite */
+  .lab { display:grid; grid-template-columns:300px 1fr; gap:26px; align-items:start; }
+  @media (max-width:820px){ .lab { grid-template-columns:1fr; } }
+  .controls { display:flex; flex-direction:column; gap:16px; }
+  .ctl { border:1px solid var(--page-rule); border-radius:10px; padding:12px 14px; background:var(--page-card); }
+  .ctl > .k { font:500 10px "JetBrains Mono",monospace; letter-spacing:.1em; text-transform:uppercase; color:var(--page-muted); display:block; margin-bottom:8px; }
+  .ctl label { display:flex; flex-wrap:wrap; gap:0 7px; align-items:baseline; font-size:12.5px; margin:5px 0; cursor:pointer; line-height:1.45; }
+  .ctl label i { font-style:normal; color:var(--page-muted); flex-basis:100%; padding-left:21px; font-size:11.5px; }
+  .ctl .hint { font-size:11.5px; color:var(--page-muted); margin:8px 0 0; }
+  .stage { display:flex; gap:20px; align-items:flex-start; flex-wrap:wrap; }
+  .stagecol { display:flex; flex-direction:column; gap:6px; }
+  .lbl { font:500 10px "JetBrains Mono",monospace; letter-spacing:.1em; text-transform:uppercase; color:var(--page-muted); }
+  .frame { border:1px solid var(--page-rule); border-radius:8px; overflow:hidden; width:280px; }
+
+  textarea { width:100%; min-height:70px; resize:vertical; margin-top:12px; padding:10px 12px; border:1px solid var(--page-rule); border-radius:8px; background:var(--page-card); color:var(--page-fg); font:13px/1.5 "IBM Plex Sans",system-ui,sans-serif; }
+  textarea:focus { outline:2px solid var(--page-accent); outline-offset:-1px; }
+  .bar { position:sticky; bottom:0; margin-top:40px; background:var(--page-card); border:1px solid var(--page-rule); border-radius:10px; padding:12px 16px; display:flex; gap:12px; align-items:center; flex-wrap:wrap; box-shadow:0 -4px 24px rgba(0,0,0,.25); }
+  button { font:500 13px "IBM Plex Sans",system-ui,sans-serif; padding:8px 14px; border-radius:7px; border:1px solid var(--page-rule); background:var(--page-bg); color:var(--page-fg); cursor:pointer; }
+  button.primary { background:var(--page-accent); border-color:var(--page-accent); color:#fff; }
+  .status { color:var(--page-muted); font-size:12.5px; }
+  .amend { background:var(--page-card); border:1px solid var(--page-rule); border-radius:10px; padding:16px 18px; font-size:13px; }
+  .amend .old { color:var(--page-muted); text-decoration:line-through; }
+  .amend .new { color:var(--page-fg); }
+  .amend h4 { margin:0 0 8px; font-size:12px; font:500 10px "JetBrains Mono",monospace; letter-spacing:.1em; text-transform:uppercase; color:var(--page-muted); }
+  ul.notes { margin:10px 0 0; padding-left:18px; color:var(--page-muted); font-size:12.5px; }
+  ul.notes li { margin:4px 0; }
+
+  /* ---------- sidebar (hive-dark tokens.css) ---------- */
+  .sb { --bg:#0f1014; --surface:#13141a; --raised:#0f1015; --border:#22242e; --fg:#e6e7ee; --fg2:#a5a8b8; --fg3:#5f6273;
+        --accent:#ffb454; --attn:#ff9f43; --ok:#5fd7a5; --err:#ff6b6b; --sel:#1c1e28; --btn:#1a1c25; --btnb:#2b2e3b;
+        background:var(--surface); color:var(--fg); font:13px/1.4 "IBM Plex Sans",system-ui,sans-serif;
+        width:280px; padding:6px 0 10px; }
+  .chev { color:var(--fg3); width:12px; height:12px; flex:none; }
+  .ico { width:12px; height:12px; flex:none; }
+  .psw { width:8px; height:8px; border-radius:2px; flex:none; }
+
+  /* project header — two treatments */
+  .card { margin:4px 8px 8px; background:var(--raised); border:1px solid var(--border); border-radius:6px; }
+  .card.active { border-color:#5d4b31; }
+  .chdr { display:flex; align-items:center; gap:8px; height:30px; padding:0 8px; font-size:13px; font-weight:500; color:var(--fg); background:var(--raised); }
+  .cname { flex:1; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .ccount { font:10px "JetBrains Mono",monospace; color:var(--fg3); }
+  .flathdr { display:flex; align-items:center; gap:8px; padding:9px 10px 5px; background:var(--surface);
+             font:500 10px "JetBrains Mono",monospace; letter-spacing:.1em; text-transform:uppercase; color:var(--fg3); }
+  .flathdr .cname { flex:0 1 auto; }
+  .flathdr .line { flex:1; height:1px; background:var(--border); }
+  .flathdr.act { color:var(--accent); }
+  .flathdr.act .line { background:color-mix(in srgb, var(--accent) 35%, var(--border)); }
+  /* Header treatment switch */
+  .sb[data-hdr="flat"] .card { margin:0; background:none; border:0; border-radius:0; }
+  .sb[data-hdr="flat"] .chdr { display:none; }
+  .sb[data-hdr="card"] .flathdr { display:none; }
+  .sb[data-sticky="on"] .chdr, .sb[data-sticky="on"] .flathdr { position:sticky; top:0; z-index:3; }
+  /* Nested: the group header pins under the project label, so rows never
+     scroll away from the label that explains them. */
+  .sb[data-sticky="on"] .ghdr { position:sticky; top:26px; z-index:2; }
+
+  /* rows */
+  .row { position:relative; color:var(--fg2); display:grid;
+         grid-template-columns:12px minmax(0,1fr) auto auto; align-items:center; column-gap:8px; padding:3px 8px 3px 10px; }
+  .row > .name, .row > .ttlmain { grid-column:2; grid-row:1; }
+  .row > .meta { grid-column:3; grid-row:1; display:flex; align-items:center; gap:6px; width:48px; justify-content:flex-end; font-variant-numeric:tabular-nums; }
+  .row > .swatch { grid-column:4; grid-row:1; }
+  .row > .ttl { grid-column:2 / -1; grid-row:2; }
+  .dot { width:8px; height:8px; border-radius:50%; flex:none; grid-column:1; grid-row:1; }
+  .dot.run { background:var(--ok); } .dot.attn { background:var(--attn); } .dot.idle { background:var(--fg3); } .dot.err { background:var(--err); }
+  .kbd { font:10px "JetBrains Mono",monospace; color:var(--fg3); border:1px solid var(--btnb); border-radius:3px; padding:0 3px; }
+  .name { color:inherit; font-weight:500; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .ttlmain { color:inherit; font-weight:500; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .ttl { font-size:11.5px; color:var(--fg3); overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .row.sel { background:var(--sel); color:var(--fg); font-weight:500; }
+  .row.sel::before { content:''; position:absolute; left:0; top:0; bottom:0; width:2px; background:var(--accent); z-index:1; }
+  .row.attnrow .name, .row.attnrow .ttlmain { color:var(--attn); }
+  .row .exited { text-decoration:line-through; color:var(--fg3); }
+
+  /* agent glyph — A1, colours from agent.Def.Color */
+  .gl { font:500 9px "JetBrains Mono",monospace; letter-spacing:.04em; flex:none;
+        display:inline-flex; align-items:center; justify-content:center; height:14px; min-width:18px; padding:0 4px;
+        border-radius:3px; color:var(--a); background:color-mix(in srgb, var(--a) 18%, transparent); }
+  .gl.plain { color:var(--fg3); background:none; border:1px solid var(--btnb); }
+  .a-claude { --a:#f59e0b; } .a-codex { --a:#10b981; } .a-gemini { --a:#3b82f6; }
+  .a-copilot { --a:#8b5cf6; } .a-shell { --a:#9ca3af; } .a-pi { --a:#06b6d4; } .a-aider { --a:#ec4899; }
+
+  /* ---- density ---- */
+  .sb[data-d="tight"] .row { padding:1px 8px 1px 10px; font-size:12.5px; }
+  .sb[data-d="tight"] .ttl { font-size:10.5px; }
+  .sb[data-d="tight"] .flathdr { padding:7px 10px 4px; }
+  .sb[data-d="compact"] .row { display:flex; align-items:center; gap:7px; height:28px; padding:0 8px 0 10px; }
+  .sb[data-d="compact"] .name { flex:none; max-width:46%; }
+  .sb[data-d="compact"] .ttlmain { flex:1; min-width:0; }
+  .sb[data-d="compact"] .ttl { flex:1; min-width:0; font-size:11.5px; }
+  .sb[data-d="compact"] .meta { width:auto; }
+  .sb[data-d="compact"] .grp .row .name { display:none; }
+
+  /* ---- session colour treatments ---- */
+  .swatch { width:10px; height:10px; border-radius:2px; flex:none; background:var(--c,#888); }
+  .sb[data-sw="chip"]  .swatch { display:block; }
+  .sb[data-sw="ring"]  .swatch, .sb[data-sw="hint"] .swatch, .sb[data-sw="edge"] .swatch { display:none; }
+  .sb[data-sw="ring"]  .dot { box-shadow:0 0 0 2px var(--c,#888); }
+  .sb[data-sw="hint"]  .kbd { border-color:var(--c,#888); color:var(--c,#888); }
+  .sb[data-sw="hint"]  .row:not(:has(.kbd)) .meta::before { content:''; width:6px; height:6px; border-radius:2px; background:var(--c,#888); }
+  .sb[data-sw="edge"]  .row::after { content:''; position:absolute; right:0; top:1px; bottom:1px; width:3px; border-radius:2px; background:var(--c,#888); }
+  .sb[data-sw="edge"]  .row { padding-right:12px; }
+  /* One bar per group, not one per row: the members share a colour. */
+  .sb[data-sw="edge"]  .grp { position:relative; }
+  .sb[data-sw="edge"]  .grp .row::after { display:none; }
+  .sb[data-sw="edge"]  .grp::after { content:''; position:absolute; right:0; top:0; bottom:0; width:3px; border-radius:0 4px 4px 0; background:var(--gc,#888); }
+
+  /* ---- worktree group panel (G3c) ---- */
+  .grp { margin:3px 6px; border:1px solid var(--border); border-radius:5px; background:#15161d; }
+  .sb[data-hdr="flat"] .grp { margin:3px 8px; }
+  .ghdr { display:grid; grid-template-columns:12px minmax(0,1fr) auto; align-items:center; column-gap:8px;
+          padding:4px 8px; background:#181a22; border-bottom:1px solid var(--border);
+          border-radius:4px 4px 0 0;
+          font:10px "JetBrains Mono",monospace; color:var(--fg3); }
+  .ghdr .br { min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; display:flex; align-items:center; gap:6px; }
+  .ghdr .n { border:1px solid var(--btnb); border-radius:3px; padding:0 3px; font-variant-numeric:tabular-nums; }
+  .grp .row { padding-left:8px; }
+
+  /* ---- attention pulse ---- */
+  @keyframes hv-attn-tint { 0%,100% { background-color:transparent; } 50% { background-color:color-mix(in srgb, var(--attn) 12%, transparent); } }
+  .sb[data-attn="tint"] .row.attnrow { animation:hv-attn-tint 1.6s ease-in-out infinite; }
+  @media (prefers-reduced-motion: reduce) {
+    .sb[data-attn="tint"] .row.attnrow { animation:none; background-color:color-mix(in srgb, var(--attn) 9%, transparent); }
+  }
+
+  .scroller { height:420px; overflow-y:auto; }
+
+  /* ---- colour bar as the picker's click target ----
+     The row reserves a 12px right gutter permanently, so widening the bar
+     into it on hover/focus costs no reflow. Today's swatch is already at
+     grid-column 6, right of the actions, so this space is not new. */
+  .pick-demo .row { padding-right:14px; }
+  .pick-demo .cbar { position:absolute; right:0; top:1px; bottom:1px; width:3px; border-radius:2px;
+                     background:var(--c,#888); border:0; padding:0; cursor:pointer;
+                     transition:width var(--mf,120ms) ease; }
+  .pick-demo .row:hover .cbar, .pick-demo .cbar:focus-visible { width:12px; }
+  .pick-demo .cbar:focus-visible { outline:2px solid var(--accent); outline-offset:1px; }
+  .pick-demo .acts { display:flex; gap:2px; opacity:0; }
+  .pick-demo .row:hover .acts, .pick-demo .row:focus-within .acts { opacity:1; }
+  .pick-demo .row:hover .meta, .pick-demo .row:focus-within .meta { display:none; }
+  .pick-demo .ib { width:18px; height:18px; display:grid; place-items:center; border:0; background:none;
+                   color:var(--fg3); cursor:pointer; font-size:12px; line-height:1; }
+  .pick-demo .ib:hover { color:var(--fg); }
+  /* Inside a group the bar belongs to the group, but the hover target is
+     still per-row: only the hovered row's segment widens. */
+  .pick-demo .grp { position:relative; }
+  .pick-demo .grp::after { content:''; position:absolute; right:0; top:0; bottom:0; width:3px; background:var(--gc,#888); }
+  .pick-demo .grp .cbar { z-index:2; }
+  @media (prefers-reduced-motion: reduce) { .pick-demo .cbar { transition:none; } }
+</style>
+</head><body>
+<svg width="0" height="0" style="position:absolute" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+  <symbol id="hv-branch" viewBox="0 0 24 24"><circle cx="7" cy="6" r="2"/><circle cx="7" cy="18" r="2"/><circle cx="17" cy="7" r="2"/><path d="M7 8v8M17 9v1a4 4 0 0 1-4 4H9"/></symbol>
+  <symbol id="hv-chevron-down" viewBox="0 0 24 24"><path d="M6 9l6 6 6-6"/></symbol>
+</svg>
+<div class="wrap">
+
+<h1>Sidebar redesign — round 3</h1>
+<p class="lede">Everything you've decided, assembled into one live sidebar. The two questions still open — the colour treatment and how the density steps feel — are toggles on it, so you judge them in context instead of in isolation.</p>
+
+<div class="ledger">
+  <div class="led"><span class="k">Agent</span><span class="v">A1 · tinted code</span></div>
+  <div class="led"><span class="k">Row layout</span><span class="v">B1 · wide subtitle</span></div>
+  <div class="led"><span class="k">Density</span><span class="v">normal / tight / compact</span></div>
+  <div class="led"><span class="k">Groups</span><span class="v">G3c · panel, smart name</span></div>
+  <div class="led"><span class="k">Attention</span><span class="v">pulsing tint · rule amended</span></div>
+  <div class="led"><span class="k">Project header</span><span class="v">flat label</span></div>
+  <div class="led"><span class="k">Sticky headers</span><span class="v">in</span></div>
+  <div class="led warn"><span class="k">Swatch</span><span class="v">rework &mdash; §02</span></div>
+</div>
+
+<!-- ============ 01 COMPOSITE ============ -->
+<section style="border-top:0">
+  <h2><span class="num">01</span>Everything together <span class="open">drive it</span></h2>
+  <p class="sub">A real-shaped sidebar: two projects, a three-session worktree group, one session waiting on you, one exited, one renamed. Scroll it to see the sticky headers; every toggle applies live. Your answers for density and colour are read straight off these controls.</p>
+  <div class="lab">
+    <div class="controls">
+      <div class="ctl">
+        <span class="k">Density</span>
+        <label><input type="radio" name="q-density" value="normal" checked> Normal <i>&mdash; 40px, two lines</i></label>
+        <label><input type="radio" name="q-density" value="tight"> Tight <i>&mdash; ~34px, 10.5px subtitle</i></label>
+        <label><input type="radio" name="q-density" value="compact"> Compact <i>&mdash; 28px, one line</i></label>
+        <p class="hint">Ships as a three-value setting; this picks the <b>default</b>.</p>
+      </div>
+      <div class="ctl">
+        <span class="k">Session colour</span>
+        <label><input type="radio" name="q-swatch" value="edge" checked> Bar on the right edge <i>3px, full height — recommended</i></label>
+        <label><input type="radio" name="q-swatch" value="hint"> On the key hint <i><code>[1]</code> outlined in the colour</i></label>
+        <label><input type="radio" name="q-swatch" value="ring"> Ring on the state dot</label>
+        <label><input type="radio" name="q-swatch" value="chip"> Keep the 10px chip <i>today</i></label>
+        <p class="hint">See §02 for what each costs.</p>
+      </div>
+      <div class="ctl">
+        <span class="k">Project header</span>
+        <label><input type="radio" name="q-header" value="flat" checked> Flat label</label>
+        <label><input type="radio" name="q-header" value="card"> Card (today)</label>
+      </div>
+      <div class="ctl">
+        <span class="k">Also</span>
+        <label><input type="checkbox" id="t-sticky" checked> Sticky project headers</label>
+        <label><input type="checkbox" id="t-attn" checked> Attention pulse</label>
+      </div>
+    </div>
+
+    <div class="stage">
+      <div class="stagecol">
+        <span class="lbl">Live</span>
+        <div class="frame"><div class="sb scroller" id="stage" data-d="normal" data-sw="edge" data-hdr="flat" data-sticky="on" data-attn="tint">
+
+          <div class="flathdr act"><span class="psw" style="background:#ffb454"></span><span class="cname">hive</span><span class="line"></span><span>7</span></div>
+          <div class="card active">
+            <div class="chdr"><svg class="chev"><use href="#hv-chevron-down"/></svg><span class="psw" style="background:#ffb454"></span><span class="cname">hive</span><span class="ccount">7</span></div>
+            <div class="body">
+              <div class="grp" style="--gc:#7fb3d5">
+                <div class="ghdr"><svg class="chev"><use href="#hv-chevron-down"/></svg><span class="br"><svg class="ico"><use href="#hv-branch"/></svg>feat/sidebar</span><span class="n">3</span></div>
+                <div class="row sel" style="--c:#7fb3d5"><span class="dot run"></span><span class="ttlmain">npm run build --watch</span><span class="meta"><span class="kbd">[1]</span><span class="gl a-claude">cl</span></span><span class="swatch"></span></div>
+                <div class="row attnrow" style="--c:#7fb3d5"><span class="dot attn"></span><span class="ttlmain">waiting for your answer</span><span class="meta"><span class="kbd">[2]</span><span class="gl a-codex">co</span></span><span class="swatch"></span></div>
+                <div class="row" style="--c:#7fb3d5"><span class="dot run"></span><span class="name">perf-spike</span><span class="meta"><span class="kbd">[3]</span><span class="gl a-claude">cl</span></span><span class="swatch"></span><span class="ttl">vim internal/registry/create.go</span></div>
+              </div>
+              <div class="row" style="--c:#5fd7a5"><span class="dot run"></span><span class="name">bold-harbor</span><span class="meta"><span class="kbd">[4]</span><span class="gl a-gemini">ge</span></span><span class="swatch"></span><span class="ttl">pytest -q tests/registry</span></div>
+              <div class="row" style="--c:#ad7fa8"><span class="dot idle"></span><span class="name">calm-ridge</span><span class="meta"><span class="kbd">[5]</span><span class="gl a-shell">sh</span></span><span class="swatch"></span><span class="ttl">~/checkout/hive</span></div>
+              <div class="row" style="--c:#c9a227"><span class="dot run"></span><span class="name">lone-birch</span><span class="meta"><span class="kbd">[6]</span><span class="gl a-pi">pi</span></span><span class="swatch"></span><span class="ttl">docker compose up --build</span></div>
+              <div class="row" style="--c:#e06c75"><span class="dot err"></span><span class="name exited">grey-fern</span><span class="meta"><span class="kbd">[7]</span><span class="gl plain">my</span></span><span class="swatch"></span><span class="ttl">Exited — exit status 1</span></div>
+            </div>
+          </div>
+
+          <div class="flathdr"><span class="psw" style="background:#7fb3d5"></span><span class="cname">dotfiles</span><span class="line"></span><span>3</span></div>
+          <div class="card">
+            <div class="chdr"><svg class="chev"><use href="#hv-chevron-down"/></svg><span class="psw" style="background:#7fb3d5"></span><span class="cname">dotfiles</span><span class="ccount">3</span></div>
+            <div class="body">
+              <div class="row" style="--c:#61afef"><span class="dot run"></span><span class="name">amber-fox</span><span class="meta"><span class="kbd">[8]</span><span class="gl a-claude">cl</span></span><span class="swatch"></span><span class="ttl">nvim init.lua</span></div>
+              <div class="row" style="--c:#98c379"><span class="dot idle"></span><span class="name">soft-cedar</span><span class="meta"><span class="kbd">[9]</span><span class="gl a-shell">sh</span></span><span class="swatch"></span><span class="ttl">~/dotfiles</span></div>
+              <div class="row" style="--c:#d19a66"><span class="dot run"></span><span class="name">still-pine</span><span class="meta"><span class="gl a-codex">co</span></span><span class="swatch"></span><span class="ttl">git log --oneline -20</span></div>
+            </div>
+          </div>
+
+        </div></div>
+        <p class="hint" style="color:var(--page-muted);font-size:11.5px;margin:2px 0 0">Row 10 has no key hint — past ⌘9. Watch what the colour does there.</p>
+      </div>
+
+      <div class="stagecol">
+        <span class="lbl">Today, same data</span>
+        <div class="frame"><div class="sb scroller" data-d="normal" data-sw="chip" data-hdr="card" data-sticky="off" data-attn="dot">
+          <div class="card active">
+            <div class="chdr"><svg class="chev"><use href="#hv-chevron-down"/></svg><span class="psw" style="background:#ffb454"></span><span class="cname">hive</span><span class="ccount">7</span></div>
+            <div class="body">
+              <div class="row sel" style="--c:#7fb3d5"><span class="dot run"></span><span class="name">feat-sidebar claude</span><span class="meta"><span class="kbd">[1]</span><span class="gl plain">cl</span></span><span class="swatch"></span><span class="ttl">npm run build --wat…</span></div>
+              <div class="row attnrow" style="--c:#7fb3d5"><span class="dot attn"></span><span class="name">feat-sidebar codex</span><span class="meta"><span class="kbd">[2]</span><span class="gl plain">co</span></span><span class="swatch"></span><span class="ttl">waiting for your ans…</span></div>
+              <div class="row" style="--c:#7fb3d5"><span class="dot run"></span><span class="name">perf-spike claude</span><span class="meta"><span class="kbd">[3]</span><span class="gl plain">cl</span></span><span class="swatch"></span><span class="ttl">vim internal/registr…</span></div>
+              <div class="row" style="--c:#5fd7a5"><span class="dot run"></span><span class="name">bold-harbor gemini</span><span class="meta"><span class="kbd">[4]</span><span class="gl plain">ge</span></span><span class="swatch"></span><span class="ttl">pytest -q tests/regi…</span></div>
+              <div class="row" style="--c:#ad7fa8"><span class="dot idle"></span><span class="name">calm-ridge shell</span><span class="meta"><span class="kbd">[5]</span><span class="gl plain">sh</span></span><span class="swatch"></span><span class="ttl">~/checkout/hive</span></div>
+              <div class="row" style="--c:#c9a227"><span class="dot run"></span><span class="name">lone-birch pi</span><span class="meta"><span class="kbd">[6]</span><span class="gl plain">pi</span></span><span class="swatch"></span><span class="ttl">docker compose up -…</span></div>
+              <div class="row" style="--c:#e06c75"><span class="dot err"></span><span class="name exited">grey-fern my-agent</span><span class="meta"><span class="kbd">[7]</span><span class="gl plain">my</span></span><span class="swatch"></span><span class="ttl">Exited — exit status 1</span></div>
+            </div>
+          </div>
+          <div class="card">
+            <div class="chdr"><svg class="chev"><use href="#hv-chevron-down"/></svg><span class="psw" style="background:#7fb3d5"></span><span class="cname">dotfiles</span><span class="ccount">3</span></div>
+            <div class="body">
+              <div class="row" style="--c:#61afef"><span class="dot run"></span><span class="name">amber-fox claude</span><span class="meta"><span class="kbd">[8]</span><span class="gl plain">cl</span></span><span class="swatch"></span><span class="ttl">nvim init.lua</span></div>
+              <div class="row" style="--c:#98c379"><span class="dot idle"></span><span class="name">soft-cedar shell</span><span class="meta"><span class="kbd">[9]</span><span class="gl plain">sh</span></span><span class="swatch"></span><span class="ttl">~/dotfiles</span></div>
+              <div class="row" style="--c:#d19a66"><span class="dot run"></span><span class="name">still-pine codex</span><span class="meta"><span class="gl plain">co</span></span><span class="swatch"></span><span class="ttl">git log --oneline -20</span></div>
+            </div>
+          </div>
+        </div></div>
+      </div>
+    </div>
+  </div>
+  <div class="note" style="margin-top:18px"><b>Nested sticky &mdash; now applied.</b> You asked to see both headers while scrolling, so the group header pins at <code>top: 26px</code>, directly under the project label. Scroll the composite with the group partly off-screen: the branch stays readable above its own rows. Cost is ~46px of pinned chrome while you are inside a group, and it only stacks while a group is on screen &mdash; ordinary rows pin one bar, not two.</div>
+  <textarea data-fb="01 composite" placeholder="What's off when it's all together? Group panel against the flat headers, sticky behaviour, density default…"></textarea>
+</section>
+
+<!-- ============ 02 SWATCH ============ -->
+<section>
+  <h2><span class="num">02</span>Session colour &mdash; keeping it, spending less on it <span class="open">your rework</span></h2>
+  <p class="sub">You're right that the colour has to stay, and it's load-bearing in a way the round-2 card didn't say: <code>theme/layout.css:72,126</code> paints the <em>grid tile's border</em> with <code>--session-color</code>, and the focused tile gets a glow in it. The swatch's job is matching a sidebar row to a tile on screen. So the question isn't whether to show colour, it's whether a filled 10px chip in its own column is the cheapest way to show it. Four treatments &mdash; toggle between them on the composite above.</p>
+  <div class="note"><b>I changed my recommendation after seeing it assembled.</b> Round 3 first proposed colouring the key hint, which is free in width. But A1 puts a <em>coloured</em> agent chip in the meta column, so outlining <code>[1]</code> in the session colour lands a second coloured mark right beside it &mdash; two unrelated colour systems, 6px apart, on every row. The right-edge bar keeps the session colour out of that column entirely, and G3c has just freed the right edge by moving &ldquo;shared worktree&rdquo; into the group panel. Flip between <b>hint</b> and <b>edge</b> on the composite and the noise difference is immediate.</div>
+  <div class="note"><b>This also retires the <code>colorExplicit</code> problem.</b> Round 2's version needed a new daemon-side bit to tell auto-picked colours from chosen ones. None of these four need it: they show every session's colour, always. Pure CSS, no wire change.</div>
+  <div class="stage">
+    <div class="stagecol"><span class="lbl">On the key hint</span>
+      <div class="frame"><div class="sb" data-d="normal" data-sw="hint" data-hdr="flat">
+        <div class="row sel" style="--c:#7fb3d5"><span class="dot run"></span><span class="name">feat-sidebar</span><span class="meta"><span class="kbd">[1]</span><span class="gl a-claude">cl</span></span><span class="swatch"></span><span class="ttl">npm run build --watch --silent</span></div>
+        <div class="row" style="--c:#5fd7a5"><span class="dot run"></span><span class="name">bold-harbor</span><span class="meta"><span class="kbd">[2]</span><span class="gl a-codex">co</span></span><span class="swatch"></span><span class="ttl">git rebase -i origin/main</span></div>
+        <div class="row" style="--c:#d19a66"><span class="dot idle"></span><span class="name">still-pine</span><span class="meta"><span class="gl a-shell">sh</span></span><span class="swatch"></span><span class="ttl">~/checkout/hive</span></div>
+      </div></div>
+      <ul class="notes"><li>Zero extra width &mdash; the hint is already there.</li><li>Ties colour to <code>⌘1</code>, which is how you jump to that tile anyway.</li><li>Past <code>⌘9</code> there's no hint, so those rows fall back to a 6px chip (row 3).</li></ul>
+    </div>
+    <div class="stagecol"><span class="lbl">Ring on the state dot</span>
+      <div class="frame"><div class="sb" data-d="normal" data-sw="ring" data-hdr="flat">
+        <div class="row sel" style="--c:#7fb3d5"><span class="dot run"></span><span class="name">feat-sidebar</span><span class="meta"><span class="kbd">[1]</span><span class="gl a-claude">cl</span></span><span class="swatch"></span><span class="ttl">npm run build --watch --silent</span></div>
+        <div class="row" style="--c:#5fd7a5"><span class="dot run"></span><span class="name">bold-harbor</span><span class="meta"><span class="kbd">[2]</span><span class="gl a-codex">co</span></span><span class="swatch"></span><span class="ttl">git rebase -i origin/main</span></div>
+        <div class="row" style="--c:#d19a66"><span class="dot idle"></span><span class="name">still-pine</span><span class="meta"><span class="gl a-shell">sh</span></span><span class="swatch"></span><span class="ttl">~/checkout/hive</span></div>
+      </div></div>
+      <ul class="notes"><li>Zero extra width, works on every row.</li><li>Puts two meanings on one mark: state in the fill, identity in the ring. That's the thing <code>README</code> principle 2 warns about.</li><li>The attention pulse and a ring on the same dot will fight.</li></ul>
+    </div>
+    <div class="stagecol"><span class="lbl">Bar on the right edge &mdash; recommended</span>
+      <div class="frame"><div class="sb" data-d="normal" data-sw="edge" data-hdr="flat">
+        <div class="row sel" style="--c:#7fb3d5"><span class="dot run"></span><span class="name">feat-sidebar</span><span class="meta"><span class="kbd">[1]</span><span class="gl a-claude">cl</span></span><span class="swatch"></span><span class="ttl">npm run build --watch --silent</span></div>
+        <div class="row" style="--c:#5fd7a5"><span class="dot run"></span><span class="name">bold-harbor</span><span class="meta"><span class="kbd">[2]</span><span class="gl a-codex">co</span></span><span class="swatch"></span><span class="ttl">git rebase -i origin/main</span></div>
+        <div class="row" style="--c:#d19a66"><span class="dot idle"></span><span class="name">still-pine</span><span class="meta"><span class="gl a-shell">sh</span></span><span class="swatch"></span><span class="ttl">~/checkout/hive</span></div>
+      </div></div>
+      <ul class="notes"><li>Strongest colour read of the four &mdash; a full-height bar.</li><li>Costs 4px, not 18px.</li><li>The right edge already means &ldquo;shared worktree&rdquo; (<code>session-row.css</code> <code>[data-wt-shared]</code>). With G3c the group panel carries that instead, so the edge is free &mdash; but it's a meaning we'd be reassigning.</li></ul>
+    </div>
+    <div class="stagecol"><span class="lbl">Keep the chip (today)</span>
+      <div class="frame"><div class="sb" data-d="normal" data-sw="chip" data-hdr="flat">
+        <div class="row sel" style="--c:#7fb3d5"><span class="dot run"></span><span class="name">feat-sidebar</span><span class="meta"><span class="kbd">[1]</span><span class="gl a-claude">cl</span></span><span class="swatch"></span><span class="ttl">npm run build --watch --silent</span></div>
+        <div class="row" style="--c:#5fd7a5"><span class="dot run"></span><span class="name">bold-harbor</span><span class="meta"><span class="kbd">[2]</span><span class="gl a-codex">co</span></span><span class="swatch"></span><span class="ttl">git rebase -i origin/main</span></div>
+        <div class="row" style="--c:#d19a66"><span class="dot idle"></span><span class="name">still-pine</span><span class="meta"><span class="gl a-shell">sh</span></span><span class="swatch"></span><span class="ttl">~/checkout/hive</span></div>
+      </div></div>
+      <ul class="notes"><li>No change, no risk.</li><li>Costs ~18px of every row including the gap.</li><li>It is also the <em>control</em> &mdash; clicking it opens the colour picker. Whichever option wins has to keep a click target; on the first three the picker moves to the row's context menu.</li></ul>
+    </div>
+  </div>
+  <textarea data-fb="02 session colour" placeholder="Which treatment, and where the colour picker should live if the chip goes…"></textarea>
+</section>
+
+<!-- ============ 03 RULE AMENDMENT ============ -->
+<section>
+  <h2><span class="num">03</span>The <code>patterns.md</code> amendment <span class="settled">you said amend</span></h2>
+  <p class="sub">You chose to amend the rule rather than move the pulse to an edge bar. Here's the exact wording I'd commit alongside the change, so the next person to read the principle finds it consistent with the code. Approve or edit.</p>
+  <div class="amend">
+    <h4>docs/design-docs/ui/patterns.md &rsaquo; Selection vs attention</h4>
+    <p class="old">Selection owns the row background and the left-edge bar. Attention never uses either channel — it speaks through the state icon and colour only.</p>
+    <p class="new">Selection owns the row's <em>static</em> background and the left-edge bar. Attention never uses the left edge, and never paints a static background — it speaks through the state icon, its colour, and a slow background <em>pulse</em>. The two are distinguishable because one is still and the other moves: a selected row that also wants attention shows the selected ground with the pulse riding over it. Under <code>prefers-reduced-motion</code> the pulse degrades to a static tint at a lower alpha than <code>--sel</code>, so selection still reads as the stronger ground.</p>
+  </div>
+  <ul class="notes">
+    <li>The last sentence is the part that needs care: with motion off, both channels become static backgrounds, so their alphas have to stay ordered. 9% attention against <code>--sel</code> clears that today; it's worth an assertion in the theme test rather than a comment.</li>
+  </ul>
+  <textarea data-fb="03 rule amendment" placeholder="Wording changes, or reject and keep the edge-bar alternative…"></textarea>
+</section>
+
+
+<!-- ============ 04 PICKER TARGET ============ -->
+<section>
+  <h2><span class="num">04</span>The colour picker's new home <span class="open">confirm</span></h2>
+  <p class="sub">Your call: the edge bar <em>is</em> the control, widening on hover. Checked against the row it has to live in &mdash; today's swatch is already at <code>grid-column: 6</code>, to the <em>right</em> of the hover-revealed actions (<code>session-row.css:25</code>), so that space is not new. The row keeps a 12px right gutter permanently and the bar widens into it, which means <b>no reflow on hover</b> and the minimize/restart/kill buttons never move. Hover a row below; tab into it to see the keyboard path.</p>
+  <div class="stage">
+    <div class="stagecol"><span class="lbl">Hover a row &mdash; and tab through it</span>
+      <div class="frame"><div class="sb pick-demo" data-d="normal" data-hdr="flat">
+        <div class="flathdr act"><span class="psw" style="background:#ffb454"></span><span class="cname">hive</span><span class="line"></span><span>5</span></div>
+        <div class="grp" style="--gc:#7fb3d5">
+          <div class="ghdr"><svg class="chev"><use href="#hv-chevron-down"/></svg><span class="br"><svg class="ico"><use href="#hv-branch"/></svg>feat/sidebar</span><span class="n">2</span></div>
+          <div class="row sel" style="--c:#7fb3d5"><span class="dot run"></span><span class="ttlmain">npm run build --watch</span><span class="meta"><span class="kbd">[1]</span><span class="gl a-claude">cl</span></span><span class="acts"><button class="ib" title="Minimize">&minus;</button><button class="ib" title="Kill">&times;</button></span><button class="cbar" aria-label="Colour for this session"></button></div>
+          <div class="row" style="--c:#7fb3d5"><span class="dot run"></span><span class="ttlmain">git rebase -i origin/main</span><span class="meta"><span class="kbd">[2]</span><span class="gl a-codex">co</span></span><span class="acts"><button class="ib" title="Minimize">&minus;</button><button class="ib" title="Kill">&times;</button></span><button class="cbar" aria-label="Colour for this session"></button></div>
+        </div>
+        <div class="row" style="--c:#5fd7a5"><span class="dot run"></span><span class="name">bold-harbor</span><span class="meta"><span class="kbd">[3]</span><span class="gl a-gemini">ge</span></span><span class="acts"><button class="ib" title="Minimize">&minus;</button><button class="ib" title="Kill">&times;</button></span><button class="cbar" aria-label="Colour for this session"></button><span class="ttl">pytest -q tests/registry</span></div>
+        <div class="row" style="--c:#ad7fa8"><span class="dot idle"></span><span class="name">calm-ridge</span><span class="meta"><span class="kbd">[4]</span><span class="gl a-shell">sh</span></span><span class="acts"><button class="ib" title="Minimize">&minus;</button><button class="ib" title="Kill">&times;</button></span><button class="cbar" aria-label="Colour for this session"></button><span class="ttl">~/checkout/hive</span></div>
+        <div class="row" style="--c:#c9a227"><span class="dot run"></span><span class="name">lone-birch</span><span class="meta"><span class="kbd">[5]</span><span class="gl a-pi">pi</span></span><span class="acts"><button class="ib" title="Minimize">&minus;</button><button class="ib" title="Kill">&times;</button></span><button class="cbar" aria-label="Colour for this session"></button><span class="ttl">docker compose up --build</span></div>
+      </div></div>
+      <ul class="notes">
+        <li>The bar is a real <code>&lt;button&gt;</code>, so it widens on <code>:focus-visible</code> too &mdash; the current swatch is a focusable <code>&lt;input type="color"&gt;</code> and that keyboard path must not regress.</li>
+        <li>Inside a group the static bar belongs to the group, but the hover target stays per-row: only the hovered row's segment widens, so you still set one session's colour.</li>
+        <li>Net width: the 18px swatch column goes, a 12px gutter arrives &mdash; 6px back, and no coloured chip competing with the agent glyph.</li>
+      </ul>
+    </div>
+    <div class="stagecol"><span class="lbl">Open question inside the question</span>
+      <div class="note" style="margin:0"><b>What should clicking it open?</b> Today it is an uncontrolled <code>&lt;input type="color"&gt;</code> that opens the OS picker &mdash; deliberately uncontrolled so the swatch does not snap back while you drag inside that picker (<code>SessionRow.tsx:118</code>). Keeping that is the zero-risk option: the button just proxies a click to a visually hidden input. The alternative is a small palette popover of the same colours <code>pickColor()</code> draws from, which is faster for the common case and loses arbitrary colours. I would keep the native input &mdash; it is the smaller diff and the behaviour you already have.</div>
+      <div class="ctl" style="margin-top:14px">
+        <span class="k">Click opens</span>
+        <label><input type="radio" name="q-picker" value="native" checked> The OS colour picker <i>as today</i></label>
+        <label><input type="radio" name="q-picker" value="palette"> A palette popover</label>
+      </div>
+    </div>
+  </div>
+  <textarea data-fb="04 picker target" placeholder="Hover/expand feel, widths, what the click should open…"></textarea>
+</section>
+
+<div class="bar">
+  <button class="primary" id="copy">Copy all feedback</button>
+  <button id="clear">Clear</button>
+  <span class="status" id="status">Answers autosave in this browser.</span>
+</div>
+
+</div>
+<script>
+  const KEY = 'hive-sidebar-redesign-feedback-v3';
+  const stage = document.getElementById('stage');
+
+  const apply = () => {
+    const v = n => document.querySelector(`input[name=${n}]:checked`)?.value;
+    stage.dataset.d = v('q-density') ?? 'normal';
+    stage.dataset.sw = v('q-swatch') ?? 'edge';
+    stage.dataset.hdr = v('q-header') ?? 'flat';
+    stage.dataset.sticky = document.getElementById('t-sticky').checked ? 'on' : 'off';
+    stage.dataset.attn = document.getElementById('t-attn').checked ? 'tint' : 'dot';
+  };
+
+  const load = () => { try {
+    const s = JSON.parse(localStorage.getItem(KEY) || '{}');
+    document.querySelectorAll('[data-fb]').forEach(t => { if (s.text?.[t.dataset.fb]) t.value = s.text[t.dataset.fb]; });
+    document.querySelectorAll('input[type=radio]').forEach(r => { if (s.radio?.[r.name] !== undefined) r.checked = s.radio[r.name] === r.value; });
+    if (s.tog) for (const [id, on] of Object.entries(s.tog)) { const e = document.getElementById(id); if (e) e.checked = on; }
+  } catch {} };
+  const save = () => { try {
+    const s = { text:{}, radio:{}, tog:{} };
+    document.querySelectorAll('[data-fb]').forEach(t => s.text[t.dataset.fb] = t.value);
+    document.querySelectorAll('input[type=radio]:checked').forEach(r => s.radio[r.name] = r.value);
+    ['t-sticky','t-attn'].forEach(id => s.tog[id] = document.getElementById(id).checked);
+    localStorage.setItem(KEY, JSON.stringify(s));
+  } catch {} };
+
+  document.addEventListener('input', () => { apply(); save(); });
+  load(); apply();
+
+  const report = () => {
+    const r = n => document.querySelector(`input[name=${n}]:checked`)?.value ?? '(none)';
+    const L = ['# Sidebar redesign feedback — round 3', '',
+      `- Default density: ${r('q-density')}`,
+      `- Session colour: ${r('q-swatch')}`,
+      `- Project header: ${r('q-header')}`,
+      `- Sticky headers: ${document.getElementById('t-sticky').checked ? 'on' : 'off'}`,
+      `- Attention pulse: ${document.getElementById('t-attn').checked ? 'on' : 'off'}`,
+      `- Colour picker opens: ${r('q-picker')}`, ''];
+    document.querySelectorAll('[data-fb]').forEach(t => { if (t.value.trim()) L.push(`## ${t.dataset.fb}`, t.value.trim(), ''); });
+    return L.join('\n');
+  };
+  document.getElementById('copy').onclick = async () => {
+    const txt = report();
+    try { await navigator.clipboard.writeText(txt); document.getElementById('status').textContent = 'Copied — paste it back to Claude.'; }
+    catch { const ta = document.createElement('textarea'); ta.value = txt; ta.style.cssText='position:fixed;left:0;bottom:0;width:100%;height:220px;z-index:99'; document.body.append(ta); ta.select(); document.getElementById('status').textContent = 'Clipboard blocked — copy from the box at the bottom.'; }
+  };
+  document.getElementById('clear').onclick = () => { localStorage.removeItem(KEY); location.reload(); };
+</script>
+</body></html>

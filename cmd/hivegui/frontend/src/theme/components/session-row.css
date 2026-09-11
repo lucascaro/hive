@@ -3,26 +3,36 @@
 .hv-session-row {
   position: relative;
   display: grid;
-  /* state | text | idea | worktree | meta+actions | swatch. Every child
-     is placed explicitly (below) because meta and actions SHARE the
-     fifth cell — see the hover swap. Column gaps come from the
-     children's own margins rather than `gap`, so a row with no worktree
-     and no idea contributes no empty-column gaps. */
-  grid-template-columns: 14px minmax(0, 1fr) auto auto auto auto;
+  /* state | name | idea | worktree | meta+actions on grid row 1;
+     the window title on grid row 2, spanning to the right edge. Every
+     child is placed explicitly (below) because meta and actions SHARE
+     the fifth cell — see the hover swap — and because an unplaced child
+     auto-flows to a new line and wraps the row. Column gaps come from
+     the children's own margins rather than `gap`, so a row with no
+     worktree and no idea contributes no empty-column gaps. */
+  grid-template-columns: 14px minmax(0, 1fr) auto auto auto;
   align-items: center;
-  row-gap: var(--space-2);
+  row-gap: 1px;
   min-height: 40px;
-  padding: 0 var(--space-2) 0 var(--space-3);
+  /* The right gutter is the colour bar's expanded width, reserved at all
+     times: the bar grows into it on hover instead of pushing anything. */
+  padding: 0 var(--space-3);
   color: var(--fg-muted);
   font-size: var(--text-md);
   cursor: pointer;
 }
+/* The subtitle takes the same margin as the name, which is what keeps
+   the two lines in one column: both start at grid column 2, and column
+   gaps here are child margins rather than `gap`. */
 .hv-session-row > * + * { margin-left: var(--space-2); }
-.hv-session-row__state { grid-column: 1; }
-.hv-session-row__text { grid-column: 2; }
-.hv-session-row__idea { grid-column: 3; }
-.hv-session-row__worktree-slot { grid-column: 4; }
-.hv-session-row__swatch { grid-column: 6; }
+.hv-session-row__state { grid-column: 1; grid-row: 1; }
+.hv-session-row__name { grid-column: 2; grid-row: 1; }
+.hv-session-row__idea { grid-column: 3; grid-row: 1; }
+.hv-session-row__worktree-slot { grid-column: 4; grid-row: 1; }
+/* The whole point of the redesign's line 2: the window title runs from
+   the name's column to the row's right edge, under the meta column
+   rather than stopping before it. */
+.hv-session-row__sub { grid-column: 2 / -1; grid-row: 2; }
 
 /* Where the session came from. Not a button: the inbox is reached from
    the project card's badge, and a second route to it on every row would
@@ -35,6 +45,45 @@
 }
 
 .hv-session-row:hover { background: var(--hover); color: var(--fg); }
+
+/* Attention: a pulsing ground, so a session that wants you is visible
+   from the corner of the eye without reading any row. Selection owns the
+   row's STATIC background and the left edge; attention uses neither —
+   pulsing is a channel of its own (patterns.md › Selection vs
+   attention). Declared before selection so a selected row still reads as
+   selected while it pulses. */
+/* opacity, not background-color: background-color is not
+   compositor-animatable, and this animation never ends on a list that is
+   always mounted. The tint itself is static; only the overlay's alpha
+   moves. */
+@keyframes hv-attn-tint {
+  0%, 100% { opacity: 0; }
+  50% { opacity: 1; }
+}
+/* An overlay, not the row's own background: an animation's value beats a
+   normal declaration, so pulsing `background-color` on the row itself
+   would win over [data-selected]'s --sel and a selected row would stop
+   reading as selected for as long as it wanted attention. The overlay
+   composites ON TOP of whichever ground the row has. */
+.hv-session-row[data-state='attention']::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background-color: color-mix(in srgb, var(--state-attention) 12%, transparent);
+  opacity: 0;
+  animation: hv-attn-tint var(--motion-pulse) ease-in-out infinite;
+}
+/* With motion off the tint has to be static, and then BOTH grounds are on
+   screen at once — so this alpha stays below --sel, or a selected row
+   stops reading as selected. test/e2e/theme.spec.ts asserts the ordering. */
+@media (prefers-reduced-motion: reduce) {
+  .hv-session-row[data-state='attention']::after {
+    animation: none;
+    opacity: 1;
+    background-color: color-mix(in srgb, var(--state-attention) 9%, transparent);
+  }
+}
 
 /* Selection: --sel ground + a 2px accent bar at the left edge. Attention
    never uses either channel (patterns.md › Selection vs attention). */
@@ -53,22 +102,10 @@
   background: var(--accent);
 }
 
-/* Shared worktree: a bar at the RIGHT edge, in the session's own colour.
-   Sessions that adopt a worktree inherit the colour of the session they
-   joined (internal/registry/create.go), so the bar is the same on every
-   member and reads as one group. The left edge is not available —
-   selection owns it, and patterns.md > Selection vs attention keeps the
-   two indicators off each other's position. Colour is never the only
-   channel: the count beside the branch glyph says the same thing. */
-.hv-session-row[data-wt-shared]::after {
-  content: '';
-  position: absolute;
-  right: 0;
-  top: 0;
-  bottom: 0;
-  width: 3px;
-  background: var(--session-color, var(--fg-subtle));
-}
+/* The shared-worktree bar that used to live here is now the group
+   panel's (sidebar.css › .hv-worktree-group::after): members share a
+   colour, and one bar per row was three marks for one fact. The row
+   keeps data-wt-shared for the branch glyph's count and label. */
 
 .hv-session-row__worktree-slot {
   display: inline-flex;
@@ -84,13 +121,6 @@
   line-height: 1;
 }
 
-.hv-session-row__text {
-  display: flex;
-  flex-direction: column;
-  justify-content: center;
-  min-width: 0;
-  gap: 1px;
-}
 .hv-session-row__name,
 .hv-session-row__sub {
   min-width: 0;
@@ -122,6 +152,11 @@
   /* Both live in the same cell so the swap below can be opacity rather
      than `display` — see the hover-swap comment. */
   grid-column: 5;
+  /* meta belongs to line 1, beside the name. The action buttons are
+     24px — taller than either line — so they span BOTH rows instead of
+     setting line 1's height and pushing the row past 40px; spanning
+     also leaves them vertically centred in the row, exactly where they
+     sit today. */
   grid-row: 1;
   display: flex;
   align-items: center;
@@ -135,12 +170,35 @@
    at all times; a click on it falls through to the row, which selects. */
 .hv-session-row__meta { pointer-events: none; }
 .hv-session-row__actions {
+  /* `span 2`, not `1 / -1`: the rows are implicit (only the columns are
+     templated), and -1 resolves to the EXPLICIT grid's last line — which
+     is line 1 — so `1 / -1` silently spans nothing. */
+  grid-row: 1 / span 2;
   opacity: 0;
   pointer-events: none;
 }
+/* The agent, said once. A generated name no longer carries it
+   (internal/agent/names.go), so this glyph is the only place the row
+   states which agent it is. An 18% tint rather than a solid fill: Claude's
+   #f59e0b sits between --accent and --state-attention, and a solid chip
+   on every row would compete with both. --agent-color is data (the
+   agent's own colour from internal/agent/agent.go), not a token; an agent
+   that declares none gets the plain code. */
 .hv-session-row__agent {
   font-family: var(--font-mono);
   font-size: var(--text-xs);
+  /* The TINT carries the agent's colour; the text stays --fg. As TEXT,
+     --agent-color fails WCAG AA on every light preset (Claude's #f59e0b
+     is 2.15:1 on white) and scripts/ui-contrast.mjs cannot catch it —
+     the value is data from internal/agent, not a token it enumerates. */
+  color: var(--fg);
+  background: color-mix(in srgb, var(--agent-color, transparent) 18%, transparent);
+  border-radius: var(--radius-sm);
+  padding: 0 var(--space-1);
+}
+.hv-session-row__agent--plain {
+  color: var(--fg-subtle);
+  background: transparent;
 }
 
 /* Actions replace the meta column rather than pushing the text
@@ -163,24 +221,44 @@
   pointer-events: auto;
 }
 
-.hv-session-row__swatch {
-  position: relative;
-  width: 12px;
-  height: 12px;
-  flex-shrink: 0;
+/* The colour bar. Out of the grid's flow entirely — absolutely placed
+   against the row's reserved right gutter — so widening it on hover
+   reflows nothing and the action buttons never move. It replaces the
+   12px chip that used to occupy its own grid column to the RIGHT of
+   those buttons. */
+.hv-session-row__colour {
+  position: absolute;
+  /* Above the attention overlay, which spans the whole row. */
+  z-index: 1;
+  right: 0;
+  top: 1px;
+  bottom: 1px;
+  width: 3px;
   border-radius: var(--radius-sm);
   background: var(--session-color, var(--fg-subtle));
   cursor: pointer;
+  transition: width var(--motion-fast) ease;
 }
-.hv-session-row__swatch input[type='color'] {
+.hv-session-row:hover .hv-session-row__colour,
+.hv-session-row__colour:has(input:focus-visible) {
+  width: 12px;
+}
+.hv-session-row__colour input[type='color'] {
   position: absolute;
   inset: 0;
+  width: 100%;
+  height: 100%;
   opacity: 0;
   cursor: pointer;
 }
 
-/* Inline rename: same metrics as line 1, so the row does not jump. */
+/* Inline rename: same metrics as line 1, so the row does not jump. The
+   input REPLACES the name span in the DOM (lib/inline-rename.ts), so it
+   has to claim the same grid cell — an unplaced grid child auto-flows to
+   a new line and wraps the row. */
 .hv-session-row .name-input {
+  grid-column: 2;
+  grid-row: 1;
   width: 100%;
   min-width: 0;
   padding: 2px var(--space-1);
@@ -205,11 +283,70 @@
 }
 /* The colour input is `opacity: 0` and opacity applies to the outline
    too, so its own focus ring paints nothing. Ring the wrapper instead. */
-.hv-session-row__swatch:has(input:focus-visible) {
+.hv-session-row__colour:has(input:focus-visible) {
   outline: 2px solid var(--accent);
   outline-offset: 1px;
 }
 .hv-session-row .name-input:focus-visible {
   outline: 2px solid var(--accent);
   outline-offset: 1px;
+}
+
+/* ---------- density (theme/density.ts) ----------
+   Normal is the two-line 40px row above. `tight` keeps both lines and
+   takes the air out; `compact` drops to one line — the window title,
+   which is the line that tells two sessions on one worktree apart, with
+   the name as the fallback where there is no title — and fits at least
+   40% more rows in the same height. */
+:root[data-density='tight'] .hv-session-row {
+  min-height: 34px;
+  font-size: var(--text-sm);
+}
+:root[data-density='tight'] .hv-session-row__sub {
+  font-size: var(--text-xs);
+  line-height: 1.3;
+}
+
+:root[data-density='compact'] .hv-session-row {
+  min-height: 28px;
+  font-size: var(--text-sm);
+}
+/* One line, and it is the window TITLE that survives — the line that
+   tells two sessions on one worktree apart. The title moves up into line
+   1's cell and the name steps aside.
+
+   Except when there is no title to show: subtitleFor() leaves line 2
+   empty for a running session that has published none, and a row inside a
+   group renders no subtitle element at all (SessionRow's titleOnly puts
+   the title in the name). Both cases are "no non-empty subtitle", and
+   both keep the name — a row with neither line is not identifiable at
+   all. */
+:root[data-density='compact'] .hv-session-row__sub {
+  grid-column: 2;
+  grid-row: 1;
+  font-size: var(--text-sm);
+  color: inherit;
+}
+:root[data-density='compact'] .hv-session-row__name { display: none; }
+:root[data-density='compact']
+  .hv-session-row:not(:has(.hv-session-row__sub:not(:empty)))
+  .hv-session-row__name {
+  display: block;
+}
+/* The state colours live on the name, so line 1 keeps them whichever
+   element is currently line 1. */
+:root[data-density='compact']
+  .hv-session-row[data-state='attention']
+  .hv-session-row__sub {
+  color: var(--state-attention);
+  font-weight: 500;
+}
+:root[data-density='compact']
+  .hv-session-row[data-state='exited']
+  .hv-session-row__sub,
+:root[data-density='compact']
+  .hv-session-row[data-state='error']
+  .hv-session-row__sub {
+  color: var(--fg-subtle);
+  text-decoration: line-through;
 }

@@ -25,6 +25,7 @@ import { Kbd } from './Kbd.js';
 import { isClosing, phaseOf } from '../lib/phase-steps.js';
 import { type SessionState, stateTooltip } from '../lib/session-state.js';
 import { displayTitle } from '../lib/term-title.js';
+import { useAppStore } from '../store/store.js';
 import type { SessionInfo } from '../app/state.js';
 
 export interface SessionRowProps {
@@ -48,6 +49,11 @@ export interface SessionRowProps {
   onDrop: (e: DragEvent<HTMLLIElement>) => void;
   /** The idea this session was started from, when it came from one. */
   ideaText: string;
+  /** Render the window title as the row's PRIMARY line and drop the
+      name. Set for a session inside a worktree group whose name is the
+      branch-derived default the panel header already states — a name the
+      user chose is never hidden. */
+  titleOnly: boolean;
   /** How many sessions share this row's worktree; 1 (or 0) when it is not
       shared. The row is linked to its group by colour — sessions inherit the
       colour of the worktree they adopt — and colour alone is not a signal
@@ -89,6 +95,10 @@ export function SessionRow(p: SessionRowProps) {
   const name = s.name ?? 'session';
   const sub = subtitleFor(s, p.state);
   const code = agentCode(s.agent);
+  // The agent's own colour, from the catalog ListAgents() returned at
+  // boot. Undefined before that reply lands and for a custom agent that
+  // declares none — both render the plain code, never an invented hue.
+  const agentColor = useAppStore((st) => st.agentColors.get(s.agent ?? ''));
   const wtBranch = s.worktreeBranch ?? s.worktree_branch;
   const shared = p.worktreeShared;
   // A detached worktree has no branch (internal/worktree: inventory), and the
@@ -141,11 +151,11 @@ export function SessionRow(p: SessionRowProps) {
       draggable
       style={style}
       onClick={(e) => {
-        // The swatch opens the native picker; it must not also switch
-        // sessions.
+        // The colour bar opens the native picker; it must not also
+        // switch sessions.
         if (
           e.target instanceof Element &&
-          e.target.closest('.hv-session-row__swatch')
+          e.target.closest('.hv-session-row__colour')
         ) {
           return;
         }
@@ -162,14 +172,27 @@ export function SessionRow(p: SessionRowProps) {
         className="hv-session-row__state"
         detail={stateTooltip(s, p.state)}
       />
-      <span className="hv-session-row__text">
-        <span className="hv-session-row__name" ref={p.nameRef}>
-          {s.name ?? ''}
-        </span>
+      {/* Name and title are direct grid children, not a stacked column:
+          line 2 spans from the name's column to the row's right edge
+          (session-row.css), which a wrapper confined to column 2 could
+          never do. The wrapper was the reason the window title truncated
+          ~70px early. */}
+      <span
+        className="hv-session-row__name"
+        ref={p.nameRef}
+        title={p.titleOnly && sub ? sub : undefined}
+      >
+        {/* subtitleFor() is empty for a running session that has published
+            no window title, and displayTitle() suppresses one that just
+            echoes the name — so titleOnly falls back to the name rather
+            than rendering a row with no line at all. */}
+        {p.titleOnly && sub ? sub : name}
+      </span>
+      {p.titleOnly ? null : (
         <span className="hv-session-row__sub" title={sub}>
           {sub}
         </span>
-      </span>
+      )}
       {/* The worktree control is NOT in `meta`: meta is the half of the
           hover swap that disappears the moment the pointer enters the row
           (or focus lands in it), so a button living there could never be
@@ -218,7 +241,20 @@ export function SessionRow(p: SessionRowProps) {
       ) : null}
       <span className="hv-session-row__meta">
         {hint ? <Kbd>{hint}</Kbd> : null}
-        {code ? <span className="hv-session-row__agent">{code}</span> : null}
+        {code ? (
+          <span
+            className={`hv-session-row__agent${
+              agentColor ? '' : ' hv-session-row__agent--plain'
+            }`}
+            style={
+              agentColor
+                ? ({ '--agent-color': agentColor } as CSSProperties)
+                : undefined
+            }
+          >
+            {code}
+          </span>
+        ) : null}
       </span>
       <span className="hv-session-row__actions">
         <IconButton
@@ -252,7 +288,12 @@ export function SessionRow(p: SessionRowProps) {
           }}
         />
       </span>
-      <span className="hv-session-row__swatch">
+      {/* The session colour, and its control, are the same thing: a 3px
+          bar on the row's right edge that widens to 12px on hover or
+          keyboard focus and opens the native picker. The row reserves
+          that 12px permanently (session-row.css), so widening costs no
+          reflow and never moves the hover-revealed actions. */}
+      <span className="hv-session-row__colour">
         <input
           type="color"
           ref={colorRef}

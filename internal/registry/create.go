@@ -468,11 +468,13 @@ func (r *Registry) planWorktreeAndName(spec wire.CreateSpec, p *createPlan) {
 	// find the worktree from the session label. Slashes (e.g.
 	// `feature/foo`) get folded to `-` so the name is safe to use in
 	// paths and shell-quoted contexts.
-	suffix := spec.Agent
-	if suffix == "" {
-		suffix = "shell"
-	}
-	p.name = strings.ReplaceAll(p.wtBranch, "/", "-") + " " + suffix
+	//
+	// The agent id is deliberately NOT appended (see agent.RandomName):
+	// the surfaces that show a name show the agent too. Two agents on one
+	// branch therefore share a name — which is what the GUI's worktree
+	// group panel is for: it states the branch once and leads each row
+	// with what that session is actually doing.
+	p.name = strings.ReplaceAll(p.wtBranch, "/", "-")
 	p.nameFromBranch = true
 }
 

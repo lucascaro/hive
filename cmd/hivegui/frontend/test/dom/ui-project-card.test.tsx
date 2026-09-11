@@ -52,7 +52,8 @@ function make(over: Partial<ProjectCardProps> = {}) {
     root,
     header: part<HTMLElement>('.hv-project-card__header'),
     name: part<HTMLElement>('.hv-project-card__name'),
-    body: part<HTMLUListElement>('.hv-project-card__body'),
+    body: part<HTMLElement>('.hv-project-card__body'),
+    rows: part<HTMLUListElement>('.hv-project-card__rows'),
     rerender: r.rerender,
   };
 }
@@ -141,9 +142,14 @@ describe('ProjectCard', () => {
       </ProjectCard>,
       { container: document.body.appendChild(document.createElement('ul')) },
     );
+    // The rows keep their own <ul> — drag-reorder inserts its placeholder
+    // as a sibling <li> — inside the clip wrapper the collapse animates.
     const body = r.container.querySelector('.hv-project-card__body');
-    expect(body?.tagName).toBe('UL');
-    expect(body?.querySelector('[data-sid="s1"]')).not.toBeNull();
+    const rows = r.container.querySelector('.hv-project-card__rows');
+    expect(body?.tagName).toBe('DIV');
+    expect(rows?.tagName).toBe('UL');
+    expect(rows?.parentElement).toBe(body);
+    expect(rows?.querySelector('[data-sid="s1"]')).not.toBeNull();
   });
 
   // What updateProjectCard() used to be. The build path and the patch path

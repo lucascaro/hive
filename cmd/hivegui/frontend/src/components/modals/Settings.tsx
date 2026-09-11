@@ -63,6 +63,13 @@ import {
   writeOverrides,
   type ThemeName,
 } from '../../theme/theme.js';
+import {
+  DENSITIES,
+  DENSITY_KEY,
+  applyDensity,
+  readDensity,
+  type Density,
+} from '../../theme/density.js';
 import { applyUpdateAndRestart } from '../../app/banners.js';
 import { applyXtermTheme } from '../../app/session-term.js';
 import { closeSettings, splitCommand } from '../../app/modals/settings.js';
@@ -132,6 +139,7 @@ function SettingsDialog({ root }: { root: HTMLElement }): ReactNode {
   const [loadFailed, setLoadFailed] = useState(false);
   const [error, setError] = useState('');
   const [theme, setTheme] = useState<ThemeName>(() => readTheme());
+  const [density, setDensity] = useState<Density>(() => readDensity());
   const [overrides, setOverrides] = useState(() =>
     readOverrides().replace(/\n\s*/g, '\n'),
   );
@@ -302,6 +310,16 @@ function SettingsDialog({ root }: { root: HTMLElement }): ReactNode {
   // together cannot drift apart: the attribute, the terminals (xterm
   // caches its palette; a CSS change alone leaves every open session on
   // the old colours), and the stored choice.
+  function selectDensity(d: Density) {
+    setDensity(d);
+    applyDensity(d);
+    try {
+      localStorage.setItem(DENSITY_KEY, d);
+    } catch {
+      // Denied storage: applied for this session, not remembered.
+    }
+  }
+
   function selectPreset(name: ThemeName) {
     setTheme(name);
     applyTheme(name);
@@ -661,6 +679,22 @@ function SettingsDialog({ root }: { root: HTMLElement }): ReactNode {
                 ))
               ),
             )}
+          </select>
+        </label>
+        <label className="hv-field">
+          <span className="hv-field__label">Sidebar density</span>
+          <select
+            id="settings-density"
+            className="hv-input"
+            aria-label="Sidebar density"
+            value={density}
+            onChange={(e) => selectDensity(e.target.value as Density)}
+          >
+            {DENSITIES.map((d) => (
+              <option key={d.id} value={d.id}>
+                {d.label}
+              </option>
+            ))}
           </select>
         </label>
         <p className="settings-hint">

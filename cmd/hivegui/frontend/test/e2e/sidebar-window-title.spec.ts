@@ -89,7 +89,7 @@ test.describe('#248 sidebar window titles', () => {
     // AGENTS.md: status dots must appear on every session row. A taller
     // row must not push them out or let the text column cover them —
     // elementFromPoint is the only honest check for that.
-    for (const sel of ['.hv-session-row__state', '.hv-session-row__swatch']) {
+    for (const sel of ['.hv-session-row__state', '.hv-session-row__colour']) {
       const box = await row.locator(sel).boundingBox();
       if (!box) throw new Error(`${sel} has no box`);
       const hit = await page.evaluate(
@@ -186,16 +186,50 @@ test.describe('#248 sidebar window titles', () => {
     const input = row.locator('.name-input');
     await expect(input).toBeVisible();
 
-    // The input replaces the name inside the stacked text column; in a
-    // column flex `flex: 1` would stretch it vertically instead of
-    // filling the row, so check it actually spans the column.
+    // The input replaces the name span, so it has to claim the same grid
+    // cell — an unplaced grid child auto-flows to a new line and wraps
+    // the row. Check it fills the name's column rather than collapsing
+    // or pushing the row taller.
     const inputBox = await input.boundingBox();
-    const textBox = await row.locator('.hv-session-row__text').boundingBox();
-    if (!inputBox || !textBox) throw new Error('rename input not laid out');
-    expect(inputBox.width).toBeGreaterThan(textBox.width * 0.8);
+    const subBox = await row.locator('.hv-session-row__sub').boundingBox();
+    const rowBox = await row.boundingBox();
+    if (!inputBox || !subBox || !rowBox)
+      throw new Error('rename input not laid out');
+    expect(inputBox.width).toBeGreaterThan(subBox.width * 0.5);
+    expect(inputBox.y + inputBox.height).toBeLessThanOrEqual(subBox.y + 1);
+    expect(rowBox.height).toBeLessThan(48);
     // The title stays put underneath while the name is being edited.
     await expect(row.locator('.hv-session-row__sub')).toBeVisible();
   });
+  // The redesign's line 2: the title runs from the name's column to the
+  // row's right edge instead of stopping before the meta column. Measured
+  // rather than asserted on CSS text — the dom suite mounts no
+  // stylesheet and cannot see this at all.
+  test('the window title spans the row, and the row is still 40px', async ({
+    page,
+  }) => {
+    await boot(page);
+    await setTitle(page, 0, 'npm run build');
+
+    const row = rows(page).first();
+    const rowBox = await row.boundingBox();
+    const subBox = await row.locator('.hv-session-row__sub').boundingBox();
+    const nameBox = await row.locator('.hv-session-row__name').boundingBox();
+    if (!rowBox || !subBox || !nameBox) throw new Error('row not laid out');
+
+    // Starts at the name's column…
+    expect(Math.abs(subBox.x - nameBox.x)).toBeLessThanOrEqual(1);
+    // …and reaches further right than line 1 does, which is the whole
+    // change: the name stops before idea/worktree/meta, line 2 does not.
+    expect(subBox.x + subBox.width).toBeGreaterThan(nameBox.x + nameBox.width);
+    // …to within the row's own right padding.
+    expect(rowBox.x + rowBox.width - (subBox.x + subBox.width)).toBeLessThan(
+      16,
+    );
+    // Purely horizontal: height is unchanged.
+    expect(rowBox.height).toBeLessThan(44);
+  });
+
   // New in phase 3: line 2 is never blank-and-hidden — when there is no
   // window title it carries the state words instead (components.md ›
   // sessionRow).

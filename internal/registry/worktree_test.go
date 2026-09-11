@@ -119,13 +119,15 @@ func TestCreate_WorktreeHappyPath(t *testing.T) {
 		t.Fatalf("expected WorktreePath to be set; got empty")
 	}
 	// Session name should be derived from the worktree branch so the
-	// user can find the worktree dir from the session label, with the
-	// agent appended and any "/" in the branch folded to "-".
-	if !strings.Contains(e.Name, e.WorktreeBranch) && !strings.Contains(e.Name, strings.ReplaceAll(e.WorktreeBranch, "/", "-")) {
-		t.Errorf("session name %q should contain worktree branch %q", e.Name, e.WorktreeBranch)
-	}
-	if !strings.HasSuffix(e.Name, " claude") {
-		t.Errorf("session name %q should end with agent suffix \" claude\"", e.Name)
+	// user can find the worktree dir from the session label, with any
+	// "/" in the branch folded to "-".
+	// Exactly the branch, not merely containing it: "feature-foo-claude"
+	// contains the branch and still carries the agent id. The agent is not
+	// part of the name (agent.RandomName) — every surface that shows a name
+	// shows the agent beside it, and trimming it back out at display time
+	// cannot tell a generated name from one the user typed.
+	if want := strings.ReplaceAll(e.WorktreeBranch, "/", "-"); e.Name != want {
+		t.Errorf("session name = %q; want exactly the flattened branch %q", e.Name, want)
 	}
 	if strings.Contains(e.Name, "/") {
 		t.Errorf("session name %q must not contain slashes (path-unsafe)", e.Name)

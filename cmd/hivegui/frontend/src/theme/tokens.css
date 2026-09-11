@@ -54,8 +54,11 @@
   --radius-md: 6px;
   --shadow-popover: 0 8px 24px rgba(0, 0, 0, 0.45);
   --motion-fast: 120ms;
+  /* Collapse/expand of the project card and worktree group panel. Mirrored
+     by COLLAPSE_MS in lib/use-collapse.ts, which times the clip. */
+  --motion-collapse: 160ms;
   --motion-pulse: 1.6s;
 }
 @media (prefers-reduced-motion: reduce) {
-  :root { --motion-fast: 0s; --motion-pulse: 0s; }
+  :root { --motion-fast: 0s; --motion-pulse: 0s; --motion-collapse: 0s; }
 }

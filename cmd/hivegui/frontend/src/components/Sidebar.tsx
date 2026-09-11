@@ -67,6 +67,7 @@ import { IconButton } from './IconButton.js';
 import { ProjectCard } from './ProjectCard.js';
 import { runReorder } from '../app/reorder-runner.js';
 import { SessionRow } from './SessionRow.js';
+import { WorktreeGroup } from './WorktreeGroup.js';
 import {
   clusterDropOps,
   clusterSessions,
@@ -212,6 +213,8 @@ interface SessionItemProps {
       SessionItem is memoized on primitives, and handing it the member list
       would re-render every row on every unrelated session event. */
   worktreeShared: number;
+  /** Inside a group panel whose header already states this row's name. */
+  titleOnly: boolean;
 }
 
 // memo, and every other prop a primitive or the session's own object
@@ -265,6 +268,7 @@ const SessionItem = memo(function SessionItem(p: SessionItemProps) {
       minimized={p.minimized}
       index={p.index}
       worktreeShared={p.worktreeShared}
+      titleOnly={p.titleOnly}
       nameRef={nameRef}
       onSelect={() => p.sidebar.switchTo(id)}
       onMinimize={() => p.sidebar.minimizeSession(id)}
@@ -339,6 +343,70 @@ interface ProjectItemProps {
   ideaCount: number;
   /** Every idea, for the per-row "started from an idea" glyph. */
   ideas: IdeaInfo[];
+}
+
+// The rows of one project card, with each run of worktree-sharing
+// sessions wrapped in a panel. The runs are already adjacent —
+// clusterSessions() placed them, and that IS the painted order
+// (lib/worktree-groups.ts › THE ONE ORDER) — so this walks the list it
+// is handed rather than re-deriving an order of its own.
+function renderRows(
+  o: ProjectItemProps,
+  groups: Map<string, string[]>,
+): ReactNode[] {
+  const item = (s: SessionInfo, shared: number, titleOnly: boolean) => (
+    <SessionItem
+      key={s.id}
+      session={s}
+      index={o.hints.get(s.id) ?? null}
+      selected={s.id === o.activeId}
+      minimized={o.minimizedSessions.has(s.id)}
+      // A string, not the IdeaInfo: SessionItem is memoized on
+      // primitives, and a fresh object here would re-render every
+      // row on every unrelated idea event.
+      ideaText={ideaForSession(o.ideas, s.id)?.text ?? ''}
+      worktreeShared={shared}
+      titleOnly={titleOnly}
+      sidebar={o.props}
+    />
+  );
+
+  const out: ReactNode[] = [];
+  for (let i = 0; i < o.sessions.length; ) {
+    const key = worktreeKey(o.sessions[i]);
+    const members = key ? groups.get(key) : undefined;
+    if (!members || members.length < 2) {
+      out.push(item(o.sessions[i], 1, false));
+      i++;
+      continue;
+    }
+    const run: SessionInfo[] = [];
+    while (i < o.sessions.length && worktreeKey(o.sessions[i]) === key) {
+      run.push(o.sessions[i]);
+      i++;
+    }
+    const head = run[0];
+    const branch = head.worktreeBranch ?? head.worktree_branch ?? '';
+    // The name registry/create.go gives a worktree session: the branch
+    // with slashes flattened. A member still carrying it is saying
+    // nothing the panel header does not already say; a member whose name
+    // differs was renamed on purpose and keeps it.
+    const defaultName = branch ? branch.replaceAll('/', '-') : '';
+    out.push(
+      <WorktreeGroup
+        key={`wt:${key}`}
+        branch={branch}
+        count={run.length}
+        color={head.color ?? ''}
+        attention={attentionSummary(run)}
+      >
+        {run.map((s) =>
+          item(s, run.length, !!defaultName && (s.name ?? '') === defaultName),
+        )}
+      </WorktreeGroup>,
+    );
+  }
+  return out;
 }
 
 function ProjectItem(o: ProjectItemProps) {
@@ -453,21 +521,7 @@ function ProjectItem(o: ProjectItemProps) {
         commit(card, above, e.nativeEvent);
       }}
     >
-      {o.sessions.map((s) => (
-        <SessionItem
-          key={s.id}
-          session={s}
-          index={o.hints.get(s.id) ?? null}
-          selected={s.id === o.activeId}
-          minimized={o.minimizedSessions.has(s.id)}
-          // A string, not the IdeaInfo: SessionItem is memoized on
-          // primitives, and a fresh object here would re-render every
-          // row on every unrelated idea event.
-          ideaText={ideaForSession(o.ideas, s.id)?.text ?? ''}
-          worktreeShared={groups.get(worktreeKey(s))?.length ?? 1}
-          sidebar={o.props}
-        />
-      ))}
+      {renderRows(o, groups)}
     </ProjectCard>
   );
 }

@@ -34,10 +34,18 @@
   white-space: nowrap;
 }
 
+/* The pinned project label's height: the group header's sticky offset is
+   read off it, so the two can never disagree. */
+#projects { --sidebar-project-header-h: 26px; }
+
 #sessions, #projects {
   list-style: none;
   margin: 0;
-  padding: 4px 0;
+  /* The right gutter clears #sidebar-resizer (layout.css: 5px wide,
+     z-index 20, pinned to the sidebar's right edge). Without it the row's
+     colour bar — which is also the colour picker — sits underneath the
+     resizer and cannot be clicked at all. */
+  padding: 4px var(--space-2) 4px 0;
   flex: 1;
   overflow-y: auto;
   overflow-x: hidden;
@@ -59,3 +67,132 @@
 }
 
 
+
+/* Worktree group — docs/design-docs/ui/components.md › worktreeGroup.
+   The one box in the sidebar tree, so boxing means one thing: these
+   sessions share a working directory. */
+.hv-worktree-group {
+  position: relative;
+  list-style: none;
+  margin: var(--space-1) var(--space-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--surface);
+}
+/* NOT `overflow: hidden`. Clipping would make the panel the nearest
+   scroll container, and the sticky header below would then stick to a
+   box that never scrolls — doing nothing at all, invisibly. The header
+   rounds its own corners instead. */
+.hv-worktree-group__header {
+  /* Nested under the project label, not over it: scrolled to any point
+     inside a group you can see both the project and the branch. */
+  position: sticky;
+  top: var(--sidebar-project-header-h);
+  z-index: 2;
+  display: grid;
+  grid-template-columns: 14px minmax(0, 1fr) auto;
+  align-items: center;
+  column-gap: var(--space-2);
+  padding: var(--space-1) var(--space-2);
+  background: var(--surface-raised);
+  border-bottom: 1px solid var(--border);
+  border-radius: var(--radius-md) var(--radius-md) 0 0;
+}
+.hv-worktree-group__branch {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--fg-muted);
+  font-size: var(--text-sm);
+}
+.hv-worktree-group__count {
+  color: var(--fg-subtle);
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+  font-variant-numeric: tabular-nums;
+}
+.hv-worktree-group__chevron {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--fg-subtle);
+  cursor: pointer;
+}
+.hv-worktree-group__chevron:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+/* Same mechanism as the project card's body — and the same reason the
+   clip is conditional rather than permanent (lib/use-collapse.ts). */
+.hv-worktree-group__body {
+  display: grid;
+  grid-template-rows: 1fr;
+  /* `visibility` is stepped, not eased: it flips to visible immediately on
+     expand (delay 0) and only AFTER the slide on collapse (delay =
+     duration). Clipping alone would leave the hidden rows in the tab
+     order and readable by a screen reader — a collapsed panel has to be
+     gone, not merely invisible. */
+  visibility: visible;
+  transition:
+    grid-template-rows var(--motion-collapse) ease,
+    visibility 0s;
+}
+.hv-worktree-group__rows {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  min-height: 0;
+}
+.hv-worktree-group[data-collapsed] .hv-worktree-group__body {
+  grid-template-rows: 0fr;
+  visibility: hidden;
+  transition:
+    grid-template-rows var(--motion-collapse) ease,
+    visibility 0s linear var(--motion-collapse);
+}
+.hv-worktree-group[data-collapsed] .hv-worktree-group__body,
+.hv-worktree-group[data-animating] .hv-worktree-group__body {
+  overflow: hidden;
+}
+
+/* One colour bar for the whole group: members share a colour, so a bar
+   per row would be three marks for one fact. The per-row bar is hidden,
+   but the row's colour INPUT stays — the picker's hit target has to be
+   per-row or it could not set one session's colour. */
+.hv-worktree-group::after {
+  content: '';
+  position: absolute;
+  right: 0;
+  top: 0;
+  bottom: 0;
+  width: 3px;
+  border-radius: 0 var(--radius-md) var(--radius-md) 0;
+  background: var(--session-color, var(--fg-subtle));
+}
+.hv-worktree-group .hv-session-row__colour { background: transparent; }
+.hv-worktree-group .hv-session-row:hover .hv-session-row__colour,
+.hv-worktree-group .hv-session-row__colour:has(input:focus-visible) {
+  background: var(--session-color, var(--fg-subtle));
+  z-index: 1;
+}
+
+/* A collapsed panel hides its rows, and with them their state icons —
+   which AGENTS.md forbids going silent. The header takes over: the same
+   count and icon the collapsed project card and the minimized chip show,
+   off the same attentionSummary(). */
+.hv-worktree-group__alert {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  color: var(--state-attention);
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+  font-variant-numeric: tabular-nums;
+}

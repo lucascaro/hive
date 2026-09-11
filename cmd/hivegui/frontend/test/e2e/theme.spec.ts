@@ -852,3 +852,98 @@ test.describe('Settings > Appearance', () => {
       .toBe('#123456');
   });
 });
+
+// Attention pulses the row's ground; selection owns the static one
+// (patterns.md › Selection vs attention). With motion disabled the pulse
+// becomes a static tint and BOTH grounds are on screen at once, so the
+// tint's alpha has to stay below --sel — otherwise a selected row that
+// wants attention stops reading as selected. Asserted rather than
+// commented, because the failure is a judgement call no unit test sees.
+test('the attention tint stays quieter than the selection ground', async ({
+  page,
+}) => {
+  await page.emulateMedia({ reducedMotion: 'reduce' });
+  await boot(page);
+  // Read the REAL elements: a probe span painted with a hand-copied
+  // color-mix() only re-states the stylesheet, and deleting the
+  // @media (prefers-reduced-motion) block would leave such a test green.
+  await page.evaluate(() => window.__hive.addSession?.('second'));
+  await page.waitForFunction(
+    () => (window.__hive.state?.sessions.length ?? 0) >= 2,
+  );
+  await page.evaluate(() => {
+    const attention = (window.__hive.state?.sessions ?? [])[0];
+    if (!attention) throw new Error('no mock session');
+    attention.needs_attention = true;
+    window.__hive.emit(
+      'session:event',
+      JSON.stringify({ kind: 'attention', session: attention }),
+    );
+  });
+  const row = page.locator('#projects .hv-session-row').first();
+  await expect(row).toHaveAttribute('data-state', 'attention');
+
+  const paint = await row.evaluate((el) => {
+    const after = getComputedStyle(el, '::after');
+    const selected = document.querySelector<HTMLElement>(
+      '.hv-session-row[data-selected]',
+    );
+    const rgb = (painted: string) => {
+      const nums = painted.match(/-?[\d.]+/g);
+      if (!nums || nums.length < 3) throw new Error(`unparsed: ${painted}`);
+      const [r, g, b] = nums.slice(0, 3).map(Number.parseFloat);
+      const alpha = nums.length > 3 ? Number.parseFloat(nums[3]) : 1;
+      const scale = painted.startsWith('color(') ? 255 : 1;
+      return { r: r * scale, g: g * scale, b: b * scale, alpha };
+    };
+    return {
+      animation: after.animationName,
+      opacity: Number.parseFloat(after.opacity),
+      tint: rgb(after.backgroundColor),
+      sel: selected
+        ? rgb(getComputedStyle(selected).backgroundColor)
+        : rgb(getComputedStyle(document.documentElement).backgroundColor),
+      ground: rgb(getComputedStyle(el).backgroundColor),
+    };
+  });
+
+  // Static, and actually painted — not an animation the media query only
+  // appeared to stop.
+  expect(paint.animation).toBe('none');
+  expect(paint.opacity).toBe(1);
+  expect(paint.tint.alpha).toBeGreaterThan(0);
+  // …and quieter than selection's ground, or a selected row that wants
+  // attention stops reading as selected.
+  const lum = (c: { r: number; g: number; b: number }) =>
+    0.2126 * c.r + 0.7152 * c.g + 0.0722 * c.b;
+  const overlaid =
+    lum(paint.ground) * (1 - paint.tint.alpha) +
+    lum(paint.tint) * paint.tint.alpha;
+  expect(Math.abs(overlaid - lum(paint.ground))).toBeLessThan(
+    Math.abs(lum(paint.sel) - lum(paint.ground)),
+  );
+});
+
+// The pulse itself: a row wanting attention carries an animated overlay,
+// and that overlay is an ::after on the row — not the row's own
+// background, which selection owns.
+test('an attention row pulses an overlay, not its own background', async ({
+  page,
+}) => {
+  await boot(page);
+  await page.evaluate(() => {
+    const s = window.__hive.state?.sessions[0];
+    if (!s) throw new Error('no mock session');
+    s.needs_attention = true;
+    window.__hive.emit(
+      'session:event',
+      JSON.stringify({ kind: 'attention', session: s }),
+    );
+  });
+  const row = page.locator('#projects .hv-session-row').first();
+  await expect(row).toHaveAttribute('data-state', 'attention');
+  const name = await row.evaluate(
+    (el) => getComputedStyle(el, '::after').animationName,
+  );
+  expect(name).toBe('hv-attn-tint');
+});
