@@ -438,6 +438,13 @@ func (s *session) dispatch(req rpcReq) {
 			return
 		}
 		s.respond(req.ID, "", s.controlWriteJSON(wire.FrameRenameWorktree, p))
+	case "SetWorktreeLabel":
+		var p wire.SetWorktreeLabelReq
+		if err := parseParams(req.Params, &p); err != nil {
+			s.respond(req.ID, nil, err)
+			return
+		}
+		s.respond(req.ID, "", s.controlWriteJSON(wire.FrameSetWorktreeLabel, p))
 	case "OpenSession":
 		var p struct {
 			ID   string `json:"id"`

@@ -24,6 +24,17 @@ package buildinfo
 // History (newest first), so a bump is a decision with a record and
 // not just a number going up:
 //
+//	9 — Worktree group names. SET_WORKTREE_LABEL (0x2a) sets or clears
+//	    the user-authored name of a worktree group, persisted on the
+//	    owning project (ProjectMetaFile.worktree_labels) and delivered
+//	    on ProjectInfo.worktree_labels, broadcast as PROJECT_EVENT so
+//	    every open sidebar repaints rather than only the connection
+//	    that set it. An old daemon does not know the frame and would
+//	    drop it on the floor, so a new GUI would show the name it just
+//	    typed, report success, and persist nothing — the silent
+//	    wrong-answer mode this constant exists to prevent. Renames no
+//	    session, branch or directory, and is the one worktree mutation
+//	    allowed while sessions live in the worktree.
 //	8 — DEC private modes survive a reattach. The snapshot and the
 //	    resize replay now end by re-asserting whatever the program had
 //	    set — bracketed paste (2004), mouse tracking (9/1000/1002/1003),
@@ -83,7 +94,7 @@ package buildinfo
 //	    before this cannot see or clear the flag.
 //	1 — first contract; everything up to and including the
 //	    CLIENT_COMMAND relay.
-const DaemonContract = 8
+const DaemonContract = 9
 
 // Identity is this binary's full build identity. `hived --version
 // --json` prints it, and Welcome carries the same three values, so a

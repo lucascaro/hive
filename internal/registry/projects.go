@@ -8,6 +8,7 @@ import (
 	"os"
 	"path/filepath"
 	"slices"
+	"strings"
 	"time"
 
 	"github.com/google/uuid"
@@ -18,6 +19,10 @@ import (
 
 // ErrProjectNotFound is returned when a project ID isn't known.
 var ErrProjectNotFound = errors.New("registry: project not found")
+
+// ErrWorktreeLabelTooLong is returned when a worktree group's name
+// exceeds wire.MaxWorktreeLabel. Rejected, never truncated.
+var ErrWorktreeLabelTooLong = errors.New("registry: worktree label too long")
 
 // ListProjects returns a snapshot of all projects in display order.
 func (r *Registry) ListProjects() []wire.ProjectInfo {
@@ -54,6 +59,12 @@ func (r *Registry) EnsureDefaultProject(cwd string) (*Project, error) {
 type OrphanWorktreeCandidate struct {
 	Root string // repository root the worktree belongs to
 	Path string // absolute path of the worktree directory
+	// ProjectID is the project the candidate was found under, carried so
+	// the reclaim can drop the worktree's group name along with the
+	// directory. Empty is tolerated (pruneWorktreeLabel no-ops), which is
+	// what happens for a candidate discovered under a project that has
+	// since been deleted.
+	ProjectID string
 }
 
 // ScanOrphanWorktrees lists the worktree directories that exist right
@@ -98,7 +109,7 @@ func (r *Registry) ScanOrphanWorktrees() []OrphanWorktreeCandidate {
 				continue // two projects under one repo root
 			}
 			seen[path] = true
-			out = append(out, OrphanWorktreeCandidate{Root: root, Path: path})
+			out = append(out, OrphanWorktreeCandidate{Root: root, Path: path, ProjectID: p.ID})
 		}
 	}
 	return out
@@ -162,7 +173,7 @@ func (r *Registry) ReclaimOrphanWorktrees(ctx context.Context, candidates []Orph
 			log.Printf("registry: keeping orphan worktree %s (uncommitted=%v unpushed=%d unknown=%v)",
 				c.Path, st.Uncommitted, st.Unpushed, st.Unknown)
 		default:
-			r.reclaimOne(c.Root, c.Path)
+			r.reclaimOne(c.Root, c.Path, c.ProjectID)
 		}
 	}
 }
@@ -191,7 +202,7 @@ func (r *Registry) inspectWorktree(root, path string) (worktree.Status, error) {
 // to git. The claim check and the removal must share gitMu: adoption
 // (create.go's adoptDetachedWorktree) takes gitMu too, so a create
 // cannot slip a claim in between them.
-func (r *Registry) reclaimOne(root, path string) {
+func (r *Registry) reclaimOne(root, path, projectID string) {
 	r.gitMu.Lock()
 	defer r.gitMu.Unlock()
 	if r.worktreeClaimed(path) {
@@ -206,7 +217,12 @@ func (r *Registry) reclaimOne(root, path string) {
 	log.Printf("registry: reclaiming orphan worktree %s", path)
 	if err := worktree.Cleanup(root, path); err != nil {
 		log.Printf("registry: orphan cleanup failed for %s: %v", path, err)
+		return
 	}
+	// The directory is gone; its group name goes with it. Same rule as
+	// every other teardown path — a name outliving its worktree gets
+	// inherited by whatever is created at that path next.
+	r.pruneWorktreeLabel(projectID, path)
 }
 
 // worktreeClaimed reports whether any registry entry currently owns
@@ -460,6 +476,159 @@ func (r *Registry) UpdateProject(req wire.UpdateProjectReq) (*Project, error) {
 	}
 	r.broadcastProject(wire.ProjectEventUpdated, info)
 	return p, nil
+}
+
+// SetWorktreeLabel names one of a project's worktree groups, or clears
+// the name when label is empty. The label is what the sidebar shows
+// beside the branch; it renames nothing — not the sessions, not the
+// branch, not the directory.
+//
+// Deliberately NOT gated on worktree occupancy, unlike RemoveWorktree
+// and RenameWorktree: those move or delete the directory out from under
+// a running shell, while a label is metadata. Naming a group of running
+// sessions is the whole feature, so a live-session refusal here would
+// make it useless. There is a test pinning that.
+//
+// path is stored verbatim rather than resolved — see SetWorktreeLabelReq
+// for why the client's own spelling is the right key.
+func (r *Registry) SetWorktreeLabel(projectID, path, label string) error {
+	if path == "" {
+		return errors.New("registry: empty worktree path")
+	}
+	// The key is bounded for the same reason the label is: it is stored
+	// verbatim, persisted to project.json and re-broadcast to every
+	// window, so the only other ceiling is the 1 MiB frame cap. NOT
+	// resolved through managedPath — SetWorktreeLabelReq documents why
+	// the client's own spelling has to survive — so a length check is
+	// the whole of what can be validated here.
+	if len(path) > wire.MaxWorktreePath {
+		return fmt.Errorf("registry: worktree path too long: %d bytes, limit %d",
+			len(path), wire.MaxWorktreePath)
+	}
+	r.mu.Lock()
+	p, ok := r.projects[projectID]
+	if !ok {
+		r.mu.Unlock()
+		return ErrProjectNotFound
+	}
+	label = strings.TrimSpace(label)
+	// Bounded before it is persisted and broadcast. Without this the
+	// only ceiling is the wire's 1 MiB frame cap, and a label is not a
+	// one-off write: it lands in project.json (read at boot) and is
+	// re-broadcast to every open window on every change.
+	if len(label) > wire.MaxWorktreeLabel {
+		r.mu.Unlock()
+		return fmt.Errorf("%w: %d bytes, limit %d",
+			ErrWorktreeLabelTooLong, len(label), wire.MaxWorktreeLabel)
+	}
+	switch {
+	case label == "":
+		// Delete rather than storing "": an empty value would round-trip
+		// through project.json forever as a key that means nothing.
+		delete(p.WorktreeLabels, path)
+	default:
+		if p.WorktreeLabels == nil {
+			p.WorktreeLabels = map[string]string{}
+		}
+		p.WorktreeLabels[path] = label
+	}
+	if err := r.persistProjectLocked(p); err != nil {
+		r.mu.Unlock()
+		return err
+	}
+	info := p.Info()
+	r.mu.Unlock()
+	// PROJECT_EVENT, not a worktree reply: a worktree mutation answers
+	// only the connection that asked (daemon.sendWorktrees), but a label
+	// has to repaint every open sidebar.
+	r.broadcastProject(wire.ProjectEventUpdated, info)
+	return nil
+}
+
+// remapWorktreeLabel moves a worktree group's name when its directory
+// moves, and deletes it when the directory goes away (dest == ""). No-op
+// when the project has no name for that worktree.
+//
+// It matches on the RESOLVED path rather than on the key itself, because
+// the two halves of this feature disagree about spelling on purpose:
+// SetWorktreeLabel stores the client's verbatim path (so the sidebar's
+// lookup key cannot drift from the key the daemon wrote), while every
+// worktree mutation works in managedPath-resolved form (macOS /var vs
+// /private/var). Comparing resolved forms is what lets one helper serve
+// both without either side having to know which spelling was stored.
+//
+// Called from the worktree lifecycle paths — without it a label outlives
+// its worktree, and a worktree later re-created at the same path (same
+// branch ⇒ same worktree.WorktreePath) silently comes up wearing a
+// deleted group's name.
+func (r *Registry) remapWorktreeLabel(projectID, resolved, dest string) {
+	r.mu.Lock()
+	p, ok := r.projects[projectID]
+	if !ok || len(p.WorktreeLabels) == 0 {
+		r.mu.Unlock()
+		return
+	}
+	// Collect first, then decide: ranging a map and keeping the last hit
+	// would make the surviving name depend on Go's randomised iteration
+	// order, so a rename could carry a different name on each run. Only
+	// reachable if two spellings of one worktree somehow hold different
+	// names — every shipped client writes the daemon-supplied
+	// SessionInfo.worktree_path, so they cannot — but "unreachable today"
+	// is a poor reason to leave a coin flip in a user-visible value.
+	var aliases []string
+	for key := range p.WorktreeLabels {
+		if worktree.ResolvePath(key) == resolved {
+			aliases = append(aliases, key)
+		}
+	}
+	changed := len(aliases) > 0
+	if !changed {
+		r.mu.Unlock()
+		return
+	}
+	slices.Sort(aliases)
+	// The key that IS the resolved path wins; failing that, the first in
+	// sorted order. Preferring the exact match keeps the canonical
+	// spelling authoritative rather than letting an alias outrank it.
+	winner := aliases[0]
+	for _, key := range aliases {
+		if key == resolved {
+			winner = key
+			break
+		}
+	}
+	moved := p.WorktreeLabels[winner]
+	for _, key := range aliases {
+		delete(p.WorktreeLabels, key)
+	}
+	if dest != "" && moved != "" {
+		p.WorktreeLabels[dest] = moved
+	}
+	if err := r.persistProjectLocked(p); err != nil {
+		// The in-memory map is already updated; a failed write means the
+		// label reappears on the next daemon start. Worth a log, not
+		// worth failing the removal the user asked for.
+		log.Printf("registry: worktree label remap for %s persisted badly: %v", resolved, err)
+	}
+	info := p.Info()
+	r.mu.Unlock()
+	r.broadcastProject(wire.ProjectEventUpdated, info)
+}
+
+// pruneWorktreeLabel drops a worktree group's name because its directory
+// is gone. Thin wrapper over remapWorktreeLabel so every teardown site
+// reads the same, and so "the worktree died, forget its name" is stated
+// once rather than as a bare empty-string argument at four call sites.
+//
+// The path is resolved here rather than by callers: teardown paths carry
+// whatever spelling the entry or the candidate held, while the map may be
+// keyed by the client's. remapWorktreeLabel compares resolved forms, so
+// this only has to hand it a resolved needle.
+func (r *Registry) pruneWorktreeLabel(projectID, wtPath string) {
+	if projectID == "" || wtPath == "" {
+		return
+	}
+	r.remapWorktreeLabel(projectID, worktree.ResolvePath(wtPath), "")
 }
 
 func (r *Registry) moveProjectLocked(id string, newOrder int) {

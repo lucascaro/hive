@@ -115,6 +115,28 @@
   background: var(--surface-raised);
   border-bottom: 1px solid var(--border);
 }
+/* The whole middle cell: the group's name (when it has one) followed by
+   the branch. One element so the rename editor has a single mount target
+   whether or not a name exists. */
+.hv-worktree-group__title {
+  display: inline-flex;
+  align-items: baseline;
+  gap: var(--space-2);
+  min-width: 0;
+  overflow: hidden;
+}
+/* The operator's word for the work. Full --fg, so it outranks the branch
+   beside it: the name is what the group IS, the branch is where it lives.
+   Shrinks last — at the 220px sidebar floor the name is what survives. */
+.hv-worktree-group__label {
+  flex: 0 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--fg);
+  font-size: var(--text-sm);
+}
 .hv-worktree-group__branch {
   display: inline-flex;
   align-items: center;
@@ -125,6 +147,45 @@
   white-space: nowrap;
   color: var(--fg-muted);
   font-size: var(--text-sm);
+}
+/* Where the ellipsis actually happens. The parent is an inline-flex box,
+   and text-overflow does not apply to the anonymous flex item its bare
+   text would form — so the name gets a real box of its own. */
+.hv-worktree-group__branch-name {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+/* Gives up its width first when a name is present, so the two never
+   fight for the same ellipsis. It is never dropped entirely: stating the
+   branch is the panel's whole reason to exist. */
+.hv-worktree-group__label + .hv-worktree-group__branch {
+  flex: 1 1 auto;
+  /* The floor that makes "never dropped entirely" true rather than merely
+     intended. Both boxes carry min-width: 0 so they can ellipsize, which
+     also means a long enough persisted name could squeeze the branch to
+     nothing — the label is operator-supplied and unbounded. Reserving a
+     few characters forces the NAME to ellipsize first, which is the right
+     way round: the name is recoverable from the tooltip and the editor,
+     the branch is what the panel exists to state. */
+  min-width: 7ch;
+  color: var(--fg-subtle);
+  font-size: var(--text-xs);
+}
+/* Matches .project-name-input (project-card.css) — same editor, same
+   chrome, one cell narrower. */
+.hv-worktree-group .group-name-input {
+  flex: 1;
+  min-width: 0;
+  padding: 2px var(--space-1);
+  background: var(--bg);
+  color: var(--fg);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  font-family: inherit;
+  font-size: var(--text-sm);
+  outline: none;
 }
 .hv-worktree-group__count {
   color: var(--fg-subtle);

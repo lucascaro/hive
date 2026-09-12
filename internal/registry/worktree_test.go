@@ -534,7 +534,7 @@ func TestDisposeWorktree_RefusesUnmanagedPaths(t *testing.T) {
 	precious := filepath.Join(p.Cwd, "PRECIOUS.txt")
 	mustWriteFile(t, precious, "do not delete me")
 
-	r.disposeWorktree("sess-1", p.Cwd, p.Cwd, "main", false)
+	r.disposeWorktree("sess-1", p.ID, p.Cwd, p.Cwd, "main", false)
 	if _, err := os.Stat(precious); err != nil {
 		t.Fatalf("teardown deleted from the project's own checkout: %v", err)
 	}
@@ -542,7 +542,7 @@ func TestDisposeWorktree_RefusesUnmanagedPaths(t *testing.T) {
 	// Even asked explicitly. removeWorktree means "the user confirmed
 	// losing this worktree's work", not "delete whatever path you were
 	// handed" — the managed check comes first and is not overridable.
-	r.disposeWorktree("sess-1", p.Cwd, p.Cwd, "main", true)
+	r.disposeWorktree("sess-1", p.ID, p.Cwd, p.Cwd, "main", true)
 	if _, err := os.Stat(precious); err != nil {
 		t.Fatalf("an explicit remove deleted the project's own checkout: %v", err)
 	}
@@ -551,7 +551,7 @@ func TestDisposeWorktree_RefusesUnmanagedPaths(t *testing.T) {
 	outside := t.TempDir()
 	keep := filepath.Join(outside, "KEEP.txt")
 	mustWriteFile(t, keep, "unrelated")
-	r.disposeWorktree("sess-1", p.Cwd, outside, "main", true)
+	r.disposeWorktree("sess-1", p.ID, p.Cwd, outside, "main", true)
 	if _, err := os.Stat(keep); err != nil {
 		t.Fatalf("teardown deleted an unrelated directory: %v", err)
 	}
@@ -577,7 +577,7 @@ func TestDisposeWorktree_RemovesManagedWorktree(t *testing.T) {
 		t.Fatalf("worktree missing before teardown: %v", err)
 	}
 
-	r.disposeWorktree(sess.ID, p.Cwd, wtPath, sess.WorktreeBranch, false)
+	r.disposeWorktree(sess.ID, p.ID, p.Cwd, wtPath, sess.WorktreeBranch, false)
 	if _, err := os.Stat(wtPath); !os.IsNotExist(err) {
 		t.Errorf("pristine managed worktree survived teardown: err=%v", err)
 	}

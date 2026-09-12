@@ -166,3 +166,60 @@ describe('validate', () => {
     expect(input.isConnected).toBe(false);
   });
 });
+
+// allowEmpty is what lets the worktree group label be CLEARED. It is
+// opt-in precisely because "" means different things per caller: an
+// unnamed session or project is a row the user cannot point at, while
+// an unnamed worktree group is just a group that shows its branch.
+describe('allowEmpty', () => {
+  function startWith(opts: { allowEmpty?: boolean }, value = 'name') {
+    const host = document.createElement('div');
+    document.body.append(host);
+    const onCommit = vi.fn();
+    const input = beginInlineRename({
+      value,
+      className: 'name-input',
+      mount: (el) => host.append(el),
+      unmount: (el) => el.remove(),
+      onCommit,
+      ...opts,
+    });
+    return { input, onCommit };
+  }
+
+  it('swallows an emptied field by default', () => {
+    const { input, onCommit } = startWith({});
+    input.value = '';
+    input.dispatchEvent(
+      new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }),
+    );
+    expect(onCommit).not.toHaveBeenCalled();
+  });
+
+  it('commits an emptied field when opted in', () => {
+    const { input, onCommit } = startWith({ allowEmpty: true });
+    input.value = '';
+    input.dispatchEvent(
+      new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }),
+    );
+    expect(onCommit).toHaveBeenCalledWith('');
+  });
+
+  it('still swallows an unchanged value when opted in', () => {
+    const { input, onCommit } = startWith({ allowEmpty: true }, '');
+    input.value = '';
+    input.dispatchEvent(
+      new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }),
+    );
+    expect(onCommit).not.toHaveBeenCalled();
+  });
+
+  it('never commits on Escape, even when opted in', () => {
+    const { input, onCommit } = startWith({ allowEmpty: true });
+    input.value = '';
+    input.dispatchEvent(
+      new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }),
+    );
+    expect(onCommit).not.toHaveBeenCalled();
+  });
+});

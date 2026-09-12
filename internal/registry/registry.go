@@ -8,6 +8,7 @@ import (
 	"errors"
 	"fmt"
 	"log"
+	"maps"
 	"os"
 	"path/filepath"
 	"slices"
@@ -154,6 +155,9 @@ type Project struct {
 	Cwd     string
 	Order   int
 	Created time.Time
+	// WorktreeLabels names the project's worktree groups, keyed by
+	// worktree path. Nil until the first label is set.
+	WorktreeLabels map[string]string
 }
 
 // Info renders the project as a wire.ProjectInfo.
@@ -165,6 +169,11 @@ func (p *Project) Info() wire.ProjectInfo {
 		Cwd:     p.Cwd,
 		Order:   p.Order,
 		Created: p.Created.UTC().Format(time.RFC3339),
+		// Copied, not aliased: Info() is called under r.mu and the
+		// result outlives the lock (every broadcast site snapshots then
+		// unlocks), so handing out the live map would let a reader walk
+		// it while SetWorktreeLabel writes to it.
+		WorktreeLabels: maps.Clone(p.WorktreeLabels),
 	}
 }
 
@@ -867,6 +876,7 @@ func (r *Registry) load() error {
 		r.projects[meta.ID] = &Project{
 			ID: meta.ID, Name: meta.Name, Color: meta.Color, Cwd: meta.Cwd,
 			Order: len(r.projectOrder), Created: meta.Created,
+			WorktreeLabels: meta.WorktreeLabels,
 		}
 		r.projectOrder = append(r.projectOrder, meta.ID)
 		pseen[meta.ID] = true
@@ -884,6 +894,7 @@ func (r *Registry) load() error {
 			r.projects[meta.ID] = &Project{
 				ID: meta.ID, Name: meta.Name, Color: meta.Color, Cwd: meta.Cwd,
 				Order: meta.Order, Created: meta.Created,
+				WorktreeLabels: meta.WorktreeLabels,
 			}
 			r.projectOrder = append(r.projectOrder, meta.ID)
 		}
@@ -1295,6 +1306,10 @@ func (r *Registry) kill(id string, force, removeWorktree bool) error {
 	// lose the data otherwise.
 	wtPath, wtBranch := e.WorktreePath, e.WorktreeBranch
 	var projectCwd string
+	// The project id travels with the cwd because disposeWorktree needs
+	// it to prune the worktree's group name, and e is gone from the map
+	// by the time that runs.
+	projectID := e.ProjectID
 	if p, ok := r.projects[e.ProjectID]; ok {
 		projectCwd = p.Cwd
 	}
@@ -1405,7 +1420,7 @@ func (r *Registry) kill(id string, force, removeWorktree bool) error {
 		_ = sess.Close()
 	}
 	if wtPath != "" && !worktreeShared {
-		r.disposeWorktree(id, projectCwd, wtPath, wtBranch, removeWorktree)
+		r.disposeWorktree(id, projectID, projectCwd, wtPath, wtBranch, removeWorktree)
 	}
 	_ = os.RemoveAll(dir)
 	r.broadcast(wire.SessionEventRemoved, e.Info())
@@ -1435,7 +1450,7 @@ func (r *Registry) kill(id string, force, removeWorktree bool) error {
 // an explicit remove-the-worktree request, and a worktree that holds
 // nothing (no uncommitted changes, no unpushed commits). Closing a
 // session must never be the thing that destroys work.
-func (r *Registry) disposeWorktree(id, projectCwd, wtPath, wtBranch string, removeWorktree bool) {
+func (r *Registry) disposeWorktree(id, projectID, projectCwd, wtPath, wtBranch string, removeWorktree bool) {
 	r.gitMu.Lock()
 	defer r.gitMu.Unlock()
 	root, err := worktree.Root(projectCwd)
@@ -1443,6 +1458,7 @@ func (r *Registry) disposeWorktree(id, projectCwd, wtPath, wtBranch string, remo
 	case err != nil:
 		log.Printf("registry: kill %s: project cwd %q is not (or no longer) a git repo; falling back to RemoveAll on %s", id, projectCwd, wtPath)
 		_ = os.RemoveAll(wtPath)
+		r.pruneWorktreeLabel(projectID, wtPath)
 	case !worktree.IsManaged(root, wtPath):
 		// Second guard, independent of whatever set WorktreePath:
 		// only ever delete a worktree hive owns. An entry pointing
@@ -1466,6 +1482,8 @@ func (r *Registry) disposeWorktree(id, projectCwd, wtPath, wtBranch string, remo
 			// work at stake.
 			if err := worktree.Cleanup(root, wtPath); err != nil {
 				log.Printf("registry: worktree cleanup failed for %s: %v (branch=%s)", id, err, wtBranch)
+			} else {
+				r.pruneWorktreeLabel(projectID, wtPath)
 			}
 		case ierr != nil:
 			log.Printf("registry: kill %s: cannot inspect worktree %s (%v); keeping it", id, wtPath, ierr)
@@ -1475,6 +1493,8 @@ func (r *Registry) disposeWorktree(id, projectCwd, wtPath, wtBranch string, remo
 		default:
 			if err := worktree.Cleanup(root, wtPath); err != nil {
 				log.Printf("registry: worktree cleanup failed for %s: %v (branch=%s)", id, err, wtBranch)
+			} else {
+				r.pruneWorktreeLabel(projectID, wtPath)
 			}
 		}
 	}
@@ -1620,6 +1640,7 @@ func (r *Registry) persistProjectLocked(p *Project) error {
 	return writeJSON(path, ProjectMetaFile{
 		ID: p.ID, Name: p.Name, Color: p.Color, Cwd: p.Cwd,
 		Order: p.Order, Created: p.Created,
+		WorktreeLabels: p.WorktreeLabels,
 	})
 }
 

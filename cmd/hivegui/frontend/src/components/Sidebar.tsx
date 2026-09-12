@@ -31,9 +31,10 @@ import {
   RestartSession,
   UpdateProject,
   UpdateSession,
+  SetWorktreeLabel,
 } from '../bridge.js';
 import { manualUpdateCheck } from '../app/banners.js';
-import { reportFailure } from '../app/dom.js';
+import { flashStatus, reportFailure } from '../app/dom.js';
 import { beginInlineRename } from '../app/inline-rename.js';
 import { openLauncher } from '../app/modals/launcher.js';
 import { openProjectEditor } from '../app/modals/project-editor.js';
@@ -71,8 +72,10 @@ import { WorktreeGroup } from './WorktreeGroup.js';
 import {
   clusterDropOps,
   clusterSessions,
+  MAX_WORKTREE_LABEL,
   worktreeGroups,
   worktreeKey,
+  worktreeLabelTooLong,
 } from '../lib/worktree-groups.js';
 
 // Per-module, not a shared deps union: the sidebar wants
@@ -392,6 +395,12 @@ function renderRows(
     // nothing the panel header does not already say; a member whose name
     // differs was renamed on purpose and keeps it.
     const defaultName = branch ? branch.replaceAll('/', '-') : '';
+    // The group's own name, set by the operator and persisted on the
+    // project. Keyed by the session's worktree path — the same string
+    // worktreeKey() grouped by, and the same one SetWorktreeLabel is
+    // called with, so the key cannot drift between writer and reader.
+    const labels = o.project.worktree_labels ?? o.project.worktreeLabels ?? {};
+    const label = labels[key] ?? '';
     out.push(
       <WorktreeGroup
         key={`wt:${key}`}
@@ -399,6 +408,47 @@ function renderRows(
         count={run.length}
         color={head.color ?? ''}
         attention={attentionSummary(run)}
+        label={label}
+        onRenameTitle={(el) =>
+          beginInlineRename({
+            className: 'group-name-input',
+            value: label || branch,
+            mount: (input) => el.replaceWith(input),
+            unmount: (input) => input.replaceWith(el),
+            // Emptying the field is how a group is UN-named; there is
+            // nowhere else to say it. Opt-in because for a session or a
+            // project an empty name is a mistake, not an instruction.
+            allowEmpty: true,
+            // Refuse client-side rather than letting the daemon do it:
+            // the editor tears down on commit and SetWorktreeLabel is
+            // fire-and-forget, so a rejected name would be lost and the
+            // user would see only the raw error code. `validate` keeps
+            // the editor open holding exactly what they typed.
+            validate: (next) => {
+              if (!worktreeLabelTooLong(next)) return true;
+              flashStatus(
+                `group name is too long (max ${MAX_WORKTREE_LABEL} bytes)`,
+                true,
+              );
+              return false;
+            },
+            // Names the GROUP. Deliberately no UpdateSession call: the
+            // members keep their own names, and the ones still carrying
+            // the branch-derived default keep having it hidden by
+            // `titleOnly` exactly as before.
+            onCommit: (next) => {
+              // Clearing a group that has no name is a write, a persist
+              // and an all-window broadcast that change nothing. The
+              // editor seeds from the BRANCH when unnamed, so emptying it
+              // reads as "changed" to inline-rename and lands here.
+              if (next === '' && label === '') return;
+              SetWorktreeLabel(o.project.id, key, next).catch(
+                reportFailure('name worktree group'),
+              );
+            },
+            onDone: () => o.props.refocusActiveTerm(),
+          })
+        }
       >
         {run.map((s) =>
           item(s, run.length, !!defaultName && (s.name ?? '') === defaultName),
@@ -483,7 +533,11 @@ function ProjectItem(o: ProjectItemProps) {
           if (t.closest('.hv-session-row')) return;
           if (
             t.closest('.hv-project-card__actions') ||
-            t.closest('.project-name-input')
+            t.closest('.project-name-input') ||
+            // The worktree group's rename editor lives in this card too
+            // and is NOT inside .hv-session-row, so without this a text
+            // drag inside it starts a project drag.
+            t.closest('.group-name-input')
           ) {
             e.preventDefault();
             return;

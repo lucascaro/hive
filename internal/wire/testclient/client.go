@@ -262,6 +262,12 @@ func (c *Client) RenameWorktree(req wire.RenameWorktreeReq) error {
 	return c.cli.WriteJSON(wire.FrameRenameWorktree, req)
 }
 
+// SetWorktreeLabel sends SET_WORKTREE_LABEL. There is no reply frame:
+// the label lands as a PROJECT_EVENT on every control connection.
+func (c *Client) SetWorktreeLabel(req wire.SetWorktreeLabelReq) error {
+	return c.cli.WriteJSON(wire.FrameSetWorktreeLabel, req)
+}
+
 // AwaitWorktrees consumes frames until a WORKTREES snapshot arrives.
 // An ERROR frame is returned as an error carrying its code, so a
 // refusal surfaces as a failed assertion rather than a timeout.

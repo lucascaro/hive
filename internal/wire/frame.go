@@ -151,6 +151,13 @@ const (
 	// because only they can see whether the agent is at a prompt box
 	// or still on a startup gate — see SessionInfo.PendingPrompt.
 	FrameResolvePrompt FrameType = 0x29 // C → S, JSON, control
+
+	// FrameSetWorktreeLabel sets (or clears) the user-authored name of
+	// one worktree group, carried on the owning project. There is no
+	// reply frame and no worktree event: the label has to repaint every
+	// open sidebar, not just the connection that set it, and PROJECT_EVENT
+	// already fans out to all of them. See the WORKTREE_EVENT note above.
+	FrameSetWorktreeLabel FrameType = 0x2a // C → S, JSON, control
 )
 
 func (t FrameType) String() string {
@@ -237,6 +244,8 @@ func (t FrameType) String() string {
 		return "RESOLVE_PROMPT"
 	case FrameIdeaEvent:
 		return "IDEA_EVENT"
+	case FrameSetWorktreeLabel:
+		return "SET_WORKTREE_LABEL"
 	default:
 		return fmt.Sprintf("UNKNOWN(0x%02x)", byte(t))
 	}

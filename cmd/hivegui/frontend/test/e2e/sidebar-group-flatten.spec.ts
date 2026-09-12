@@ -101,4 +101,117 @@ test.describe('worktree group band', () => {
     });
     expect(alpha).toBe(1);
   });
+
+  // A named group puts TWO things in a header cell that was sized for
+  // one, at the 220px sidebar floor (issue #395). jsdom cannot see this:
+  // test/dom has no CSS, so the only place the squeeze can surface is a
+  // real layout.
+  //
+  // toBeVisible() would be vacuous here — a branch ellipsed to zero width
+  // is still "visible" to Playwright. The assertions are measurements:
+  // the branch keeps a real box, that box stays inside the header, and
+  // the header does not scroll horizontally.
+  test('a named group keeps its branch legible at the 220px floor', async ({
+    page,
+  }) => {
+    await boot(page);
+    await seedScrollableGroup(page);
+
+    const sidebar = await page
+      .locator('#sidebar')
+      .evaluate((el) => el.getBoundingClientRect().width);
+    expect(sidebar, 'sidebar is not at its design floor').toBeLessThanOrEqual(
+      221,
+    );
+
+    const before = await box(page, '.hv-worktree-group__branch');
+    expect(before.width, 'branch has no width before naming').toBeGreaterThan(
+      12,
+    );
+
+    // Name the group through the same bridge call the sidebar makes.
+    await page.evaluate(() => {
+      const s = (window.__hive.state?.sessions ?? []).find(
+        (x) => !!x.worktree_path,
+      );
+      if (!s) throw new Error('no worktree session seeded');
+      return window.__hive.setWorktreeLabel?.(
+        s.project_id ?? 'p1',
+        s.worktree_path ?? '',
+        'authentication refactor',
+      );
+    });
+    await page.waitForSelector('.hv-worktree-group__label');
+
+    const label = await box(page, '.hv-worktree-group__label');
+    expect(label.width, 'the name rendered with no width').toBeGreaterThan(12);
+
+    const after = await box(page, '.hv-worktree-group__branch');
+    expect(
+      after.width,
+      'the name squeezed the branch out of the header',
+    ).toBeGreaterThan(12);
+
+    // Both sit inside the header's box rather than spilling past it.
+    const header = await box(page, '.hv-worktree-group__header');
+    expect(after.x + after.width).toBeLessThanOrEqual(
+      header.x + header.width + 1,
+    );
+    expect(label.x).toBeGreaterThanOrEqual(header.x - 1);
+
+    // And the header itself does not scroll sideways.
+    const overflow = await page.evaluate(() => {
+      const h = document.querySelector('.hv-worktree-group__header');
+      if (!h) throw new Error('no group header');
+      return h.scrollWidth - h.clientWidth;
+    });
+    expect(
+      overflow,
+      'the group header overflows horizontally',
+    ).toBeLessThanOrEqual(1);
+  });
+
+  // The name is operator-supplied and unbounded — SetWorktreeLabel trims
+  // whitespace but caps nothing. Both boxes carry `min-width: 0` so they
+  // can ellipsize, which is also what lets a long enough name squeeze the
+  // branch to zero. The name must yield first: it is recoverable from the
+  // tooltip and the editor, the branch is what the panel exists to state.
+  test('a very long group name cannot squeeze the branch away', async ({
+    page,
+  }) => {
+    await boot(page);
+    await seedScrollableGroup(page);
+
+    await page.evaluate(() => {
+      const s = (window.__hive.state?.sessions ?? []).find(
+        (x) => !!x.worktree_path,
+      );
+      if (!s) throw new Error('no worktree session seeded');
+      return window.__hive.setWorktreeLabel?.(
+        s.project_id ?? 'p1',
+        s.worktree_path ?? '',
+        'an absurdly long worktree group name that nobody would sensibly type but nothing stops them from pasting',
+      );
+    });
+    await page.waitForSelector('.hv-worktree-group__label');
+
+    const branch = await box(page, '.hv-worktree-group__branch');
+    expect(
+      branch.width,
+      'a long name squeezed the branch to an unreadable width',
+    ).toBeGreaterThan(24);
+
+    const header = await box(page, '.hv-worktree-group__header');
+    const overflow = await page.evaluate(() => {
+      const h = document.querySelector('.hv-worktree-group__header');
+      if (!h) throw new Error('no group header');
+      return h.scrollWidth - h.clientWidth;
+    });
+    expect(overflow, 'a long name overflowed the header').toBeLessThanOrEqual(
+      1,
+    );
+    expect(branch.x + branch.width).toBeLessThanOrEqual(
+      header.x + header.width + 1,
+    );
+  });
 });

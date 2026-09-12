@@ -378,3 +378,19 @@ export function clusterReorderOps(
     globalTarget(globalSorted, pid, wanted),
   );
 }
+
+// MAX_WORKTREE_LABEL mirrors wire.MaxWorktreeLabel
+// (internal/wire/control.go). The daemon REJECTS an oversize name rather
+// than truncating it, and SetWorktreeLabel is fire-and-forget while the
+// inline editor tears down on commit — so without a check here the name
+// the user typed is simply gone, and all they see is a raw error code.
+// Keep the two in sync.
+export const MAX_WORKTREE_LABEL = 200;
+
+// worktreeLabelTooLong is the commit guard, applied to the same trimmed
+// string that goes on the wire. Bytes, not characters, because that is
+// what the daemon measures: a name of non-ASCII text would otherwise sail
+// past a 200-character check and be rejected anyway.
+export function worktreeLabelTooLong(label: string): boolean {
+  return new TextEncoder().encode(label.trim()).length > MAX_WORKTREE_LABEL;
+}

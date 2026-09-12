@@ -3,8 +3,10 @@ import {
   clusterDropOps,
   clusterReorderOps,
   clusterSessions,
+  MAX_WORKTREE_LABEL,
   worktreeGroups,
   worktreeKey,
+  worktreeLabelTooLong,
 } from '../../src/lib/worktree-groups.js';
 
 // Same shape as reorder.test.ts: `order` is the session's index in the
@@ -434,5 +436,27 @@ describe('interleaved projects', () => {
       'a0',
       'a2',
     ]);
+  });
+});
+
+describe('worktreeLabelTooLong', () => {
+  it('accepts a name at exactly the cap', () => {
+    expect(worktreeLabelTooLong('x'.repeat(MAX_WORKTREE_LABEL))).toBe(false);
+  });
+
+  it('rejects one byte over', () => {
+    expect(worktreeLabelTooLong('x'.repeat(MAX_WORKTREE_LABEL + 1))).toBe(true);
+  });
+
+  it('measures bytes, not characters', () => {
+    // 100 emoji is 100 characters but 400 UTF-8 bytes. A character-based
+    // check would pass this and the daemon would reject it anyway, which
+    // is the whole failure this guard exists to prevent.
+    expect(worktreeLabelTooLong('🐝'.repeat(100))).toBe(true);
+  });
+
+  it('measures the trimmed string, the one that goes on the wire', () => {
+    const padded = `   ${'x'.repeat(MAX_WORKTREE_LABEL)}   `;
+    expect(worktreeLabelTooLong(padded)).toBe(false);
   });
 });

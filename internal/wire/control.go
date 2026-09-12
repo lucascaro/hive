@@ -531,6 +531,13 @@ type ProjectInfo struct {
 	Cwd     string `json:"cwd,omitempty"`
 	Order   int    `json:"order"`
 	Created string `json:"created"` // RFC 3339
+	// WorktreeLabels are the user-authored names of this project's
+	// worktree groups, keyed by the session worktree path they were set
+	// against. The label rides the project rather than the session
+	// because it is not per-session: a worktree has one name and any
+	// number of sessions, and Entry.Info() has no route back to the
+	// owning project anyway.
+	WorktreeLabels map[string]string `json:"worktree_labels,omitempty"`
 }
 
 // ListProjectsReq is the LIST_PROJECTS payload (currently empty).
@@ -794,6 +801,9 @@ const (
 	// code a ModeSession connection gets for any verb outside
 	// ADD_IDEA / LIST_IDEAS.
 	ErrCodeModeNotAllowed = "mode_not_allowed"
+	// ErrCodeWorktreeLabelTooLong is returned when a worktree group's
+	// name exceeds MaxWorktreeLabel. Rejected, never truncated.
+	ErrCodeWorktreeLabelTooLong = "worktree_label_too_long"
 	// ErrCodeIdeaTooLong is returned when an idea's text exceeds
 	// MaxIdeaText. Rejected rather than truncated: a silently
 	// half-saved note is worse than one the user is told to shorten.
@@ -805,7 +815,7 @@ const (
 	// cleared and the note is gone, and telling them to try again would
 	// point at an affordance that no longer exists.
 	ErrCodeNoLiveSession = "resolve_prompt_no_live_session"
-	ErrCodeIdeaTooLong = "idea_too_long"
+	ErrCodeIdeaTooLong   = "idea_too_long"
 	// ErrCodeProjectHasIdeas is returned when deleting a project would
 	// destroy ideas that are still open. Overridable by force
 	// (KillProjectReq.DeleteIdeas) after the user confirms.
@@ -964,6 +974,39 @@ type RenameWorktreeReq struct {
 	ProjectID string `json:"project_id"`
 	Path      string `json:"path"`
 	NewBranch string `json:"new_branch"`
+}
+
+// MaxWorktreeLabel bounds one worktree group's name. Far smaller than
+// MaxIdeaText: a label is a sidebar header that must stay legible in a
+// 220px column, it is re-broadcast to every open window on each change,
+// and it lives in project.json, which is read at boot. Rejected rather
+// than truncated, for the same reason an over-long idea is — a name
+// silently shortened is a name the user did not choose.
+const MaxWorktreeLabel = 200
+
+// MaxWorktreePath bounds the map key a label is filed under. The key is
+// stored verbatim (see SetWorktreeLabelReq), so it is client-supplied
+// text on the same persisted, re-broadcast path as the label — and a
+// bound on one half of a pair without the other is not a bound. Roughly
+// PATH_MAX: large enough that no real worktree path approaches it, small
+// enough that project.json cannot be grown a megabyte at a time.
+const MaxWorktreePath = 4096
+
+// SetWorktreeLabelReq sets the user-authored name of one worktree
+// group. An empty Label clears it — it never removes the worktree.
+//
+// Unlike every other worktree mutation this one is NOT refused while
+// sessions live in the worktree: naming a group of running sessions is
+// the entire point, and a label touches neither git nor the directory.
+//
+// Path is stored verbatim as the map key rather than resolved, because
+// the only reader is the sidebar, which groups by the session's own
+// WorktreePath string. Resolving here would produce a key the client
+// cannot compute (macOS /var vs /private/var) and the lookup would miss.
+type SetWorktreeLabelReq struct {
+	ProjectID string `json:"project_id"`
+	Path      string `json:"path"`
+	Label     string `json:"label"`
 }
 
 // DeleteBranchReq removes a local branch that has no worktree. Force

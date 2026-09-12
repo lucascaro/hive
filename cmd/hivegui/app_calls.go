@@ -249,6 +249,20 @@ func (a *App) RenameWorktree(projectID, path, newBranch string) error {
 	})
 }
 
+// SetWorktreeLabel names a worktree group, or clears the name when
+// label is empty. It renames nothing — not the sessions in the
+// worktree, not the branch, not the directory — and unlike the other
+// worktree calls it is allowed while sessions are running inside it.
+func (a *App) SetWorktreeLabel(projectID, path, label string) error {
+	cs, err := a.requireControl()
+	if err != nil {
+		return err
+	}
+	return cs.WriteJSON(wire.FrameSetWorktreeLabel, wire.SetWorktreeLabelReq{
+		ProjectID: projectID, Path: path, Label: label,
+	})
+}
+
 // DuplicateSession creates a new session pinned to an explicit cwd —
 // used by the GUI's ⌘P / ⇧⌘P shortcuts to fork the active session into
 // the same project + directory (and same worktree, if the source had

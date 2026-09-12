@@ -113,6 +113,11 @@ export interface ProjectInfo {
   cwd?: string;
   color?: string;
   order?: number;
+  // Worktree group names, keyed by the session worktree path they were
+  // set against. Dual-spelled like every other wire field: snake_case on
+  // the wire, camelCase through some bridges.
+  worktree_labels?: Record<string, string>;
+  worktreeLabels?: Record<string, string>;
 }
 
 // A structural view of SessionTerm (app/session-term.ts). Wave 3 typed
