@@ -296,7 +296,9 @@ Append-only, one line per `/hs-review-loop` iteration.
 - **2026-09-11 iter 2 (envelope, late)** — verdict: REQUEST_CHANGES; findings_hash: cfd1873efc19e15462f1ad8dfb1aa882cecebe6f6a238acd1e4c2830abc24448; threads_open: 1; action: escalated:risky-fix-needs-human-decision (unbounded label length); head_sha: 76fe723e.
 - **2026-09-11 iter 2b** — operator-directed fix applied: label bounded at wire.MaxWorktreeLabel, branch min-width floor, thread replied and resolved; head_sha: 3e7a7f6a.
 - **2026-09-11 iter 3** — verdict: COMMENT; mergeable: MERGEABLE; findings_hash: be68615fb4b6c11d63aaab843f0a0786544371f0375a4ba2930dce20d9c80606; threads_open: 0; action: escalated:risky-fix-needs-human-decision (path key unbounded); head_sha: e446b369.
-- **2026-09-11 iter 3b** — fix applied: path key bounded at wire.MaxWorktreePath, mirroring the label guard; head_sha: pending.
+- **2026-09-11 iter 3b** — fix applied: path key bounded at wire.MaxWorktreePath, mirroring the label guard; head_sha: 13455fa5.
+- **2026-09-11 iter 4** — verdict: REQUEST_CHANGES; mergeable: MERGEABLE; findings_hash: 727eab048ab5084e14e71d86653a13479f99f322085c41bc79c4b4b3914e077f; threads_open: 0; action: escalated:risky-fix-needs-human-decision (disposeWorktree prune, client-side cap); head_sha: 13455fa5.
+- **2026-09-11 iter 4b** — fixes applied: prune on every teardown path (disposeWorktree + reclaimOne), client-side MAX_WORKTREE_LABEL guard; head_sha: bba219a1.
 
 ## Progress
 
