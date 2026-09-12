@@ -461,3 +461,55 @@ func TestKill_KeepsTheLabelWhenItKeepsTheWorktree(t *testing.T) {
 		t.Errorf("label = %q, want it kept alongside the kept worktree", got)
 	}
 }
+
+// Two spellings of one worktree holding different names is unreachable
+// through any shipped client — every window writes the daemon-supplied
+// SessionInfo.worktree_path — but the resolution must not be a coin flip
+// on Go's randomised map iteration order. The canonical spelling wins,
+// and the same input always produces the same survivor.
+func TestRemapWorktreeLabel_TieBreakIsDeterministic(t *testing.T) {
+	skipNonPosix(t)
+	r, p := freshRegistryWithProject(t)
+	repo := p.Cwd
+	path := newWorktree(t, repo, "aliased")
+	resolved := worktree.ResolvePath(path)
+
+	// Same directory, two spellings, two different names. Written
+	// directly: SetWorktreeLabel is the only public writer and it would
+	// simply overwrite one key.
+	// Spellings that genuinely clean to the same path, so the match is
+	// real rather than an artefact of the fixture. (A hand-built
+	// "/var"+resolved would be a different directory entirely, and
+	// correctly would not match.)
+	aliases := []string{resolved, resolved + "/", resolved + "/."}
+	for _, a := range aliases {
+		if worktree.ResolvePath(a) != resolved {
+			t.Fatalf("fixture alias %q does not resolve to %q; test proves nothing", a, resolved)
+		}
+	}
+	r.mu.Lock()
+	p.WorktreeLabels = map[string]string{
+		aliases[0]: "canonical name",
+		aliases[1]: "trailing slash name",
+		aliases[2]: "dot suffix name",
+	}
+	r.mu.Unlock()
+
+	root, err := worktree.MainRoot(repo)
+	if err != nil {
+		t.Fatalf("MainRoot: %v", err)
+	}
+	dest := worktree.WorktreePath(root, "renamed")
+	r.remapWorktreeLabel(p.ID, resolved, dest)
+
+	// The key that IS the resolved path wins, every time.
+	if got := labelOf(t, r, p.ID, dest); got != "canonical name" {
+		t.Errorf("survivor = %q, want the canonical spelling's name", got)
+	}
+	// And every alias is gone, not just the one that won.
+	for _, stale := range aliases {
+		if got := labelOf(t, r, p.ID, stale); got != "" {
+			t.Errorf("alias %q survived the remap: %q", stale, got)
+		}
+	}
+}

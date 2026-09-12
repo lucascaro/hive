@@ -568,25 +568,41 @@ func (r *Registry) remapWorktreeLabel(projectID, resolved, dest string) {
 		r.mu.Unlock()
 		return
 	}
-	var moved string
-	changed := false
+	// Collect first, then decide: ranging a map and keeping the last hit
+	// would make the surviving name depend on Go's randomised iteration
+	// order, so a rename could carry a different name on each run. Only
+	// reachable if two spellings of one worktree somehow hold different
+	// names — every shipped client writes the daemon-supplied
+	// SessionInfo.worktree_path, so they cannot — but "unreachable today"
+	// is a poor reason to leave a coin flip in a user-visible value.
+	var aliases []string
 	for key := range p.WorktreeLabels {
-		if worktree.ResolvePath(key) != resolved {
-			continue
+		if worktree.ResolvePath(key) == resolved {
+			aliases = append(aliases, key)
 		}
-		// Last writer wins if several spellings of one worktree somehow
-		// carry different names; they name the same directory, so any of
-		// them is the group's name.
-		moved = p.WorktreeLabels[key]
-		delete(p.WorktreeLabels, key)
-		changed = true
 	}
-	if changed && dest != "" && moved != "" {
-		p.WorktreeLabels[dest] = moved
-	}
+	changed := len(aliases) > 0
 	if !changed {
 		r.mu.Unlock()
 		return
+	}
+	slices.Sort(aliases)
+	// The key that IS the resolved path wins; failing that, the first in
+	// sorted order. Preferring the exact match keeps the canonical
+	// spelling authoritative rather than letting an alias outrank it.
+	winner := aliases[0]
+	for _, key := range aliases {
+		if key == resolved {
+			winner = key
+			break
+		}
+	}
+	moved := p.WorktreeLabels[winner]
+	for _, key := range aliases {
+		delete(p.WorktreeLabels, key)
+	}
+	if dest != "" && moved != "" {
+		p.WorktreeLabels[dest] = moved
 	}
 	if err := r.persistProjectLocked(p); err != nil {
 		// The in-memory map is already updated; a failed write means the
