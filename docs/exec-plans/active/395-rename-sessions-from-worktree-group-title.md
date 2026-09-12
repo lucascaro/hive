@@ -2,6 +2,8 @@
 
 - **Spec:** [docs/product-specs/395-rename-sessions-from-worktree-group-title.md](../../product-specs/395-rename-sessions-from-worktree-group-title.md)
 - **Issue:** #395
+- **PR:** #396
+- **Branch:** feature/395-name-a-worktree-group
 - **Status:** active
 
 ## Summary
@@ -285,6 +287,7 @@ into this plan: `ui-lint.sh --strict`, the measured e2e assertion, and the
 ## Progress
 
 - **2026-09-11** — Spec created, triaged M/P2. Research complete (frontend + brain: no prior lessons). Plan drafted; two reviewer rounds, both `revise`.
+- **2026-09-11** — Implemented on feature/395-name-a-worktree-group; PR #396 opened. Go + frontend + tests green (one pre-existing `internal/registry` failure, `TestTerminalQueriesAreNotWork`, confirmed on origin/main).
 - **2026-09-11** — Plan review round 1 returned operator feedback redirecting the design: name the group, do not rename sessions. Spec rewritten, complexity raised M → L, backend research completed, plan re-drafted.
 
 ## Open questions

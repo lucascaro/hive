@@ -4,7 +4,8 @@ title: "Name a worktree group by double-clicking its title"
 type: enhancement
 complexity: L
 priority: P2
-stage: IMPLEMENT
+pr: 396
+stage: REVIEW
 ---
 
 # Name a worktree group by double-clicking its title

@@ -1,6 +1,7 @@
 ---
 type: added
 bump: minor
+pr: 396
 ---
 
 Worktree groups can be named. Double-click a group's title in the sidebar, type a
