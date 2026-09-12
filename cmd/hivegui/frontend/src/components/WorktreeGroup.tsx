@@ -12,8 +12,17 @@
 // (lib/worktree-groups.ts › THE ONE ORDER) — is unchanged by the
 // wrapping. Drag-reorder reads rows off the DOM by class and is
 // indifferent to the nesting.
-import { useId, useState, type CSSProperties, type ReactNode } from 'react';
+import {
+  useEffect,
+  useId,
+  useRef,
+  useState,
+  type CSSProperties,
+  type MouseEvent,
+  type ReactNode,
+} from 'react';
 import { Icon, StateIcon } from './Icon.js';
+import { cancelInlineRenameFor } from '../app/inline-rename.js';
 import { useCollapseTransition } from '../lib/use-collapse.js';
 import type { AttentionSummary } from '../lib/session-state.js';
 
@@ -32,6 +41,13 @@ export interface WorktreeGroupProps {
       icons, and AGENTS.md does not allow a session to go silent to save
       space, so the count takes over while the body is hidden. */
   attention: AttentionSummary;
+  /** The group's name, or '' when it has none. Persisted daemon-side on
+      the owning project, NOT derived from the member names — a group is
+      named on purpose, and its members keep whatever names they have. */
+  label: string;
+  /** Opens the rename editor over `el` (the title cell). Returns the
+      input so the group can cancel it if the group unmounts first. */
+  onRenameTitle?: (el: HTMLElement) => HTMLInputElement | undefined;
   children?: ReactNode;
 }
 
@@ -45,7 +61,35 @@ export function WorktreeGroup(p: WorktreeGroupProps) {
   const [collapsed, setCollapsed] = useState(false);
   const animating = useCollapseTransition(collapsed);
   const bodyId = useId();
+  const titleRef = useRef<HTMLSpanElement>(null);
+  const editorRef = useRef<HTMLInputElement | null>(null);
   const label = p.branch || 'detached HEAD';
+  // The <li> is keyed `wt:<path>` and React unmounts it outright the
+  // moment the run drops below two members. Without this, a member
+  // exiting mid-edit tears the input out of the DOM and the blur that
+  // follows commits against a group that no longer exists. Identity-
+  // checked (cancelInlineRenameFor, not cancelInlineRename) so this
+  // cleanup cannot discard somebody else's open editor, and empty-dep
+  // so it runs on unmount only — a dep list that changed would cancel
+  // a live edit on every repaint, which a group gets on every broadcast.
+  useEffect(
+    () => () => {
+      if (editorRef.current) cancelInlineRenameFor(editorRef.current);
+    },
+    [],
+  );
+  const openRename = (e: MouseEvent<HTMLDivElement>) => {
+    if (!p.onRenameTitle) return;
+    const el = titleRef.current;
+    // closest(), not target identity: the branch name carries an <Icon>
+    // svg, and a double-click landing on that icon is a double-click on
+    // the title. The chevron, the count and the collapsed-state alert
+    // all live OUTSIDE __title, so this excludes them without a deny
+    // list — and a deny list would be dead code.
+    if (!el || !(e.target instanceof Element)) return;
+    if (!e.target.closest('.hv-worktree-group__title')) return;
+    editorRef.current = p.onRenameTitle(el) ?? null;
+  };
   const hidden = collapsed && p.attention.count > 0;
   const style = p.color
     ? ({ '--session-color': p.color } as CSSProperties)
@@ -57,7 +101,11 @@ export function WorktreeGroup(p: WorktreeGroupProps) {
       data-animating={animating ? '' : undefined}
       style={style}
     >
-      <div className="hv-worktree-group__header">
+      {/* biome-ignore lint/a11y/noStaticElementInteractions: the same
+          double-click-to-rename affordance the project header and the
+          session row already carry; the keyboard path to a rename is
+          the command palette, not this element. */}
+      <div className="hv-worktree-group__header" onDoubleClick={openRename}>
         <button
           type="button"
           className="hv-worktree-group__chevron"
@@ -68,12 +116,25 @@ export function WorktreeGroup(p: WorktreeGroupProps) {
         >
           <Icon name={collapsed ? 'chevron-right' : 'chevron-down'} />
         </button>
+        {/* One cell for the whole title, so the rename editor has a
+            single mount target whether or not a name exists. */}
         <span
-          className="hv-worktree-group__branch"
-          title={`Worktree: ${label}`}
+          className="hv-worktree-group__title"
+          ref={titleRef}
+          title={
+            p.label ? `${p.label} — worktree: ${label}` : `Worktree: ${label}`
+          }
         >
-          <Icon name="branch" size={12} />
-          {label}
+          {p.label ? (
+            <span className="hv-worktree-group__label">{p.label}</span>
+          ) : null}
+          {/* The branch stays visible even when the group is named: it
+              is the one thing the panel exists to state, and the name
+              is the operator's word for the work, not git's. */}
+          <span className="hv-worktree-group__branch">
+            <Icon name="branch" size={12} />
+            {label}
+          </span>
         </span>
         {hidden ? (
           <span

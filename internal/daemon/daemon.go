@@ -1280,6 +1280,19 @@ func (d *Daemon) handleControlFrame(ctx context.Context, ops controlOps, ft wire
 		if _, err := d.reg.UpdateProject(req); err != nil {
 			ops.sendError("update_project_failed", err.Error())
 		}
+	case wire.FrameSetWorktreeLabel:
+		req, ok := decodeReq[wire.SetWorktreeLabelReq](payload, ops.sendError)
+		if !ok {
+			return false
+		}
+		// Inline, not via runOp: a label is one temp+rename with no git
+		// and no subprocess behind it — same reasoning as AddIdea below.
+		// No reply either; SetWorktreeLabel broadcasts PROJECT_EVENT,
+		// which is what repaints every open sidebar rather than only the
+		// connection that asked.
+		if err := d.reg.SetWorktreeLabel(req.ProjectID, req.Path, req.Label); err != nil {
+			ops.sendError("set_worktree_label_failed", err.Error())
+		}
 	case wire.FrameListWorktrees:
 		req, ok := decodeReq[wire.ListWorktreesReq](payload, ops.sendError)
 		if !ok {

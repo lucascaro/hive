@@ -42,6 +42,7 @@ export {
   RemoveWorktree,
   CreateWorktree,
   RenameWorktree,
+  SetWorktreeLabel,
   DeleteBranch,
   LaunchDir,
   StateDirID,

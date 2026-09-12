@@ -10,6 +10,7 @@ import (
 	"log"
 	"os"
 	"path/filepath"
+	"maps"
 	"slices"
 	"strings"
 	"sync"
@@ -154,6 +155,9 @@ type Project struct {
 	Cwd     string
 	Order   int
 	Created time.Time
+	// WorktreeLabels names the project's worktree groups, keyed by
+	// worktree path. Nil until the first label is set.
+	WorktreeLabels map[string]string
 }
 
 // Info renders the project as a wire.ProjectInfo.
@@ -165,6 +169,11 @@ func (p *Project) Info() wire.ProjectInfo {
 		Cwd:     p.Cwd,
 		Order:   p.Order,
 		Created: p.Created.UTC().Format(time.RFC3339),
+		// Copied, not aliased: Info() is called under r.mu and the
+		// result outlives the lock (every broadcast site snapshots then
+		// unlocks), so handing out the live map would let a reader walk
+		// it while SetWorktreeLabel writes to it.
+		WorktreeLabels: maps.Clone(p.WorktreeLabels),
 	}
 }
 
@@ -867,6 +876,7 @@ func (r *Registry) load() error {
 		r.projects[meta.ID] = &Project{
 			ID: meta.ID, Name: meta.Name, Color: meta.Color, Cwd: meta.Cwd,
 			Order: len(r.projectOrder), Created: meta.Created,
+			WorktreeLabels: meta.WorktreeLabels,
 		}
 		r.projectOrder = append(r.projectOrder, meta.ID)
 		pseen[meta.ID] = true
@@ -884,6 +894,7 @@ func (r *Registry) load() error {
 			r.projects[meta.ID] = &Project{
 				ID: meta.ID, Name: meta.Name, Color: meta.Color, Cwd: meta.Cwd,
 				Order: meta.Order, Created: meta.Created,
+				WorktreeLabels: meta.WorktreeLabels,
 			}
 			r.projectOrder = append(r.projectOrder, meta.ID)
 		}
@@ -1620,6 +1631,7 @@ func (r *Registry) persistProjectLocked(p *Project) error {
 	return writeJSON(path, ProjectMetaFile{
 		ID: p.ID, Name: p.Name, Color: p.Color, Cwd: p.Cwd,
 		Order: p.Order, Created: p.Created,
+		WorktreeLabels: p.WorktreeLabels,
 	})
 }
 

@@ -8,6 +8,7 @@ import (
 	"os"
 	"path/filepath"
 	"slices"
+	"strings"
 	"time"
 
 	"github.com/google/uuid"
@@ -460,6 +461,54 @@ func (r *Registry) UpdateProject(req wire.UpdateProjectReq) (*Project, error) {
 	}
 	r.broadcastProject(wire.ProjectEventUpdated, info)
 	return p, nil
+}
+
+// SetWorktreeLabel names one of a project's worktree groups, or clears
+// the name when label is empty. The label is what the sidebar shows
+// beside the branch; it renames nothing — not the sessions, not the
+// branch, not the directory.
+//
+// Deliberately NOT gated on worktree occupancy, unlike RemoveWorktree
+// and RenameWorktree: those move or delete the directory out from under
+// a running shell, while a label is metadata. Naming a group of running
+// sessions is the whole feature, so a live-session refusal here would
+// make it useless. There is a test pinning that.
+//
+// path is stored verbatim rather than resolved — see SetWorktreeLabelReq
+// for why the client's own spelling is the right key.
+func (r *Registry) SetWorktreeLabel(projectID, path, label string) error {
+	if path == "" {
+		return errors.New("registry: empty worktree path")
+	}
+	r.mu.Lock()
+	p, ok := r.projects[projectID]
+	if !ok {
+		r.mu.Unlock()
+		return ErrProjectNotFound
+	}
+	label = strings.TrimSpace(label)
+	switch {
+	case label == "":
+		// Delete rather than storing "": an empty value would round-trip
+		// through project.json forever as a key that means nothing.
+		delete(p.WorktreeLabels, path)
+	default:
+		if p.WorktreeLabels == nil {
+			p.WorktreeLabels = map[string]string{}
+		}
+		p.WorktreeLabels[path] = label
+	}
+	if err := r.persistProjectLocked(p); err != nil {
+		r.mu.Unlock()
+		return err
+	}
+	info := p.Info()
+	r.mu.Unlock()
+	// PROJECT_EVENT, not a worktree reply: a worktree mutation answers
+	// only the connection that asked (daemon.sendWorktrees), but a label
+	// has to repaint every open sidebar.
+	r.broadcastProject(wire.ProjectEventUpdated, info)
+	return nil
 }
 
 func (r *Registry) moveProjectLocked(id string, newOrder int) {

@@ -531,6 +531,13 @@ type ProjectInfo struct {
 	Cwd     string `json:"cwd,omitempty"`
 	Order   int    `json:"order"`
 	Created string `json:"created"` // RFC 3339
+	// WorktreeLabels are the user-authored names of this project's
+	// worktree groups, keyed by the session worktree path they were set
+	// against. The label rides the project rather than the session
+	// because it is not per-session: a worktree has one name and any
+	// number of sessions, and Entry.Info() has no route back to the
+	// owning project anyway.
+	WorktreeLabels map[string]string `json:"worktree_labels,omitempty"`
 }
 
 // ListProjectsReq is the LIST_PROJECTS payload (currently empty).
@@ -964,6 +971,23 @@ type RenameWorktreeReq struct {
 	ProjectID string `json:"project_id"`
 	Path      string `json:"path"`
 	NewBranch string `json:"new_branch"`
+}
+
+// SetWorktreeLabelReq sets the user-authored name of one worktree
+// group. An empty Label clears it — it never removes the worktree.
+//
+// Unlike every other worktree mutation this one is NOT refused while
+// sessions live in the worktree: naming a group of running sessions is
+// the entire point, and a label touches neither git nor the directory.
+//
+// Path is stored verbatim as the map key rather than resolved, because
+// the only reader is the sidebar, which groups by the session's own
+// WorktreePath string. Resolving here would produce a key the client
+// cannot compute (macOS /var vs /private/var) and the lookup would miss.
+type SetWorktreeLabelReq struct {
+	ProjectID string `json:"project_id"`
+	Path      string `json:"path"`
+	Label     string `json:"label"`
 }
 
 // DeleteBranchReq removes a local branch that has no worktree. Force

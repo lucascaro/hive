@@ -257,6 +257,18 @@ export async function DeleteBranch(
     force: !!force,
   });
 }
+export async function SetWorktreeLabel(
+  projectID: string,
+  path: string,
+  label: string,
+) {
+  return call('SetWorktreeLabel', {
+    project_id: projectID || '',
+    path,
+    label,
+  });
+}
+
 export async function RenameWorktree(
   projectID: string,
   path: string,

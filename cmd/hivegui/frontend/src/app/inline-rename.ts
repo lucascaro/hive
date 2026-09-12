@@ -36,6 +36,14 @@ export interface InlineRenameOpts {
   // Say why from inside the predicate; this module has no status line.
   // Escape is never validated: backing out is always allowed.
   validate?: (next: string) => boolean;
+  // Treat an emptied field as a real commit of "" rather than as a
+  // no-op. Off by default, and deliberately opt-in: for a session or a
+  // project, "" is a mistake — a nameless row the user cannot point at —
+  // so those callers want the empty commit swallowed. For the worktree
+  // group label, "" is the way to say "this group has no name", and
+  // there is nowhere else to say it. Escape still cancels without
+  // committing anything either way.
+  allowEmpty?: boolean;
 }
 
 // The rename currently on screen, if any. An inline editor owns the
@@ -79,6 +87,7 @@ export function beginInlineRename({
   onDone,
   beforeFocus,
   validate,
+  allowEmpty = false,
 }: InlineRenameOpts): HTMLInputElement {
   // Whatever had focus when the edit began — usually the button or row
   // the user activated. An edit is a detour: finishing it should put
@@ -98,10 +107,13 @@ export function beginInlineRename({
   const finish = (commit: boolean) => {
     if (done) return;
     const next = input.value.trim();
+    // What counts as something worth committing. Unchanged is never
+    // worth committing; empty is only worth it when the caller opted in.
+    const changed = next !== value && (allowEmpty || next !== '');
     // Refused: stay open on what the user typed rather than tearing the
     // editor down and dropping it. Focus is restored explicitly because
     // this path is reached from blur too.
-    if (commit && next && next !== value && validate && !validate(next)) {
+    if (commit && changed && validate && !validate(next)) {
       input.focus();
       return;
     }
@@ -114,7 +126,7 @@ export function beginInlineRename({
     // the opener did not survive unmount — a rebuilt row takes its
     // buttons with it.
     if (opener?.isConnected) opener.focus();
-    if (commit && next && next !== value) onCommit(next);
+    if (commit && changed) onCommit(next);
     if (onDone) onDone();
   };
   active = { input, cancel: () => finish(false) };

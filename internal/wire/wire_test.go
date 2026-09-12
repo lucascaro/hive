@@ -321,6 +321,11 @@ func TestWorktreeFrameRoundTrips(t *testing.T) {
 			RenameWorktreeReq{ProjectID: "p1", Path: "/repo/.worktrees/a", NewBranch: "b"},
 			func() any { return &RenameWorktreeReq{} },
 		},
+		{
+			"set-label", FrameSetWorktreeLabel,
+			SetWorktreeLabelReq{ProjectID: "p1", Path: "/repo/.worktrees/a", Label: "auth refactor"},
+			func() any { return &SetWorktreeLabelReq{} },
+		},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -361,6 +366,10 @@ func TestWorktreePayloadsUseSnakeCase(t *testing.T) {
 		{RenameWorktreeReq{ProjectID: "p", Path: "/p", NewBranch: "b"}, []string{`"new_branch"`}},
 		{DeleteBranchReq{ProjectID: "p", Branch: "b", Force: true}, []string{`"project_id"`, `"branch"`, `"force"`}},
 		{CreateSpec{WorktreePath: "/p"}, []string{`"worktree_path"`}},
+		{SetWorktreeLabelReq{ProjectID: "p", Path: "/p", Label: "l"},
+			[]string{`"project_id"`, `"path"`, `"label"`}},
+		{ProjectInfo{ID: "p", WorktreeLabels: map[string]string{"/p": "l"}},
+			[]string{`"worktree_labels"`}},
 	}
 	for _, tc := range cases {
 		b, err := json.Marshal(tc.v)
@@ -388,6 +397,8 @@ func TestWorktreeFrameTypeValues(t *testing.T) {
 		FrameCreateWorktree: {0x19, "CREATE_WORKTREE"},
 		FrameRenameWorktree: {0x1a, "RENAME_WORKTREE"},
 		FrameDeleteBranch:   {0x1b, "DELETE_BRANCH"},
+
+		FrameSetWorktreeLabel: {0x2a, "SET_WORKTREE_LABEL"},
 	}
 	for ft, want := range cases {
 		if byte(ft) != want.b {
@@ -416,6 +427,7 @@ func TestWorktreesHasControlEventName(t *testing.T) {
 		FrameCreateWorktree,
 		FrameRenameWorktree,
 		FrameDeleteBranch,
+		FrameSetWorktreeLabel,
 	} {
 		if _, ok := ControlEventName(ft); ok {
 			t.Errorf("%s is client→server but has a control event name", ft)

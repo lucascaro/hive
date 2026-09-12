@@ -45,6 +45,11 @@ type ProjectMetaFile struct {
 	Cwd     string    `json:"cwd,omitempty"`
 	Order   int       `json:"order"` // advisory; see MetaFile.Order
 	Created time.Time `json:"created"`
+	// WorktreeLabels names this project's worktree groups, keyed by
+	// worktree path. Absent from every project.json written before the
+	// feature existed, which unmarshals to a nil map — safe to read
+	// from, so the load path needs no migration.
+	WorktreeLabels map[string]string `json:"worktree_labels,omitempty"`
 }
 
 // ProjectIndexFile is what we write to projects/index.json.

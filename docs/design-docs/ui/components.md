@@ -47,7 +47,7 @@ Decided in [mocks/sidebar-structure.html](mocks/sidebar-structure.html) (S2 insi
 - Drag-reorder handle: whole row, as today.
 - The row is composed by `src/components/Sidebar.tsx`, which owns the behaviour around it: drag-reorder, double-click-to-rename, and reading live session state at call time rather than closing over the `SessionInfo` the row was drawn from.
 
-## `worktreeGroup({ branch, count, color })` — React, `src/components/WorktreeGroup.tsx`
+## `worktreeGroup({ branch, count, color, label, onRenameTitle })` — React, `src/components/WorktreeGroup.tsx`
 
 Decided in [mocks/sidebar-redesign.html](mocks/sidebar-redesign.html) (G3c).
 
@@ -56,7 +56,10 @@ Decided in [mocks/sidebar-redesign.html](mocks/sidebar-redesign.html) (G3c).
 - Header: `--space-1 --space-3` padding — the `--space-3` matches `hv-session-row`'s own side padding, so the branch name sits in the same column as the names it heads, an alignment the 8px side margin used to supply. Its `background` is stated explicitly and fully opaque even though the panel resolves to the same ground: it is sticky and member rows scroll under it. Chevron (collapse, local state — the store's `collapsed` set is keyed by project id and pruned against the project list, which would drop a worktree key), `branch` icon + branch name (`--text-sm --fg-muted`, "detached HEAD" when there is none), member count. Sticky at `--sidebar-project-header-h`, nested under the project label.
 - **Never `overflow: hidden`.** Clipping makes the panel the nearest scroll container, so its own sticky header sticks to a box that never scrolls and silently does nothing.
 - One `--session-color` bar for the whole panel (`::after`), since members inherit the colour of the worktree they adopt; the per-row bar is transparent inside a panel but the row's picker stays, because the hit target has to be per-row.
-- A member renders `titleOnly` when its name is the branch-derived default the header already states; a session the user renamed keeps its name.
+- A member renders `titleOnly` when its name is the branch-derived default the header already states; a session the user renamed keeps its name. Naming the GROUP (below) does not change this: the label is the group's, the names are the members'.
+- **The group can be named** (#395). Double-clicking the title opens the shared inline editor (`app/inline-rename.ts`, class `group-name-input`), seeded with the current name or the branch. The name is real state — persisted daemon-side on the owning project as `worktree_labels[worktreePath]`, set with `SET_WORKTREE_LABEL` and broadcast as a `PROJECT_EVENT`, so every open window repaints rather than only the one that typed it. It is NOT derived from member names, and committing renames no session: an earlier design fanned the name out over the members and was withdrawn because it worked exactly once and could clobber a hand-named session. Emptying the field clears the name (`allowEmpty`, opt-in precisely because an empty session or project name is a mistake while an unnamed group is just a group).
+- Title cell: one `__title` span holding the optional `__label` (`--fg`, `--text-sm`) and then the `__branch`. The branch is never dropped when a name is present — stating it is the panel's whole reason to exist — it only demotes to `--fg-subtle --text-xs` and gives up its width first. The editor mounts over the whole `__title` cell so there is one mount target whether or not a name exists.
+- The double-click guard is `closest('.hv-worktree-group__title')`, not target identity: the branch carries an `<Icon>` svg, and a click on the icon is a click on the title. The chevron, count and collapsed-state alert sit outside `__title`, so no deny list is needed.
 
 ## `projectCard({ project, sessions, collapsed, ... })` — React, `src/components/ProjectCard.tsx`
 

@@ -1194,6 +1194,29 @@ export async function RenameWorktree(
   return '';
 }
 
+// Naming a worktree group. Unlike RenameWorktree there is no
+// occupancy refusal — a label renames nothing — and the reply is a
+// project event, so every window repaints rather than only this one.
+export async function SetWorktreeLabel(
+  projectID: string,
+  path: string,
+  label: string,
+) {
+  maybeFail('SetWorktreeLabel');
+  const p = state.projects.find((x) => x.id === projectID);
+  if (!p) return '';
+  const labels = { ...(p.worktree_labels ?? {}) };
+  const next = label.trim();
+  if (next === '') {
+    delete labels[path];
+  } else {
+    labels[path] = next;
+  }
+  p.worktree_labels = labels;
+  emit('project:event', JSON.stringify({ kind: 'updated', project: p }));
+  return '';
+}
+
 // Test hook: lets Playwright inject events / inspect state.
 if (typeof window !== 'undefined') {
   window.__hive = {
@@ -1222,6 +1245,10 @@ if (typeof window !== 'undefined') {
     // share one.
     createSessionInWorktree(name: string, worktreePath: string) {
       return CreateSession({ project: 'p1', name, worktreePath });
+    },
+    // Names a worktree group, the way the sidebar's rename editor does.
+    setWorktreeLabel(projectID: string, worktreePath: string, label: string) {
+      return SetWorktreeLabel(projectID, worktreePath, label);
     },
     // Ideas the daemon already knew about when this window connected —
     // the boot LIST_IDEAS is what delivers them, so seed before it.
