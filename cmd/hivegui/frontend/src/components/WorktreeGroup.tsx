@@ -136,7 +136,11 @@ export function WorktreeGroup(p: WorktreeGroupProps) {
               is the operator's word for the work, not git's. */}
           <span className="hv-worktree-group__branch">
             <Icon name="branch" size={12} />
-            {label}
+            {/* The text needs its own box: text-overflow is inert on the
+                inline-flex container, whose text child is an anonymous
+                flex item, so without this the branch clips mid-glyph
+                instead of ellipsizing. */}
+            <span className="hv-worktree-group__branch-name">{label}</span>
           </span>
         </span>
         {hidden ? (

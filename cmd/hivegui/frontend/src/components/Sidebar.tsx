@@ -421,10 +421,16 @@ function renderRows(
             // members keep their own names, and the ones still carrying
             // the branch-derived default keep having it hidden by
             // `titleOnly` exactly as before.
-            onCommit: (next) =>
+            onCommit: (next) => {
+              // Clearing a group that has no name is a write, a persist
+              // and an all-window broadcast that change nothing. The
+              // editor seeds from the BRANCH when unnamed, so emptying it
+              // reads as "changed" to inline-rename and lands here.
+              if (next === '' && label === '') return;
               SetWorktreeLabel(o.project.id, key, next).catch(
                 reportFailure('name worktree group'),
-              ),
+              );
+            },
             onDone: () => o.props.refocusActiveTerm(),
           })
         }

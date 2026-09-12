@@ -511,6 +511,60 @@ func (r *Registry) SetWorktreeLabel(projectID, path, label string) error {
 	return nil
 }
 
+// remapWorktreeLabel moves a worktree group's name when its directory
+// moves, and deletes it when the directory goes away (dest == ""). No-op
+// when the project has no name for that worktree.
+//
+// It matches on the RESOLVED path rather than on the key itself, because
+// the two halves of this feature disagree about spelling on purpose:
+// SetWorktreeLabel stores the client's verbatim path (so the sidebar's
+// lookup key cannot drift from the key the daemon wrote), while every
+// worktree mutation works in managedPath-resolved form (macOS /var vs
+// /private/var). Comparing resolved forms is what lets one helper serve
+// both without either side having to know which spelling was stored.
+//
+// Called from the worktree lifecycle paths — without it a label outlives
+// its worktree, and a worktree later re-created at the same path (same
+// branch ⇒ same worktree.WorktreePath) silently comes up wearing a
+// deleted group's name.
+func (r *Registry) remapWorktreeLabel(projectID, resolved, dest string) {
+	r.mu.Lock()
+	p, ok := r.projects[projectID]
+	if !ok || len(p.WorktreeLabels) == 0 {
+		r.mu.Unlock()
+		return
+	}
+	var moved string
+	changed := false
+	for key := range p.WorktreeLabels {
+		if worktree.ResolvePath(key) != resolved {
+			continue
+		}
+		// Last writer wins if several spellings of one worktree somehow
+		// carry different names; they name the same directory, so any of
+		// them is the group's name.
+		moved = p.WorktreeLabels[key]
+		delete(p.WorktreeLabels, key)
+		changed = true
+	}
+	if changed && dest != "" && moved != "" {
+		p.WorktreeLabels[dest] = moved
+	}
+	if !changed {
+		r.mu.Unlock()
+		return
+	}
+	if err := r.persistProjectLocked(p); err != nil {
+		// The in-memory map is already updated; a failed write means the
+		// label reappears on the next daemon start. Worth a log, not
+		// worth failing the removal the user asked for.
+		log.Printf("registry: worktree label remap for %s persisted badly: %v", resolved, err)
+	}
+	info := p.Info()
+	r.mu.Unlock()
+	r.broadcastProject(wire.ProjectEventUpdated, info)
+}
+
 func (r *Registry) moveProjectLocked(id string, newOrder int) {
 	if slices.Index(r.projectOrder, id) < 0 {
 		return

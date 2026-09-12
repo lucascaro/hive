@@ -181,6 +181,20 @@ describe('worktree group rename', () => {
     expect(labelCalls).toEqual([['p1', WT, '']]);
   });
 
+  // Seeding from the branch means emptying the field on an ALREADY
+  // unnamed group reads as "changed" to inline-rename and reaches
+  // onCommit. Sending it would be a daemon write, a project.json
+  // persist and an all-window broadcast that change nothing.
+  it('sends nothing when an already-unnamed group is cleared', () => {
+    groupSeed();
+    const input = openEditor();
+    input.value = '';
+    fireEvent.keyDown(input, { key: 'Enter' });
+
+    expect(labelCalls).toEqual([]);
+    expect(renameCalls).toEqual([]);
+  });
+
   it('sends nothing on Escape and restores the title', () => {
     groupSeed();
     const input = openEditor();

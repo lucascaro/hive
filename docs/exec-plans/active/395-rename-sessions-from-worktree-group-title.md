@@ -284,6 +284,12 @@ into this plan: `ui-lint.sh --strict`, the measured e2e assertion, and the
 - **2026-09-11** — Labels are not gated on worktree occupancy, unlike `RenameWorktree`. Why: the feature exists to name a group of *running* sessions; a refusal while sessions are live would make it useless.
 - **2026-09-11** — Committing an empty value clears the label and deletes the map key. Why: avoids empty-string entries accumulating in `project.json`.
 
+## PR convergence ledger
+
+Append-only, one line per `/hs-review-loop` iteration.
+
+- **2026-09-11 iter 1** — verdict: REQUEST_CHANGES; mergeable: MERGEABLE; findings_hash: b610c0cad6dff9f6955cc906314544fa7fcbc052e642060de638846f52e3df13; threads_open: 4; action: escalated:risky-fix-needs-human-decision; head_sha: c804659a.
+
 ## Progress
 
 - **2026-09-11** — Spec created, triaged M/P2. Research complete (frontend + brain: no prior lessons). Plan drafted; two reviewer rounds, both `revise`.

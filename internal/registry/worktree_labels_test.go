@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/lucascaro/hive/internal/wire"
+	"github.com/lucascaro/hive/internal/worktree"
 )
 
 // openAt is freshRegistry without the temp dir, so a test can close a
@@ -216,5 +217,122 @@ func TestProjectInfo_WorktreeLabelsAreCopied(t *testing.T) {
 	}
 	if snapshot[path] != "first" {
 		t.Errorf("earlier snapshot mutated to %q; Info() aliased the live map", snapshot[path])
+	}
+}
+
+// A label outliving its worktree is not merely untidy. Worktree paths are
+// derived from the branch (worktree.WorktreePath), so re-creating a
+// worktree on the same branch lands on the SAME path — and an unpruned
+// label means the new group silently comes up wearing the deleted one's
+// name. That resurrection is the bug; the unbounded map growth is the
+// lesser half.
+func TestRemoveWorktree_PrunesTheLabel(t *testing.T) {
+	skipNonPosix(t)
+	r, p := freshRegistryWithProject(t)
+	repo := p.Cwd
+	path := newWorktree(t, repo, "labelled")
+
+	if err := r.SetWorktreeLabel(p.ID, path, "auth refactor"); err != nil {
+		t.Fatalf("SetWorktreeLabel: %v", err)
+	}
+	if got := labelOf(t, r, p.ID, path); got != "auth refactor" {
+		t.Fatalf("label = %q, want %q", got, "auth refactor")
+	}
+
+	if err := r.RemoveWorktree(p.ID, path, true, true, false); err != nil {
+		t.Fatalf("RemoveWorktree: %v", err)
+	}
+	if got := labelOf(t, r, p.ID, path); got != "" {
+		t.Errorf("label survived removal: %q", got)
+	}
+
+	// And a worktree re-created at the same path does not inherit it.
+	again := newWorktree(t, repo, "labelled")
+	if again != path {
+		t.Fatalf("re-created worktree landed at %q, want %q — test no longer exercises the collision", again, path)
+	}
+	if got := labelOf(t, r, p.ID, again); got != "" {
+		t.Errorf("re-created worktree inherited the deleted group's name: %q", got)
+	}
+}
+
+// The name follows the directory. Without the re-key the sidebar looks
+// the label up under the new path and finds nothing, so the name the
+// operator gave the group silently disappears on a branch rename.
+func TestRenameWorktree_MovesTheLabel(t *testing.T) {
+	skipNonPosix(t)
+	r, p := freshRegistryWithProject(t)
+	repo := p.Cwd
+	path := newWorktree(t, repo, "before")
+
+	if err := r.SetWorktreeLabel(p.ID, path, "auth refactor"); err != nil {
+		t.Fatalf("SetWorktreeLabel: %v", err)
+	}
+	if err := r.RenameWorktree(p.ID, path, "after"); err != nil {
+		t.Fatalf("RenameWorktree: %v", err)
+	}
+
+	// MainRoot, not the raw cwd: the registry derives the destination from
+	// the git-resolved root, and so does every session's WorktreePath
+	// (create.go -> ResolveBranchAndPath). On macOS the two spellings
+	// differ (/var vs /private/var), so computing the expectation from the
+	// unresolved cwd would fail here while the real lookup — which uses
+	// the resolved form on both sides — succeeds.
+	root, err := worktree.MainRoot(repo)
+	if err != nil {
+		t.Fatalf("MainRoot: %v", err)
+	}
+	dest := worktree.WorktreePath(root, "after")
+	if got := labelOf(t, r, p.ID, dest); got != "auth refactor" {
+		t.Errorf("label at the new path = %q, want %q", got, "auth refactor")
+	}
+	if got := labelOf(t, r, p.ID, path); got != "" {
+		t.Errorf("label still present at the old path: %q", got)
+	}
+}
+
+// SetWorktreeLabel stores the client's verbatim spelling while the
+// worktree mutations work in managedPath-resolved form. On macOS those
+// differ (/var vs /private/var), so a prune that compared keys literally
+// would miss every label set through the unresolved spelling — and would
+// do so only on macOS, which is how it would escape notice.
+func TestRemoveWorktree_PrunesALabelSetUnderAnUnresolvedPath(t *testing.T) {
+	skipNonPosix(t)
+	r, p := freshRegistryWithProject(t)
+	repo := p.Cwd
+	path := newWorktree(t, repo, "spelling")
+
+	// The spelling the GUI would send: whatever the session carries,
+	// which is not run through ResolvePath.
+	unresolved := filepath.Join(repo, ".worktrees", "spelling")
+	if err := r.SetWorktreeLabel(p.ID, unresolved, "auth refactor"); err != nil {
+		t.Fatalf("SetWorktreeLabel: %v", err)
+	}
+
+	if err := r.RemoveWorktree(p.ID, path, true, true, false); err != nil {
+		t.Fatalf("RemoveWorktree: %v", err)
+	}
+	if got := labelOf(t, r, p.ID, unresolved); got != "" {
+		t.Errorf("label set under the unresolved spelling survived removal: %q", got)
+	}
+}
+
+// Removing an unlabelled worktree must not touch the project or emit a
+// spurious broadcast.
+func TestRemoveWorktree_UnlabelledIsANoOp(t *testing.T) {
+	skipNonPosix(t)
+	r, p := freshRegistryWithProject(t)
+	repo := p.Cwd
+	kept := newWorktree(t, repo, "kept")
+	doomed := newWorktree(t, repo, "doomed")
+
+	if err := r.SetWorktreeLabel(p.ID, kept, "keep me"); err != nil {
+		t.Fatalf("SetWorktreeLabel: %v", err)
+	}
+	if err := r.RemoveWorktree(p.ID, doomed, true, true, false); err != nil {
+		t.Fatalf("RemoveWorktree: %v", err)
+	}
+	if got := labelOf(t, r, p.ID, kept); got != "keep me" {
+		t.Errorf("unrelated label was disturbed: %q", got)
 	}
 }

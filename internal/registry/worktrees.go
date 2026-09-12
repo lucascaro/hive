@@ -305,6 +305,13 @@ func (r *Registry) RemoveWorktree(projectID, path string, force, deleteBranch, d
 	if err := worktree.Cleanup(root, resolved); err != nil {
 		return fmt.Errorf("remove worktree: %w", err)
 	}
+	// The directory is gone, so its group name must go with it. Skipping
+	// this leaves the name in project.json forever AND lets a worktree
+	// re-created at this same path inherit it silently — same branch
+	// means the same worktree.WorktreePath, so the collision is the
+	// common case, not a corner one. After Cleanup, never before: a
+	// failed removal must not cost the user the name.
+	r.remapWorktreeLabel(projectID, resolved, "")
 	if deleteBranch && branch != "" {
 		// force mirrors the user's confirmed intent: without it git
 		// refuses to delete a branch holding unmerged commits, which
@@ -492,6 +499,12 @@ func (r *Registry) RenameWorktree(projectID, path, newBranch string) error {
 		}
 		return err
 	}
+	// The group's name follows its directory. Without this the name the
+	// operator gave the group silently vanishes on a branch rename,
+	// because the sidebar looks it up under the NEW path. After the move
+	// succeeds, so the rollback path above leaves the name where the
+	// directory still is.
+	r.remapWorktreeLabel(projectID, resolved, dest)
 	log.Printf("registry: renamed worktree %s -> %s (branch %s -> %s)", resolved, dest, st.Branch, newBranch)
 	return nil
 }

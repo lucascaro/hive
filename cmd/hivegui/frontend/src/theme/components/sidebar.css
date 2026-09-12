@@ -148,6 +148,15 @@
   color: var(--fg-muted);
   font-size: var(--text-sm);
 }
+/* Where the ellipsis actually happens. The parent is an inline-flex box,
+   and text-overflow does not apply to the anonymous flex item its bare
+   text would form — so the name gets a real box of its own. */
+.hv-worktree-group__branch-name {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
 /* Gives up its width first when a name is present, so the two never
    fight for the same ellipsis. It is never dropped entirely: stating the
    branch is the panel's whole reason to exist. */
