@@ -103,8 +103,11 @@ export function WorktreeGroup(p: WorktreeGroupProps) {
     >
       {/* biome-ignore lint/a11y/noStaticElementInteractions: the same
           double-click-to-rename affordance the project header and the
-          session row already carry; the keyboard path to a rename is
-          the command palette, not this element. */}
+          session row already carry, and it has the same gap they do:
+          double-click is the only way in. The command palette has no
+          rename command, and the Worktrees modal's button-triggered
+          rename edits the BRANCH, not this name. Worth closing for all
+          three at once, not with a fourth bespoke path here. */}
       <div className="hv-worktree-group__header" onDoubleClick={openRename}>
         <button
           type="button"

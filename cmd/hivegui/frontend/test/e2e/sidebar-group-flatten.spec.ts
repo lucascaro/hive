@@ -165,6 +165,9 @@ test.describe('worktree group band', () => {
       if (!h) throw new Error('no group header');
       return h.scrollWidth - h.clientWidth;
     });
-    expect(overflow, 'the group header overflows horizontally').toBeLessThanOrEqual(1);
+    expect(
+      overflow,
+      'the group header overflows horizontally',
+    ).toBeLessThanOrEqual(1);
   });
 });

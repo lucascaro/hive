@@ -127,9 +127,6 @@ func TestSetWorktreeLabel_AllowedWithLiveSession(t *testing.T) {
 	if err := r.SetWorktreeLabel(p.ID, e.WorktreePath, "live work"); err != nil {
 		t.Fatalf("SetWorktreeLabel with a live session: %v", err)
 	}
-	if errors.Is(err, ErrWorktreeInUse) {
-		t.Fatal("labels must not be gated on worktree occupancy")
-	}
 	if got := labelOf(t, r, p.ID, e.WorktreePath); got != "live work" {
 		t.Errorf("label = %q, want %q", got, "live work")
 	}
