@@ -1306,6 +1306,10 @@ func (r *Registry) kill(id string, force, removeWorktree bool) error {
 	// lose the data otherwise.
 	wtPath, wtBranch := e.WorktreePath, e.WorktreeBranch
 	var projectCwd string
+	// The project id travels with the cwd because disposeWorktree needs
+	// it to prune the worktree's group name, and e is gone from the map
+	// by the time that runs.
+	projectID := e.ProjectID
 	if p, ok := r.projects[e.ProjectID]; ok {
 		projectCwd = p.Cwd
 	}
@@ -1416,7 +1420,7 @@ func (r *Registry) kill(id string, force, removeWorktree bool) error {
 		_ = sess.Close()
 	}
 	if wtPath != "" && !worktreeShared {
-		r.disposeWorktree(id, projectCwd, wtPath, wtBranch, removeWorktree)
+		r.disposeWorktree(id, projectID, projectCwd, wtPath, wtBranch, removeWorktree)
 	}
 	_ = os.RemoveAll(dir)
 	r.broadcast(wire.SessionEventRemoved, e.Info())
@@ -1446,7 +1450,7 @@ func (r *Registry) kill(id string, force, removeWorktree bool) error {
 // an explicit remove-the-worktree request, and a worktree that holds
 // nothing (no uncommitted changes, no unpushed commits). Closing a
 // session must never be the thing that destroys work.
-func (r *Registry) disposeWorktree(id, projectCwd, wtPath, wtBranch string, removeWorktree bool) {
+func (r *Registry) disposeWorktree(id, projectID, projectCwd, wtPath, wtBranch string, removeWorktree bool) {
 	r.gitMu.Lock()
 	defer r.gitMu.Unlock()
 	root, err := worktree.Root(projectCwd)
@@ -1454,6 +1458,7 @@ func (r *Registry) disposeWorktree(id, projectCwd, wtPath, wtBranch string, remo
 	case err != nil:
 		log.Printf("registry: kill %s: project cwd %q is not (or no longer) a git repo; falling back to RemoveAll on %s", id, projectCwd, wtPath)
 		_ = os.RemoveAll(wtPath)
+		r.pruneWorktreeLabel(projectID, wtPath)
 	case !worktree.IsManaged(root, wtPath):
 		// Second guard, independent of whatever set WorktreePath:
 		// only ever delete a worktree hive owns. An entry pointing
@@ -1477,6 +1482,8 @@ func (r *Registry) disposeWorktree(id, projectCwd, wtPath, wtBranch string, remo
 			// work at stake.
 			if err := worktree.Cleanup(root, wtPath); err != nil {
 				log.Printf("registry: worktree cleanup failed for %s: %v (branch=%s)", id, err, wtBranch)
+			} else {
+				r.pruneWorktreeLabel(projectID, wtPath)
 			}
 		case ierr != nil:
 			log.Printf("registry: kill %s: cannot inspect worktree %s (%v); keeping it", id, wtPath, ierr)
@@ -1486,6 +1493,8 @@ func (r *Registry) disposeWorktree(id, projectCwd, wtPath, wtBranch string, remo
 		default:
 			if err := worktree.Cleanup(root, wtPath); err != nil {
 				log.Printf("registry: worktree cleanup failed for %s: %v (branch=%s)", id, err, wtBranch)
+			} else {
+				r.pruneWorktreeLabel(projectID, wtPath)
 			}
 		}
 	}

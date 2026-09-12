@@ -195,6 +195,24 @@ describe('worktree group rename', () => {
     expect(renameCalls).toEqual([]);
   });
 
+  // The daemon rejects an over-cap name rather than truncating it, and
+  // the editor tears down on commit — so without a client guard the name
+  // the user typed is lost and all they get is a raw error code. The
+  // editor must stay open holding exactly what they typed.
+  it('refuses an over-long name and keeps the editor open on it', () => {
+    groupSeed();
+    const input = openEditor();
+    const tooLong = 'x'.repeat(201);
+    input.value = tooLong;
+    fireEvent.keyDown(input, { key: 'Enter' });
+
+    expect(labelCalls).toEqual([]);
+    expect(renameCalls).toEqual([]);
+    const still = editor();
+    expect(still).not.toBeNull();
+    expect(still?.value).toBe(tooLong);
+  });
+
   it('sends nothing on Escape and restores the title', () => {
     groupSeed();
     const input = openEditor();

@@ -34,7 +34,7 @@ import {
   SetWorktreeLabel,
 } from '../bridge.js';
 import { manualUpdateCheck } from '../app/banners.js';
-import { reportFailure } from '../app/dom.js';
+import { flashStatus, reportFailure } from '../app/dom.js';
 import { beginInlineRename } from '../app/inline-rename.js';
 import { openLauncher } from '../app/modals/launcher.js';
 import { openProjectEditor } from '../app/modals/project-editor.js';
@@ -72,8 +72,10 @@ import { WorktreeGroup } from './WorktreeGroup.js';
 import {
   clusterDropOps,
   clusterSessions,
+  MAX_WORKTREE_LABEL,
   worktreeGroups,
   worktreeKey,
+  worktreeLabelTooLong,
 } from '../lib/worktree-groups.js';
 
 // Per-module, not a shared deps union: the sidebar wants
@@ -417,6 +419,19 @@ function renderRows(
             // nowhere else to say it. Opt-in because for a session or a
             // project an empty name is a mistake, not an instruction.
             allowEmpty: true,
+            // Refuse client-side rather than letting the daemon do it:
+            // the editor tears down on commit and SetWorktreeLabel is
+            // fire-and-forget, so a rejected name would be lost and the
+            // user would see only the raw error code. `validate` keeps
+            // the editor open holding exactly what they typed.
+            validate: (next) => {
+              if (!worktreeLabelTooLong(next)) return true;
+              flashStatus(
+                `group name is too long (max ${MAX_WORKTREE_LABEL} bytes)`,
+                true,
+              );
+              return false;
+            },
             // Names the GROUP. Deliberately no UpdateSession call: the
             // members keep their own names, and the ones still carrying
             // the branch-derived default keep having it hidden by

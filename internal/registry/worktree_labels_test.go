@@ -391,3 +391,73 @@ func TestSetWorktreeLabel_RejectsAnOverlongPath(t *testing.T) {
 		t.Errorf("a refused path was stored anyway: %q", got)
 	}
 }
+
+// The common teardown path, and the one the explicit-remove fix missed.
+// Closing the LAST session in a named group disposes the worktree through
+// Kill -> disposeWorktree, not through RemoveWorktree — so a prune wired
+// only into the latter leaves the name behind on the path people actually
+// take. Same resurrect consequence: a worktree re-created on the branch
+// lands on the same path and inherits the dead group's name.
+func TestKill_PrunesTheLabelOfTheWorktreeItDisposes(t *testing.T) {
+	skipNonPosix(t)
+	r, p := freshRegistryWithProject(t)
+	sess, err := r.Create(context.Background(), wire.CreateSpec{
+		Name: "wt", ProjectID: p.ID, Cols: 80, Rows: 24,
+		Shell: "/bin/bash", UseWorktree: true,
+	})
+	if err != nil {
+		t.Fatalf("Create: %v", err)
+	}
+	wtPath := sess.WorktreePath
+	if wtPath == "" {
+		t.Fatal("create did not produce a worktree")
+	}
+	if err := r.SetWorktreeLabel(p.ID, wtPath, "auth refactor"); err != nil {
+		t.Fatalf("SetWorktreeLabel: %v", err)
+	}
+	time.Sleep(80 * time.Millisecond)
+
+	if err := r.Kill(sess.ID, true); err != nil {
+		t.Fatalf("Kill: %v", err)
+	}
+	if _, err := os.Stat(wtPath); !os.IsNotExist(err) {
+		t.Fatalf("worktree survived the kill, so this test proves nothing: err=%v", err)
+	}
+	if got := labelOf(t, r, p.ID, wtPath); got != "" {
+		t.Errorf("label survived the kill that disposed its worktree: %q", got)
+	}
+}
+
+// A worktree kept because it holds work must KEEP its name — the session
+// is gone but the group is not, and the worktree is still in the browser.
+func TestKill_KeepsTheLabelWhenItKeepsTheWorktree(t *testing.T) {
+	skipNonPosix(t)
+	r, p := freshRegistryWithProject(t)
+	sess, err := r.Create(context.Background(), wire.CreateSpec{
+		Name: "wt", ProjectID: p.ID, Cols: 80, Rows: 24,
+		Shell: "/bin/bash", UseWorktree: true,
+	})
+	if err != nil {
+		t.Fatalf("Create: %v", err)
+	}
+	wtPath := sess.WorktreePath
+	if err := r.SetWorktreeLabel(p.ID, wtPath, "auth refactor"); err != nil {
+		t.Fatalf("SetWorktreeLabel: %v", err)
+	}
+	// Uncommitted work makes the worktree non-pristine, so teardown
+	// keeps it.
+	mustWriteFile(t, filepath.Join(wtPath, "WIP.txt"), "unfinished")
+	time.Sleep(80 * time.Millisecond)
+
+	// force: the dirty worktree is what makes teardown KEEP it, and a
+	// non-forced kill refuses outright on the same condition.
+	if err := r.Kill(sess.ID, true); err != nil {
+		t.Fatalf("Kill: %v", err)
+	}
+	if _, err := os.Stat(wtPath); err != nil {
+		t.Fatalf("a dirty worktree was deleted, so this test proves nothing: %v", err)
+	}
+	if got := labelOf(t, r, p.ID, wtPath); got != "auth refactor" {
+		t.Errorf("label = %q, want it kept alongside the kept worktree", got)
+	}
+}

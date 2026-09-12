@@ -918,6 +918,13 @@ export function wireDaemonEvents(injected: EventsDeps) {
       flashStatus('idea is too long — shorten it and try again', true);
       return;
     }
+    // Same shape as idea_too_long: the client guard above it normally
+    // wins, so this is the case that outruns it — another window, or a
+    // daemon whose cap differs from this build's mirror.
+    if (e.code === 'worktree_label_too_long') {
+      flashStatus('group name is too long — shorten it and try again', true);
+      return;
+    }
     // Worktree-browser refusals. worktree_in_use is not overridable,
     // so there is nothing to confirm — say what to do instead.
     if (e.code === 'worktree_in_use') {

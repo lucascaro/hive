@@ -59,6 +59,12 @@ func (r *Registry) EnsureDefaultProject(cwd string) (*Project, error) {
 type OrphanWorktreeCandidate struct {
 	Root string // repository root the worktree belongs to
 	Path string // absolute path of the worktree directory
+	// ProjectID is the project the candidate was found under, carried so
+	// the reclaim can drop the worktree's group name along with the
+	// directory. Empty is tolerated (pruneWorktreeLabel no-ops), which is
+	// what happens for a candidate discovered under a project that has
+	// since been deleted.
+	ProjectID string
 }
 
 // ScanOrphanWorktrees lists the worktree directories that exist right
@@ -103,7 +109,7 @@ func (r *Registry) ScanOrphanWorktrees() []OrphanWorktreeCandidate {
 				continue // two projects under one repo root
 			}
 			seen[path] = true
-			out = append(out, OrphanWorktreeCandidate{Root: root, Path: path})
+			out = append(out, OrphanWorktreeCandidate{Root: root, Path: path, ProjectID: p.ID})
 		}
 	}
 	return out
@@ -167,7 +173,7 @@ func (r *Registry) ReclaimOrphanWorktrees(ctx context.Context, candidates []Orph
 			log.Printf("registry: keeping orphan worktree %s (uncommitted=%v unpushed=%d unknown=%v)",
 				c.Path, st.Uncommitted, st.Unpushed, st.Unknown)
 		default:
-			r.reclaimOne(c.Root, c.Path)
+			r.reclaimOne(c.Root, c.Path, c.ProjectID)
 		}
 	}
 }
@@ -196,7 +202,7 @@ func (r *Registry) inspectWorktree(root, path string) (worktree.Status, error) {
 // to git. The claim check and the removal must share gitMu: adoption
 // (create.go's adoptDetachedWorktree) takes gitMu too, so a create
 // cannot slip a claim in between them.
-func (r *Registry) reclaimOne(root, path string) {
+func (r *Registry) reclaimOne(root, path, projectID string) {
 	r.gitMu.Lock()
 	defer r.gitMu.Unlock()
 	if r.worktreeClaimed(path) {
@@ -211,7 +217,12 @@ func (r *Registry) reclaimOne(root, path string) {
 	log.Printf("registry: reclaiming orphan worktree %s", path)
 	if err := worktree.Cleanup(root, path); err != nil {
 		log.Printf("registry: orphan cleanup failed for %s: %v", path, err)
+		return
 	}
+	// The directory is gone; its group name goes with it. Same rule as
+	// every other teardown path — a name outliving its worktree gets
+	// inherited by whatever is created at that path next.
+	r.pruneWorktreeLabel(projectID, path)
 }
 
 // worktreeClaimed reports whether any registry entry currently owns
@@ -586,6 +597,22 @@ func (r *Registry) remapWorktreeLabel(projectID, resolved, dest string) {
 	info := p.Info()
 	r.mu.Unlock()
 	r.broadcastProject(wire.ProjectEventUpdated, info)
+}
+
+// pruneWorktreeLabel drops a worktree group's name because its directory
+// is gone. Thin wrapper over remapWorktreeLabel so every teardown site
+// reads the same, and so "the worktree died, forget its name" is stated
+// once rather than as a bare empty-string argument at four call sites.
+//
+// The path is resolved here rather than by callers: teardown paths carry
+// whatever spelling the entry or the candidate held, while the map may be
+// keyed by the client's. remapWorktreeLabel compares resolved forms, so
+// this only has to hand it a resolved needle.
+func (r *Registry) pruneWorktreeLabel(projectID, wtPath string) {
+	if projectID == "" || wtPath == "" {
+		return
+	}
+	r.remapWorktreeLabel(projectID, worktree.ResolvePath(wtPath), "")
 }
 
 func (r *Registry) moveProjectLocked(id string, newOrder int) {
