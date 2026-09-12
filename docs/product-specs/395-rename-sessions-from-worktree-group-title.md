@@ -5,7 +5,7 @@ type: enhancement
 complexity: L
 priority: P2
 pr: 396
-stage: REVIEW
+stage: GATE
 ---
 
 # Name a worktree group by double-clicking its title

@@ -299,6 +299,8 @@ Append-only, one line per `/hs-review-loop` iteration.
 - **2026-09-11 iter 3b** — fix applied: path key bounded at wire.MaxWorktreePath, mirroring the label guard; head_sha: 13455fa5.
 - **2026-09-11 iter 4** — verdict: REQUEST_CHANGES; mergeable: MERGEABLE; findings_hash: 727eab048ab5084e14e71d86653a13479f99f322085c41bc79c4b4b3914e077f; threads_open: 0; action: escalated:risky-fix-needs-human-decision (disposeWorktree prune, client-side cap); head_sha: 13455fa5.
 - **2026-09-11 iter 4b** — fixes applied: prune on every teardown path (disposeWorktree + reclaimOne), client-side MAX_WORKTREE_LABEL guard; head_sha: bba219a1.
+- **2026-09-11 iter 5** — verdict: APPROVE; mergeable: MERGEABLE; findings_hash: empty (zero BLOCKING/IMPORTANT); threads_open: 1 (CodeRabbit minor); action: autofix+push; head_sha: 2da35a25.
+- **2026-09-11 iter 5b** — fix applied: deterministic alias tie-break in remapWorktreeLabel; all 5 review threads resolved, CI green on Linux/macOS/Windows; action: stop (converged); head_sha: 0ce1af56.
 
 ## Progress
 
