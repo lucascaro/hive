@@ -375,3 +375,19 @@ func TestSetWorktreeLabel_AcceptsExactlyTheLimit(t *testing.T) {
 		t.Errorf("stored label is %d bytes, want %d", len(got), len(exact))
 	}
 }
+
+// The key is stored verbatim and rides the same persist-and-broadcast
+// path as the label, so bounding one without the other is not a bound.
+func TestSetWorktreeLabel_RejectsAnOverlongPath(t *testing.T) {
+	r := freshRegistry(t)
+	p, _ := r.CreateProject(wire.CreateProjectReq{Name: "proj", Cwd: t.TempDir()})
+
+	long := "/" + strings.Repeat("p", wire.MaxWorktreePath)
+	if err := r.SetWorktreeLabel(p.ID, long, "x"); err == nil {
+		t.Fatal("an over-long worktree path was accepted")
+	}
+	// Nothing was filed under it.
+	if got := labelOf(t, r, p.ID, long); got != "" {
+		t.Errorf("a refused path was stored anyway: %q", got)
+	}
+}

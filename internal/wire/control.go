@@ -984,6 +984,14 @@ type RenameWorktreeReq struct {
 // silently shortened is a name the user did not choose.
 const MaxWorktreeLabel = 200
 
+// MaxWorktreePath bounds the map key a label is filed under. The key is
+// stored verbatim (see SetWorktreeLabelReq), so it is client-supplied
+// text on the same persisted, re-broadcast path as the label — and a
+// bound on one half of a pair without the other is not a bound. Roughly
+// PATH_MAX: large enough that no real worktree path approaches it, small
+// enough that project.json cannot be grown a megabyte at a time.
+const MaxWorktreePath = 4096
+
 // SetWorktreeLabelReq sets the user-authored name of one worktree
 // group. An empty Label clears it — it never removes the worktree.
 //

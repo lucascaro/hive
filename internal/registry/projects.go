@@ -484,6 +484,16 @@ func (r *Registry) SetWorktreeLabel(projectID, path, label string) error {
 	if path == "" {
 		return errors.New("registry: empty worktree path")
 	}
+	// The key is bounded for the same reason the label is: it is stored
+	// verbatim, persisted to project.json and re-broadcast to every
+	// window, so the only other ceiling is the 1 MiB frame cap. NOT
+	// resolved through managedPath — SetWorktreeLabelReq documents why
+	// the client's own spelling has to survive — so a length check is
+	// the whole of what can be validated here.
+	if len(path) > wire.MaxWorktreePath {
+		return fmt.Errorf("registry: worktree path too long: %d bytes, limit %d",
+			len(path), wire.MaxWorktreePath)
+	}
 	r.mu.Lock()
 	p, ok := r.projects[projectID]
 	if !ok {
