@@ -293,6 +293,8 @@ Append-only, one line per `/hs-review-loop` iteration.
 
 - **2026-09-11 iter 1** — verdict: REQUEST_CHANGES; mergeable: MERGEABLE; findings_hash: b610c0cad6dff9f6955cc906314544fa7fcbc052e642060de638846f52e3df13; threads_open: 4; action: escalated:risky-fix-needs-human-decision; head_sha: c804659a.
 - **2026-09-11 iter 2** — verdict: REQUEST_CHANGES; mergeable: MERGEABLE; findings_hash: unrecorded (worker died before returning its envelope); threads_open: 1; action: autofix+push; head_sha: 76fe723e.
+- **2026-09-11 iter 2 (envelope, late)** — verdict: REQUEST_CHANGES; findings_hash: cfd1873efc19e15462f1ad8dfb1aa882cecebe6f6a238acd1e4c2830abc24448; threads_open: 1; action: escalated:risky-fix-needs-human-decision (unbounded label length); head_sha: 76fe723e.
+- **2026-09-11 iter 2b** — operator-directed fix applied: label bounded at wire.MaxWorktreeLabel, branch min-width floor, thread replied and resolved; head_sha: 3e7a7f6a.
 
 ## Progress
 
