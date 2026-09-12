@@ -172,7 +172,10 @@ defaulting to `false`, so the three existing call sites are untouched by constru
 3. `internal/registry/projects.go` — new `SetWorktreeLabel(projectID, path, label string) error`,
    copied from `UpdateProject` (`:420-463`): mutate under `r.mu`, persist under the same
    lock, snapshot `p.Info()` while held, unlock **before** broadcasting. Empty label
-   deletes the key. Key normalised the same way `managedPath` normalises.
+   deletes the key. Key stored verbatim as the client spelled it, *not*
+   normalised — the sidebar's lookup key must not drift from the key the
+   daemon wrote. `remapWorktreeLabel` reconciles spellings by comparing
+   `worktree.ResolvePath` forms instead.
 4. `internal/wire/control.go` — `SetWorktreeLabelReq{ProjectID, Path, Label}` with
    `snake_case` tags; `ProjectInfo` (`:527-534`) gains `worktree_labels`.
 5. `internal/wire/frame.go` — `FrameSetWorktreeLabel = 0x2a` plus its `String()` arm.
