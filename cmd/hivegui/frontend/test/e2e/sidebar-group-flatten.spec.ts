@@ -170,4 +170,48 @@ test.describe('worktree group band', () => {
       'the group header overflows horizontally',
     ).toBeLessThanOrEqual(1);
   });
+
+  // The name is operator-supplied and unbounded — SetWorktreeLabel trims
+  // whitespace but caps nothing. Both boxes carry `min-width: 0` so they
+  // can ellipsize, which is also what lets a long enough name squeeze the
+  // branch to zero. The name must yield first: it is recoverable from the
+  // tooltip and the editor, the branch is what the panel exists to state.
+  test('a very long group name cannot squeeze the branch away', async ({
+    page,
+  }) => {
+    await boot(page);
+    await seedScrollableGroup(page);
+
+    await page.evaluate(() => {
+      const s = (window.__hive.state?.sessions ?? []).find(
+        (x) => !!x.worktree_path,
+      );
+      if (!s) throw new Error('no worktree session seeded');
+      return window.__hive.setWorktreeLabel?.(
+        s.project_id ?? 'p1',
+        s.worktree_path ?? '',
+        'an absurdly long worktree group name that nobody would sensibly type but nothing stops them from pasting',
+      );
+    });
+    await page.waitForSelector('.hv-worktree-group__label');
+
+    const branch = await box(page, '.hv-worktree-group__branch');
+    expect(
+      branch.width,
+      'a long name squeezed the branch to an unreadable width',
+    ).toBeGreaterThan(24);
+
+    const header = await box(page, '.hv-worktree-group__header');
+    const overflow = await page.evaluate(() => {
+      const h = document.querySelector('.hv-worktree-group__header');
+      if (!h) throw new Error('no group header');
+      return h.scrollWidth - h.clientWidth;
+    });
+    expect(overflow, 'a long name overflowed the header').toBeLessThanOrEqual(
+      1,
+    );
+    expect(branch.x + branch.width).toBeLessThanOrEqual(
+      header.x + header.width + 1,
+    );
+  });
 });

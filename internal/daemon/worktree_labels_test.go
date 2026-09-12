@@ -2,6 +2,7 @@ package daemon
 
 import (
 	"net"
+	"strings"
 	"testing"
 	"time"
 
@@ -130,6 +131,44 @@ func drainProjectSnapshot(t *testing.T, conn net.Conn) {
 			return
 		}
 	}
+}
+
+// An over-long label must come back with the NAMED code, not the generic
+// one: "shorten it" is something the client can act on, "it failed" is
+// not.
+func TestControl_SetWorktreeLabelTooLongUsesTheNamedCode(t *testing.T) {
+	d, _ := startDaemonInRepo(t)
+	pid := projectIDOf(t, d)
+
+	conn := dial(t, d)
+	defer conn.Close()
+	_ = handshake(t, conn, wire.Hello{Mode: wire.ModeControl})
+
+	if err := wire.WriteJSON(conn, wire.FrameSetWorktreeLabel, wire.SetWorktreeLabelReq{
+		ProjectID: pid,
+		Path:      "/repo/.worktrees/auth",
+		Label:     strings.Repeat("x", wire.MaxWorktreeLabel+1),
+	}); err != nil {
+		t.Fatalf("write: %v", err)
+	}
+
+	deadline := time.Now().Add(5 * time.Second)
+	for time.Now().Before(deadline) {
+		_ = conn.SetReadDeadline(time.Now().Add(1 * time.Second))
+		ft, payload, err := wire.ReadFrame(conn)
+		if err != nil {
+			continue
+		}
+		if ft == wire.FrameError {
+			var e wire.Error
+			_ = jsonUnmarshal(payload, &e)
+			if e.Code != wire.ErrCodeWorktreeLabelTooLong {
+				t.Errorf("error code = %q, want %q", e.Code, wire.ErrCodeWorktreeLabelTooLong)
+			}
+			return
+		}
+	}
+	t.Fatal("no ERROR frame for an over-long label")
 }
 
 // An unknown project must surface as an ERROR, not as a silent no-op:

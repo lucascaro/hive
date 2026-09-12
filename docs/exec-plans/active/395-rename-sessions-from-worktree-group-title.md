@@ -292,6 +292,7 @@ into this plan: `ui-lint.sh --strict`, the measured e2e assertion, and the
 Append-only, one line per `/hs-review-loop` iteration.
 
 - **2026-09-11 iter 1** — verdict: REQUEST_CHANGES; mergeable: MERGEABLE; findings_hash: b610c0cad6dff9f6955cc906314544fa7fcbc052e642060de638846f52e3df13; threads_open: 4; action: escalated:risky-fix-needs-human-decision; head_sha: c804659a.
+- **2026-09-11 iter 2** — verdict: REQUEST_CHANGES; mergeable: MERGEABLE; findings_hash: unrecorded (worker died before returning its envelope); threads_open: 1; action: autofix+push; head_sha: 76fe723e.
 
 ## Progress
 

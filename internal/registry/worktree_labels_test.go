@@ -6,6 +6,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -334,5 +335,43 @@ func TestRemoveWorktree_UnlabelledIsANoOp(t *testing.T) {
 	}
 	if got := labelOf(t, r, p.ID, kept); got != "keep me" {
 		t.Errorf("unrelated label was disturbed: %q", got)
+	}
+}
+
+// The label is operator-supplied and goes straight into project.json and
+// a broadcast to every open window, so it needs a ceiling that is not
+// "the wire's 1 MiB frame cap". Rejected rather than truncated, like an
+// over-long idea: a name silently shortened is a name nobody chose.
+func TestSetWorktreeLabel_RejectsAnOverlongLabel(t *testing.T) {
+	r := freshRegistry(t)
+	p, _ := r.CreateProject(wire.CreateProjectReq{Name: "proj", Cwd: t.TempDir()})
+	const path = "/repo/.worktrees/auth"
+
+	if err := r.SetWorktreeLabel(p.ID, path, "fits"); err != nil {
+		t.Fatalf("baseline set: %v", err)
+	}
+	long := strings.Repeat("x", wire.MaxWorktreeLabel+1)
+	err := r.SetWorktreeLabel(p.ID, path, long)
+	if !errors.Is(err, ErrWorktreeLabelTooLong) {
+		t.Fatalf("got %v, want ErrWorktreeLabelTooLong", err)
+	}
+	// Refused means unchanged — not cleared, and not half-applied.
+	if got := labelOf(t, r, p.ID, path); got != "fits" {
+		t.Errorf("a refused label disturbed the stored one: %q", got)
+	}
+}
+
+// Exactly at the limit is allowed; the bound is inclusive.
+func TestSetWorktreeLabel_AcceptsExactlyTheLimit(t *testing.T) {
+	r := freshRegistry(t)
+	p, _ := r.CreateProject(wire.CreateProjectReq{Name: "proj", Cwd: t.TempDir()})
+	const path = "/repo/.worktrees/auth"
+
+	exact := strings.Repeat("x", wire.MaxWorktreeLabel)
+	if err := r.SetWorktreeLabel(p.ID, path, exact); err != nil {
+		t.Fatalf("a label of exactly the limit was refused: %v", err)
+	}
+	if got := labelOf(t, r, p.ID, path); got != exact {
+		t.Errorf("stored label is %d bytes, want %d", len(got), len(exact))
 	}
 }

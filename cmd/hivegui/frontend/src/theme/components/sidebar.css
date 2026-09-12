@@ -162,6 +162,14 @@
    branch is the panel's whole reason to exist. */
 .hv-worktree-group__label + .hv-worktree-group__branch {
   flex: 1 1 auto;
+  /* The floor that makes "never dropped entirely" true rather than merely
+     intended. Both boxes carry min-width: 0 so they can ellipsize, which
+     also means a long enough persisted name could squeeze the branch to
+     nothing — the label is operator-supplied and unbounded. Reserving a
+     few characters forces the NAME to ellipsize first, which is the right
+     way round: the name is recoverable from the tooltip and the editor,
+     the branch is what the panel exists to state. */
+  min-width: 7ch;
   color: var(--fg-subtle);
   font-size: var(--text-xs);
 }

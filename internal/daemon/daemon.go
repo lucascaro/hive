@@ -1291,7 +1291,13 @@ func (d *Daemon) handleControlFrame(ctx context.Context, ops controlOps, ft wire
 		// which is what repaints every open sidebar rather than only the
 		// connection that asked.
 		if err := d.reg.SetWorktreeLabel(req.ProjectID, req.Path, req.Label); err != nil {
-			ops.sendError("set_worktree_label_failed", err.Error())
+			code := "set_worktree_label_failed"
+			if errors.Is(err, registry.ErrWorktreeLabelTooLong) {
+				// Named, not generic: "shorten it" is something the
+				// client can actually act on.
+				code = wire.ErrCodeWorktreeLabelTooLong
+			}
+			ops.sendError(code, err.Error())
 		}
 	case wire.FrameListWorktrees:
 		req, ok := decodeReq[wire.ListWorktreesReq](payload, ops.sendError)

@@ -801,6 +801,9 @@ const (
 	// code a ModeSession connection gets for any verb outside
 	// ADD_IDEA / LIST_IDEAS.
 	ErrCodeModeNotAllowed = "mode_not_allowed"
+	// ErrCodeWorktreeLabelTooLong is returned when a worktree group's
+	// name exceeds MaxWorktreeLabel. Rejected, never truncated.
+	ErrCodeWorktreeLabelTooLong = "worktree_label_too_long"
 	// ErrCodeIdeaTooLong is returned when an idea's text exceeds
 	// MaxIdeaText. Rejected rather than truncated: a silently
 	// half-saved note is worse than one the user is told to shorten.
@@ -812,7 +815,7 @@ const (
 	// cleared and the note is gone, and telling them to try again would
 	// point at an affordance that no longer exists.
 	ErrCodeNoLiveSession = "resolve_prompt_no_live_session"
-	ErrCodeIdeaTooLong = "idea_too_long"
+	ErrCodeIdeaTooLong   = "idea_too_long"
 	// ErrCodeProjectHasIdeas is returned when deleting a project would
 	// destroy ideas that are still open. Overridable by force
 	// (KillProjectReq.DeleteIdeas) after the user confirms.
@@ -972,6 +975,14 @@ type RenameWorktreeReq struct {
 	Path      string `json:"path"`
 	NewBranch string `json:"new_branch"`
 }
+
+// MaxWorktreeLabel bounds one worktree group's name. Far smaller than
+// MaxIdeaText: a label is a sidebar header that must stay legible in a
+// 220px column, it is re-broadcast to every open window on each change,
+// and it lives in project.json, which is read at boot. Rejected rather
+// than truncated, for the same reason an over-long idea is — a name
+// silently shortened is a name the user did not choose.
+const MaxWorktreeLabel = 200
 
 // SetWorktreeLabelReq sets the user-authored name of one worktree
 // group. An empty Label clears it — it never removes the worktree.

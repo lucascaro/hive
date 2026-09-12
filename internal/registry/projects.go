@@ -20,6 +20,10 @@ import (
 // ErrProjectNotFound is returned when a project ID isn't known.
 var ErrProjectNotFound = errors.New("registry: project not found")
 
+// ErrWorktreeLabelTooLong is returned when a worktree group's name
+// exceeds wire.MaxWorktreeLabel. Rejected, never truncated.
+var ErrWorktreeLabelTooLong = errors.New("registry: worktree label too long")
+
 // ListProjects returns a snapshot of all projects in display order.
 func (r *Registry) ListProjects() []wire.ProjectInfo {
 	r.mu.Lock()
@@ -487,6 +491,15 @@ func (r *Registry) SetWorktreeLabel(projectID, path, label string) error {
 		return ErrProjectNotFound
 	}
 	label = strings.TrimSpace(label)
+	// Bounded before it is persisted and broadcast. Without this the
+	// only ceiling is the wire's 1 MiB frame cap, and a label is not a
+	// one-off write: it lands in project.json (read at boot) and is
+	// re-broadcast to every open window on every change.
+	if len(label) > wire.MaxWorktreeLabel {
+		r.mu.Unlock()
+		return fmt.Errorf("%w: %d bytes, limit %d",
+			ErrWorktreeLabelTooLong, len(label), wire.MaxWorktreeLabel)
+	}
 	switch {
 	case label == "":
 		// Delete rather than storing "": an empty value would round-trip
