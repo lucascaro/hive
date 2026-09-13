@@ -8,11 +8,11 @@ import (
 	"fmt"
 	"log"
 	"os"
-	"os/exec"
 	"strconv"
 	"strings"
-	"syscall"
 	"time"
+
+	"github.com/lucascaro/hive/internal/proc"
 )
 
 // probeFn is the package-level seam used by killRunningHived so tests
@@ -102,8 +102,7 @@ func killRunningHived(sock string) error {
 // is already dead; an exec failure means we can't tell, so we must
 // not silently proceed as if the socket were free.
 func runTasklistProbe(pid int) (alive, hived bool, err error) {
-	cmd := exec.Command("tasklist", "/FI", "PID eq "+strconv.Itoa(pid), "/FO", "CSV", "/NH")
-	cmd.SysProcAttr = &syscall.SysProcAttr{HideWindow: true}
+	cmd := proc.Command("tasklist", "/FI", "PID eq "+strconv.Itoa(pid), "/FO", "CSV", "/NH")
 	out, err := cmd.Output()
 	if err != nil {
 		return false, false, fmt.Errorf("exec tasklist: %w", err)

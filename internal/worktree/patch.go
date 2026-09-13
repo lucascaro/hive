@@ -6,9 +6,10 @@ import (
 	"errors"
 	"fmt"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strings"
+
+	"github.com/lucascaro/hive/internal/proc"
 )
 
 // ErrPatchTooLarge is returned by DumpPatch when the recovery patch
@@ -118,7 +119,7 @@ func DumpPatch(worktreePath, outPath string, capBytes int64) error {
 func diffAgainstNull(worktreePath, name string) ([]byte, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), readTimeout)
 	defer cancel()
-	cmd := exec.CommandContext(ctx, "git", "-C", worktreePath,
+	cmd := proc.CommandContext(ctx, "git", "-C", worktreePath,
 		"diff", "--no-index", "--binary", "--", os.DevNull, name)
 	cmd.Env = append(os.Environ(), "LC_ALL=C", "LANG=C")
 	out, err := cmd.Output()
