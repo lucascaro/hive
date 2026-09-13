@@ -29,6 +29,11 @@ export interface UpdateInfoLike {
    * the cheap answer would silently reload a GUI into a daemon it does
    * not understand. */
   restartKind?: string;
+  /** Whether this build can install an update in place, and why not
+   * when it cannot — both decided by the Go side, which is the only
+   * side that can know. See UpdateInfo.CanApply in update.go. */
+  canApply?: boolean;
+  canApplyReason?: string;
 }
 
 /** Actions the button can perform. `none` means it should be hidden.
@@ -62,13 +67,15 @@ export function describeVersion(info: UpdateInfoLike): string {
 
 /** Derives the button from the current update state.
  *
- * `canApply` is false on platforms where the in-app swap isn't
- * implemented (everything but macOS): there the button never offers to
- * stage a build it couldn't install, and the banner's Download link
- * stays the way out. */
+ * `canApply` is the backend's answer, not a guess from the user agent.
+ * It is false wherever the in-app swap cannot run — a platform with no
+ * implementation, an install directory Hive cannot write to, a checkout
+ * the updater would have to erase while running from it — and
+ * `canApplyReason` says which. The button never offers to stage a build
+ * it could not install; the reason is what the user reads instead. */
 export function updateButtonState(
   info: UpdateInfoLike | null,
-  canApply: boolean,
+  canApply = !!info?.canApply,
 ): UpdateButtonState {
   const hidden: UpdateButtonState = {
     label: '',
@@ -138,7 +145,7 @@ export function updateButtonState(
       disabled: false,
       status: canApply
         ? `${describeVersion(info)}.`
-        : `${describeVersion(info)} — download it manually on this platform.`,
+        : `${describeVersion(info)} — ${info.canApplyReason || 'this build cannot update in place'}.`,
     };
   }
   return {
