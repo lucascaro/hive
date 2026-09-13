@@ -137,7 +137,7 @@
 }
 
 /* A live error (an agent-reported failed turn) wants the user exactly as a
-   wait does, so it takes the attention treatment; the red ✗ glyph is what
+   wait does, so it takes the attention treatment; the red cross glyph is what
    says it failed. */
 .hv-session-row[data-state='attention'] .hv-session-row__name,
 .hv-session-row[data-live-error] .hv-session-row__name {
