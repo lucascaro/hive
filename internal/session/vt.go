@@ -56,6 +56,19 @@ const historyRows = 500
 // pre-rendered rows.
 const ringCap = 8 << 20
 
+const (
+	// ringScanWindow is how far past the drop point appendRing looks for
+	// a safe replay boundary before giving up.
+	ringScanWindow = 4 << 10
+	// ringBackScan is how far back insideUnterminatedEscape looks for an
+	// ESC that the candidate boundary would be sitting inside of.
+	ringBackScan = 64
+	// ringPhys is the physical size of the ring's circular buffer:
+	// ringCap of live scrollback plus one back-scan window of bytes that
+	// have already been dropped but that the boundary scan still reads.
+	ringPhys = ringCap + ringBackScan
+)
+
 // VT is a goroutine-safe wrapper around a vt10x.Terminal. The emulator
 // itself takes a State lock internally on Write/Parse, but our own
 // Mutex serializes Write/Resize/RenderSnapshot against each other so we
@@ -81,7 +94,20 @@ type VT struct {
 	// (ESC or UTF-8 lead byte) so replay never starts mid-escape or
 	// mid-multibyte rune. Used by clients to repaint xterm.js from a
 	// clean slate after a width-changing resize.
-	ring []byte
+	//
+	// Until the first overflow this is a plain contiguous slice grown by
+	// append (ringStart == 0, ringLen == len(ring)). At the first
+	// overflow it becomes a fixed ringPhys-byte circular buffer that is
+	// never reallocated again: ringStart is the physical index of the
+	// oldest live byte and ringLen the live length, so trimming is a
+	// pointer move. Read it back with ringCopy, never directly.
+	ring      []byte
+	ringStart int
+	ringLen   int
+	// ringScratch stitches the two halves of the boundary-scan window
+	// together on the one write per ringCap that straddles the wrap.
+	// Allocated lazily, then reused.
+	ringScratch []byte
 
 	// decModes tracks the DEC private modes a reattaching client has to
 	// be told about again, because our snapshot preamble (DECSTR) clears
@@ -299,56 +325,169 @@ func (v *VT) captureEvictions(preRows [][]vt10x.Glyph, cols, rows int) {
 //  4. A UTF-8 leading byte (ASCII or 0xC0+) that is not inside an
 //     active escape per the back-scan.
 //
-// If nothing safe is in `scanWindow`, fall through and drop exactly
+// If nothing safe is in `ringScanWindow`, fall through and drop exactly
 // `drop` bytes. Worst case: one glitched cell of literal text at the
 // top of replay. Caller holds v.mu.
+//
+// The trim is a pointer move, not a copy. The ring used to be a plain
+// slice that was re-`make`d at exactly the retained length on every
+// overflow, which left cap == len, so the next write both grew the slice
+// AND copied the whole 8 MiB into a fresh allocation — 1.5–4 ms of CPU
+// and ~19 MB of garbage per PTY read, forever, for any session that had
+// ever printed 8 MiB. On Windows a ConPTY read is ~69 bytes (one line),
+// so that cost was paid per line: a ~44 KB/s ceiling. Now the buffer is
+// allocated once at ringPhys bytes and written circularly; `ringStart`
+// and `ringLen` describe the live window and nothing is ever recopied.
 func (v *VT) appendRing(p []byte) {
 	if len(p) == 0 {
 		return
 	}
-	v.ring = append(v.ring, p...)
-	if len(v.ring) <= ringCap {
-		return
+	if len(v.ring) != ringPhys {
+		// Linear phase: the ring has never overflowed, so it is still a
+		// plain contiguous slice and append's amortized growth is the
+		// cheapest thing available.
+		if v.ringLen+len(p) <= ringCap {
+			v.ring = append(v.ring, p...)
+			v.ringLen = len(v.ring)
+			return
+		}
+		// First overflow. Allocate the circular buffer once, for the
+		// life of the session, and never allocate for the ring again.
+		buf := make([]byte, ringPhys)
+		copy(buf, v.ring[:v.ringLen])
+		v.ring = buf
+		v.ringStart = 0
 	}
-	drop := len(v.ring) - ringCap
-	const scanWindow = 4 << 10
-	limit := drop + scanWindow
-	if limit > len(v.ring) {
-		limit = len(v.ring)
+	if drop := v.ringWrite(p); drop > 0 {
+		v.ringTrimToBoundary(drop)
 	}
-	safe := drop
-	for i := drop; i < limit; i++ {
-		b := v.ring[i]
+}
+
+// ringWrite copies p into the circular buffer and advances the live
+// window, returning how many bytes fell off the front. Caller holds v.mu
+// and has already switched the ring to its circular form.
+func (v *VT) ringWrite(p []byte) int {
+	total := v.ringLen + len(p)
+
+	w := v.ringStart + v.ringLen
+	if w >= ringPhys {
+		w -= ringPhys
+	}
+	if len(p) > ringPhys {
+		// Only the tail can survive. Skip the rest, but land it where
+		// wrapping all the way around would have put it.
+		skip := len(p) - ringPhys
+		w = (w + skip%ringPhys) % ringPhys
+		p = p[skip:]
+	}
+	if n := copy(v.ring[w:], p); n < len(p) {
+		copy(v.ring, p[n:])
+	}
+
+	drop := 0
+	if total > ringCap {
+		drop = total - ringCap
+		total = ringCap
+	}
+	v.ringStart = (v.ringStart + drop) % ringPhys
+	v.ringLen = total
+	return drop
+}
+
+// ringTrimToBoundary advances the ring's start past `safe` bytes of
+// partial escape / partial rune, given that this write just dropped
+// `drop` bytes off the front. Caller holds v.mu.
+//
+// The scan is identical to the one the linear implementation ran, down to
+// the quirk that a newline found at the very first candidate position
+// re-enters the fallback loop. It also needs to read up to ringBackScan
+// bytes BEHIND the retained region — the back-scan for an unterminated
+// ESC looked at bytes that were on their way out — which is why the
+// physical buffer is ringBackScan bytes larger than ringCap: those
+// just-dropped bytes are still sitting there. It must not look back
+// further than `drop`, because the linear implementation's back-scan
+// clamped at the ring's start as of the beginning of the write.
+func (v *VT) ringTrimToBoundary(drop int) {
+	pre := drop
+	if pre > ringBackScan {
+		pre = ringBackScan
+	}
+	scan := v.ringLen
+	if scan > ringScanWindow {
+		scan = ringScanWindow
+	}
+	win := v.ringView(pre, pre+scan)
+
+	safe := 0
+	for j := 0; j < scan; j++ {
+		b := win[pre+j]
 		// Newlines are the gold-standard boundary: never inside CSI.
 		if b == 0x0A || b == 0x0D {
-			safe = i
+			safe = j
 			break
 		}
 	}
 	// If we didn't find a newline, fall back to ESC / UTF-8 leading
 	// byte, but verify the candidate is NOT inside an unterminated
-	// escape by back-scanning up to backScan bytes for an unmatched
+	// escape by back-scanning up to ringBackScan bytes for an unmatched
 	// ESC.
-	if safe == drop {
-		const backScan = 64
-		for i := drop; i < limit; i++ {
-			b := v.ring[i]
+	if safe == 0 {
+		for j := 0; j < scan; j++ {
+			b := win[pre+j]
 			if b == 0x1B {
-				safe = i
+				safe = j
 				break
 			}
 			if b < 0x80 || (b&0xC0) == 0xC0 {
-				if !insideUnterminatedEscape(v.ring, i, backScan) {
-					safe = i
+				if !insideUnterminatedEscape(win, pre+j, ringBackScan) {
+					safe = j
 					break
 				}
 			}
 		}
 	}
-	retained := len(v.ring) - safe
-	next := make([]byte, retained)
-	copy(next, v.ring[safe:])
-	v.ring = next
+	if safe > 0 {
+		v.ringStart = (v.ringStart + safe) % ringPhys
+		v.ringLen -= safe
+	}
+}
+
+// ringView returns n contiguous bytes of the circular buffer starting
+// `back` bytes before the live window. It hands back a direct sub-slice
+// whenever the region doesn't straddle the physical wrap point, which is
+// all but one write per ringCap bytes; otherwise it stitches the two
+// halves into a reusable scratch buffer. n must be <= ringPhys.
+// Caller holds v.mu.
+func (v *VT) ringView(back, n int) []byte {
+	from := v.ringStart - back
+	if from < 0 {
+		from += ringPhys
+	}
+	if from+n <= ringPhys {
+		return v.ring[from : from+n]
+	}
+	if v.ringScratch == nil {
+		v.ringScratch = make([]byte, ringBackScan+ringScanWindow)
+	}
+	out := v.ringScratch[:n]
+	k := copy(out, v.ring[from:])
+	copy(out[k:], v.ring)
+	return out
+}
+
+// ringCopy writes the live ring, oldest byte first, into dst (which must
+// have room for v.ringLen bytes). Caller holds v.mu.
+func (v *VT) ringCopy(dst []byte) {
+	if v.ringLen == 0 {
+		return
+	}
+	end := v.ringStart + v.ringLen
+	if end <= len(v.ring) {
+		copy(dst, v.ring[v.ringStart:end])
+		return
+	}
+	n := copy(dst, v.ring[v.ringStart:])
+	copy(dst[n:], v.ring[:end-len(v.ring)])
 }
 
 // insideUnterminatedEscape reports whether position `pos` in `b` is
@@ -483,11 +622,11 @@ func (v *VT) InitialReplayBytes() (replay []byte, snapshot bool) {
 func (v *VT) ringBytes() []byte {
 	v.mu.Lock()
 	defer v.mu.Unlock()
-	if len(v.ring) == 0 {
+	if v.ringLen == 0 {
 		return nil
 	}
-	out := make([]byte, len(v.ring))
-	copy(out, v.ring)
+	out := make([]byte, v.ringLen)
+	v.ringCopy(out)
 	return out
 }
 
@@ -518,11 +657,11 @@ func (v *VT) ReplayBytes() []byte {
 	v.mu.Lock()
 	defer v.mu.Unlock()
 	modes := v.decModes.restoreBytes()
-	if len(v.ring) == 0 && len(modes) == 0 {
+	if v.ringLen == 0 && len(modes) == 0 {
 		return nil
 	}
-	out := make([]byte, 0, len(v.ring)+len(modes)+1)
-	out = append(out, v.ring...)
+	out := make([]byte, v.ringLen, v.ringLen+len(modes)+1)
+	v.ringCopy(out)
 	if len(modes) > 0 {
 		out = append(out, 0x18) // CAN — abort any sequence the ring cut in half
 		out = append(out, modes...)
