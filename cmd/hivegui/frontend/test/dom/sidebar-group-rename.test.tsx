@@ -13,6 +13,7 @@
 import { describe, it, expect, vi, beforeAll, beforeEach } from 'vitest';
 import { fireEvent } from '@testing-library/react';
 import { inlineRenameActive } from '../../src/app/inline-rename.js';
+import type { SessionInfo } from '../../src/app/state.js';
 import { appStore } from '../../src/store/store.js';
 import * as store from '../../src/store/store.js';
 import { loadSidebar, mountSidebar, seed, update } from './sidebar-harness.js';
@@ -46,7 +47,11 @@ const BRANCH = 'feat/sidebar';
 const DEFAULT_NAME = 'feat-sidebar';
 
 // Two sessions sharing a worktree — the minimum that paints a group.
-function groupSeed(labels?: Record<string, string>, secondName = DEFAULT_NAME) {
+function groupSeed(
+  labels?: Record<string, string>,
+  secondName = DEFAULT_NAME,
+  extra: Partial<SessionInfo> = {},
+) {
   seed({
     projects: [
       { id: 'p1', name: 'proj', color: '#888', worktree_labels: labels },
@@ -71,6 +76,7 @@ function groupSeed(labels?: Record<string, string>, secondName = DEFAULT_NAME) {
         worktree_path: WT,
         worktree_branch: BRANCH,
         title: 'npm test',
+        ...extra,
       },
     ],
     collapsed: new Set(),
@@ -266,14 +272,40 @@ describe('worktree group rename', () => {
     expect(editor()).not.toBeNull();
   });
 
+  // The guard is an allowlist on `.hv-worktree-group__title`, so every
+  // header control outside that cell must be inert. Asserting the element
+  // exists first is load-bearing: an `if (el)` would turn a renamed
+  // selector into a silently passing test that dblclicks nothing.
   it('does not open from the chevron or the member count', () => {
     groupSeed();
     const chevron = document.querySelector('.hv-worktree-group__chevron');
+    expect(chevron, 'no chevron to click; selector drifted').not.toBeNull();
     if (chevron) fireEvent.dblClick(chevron);
     expect(editor()).toBeNull();
 
     const count = document.querySelector('.hv-worktree-group__count');
+    expect(count, 'no member count to click; selector drifted').not.toBeNull();
     if (count) fireEvent.dblClick(count);
+    expect(editor()).toBeNull();
+  });
+
+  // The third control the spec names, and the one the merge gate flagged
+  // as covered only by the shared structural guard. It renders solely
+  // while the group is COLLAPSED and a member wants attention, so the
+  // fixture has to produce both before the assertion means anything.
+  it('does not open from the collapsed-state attention badge', () => {
+    groupSeed(undefined, DEFAULT_NAME, { needs_attention: true });
+
+    const chevron = document.querySelector('.hv-worktree-group__chevron');
+    expect(chevron, 'no chevron to collapse with').not.toBeNull();
+    if (chevron) fireEvent.click(chevron);
+
+    const alert = document.querySelector('.hv-worktree-group__alert');
+    expect(
+      alert,
+      'no attention badge rendered; fixture did not reach the state under test',
+    ).not.toBeNull();
+    if (alert) fireEvent.dblClick(alert);
     expect(editor()).toBeNull();
   });
 

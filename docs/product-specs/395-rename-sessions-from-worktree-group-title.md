@@ -5,7 +5,8 @@ type: enhancement
 complexity: L
 priority: P2
 pr: 396
-stage: GATE
+shipped: 2026-09-12
+stage: DONE
 ---
 
 # Name a worktree group by double-clicking its title
@@ -14,7 +15,7 @@ stage: GATE
 - **Type:** enhancement
 - **Complexity:** L
 - **Priority:** P2
-- **Exec plan:** [docs/exec-plans/active/395-rename-sessions-from-worktree-group-title.md](../exec-plans/active/395-rename-sessions-from-worktree-group-title.md)
+- **Exec plan:** [docs/exec-plans/completed/395-rename-sessions-from-worktree-group-title.md](../exec-plans/completed/395-rename-sessions-from-worktree-group-title.md)
 
 ## Problem
 

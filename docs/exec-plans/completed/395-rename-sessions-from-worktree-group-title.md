@@ -4,7 +4,7 @@
 - **Issue:** #395
 - **PR:** #396
 - **Branch:** feature/395-name-a-worktree-group
-- **Status:** active
+- **Status:** completed
 
 ## Summary
 
@@ -302,7 +302,17 @@ Append-only, one line per `/hs-review-loop` iteration.
 - **2026-09-11 iter 5** — verdict: APPROVE; mergeable: MERGEABLE; findings_hash: empty (zero BLOCKING/IMPORTANT); threads_open: 1 (CodeRabbit minor); action: autofix+push; head_sha: 2da35a25.
 - **2026-09-11 iter 5b** — fix applied: deterministic alias tie-break in remapWorktreeLabel; all 5 review threads resolved, CI green on Linux/macOS/Windows; action: stop (converged); head_sha: 0ce1af56.
 
+## Gate verdict
+
+- **2026-09-12** — verdict: PASS; phase: —; checks: 12 passed / 0 failed / 0 followups; followups: none; one-line: all three dimensions pass against the merged squash 795fa4fc; one criterion (attention-badge dblclick suppression) is covered structurally by the `closest('.hv-worktree-group__title')` allowlist rather than by a dedicated assertion, recorded rather than silently passed.
+  - 2026-09-12 dimensions:
+    - acceptance — PASS — every success criterion exercised against the merged range; 12/12 registry + 4/4 daemon + 15/15 sidebar-group-rename + 6/6 e2e (incl. the measured 220px-floor case); `check-daemon-contract.sh` reports 8 -> 9; `ui-lint.sh --strict` clean. Gap noted: the attention badge has no dedicated dblclick test, only the shared structural guard.
+    - non-goals — PASS — no `UpdateSession` on the group path, member names byte-identical, `titleOnly` untouched, branch/directory not renamed, label not derived from member names, nothing outside the sidebar header touched; no scope bleed in the 34-file diff.
+    - doc accuracy — PASS — changeset present (`type: added`, `bump: minor`) and matching shipped behaviour, `CHANGELOG.md` not hand-edited, `components.md` prop signature matches `WorktreeGroupProps`, `DaemonContract` history entry accurate. README/AGENTS.md checked and correctly unchanged (double-click is not a keybinding). `regression_of` not applicable (`type: added`).
+
 ## Progress
+
+- **2026-09-12** — Gate PASS (acceptance / non-goals / doc accuracy). PR #396 was squash-merged as 795fa4fc at 07:13Z before the gate ran, so the gate took its degraded post-merge path; the merged tree was byte-identical to the branch head, so nothing was lost.
 
 - **2026-09-11** — Spec created, triaged M/P2. Research complete (frontend + brain: no prior lessons). Plan drafted; two reviewer rounds, both `revise`.
 - **2026-09-11** — Implemented on feature/395-name-a-worktree-group; PR #396 opened. Go + frontend + tests green (one pre-existing `internal/registry` failure, `TestTerminalQueriesAreNotWork`, confirmed on origin/main).
