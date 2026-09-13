@@ -2,13 +2,12 @@
 
 - **Spec:** this file (design agreed in-session; no separate product spec)
 - **Issue:** —
-- **PR:**
-- **Stage:** IMPLEMENT
+- **PR:** #399
+- **Stage:** REVIEW
 - **Status:** active
-- **Depends on:** the `internal/proc` console-window fix (branch
-  `fix/windows-console-popups`). This plan branches off it because
-  `proc.Command` and `TestNoDirectExecOnWindows` do not exist on `main`
-  yet, and every child process added here is subject to that rule.
+- **Depends on:** the `internal/proc` console-window fix, already on `main`
+  via #400. Every child process added here is subject to its rule
+  (`proc.Command`, enforced by `TestNoDirectExecOnWindows`).
 
 ## Summary
 
