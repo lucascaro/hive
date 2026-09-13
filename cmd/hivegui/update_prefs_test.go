@@ -75,6 +75,35 @@ func TestUpdateSettingsCorruptFileIsError(t *testing.T) {
 	}
 }
 
+// Windows PowerShell's `Set-Content -Encoding utf8` writes UTF-8 *with* a
+// BOM (5.1 has no BOM-less utf8 at all), and Notepad long did the same, so
+// an update.json written by a setup script or fixed up by hand arrives with
+// one. encoding/json does not skip a BOM, so the load failed with an
+// "invalid character looking for beginning of value" error that left the
+// update button dead with no in-app way to recover. A BOM is an encoding
+// marker, not content, so strip it rather than report it as corruption.
+func TestUpdateSettingsToleratesUTF8BOM(t *testing.T) {
+	dir := isolateStateDir(t)
+	// What PowerShell 5.1's ConvertTo-Json | Set-Content -Encoding utf8
+	// leaves on disk: a BOM, then its own 4-space indent.
+	writeFile(t, filepath.Join(dir, "update.json"), "\ufeff"+`{
+    "channel":  "latest",
+    "source_repo":  "D:\\git\\hive"
+}
+`)
+
+	got, err := loadUpdateSettings()
+	if err != nil {
+		t.Fatalf("loadUpdateSettings on a BOM-prefixed update.json: %v", err)
+	}
+	if got.Channel != ChannelLatest {
+		t.Errorf("Channel = %q, want %q", got.Channel, ChannelLatest)
+	}
+	if want := `D:\git\hive`; got.SourceRepo != want {
+		t.Errorf("SourceRepo = %q, want %q", got.SourceRepo, want)
+	}
+}
+
 func TestSaveUpdateSettingsRefusesLatestWithoutSourceRepo(t *testing.T) {
 	isolateStateDir(t)
 	// Point auto-detect somewhere with no checkout above it.

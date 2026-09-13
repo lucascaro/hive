@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
 	"os"
@@ -59,6 +60,10 @@ func loadUpdateSettings() (UpdateSettings, error) {
 		return UpdateSettings{Channel: ChannelRelease}, fmt.Errorf("read update.json: %w", err)
 	}
 	var s UpdateSettings
+	// PowerShell and Notepad write UTF-8 with a BOM, and encoding/json will
+	// not skip one. It is an encoding marker rather than content, so drop it
+	// instead of failing the load and leaving the user no way back.
+	b = bytes.TrimPrefix(b, []byte("\ufeff"))
 	if err := json.Unmarshal(b, &s); err != nil {
 		return UpdateSettings{Channel: ChannelRelease}, fmt.Errorf("parse %s: %w", updateSettingsPath(), err)
 	}
