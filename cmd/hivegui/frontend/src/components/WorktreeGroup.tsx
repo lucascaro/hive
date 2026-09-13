@@ -148,7 +148,14 @@ export function WorktreeGroup(p: WorktreeGroupProps) {
             className="hv-worktree-group__alert"
             title={`${p.attention.count} waiting on you`}
           >
-            <StateIcon state={p.attention.state ?? 'attention'} />
+            <StateIcon
+              state={p.attention.state ?? 'attention'}
+              detail={
+                p.attention.state === 'error'
+                  ? 'Stopped on an error'
+                  : undefined
+              }
+            />
             {p.attention.count}
           </span>
         ) : null}

@@ -97,7 +97,12 @@ export function Chip({
             immediately left of it. */}
         {attention ? (
           <span className="hv-chip__alert">
-            <StateIcon state={attention.state} />
+            <StateIcon
+              state={attention.state}
+              detail={
+                attention.state === 'error' ? 'Stopped on an error' : undefined
+              }
+            />
             {attention.count}
           </span>
         ) : null}

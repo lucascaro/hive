@@ -37,7 +37,7 @@ Every session in the sidebar, grid tile header, and menu bar shows a
 |-------|---------|------------------------|
 | `working` | the agent is mid-turn (streaming, running tools) | animated dot |
 | `idle` | nothing running, nothing pending; the agent is waiting for the *next* prompt | hollow dot |
-| `waiting_input` | the agent asked the user a question and stopped (Claude `Notification(idle_prompt)`, bell on a heuristic session) | filled dot, pulse |
+| `waiting_input` | the agent asked the user a question, or finished its turn, and stopped (Claude `Stop` / `Notification(idle_prompt)`, Pi `turn_end`, bell on a heuristic session) | filled dot, pulse |
 | `waiting_permission` | the agent is blocked on a tool-permission prompt | filled dot, pulse, distinct colour |
 | `exited` | the child process ended | hollow grey dot |
 | `error` | the last turn ended in an API/CLI error | red dot |

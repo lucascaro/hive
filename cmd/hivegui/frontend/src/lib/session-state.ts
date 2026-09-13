@@ -45,7 +45,7 @@ export interface StateCarrier {
   state?: string;
   // The daemon's own "wants the user" flag — derived server-side from
   // `state` (needs_attention = state ∈ {waiting_input,
-  // waiting_permission}). The daemon and the session list are its only
+  // waiting_permission, error}). The daemon and the session list are its only
   // writers; no client keeps a second copy (see the frozen transition
   // table in docs/exec-plans/completed/336-session-state-model.md).
   needs_attention?: boolean;
