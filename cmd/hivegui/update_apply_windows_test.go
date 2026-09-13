@@ -5,6 +5,7 @@ package main
 import (
 	"archive/zip"
 	"context"
+	"errors"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -74,10 +75,10 @@ func TestSwapExesReplacesInstalled(t *testing.T) {
 	}
 }
 
-// A failure partway through must leave a launchable Hive, not a
-// half-replaced one. payloadExes swaps hived first, so removing the
-// staged hivegui makes the *second* file fail with the first already
-// installed — the case rollback exists for.
+// A staged file that cannot be copied fails the landing phase, before
+// anything is displaced: the install must be untouched and no incoming
+// file left behind. Rollback of an already-installed executable is
+// TestSwapExesRollsBackAnInstalledExe.
 func TestSwapExesRollsBackOnFailure(t *testing.T) {
 	install := installWith(t, "old-gui", "old-daemon")
 	staged := stagedWith(t, "new-gui", "new-daemon")
@@ -105,6 +106,42 @@ func TestSwapExesRollsBackOnFailure(t *testing.T) {
 	}
 	for _, e := range entries {
 		if strings.HasSuffix(e.Name(), ".new") {
+			t.Errorf("rollback left %s behind", e.Name())
+		}
+	}
+}
+
+// A failure partway through must leave a launchable Hive, not a
+// half-replaced one. payloadExes swaps hived first, so failing the
+// install of hivegui leaves hived already swapped in — the case rollback
+// exists for.
+func TestSwapExesRollsBackAnInstalledExe(t *testing.T) {
+	install := installWith(t, "old-gui", "old-daemon")
+	staged := stagedWith(t, "new-gui", "new-daemon")
+	prev := renameFn
+	renameFn = func(from, to string) error {
+		if filepath.Base(from) == "."+guiExe+".new" {
+			return errors.New("injected install failure")
+		}
+		return os.Rename(from, to)
+	}
+	t.Cleanup(func() { renameFn = prev })
+
+	if err := swapExes(staged, install); err == nil {
+		t.Fatal("swapExes succeeded though installing hivegui failed")
+	}
+	if got := readFile(t, filepath.Join(install, guiExe)); got != "old-gui" {
+		t.Errorf("%s = %q, want the original old-gui back", guiExe, got)
+	}
+	if got := readFile(t, filepath.Join(install, daemonExe)); got != "old-daemon" {
+		t.Errorf("%s = %q, want the original old-daemon back", daemonExe, got)
+	}
+	entries, err := os.ReadDir(install)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, e := range entries {
+		if strings.HasSuffix(e.Name(), ".new") || strings.HasSuffix(e.Name(), ".old") {
 			t.Errorf("rollback left %s behind", e.Name())
 		}
 	}
@@ -543,6 +580,25 @@ func TestPruneLeavesAFreshSwapToFinish(t *testing.T) {
 		if _, err := os.Stat(filepath.Join(dir, "."+daemonExe+name)); err != nil {
 			t.Errorf(".%s%s was taken from a swap still in progress: %v", daemonExe, name, err)
 		}
+	}
+}
+
+// Mid-swap on hivegui, hived is already installed and has no .new left,
+// but its .old is still what the rollback restores if hivegui fails. A
+// sweep that only checked each executable's own .new would delete it,
+// and a failed update would then have no previous hived to put back.
+func TestPruneKeepsTheRollbackOfAnAlreadySwappedExe(t *testing.T) {
+	dir := t.TempDir()
+	useInstallDir(t, dir)
+	writeFile(t, filepath.Join(dir, guiExe), "live")
+	writeFile(t, filepath.Join(dir, "."+guiExe+".new"), "incoming")
+	writeFile(t, filepath.Join(dir, daemonExe), "incoming")
+	writeFile(t, filepath.Join(dir, "."+daemonExe+".old"), "previous")
+
+	pruneRenamedAside()
+
+	if _, err := os.Stat(filepath.Join(dir, "."+daemonExe+".old")); err != nil {
+		t.Errorf(".%s.old was swept while a swap could still roll back to it: %v", daemonExe, err)
 	}
 }
 

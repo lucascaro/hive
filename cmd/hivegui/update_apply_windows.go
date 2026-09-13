@@ -50,6 +50,9 @@ var (
 	// installDirFn resolves the directory the running binaries live in.
 	// Seamed because tests cannot move the test binary into a fixture.
 	installDirFn = installDir
+	// renameFn installs each incoming executable in swapExes. Seamed so a
+	// test can fail the second install and exercise the rollback.
+	renameFn = os.Rename
 )
 
 // stageUpdate prepares the new build and returns the staged payload
@@ -513,7 +516,7 @@ func swapExes(staged, install string) error {
 			}
 			rec.aside = aside
 		}
-		if err := os.Rename(filepath.Join(install, "."+name+".new"), target); err != nil {
+		if err := renameFn(filepath.Join(install, "."+name+".new"), target); err != nil {
 			// Put this file's previous image back before unwinding the
 			// rest, so the rollback leaves a launchable Hive.
 			if rec.aside != "" {
@@ -577,6 +580,15 @@ func pruneRenamedAside() {
 	if err != nil {
 		return
 	}
+	// Every GUI window is its own process, so this can run between the
+	// renames of a swap in another window. That swap's .old files are its
+	// rollback - including the one for an executable it has already
+	// installed - and a missing target may be about to be filled. Touch
+	// nothing until the swap is either finished or long dead.
+	if swapInProgress(install) {
+		log.Printf("hivegui: an update is in progress in %s; skipping repair and the leftover sweep", install)
+		return
+	}
 	repairInterruptedSwap(install)
 
 	entries, err := os.ReadDir(install)
@@ -599,30 +611,21 @@ func pruneRenamedAside() {
 //
 // Without this the sweep below deleted both halves, and hived.exe was
 // gone with no way back from inside the app - the release channel
-// refuses when you are already on the newest version - while the same
-// window for hivegui.exe left Hive unlaunchable with an undocumented
-// manual rename as the only fix.
+// refuses when you are already on the newest version.
+//
+// This runs inside hivegui.exe, so it cannot help when hivegui.exe is
+// the file missing: Hive does not start at all. The manual fix there is
+// renaming .hivegui.exe.new (or .old) back to hivegui.exe.
 //
 // The incoming image wins: it is the update the user asked for, and it
 // was fully written and verified before the swap began. Best effort,
 // like everything else here: it must never stop the GUI starting.
-//
-// A missing target with a fresh .new is not necessarily a dead swap:
-// every GUI window is its own process, so this can run while another
-// window is between the two renames. Taking either file then fails that
-// swap and rolls it back. So a .new younger than interruptedSwapMinAge
-// is left alone, and a genuinely dead swap is repaired on a later start.
+// pruneRenamedAside only calls this once swapInProgress is false, so a
+// swap still running in another window is never mistaken for a dead one.
 func repairInterruptedSwap(install string) {
 	for _, name := range payloadExes {
 		target := filepath.Join(install, name)
 		if _, err := os.Stat(target); err == nil {
-			continue
-		}
-		// ponytail: mtime heuristic, not a lock. A swap stalled longer
-		// than the threshold, or a clock set backwards, can still race;
-		// add an install-dir lock file if that is ever seen in the wild.
-		if st, err := os.Stat(filepath.Join(install, "."+name+".new")); err == nil && time.Since(st.ModTime()) < interruptedSwapMinAge {
-			log.Printf("hivegui: %s is missing but its update is recent; leaving it to the swap in progress", name)
 			continue
 		}
 		for _, src := range []string{
@@ -640,6 +643,23 @@ func repairInterruptedSwap(install string) {
 			break
 		}
 	}
+}
+
+// swapInProgress reports whether any incoming .<exe>.new is younger than
+// interruptedSwapMinAge. swapExes renames each one into place moments
+// after writing it, so a fresh one means a swap may still be running.
+//
+// ponytail: mtime heuristic, not a lock. A swap stalled past the
+// threshold can still race, and a clock set backwards defers the sweep
+// until it catches up; add an install-dir lock file if either is seen.
+func swapInProgress(install string) bool {
+	for _, name := range payloadExes {
+		st, err := os.Stat(filepath.Join(install, "."+name+".new"))
+		if err == nil && time.Since(st.ModTime()) < interruptedSwapMinAge {
+			return true
+		}
+	}
+	return false
 }
 
 // isSwapLeftover reports whether a file name is a displaced image

@@ -15,13 +15,17 @@ so the update renames the running binaries aside, installs over them, and sweeps
 the displaced copies at the next start. A failure part-way through rolls back,
 leaving a launchable Hive.
 
-An update interrupted at the one moment there is no executable in place - the
-instant between moving the old one aside and the new one in - is repaired at the
-next start, preferring the incoming image. The repair waits until the incoming
-file is a couple of minutes old, so opening a second window cannot take it from
-an update still running in the first. Before that, the startup sweep deleted
-both halves, which could leave no `hived.exe` at all and no way to get one back
-from inside the app.
+If an update is interrupted in the instant between moving `hived.exe` aside and
+moving the new one in, the next start puts it back, preferring the incoming
+image. Before, the startup sweep deleted both halves, leaving no `hived.exe` and
+no way to get one back from inside the app. The same interruption for
+`hivegui.exe` leaves Hive unable to start, so it cannot repair itself: rename
+`.hivegui.exe.new` (or `.hivegui.exe.old`) in the install directory back to
+`hivegui.exe`.
+
+While an incoming file is less than a couple of minutes old, startup cleanup
+and repair leave the install directory alone, so opening a second window cannot
+break an update still running in the first.
 
 Two refusals are reported up front rather than after the work: an install
 directory Hive cannot write to (move it somewhere you own — `%LOCALAPPDATA%\Programs\Hive`
