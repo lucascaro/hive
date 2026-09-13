@@ -12,6 +12,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"github.com/lucascaro/hive/internal/proc"
 )
@@ -31,6 +32,14 @@ const (
 // own image, so if anything is going to fail it should fail while the
 // rollback still has the smaller job.
 var payloadExes = []string{daemonExe, guiExe}
+
+// interruptedSwapMinAge is how old a .new must be before startup repair
+// treats a missing executable as a dead swap rather than one still
+// running in another window. A live swap renames within moments of
+// writing .new, but on-access antivirus scanning can stretch the copy of
+// the second executable to many seconds, hence the headroom. The cost is
+// only that a genuinely dead swap waits that long to be repaired.
+const interruptedSwapMinAge = 2 * time.Minute
 
 // Seams for tests, mirroring the darwin block in update_apply_darwin.go.
 var (
@@ -597,10 +606,23 @@ func pruneRenamedAside() {
 // The incoming image wins: it is the update the user asked for, and it
 // was fully written and verified before the swap began. Best effort,
 // like everything else here: it must never stop the GUI starting.
+//
+// A missing target with a fresh .new is not necessarily a dead swap:
+// every GUI window is its own process, so this can run while another
+// window is between the two renames. Taking either file then fails that
+// swap and rolls it back. So a .new younger than interruptedSwapMinAge
+// is left alone, and a genuinely dead swap is repaired on a later start.
 func repairInterruptedSwap(install string) {
 	for _, name := range payloadExes {
 		target := filepath.Join(install, name)
 		if _, err := os.Stat(target); err == nil {
+			continue
+		}
+		// ponytail: mtime heuristic, not a lock. A swap stalled longer
+		// than the threshold, or a clock set backwards, can still race;
+		// add an install-dir lock file if that is ever seen in the wild.
+		if st, err := os.Stat(filepath.Join(install, "."+name+".new")); err == nil && time.Since(st.ModTime()) < interruptedSwapMinAge {
+			log.Printf("hivegui: %s is missing but its update is recent; leaving it to the swap in progress", name)
 			continue
 		}
 		for _, src := range []string{

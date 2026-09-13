@@ -499,8 +499,15 @@ func TestPruneRestoresAnInterruptedSwap(t *testing.T) {
 			dir := t.TempDir()
 			useInstallDir(t, dir)
 			writeFile(t, filepath.Join(dir, guiExe), "live")
+			// Backdated past interruptedSwapMinAge: a swap that died, not
+			// one still running in another window.
+			stale := time.Now().Add(-2 * interruptedSwapMinAge)
 			for name, body := range tc.present {
-				writeFile(t, filepath.Join(dir, name), body)
+				p := filepath.Join(dir, name)
+				writeFile(t, p, body)
+				if err := os.Chtimes(p, stale, stale); err != nil {
+					t.Fatal(err)
+				}
 			}
 
 			pruneRenamedAside()
@@ -513,6 +520,29 @@ func TestPruneRestoresAnInterruptedSwap(t *testing.T) {
 				t.Errorf("%s = %q, want %q", daemonExe, got, tc.want)
 			}
 		})
+	}
+}
+
+// A second window started while the first is between moving <exe> aside
+// and installing .new sees exactly the dead-swap layout. Repairing it
+// there steals the file the running swap is about to rename, which fails
+// that update and rolls it back. A fresh .new means hands off.
+func TestPruneLeavesAFreshSwapToFinish(t *testing.T) {
+	dir := t.TempDir()
+	useInstallDir(t, dir)
+	writeFile(t, filepath.Join(dir, guiExe), "live")
+	writeFile(t, filepath.Join(dir, "."+daemonExe+".old"), "previous")
+	writeFile(t, filepath.Join(dir, "."+daemonExe+".new"), "incoming")
+
+	pruneRenamedAside()
+
+	if _, err := os.Stat(filepath.Join(dir, daemonExe)); err == nil {
+		t.Errorf("%s was restored while a swap in another window could still be installing it", daemonExe)
+	}
+	for _, name := range []string{".new", ".old"} {
+		if _, err := os.Stat(filepath.Join(dir, "."+daemonExe+name)); err != nil {
+			t.Errorf(".%s%s was taken from a swap still in progress: %v", daemonExe, name, err)
+		}
 	}
 }
 

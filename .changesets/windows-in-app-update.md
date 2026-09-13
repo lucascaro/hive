@@ -17,7 +17,9 @@ leaving a launchable Hive.
 
 An update interrupted at the one moment there is no executable in place - the
 instant between moving the old one aside and the new one in - is repaired at the
-next start, preferring the incoming image. Before that, the startup sweep deleted
+next start, preferring the incoming image. The repair waits until the incoming
+file is a couple of minutes old, so opening a second window cannot take it from
+an update still running in the first. Before that, the startup sweep deleted
 both halves, which could leave no `hived.exe` at all and no way to get one back
 from inside the app.
 
