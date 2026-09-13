@@ -46,4 +46,5 @@
   <symbol id="hv-state-starting" viewBox="0 0 24 24"><circle cx="12" cy="12" r="7" stroke-dasharray="2 4"/></symbol>
   <symbol id="hv-state-exited" viewBox="0 0 24 24"><path d="M6 6h12v12H6z"/></symbol>
   <symbol id="hv-state-error" viewBox="0 0 24 24"><path d="M7 7l10 10M17 7L7 17"/></symbol>
+  <symbol id="hv-state-failed" viewBox="0 0 24 24"><path d="M7 7l10 10M17 7L7 17"/></symbol>
 </svg>

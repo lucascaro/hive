@@ -37,7 +37,7 @@ func TestAgentEventRoundTrip(t *testing.T) {
 // of that kind at the ModeEvent arm.
 func TestAgentEventKindsAllowlist(t *testing.T) {
 	want := []string{
-		AgentEventPrompt, AgentEventTurnEnd, AgentEventWaitingInput,
+		AgentEventPrompt, AgentEventTurnEnd, AgentEventIdle, AgentEventWaitingInput,
 		AgentEventWaitingPermission, AgentEventPing,
 		AgentEventPermissionResolved, AgentEventError, AgentEventSessionEnd,
 	}

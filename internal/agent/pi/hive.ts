@@ -118,16 +118,32 @@ export default function (pi: ExtensionAPI) {
   // a turn, and only this extension knows which.
   let turnInFlight = false;
 
+  // How the latest run ended. Pi reports a failed or interrupted run as
+  // an assistant message's stopReason, not as an event of its own.
+  // agent_end can be retried, so it only records the latest attempt;
+  // agent_settled reports it once nothing else will run.
+  let ending = runEnd(undefined);
+
   pi.on("agent_start", () => {
     turnInFlight = true;
+    ending = runEnd(undefined);
     post("permission_resolved");
   });
 
+  pi.on("agent_end", (event) => {
+    ending = runEnd(event?.messages);
+  });
+
   // agent_end can be followed by an auto-retry or a queued follow-up;
-  // agent_settled is the one that means Pi has stopped on its own.
+  // agent_settled is the one that means Pi has stopped. It fires for an
+  // Esc abort too (from a finally), which is the user acting in this
+  // session — idle, not a finished turn calling them back.
   pi.on("agent_settled", (_event, ctx) => {
     turnInFlight = false;
-    post("turn_end", lastAssistantText(ctx));
+    if (ending.kind === "error") post("error", ending.text);
+    else if (ending.kind === "aborted") post("idle", lastAssistantText(ctx));
+    else post("turn_end", lastAssistantText(ctx));
+    ending = runEnd(undefined);
   });
 
   // Pi has no built-in permission prompt the way Claude does — a
@@ -145,10 +161,11 @@ export default function (pi: ExtensionAPI) {
   // command, a confirm() raised after agent_settled — nothing is going
   // to run, and reporting "working" would strand the session there
   // until the tier goes stale 30 s later (agentstate.HookStaleAfter),
-  // since only PTY output can demote it.
+  // since only PTY output can demote it. idle, not turn_end: the user
+  // just answered, so there is nothing to call them back for.
   pi.on("ui_prompt_end", (_event, ctx) => {
     if (turnInFlight) post("permission_resolved");
-    else post("turn_end", lastAssistantText(ctx));
+    else post("idle", lastAssistantText(ctx));
   });
 
   // Only "quit" ends the pi process. "new", "resume", "fork" and
@@ -158,10 +175,11 @@ export default function (pi: ExtensionAPI) {
   // agentstate.Machine.Apply, which drops every later event, and the
   // PTY is still very much alive.
   //
-  // The replacement path reports turn_end rather than nothing, because
-  // the command that triggered it (`/new`) arrives as an `input` event
-  // first and has already moved the session to working. Posting nothing
-  // would strand it there until the tier goes stale. turn_end with no
+  // The replacement path reports idle rather than nothing, because the
+  // command that triggered it (`/new`) arrives as an `input` event first
+  // and has already moved the session to working. Posting nothing would
+  // strand it there until the tier goes stale; posting turn_end would
+  // call the user back to a session they just typed into. idle with no
   // text also clears lastSummary, which is right: the previous
   // conversation's closing line does not describe the new one.
   //
@@ -173,8 +191,28 @@ export default function (pi: ExtensionAPI) {
   pi.on("session_shutdown", (event) => {
     turnInFlight = false;
     if (event?.reason === "quit") post("session_end");
-    else post("turn_end");
+    else post("idle");
   });
+}
+
+// runEnd classifies a run by its final assistant message: "error" (with
+// the error text), "aborted" (the user pressed Esc — not a failure), or
+// "done". Wrapped for the same reason as lastAssistantText: a shape
+// change in Pi must degrade to "done", not cost the event.
+export function runEnd(messages: any): { kind: "done" | "aborted" | "error"; text: string } {
+  try {
+    for (let i = (messages?.length ?? 0) - 1; i >= 0; i--) {
+      const msg = messages[i];
+      if (msg?.role !== "assistant") continue;
+      if (msg.stopReason === "aborted") return { kind: "aborted", text: "" };
+      if (msg.stopReason !== "error") break;
+      const text = typeof msg.errorMessage === "string" && msg.errorMessage ? msg.errorMessage : "error";
+      return { kind: "error", text };
+    }
+  } catch {
+    // ignore
+  }
+  return { kind: "done", text: "" };
 }
 
 // lastAssistantText digs the most recent assistant message's text out

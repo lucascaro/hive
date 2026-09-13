@@ -167,11 +167,12 @@ func TestPiProbeReportsThroughTheExtension(t *testing.T) {
 		return strings.Contains(i.LastPrompt, "pong")
 	}, "the typed prompt in LastPrompt")
 
-	// The reply lands the session back on idle through agent_settled,
-	// still on the extension tier — not on the heuristic quiet tick.
+	// The reply lands the session on waiting_input through agent_settled
+	// (a finished turn wants the user), still on the extension tier — not
+	// on the heuristic quiet tick.
 	info := wait(120*time.Second, func(i wire.SessionInfo) bool {
-		return i.State == wire.StateIdle && i.StateSource == wire.StateSourceExtension
-	}, "idle after the reply")
+		return i.State == wire.StateWaitingInput && i.StateSource == wire.StateSourceExtension
+	}, "waiting_input after the reply")
 	if info.LastSummary == "" {
 		t.Errorf("LastSummary is empty after a completed turn")
 	}

@@ -270,7 +270,7 @@ func TestPiExtensionKindsAreOnTheAllowlist(t *testing.T) {
 	// And the kinds the tier is built on are all still reported, so a
 	// silently deleted handler fails here too.
 	for _, kind := range []string{
-		"ping", "prompt", "permission_resolved", "turn_end",
+		"ping", "prompt", "permission_resolved", "turn_end", "idle", "error",
 		"waiting_permission", "waiting_input", "session_end",
 	} {
 		if !found[kind] {

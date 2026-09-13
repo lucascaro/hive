@@ -24,6 +24,14 @@ package buildinfo
 // History (newest first), so a bump is a decision with a record and
 // not just a number going up:
 //
+//	10 — Finished and failed agent turns want the user. turn_end now
+//	    lands in waiting_input, an agent-reported error stands until the
+//	    user looks and counts toward needs_attention, and the new `idle`
+//	    event kind is a plain stop. No frame or field changed; like 8 the
+//	    change lives entirely in the daemon (and the Pi extension it
+//	    writes at start), so without a bump the GUI offers its cheap
+//	    reload and the user keeps a hived that still drops finished turns
+//	    to idle and lets errors fade.
 //	9 — Worktree group names. SET_WORKTREE_LABEL (0x2a) sets or clears
 //	    the user-authored name of a worktree group, persisted on the
 //	    owning project (ProjectMetaFile.worktree_labels) and delivered
@@ -94,7 +102,7 @@ package buildinfo
 //	    before this cannot see or clear the flag.
 //	1 — first contract; everything up to and including the
 //	    CLIENT_COMMAND relay.
-const DaemonContract = 9
+const DaemonContract = 10
 
 // Identity is this binary's full build identity. `hived --version
 // --json` prints it, and Welcome carries the same three values, so a
