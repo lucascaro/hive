@@ -167,6 +167,13 @@ func (a *App) startup(ctx context.Context) {
 		go wruntime.EventsEmit(ctx, "bell-click", tag)
 	})
 	go a.persistGeometryLoop(ctx)
+	// Sweep the images a previous in-place update had to leave behind.
+	// This is the first moment they are deletable: on Windows a mapped
+	// executable cannot be removed, so the update renames it aside and
+	// the process that owned it has to exit before it will go. Off
+	// Windows this is a no-op. In a goroutine because it touches the
+	// filesystem and nothing downstream waits on it.
+	go pruneRenamedAside()
 	a.startUpdateCheckLoop(ctx)
 }
 

@@ -25,8 +25,7 @@ import {
 } from '../bridge.js';
 import { flashStatus, reportFailure } from './dom.js';
 import { appStore, hideBanner, setBanner } from '../store/store.js';
-import { isMac } from '../lib/platform.js';
-import { updateButtonState } from '../lib/update-state.js';
+import { CHANNEL_LATEST, updateButtonState } from '../lib/update-state.js';
 // Type-only, so the generated module is erased before Vite resolves it.
 import type { main } from '../../wailsjs/go/models';
 import type { DaemonStaleEvent } from './version-footer.js';
@@ -253,7 +252,7 @@ let updateBannerAutoHideTimer: ReturnType<typeof setTimeout> | null = null;
 // could not install would be a dead end and the Download link is the
 // real answer.
 function renderUpdateAction(info: main.UpdateInfo | null) {
-  const btn = updateButtonState(info, isMac);
+  const btn = updateButtonState(info);
   if (!btn.label) {
     setBanner('update', { actions: { action: { hidden: true } } });
     return;
@@ -343,7 +342,7 @@ function applyUpdateInfo(
     info.stage === 'ready' ||
     info.stage === 'error'
   ) {
-    const btn = updateButtonState(info, isMac);
+    const btn = updateButtonState(info);
     showUpdateBanner(btn.status, {
       downloadUrl: info.url || '',
       showDownload: info.stage !== 'ready',
@@ -376,9 +375,15 @@ function applyUpdateInfo(
     // (defense-in-depth against a tampered or spoofed response).
     // Still tell the user an update exists; just don't expose a
     // one-click Download for an untrusted target.
-    const trustedURL = !!info.url;
-    const base = updateButtonState(info, isMac).status;
-    const text = trustedURL ? base : `${base} Open releases page manually.`;
+    // The releases page is only ever the answer on the release channel.
+    // The latest channel tracks a git checkout and has no release
+    // artifact at all, so pointing a user there — as this did for every
+    // channel — sent them looking for a download that does not exist.
+    const needsReleasePage = !info.url && info.channel !== CHANNEL_LATEST;
+    const base = updateButtonState(info).status;
+    const text = needsReleasePage
+      ? `${base} Open releases page manually.`
+      : base;
     showUpdateBanner(text, { downloadUrl: info.url, version: info.latest });
     return;
   }

@@ -79,6 +79,29 @@ type UpdateInfo struct {
 	// could not find out — never guess in the direction that silently
 	// reloads into an incompatible daemon.
 	RestartKind string `json:"restartKind,omitempty"`
+	// CanApply reports whether this build can install the update it just
+	// found, and CanApplyReason says why not when it cannot.
+	//
+	// This replaces the frontend's own platform guess. Sniffing
+	// navigator.platform could only ever answer "is this a Mac", which
+	// was the right question exactly while macOS was the only platform
+	// that could apply an update — and it is the wrong question for
+	// every reason an install might not be updatable: an unwritable
+	// directory, or a checkout the updater would have to erase while
+	// running from it. Reporting the reason from the side that knows it
+	// is also what lets the banner say something specific instead of
+	// "download it manually on this platform".
+	CanApply       bool   `json:"canApply"`
+	CanApplyReason string `json:"canApplyReason,omitempty"`
+}
+
+// withUpdateCapability stamps the platform's answer onto a check result.
+// Applied on every path out of CheckForUpdate and on everything stored
+// by rememberCheck, so the polled status and the pushed event can never
+// disagree about whether the button should be offered.
+func withUpdateCapability(info UpdateInfo) UpdateInfo {
+	info.CanApply, info.CanApplyReason = updateCapability()
+	return info
 }
 
 // Values of UpdateInfo.RestartKind.
@@ -105,6 +128,11 @@ const (
 // error — it returns Skipped=true so the UI can show a sensible
 // message instead of a misleading "up to date".
 func (a *App) CheckForUpdate() (UpdateInfo, error) {
+	info, err := a.checkForUpdate()
+	return withUpdateCapability(info), err
+}
+
+func (a *App) checkForUpdate() (UpdateInfo, error) {
 	settings, err := loadUpdateSettings()
 	if err != nil {
 		// A corrupt update.json must not silently downgrade the channel
