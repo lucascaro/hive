@@ -77,6 +77,9 @@ function subtitleFor(s: SessionInfo, state: SessionState): string {
   if (state === 'starting') return 'Starting…';
   if (state === 'exited') return 'Exited';
   if (state === 'error') {
+    // Alive in `error` is a failed turn the agent reported; the process
+    // is still there, so it did not exit.
+    if (s.alive) return 'Stopped on an error';
     const err = (s.last_error ?? s.lastError ?? '').trim();
     return err ? `Exited — ${err}` : 'Exited';
   }
@@ -145,6 +148,10 @@ export function SessionRow(p: SessionRowProps) {
       data-sid={s.id}
       data-pid={s.projectId ?? s.project_id ?? ''}
       data-state={p.state}
+      // A live error wants the user like a wait does, and is styled like
+      // one; a dead error is an exited row. Same state, two meanings, so
+      // CSS needs the second bit.
+      data-live-error={p.state === 'error' && s.alive ? '' : undefined}
       data-selected={p.selected ? '' : undefined}
       data-minimized={p.minimized ? '' : undefined}
       data-wt-shared={shared > 1 ? '' : undefined}

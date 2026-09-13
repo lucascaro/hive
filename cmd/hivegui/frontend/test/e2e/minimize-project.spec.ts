@@ -100,6 +100,47 @@ test('a bell inside a minimized project lights its chip', async ({ page }) => {
   await expect(alert.locator('.hv-state-icon')).toBeVisible();
 });
 
+// A failed turn inside a minimized project outranks a plain wait on the
+// chip, and must keep the highlight a wait gets — attentionSummary()
+// returning 'error' used to leave the chip with no rule matching at all.
+test('an agent error inside a minimized project lights its chip', async ({
+  page,
+}) => {
+  await boot(page);
+  const first = page.locator('#projects > li.hv-project-card').first();
+  const pid = await first.getAttribute('data-pid');
+  const sid = await first
+    .locator('.hv-session-row')
+    .first()
+    .getAttribute('data-sid');
+
+  await first.locator('.hv-project-card__header').hover();
+  await first
+    .locator('.hv-project-card__header [data-action="minimize"]')
+    .click();
+  const chip = page.locator(`#minimized-projects .hv-chip[data-pid="${pid}"]`);
+  await expect(chip).toBeVisible();
+  const idleLabel = await chip
+    .locator('.hv-chip__label')
+    .evaluate((el) => getComputedStyle(el).color);
+
+  await page.evaluate(
+    (id) => window.__hive.setSessionState?.(id, 'error', 'hook'),
+    sid as string,
+  );
+  await expect(chip).toHaveAttribute('data-state', 'error');
+  const lit = await chip.locator('.hv-chip__label').evaluate((el) => ({
+    color: getComputedStyle(el).color,
+  }));
+  expect(lit.color).not.toBe(idleLabel);
+  expect(
+    await chip
+      .locator('.hv-chip__swatch')
+      .evaluate((el) => getComputedStyle(el).animationName),
+  ).toBe('hv-chip-pulse');
+  await expect(chip.locator('.hv-chip__alert')).toHaveText(/1$/);
+});
+
 // jsdom applies no CSS, so it will happily "click" a control the theme
 // has display:none'd — exactly the defect the row's worktree button had.
 // Both chip controls are hit-tested at their own centre and tabbed to.

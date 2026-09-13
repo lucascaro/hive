@@ -89,6 +89,49 @@ test('each state paints a different colour', async ({ page }) => {
   expect(waiting).not.toBe(idle);
 });
 
+// A live agent-reported error wants the user like a wait: it takes the
+// attention ground and name colour, and is NOT struck through like a dead
+// row. Only a browser shows which of the competing rules actually wins.
+test('a live error row reads as attention, not as exited', async ({ page }) => {
+  await boot(page);
+  const id = await firstSessionId(page);
+  const row = page.locator(`.hv-session-row[data-sid="${id}"]`);
+  const nameOf = () =>
+    row.locator('.hv-session-row__name').evaluate((el) => {
+      const cs = getComputedStyle(el);
+      return { color: cs.color, deco: cs.textDecorationLine };
+    });
+  const overlayAnimation = () =>
+    row.evaluate((el) => getComputedStyle(el, '::after').animationName);
+
+  await page.evaluate(
+    (sid) => window.__hive.setSessionState?.(sid, 'waiting_input', 'hook'),
+    id,
+  );
+  await expect(row).toHaveAttribute('data-state', 'attention');
+  const attention = await nameOf();
+
+  await page.evaluate(
+    (sid) => window.__hive.setSessionState?.(sid, 'error', 'hook'),
+    id,
+  );
+  await expect(row).toHaveAttribute('data-state', 'error');
+  await expect(row).toHaveAttribute('data-live-error', '');
+  const failed = await nameOf();
+  expect(failed.deco).toBe('none');
+  expect(failed.color).toBe(attention.color);
+  expect(await overlayAnimation()).toBe('hv-attn-tint');
+  await expect(row.locator('.hv-session-row__sub')).toHaveText(
+    'Stopped on an error',
+  );
+  // The glyph still says it failed, in its own colour.
+  await expect(glyph(page, id)).toHaveAttribute('data-state', 'error');
+  const glyphColour = await glyph(page, id).evaluate(
+    (el) => getComputedStyle(el).color,
+  );
+  expect(glyphColour).not.toBe(attention.color);
+});
+
 test('waiting animates and working fades, and reduced motion stops both', async ({
   page,
 }) => {
