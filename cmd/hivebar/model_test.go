@@ -102,6 +102,26 @@ func TestBuildModelCountsWaiting(t *testing.T) {
 	}
 }
 
+// A daemon before errorAttentionContract reports `error` without raising
+// needs_attention for it, so the menu must not count it either.
+func TestBuildModelIgnoresErrorOnPreAttentionDaemon(t *testing.T) {
+	old := errorAttentionContract - 1
+	m := BuildModel(
+		[]wire.ProjectInfo{{ID: "p1", Name: "p"}},
+		[]wire.SessionInfo{
+			{ID: "a", ProjectID: "p1", Alive: true, State: wire.StateError},
+			{ID: "b", ProjectID: "p1", Alive: true, State: wire.StateWaitingInput},
+		},
+		welcome(old), buildinfo.DaemonContract,
+	)
+	if m.Waiting != 1 {
+		t.Errorf("Waiting = %d, want 1", m.Waiting)
+	}
+	if m.Projects[0].Sessions[0].Waiting {
+		t.Error("error row marked waiting on a daemon that does not count it")
+	}
+}
+
 // The bell no longer drives the count on a daemon that reports state:
 // an unacknowledged bell on a session that has since gone back to work
 // is not a session waiting on the user.
