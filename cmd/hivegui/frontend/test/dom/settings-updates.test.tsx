@@ -26,6 +26,7 @@ const bridge = vi.hoisted(() => ({
     (): Promise<UpdateInfoLike | null> =>
       Promise.resolve({
         available: true,
+        canApply: true,
         current: '2.4.0',
         latest: '2.5.0',
         stage: 'available',
@@ -250,6 +251,7 @@ describe('settings: update button', () => {
   it('restarts once staging is ready, behind the same confirm the banner uses', async () => {
     bridge.UpdateStatus.mockResolvedValueOnce({
       available: true,
+      canApply: true,
       stage: 'ready',
       latest: '2.5.0',
       message: 'Update ready',
@@ -272,6 +274,7 @@ describe('settings: update button', () => {
     bridge.Confirm.mockResolvedValueOnce(false);
     bridge.UpdateStatus.mockResolvedValueOnce({
       available: true,
+      canApply: true,
       stage: 'ready',
       latest: '2.5.0',
       channel: 'release',
@@ -302,6 +305,7 @@ describe('settings: update button', () => {
     act(() => {
       onProgress({
         available: true,
+        canApply: true,
         stage: 'ready',
         latest: '2.5.0',
         message: 'Update ready',
@@ -321,6 +325,7 @@ describe('settings: update button', () => {
     close();
     bridge.UpdateStatus.mockResolvedValueOnce({
       available: true,
+      canApply: true,
       stage: 'staging',
       message: 'Downloading…',
       channel: 'release',

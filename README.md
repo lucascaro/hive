@@ -79,7 +79,7 @@ What works:
 
 Not yet shipping: scrollback resume across daemon restart, splits
 inside grid cells, workflows / agent teams, platform installers,
-in-app updates on Windows/Linux.
+in-app updates on Linux.
 
 ## Build
 
@@ -211,8 +211,16 @@ Hive works out which by asking the staged build's `hived` for its
 running daemon's. Only a change the daemon actually exposes bumps that
 contract, so a frontend-only release costs you nothing.
 
-Applying an update in place is macOS-only. On Windows and Linux the
+Applying an update in place works on macOS and Windows. On Linux the
 banner keeps its Download button, which opens the release page.
+
+Two things are worth knowing on Windows. The download is checksum-verified
+but not signature-verified — macOS pins the bundle to Hive's Apple Developer
+team, and no Windows release binary is signed, so there is no equivalent
+publisher to pin. And Hive has to be installed somewhere it can write:
+`%LOCALAPPDATA%\Programs\Hive` is the usual spot. Running it out of a
+checkout's own `cmd/hivegui/build/bin` is refused on the latest channel,
+because the build step erases that directory.
 
 ## Layout
 

@@ -401,7 +401,7 @@ function SettingsDialog({ root }: { root: HTMLElement }): ReactNode {
       .catch((err) => showError(String(err?.message || err)));
   }
 
-  const updateBtn = updateButtonState(updateInfo, isMac);
+  const updateBtn = updateButtonState(updateInfo);
 
   // MenuBarLoginItemStatus resolves after mount, so the strip gains its
   // fourth tab once the answer arrives — and toggleMenuBarLoginItem

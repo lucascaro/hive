@@ -20,6 +20,8 @@ import (
 	"path/filepath"
 	"strings"
 	"time"
+
+	"github.com/lucascaro/hive/internal/proc"
 )
 
 // IsGitRepo reports whether dir (or any of its parents) is inside a
@@ -134,7 +136,7 @@ func gitWorktreeAdd(ctx context.Context, repoDir string, args ...string) ([]byte
 	ctx, cancel := context.WithTimeout(ctx, 30*time.Second)
 	defer cancel()
 	full := append([]string{"-C", repoDir, "worktree", "add"}, args...)
-	cmd := exec.CommandContext(ctx, "git", full...)
+	cmd := proc.CommandContext(ctx, "git", full...)
 	cmd.Env = append(os.Environ(), "LC_ALL=C", "LANG=C")
 	out, err := cmd.CombinedOutput()
 	if err != nil && ctx.Err() == context.DeadlineExceeded {
@@ -147,7 +149,7 @@ func gitWorktreeAdd(ctx context.Context, repoDir string, args ...string) ([]byte
 func branchExists(ctx context.Context, repoDir, branch string) bool {
 	ctx, cancel := context.WithTimeout(ctx, 3*time.Second)
 	defer cancel()
-	return exec.CommandContext(ctx, "git", "-C", repoDir,
+	return proc.CommandContext(ctx, "git", "-C", repoDir,
 		"rev-parse", "--verify", "--quiet", "refs/heads/"+branch).Run() == nil
 }
 
@@ -160,7 +162,7 @@ func upstreamBaseRef(ctx context.Context, repoDir string) string {
 	// Confirm `origin` exists before spending time on a fetch.
 	checkCtx, checkCancel := context.WithTimeout(ctx, 3*time.Second)
 	defer checkCancel()
-	if err := exec.CommandContext(checkCtx, "git", "-C", repoDir, "remote", "get-url", "origin").Run(); err != nil {
+	if err := proc.CommandContext(checkCtx, "git", "-C", repoDir, "remote", "get-url", "origin").Run(); err != nil {
 		return ""
 	}
 
@@ -170,14 +172,14 @@ func upstreamBaseRef(ctx context.Context, repoDir string) string {
 	// worktrees on outdated upstream — the very failure mode #192 fixed.
 	fetchCtx, fetchCancel := context.WithTimeout(ctx, 10*time.Second)
 	defer fetchCancel()
-	if fetchOut, fetchErr := exec.CommandContext(fetchCtx, "git", "-C", repoDir, "fetch", "--quiet", "origin").CombinedOutput(); fetchErr != nil {
+	if fetchOut, fetchErr := proc.CommandContext(fetchCtx, "git", "-C", repoDir, "fetch", "--quiet", "origin").CombinedOutput(); fetchErr != nil {
 		log.Printf("worktree: fetch origin failed (%v); new worktree may be based on stale origin/HEAD: %s", fetchErr, strings.TrimSpace(string(fetchOut)))
 	}
 
 	// Resolve origin/HEAD -> origin/<default-branch>.
 	resolveCtx, resolveCancel := context.WithTimeout(ctx, 3*time.Second)
 	defer resolveCancel()
-	out, err := exec.CommandContext(resolveCtx, "git", "-C", repoDir, "symbolic-ref", "--short", "refs/remotes/origin/HEAD").Output()
+	out, err := proc.CommandContext(resolveCtx, "git", "-C", repoDir, "symbolic-ref", "--short", "refs/remotes/origin/HEAD").Output()
 	if err != nil {
 		log.Printf("worktree: origin/HEAD not set in %s; falling back to local HEAD for new worktree", repoDir)
 		return ""
@@ -350,7 +352,7 @@ func HasUncommitted(worktreePath string) (bool, error) {
 	// status` on a wedged repo must not hang it.
 	ctx, cancel := context.WithTimeout(context.Background(), readTimeout)
 	defer cancel()
-	cmd := exec.CommandContext(ctx, "git", args...)
+	cmd := proc.CommandContext(ctx, "git", args...)
 	out, err := cmd.CombinedOutput()
 	if err != nil {
 		if ctx.Err() == context.DeadlineExceeded {
@@ -394,7 +396,7 @@ func EnsureGitignore(repoRoot string) {
 	}
 	// `git check-ignore -q .worktrees` exits 0 when matched, 1 when
 	// not matched, >1 on error. We only want to add when not matched.
-	cmd := exec.Command("git", "-C", repoRoot, "check-ignore", "-q", ".worktrees")
+	cmd := proc.Command("git", "-C", repoRoot, "check-ignore", "-q", ".worktrees")
 	err := cmd.Run()
 	if err == nil {
 		return // already covered

@@ -95,6 +95,7 @@ describe('update banner action button', () => {
   it('offers Update when a release is available, and starts staging on click', () => {
     emit('update:available', {
       available: true,
+      canApply: true,
       current: '2.4.0',
       latest: '2.5.0',
       url: 'https://github.com/lucascaro/hive/releases/tag/v2.5.0',
@@ -112,6 +113,7 @@ describe('update banner action button', () => {
   it('shows staging progress without being asked', () => {
     emit('update:progress', {
       available: true,
+      canApply: true,
       stage: 'staging',
       message: 'Downloading Hive-2.5.0-macos-universal.zip…',
     });
@@ -123,6 +125,7 @@ describe('update banner action button', () => {
   it('turns into Restart and applies once confirmed', async () => {
     emit('update:progress', {
       available: true,
+      canApply: true,
       stage: 'ready',
       latest: '2.5.0',
       message: 'Update ready — restart to apply',
@@ -150,6 +153,7 @@ describe('update banner action button', () => {
     bridge.Confirm.mockResolvedValueOnce(false);
     emit('update:progress', {
       available: true,
+      canApply: true,
       stage: 'ready',
       latest: '2.5.0',
       message: 'Update ready',
@@ -171,6 +175,7 @@ describe('update banner action button', () => {
     );
     emit('update:progress', {
       available: true,
+      canApply: true,
       stage: 'ready',
       latest: '2.5.0',
     });
@@ -184,11 +189,48 @@ describe('update banner action button', () => {
     expect(bridge.ApplyUpdateAndRestart).toHaveBeenCalledTimes(1);
   });
 
+  // info.url is empty either because Go rejected the release's html_url
+  // for failing the prefix check, or because the channel has no release
+  // at all. Only the first is fixed by opening the releases page.
+  it('points at the releases page when a release URL was refused', () => {
+    emit('update:available', {
+      available: true,
+      canApply: false,
+      current: '2.4.0',
+      latest: '2.5.0',
+      url: '',
+      stage: 'available',
+      channel: 'release',
+    });
+    expect(bannerText().textContent).toContain('Open releases page manually.');
+  });
+
+  // The latest channel tracks a git checkout. There is no release
+  // artifact to download, so sending the user to the releases page sent
+  // them looking for something that does not exist.
+  it('does not point at the releases page on the latest channel', () => {
+    emit('update:available', {
+      available: true,
+      canApply: false,
+      canApplyReason: 'D:\\src\\hive is not writable by Hive',
+      current: 'eac84b9',
+      latest: 'cf539dc',
+      url: '',
+      stage: 'available',
+      channel: 'latest',
+    });
+    const text = bannerText().textContent ?? '';
+    expect(text).not.toContain('Open releases page');
+    expect(text).toContain('cf539dc');
+    expect(text).toContain('is not writable');
+  });
+
   // A staging failure is the whole reason this banner is not
   // auto-hidden: the message is the only place the reason appears.
   it('surfaces a staging failure with a retry', () => {
     emit('update:progress', {
       available: true,
+      canApply: true,
       stage: 'error',
       message: 'checksum mismatch for Hive-2.5.0-macos-universal.zip',
     });
@@ -210,6 +252,7 @@ describe('update banner dismissal', () => {
   it('remembers the dismissed version and stays down for it', () => {
     const available = {
       available: true,
+      canApply: true,
       current: '2.4.0',
       latest: '2.5.0',
       url: 'https://github.com/lucascaro/hive/releases/tag/v2.5.0',
@@ -237,6 +280,7 @@ describe('update banner dismissal', () => {
     // not poison the key for a real release.
     emit('update:progress', {
       available: true,
+      canApply: true,
       stage: 'staging',
       message: 'Downloading…',
     });

@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/lucascaro/hive/internal/buildinfo"
+	"github.com/lucascaro/hive/internal/proc"
 )
 
 // runGitFn is a package-level seam so tests can drive the branches
@@ -27,7 +28,7 @@ var gitTimeout = 60 * time.Second
 func runGit(dir string, args ...string) (string, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), gitTimeout)
 	defer cancel()
-	cmd := exec.CommandContext(ctx, "git", args...)
+	cmd := proc.CommandContext(ctx, "git", args...)
 	cmd.Dir = dir
 	out, err := cmd.Output()
 	if err != nil {
