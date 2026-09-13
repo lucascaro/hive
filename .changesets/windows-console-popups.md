@@ -1,7 +1,7 @@
 ---
 type: fixed
 bump: patch
-pr: 394
+pr: 400
 ---
 
 Hive no longer flashes console windows across the screen on Windows. Neither
