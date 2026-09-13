@@ -41,6 +41,7 @@ export const ICON_NAMES = [
   'state-starting',
   'state-exited',
   'state-error',
+  'state-failed',
 ] as const;
 
 export type IconName = (typeof ICON_NAMES)[number];

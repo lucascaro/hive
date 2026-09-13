@@ -59,8 +59,10 @@ describe('sessionState', () => {
       sessionState({ alive: true, state: 'working', needs_attention: true }),
     ).toBe('attention');
   });
-  it('is error when the agent reported one, even while alive', () => {
-    expect(sessionState({ alive: true, state: 'error' })).toBe('error');
+  it('is failed, not error, when a live agent reported an error', () => {
+    // `error` is a dead process; a live failed turn is still running and
+    // wants the user, so it resolves to a state of its own.
+    expect(sessionState({ alive: true, state: 'error' })).toBe('failed');
   });
   it('lets death outrank whatever state was last reported', () => {
     expect(sessionState({ alive: false, state: 'working' })).toBe('exited');
@@ -200,6 +202,6 @@ describe('attentionSummary', () => {
         { ...live, state: 'waiting_input' },
         { alive: false, phase: '', last_error: 'boom' },
       ]),
-    ).toEqual({ count: 2, state: 'error' });
+    ).toEqual({ count: 2, state: 'failed' });
   });
 });

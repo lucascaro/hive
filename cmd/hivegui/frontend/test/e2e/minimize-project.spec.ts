@@ -128,7 +128,10 @@ test('an agent error inside a minimized project lights its chip', async ({
     (id) => window.__hive.setSessionState?.(id, 'error', 'hook'),
     sid as string,
   );
-  await expect(chip).toHaveAttribute('data-state', 'error');
+  await expect(chip).toHaveAttribute('data-state', 'failed');
+  await expect(chip.locator('.hv-chip__alert title')).toHaveText(
+    'Stopped on an error',
+  );
   const lit = await chip.locator('.hv-chip__label').evaluate((el) => ({
     color: getComputedStyle(el).color,
   }));

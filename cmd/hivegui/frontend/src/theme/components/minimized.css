@@ -35,14 +35,13 @@
    waiting-permission — widening the bare rule would recolour their labels,
    which is not this change's business. Same id-scoping precedent as the
    two rules above. */
-/* `error` here only ever comes from attentionSummary(), which counts a
-   live agent-reported failure and never a dead session — so it is a
-   request for the user and gets the same highlight. */
+/* `failed` (a live agent-reported failure) is a request for the user too,
+   and gets the same highlight. */
 #minimized-projects .hv-chip[data-state='waiting-permission'] .hv-chip__label,
-#minimized-projects .hv-chip[data-state='error'] .hv-chip__label {
+#minimized-projects .hv-chip[data-state='failed'] .hv-chip__label {
   color: var(--state-attention);
 }
 #minimized-projects .hv-chip[data-state='waiting-permission'] .hv-chip__swatch,
-#minimized-projects .hv-chip[data-state='error'] .hv-chip__swatch {
+#minimized-projects .hv-chip[data-state='failed'] .hv-chip__swatch {
   animation: hv-chip-pulse var(--motion-pulse) ease-in-out infinite;
 }

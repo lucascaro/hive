@@ -76,10 +76,8 @@ function subtitleFor(s: SessionInfo, state: SessionState): string {
   if (isClosing(phaseOf(s))) return 'Closing…';
   if (state === 'starting') return 'Starting…';
   if (state === 'exited') return 'Exited';
+  if (state === 'failed') return 'Stopped on an error';
   if (state === 'error') {
-    // Alive in `error` is a failed turn the agent reported; the process
-    // is still there, so it did not exit.
-    if (s.alive) return 'Stopped on an error';
     const err = (s.last_error ?? s.lastError ?? '').trim();
     return err ? `Exited — ${err}` : 'Exited';
   }
@@ -118,12 +116,11 @@ export function SessionRow(p: SessionRowProps) {
       }`
     : '';
   const hint = p.index === null ? null : `[${p.index}]`;
-  // Restart is only offered where it means something (exited, or an error
-  // on a dead process): a running session's restart is the tile's job, not
-  // a one-click sidebar action — and a live error is still running.
+  // Restart is only offered where it means something (exited/error, both
+  // dead): a running session's restart is the tile's job, not a one-click
+  // sidebar action — and a `failed` session is still running.
   // patterns.md › Exited sessions — rotate first, x second.
-  const wantsRestart =
-    p.state === 'exited' || (p.state === 'error' && !s.alive);
+  const wantsRestart = p.state === 'exited' || p.state === 'error';
 
   // The colour picker keeps its native input (components.md › Form
   // fields) and stays UNCONTROLLED: a controlled `value` would snap the
@@ -150,10 +147,6 @@ export function SessionRow(p: SessionRowProps) {
       data-sid={s.id}
       data-pid={s.projectId ?? s.project_id ?? ''}
       data-state={p.state}
-      // A live error wants the user like a wait does, and is styled like
-      // one; a dead error is an exited row. Same state, two meanings, so
-      // CSS needs the second bit.
-      data-live-error={p.state === 'error' && s.alive ? '' : undefined}
       data-selected={p.selected ? '' : undefined}
       data-minimized={p.minimized ? '' : undefined}
       data-wt-shared={shared > 1 ? '' : undefined}

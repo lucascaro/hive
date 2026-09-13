@@ -115,8 +115,7 @@ test('a live error row reads as attention, not as exited', async ({ page }) => {
     (sid) => window.__hive.setSessionState?.(sid, 'error', 'hook'),
     id,
   );
-  await expect(row).toHaveAttribute('data-state', 'error');
-  await expect(row).toHaveAttribute('data-live-error', '');
+  await expect(row).toHaveAttribute('data-state', 'failed');
   const failed = await nameOf();
   expect(failed.deco).toBe('none');
   expect(failed.color).toBe(attention.color);
@@ -125,7 +124,10 @@ test('a live error row reads as attention, not as exited', async ({ page }) => {
     'Stopped on an error',
   );
   // The glyph still says it failed, in its own colour.
-  await expect(glyph(page, id)).toHaveAttribute('data-state', 'error');
+  await expect(glyph(page, id)).toHaveAttribute('data-state', 'failed');
+  // A failed session is still running: no Restart on the row.
+  await row.hover();
+  await expect(row.locator('[data-action="restart"]')).toHaveCount(0);
   const glyphColour = await glyph(page, id).evaluate(
     (el) => getComputedStyle(el).color,
   );

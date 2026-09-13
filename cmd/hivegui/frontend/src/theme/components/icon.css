@@ -39,7 +39,8 @@
   animation: hv-state-spin 1s linear infinite;
 }
 .hv-state-icon[data-state="exited"] { color: var(--state-exited); }
-.hv-state-icon[data-state="error"] { color: var(--state-error); }
+.hv-state-icon[data-state="error"],
+.hv-state-icon[data-state="failed"] { color: var(--state-error); }
 
 .hv-state-icon[data-state="attention"],
 .hv-state-icon[data-state="waiting-permission"] {

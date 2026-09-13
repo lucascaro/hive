@@ -21,7 +21,13 @@ export type SessionState =
   | 'working'
   | 'running'
   | 'exited'
-  | 'error';
+  // A dead process that left a last_error.
+  | 'error'
+  // A LIVE session whose agent reported a failed turn. Its own state, not
+  // `error` plus an `alive` check at every surface: the process is still
+  // running and the session wants the user, which is the opposite of what
+  // a dead row means (no pulse, restart offered, "Exited" wording).
+  | 'failed';
 
 // The daemon's own state vocabulary (internal/wire/control.go State*).
 // Kept as a local map rather than imported so this module stays
@@ -67,6 +73,7 @@ export const STATE_WORDS: Record<SessionState, string> = {
   running: 'Idle',
   exited: 'Exited',
   error: 'Exited with an error',
+  failed: 'Stopped on an error',
 };
 
 // How the state was arrived at, in words. Rendered because "the agent
@@ -96,13 +103,7 @@ function sourceWords(source: string | undefined): string {
  */
 export function stateTooltip(s: StateCarrier, state?: SessionState): string {
   const resolved = state ?? sessionState(s);
-  // A live session in `error` is an agent-reported failed turn, not a
-  // process that exited — the process is still there waiting for you.
-  const lines = [
-    resolved === 'error' && s.alive
-      ? 'Stopped on an error'
-      : STATE_WORDS[resolved],
-  ];
+  const lines = [STATE_WORDS[resolved]];
   // Quoted: a prompt is the user's own words being read back, and
   // without the quotes it runs together with the state line above it.
   if (s.last_prompt) lines.push(`“${s.last_prompt}”`);
@@ -135,7 +136,7 @@ export function sessionState(s: StateCarrier): SessionState {
     case DAEMON_STATE.waitingInput:
       return 'attention';
     case DAEMON_STATE.error:
-      return 'error';
+      return 'failed';
   }
   // A bell the user has not acknowledged still outranks "working": the
   // heuristic tier reports both, and the one that wants a human is the
@@ -171,17 +172,15 @@ export interface AttentionSummary {
 export function attentionSummary(sessions: StateCarrier[]): AttentionSummary {
   let count = 0;
   let permission = false;
-  let error = false;
+  let failed = false;
   for (const s of sessions) {
     const st = sessionState(s);
-    // A live session in `error` is an agent-reported failure, which the
-    // daemon also counts as needing the user. A dead one's `error` is
-    // last_error on an exited process, which wants nothing.
-    const failed = st === 'error' && !!s.alive;
-    if (st !== 'attention' && st !== 'waiting-permission' && !failed) continue;
+    if (st !== 'attention' && st !== 'waiting-permission' && st !== 'failed') {
+      continue;
+    }
     count++;
     if (st === 'waiting-permission') permission = true;
-    if (failed) error = true;
+    if (st === 'failed') failed = true;
   }
   // "Waiting for permission" is the most specific ask, and the
   // distinction the state model exists to draw, so it wins the one icon
@@ -193,8 +192,8 @@ export function attentionSummary(sessions: StateCarrier[]): AttentionSummary {
         ? null
         : permission
           ? 'waiting-permission'
-          : error
-            ? 'error'
+          : failed
+            ? 'failed'
             : 'attention',
   };
 }
