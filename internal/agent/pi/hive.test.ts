@@ -151,16 +151,36 @@ test("lastAssistantText takes the newest assistant text, tolerating junk", () =>
 // there. Everything else in this file is platform-neutral.
 const unixOnly = process.platform === "win32" ? { skip: "unix sockets only" } : {};
 
-test("runError reports only a run that stopped on an error", () => {
+test("runEnd classifies a run by its final assistant message", () => {
   const ok = { role: "assistant", stopReason: "stop" };
   const failed = { role: "assistant", stopReason: "error", errorMessage: "429 rate limited" };
-  assert.equal(mod.runError([ok, failed]), "429 rate limited");
-  assert.equal(mod.runError([failed, { role: "user" }]), "429 rate limited");
+  const aborted = { role: "assistant", stopReason: "aborted" };
+  const done = { kind: "done", text: "" };
+  assert.deepEqual(mod.runEnd([ok, failed]), { kind: "error", text: "429 rate limited" });
+  assert.deepEqual(mod.runEnd([failed, { role: "user" }]), { kind: "error", text: "429 rate limited" });
   // A retry that succeeded supersedes the earlier failure.
-  assert.equal(mod.runError([failed, ok]), "");
-  assert.equal(mod.runError([{ role: "assistant", stopReason: "aborted" }]), "");
-  assert.equal(mod.runError([{ role: "assistant", stopReason: "error" }]), "error");
-  assert.equal(mod.runError(undefined), "");
+  assert.deepEqual(mod.runEnd([failed, ok]), done);
+  assert.deepEqual(mod.runEnd([ok, aborted]), { kind: "aborted", text: "" });
+  assert.deepEqual(mod.runEnd([{ role: "assistant", stopReason: "error" }]), { kind: "error", text: "error" });
+  assert.deepEqual(mod.runEnd(undefined), done);
+});
+
+test("agent_settled after an Esc abort reports idle, not a finished turn", unixOnly, async () => {
+  const events = await collectFrames(async (sock) => {
+    await new Promise<void>((resolve) => {
+      withEnv({ HIVE_SESSION_ID: "s1", HIVE_SOCKET: sock }, () => {
+        const pi = handlerPi();
+        mod.default(pi as never);
+        const ctx = { sessionManager: { getBranch: () => [] } };
+        pi.handlers.get("agent_start")!({}, ctx);
+        pi.handlers.get("agent_end")!({ messages: [{ role: "assistant", stopReason: "aborted" }] }, ctx);
+        pi.handlers.get("agent_settled")!({}, ctx);
+        setTimeout(resolve, 300);
+      });
+    });
+  }, 2);
+
+  assert.deepEqual(events.map((e) => e.kind), ["permission_resolved", "idle"]);
 });
 
 test("agent_settled reports a failed run as error, and a retried one as turn_end", unixOnly, async () => {

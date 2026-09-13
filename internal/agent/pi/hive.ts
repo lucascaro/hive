@@ -118,29 +118,32 @@ export default function (pi: ExtensionAPI) {
   // a turn, and only this extension knows which.
   let turnInFlight = false;
 
-  // Pi reports a failed run as an assistant message with stopReason
-  // "error", not as an event of its own. agent_end can be retried, so it
-  // only records the failure of the latest attempt; agent_settled
-  // reports it once nothing else will run.
-  let failure = "";
+  // How the latest run ended. Pi reports a failed or interrupted run as
+  // an assistant message's stopReason, not as an event of its own.
+  // agent_end can be retried, so it only records the latest attempt;
+  // agent_settled reports it once nothing else will run.
+  let ending = runEnd(undefined);
 
   pi.on("agent_start", () => {
     turnInFlight = true;
-    failure = "";
+    ending = runEnd(undefined);
     post("permission_resolved");
   });
 
   pi.on("agent_end", (event) => {
-    failure = runError(event?.messages);
+    ending = runEnd(event?.messages);
   });
 
   // agent_end can be followed by an auto-retry or a queued follow-up;
-  // agent_settled is the one that means Pi has stopped on its own.
+  // agent_settled is the one that means Pi has stopped. It fires for an
+  // Esc abort too (from a finally), which is the user acting in this
+  // session — idle, not a finished turn calling them back.
   pi.on("agent_settled", (_event, ctx) => {
     turnInFlight = false;
-    if (failure) post("error", failure);
+    if (ending.kind === "error") post("error", ending.text);
+    else if (ending.kind === "aborted") post("idle", lastAssistantText(ctx));
     else post("turn_end", lastAssistantText(ctx));
-    failure = "";
+    ending = runEnd(undefined);
   });
 
   // Pi has no built-in permission prompt the way Claude does — a
@@ -192,23 +195,24 @@ export default function (pi: ExtensionAPI) {
   });
 }
 
-// runError returns the error text of a run whose final assistant
-// message stopped on an error, or "". "aborted" is the user pressing
-// Esc, which is not a failure. Wrapped for the same reason as
-// lastAssistantText: a shape change in Pi must cost the error text, not
-// the event.
-export function runError(messages: any): string {
+// runEnd classifies a run by its final assistant message: "error" (with
+// the error text), "aborted" (the user pressed Esc — not a failure), or
+// "done". Wrapped for the same reason as lastAssistantText: a shape
+// change in Pi must degrade to "done", not cost the event.
+export function runEnd(messages: any): { kind: "done" | "aborted" | "error"; text: string } {
   try {
     for (let i = (messages?.length ?? 0) - 1; i >= 0; i--) {
       const msg = messages[i];
       if (msg?.role !== "assistant") continue;
-      if (msg.stopReason !== "error") return "";
-      return typeof msg.errorMessage === "string" && msg.errorMessage ? msg.errorMessage : "error";
+      if (msg.stopReason === "aborted") return { kind: "aborted", text: "" };
+      if (msg.stopReason !== "error") break;
+      const text = typeof msg.errorMessage === "string" && msg.errorMessage ? msg.errorMessage : "error";
+      return { kind: "error", text };
     }
   } catch {
     // ignore
   }
-  return "";
+  return { kind: "done", text: "" };
 }
 
 // lastAssistantText digs the most recent assistant message's text out
