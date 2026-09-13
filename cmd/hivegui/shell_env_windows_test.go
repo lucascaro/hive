@@ -111,3 +111,35 @@ func TestFindBashUsesBashOnPath(t *testing.T) {
 		t.Errorf("findBash = %q, want the bash on PATH %q", got, onPath)
 	}
 }
+
+// The launcher is usually the FIRST bash on the PATH, because
+// WindowsApps sits near the front of it. Giving up on the rest of the
+// PATH at that point strands anyone whose Git for Windows is not at the
+// default location - a scoop shim, a portable Git, an install on D: -
+// and tells them to install the Git they already have. That is the same
+// confusing refusal the WSL skip exists to prevent, just moved.
+func TestFindBashSkipsWSLLauncherEarlierOnPath(t *testing.T) {
+	root := t.TempDir()
+	wsl := filepath.Join(root, "Microsoft", "WindowsApps", "bash.exe")
+	writeStubExe(t, wsl)
+	t.Setenv("LOCALAPPDATA", root)
+
+	gitDir := t.TempDir()
+	gitBash := filepath.Join(gitDir, "bash.exe")
+	writeStubExe(t, gitBash)
+
+	// Launcher first, the real thing second.
+	t.Setenv("PATH", filepath.Dir(wsl)+string(os.PathListSeparator)+gitDir)
+
+	restore := bashCandidates
+	bashCandidates = nil // no Git for Windows at any default location
+	t.Cleanup(func() { bashCandidates = restore })
+
+	got, err := findBash()
+	if err != nil {
+		t.Fatalf("findBash: %v", err)
+	}
+	if got != gitBash {
+		t.Errorf("findBash = %q, want the bash further along PATH %q", got, gitBash)
+	}
+}

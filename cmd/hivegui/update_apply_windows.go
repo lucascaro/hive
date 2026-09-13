@@ -313,7 +313,7 @@ func checkLatestInstallLayout(install, buildDir string) error {
 	if !sameDir(install, buildDir) {
 		return nil
 	}
-	return fmt.Errorf("Hive is running from its own build directory (%s), which the build step has to erase. "+
+	return fmt.Errorf("this copy of Hive runs from its own build directory (%s), which the build step has to erase. "+
 		"Copy %s and %s somewhere outside the checkout — %%LOCALAPPDATA%%\\Programs\\Hive is the usual spot — "+
 		"and run Hive from there; updates then apply in place", install, guiExe, daemonExe)
 }
@@ -378,7 +378,10 @@ func runBuildScript(repo string, progress func(string)) error {
 	}
 	if err := cmd.Wait(); err != nil {
 		if tail != "" {
-			return fmt.Errorf("build.sh failed: %s", tail)
+			// Keep the exit status: the last line of a failed build is
+			// often unrelated trailing noise, and dropping err left the
+			// status unrecoverable from the UI.
+			return fmt.Errorf("build.sh failed (%v): %s", err, tail)
 		}
 		return fmt.Errorf("build.sh failed: %w", err)
 	}
@@ -565,6 +568,8 @@ func pruneRenamedAside() {
 	if err != nil {
 		return
 	}
+	repairInterruptedSwap(install)
+
 	entries, err := os.ReadDir(install)
 	if err != nil {
 		return
@@ -579,8 +584,50 @@ func pruneRenamedAside() {
 	}
 }
 
-// isSwapLeftover reports whether a file name is one swapExes creates:
-// ".<exe>.new", ".<exe>.old", or a counted ".<exe>.old.N".
+// repairInterruptedSwap puts an executable back when a process died in
+// the one window where swapExes leaves none: between renaming the old
+// image aside and moving the new one into place.
+//
+// Without this the sweep below deleted both halves, and hived.exe was
+// gone with no way back from inside the app - the release channel
+// refuses when you are already on the newest version - while the same
+// window for hivegui.exe left Hive unlaunchable with an undocumented
+// manual rename as the only fix.
+//
+// The incoming image wins: it is the update the user asked for, and it
+// was fully written and verified before the swap began. Best effort,
+// like everything else here: it must never stop the GUI starting.
+func repairInterruptedSwap(install string) {
+	for _, name := range payloadExes {
+		target := filepath.Join(install, name)
+		if _, err := os.Stat(target); err == nil {
+			continue
+		}
+		for _, src := range []string{
+			filepath.Join(install, "."+name+".new"),
+			filepath.Join(install, "."+name+".old"),
+		} {
+			if _, err := os.Stat(src); err != nil {
+				continue
+			}
+			if err := os.Rename(src, target); err != nil {
+				log.Printf("hivegui: could not restore %s from %s: %v", name, filepath.Base(src), err)
+				continue
+			}
+			log.Printf("hivegui: restored %s from %s after an interrupted update", name, filepath.Base(src))
+			break
+		}
+	}
+}
+
+// isSwapLeftover reports whether a file name is a displaced image
+// swapExes left behind: ".<exe>.old", or a counted ".<exe>.old.N".
+//
+// ".<exe>.new" is deliberately NOT swept. Every GUI window is its own
+// process, so this runs concurrently with a swap in another window, and
+// deleting the incoming file there fails that swap with a "cannot find
+// the file" error the user cannot make sense of. A stale .new costs
+// disk only, and the next swap overwrites it before using it.
 func isSwapLeftover(name string) bool {
 	for _, exe := range payloadExes {
 		prefix := "." + exe + "."
@@ -588,7 +635,7 @@ func isSwapLeftover(name string) bool {
 			continue
 		}
 		rest := name[len(prefix):]
-		if rest == "new" || rest == "old" || strings.HasPrefix(rest, "old.") {
+		if rest == "old" || strings.HasPrefix(rest, "old.") {
 			return true
 		}
 	}
