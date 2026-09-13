@@ -293,8 +293,8 @@ func (m *Machine) Apply(ev Event) bool {
 	// Accepting the far-behind event restores recovery for working and
 	// idle, which is where a wedge actually strands a user: Observe
 	// reclaims on the next byte, and Tick times a stale working out. It
-	// does NOT recover a wait — Observe returns early on
-	// waiting_input/waiting_permission by design (a prompt repainting
+	// does NOT recover a wait or an error — Observe returns early on
+	// waiting_input/waiting_permission/error by design (a prompt repainting
 	// itself must not clear itself) and Tick only demotes working — so a
 	// report landing HookStaleAfter or more behind, on a wait, pins that
 	// wait until ClearWaiting or the next agent event. Reaching that

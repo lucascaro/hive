@@ -84,12 +84,12 @@ settings untouched.
   covered: `Output` takes a still-painting session to
   `working`/`heuristic`, and `Tick` takes a quiet one to
   `idle`/`heuristic`.
-  The deliberate exception is a wait. `waiting_input` and
-  `waiting_permission` are never ended by elapsed time or by output on
-  any tier — only by something that constitutes an actual answer: the
-  user acting (`ClearWaiting`), the agent reporting the wait resolved
-  (`permission_resolved`, `turn_end`, `session_end`), or the process
-  exiting. No amount of silence is evidence that an unanswered prompt
+  The deliberate exception is a state that wants the user.
+  `waiting_input`, `waiting_permission` and an agent-reported `error`
+  are never ended by elapsed time or by output on any tier — only by
+  something that constitutes an actual answer: the user acting
+  (`ClearWaiting`), a later agent event (`prompt`,
+  `permission_resolved`, `session_end`, ...), or the process exiting. No amount of silence is evidence that an unanswered prompt
   was answered, and a timer that flipped a quiet `waiting_permission`
   to idle would erase a real request the user has not seen yet. So a
   session whose hook dies mid-prompt — with no agent left to report a

@@ -89,13 +89,15 @@ func TestBuildModelCountsWaiting(t *testing.T) {
 			// Idle is the empty state, and must not be mistaken for
 			// "waiting" by a predicate that only tests for non-empty.
 			{ID: "d", ProjectID: "p1", Alive: true, State: wire.StateIdle},
+			// An agent-reported error wants the user as much as a wait.
+			{ID: "e", ProjectID: "p1", Alive: true, State: wire.StateError},
 		},
 		welcome(buildinfo.DaemonContract), buildinfo.DaemonContract,
 	)
-	if m.Waiting != 2 {
-		t.Errorf("Waiting = %d, want 2", m.Waiting)
+	if m.Waiting != 3 {
+		t.Errorf("Waiting = %d, want 3", m.Waiting)
 	}
-	if !strings.Contains(m.SummaryLine(), "2 waiting on you") {
+	if !strings.Contains(m.SummaryLine(), "3 waiting on you") {
 		t.Errorf("SummaryLine = %q", m.SummaryLine())
 	}
 }
