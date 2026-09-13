@@ -10,7 +10,6 @@ The *what* and *why* of work this project plans to do. Each spec describes user 
 |----------|-------|-------|-------|------|
 | P1 | #379 | Session exit is never detected on Linux | TRIAGE | [379-session-exit-undetected-on-linux](379-session-exit-undetected-on-linux.md) |
 | P1 | — | Sidebar and grid repaints silently drop keyboard focus | REVIEW | [257-mock-e2e-worktree-glyph-loses-focus](257-mock-e2e-worktree-glyph-loses-focus.md) |
-| P2 | #395 | Name a worktree group by double-clicking its title | GATE | [395-rename-sessions-from-worktree-group-title](395-rename-sessions-from-worktree-group-title.md) |
 | P2 | — | A red CI check name should say which stage failed | TRIAGE | [256-ci-check-names-identify-the-failing-stage](256-ci-check-names-identify-the-failing-stage.md) |
 | P2 | — | Session messaging: hand a session a message, get told when it idles | PLAN | [338-session-messaging](338-session-messaging.md) |
 | P2 | — | Orchestrator grant: a session you name can message its siblings | PLAN | [389-orchestrator-grant-and-session-msg](389-orchestrator-grant-and-session-msg.md) |
@@ -27,6 +26,7 @@ The *what* and *why* of work this project plans to do. Each spec describes user 
 
 | Issue | Title | PR | Shipped | Spec |
 |-------|-------|----|---------|------|
+| #395 | Name a worktree group by double-clicking its title | #396 | 2026-09-12 | [395-rename-sessions-from-worktree-group-title](395-rename-sessions-from-worktree-group-title.md) |
 | — | Sidebar redesign: readable rows, real worktree groups, density setting | #390 | 2026-09-11 | [385-sidebar-redesign](385-sidebar-redesign.md) |
 | #392 | Sidebar: flatten worktree groups and reclaim side space | #393 | 2026-09-11 | [392-flatten-worktree-groups-and-reclaim-side-space](392-flatten-worktree-groups-and-reclaim-side-space.md) |
 | #382 | Move the release build to CI | #383 | 2026-09-09 | [382-move-the-release-build-to-ci](382-move-the-release-build-to-ci.md) |
