@@ -8,10 +8,12 @@ import (
 )
 
 // createNoWindow is CREATE_NO_WINDOW: the child runs as a console
-// application with no console window. It may not be combined with
-// DETACHED_PROCESS or CREATE_NEW_CONSOLE — CreateProcess rejects the
-// pair — which is why the detached spawns in cmd/hivegui are exempt
-// from the rule rather than routed through here.
+// application with no console window. Windows ignores it when it is
+// combined with DETACHED_PROCESS or CREATE_NEW_CONSOLE (it is not
+// rejected, simply dropped), and DETACHED_PROCESS already leaves the
+// child with no console at all — so the detached spawns in
+// cmd/hivegui are exempt from the rule rather than routed through here,
+// because routing them would buy nothing.
 const createNoWindow = 0x08000000
 
 // HideConsole marks cmd so Windows gives it no console window. Callers

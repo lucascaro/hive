@@ -19,9 +19,9 @@ import (
 // proc.CommandContext — see the package comment for what that buys.
 var allowed = map[string]string{
 	// The two detached spawns. DETACHED_PROCESS already gives the child
-	// no console at all, and CREATE_NO_WINDOW may not be combined with
-	// it: CreateProcess fails outright when both are set.
-	"cmd/hivegui/window_windows.go": "detached spawn — DETACHED_PROCESS, mutually exclusive with CREATE_NO_WINDOW",
+	// no console at all, and Windows ignores CREATE_NO_WINDOW when it is
+	// set alongside it, so routing these through proc would add nothing.
+	"cmd/hivegui/window_windows.go": "detached spawn — DETACHED_PROCESS already leaves no console",
 	"cmd/hivegui/spawn_windows.go":  "detached spawn — routes through startDetachedWindows",
 	// Opening the OS terminal is the one case where a console window on
 	// screen is the point.
@@ -38,7 +38,16 @@ var allowed = map[string]string{
 // console windows, and files excluded by build constraints on Windows
 // cannot open one.
 func TestNoDirectExecOnWindows(t *testing.T) {
-	violations := scanTree(t, moduleRoot(t))
+	violations, scanned := scanTree(t, moduleRoot(t))
+
+	// A skip rule that reached too far would leave nothing scanned, and
+	// the check below would then pass while enforcing nothing at all -
+	// the failure mode that matters most for an edict test. The module
+	// has far more Windows-buildable files than this; any collapse
+	// towards zero means the walk stopped covering it.
+	if scanned < 50 {
+		t.Fatalf("scanTree covered only %d files; the walk is no longer reaching the module", scanned)
+	}
 
 	sort.Strings(violations)
 	if len(violations) > 0 {
@@ -53,15 +62,13 @@ func TestNoDirectExecOnWindows(t *testing.T) {
 //
 // Split out of TestNoDirectExecOnWindows so the walk can be exercised
 // against a fixture tree, not only against this module.
-func scanTree(t *testing.T, root string) []string {
+func scanTree(t *testing.T, root string) (violations []string, scanned int) {
 	t.Helper()
 
 	bctx := build.Default
 	bctx.GOOS = "windows"
 	bctx.GOARCH = "amd64"
 	bctx.CgoEnabled = true
-
-	var violations []string
 
 	err := filepath.WalkDir(root, func(path string, d fs.DirEntry, err error) error {
 		if err != nil {
@@ -98,6 +105,7 @@ func scanTree(t *testing.T, root string) []string {
 			if strings.HasPrefix(rel, "internal/proc/") {
 				continue // the wrapper itself
 			}
+			scanned++
 			violations = append(violations, scanFile(t, filepath.Join(path, name), rel)...)
 		}
 		return nil
@@ -105,7 +113,7 @@ func scanTree(t *testing.T, root string) []string {
 	if err != nil {
 		t.Fatalf("walk %s: %v", root, err)
 	}
-	return violations
+	return violations, scanned
 }
 
 // scanFile returns "<rel>:<line>: exec.Command" for each direct os/exec
@@ -118,19 +126,25 @@ func scanFile(t *testing.T, path, rel string) []string {
 		t.Fatalf("parse %s: %v", rel, err)
 	}
 
-	// The local name of the os/exec import, if the file imports it.
-	local := ""
+	// Every local name os/exec is bound to in this file. Go allows the
+	// same path to be imported more than once under different names, so
+	// keeping only the last one let the other spelling slip past.
+	locals := map[string]bool{}
 	for _, imp := range f.Imports {
 		p, err := strconv.Unquote(imp.Path.Value)
 		if err != nil || p != "os/exec" {
 			continue
 		}
-		local = "exec"
+		name := "exec"
 		if imp.Name != nil {
-			local = imp.Name.Name
+			name = imp.Name.Name
 		}
+		if name == "_" {
+			continue // imported for effect only; binds no callable name
+		}
+		locals[name] = true
 	}
-	if local == "" || local == "_" {
+	if len(locals) == 0 {
 		return nil
 	}
 
@@ -143,28 +157,26 @@ func scanFile(t *testing.T, path, rel string) []string {
 		// A dot import binds the constructors as bare names, so the call
 		// is an *ast.Ident and never an *ast.SelectorExpr. Matching only
 		// selectors let a file dot-import its way past the edict.
-		var name string
+		var name, label string
 		switch fun := call.Fun.(type) {
 		case *ast.SelectorExpr:
 			id, ok := fun.X.(*ast.Ident)
-			if !ok || id.Name != local {
+			if !ok || !locals[id.Name] {
 				return true
 			}
 			name = fun.Sel.Name
+			label = id.Name + "." + name
 		case *ast.Ident:
-			if local != "." {
+			if !locals["."] {
 				return true
 			}
 			name = fun.Name
+			label = name + " (dot-imported os/exec)"
 		default:
 			return true
 		}
 		if name != "Command" && name != "CommandContext" {
 			return true
-		}
-		label := local + "." + name
-		if local == "." {
-			label = name + " (dot-imported os/exec)"
 		}
 		out = append(out, rel+":"+strconv.Itoa(fset.Position(call.Pos()).Line)+
 			": "+label)
@@ -207,6 +219,18 @@ const (
 import "os/exec"
 
 func run() { _ = exec.Command("git") }
+`
+	duplicateImportViolation = `package dup
+
+import (
+	. "os/exec"
+	e2 "os/exec"
+)
+
+func run() {
+	_ = Command("git")
+	_ = e2.Command("git")
+}
 `
 	dotImportViolation = `package dot
 
@@ -262,7 +286,7 @@ func TestScanTreeSkipsNestedCheckouts(t *testing.T) {
 					"gitdir: /elsewhere/.git/worktrees/other-branch\n")
 			}
 
-			got := scanTree(t, root)
+			got, _ := scanTree(t, root)
 			if len(got) != 1 {
 				t.Fatalf("scanTree = %d violations, want exactly the one in pkg/:\n\t%s",
 					len(got), strings.Join(got, "\n\t"))
@@ -284,5 +308,51 @@ func TestScanFileCatchesDotImportedExec(t *testing.T) {
 	got := scanFile(t, path, "dot.go")
 	if len(got) != 1 {
 		t.Fatalf("scanFile = %d violations for a dot-imported exec.Command, want 1: %v", len(got), got)
+	}
+}
+
+// Go allows importing the same path twice under different names, and
+// scanFile used to keep only the last one it saw - so pairing a dot
+// import with a named one hid whichever call the survivor did not
+// match. That is the same bypass the dot-import handling exists to
+// close, so both calls have to be reported.
+func TestScanFileCatchesDuplicateExecImports(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "dup.go")
+	writeGoFile(t, path, duplicateImportViolation)
+
+	got := scanFile(t, path, "dup.go")
+	if len(got) != 2 {
+		t.Fatalf("scanFile = %d violations, want both the dot-imported and the named call: %v", len(got), got)
+	}
+}
+
+// The repository root always carries .git itself, so the nested-checkout
+// skip has to exempt it. Without that exemption the walk returns before
+// it scans anything and the edict passes vacuously forever.
+func TestScanTreeStillScansTheRootCheckout(t *testing.T) {
+	root := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(root, ".git"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	writeGoFile(t, filepath.Join(root, "pkg", "bad.go"), selectorViolation)
+
+	got, scanned := scanTree(t, root)
+	if scanned == 0 {
+		t.Fatal("scanTree scanned nothing under a root that carries its own .git")
+	}
+	if len(got) != 1 {
+		t.Fatalf("scanTree = %d violations, want the one in pkg/: %v", len(got), got)
+	}
+}
+
+// A renamed or deleted allowlisted file leaves a dead entry behind, and
+// the exemption then transfers silently to whatever lands at that path
+// next - an allowlist nobody prunes is how an edict quietly rots.
+func TestAllowlistEntriesStillExist(t *testing.T) {
+	root := moduleRoot(t)
+	for rel := range allowed {
+		if _, err := os.Stat(filepath.Join(root, filepath.FromSlash(rel))); err != nil {
+			t.Errorf("allowed[%q] names a file that is not in the tree: %v", rel, err)
+		}
 	}
 }

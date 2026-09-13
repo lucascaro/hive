@@ -74,11 +74,12 @@ func killRunningHived(sock string) error {
 	}
 	log.Printf("hivegui: kill hived: terminating pid %d", pid)
 
-	proc, err := os.FindProcess(pid)
+	// Named p, not proc: this file imports the proc package.
+	p, err := os.FindProcess(pid)
 	if err != nil {
 		return fmt.Errorf("find pid %d: %w", pid, err)
 	}
-	if err := proc.Kill(); err != nil {
+	if err := p.Kill(); err != nil {
 		// ESRCH-equivalent races are fine; the process is gone.
 		if errors.Is(err, os.ErrProcessDone) {
 			return nil
