@@ -73,6 +73,15 @@ func TestUpdateSettingsCorruptFileIsError(t *testing.T) {
 	if _, err := os.Stat(path); err != nil {
 		t.Errorf("update.json was removed after a failed load: %v", err)
 	}
+
+	// A BOM in front of the same rubbish must not make it loadable. The
+	// trim removes an encoding marker; it does not excuse bad JSON, and
+	// this is the invariant a future "be more tolerant" change would
+	// erode first.
+	writeFile(t, path, "\ufeff{not json")
+	if _, err := loadUpdateSettings(); err == nil {
+		t.Fatal("loadUpdateSettings = nil error on BOM + corrupt JSON, want it surfaced")
+	}
 }
 
 // Windows PowerShell's `Set-Content -Encoding utf8` writes UTF-8 *with* a
@@ -84,8 +93,11 @@ func TestUpdateSettingsCorruptFileIsError(t *testing.T) {
 // marker, not content, so strip it rather than report it as corruption.
 func TestUpdateSettingsToleratesUTF8BOM(t *testing.T) {
 	dir := isolateStateDir(t)
-	// What PowerShell 5.1's ConvertTo-Json | Set-Content -Encoding utf8
-	// leaves on disk: a BOM, then its own 4-space indent.
+	// Shaped like what PowerShell 5.1's ConvertTo-Json | Set-Content
+	// -Encoding utf8 leaves on disk: a BOM, then its own 4-space indent
+	// and double space after the colon. Its line endings are CRLF; Go raw
+	// strings drop CR and JSON is indifferent either way, so the BOM is
+	// the part actually under test.
 	writeFile(t, filepath.Join(dir, "update.json"), "\ufeff"+`{
     "channel":  "latest",
     "source_repo":  "D:\\git\\hive"
