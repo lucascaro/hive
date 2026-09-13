@@ -212,7 +212,8 @@ func (m *Machine) Exit() bool {
 	return true
 }
 
-// ClearWaiting resolves either wait back to idle. It is the "the user
+// ClearWaiting resolves either wait, or an agent-reported error, once the
+// user has looked (a wait for permission resumes working). It is the "the user
 // has now acted on this session" transition, which only a client can
 // observe, and it applies on every tier and to both kinds of wait: a
 // keystroke into a permission dialog IS the answer, and a dismissed
