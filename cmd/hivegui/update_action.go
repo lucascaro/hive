@@ -64,6 +64,7 @@ type updateState struct {
 // matches the newest available version is dropped: the button must not
 // offer "Restart" into a build that is already behind again.
 func (a *App) rememberCheck(info UpdateInfo) {
+	info = withUpdateCapability(info)
 	a.update.mu.Lock()
 	defer a.update.mu.Unlock()
 	if a.update.busy {

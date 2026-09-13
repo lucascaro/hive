@@ -6,17 +6,20 @@ import {
   CHANNEL_RELEASE,
 } from '../../src/lib/update-state.js';
 
-const MAC = true;
-const NOT_MAC = false;
+// These were MAC / NOT_MAC when the reducer sniffed the user agent.
+// The flag now means "the backend says this build can install an
+// update in place", which is a different question with the same shape.
+const CAN_APPLY = true;
+const CANNOT_APPLY = false;
 
 describe('updateButtonState', () => {
   it('hides the button when there is nothing to do', () => {
-    expect(updateButtonState(null, MAC).action).toBe('none');
-    expect(updateButtonState(null, MAC).label).toBe('');
+    expect(updateButtonState(null, CAN_APPLY).action).toBe('none');
+    expect(updateButtonState(null, CAN_APPLY).label).toBe('');
 
     const upToDate = updateButtonState(
       { available: false, current: '2.4.0', stage: 'idle' },
-      MAC,
+      CAN_APPLY,
     );
     expect(upToDate.action).toBe('none');
     expect(upToDate.label).toBe('');
@@ -32,7 +35,7 @@ describe('updateButtonState', () => {
         stage: 'available',
         channel: CHANNEL_RELEASE,
       },
-      MAC,
+      CAN_APPLY,
     );
     expect(s.label).toBe('Update');
     expect(s.action).toBe('start');
@@ -43,7 +46,7 @@ describe('updateButtonState', () => {
   it('walks Update -> Updating -> Restart', () => {
     const staging = updateButtonState(
       { available: true, stage: 'staging', message: 'Downloading…' },
-      MAC,
+      CAN_APPLY,
     );
     expect(staging.label).toBe('Updating…');
     expect(staging.disabled).toBe(true);
@@ -52,7 +55,7 @@ describe('updateButtonState', () => {
 
     const ready = updateButtonState(
       { available: true, stage: 'ready', message: 'Update ready' },
-      MAC,
+      CAN_APPLY,
     );
     expect(ready.label).toBe('Restart');
     expect(ready.action).toBe('restart');
@@ -62,29 +65,31 @@ describe('updateButtonState', () => {
   it('offers a retry after a failure, with the reason', () => {
     const s = updateButtonState(
       { available: true, stage: 'error', message: 'checksum mismatch' },
-      MAC,
+      CAN_APPLY,
     );
     expect(s.label).toBe('Retry');
     expect(s.action).toBe('start');
     expect(s.status).toBe('checksum mismatch');
   });
 
-  // Staging a build we cannot install would be a dead end; those
-  // platforms keep the Download link instead.
-  it('offers no in-app update off macOS', () => {
+  // Staging a build we cannot install would be a dead end. The user
+  // still gets told an update exists, and why this install cannot take
+  // it — see the capability block at the bottom for where the reason
+  // comes from.
+  it('offers no in-app update when the backend says it cannot apply', () => {
     const s = updateButtonState(
       { available: true, current: '2.4.0', latest: '2.5.0' },
-      NOT_MAC,
+      CANNOT_APPLY,
     );
     expect(s.label).toBe('');
     expect(s.action).toBe('none');
-    expect(s.status).toContain('manually');
+    expect(s.status).toContain('2.5.0');
   });
 
   it('explains a skipped check instead of claiming up to date', () => {
     const s = updateButtonState(
       { skipped: true, message: 'untagged build', current: 'dev' },
-      MAC,
+      CAN_APPLY,
     );
     expect(s.action).toBe('none');
     expect(s.status).toBe('untagged build');
@@ -156,5 +161,67 @@ describe('updateButtonState restart kind', () => {
       true,
     );
     expect(s.status).toBe('Update ready — reload to apply');
+  });
+});
+
+// The reducer used to take its own guess at the platform from
+// navigator.platform, which could only ever answer "is this a Mac" —
+// and so told a Windows user to "download it manually on this platform"
+// even on the latest channel, which has no download. The answer now
+// comes from Go, which knows the actual reason.
+describe('updateButtonState capability', () => {
+  it('reads canApply off the info when no flag is passed', () => {
+    const allowed = updateButtonState({
+      available: true,
+      current: '2.4.0',
+      latest: '2.5.0',
+      canApply: true,
+    });
+    expect(allowed.label).toBe('Update');
+    expect(allowed.action).toBe('start');
+
+    const refused = updateButtonState({
+      available: true,
+      current: '2.4.0',
+      latest: '2.5.0',
+      canApply: false,
+    });
+    expect(refused.label).toBe('');
+    expect(refused.action).toBe('none');
+  });
+
+  it('renders the backend reason rather than a platform guess', () => {
+    const s = updateButtonState({
+      available: true,
+      current: '2.4.0',
+      latest: '2.5.0',
+      canApply: false,
+      canApplyReason:
+        'C:\\Program Files\\Hive is not writable by Hive',
+    });
+    expect(s.status).toContain('C:\\Program Files\\Hive is not writable');
+    expect(s.status).not.toContain('on this platform');
+  });
+
+  it('still says something when the backend gave no reason', () => {
+    const s = updateButtonState({
+      available: true,
+      current: '2.4.0',
+      latest: '2.5.0',
+      canApply: false,
+    });
+    expect(s.status).toContain('2.5.0');
+    expect(s.status).toMatch(/cannot update in place/i);
+  });
+
+  // A missing canApply is a payload from a build that predates the
+  // field. Treating it as "yes" would offer a button that dead-ends.
+  it('treats a missing canApply as no', () => {
+    const s = updateButtonState({
+      available: true,
+      current: '2.4.0',
+      latest: '2.5.0',
+    });
+    expect(s.action).toBe('none');
   });
 });
