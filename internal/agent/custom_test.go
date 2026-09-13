@@ -482,3 +482,48 @@ func TestLoadCustomMissingFileIsNotAnError(t *testing.T) {
 		t.Errorf("LoadCustom = %v, want no entries", got)
 	}
 }
+
+// PowerShell's `Set-Content -Encoding utf8` writes a UTF-8 BOM (5.1 has
+// no BOM-less utf8 at all) and Notepad long did the same, and agents.json
+// is a file users are invited to hand-edit. encoding/json will not skip a
+// BOM, and customDefs answers a parse failure by logging to the daemon log
+// and returning nil - so a BOM made every custom agent vanish from the
+// launcher with nothing on screen to say why.
+func TestCustomAgentToleratesUTF8BOM(t *testing.T) {
+	writeCustom(t, "\ufeff"+`[
+	  {"id": "bom-agent", "name": "BOM Agent", "cmd": ["claude"]}
+	]`)
+
+	if _, ok := Get("bom-agent"); !ok {
+		t.Error("Get(bom-agent) = not found; a BOM disabled every custom agent")
+	}
+}
+
+// LoadCustom feeds the Settings modal. A BOM there surfaced as a parse
+// error over a list the user had just edited by hand.
+func TestLoadCustomToleratesUTF8BOM(t *testing.T) {
+	writeCustom(t, "\ufeff"+`[
+	  {"id": "bom-agent", "name": "BOM Agent", "cmd": ["claude"]}
+	]`)
+
+	list, err := LoadCustom()
+	if err != nil {
+		t.Fatalf("LoadCustom on a BOM-prefixed %s: %v", CustomFileName, err)
+	}
+	if len(list) != 1 || list[0].ID != "bom-agent" {
+		t.Errorf("LoadCustom = %+v, want the single bom-agent entry", list)
+	}
+}
+
+// A BOM is an encoding marker, not content: stripping it must not make
+// genuinely malformed JSON look loadable.
+func TestCustomAgentBOMDoesNotExcuseMalformedJSON(t *testing.T) {
+	writeCustom(t, "\ufeff"+`[{"id": "broken",,,}`)
+
+	if len(All()) != len(displayOrder) {
+		t.Errorf("All() = %d agents, want just the %d built-ins", len(All()), len(displayOrder))
+	}
+	if _, err := LoadCustom(); err == nil {
+		t.Error("LoadCustom = nil error on BOM + malformed JSON, want it surfaced")
+	}
+}

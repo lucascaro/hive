@@ -1,6 +1,7 @@
 package agent
 
 import (
+	"bytes"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -100,7 +101,7 @@ func customDefs() []Def {
 		return nil
 	}
 	var list []Custom
-	if err := json.Unmarshal(raw, &list); err != nil {
+	if err := json.Unmarshal(trimBOM(raw), &list); err != nil {
 		log.Printf("agent: parse %s: %v (custom agents disabled)", path, err)
 		return nil
 	}
@@ -235,7 +236,7 @@ func LoadCustom() ([]Custom, error) {
 		return nil, fmt.Errorf("read %s: %w", CustomFileName, err)
 	}
 	var list []Custom
-	if err := json.Unmarshal(raw, &list); err != nil {
+	if err := json.Unmarshal(trimBOM(raw), &list); err != nil {
 		return nil, fmt.Errorf("parse %s: %w", CustomFileName, err)
 	}
 	return list, nil
@@ -340,4 +341,20 @@ func slugify(name string) string {
 		}
 	}
 	return strings.Trim(b.String(), "-")
+}
+
+// trimBOM drops a leading UTF-8 byte order mark.
+//
+// agents.json is meant to be hand-edited, and the editors people reach
+// for on Windows add one: PowerShell's `Set-Content -Encoding utf8`
+// always does (5.1 has no BOM-less utf8), and Notepad long did too.
+// encoding/json will not skip it, so the file failed to parse - which
+// customDefs answers by disabling every custom agent, logging the
+// reason only to the daemon log.
+//
+// A BOM is an encoding marker rather than content, so dropping it is not
+// the same as tolerating a malformed file: it removes at most three
+// bytes from the head and cannot turn bad JSON into good.
+func trimBOM(b []byte) []byte {
+	return bytes.TrimPrefix(b, []byte("\ufeff"))
 }
