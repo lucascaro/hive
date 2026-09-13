@@ -255,7 +255,7 @@ func TestClaudeProbePermissionResolved(t *testing.T) {
 	if took := time.Since(allowed); took > 2*time.Second {
 		t.Errorf("left waiting_permission %v after allowing (state=%s)", took, info.State)
 	}
-	// PostToolUse (still working), then Stop -> idle once the reply ends.
-	wait(60*time.Second, func(i wire.SessionInfo) bool { return i.State == wire.StateIdle && i.LastSummary != "" }, "turn_end after the tool")
+	// PostToolUse (still working), then Stop -> waiting_input once the reply ends.
+	wait(60*time.Second, func(i wire.SessionInfo) bool { return i.State == wire.StateWaitingInput && i.LastSummary != "" }, "turn_end after the tool")
 	_, _ = sess.Write([]byte("/exit\r"))
 }

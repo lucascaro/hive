@@ -96,7 +96,13 @@ function sourceWords(source: string | undefined): string {
  */
 export function stateTooltip(s: StateCarrier, state?: SessionState): string {
   const resolved = state ?? sessionState(s);
-  const lines = [STATE_WORDS[resolved]];
+  // A live session in `error` is an agent-reported failed turn, not a
+  // process that exited — the process is still there waiting for you.
+  const lines = [
+    resolved === 'error' && s.alive
+      ? 'Stopped on an error'
+      : STATE_WORDS[resolved],
+  ];
   // Quoted: a prompt is the user's own words being read back, and
   // without the quotes it runs together with the state line above it.
   if (s.last_prompt) lines.push(`“${s.last_prompt}”`);
@@ -165,17 +171,30 @@ export interface AttentionSummary {
 export function attentionSummary(sessions: StateCarrier[]): AttentionSummary {
   let count = 0;
   let permission = false;
+  let error = false;
   for (const s of sessions) {
     const st = sessionState(s);
-    if (st !== 'attention' && st !== 'waiting-permission') continue;
+    // A live session in `error` is an agent-reported failure, which the
+    // daemon also counts as needing the user. A dead one's `error` is
+    // last_error on an exited process, which wants nothing.
+    const failed = st === 'error' && !!s.alive;
+    if (st !== 'attention' && st !== 'waiting-permission' && !failed) continue;
     count++;
     if (st === 'waiting-permission') permission = true;
+    if (failed) error = true;
   }
-  // "Waiting for permission" is the more specific of the two, and the
+  // "Waiting for permission" is the most specific ask, and the
   // distinction the state model exists to draw, so it wins the one icon
-  // the chip has room for.
+  // the chip has room for; a failure outranks a plain wait.
   return {
     count,
-    state: count === 0 ? null : permission ? 'waiting-permission' : 'attention',
+    state:
+      count === 0
+        ? null
+        : permission
+          ? 'waiting-permission'
+          : error
+            ? 'error'
+            : 'attention',
   };
 }

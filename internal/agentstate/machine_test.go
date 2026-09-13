@@ -237,7 +237,8 @@ func TestApplyMapsEveryKind(t *testing.T) {
 		want string
 	}{
 		{KindPrompt, wire.StateWorking},
-		{KindTurnEnd, wire.StateIdle},
+		{KindTurnEnd, wire.StateWaitingInput},
+		{KindIdle, wire.StateIdle},
 		{KindWaitingInput, wire.StateWaitingInput},
 		{KindWaitingPermission, wire.StateWaitingPermission},
 		{KindPermissionResolved, wire.StateWorking},
@@ -332,7 +333,7 @@ func TestCappedTextStaysValidUTF8(t *testing.T) {
 // revives a dead session — and a revived waiting_input can never be
 // cleared, because ClearWaiting needs a user to type into a gone PTY.
 func TestApplyCannotResurrectAnExitedSession(t *testing.T) {
-	for _, kind := range []string{KindPrompt, KindWaitingInput, KindWaitingPermission, KindTurnEnd} {
+	for _, kind := range []string{KindPrompt, KindWaitingInput, KindWaitingPermission, KindTurnEnd, KindIdle, KindError} {
 		m := New(t0)
 		m.Apply(hookEvent(KindPrompt, t0, "do the thing"))
 		m.Exit()
@@ -342,6 +343,35 @@ func TestApplyCannotResurrectAnExitedSession(t *testing.T) {
 		if got := m.Snapshot().State; got != wire.StateExited {
 			t.Errorf("%s after Exit left state %q, want %q", kind, got, wire.StateExited)
 		}
+	}
+}
+
+// An agent-reported error wants the user as much as a wait does. It
+// used to decay: the first redraw after the hook tier went quiet for
+// HookStaleAfter handed the session to the heuristic tier, which read
+// it idle two seconds later — so a failed turn was rarely on screen
+// long enough to notice.
+func TestErrorStandsUntilTheUserLooks(t *testing.T) {
+	m := New(t0)
+	m.Apply(hookEvent(KindError, t0, "overloaded"))
+	late := t0.Add(HookStaleAfter + time.Minute)
+	if m.Output(late) {
+		t.Error("output past HookStaleAfter moved an error")
+	}
+	if m.Tick(late.Add(QuietAfter)) {
+		t.Error("elapsed time moved an error")
+	}
+	if m.Bell(late) {
+		t.Error("a bell moved an error")
+	}
+	if got := m.Snapshot().State; got != wire.StateError {
+		t.Fatalf("state = %q, want error", got)
+	}
+	if !m.ClearWaiting() {
+		t.Fatal("the user looking did not clear an error")
+	}
+	if got := m.Snapshot().State; got != wire.StateIdle {
+		t.Errorf("state after clearing = %q, want idle", got)
 	}
 }
 
@@ -356,14 +386,13 @@ func TestNonZeroExitIsExitedNotError(t *testing.T) {
 	}
 }
 
-// A hooked agent rings when its turn finishes; Stop maps to idle, so
-// the bell is the only "come look" that moment produces. It must count
-// on the hook tier, without demoting the tier, and a keystroke must
-// clear it even though the tier is not heuristic.
+// A bell under a hooked agent sitting idle must count on the hook tier,
+// without demoting the tier, and a keystroke must clear it even though
+// the tier is not heuristic.
 func TestBellCountsOnTheHookTier(t *testing.T) {
 	m := New(t0)
 	m.Apply(hookEvent(KindPrompt, t0, "do the thing"))
-	m.Apply(hookEvent(KindTurnEnd, t0.Add(time.Second), "done"))
+	m.Apply(hookEvent(KindIdle, t0.Add(time.Second), "done"))
 	if !m.Bell(t0.Add(time.Second)) {
 		t.Fatal("bell ignored on the hook tier")
 	}
@@ -406,8 +435,8 @@ func TestApplyDropsOutOfOrderEvents(t *testing.T) {
 	if !m.Apply(Event{Kind: KindTurnEnd, Source: wire.StateSourceHook, At: t0.Add(time.Second), Text: "done"}) {
 		t.Fatal("turn_end should have changed state")
 	}
-	if got := m.Snapshot().State; got != wire.StateIdle {
-		t.Fatalf("state = %q, want %q", got, wire.StateIdle)
+	if got := m.Snapshot().State; got != wire.StateWaitingInput {
+		t.Fatalf("state = %q, want %q", got, wire.StateWaitingInput)
 	}
 
 	// A permission_resolved stamped BEFORE the turn end lands late.
@@ -441,8 +470,8 @@ func TestApplyAcceptsEqualTimestamps(t *testing.T) {
 	if !m.Apply(Event{Kind: KindTurnEnd, Source: wire.StateSourceHook, At: at, Text: "done"}) {
 		t.Fatal("an event with an equal timestamp was dropped")
 	}
-	if got := m.Snapshot().State; got != wire.StateIdle {
-		t.Errorf("state = %q, want %q", got, wire.StateIdle)
+	if got := m.Snapshot().State; got != wire.StateWaitingInput {
+		t.Errorf("state = %q, want %q", got, wire.StateWaitingInput)
 	}
 }
 
@@ -482,8 +511,8 @@ func TestApplyRecoversFromBackwardClockStep(t *testing.T) {
 	if !m.Apply(Event{Kind: KindTurnEnd, Source: wire.StateSourceHook, At: stepped, Text: "done"}) {
 		t.Fatal("an event after a backward clock step was dropped; the session is wedged")
 	}
-	if got := m.Snapshot().State; got != wire.StateIdle {
-		t.Errorf("state = %q, want %q", got, wire.StateIdle)
+	if got := m.Snapshot().State; got != wire.StateWaitingInput {
+		t.Errorf("state = %q, want %q", got, wire.StateWaitingInput)
 	}
 
 	// And the watermark followed the step, so the tier is live again

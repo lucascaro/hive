@@ -292,8 +292,8 @@ func TestApplyAgentEventClampsFutureStamp(t *testing.T) {
 	}); err != nil {
 		t.Fatalf("ApplyAgentEvent (future): %v", err)
 	}
-	if info := r.Get(e.ID).Info(); info.State != wire.StateIdle {
-		t.Fatalf("precondition: state = %q, want idle", info.State)
+	if info := r.Get(e.ID).Info(); info.State != wire.StateWaitingInput {
+		t.Fatalf("precondition: state = %q, want waiting_input", info.State)
 	}
 
 	// A correctly stamped event that follows must still be applied.

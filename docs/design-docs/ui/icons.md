@@ -16,7 +16,7 @@ Shapes come from option I3; drawn as SVG so they align and render identically on
 | `state-waiting-permission` | ? question | `--state-attention` | agent blocked on an explicit yes/no | yes — `--motion-pulse` on a `box-shadow` ring |
 | `state-starting` | ◌ dotted ring | stroke `--state-starting` | daemon phase ≠ ready (starting / fetching / worktree) | yes — rotate 1s linear |
 | `state-exited` | ■ square | stroke `--state-exited` | process ended, no `last_error` | no |
-| `state-error` | ✗ cross | stroke `--state-error` | process ended with `last_error` set | no |
+| `state-error` | ✗ cross | stroke `--state-error` | process ended with `last_error` set, or the agent reported a failed turn (counts as attention until the user looks) | no |
 
 Resolution from `SessionInfo`:
 

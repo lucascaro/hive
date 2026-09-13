@@ -118,6 +118,11 @@ describe('stateTooltip', () => {
       'Exited with an error',
     );
   });
+  it('does not call a live agent-reported error an exit', () => {
+    expect(
+      stateTooltip({ alive: true, state: 'error', state_source: 'hook' }),
+    ).toBe('Stopped on an error\nreported by the agent');
+  });
   it('reads any non-empty tier as reported, not just the two we ship', () => {
     // Only the heuristic tier is spelled "" on the wire, so a tier a
     // future daemon adds must not silently read as a guess.
@@ -186,5 +191,15 @@ describe('attentionSummary', () => {
     expect(
       attentionSummary([{ alive: false, phase: '', needs_attention: true }]),
     ).toEqual({ count: 0, state: null });
+  });
+
+  it('counts a live agent-reported error, but not a dead last_error', () => {
+    expect(
+      attentionSummary([
+        { ...live, state: 'error' },
+        { ...live, state: 'waiting_input' },
+        { alive: false, phase: '', last_error: 'boom' },
+      ]),
+    ).toEqual({ count: 2, state: 'error' });
   });
 });

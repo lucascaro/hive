@@ -157,17 +157,19 @@ func TestHookIntegrationDrivesRealSession(t *testing.T) {
 		return i.State == wire.StateWorking && i.StateSource == wire.StateSourceHook && i.LastPrompt == "reply pong"
 	}, "prompt applied")
 
-	// Stop -> idle, LastSummary set, and under the derived model this
-	// is NOT a wait (see the plan's phase-2 follow-up note) so
-	// needs_attention stays false here.
+	// Stop -> waiting_input, LastSummary set: a finished agent is
+	// waiting for the user, so needs_attention is raised.
 	runHookFixture(t, d, id, "stop.json")
-	wait(func(i wire.SessionInfo) bool {
-		return i.State == wire.StateIdle && i.LastSummary == "pong"
+	info := wait(func(i wire.SessionInfo) bool {
+		return i.State == wire.StateWaitingInput && i.LastSummary == "pong"
 	}, "turn_end applied")
+	if !info.NeedsAttention {
+		t.Errorf("NeedsAttention = false, want true after a finished turn")
+	}
 
 	// PermissionRequest -> waiting_permission, needs_attention true.
 	runHookFixture(t, d, id, "permission_request.json")
-	info := wait(func(i wire.SessionInfo) bool {
+	info = wait(func(i wire.SessionInfo) bool {
 		return i.State == wire.StateWaitingPermission
 	}, "waiting_permission applied")
 	if !info.NeedsAttention {
@@ -185,9 +187,12 @@ func TestHookIntegrationDrivesRealSession(t *testing.T) {
 
 	// StopFailure -> error, LastSummary set to the error type.
 	runHookFixture(t, d, id, "stop_failure.json")
-	wait(func(i wire.SessionInfo) bool {
+	info = wait(func(i wire.SessionInfo) bool {
 		return i.State == wire.StateError && i.LastSummary == "overloaded"
 	}, "error applied")
+	if !info.NeedsAttention {
+		t.Errorf("NeedsAttention = false, want true for an agent-reported error")
+	}
 }
 
 // TestHookIntegrationBroadcastsStateEvent asserts a control connection

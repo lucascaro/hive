@@ -67,7 +67,8 @@ settings untouched.
 - A Claude session launched from Hive reports `working` within one
   second of the user pressing Enter, `waiting_permission` when a tool
   permission prompt appears, `waiting_input` when Claude stops with a
-  question, `idle` after a turn ends, `error` after an API failure —
+  question or finishes a turn, `error` after an API failure (both raise
+  `needs_attention` and stand until the user looks) —
   verified by a Go integration test driving `hived hook` with recorded
   hook payloads, and by a manual checklist against a real `claude`.
 - A Pi session launched from Hive reports `working` / `idle` /

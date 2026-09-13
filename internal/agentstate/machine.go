@@ -49,12 +49,12 @@ const (
 	// crashed hook would pin a session at whatever state it last
 	// reported, forever.
 	//
-	// The one state this does NOT rescue is a wait: on every tier,
-	// waiting_input and waiting_permission are immune to elapsed time
-	// and to output, because neither is evidence that an unanswered
-	// prompt was answered. A wait ends only on an actual answer —
-	// ClearWaiting, an agent event that resolves it
-	// (permission_resolved / turn_end / session_end), or Exit.
+	// The states this does NOT rescue are the ones that want the user:
+	// on every tier, waiting_input, waiting_permission and error are
+	// immune to elapsed time and to output, because neither is evidence
+	// that the user saw them. They end only on an actual answer —
+	// ClearWaiting, a later agent event (prompt / permission_resolved /
+	// session_end, ...), or Exit.
 	HookStaleAfter = 30 * time.Second
 )
 
@@ -62,8 +62,16 @@ const (
 // shared with wire.AgentEvent (phase 2 carries them over the socket);
 // the heuristic tier never produces one.
 const (
-	KindPrompt             = "prompt"
-	KindTurnEnd            = "turn_end"
+	KindPrompt = "prompt"
+	// KindTurnEnd is the agent finishing a turn on its own. A finished
+	// agent is waiting for the user's next move, so it lands in
+	// waiting_input and raises attention.
+	KindTurnEnd = "turn_end"
+	// KindIdle is a plain stop that asks nothing of the user: the agent
+	// is back at its prompt because the user just did something there
+	// (answered a dialog outside a turn, ran /new). Reporting turn_end
+	// for those would light up the session the user is already in.
+	KindIdle               = "idle"
 	KindWaitingInput       = "waiting_input"
 	KindWaitingPermission  = "waiting_permission"
 	KindPermissionResolved = "permission_resolved"
@@ -150,12 +158,13 @@ func (m *Machine) Output(now time.Time) bool {
 		return false
 	}
 	// A session that asked for the user stays asking until it is
-	// actually answered. Redrawing is not an answer — and a program
-	// that rings and then keeps painting would otherwise bury its own
-	// request within one tick. The ways out are ClearWaiting (driven by
-	// the client that sees the user look), an agent event resolving the
-	// wait, and Exit; output is not one of them.
-	if m.state == wire.StateWaitingInput || m.state == wire.StateWaitingPermission {
+	// actually answered, and one that failed stays failed until someone
+	// has seen it. Redrawing is neither — and a program that rings and
+	// then keeps painting would otherwise bury its own request within
+	// one tick. The ways out are ClearWaiting (driven by the client that
+	// sees the user look), a later agent event, and Exit; output is not
+	// one of them.
+	if wantsUser(m.state) {
 		m.lastOutputAt = now
 		return false
 	}
@@ -173,12 +182,12 @@ func (m *Machine) Output(now time.Time) bool {
 }
 
 // Bell records a terminal bell: the program wants the user, so
-// waiting_input — on EVERY tier. A hooked agent rings when it finishes
-// a turn, and its Stop hook maps to idle, which raises nothing; the
-// bell is the only "come look" a finished turn produces, and dropping
-// it on the trusted tier is exactly what broke the alert people rely
-// on today. A wait already in progress (either kind) absorbs the bell,
-// so a permission prompt that also rings notifies once.
+// waiting_input — on EVERY tier. A hooked agent's finished turn already
+// lands in waiting_input, but a program under a trusted tier can still
+// ring for reasons no hook reports, and dropping that is what once
+// broke the alert people rely on. A state that already wants the user
+// (either wait, or an error) absorbs the bell, so a permission prompt
+// that also rings notifies once.
 //
 // The tier is left alone: a bell says nothing about who owns the
 // session, and demoting a hooked session over one would hand its next
@@ -215,7 +224,7 @@ func (m *Machine) Exit() bool {
 // reported, so it must not touch the tier or the staleness clock.
 func (m *Machine) ClearWaiting() bool {
 	switch m.state {
-	case wire.StateWaitingInput:
+	case wire.StateWaitingInput, wire.StateError:
 		// Nothing runs until the next prompt is submitted.
 		m.state = wire.StateIdle
 	case wire.StateWaitingPermission:
@@ -330,6 +339,9 @@ func (m *Machine) Apply(ev Event) bool {
 			m.lastPrompt = text
 		}
 	case KindTurnEnd:
+		m.state = wire.StateWaitingInput
+		m.lastSummary = text
+	case KindIdle:
 		m.state = wire.StateIdle
 		m.lastSummary = text
 	case KindWaitingInput:
@@ -351,6 +363,12 @@ func (m *Machine) Apply(ev Event) bool {
 	}
 
 	return m.Snapshot() != before
+}
+
+// wantsUser reports the states that stand until the user acts on them:
+// the two waits and an agent-reported error.
+func wantsUser(s State) bool {
+	return s == wire.StateWaitingInput || s == wire.StateWaitingPermission || s == wire.StateError
 }
 
 // truncate caps agent-supplied text at the wire limit. The content is

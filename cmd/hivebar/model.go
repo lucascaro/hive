@@ -35,7 +35,7 @@ type Model struct {
 
 	Sessions int
 	// Waiting counts the sessions actually blocked on the user —
-	// state ∈ {waiting_input, waiting_permission} — rather than the
+	// state ∈ {waiting_input, waiting_permission, error} — rather than the
 	// sessions whose bell happens to be unacknowledged.
 	Waiting int
 }
@@ -81,7 +81,8 @@ func waiting(s wire.SessionInfo, daemonContract int) bool {
 	if daemonContract < stateContract {
 		return s.NeedsAttention
 	}
-	return s.State == wire.StateWaitingInput || s.State == wire.StateWaitingPermission
+	// Same set the daemon derives needs_attention from, error included.
+	return s.State == wire.StateWaitingInput || s.State == wire.StateWaitingPermission || s.State == wire.StateError
 }
 
 // BuildModel groups a snapshot into what the menu shows.

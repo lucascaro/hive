@@ -118,16 +118,29 @@ export default function (pi: ExtensionAPI) {
   // a turn, and only this extension knows which.
   let turnInFlight = false;
 
+  // Pi reports a failed run as an assistant message with stopReason
+  // "error", not as an event of its own. agent_end can be retried, so it
+  // only records the failure of the latest attempt; agent_settled
+  // reports it once nothing else will run.
+  let failure = "";
+
   pi.on("agent_start", () => {
     turnInFlight = true;
+    failure = "";
     post("permission_resolved");
+  });
+
+  pi.on("agent_end", (event) => {
+    failure = runError(event?.messages);
   });
 
   // agent_end can be followed by an auto-retry or a queued follow-up;
   // agent_settled is the one that means Pi has stopped on its own.
   pi.on("agent_settled", (_event, ctx) => {
     turnInFlight = false;
-    post("turn_end", lastAssistantText(ctx));
+    if (failure) post("error", failure);
+    else post("turn_end", lastAssistantText(ctx));
+    failure = "";
   });
 
   // Pi has no built-in permission prompt the way Claude does — a
@@ -145,10 +158,11 @@ export default function (pi: ExtensionAPI) {
   // command, a confirm() raised after agent_settled — nothing is going
   // to run, and reporting "working" would strand the session there
   // until the tier goes stale 30 s later (agentstate.HookStaleAfter),
-  // since only PTY output can demote it.
+  // since only PTY output can demote it. idle, not turn_end: the user
+  // just answered, so there is nothing to call them back for.
   pi.on("ui_prompt_end", (_event, ctx) => {
     if (turnInFlight) post("permission_resolved");
-    else post("turn_end", lastAssistantText(ctx));
+    else post("idle", lastAssistantText(ctx));
   });
 
   // Only "quit" ends the pi process. "new", "resume", "fork" and
@@ -158,10 +172,11 @@ export default function (pi: ExtensionAPI) {
   // agentstate.Machine.Apply, which drops every later event, and the
   // PTY is still very much alive.
   //
-  // The replacement path reports turn_end rather than nothing, because
-  // the command that triggered it (`/new`) arrives as an `input` event
-  // first and has already moved the session to working. Posting nothing
-  // would strand it there until the tier goes stale. turn_end with no
+  // The replacement path reports idle rather than nothing, because the
+  // command that triggered it (`/new`) arrives as an `input` event first
+  // and has already moved the session to working. Posting nothing would
+  // strand it there until the tier goes stale; posting turn_end would
+  // call the user back to a session they just typed into. idle with no
   // text also clears lastSummary, which is right: the previous
   // conversation's closing line does not describe the new one.
   //
@@ -173,8 +188,27 @@ export default function (pi: ExtensionAPI) {
   pi.on("session_shutdown", (event) => {
     turnInFlight = false;
     if (event?.reason === "quit") post("session_end");
-    else post("turn_end");
+    else post("idle");
   });
+}
+
+// runError returns the error text of a run whose final assistant
+// message stopped on an error, or "". "aborted" is the user pressing
+// Esc, which is not a failure. Wrapped for the same reason as
+// lastAssistantText: a shape change in Pi must cost the error text, not
+// the event.
+export function runError(messages: any): string {
+  try {
+    for (let i = (messages?.length ?? 0) - 1; i >= 0; i--) {
+      const msg = messages[i];
+      if (msg?.role !== "assistant") continue;
+      if (msg.stopReason !== "error") return "";
+      return typeof msg.errorMessage === "string" && msg.errorMessage ? msg.errorMessage : "error";
+    }
+  } catch {
+    // ignore
+  }
+  return "";
 }
 
 // lastAssistantText digs the most recent assistant message's text out
