@@ -196,8 +196,7 @@ describe('updateButtonState capability', () => {
       current: '2.4.0',
       latest: '2.5.0',
       canApply: false,
-      canApplyReason:
-        'C:\\Program Files\\Hive is not writable by Hive',
+      canApplyReason: 'C:\\Program Files\\Hive is not writable by Hive',
     });
     expect(s.status).toContain('C:\\Program Files\\Hive is not writable');
     expect(s.status).not.toContain('on this platform');

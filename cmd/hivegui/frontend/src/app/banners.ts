@@ -379,8 +379,7 @@ function applyUpdateInfo(
     // The latest channel tracks a git checkout and has no release
     // artifact at all, so pointing a user there — as this did for every
     // channel — sent them looking for a download that does not exist.
-    const needsReleasePage =
-      !info.url && info.channel !== CHANNEL_LATEST;
+    const needsReleasePage = !info.url && info.channel !== CHANNEL_LATEST;
     const base = updateButtonState(info).status;
     const text = needsReleasePage
       ? `${base} Open releases page manually.`
