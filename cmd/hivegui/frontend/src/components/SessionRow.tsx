@@ -118,10 +118,12 @@ export function SessionRow(p: SessionRowProps) {
       }`
     : '';
   const hint = p.index === null ? null : `[${p.index}]`;
-  // Restart is only offered where it means something (exited/error): a
-  // running session's restart is the tile's job, not a one-click sidebar
-  // action. patterns.md › Exited sessions — rotate first, x second.
-  const wantsRestart = p.state === 'exited' || p.state === 'error';
+  // Restart is only offered where it means something (exited, or an error
+  // on a dead process): a running session's restart is the tile's job, not
+  // a one-click sidebar action — and a live error is still running.
+  // patterns.md › Exited sessions — rotate first, x second.
+  const wantsRestart =
+    p.state === 'exited' || (p.state === 'error' && !s.alive);
 
   // The colour picker keeps its native input (components.md › Form
   // fields) and stays UNCONTROLLED: a controlled `value` would snap the

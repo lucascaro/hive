@@ -30,6 +30,7 @@ const TrayChip = memo(function TrayChip(p: {
   sublabel: string | undefined;
   color: string | undefined;
   state: SessionState;
+  stateDetail: string | undefined;
   onRestore: (id: string) => void;
 }) {
   return (
@@ -39,6 +40,7 @@ const TrayChip = memo(function TrayChip(p: {
       sublabel={p.sublabel}
       color={p.color}
       state={p.state}
+      stateDetail={p.stateDetail}
       ariaLabel={`Restore ${p.label}`}
       onClick={() => p.onRestore(p.id)}
     />
@@ -82,6 +84,11 @@ export function MinimizedTray({
           sublabel={projects.find((p) => p.id === readProjectId(info))?.name}
           color={info.color}
           state={sessionState(info)}
+          stateDetail={
+            info.alive && sessionState(info) === 'error'
+              ? 'Stopped on an error'
+              : undefined
+          }
           onRestore={restoreSession}
         />
       ))}

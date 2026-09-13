@@ -15,6 +15,8 @@ export interface ChipProps {
   sublabel?: string;
   color?: string;
   state?: SessionState;
+  /** Tooltip for the state icon, when STATE_WORDS would be wrong. */
+  stateDetail?: string;
   active?: boolean;
   title?: string;
   ariaLabel: string;
@@ -42,6 +44,7 @@ export function Chip({
   sublabel,
   color,
   state,
+  stateDetail,
   active,
   title,
   ariaLabel,
@@ -85,7 +88,7 @@ export function Chip({
             is the union of its sessions' and rides the alert slot below,
             not this one. */}
         {state ? (
-          <StateIcon state={state} />
+          <StateIcon state={state} detail={stateDetail} />
         ) : (
           <span className="hv-chip__swatch" />
         )}
