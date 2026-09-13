@@ -144,6 +144,13 @@ before it reached the daemon — with no error to show why. Wails ignores our
 button labels on Windows and substitutes a native Yes/No, and Hive only
 recognised the macOS `OK` as consent. It now accepts the labels each platform
 actually reports.
+Hive no longer flashes console windows across the screen on Windows. Neither
+`hivegui.exe` nor the detached `hived.exe` owns a console, so every helper they
+ran — the `git` behind worktree inventory and the update check, `gh` for merged
+branches, `claude --version`, the daemon probe — was handed a console window of
+its own by Windows. It arrived in bursts: a stray popup on every poll, and a
+volley when checking for an update. Child processes are now created with no
+console window, so the work happens where it always should have, out of sight.
 
 ## [2.7.0] — 2026-09-07
 
