@@ -124,6 +124,15 @@ renamed yourself keeps its name. The colour bar belongs to the panel — the
 whole group shares one colour — while the colour picker stays on each row.
 
 ### Fixed
+A Claude or Pi session that finishes its turn now shows "Waiting for you" and pulses
+in the sidebar, instead of dropping quietly to idle — the agent is done and ready for
+you whether or not it asked a question. Switching to the session or typing into it
+clears it, the same as any other wait.
+
+A failed turn now stays visible too. A Claude API failure used to flip to error and
+then fade back to idle the next time the screen redrew, and Pi never reported its
+failures at all. Both now show the error glyph, raise a notification, and keep it
+until you look.
 `Ctrl+Shift+V` pastes once instead of twice. The terminal read the clipboard and
 wrote it to the session itself, but never cancelled the keypress, so the webview
 also ran its own paste on top — the same text arrived twice on every use. The
