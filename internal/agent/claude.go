@@ -5,13 +5,14 @@ import (
 	"encoding/json"
 	"log"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"regexp"
 	"strconv"
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/lucascaro/hive/internal/proc"
 )
 
 // encodeClaudeProjectDir mirrors claude's on-disk encoding for the
@@ -185,7 +186,7 @@ var (
 	claudeVersionProbe = func() ([]byte, error) {
 		ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
 		defer cancel()
-		return exec.CommandContext(ctx, "claude", "--version").Output()
+		return proc.CommandContext(ctx, "claude", "--version").Output()
 	}
 )
 

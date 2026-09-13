@@ -3,10 +3,10 @@ package registry
 import (
 	"context"
 	"encoding/json"
-	"os/exec"
 	"sync"
 	"time"
 
+	"github.com/lucascaro/hive/internal/proc"
 	"github.com/lucascaro/hive/internal/worktree"
 )
 
@@ -93,7 +93,7 @@ func ghMergedHeads(root string) ghMerged {
 func queryGHMergedHeads(root string) ghMerged {
 	ctx, cancel := context.WithTimeout(context.Background(), ghTimeout)
 	defer cancel()
-	cmd := exec.CommandContext(ctx, "gh", "pr", "list",
+	cmd := proc.CommandContext(ctx, "gh", "pr", "list",
 		"--state", "merged", "--limit", ghPRLimit,
 		"--json", "headRefName,headRefOid")
 	cmd.Dir = root

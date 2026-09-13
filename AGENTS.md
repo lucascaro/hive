@@ -80,6 +80,7 @@ Package one-liners (full detail in `DESIGN.md`):
 | `internal/agent/` | Canonical agent catalog + human-readable name generation. |
 | `internal/worktree/` | Git worktree lifecycle; tracks dirty state so the registry can refuse destructive ops. |
 | `internal/notify/` | Desktop notifications; platform splits behind one Go interface. |
+| `internal/proc/` | The only constructor for non-PTY child processes. Keeps Windows from opening a console window per spawn. |
 | `internal/activity/` | Per-session activity / attention tracking. |
 | `internal/buildinfo/` | Single source for version + commit, plus `DaemonContract` (the GUI's reload-vs-restart signal). |
 | `cmd/hivegui/` + `frontend/` | Wails desktop client. JS + xterm.js; thin client over the wire, never opens a PTY. |
@@ -107,6 +108,14 @@ a bump; apply the `daemon-contract-override` label for refactors and
 test-only changes. Do **not** bump `wire.PROTOCOL_VERSION` for a new frame —
 see the hard rule in `DESIGN.md` and
 [docs/design-docs/daemon-contract.md](docs/design-docs/daemon-contract.md).
+
+**Shell out to anything:** build the command with `proc.Command` /
+`proc.CommandContext` (`internal/proc/`), never `os/exec` directly. Hive's two
+binaries run without a console on Windows, so a console child spawned straight
+from `os/exec` gets its own console *window* — a popup per git/gh/version probe,
+which is a stream of them during ordinary use. `TestNoDirectExecOnWindows` fails
+the build on a new direct call; genuine exceptions go in its allowlist with a
+reason.
 
 **Add an agent:** extend the catalog in `internal/agent/`. Users can also add
 custom agents at runtime via the GUI Settings screen (persisted to

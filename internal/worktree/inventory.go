@@ -5,13 +5,14 @@ import (
 	"errors"
 	"fmt"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"regexp"
 	"strconv"
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/lucascaro/hive/internal/proc"
 )
 
 // Read-path timeout. Every function here shells out to git for
@@ -31,7 +32,7 @@ const (
 func git(ctx context.Context, timeout time.Duration, dir string, args ...string) ([]byte, error) {
 	ctx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
-	cmd := exec.CommandContext(ctx, "git", append([]string{"-C", dir}, args...)...)
+	cmd := proc.CommandContext(ctx, "git", append([]string{"-C", dir}, args...)...)
 	cmd.Env = append(os.Environ(), "LC_ALL=C", "LANG=C")
 	out, err := cmd.CombinedOutput()
 	if err != nil && ctx.Err() == context.DeadlineExceeded {
@@ -456,7 +457,7 @@ func gitPatchIDs(repoRoot string, args ...string) ([]string, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), readTimeout)
 	defer cancel()
 
-	producer := exec.CommandContext(ctx, "git", append([]string{"-C", repoRoot}, args...)...)
+	producer := proc.CommandContext(ctx, "git", append([]string{"-C", repoRoot}, args...)...)
 	producer.Env = append(os.Environ(), "LC_ALL=C", "LANG=C")
 	pipe, err := producer.StdoutPipe()
 	if err != nil {
@@ -464,7 +465,7 @@ func gitPatchIDs(repoRoot string, args ...string) ([]string, error) {
 	}
 	// --stable so the id does not depend on the order git happened to
 	// emit the hunks in.
-	consumer := exec.CommandContext(ctx, "git", "-C", repoRoot, "patch-id", "--stable")
+	consumer := proc.CommandContext(ctx, "git", "-C", repoRoot, "patch-id", "--stable")
 	consumer.Env = producer.Env
 	consumer.Stdin = pipe
 	if err := producer.Start(); err != nil {

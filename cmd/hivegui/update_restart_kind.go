@@ -3,11 +3,11 @@ package main
 import (
 	"encoding/json"
 	"log"
-	"os/exec"
 	"path/filepath"
 	"time"
 
 	"github.com/lucascaro/hive/internal/buildinfo"
+	"github.com/lucascaro/hive/internal/proc"
 )
 
 // stagedIdentityTimeout bounds the `hived --version` probe. The flag
@@ -31,7 +31,7 @@ var stagedIdentityFn = stagedIdentity
 // before the daemon touches a socket or the state dir.
 func stagedIdentity(bundle string) (buildinfo.Identity, error) {
 	bin := filepath.Join(bundle, "Contents", "MacOS", "hived")
-	cmd := exec.Command(bin, "--version", "--json")
+	cmd := proc.Command(bin, "--version", "--json")
 	// Belt and braces on top of --version's own early return: a probe
 	// must never be able to adopt this GUI's environment and start
 	// talking to the live daemon.
