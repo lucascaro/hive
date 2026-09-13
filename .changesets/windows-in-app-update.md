@@ -20,6 +20,12 @@ directory Hive cannot write to (move it somewhere you own — `%LOCALAPPDATA%\Pr
 is the usual spot), and, on the latest channel, running Hive out of the checkout's
 own `cmd/hivegui/build/bin`, which the build step has to erase.
 
+The latest channel builds through Git for Windows' bash. A `bash` on the PATH
+that launches a WSL distro is skipped rather than used: it cannot reach the
+checkout by its Windows path and could not produce a Windows binary anyway, so
+it is reported as a missing Git for Windows up front instead of failing part-way
+through the build.
+
 The banner also stops telling latest-channel users to "open the releases page
 manually", which pointed at a download that does not exist for that channel, and
 the button's platform check now comes from the backend — so when an update can't

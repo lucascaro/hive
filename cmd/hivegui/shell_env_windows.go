@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"strings"
 
 	"github.com/lucascaro/hive/internal/proc"
@@ -32,15 +33,55 @@ var bashCandidates = []string{
 	`C:\Program Files\Git\usr\bin\bash.exe`,
 }
 
+// wslBashDirs are the directories Windows puts a bash.exe in that starts
+// a WSL distro rather than a Win32 bash: the System32 launcher and the
+// Store app execution alias. Both sit on a default PATH, so on a machine
+// with WSL installed LookPath finds one before Git for Windows' bash.
+func wslBashDirs() []string {
+	var dirs []string
+	if root := os.Getenv("SystemRoot"); root != "" {
+		dirs = append(dirs, filepath.Join(root, "System32"))
+	}
+	if local := os.Getenv("LOCALAPPDATA"); local != "" {
+		dirs = append(dirs, filepath.Join(local, "Microsoft", "WindowsApps"))
+	}
+	return dirs
+}
+
+// isWSLBash reports whether p is one of those launchers.
+//
+// Neither can run build.sh. buildCommandLine cds to a Windows path, which
+// inside a distro lives under /mnt, so the build dies with "cd:
+// D:/git/hive: No such file or directory"; and a Linux bash could not
+// produce a Windows binary even if the path did resolve.
+func isWSLBash(p string) bool {
+	dir := filepath.Clean(filepath.Dir(p))
+	for _, d := range wslBashDirs() {
+		if strings.EqualFold(dir, filepath.Clean(d)) {
+			return true
+		}
+	}
+	return false
+}
+
 // findBash locates the bash that will run build.sh.
 func findBash() (string, error) {
+	sawWSL := false
 	if p, err := exec.LookPath("bash"); err == nil {
-		return p, nil
+		if !isWSLBash(p) {
+			return p, nil
+		}
+		sawWSL = true
 	}
 	for _, p := range bashCandidates {
 		if st, err := os.Stat(p); err == nil && !st.IsDir() {
 			return p, nil
 		}
+	}
+	if sawWSL {
+		return "", fmt.Errorf("build.sh needs Git for Windows' bash, but the only bash on the PATH launches a WSL distro, " +
+			"which cannot reach the checkout by its Windows path and cannot build a Windows binary. " +
+			"Install Git for Windows (which ships bash), then try again")
 	}
 	return "", fmt.Errorf("build.sh needs bash, which is not on the PATH and not in the usual Git for Windows locations. " +
 		"Install Git for Windows (which ships bash), then try again")
