@@ -15,6 +15,12 @@ so the update renames the running binaries aside, installs over them, and sweeps
 the displaced copies at the next start. A failure part-way through rolls back,
 leaving a launchable Hive.
 
+An update interrupted at the one moment there is no executable in place - the
+instant between moving the old one aside and the new one in - is repaired at the
+next start, preferring the incoming image. Before that, the startup sweep deleted
+both halves, which could leave no `hived.exe` at all and no way to get one back
+from inside the app.
+
 Two refusals are reported up front rather than after the work: an install
 directory Hive cannot write to (move it somewhere you own — `%LOCALAPPDATA%\Programs\Hive`
 is the usual spot), and, on the latest channel, running Hive out of the checkout's

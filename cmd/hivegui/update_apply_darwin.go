@@ -386,3 +386,15 @@ func runQuiet(name string, args ...string) error {
 	}
 	return nil
 }
+
+// Lives here rather than in update_apply_installable.go: the codesign
+// check it gates is macOS-only, so on the Windows leg it was dead code
+// — the same unused-symbol problem the split was made to fix.
+// isDownloadedStaging reports whether a staged bundle came from
+// stageRelease — i.e. we downloaded it into our own staging area —
+// rather than from stageLatest, which returns a path inside the
+// user's git checkout.
+func isDownloadedStaging(staged string) bool {
+	root := updatesRoot()
+	return strings.HasPrefix(staged, root+string(filepath.Separator))
+}

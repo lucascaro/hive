@@ -230,7 +230,6 @@ func TestFreeAsidePathCountsUpWhenTaken(t *testing.T) {
 func TestIsSwapLeftoverMatchesOnlyOurFiles(t *testing.T) {
 	leftovers := []string{
 		"." + guiExe + ".old",
-		"." + guiExe + ".new",
 		"." + daemonExe + ".old",
 		"." + daemonExe + ".old.3",
 	}
@@ -239,7 +238,10 @@ func TestIsSwapLeftoverMatchesOnlyOurFiles(t *testing.T) {
 			t.Errorf("isSwapLeftover(%q) = false, want true", name)
 		}
 	}
-	keep := []string{guiExe, daemonExe, "hivegui.exe.bak", ".hivegui.exe", "notes.old", ".hivegui.exe.olds"}
+	// .new is deliberately absent from the sweep: another window may be
+	// mid-swap and still need it. See pruneRenamedAside.
+	keep := []string{guiExe, daemonExe, "." + guiExe + ".new", "." + daemonExe + ".new",
+		"hivegui.exe.bak", ".hivegui.exe", "notes.old", ".hivegui.exe.olds"}
 	for _, name := range keep {
 		if isSwapLeftover(name) {
 			t.Errorf("isSwapLeftover(%q) = true, want false — that file is not ours to delete", name)
@@ -250,20 +252,22 @@ func TestIsSwapLeftoverMatchesOnlyOurFiles(t *testing.T) {
 func TestPruneRenamedAsideRemovesOnlyLeftovers(t *testing.T) {
 	dir := t.TempDir()
 	useInstallDir(t, dir)
+	// Both executables present, so nothing here is an interrupted swap
+	// needing repair - this is only about what the sweep removes.
 	writeFile(t, filepath.Join(dir, guiExe), "live")
+	writeFile(t, filepath.Join(dir, daemonExe), "live")
 	writeFile(t, filepath.Join(dir, "."+guiExe+".old"), "displaced")
 	writeFile(t, filepath.Join(dir, "."+daemonExe+".old.2"), "displaced")
-	writeFile(t, filepath.Join(dir, "."+daemonExe+".new"), "half-landed")
 	writeFile(t, filepath.Join(dir, "hive.json"), "keep me")
 
 	pruneRenamedAside()
 
-	for _, gone := range []string{"." + guiExe + ".old", "." + daemonExe + ".old.2", "." + daemonExe + ".new"} {
+	for _, gone := range []string{"." + guiExe + ".old", "." + daemonExe + ".old.2"} {
 		if _, err := os.Stat(filepath.Join(dir, gone)); err == nil {
 			t.Errorf("%s survived the sweep", gone)
 		}
 	}
-	for _, kept := range []string{guiExe, "hive.json"} {
+	for _, kept := range []string{guiExe, daemonExe, "hive.json"} {
 		if _, err := os.Stat(filepath.Join(dir, kept)); err != nil {
 			t.Errorf("%s was swept but should have been left alone", kept)
 		}
@@ -464,5 +468,69 @@ func TestUpdateCapabilityAcceptsAWritableInstall(t *testing.T) {
 func TestStagedDaemonPathPointsAtHived(t *testing.T) {
 	if got, want := stagedDaemonPath(`C:\staged`), filepath.Join(`C:\staged`, daemonExe); got != want {
 		t.Errorf("stagedDaemonPath = %q, want %q", got, want)
+	}
+}
+
+// swapExes has one window - between renaming the old image aside and
+// moving the new one into place - where the install directory holds no
+// <exe> at all. A process death there used to be unrecoverable: the
+// startup sweep deleted both halves, so hived.exe was gone for good with
+// no in-app way back (the release channel refuses when you are already
+// on the newest version), and the same window for hivegui.exe left Hive
+// unlaunchable.
+func TestPruneRestoresAnInterruptedSwap(t *testing.T) {
+	for _, tc := range []struct {
+		name    string
+		present map[string]string
+		want    string
+	}{
+		{
+			"prefers the new image, which is the update that was asked for",
+			map[string]string{"." + daemonExe + ".old": "previous", "." + daemonExe + ".new": "incoming"},
+			"incoming",
+		},
+		{
+			"falls back to the displaced image when there is no new one",
+			map[string]string{"." + daemonExe + ".old": "previous"},
+			"previous",
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			dir := t.TempDir()
+			useInstallDir(t, dir)
+			writeFile(t, filepath.Join(dir, guiExe), "live")
+			for name, body := range tc.present {
+				writeFile(t, filepath.Join(dir, name), body)
+			}
+
+			pruneRenamedAside()
+
+			got, err := os.ReadFile(filepath.Join(dir, daemonExe))
+			if err != nil {
+				t.Fatalf("%s was not restored after an interrupted swap: %v", daemonExe, err)
+			}
+			if string(got) != tc.want {
+				t.Errorf("%s = %q, want %q", daemonExe, got, tc.want)
+			}
+		})
+	}
+}
+
+// Every GUI window is its own process, so opening a second one while the
+// first is mid-swap runs this sweep concurrently. Deleting .new there
+// makes the running swap fail with a baffling "cannot find the file"
+// error. A stale .new costs disk only, and the next swap overwrites it
+// anyway, so leaving it is the cheaper trade.
+func TestPruneLeavesIncomingFilesForARunningSwap(t *testing.T) {
+	dir := t.TempDir()
+	useInstallDir(t, dir)
+	writeFile(t, filepath.Join(dir, guiExe), "live")
+	writeFile(t, filepath.Join(dir, daemonExe), "live")
+	writeFile(t, filepath.Join(dir, "."+daemonExe+".new"), "incoming")
+
+	pruneRenamedAside()
+
+	if _, err := os.Stat(filepath.Join(dir, "."+daemonExe+".new")); err != nil {
+		t.Errorf(".%s.new was swept while a swap could still be using it: %v", daemonExe, err)
 	}
 }

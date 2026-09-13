@@ -211,12 +211,3 @@ func plainProgressLine(s string) string {
 	}
 	return strings.TrimSpace(b.String())
 }
-
-// isDownloadedStaging reports whether a staged bundle came from
-// stageRelease — i.e. we downloaded it into our own staging area —
-// rather than from stageLatest, which returns a path inside the
-// user's git checkout.
-func isDownloadedStaging(staged string) bool {
-	root := updatesRoot()
-	return strings.HasPrefix(staged, root+string(filepath.Separator))
-}

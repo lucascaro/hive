@@ -6,8 +6,8 @@ import (
 	"context"
 	"fmt"
 	"os"
-	"os/exec"
 	"path/filepath"
+	"slices"
 	"strings"
 
 	"github.com/lucascaro/hive/internal/proc"
@@ -67,11 +67,25 @@ func isWSLBash(p string) bool {
 // findBash locates the bash that will run build.sh.
 func findBash() (string, error) {
 	sawWSL := false
-	if p, err := exec.LookPath("bash"); err == nil {
-		if !isWSLBash(p) {
-			return p, nil
+	// Walk the PATH rather than taking the first hit and stopping. On a
+	// machine with WSL the launcher usually IS the first hit, because
+	// WindowsApps sits near the front of the PATH - and giving up there
+	// would strand every Git for Windows that is not at one of the
+	// default locations below: a scoop shim, a portable Git, an install
+	// on another drive.
+	for _, dir := range filepath.SplitList(os.Getenv("PATH")) {
+		if dir == "" {
+			continue
 		}
-		sawWSL = true
+		p := filepath.Join(dir, "bash.exe")
+		if st, err := os.Stat(p); err != nil || st.IsDir() {
+			continue
+		}
+		if isWSLBash(p) {
+			sawWSL = true
+			continue
+		}
+		return p, nil
 	}
 	for _, p := range bashCandidates {
 		if st, err := os.Stat(p); err == nil && !st.IsDir() {
@@ -79,7 +93,7 @@ func findBash() (string, error) {
 		}
 	}
 	if sawWSL {
-		return "", fmt.Errorf("build.sh needs Git for Windows' bash, but the only bash on the PATH launches a WSL distro, " +
+		return "", fmt.Errorf("build.sh needs Git for Windows' bash, but every bash on the PATH launches a WSL distro, " +
 			"which cannot reach the checkout by its Windows path and cannot build a Windows binary. " +
 			"Install Git for Windows (which ships bash), then try again")
 	}
@@ -110,9 +124,16 @@ func probeBuildTools(ctx context.Context, bash, repo string) ([]string, error) {
 	if err != nil {
 		return nil, fmt.Errorf("probe build tools: %w", err)
 	}
+	// Only believe tokens that are actually build tools. `bash -lc`
+	// sources the login profile, and anything that prints to stdout - an
+	// nvm banner, a welcome echo, a fortune - lands here too and would
+	// be reported as `build.sh needs Welcome`, refusing a build that
+	// would have worked.
 	var missing []string
-	for _, line := range strings.Fields(string(out)) {
-		missing = append(missing, line)
+	for _, tok := range strings.Fields(string(out)) {
+		if slices.Contains(buildTools, tok) {
+			missing = append(missing, tok)
+		}
 	}
 	return missing, nil
 }
