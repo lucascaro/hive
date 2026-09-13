@@ -2,6 +2,9 @@ package proc_test
 
 import (
 	"context"
+	"os/exec"
+	"reflect"
+	"runtime"
 	"strings"
 	"testing"
 
@@ -36,10 +39,37 @@ func TestCommandContextCarriesTheContext(t *testing.T) {
 	}
 }
 
-// HideConsole must be safe on a *exec.Cmd built elsewhere, including
-// one that already carries SysProcAttr.
+// HideConsole must be safe on a *exec.Cmd built elsewhere - including
+// one that already carries SysProcAttr - and a second call must leave
+// exactly what the first one left. Which flags it sets is the
+// Windows-only TestHideConsolePreservesExistingFlags; this is that
+// applying it twice is applying it once, on every platform.
+//
+// Off Windows it must be wholly inert: SysProcAttr stays nil, which is
+// what keeps every converted call site building the same exec.Cmd it
+// built before the switch.
 func TestHideConsoleIsIdempotent(t *testing.T) {
-	cmd := proc.Command("git", "status")
+	cmd := exec.Command("git", "status") // built elsewhere, not by proc.Command
+
+	// Snapshot the value, not the pointer: HideConsole mutates in place,
+	// so keeping the pointer would compare a struct against itself.
+	snapshot := func() any {
+		if cmd.SysProcAttr == nil {
+			return nil
+		}
+		v := *cmd.SysProcAttr
+		return v
+	}
+
 	proc.HideConsole(cmd)
+	once := snapshot()
 	proc.HideConsole(cmd)
+	twice := snapshot()
+
+	if !reflect.DeepEqual(once, twice) {
+		t.Errorf("a second HideConsole changed SysProcAttr:\n once:  %+v\n twice: %+v", once, twice)
+	}
+	if runtime.GOOS != "windows" && cmd.SysProcAttr != nil {
+		t.Errorf("SysProcAttr = %+v off Windows, want nil: HideConsole must stay inert there", cmd.SysProcAttr)
+	}
 }
