@@ -10,6 +10,7 @@ import (
 	"github.com/lucascaro/hive/internal/activity"
 	"github.com/lucascaro/hive/internal/agent"
 	"github.com/lucascaro/hive/internal/notify"
+	"github.com/lucascaro/hive/internal/qos"
 	"github.com/lucascaro/hive/internal/registry"
 	"github.com/lucascaro/hive/internal/wire"
 	wruntime "github.com/wailsapp/wails/v2/pkg/runtime"
@@ -155,6 +156,11 @@ func (a *App) startup(ctx context.Context) {
 	// repainting — NOT the fix for the reported freeze (that was a synchronous
 	// full-ring scrollback replay; see session-term.ts). See internal/activity.
 	activity.DisableThrottling()
+	// The Windows half of the same idea: EcoQoS parks non-foreground processes
+	// on the efficiency cores, and a terminal window is behind whatever the
+	// user is typing into by definition. Separate package because the daemon
+	// needs it too and cannot import internal/activity (cgo). See internal/qos.
+	qos.DisableThrottling()
 	if a.haveInitialPos {
 		wruntime.WindowSetPosition(ctx, a.initialX, a.initialY)
 	}

@@ -20,6 +20,7 @@ import (
 	"github.com/lucascaro/hive/internal/agent"
 	"github.com/lucascaro/hive/internal/daemon"
 	"github.com/lucascaro/hive/internal/menubar"
+	"github.com/lucascaro/hive/internal/qos"
 	"github.com/lucascaro/hive/internal/registry"
 	"github.com/lucascaro/hive/internal/session"
 )
@@ -88,6 +89,17 @@ func main() {
 		log.SetOutput(io.MultiWriter(os.Stderr, f))
 		log.Printf("hived: log tee to %s", filepath.Join(stateDir, "hived.log"))
 	}
+
+	// Opt out of OS execution-speed throttling. The daemon needs this more
+	// than the GUI does: it is spawned detached with no window, so Windows
+	// never sees it as foreground and is free to park it on the efficiency
+	// cores under EcoQoS — and the PTY read → VT parse → broadcast path that
+	// carries every byte of agent output is single-threaded, so that lands
+	// straight on keystroke-to-paint latency. Best-effort, and placed after
+	// the log tee above so a failure to opt out is explicable rather than
+	// silent: this daemon's stdout and stderr are /dev/null when the GUI
+	// spawned it.
+	qos.DisableThrottling()
 
 	// Drop the embedded Pi reporter extension into the state dir. Pi
 	// sessions are spawned with `-e <stateDir>/pi/hive.ts` so they
