@@ -164,7 +164,9 @@
 }
 
 /* ---------------------------------------------------------------------------
-   Community presets — the palettes people arrive with from other editors.
+   Community presets — everything outside the small first-party set. Mostly
+   the palettes people arrive with from other editors; the last two blocks in
+   this section are originals rather than ports (see their comments).
    Ported at their published values: hues, ANSI 16 and chrome greys are the
    upstream ones, not re-derived. That is a deliberate choice and it has a
    cost, and here is its size rather than an impression of it: with the
@@ -212,6 +214,42 @@
   --ansi-4: #bd93f9; --ansi-5: #ff79c6; --ansi-6: #8be9fd; --ansi-7: #f8f8f2;
   --ansi-8: #6272a4; --ansi-9: #ff6e6e; --ansi-10: #69ff94; --ansi-11: #ffffa5;
   --ansi-12: #d6acff; --ansi-13: #ff92df; --ansi-14: #a4ffff; --ansi-15: #ffffff;
+}
+
+/* Alucard — Castlevania's dhampir, not the Dracula org's light theme of the
+   same name. Sampled off Ayami Kojima's Symphony of the Night promo art
+   rather than from memory, and the sampling is why there is no red here: in
+   that painting, pixels with a red hue above 25% saturation come to 0.06% of
+   the image. Half of it (50.7%) sits below 12% luminance, warm-black rather
+   than neutral; the mid-tones are #231e1b/#2a231e; the one genuinely
+   saturated colour is the baroque gold filigree, mean #b88f5e and #d5ab78 at
+   its highlights. So gold is the accent, cream (#d9cec2, hair) is the type,
+   and the moon-and-candle steel blue (#83959b) is --state-info.
+   Red survives only where it has to carry meaning: --state-error. Accent and
+   --state-attention sit near each other in hue, which is not an accident and
+   not a defect — hive-dark ships the same pair (#ffb454 / #ff9f43).
+   Original, not a port: nothing upstream defines this, so there are no
+   published values to preserve and no reason to opt out of the contrast
+   gate. Checked like a first-party preset; do not add --contrast-exempt. */
+:root[data-theme="alucard"] {
+  --bg: #0a0908; --surface: #13110f; --surface-raised: #1b1815; --border: #2a231e;
+  --fg: #ece4d8; --fg-muted: #b6ab99; --fg-subtle: #7d7364;
+  --accent: #d9a862; --on-accent: #14120f; --sel: #2a231e;
+  --hover: color-mix(in srgb, var(--sel) 60%, transparent);
+  --btn: #1f1b17; --btn-border: #3b332b;
+  --state-running: #86b37f; --state-attention: #e08b4a; --state-error: #e8736f;
+  --state-info: #8fa8ae;
+  --term-bg: #070706; --term-fg: #e4dcd0;
+  --font-ui: "IBM Plex Sans", -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
+  --font-mono: "JetBrains Mono", "SF Mono", Menlo, Consolas, monospace;
+  --radius-sm: 4px; --radius-md: 6px;
+  --shadow-popover: 0 8px 24px rgba(0, 0, 0, 0.6);
+  /* Gold at 3/11 and steel at 4/12 — the two colours the painting actually
+     has. 15 is the hair highlight (#f3efec) read straight off the art. */
+  --ansi-0: #13110f; --ansi-1: #c25f5b; --ansi-2: #86b37f; --ansi-3: #d9a862;
+  --ansi-4: #7f97a6; --ansi-5: #a08bab; --ansi-6: #7fa9a5; --ansi-7: #cfc6b8;
+  --ansi-8: #5c5347; --ansi-9: #e08480; --ansi-10: #a3cc9a; --ansi-11: #edc489;
+  --ansi-12: #a3b8c6; --ansi-13: #bfa9c8; --ansi-14: #9ec6c2; --ansi-15: #f3efec;
 }
 
 /* Nord — MIT, Arctic Ice Studio. Polar Night for the grounds (nord0-3), Snow
@@ -465,4 +503,31 @@
   --ansi-4: #0969da; --ansi-5: #8250df; --ansi-6: #1b7c83; --ansi-7: #6e7781;
   --ansi-8: #57606a; --ansi-9: #a40e26; --ansi-10: #1a7f37; --ansi-11: #633c01;
   --ansi-12: #218bff; --ansi-13: #a475f9; --ansi-14: #3192aa; --ansi-15: #8c959f;
+}
+
+/* Hex — ink-violet grounds and an amethyst accent: the dark-purple end of
+   the range, saturated in the chrome rather than in the type, so it reads as
+   dark-with-a-hue and not as a neon theme. The state family stays in the
+   usual four hues — a purple preset still has to say "running", "needs you"
+   and "error" in colours that are not the accent.
+   Original, not a port: nothing upstream defines this, so there are no
+   published values to preserve and no reason to opt out of the contrast
+   gate. Checked like a first-party preset; do not add --contrast-exempt. */
+:root[data-theme="hex"] {
+  --bg: #0c0813; --surface: #150f20; --surface-raised: #1c1429; --border: #2c2140;
+  --fg: #e8e2f5; --fg-muted: #b0a6c8; --fg-subtle: #7a6e95;
+  --accent: #a978ff; --on-accent: #16102a; --sel: #2a1f44;
+  --hover: color-mix(in srgb, var(--sel) 60%, transparent);
+  --btn: #1f1730; --btn-border: #3a2d55;
+  --state-running: #5fd7a5; --state-attention: #ffb454; --state-error: #ff8095;
+  --state-info: #79b8f0;
+  --term-bg: #0a0710; --term-fg: #e4ddf2;
+  --font-ui: "IBM Plex Sans", -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
+  --font-mono: "JetBrains Mono", "SF Mono", Menlo, Consolas, monospace;
+  --radius-sm: 4px; --radius-md: 6px;
+  --shadow-popover: 0 8px 24px rgba(0, 0, 0, 0.55);
+  --ansi-0: #150f20; --ansi-1: #e05f7a; --ansi-2: #5fd7a5; --ansi-3: #e8b45c;
+  --ansi-4: #7f9fe8; --ansi-5: #a978ff; --ansi-6: #6fd3d3; --ansi-7: #ded7ee;
+  --ansi-8: #4a3d66; --ansi-9: #ff7d95; --ansi-10: #7fe8bd; --ansi-11: #f5cb78;
+  --ansi-12: #9db6f5; --ansi-13: #c49bff; --ansi-14: #8ee5e5; --ansi-15: #f4f0ff;
 }

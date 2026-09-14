@@ -12,6 +12,7 @@ export type ThemeName =
   | 'system'
   // Community ports (spec 305). Ordered as the picker shows them.
   | 'dracula'
+  | 'alucard'
   | 'nord'
   | 'gruvbox-dark'
   | 'tokyo-night'
@@ -22,7 +23,8 @@ export type ThemeName =
   | 'solarized-light'
   | 'catppuccin-latte'
   | 'github-dark'
-  | 'github-light';
+  | 'github-light'
+  | 'hex';
 export const THEME_KEY = 'hive.theme';
 // Phase 6: new installs follow the OS. Users who already set a preset keep
 // it — readTheme() only falls back when the stored value is absent or
@@ -74,6 +76,7 @@ export const PRESETS: readonly Preset[] = [
   { id: 'terminal', label: 'Terminal', group: 'Native' },
   { id: 'classic', label: 'Classic', group: 'Native' },
   { id: 'dracula', label: 'Dracula', group: 'Community' },
+  { id: 'alucard', label: 'Alucard', group: 'Community' },
   { id: 'nord', label: 'Nord', group: 'Community' },
   { id: 'gruvbox-dark', label: 'Gruvbox Dark', group: 'Community' },
   { id: 'tokyo-night', label: 'Tokyo Night', group: 'Community' },
@@ -85,6 +88,7 @@ export const PRESETS: readonly Preset[] = [
   { id: 'catppuccin-latte', label: 'Catppuccin Latte', group: 'Community' },
   { id: 'github-dark', label: 'GitHub Dark', group: 'Community' },
   { id: 'github-light', label: 'GitHub Light', group: 'Community' },
+  { id: 'hex', label: 'Hex', group: 'Community' },
 ];
 
 // Everything resolveTheme can stamp on <html>. 'system' is a selection,

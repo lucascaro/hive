@@ -46,6 +46,7 @@ describe('PRESETS', () => {
       'terminal',
       'classic',
       'dracula',
+      'alucard',
       'nord',
       'gruvbox-dark',
       'tokyo-night',
@@ -57,6 +58,7 @@ describe('PRESETS', () => {
       'catppuccin-latte',
       'github-dark',
       'github-light',
+      'hex',
     ]);
     expect(new Set(ids).size).toBe(ids.length);
     expect(PRESETS.every((p) => p.label.length > 0)).toBe(true);
