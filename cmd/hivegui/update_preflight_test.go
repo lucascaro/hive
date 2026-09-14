@@ -21,16 +21,31 @@ func cleanCheckout() map[string]string {
 	}
 }
 
+// firstCall is the index of the first recorded git invocation that
+// contains sub, or -1. Substring, for the same reason fakeGit.ran is.
+func firstCall(g *fakeGit, sub string) int {
+	for i, c := range g.calls {
+		if strings.Contains(c, sub) {
+			return i
+		}
+	}
+	return -1
+}
+
 // preflightCheckout is the whole list of things stageLatest refuses
-// before git moves or the build starts, on both platforms. Every
-// refusal must name the problem in the user's terms — none of these
-// should ever reach the banner as raw git stderr — and none may pull.
+// before the checkout moves or the build starts, on both platforms.
+// Every refusal must name the problem in the user's terms — none of
+// these should ever reach the banner as raw git stderr — and none may
+// pull. Only the divergence check may fetch, and only once the remote
+// has been pinned: the refusals before it must not have talked to a
+// remote nobody has vouched for yet.
 func TestPreflightCheckoutRefusals(t *testing.T) {
 	cases := []struct {
 		name    string
 		answers map[string]string
 		errs    map[string]error
 		want    string
+		fetches bool
 	}{
 		{
 			name:    "dirty tree",
@@ -58,7 +73,8 @@ func TestPreflightCheckoutRefusals(t *testing.T) {
 				"symbolic-ref --quiet --short HEAD":                "integ/windows-parity",
 				"rev-list --left-right --count origin/main...HEAD": "5\t14",
 			},
-			want: `branch "integ/windows-parity", which has 14 local commits that origin/main does not`,
+			want:    `branch "integ/windows-parity", which has 14 local commits that origin/main does not`,
+			fetches: true,
 		},
 	}
 	for _, tc := range cases {
@@ -80,7 +96,59 @@ func TestPreflightCheckoutRefusals(t *testing.T) {
 			if g.ran("pull") {
 				t.Error("preflightCheckout pulled — it must only look")
 			}
+			if got := g.ran("fetch"); got != tc.fetches {
+				t.Errorf("preflightCheckout fetched = %v, want %v (calls: %q)", got, tc.fetches, g.calls)
+			}
 		})
+	}
+}
+
+// The counts are only as fresh as the remote-tracking ref, and the
+// periodic check last fetched that up to updateCheckInterval ago.
+// `pull --ff-only` fetches before it decides, so the preflight has to
+// as well, or "only ahead" here can be "diverged" by the time the pull
+// looks — and the banner shows git's words after all, which is the
+// failure this check exists to prevent.
+func TestPreflightCheckoutFetchesBeforeCounting(t *testing.T) {
+	g := &fakeGit{answers: cleanCheckout()}
+	g.install(t)
+	if err := preflightCheckout("/repo"); err != nil {
+		t.Fatalf("preflightCheckout = %v, want nil", err)
+	}
+	fetch, count := firstCall(g, "fetch"), firstCall(g, "rev-list")
+	if fetch < 0 {
+		t.Fatalf("preflightCheckout never fetched; calls: %q", g.calls)
+	}
+	if count < 0 || count < fetch {
+		t.Errorf("preflightCheckout counted (call %d) before fetching (call %d); calls: %q", count, fetch, g.calls)
+	}
+	if pin := firstCall(g, "remote get-url"); pin < 0 || fetch < pin {
+		t.Errorf("preflightCheckout fetched (call %d) before pinning the remote (call %d); calls: %q", fetch, pin, g.calls)
+	}
+}
+
+// A fetch that fails (offline, auth, a remote that went away) leaves
+// the counts meaningless, and a meaningless count is a refusal, not a
+// pass — the same rule as an unreadable one.
+func TestPreflightCheckoutRefusesWhenFetchFails(t *testing.T) {
+	g := &fakeGit{
+		answers: cleanCheckout(),
+		errs:    map[string]error{"fetch --quiet": fmt.Errorf("git fetch --quiet: fatal: unable to access 'https://github.com/'")},
+	}
+	g.install(t)
+
+	err := preflightCheckout("/repo")
+	if err == nil {
+		t.Fatal("preflightCheckout = nil error when the fetch failed, want a refusal")
+	}
+	if !strings.Contains(err.Error(), "unable to access") {
+		t.Errorf("error = %q, want the fetch failure surfaced", err)
+	}
+	if g.ran("rev-list") {
+		t.Error("preflightCheckout counted against a ref it had just failed to refresh")
+	}
+	if g.ran("pull") {
+		t.Error("preflightCheckout pulled — it must only look")
 	}
 }
 
@@ -135,7 +203,7 @@ func TestDivergedBranchRefusalNamesTheWayOut(t *testing.T) {
 	if err == nil {
 		t.Fatal("preflightCheckout = nil error on a diverged branch, want a refusal")
 	}
-	for _, want := range []string{"1 local commit that", "git checkout main", `"feat/thing"`} {
+	for _, want := range []string{"1 local commit that", "2 commits behind it", "git checkout main", `"feat/thing"`} {
 		if !strings.Contains(err.Error(), want) {
 			t.Errorf("error = %q, want it to contain %q", err, want)
 		}
@@ -147,16 +215,22 @@ func TestDivergedBranchRefusalNamesTheWayOut(t *testing.T) {
 
 // main tracking origin/main has no "other" branch to check out — the
 // advice must not tell the user to check out the branch they are
-// already on.
+// already on. Both counts read as English here too, the other way
+// round from the test above.
 func TestDivergedMainRefusalDoesNotSuggestCheckingOutMain(t *testing.T) {
 	answers := cleanCheckout()
-	answers["rev-list --left-right --count origin/main...HEAD"] = "2\t1"
+	answers["rev-list --left-right --count origin/main...HEAD"] = "1\t2"
 	g := &fakeGit{answers: answers}
 	g.install(t)
 
 	err := preflightCheckout("/repo")
 	if err == nil {
 		t.Fatal("preflightCheckout = nil error on a diverged main, want a refusal")
+	}
+	for _, want := range []string{"2 local commits that", "1 commit behind it"} {
+		if !strings.Contains(err.Error(), want) {
+			t.Errorf("error = %q, want it to contain %q", err, want)
+		}
 	}
 	if strings.Contains(err.Error(), "git checkout main") {
 		t.Errorf("error = %q, want it to not suggest checking out the branch it is already on", err)

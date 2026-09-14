@@ -237,8 +237,8 @@ func extractOne(f *zip.File, dest string) error {
 
 // stageLatest fast-forwards the source checkout and builds it.
 //
-// Every refusal is pre-flighted before git or the build runs — the
-// install-layout ones here, the checkout ones in preflightCheckout.
+// Every refusal is pre-flighted before the pull or the build runs —
+// the install-layout ones here, the checkout ones in preflightCheckout.
 // That ordering is the whole point: a build is minutes long, and a
 // failure the updater could have predicted from the start should not
 // cost the user those minutes with the button stuck on "Updating…".
@@ -264,7 +264,7 @@ func stageLatest(info UpdateInfo, progress func(string)) (string, error) {
 		return "", err
 	}
 
-	progress("Checking working tree…")
+	progress("Checking the source checkout…")
 	// The checkout path comes out of update.json, and validateSourceRepo
 	// only proves the directory *looks* like hive — .git, build.sh and a
 	// module line are all plantable. Pinning the upstream remote, which

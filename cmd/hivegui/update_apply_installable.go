@@ -131,8 +131,8 @@ func sha256File(path string) (string, error) {
 	return hex.EncodeToString(h.Sum(nil)), nil
 }
 
-// preflightCheckout is every refusal stageLatest can make before git
-// moves anything or the build starts, in the order they are cheapest
+// preflightCheckout is every refusal stageLatest can make before the
+// checkout moves or the build starts, in the order they are cheapest
 // to explain. A build is minutes long, and a failure the updater could
 // have predicted from the start should not cost the user those minutes
 // with the button stuck on "Updating…" — nor should it surface as raw
@@ -141,9 +141,11 @@ func sha256File(path string) (string, error) {
 // A dirty tree is refused first: `git pull` on top of uncommitted work
 // is how you lose it, and this button is meant to be safe to press
 // without thinking. A detached HEAD has no upstream to fast-forward
-// from. The remote is pinned before anything is pulled and executed.
-// And a branch that has wandered off its upstream cannot fast-forward
-// at all, which git reports only after the fetch, in its own words.
+// from. The remote is pinned before anything is fetched, pulled or
+// executed. And a branch that has wandered off its upstream cannot
+// fast-forward at all, which git reports only after the fetch, in its
+// own words — so that check comes last and is the only one that
+// fetches.
 func preflightCheckout(repo string) error {
 	dirty, err := runGitFn(repo, "status", "--porcelain")
 	if err != nil {
@@ -176,7 +178,18 @@ func preflightCheckout(repo string) error {
 // "other" branch to check out, so the advice is to push or move the local
 // commits — or a differently named branch, where checking out the branch
 // it tracks is the way out.
+//
+// The counts come from the remote-tracking ref, which is only as fresh
+// as the last fetch — checkLatest's, up to updateCheckInterval ago.
+// `pull --ff-only` fetches before it decides, so this fetches first
+// too; otherwise "only ahead" here can be "diverged" by the time the
+// pull looks, and the banner shows git's words after all. A fetch
+// touches nothing but remote-tracking refs, and the remote it talks
+// to is the one verifyUpstreamRemote just pinned.
 func verifyFastForwardable(repo, branch, upstream string) error {
+	if _, err := runGitFn(repo, "fetch", "--quiet"); err != nil {
+		return err
+	}
 	out, err := runGitFn(repo, "rev-list", "--left-right", "--count", upstream+"...HEAD")
 	if err != nil {
 		return err
@@ -194,18 +207,22 @@ func verifyFastForwardable(repo, branch, upstream string) error {
 		return nil
 	}
 	_, tracked, _ := strings.Cut(upstream, "/")
-	noun := "commits"
-	if ahead == 1 {
-		noun = "commit"
-	}
 	if branch == tracked {
-		return fmt.Errorf("%s is on branch %q, which has %d local %s that %s does not and is %d commit(s) behind it — it has diverged. "+
+		return fmt.Errorf("%s is on branch %q, which has %d local %s that %s does not and is %d %s behind it — it has diverged. "+
 			"The updater only fast-forwards. Push those commits upstream or move them to another branch before updating",
-			repo, branch, ahead, noun, upstream, behind)
+			repo, branch, ahead, commitNoun(ahead), upstream, behind, commitNoun(behind))
 	}
-	return fmt.Errorf("%s is on branch %q, which has %d local %s that %s does not and is %d commit(s) behind it — it has diverged. "+
+	return fmt.Errorf("%s is on branch %q, which has %d local %s that %s does not and is %d %s behind it — it has diverged. "+
 		"The updater only fast-forwards. Check out the branch it tracks (git checkout %s) and update again; anything worth keeping from %q needs to land upstream first",
-		repo, branch, ahead, noun, upstream, behind, tracked, branch)
+		repo, branch, ahead, commitNoun(ahead), upstream, behind, commitNoun(behind), tracked, branch)
+}
+
+// commitNoun is "commit" or "commits" to follow n in a sentence.
+func commitNoun(n int) string {
+	if n == 1 {
+		return "commit"
+	}
+	return "commits"
 }
 
 // verifyUpstreamRemote refuses a checkout whose tracked branch does not
