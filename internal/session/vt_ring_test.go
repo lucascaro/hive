@@ -269,6 +269,67 @@ func TestRing_RandomizedAgainstReference(t *testing.T) {
 	}
 }
 
+// TestRing_ScanWindowStraddlingPhysicalWrapMatchesReference drives the
+// ring's live start across the physical end of the circular buffer, so the
+// boundary scan's window straddles the wrap (ringView stitches into
+// ringScratch) and, on the writes just after it, starts behind index 0
+// (ringView's negative-from path). These run once per ringCap bytes in
+// production and no other test reaches them.
+//
+// The scrollback is 'A's separated by irregular runs of UTF-8 continuation
+// bytes, and every write is one byte. Each trim drops 1 and scans the
+// continuation run to the next 'A' (the start then waits for the ring to
+// refill before it trims again), so the start visits every 'A' in turn.
+// An 'A' is forced at physical index ringPhys-1, so one write's scan starts
+// exactly at index 0 with its back-scan byte behind it (negative from).
+// The gaps are irregular so they don't repeat in step with ringPhys: a
+// mis-stitched window (stale scratch, wrong offset) reads a different gap
+// than the reference and picks a different boundary.
+func TestRing_ScanWindowStraddlingPhysicalWrapMatchesReference(t *testing.T) {
+	// Starts the live window 300 bytes before the physical end: close
+	// enough that every scan window already straddles the wrap. Trims
+	// retain fewer than ringCap bytes, so the start moves about one byte
+	// per write and the walk takes a few hundred writes.
+	total := ringCap + ringPhys - 300
+	rng := rand.New(rand.NewSource(5))
+	stream := make([]byte, 0, total+32)
+	for len(stream) < total {
+		stream = append(stream, fill(rng.Intn(31), 0x80)...)
+		stream = append(stream, 'A')
+	}
+	stream = stream[:total]
+	// The first overflow allocates the circular buffer with the stream
+	// starting at physical 0, so stream index ringPhys-1 is physical
+	// ringPhys-1.
+	stream[ringPhys-1] = 'A'
+
+	v := newRingVT()
+	ref := &refRing{capacity: ringCap}
+	for _, c := range [][]byte{stream[:ringCap], stream[ringCap:]} {
+		v.appendRing(c)
+		ref.append(c)
+	}
+	chunk := []byte{'z'}
+	wrapped, sawLastIndex := false, false
+	for i := 0; i < 2000 && !(wrapped && v.ringStart > 2*ringBackScan); i++ {
+		v.appendRing(chunk)
+		ref.append(chunk)
+		if v.ringStart == ringPhys-1 {
+			sawLastIndex = true
+		}
+		if v.ringStart < ringPhys/2 {
+			wrapped = true
+		}
+		if got := v.ringBytes(); !bytes.Equal(got, ref.buf) {
+			t.Fatalf("write %d (start %d): ring != reference (len %d vs %d)",
+				i, v.ringStart, len(got), len(ref.buf))
+		}
+	}
+	if !wrapped || !sawLastIndex {
+		t.Fatalf("walk did not exercise the wrap: wrapped=%v lastIndex=%v", wrapped, sawLastIndex)
+	}
+}
+
 // TestRing_ReplayBytesMatchesRingAfterOverflow pins the actual read path
 // used on reattach: ReplayBytes is the ring, in order, followed by the DEC
 // mode restore — still true once the ring has wrapped.
