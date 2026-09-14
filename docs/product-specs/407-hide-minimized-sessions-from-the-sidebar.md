@@ -5,7 +5,8 @@ type: bug
 complexity: S
 priority: P2
 pr: 408
-stage: GATE
+shipped: 2026-09-13
+stage: DONE
 ---
 
 # Hide minimized sessions from the sidebar
@@ -14,7 +15,7 @@ stage: GATE
 - **Type:** bug
 - **Complexity:** S
 - **Priority:** P2
-- **Exec plan:** [docs/exec-plans/active/407-hide-minimized-sessions-from-the-sidebar.md](../exec-plans/active/407-hide-minimized-sessions-from-the-sidebar.md)
+- **Exec plan:** [docs/exec-plans/completed/407-hide-minimized-sessions-from-the-sidebar.md](../exec-plans/completed/407-hide-minimized-sessions-from-the-sidebar.md)
 
 ## Problem
 

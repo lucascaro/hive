@@ -4,7 +4,7 @@
 - **Issue:** #407
 - **PR:** #408
 - **Branch:** feature/407-hide-minimized-sessions-from-the-sidebar
-- **Status:** active
+- **Status:** completed
 
 ## Summary
 
@@ -118,6 +118,11 @@ From `cmd/hivegui/frontend`:
     - acceptance — PASS — all 6 success criteria traced to passing tests (vitest 89 passed; e2e minimize.spec 7 passed)
     - non-goals — PASS — ⌘1–9 hints, tray, palette, grid scope and ⌘↑/⌘↓ walk untouched; no new sidebar affordance
     - doc accuracy — FAIL — `.changesets/hide-minimized-session-rows.md` describes only the sidebar hide, not the reorder skip; regression_of: declared-absent
+- **2026-09-13** — verdict: PASS; phase: —; checks: 16 passed / 0 failed / 0 followups; followups: none; one-line: changeset amended (b64752e7); doc accuracy re-run passes, acceptance and non-goals carried forward (the fix commit touched only the changeset and this plan).
+  - 2026-09-13 dimensions:
+    - acceptance — PASS — carried forward from the previous run; b64752e7 changes no code or tests
+    - non-goals — PASS — carried forward from the previous run; b64752e7 changes no code
+    - doc accuracy — PASS — changeset now covers the sidebar hide and the reorder skip; specs 202/250/252 and components.md accurate; no stale README/DESIGN/design-doc claims; regression_of: declared-absent
 
 ## Progress
 
