@@ -326,9 +326,12 @@ function SettingsDialog({ root }: { root: HTMLElement }): ReactNode {
     }
   }
 
+  // The in-memory pair goes with it: 'system' must resolve through the
+  // pair the pickers show, which is ahead of storage after a denied
+  // write (see selectHalf).
   function selectPreset(name: ThemeName) {
     setTheme(name);
-    applyTheme(name);
+    applyTheme(name, document, pair);
     applyXtermTheme();
     try {
       localStorage.setItem(THEME_KEY, name);

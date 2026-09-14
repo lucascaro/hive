@@ -904,4 +904,28 @@ describe('system theme pair pickers', () => {
     expect(light().value).toBe('github-light');
     expect(document.documentElement.dataset.theme).toBe('dracula');
   });
+
+  // The pair the pickers show is the pair the session paints with, even
+  // after a round trip through an explicit preset. If selectPreset
+  // re-read the pair from storage, a half the store refused to keep
+  // would silently revert the moment the user came back to System —
+  // while the picker still said otherwise.
+  it('returning to System repaints from the pair the pickers show', () => {
+    pick(theme(), 'system');
+    const setItem = vi
+      .spyOn(Storage.prototype, 'setItem')
+      .mockImplementation(() => {
+        throw new Error('denied');
+      });
+    try {
+      pick(dark(), 'nord');
+    } finally {
+      setItem.mockRestore();
+    }
+    pick(theme(), 'classic');
+    expect(document.documentElement.dataset.theme).toBe('classic');
+    pick(theme(), 'system');
+    expect(document.documentElement.dataset.theme).toBe('nord');
+    expect(dark().value).toBe('nord');
+  });
 });
