@@ -155,8 +155,9 @@ func stageRelease(info UpdateInfo, progress func(string)) (string, error) {
 
 // stageLatest fast-forwards the source checkout and builds it.
 //
-// Everything that can be refused is refused before git moves or the
-// build starts — see preflightCheckout for the list and the order.
+// Everything that can be refused is refused before the checkout moves
+// or the build starts — see preflightCheckout for the list and the
+// order.
 func stageLatest(info UpdateInfo, progress func(string)) (string, error) {
 	settings, err := loadUpdateSettings()
 	if err != nil {
@@ -167,7 +168,7 @@ func stageLatest(info UpdateInfo, progress func(string)) (string, error) {
 		return "", err
 	}
 
-	progress("Checking working tree…")
+	progress("Checking the source checkout…")
 	// The checkout path comes out of update.json, and validateSourceRepo
 	// only proves the directory *looks* like hive — .git, build.sh and a
 	// module line are all plantable. Pinning the upstream remote, which

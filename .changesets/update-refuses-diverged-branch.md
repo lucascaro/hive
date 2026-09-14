@@ -21,7 +21,9 @@ is only ahead (or only behind) still updates normally, exactly as before this
 change. When it does refuse, it does so in its own words: the branch, how far
 ahead and behind it is, and the way back — `git checkout main` for a
 differently-named branch, or to push or move the local commits when the
-diverged branch is the one upstream itself tracks (e.g. `main`). Nothing has
-been fetched or moved by the time it says so. The four checkout refusals now
-live in one place shared by macOS and Windows rather than two copies that had
-to be edited in step.
+diverged branch is the one upstream itself tracks (e.g. `main`). The
+comparison is made against a freshly fetched upstream, not the one the last
+periodic check saw hours ago, so the answer is the one the pull would have
+found; nothing in the checkout has moved by the time it says so. The four
+checkout refusals now live in one place shared by macOS and Windows rather
+than two copies that had to be edited in step.
