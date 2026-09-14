@@ -8,12 +8,16 @@ Shipped in `src/theme/themes.css` as `:root[data-theme="<name>"] { … }` blocks
 
 | Name | Basis | Notes |
 |---|---|---|
-| `hive-dark` | Option B | Cool-biased near-black, Plex Sans + JetBrains Mono, amber accent. What `system` resolves to in dark mode |
+| `hive-dark` | Option B | Cool-biased near-black, Plex Sans + JetBrains Mono, amber accent. The default dark half of the `system` pair |
 | `hive-light` | Option B inverted by hand | Same hue bias, same fonts. Ground `#f4f4f7`, surface `#ffffff`, fg `#1a1b22`, accent `#c47a12` (darkened for contrast on white), `--on-accent #1a1b22` (white on that accent is only 3.42:1), attention `#a35f0d`, running `#177a53`, error `#bd3030`, info `#1163a8` (all four measured >= 4.5:1 on `--surface`, `--surface-raised` and, for error, `--sel` — the mock's lighter `#d9731a`/`#1f9d6a` were 3.27:1 and 3.45:1, fine for icon fills and not for the words they now colour). Not a naive inversion: borders lighten, shadows soften, accent darkens |
 | `native-dark` | Option A | Lifted greys, system font, filled selection, 6px radii. Ground `#1e1e1f`, surface `#252527`, accent `#e6a23c`. ANSI is the VS Code Dark+ set |
 | `native-light` | Option A inverted | Ground `#ffffff`, surface `#f3f3f3`, fg `#1c1c1e`, accent `#a35f0d` (the mock's `#e6a23c` gives white-on-accent 1.9:1). ANSI is VS Code Light+ **with every hue darkened until it clears 4.5:1 on white** — Light+ itself puts seven of sixteen under AA there |
 | `terminal` | Option C | Monochrome, all `--font-mono`, radius 0, `--accent == --state-attention`; `--fg-subtle` raised to `#6f6f6f` (mock's `#5c5c5c` is 2.96:1). ANSI is near-monochrome but keeps a desaturated red at 1/9: program output that says "error" in colour must still read as error |
 | `classic` | v2.4.0 values | Pure black, amber everywhere, system font. Exists so migration step 1 is visually a no-op and so users who liked it keep it |
+
+### The `system` selection
+
+`system` is a selection, not a preset: it never reaches `data-theme`. It resolves to a **pair** of presets, one per OS scheme, stored in `localStorage['hive.theme.dark']` and `localStorage['hive.theme.light']` (defaults `hive-dark` / `hive-light`, so an install that never touched them looks as it always did). Settings → Appearance shows the two pickers only while System is selected. Each half validates on its own — a garbage dark key falls back alone — and `system` is not a valid half, since it would resolve back into the pair. `readPair()` in `theme.ts` owns this; `index.html`'s pre-paint script reads the same two keys so the first paint already lands on the pair, and the OS-change listener (`initThemeWatch`) re-resolves through it.
 
 ### Community presets
 
@@ -38,7 +42,7 @@ What they do **not** do is meet the contrast bar. They are ported at their publi
 
 Presets that come in both moods (`solarized-*`, `catppuccin-*`, `github-*`) sit next to each other in the picker rather than being sorted dark-then-light — the pair is what the user is looking for.
 
-Selection: Settings → Appearance → Theme (dropdown, grouped into `Hive` / `Native` / `Community` via `<optgroup>`) with "System" mapping to `hive-dark`/`hive-light` via `prefers-color-scheme`. **`system` is the default** since v2.5.0 — an absent or unrecognised `hive.theme` resolves the same way an explicit `system` does. Anyone who already picked a preset keeps it.
+Selection: Settings → Appearance → Theme (dropdown, grouped into `Hive` / `Native` / `Community` via `<optgroup>`) with "System" following `prefers-color-scheme` through the dark/light pair described above (`hive-dark`/`hive-light` by default). **`system` is the default** since v2.5.0 — an absent or unrecognised `hive.theme` resolves the same way an explicit `system` does. Anyone who already picked a preset keeps it.
 
 ### Attribution
 

@@ -44,9 +44,14 @@
           'solarized-dark', 'solarized-light', 'catppuccin-latte', 'github-dark', 'github-light'];
         var t = localStorage.getItem('hive.theme');
         // DEFAULT_THEME in theme.ts is 'system' — an absent or garbage
-        // stored value resolves the same way an explicit 'system' does.
-        // Keep the two in sync.
-        if (t === 'system' || KNOWN.indexOf(t) < 0) t = dark ? 'hive-dark' : 'hive-light';
+        // stored value resolves the same way an explicit 'system' does:
+        // through the user's dark/light pair (readPair in theme.ts), each
+        // half validated on its own and 'system' never a valid half.
+        // Keep the three in sync.
+        if (t === 'system' || KNOWN.indexOf(t) < 0) {
+          t = localStorage.getItem(dark ? 'hive.theme.dark' : 'hive.theme.light');
+          if (KNOWN.indexOf(t) < 0) t = dark ? 'hive-dark' : 'hive-light';
+        }
         document.documentElement.dataset.theme = t;
       } catch (e) {
         // Storage denied. Still follow the OS rather than pinning a

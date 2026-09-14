@@ -111,6 +111,37 @@ test.describe('session minimize', () => {
     expect(activeId).not.toBeNull();
   });
 
+  // #407: a minimized session leaves the sidebar, so every row is one
+  // ⌘↑/⌘↓ can reach. The tray is how it comes back.
+  test('minimized session leaves the sidebar and the tray restores it', async ({
+    page,
+  }) => {
+    await bootWithSessions(page, 3);
+    // Added sessions are named by the mock (mock-N), so read the real ids.
+    const [a, b, c] = await page.evaluate(
+      () => window.__hive_state?.sessions.map((s) => s.id) ?? [],
+    );
+    const rowB = page.locator(`#projects li.hv-session-row[data-sid="${b}"]`);
+
+    await page.click(`#projects li[data-sid="${a}"]`);
+    await expect(rowB).toHaveCount(1);
+    await rowB.hover();
+    await rowB.locator('[data-action="minimize"]').click();
+
+    await expect(rowB).toHaveCount(0);
+    await expect(
+      page.locator(`#minimized-tray .hv-chip[data-sid="${b}"]`),
+    ).toBeVisible();
+
+    await page.keyboard.press(`${MOD}+ArrowDown`);
+    await expect
+      .poll(() => page.evaluate(() => window.__hive_state?.activeId ?? null))
+      .toBe(c);
+
+    await page.locator(`#minimized-tray .hv-chip[data-sid="${b}"]`).click();
+    await expect(rowB).toHaveCount(1);
+  });
+
   test('removing a minimized session clears it from the tray', async ({
     page,
   }) => {

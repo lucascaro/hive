@@ -35,6 +35,11 @@ background.
 Collapsing a project or a worktree group in the sidebar now animates open and
 shut instead of snapping. Collapsed content leaves the keyboard tab order, and
 the animation respects the system "reduce motion" setting.
+The System theme now lets you pick which preset it uses for each OS scheme — say
+Dracula when the OS is dark and GitHub Light when it is light. Two pickers appear
+under Theme in Settings → Appearance while System is selected; the defaults are
+Hive Dark and Hive Light, so nothing changes until you change it. The choice
+applies at boot (no flash of the wrong preset) and follows the OS live.
 In-app update now works on Windows, on both the release and the latest channel.
 Windows previously got "download it manually on this platform" — advice that was
 wrong on the latest channel, which tracks a git checkout and has no release
@@ -133,6 +138,9 @@ A failed turn now stays visible too. A Claude API failure used to flip to error 
 then fade back to idle the next time the screen redrew, and Pi never reported its
 failures at all. Both now show the error glyph, raise a notification, and keep it
 until you look.
+Minimized sessions no longer stay in the sidebar as dimmed rows that ⌘↑/⌘↓ skip over. Minimizing a session now takes it out of the sidebar, the same way minimizing a project does, so every row you see can be reached from the keyboard. Get it back from the tray above the status bar or with ⌘K. If the session you are on is minimized, its row stays until you move to another session.
+
+⇧⌘↑ / ⇧⌘↓ also skip minimized sessions now. The active session moves past the next visible session instead of swapping places with one you can't see, and the minimized session keeps its place in the order.
 `Ctrl+Shift+V` pastes once instead of twice. The terminal read the clipboard and
 wrote it to the session itself, but never cancelled the keypress, so the webview
 also ran its own paste on top — the same text arrived twice on every use. The

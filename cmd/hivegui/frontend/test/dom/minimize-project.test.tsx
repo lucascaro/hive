@@ -413,12 +413,50 @@ describe('session rows', () => {
     expect(state.sessions.some((x) => x.id === 's2')).toBe(true);
   });
 
-  it('toggles back to restore, and marks the row while minimized', () => {
+  // #407: the sidebar paints the sessions ⌘↑/⌘↓ can land on. A minimized
+  // session leaves the list (the tray and ⌘K bring it back) unless it is
+  // the active one, whose row stays so the selection is never invisible.
+  const row = (sid: string) =>
+    document.querySelector<HTMLElement>(`.hv-session-row[data-sid="${sid}"]`);
+  const rowIds = (pid: string) =>
+    [
+      ...document.querySelectorAll<HTMLElement>(
+        `.hv-project-card[data-pid="${pid}"] .hv-session-row`,
+      ),
+    ].map((el) => el.dataset.sid);
+  // Extra p1 sessions, ordered after s1 and every seeded session.
+  const addToP1 = (...extra: Partial<SessionInfo>[]) =>
+    act(() => {
+      state.sessions = [
+        ...state.sessions,
+        ...extra.map((x, i) => ({
+          project_id: 'p1',
+          order: 3 + i,
+          alive: true,
+          phase: '',
+          ...x,
+        })),
+      ] as SessionInfo[];
+    });
+
+  it('minimizing an inactive session removes its row', () => {
+    act(() => {
+      state.activeId = 's1';
+    });
+    expect(row('s2')).not.toBeNull();
     clickRow('s2');
-    const row = document.querySelector<HTMLElement>(
-      `.hv-session-row[data-sid="s2"]`,
-    );
-    expect(row?.dataset.minimized).toBe('');
+    expect(row('s2')).toBeNull();
+    // Hidden, not gone.
+    expect(state.sessions.some((x) => x.id === 's2')).toBe(true);
+  });
+
+  it('keeps the active session row, marked, while it is minimized', () => {
+    act(() => {
+      state.activeId = 's2';
+    });
+    clickRow('s2');
+    expect(state.minimized.has('s2')).toBe(true);
+    expect(row('s2')?.dataset.minimized).toBe('');
     expect(rowBtn('s2')?.getAttribute('aria-label')).toMatch(/^Restore /);
     expect(rowBtn('s2')?.querySelector('use')?.getAttribute('href')).toBe(
       '#hv-plus',
@@ -426,10 +464,76 @@ describe('session rows', () => {
 
     clickRow('s2');
     expect(state.minimized.has('s2')).toBe(false);
+    expect(row('s2')).not.toBeNull();
+    expect(row('s2')?.dataset.minimized).toBeUndefined();
+  });
+
+  it('drops the minimized row once another session becomes active', () => {
+    act(() => {
+      state.activeId = 's2';
+    });
+    clickRow('s2');
+    expect(row('s2')).not.toBeNull();
+    act(() => {
+      state.activeId = 's1';
+    });
+    expect(row('s2')).toBeNull();
+  });
+
+  it('restoring puts the row back in place and it stays after switching away', () => {
+    addToP1({ id: 's4', name: 's4' }, { id: 's5', name: 's5' });
+    act(() => {
+      state.activeId = 's1';
+    });
+    expect(rowIds('p1')).toEqual(['s1', 's4', 's5']);
+    clickRow('s4');
+    expect(rowIds('p1')).toEqual(['s1', 's5']);
+
+    act(() => sidebarProps.restoreSession('s4'));
+    expect(state.minimized.has('s4')).toBe(false);
+    act(() => {
+      state.activeId = 's1';
+    });
+    // In its old slot, not re-appended at the end.
+    expect(rowIds('p1')).toEqual(['s1', 's4', 's5']);
+    expect(row('s4')?.dataset.minimized).toBeUndefined();
+  });
+
+  it('card count and attention still include minimized sessions', () => {
+    addToP1({ id: 's4', name: 's4', needs_attention: true });
+    act(() => {
+      state.activeId = 's1';
+    });
+    clickRow('s4');
+    expect(row('s4')).toBeNull();
+    act(() => {
+      state.collapsed = new Set(['p1']);
+    });
     expect(
-      document.querySelector<HTMLElement>(`.hv-session-row[data-sid="s2"]`)
-        ?.dataset.minimized,
-    ).toBeUndefined();
+      document.querySelector('.hv-project-card[data-pid="p1"]')?.textContent,
+    ).toContain('2 sessions · 1 waiting on you');
+  });
+
+  it('a worktree group with one painted member renders as a plain row, still counting the hidden sharer', () => {
+    const wt = { worktree_path: '/wt/a', worktree_branch: 'feat/a' };
+    act(() => {
+      state.sessions = state.sessions.map((x) =>
+        x.id === 's1' ? { ...x, ...wt } : x,
+      );
+      state.activeId = 's1';
+    });
+    addToP1({ id: 's4', name: 's4', ...wt });
+    const card = () =>
+      document.querySelector('.hv-project-card[data-pid="p1"]');
+    expect(card()?.querySelector('.hv-worktree-group')).not.toBeNull();
+
+    clickRow('s4');
+    expect(row('s4')).toBeNull();
+    expect(card()?.querySelector('.hv-worktree-group')).toBeNull();
+    // The worktree is still shared — the minimized session holds it.
+    expect(
+      row('s1')?.querySelector('.hv-session-row__worktree-count')?.textContent,
+    ).toBe('2');
   });
 
   it('does not switch to the session the button sits on', () => {
@@ -724,6 +828,35 @@ describe('keyboard navigation skips minimized things', () => {
     expect(state.activeId).toBe('s1');
   });
 
+  // #407: the sidebar and the arrows agree. Every row other than the
+  // active one is a session ⌘↑/⌘↓ reaches, and nothing else is.
+  it('every non-active sidebar row is reachable with navSession', () => {
+    act(() => {
+      state.sessions = [
+        ...state.sessions,
+        { id: 's4', name: 's4', project_id: 'p1', order: 3, alive: true },
+        { id: 's5', name: 's5', project_id: 'p1', order: 4, alive: true },
+      ] as SessionInfo[];
+      state.activeId = 's1';
+    });
+    act(() => minimizeSession('s4'));
+    const painted = [
+      ...document.querySelectorAll<HTMLElement>('#projects .hv-session-row'),
+    ]
+      .map((el) => el.dataset.sid)
+      .filter((id) => id !== 's1')
+      .sort();
+    expect(painted).toEqual(['s2', 's3', 's5']);
+
+    const visited = new Set<string>();
+    for (let i = 0; i < state.sessions.length; i++) {
+      act(() => navSession(+1));
+      if (state.activeId && state.activeId !== 's1')
+        visited.add(state.activeId);
+    }
+    expect([...visited].sort()).toEqual(painted);
+  });
+
   it('stays put when every other session is hidden', () => {
     minimizeSession('s2');
     minimizeProject('p3');
@@ -742,21 +875,26 @@ describe('keyboard navigation skips minimized things', () => {
     expect(state.activeId).toBe('s2');
   });
 
-  it('⇧⌘↓ still reorders across a minimized sibling', () => {
-    // The reorder branch sends indices into the daemon's GLOBAL order
-    // space, which counts hidden sessions — filtering them would scatter
-    // sessions. s1b is minimized and must still be a valid slot to move
-    // across. (The emitted move names s1b rather than s1: a reorder now
-    // computes the target order and emits the shortest sequence of daemon
-    // moves that reaches it, so swapping the pair by lifting the sibling is
-    // the same one-move result.)
+  // #407 amends #252 here: a minimized sibling has no sidebar row, so it is
+  // no longer a slot. Swapping with it would move nothing on screen.
+  it('⇧⌘↓ does not swap with a minimized sibling alone', () => {
     store.addSession({ id: 's1b', name: 's1b', project_id: 'p1', order: 1 });
     minimizeSession('s1b');
     state.activeId = 's1';
     reorderActive(+1);
-    expect(vi.mocked(bridge.UpdateSession).mock.calls).toEqual([
-      ['s1b', '', '', 0],
-    ]);
+    expect(vi.mocked(bridge.UpdateSession)).not.toHaveBeenCalled();
+  });
+
+  it('⇧⌘↓ moves past a minimized sibling to the next visible one', () => {
+    // The moves are still computed in the daemon's GLOBAL order space, which
+    // counts the hidden session — so it keeps its place rather than being
+    // scattered — but the visible rows are what change.
+    store.addSession({ id: 's1b', name: 's1b', project_id: 'p1', order: 1 });
+    store.addSession({ id: 's1c', name: 's1c', project_id: 'p1', order: 2 });
+    minimizeSession('s1b');
+    state.activeId = 's1';
+    reorderActive(+1);
+    expect(vi.mocked(bridge.UpdateSession)).toHaveBeenCalled();
   });
 
   it('⌘] skips a minimized project', () => {

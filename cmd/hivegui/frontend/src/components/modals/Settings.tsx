@@ -58,6 +58,11 @@ import {
   PRESETS,
   readOverrides,
   readTheme,
+  readPair,
+  THEME_DARK_KEY,
+  THEME_LIGHT_KEY,
+  type SystemPair,
+  type StampableTheme,
   sanitizeOverrides,
   THEME_KEY,
   writeOverrides,
@@ -139,6 +144,7 @@ function SettingsDialog({ root }: { root: HTMLElement }): ReactNode {
   const [loadFailed, setLoadFailed] = useState(false);
   const [error, setError] = useState('');
   const [theme, setTheme] = useState<ThemeName>(() => readTheme());
+  const [pair, setPair] = useState<SystemPair>(() => readPair());
   const [density, setDensity] = useState<Density>(() => readDensity());
   const [overrides, setOverrides] = useState(() =>
     readOverrides().replace(/\n\s*/g, '\n'),
@@ -329,6 +335,25 @@ function SettingsDialog({ root }: { root: HTMLElement }): ReactNode {
     } catch {
       // Denied storage: applied for this session, not remembered.
     }
+  }
+
+  // One half of the System pair. Same trio as selectPreset, but the
+  // stored CHOICE ('system') is untouched — only what it resolves to
+  // changes. The new pair is handed to applyTheme rather than read back
+  // out of storage, so a denied store still repaints for this session.
+  function selectHalf(half: keyof SystemPair, name: StampableTheme) {
+    const next = { ...pair, [half]: name };
+    setPair(next);
+    try {
+      localStorage.setItem(
+        half === 'dark' ? THEME_DARK_KEY : THEME_LIGHT_KEY,
+        name,
+      );
+    } catch {
+      // Denied storage: applied for this session, not remembered.
+    }
+    applyTheme('system', document, next);
+    applyXtermTheme();
   }
 
   // Debounced, and cancelled on close by the cleanup: a pending timer
@@ -662,25 +687,41 @@ function SettingsDialog({ root }: { root: HTMLElement }): ReactNode {
             value={theme}
             onChange={(e) => selectPreset(e.target.value as ThemeName)}
           >
-            {groupPresets().map((g) =>
-              g.group ? (
-                <optgroup key={g.group} label={g.group}>
-                  {g.options.map((p) => (
-                    <option key={p.id} value={p.id}>
-                      {p.label}
-                    </option>
-                  ))}
-                </optgroup>
-              ) : (
-                g.options.map((p) => (
-                  <option key={p.id} value={p.id}>
-                    {p.label}
-                  </option>
-                ))
-              ),
-            )}
+            <PresetOptions presets={PRESETS} />
           </select>
         </label>
+        {theme === 'system' && (
+          <div className="settings-pair">
+            <label className="hv-field">
+              <span className="hv-field__label">When the OS is dark</span>
+              <select
+                id="settings-theme-dark"
+                className="hv-input"
+                aria-label="Theme when the OS is dark"
+                value={pair.dark}
+                onChange={(e) =>
+                  selectHalf('dark', e.target.value as StampableTheme)
+                }
+              >
+                <PresetOptions presets={STAMPABLE_PRESETS} />
+              </select>
+            </label>
+            <label className="hv-field">
+              <span className="hv-field__label">When the OS is light</span>
+              <select
+                id="settings-theme-light"
+                className="hv-input"
+                aria-label="Theme when the OS is light"
+                value={pair.light}
+                onChange={(e) =>
+                  selectHalf('light', e.target.value as StampableTheme)
+                }
+              >
+                <PresetOptions presets={STAMPABLE_PRESETS} />
+              </select>
+            </label>
+          </div>
+        )}
         <label className="hv-field">
           <span className="hv-field__label">Sidebar density</span>
           <select
@@ -890,13 +931,40 @@ function Panel({
 
 // Consecutive presets sharing a group land in one <optgroup>, per-run
 // rather than per-name so the array order is the rendered order.
-function groupPresets(): { group: string | null; options: typeof PRESETS }[] {
+function groupPresets(
+  presets: typeof PRESETS,
+): { group: string | null; options: typeof PRESETS }[] {
   const runs: { group: string | null; options: (typeof PRESETS)[number][] }[] =
     [];
-  for (const p of PRESETS) {
+  for (const p of presets) {
     const last = runs[runs.length - 1];
     if (last && last.group === (p.group ?? null)) last.options.push(p);
     else runs.push({ group: p.group ?? null, options: [p] });
   }
   return runs;
+}
+
+// The System pair pickers offer everything the main picker does except
+// System itself — a half that said "follow the OS" would resolve back
+// into the pair.
+const STAMPABLE_PRESETS = PRESETS.filter((p) => p.id !== 'system');
+
+function PresetOptions({ presets }: { presets: typeof PRESETS }) {
+  return groupPresets(presets).map((g) =>
+    g.group ? (
+      <optgroup key={g.group} label={g.group}>
+        {g.options.map((p) => (
+          <option key={p.id} value={p.id}>
+            {p.label}
+          </option>
+        ))}
+      </optgroup>
+    ) : (
+      g.options.map((p) => (
+        <option key={p.id} value={p.id}>
+          {p.label}
+        </option>
+      ))
+    ),
+  );
 }

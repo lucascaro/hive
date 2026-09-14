@@ -327,8 +327,9 @@ export function shiftActiveProject(delta: number) {
 
 // minimizeSession hides a session from grid views by adding its id to
 // appData().minimized. The session stays alive; its tile leaves on the
-// repaint that store write triggers. Single-session mode is unaffected —
-// the user can still switch to a minimized session via the sidebar / palette.
+// repaint that store write triggers, and its sidebar row leaves with it
+// unless it is the active session (#407). Single-session mode is unaffected —
+// the user can still switch to a minimized session via the tray / palette.
 export function minimizeSession(id: string | null) {
   if (!id || appData().minimized.has(id)) return;
   const wasGrid = appData().view !== 'single';

@@ -5,6 +5,11 @@ import {
   applyOverrides,
   DEFAULT_THEME,
   THEME_KEY,
+  THEME_DARK_KEY,
+  THEME_LIGHT_KEY,
+  DEFAULT_PAIR,
+  readPair,
+  resolveTheme,
 } from '../../src/theme/theme';
 
 describe('readTheme', () => {
@@ -197,5 +202,129 @@ describe('applyOverrides', () => {
     expect(el?.textContent).toBe(':root:root {\n  --accent: blue;\n}');
     applyOverrides('');
     expect(el?.textContent).toBe('');
+  });
+});
+
+// A "system" choice resolves to a PAIR of presets, one per OS scheme, and
+// the pair is the user's to pick — Dracula when dark, GitHub Light when
+// light. Each half validates on its own: one garbage key must not drag
+// the other back to its default.
+describe('readPair', () => {
+  const storage = (data: Record<string, string>): Storage => ({
+    getItem: (k: string) => data[k] ?? null,
+    length: 0,
+    clear: () => {},
+    key: () => null,
+    removeItem: () => {},
+    setItem: () => {},
+  });
+
+  it('returns hive-dark / hive-light when nothing is stored', () => {
+    expect(readPair(storage({}))).toEqual(DEFAULT_PAIR);
+    expect(DEFAULT_PAIR).toEqual({ dark: 'hive-dark', light: 'hive-light' });
+  });
+
+  it('reads a valid preset for each half', () => {
+    expect(
+      readPair(
+        storage({
+          [THEME_DARK_KEY]: 'dracula',
+          [THEME_LIGHT_KEY]: 'github-light',
+        }),
+      ),
+    ).toEqual({ dark: 'dracula', light: 'github-light' });
+  });
+
+  it('falls back per half, not as a pair', () => {
+    expect(
+      readPair(
+        storage({ [THEME_DARK_KEY]: 'nord', [THEME_LIGHT_KEY]: 'bogus' }),
+      ),
+    ).toEqual({ dark: 'nord', light: 'hive-light' });
+  });
+
+  it('never accepts "system" as a half — that would recurse', () => {
+    expect(
+      readPair(
+        storage({ [THEME_DARK_KEY]: 'system', [THEME_LIGHT_KEY]: 'system' }),
+      ),
+    ).toEqual(DEFAULT_PAIR);
+  });
+
+  it('returns the defaults when storage throws', () => {
+    expect(
+      readPair({
+        ...storage({}),
+        getItem: () => {
+          throw new Error('denied');
+        },
+      }),
+    ).toEqual(DEFAULT_PAIR);
+  });
+});
+
+describe('resolveTheme with a pair', () => {
+  it('stamps the dark half when dark is preferred', () => {
+    expect(
+      resolveTheme('system', true, { dark: 'dracula', light: 'github-light' }),
+    ).toBe('dracula');
+  });
+
+  it('stamps the light half when light is preferred', () => {
+    expect(
+      resolveTheme('system', false, { dark: 'dracula', light: 'github-light' }),
+    ).toBe('github-light');
+  });
+
+  it('ignores the pair for an explicit preset', () => {
+    expect(
+      resolveTheme('classic', true, { dark: 'dracula', light: 'github-light' }),
+    ).toBe('classic');
+  });
+});
+
+describe('applyTheme reads the stored pair', () => {
+  let originalMatchMedia: any;
+  beforeEach(() => {
+    originalMatchMedia = window.matchMedia;
+    localStorage.clear();
+  });
+  afterEach(() => {
+    window.matchMedia = originalMatchMedia;
+    localStorage.clear();
+  });
+
+  it('resolves "system" through hive.theme.dark when dark is preferred', () => {
+    window.matchMedia = ((query: string) => ({
+      matches: query === '(prefers-color-scheme: dark)',
+      media: query,
+      onchange: null,
+      addListener: () => {},
+      removeListener: () => {},
+      addEventListener: () => {},
+      removeEventListener: () => {},
+      dispatchEvent: () => true,
+    })) as any;
+    localStorage.setItem(THEME_DARK_KEY, 'dracula');
+    localStorage.setItem(THEME_LIGHT_KEY, 'github-light');
+    applyTheme('system');
+    expect(document.documentElement.dataset.theme).toBe('dracula');
+  });
+
+  it('resolves "system" through hive.theme.light when light is preferred', () => {
+    window.matchMedia = ((query: string) => ({
+      matches: query === '(prefers-color-scheme: light)',
+      media: query,
+      onchange: null,
+      addListener: () => {},
+      removeListener: () => {},
+      addEventListener: () => {},
+      removeEventListener: () => {},
+      dispatchEvent: () => true,
+    })) as any;
+    localStorage.setItem(THEME_DARK_KEY, 'dracula');
+    localStorage.setItem(THEME_LIGHT_KEY, 'github-light');
+    applyTheme('system');
+    expect(document.documentElement.dataset.theme).toBe('github-light');
   });
 });
