@@ -133,7 +133,11 @@ function SettingsDialog({ root }: { root: HTMLElement }): ReactNode {
   // draft is the in-progress edit; discarded on cancel (this component
   // unmounts). Rows are plain objects, not main.CustomAgent instances —
   // the generated class is a data shape and Go re-slugs the ids on save.
-  const [draft, setDraft] = useState<main.CustomAgent[]>([]);
+  // cmdText is the command as typed. Splitting it on every keystroke and
+  // rendering the join back ate a trailing space before the next word
+  // could be typed; it is split once, on save.
+  type AgentDraft = main.CustomAgent & { cmdText: string };
+  const [draft, setDraft] = useState<AgentDraft[]>([]);
   // loading distinguishes "still fetching" from "genuinely empty" so the
   // empty state never renders over a list that is about to arrive.
   const [loading, setLoading] = useState(true);
@@ -263,8 +267,9 @@ function SettingsDialog({ root }: { root: HTMLElement }): ReactNode {
             id: a.id || '',
             name: a.name || '',
             cmd: a.cmd || [],
+            cmdText: (a.cmd || []).join(' '),
             color: a.color || DEFAULT_COLOR,
-          })) as main.CustomAgent[],
+          })) as AgentDraft[],
         );
       })
       .catch((err) => {
@@ -467,7 +472,13 @@ function SettingsDialog({ root }: { root: HTMLElement }): ReactNode {
   function addAgentRow() {
     setDraft((cur) => [
       ...cur,
-      { id: '', name: '', cmd: [], color: DEFAULT_COLOR } as main.CustomAgent,
+      {
+        id: '',
+        name: '',
+        cmd: [],
+        cmdText: '',
+        color: DEFAULT_COLOR,
+      } as AgentDraft,
     ]);
     showError('');
     focusLastName.current = true;
@@ -479,7 +490,7 @@ function SettingsDialog({ root }: { root: HTMLElement }): ReactNode {
     refocusDelete.current = i;
   }
 
-  function patchAgent(i: number, patch: Partial<main.CustomAgent>) {
+  function patchAgent(i: number, patch: Partial<AgentDraft>) {
     setDraft((cur) =>
       cur.map((a, idx) => (idx === i ? { ...a, ...patch } : a)),
     );
@@ -520,7 +531,12 @@ function SettingsDialog({ root }: { root: HTMLElement }): ReactNode {
     if (loading || loadFailed) return;
     // Drop fully-blank rows so an accidental "+ Add agent" doesn't block
     // the save with a validation error.
-    const payload = draft.filter((a) => a.name.trim() || a.cmd.length);
+    const payload = draft
+      .map(
+        ({ cmdText, ...a }) =>
+          ({ ...a, cmd: splitCommand(cmdText) }) as main.CustomAgent,
+      )
+      .filter((a) => a.name.trim() || a.cmd.length);
     // Both writes are validated Go-side and either can be rejected, so
     // one of them is going to be the "partial save" on failure. Agents go
     // first because that is the recoverable order: a rejected channel
@@ -639,6 +655,9 @@ function SettingsDialog({ root }: { root: HTMLElement }): ReactNode {
                   type="text"
                   className="hv-input settings-agent-name"
                   autoComplete="off"
+                  autoCorrect="off"
+                  autoCapitalize="off"
+                  spellCheck={false}
                   aria-label="Agent name"
                   placeholder="Name (e.g. Claude Lite)"
                   value={a.name || ''}
@@ -648,12 +667,16 @@ function SettingsDialog({ root }: { root: HTMLElement }): ReactNode {
                   type="text"
                   className="hv-input settings-agent-cmd"
                   autoComplete="off"
+                  // macOS text substitution runs inside the webview and
+                  // turned `--model` into an em dash. WebKit honours
+                  // autocorrect="off" on macOS (webkit.org/b/151019).
+                  autoCorrect="off"
+                  autoCapitalize="off"
+                  spellCheck={false}
                   aria-label="Agent command"
                   placeholder="Command (e.g. claude --model haiku)"
-                  value={(a.cmd || []).join(' ')}
-                  onChange={(e) =>
-                    patchAgent(i, { cmd: splitCommand(e.target.value) })
-                  }
+                  value={a.cmdText}
+                  onChange={(e) => patchAgent(i, { cmdText: e.target.value })}
                 />
                 <IconButton
                   icon="x"

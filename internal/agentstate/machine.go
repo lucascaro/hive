@@ -346,7 +346,13 @@ func (m *Machine) Apply(ev Event) bool {
 		m.state = wire.StateIdle
 		m.lastSummary = text
 	case KindWaitingInput:
-		m.state = wire.StateWaitingInput
+		// An error already wants the user, and says more. Claude fires
+		// Notification(idle_prompt) ~60s after ANY turn, a failed one
+		// included, so without this the red cross turned into a plain
+		// "waiting for you" before the user ever saw it.
+		if m.state != wire.StateError {
+			m.state = wire.StateWaitingInput
+		}
 	case KindWaitingPermission:
 		m.state = wire.StateWaitingPermission
 	case KindPermissionResolved:

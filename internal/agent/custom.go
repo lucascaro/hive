@@ -163,9 +163,36 @@ func validateCustom(list []Custom) ([]Def, []error) {
 			name = string(id)
 		}
 		color := safeColor(c.Color)
-		defs = append(defs, Def{ID: id, Name: name, Cmd: cmd, Color: color})
+		defs = append(defs, Def{
+			ID: id, Name: name, Cmd: cmd, Color: color,
+			SpawnArgs: builtinSpawnArgs(cmd[0]),
+		})
 	}
 	return defs, rejected
+}
+
+// builtinSpawnArgs gives a custom agent the state-tier wiring of the
+// built-in it launches, so `claude --model haiku` reports working,
+// waiting and errors exactly like the Claude agent does. Matched on the
+// executable's name only: a wrapper script (claude-lite) or `env claude`
+// is not recognised and stays on the heuristic tier.
+//
+// ponytail: name match, not an explicit "based on" field. Add one to
+// agents.json if wrappers need the hooks too.
+func builtinSpawnArgs(exe string) func(SpawnInfo) []string {
+	// Lowercased: Windows (and macOS's default filesystem) resolve
+	// Claude.EXE and claude.exe to the same binary.
+	base := strings.ToLower(filepath.Base(exe))
+	// Only the Windows launcher suffixes. Any other extension is a
+	// different program — a claude.sh wrapper may not accept the flags.
+	for _, ext := range []string{".exe", ".cmd"} {
+		base = strings.TrimSuffix(base, ext)
+	}
+	switch ID(base) {
+	case IDClaude, IDPi:
+		return defsByID[ID(base)].SpawnArgs
+	}
+	return nil
 }
 
 // safeColor returns c if it is a plain hex color, and the default
