@@ -35,6 +35,11 @@ background.
 Collapsing a project or a worktree group in the sidebar now animates open and
 shut instead of snapping. Collapsed content leaves the keyboard tab order, and
 the animation respects the system "reduce motion" setting.
+The System theme now lets you pick which preset it uses for each OS scheme — say
+Dracula when the OS is dark and GitHub Light when it is light. Two pickers appear
+under Theme in Settings → Appearance while System is selected; the defaults are
+Hive Dark and Hive Light, so nothing changes until you change it. The choice
+applies at boot (no flash of the wrong preset) and follows the OS live.
 In-app update now works on Windows, on both the release and the latest channel.
 Windows previously got "download it manually on this platform" — advice that was
 wrong on the latest channel, which tracks a git checkout and has no release
