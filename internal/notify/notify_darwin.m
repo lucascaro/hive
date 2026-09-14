@@ -10,7 +10,7 @@
 #import <Cocoa/Cocoa.h>
 
 // Defined in notify_darwin.go via //export.
-extern void hiveOnNotificationActivated(const char *tag);
+extern void hiveOnNotificationActivated(const char *tag, long activationType);
 
 @interface HiveNotificationDelegate : NSObject <NSUserNotificationCenterDelegate>
 @end
@@ -22,18 +22,21 @@ extern void hiveOnNotificationActivated(const char *tag);
 
 - (void)userNotificationCenter:(NSUserNotificationCenter *)center
        didActivateNotification:(NSUserNotification *)notification {
-    // Only react to the user clicking the banner body — not action
-    // buttons, replies, or programmatic dismissals.
+    NSString *tag = notification.userInfo[@"tag"];
+    // Report EVERY activation type to Go for diagnostics (a relaunch
+    // report wants to know whether a notification click of any kind
+    // preceded it), tag may be nil for a bare click with no userInfo.
+    hiveOnNotificationActivated(tag != nil ? [tag UTF8String] : "",
+                                 (long)notification.activationType);
+    // Only bring Hive forward for the user clicking the banner body —
+    // not action buttons, replies, or programmatic dismissals. Behavior
+    // unchanged from before this diagnostic was added.
     if (notification.activationType != NSUserNotificationActivationTypeContentsClicked) {
         return;
     }
-    NSString *tag = notification.userInfo[@"tag"];
     // Bring Hive to the foreground regardless of which Space the user
     // is on; the click implicitly says "I want to go there".
     [NSApp activateIgnoringOtherApps:YES];
-    if (tag != nil) {
-        hiveOnNotificationActivated([tag UTF8String]);
-    }
 }
 
 // Without this, NSUserNotification suppresses the banner whenever the

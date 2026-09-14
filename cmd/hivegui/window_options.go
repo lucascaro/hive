@@ -22,6 +22,7 @@ func appOptions(a *App, width, height int) *options.App {
 		Menu:             buildAppMenu(a),
 		OnStartup:        a.startup,
 		OnShutdown:       a.shutdown,
+		OnBeforeClose:    a.beforeClose,
 		Bind:             []interface{}{a},
 
 		// Nothing in Hive handles a dropped file, and without this a file

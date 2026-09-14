@@ -60,6 +60,7 @@ func setupLogFile() {
 
 func main() {
 	setupLogFile()
+	logLaunch()
 	// Belt and braces with hived's own call: a user who opens the GUI
 	// on a machine where the daemon was already running would otherwise
 	// have no menu bar until the next daemon start. hivebar's flock

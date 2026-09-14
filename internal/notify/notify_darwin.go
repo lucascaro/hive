@@ -14,9 +14,19 @@ void hivePostNotification(const char *title,
 import "C"
 
 import (
+	"log"
 	"sync"
 	"unsafe"
 )
+
+// nsUserNotificationActivationTypeContentsClicked is
+// NSUserNotificationActivationTypeContentsClicked from
+// Foundation/NSUserNotification.h (value confirmed against the macOS
+// SDK header: None=0, ContentsClicked=1, ActionButtonClicked=2,
+// Replied=3, AdditionalActionClicked=4). Only this one means "the user
+// clicked the banner body", which is the one activation the rest of
+// Hive treats as "go to this session".
+const nsUserNotificationActivationTypeContentsClicked = 1
 
 var delegateOnce sync.Once
 
@@ -52,11 +62,20 @@ func setActivationHandler(fn func(tag string)) {
 }
 
 //export hiveOnNotificationActivated
-func hiveOnNotificationActivated(tag *C.char) {
+func hiveOnNotificationActivated(tag *C.char, activationType C.long) {
+	tagStr := C.GoString(tag)
+	log.Printf("notify: activation tag=%q type=%d", tagStr, activationType)
+	// Only a contents-click means "take me there"; ObjC still gates
+	// activateIgnoringOtherApps the same way, so this mirrors that
+	// decision on the Go side rather than widening what the rest of
+	// Hive reacts to.
+	if activationType != nsUserNotificationActivationTypeContentsClicked {
+		return
+	}
 	cbMu.RLock()
 	fn := activationCallback
 	cbMu.RUnlock()
 	if fn != nil {
-		fn(C.GoString(tag))
+		fn(tagStr)
 	}
 }

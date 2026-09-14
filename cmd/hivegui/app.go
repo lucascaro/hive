@@ -151,6 +151,9 @@ func NewApp(launchDir string) *App {
 
 func (a *App) startup(ctx context.Context) {
 	a.ctx = ctx
+	// Here, not in main: Wails' own SIGTERM/SIGINT handler is live only
+	// once wails.Run has started. See installSignalDiag.
+	installSignalDiag()
 	// Opt out of macOS App Nap / activity-based timer throttling. Defensive
 	// hygiene so a backgrounded webview keeps streaming PTY output and
 	// repainting — NOT the fix for the reported freeze (that was a synchronous
@@ -183,7 +186,19 @@ func (a *App) startup(ctx context.Context) {
 	a.startUpdateCheckLoop(ctx)
 }
 
+// beforeClose logs that a quit reached Wails' close path (menu Quit,
+// Cmd+Q, dock "Quit", OS session logout) before anything else runs.
+// Always returns false so the close proceeds unchanged on every
+// platform — see Quit() in the darwin/windows/linux frontends, which
+// all treat false as "let it close" and true as "veto it". This is a
+// diagnostic tap, not a confirmation dialog.
+func (a *App) beforeClose(ctx context.Context) bool {
+	log.Printf("hivegui: quit requested (OnBeforeClose)")
+	return false
+}
+
 func (a *App) shutdown(ctx context.Context) {
+	log.Printf("hivegui: shutdown")
 	a.saveGeometry()
 	a.mu.Lock()
 	defer a.mu.Unlock()
