@@ -26,6 +26,7 @@ The *what* and *why* of work this project plans to do. Each spec describes user 
 
 | Issue | Title | PR | Shipped | Spec |
 |-------|-------|----|---------|------|
+| #407 | Hide minimized sessions from the sidebar | #408 | 2026-09-13 | [407-hide-minimized-sessions-from-the-sidebar](407-hide-minimized-sessions-from-the-sidebar.md) |
 | #395 | Name a worktree group by double-clicking its title | #396 | 2026-09-12 | [395-rename-sessions-from-worktree-group-title](395-rename-sessions-from-worktree-group-title.md) |
 | — | Sidebar redesign: readable rows, real worktree groups, density setting | #390 | 2026-09-11 | [385-sidebar-redesign](385-sidebar-redesign.md) |
 | #392 | Sidebar: flatten worktree groups and reclaim side space | #393 | 2026-09-11 | [392-flatten-worktree-groups-and-reclaim-side-space](392-flatten-worktree-groups-and-reclaim-side-space.md) |
