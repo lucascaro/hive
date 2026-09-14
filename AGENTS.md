@@ -81,7 +81,8 @@ Package one-liners (full detail in `DESIGN.md`):
 | `internal/worktree/` | Git worktree lifecycle; tracks dirty state so the registry can refuse destructive ops. |
 | `internal/notify/` | Desktop notifications; platform splits behind one Go interface. |
 | `internal/proc/` | The only constructor for non-PTY child processes. Keeps Windows from opening a console window per spawn. |
-| `internal/activity/` | Per-session activity / attention tracking. |
+| `internal/activity/` | GUI-only macOS App Nap opt-out. cgo on darwin, so `hived` must not import it. |
+| `internal/qos/` | Windows EcoQoS opt-out for both binaries. cgo-free on every platform so `hived` can cross-compile for darwin. |
 | `internal/buildinfo/` | Single source for version + commit, plus `DaemonContract` (the GUI's reload-vs-restart signal). |
 | `cmd/hivegui/` + `frontend/` | Wails desktop client. JS + xterm.js; thin client over the wire, never opens a PTY. |
 | `cmd/hivebar/` | macOS menu-bar agent (darwin only). Pure wire client; ships as its own `.app` inside the GUI bundle. |
