@@ -6,7 +6,6 @@ import (
 	"github.com/wailsapp/wails/v2/pkg/options"
 	"github.com/wailsapp/wails/v2/pkg/options/assetserver"
 	"github.com/wailsapp/wails/v2/pkg/options/windows"
-	wruntime "github.com/wailsapp/wails/v2/pkg/runtime"
 )
 
 // appOptions builds the whole options.App handed to wails.Run.
@@ -25,32 +24,35 @@ func appOptions(a *App, width, height int) *options.App {
 		OnShutdown:       a.shutdown,
 		Bind:             []interface{}{a},
 
-		// Nothing in Hive handles a dropped file. The frontend's only
-		// drag-and-drop is in-page sidebar reordering (drag-placeholder.ts),
-		// which is ordinary HTML5 DnD and unaffected by this: on Windows
-		// Wails implements it as WebView2's AllowExternalDrag(false), which
-		// only refuses drags that originate OUTSIDE the webview. Without it
-		// a file dropped on the window is navigated to, replacing the whole
-		// app with a view of that file and no way back.
+		// Nothing in Hive handles a dropped file, and without this a file
+		// dropped on the window is navigated to, replacing the whole app
+		// with a view of that file and no way back.
 		//
-		// Deliberately not GOOS-gated, because it is already inert on
-		// macOS: every branch in Wails' WailsWebView.m consults
-		// disableWebViewDragAndDrop only after EnableFileDrop has been
-		// checked, and we never set EnableFileDrop.
-		DragAndDrop: &options.DragAndDrop{DisableWebViewDrop: true},
-
-		// WebView2's own Cut/Copy/Paste menu, which is the only such menu
-		// Windows gets: buildAppMenu returns nil on every non-darwin
-		// platform (menu_other.go), so today there is no menu-driven copy
-		// at all there.
+		// Windows only. There Wails implements it as WebView2's
+		// AllowExternalDrag(false), which refuses only drags that
+		// originate OUTSIDE the webview, so the frontend's one
+		// drag-and-drop — in-page sidebar reordering (drag-placeholder.ts),
+		// ordinary HTML5 DnD — is unaffected. On macOS the option is inert
+		// anyway: every branch in Wails' WailsWebView.m consults
+		// disableWebViewDragAndDrop only after enableDragAndDrop, which we
+		// never set. On Linux it is NOT inert — Wails calls
+		// gtk_drag_dest_unset on the webview, removing it as a GTK drop
+		// target outright — and whether in-page HTML5 drops survive that is
+		// unverified, so Linux is left exactly as it was.
 		//
-		// GOOS-gated because this option is NOT Windows-scoped — Wails
-		// applies it on macOS too (Application.h's defaultContextMenuEnabled)
-		// where the native Edit menu already owns Cut/Copy/Paste. Gating
-		// leaves the macOS context menu exactly as it is today.
-		EnableDefaultContextMenu: runtime.GOOS == "windows",
+		// EnableDefaultContextMenu is deliberately left false everywhere.
+		// Wails already turns the webview's own menu off in release builds,
+		// and turning it on would hand Windows users WebView2's page menu:
+		// the frontend registers no contextmenu handler and xterm draws to
+		// a canvas, so a right-click over a terminal gets
+		// Back/Refresh/Save as/Print, where Refresh reloads the page and
+		// drops the window's state. A Copy/Paste menu Hive owns is a
+		// frontend feature, not a Wails flag.
+		DragAndDrop: &options.DragAndDrop{
+			DisableWebViewDrop: runtime.GOOS == "windows",
+		},
 
-		Windows: windowsOptions(a),
+		Windows: windowsOptions(),
 	}
 }
 
@@ -74,10 +76,11 @@ const resizeDebounceMS = 24
 // linux exactly as it does for Windows. Splitting it behind build tags would
 // buy nothing and cost a darwin/linux stub to keep in sync.
 //
-// Everything here closes a gap that exists because options.App.Windows was
-// nil: Wails guards its whole zoom block behind `if opts := ...Windows; opts
-// != nil`, so with no struct at all WebView2 kept its own defaults.
-func windowsOptions(a *App) *windows.Options {
+// The zoom pair and the debounce close gaps that existed because
+// options.App.Windows was nil: Wails guards its whole zoom block behind
+// `if opts := ...Windows; opts != nil`, so with no struct at all WebView2
+// kept its own defaults. Theme is different — see its comment.
+func windowsOptions() *windows.Options {
 	return &windows.Options{
 		// Hive owns zoom itself: Ctrl +/- drives a font-size token that
 		// every xterm instance re-reads. WebView2's page zoom is a second,
@@ -94,75 +97,27 @@ func windowsOptions(a *App) *windows.Options {
 
 		ResizeDebounceMS: resizeDebounceMS,
 
-		// The native titlebar follows the OS.
+		// The native titlebar follows the OS. This is what Wails already
+		// did for a nil Windows struct (window.go falls back to
+		// SystemDefault), so it changes nothing; it is written out so the
+		// choice is visible and pinned.
 		//
-		// This is the honest ceiling, not a preference: the in-app theme
+		// It is also the ceiling, not a preference: the in-app theme
 		// lives in localStorage under `hive.theme` (frontend/src/theme/
 		// theme.ts) and is not readable from Go, least of all before the
-		// webview exists. SystemDefault is also the right answer for the
-		// default install, because the shipped default theme is 'system',
-		// which resolves against the same OS setting. An explicitly chosen
-		// preset is NOT reflected yet: (*App).SetWindowTheme exists for
-		// that push-down but the frontend does not call it.
+		// webview exists. SystemDefault matches the default install, whose
+		// shipped theme is 'system' and resolves against the same OS
+		// setting. Making the titlebar track an explicitly chosen preset
+		// would need the frontend to push the choice down after boot; that
+		// is not done here.
 		Theme: windows.SystemDefault,
 
-		OnResume: a.onSystemResume,
+		// No OnResume hook, deliberately. The only useful thing it could do
+		// is announce control:disconnect, and that event's frontend handler
+		// paints the red "reconnecting…" status and calls ConnectControl,
+		// which closes the current connection before redialling whether or
+		// not it was healthy — so a hook would turn every wake into a
+		// dropped connection and a flashed error. If a wake really does
+		// kill the pipe, controlReadLoop announces it when its read fails.
 	}
-}
-
-// onSystemResume is Wails' OnResume hook, fired when Windows comes back
-// from sleep or hibernation (PBT_APMRESUMEAUTOMATIC).
-//
-// Sleep kills the control connection, but nothing on either side notices
-// promptly: the GUI's read loop sits in a blocking read on a pipe whose
-// peer is gone, so until it errors the app looks connected and every
-// daemon-backed action silently does nothing. Waking is the one moment we
-// know for certain to re-check.
-//
-// It deliberately does NOT call ConnectControl directly. The reconnect
-// loop already exists in the frontend (reconnectControl in app/events.ts,
-// behind a `_reconnecting` guard with 500ms→5s backoff, and it stands down
-// while the daemon is deliberately restarting). Announcing the disconnect
-// lets that owner do its job and dedupe against an attempt already in
-// flight; dialling from here in parallel would race it, and ConnectControl
-// unconditionally tears down and redials rather than no-opping when
-// healthy. Emitting into the existing path also means a redial that
-// supersedes a still-live connection stays quiet, which controlReadLoop
-// and control_swap_test.go already guarantee.
-//
-// Two constraints from where Wails calls this:
-//   - it runs on the Win32 message-pump thread, inside WndProc, so it must
-//     not block — hence the goroutine.
-//   - a resume can in principle arrive before OnStartup has handed us a
-//     context, and EventsEmit on a nil ctx aborts the process.
-func (a *App) onSystemResume() {
-	if a.ctx == nil {
-		return
-	}
-	go emitFn(a, "control:disconnect", "")
-}
-
-// SetWindowTheme points the native window chrome at the app's current
-// theme. Windows-only in effect: it drives the titlebar and border colour,
-// which are painted by the OS and so know nothing about the webview's CSS.
-//
-// Like SetDebugTrace, this is a push from the frontend rather than a read
-// from Go: the choice lives in localStorage under `hive.theme`, and the
-// nineteen presets collapse to dark-or-light only by rules the frontend
-// owns ('system' additionally resolving against prefers-color-scheme). Go
-// therefore cannot work it out at startup, which is why windowsOptions
-// starts at windows.SystemDefault. Nothing in the frontend calls this yet.
-//
-// Safe to call on macOS and Linux: Wails' non-Windows frontends implement
-// WindowSetDarkTheme/WindowSetLightTheme as empty methods, so this is a
-// no-op there rather than something needing a GOOS guard.
-func (a *App) SetWindowTheme(dark bool) {
-	if a.ctx == nil {
-		return
-	}
-	if dark {
-		wruntime.WindowSetDarkTheme(a.ctx)
-		return
-	}
-	wruntime.WindowSetLightTheme(a.ctx)
 }
