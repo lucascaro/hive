@@ -163,26 +163,34 @@ func preflightCheckout(repo string) error {
 	return verifyFastForwardable(repo, branch, upstream)
 }
 
-// verifyFastForwardable refuses a branch carrying commits its upstream
-// does not have. `git pull --ff-only` would refuse too, but only after
-// the fetch and with "Not possible to fast-forward, aborting." — which
-// names neither the branch nor the way out.
+// verifyFastForwardable refuses a truly diverged branch: one that is both
+// ahead of and behind its upstream, so `git pull --ff-only` cannot land the
+// update. A branch that is only ahead is fine — the pull is a no-op there
+// and the updater builds HEAD as-is. A branch that is only behind is also
+// fine; the pull fast-forwards normally.
 //
-// The common way in is an integration or feature branch left checked
-// out with its upstream still set to main: the periodic check sees
-// upstream commits the running build lacks and offers an update the
-// pull can never apply. The fix is always the same — go back to the
-// tracked branch — so the message says so.
+// The common way to end up diverged is an integration or feature branch
+// left checked out with its upstream still set to main: local commits pile
+// up while upstream also moves. The fix depends on whether the branch is
+// itself the tracked branch (e.g. main tracking origin/main) — there is no
+// "other" branch to check out, so the advice is to push or move the local
+// commits — or a differently named branch, where checking out the branch
+// it tracks is the way out.
 func verifyFastForwardable(repo, branch, upstream string) error {
-	out, err := runGitFn(repo, "rev-list", "--count", upstream+"..HEAD")
+	out, err := runGitFn(repo, "rev-list", "--left-right", "--count", upstream+"...HEAD")
 	if err != nil {
 		return err
 	}
-	ahead, err := strconv.Atoi(out)
-	if err != nil {
+	fields := strings.Fields(out)
+	if len(fields) != 2 {
 		return fmt.Errorf("cannot count local commits on %q: git rev-list said %q", branch, out)
 	}
-	if ahead == 0 {
+	behind, errBehind := strconv.Atoi(fields[0])
+	ahead, errAhead := strconv.Atoi(fields[1])
+	if errBehind != nil || errAhead != nil {
+		return fmt.Errorf("cannot count local commits on %q: git rev-list said %q", branch, out)
+	}
+	if behind == 0 || ahead == 0 {
 		return nil
 	}
 	_, tracked, _ := strings.Cut(upstream, "/")
@@ -190,9 +198,14 @@ func verifyFastForwardable(repo, branch, upstream string) error {
 	if ahead == 1 {
 		noun = "commit"
 	}
-	return fmt.Errorf("%s is on branch %q, which has %d local %s that %s does not — the updater only fast-forwards. "+
-		"Check out the branch it tracks (git checkout %s) and update again; anything worth keeping from %q needs to land upstream first",
-		repo, branch, ahead, noun, upstream, tracked, branch)
+	if branch == tracked {
+		return fmt.Errorf("%s is on branch %q, which has %d local %s that %s does not and is %d commit(s) behind it — it has diverged. "+
+			"The updater only fast-forwards. Push those commits upstream or move them to another branch before updating",
+			repo, branch, ahead, noun, upstream, behind)
+	}
+	return fmt.Errorf("%s is on branch %q, which has %d local %s that %s does not and is %d commit(s) behind it — it has diverged. "+
+		"The updater only fast-forwards. Check out the branch it tracks (git checkout %s) and update again; anything worth keeping from %q needs to land upstream first",
+		repo, branch, ahead, noun, upstream, behind, tracked, branch)
 }
 
 // verifyUpstreamRemote refuses a checkout whose tracked branch does not

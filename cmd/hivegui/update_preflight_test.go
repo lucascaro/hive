@@ -17,7 +17,7 @@ func cleanCheckout() map[string]string {
 		"symbolic-ref --quiet --short HEAD":                       "main",
 		"rev-parse --abbrev-ref --symbolic-full-name @{upstream}": "origin/main",
 		"remote get-url origin":                                   "git@github.com:" + updateRepo + ".git",
-		"rev-list --count origin/main..HEAD":                      "0",
+		"rev-list --left-right --count origin/main...HEAD":        "0\t0",
 	}
 }
 
@@ -55,8 +55,8 @@ func TestPreflightCheckoutRefusals(t *testing.T) {
 		{
 			name: "diverged branch",
 			answers: map[string]string{
-				"symbolic-ref --quiet --short HEAD":  "integ/windows-parity",
-				"rev-list --count origin/main..HEAD": "14",
+				"symbolic-ref --quiet --short HEAD":                "integ/windows-parity",
+				"rev-list --left-right --count origin/main...HEAD": "5\t14",
 			},
 			want: `branch "integ/windows-parity", which has 14 local commits that origin/main does not`,
 		},
@@ -95,6 +95,31 @@ func TestPreflightCheckoutAcceptsACleanTrackingBranch(t *testing.T) {
 	}
 }
 
+// Ahead-only and behind-only are not divergence: a pull either does
+// nothing (ahead) or fast-forwards cleanly (behind), so both must pass.
+func TestPreflightCheckoutAcceptsAheadOrBehindOnly(t *testing.T) {
+	for _, tc := range []struct {
+		name  string
+		count string
+	}{
+		{"ahead only", "0\t3"},
+		{"behind only", "5\t0"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			answers := cleanCheckout()
+			answers["rev-list --left-right --count origin/main...HEAD"] = tc.count
+			g := &fakeGit{answers: answers}
+			g.install(t)
+			if err := preflightCheckout("/repo"); err != nil {
+				t.Fatalf("preflightCheckout = %v, want nil", err)
+			}
+			if g.ran("pull") {
+				t.Error("preflightCheckout pulled — it must only look")
+			}
+		})
+	}
+}
+
 // The way out has to be in the message: the user who hits this is
 // looking at a banner, not a terminal, and "Not possible to
 // fast-forward, aborting." is what they got before. Singular and
@@ -102,7 +127,7 @@ func TestPreflightCheckoutAcceptsACleanTrackingBranch(t *testing.T) {
 func TestDivergedBranchRefusalNamesTheWayOut(t *testing.T) {
 	answers := cleanCheckout()
 	answers["symbolic-ref --quiet --short HEAD"] = "feat/thing"
-	answers["rev-list --count origin/main..HEAD"] = "1"
+	answers["rev-list --left-right --count origin/main...HEAD"] = "2\t1"
 	g := &fakeGit{answers: answers}
 	g.install(t)
 
@@ -120,12 +145,33 @@ func TestDivergedBranchRefusalNamesTheWayOut(t *testing.T) {
 	}
 }
 
+// main tracking origin/main has no "other" branch to check out — the
+// advice must not tell the user to check out the branch they are
+// already on.
+func TestDivergedMainRefusalDoesNotSuggestCheckingOutMain(t *testing.T) {
+	answers := cleanCheckout()
+	answers["rev-list --left-right --count origin/main...HEAD"] = "2\t1"
+	g := &fakeGit{answers: answers}
+	g.install(t)
+
+	err := preflightCheckout("/repo")
+	if err == nil {
+		t.Fatal("preflightCheckout = nil error on a diverged main, want a refusal")
+	}
+	if strings.Contains(err.Error(), "git checkout main") {
+		t.Errorf("error = %q, want it to not suggest checking out the branch it is already on", err)
+	}
+	if strings.Contains(err.Error(), "reset --hard") {
+		t.Errorf("error = %q, want it to not suggest discarding local commits", err)
+	}
+}
+
 // A count git could not produce is a refusal, not a pass: "" or garbage
 // from rev-list means the checkout is in a state this code does not
 // understand, and the safe answer to that is not to pull.
 func TestDivergedBranchCheckRefusesAnUnreadableCount(t *testing.T) {
 	answers := cleanCheckout()
-	answers["rev-list --count origin/main..HEAD"] = "fatal: bad revision"
+	answers["rev-list --left-right --count origin/main...HEAD"] = "fatal: bad revision"
 	g := &fakeGit{answers: answers}
 	g.install(t)
 

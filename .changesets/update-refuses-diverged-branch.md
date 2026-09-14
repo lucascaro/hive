@@ -13,10 +13,15 @@ which has nothing to fast-forward, and the banner showed exactly what git said:
 `Not possible to fast-forward, aborting.` — with the command line pasted in
 front of it, and no word about which branch, how far off it was, or what to do.
 
-The updater now counts the branch's local commits before it pulls, the same
-place it already refuses a dirty tree, a detached HEAD, or a foreign remote,
-and refuses in its own words: the branch, how many commits it carries that the
-upstream does not, and the way back (`git checkout main`). Nothing has been
-fetched or moved by the time it says so. The four checkout refusals now live
-in one place shared by macOS and Windows rather than two copies that had to be
-edited in step.
+The updater now compares the branch against its upstream before it pulls, the
+same place it already refuses a dirty tree, a detached HEAD, or a foreign
+remote, and refuses only when the branch has truly diverged — commits ahead
+*and* behind at once, which `pull --ff-only` cannot reconcile. A branch that
+is only ahead (or only behind) still updates normally, exactly as before this
+change. When it does refuse, it does so in its own words: the branch, how far
+ahead and behind it is, and the way back — `git checkout main` for a
+differently-named branch, or to push or move the local commits when the
+diverged branch is the one upstream itself tracks (e.g. `main`). Nothing has
+been fetched or moved by the time it says so. The four checkout refusals now
+live in one place shared by macOS and Windows rather than two copies that had
+to be edited in step.
