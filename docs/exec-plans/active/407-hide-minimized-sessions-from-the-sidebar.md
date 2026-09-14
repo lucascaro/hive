@@ -109,6 +109,7 @@ From `cmd/hivegui/frontend`:
 ## PR convergence ledger
 
 - **2026-09-13 iter 1** — verdict: REQUEST_CHANGES; mergeable: MERGEABLE; findings_hash: 7a89edfd0717898aad653830bee79ecdde9650c15d1c8be9b194768ffa016156; threads_open: 0; action: escalated:risky-fix-needs-human-decision; head_sha: 51ca6c00.
+- **2026-09-13 iter 2** — verdict: APPROVE; mergeable: MERGEABLE; findings_hash: empty; threads_open: 0; action: stop; head_sha: 7b4109eb.
 
 ## Progress
 

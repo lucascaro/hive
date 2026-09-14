@@ -5,7 +5,7 @@ type: bug
 complexity: S
 priority: P2
 pr: 408
-stage: REVIEW
+stage: GATE
 ---
 
 # Hide minimized sessions from the sidebar
