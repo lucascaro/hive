@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.8.0] — 2026-09-14
+
 ### Added
 Worktree groups can be named. Double-click a group's title in the sidebar, type a
 name, and the header shows it with the branch beside it — so a group of sessions
@@ -1589,7 +1591,8 @@ own session daemon, replacing the v1 tmux + Bubble Tea architecture.
   sidebar/grid and fire an OS notification.
 - No telemetry in shipped binaries.
 
-[Unreleased]: https://github.com/lucascaro/hive/compare/v2.7.0...HEAD
+[Unreleased]: https://github.com/lucascaro/hive/compare/v2.8.0...HEAD
+[2.8.0]: https://github.com/lucascaro/hive/compare/v2.7.0...v2.8.0
 [2.7.0]: https://github.com/lucascaro/hive/compare/v2.6.0...v2.7.0
 [2.6.0]: https://github.com/lucascaro/hive/compare/v2.5.0...v2.6.0
 [2.5.0]: https://github.com/lucascaro/hive/compare/v2.4.0...v2.5.0
