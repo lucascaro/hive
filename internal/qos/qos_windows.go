@@ -33,15 +33,16 @@ type processPowerThrottlingState struct {
 }
 
 // golang.org/x/sys/windows is only an indirect dependency and does not wrap
-// SetProcessInformation at the pinned version, so bind kernel32 lazily. Lazy
-// matters beyond style: SetProcessInformation arrived in Windows 8 and
-// ProcessPowerThrottling in Windows 10 1709, so on anything older the proc
-// lookup fails at first use rather than at load, and we simply carry on.
+// SetProcessInformation at the pinned version, so bind kernel32 lazily; a
+// missing proc then fails at first use rather than at load. Go itself requires
+// Windows 10, so the proc is always present in practice. ProcessPowerThrottling
+// arrived in Windows 10 1709; on older builds the call itself fails and we log
+// and carry on.
 var procSetProcessInfo = syscall.NewLazyDLL("kernel32.dll").NewProc("SetProcessInformation")
 
 func disableThrottling() {
 	if err := procSetProcessInfo.Find(); err != nil {
-		// Pre-Windows 8. Nothing to opt out of, and nothing to fix.
+		// Defensive only: unreachable on the Windows versions Go supports.
 		log.Printf("qos: SetProcessInformation unavailable (%v); leaving power throttling to Windows", err)
 		return
 	}
