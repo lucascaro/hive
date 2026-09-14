@@ -57,3 +57,5 @@ Minimized state persists across GUI restarts, like the collapsed-projects set.
 Reuses the generic string-set persistence helpers in `cmd/hivegui/frontend/src/lib/collapsed.ts` under a second storage key, and the session-hiding path in `src/app/view.ts` (`gridScopeFor`).
 
 [#252](252-keyboard-switching-skips-minimized-sessions.md) supersedes the ⌘[ / ⌘] half of the reachability criterion above: a project you put in the tray is out of the keyboard rotation entirely.
+
+[#407](407-hide-minimized-sessions-from-the-sidebar.md) amends the session half of the description above: a minimized session's row no longer stays in the list dimmed. It leaves the sidebar (the session tray and ⌘K bring it back), except while it is the active session.

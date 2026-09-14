@@ -353,11 +353,17 @@ interface ProjectItemProps {
 // clusterSessions() placed them, and that IS the painted order
 // (lib/worktree-groups.ts › THE ONE ORDER) — so this walks the list it
 // is handed rather than re-deriving an order of its own.
-function renderRows(
-  o: ProjectItemProps,
-  groups: Map<string, string[]>,
-): ReactNode[] {
-  const item = (s: SessionInfo, shared: number, titleOnly: boolean) => (
+//
+// `rows` is the painted subset of `o.sessions` (see ProjectItem). Panels
+// wrap painted rows, so they are grouped from `rows`; a row's shared count
+// is a fact about the worktree, so it counts every session on it — a
+// minimized one still holds the worktree a kill would refuse to touch.
+function renderRows(o: ProjectItemProps, rows: SessionInfo[]): ReactNode[] {
+  const groups = worktreeGroups(rows);
+  const allGroups = worktreeGroups(o.sessions);
+  const sharedCount = (s: SessionInfo) =>
+    allGroups.get(worktreeKey(s))?.length ?? 1;
+  const item = (s: SessionInfo, titleOnly: boolean) => (
     <SessionItem
       key={s.id}
       session={s}
@@ -368,24 +374,24 @@ function renderRows(
       // primitives, and a fresh object here would re-render every
       // row on every unrelated idea event.
       ideaText={ideaForSession(o.ideas, s.id)?.text ?? ''}
-      worktreeShared={shared}
+      worktreeShared={sharedCount(s)}
       titleOnly={titleOnly}
       sidebar={o.props}
     />
   );
 
   const out: ReactNode[] = [];
-  for (let i = 0; i < o.sessions.length; ) {
-    const key = worktreeKey(o.sessions[i]);
+  for (let i = 0; i < rows.length; ) {
+    const key = worktreeKey(rows[i]);
     const members = key ? groups.get(key) : undefined;
     if (!members || members.length < 2) {
-      out.push(item(o.sessions[i], 1, false));
+      out.push(item(rows[i], false));
       i++;
       continue;
     }
     const run: SessionInfo[] = [];
-    while (i < o.sessions.length && worktreeKey(o.sessions[i]) === key) {
-      run.push(o.sessions[i]);
+    while (i < rows.length && worktreeKey(rows[i]) === key) {
+      run.push(rows[i]);
       i++;
     }
     const head = run[0];
@@ -451,7 +457,7 @@ function renderRows(
         }
       >
         {run.map((s) =>
-          item(s, run.length, !!defaultName && (s.name ?? '') === defaultName),
+          item(s, !!defaultName && (s.name ?? '') === defaultName),
         )}
       </WorktreeGroup>,
     );
@@ -466,10 +472,14 @@ function ProjectItem(o: ProjectItemProps) {
   // Same helper the minimized chip uses, so the collapsed card's
   // "k waiting on you" and the chip's alert count can never disagree.
   const attentionCount = attentionSummary(o.sessions).count;
-  // Which of this card's rows share a worktree. Project-scoped because
-  // worktree paths are, and because a group can only paint adjacently
-  // inside one card's <ul>.
-  const groups = worktreeGroups(o.sessions);
+  // The rows this card paints: the sessions ⌘↑/⌘↓ can land on (#407). A
+  // minimized session lives in the tray, except the active one — its row
+  // stays so the selection is never invisible. The count and attention
+  // above keep reading every session, so a bell on a hidden one still
+  // bubbles to the card. Minimized projects never reach here (Sidebar).
+  const rows = o.sessions.filter(
+    (s) => !o.minimizedSessions.has(s.id) || s.id === o.activeId,
+  );
 
   // dragstart bubbles, so a session-row drag fires here too after its own
   // handler runs. We must not preventDefault in that case (it would
@@ -575,7 +585,7 @@ function ProjectItem(o: ProjectItemProps) {
         commit(card, above, e.nativeEvent);
       }}
     >
-      {renderRows(o, groups)}
+      {renderRows(o, rows)}
     </ProjectCard>
   );
 }

@@ -318,10 +318,18 @@ export function clusterDropOps(
 // could not express "move this block of rows". For a session in no group it
 // behaves exactly as that did: one row at a time, wrapping within the
 // project.
+//
+// `hidden` names sessions the sidebar does not paint (minimized, #407). They
+// are not slots: a press moves the active session past its next VISIBLE
+// neighbour, since swapping with a row you cannot see looks like a dead
+// press. They still occupy the list — the moves are computed over every
+// session, so a hidden one keeps its place and a hidden group member still
+// moves with its block. The active session is never treated as hidden.
 export function clusterReorderOps(
   sessions: OrderedSession[],
   activeID: string | null,
   delta: number,
+  hidden?: { has(id: string): boolean },
 ): ReorderOp[] {
   if (!activeID || delta === 0) return [];
   const globalSorted = sessions
@@ -334,17 +342,15 @@ export function clusterReorderOps(
   const { painted, ids, groups } = paintedProject(globalSorted, pid);
   const movers = moversFor(painted, groups, activeID);
   if (movers.length === 0) return [];
+  const isHidden = (id: string) => id !== activeID && !!hidden?.has(id);
 
-  // Step 1: move within the group while there is room.
-  const within = movers.indexOf(activeID);
+  // Step 1: move within the group while there is a visible member to pass.
+  const seen = movers.filter((id) => !isHidden(id));
+  const within = seen.indexOf(activeID);
   const step = Math.sign(delta);
-  if (
-    movers.length > 1 &&
-    within + step >= 0 &&
-    within + step < movers.length
-  ) {
+  if (seen.length > 1 && within + step >= 0 && within + step < seen.length) {
     const rest = ids.filter((id) => id !== activeID);
-    const neighbour = movers[within + step];
+    const neighbour = seen[within + step];
     const at = rest.indexOf(neighbour);
     if (at < 0) return [];
     const slot = step < 0 ? at : at + 1;
@@ -364,13 +370,27 @@ export function clusterReorderOps(
   const cur = units.findIndex((u) => u.includes(activeID));
   if (cur < 0) return [];
   const rest = units.filter((_, i) => i !== cur);
-  if (rest.length === 0) return []; // the project is one group; nowhere to go
+  // The blocks a press can pass: those with at least one painted row. With
+  // no hidden set that is every block, and the math below reduces to the
+  // plain 0…rest.length slots.
+  const visible = rest.flatMap((u, i) =>
+    u.some((id) => !isHidden(id)) ? [i] : [],
+  );
+  // The project is one group, or everything else is hidden; nowhere to go.
+  if (visible.length === 0) return [];
 
-  // Insertion slots run 0…rest.length, so a block at the bottom wraps to the
-  // top of its own project — the same wrap the single-row version had.
-  const slots = rest.length + 1;
-  const next = (((cur + delta) % slots) + slots) % slots;
-  if (next === cur) return [];
+  // Insertion slots run 0…visible.length, so a block at the bottom wraps to
+  // the top of its own project — the same wrap the single-row version had.
+  const curSlot = visible.filter((i) => i < cur).length;
+  const slots = visible.length + 1;
+  const nextSlot = (((curSlot + delta) % slots) + slots) % slots;
+  if (nextSlot === curSlot) return [];
+  // Back to an index in `rest`: just before the visible block at that slot,
+  // or just after the last visible block for the bottom slot.
+  const next =
+    nextSlot < visible.length
+      ? visible[nextSlot]
+      : visible[visible.length - 1] + 1;
 
   const wanted = [...rest.slice(0, next), movers, ...rest.slice(next)].flat();
   return opsToReach(
