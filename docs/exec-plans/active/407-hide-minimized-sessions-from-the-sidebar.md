@@ -111,8 +111,18 @@ From `cmd/hivegui/frontend`:
 - **2026-09-13 iter 1** — verdict: REQUEST_CHANGES; mergeable: MERGEABLE; findings_hash: 7a89edfd0717898aad653830bee79ecdde9650c15d1c8be9b194768ffa016156; threads_open: 0; action: escalated:risky-fix-needs-human-decision; head_sha: 51ca6c00.
 - **2026-09-13 iter 2** — verdict: APPROVE; mergeable: MERGEABLE; findings_hash: empty; threads_open: 0; action: stop; head_sha: 7b4109eb.
 
+## Gate verdict
+
+- **2026-09-13** — verdict: FAIL; phase: —; checks: 15 passed / 1 failed / 0 followups; followups: none; one-line: changeset omits the ⇧⌘↑/⇧⌘↓ reorder change added in 7b4109eb.
+  - 2026-09-13 dimensions:
+    - acceptance — PASS — all 6 success criteria traced to passing tests (vitest 89 passed; e2e minimize.spec 7 passed)
+    - non-goals — PASS — ⌘1–9 hints, tray, palette, grid scope and ⌘↑/⌘↓ walk untouched; no new sidebar affordance
+    - doc accuracy — FAIL — `.changesets/hide-minimized-session-rows.md` describes only the sidebar hide, not the reorder skip; regression_of: declared-absent
+
 ## Progress
 
 - **2026-09-13** — Issue #407 created; triaged bug/S/P2; research complete.
 - **2026-09-13** — Plan approved (chat, after two second-opinion rounds).
 - **2026-09-13** — Tests written first; 6 of the new DOM tests failed on the old code. `Sidebar.tsx` filter landed; vitest, typecheck, `biome ci`, targeted e2e green; sidebar pixel baselines regenerated.
+- **2026-09-13** — Review loop converged at iter 2 (APPROVE) after the operator-approved reorder fix; spec advanced to GATE.
+- **2026-09-13** — Gate FAIL; doc accuracy: changeset omitted the ⇧⌘↑/⇧⌘↓ reorder skip. Changeset amended on the branch; gate re-run once.
