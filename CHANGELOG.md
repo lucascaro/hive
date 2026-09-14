@@ -138,6 +138,17 @@ A failed turn now stays visible too. A Claude API failure used to flip to error 
 then fade back to idle the next time the screen redrew, and Pi never reported its
 failures at all. Both now show the error glyph, raise a notification, and keep it
 until you look.
+Custom agents whose command runs `claude` or `pi` now report their state like the
+built-in agents do: working, waiting for you, finished turns and errors, instead of
+guessing from terminal output. A wrapper script around them (for example a
+`claude-lite` shell script) is not recognised and still guesses.
+
+The command field in Settings ▸ Agents now keeps what you type, including a trailing
+space, and no longer lets macOS turn `--` into an em dash.
+A failed Claude turn now keeps its error glyph until you look at the session. About a
+minute after any turn, Claude sends an "idle" notification, and that was quietly
+turning the red cross into a plain "Waiting for you" before you had a chance to see
+what went wrong.
 Minimized sessions no longer stay in the sidebar as dimmed rows that ⌘↑/⌘↓ skip over. Minimizing a session now takes it out of the sidebar, the same way minimizing a project does, so every row you see can be reached from the keyboard. Get it back from the tray above the status bar or with ⌘K. If the session you are on is minimized, its row stays until you move to another session.
 
 ⇧⌘↑ / ⇧⌘↓ also skip minimized sessions now. The active session moves past the next visible session instead of swapping places with one you can't see, and the minimized session keeps its place in the order.
