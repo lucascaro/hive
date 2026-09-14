@@ -32,18 +32,12 @@ type processPowerThrottlingState struct {
 	StateMask   uint32
 }
 
-// The repo makes its other Win32 calls through plain syscall (see
-// internal/proc/hide_windows.go), and golang.org/x/sys/windows is only an
-// indirect dependency that does not wrap SetProcessInformation at the pinned
-// version anyway, so bind kernel32 lazily. Lazy matters here beyond style:
-// SetProcessInformation arrived in Windows 8 and ProcessPowerThrottling in
-// Windows 10 1709, so on anything older the proc lookup fails at first use
-// rather than at load, and we simply carry on.
-var (
-	kernel32              = syscall.NewLazyDLL("kernel32.dll")
-	procSetProcessInfo    = kernel32.NewProc("SetProcessInformation")
-	procGetCurrentProcess = kernel32.NewProc("GetCurrentProcess")
-)
+// golang.org/x/sys/windows is only an indirect dependency and does not wrap
+// SetProcessInformation at the pinned version, so bind kernel32 lazily. Lazy
+// matters beyond style: SetProcessInformation arrived in Windows 8 and
+// ProcessPowerThrottling in Windows 10 1709, so on anything older the proc
+// lookup fails at first use rather than at load, and we simply carry on.
+var procSetProcessInfo = syscall.NewLazyDLL("kernel32.dll").NewProc("SetProcessInformation")
 
 func disableThrottling() {
 	if err := procSetProcessInfo.Find(); err != nil {
@@ -51,11 +45,11 @@ func disableThrottling() {
 		log.Printf("qos: SetProcessInformation unavailable (%v); leaving power throttling to Windows", err)
 		return
 	}
-	if err := procGetCurrentProcess.Find(); err != nil {
-		log.Printf("qos: GetCurrentProcess unavailable (%v); leaving power throttling to Windows", err)
+	self, err := syscall.GetCurrentProcess()
+	if err != nil {
+		log.Printf("qos: GetCurrentProcess: %v; leaving power throttling to Windows", err)
 		return
 	}
-	self, _, _ := procGetCurrentProcess.Call()
 
 	state := processPowerThrottlingState{
 		Version:     powerThrottlingCurrentVersion,
@@ -63,7 +57,7 @@ func disableThrottling() {
 		StateMask:   0,
 	}
 	ret, _, err := procSetProcessInfo.Call(
-		self,
+		uintptr(self),
 		uintptr(processPowerThrottling),
 		uintptr(unsafe.Pointer(&state)),
 		unsafe.Sizeof(state),
