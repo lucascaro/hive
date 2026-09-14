@@ -544,6 +544,9 @@ func latestRepo(t *testing.T, answers map[string]string, errs map[string]error) 
 	if _, ok := answers["remote get-url origin"]; !ok {
 		answers["remote get-url origin"] = "git@github.com:" + updateRepo + ".git"
 	}
+	if _, ok := answers["rev-list --left-right --count origin/main...HEAD"]; !ok {
+		answers["rev-list --left-right --count origin/main...HEAD"] = "0\t0"
+	}
 	g := &fakeGit{answers: answers, errs: errs}
 	g.install(t)
 	return g

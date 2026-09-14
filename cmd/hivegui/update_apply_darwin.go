@@ -155,9 +155,8 @@ func stageRelease(info UpdateInfo, progress func(string)) (string, error) {
 
 // stageLatest fast-forwards the source checkout and builds it.
 //
-// A dirty tree aborts before anything runs: `git pull` on top of
-// uncommitted work is how you lose it, and this button is meant to be
-// safe to press without thinking.
+// Everything that can be refused is refused before git moves or the
+// build starts — see preflightCheckout for the list and the order.
 func stageLatest(info UpdateInfo, progress func(string)) (string, error) {
 	settings, err := loadUpdateSettings()
 	if err != nil {
@@ -169,23 +168,12 @@ func stageLatest(info UpdateInfo, progress func(string)) (string, error) {
 	}
 
 	progress("Checking working tree…")
-	dirty, err := runGitFn(repo, "status", "--porcelain")
-	if err != nil {
-		return "", err
-	}
-	if strings.TrimSpace(dirty) != "" {
-		return "", fmt.Errorf("%s has uncommitted changes — commit or stash them first", repo)
-	}
-	if _, err := runGitFn(repo, "symbolic-ref", "--quiet", "HEAD"); err != nil {
-		return "", fmt.Errorf("%s has a detached HEAD — check out a branch first", repo)
-	}
-
 	// The checkout path comes out of update.json, and validateSourceRepo
 	// only proves the directory *looks* like hive — .git, build.sh and a
-	// module line are all plantable. Pinning the upstream remote is the
-	// check that the code about to be pulled and executed is actually
-	// ours.
-	if err := verifyUpstreamRemote(repo); err != nil {
+	// module line are all plantable. Pinning the upstream remote, which
+	// preflightCheckout does among its other refusals, is the check
+	// that the code about to be pulled and executed is actually ours.
+	if err := preflightCheckout(repo); err != nil {
 		return "", err
 	}
 

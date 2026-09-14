@@ -24,6 +24,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"time"
 )
@@ -130,8 +131,86 @@ func sha256File(path string) (string, error) {
 	return hex.EncodeToString(h.Sum(nil)), nil
 }
 
+// preflightCheckout is every refusal stageLatest can make before git
+// moves anything or the build starts, in the order they are cheapest
+// to explain. A build is minutes long, and a failure the updater could
+// have predicted from the start should not cost the user those minutes
+// with the button stuck on "Updating…" — nor should it surface as raw
+// git stderr with the command line pasted in front of it.
+//
+// A dirty tree is refused first: `git pull` on top of uncommitted work
+// is how you lose it, and this button is meant to be safe to press
+// without thinking. A detached HEAD has no upstream to fast-forward
+// from. The remote is pinned before anything is pulled and executed.
+// And a branch that has wandered off its upstream cannot fast-forward
+// at all, which git reports only after the fetch, in its own words.
+func preflightCheckout(repo string) error {
+	dirty, err := runGitFn(repo, "status", "--porcelain")
+	if err != nil {
+		return err
+	}
+	if strings.TrimSpace(dirty) != "" {
+		return fmt.Errorf("%s has uncommitted changes — commit or stash them first", repo)
+	}
+	branch, err := runGitFn(repo, "symbolic-ref", "--quiet", "--short", "HEAD")
+	if err != nil {
+		return fmt.Errorf("%s has a detached HEAD — check out a branch first", repo)
+	}
+	upstream, err := verifyUpstreamRemote(repo)
+	if err != nil {
+		return err
+	}
+	return verifyFastForwardable(repo, branch, upstream)
+}
+
+// verifyFastForwardable refuses a truly diverged branch: one that is both
+// ahead of and behind its upstream, so `git pull --ff-only` cannot land the
+// update. A branch that is only ahead is fine — the pull is a no-op there
+// and the updater builds HEAD as-is. A branch that is only behind is also
+// fine; the pull fast-forwards normally.
+//
+// The common way to end up diverged is an integration or feature branch
+// left checked out with its upstream still set to main: local commits pile
+// up while upstream also moves. The fix depends on whether the branch is
+// itself the tracked branch (e.g. main tracking origin/main) — there is no
+// "other" branch to check out, so the advice is to push or move the local
+// commits — or a differently named branch, where checking out the branch
+// it tracks is the way out.
+func verifyFastForwardable(repo, branch, upstream string) error {
+	out, err := runGitFn(repo, "rev-list", "--left-right", "--count", upstream+"...HEAD")
+	if err != nil {
+		return err
+	}
+	fields := strings.Fields(out)
+	if len(fields) != 2 {
+		return fmt.Errorf("cannot count local commits on %q: git rev-list said %q", branch, out)
+	}
+	behind, errBehind := strconv.Atoi(fields[0])
+	ahead, errAhead := strconv.Atoi(fields[1])
+	if errBehind != nil || errAhead != nil {
+		return fmt.Errorf("cannot count local commits on %q: git rev-list said %q", branch, out)
+	}
+	if behind == 0 || ahead == 0 {
+		return nil
+	}
+	_, tracked, _ := strings.Cut(upstream, "/")
+	noun := "commits"
+	if ahead == 1 {
+		noun = "commit"
+	}
+	if branch == tracked {
+		return fmt.Errorf("%s is on branch %q, which has %d local %s that %s does not and is %d commit(s) behind it — it has diverged. "+
+			"The updater only fast-forwards. Push those commits upstream or move them to another branch before updating",
+			repo, branch, ahead, noun, upstream, behind)
+	}
+	return fmt.Errorf("%s is on branch %q, which has %d local %s that %s does not and is %d commit(s) behind it — it has diverged. "+
+		"The updater only fast-forwards. Check out the branch it tracks (git checkout %s) and update again; anything worth keeping from %q needs to land upstream first",
+		repo, branch, ahead, noun, upstream, behind, tracked, branch)
+}
+
 // verifyUpstreamRemote refuses a checkout whose tracked branch does not
-// come from this project's own repository.
+// come from this project's own repository, and returns that tracked
+// branch (remote/name) for the checks that follow.
 //
 // The remote URL is matched on host and path whole (see
 // remoteIsUpstream), so both SSH (git@github.com:lucascaro/hive.git)
@@ -139,23 +218,23 @@ func sha256File(path string) (string, error) {
 // while a host that merely contains "github.com" does not. A fork
 // would be rejected — that is the intended trade: this button pulls
 // and *executes*, so "close enough" is not the bar.
-func verifyUpstreamRemote(repo string) error {
+func verifyUpstreamRemote(repo string) (string, error) {
 	upstream, err := runGitFn(repo, "rev-parse", "--abbrev-ref", "--symbolic-full-name", "@{upstream}")
 	if err != nil {
-		return fmt.Errorf("%s has no upstream branch to pull from", repo)
+		return "", fmt.Errorf("%s has no upstream branch to pull from", repo)
 	}
 	remote, _, found := strings.Cut(upstream, "/")
 	if !found || remote == "" {
-		return fmt.Errorf("cannot tell which remote %q tracks", upstream)
+		return "", fmt.Errorf("cannot tell which remote %q tracks", upstream)
 	}
 	remoteURL, err := runGitFn(repo, "remote", "get-url", remote)
 	if err != nil {
-		return err
+		return "", err
 	}
 	if !remoteIsUpstream(remoteURL) {
-		return fmt.Errorf("refusing to build from %s: remote %q is %s, not %s", repo, remote, remoteURL, updateRepo)
+		return "", fmt.Errorf("refusing to build from %s: remote %q is %s, not %s", repo, remote, remoteURL, updateRepo)
 	}
-	return nil
+	return upstream, nil
 }
 
 // plainProgressLine reduces one line of build output to what a terminal
