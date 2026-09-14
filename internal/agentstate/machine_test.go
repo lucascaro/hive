@@ -364,6 +364,11 @@ func TestErrorStandsUntilTheUserLooks(t *testing.T) {
 	if m.Bell(late) {
 		t.Error("a bell moved an error")
 	}
+	// Claude's idle_prompt notification lands ~60s after a failed turn
+	// too (measured against a real claude with an unknown model).
+	if m.Apply(hookEvent(KindWaitingInput, late, "")) {
+		t.Error("an idle_prompt wait replaced an error")
+	}
 	if got := m.Snapshot().State; got != wire.StateError {
 		t.Fatalf("state = %q, want error", got)
 	}

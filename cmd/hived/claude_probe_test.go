@@ -259,3 +259,89 @@ func TestClaudeProbePermissionResolved(t *testing.T) {
 	wait(60*time.Second, func(i wire.SessionInfo) bool { return i.State == wire.StateWaitingInput && i.LastSummary != "" }, "turn_end after the tool")
 	_, _ = sess.Write([]byte("/exit\r"))
 }
+
+// TestClaudeProbeErrorSurvivesIdlePrompt: a real interactive claude with
+// an unknown model fails its turn (StopFailure -> error), and ~60s later
+// fires Notification(idle_prompt). With nobody touching the session the
+// error must still be showing after that. No API cost: the model is
+// rejected before any tokens are spent. Takes ~90s.
+func TestClaudeProbeErrorSurvivesIdlePrompt(t *testing.T) {
+	if os.Getenv("HIVE_PROBE_CLAUDE") != "1" {
+		t.Skip("set HIVE_PROBE_CLAUDE=1 to run the real-claude probe")
+	}
+	if _, err := exec.LookPath("claude"); err != nil {
+		t.Skip("claude not on PATH")
+	}
+	for _, kv := range os.Environ() {
+		k, v, _ := strings.Cut(kv, "=")
+		if k == "CLAUDECODE" || k == "CLAUDE_PID" || strings.HasPrefix(k, "CLAUDE_CODE_") {
+			k, v := k, v
+			t.Cleanup(func() { _ = os.Setenv(k, v) })
+			_ = os.Unsetenv(k)
+		}
+	}
+	d := startHookTestDaemon(t)
+	def, _ := agent.Get(agent.IDClaude)
+	exe, _ := os.Executable()
+	cmd := append([]string{"claude", "--model", "claude-nonexistent-xyz"},
+		def.SpawnArgs(agent.SpawnInfo{HivedPath: exe})...)
+	e, err := d.Registry().Create(context.Background(), wire.CreateSpec{
+		Agent: "claude", Cmd: cmd, Cwd: t.TempDir(), Cols: 120, Rows: 40,
+	})
+	if err != nil {
+		t.Fatalf("create: %v", err)
+	}
+	id := e.ID
+	t.Cleanup(func() { _ = d.Registry().Kill(id, true) })
+	wait := func(within time.Duration, cond func(wire.SessionInfo) bool, what string) wire.SessionInfo {
+		t.Helper()
+		deadline := time.Now().Add(within)
+		for {
+			info, ok := findSessionByID(d, id)
+			if ok && cond(info) {
+				return info
+			}
+			if time.Now().After(deadline) {
+				t.Fatalf("timed out waiting for %s; last info = %+v", what, info)
+			}
+			time.Sleep(100 * time.Millisecond)
+		}
+	}
+	wait(20*time.Second, func(i wire.SessionInfo) bool { return i.Alive }, "alive")
+	sess := d.Registry().Get(id).Session()
+	sink := &captureSink{}
+	unsub, err := sess.SubscribeWithAtomicReplay(sink, func(r []byte) error {
+		_, err := sink.Write(r)
+		return err
+	})
+	if err != nil {
+		t.Fatalf("subscribe: %v", err)
+	}
+	defer unsub()
+	// A fresh directory gets the folder-trust dialog; Enter accepts.
+	deadline := time.Now().Add(20 * time.Second)
+	for time.Now().Before(deadline) {
+		if sink.contains("trust") {
+			_, _ = sess.Write([]byte("\r"))
+			break
+		}
+		if info, _ := findSessionByID(d, id); info.StateSource == wire.StateSourceHook {
+			break
+		}
+		time.Sleep(200 * time.Millisecond)
+	}
+	wait(30*time.Second, func(i wire.SessionInfo) bool { return i.StateSource == wire.StateSourceHook }, "hook tier")
+	time.Sleep(2 * time.Second)
+	_, _ = sess.Write([]byte("hi\r"))
+	wait(60*time.Second, func(i wire.SessionInfo) bool { return i.State == wire.StateError }, "error")
+
+	// Past HookStaleAfter and past Claude's 60s idle_prompt.
+	end := time.Now().Add(90 * time.Second)
+	for time.Now().Before(end) {
+		if info, _ := findSessionByID(d, id); info.State != wire.StateError {
+			t.Fatalf("error did not stand: state %q (src %q)", info.State, info.StateSource)
+		}
+		time.Sleep(250 * time.Millisecond)
+	}
+	_, _ = sess.Write([]byte("/exit\r"))
+}
