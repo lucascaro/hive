@@ -4,7 +4,8 @@ title: "Hide minimized sessions from the sidebar"
 type: bug
 complexity: S
 priority: P2
-stage: IMPLEMENT
+pr: 408
+stage: REVIEW
 ---
 
 # Hide minimized sessions from the sidebar

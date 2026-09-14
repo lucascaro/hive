@@ -2,6 +2,8 @@
 
 - **Spec:** [docs/product-specs/407-hide-minimized-sessions-from-the-sidebar.md](../../product-specs/407-hide-minimized-sessions-from-the-sidebar.md)
 - **Issue:** #407
+- **PR:** #408
+- **Branch:** feature/407-hide-minimized-sessions-from-the-sidebar
 - **Status:** active
 
 ## Summary
