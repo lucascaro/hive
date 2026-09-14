@@ -140,19 +140,39 @@ export function readTheme(storage?: Storage): ThemeName {
   }
 }
 
-// `pair` defaults to the stored one. Settings passes its in-memory pair
-// instead — from selectHalf, so a store that refused the write still
-// repaints, and from selectPreset, so coming back to 'system' repaints
-// the same way rather than from whatever the store kept.
+// The pair applyTheme was last handed. A half picked under a store that
+// refuses writes is applied for the session but never lands in storage;
+// the OS-change listener (initThemeWatch) re-applies 'system' with no
+// pair of its own, and without this it would read the store the write
+// never reached and snap back to the defaults. Null until Settings has
+// passed a pair, so boot still reads the store.
+let livePair: SystemPair | null = null;
+
+// What 'system' resolves through right now: the last pair applied this
+// session, else the stored one. Settings opens its pickers on this, so
+// they show what is painted rather than what the store kept.
+export function currentPair(): SystemPair {
+  return livePair ?? readPair();
+}
+
+// Settings passes its in-memory pair — from selectHalf, so a store that
+// refused the write still repaints, and from selectPreset, so coming
+// back to 'system' repaints the same way. Every other caller (boot, the
+// OS-change listener) omits it and gets currentPair().
 export function applyTheme(
   name: ThemeName,
   doc: Document = document,
-  pair: SystemPair = readPair(),
+  pair?: SystemPair,
 ): void {
+  if (pair) livePair = pair;
   const prefersDark =
     doc.defaultView?.matchMedia?.('(prefers-color-scheme: dark)').matches ??
     true;
-  doc.documentElement.dataset.theme = resolveTheme(name, prefersDark, pair);
+  doc.documentElement.dataset.theme = resolveTheme(
+    name,
+    prefersDark,
+    pair ?? currentPair(),
+  );
 }
 
 // The sixteen ANSI slots, in the order the tokens are numbered, mapped

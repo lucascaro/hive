@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import {
   readTheme,
   applyTheme,
@@ -326,5 +326,59 @@ describe('applyTheme reads the stored pair', () => {
     localStorage.setItem(THEME_LIGHT_KEY, 'github-light');
     applyTheme('system');
     expect(document.documentElement.dataset.theme).toBe('github-light');
+  });
+});
+
+// A half picked under a store that refuses writes is applied for the
+// session but never lands in storage. The OS-change listener re-applies
+// 'system' with no pair of its own, so it must get the pair applyTheme
+// was LAST HANDED — not a fresh read of the store the write never
+// reached. Module-level memory, so each test takes a fresh module.
+describe('the last applied pair outlives the store', () => {
+  const mq = (dark: boolean) =>
+    ((query: string) => ({
+      matches: dark === (query === '(prefers-color-scheme: dark)'),
+      media: query,
+      onchange: null,
+      addListener: () => {},
+      removeListener: () => {},
+      addEventListener: () => {},
+      removeEventListener: () => {},
+      dispatchEvent: () => true,
+    })) as any;
+  let originalMatchMedia: any;
+  beforeEach(() => {
+    originalMatchMedia = window.matchMedia;
+    localStorage.clear();
+    vi.resetModules();
+  });
+  afterEach(() => {
+    window.matchMedia = originalMatchMedia;
+    localStorage.clear();
+  });
+  const fresh = () => import('../../src/theme/theme');
+
+  it('a later apply without a pair reuses the pair it was last handed', async () => {
+    const t = await fresh();
+    window.matchMedia = mq(true);
+    t.applyTheme('system', document, { dark: 'nord', light: 'github-light' });
+    expect(document.documentElement.dataset.theme).toBe('nord');
+    // The OS flips; storage still holds nothing.
+    window.matchMedia = mq(false);
+    t.applyTheme('system');
+    expect(document.documentElement.dataset.theme).toBe('github-light');
+  });
+
+  it('currentPair falls back to storage before any pair is applied', async () => {
+    const t = await fresh();
+    localStorage.setItem(t.THEME_DARK_KEY, 'dracula');
+    expect(t.currentPair()).toEqual({ dark: 'dracula', light: 'hive-light' });
+  });
+
+  it('currentPair prefers the last applied pair over storage', async () => {
+    const t = await fresh();
+    localStorage.setItem(t.THEME_DARK_KEY, 'dracula');
+    t.applyTheme('system', document, { dark: 'nord', light: 'github-light' });
+    expect(t.currentPair()).toEqual({ dark: 'nord', light: 'github-light' });
   });
 });
