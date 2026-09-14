@@ -1,1 +1,6 @@
+# Normalize text files to LF in the repo and in every working tree,
+# regardless of a contributor's core.autocrlf. Binary files are
+# auto-detected and left alone.
+* text=auto eol=lf
+
 graphify-out/graph.json merge=graphify
