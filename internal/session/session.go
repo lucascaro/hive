@@ -228,11 +228,11 @@ func Start(opts Options) (*Session, error) {
 // agent printed, which is precisely the part a user reads off the tile.
 //
 // It costs nothing on the path where the PTY already reports EOF
-// (every Unix exit): reapChild waits on s.done, which readLoop has
-// closed by then, and returns immediately without ever arming the
-// grace. A var rather than a const, like titleThrottle, so a test can
-// shrink it — production never assigns it.
-var exitDrainGrace = 250 * time.Millisecond
+// (macOS): reapChild waits on s.done, which readLoop has closed by
+// then, and returns immediately without ever arming the grace. On
+// Linux go-pty keeps the slave open in the parent, so EOF never
+// arrives and the grace always runs.
+const exitDrainGrace = 250 * time.Millisecond
 
 // reapChild waits for the process on the PTY to exit and then makes
 // sure the PTY follows it, so Done() closes on every platform.
