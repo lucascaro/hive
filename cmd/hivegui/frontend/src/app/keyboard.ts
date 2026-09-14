@@ -1003,9 +1003,10 @@ export function moveActiveSession(delta: number, reorder: boolean) {
   // you put them away, so the arrows must not walk you back into them —
   // in a grid view landing on one has no tile and drops you to single.
   // The walk is over the full ordered list, not a filtered one, because
-  // orderedSessions() is shared with the sidebar, tray, palette and
-  // ⌘1-9, all of which still list everything — and all of which now see
-  // the same clustered order the sidebar paints.
+  // orderedSessions() is shared with the tray, palette and ⌘1-9, which
+  // still list everything — and all of which see the same clustered order
+  // the sidebar paints. The sidebar itself drops minimized rows (#407), so
+  // every row it shows besides the active one is a stop on this walk.
   // Math.sign: the walk visits every slot for any delta, not only ±1.
   const step = Math.sign(delta) || 1;
   for (let i = 1; i < n; i++) {

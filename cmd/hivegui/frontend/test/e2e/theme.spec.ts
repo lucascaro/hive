@@ -58,7 +58,8 @@ async function seedWorktrees(page: Page) {
 }
 
 // Shared scene for the sidebar pixel baselines: two projects, three
-// sessions, one minimized, one with attention. Used by the classic guard
+// sessions, one minimized (so its row is gone from the sidebar, #407, and
+// the session tray is showing), one with attention. Used by the classic guard
 // (Phase 1) and the hive-dark/hive-light baselines (Phase 3) alike, so all
 // three screenshots show the same layout.
 async function seedSidebar(page: Page) {

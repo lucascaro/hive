@@ -40,3 +40,5 @@ Users can **minimize** a session: it stays alive (process keeps running, output 
 ## Notes
 
 GitHub issue: https://github.com/lucascaro/hive/issues/202
+
+Amended by [#407](407-hide-minimized-sessions-from-the-sidebar.md): a minimized session no longer has a sidebar row to click through (unless it is the active session). Single-session mode still focuses one through the tray or ⌘K.

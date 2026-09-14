@@ -71,5 +71,10 @@ Supersedes part of [#250](250-minimize-projects-from-sidebar.md), whose success
 criteria listed `⌘[ / ⌘]` among the ways a minimized project stays reachable.
 That criterion is amended by this spec.
 
+The sidebar half of the second non-goal is amended by
+[#407](407-hide-minimized-sessions-from-the-sidebar.md): a minimized session no
+longer keeps a sidebar row (unless it is the active session), so the sidebar
+lists what `⌘↑` / `⌘↓` can reach. The tray and `⌘K` still list it.
+
 The fix reuses `isSessionHidden()` in `cmd/hivegui/frontend/src/app/view.ts`,
 which already answers "is this session out of the grid, by either mechanism?".
