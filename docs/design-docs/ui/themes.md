@@ -15,6 +15,10 @@ Shipped in `src/theme/themes.css` as `:root[data-theme="<name>"] { … }` blocks
 | `terminal` | Option C | Monochrome, all `--font-mono`, radius 0, `--accent == --state-attention`; `--fg-subtle` raised to `#6f6f6f` (mock's `#5c5c5c` is 2.96:1). ANSI is near-monochrome but keeps a desaturated red at 1/9: program output that says "error" in colour must still read as error |
 | `classic` | v2.4.0 values | Pure black, amber everywhere, system font. Exists so migration step 1 is visually a no-op and so users who liked it keep it |
 
+### The `system` selection
+
+`system` is a selection, not a preset: it never reaches `data-theme`. It resolves to a **pair** of presets, one per OS scheme, stored in `localStorage['hive.theme.dark']` and `localStorage['hive.theme.light']` (defaults `hive-dark` / `hive-light`, so an install that never touched them looks as it always did). Settings → Appearance shows the two pickers only while System is selected. Each half validates on its own — a garbage dark key falls back alone — and `system` is not a valid half, since it would resolve back into the pair. `readPair()` in `theme.ts` owns this; `index.html`'s pre-paint script reads the same two keys so the first paint already lands on the pair, and the OS-change listener (`initThemeWatch`) re-resolves through it.
+
 ### Community presets
 
 Ports of the palettes people arrive with from other editors, added in spec 305. They live in the same file under a `Community` heading and follow every structural rule above — every token re-valued, all sixteen ANSI slots, no per-preset type/space/motion scales.
