@@ -896,6 +896,19 @@ describe('system theme pair pickers', () => {
     expect(localStorage.getItem('hive.theme.dark')).toBeNull();
   });
 
+  // The pickers show what is APPLIED. Under a refusing store that is the
+  // pair applyTheme was last handed, not the defaults the store still
+  // reports — otherwise the chrome says Nord and the picker says Hive Dark.
+  it('opens on the applied pair, not the stored one', async () => {
+    const { applyTheme } = await import('../../src/theme/theme.js');
+    act(() => closeSettings());
+    applyTheme('system', document, { dark: 'nord', light: 'catppuccin-latte' });
+    open();
+    click(el('settings-tab-appearance'));
+    expect(dark().value).toBe('nord');
+    expect(light().value).toBe('catppuccin-latte');
+  });
+
   it('picking the light half stores it without repainting the dark scheme', () => {
     pick(theme(), 'system');
     pick(dark(), 'dracula');

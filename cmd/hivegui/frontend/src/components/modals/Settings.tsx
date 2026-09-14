@@ -58,7 +58,7 @@ import {
   PRESETS,
   readOverrides,
   readTheme,
-  readPair,
+  currentPair,
   THEME_DARK_KEY,
   THEME_LIGHT_KEY,
   type SystemPair,
@@ -144,7 +144,7 @@ function SettingsDialog({ root }: { root: HTMLElement }): ReactNode {
   const [loadFailed, setLoadFailed] = useState(false);
   const [error, setError] = useState('');
   const [theme, setTheme] = useState<ThemeName>(() => readTheme());
-  const [pair, setPair] = useState<SystemPair>(() => readPair());
+  const [pair, setPair] = useState<SystemPair>(() => currentPair());
   const [density, setDensity] = useState<Density>(() => readDensity());
   const [overrides, setOverrides] = useState(() =>
     readOverrides().replace(/\n\s*/g, '\n'),

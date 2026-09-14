@@ -780,6 +780,35 @@ test.describe('Settings > Appearance', () => {
     );
   });
 
+  // A store that refuses writes (a locked-down webview) still gets the
+  // pair for the session — and the OS flip that follows must not snap
+  // back to the defaults the store still reports.
+  test('a session-only pair survives an OS scheme change', async ({ page }) => {
+    await page.emulateMedia({ colorScheme: 'dark' });
+    await page.addInitScript(() => {
+      localStorage.setItem('hive.theme', 'system');
+      // Refuse every write from here on; reads still work.
+      Storage.prototype.setItem = () => {
+        throw new Error('denied');
+      };
+    });
+    await openAppearance(page);
+    await page.locator('#settings-theme-dark').selectOption('nord');
+    await page.locator('#settings-theme-light').selectOption('github-light');
+    await expect(page.locator('html')).toHaveAttribute('data-theme', 'nord');
+    expect(
+      await page.evaluate(() => localStorage.getItem('hive.theme.dark')),
+    ).toBeNull();
+
+    await page.emulateMedia({ colorScheme: 'light' });
+    await expect(page.locator('html')).toHaveAttribute(
+      'data-theme',
+      'github-light',
+    );
+    await page.emulateMedia({ colorScheme: 'dark' });
+    await expect(page.locator('html')).toHaveAttribute('data-theme', 'nord');
+  });
+
   // The mirror image: an explicit preset is a decision the OS does not
   // get to override.
   test('an explicit preset ignores an OS scheme change', async ({ page }) => {
