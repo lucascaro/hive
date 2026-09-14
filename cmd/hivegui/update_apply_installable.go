@@ -24,6 +24,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"time"
 )
@@ -130,8 +131,73 @@ func sha256File(path string) (string, error) {
 	return hex.EncodeToString(h.Sum(nil)), nil
 }
 
+// preflightCheckout is every refusal stageLatest can make before git
+// moves anything or the build starts, in the order they are cheapest
+// to explain. A build is minutes long, and a failure the updater could
+// have predicted from the start should not cost the user those minutes
+// with the button stuck on "Updating…" — nor should it surface as raw
+// git stderr with the command line pasted in front of it.
+//
+// A dirty tree is refused first: `git pull` on top of uncommitted work
+// is how you lose it, and this button is meant to be safe to press
+// without thinking. A detached HEAD has no upstream to fast-forward
+// from. The remote is pinned before anything is pulled and executed.
+// And a branch that has wandered off its upstream cannot fast-forward
+// at all, which git reports only after the fetch, in its own words.
+func preflightCheckout(repo string) error {
+	dirty, err := runGitFn(repo, "status", "--porcelain")
+	if err != nil {
+		return err
+	}
+	if strings.TrimSpace(dirty) != "" {
+		return fmt.Errorf("%s has uncommitted changes — commit or stash them first", repo)
+	}
+	branch, err := runGitFn(repo, "symbolic-ref", "--quiet", "--short", "HEAD")
+	if err != nil {
+		return fmt.Errorf("%s has a detached HEAD — check out a branch first", repo)
+	}
+	upstream, err := verifyUpstreamRemote(repo)
+	if err != nil {
+		return err
+	}
+	return verifyFastForwardable(repo, branch, upstream)
+}
+
+// verifyFastForwardable refuses a branch carrying commits its upstream
+// does not have. `git pull --ff-only` would refuse too, but only after
+// the fetch and with "Not possible to fast-forward, aborting." — which
+// names neither the branch nor the way out.
+//
+// The common way in is an integration or feature branch left checked
+// out with its upstream still set to main: the periodic check sees
+// upstream commits the running build lacks and offers an update the
+// pull can never apply. The fix is always the same — go back to the
+// tracked branch — so the message says so.
+func verifyFastForwardable(repo, branch, upstream string) error {
+	out, err := runGitFn(repo, "rev-list", "--count", upstream+"..HEAD")
+	if err != nil {
+		return err
+	}
+	ahead, err := strconv.Atoi(out)
+	if err != nil {
+		return fmt.Errorf("cannot count local commits on %q: git rev-list said %q", branch, out)
+	}
+	if ahead == 0 {
+		return nil
+	}
+	_, tracked, _ := strings.Cut(upstream, "/")
+	noun := "commits"
+	if ahead == 1 {
+		noun = "commit"
+	}
+	return fmt.Errorf("%s is on branch %q, which has %d local %s that %s does not — the updater only fast-forwards. "+
+		"Check out the branch it tracks (git checkout %s) and update again; anything worth keeping from %q needs to land upstream first",
+		repo, branch, ahead, noun, upstream, tracked, branch)
+}
+
 // verifyUpstreamRemote refuses a checkout whose tracked branch does not
-// come from this project's own repository.
+// come from this project's own repository, and returns that tracked
+// branch (remote/name) for the checks that follow.
 //
 // The remote URL is matched on host and path whole (see
 // remoteIsUpstream), so both SSH (git@github.com:lucascaro/hive.git)
@@ -139,23 +205,23 @@ func sha256File(path string) (string, error) {
 // while a host that merely contains "github.com" does not. A fork
 // would be rejected — that is the intended trade: this button pulls
 // and *executes*, so "close enough" is not the bar.
-func verifyUpstreamRemote(repo string) error {
+func verifyUpstreamRemote(repo string) (string, error) {
 	upstream, err := runGitFn(repo, "rev-parse", "--abbrev-ref", "--symbolic-full-name", "@{upstream}")
 	if err != nil {
-		return fmt.Errorf("%s has no upstream branch to pull from", repo)
+		return "", fmt.Errorf("%s has no upstream branch to pull from", repo)
 	}
 	remote, _, found := strings.Cut(upstream, "/")
 	if !found || remote == "" {
-		return fmt.Errorf("cannot tell which remote %q tracks", upstream)
+		return "", fmt.Errorf("cannot tell which remote %q tracks", upstream)
 	}
 	remoteURL, err := runGitFn(repo, "remote", "get-url", remote)
 	if err != nil {
-		return err
+		return "", err
 	}
 	if !remoteIsUpstream(remoteURL) {
-		return fmt.Errorf("refusing to build from %s: remote %q is %s, not %s", repo, remote, remoteURL, updateRepo)
+		return "", fmt.Errorf("refusing to build from %s: remote %q is %s, not %s", repo, remote, remoteURL, updateRepo)
 	}
-	return nil
+	return upstream, nil
 }
 
 // plainProgressLine reduces one line of build output to what a terminal
