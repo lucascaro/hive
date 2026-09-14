@@ -342,6 +342,11 @@ export function wireDaemonEvents(injected: EventsDeps) {
   // a background tile), so it is left to the two paths that are always
   // unambiguous.
   window.addEventListener('focus', () => {
+    try {
+      LogFrontend('window focus');
+    } catch {
+      /* bridge absent in tests */
+    }
     deps.refocusActiveTerm();
   });
 
@@ -357,6 +362,11 @@ export function wireDaemonEvents(injected: EventsDeps) {
       cmd = JSON.parse(jsonStr);
     } catch {
       return;
+    }
+    try {
+      LogFrontend(`client:command ${cmd.cmd} ${cmd.session_id}`);
+    } catch {
+      /* bridge absent in tests */
     }
     if (cmd.cmd === 'focus_session' && cmd.session_id) {
       // Only if we still have it: the menu bar's list can be a moment
@@ -818,6 +828,11 @@ export function wireDaemonEvents(injected: EventsDeps) {
   // current view (single keeps single, grid keeps grid) without toggling
   // modes. switchTo handles the view-aware repaint.
   EventsOn('bell-click', (sessionId: string) => {
+    try {
+      LogFrontend(`bell-click tag=${sessionId}`);
+    } catch {
+      /* bridge absent in tests */
+    }
     if (!sessionId) return;
     const info = appData().sessions.find((s) => s.id === sessionId);
     if (!info) return;

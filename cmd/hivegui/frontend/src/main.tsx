@@ -513,6 +513,18 @@ flushSync(() => createRoot(mustEl('react-root')).render(<App />));
     }
   })();
   try {
+    // Distinguishes a fresh process launch from a page reload (Wails
+    // reload_gui, or WebKit recovering from a renderer crash) — both look
+    // identical from here on, but only one of them means a whole new
+    // hivegui process just started.
+    const navEntry = performance.getEntriesByType('navigation')[0] as
+      | PerformanceNavigationTiming
+      | undefined;
+    LogFrontend(`boot: nav=${navEntry?.type ?? 'unknown'}`);
+  } catch {
+    /* ignore */
+  }
+  try {
     LogFrontend('boot: connecting control');
   } catch {
     /* ignore */

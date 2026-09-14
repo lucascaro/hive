@@ -48,6 +48,7 @@ vi.mock('../../src/bridge.js', () => {
     RestartDaemon: fn(),
     CheckForUpdate: fn(),
     SetClipboardText: fn(),
+    LogFrontend: vi.fn(),
     EventsOn: vi.fn(),
     WindowSetTitle: vi.fn(),
     ClipboardGetText: fn(),

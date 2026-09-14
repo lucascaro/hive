@@ -183,7 +183,19 @@ func (a *App) startup(ctx context.Context) {
 	a.startUpdateCheckLoop(ctx)
 }
 
+// beforeClose logs that a quit reached Wails' close path (menu Quit,
+// Cmd+Q, dock "Quit", OS session logout) before anything else runs.
+// Always returns false so the close proceeds unchanged on every
+// platform — see Quit() in the darwin/windows/linux frontends, which
+// all treat false as "let it close" and true as "veto it". This is a
+// diagnostic tap, not a confirmation dialog.
+func (a *App) beforeClose(ctx context.Context) bool {
+	log.Printf("hivegui: quit requested (OnBeforeClose)")
+	return false
+}
+
 func (a *App) shutdown(ctx context.Context) {
+	log.Printf("hivegui: shutdown")
 	a.saveGeometry()
 	a.mu.Lock()
 	defer a.mu.Unlock()

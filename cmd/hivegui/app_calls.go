@@ -435,6 +435,7 @@ func (a *App) OpenNewWindow() error {
 // window naturally ends Hive — no explicit "quit app" plumbing
 // needed.
 func (a *App) CloseWindow() {
+	log.Printf("hivegui: CloseWindow requested by frontend")
 	wruntime.Quit(a.ctx)
 }
 
