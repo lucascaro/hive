@@ -236,6 +236,33 @@ describe('settings modal', () => {
     expect(el('settings').classList.contains('hidden')).toBe(true);
   });
 
+  it('keeps the command as typed, trailing space included, and splits it on save', async () => {
+    open();
+    await flush();
+
+    click(el('settings-agent-add'));
+    const cmd = cell(rows()[0], '.settings-agent-cmd');
+    type(cell(rows()[0], '.settings-agent-name'), 'Spaced');
+    type(cmd, 'claude ');
+    expect(cell(rows()[0], '.settings-agent-cmd').value).toBe('claude ');
+    // No macOS text substitution (`--` into an em dash) in a command.
+    expect(cmd.getAttribute('autocorrect')).toBe('off');
+    expect(cmd.getAttribute('spellcheck')).toBe('false');
+
+    type(cell(rows()[0], '.settings-agent-cmd'), 'claude  --model  haiku ');
+    click(el('settings-save'));
+    await flush();
+
+    expect(saveCustomAgents).toHaveBeenCalledWith([
+      {
+        id: '',
+        name: 'Spaced',
+        cmd: ['claude', '--model', 'haiku'],
+        color: '#64748b',
+      },
+    ]);
+  });
+
   // The whole reason ids are assigned once in Go: registry entries
   // persist only the agent id, so recomputing it on rename would break
   // revive for every session already created with this agent.

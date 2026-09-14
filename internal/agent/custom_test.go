@@ -63,6 +63,30 @@ func TestLoadCustomAgents(t *testing.T) {
 	}
 }
 
+// A custom agent that runs claude or pi must get that agent's hook
+// wiring, or its sessions never report errors, waits or finished turns.
+func TestCustomAgentInheritsBuiltinSpawnArgs(t *testing.T) {
+	writeCustom(t, `[
+	  {"name": "Claude Haiku", "id": "claude-haiku", "cmd": ["claude", "--model", "haiku"]},
+	  {"name": "Pi Abs", "id": "pi-abs", "cmd": ["/usr/local/bin/pi", "-c"]},
+	  {"name": "Claude Win", "id": "claude-win", "cmd": ["claude.cmd"]},
+	  {"name": "Wrapper", "id": "wrapper", "cmd": ["claude-lite"]},
+	  {"name": "Other", "id": "other", "cmd": ["aider"]}
+	]`)
+	for id, want := range map[ID]bool{
+		"claude-haiku": true, "pi-abs": true, "claude-win": true,
+		"wrapper": false, "other": false,
+	} {
+		d, ok := Get(id)
+		if !ok {
+			t.Fatalf("Get(%s) not found", id)
+		}
+		if got := d.SpawnArgs != nil; got != want {
+			t.Errorf("%s: has SpawnArgs = %v, want %v", id, got, want)
+		}
+	}
+}
+
 func TestCustomAgentMalformedFileFallsBackToBuiltins(t *testing.T) {
 	writeCustom(t, `[{"id": "broken",,,}`)
 
