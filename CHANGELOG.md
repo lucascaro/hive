@@ -124,6 +124,15 @@ renamed yourself keeps its name. The colour bar belongs to the panel — the
 whole group shares one colour — while the colour picker stays on each row.
 
 ### Fixed
+A Claude or Pi session that finishes its turn now shows "Waiting for you" and pulses
+in the sidebar, instead of dropping quietly to idle — the agent is done and ready for
+you whether or not it asked a question. Switching to the session or typing into it
+clears it, the same as any other wait.
+
+A failed turn now stays visible too. A Claude API failure used to flip to error and
+then fade back to idle the next time the screen redrew, and Pi never reported its
+failures at all. Both now show the error glyph, raise a notification, and keep it
+until you look.
 `Ctrl+Shift+V` pastes once instead of twice. The terminal read the clipboard and
 wrote it to the session itself, but never cancelled the keypress, so the webview
 also ran its own paste on top — the same text arrived twice on every use. The
@@ -194,6 +203,16 @@ branches, `claude --version`, the daemon probe — was handed a console window o
 its own by Windows. It arrived in bursts: a stray popup on every poll, and a
 volley when checking for an update. Child processes are now created with no
 console window, so the work happens where it always should have, out of sight.
+Sessions on Windows now notice when their process exits. When an agent finished,
+a user typed `exit`, or a tool crashed, the tile stayed alive forever: nothing in
+Hive waited on the child, and the session only ever learned about an exit from a
+PTY read error — which never came, because conhost keeps the ConPTY output pipe
+open until Hive closes the pseudoconsole. The read stayed parked for minutes, so
+the session never went to `exited`, its post-spawn session-id capture kept
+polling, and the reader goroutine, its OS thread, the conhost process and the
+pseudoconsole all leaked for the life of the daemon. Hive now waits on the
+process itself and releases the PTY once the child is gone, after a short grace
+period so the last thing the agent printed still lands on the tile.
 
 ## [2.7.0] — 2026-09-07
 

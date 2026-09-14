@@ -208,3 +208,51 @@ func TestSessionResize(t *testing.T) {
 		t.Fatalf("expected 50 132 from stty; got %q", sink.String())
 	}
 }
+
+// TestSessionDoneClosesWhenChildExits pins the exit contract the whole
+// daemon is built on: when the process running on the PTY exits, Done()
+// closes on its own, with nobody calling Close() first. Everything
+// downstream keys off it — the registry's watchSessionExit blocks on
+// Done() to flip the tile to exited, cancel the AgentSessionID capture
+// and release the entry.
+//
+// It is deliberately not skipped on Windows: the ConPTY output pipe
+// stays open after the child exits (conhost holds it until
+// ClosePseudoConsole), so a session that only ever noticed the exit via
+// a PTY read error never noticed it at all there.
+//
+// The output assertion is part of the contract, not a bonus: whatever
+// tears the PTY down on exit must not do it so eagerly that the child's
+// last bytes are dropped before readLoop can mirror them.
+func TestSessionDoneClosesWhenChildExits(t *testing.T) {
+	opts := Options{Cmd: []string{"echo", "hive_exit_probe"}, Cols: 80, Rows: 24}
+	if runtime.GOOS != "windows" {
+		opts.Shell = "/bin/bash"
+	}
+	sess, err := Start(opts)
+	if err != nil {
+		t.Fatalf("Start: %v", err)
+	}
+	// Close() is exactly what masks this bug, so it may only run as
+	// cleanup — after the assertion below has had its say.
+	t.Cleanup(func() { _ = sess.Close() })
+
+	sink := &bufSinkMu{}
+	unsub, err := sess.SubscribeWithAtomicReplay(sink, func(replay []byte) error {
+		_, err := sink.Write(replay)
+		return err
+	})
+	if err != nil {
+		t.Fatalf("SubscribeWithAtomicReplay: %v", err)
+	}
+	defer unsub()
+
+	select {
+	case <-sess.Done():
+	case <-time.After(10 * time.Second):
+		t.Fatalf("Done() never closed after the child exited (session leaked: readLoop, its OS thread and the PTY stay parked for the life of the daemon)")
+	}
+	if !strings.Contains(sink.String(), "hive_exit_probe") {
+		t.Fatalf("child output lost during exit teardown; got %q", sink.String())
+	}
+}

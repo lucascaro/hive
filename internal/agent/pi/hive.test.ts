@@ -102,6 +102,7 @@ test("under Hive: subscribes to exactly the reported events", () => {
     const pi = fakePi();
     mod.default(pi as never);
     assert.deepEqual(pi.events.sort(), [
+      "agent_end",
       "agent_settled",
       "agent_start",
       "input",
@@ -150,7 +151,70 @@ test("lastAssistantText takes the newest assistant text, tolerating junk", () =>
 // there. Everything else in this file is platform-neutral.
 const unixOnly = process.platform === "win32" ? { skip: "unix sockets only" } : {};
 
-test("ui_prompt_end reports turn_end outside a turn, not permission_resolved", unixOnly, async () => {
+test("runEnd classifies a run by its final assistant message", () => {
+  const ok = { role: "assistant", stopReason: "stop" };
+  const failed = { role: "assistant", stopReason: "error", errorMessage: "429 rate limited" };
+  const aborted = { role: "assistant", stopReason: "aborted" };
+  const done = { kind: "done", text: "" };
+  assert.deepEqual(mod.runEnd([ok, failed]), { kind: "error", text: "429 rate limited" });
+  assert.deepEqual(mod.runEnd([failed, { role: "user" }]), { kind: "error", text: "429 rate limited" });
+  // A retry that succeeded supersedes the earlier failure.
+  assert.deepEqual(mod.runEnd([failed, ok]), done);
+  assert.deepEqual(mod.runEnd([ok, aborted]), { kind: "aborted", text: "" });
+  assert.deepEqual(mod.runEnd([{ role: "assistant", stopReason: "error" }]), { kind: "error", text: "error" });
+  assert.deepEqual(mod.runEnd(undefined), done);
+});
+
+test("agent_settled after an Esc abort reports idle, not a finished turn", unixOnly, async () => {
+  const events = await collectFrames(async (sock) => {
+    await new Promise<void>((resolve) => {
+      withEnv({ HIVE_SESSION_ID: "s1", HIVE_SOCKET: sock }, () => {
+        const pi = handlerPi();
+        mod.default(pi as never);
+        const ctx = { sessionManager: { getBranch: () => [] } };
+        pi.handlers.get("agent_start")!({}, ctx);
+        pi.handlers.get("agent_end")!({ messages: [{ role: "assistant", stopReason: "aborted" }] }, ctx);
+        pi.handlers.get("agent_settled")!({}, ctx);
+        setTimeout(resolve, 300);
+      });
+    });
+  }, 2);
+
+  assert.deepEqual(events.map((e) => e.kind), ["permission_resolved", "idle"]);
+});
+
+test("agent_settled reports a failed run as error, and a retried one as turn_end", unixOnly, async () => {
+  const failed = { messages: [{ role: "assistant", stopReason: "error", errorMessage: "overloaded" }] };
+  const ok = { messages: [{ role: "assistant", stopReason: "stop" }] };
+  const events = await collectFrames(async (sock) => {
+    await new Promise<void>((resolve) => {
+      withEnv({ HIVE_SESSION_ID: "s1", HIVE_SOCKET: sock }, () => {
+        const pi = handlerPi();
+        mod.default(pi as never);
+        const ctx = { sessionManager: { getBranch: () => [] } };
+        // A run that fails and settles.
+        pi.handlers.get("agent_start")!({}, ctx);
+        pi.handlers.get("agent_end")!(failed, ctx);
+        pi.handlers.get("agent_settled")!({}, ctx);
+        // A run that fails, is retried, and succeeds.
+        setTimeout(() => {
+          pi.handlers.get("agent_start")!({}, ctx);
+          pi.handlers.get("agent_end")!(failed, ctx);
+          pi.handlers.get("agent_start")!({}, ctx);
+          pi.handlers.get("agent_end")!(ok, ctx);
+          pi.handlers.get("agent_settled")!({}, ctx);
+          setTimeout(resolve, 300);
+        }, 100);
+      });
+    });
+  }, 5);
+
+  const kinds = events.map((e) => e.kind).filter((k) => k !== "permission_resolved");
+  assert.deepEqual(kinds, ["error", "turn_end"]);
+  assert.equal(events.find((e) => e.kind === "error")?.text, "overloaded");
+});
+
+test("ui_prompt_end reports idle outside a turn, not permission_resolved", unixOnly, async () => {
   // Reporting permission_resolved here would leave the session showing
   // "working" with no agent_settled coming to clear it — only the 30 s
   // staleness timer, and only while PTY bytes keep arriving.
@@ -166,7 +230,7 @@ test("ui_prompt_end reports turn_end outside a turn, not permission_resolved", u
   }, 1);
 
   assert.equal(events.length, 1);
-  assert.equal(events[0].kind, "turn_end");
+  assert.equal(events[0].kind, "idle");
   assert.equal(events[0].source, "extension");
 });
 
@@ -202,11 +266,11 @@ test("session_shutdown reports session_end only for quit", unixOnly, async () =>
   // session at "exited" with no recovery path.
   for (const [reason, want] of [
     ["quit", "session_end"],
-    ["new", "turn_end"],
-    ["resume", "turn_end"],
-    ["fork", "turn_end"],
-    ["reload", "turn_end"],
-    [undefined, "turn_end"],
+    ["new", "idle"],
+    ["resume", "idle"],
+    ["fork", "idle"],
+    ["reload", "idle"],
+    [undefined, "idle"],
   ] as Array<[string | undefined, string]>) {
     const events = await collectFrames(async (sock) => {
       await new Promise<void>((resolve) => {
@@ -220,7 +284,7 @@ test("session_shutdown reports session_end only for quit", unixOnly, async () =>
     }, 1);
     assert.equal(events.length, 1, `reason=${reason}`);
     assert.equal(events[0].kind, want, `reason=${reason}`);
-    if (want === "turn_end") {
+    if (want === "idle") {
       assert.ok(!events[0].text, `reason=${reason}: stale summary carried over`);
     }
   }

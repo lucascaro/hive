@@ -214,8 +214,12 @@ func (e *Entry) stateSnapshot() agentstate.Snapshot {
 // session came to sit lit up forever while the GUI thought it had
 // cleared it, and how a bell could look six seconds late: whichever
 // copy you read, another one disagreed. There is now one.
+//
+// An agent-reported error counts: a turn that died is as much "come
+// look" as a question, and without the flag it raised no pulse and no
+// notification.
 func needsAttention(state string) bool {
-	return state == wire.StateWaitingInput || state == wire.StateWaitingPermission
+	return state == wire.StateWaitingInput || state == wire.StateWaitingPermission || state == wire.StateError
 }
 
 // Alive reports whether this entry has a live session attached.

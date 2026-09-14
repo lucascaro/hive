@@ -65,7 +65,8 @@
    would win over [data-selected]'s --sel and a selected row would stop
    reading as selected for as long as it wanted attention. The overlay
    composites ON TOP of whichever ground the row has. */
-.hv-session-row[data-state='attention']::after {
+.hv-session-row[data-state='attention']::after,
+.hv-session-row[data-state='failed']::after {
   content: '';
   position: absolute;
   inset: 0;
@@ -78,7 +79,8 @@
    screen at once — so this alpha stays below --sel, or a selected row
    stops reading as selected. test/e2e/theme.spec.ts asserts the ordering. */
 @media (prefers-reduced-motion: reduce) {
-  .hv-session-row[data-state='attention']::after {
+  .hv-session-row[data-state='attention']::after,
+  .hv-session-row[data-state='failed']::after {
     animation: none;
     opacity: 1;
     background-color: color-mix(in srgb, var(--state-attention) 9%, transparent);
@@ -134,7 +136,11 @@
   line-height: 1.4;
 }
 
-.hv-session-row[data-state='attention'] .hv-session-row__name {
+/* Failed (a live session whose agent reported a failed turn) wants the user
+   exactly as a wait does, so it takes the attention treatment; the red cross
+   glyph is what says it failed. */
+.hv-session-row[data-state='attention'] .hv-session-row__name,
+.hv-session-row[data-state='failed'] .hv-session-row__name {
   color: var(--state-attention);
   font-weight: 500;
 }
@@ -337,6 +343,9 @@
    element is currently line 1. */
 :root[data-density='compact']
   .hv-session-row[data-state='attention']
+  .hv-session-row__sub,
+:root[data-density='compact']
+  .hv-session-row[data-state='failed']
   .hv-session-row__sub {
   color: var(--state-attention);
   font-weight: 500;

@@ -275,7 +275,9 @@ function fireBellNotification(info: SessionInfo) {
   const body =
     info.state === DAEMON_STATE.waitingPermission
       ? 'Waiting for permission — click to switch.'
-      : 'Waiting for input — click to switch.';
+      : info.state === DAEMON_STATE.error
+        ? 'Stopped on an error — click to switch.'
+        : 'Waiting for input — click to switch.';
   Notify(title, subtitle, body, info.id).catch(() => {
     // Best-effort; the visual sidebar pulse covers the user even if
     // the OS notification fails (no notify-send installed, etc.).
@@ -576,7 +578,7 @@ export function wireDaemonEvents(injected: EventsDeps) {
     if (ev.kind === 'state') {
       if (i >= 0) updateSession(ev.session);
       // needs_attention is derived from state, so a state change can
-      // flip it too (a future hook-tier turn_end, say) — keep the pulse
+      // flip it too (a hook-tier turn_end or error, say) — keep the pulse
       // and the notification edge in sync here as well, not only on the
       // `attention` kind below.
       syncAttentionClass(ev.session);
