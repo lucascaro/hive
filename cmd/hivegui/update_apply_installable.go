@@ -188,7 +188,8 @@ func preflightCheckout(repo string) error {
 // to is the one verifyUpstreamRemote just pinned.
 func verifyFastForwardable(repo, branch, upstream string) error {
 	if _, err := runGitFn(repo, "fetch", "--quiet"); err != nil {
-		return err
+		return fmt.Errorf("%s: couldn't fetch %s to check whether %q can fast-forward — check your network or credentials and update again: %w",
+			repo, upstream, branch, err)
 	}
 	out, err := runGitFn(repo, "rev-list", "--left-right", "--count", upstream+"...HEAD")
 	if err != nil {

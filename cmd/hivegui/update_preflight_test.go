@@ -141,8 +141,15 @@ func TestPreflightCheckoutRefusesWhenFetchFails(t *testing.T) {
 	if err == nil {
 		t.Fatal("preflightCheckout = nil error when the fetch failed, want a refusal")
 	}
-	if !strings.Contains(err.Error(), "unable to access") {
-		t.Errorf("error = %q, want the fetch failure surfaced", err)
+	// In the user's terms, like every other refusal — git's own text
+	// stays attached as the cause, not as the message.
+	for _, want := range []string{"couldn't fetch origin/main", `"main" can fast-forward`, "check your network or credentials", "unable to access"} {
+		if !strings.Contains(err.Error(), want) {
+			t.Errorf("error = %q, want it to contain %q", err, want)
+		}
+	}
+	if strings.HasPrefix(err.Error(), "git ") {
+		t.Errorf("error = %q, want a plain-language refusal, not raw git stderr", err)
 	}
 	if g.ran("rev-list") {
 		t.Error("preflightCheckout counted against a ref it had just failed to refresh")
