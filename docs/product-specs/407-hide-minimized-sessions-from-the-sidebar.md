@@ -31,6 +31,7 @@ The sidebar lists the sessions ⌘↑/⌘↓ can focus. Minimizing a session tak
 - Restoring a minimized session (tray chip, row restore control, ⌘B, back/forward) puts its row back at its original position.
 - A project card's session count and attention summary still include its minimized sessions.
 - Every sidebar row other than the active one is a session ⌘↑/⌘↓ can land on.
+- ⇧⌘↑/⇧⌘↓ move the active session past its next visible neighbour. A press never swaps with a hidden row and nothing on screen stays still, and the hidden session keeps its place in the order.
 
 ## Non-goals
 

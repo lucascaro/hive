@@ -875,21 +875,26 @@ describe('keyboard navigation skips minimized things', () => {
     expect(state.activeId).toBe('s2');
   });
 
-  it('⇧⌘↓ still reorders across a minimized sibling', () => {
-    // The reorder branch sends indices into the daemon's GLOBAL order
-    // space, which counts hidden sessions — filtering them would scatter
-    // sessions. s1b is minimized and must still be a valid slot to move
-    // across. (The emitted move names s1b rather than s1: a reorder now
-    // computes the target order and emits the shortest sequence of daemon
-    // moves that reaches it, so swapping the pair by lifting the sibling is
-    // the same one-move result.)
+  // #407 amends #252 here: a minimized sibling has no sidebar row, so it is
+  // no longer a slot. Swapping with it would move nothing on screen.
+  it('⇧⌘↓ does not swap with a minimized sibling alone', () => {
     store.addSession({ id: 's1b', name: 's1b', project_id: 'p1', order: 1 });
     minimizeSession('s1b');
     state.activeId = 's1';
     reorderActive(+1);
-    expect(vi.mocked(bridge.UpdateSession).mock.calls).toEqual([
-      ['s1b', '', '', 0],
-    ]);
+    expect(vi.mocked(bridge.UpdateSession)).not.toHaveBeenCalled();
+  });
+
+  it('⇧⌘↓ moves past a minimized sibling to the next visible one', () => {
+    // The moves are still computed in the daemon's GLOBAL order space, which
+    // counts the hidden session — so it keeps its place rather than being
+    // scattered — but the visible rows are what change.
+    store.addSession({ id: 's1b', name: 's1b', project_id: 'p1', order: 1 });
+    store.addSession({ id: 's1c', name: 's1c', project_id: 'p1', order: 2 });
+    minimizeSession('s1b');
+    state.activeId = 's1';
+    reorderActive(+1);
+    expect(vi.mocked(bridge.UpdateSession)).toHaveBeenCalled();
   });
 
   it('⌘] skips a minimized project', () => {

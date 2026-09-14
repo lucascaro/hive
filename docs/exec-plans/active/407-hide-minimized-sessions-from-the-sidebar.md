@@ -103,7 +103,12 @@ From `cmd/hivegui/frontend`:
 - **2026-09-13** — An expanded card whose sessions are all minimized and inactive shows its header count over an empty list. Why: follows the spec; the tray lists them.
 - **2026-09-13** — Dropping a dragged row next to a hidden session places it relative to the target row only. Why: drop indexes are computed over the full list (`clusterDropOps`), so daemon order stays consistent; the hidden session keeps its slot.
 - **2026-09-13** — Regenerated only the baselines that render the seeded sidebar (`sidebar-*` ×6, `chrome-classic`). Why: the committed ones already predated the #385 redesign, so they failed on `main` before this change; `settings-classic`, `launcher-*` and `worktrees-*` also fail on `main` for reasons unrelated to #407 and are left untouched.
+- **2026-09-13** — Review iter 1 escalated: ⇧⌘↑/⇧⌘↓ picked its slot over every session, so beside a hidden minimized session it swapped with an invisible row. Operator chose "skip hidden rows": `clusterReorderOps` takes an optional `hidden` set (keyboard.ts passes `isSessionHidden`), chooses the slot among blocks with a painted row, and still computes the moves over the full list so hidden sessions keep their place. Amends #252's reorder criterion. Why: a keypress that changes nothing visible reads as broken.
 - **2026-09-13** — `renderRows` takes the painted rows and computes both groupings itself (painted for panels, full for `worktreeShared`). Why: `ProjectItem` had no other use for the grouping.
+
+## PR convergence ledger
+
+- **2026-09-13 iter 1** — verdict: REQUEST_CHANGES; mergeable: MERGEABLE; findings_hash: 7a89edfd0717898aad653830bee79ecdde9650c15d1c8be9b194768ffa016156; threads_open: 0; action: escalated:risky-fix-needs-human-decision; head_sha: 51ca6c00.
 
 ## Progress
 

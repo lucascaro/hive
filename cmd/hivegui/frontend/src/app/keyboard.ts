@@ -990,10 +990,13 @@ export function moveActiveSession(delta: number, reorder: boolean) {
     // computed up front against a simulated list (lib/worktree-groups.ts),
     // so they must be applied in order — and the sequence stops at the
     // first failure rather than leaving the group scattered.
+    // Hidden sessions are not slots (#407): the sidebar does not paint them,
+    // so swapping with one would look like a dead press.
     const ops = clusterReorderOps(
       appData().sessions,
       appData().activeId,
       delta,
+      { has: isSessionHidden },
     );
     if (ops.length === 0) return;
     void runReorder(ops);

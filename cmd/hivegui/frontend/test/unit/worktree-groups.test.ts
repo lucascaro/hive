@@ -342,6 +342,84 @@ describe('clusterReorderOps', () => {
   });
 });
 
+// #407: a minimized session has no sidebar row, so it is not a slot. A press
+// passes the next VISIBLE neighbour; the hidden session keeps its place in
+// the list and is never lost from it.
+describe('clusterReorderOps with hidden sessions', () => {
+  const visibleAfter = (
+    list: ReturnType<typeof S>[],
+    ops: { id: string; order: number }[],
+    hidden: Set<string>,
+  ) => {
+    const after = replay(list, ops);
+    expect([...after].sort()).toEqual(list.map((s) => s.id).sort());
+    return clusterSessions(
+      after.map((id, i) => ({
+        ...(list.find((s) => s.id === id) as ReturnType<typeof S>),
+        order: i,
+      })),
+    )
+      .map((s) => s.id)
+      .filter((id) => !hidden.has(id));
+  };
+
+  it('moves down past a hidden neighbour to the next visible one', () => {
+    const list = [S('a', 'A', 0), S('b', 'A', 1), S('c', 'A', 2)];
+    const hidden = new Set(['b']);
+    const ops = clusterReorderOps(list, 'a', +1, hidden);
+    expect(ops.length).toBeGreaterThan(0);
+    expect(visibleAfter(list, ops, hidden)).toEqual(['c', 'a']);
+  });
+
+  it('moves up past a hidden neighbour to the next visible one', () => {
+    const list = [S('a', 'A', 0), S('b', 'A', 1), S('c', 'A', 2)];
+    const hidden = new Set(['b']);
+    const ops = clusterReorderOps(list, 'c', -1, hidden);
+    expect(ops.length).toBeGreaterThan(0);
+    expect(visibleAfter(list, ops, hidden)).toEqual(['c', 'a']);
+  });
+
+  it('does nothing when every sibling is hidden', () => {
+    const list = [S('a', 'A', 0), S('b', 'A', 1)];
+    expect(clusterReorderOps(list, 'a', +1, new Set(['b']))).toEqual([]);
+    expect(clusterReorderOps(list, 'a', -1, new Set(['b']))).toEqual([]);
+  });
+
+  it('within a group, passes a visible member over a hidden one', () => {
+    const list = [
+      S('a', 'A', 0, '/wt/x'),
+      S('b', 'A', 1, '/wt/x'),
+      S('c', 'A', 2, '/wt/x'),
+      S('d', 'A', 3),
+    ];
+    const hidden = new Set(['b']);
+    const ops = clusterReorderOps(list, 'a', +1, hidden);
+    expect(ops.length).toBeGreaterThan(0);
+    expect(visibleAfter(list, ops, hidden)).toEqual(['c', 'a', 'd']);
+  });
+
+  it('never treats the active session as hidden', () => {
+    const list = [S('a', 'A', 0), S('b', 'A', 1)];
+    expect(
+      replay(list, clusterReorderOps(list, 'a', +1, new Set(['a']))),
+    ).toEqual(['b', 'a']);
+  });
+
+  it('matches the no-hidden result when the hidden set is empty', () => {
+    const list = [S('a', 'A', 0), S('b', 'A', 1), S('c', 'A', 2)];
+    for (const [id, d] of [
+      ['a', +1],
+      ['c', +1],
+      ['a', -1],
+      ['b', -1],
+    ] as const) {
+      expect(clusterReorderOps(list, id, d, new Set())).toEqual(
+        clusterReorderOps(list, id, d),
+      );
+    }
+  });
+});
+
 // The bug class the contiguous fixtures above cannot see: a session sitting
 // directly beside a group, where the only "slot" between its neighbours is
 // one INSIDE that group. A slot space that enumerates rows resolves there,
