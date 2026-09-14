@@ -70,12 +70,14 @@ func TestCustomAgentInheritsBuiltinSpawnArgs(t *testing.T) {
 	  {"name": "Claude Haiku", "id": "claude-haiku", "cmd": ["claude", "--model", "haiku"]},
 	  {"name": "Pi Abs", "id": "pi-abs", "cmd": ["/usr/local/bin/pi", "-c"]},
 	  {"name": "Claude Win", "id": "claude-win", "cmd": ["claude.cmd"]},
+	  {"name": "Claude Upper", "id": "claude-upper", "cmd": ["Claude.EXE"]},
 	  {"name": "Wrapper", "id": "wrapper", "cmd": ["claude-lite"]},
+	  {"name": "Script", "id": "script", "cmd": ["./claude.sh"]},
 	  {"name": "Other", "id": "other", "cmd": ["aider"]}
 	]`)
 	for id, want := range map[ID]bool{
-		"claude-haiku": true, "pi-abs": true, "claude-win": true,
-		"wrapper": false, "other": false,
+		"claude-haiku": true, "pi-abs": true, "claude-win": true, "claude-upper": true,
+		"wrapper": false, "script": false, "other": false,
 	} {
 		d, ok := Get(id)
 		if !ok {

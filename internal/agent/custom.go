@@ -180,9 +180,14 @@ func validateCustom(list []Custom) ([]Def, []error) {
 // ponytail: name match, not an explicit "based on" field. Add one to
 // agents.json if wrappers need the hooks too.
 func builtinSpawnArgs(exe string) func(SpawnInfo) []string {
-	base := filepath.Base(exe)
-	// claude.cmd / claude.exe on Windows.
-	base = strings.TrimSuffix(base, filepath.Ext(base))
+	// Lowercased: Windows (and macOS's default filesystem) resolve
+	// Claude.EXE and claude.exe to the same binary.
+	base := strings.ToLower(filepath.Base(exe))
+	// Only the Windows launcher suffixes. Any other extension is a
+	// different program — a claude.sh wrapper may not accept the flags.
+	for _, ext := range []string{".exe", ".cmd"} {
+		base = strings.TrimSuffix(base, ext)
+	}
 	switch ID(base) {
 	case IDClaude, IDPi:
 		return defsByID[ID(base)].SpawnArgs
