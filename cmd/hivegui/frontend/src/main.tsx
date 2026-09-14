@@ -520,7 +520,7 @@ flushSync(() => createRoot(mustEl('react-root')).render(<App />));
     const navEntry = performance.getEntriesByType('navigation')[0] as
       | PerformanceNavigationTiming
       | undefined;
-    LogFrontend(`boot: nav=${navEntry?.type ?? 'unknown'}`);
+    LogFrontend(`boot: nav=${navEntry?.type ?? 'unknown'}`)?.catch?.(() => {});
   } catch {
     /* ignore */
   }

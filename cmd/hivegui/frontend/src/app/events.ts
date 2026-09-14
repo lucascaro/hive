@@ -343,7 +343,7 @@ export function wireDaemonEvents(injected: EventsDeps) {
   // unambiguous.
   window.addEventListener('focus', () => {
     try {
-      LogFrontend('window focus');
+      LogFrontend('window focus')?.catch?.(() => {});
     } catch {
       /* bridge absent in tests */
     }
@@ -364,7 +364,9 @@ export function wireDaemonEvents(injected: EventsDeps) {
       return;
     }
     try {
-      LogFrontend(`client:command ${cmd.cmd} ${cmd.session_id}`);
+      LogFrontend(`client:command ${cmd.cmd} ${cmd.session_id}`)?.catch?.(
+        () => {},
+      );
     } catch {
       /* bridge absent in tests */
     }
@@ -829,7 +831,7 @@ export function wireDaemonEvents(injected: EventsDeps) {
   // modes. switchTo handles the view-aware repaint.
   EventsOn('bell-click', (sessionId: string) => {
     try {
-      LogFrontend(`bell-click tag=${sessionId}`);
+      LogFrontend(`bell-click tag=${sessionId}`)?.catch?.(() => {});
     } catch {
       /* bridge absent in tests */
     }
