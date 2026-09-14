@@ -19,6 +19,11 @@ import (
 // from Wails: os/signal delivers a copy to every channel registered for
 // it.
 //
+// Must be called from OnStartup, never earlier: Notify disables Go's
+// default kill-on-signal, and Wails only registers its own handler inside
+// wails.Run. Installing this before that would make a SIGTERM during
+// startup log and then be ignored, leaving the process alive.
+//
 // SIGHUP has no Wails handler, so after logging it is reset to the
 // default disposition and re-raised: the process still dies the way it
 // would have without this hook.

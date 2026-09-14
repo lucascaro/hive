@@ -151,6 +151,9 @@ func NewApp(launchDir string) *App {
 
 func (a *App) startup(ctx context.Context) {
 	a.ctx = ctx
+	// Here, not in main: Wails' own SIGTERM/SIGINT handler is live only
+	// once wails.Run has started. See installSignalDiag.
+	installSignalDiag()
 	// Opt out of macOS App Nap / activity-based timer throttling. Defensive
 	// hygiene so a backgrounded webview keeps streaming PTY output and
 	// repainting — NOT the fix for the reported freeze (that was a synchronous
