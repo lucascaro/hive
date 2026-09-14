@@ -693,7 +693,10 @@ test.describe('Settings > Appearance', () => {
   // recover the FIRST stamp instead. Init scripts run before <html>
   // exists, so the observer watches the document subtree and keeps each
   // mutation's old value: the second record's oldValue is what the first
-  // stamp wrote, and with only one record the live attribute is.
+  // stamp wrote. Two records are REQUIRED, the first from an attribute
+  // that did not exist yet — a lone stamp is theme.ts's, and falling
+  // back to the live attribute would let a boot script that never
+  // stamped pass on it.
   async function recordStamps(page: Page) {
     await page.addInitScript(() => {
       const olds: (string | null)[] = [];
@@ -711,7 +714,11 @@ test.describe('Settings > Appearance', () => {
   function firstStamp(page: Page) {
     return page.evaluate(() => {
       const olds = (window as any).__themeOld as (string | null)[];
-      return olds.length > 1 ? olds[1] : document.documentElement.dataset.theme;
+      if (olds.length < 2 || olds[0] !== null)
+        throw new Error(
+          `expected boot + theme.ts stamps, saw ${JSON.stringify(olds)}`,
+        );
+      return olds[1];
     });
   }
 

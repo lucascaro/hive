@@ -33,7 +33,9 @@ export const DEFAULT_THEME: ThemeName = 'system';
 // keys so each half validates on its own — a garbage dark key must not
 // drag a good light key back to its default. Absent keys give the pair
 // every install had before this was configurable. index.html's pre-paint
-// script reads the same two keys; keep the three in sync.
+// script hard-codes the key names, the defaults and the per-half rule;
+// keep it in sync with THEME_DARK_KEY / THEME_LIGHT_KEY / DEFAULT_PAIR /
+// readHalf.
 export const THEME_DARK_KEY = 'hive.theme.dark';
 export const THEME_LIGHT_KEY = 'hive.theme.light';
 export type StampableTheme = Exclude<ThemeName, 'system'>;
@@ -138,8 +140,10 @@ export function readTheme(storage?: Storage): ThemeName {
   }
 }
 
-// `pair` defaults to the stored one; a caller that has just changed a
-// half passes it in, so a store that refused the write still repaints.
+// `pair` defaults to the stored one. Settings passes its in-memory pair
+// instead — from selectHalf, so a store that refused the write still
+// repaints, and from selectPreset, so coming back to 'system' repaints
+// the same way rather than from whatever the store kept.
 export function applyTheme(
   name: ThemeName,
   doc: Document = document,

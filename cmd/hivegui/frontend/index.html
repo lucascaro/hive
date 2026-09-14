@@ -45,9 +45,12 @@
         var t = localStorage.getItem('hive.theme');
         // DEFAULT_THEME in theme.ts is 'system' — an absent or garbage
         // stored value resolves the same way an explicit 'system' does:
-        // through the user's dark/light pair (readPair in theme.ts), each
-        // half validated on its own and 'system' never a valid half.
-        // Keep the three in sync.
+        // through the user's dark/light pair. Only the half for the
+        // current scheme is read, validated against KNOWN on its own
+        // ('system' is not in KNOWN, so it is never a valid half) and
+        // defaulted. Key names, defaults and that rule are duplicated
+        // from THEME_DARK_KEY / THEME_LIGHT_KEY / DEFAULT_PAIR / readHalf
+        // in theme.ts; keep them in sync.
         if (t === 'system' || KNOWN.indexOf(t) < 0) {
           t = localStorage.getItem(dark ? 'hive.theme.dark' : 'hive.theme.light');
           if (KNOWN.indexOf(t) < 0) t = dark ? 'hive-dark' : 'hive-light';
