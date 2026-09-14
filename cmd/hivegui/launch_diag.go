@@ -12,14 +12,21 @@ import (
 	"github.com/lucascaro/hive/internal/proc"
 )
 
-// logLaunch writes ONE line recording who launched this process and how.
+// logLaunch records who launched this process and how.
 // Called right after setupLogFile so it lands even if everything after it
 // fails to start — the whole point of this diagnostic is to have SOMETHING
 // on disk for the launch that led to the next mystery quit/relaunch.
+//
+// The launch line is synchronous; the parent's command name follows on its
+// own line from a goroutine, because resolving it shells out to `ps` and a
+// stalled ps must not hold up the window (it has a 1s budget).
 func logLaunch() {
-	log.Printf("hivegui: launch pid=%d ppid=%d parent=%q exe=%q args=%q env={%s}",
-		os.Getpid(), os.Getppid(), parentCommand(os.Getppid()), exePath(), os.Args,
-		launchEnvSummary(os.Getenv))
+	ppid := os.Getppid()
+	log.Printf("hivegui: launch pid=%d ppid=%d exe=%q args=%q env={%s}",
+		os.Getpid(), ppid, exePath(), os.Args, launchEnvSummary(os.Getenv))
+	go func() {
+		log.Printf("hivegui: launch parent ppid=%d comm=%q", ppid, parentCommand(ppid))
+	}()
 }
 
 // exePath is best-effort; a failure logs as "" rather than aborting the
