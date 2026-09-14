@@ -238,7 +238,10 @@ func TestSessionDoneClosesWhenChildExits(t *testing.T) {
 	t.Cleanup(func() { _ = sess.Close() })
 
 	sink := &bufSinkMu{}
-	unsub, err := sess.SubscribeWithAtomicReplay(sink, func([]byte) error { return nil })
+	unsub, err := sess.SubscribeWithAtomicReplay(sink, func(replay []byte) error {
+		_, err := sink.Write(replay)
+		return err
+	})
 	if err != nil {
 		t.Fatalf("SubscribeWithAtomicReplay: %v", err)
 	}
