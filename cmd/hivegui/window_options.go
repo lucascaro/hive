@@ -102,8 +102,8 @@ func windowsOptions(a *App) *windows.Options {
 		// webview exists. SystemDefault is also the right answer for the
 		// default install, because the shipped default theme is 'system',
 		// which resolves against the same OS setting. An explicitly chosen
-		// preset is pushed down separately once the frontend has booted —
-		// see (*App).SetWindowTheme.
+		// preset is NOT reflected yet: (*App).SetWindowTheme exists for
+		// that push-down but the frontend does not call it.
 		Theme: windows.SystemDefault,
 
 		OnResume: a.onSystemResume,
@@ -151,8 +151,7 @@ func (a *App) onSystemResume() {
 // nineteen presets collapse to dark-or-light only by rules the frontend
 // owns ('system' additionally resolving against prefers-color-scheme). Go
 // therefore cannot work it out at startup, which is why windowsOptions
-// starts at windows.SystemDefault and this corrects it once the webview
-// has booted.
+// starts at windows.SystemDefault. Nothing in the frontend calls this yet.
 //
 // Safe to call on macOS and Linux: Wails' non-Windows frontends implement
 // WindowSetDarkTheme/WindowSetLightTheme as empty methods, so this is a
