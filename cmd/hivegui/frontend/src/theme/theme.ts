@@ -29,6 +29,22 @@ export const THEME_KEY = 'hive.theme';
 // garbage. index.html's pre-paint script hard-codes the same fallback;
 // keep the two in sync.
 export const DEFAULT_THEME: ThemeName = 'system';
+// What 'system' resolves to, one preset per OS scheme. Stored under two
+// keys so each half validates on its own — a garbage dark key must not
+// drag a good light key back to its default. Absent keys give the pair
+// every install had before this was configurable. index.html's pre-paint
+// script reads the same two keys; keep the three in sync.
+export const THEME_DARK_KEY = 'hive.theme.dark';
+export const THEME_LIGHT_KEY = 'hive.theme.light';
+export type StampableTheme = Exclude<ThemeName, 'system'>;
+export interface SystemPair {
+  dark: StampableTheme;
+  light: StampableTheme;
+}
+export const DEFAULT_PAIR: SystemPair = {
+  dark: 'hive-dark',
+  light: 'hive-light',
+};
 // The <optgroup> headings, in the order the picker shows them. Nineteen flat
 // entries is a scanning problem; three named buckets is not.
 export const GROUPS = ['Hive', 'Native', 'Community'] as const;
@@ -80,15 +96,34 @@ const STAMPABLE = new Set<string>(
 export function resolveTheme(
   stored: string | null,
   prefersDark: boolean,
-): Exclude<ThemeName, 'system'> {
-  if (stored === 'system') return prefersDark ? 'hive-dark' : 'hive-light';
-  if (stored && STAMPABLE.has(stored))
-    return stored as Exclude<ThemeName, 'system'>;
+  pair: SystemPair = DEFAULT_PAIR,
+): StampableTheme {
+  if (stored === 'system') return prefersDark ? pair.dark : pair.light;
+  if (stored && STAMPABLE.has(stored)) return stored as StampableTheme;
   return DEFAULT_THEME === 'system'
     ? prefersDark
-      ? 'hive-dark'
-      : 'hive-light'
+      ? pair.dark
+      : pair.light
     : DEFAULT_THEME;
+}
+
+// 'system' is rejected here on purpose: a half that said "follow the OS"
+// would resolve back into this pair and never terminate.
+function readHalf(s: Storage, key: string, fallback: StampableTheme) {
+  const v = s.getItem(key);
+  return STAMPABLE.has(v ?? '') ? (v as StampableTheme) : fallback;
+}
+
+export function readPair(storage?: Storage): SystemPair {
+  try {
+    const s = storage ?? localStorage;
+    return {
+      dark: readHalf(s, THEME_DARK_KEY, DEFAULT_PAIR.dark),
+      light: readHalf(s, THEME_LIGHT_KEY, DEFAULT_PAIR.light),
+    };
+  } catch {
+    return DEFAULT_PAIR;
+  }
 }
 
 export function readTheme(storage?: Storage): ThemeName {
@@ -103,11 +138,17 @@ export function readTheme(storage?: Storage): ThemeName {
   }
 }
 
-export function applyTheme(name: ThemeName, doc: Document = document): void {
+// `pair` defaults to the stored one; a caller that has just changed a
+// half passes it in, so a store that refused the write still repaints.
+export function applyTheme(
+  name: ThemeName,
+  doc: Document = document,
+  pair: SystemPair = readPair(),
+): void {
   const prefersDark =
     doc.defaultView?.matchMedia?.('(prefers-color-scheme: dark)').matches ??
     true;
-  doc.documentElement.dataset.theme = resolveTheme(name, prefersDark);
+  doc.documentElement.dataset.theme = resolveTheme(name, prefersDark, pair);
 }
 
 // The sixteen ANSI slots, in the order the tokens are numbered, mapped

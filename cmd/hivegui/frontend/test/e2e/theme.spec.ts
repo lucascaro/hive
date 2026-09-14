@@ -688,6 +688,91 @@ test.describe('Settings > Appearance', () => {
     );
   });
 
+  // theme.ts re-applies on import, so the attribute a test reads after
+  // boot proves nothing about index.html's pre-paint script. These two
+  // recover the FIRST stamp instead. Init scripts run before <html>
+  // exists, so the observer watches the document subtree and keeps each
+  // mutation's old value: the second record's oldValue is what the first
+  // stamp wrote, and with only one record the live attribute is.
+  async function recordStamps(page: Page) {
+    await page.addInitScript(() => {
+      const olds: (string | null)[] = [];
+      (window as any).__themeOld = olds;
+      new MutationObserver((recs) => {
+        for (const r of recs) olds.push(r.oldValue);
+      }).observe(document, {
+        attributes: true,
+        attributeOldValue: true,
+        attributeFilter: ['data-theme'],
+        subtree: true,
+      });
+    });
+  }
+  function firstStamp(page: Page) {
+    return page.evaluate(() => {
+      const olds = (window as any).__themeOld as (string | null)[];
+      return olds.length > 1 ? olds[1] : document.documentElement.dataset.theme;
+    });
+  }
+
+  // The pair is the user's: Dracula when the OS is dark, GitHub Light when
+  // it is light. Boot goes through index.html's pre-paint script, which
+  // cannot import theme.ts and reads the two keys on its own — so this is
+  // the guard that the script and readPair() agree, and that the OS flip
+  // resolves through the same pair.
+  test('the system preset resolves through the stored dark/light pair', async ({
+    page,
+  }) => {
+    await page.emulateMedia({ colorScheme: 'dark' });
+    await page.addInitScript(() => {
+      localStorage.setItem('hive.theme', 'system');
+      localStorage.setItem('hive.theme.dark', 'dracula');
+      localStorage.setItem('hive.theme.light', 'github-light');
+    });
+    await recordStamps(page);
+    await boot(page);
+    await expect(page.locator('html')).toHaveAttribute('data-theme', 'dracula');
+    expect(await firstStamp(page)).toBe('dracula');
+
+    await page.emulateMedia({ colorScheme: 'light' });
+    await expect(page.locator('html')).toHaveAttribute(
+      'data-theme',
+      'github-light',
+    );
+    // Both pickers show the stored pair, and the choice is still System.
+    await openAppearance(page);
+    await expect(page.locator('#settings-theme')).toHaveValue('system');
+    await expect(page.locator('#settings-theme-dark')).toHaveValue('dracula');
+    await expect(page.locator('#settings-theme-light')).toHaveValue(
+      'github-light',
+    );
+  });
+
+  // The pre-paint script validates each half the way readPair() does: a
+  // garbage dark key falls back alone, and 'system' is not a valid half.
+  test('the boot script falls back per half of a bad pair', async ({
+    page,
+  }) => {
+    await page.emulateMedia({ colorScheme: 'light' });
+    await page.addInitScript(() => {
+      localStorage.setItem('hive.theme', 'system');
+      localStorage.setItem('hive.theme.dark', 'system');
+      localStorage.setItem('hive.theme.light', 'solarized-light');
+    });
+    await recordStamps(page);
+    await boot(page);
+    await expect(page.locator('html')).toHaveAttribute(
+      'data-theme',
+      'solarized-light',
+    );
+    expect(await firstStamp(page)).toBe('solarized-light');
+    await page.emulateMedia({ colorScheme: 'dark' });
+    await expect(page.locator('html')).toHaveAttribute(
+      'data-theme',
+      'hive-dark',
+    );
+  });
+
   // The mirror image: an explicit preset is a decision the OS does not
   // get to override.
   test('an explicit preset ignores an OS scheme change', async ({ page }) => {

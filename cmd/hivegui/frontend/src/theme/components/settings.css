@@ -75,3 +75,11 @@
   outline: 2px solid var(--accent);
   outline-offset: 1px;
 }
+
+/* The System pair: two pickers on one line, so "when dark / when light"
+   read as halves of one choice rather than two more theme fields. */
+.settings-pair {
+  display: flex;
+  gap: var(--space-3);
+}
+.settings-pair .hv-field { flex: 1 1 0; min-width: 0; }

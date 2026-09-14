@@ -815,3 +815,93 @@ describe('settings menu-bar tab', () => {
     );
   });
 });
+
+// The System preset resolves to a user-chosen PAIR — one preset for the
+// OS's dark scheme, one for light. The two pickers exist only while
+// System is selected: an explicit preset has nothing to pair, and a
+// control that changes nothing is a lie.
+describe('system theme pair pickers', () => {
+  const theme = () => el<HTMLSelectElement>('settings-theme');
+  const dark = () => el<HTMLSelectElement>('settings-theme-dark');
+  const light = () => el<HTMLSelectElement>('settings-theme-light');
+  const pick = (s: HTMLSelectElement, value: string) =>
+    fireEvent.change(s, { target: { value } });
+
+  beforeEach(() => {
+    localStorage.clear();
+    open();
+    click(el('settings-tab-appearance'));
+  });
+
+  it('shows the pair only while the theme is System', () => {
+    pick(theme(), 'classic');
+    expect(dark()).toBeNull();
+    expect(light()).toBeNull();
+    pick(theme(), 'system');
+    expect(dark()).not.toBeNull();
+    expect(light()).not.toBeNull();
+    pick(theme(), 'dracula');
+    expect(dark()).toBeNull();
+  });
+
+  it('lists every preset except System in each half', () => {
+    pick(theme(), 'system');
+    const all = [...theme().querySelectorAll('option')].map((o) => o.value);
+    const expected = all.filter((v) => v !== 'system');
+    for (const s of [dark(), light()]) {
+      expect([...s.querySelectorAll('option')].map((o) => o.value)).toEqual(
+        expected,
+      );
+    }
+  });
+
+  it('starts on hive-dark / hive-light', () => {
+    pick(theme(), 'system');
+    expect(dark().value).toBe('hive-dark');
+    expect(light().value).toBe('hive-light');
+  });
+
+  // jsdom has no matchMedia, and applyTheme treats that as dark — so the
+  // dark half is the one that paints here.
+  it('picking the dark half stores it and repaints the terminals', async () => {
+    const { applyXtermTheme } = await import('../../src/app/session-term.js');
+    vi.mocked(applyXtermTheme).mockClear();
+    pick(theme(), 'system');
+    pick(dark(), 'dracula');
+    expect(localStorage.getItem('hive.theme.dark')).toBe('dracula');
+    expect(document.documentElement.dataset.theme).toBe('dracula');
+    expect(dark().value).toBe('dracula');
+    expect(applyXtermTheme).toHaveBeenCalled();
+    // The selection itself is still System, not the resolved preset.
+    expect(localStorage.getItem('hive.theme')).toBe('system');
+  });
+
+  // Same contract as selectPreset: a store that refuses the write still
+  // gets the repaint for this session. applyTheme must not have to read
+  // the half back out of the store it just failed to write.
+  it('applies a half for the session when storage refuses the write', () => {
+    pick(theme(), 'system');
+    const setItem = vi
+      .spyOn(Storage.prototype, 'setItem')
+      .mockImplementation(() => {
+        throw new Error('denied');
+      });
+    try {
+      pick(dark(), 'nord');
+    } finally {
+      setItem.mockRestore();
+    }
+    expect(document.documentElement.dataset.theme).toBe('nord');
+    expect(dark().value).toBe('nord');
+    expect(localStorage.getItem('hive.theme.dark')).toBeNull();
+  });
+
+  it('picking the light half stores it without repainting the dark scheme', () => {
+    pick(theme(), 'system');
+    pick(dark(), 'dracula');
+    pick(light(), 'github-light');
+    expect(localStorage.getItem('hive.theme.light')).toBe('github-light');
+    expect(light().value).toBe('github-light');
+    expect(document.documentElement.dataset.theme).toBe('dracula');
+  });
+});
