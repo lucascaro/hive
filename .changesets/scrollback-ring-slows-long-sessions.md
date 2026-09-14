@@ -11,6 +11,6 @@ per read. On Windows, where ConPTY hands back roughly one line at a time, that c
 was paid per line of output and capped a busy session at tens of KB/s.
 
 The ring is now a fixed circular buffer allocated once, so trimming is a pointer
-move: no copying, no allocation, and the same bytes come back on reattach. Small
-writes past the cap go from ~1.7 ms to ~200 ns, 64 KiB writes from ~1.5 ms to
-~1.8 µs, and steady-state scrollback churn allocates nothing at all.
+move: no copying, no allocation, and the same bytes come back on reattach. Writes
+past the cap are roughly a thousand times faster, and steady-state scrollback churn
+allocates nothing at all.
