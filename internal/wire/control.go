@@ -490,6 +490,7 @@ type AgentEvent struct {
 const (
 	AgentEventPrompt             = "prompt"
 	AgentEventTurnEnd            = "turn_end"
+	AgentEventIdle               = "idle"
 	AgentEventWaitingInput       = "waiting_input"
 	AgentEventWaitingPermission  = "waiting_permission"
 	AgentEventPing               = "ping"
@@ -506,6 +507,7 @@ const (
 var AgentEventKinds = map[string]bool{
 	AgentEventPrompt:             true,
 	AgentEventTurnEnd:            true,
+	AgentEventIdle:               true,
 	AgentEventWaitingInput:       true,
 	AgentEventWaitingPermission:  true,
 	AgentEventPing:               true,

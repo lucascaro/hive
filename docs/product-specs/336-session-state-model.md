@@ -37,7 +37,7 @@ Every session in the sidebar, grid tile header, and menu bar shows a
 |-------|---------|------------------------|
 | `working` | the agent is mid-turn (streaming, running tools) | animated dot |
 | `idle` | nothing running, nothing pending; the agent is waiting for the *next* prompt | hollow dot |
-| `waiting_input` | the agent asked the user a question and stopped (Claude `Notification(idle_prompt)`, bell on a heuristic session) | filled dot, pulse |
+| `waiting_input` | the agent asked the user a question, or finished its turn, and stopped (Claude `Stop` / `Notification(idle_prompt)`, Pi `turn_end`, bell on a heuristic session) | filled dot, pulse |
 | `waiting_permission` | the agent is blocked on a tool-permission prompt | filled dot, pulse, distinct colour |
 | `exited` | the child process ended | hollow grey dot |
 | `error` | the last turn ended in an API/CLI error | red dot |
@@ -67,7 +67,8 @@ settings untouched.
 - A Claude session launched from Hive reports `working` within one
   second of the user pressing Enter, `waiting_permission` when a tool
   permission prompt appears, `waiting_input` when Claude stops with a
-  question, `idle` after a turn ends, `error` after an API failure —
+  question or finishes a turn, `error` after an API failure (both raise
+  `needs_attention` and stand until the user looks) —
   verified by a Go integration test driving `hived hook` with recorded
   hook payloads, and by a manual checklist against a real `claude`.
 - A Pi session launched from Hive reports `working` / `idle` /
@@ -83,12 +84,12 @@ settings untouched.
   covered: `Output` takes a still-painting session to
   `working`/`heuristic`, and `Tick` takes a quiet one to
   `idle`/`heuristic`.
-  The deliberate exception is a wait. `waiting_input` and
-  `waiting_permission` are never ended by elapsed time or by output on
-  any tier — only by something that constitutes an actual answer: the
-  user acting (`ClearWaiting`), the agent reporting the wait resolved
-  (`permission_resolved`, `turn_end`, `session_end`), or the process
-  exiting. No amount of silence is evidence that an unanswered prompt
+  The deliberate exception is a state that wants the user.
+  `waiting_input`, `waiting_permission` and an agent-reported `error`
+  are never ended by elapsed time or by output on any tier — only by
+  something that constitutes an actual answer: the user acting
+  (`ClearWaiting`), a later agent event (`prompt`,
+  `permission_resolved`, `session_end`, ...), or the process exiting. No amount of silence is evidence that an unanswered prompt
   was answered, and a timer that flipped a quiet `waiting_permission`
   to idle would erase a real request the user has not seen yet. So a
   session whose hook dies mid-prompt — with no agent left to report a

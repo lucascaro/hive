@@ -39,6 +39,17 @@ type Session struct {
 	done      chan struct{}
 	vtErrOnce sync.Once
 
+	// The PTY is closed from two places — Close() and the reaper
+	// goroutine that watches the child exit — and exactly one of them
+	// gets there first. Once makes the loser a no-op. That is not
+	// tidiness: on Windows Pty.Close() calls ClosePseudoConsole on a
+	// raw handle and does not zero it, so a second call hands the OS a
+	// freed handle that Windows may already have reissued to something
+	// else. closeErr is written inside the Do and read after it, so the
+	// Once's happens-before edge is what makes the read safe.
+	closeOnce sync.Once
+	closeErr  error
+
 	// Window title (OSC 0/2) plumbing, all guarded by mu.
 	//
 	// title is the last value handed to titleHook, NOT simply the last
@@ -204,7 +215,59 @@ func Start(opts Options) (*Session, error) {
 		done:  make(chan struct{}),
 	}
 	go s.readLoop()
+	go s.reapChild()
 	return s, nil
+}
+
+// exitDrainGrace bounds how long reapChild waits, after the child has
+// exited, for readLoop to reach the end of the PTY on its own before it
+// forces the issue by closing the PTY. The child's final bytes are
+// usually still in flight when Wait returns — on Windows conhost has
+// not necessarily rendered them into the output pipe yet — and tearing
+// the PTY down out from under them would truncate the last thing the
+// agent printed, which is precisely the part a user reads off the tile.
+//
+// It costs nothing on the path where the PTY already reports EOF
+// (macOS): reapChild waits on s.done, which readLoop has closed by
+// then, and returns immediately without ever arming the grace. On
+// Linux go-pty keeps the slave open in the parent, so EOF never
+// arrives and the grace always runs.
+const exitDrainGrace = 250 * time.Millisecond
+
+// reapChild waits for the process on the PTY to exit and then makes
+// sure the PTY follows it, so Done() closes on every platform.
+//
+// This is the only thing that reaps the child, and on Windows it is the
+// only thing that ends the session at all. There the ConPTY output pipe
+// belongs to conhost, not to the child: conhost holds it open until
+// ClosePseudoConsole, so the child exiting produces no read error and
+// readLoop stays parked indefinitely — an audit measured a read still
+// blocked minutes after the child was gone. Closing the PTY here is
+// what turns "the child exited" into the read error readLoop already
+// knows how to handle, and it is also what stops the conhost process
+// and the pseudoconsole from outliving the session.
+//
+// Nothing here touches s.done. readLoop remains its only closer, so the
+// exit path keeps its single writer and its existing ordering: sinks
+// are torn down in fanoutClose, then done closes.
+func (s *Session) reapChild() {
+	_ = s.cmd.Wait()
+	t := time.NewTimer(exitDrainGrace)
+	defer t.Stop()
+	select {
+	case <-s.done:
+		// readLoop already saw the end of the PTY (the ordinary Unix
+		// case, where the child's exit surfaces as EOF/EIO on the
+		// master). Nothing left to unblock.
+	case <-t.C:
+	}
+	_ = s.closePty()
+}
+
+// closePty releases the PTY at most once. See closeOnce.
+func (s *Session) closePty() error {
+	s.closeOnce.Do(func() { s.closeErr = s.ptmx.Close() })
+	return s.closeErr
 }
 
 // readLoop drains the PTY into the VT mirror and every active sink. It
@@ -225,7 +288,13 @@ func (s *Session) readLoop() {
 			s.noteBell(buf[:n])
 		}
 		if err != nil {
-			if !errors.Is(err, io.EOF) {
+			// EOF is the PTY ending normally. os.ErrClosed is the same
+			// event seen from the other side: reapChild (or Close)
+			// closed the PTY under us, which is now the ordinary way a
+			// Windows session ends, since conhost's output pipe never
+			// reports EOF on its own. Neither is worth a log line per
+			// session exit; anything else still is.
+			if !errors.Is(err, io.EOF) && !errors.Is(err, os.ErrClosed) {
 				log.Printf("session %s: pty read: %v", s.ID, err)
 			}
 			s.fanoutClose()
@@ -444,12 +513,15 @@ func (s *Session) Resize(cols, rows int) error {
 	return nil
 }
 
-// Close terminates the shell and releases the PTY.
+// Close terminates the shell and releases the PTY. It is safe to call
+// more than once, and safe to race with the session exiting on its own:
+// the PTY is closed exactly once either way. The child is reaped by
+// reapChild, not here — Kill only makes it exit.
 func (s *Session) Close() error {
 	if s.cmd != nil && s.cmd.Process != nil {
 		_ = s.cmd.Process.Kill()
 	}
-	return s.ptmx.Close()
+	return s.closePty()
 }
 
 // Done returns a channel that is closed when the session exits.

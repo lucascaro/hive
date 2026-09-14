@@ -145,6 +145,13 @@ describe('SessionRow', () => {
         '[data-action="restart"]',
       ),
     ).not.toBeNull();
+    // A failed turn leaves the process running; restarting it from the
+    // sidebar would kill live work.
+    const failed = row({ alive: true }, { state: 'failed' }).el;
+    expect(failed.querySelector('[data-action="restart"]')).toBeNull();
+    expect(failed.querySelector('.hv-session-row__sub')?.textContent).toBe(
+      'Stopped on an error',
+    );
   });
 
   it('wires the actions, and none of them also selects the row', () => {

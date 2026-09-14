@@ -59,8 +59,10 @@ describe('sessionState', () => {
       sessionState({ alive: true, state: 'working', needs_attention: true }),
     ).toBe('attention');
   });
-  it('is error when the agent reported one, even while alive', () => {
-    expect(sessionState({ alive: true, state: 'error' })).toBe('error');
+  it('is failed, not error, when a live agent reported an error', () => {
+    // `error` is a dead process; a live failed turn is still running and
+    // wants the user, so it resolves to a state of its own.
+    expect(sessionState({ alive: true, state: 'error' })).toBe('failed');
   });
   it('lets death outrank whatever state was last reported', () => {
     expect(sessionState({ alive: false, state: 'working' })).toBe('exited');
@@ -117,6 +119,11 @@ describe('stateTooltip', () => {
     expect(stateTooltip({ alive: false, last_error: 'boom' })).toBe(
       'Exited with an error',
     );
+  });
+  it('does not call a live agent-reported error an exit', () => {
+    expect(
+      stateTooltip({ alive: true, state: 'error', state_source: 'hook' }),
+    ).toBe('Stopped on an error\nreported by the agent');
   });
   it('reads any non-empty tier as reported, not just the two we ship', () => {
     // Only the heuristic tier is spelled "" on the wire, so a tier a
@@ -186,5 +193,15 @@ describe('attentionSummary', () => {
     expect(
       attentionSummary([{ alive: false, phase: '', needs_attention: true }]),
     ).toEqual({ count: 0, state: null });
+  });
+
+  it('counts a live agent-reported error, but not a dead last_error', () => {
+    expect(
+      attentionSummary([
+        { ...live, state: 'error' },
+        { ...live, state: 'waiting_input' },
+        { alive: false, phase: '', last_error: 'boom' },
+      ]),
+    ).toEqual({ count: 2, state: 'failed' });
   });
 });

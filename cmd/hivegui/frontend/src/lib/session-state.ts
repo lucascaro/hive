@@ -21,7 +21,13 @@ export type SessionState =
   | 'working'
   | 'running'
   | 'exited'
-  | 'error';
+  // A dead process that left a last_error.
+  | 'error'
+  // A LIVE session whose agent reported a failed turn. Its own state, not
+  // `error` plus an `alive` check at every surface: the process is still
+  // running and the session wants the user, which is the opposite of what
+  // a dead row means (no pulse, restart offered, "Exited" wording).
+  | 'failed';
 
 // The daemon's own state vocabulary (internal/wire/control.go State*).
 // Kept as a local map rather than imported so this module stays
@@ -45,7 +51,7 @@ export interface StateCarrier {
   state?: string;
   // The daemon's own "wants the user" flag — derived server-side from
   // `state` (needs_attention = state ∈ {waiting_input,
-  // waiting_permission}). The daemon and the session list are its only
+  // waiting_permission, error}). The daemon and the session list are its only
   // writers; no client keeps a second copy (see the frozen transition
   // table in docs/exec-plans/completed/336-session-state-model.md).
   needs_attention?: boolean;
@@ -67,6 +73,7 @@ export const STATE_WORDS: Record<SessionState, string> = {
   running: 'Idle',
   exited: 'Exited',
   error: 'Exited with an error',
+  failed: 'Stopped on an error',
 };
 
 // How the state was arrived at, in words. Rendered because "the agent
@@ -129,7 +136,7 @@ export function sessionState(s: StateCarrier): SessionState {
     case DAEMON_STATE.waitingInput:
       return 'attention';
     case DAEMON_STATE.error:
-      return 'error';
+      return 'failed';
   }
   // A bell the user has not acknowledged still outranks "working": the
   // heuristic tier reports both, and the one that wants a human is the
@@ -165,17 +172,28 @@ export interface AttentionSummary {
 export function attentionSummary(sessions: StateCarrier[]): AttentionSummary {
   let count = 0;
   let permission = false;
+  let failed = false;
   for (const s of sessions) {
     const st = sessionState(s);
-    if (st !== 'attention' && st !== 'waiting-permission') continue;
+    if (st !== 'attention' && st !== 'waiting-permission' && st !== 'failed') {
+      continue;
+    }
     count++;
     if (st === 'waiting-permission') permission = true;
+    if (st === 'failed') failed = true;
   }
-  // "Waiting for permission" is the more specific of the two, and the
+  // "Waiting for permission" is the most specific ask, and the
   // distinction the state model exists to draw, so it wins the one icon
-  // the chip has room for.
+  // the chip has room for; a failure outranks a plain wait.
   return {
     count,
-    state: count === 0 ? null : permission ? 'waiting-permission' : 'attention',
+    state:
+      count === 0
+        ? null
+        : permission
+          ? 'waiting-permission'
+          : failed
+            ? 'failed'
+            : 'attention',
   };
 }

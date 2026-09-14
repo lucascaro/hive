@@ -35,7 +35,7 @@ type Model struct {
 
 	Sessions int
 	// Waiting counts the sessions actually blocked on the user —
-	// state ∈ {waiting_input, waiting_permission} — rather than the
+	// state ∈ {waiting_input, waiting_permission, error} — rather than the
 	// sessions whose bell happens to be unacknowledged.
 	Waiting int
 }
@@ -71,6 +71,12 @@ type SessionRow struct {
 // discriminator, and Welcome already carries it.
 const stateContract = 3
 
+// errorAttentionContract is the DaemonContract generation that made an
+// agent-reported error count toward needs_attention (history entry 10).
+// Older daemons report `error` but do not raise attention for it, so
+// counting it there would disagree with the daemon's own flag.
+const errorAttentionContract = 10
+
 // waiting reports whether a session is blocked on the user.
 //
 // Below stateContract the daemon sends no state, so needs_attention —
@@ -80,6 +86,11 @@ const stateContract = 3
 func waiting(s wire.SessionInfo, daemonContract int) bool {
 	if daemonContract < stateContract {
 		return s.NeedsAttention
+	}
+	if s.State == wire.StateError {
+		// Same set the daemon derives needs_attention from, error
+		// included — but only on a daemon that includes it.
+		return daemonContract >= errorAttentionContract
 	}
 	return s.State == wire.StateWaitingInput || s.State == wire.StateWaitingPermission
 }
