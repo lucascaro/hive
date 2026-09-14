@@ -11,8 +11,6 @@ import (
 	"github.com/lucascaro/hive/internal/menubar"
 	"github.com/lucascaro/hive/internal/registry"
 	"github.com/wailsapp/wails/v2"
-	"github.com/wailsapp/wails/v2/pkg/options"
-	"github.com/wailsapp/wails/v2/pkg/options/assetserver"
 )
 
 //go:embed all:frontend/dist
@@ -80,17 +78,7 @@ func main() {
 		app.haveInitialPos = true
 	}
 
-	err := wails.Run(&options.App{
-		Title:            "Hive",
-		Width:            width,
-		Height:           height,
-		BackgroundColour: &options.RGBA{R: 0, G: 0, B: 0, A: 1},
-		AssetServer:      &assetserver.Options{Assets: assets},
-		Menu:             buildAppMenu(app),
-		OnStartup:        app.startup,
-		OnShutdown:       app.shutdown,
-		Bind:             []interface{}{app},
-	})
+	err := wails.Run(appOptions(app, width, height))
 	if err != nil {
 		// log, not println: println writes to stderr only, which
 		// LaunchServices sends to /dev/null — a startup failure would
