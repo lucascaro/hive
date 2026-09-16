@@ -4,9 +4,9 @@
 - **Issue:** — (locally allocated number; **not** a GitHub issue. PR #416 on GitHub is
   `feat: add Alucard and Hex theme presets`, an unrelated merged PR. Never write `Fixes #416`.)
 - **Design:** [docs/design-docs/agent-activity.md](../../design-docs/agent-activity.md)
-- **Phase:** 2 of 4 (subagent attribution; Phase 1 shipped in #417)
-- **PR:** #420
-- **Branch:** feature/416-phase-1b
+- **Phase:** 3 of 4 (Pi tier; Phase 1 shipped in #417, Phase 2 in #420)
+- **PR:** —
+- **Branch:** —
 - **Mocks:** https://claude.ai/artifact/7RjZw99RbKNV1iS13r2dtb (placement study — pie vs ring)
 - **Status:** active
 
@@ -1263,6 +1263,8 @@ Append-only. The latest entry is authoritative.
   doc was renumbered. Append-only history (decision log, ledger, gate verdicts, progress)
   keeps the "1b" name it was written with.
 
+- **2026-09-16** — **Phase 3 reset to RESEARCH, not IMPLEMENT (operator decision).** Phase 2 merged in #420. The Approach covers Phases 1–2 only; Phase 3 (Pi tier + settings path) has a scope line and no approved design, so it gets its own research and plan approval.
+
 ## Progress
 
 - **2026-09-15** — RESEARCH complete; three-way fan-out (Go daemon, frontend, Pi
@@ -1283,6 +1285,8 @@ Append-only. The latest entry is authoritative.
   checks confirmed that the split-clock, subagent-state and clock-step tests each fail
   when their fix is reverted. Live probes `TestClaudeProbeTaskToolsOptIn` and
   `TestClaudeProbeSubagentCount` passed (`HIVE_PROBE_CLAUDE=1`).
+- **2026-09-16** — Phase 2 merged (#420). Phase reset: `Phase: 3 of 4`, PR/Branch cleared, spec stage GATE → RESEARCH on `feature/416-phase-3`.
+
 ## Open questions / risks
 
 - **TodoWrite's payload shape is undocumented.** Mitigated by reading `content` with an

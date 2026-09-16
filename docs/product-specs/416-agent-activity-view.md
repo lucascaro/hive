@@ -1,11 +1,11 @@
 ---
 issue: null
-pr: 420
+pr: null
 title: "Agent activity view: see the plan and the tools, not just the state"
 type: enhancement
 complexity: L
 priority: P2
-stage: GATE
+stage: RESEARCH
 ---
 
 # Agent activity view: see the plan and the tools, not just the state
