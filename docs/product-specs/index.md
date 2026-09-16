@@ -13,6 +13,7 @@ The *what* and *why* of work this project plans to do. Each spec describes user 
 | P2 | — | A red CI check name should say which stage failed | TRIAGE | [256-ci-check-names-identify-the-failing-stage](256-ci-check-names-identify-the-failing-stage.md) |
 | P2 | — | Session messaging: hand a session a message, get told when it idles | PLAN | [338-session-messaging](338-session-messaging.md) |
 | P2 | — | Orchestrator grant: a session you name can message its siblings | PLAN | [389-orchestrator-grant-and-session-msg](389-orchestrator-grant-and-session-msg.md) |
+| P2 | — | Agent activity view: see the plan and the tools, not just the state | GATE | [416-agent-activity-view](416-agent-activity-view.md) |
 | P2 | — | In-house VT emulator (replace hinshun/vt10x) | IMPLEMENT | [in-house-vt-emulator](in-house-vt-emulator.md) |
 | — | #142 | vt snapshot: CJK / wide-char column misalignment | TRIAGE | [142-vt-snapshot-cjk-wide-char-column-misalignment](142-vt-snapshot-cjk-wide-char-column-misalignment.md) |
 | — | — | Resume conversations on daemon restart | TRIAGE | [254-resume-conversations-on-daemon-restart](254-resume-conversations-on-daemon-restart.md) |
