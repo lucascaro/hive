@@ -2,8 +2,10 @@ package daemon
 
 import (
 	"net"
+	"strings"
 	"testing"
 	"time"
+	"unicode/utf8"
 
 	"github.com/lucascaro/hive/internal/wire"
 )
@@ -298,4 +300,65 @@ func TestActivityDurationFromDaemonClock(t *testing.T) {
 		// Real elapsed time here is milliseconds, not an hour.
 		return msg.Events[0].DurationMS < 60_000
 	})
+}
+
+// TestEventModeCapsActivityFields: Text and Target were bounded at the
+// daemon, but Tool, CallID and plan item IDs were not, so anything able
+// to write to the events socket could store a frame's worth per field in
+// every ring entry and have every client receive it again. The daemon is
+// the trust boundary; these are bounded there.
+func TestEventModeCapsActivityFields(t *testing.T) {
+	skipOnWindows(t)
+	d := startTestDaemon(t)
+	id := bootstrapSessionID(t, d)
+	huge := strings.Repeat("x", 8192) // well past every cap, well under MaxPayload
+
+	reportTool(t, d, wire.AgentEvent{
+		SessionID: id, Kind: wire.AgentEventToolStart,
+		Tool: huge, CallID: huge, Target: "t",
+	})
+	reportTool(t, d, wire.AgentEvent{
+		SessionID: id, Kind: wire.AgentEventPlanItem,
+		Items: []wire.PlanItem{{ID: huge, Text: "step", Status: wire.PlanStatusActive}},
+	})
+
+	waitFor(t, 2*time.Second, func() bool {
+		info := findSession(d, id)
+		msg, err := d.Registry().ActivitySnapshot(id)
+		return info.CurrentTool != "" && err == nil && len(msg.Plan) == 1
+	})
+
+	if got := len(findSession(d, id).CurrentTool); got > wire.MaxToolNameLen {
+		t.Errorf("CurrentTool is %d bytes, want <= %d", got, wire.MaxToolNameLen)
+	}
+	msg, _ := d.Registry().ActivitySnapshot(id)
+	if got := len(msg.Plan[0].ID); got > wire.MaxActivityIDLen {
+		t.Errorf("plan item ID is %d bytes, want <= %d", got, wire.MaxActivityIDLen)
+	}
+
+	// The call ID is only observable once the call ends and lands in the
+	// ring. End it under the SAME capped ID it was stored with.
+	reportTool(t, d, wire.AgentEvent{SessionID: id, Kind: wire.AgentEventToolEnd, Tool: "t", CallID: huge})
+	waitFor(t, 2*time.Second, func() bool {
+		m, err := d.Registry().ActivitySnapshot(id)
+		return err == nil && len(m.Events) == 1
+	})
+	msg, _ = d.Registry().ActivitySnapshot(id)
+	if got := len(msg.Events[0].CallID); got > wire.MaxActivityIDLen {
+		t.Errorf("CallID is %d bytes, want <= %d", got, wire.MaxActivityIDLen)
+	}
+	if msg.Events[0].StartedAt == "" {
+		t.Error("the capped end did not pair with the capped start: the cap must be applied identically to both")
+	}
+}
+
+func TestCapBytesRuneSafe(t *testing.T) {
+	s := strings.Repeat("世", 100) // 3 bytes per rune
+	got := capBytes(s, 10)
+	if len(got) > 10 || !utf8.ValidString(got) {
+		t.Errorf("capBytes = %q (%d bytes), want <= 10 valid UTF-8 bytes", got, len(got))
+	}
+	if capBytes("short", 10) != "short" {
+		t.Error("a string under the cap must be unchanged")
+	}
 }

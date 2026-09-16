@@ -577,6 +577,14 @@ const (
 	MaxTargetLen   = 120
 	MaxPlanTextLen = 200
 	MaxPlanItems   = 100
+	// MaxToolNameLen bounds AgentEvent.Tool. Real names are short — the
+	// longest in practice are MCP tools like
+	// mcp__claude-in-chrome__read_console_messages, about 45 bytes.
+	MaxToolNameLen = 128
+	// MaxActivityIDLen bounds AgentEvent.CallID and PlanItem.ID. Claude's
+	// tool_use_id is about 30 bytes (toolu_…), and task IDs are small
+	// integers.
+	MaxActivityIDLen = 128
 )
 
 // ToolEvent is one tool call as the daemon recorded it. Durations are

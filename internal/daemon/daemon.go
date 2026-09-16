@@ -29,6 +29,7 @@ import (
 	"path/filepath"
 	"sync"
 	"time"
+	"unicode/utf8"
 
 	"github.com/lucascaro/hive/internal/buildinfo"
 	"github.com/lucascaro/hive/internal/registry"
@@ -806,6 +807,17 @@ func (d *Daemon) applyEventFrame(payload []byte) bool {
 	if len(ev.Target) > wire.MaxTargetLen {
 		ev.Target = ev.Target[:wire.MaxTargetLen]
 	}
+	// Tool, CallID and every plan item's ID are bounded for the same
+	// reason: without a cap, anything that can write to the events socket
+	// could store a frame's worth (up to wire.MaxPayload) per field in
+	// each of ActivityRingCap ring entries, and have every connected
+	// client receive it again. Rune-safe, since these are rebroadcast as
+	// JSON.
+	ev.Tool = capBytes(ev.Tool, wire.MaxToolNameLen)
+	ev.CallID = capBytes(ev.CallID, wire.MaxActivityIDLen)
+	for i := range ev.Items {
+		ev.Items[i].ID = capBytes(ev.Items[i].ID, wire.MaxActivityIDLen)
+	}
 	if err := d.reg.ApplyAgentEvent(ev.SessionID, ev); err != nil {
 		// Unknown session id: the agent's hook fired after the session
 		// was already killed, or against a stale HIVE_SESSION_ID from a
@@ -814,6 +826,18 @@ func (d *Daemon) applyEventFrame(payload []byte) bool {
 		log.Printf("hived: event mode: %s: %v", ev.SessionID, err)
 	}
 	return true
+}
+
+// capBytes truncates s to at most n bytes without splitting a UTF-8
+// rune.
+func capBytes(s string, n int) string {
+	if len(s) <= n {
+		return s
+	}
+	for n > 0 && !utf8.RuneStart(s[n]) {
+		n--
+	}
+	return s[:n]
 }
 
 // serveControl handles a session-management connection.
