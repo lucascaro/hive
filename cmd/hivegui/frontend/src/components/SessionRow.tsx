@@ -57,7 +57,7 @@ function planOf(s: SessionInfo): {
 }
 
 // The running-subagent count, as the plan indicator's corner badge
-// (spec 416 phase 1b, placement A). A two-character badge is the most
+// (spec 416 Phase 2, placement A). A two-character badge is the most
 // the corner holds, so the count reads 9+ past nine; the exact number
 // stays in the label.
 function subagentsOf(s: SessionInfo): {

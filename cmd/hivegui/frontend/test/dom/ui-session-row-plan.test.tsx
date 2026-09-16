@@ -166,7 +166,7 @@ describe('SessionRow plan indicator', () => {
   });
 });
 
-// Placement A (spec 416 phase 1b): the running-subagent count rides the
+// Placement A (spec 416 Phase 2): the running-subagent count rides the
 // plan indicator as a corner badge. Geometry lives in
 // test/e2e/sidebar-plan-pie.spec.ts.
 const badge = (el: HTMLElement) =>

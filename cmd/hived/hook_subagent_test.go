@@ -13,7 +13,7 @@ import (
 
 // subagentFixture returns the payloads of a captured subagent timeline,
 // one per line, in arrival order. Captured from Claude Code 2.1.273 —
-// see the exec plan's Phase 1b "Step 0 results".
+// see the exec plan's Phase 2 "Step 0 results".
 func subagentFixture(t *testing.T, name string) [][]byte {
 	t.Helper()
 	var lines [][]byte

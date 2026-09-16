@@ -510,7 +510,7 @@ func TestClaudeProbeTaskToolsOptIn(t *testing.T) {
 }
 
 // TestClaudeProbeSubagentCount drives a real Claude session through one
-// subagent and checks what phase 1b derives from it: SubagentStart /
+// subagent and checks what Phase 2 derives from it: SubagentStart /
 // SubagentStop wired and mapped, subagents_running rising and returning
 // to 0, and a subagent's tools never showing as the session's tool.
 func TestClaudeProbeSubagentCount(t *testing.T) {

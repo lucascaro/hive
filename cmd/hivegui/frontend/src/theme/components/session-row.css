@@ -73,7 +73,7 @@
   );
   box-shadow: inset 0 0 0 1.5px var(--hv-plan-color);
 }
-/* The running-subagent count (spec 416 phase 1b, placement A), on the
+/* The running-subagent count (spec 416 Phase 2, placement A), on the
    pie's lower-right corner. Absolutely positioned, so it cannot size the
    grid cell or the row; the 8px column gap to its right absorbs the
    overhang. Solid foreground so a digit stays legible at 8px on any
