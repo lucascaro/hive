@@ -24,6 +24,17 @@ package buildinfo
 // History (newest first), so a bump is a decision with a record and
 // not just a number going up:
 //
+//	12 — Subagent attribution. Two new AgentEvent kinds,
+//	    subagent_start / subagent_end, from Claude's SubagentStart /
+//	    SubagentStop hooks; AgentEvent and ToolEvent gain agent_id /
+//	    agent_type, AgentEvent gains running_agents, and SessionInfo
+//	    gains subagents_running. Tool events tagged with agent_id no
+//	    longer move state, current_tool, the plan or its tally.
+//	    Same hazard as 11: an old daemon drops the new kinds at its
+//	    allowlist and closes the reporter's connection, so a new hook
+//	    against an old daemon loses every event after them on that
+//	    connection, and an old daemon still lets a subagent's tool
+//	    event flip a finished parent turn back to working.
 //	11 — Agent activity. The three hooks that used to collapse into one
 //	    permission_resolved now report tool_start / tool_end / plan,
 //	    AgentEvent carries tool/target/call_id/ok/items, SessionInfo
@@ -117,7 +128,7 @@ package buildinfo
 //	    before this cannot see or clear the flag.
 //	1 — first contract; everything up to and including the
 //	    CLIENT_COMMAND relay.
-const DaemonContract = 11
+const DaemonContract = 12
 
 // Identity is this binary's full build identity. `hived --version
 // --json` prints it, and Welcome carries the same three values, so a

@@ -33,11 +33,12 @@ The hook and extension tiers already carry it; Hive was throwing it
 away.
 
 **Claude (hook tier).** `cmd/hived/hook.go` wires `PreToolUse`,
-`PostToolUse` and `PostToolUseFailure`, and collapses all three to
-`AgentEventPermissionResolved` — the payload's `tool_name` and
-`tool_input` are dropped. No new hook needs wiring and no new process
-is spawned; these invocations already happen on every tool call of
-every Hive Claude session.
+`PostToolUse` and `PostToolUseFailure`. Before this feature it collapsed
+all three to `AgentEventPermissionResolved` and dropped the payload's
+`tool_name` and `tool_input`; they now report `tool_start` / `tool_end`
+with the tool and a derived label. These invocations already happened on
+every tool call of every Hive Claude session, so no new process is
+spawned. Phase 1b added `SubagentStart` and `SubagentStop` (below).
 
 Claude's plan arrives on the same hooks, as calls to its **task tools**.
 Every shape below was captured from a live Claude Code 2.1.273 session —
@@ -75,19 +76,30 @@ ignored and the plan indicator simply never appears. The opt-in probe
 shows up on upgrade rather than in a user's sidebar; it was confirmed to
 fail with the setting off.
 
-**Subagents — planned, phase 1b.** Claude fires the same tool hooks for
-calls made *inside* subagents, adding `agent_id` (present only there)
-and `agent_type`. Phase 1 ignores both, so a session that fans out
-attributes subagent tools to the main thread: `current_tool` flickers
-between parallel subagents, their calls are tallied on the parent's
-plan step, and their planning calls may reach the parent's plan. The
-follow-up tags tool events with `agent_id` / `agent_type`, drives
-`current_tool` and the plan from the main thread alone, keeps subagent
-events in the ring for the panel to nest, and adds a
-`subagents_running` count to `SessionInfo`. Payload shapes — including
-whether subagents share the parent's task list and whether hooks arrive
-after the parent's `Stop` — are captured from a live session before any
-of this is built. See the exec plan's Phase 1b.
+**Subagents (phase 1b).** Claude fires the same tool hooks for calls
+made *inside* subagents, on the parent's `session_id`, adding `agent_id`
+and `agent_type`, which are present only there. Captured from Claude Code
+2.1.273 (fixtures in `cmd/hived/testdata/hooks/subagent/`):
+
+- The parent's `Stop` fires while subagents are still running, and their
+  tool events keep arriving after it.
+- `Stop` carries `background_tasks`, which lists the subagents still
+  running.
+- A general-purpose subagent has no task tools, so it cannot touch the
+  parent's plan.
+
+Hive tags those events and applies one rule: **an event with `agent_id`
+is recorded but never moves the session's state, `current_tool`, plan or
+plan-step tally.**
+- Subagent calls stay in the ring, tagged, for the panel to nest.
+- `SubagentStart` / `SubagentStop` become `subagent_start` /
+  `subagent_end`, and `SessionInfo.subagents_running` counts them.
+- The parent's `Stop` reconciles the count against `background_tasks`, so
+  a lost `SubagentStop` cannot pin it.
+
+The ordering guard compares main-thread events only. Subagent hooks race
+the parent's, and one landing first would otherwise get the parent's
+`Stop` dropped as out of order.
 
 **Pi (extension tier) — planned, phase 2.** Nothing below ships in
 phase 1; the Pi extension reports no tool or plan events yet. Verified against
@@ -198,9 +210,12 @@ grid are planned for phase 3.
 
 The layouts are settled and drawn in the round-five mocks. In short:
 
-- **Sidebar** — a small filled `conic-gradient` pie (12px; 11px tight, 10px
-  compact) in its own grid cell beneath the state icon, coloured
-  by the row's state. It never overlays or restyles the text, so no row
+- **Sidebar** — a small `conic-gradient` pie inside a 1.5px outline
+  (12px; 11px tight, 10px compact) in its own grid cell, top-aligned
+  beneath the state icon and coloured by the row's state. At 0% it is an
+  empty outline. The running-subagent count sits on the pie's lower-right
+  corner as a numeral badge, reading `9+` past nine. With no plan, the
+  badge sits on the empty outline. It never overlays or restyles the text, so no row
   grows; both existing lines (name and window title) survive untouched.
   At compact density it moves into row 1 beside the icon, widening
   column 1 only for rows that have a plan.
