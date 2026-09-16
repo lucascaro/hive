@@ -361,19 +361,19 @@ func (m *Machine) Apply(ev Event) bool {
 	// than special-cased — a state-dependent rewind rule is more machine
 	// for a case that is hard to reach and self-corrects on the next
 	// event.
-	if !m.hookSeenAt.IsZero() {
-		if behind := m.hookSeenAt.Sub(ev.At); behind > 0 && behind < HookStaleAfter {
-			return false
-		}
-	}
-
-	before := m.Snapshot()
-
 	// The daemon's own clock, for tool durations. See Event.Now.
 	now := ev.Now
 	if now.IsZero() {
 		now = ev.At
 	}
+
+	if !m.hookSeenAt.IsZero() {
+		if behind := m.hookSeenAt.Sub(ev.At); behind > 0 && behind < HookStaleAfter {
+			return m.applyLateActivity(ev, now)
+		}
+	}
+
+	before := m.Snapshot()
 
 	m.source = ev.Source
 	m.hookSeenAt = ev.At
@@ -404,9 +404,11 @@ func (m *Machine) Apply(ev Event) bool {
 	case KindTurnEnd:
 		m.state = wire.StateWaitingInput
 		m.lastSummary = text
+		m.act.endTurn()
 	case KindIdle:
 		m.state = wire.StateIdle
 		m.lastSummary = text
+		m.act.endTurn()
 	case KindWaitingInput:
 		// An error already wants the user, and says more. Claude fires
 		// Notification(idle_prompt) ~60s after ANY turn, a failed one
@@ -436,8 +438,10 @@ func (m *Machine) Apply(ev Event) bool {
 	case KindError:
 		m.state = wire.StateError
 		m.lastSummary = text
+		m.act.endTurn()
 	case KindSessionEnd:
 		m.state = wire.StateExited
+		m.act.endTurn()
 	case KindPing:
 		// No state change by design.
 	default:

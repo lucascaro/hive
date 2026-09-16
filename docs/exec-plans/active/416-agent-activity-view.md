@@ -661,6 +661,7 @@ Append-only, one line per `/hs-review-loop` iteration.
 - **2026-09-16 iter 1** — verdict: (not reported); mergeable: MERGEABLE; findings_hash: empty; threads_open: 5; action: escalated:operator-stopped-premise-invalidated; head_sha: 44735aef. Stopped by the operator mid-iteration after the TodoWrite premise was disproven. The worker had already pushed one autofix commit (44735aef, 5 safe fixes, all verified correct — including a real bug: GET_ACTIVITY on a closed session returned `true`, which closes the GUI's whole control connection) and resolved 5 of 10 CodeRabbit threads. The remaining 5 are untouched. Re-run from scratch after the plan-source revision.
 - **2026-09-16 iter 2** — verdict: REQUEST_CHANGES; mergeable: MERGEABLE; findings_hash: 2297d0b1bf382db08dcfeae0920dd06542ad98df504143fe8aaecc64a3975856; threads_open: 3; action: escalated:ci-check-failed+risky-fix+new-threads; head_sha: c5daa840.
 - **2026-09-16 iter 3** — verdict: REQUEST_CHANGES; mergeable: MERGEABLE; findings_hash: 85a363d22763ab80cbe89d9d6939c16920ea4dabb5bbbcd5f1df54f2c1d5ad14; threads_open: 0; action: escalated:risky-fix-needs-decision; head_sha: ca66e6df.
+- **2026-09-16 iter 4** — verdict: REQUEST_CHANGES; mergeable: MERGEABLE; findings_hash: 345a723ef25dfd8d97e4f226782da4cdd97c77db20aead390ffb3692eacd87ca; threads_open: 0; action: escalated:risky-fix-needs-decision; head_sha: b9160bd6.
 
 ## Decision log
 

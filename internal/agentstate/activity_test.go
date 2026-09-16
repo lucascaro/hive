@@ -551,9 +551,14 @@ func TestPlanItemChangesNoState(t *testing.T) {
 	}
 }
 
-// A tool event rejected by the out-of-order guard must not hand the
+// An event the out-of-order guard still rejects must not hand the
 // previous delta back out: the registry broadcasts whatever
 // LastToolDelta returns, so a stale value would duplicate on the feed.
+//
+// Late TOOL events are no longer rejected — they are recorded as
+// activity (see applyLateActivity) — so a late tool event must produce
+// its OWN delta, never a replay of the one before it. A late plan
+// update is still rejected, and is what exercises the replay guard now.
 func TestLastToolDeltaIsConsumedAndNotReplayedOnRejection(t *testing.T) {
 	m, base := hooked(t)
 	start(m, base.Add(2*time.Second), "c1", "Bash", "ls")
@@ -563,9 +568,112 @@ func TestLastToolDeltaIsConsumedAndNotReplayedOnRejection(t *testing.T) {
 	if _, ok := m.LastToolDelta(); ok {
 		t.Fatal("second read: delta must be consumed")
 	}
-	// Older than the last hook report, inside HookStaleAfter: rejected.
-	start(m, base.Add(1*time.Second), "c0", "Read", "x.go")
+
+	// Late (older than the last hook report, inside HookStaleAfter) and
+	// still rejected: a plan update. No delta, and above all not c1 again.
+	mergeAt(m, base.Add(1*time.Second), wire.PlanItem{ID: "1", Text: "x", Status: wire.PlanStatusActive})
 	if ev, ok := m.LastToolDelta(); ok {
-		t.Fatalf("rejected event produced a delta: %+v", ev)
+		t.Fatalf("a rejected event produced a delta: %+v", ev)
+	}
+
+	// Late but recorded: a tool start. Its delta describes itself.
+	start(m, base.Add(1*time.Second), "c0", "Read", "x.go")
+	ev, ok := m.LastToolDelta()
+	if !ok {
+		t.Fatal("a late tool event is recorded now and must produce a delta")
+	}
+	if ev.CallID != "c0" {
+		t.Errorf("delta = %+v, want the late event itself (c0), not a replay of c1", ev)
+	}
+}
+
+// --- Late tool events and turn boundaries ---
+
+// TestLateToolEndStillClosesItsCall is the regression test for the
+// orphaned-call bug. Two tools run in parallel; B's end is applied
+// first, then A's end arrives stamped EARLIER than B's. The ordering
+// guard used to drop it whole, leaving A marked running forever and
+// CurrentTool naming a tool that had finished.
+func TestLateToolEndStillClosesItsCall(t *testing.T) {
+	m, base := hooked(t)
+	start(m, base, "a", "Bash", "npm test")
+	start(m, base.Add(100*time.Millisecond), "b", "Read", "go.mod")
+	end(m, base.Add(3*time.Second), "b", true)
+
+	m.Apply(Event{
+		Kind: KindToolEnd, Source: wire.StateSourceHook,
+		At:     base.Add(2 * time.Second), // earlier than b's end: out of order
+		Now:    base.Add(3500 * time.Millisecond),
+		CallID: "a", OK: boolp(true),
+	})
+
+	if got := m.Snapshot().CurrentTool; got != "" {
+		t.Errorf("CurrentTool = %q after both tools ended, want empty", got)
+	}
+	events, _ := m.Activity()
+	if len(events) != 2 {
+		t.Fatalf("ring has %d events, want 2 (the late end must be recorded)", len(events))
+	}
+	if late := events[1]; late.CallID != "a" || late.StartedAt == "" || late.DurationMS == 0 {
+		t.Errorf("late end = %+v, want a paired, timed call a", late)
+	}
+}
+
+// TestLateToolEventLeavesStateAlone: what the ordering guard exists to
+// protect still holds. A late tool event must not flip a session that
+// has moved on — here, to waiting for the user — back to working.
+func TestLateToolEventLeavesStateAlone(t *testing.T) {
+	m, base := hooked(t)
+	start(m, base, "a", "Bash", "x")
+	m.Apply(Event{Kind: KindWaitingPermission, Source: wire.StateSourceHook, At: base.Add(2 * time.Second), Now: base.Add(2 * time.Second)})
+
+	m.Apply(Event{
+		Kind: KindToolEnd, Source: wire.StateSourceHook,
+		At: base.Add(1 * time.Second), Now: base.Add(3 * time.Second),
+		CallID: "a", OK: boolp(true),
+	})
+	if got := m.Snapshot().State; got != wire.StateWaitingPermission {
+		t.Errorf("state = %q, want waiting_permission (a late event must not move state)", got)
+	}
+	if got := m.Snapshot().CurrentTool; got != "" {
+		t.Errorf("CurrentTool = %q, want the late end to have closed the call", got)
+	}
+}
+
+// TestTurnEndClearsRunningCalls: a finished turn runs nothing, so a
+// call whose end was lost — a killed or interrupted hook — must not
+// keep naming a finished tool. Every way a turn ends clears it; a wait
+// for permission does NOT, since that happens mid-tool.
+func TestTurnEndClearsRunningCalls(t *testing.T) {
+	for _, kind := range []string{KindTurnEnd, KindIdle, KindError, KindSessionEnd} {
+		t.Run(kind, func(t *testing.T) {
+			m, base := hooked(t)
+			start(m, base, "orphan", "Bash", "x")
+			if m.Snapshot().CurrentTool != "Bash" {
+				t.Fatal("setup: tool not running")
+			}
+			m.Apply(Event{Kind: kind, Source: wire.StateSourceHook, At: base.Add(time.Second), Now: base.Add(time.Second)})
+			if got := m.Snapshot().CurrentTool; got != "" {
+				t.Errorf("CurrentTool = %q after %s, want empty", got, kind)
+			}
+		})
+	}
+
+	m, base := hooked(t)
+	start(m, base, "pending", "Bash", "rm -rf build")
+	m.Apply(Event{Kind: KindWaitingPermission, Source: wire.StateSourceHook, At: base.Add(time.Second), Now: base.Add(time.Second)})
+	if got := m.Snapshot().CurrentTool; got != "Bash" {
+		t.Errorf("CurrentTool = %q while waiting for permission, want Bash (the tool is mid-flight)", got)
+	}
+}
+
+// TestTurnEndDoesNotInventOutcomes: forgotten calls have no end, so they
+// must not appear in the ring as if they had succeeded or failed.
+func TestTurnEndDoesNotInventOutcomes(t *testing.T) {
+	m, base := hooked(t)
+	start(m, base, "orphan", "Bash", "x")
+	m.Apply(Event{Kind: KindTurnEnd, Source: wire.StateSourceHook, At: base.Add(time.Second), Now: base.Add(time.Second)})
+	if events, _ := m.Activity(); len(events) != 0 {
+		t.Errorf("ring = %+v, want no invented outcome for a call that never ended", events)
 	}
 }

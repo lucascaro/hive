@@ -90,6 +90,52 @@ func (a *activity) evictOldestOpen() {
 	}
 }
 
+// endTurn forgets every call still marked running. A finished turn is
+// running nothing, so anything left in open is a call whose end never
+// arrived — a hook that was lost, killed or interrupted — and would
+// otherwise keep naming a finished tool as CurrentTool indefinitely,
+// with only the 32-call cap to ever push it out.
+//
+// The calls are forgotten, not pushed to the ring: without an end they
+// have no outcome and no duration to record, and inventing one would
+// put a false "succeeded" in the timeline. Their tally already counted
+// at start.
+func (a *activity) endTurn() {
+	a.open = nil
+}
+
+// applyLateActivity handles an event the ordering guard in Apply has
+// judged out of order.
+//
+// For tool events it records the ACTIVITY and nothing else. Parallel
+// tools finish in any order and their hooks are separate processes, so
+// a tool_end stamped before an already-applied event is ordinary — and
+// dropping it whole, as the guard used to, orphaned the call in open
+// and pinned CurrentTool to a finished tool. Tool events pair by call
+// ID, so their order does not matter to the pairing. What the guard
+// exists to protect — the session's state and the staleness clock — is
+// left untouched: a late event still must not flip a waiting session
+// back to working.
+//
+// Every other kind stays dropped, plans included: an older plan update
+// applied late would regress a step, a completed task back to in
+// progress, which order-independent pairing cannot excuse.
+func (m *Machine) applyLateActivity(ev Event, now time.Time) bool {
+	if m.state == wire.StateExited {
+		return false
+	}
+	before := m.Snapshot()
+	switch ev.Kind {
+	case KindToolStart:
+		m.toolStart(ev, now)
+	case KindToolEnd:
+		m.toolEnd(ev, now)
+	default:
+		return false
+	}
+	return m.Snapshot() != before
+}
+
 // toolStart records a tool beginning. now is the DAEMON's clock, not
 // the reporter's: durations must not be able to straddle a clock
 // adjustment on the reporting side.

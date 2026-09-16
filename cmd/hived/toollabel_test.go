@@ -152,3 +152,25 @@ func TestIsEnvAssignment(t *testing.T) {
 		}
 	}
 }
+
+// TestIsSubcommandRejectsNonASCII: the separator and digit checks are
+// ASCII, so a token spelled with look-alike runes — U+2010 hyphens,
+// U+FF0D fullwidth hyphen-minus, fullwidth digits — slipped past every
+// one of them while reading as exactly the credential shape the function
+// documents refusing. Real subcommands are ASCII, so any non-ASCII rune
+// is refused outright rather than chasing Unicode look-alikes one by one.
+func TestIsSubcommandRejectsNonASCII(t *testing.T) {
+	for _, tok := range []string{
+		"sk‐live‐abc", // HYPHEN
+		"sk－live－abc", // FULLWIDTH HYPHEN-MINUS
+		"key１２３",      // FULLWIDTH DIGITS
+		"tést",        // a plain accented word — refused too; the cost of the rule
+	} {
+		if isSubcommand(tok) {
+			t.Errorf("isSubcommand(%q) = true, want false", tok)
+		}
+	}
+	if got := deriveToolTarget(map[string]any{"command": "mytool sk‐live‐abc"}); got != "mytool" {
+		t.Errorf("label = %q, want %q", got, "mytool")
+	}
+}

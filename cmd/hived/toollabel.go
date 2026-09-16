@@ -156,6 +156,8 @@ const maxSubcommandLen = 20
 //   - flags (`-x`), and anything containing a path separator, `=`, `$`, a
 //     quote or a backtick — the original rule;
 //   - `@` and `:` — `deploy@prod-db`, `host:port`, `user:token`;
+//   - any non-ASCII rune — the checks below are ASCII, and look-alike
+//     hyphens or fullwidth digits would otherwise slip past all of them;
 //   - `.` — a filename (`manage.py`, `prod.tfvars`, `id_rsa.pub`) is an
 //     argument, and a sensitive one as often as not; subcommands do not
 //     carry a dot;
@@ -175,6 +177,16 @@ const maxSubcommandLen = 20
 func isSubcommand(tok string) bool {
 	if tok == "" || strings.HasPrefix(tok, "-") || len(tok) > maxSubcommandLen {
 		return false
+	}
+	// Every check below is ASCII. Without this, a token spelled with
+	// look-alike runes (U+2010 hyphens, fullwidth digits) slipped past all
+	// of them while reading as exactly the credential shape they refuse.
+	// Real subcommands are ASCII, so non-ASCII is refused outright rather
+	// than chasing look-alikes one by one.
+	for i := 0; i < len(tok); i++ {
+		if tok[i] >= 0x80 {
+			return false
+		}
 	}
 	if strings.ContainsAny(tok, `/\=$"'@:.`+"`") {
 		return false
