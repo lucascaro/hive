@@ -184,12 +184,12 @@ grid are planned for phase 3.
 
 The layouts are settled and drawn in the round-five mocks. In short:
 
-- **Sidebar** — a 30px progress ring sits *behind* the existing agent
-  code, which keeps the row's own `--text-xs` / `--font-mono` /
-  `--fg-subtle` styling. The ring is a backdrop, never a replacement,
-  so resizing it can never change the text. It fits inside the row's
-  ~32px text column, so no row grows; both existing lines (name and
-  window title) survive untouched.
+- **Sidebar** — a small filled `conic-gradient` pie (12px; 11px tight, 10px
+  compact) in its own grid cell beneath the state icon, coloured
+  by the row's state. It never overlays or restyles the text, so no row
+  grows; both existing lines (name and window title) survive untouched.
+  At compact density it moves into row 1 beside the icon, widening
+  column 1 only for rows that have a plan.
 - **Panel** — plan steps with their tools nested beneath. Only the
   current step is expanded by default; the rest collapse to one line
   with a disclosure triangle and a tool-count pill. The full timeline
