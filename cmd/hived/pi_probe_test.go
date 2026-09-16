@@ -60,19 +60,14 @@ func startPiTestDaemon(t *testing.T) (*daemon.Daemon, string) {
 	return d, stateDir
 }
 
-// TestPiProbeReportsThroughTheExtension is the live check for the
-// extension tier, the one thing no fixture can prove: a REAL pi,
-// launched by the daemon with the embedded extension, reports its own
-// state over the event socket. Opt-in — it costs one API call:
-//
-//	HIVE_PROBE_PI=1 go test ./cmd/hived/ -run TestPiProbe -v
-func TestPiProbeReportsThroughTheExtension(t *testing.T) {
-	if os.Getenv("HIVE_PROBE_PI") != "1" {
-		t.Skip("set HIVE_PROBE_PI=1 to run the real-pi probe")
-	}
-	if _, err := exec.LookPath("pi"); err != nil {
-		t.Skip("pi not on PATH")
-	}
+// piProbeWait polls the probe session's info until cond holds.
+type piProbeWait func(within time.Duration, cond func(wire.SessionInfo) bool, what string) wire.SessionInfo
+
+// startPiProbe launches a REAL pi through a test daemon and waits until
+// its extension has reported in (the session_start ping). Callers have
+// already checked HIVE_PROBE_PI and that pi is on PATH.
+func startPiProbe(t *testing.T) (*daemon.Daemon, string, *session.Session, piProbeWait) {
+	t.Helper()
 	// Preflight: the daemon launches agents through a login shell, so
 	// the node that matters is the one THAT shell resolves. A login
 	// shell still pointing at an old node (an nvm default, say) runs a
@@ -136,7 +131,7 @@ func TestPiProbeReportsThroughTheExtension(t *testing.T) {
 	if err != nil {
 		t.Fatalf("subscribe: %v", err)
 	}
-	defer unsub()
+	t.Cleanup(unsub)
 
 	t.Cleanup(func() {
 		if dir := os.Getenv("HIVE_PROBE_DUMP"); dir != "" {
@@ -152,6 +147,24 @@ func TestPiProbeReportsThroughTheExtension(t *testing.T) {
 	}, "extension tier (session_start ping)")
 
 	time.Sleep(2 * time.Second)
+	return d, id, sess, wait
+}
+
+// TestPiProbeReportsThroughTheExtension is the live check for the
+// extension tier, the one thing no fixture can prove: a REAL pi,
+// launched by the daemon with the embedded extension, reports its own
+// state over the event socket. Opt-in — it costs one API call:
+//
+//	HIVE_PROBE_PI=1 go test ./cmd/hived/ -run TestPiProbe -v
+func TestPiProbeReportsThroughTheExtension(t *testing.T) {
+	if os.Getenv("HIVE_PROBE_PI") != "1" {
+		t.Skip("set HIVE_PROBE_PI=1 to run the real-pi probe")
+	}
+	if _, err := exec.LookPath("pi"); err != nil {
+		t.Skip("pi not on PATH")
+	}
+	_, _, sess, wait := startPiProbe(t)
+
 	if _, err := sess.Write([]byte("reply with the single word pong\r")); err != nil {
 		t.Fatalf("write prompt: %v", err)
 	}
@@ -175,5 +188,73 @@ func TestPiProbeReportsThroughTheExtension(t *testing.T) {
 	}, "waiting_input after the reply")
 	if info.LastSummary == "" {
 		t.Errorf("LastSummary is empty after a completed turn")
+	}
+}
+
+// TestPiProbeTodoToolPlan is the live check for Phase 3: a real pi,
+// asked to use Hive's hive_todo tool, produces a plan in SessionInfo and
+// its tool call lands in the activity ring — the whole chain of
+// registerTool, tool_execution_end's result details, the batched report
+// and the daemon's plan. Opt-in; it costs one API call.
+func TestPiProbeTodoToolPlan(t *testing.T) {
+	if os.Getenv("HIVE_PROBE_PI") != "1" {
+		t.Skip("set HIVE_PROBE_PI=1 to run the real-pi probe")
+	}
+	if _, err := exec.LookPath("pi"); err != nil {
+		t.Skip("pi not on PATH")
+	}
+	agent.SetCustomDir(t.TempDir()) // no settings file: the tool is on
+	t.Cleanup(func() { agent.SetCustomDir("") })
+	d, id, sess, wait := startPiProbe(t)
+
+	if _, err := sess.Write([]byte("Call the hive_todo tool once with a two-step plan: alpha with status done, " +
+		"beta with status pending. Run no other tool. Then reply done.\r")); err != nil {
+		t.Fatalf("write prompt: %v", err)
+	}
+	info := wait(120*time.Second, func(i wire.SessionInfo) bool { return i.PlanTotal >= 2 }, "a plan from hive_todo")
+	if info.PlanTotal != 2 || info.PlanDone != 1 {
+		t.Errorf("plan = %d/%d, want 1/2", info.PlanDone, info.PlanTotal)
+	}
+	act, err := d.Registry().ActivitySnapshot(id)
+	if err != nil {
+		t.Fatalf("activity: %v", err)
+	}
+	var sawTool bool
+	for _, ev := range act.Events {
+		if ev.Tool == "hive_todo" && ev.OK != nil && *ev.OK {
+			sawTool = true
+		}
+	}
+	if !sawTool {
+		t.Errorf("no completed hive_todo call in the activity ring: %+v", act.Events)
+	}
+}
+
+// TestPiProbeTodoToolOff is the negative control: with the setting off
+// the extension registers nothing, so the same request yields no plan.
+func TestPiProbeTodoToolOff(t *testing.T) {
+	if os.Getenv("HIVE_PROBE_PI") != "1" {
+		t.Skip("set HIVE_PROBE_PI=1 to run the real-pi probe")
+	}
+	if _, err := exec.LookPath("pi"); err != nil {
+		t.Skip("pi not on PATH")
+	}
+	agent.SetCustomDir(t.TempDir())
+	t.Cleanup(func() { agent.SetCustomDir("") })
+	if err := agent.SaveSettings(agent.Settings{ClaudeTaskTools: true, PiTodoTool: false}); err != nil {
+		t.Fatalf("save settings: %v", err)
+	}
+	_, _, sess, wait := startPiProbe(t)
+
+	if _, err := sess.Write([]byte("If you have a tool named hive_todo, call it once with a one-step plan: alpha, pending. " +
+		"If you do not have it, run no tool. Then reply done.\r")); err != nil {
+		t.Fatalf("write prompt: %v", err)
+	}
+	wait(30*time.Second, func(i wire.SessionInfo) bool { return i.State == wire.StateWorking }, "the turn to start")
+	info := wait(120*time.Second, func(i wire.SessionInfo) bool {
+		return i.State == wire.StateWaitingInput && i.StateSource == wire.StateSourceExtension
+	}, "the turn to finish")
+	if info.PlanTotal != 0 {
+		t.Errorf("plan_total = %d with the todo tool off, want 0", info.PlanTotal)
 	}
 }

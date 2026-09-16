@@ -1609,6 +1609,11 @@ Non-vacuity checks run once during implementation and recorded in Progress:
 
 - **2026-09-16** — Phase 3 wedged-daemon queue policy: drop the **oldest** pending report when 64 are queued (a 64 × 2 s backlog would otherwise outlive `HookStaleAfter` and discard the freshest state). Mixed-version downgrade (older GUI rewrites `agent-settings.json` without `pi_todo_tool`, turning a user's "off" back on) accepted as harmless.
 
+- **2026-09-16** — Phase 3 implementation deviations from the approved plan:
+  - **Load probe replaced by live probes.** `pi -e <ext> --list-models` exits 0 even when an extension throws on load (checked with a deliberately throwing extension), so the planned no-token `TestPiProbeExtensionLoadsWithTodoTool` would have been vacuous. Replaced by `TestPiProbeTodoToolPlan` (real pi calls `hive_todo` → plan 1/2 + a completed `hive_todo` in the activity ring) and `TestPiProbeTodoToolOff` (setting off → plan_total 0), one API call each. The existing probe body became the shared `startPiProbe` helper.
+  - **Step 0 verified against the running pi 0.85.1** (global install, not pi-devkit's 0.85.0): `tool_execution_end.result` carries `details` (`agent-loop.js` `emitToolExecutionEnd`), the toolResult message keeps `isError` and `details`, `session_start.reason` and `session_tree` exist as planned. No API deviation.
+  - **Shared vectors carry more than the Go table did**: non-object inputs, a non-string value falling through to the next key, look-alike hyphens, U+0085 / U+FEFF word-splitting, the two documented ceilings, and one pinned URL divergence (`want_go` / `want_ts`). The ceilings now fail rather than skip if raised; the Go `Skip` tests remain as the documented escape hatch.
+
 ## Progress
 
 - **2026-09-15** — RESEARCH complete; three-way fan-out (Go daemon, frontend, Pi
@@ -1632,6 +1637,8 @@ Non-vacuity checks run once during implementation and recorded in Progress:
 - **2026-09-16** — Phase 2 merged (#420). Phase reset: `Phase: 3 of 4`, PR/Branch cleared, spec stage GATE → RESEARCH on `feature/416-phase-3`.
 
 - **2026-09-16** — Phase 3 PLAN approved via the HTML plan review (round 1, no feedback) after two second-opinion rounds (revise → revise, all must-fix applied). Stage → IMPLEMENT.
+
+- **2026-09-16** — Phase 3 implemented on `feature/416-phase-3`: Pi extension tool events, `hive_todo` tool + plan (live and rebuilt on `session_start` / `session_tree`), serialized bounded send queue, TS label port over shared vectors, `pi_todo_tool` setting → `HIVE_PI_TODO_TOOL`, Settings checkbox, docs, changeset. Checks: `scripts/test.sh` green (go · 517 unit · 809 dom · 341 e2e), `scripts/ui-lint.sh`, `biome ci`. Mutation checks, each confirmed failing its test: vector flip (Go and TS), `eventBody` spreading the event, removed env gate, failed call posting a plan, bogus kind inside `send([...])`, unserialized queue, `session_start` skipping the empty plan, rebuild ignoring `isError`, queue dropping newest, synchronous throw stalling; plus raw `args` added at the call site still dropped by `eventBody` (test passes, as intended). Live probes `TestPiProbeReportsThroughTheExtension`, `TestPiProbeTodoToolPlan`, `TestPiProbeTodoToolOff` pass (`HIVE_PROBE_PI=1`, pi 0.85.1); the Off probe fails (plan_total 1) with the env gate removed.
 
 ## Open questions / risks
 

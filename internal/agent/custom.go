@@ -169,7 +169,8 @@ func validateCustom(list []Custom) ([]Def, []error) {
 			// A custom agent inherits the built-in's hooks AND its
 			// environment together, from one name match: `claude
 			// --model haiku` gets the task-tool opt-in exactly when it
-			// gets the hooks that make the opt-in worth its context.
+			// gets the hooks that make the opt-in worth its context, and
+			// `pi --model x` gets the extension and its todo-tool setting.
 			SpawnArgs: base.SpawnArgs,
 			SpawnEnv:  base.SpawnEnv,
 		})

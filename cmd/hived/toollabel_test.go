@@ -1,94 +1,56 @@
 package main
 
 import (
+	"encoding/json"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
 	"github.com/lucascaro/hive/internal/wire"
 )
 
+// labelVector is one case of testdata/toollabel/vectors.json. The file
+// is shared with the Pi extension's TypeScript reporter
+// (internal/agent/pi/hive.test.ts), which runs every case too: the
+// privacy rule has two implementations, and one table is what keeps them
+// from drifting. WantGo overrides Want only for a pinned divergence
+// between Go's url.Parse and JS's URL.
+type labelVector struct {
+	Name   string  `json:"name"`
+	Input  any     `json:"input"`
+	Want   *string `json:"want"`
+	WantGo *string `json:"want_go"`
+}
+
 // TestDeriveLabel is the privacy rule's unit-level table. Every case
 // that mentions a secret is there because the obvious implementation
 // would have leaked it.
 func TestDeriveLabel(t *testing.T) {
-	cases := []struct {
-		name  string
-		input map[string]any
-		want  string
-	}{
-		// --- paths ---
-		{"unix path", map[string]any{"file_path": "/Users/dev/hive/internal/agentstate/machine.go"}, "machine.go"},
-		{
-			// The spec's separator-agnostic criterion. filepath.Base on
-			// a unix build does NOT split this, which is the bug.
-			"windows path",
-			map[string]any{"file_path": `C:\Users\dev\hive\internal\agentstate\machine.go`},
-			"machine.go",
-		},
-		{"bare filename", map[string]any{"path": "README.md"}, "README.md"},
-		{"notebook", map[string]any{"notebook_path": "/tmp/analysis/run.ipynb"}, "run.ipynb"},
-
-		// --- commands ---
-		{"single token", map[string]any{"command": "ls"}, "ls"},
-		{"subcommand kept", map[string]any{"command": "npm test"}, "npm test"},
-		{"git subcommand", map[string]any{"command": `git commit -m "fix the thing"`}, "git commit"},
-		{"flag is not a subcommand", map[string]any{"command": "ls -la /etc"}, "ls"},
-		{
-			// No shell metacharacter anywhere, so a "cut at the first
-			// metacharacter" rule would have shipped the whole bearer
-			// token.
-			"secret in a header",
-			map[string]any{"command": `curl -H "Authorization: Bearer sk-live-SECRET" https://api.example.com`},
-			"curl",
-		},
-		// Digits never pass as a subcommand, so a numeric argument is
-		// dropped too — and the metacharacter still ends the head.
-		{"metacharacter terminates", map[string]any{"command": "sleep 12; touch probe.txt"}, "sleep"},
-		{"hyphenated subcommand kept", map[string]any{"command": "git cherry-pick abc"}, "git cherry-pick"},
-		{"docker subcommand kept", map[string]any{"command": "docker compose up"}, "docker compose"},
-
-		// --- the command word itself (the first token was never checked) ---
-		{"inline env secret before the command", map[string]any{"command": "GITHUB_TOKEN=ghp_abc123 gh api user"}, "gh api"},
-		{"several assignments", map[string]any{"command": "A=1 B=two npm test"}, "npm test"},
-		{"assignments and nothing else", map[string]any{"command": "SECRET=hunter2"}, ""},
-		{"path command basenamed", map[string]any{"command": "/home/alice/bin/tool build"}, "tool build"},
-		{"relative script basenamed", map[string]any{"command": "./scripts/deploy.sh"}, "deploy.sh"},
-		{"windows command basenamed", map[string]any{"command": `C:\Users\alice\tool.exe build`}, "tool.exe build"},
-		// The command word may carry digits; a filename argument is data.
-		{"executable with digits kept, filename dropped", map[string]any{"command": "python3 manage.py"}, "python3"},
-		{"sensitive filename argument dropped", map[string]any{"command": "terraform prod.tfvars"}, "terraform"},
-		{"unexpanded variable as command", map[string]any{"command": "$DEPLOY_CMD --prod"}, ""},
-		{"quoted command", map[string]any{"command": `"my tool" run`}, ""},
-		{"not an assignment: equals mid-word", map[string]any{"command": "1FOO=bar run"}, ""},
-
-		// --- credential- and host-shaped second words (the heuristic) ---
-		{"key prefix with digits", map[string]any{"command": "mytool sk-live-abc123"}, "mytool"},
-		{"key prefix, letters only", map[string]any{"command": "mytool sk-live-abcdef"}, "mytool"},
-		{"slack-style token", map[string]any{"command": "notify xoxb-AAAA-BBBB"}, "notify"},
-		{"github token", map[string]any{"command": "gh ghp_AbCdEf1234"}, "gh"},
-		{"user at host", map[string]any{"command": "ssh deploy@prod-db"}, "ssh"},
-		{"host and port", map[string]any{"command": "nc db.internal:5432"}, "nc"},
-		{"user and secret", map[string]any{"command": "login admin:hunter"}, "login"},
-		{"long opaque token", map[string]any{"command": "mytool AbCdEfGhIjKlMnOpQrStUv"}, "mytool"},
-		{"pipe terminates", map[string]any{"command": "cat /etc/passwd | grep root"}, "cat"},
-		{"env assignment refused", map[string]any{"command": "env TOKEN=secret deploy"}, "env"},
-		{"path arg refused", map[string]any{"command": "python /home/dev/secret_script.py"}, "python"},
-		{"empty command", map[string]any{"command": "   "}, ""},
-
-		// --- urls ---
-		{"url host only", map[string]any{"url": "https://api.example.com/v1/x?token=SECRET"}, "api.example.com"},
-		{"url with port", map[string]any{"url": "http://localhost:8080/debug"}, "localhost:8080"},
-		{"relative url has no host", map[string]any{"url": "/just/a/path"}, ""},
-
-		// --- refusals ---
-		{"unknown key yields nothing", map[string]any{"pattern": "password|secret"}, ""},
-		{"empty input", map[string]any{}, ""},
+	raw, err := os.ReadFile(filepath.Join("testdata", "toollabel", "vectors.json"))
+	if err != nil {
+		t.Fatal(err)
 	}
-
-	for _, tc := range cases {
-		t.Run(tc.name, func(t *testing.T) {
-			if got := deriveToolTarget(tc.input); got != tc.want {
-				t.Errorf("deriveToolTarget(%v) = %q, want %q", tc.input, got, tc.want)
+	var doc struct {
+		Cases []labelVector `json:"cases"`
+	}
+	if err := json.Unmarshal(raw, &doc); err != nil {
+		t.Fatal(err)
+	}
+	if len(doc.Cases) == 0 {
+		t.Fatal("vectors.json has no cases")
+	}
+	for _, tc := range doc.Cases {
+		want := tc.Want
+		if tc.WantGo != nil {
+			want = tc.WantGo
+		}
+		if want == nil {
+			t.Fatalf("vector %q has neither want nor want_go", tc.Name)
+		}
+		t.Run(tc.Name, func(t *testing.T) {
+			if got := deriveToolTarget(tc.Input); got != *want {
+				t.Errorf("deriveToolTarget(%v) = %q, want %q", tc.Input, got, *want)
 			}
 		})
 	}

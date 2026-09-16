@@ -116,6 +116,9 @@ type AgentSettings struct {
 	// Code's task tools, which is where the sidebar's plan progress
 	// comes from.
 	ClaudeTaskTools bool `json:"claude_task_tools"`
+	// PiTodoTool has Hive's Pi extension add its hive_todo tool to newly
+	// started Pi sessions, which is where a Pi session's plan comes from.
+	PiTodoTool bool `json:"pi_todo_tool"`
 }
 
 // GetAgentSettings reads agent-settings.json. A malformed file is an
@@ -123,7 +126,7 @@ type AgentSettings struct {
 // save over the file the user was trying to fix.
 func (a *App) GetAgentSettings() (AgentSettings, error) {
 	s, err := agent.LoadSettings()
-	return AgentSettings{ClaudeTaskTools: s.ClaudeTaskTools}, err
+	return AgentSettings{ClaudeTaskTools: s.ClaudeTaskTools, PiTodoTool: s.PiTodoTool}, err
 }
 
 // SaveAgentSettings writes agent-settings.json. hived reads it when it
@@ -131,7 +134,7 @@ func (a *App) GetAgentSettings() (AgentSettings, error) {
 // newly started sessions only: a running process keeps the environment
 // it was started with.
 func (a *App) SaveAgentSettings(s AgentSettings) error {
-	return agent.SaveSettings(agent.Settings{ClaudeTaskTools: s.ClaudeTaskTools})
+	return agent.SaveSettings(agent.Settings{ClaudeTaskTools: s.ClaudeTaskTools, PiTodoTool: s.PiTodoTool})
 }
 
 // CreateSessionOpts is the request CreateSession takes. A struct, not

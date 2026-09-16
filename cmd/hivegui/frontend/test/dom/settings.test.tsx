@@ -23,7 +23,10 @@ const saveCustomAgents = vi.fn(
 );
 const getAgentSettings = vi.fn(
   (): Promise<main.AgentSettings> =>
-    Promise.resolve({ claude_task_tools: true } as main.AgentSettings),
+    Promise.resolve({
+      claude_task_tools: true,
+      pi_todo_tool: true,
+    } as main.AgentSettings),
 );
 const saveAgentSettings = vi.fn(
   (_s: main.AgentSettings): Promise<void> => Promise.resolve(),
@@ -134,9 +137,10 @@ beforeAll(async () => {
 beforeEach(() => {
   listCustomAgents.mockReset().mockResolvedValue([]);
   saveCustomAgents.mockReset().mockResolvedValue(undefined);
-  getAgentSettings
-    .mockReset()
-    .mockResolvedValue({ claude_task_tools: true } as main.AgentSettings);
+  getAgentSettings.mockReset().mockResolvedValue({
+    claude_task_tools: true,
+    pi_todo_tool: true,
+  } as main.AgentSettings);
   saveAgentSettings.mockReset().mockResolvedValue(undefined);
   refocusActiveTerm.mockReset();
   setFocusedTile.mockReset();
@@ -230,6 +234,7 @@ describe('settings: Claude plan progress toggle', () => {
     await flush();
     expect(saveAgentSettings).toHaveBeenCalledWith({
       claude_task_tools: false,
+      pi_todo_tool: true,
     });
     expect(el('settings').classList.contains('hidden')).toBe(true);
   });
@@ -271,6 +276,71 @@ describe('settings: Claude plan progress toggle', () => {
     expect(hint).toContain('CLAUDE_CODE_ENABLE_TODO_TOOLS');
     expect(box().getAttribute('aria-describedby')).toBe(
       'settings-claude-task-tools-hint',
+    );
+  });
+});
+
+describe('settings: Pi plan progress toggle', () => {
+  const box = () => el<HTMLInputElement>('settings-pi-todo-tool');
+
+  it('loads the saved value', async () => {
+    getAgentSettings.mockResolvedValue({
+      claude_task_tools: true,
+      pi_todo_tool: false,
+    } as main.AgentSettings);
+    open();
+    await flush();
+    expect(box().checked).toBe(false);
+    expect(box().disabled).toBe(false);
+  });
+
+  it('defaults to on when an older file has no pi_todo_tool', async () => {
+    getAgentSettings.mockResolvedValue({
+      claude_task_tools: false,
+    } as main.AgentSettings);
+    open();
+    await flush();
+    expect(box().checked).toBe(true);
+  });
+
+  it('saves both settings together', async () => {
+    // SaveSettings writes the whole file, so dropping either field here
+    // would reset it.
+    getAgentSettings.mockResolvedValue({
+      claude_task_tools: false,
+      pi_todo_tool: true,
+    } as main.AgentSettings);
+    open();
+    await flush();
+    fireEvent.click(box());
+
+    click(el('settings-save'));
+    await flush();
+    expect(saveAgentSettings).toHaveBeenCalledWith({
+      claude_task_tools: false,
+      pi_todo_tool: false,
+    });
+  });
+
+  it('is disabled and never saved when the file could not be read', async () => {
+    getAgentSettings.mockRejectedValue(new Error('parse agent-settings.json'));
+    open();
+    await flush();
+    expect(box().disabled).toBe(true);
+    click(el('settings-save'));
+    await flush();
+    expect(saveAgentSettings).not.toHaveBeenCalled();
+  });
+
+  it('says what it adds, what it costs and when it applies', async () => {
+    open();
+    await flush();
+    const hint = el('settings-pi-todo-tool-hint').textContent ?? '';
+    expect(hint).toContain('hive_todo');
+    expect(hint).toMatch(/context/);
+    expect(hint).toMatch(/newly started sessions only/);
+    expect(box().getAttribute('aria-describedby')).toBe(
+      'settings-pi-todo-tool-hint',
     );
   });
 });
