@@ -152,6 +152,11 @@ function SettingsDialog({ root }: { root: HTMLElement }): ReactNode {
   // slow read never flashes the box unchecked first.
   const [claudeTaskTools, setClaudeTaskTools] = useState(true);
   const [agentSettingsFailed, setAgentSettingsFailed] = useState(false);
+  // Save must never write agent settings it has not read: the checkbox's
+  // initial `true` is a display default, not the user's value, and saving
+  // it before the read lands would overwrite a saved `false`. The box
+  // stays disabled until then, so it cannot be changed early either.
+  const [agentSettingsLoaded, setAgentSettingsLoaded] = useState(false);
   const [error, setError] = useState('');
   const [theme, setTheme] = useState<ThemeName>(() => readTheme());
   const [pair, setPair] = useState<SystemPair>(() => readPair());
@@ -294,6 +299,7 @@ function SettingsDialog({ root }: { root: HTMLElement }): ReactNode {
         if (!live) return;
         setClaudeTaskTools(s?.claude_task_tools ?? true);
         setAgentSettingsFailed(false);
+        setAgentSettingsLoaded(true);
       })
       // Same rule as agents.json and update.json: a file that will not
       // parse must not be silently replaced by the defaults on the next
@@ -568,7 +574,7 @@ function SettingsDialog({ root }: { root: HTMLElement }): ReactNode {
     // Cancel that no longer discards it.
     SaveCustomAgents(payload)
       .then(() =>
-        agentSettingsFailed
+        !agentSettingsLoaded || agentSettingsFailed
           ? undefined
           : SaveAgentSettings({
               claude_task_tools: claudeTaskTools,
@@ -663,7 +669,7 @@ function SettingsDialog({ root }: { root: HTMLElement }): ReactNode {
             id="settings-claude-task-tools"
             type="checkbox"
             checked={claudeTaskTools}
-            disabled={agentSettingsFailed}
+            disabled={!agentSettingsLoaded || agentSettingsFailed}
             aria-describedby="settings-claude-task-tools-hint"
             onChange={(e) => setClaudeTaskTools(e.target.checked)}
           />
@@ -671,9 +677,9 @@ function SettingsDialog({ root }: { root: HTMLElement }): ReactNode {
         </label>
         <p id="settings-claude-task-tools-hint" className="settings-hint">
           Turns on Claude Code's task list for sessions Hive starts, so the
-          sidebar can show how far each one is through its plan. It uses some
-          of the model's context, and applies to newly started sessions only.
-          If you set <code>CLAUDE_CODE_ENABLE_TODO_TOOLS</code> yourself, Hive
+          sidebar can show how far each one is through its plan. It uses some of
+          the model's context, and applies to newly started sessions only. If
+          you set <code>CLAUDE_CODE_ENABLE_TODO_TOOLS</code> yourself, Hive
           leaves it alone.
         </p>
         <div id="settings-agents-list" ref={listRef}>

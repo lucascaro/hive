@@ -228,9 +228,18 @@ func planEvent(base wire.AgentEvent, p hookPayload) (wire.AgentEvent, bool) {
 
 	switch base.Tool {
 	case "TodoWrite":
+		// An EMPTY todos list is a real answer — the agent cleared its
+		// plan — and must reach the daemon, or the last plan would stay on
+		// screen describing work that no longer exists. Only a payload
+		// with no todos array at all carries no plan. TaskList below
+		// follows the same rule.
+		input, _ := p["tool_input"].(map[string]any)
+		if _, isList := input["todos"].([]any); !isList {
+			return ev, false
+		}
 		ev.Kind = wire.AgentEventPlan
 		ev.Items = derivePlan(p["tool_input"])
-		return ev, len(ev.Items) > 0
+		return ev, true
 
 	case "TaskList":
 		ev.Kind = wire.AgentEventPlan

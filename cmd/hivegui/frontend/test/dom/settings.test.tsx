@@ -228,7 +228,9 @@ describe('settings: Claude plan progress toggle', () => {
 
     click(el('settings-save'));
     await flush();
-    expect(saveAgentSettings).toHaveBeenCalledWith({ claude_task_tools: false });
+    expect(saveAgentSettings).toHaveBeenCalledWith({
+      claude_task_tools: false,
+    });
     expect(el('settings').classList.contains('hidden')).toBe(true);
   });
 
@@ -240,6 +242,20 @@ describe('settings: Claude plan progress toggle', () => {
     await flush();
     expect(box().disabled).toBe(true);
     expect(el('settings-error').textContent).toContain('agent-settings.json');
+
+    click(el('settings-save'));
+    await flush();
+    expect(saveAgentSettings).not.toHaveBeenCalled();
+  });
+
+  it('never saves the display default before the real value loads', async () => {
+    // Save clicked while GetAgentSettings is still in flight: the box shows
+    // `true`, but that is a default, not the user's saved value — writing
+    // it would overwrite a saved `false`.
+    getAgentSettings.mockImplementation(() => new Promise(() => {}));
+    open();
+    await flush();
+    expect(box().disabled).toBe(true);
 
     click(el('settings-save'));
     await flush();

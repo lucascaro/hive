@@ -41,7 +41,21 @@ func TestDeriveLabel(t *testing.T) {
 			map[string]any{"command": `curl -H "Authorization: Bearer sk-live-SECRET" https://api.example.com`},
 			"curl",
 		},
-		{"metacharacter terminates", map[string]any{"command": "sleep 12; touch probe.txt"}, "sleep 12"},
+		// Digits never pass as a subcommand, so a numeric argument is
+		// dropped too — and the metacharacter still ends the head.
+		{"metacharacter terminates", map[string]any{"command": "sleep 12; touch probe.txt"}, "sleep"},
+		{"hyphenated subcommand kept", map[string]any{"command": "git cherry-pick abc"}, "git cherry-pick"},
+		{"docker subcommand kept", map[string]any{"command": "docker compose up"}, "docker compose"},
+
+		// --- credential- and host-shaped second words (the heuristic) ---
+		{"key prefix with digits", map[string]any{"command": "mytool sk-live-abc123"}, "mytool"},
+		{"key prefix, letters only", map[string]any{"command": "mytool sk-live-abcdef"}, "mytool"},
+		{"slack-style token", map[string]any{"command": "notify xoxb-AAAA-BBBB"}, "notify"},
+		{"github token", map[string]any{"command": "gh ghp_AbCdEf1234"}, "gh"},
+		{"user at host", map[string]any{"command": "ssh deploy@prod-db"}, "ssh"},
+		{"host and port", map[string]any{"command": "nc db.internal:5432"}, "nc"},
+		{"user and secret", map[string]any{"command": "login admin:hunter"}, "login"},
+		{"long opaque token", map[string]any{"command": "mytool AbCdEfGhIjKlMnOpQrStUv"}, "mytool"},
 		{"pipe terminates", map[string]any{"command": "cat /etc/passwd | grep root"}, "cat"},
 		{"env assignment refused", map[string]any{"command": "env TOKEN=secret deploy"}, "env"},
 		{"path arg refused", map[string]any{"command": "python /home/dev/secret_script.py"}, "python"},
@@ -99,5 +113,16 @@ func TestCapLabelRuneBoundary(t *testing.T) {
 		if r == '\uFFFD' {
 			t.Fatalf("capLabel split a rune: %q", got)
 		}
+	}
+}
+
+// TestIsSubcommandKnownCeiling pins the heuristic's documented limit,
+// so the day someone tightens it (to a subcommand allowlist) the test
+// that changes is this one and the decision is visible. A short,
+// all-letter secret with at most one separator is indistinguishable
+// from a subcommand by shape alone.
+func TestIsSubcommandKnownCeiling(t *testing.T) {
+	if !isSubcommand("AbCdEfGhIjKlMnOp") {
+		t.Skip("the ceiling was raised — update the ponytail note on isSubcommand and delete this test")
 	}
 }

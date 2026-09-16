@@ -121,9 +121,11 @@ func TestHookToolEventFields(t *testing.T) {
 	if start.Tool != "Bash" {
 		t.Errorf("tool = %q, want Bash", start.Tool)
 	}
-	// "sleep 12; touch probe.txt" — the head, not the command.
-	if start.Target != "sleep 12" {
-		t.Errorf("target = %q, want %q", start.Target, "sleep 12")
+	// "sleep 12; touch probe.txt" — the head, not the command. `12` is an
+	// argument, and digits never pass as a subcommand, so it is just
+	// `sleep`.
+	if start.Target != "sleep" {
+		t.Errorf("target = %q, want %q", start.Target, "sleep")
 	}
 	if start.OK != nil {
 		t.Errorf("OK = %v on a tool_start, want nil", start.OK)
@@ -494,5 +496,27 @@ func TestIDStringAcceptsNumbers(t *testing.T) {
 		if got := idString(in); got != want {
 			t.Errorf("idString(%v) = %q, want %q", in, got, want)
 		}
+	}
+}
+
+// TestHookEmptyTodoWriteClearsPlan: an agent that clears its todo list
+// must clear Hive's too. Suppressing the event (the earlier behaviour)
+// left the last plan on screen describing work that no longer existed.
+func TestHookEmptyTodoWriteClearsPlan(t *testing.T) {
+	evs := mapHookPayload([]byte(`{"hook_event_name":"PostToolUse","tool_name":"TodoWrite",
+		"tool_use_id":"toolu_1","tool_input":{"todos":[]}}`))
+	if len(evs) != 2 {
+		t.Fatalf("got %d events, want tool_end + an empty plan", len(evs))
+	}
+	if evs[1].Kind != wire.AgentEventPlan || len(evs[1].Items) != 0 {
+		t.Errorf("plan event = %+v, want an empty wholesale plan", evs[1])
+	}
+
+	// But a TodoWrite with no todos array at all carries no plan, and
+	// must not wipe one.
+	none := mapHookPayload([]byte(`{"hook_event_name":"PostToolUse","tool_name":"TodoWrite",
+		"tool_use_id":"toolu_2","tool_input":{}}`))
+	if len(none) != 1 {
+		t.Errorf("got %d events for a TodoWrite with no todos, want only the tool event", len(none))
 	}
 }

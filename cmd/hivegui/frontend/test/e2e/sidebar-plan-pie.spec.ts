@@ -49,7 +49,13 @@ function box(page: Page, selector: string) {
     .locator(selector)
     .evaluate((el) => {
       const r = el.getBoundingClientRect();
-      return { top: r.top, bottom: r.bottom, left: r.left, width: r.width, height: r.height };
+      return {
+        top: r.top,
+        bottom: r.bottom,
+        left: r.left,
+        width: r.width,
+        height: r.height,
+      };
     });
 }
 
@@ -64,7 +70,12 @@ async function setPlan(page: Page, done: number, total: number, tool = '') {
   const id = await firstSessionId(page);
   await page.evaluate(
     ([i, d, t, tool]) =>
-      window.__hive.setSessionPlan?.(i as string, d as number, t as number, tool as string),
+      window.__hive.setSessionPlan?.(
+        i as string,
+        d as number,
+        t as number,
+        tool as string,
+      ),
     [id, done, total, tool] as const,
   );
   if (total > 0) await expect(pie(page)).toBeVisible();
@@ -190,8 +201,8 @@ test.describe('sidebar plan indicator', () => {
       (i) => window.__hive.setSessionState?.(i, 'working', 'hook'),
       id,
     );
-    const live = await pie(page).evaluate(
-      (el) => getComputedStyle(el).getPropertyValue('--hv-plan-color').trim(),
+    const live = await pie(page).evaluate((el) =>
+      getComputedStyle(el).getPropertyValue('--hv-plan-color').trim(),
     );
 
     // Back to the heuristic tier: the hook has gone quiet.
@@ -199,8 +210,8 @@ test.describe('sidebar plan indicator', () => {
       (i) => window.__hive.setSessionState?.(i, 'working', 'heuristic'),
       id,
     );
-    const stale = await pie(page).evaluate(
-      (el) => getComputedStyle(el).getPropertyValue('--hv-plan-color').trim(),
+    const stale = await pie(page).evaluate((el) =>
+      getComputedStyle(el).getPropertyValue('--hv-plan-color').trim(),
     );
 
     expect(stale).not.toEqual(live);

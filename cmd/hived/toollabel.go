@@ -100,16 +100,45 @@ func commandHead(cmd string) string {
 	return head
 }
 
+// maxSubcommandLen bounds a second word. Real subcommands are short
+// (`test`, `commit`, `cherry-pick`); a long token in that position is far
+// more likely to be an argument — an ID, a key, a hostname.
+const maxSubcommandLen = 20
+
 // isSubcommand reports whether a token reads as a subcommand (`test`,
-// `commit`) rather than a flag, a path, an assignment or a quoted
-// value. Anything carrying a separator, an equals sign or a quote is
-// treated as data and refused — the conservative direction, since a
-// false negative costs a word of context and a false positive leaks.
+// `commit`) rather than data — a flag, a path, an assignment, a quoted
+// value, or something shaped like a credential or a host. Refusal is the
+// conservative direction: a false negative costs one word of context,
+// a false positive leaks.
+//
+// Rejected:
+//   - flags (`-x`), and anything containing a path separator, `=`, `$`, a
+//     quote or a backtick — the original rule;
+//   - `@` and `:` — `deploy@prod-db`, `host:port`, `user:token`;
+//   - any digit — API keys, tokens, IDs and version pins almost always
+//     carry one, and subcommands almost never do;
+//   - two or more `-`/`_` separators — the shape of key prefixes like
+//     `sk-live-…`, `xoxb-…-…`, `ghp_…`; one is allowed, for `cherry-pick`;
+//   - longer than maxSubcommandLen.
+//
+// ponytail: this is a heuristic about what a secret LOOKS like, chosen
+// by the operator over a fixed allowlist of known subcommands. Its
+// ceiling is known and stated rather than hidden: a short, all-letter
+// secret with at most one separator (`mytool AbCdEfGhIjKlMnOp`) still
+// passes. The upgrade path, if that ever matters, is the allowlist —
+// the same direction labelKeys already takes, where unknown means no
+// label.
 func isSubcommand(tok string) bool {
-	if tok == "" || strings.HasPrefix(tok, "-") {
+	if tok == "" || strings.HasPrefix(tok, "-") || len(tok) > maxSubcommandLen {
 		return false
 	}
-	return !strings.ContainsAny(tok, `/\=$"'`+"`")
+	if strings.ContainsAny(tok, `/\=$"'@:`+"`") {
+		return false
+	}
+	if strings.ContainsAny(tok, "0123456789") {
+		return false
+	}
+	return strings.Count(tok, "-")+strings.Count(tok, "_") < 2
 }
 
 // baseName is a separator-agnostic basename. filepath.Base is not
