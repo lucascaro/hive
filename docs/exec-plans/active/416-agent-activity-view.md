@@ -4,7 +4,7 @@
 - **Issue:** — (locally allocated number; **not** a GitHub issue. PR #416 on GitHub is
   `feat: add Alucard and Hex theme presets`, an unrelated merged PR. Never write `Fixes #416`.)
 - **Design:** [docs/design-docs/agent-activity.md](../../design-docs/agent-activity.md)
-- **Phase:** 1b of 3 (Phase 1 shipped in #417)
+- **Phase:** 2 of 4 (subagent attribution; Phase 1 shipped in #417)
 - **PR:** #420
 - **Branch:** feature/416-phase-1b
 - **Mocks:** https://claude.ai/artifact/7RjZw99RbKNV1iS13r2dtb (placement study — pie vs ring)
@@ -14,7 +14,7 @@
 
 Stop discarding the tool name, tool arguments and plan that the Claude hook
 tier already delivers (Phase 1; the Pi extension tier sends none of this today
-and gains it in Phase 2), keep a bounded per-session ring of
+and gains it in Phase 3), keep a bounded per-session ring of
 them in the daemon, and render the result in three placements from one component.
 The *why* lives in the spec and design doc; this file is the *how*.
 
@@ -279,16 +279,16 @@ lessons matched.
 - **Phase 1 (this plan)** — data plane + sidebar. wire frames/kinds/fields,
   agentstate ring + plan, hook.go split + label derivation, 3 wire clients,
   DaemonContract 10→11, SessionRow plan pie.
-- **Phase 2** — Pi tier: `tool_execution_*` → tool_start/tool_end, `registerTool('todo')`,
+- **Phase 2 (follow-up to Phase 1, own PR; was "1b")** — subagent attribution. See
+  [Phase 2](#phase-2--subagent-attribution-follow-up). Lands after Phase 1 merges and
+  before Phase 3, so Pi's wire work is built on the attributed shape.
+- **Phase 3** — Pi tier: `tool_execution_*` → tool_start/tool_end, `registerTool('todo')`,
   and the settings path (persisted field → Wails → UI → a channel hive.ts can read).
-- **Phase 3** — inspector panel + activity grid.
-- **Phase 1b (follow-up to Phase 1, own PR)** — subagent attribution. See
-  [Phase 1b](#phase-1b--subagent-attribution-follow-up). Lands after Phase 1 merges and
-  before Phase 2, so Pi's wire work is built on the attributed shape.
+- **Phase 4** — inspector panel + activity grid.
 
 Phase 1 ships standalone value: Claude sessions get a live plan indicator in the sidebar.
 
-### Phase 1b — subagent attribution (follow-up)
+### Phase 2 — subagent attribution (follow-up)
 
 **Problem.** Claude fires `PreToolUse` / `PostToolUse` for tool calls made *inside*
 subagents, and those payloads carry `agent_id` (present only inside a subagent) and
@@ -353,7 +353,7 @@ redacted).**
   `agent_id`. Subagent planning calls never mutate the parent's plan (unless Step 0
   shows a shared list, in which case they mutate it and that is correct).
 - **Ring.** Subagent tool events are still stored, tagged with `agent_id` / `agent_type`,
-  so Phase 3's panel can nest them under the parent's `Agent` call. The tally is stamped
+  so Phase 4's panel can nest them under the parent's `Agent` call. The tally is stamped
   only for main-thread events.
 - **`SessionInfo` gains `subagents_running`** (count of open subagents), and the sidebar
   row shows it without growing the row. Placement decided against a mock before coding.
@@ -374,18 +374,18 @@ redacted).**
 - State: post-`Stop` subagent event does not reopen `working` (only if Step 0 confirms).
 - Playwright (`CI=1`): the subagent count does not change row height.
 
-**Out of scope for 1b.** Rendering subagent trees (Phase 3 panel), cross-session views
+**Out of scope for Phase 2.** Rendering subagent trees (Phase 4 panel), cross-session views
 (still gated on agent-orchestration phases), Pi subagents (Pi has none today).
 
 **Approved plan (operator, 2026-09-16, via plan-html round 1).** Supersedes the Design bullets
 above wherever they differ.
 
-Supersedes the "Design (option B)" bullets in the exec plan's Phase 1b section, using the
+Supersedes the "Design (option B)" bullets in the exec plan's Phase 2 section, using the
 Step 0 capture (fixtures: `cmd/hived/testdata/hooks/subagent/*.jsonl`) and two operator
 decisions: the count comes from new `subagent_start` / `subagent_end` kinds, and its
 placement A was picked from the mock at https://claude.ai/artifact/G8wkTR3asbCuyoUNuwPcqE.
 
-#### 1b — Approach
+#### Phase 2 — Approach
 
 One rule, applied once at the machine: **an event carrying `AgentID` belongs to a
 subagent. It is recorded, but it never moves the session's state, `current_tool`, the plan,
@@ -410,7 +410,7 @@ Scope of the rule: only `tool_start`, `tool_end`, `plan`, `plan_item`, `subagent
      show no count. Documented, not migrated.
 2. **Wire (`internal/wire/control.go`).** `AgentEvent` gains `AgentID`, `AgentType`
    (omitempty) and `RunningAgents *[]string` (`running_agents,omitempty`). `ToolEvent`
-   (ring entry) gains `AgentID` / `AgentType`, so Phase 3 can nest subagent calls under
+   (ring entry) gains `AgentID` / `AgentType`, so Phase 4 can nest subagent calls under
    the parent's `Agent` call. New kinds `AgentEventSubagentStart` / `AgentEventSubagentEnd`
    go in `AgentEventKinds`. `SessionInfo` gains `SubagentsRunning int
    json:"subagents_running,omitempty"`.
@@ -483,10 +483,10 @@ Scope of the rule: only `tool_start`, `tool_end`, `plan`, `plan_item`, `subagent
 5. **Clients.** `app_control.go` and `hived-ws-bridge` forward raw payloads, and
    `testclient` and `hivebar` decode `wire.SessionInfo`, so nothing needs a code change.
    Only the frontend types (`src/app/state.ts`: `SessionInfo.subagents_running`, plus
-   `agent_id` / `agent_type` on the ToolEvent type for Phase 3 parity) and the sidebar row
+   `agent_id` / `agent_type` on the ToolEvent type for Phase 4 parity) and the sidebar row
    change. `registry/events.go` `broadcastActivityLocked` sends no ACTIVITY for
    `subagent_start` / `subagent_end`: the count travels on SESSION_EVENT, and forgotten open
-   calls have no outcome to report (the same rule `endTurn` follows). Phase 3 revisits it
+   calls have no outcome to report (the same rule `endTurn` follows). Phase 4 revisits it
    if the panel needs lifecycle rows.
 6. **Sidebar (`SessionRow.tsx`, `session-row.css`): placement A, picked by the operator
    from the mock.** A numeral badge sits on the pie's bottom-right corner. It is
@@ -500,15 +500,15 @@ Scope of the rule: only `tool_start`, `tool_end`, `plan`, `plan_item`, `subagent
    daemon drops at `daemon.go:793` and then closes the connection. That is the same hazard
    entry 11 describes.
 
-##### 1b — Why this beats the obvious alternative
+##### Phase 2 — Why this beats the obvious alternative
 
 The obvious alternative is filtering subagent events in `hook.go` and never sending
-them. That loses the ring entries Phase 3 needs, and the daemon would have no count.
+them. That loses the ring entries Phase 4 needs, and the daemon would have no count.
 Filtering in the registry instead would split the rule across two packages. The machine
 already owns state, tally, and `current_tool`, so the rule lives in the one place all
 three are computed.
 
-#### 1b — Files to change
+#### Phase 2 — Files to change
 
 1. `cmd/hived/hook.go`: AgentID/AgentType on tool and plan events; SubagentStart/Stop
    cases; `RunningAgents` from `Stop.background_tasks`.
@@ -528,18 +528,18 @@ three are computed.
 11. `cmd/hivegui/frontend/src/theme/components/session-row.css`: the chosen placement at
     both densities.
 12. `cmd/hivegui/frontend/test/e2e/wails-mock.ts`: `setSessionSubagents(id, n)`.
-13. `docs/design-docs/agent-activity.md`: replace "Subagents — planned, phase 1b" with the
+13. `docs/design-docs/agent-activity.md`: replace "Subagents — planned, phase 2" with the
     shipped behaviour; update the wired-hooks list at :35, and fix the stale "collapses all
     three to permission_resolved" text next to it (:35-40).
 13a. `cmd/hived/claude_probe_test.go`: the opt-in live probe gains a one-subagent case.
 14. `docs/design-docs/daemon-contract.md`: only if its history table restates entries
     (checked during implementation).
-15. `docs/product-specs/416-agent-activity-view.md`: add Phase 1b success criteria (the
+15. `docs/product-specs/416-agent-activity-view.md`: add Phase 2 success criteria (the
     gate validates against the spec) and the hook list at :30.
 16. `docs/exec-plans/active/416-agent-activity-view.md`: this plan, Progress, Decision
     log.
 
-#### 1b — New files
+#### Phase 2 — New files
 
 - `.changesets/agent-activity-subagents.md` (a new file, because `agent-activity-plan-pie.md`
   already shipped in #417's release notes path and its `pr: 417` is fixed): `type: changed`, `bump: minor`. Sidebar
@@ -549,7 +549,7 @@ three are computed.
   label checks. It could instead extend `sidebar-plan-pie.spec.ts` if it stays small; the
   choice is made while writing.
 
-#### 1b — Tests (written first, each seen failing)
+#### Phase 2 — Tests (written first, each seen failing)
 
 Go, `cmd/hived/hook_test.go`:
 - `TestHookSubagentToolEventsCarryAgent`: replays every tool line of
@@ -641,7 +641,7 @@ Playwright (`CI=1`), `sidebar-subagents.spec.ts`:
 - The count element is visible and not clipped (`elementFromPoint` at its centre hits
   it).
 
-#### 1b — Verification
+#### Phase 2 — Verification
 
 ```
 go test ./cmd/hived ./internal/agent ./internal/wire ./internal/agentstate ./internal/daemon ./internal/registry
@@ -662,7 +662,7 @@ Manual: `HIVE_PROBE_CLAUDE=1` live probe (`cmd/hived/claude_probe_test.go`) exte
 a one-subagent prompt that asserts `subagents_running` rises and returns to 0. It runs
 by hand like the Phase 1 probe, not in CI.
 
-#### 1b — Open questions / risks
+#### Phase 2 — Open questions / risks
 
 - **An interrupted subagent may never fire `SubagentStop`** (not captured). The next
   parent `Stop` reconcile heals it. Until that Stop, the count can read high.
@@ -683,9 +683,9 @@ by hand like the Phase 1 probe, not in CI.
   start and its end could resurrect one. The count stays capped and the next Stop's
   reconcile heals it.
 - Ruled out: counting from `Stop.background_tasks` alone (operator decision); dropping
-  subagent events in `hook.go` (loses Phase 3's nesting data).
+  subagent events in `hook.go` (loses Phase 4's nesting data).
 
-#### 1b — Second opinion
+#### Phase 2 — Second opinion
 
 - **Round 1:** verdict revise, confidence 8. Seven must-fix items, all applied:
   - the ordering-guard hole (subagent events advancing `hookSeenAt` got the parent's Stop dropped);
@@ -850,7 +850,7 @@ maintaining a second index.
       Events    []ToolEvent `json:"events,omitempty"`
       Plan      []PlanItem  `json:"plan,omitempty"`
       Full      bool        `json:"full,omitempty"`   // true = GET response, false = delta
-      // Reserved for Phase 3's age display. Set by the daemon from its own
+      // Reserved for Phase 4's age display. Set by the daemon from its own
       // clock; nothing in Phase 1 reads it. Declared now so the frame shape
       // does not change between phases.
       StaleAt   string      `json:"stale_at,omitempty"`
@@ -920,7 +920,7 @@ Colour is the session-state token, desaturating to `--fg-subtle` when the plan i
 
 **Staleness rides `state_source` in Phase 1 — a deliberate partial.** The row cannot see
 `HookStaleAfter`, and `plan_done`/`plan_total`/`current_tool` do not carry it. Phase 1 uses
-the existing `state_source` as a proxy: `state_source !== 'hook'` (and, in Phase 2,
+the existing `state_source` as a proxy: `state_source !== 'hook'` (and, in Phase 3,
 `!== 'extension'`) with a non-zero `plan_total` means "plan present but not live", and the
 pie takes `--fg-subtle`.
 
@@ -937,9 +937,9 @@ session at rest emits no output to trigger `Output` in the first place.
   rest renders as live however old it is.
 
 That gap is accepted for Phase 1: staleness appears in the spec's *Desired behavior*, not
-its *Success criteria*, and the panel-and-tile age display it describes is Phase 3. The
+its *Success criteria*, and the panel-and-tile age display it describes is Phase 4. The
 real fix is `ActivityMsg.StaleAt`, carried from the daemon's own clock and consumed by the
-Phase 3 renderers.
+Phase 4 renderers.
 
 ## Files to change
 
@@ -1252,6 +1252,11 @@ Append-only. The latest entry is authoritative.
   of its newest update, and a late update applies unless it is older for that same
   step. Rejected: accepting late items unconditionally, which would let a completed step
   regress. A late wholesale `plan` is still dropped.
+- **2026-09-16** — **Phase 1b renumbered to Phase 2 of 4 (operator decision).** The merge
+  gate needs an integer `Phase: N of M`. Pi moves to Phase 3, and the inspector panel and
+  activity grid to Phase 4. Forward-looking text in this plan, the spec and the design
+  doc was renumbered. Append-only history (decision log, ledger, gate verdicts, progress)
+  keeps the "1b" name it was written with.
 
 ## Progress
 
@@ -1304,9 +1309,9 @@ Append-only. The latest entry is authoritative.
   Claude's own `duration_ms` is deliberately **not** used: durations stay on the daemon's
   clock, per the spec.
 - **Phase 1 emits `plan` only from Claude.** Pi sessions show the agent code alone until
-  Phase 2, which is the designed empty state, not a regression.
+  Phase 3, which is the designed empty state, not a regression.
 - **Phase 1 misattributes subagent activity.** Sessions that fan out (subagents,
   background workflows) show a flickering `current_tool`, subagent calls tallied on the
   parent's plan step, and possibly subagent tasks in the parent plan. Known and accepted
-  for Phase 1; fixed by [Phase 1b](#phase-1b--subagent-attribution-follow-up).
+  for Phase 1; fixed by [Phase 2](#phase-2--subagent-attribution-follow-up).
 

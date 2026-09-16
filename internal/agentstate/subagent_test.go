@@ -7,7 +7,7 @@ import (
 	"github.com/lucascaro/hive/internal/wire"
 )
 
-// Subagent attribution (spec 416, phase 1b). Claude fires tool hooks
+// Subagent attribution (spec 416, phase 2). Claude fires tool hooks
 // for calls made inside subagents, tagged with agent_id, and on the
 // PARENT's session_id. An event with AgentID is recorded, but never
 // moves the session's state, CurrentTool, plan or plan-step tally.

@@ -58,7 +58,7 @@ just ran, how long it took, whether it failed).
   plan items done. Both existing lines — name and window title —
   survive untouched, and no row grows. A session with no plan shows no
   pie, exactly as today. Running subagents (`subagents_running` > 0)
-  show as a numeral badge on the pie's corner (phase 1b); with no plan,
+  show as a numeral badge on the pie's corner (phase 2); with no plan,
   the badge sits on an empty outline. With neither, nothing renders.
 - **Inspector panel.** Toggled by key beside the terminal in
   single-session view, read-only so the terminal keeps keyboard focus.
@@ -134,7 +134,7 @@ No disk format.
   stealing terminal focus; the grid keybinding swaps tiles and back.
   vitest is CSS-blind and cannot answer the first of these.
 
-### Phase 1b — subagent attribution
+### Phase 2 — subagent attribution
 
 - `mapHookPayload` copies `agent_id` / `agent_type` onto tool and plan
   events. `SubagentStart` / `SubagentStop` map to `subagent_start` /

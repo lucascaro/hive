@@ -38,7 +38,7 @@ all three to `AgentEventPermissionResolved` and dropped the payload's
 `tool_name` and `tool_input`; they now report `tool_start` / `tool_end`
 with the tool and a derived label. These invocations already happened on
 every tool call of every Hive Claude session, so no new process is
-spawned. Phase 1b added `SubagentStart` and `SubagentStop` (below).
+spawned. Phase 2 added `SubagentStart` and `SubagentStop` (below).
 
 Claude's plan arrives on the same hooks, as calls to its **task tools**.
 Every shape below was captured from a live Claude Code 2.1.273 session —
@@ -76,7 +76,7 @@ ignored and the plan indicator simply never appears. The opt-in probe
 shows up on upgrade rather than in a user's sidebar; it was confirmed to
 fail with the setting off.
 
-**Subagents (phase 1b).** Claude fires the same tool hooks for calls
+**Subagents (phase 2).** Claude fires the same tool hooks for calls
 made *inside* subagents, on the parent's `session_id`, adding `agent_id`
 and `agent_type`, which are present only there. Captured from Claude Code
 2.1.273 (fixtures in `cmd/hived/testdata/hooks/subagent/`):
@@ -101,7 +101,7 @@ The ordering guard compares main-thread events only. Subagent hooks race
 the parent's, and one landing first would otherwise get the parent's
 `Stop` dropped as out of order.
 
-**Pi (extension tier) — planned, phase 2.** Nothing below ships in
+**Pi (extension tier) — planned, phase 3.** Nothing below ships in
 phase 1; the Pi extension reports no tool or plan events yet. Verified against
 `@earendil-works/pi-coding-agent` 0.85.1 (`dist/core/extensions/types.d.ts`):
 
@@ -200,7 +200,7 @@ One component, three placements — activity is a *renderer*, not a
 screen:
 
 Phase 1 ships only the sidebar row; the inspector panel and activity
-grid are planned for phase 3.
+grid are planned for phase 4.
 
 - **Inspector panel** beside the terminal in single-session view,
   toggled by key, read-only so the terminal keeps focus.
