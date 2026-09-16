@@ -86,10 +86,12 @@
   height: 10px;
   padding: 0 2px;
   box-sizing: border-box;
-  border-radius: 5px;
+  border-radius: var(--radius-sm);
   background: var(--fg);
   color: var(--bg);
-  font-size: 8px;
+  /* Below the type scale on purpose: the smallest token is --text-xs
+     (11px), taller than the 10px badge that holds the digit. */
+  font-size: 8px; /* ui-lint: allow */
   font-weight: 700;
   line-height: 10px;
   text-align: center;
