@@ -550,3 +550,22 @@ func TestPlanItemChangesNoState(t *testing.T) {
 		t.Errorf("state = %q, want waiting_input", got)
 	}
 }
+
+// A tool event rejected by the out-of-order guard must not hand the
+// previous delta back out: the registry broadcasts whatever
+// LastToolDelta returns, so a stale value would duplicate on the feed.
+func TestLastToolDeltaIsConsumedAndNotReplayedOnRejection(t *testing.T) {
+	m, base := hooked(t)
+	start(m, base.Add(2*time.Second), "c1", "Bash", "ls")
+	if _, ok := m.LastToolDelta(); !ok {
+		t.Fatal("first read: want the start delta")
+	}
+	if _, ok := m.LastToolDelta(); ok {
+		t.Fatal("second read: delta must be consumed")
+	}
+	// Older than the last hook report, inside HookStaleAfter: rejected.
+	start(m, base.Add(1*time.Second), "c0", "Read", "x.go")
+	if ev, ok := m.LastToolDelta(); ok {
+		t.Fatalf("rejected event produced a delta: %+v", ev)
+	}
+}

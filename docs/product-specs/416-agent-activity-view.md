@@ -50,13 +50,14 @@ just ran, how long it took, whether it failed).
 
 **Three placements, one component.**
 
-- **Sidebar row.** A 30px progress ring sits *behind* the existing
-  agent code (`cc` / `pi` / `sh`), which keeps the row's own
-  `--text-xs` / `--font-mono` / `--fg-subtle` styling. Ring colour is
-  the session state; arc is the fraction of plan items done. Both
-  existing lines — name and window title — survive untouched, and no
-  row grows: 30px fits inside the row's ~32px text column. A session
-  with no plan shows the agent code alone, exactly as today.
+- **Sidebar row.** A small filled pie sits in the cell *under* the
+  state icon — 12px, 11px at `tight` density, 10px at `compact`, where
+  the row is one line and the pie moves up to row 1. (This supersedes
+  the mocks' 30px ring behind the agent code, which Phase 1 dropped.)
+  Pie colour is the session state; the filled slice is the fraction of
+  plan items done. Both existing lines — name and window title —
+  survive untouched, and no row grows. A session with no plan shows no
+  pie, exactly as today.
 - **Inspector panel.** Toggled by key beside the terminal in
   single-session view, read-only so the terminal keeps keyboard focus.
   Plan steps with their tool calls nested beneath; only the current
@@ -82,7 +83,7 @@ label. The timeline reads `Bash · npm test`, not the command.
 
 **Staleness.** When a tier goes quiet past `agentstate.HookStaleAfter`,
 the plan is still in memory and must not read as live: the panel and
-tile show its age and the ring desaturates to `--fg-subtle`.
+tile show its age and the pie desaturates to `--fg-subtle`.
 
 **Retention.** A bounded in-memory ring (~200 tool events) plus the
 latest plan snapshot, per session, dying with the daemon like the PTY.
@@ -107,8 +108,9 @@ No disk format.
   overriding a value the user set themselves. An opt-in real-Claude probe
   (`HIVE_PROBE_CLAUDE=1`) fails if Claude Code stops honouring the
   variable.
-- No raw `tool_input` value appears in any frame the daemon receives —
-  asserted in a test, not by inspection.
+- No raw `tool_input` object or secret-bearing argument appears in any
+  frame the daemon receives; only the derived label (`target`) and plan
+  `items` cross — asserted in a test, not by inspection.
 - Ring tests: eviction at the cap, a per-step tool tally that stays
   correct after its events are evicted (the tally lives on the plan
   item, not in the ring), plan replacement, cleanup on session close.
@@ -125,7 +127,7 @@ No disk format.
   basename in both reporters.
 - Durations come from the daemon's clock across the `call_id` pair,
   never from reporter timestamps.
-- **Playwright** (Wails mock, run with `CI=1`): the 30px ring does not
+- **Playwright** (Wails mock, run with `CI=1`): the plan pie does not
   change row height or the agent code's type; the panel toggles without
   stealing terminal focus; the grid keybinding swaps tiles and back.
   vitest is CSS-blind and cannot answer the first of these.

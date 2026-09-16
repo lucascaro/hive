@@ -12,8 +12,9 @@
 
 ## Summary
 
-Stop discarding the tool name, tool arguments and TODO plan that the Claude hook
-tier and the Pi extension tier already deliver, keep a bounded per-session ring of
+Stop discarding the tool name, tool arguments and plan that the Claude hook
+tier already delivers (Phase 1; the Pi extension tier sends none of this today
+and gains it in Phase 2), keep a bounded per-session ring of
 them in the daemon, and render the result in three placements from one component.
 The *why* lives in the spec and design doc; this file is the *how*.
 
@@ -561,7 +562,7 @@ Phase 3 renderers.
 - `TestMapHookPayloadPreservesWorkingState` — every tool event still drives the state the collapsed `permission_resolved` did.
 - `TestMapHookPayloadCallID` — `tool_use_id` is carried through to `call_id`; a payload without it yields an empty `call_id` and the event is still emitted.
 - `TestHookNeverLeaksToolInput` — two assertions, because a blanket "no `tool_input` value appears" is **false-failing**: `post_tool_use.json` is `{"command":"ls"}` and `ls` is the correct derived label.
-  1. **Structural:** the marshalled `AgentEvent` JSON contains no `tool_input` key and no nested object — the frame carries only scalars.
+  1. **Structural:** the marshalled `AgentEvent` JSON contains no `tool_input` key; the only non-scalar field allowed is the plan's `items`. Derived labels (`target`) are permitted.
   2. **Secret-bearing:** fixtures whose arguments contain material that must never appear — `curl -H "Authorization: Bearer sk-live-xxx"`, `https://api.example.com/v1?token=SECRET`, a long absolute path with a username — assert the secret substring is absent from the frame while the expected label (`curl`, `api.example.com`, the basename) is present.
   Together these are neither vacuous nor false-failing, and satisfy the spec's "asserted in a test, not by inspection".
 

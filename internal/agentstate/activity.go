@@ -317,13 +317,19 @@ func (m *Machine) Activity() ([]wire.ToolEvent, []wire.PlanItem) {
 }
 
 // LastToolDelta returns the tool event the most recent Apply produced,
-// for the ACTIVITY broadcast. ok is false when no tool event has been
-// applied yet.
+// for the ACTIVITY broadcast, and consumes it. ok is false when no tool
+// event has been applied since the last read — including when Apply
+// rejected the event (the out-of-order guard), so a dropped event never
+// re-broadcasts the previous delta.
 //
 // A started-but-unfinished tool is reported here with a nil OK and no
 // duration; it reaches the ring only when it ends.
 func (m *Machine) LastToolDelta() (wire.ToolEvent, bool) {
-	return m.act.delta, m.act.hasDelta
+	if !m.act.hasDelta {
+		return wire.ToolEvent{}, false
+	}
+	m.act.hasDelta = false
+	return m.act.delta, true
 }
 
 // planSummary is the compact form carried on SessionInfo: how far
