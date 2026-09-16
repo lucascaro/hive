@@ -1,6 +1,7 @@
 ---
 type: added
 bump: minor
+pr: 420
 ---
 
 Claude sessions that hand work to subagents now show how many are running, as a
