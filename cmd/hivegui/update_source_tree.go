@@ -1,6 +1,11 @@
+//go:build darwin || windows
+
 package main
 
-// The latest channel's source tree.
+// The latest channel's source tree. Tagged like stageLatest, its only
+// caller: on Linux the channel has a check (update_latest.go, which
+// uses pinnedRemote from update_remote.go) but no in-place apply, so
+// nothing here would run.
 //
 // The channel used to pull and build the user's own checkout, which
 // made the user's branch the updater's business: a feature branch with
@@ -26,11 +31,6 @@ import (
 	"github.com/lucascaro/hive/internal/registry"
 )
 
-// latestBranch is the branch the latest channel tracks on the pinned
-// remote. The tip of main is what "latest" has always meant for a
-// checkout on main; it now means that for every checkout.
-const latestBranch = "main"
-
 // latestBuildTree is the worktree the latest channel checks out and
 // builds in. Under the state dir so it inherits HIVE_STATE_DIR
 // isolation, and beside — not under — updatesRoot, which
@@ -38,33 +38,6 @@ const latestBranch = "main"
 // node_modules is the one thing worth keeping between updates.
 func latestBuildTree() string {
 	return filepath.Join(registry.StateDir(), "latest-src")
-}
-
-// pinnedRemote returns the name of the remote in repo whose URL is
-// this project's own repository.
-//
-// Found by URL, not by name and not through the current branch's
-// upstream: a checkout parked on a branch that tracks nothing still
-// has a remote worth building from, and a clone where the pinned
-// repository is called "upstream" and "origin" is a fork must build
-// from the former. The URL match is remoteIsUpstream's, whole host and
-// path, because what comes from this remote is pulled and executed.
-func pinnedRemote(repo string) (string, error) {
-	out, err := runGitFn(repo, "remote")
-	if err != nil {
-		return "", err
-	}
-	for _, name := range strings.Fields(out) {
-		url, err := runGitFn(repo, "remote", "get-url", name)
-		if err != nil {
-			return "", err
-		}
-		if remoteIsUpstream(url) {
-			return name, nil
-		}
-	}
-	return "", fmt.Errorf("refusing to build from %s: no remote there points at github.com/%s — "+
-		"add one (git remote add origin https://github.com/%s.git) and update again", repo, updateRepo, updateRepo)
 }
 
 // prepareBuildTree fetches the pinned remote through the checkout and
