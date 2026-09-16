@@ -5,6 +5,8 @@
   `feat: add Alucard and Hex theme presets`, an unrelated merged PR. Never write `Fixes #416`.)
 - **Design:** [docs/design-docs/agent-activity.md](../../design-docs/agent-activity.md)
 - **Phase:** 1 of 3
+- **PR:** #417
+- **Branch:** feature/416-agent-activity-view
 - **Mocks:** https://claude.ai/artifact/7RjZw99RbKNV1iS13r2dtb (placement study — pie vs ring)
 - **Status:** active
 
@@ -642,6 +644,24 @@ what the `state_source` proxy does and does not cover.
 
 ## Decision log
 
+- **2026-09-16** — `serveEvent` drains its ModeEvent connection (bounded at 8
+  frames) rather than reading exactly one. Why: a TodoWrite payload is two
+  events and both ride one connection; dialing twice would double the handshake
+  on the daemon's hottest path. An invalid frame still drops the connection, so
+  the existing "refused input ends the conversation" contract is unchanged.
+- **2026-09-16** — The command-head rule cuts at a shell metacharacter FIRST and
+  then keeps at most two tokens. Why: neither half is sufficient alone —
+  metacharacter-only would ship `curl -H "Authorization: …"` whole, and
+  two-tokens-only rendered `sleep 12;` with the separator glued on.
+- **2026-09-16** — The compact-density column widening is scoped with `:has()`.
+  Why: unscoped, it cost every row 10px of title at that density, including the
+  sessions with no plan at all. Caught by the truncation assertion.
+- **2026-09-16** — The ACTIVITY delta comes from an explicit `lastDelta` field,
+  not from the last ring entry. Why: a `tool_start` carrying a call_id goes into
+  the pending map rather than the ring, so a ring-derived delta broadcast
+  *nothing at all* when a tool began — clients would only ever learn that tools
+  had ended.
+
 - **2026-09-16** — Split into 3 phases; this plan is Phase 1 (data plane + sidebar).
   Why: the spec spans Go daemon, hand-encoded TypeScript, a new settings round-trip and
   three React surfaces — far past one reviewable PR.
@@ -672,6 +692,7 @@ what the `state_source` proxy does and does not cover.
   extension + brain) reconciled against the spec and design doc.
 - **2026-09-16** — PLAN approved via the HTML plan review (round 1, no revisions
   requested) after two rounds of adversarial second opinion. Stage → IMPLEMENT.
+- **2026-09-16** — Phase 1 implemented and pushed as PR #417. Stage → REVIEW.
 
 ## Open questions / risks
 

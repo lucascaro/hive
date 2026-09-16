@@ -1,6 +1,7 @@
 ---
 type: added
 bump: minor
+pr: 417
 ---
 
 Sessions running Claude now show how far the agent is through its own plan.
