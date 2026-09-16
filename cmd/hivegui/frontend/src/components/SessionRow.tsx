@@ -56,6 +56,27 @@ function planOf(s: SessionInfo): {
   };
 }
 
+// The running-subagent count, as the plan indicator's corner badge
+// (spec 416 phase 1b, placement A). A two-character badge is the most
+// the corner holds, so the count reads 9+ past nine; the exact number
+// stays in the label.
+function subagentsOf(s: SessionInfo): {
+  count: number;
+  badge: string;
+  label: string;
+  short: string;
+} | null {
+  const count = s.subagents_running ?? 0;
+  if (count <= 0) return null;
+  const noun = count === 1 ? 'subagent' : 'subagents';
+  return {
+    count,
+    badge: count > 9 ? '9+' : String(count),
+    label: `${count} ${noun} running`,
+    short: `${count} ${noun}`,
+  };
+}
+
 export interface SessionRowProps {
   session: SessionInfo;
   state: SessionState;
@@ -124,6 +145,11 @@ export function SessionRow(p: SessionRowProps) {
   const name = s.name ?? 'session';
   const sub = subtitleFor(s, p.state);
   const plan = planOf(s);
+  const subs = subagentsOf(s);
+  // Same not-live rule as planOf, for a badge with no plan under it.
+  const stale = plan
+    ? plan.stale
+    : (s.state_source ?? 'heuristic') === 'heuristic';
   const code = agentCode(s.agent);
   // The agent's own colour, from the catalog ListAgents() returned at
   // boot. Undefined before that reply lands and for a custom agent that
@@ -203,7 +229,7 @@ export function SessionRow(p: SessionRowProps) {
         className="hv-session-row__state"
         detail={stateTooltip(s, p.state)}
       />
-      {plan ? (
+      {plan || subs ? (
         /* The plan indicator takes the cell UNDER the state icon
            (grid-column 1 / grid-row 2), which was empty: the window
            title starts at column 2. Because the cell is unused it
@@ -215,17 +241,35 @@ export function SessionRow(p: SessionRowProps) {
            icon and widens column 1 to fit both. */
         <span
           className={`hv-session-row__plan${
-            plan.stale ? ' hv-session-row__plan--stale' : ''
+            stale ? ' hv-session-row__plan--stale' : ''
           }`}
           role="img"
-          aria-label={`Plan: ${plan.done} of ${plan.total} steps done${
-            plan.stale ? ', not currently reporting' : ''
-          }${s.current_tool ? `, running ${s.current_tool}` : ''}`}
-          title={`${plan.done}/${plan.total} steps${
-            s.current_tool ? ` · ${s.current_tool}` : ''
-          }`}
-          style={{ '--hv-plan-pct': plan.pct } as CSSProperties}
-        />
+          aria-label={[
+            plan &&
+              `Plan: ${plan.done} of ${plan.total} steps done${
+                stale ? ', not currently reporting' : ''
+              }${s.current_tool ? `, running ${s.current_tool}` : ''}`,
+            subs?.label,
+          ]
+            .filter(Boolean)
+            .join(', ')}
+          title={[
+            plan && `${plan.done}/${plan.total} steps`,
+            plan && s.current_tool,
+            subs?.short,
+          ]
+            .filter(Boolean)
+            .join(' · ')}
+          style={
+            plan ? ({ '--hv-plan-pct': plan.pct } as CSSProperties) : undefined
+          }
+        >
+          {subs ? (
+            <span className="hv-session-row__subagents" aria-hidden="true">
+              {subs.badge}
+            </span>
+          ) : null}
+        </span>
       ) : null}
       {/* Name and title are direct grid children, not a stacked column:
           line 2 spans from the name's column to the row's right edge

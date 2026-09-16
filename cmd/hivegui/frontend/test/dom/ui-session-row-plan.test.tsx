@@ -165,3 +165,52 @@ describe('SessionRow plan indicator', () => {
     expect(code?.textContent).toBe('cl');
   });
 });
+
+// Placement A (spec 416 phase 1b): the running-subagent count rides the
+// plan indicator as a corner badge. Geometry lives in
+// test/e2e/sidebar-plan-pie.spec.ts.
+const badge = (el: HTMLElement) =>
+  el.querySelector<HTMLElement>('.hv-session-row__subagents');
+
+describe('SessionRow subagent badge', () => {
+  it('is absent with no subagents, whether or not there is a plan', () => {
+    expect(badge(row({ plan_done: 1, plan_total: 4 }))).toBeNull();
+    expect(badge(row({ subagents_running: 0 }))).toBeNull();
+    expect(plan(row({ subagents_running: 0 }))).toBeNull();
+  });
+
+  it('sits on the plan pie and joins its label', () => {
+    const el = row({
+      plan_done: 2,
+      plan_total: 5,
+      current_tool: 'Agent',
+      state_source: 'hook',
+      subagents_running: 2,
+    });
+    expect(badge(el)?.textContent).toBe('2');
+    expect(badge(el)?.getAttribute('aria-hidden')).toBe('true');
+    expect(plan(el)?.getAttribute('aria-label')).toBe(
+      'Plan: 2 of 5 steps done, running Agent, 2 subagents running',
+    );
+    expect(plan(el)?.getAttribute('title')).toBe(
+      '2/5 steps · Agent · 2 subagents',
+    );
+  });
+
+  it('renders on a hollow placeholder when there is no plan', () => {
+    const el = row({ subagents_running: 1, state_source: 'hook' });
+    const mark = plan(el);
+    expect(mark).not.toBeNull();
+    expect(mark?.style.getPropertyValue('--hv-plan-pct')).toBe('');
+    expect(badge(el)?.textContent).toBe('1');
+    expect(mark?.getAttribute('aria-label')).toBe('1 subagent running');
+    expect(mark?.getAttribute('title')).toBe('1 subagent');
+  });
+
+  it('caps the badge at 9+', () => {
+    expect(badge(row({ subagents_running: 9 }))?.textContent).toBe('9');
+    const el = row({ subagents_running: 14 });
+    expect(badge(el)?.textContent).toBe('9+');
+    expect(plan(el)?.getAttribute('aria-label')).toBe('14 subagents running');
+  });
+});
