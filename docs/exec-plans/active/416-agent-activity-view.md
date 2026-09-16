@@ -4,9 +4,9 @@
 - **Issue:** — (locally allocated number; **not** a GitHub issue. PR #416 on GitHub is
   `feat: add Alucard and Hex theme presets`, an unrelated merged PR. Never write `Fixes #416`.)
 - **Design:** [docs/design-docs/agent-activity.md](../../design-docs/agent-activity.md)
-- **Phase:** 1 of 3
-- **PR:** #417
-- **Branch:** feature/416-agent-activity-view
+- **Phase:** 1b of 3 (Phase 1 shipped in #417)
+- **PR:** —
+- **Branch:** feature/416-phase-1b
 - **Mocks:** https://claude.ai/artifact/7RjZw99RbKNV1iS13r2dtb (placement study — pie vs ring)
 - **Status:** active
 
@@ -318,6 +318,28 @@ log:
 - whether hooks arrive after the parent's `Stop` (answers risk 5).
 Commit the captured payloads as fixtures. Anything below that the capture contradicts is
 revised before code.
+
+**Step 0 results (captured 2026-09-16, Claude Code 2.1.273, `claude -p` with a capture
+hook; fixtures in `cmd/hived/testdata/hooks/subagent/`, paths and message bodies
+redacted).**
+- `session_id` on every subagent event is the **parent's**. Subagent tool events add
+  `agent_id` (17-char hex, e.g. `a5cb8f30deab1983f`) and `agent_type`
+  (`general-purpose`). Main-thread events carry neither key.
+- `SubagentStart` = `{agent_id, agent_type}` + common fields. `SubagentStop` adds
+  `agent_transcript_path`, `last_assistant_message`, `stop_hook_active`,
+  `background_tasks`.
+- **Risk 4 does not occur in this build:** a general-purpose subagent has no TaskCreate /
+  TaskList (its `ToolSearch select:TaskCreate,TaskList` returned nothing), and the
+  parent's TaskList afterwards showed only the parent's task. The main-thread-only plan
+  rule stays as a one-line guard (TodoWrite availability in subagents was not captured).
+- **Risk 5 confirmed:** the parent's `Stop` fires while subagents still run, and their tool
+  events arrive afterwards (13 s later for a parallel pair, 21 s for a background agent).
+  `Stop` carries `background_tasks: [{id, type:"subagent", status:"running", agent_type,
+  description}]`, but it lists only subagents running *at that Stop*.
+- **Risk 2 depends on how the model launched the agent:** a foreground Agent call's
+  `PostToolUse` arrived only after `SubagentStop` (sonnet run). In the haiku run, the two
+  calls launched without `run_in_background` still got `PostToolUse` within 50 ms, and a
+  `Stop` followed while they ran. Hive must not assume either.
 
 **Design (option B, operator-approved 2026-09-16).**
 - **Wire.** `tool_start` / `tool_end` gain optional `agent_id` and `agent_type`, omitted
@@ -864,6 +886,19 @@ Append-only. The latest entry is authoritative.
   Compared against herdr (HEAD 2026-09-16): it tracks lifecycle state only, detects
   Claude by screen manifest, and has no plan/tool/subagent view, so it offers no prior
   art for this layer.
+- **2026-09-16** — **Phase 1b Step 0 run headless (operator decision).** `claude -p
+  --settings <tmp>` with a capture hook, so the operator's settings and sessions stayed
+  untouched. Two runs cost $0.12 (haiku) and one sonnet run. Findings are in the Phase 1b
+  section.
+- **2026-09-16** — **Phase 1 follow-ups ship as their own PR (#419), not inside 1b
+  (operator decision).** These are the rune-safe Text/Target cap, the registry-test
+  `SHELL` isolation and the missing `.changesets/README.md`. They don't depend on 1b.
+- **2026-09-16** — **`subagents_running` comes from new `subagent_start` / `subagent_end`
+  kinds (operator decision).** Rejected: counting from `Stop.background_tasks`. It never
+  sees foreground subagents, and it stays stale-high between Stops. The new kinds need a
+  `DaemonContract` bump, because an old daemon drops unknown kinds.
+- **2026-09-16** — **Count placement is picked from a mock at the 1b plan stop (operator
+  decision).**
 
 ## Progress
 
