@@ -30,6 +30,11 @@ func (f *fakeGit) run(dir string, args ...string) (string, error) {
 	if err, ok := f.errs[key]; ok {
 		return "", err
 	}
+	// "<dir>|<args>" answers first, for the commands whose answer
+	// depends on which tree they ran in.
+	if out, ok := f.answers[dir+"|"+joined]; ok {
+		return out, nil
+	}
 	if out, ok := f.answers[joined]; ok {
 		return out, nil
 	}

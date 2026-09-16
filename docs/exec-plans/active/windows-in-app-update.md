@@ -247,8 +247,8 @@ latest channel.
   mid-build.
 - **2026-09-16** — The install-dir-is-build-dir collision is gone rather
   than refused: the latest channel now builds in a linked worktree of the
-  checkout under the state dir (`update_source_tree.go`), on every
-  platform, so an update never erases the checkout's build directory and
+  checkout under the state dir (`update_source_tree.go`), on macOS and
+  Windows, so an update never erases the checkout's build directory and
   the checkout's branch, dirty state and HEAD no longer matter.
   `TestStageLatestRefusesBuildDirInstall` (shipped as
   `TestCheckLatestInstallLayoutRefusesBuildDir`) became

@@ -102,23 +102,42 @@ func isLinkedWorktree(dir string) bool {
 	return err == nil && !st.IsDir()
 }
 
-// ownsWorktree reports whether repo lists tree among its worktrees —
-// whether the tree is a worktree of *this* checkout rather than of
-// some other clone. Asked of git rather than read out of the tree's
-// .git file, so git's own path spelling is what gets compared.
+// ownsWorktree reports whether tree is a worktree of *this* checkout
+// rather than of some other clone: the two share a git common dir.
+//
+// Asked of the tree, not of the checkout's worktree list. That list
+// keeps a stale entry for the path after another clone has taken the
+// tree over — `worktree prune` leaves it while a .git file exists
+// there — and would say yes to a tree whose refs are the other
+// clone's. The fetch happens in this checkout, so building that tree
+// would ship whatever the other clone last fetched.
 func ownsWorktree(repo, tree string) bool {
-	out, err := runGitFn(repo, "worktree", "list", "--porcelain")
+	a, err := gitCommonDir(repo)
 	if err != nil {
 		return false
 	}
-	want := comparablePath(tree)
-	for _, line := range strings.Split(out, "\n") {
-		path, ok := strings.CutPrefix(line, "worktree ")
-		if ok && comparablePath(path) == want {
-			return true
-		}
+	b, err := gitCommonDir(tree)
+	if err != nil {
+		return false
 	}
-	return false
+	return comparablePath(a) == comparablePath(b)
+}
+
+// gitCommonDir is the repository dir behind a working tree, absolute.
+// git answers relative to the tree when it can (".git" from a main
+// worktree's root) and absolute otherwise; the linked tree's answer
+// is what makes the two comparable, so both are made absolute the same
+// way. Plain --git-common-dir rather than --path-format=absolute,
+// which needs git 2.31.
+func gitCommonDir(dir string) (string, error) {
+	out, err := runGitFn(dir, "rev-parse", "--git-common-dir")
+	if err != nil {
+		return "", err
+	}
+	if !filepath.IsAbs(out) {
+		out = filepath.Join(dir, out)
+	}
+	return out, nil
 }
 
 // comparablePath reduces a directory path to a form two spellings of

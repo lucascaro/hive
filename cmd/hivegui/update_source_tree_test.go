@@ -73,13 +73,18 @@ func TestPrepareBuildTreeAddsAWorktreeOnFirstUse(t *testing.T) {
 func TestPrepareBuildTreeReusesAnExistingWorktree(t *testing.T) {
 	isolateStateDir(t)
 	tree := latestBuildTree()
-	writeFile(t, filepath.Join(tree, ".git"), "gitdir: /repo/.git/worktrees/latest-src\n")
+	repo := t.TempDir()
+	writeFile(t, filepath.Join(tree, ".git"), "gitdir: "+filepath.Join(repo, ".git", "worktrees", "latest-src")+"\n")
 	answers := pinnedCheckout()
-	answers["worktree list --porcelain"] = "worktree /repo\nHEAD 0000000\nbranch refs/heads/main\n\nworktree " + tree + "\nHEAD 0000000\ndetached\n"
+	// Both name the same common dir, so the tree is this checkout's.
+	// The main repo answers relative to itself, as git does from a
+	// repository root; a linked worktree answers with an absolute path.
+	answers[repo+"|rev-parse --git-common-dir"] = ".git"
+	answers[tree+"|rev-parse --git-common-dir"] = filepath.Join(repo, ".git")
 	g := &fakeGit{answers: answers}
 	g.install(t)
 
-	got, err := prepareBuildTree("/repo", "origin")
+	got, err := prepareBuildTree(repo, "origin")
 	if err != nil {
 		t.Fatalf("prepareBuildTree = %v, want nil", err)
 	}
@@ -107,16 +112,23 @@ func TestPrepareBuildTreeReusesAnExistingWorktree(t *testing.T) {
 // pointed at a different clone since — shares nothing with this one:
 // its <remote>/main is the old clone's. Checking it out would build
 // the wrong repository, so it is replaced like any stray directory.
+// Ownership is the tree's own git common dir against the checkout's,
+// not the checkout's worktree list: that list keeps a stale entry for
+// the path after another clone takes the tree over, and would say yes.
 func TestPrepareBuildTreeReplacesATreeOfAnotherCheckout(t *testing.T) {
 	isolateStateDir(t)
 	tree := latestBuildTree()
-	writeFile(t, filepath.Join(tree, ".git"), "gitdir: /elsewhere/.git/worktrees/latest-src\n")
+	repo := t.TempDir()
+	elsewhere := t.TempDir()
+	writeFile(t, filepath.Join(tree, ".git"), "gitdir: "+filepath.Join(elsewhere, ".git", "worktrees", "latest-src")+"\n")
 	answers := pinnedCheckout()
-	answers["worktree list --porcelain"] = "worktree /repo\nHEAD 0000000\nbranch refs/heads/main\n"
+	answers[repo+"|rev-parse --git-common-dir"] = ".git"
+	answers[tree+"|rev-parse --git-common-dir"] = filepath.Join(elsewhere, ".git")
+	answers["worktree list --porcelain"] = "worktree " + repo + "\nHEAD 0000000\nbranch refs/heads/main\n\nworktree " + tree + "\nHEAD 0000000\ndetached\n"
 	g := &fakeGit{answers: answers}
 	g.install(t)
 
-	if _, err := prepareBuildTree("/repo", "origin"); err != nil {
+	if _, err := prepareBuildTree(repo, "origin"); err != nil {
 		t.Fatalf("prepareBuildTree = %v, want nil", err)
 	}
 	if g.ran("checkout") {
@@ -289,7 +301,31 @@ func TestPrepareBuildTreeWithRealGit(t *testing.T) {
 	if got, want := realPath(t, owner), realPath(t, second); !strings.EqualFold(got, want) {
 		t.Errorf("build tree belongs to %s, want the second clone's %s", got, want)
 	}
-	// The first clone keeps a stale registration for the path; that is
-	// its own bookkeeping, which its next `git worktree prune` (or gc)
-	// clears, and nothing the updater can reach from the second clone.
+	// The first clone keeps a stale registration for the path — its
+	// `worktree list` still names the tree, and `worktree prune` keeps
+	// it while a .git file exists there. Switching source_repo back must
+	// not trust that entry and reuse the second clone's tree: the fetch
+	// happens in the first clone, so building the second clone's
+	// origin/main would ship whatever it last fetched.
+	other2 := filepath.Join(parent, "other2")
+	mustGit(parent, "clone", "-q", remote, other2)
+	commit(other2, "upstream moved again")
+	mustGit(other2, "push", "-q", "origin", "main")
+	fresher := mustGit(other2, "rev-parse", "HEAD")
+
+	back, err := prepareBuildTree(repo, "origin")
+	if err != nil {
+		t.Fatalf("prepareBuildTree(first clone again) = %v, want nil", err)
+	}
+	if back != tree {
+		t.Errorf("first clone again used %q, want the same tree path %q", back, tree)
+	}
+	first, _, _ = strings.Cut(mustGit(tree, "worktree", "list", "--porcelain"), "\n")
+	owner = strings.TrimPrefix(first, "worktree ")
+	if got, want := realPath(t, owner), realPath(t, repo); !strings.EqualFold(got, want) {
+		t.Errorf("build tree belongs to %s after switching back, want the first clone's %s", got, want)
+	}
+	if got := mustGit(tree, "rev-parse", "HEAD"); got != fresher {
+		t.Errorf("build tree HEAD = %s after switching back, want the freshly fetched %s", got, fresher)
+	}
 }
