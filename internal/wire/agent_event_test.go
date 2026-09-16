@@ -114,7 +114,7 @@ func TestAgentEventKindsAllowlist(t *testing.T) {
 		AgentEventPrompt, AgentEventTurnEnd, AgentEventIdle, AgentEventWaitingInput,
 		AgentEventWaitingPermission, AgentEventPing,
 		AgentEventPermissionResolved, AgentEventError, AgentEventSessionEnd,
-		AgentEventToolStart, AgentEventToolEnd, AgentEventPlan,
+		AgentEventToolStart, AgentEventToolEnd, AgentEventPlan, AgentEventPlanItem,
 	}
 	if len(AgentEventKinds) != len(want) {
 		t.Fatalf("AgentEventKinds has %d entries, want %d", len(AgentEventKinds), len(want))

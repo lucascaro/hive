@@ -1,0 +1,22 @@
+{
+  "session_id": "test-session",
+  "hook_event_name": "PostToolUse",
+  "tool_name": "TaskUpdate",
+  "tool_input": {
+    "taskId": "2",
+    "status": "deleted"
+  },
+  "tool_use_id": "toolu_01TD",
+  "tool_response": {
+    "success": true,
+    "taskId": "2",
+    "updatedFields": [
+      "deleted"
+    ],
+    "statusChange": {
+      "from": "pending",
+      "to": "deleted"
+    }
+  },
+  "duration_ms": 12
+}

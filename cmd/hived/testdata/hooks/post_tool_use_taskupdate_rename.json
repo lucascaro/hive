@@ -1,0 +1,18 @@
+{
+  "session_id": "test-session",
+  "hook_event_name": "PostToolUse",
+  "tool_name": "TaskUpdate",
+  "tool_input": {
+    "taskId": "1",
+    "subject": "alpha renamed"
+  },
+  "tool_use_id": "toolu_01TR",
+  "tool_response": {
+    "success": true,
+    "taskId": "1",
+    "updatedFields": [
+      "subject"
+    ]
+  },
+  "duration_ms": 12
+}

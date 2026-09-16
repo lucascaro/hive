@@ -1119,6 +1119,11 @@ func (r *Registry) Revive(id string, opts session.Options) error {
 				opts.Cmd = def.Cmd
 			}
 			opts.Cmd = r.appendSpawnArgs(opts.Cmd, agentID)
+			// Same block, same gate as the argv above: the adapter's
+			// environment rides along exactly when its hooks do.
+			if def.SpawnEnv != nil {
+				opts.Env = append(append([]string(nil), opts.Env...), def.SpawnEnv(r.spawnInfo())...)
+			}
 		}
 	}
 	opts.Env = append(append([]string(nil), opts.Env...), r.hiveEnv(id)...)

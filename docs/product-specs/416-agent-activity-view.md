@@ -29,8 +29,18 @@ deeper.
 The data already arrives and is discarded. `cmd/hived/hook.go`
 collapses `PreToolUse` / `PostToolUse` / `PostToolUseFailure` into a
 bare `permission_resolved`, dropping `tool_name` and `tool_input` —
-and a Claude `TodoWrite` call is a `PostToolUse` whose
-`tool_input.todos` is the agent's whole plan.
+and Claude's plan arrives on the same hooks, as calls to its task
+tools.
+
+> **Correction (2026-09-16).** This spec first named `TodoWrite` as the
+> plan source. Checked against a live Claude Code 2.1.273 session, that
+> was wrong on two counts: `TodoWrite` is disabled by default in favour
+> of `TaskCreate` / `TaskUpdate` / `TaskList` / `TaskGet`, and on current
+> models (Opus 5, Sonnet 5) Claude Code provides **no** task tools at all
+> unless the session opts in with `CLAUDE_CODE_ENABLE_TODO_TOOLS=1`
+> (code.claude.com/docs/en/tools-reference, "Task tool availability").
+> As first written, the plan indicator would never have appeared on the
+> default model. The criteria below are corrected.
 
 ## Desired behavior
 
@@ -82,9 +92,21 @@ No disk format.
 
 - `mapHookPayload` emits `tool_start` / `tool_end` with `tool`,
   `target`, `call_id` and `ok`, preserving the working-state effect the
-  collapsed `permission_resolved` had; a `TodoWrite` `PostToolUse`
-  additionally emits `plan`. Table-driven tests cover every tool shape,
-  a missing or malformed `tool_input`, and oversized arguments.
+  collapsed `permission_resolved` had. A successful planning call
+  additionally emits the plan: `TaskCreate` / `TaskUpdate` a per-task
+  `plan_item` merged by ID (the ID is read from `TaskCreate`'s
+  `PostToolUse` response — Claude assigns it), `TaskList` a wholesale
+  `plan` resync, and `TodoWrite` a wholesale `plan` for configurations
+  that still use it. A failed planning call changes no plan.
+  Table-driven tests over payloads captured from a live session cover
+  every tool shape, a missing or malformed `tool_input`, and oversized
+  arguments.
+- Hive opts the Claude sessions it starts into the task tools
+  (`CLAUDE_CODE_ENABLE_TODO_TOOLS=1`), **on by default with a Settings
+  toggle**, applied exactly where Hive's hooks are applied, and never
+  overriding a value the user set themselves. An opt-in real-Claude probe
+  (`HIVE_PROBE_CLAUDE=1`) fails if Claude Code stops honouring the
+  variable.
 - No raw `tool_input` value appears in any frame the daemon receives —
   asserted in a test, not by inspection.
 - Ring tests: eviction at the cap, a per-step tool tally that stays

@@ -1,0 +1,17 @@
+{
+  "session_id": "test-session",
+  "hook_event_name": "PostToolUse",
+  "tool_name": "TaskCreate",
+  "tool_input": {
+    "subject": "Create one.txt",
+    "description": "Create one.txt containing \"1\""
+  },
+  "tool_use_id": "toolu_01TC",
+  "tool_response": {
+    "task": {
+      "id": "1",
+      "subject": "Create one.txt"
+    }
+  },
+  "duration_ms": 12
+}

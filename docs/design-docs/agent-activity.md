@@ -35,11 +35,45 @@ away.
 **Claude (hook tier).** `cmd/hived/hook.go` wires `PreToolUse`,
 `PostToolUse` and `PostToolUseFailure`, and collapses all three to
 `AgentEventPermissionResolved` — the payload's `tool_name` and
-`tool_input` are dropped. Claude's plan arrives the same way: a
-`TodoWrite` call is a `PostToolUse` whose `tool_input.todos` is the
-whole list. No new hook needs wiring and no new process is spawned;
-these invocations already happen on every tool call of every Hive
-Claude session.
+`tool_input` are dropped. No new hook needs wiring and no new process
+is spawned; these invocations already happen on every tool call of
+every Hive Claude session.
+
+Claude's plan arrives on the same hooks, as calls to its **task tools**.
+Every shape below was captured from a live Claude Code 2.1.273 session —
+an earlier revision of this doc named `TodoWrite`, and was wrong:
+
+| Tool | Payload (on a successful `PostToolUse`) | Becomes |
+|------|------------------------------------------|---------|
+| `TaskCreate` | input `{subject, description}`; the task's ID is assigned by Claude and appears **only** in `tool_response.task.id` | `plan_item` (insert) |
+| `TaskUpdate` | input `{taskId, status?, subject?}` — only what changed; `status: "deleted"` removes it | `plan_item` (merge by ID) |
+| `TaskList` | `tool_response.tasks` is the **complete** list | `plan` (wholesale resync) |
+| `TodoWrite` | `tool_input.todos` is the whole list | `plan` (wholesale) |
+
+The task tools are incremental — one task per call — and `hived hook`
+is a new process per event with no memory of the list, so the daemon
+assembles the plan. `TaskList` is a free resync that heals any update
+the daemon missed. A failed planning call changes no plan.
+
+**The opt-in.** `TodoWrite` is disabled by default in favour of the
+task tools, and on current models (Opus 5, Sonnet 5) Claude Code
+provides no task tools at all unless the session sets
+`CLAUDE_CODE_ENABLE_TODO_TOOLS=1`. Without it Hive receives no plan. So
+Hive sets it for the Claude sessions it starts — **on by default, with a
+Settings toggle**, the same rule this doc already applies to Pi's
+Hive-registered todo tool. It is applied exactly where Hive's hooks are
+(the two share one gate, `claudeHooksAvailable`, since the tools cost
+context in every session and only pay off through the hooks), read at
+spawn so a toggle reaches the next session without a daemon restart,
+and never set when the user's own environment already sets it. The
+setting lives in `agent-settings.json` beside `agents.json`: written by
+the GUI, read by hived, no wire change.
+
+If Claude Code ever drops the variable nothing errors — it is silently
+ignored and the plan indicator simply never appears. The opt-in probe
+`TestClaudeProbeTaskToolsOptIn` (`HIVE_PROBE_CLAUDE=1`) is how that
+shows up on upgrade rather than in a user's sidebar; it was confirmed to
+fail with the setting off.
 
 **Pi (extension tier) — planned, phase 2.** Nothing below ships in
 phase 1; the Pi extension reports no tool or plan events yet. Verified against

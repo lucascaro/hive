@@ -163,23 +163,30 @@ func validateCustom(list []Custom) ([]Def, []error) {
 			name = string(id)
 		}
 		color := safeColor(c.Color)
+		base := builtinFor(cmd[0])
 		defs = append(defs, Def{
 			ID: id, Name: name, Cmd: cmd, Color: color,
-			SpawnArgs: builtinSpawnArgs(cmd[0]),
+			// A custom agent inherits the built-in's hooks AND its
+			// environment together, from one name match: `claude
+			// --model haiku` gets the task-tool opt-in exactly when it
+			// gets the hooks that make the opt-in worth its context.
+			SpawnArgs: base.SpawnArgs,
+			SpawnEnv:  base.SpawnEnv,
 		})
 	}
 	return defs, rejected
 }
 
-// builtinSpawnArgs gives a custom agent the state-tier wiring of the
-// built-in it launches, so `claude --model haiku` reports working,
-// waiting and errors exactly like the Claude agent does. Matched on the
-// executable's name only: a wrapper script (claude-lite) or `env claude`
-// is not recognised and stays on the heuristic tier.
+// builtinFor returns the built-in a custom agent launches, so `claude
+// --model haiku` reports working, waiting and errors — and gets the
+// same spawn environment — exactly like the Claude agent does. Matched
+// on the executable's name only: a wrapper script (claude-lite) or
+// `env claude` is not recognised and stays on the heuristic tier. The
+// zero Def (no hooks, no env) is returned for anything else.
 //
 // ponytail: name match, not an explicit "based on" field. Add one to
 // agents.json if wrappers need the hooks too.
-func builtinSpawnArgs(exe string) func(SpawnInfo) []string {
+func builtinFor(exe string) Def {
 	// Lowercased: Windows (and macOS's default filesystem) resolve
 	// Claude.EXE and claude.exe to the same binary.
 	base := strings.ToLower(filepath.Base(exe))
@@ -190,9 +197,9 @@ func builtinSpawnArgs(exe string) func(SpawnInfo) []string {
 	}
 	switch ID(base) {
 	case IDClaude, IDPi:
-		return defsByID[ID(base)].SpawnArgs
+		return defsByID[ID(base)]
 	}
-	return nil
+	return Def{}
 }
 
 // safeColor returns c if it is a plain hex color, and the default
@@ -294,23 +301,7 @@ func SaveCustom(list []Custom) error {
 		return err
 	}
 	blob = append(blob, '\n')
-	if err := os.MkdirAll(dir, 0o700); err != nil {
-		return err
-	}
-	// Temp file in the same directory so the rename stays atomic.
-	tmp, err := os.CreateTemp(dir, CustomFileName+".*")
-	if err != nil {
-		return err
-	}
-	defer os.Remove(tmp.Name()) // no-op once the rename succeeds
-	if _, err := tmp.Write(blob); err != nil {
-		tmp.Close()
-		return err
-	}
-	if err := tmp.Close(); err != nil {
-		return err
-	}
-	if err := os.Rename(tmp.Name(), filepath.Join(dir, CustomFileName)); err != nil {
+	if err := writeFileAtomic(dir, CustomFileName, blob); err != nil {
 		return err
 	}
 
@@ -384,4 +375,28 @@ func slugify(name string) string {
 // bytes from the head and cannot turn bad JSON into good.
 func trimBOM(b []byte) []byte {
 	return bytes.TrimPrefix(b, []byte("\ufeff"))
+}
+
+// writeFileAtomic writes blob to dir/name through a temp file in the
+// same directory and a rename, so a reader — hived picking the file up
+// on its next spawn — never sees a half-written file. Shared by every
+// file this package persists.
+func writeFileAtomic(dir, name string, blob []byte) error {
+	if err := os.MkdirAll(dir, 0o700); err != nil {
+		return err
+	}
+	// Temp file in the same directory so the rename stays atomic.
+	tmp, err := os.CreateTemp(dir, name+".*")
+	if err != nil {
+		return err
+	}
+	defer os.Remove(tmp.Name()) // no-op once the rename succeeds
+	if _, err := tmp.Write(blob); err != nil {
+		tmp.Close()
+		return err
+	}
+	if err := tmp.Close(); err != nil {
+		return err
+	}
+	return os.Rename(tmp.Name(), filepath.Join(dir, name))
 }

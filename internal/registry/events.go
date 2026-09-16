@@ -108,7 +108,7 @@ func (r *Registry) SubscribeActivity() (ActivityListener, func()) {
 // broadcastActivityLocked fans out one delta for the event just
 // applied. Callers hold r.mu.
 //
-// Only the three activity kinds produce a delta; every other agent
+// Only the activity kinds produce a delta; every other agent
 // event (prompt, idle, the waits) moves state and nothing else, and
 // sending an empty ACTIVITY for those would be pure noise on the
 // busiest feed the registry has.
@@ -121,7 +121,11 @@ func (r *Registry) broadcastActivityLocked(e *Entry, kind string) {
 			return
 		}
 		msg = wire.ActivityMsg{SessionID: e.ID, Events: []wire.ToolEvent{ev}}
-	case wire.AgentEventPlan:
+	case wire.AgentEventPlan, wire.AgentEventPlanItem:
+		// A per-item update still sends the whole plan. It is at most
+		// MaxPlanItems small rows, and a client that only ever receives
+		// complete plans never has to replicate the merge rules — the
+		// daemon stays the one place a plan is assembled.
 		_, plan := e.machine().Activity()
 		msg = wire.ActivityMsg{SessionID: e.ID, Plan: plan}
 	default:

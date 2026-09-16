@@ -35,11 +35,13 @@ import {
 } from 'react';
 import {
   EventsOn,
+  GetAgentSettings,
   GetUpdateSettings,
   ListCustomAgents,
   MenuBarLoginItemStatus,
   PickDirectory,
   SetMenuBarLoginItem,
+  SaveAgentSettings,
   SaveCustomAgents,
   SaveUpdateSettings,
   SourceRepoStatusFor,
@@ -146,6 +148,10 @@ function SettingsDialog({ root }: { root: HTMLElement }): ReactNode {
   // because agents.json would not parse, so the refusal has to live here,
   // where that distinction is still known.
   const [loadFailed, setLoadFailed] = useState(false);
+  // agent-settings.json. Defaults to on, matching the Go default, so a
+  // slow read never flashes the box unchecked first.
+  const [claudeTaskTools, setClaudeTaskTools] = useState(true);
+  const [agentSettingsFailed, setAgentSettingsFailed] = useState(false);
   const [error, setError] = useState('');
   const [theme, setTheme] = useState<ThemeName>(() => readTheme());
   const [pair, setPair] = useState<SystemPair>(() => readPair());
@@ -280,6 +286,23 @@ function SettingsDialog({ root }: { root: HTMLElement }): ReactNode {
         setLoadFailed(true);
         showError(
           `Could not read agents.json — fix or move the file, then reopen Settings. (${String(err?.message || err)})`,
+        );
+      });
+
+    GetAgentSettings()
+      .then((s) => {
+        if (!live) return;
+        setClaudeTaskTools(s?.claude_task_tools ?? true);
+        setAgentSettingsFailed(false);
+      })
+      // Same rule as agents.json and update.json: a file that will not
+      // parse must not be silently replaced by the defaults on the next
+      // save. The toggle is disabled and the save skips it.
+      .catch((err) => {
+        if (!live) return;
+        setAgentSettingsFailed(true);
+        showError(
+          `Could not read agent-settings.json — fix or move the file, then reopen Settings. (${String(err?.message || err)})`,
         );
       });
 
@@ -545,6 +568,13 @@ function SettingsDialog({ root }: { root: HTMLElement }): ReactNode {
     // Cancel that no longer discards it.
     SaveCustomAgents(payload)
       .then(() =>
+        agentSettingsFailed
+          ? undefined
+          : SaveAgentSettings({
+              claude_task_tools: claudeTaskTools,
+            } as main.AgentSettings),
+      )
+      .then(() =>
         SaveUpdateSettings({
           channel,
           source_repo: sourceRepo,
@@ -627,6 +657,24 @@ function SettingsDialog({ root }: { root: HTMLElement }): ReactNode {
         <p className="settings-hint">
           Define your own tools — a command and its arguments. They appear in
           the new-session menu alongside the built-ins.
+        </p>
+        <label className="settings-check">
+          <input
+            id="settings-claude-task-tools"
+            type="checkbox"
+            checked={claudeTaskTools}
+            disabled={agentSettingsFailed}
+            aria-describedby="settings-claude-task-tools-hint"
+            onChange={(e) => setClaudeTaskTools(e.target.checked)}
+          />
+          <span>Show Claude's plan progress in the sidebar</span>
+        </label>
+        <p id="settings-claude-task-tools-hint" className="settings-hint">
+          Turns on Claude Code's task list for sessions Hive starts, so the
+          sidebar can show how far each one is through its plan. It uses some
+          of the model's context, and applies to newly started sessions only.
+          If you set <code>CLAUDE_CODE_ENABLE_TODO_TOOLS</code> yourself, Hive
+          leaves it alone.
         </p>
         <div id="settings-agents-list" ref={listRef}>
           {loading ? (

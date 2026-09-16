@@ -45,6 +45,9 @@ const bridge = vi.hoisted(() => ({
   RestartDaemon: vi.fn(() => Promise.resolve()),
   CheckForUpdate: vi.fn(() => Promise.resolve(null)),
   OpenURL: vi.fn(() => Promise.resolve()),
+  // Agents-tab bindings the modal loads on open; not this file's subject.
+  GetAgentSettings: vi.fn(() => Promise.resolve({ claude_task_tools: true })),
+  SaveAgentSettings: vi.fn(() => Promise.resolve()),
 }));
 
 vi.mock('../../src/bridge.js', () => bridge);

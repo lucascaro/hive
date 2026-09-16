@@ -340,3 +340,159 @@ func TestHookNeverLeaksToolInput(t *testing.T) {
 		})
 	}
 }
+
+// --- Claude's task tools: the plan source on current Claude Code ---
+//
+// TodoWrite is disabled by default in favour of TaskCreate / TaskUpdate
+// / TaskList, and on current models neither is provided unless the
+// session opts in. The fixtures below mirror payloads captured from a
+// live Claude Code 2.1.273 session, not the documentation.
+
+// planOf returns the plan event a payload produced, failing the test if
+// it did not produce exactly a tool_end followed by one.
+func planOf(t *testing.T, fixture string) wire.AgentEvent {
+	t.Helper()
+	evs := mapHookPayload(readFixture(t, fixture))
+	if len(evs) != 2 {
+		t.Fatalf("%s: got %d events, want 2 (tool_end + plan)", fixture, len(evs))
+	}
+	if evs[0].Kind != wire.AgentEventToolEnd {
+		t.Errorf("%s: first event = %q, want tool_end", fixture, evs[0].Kind)
+	}
+	return evs[1]
+}
+
+// noPlan asserts a payload reported the tool call and nothing else.
+func noPlan(t *testing.T, fixture string) {
+	t.Helper()
+	evs := mapHookPayload(readFixture(t, fixture))
+	if len(evs) != 1 {
+		t.Fatalf("%s: got %d events, want only the tool event", fixture, len(evs))
+	}
+}
+
+// TestHookTaskCreate: the task's ID exists only in the PostToolUse
+// response — Claude assigns it — so that is where it must be read.
+func TestHookTaskCreate(t *testing.T) {
+	ev := planOf(t, "post_tool_use_taskcreate.json")
+	if ev.Kind != wire.AgentEventPlanItem {
+		t.Fatalf("kind = %q, want plan_item", ev.Kind)
+	}
+	want := wire.PlanItem{ID: "1", Text: "Create one.txt", Status: wire.PlanStatusPending}
+	if len(ev.Items) != 1 || ev.Items[0] != want {
+		t.Errorf("items = %+v, want [%+v]", ev.Items, want)
+	}
+}
+
+// TestHookTaskCreateWithoutIDEmitsNoPlan: a step nothing can ever
+// update is worse than no step.
+func TestHookTaskCreateWithoutIDEmitsNoPlan(t *testing.T) {
+	evs := mapHookPayload([]byte(`{"hook_event_name":"PostToolUse","tool_name":"TaskCreate",
+		"tool_use_id":"toolu_1","tool_input":{"subject":"x"},"tool_response":{}}`))
+	if len(evs) != 1 {
+		t.Errorf("got %d events, want only the tool event", len(evs))
+	}
+}
+
+// TestHookTaskCreatePreToolUseHasNoPlan: the ID is not known yet.
+func TestHookTaskCreatePreToolUseHasNoPlan(t *testing.T) {
+	evs := mapHookPayload([]byte(`{"hook_event_name":"PreToolUse","tool_name":"TaskCreate",
+		"tool_use_id":"toolu_1","tool_input":{"subject":"x"}}`))
+	if len(evs) != 1 || evs[0].Kind != wire.AgentEventToolStart {
+		t.Errorf("got %+v, want a lone tool_start", evs)
+	}
+}
+
+// TestHookTaskUpdate covers each thing a TaskUpdate carries. It sends
+// only what changed, so an absent field must stay absent on the event
+// — the daemon reads empty as "unchanged".
+func TestHookTaskUpdate(t *testing.T) {
+	cases := []struct {
+		fixture string
+		want    wire.PlanItem
+	}{
+		{"post_tool_use_taskupdate_status.json", wire.PlanItem{ID: "1", Status: wire.PlanStatusActive}},
+		{"post_tool_use_taskupdate_rename.json", wire.PlanItem{ID: "1", Text: "alpha renamed"}},
+		{"post_tool_use_taskupdate_delete.json", wire.PlanItem{ID: "2", Status: wire.PlanStatusDeleted}},
+	}
+	for _, tc := range cases {
+		t.Run(tc.fixture, func(t *testing.T) {
+			ev := planOf(t, tc.fixture)
+			if ev.Kind != wire.AgentEventPlanItem {
+				t.Fatalf("kind = %q, want plan_item", ev.Kind)
+			}
+			if len(ev.Items) != 1 || ev.Items[0] != tc.want {
+				t.Errorf("items = %+v, want [%+v]", ev.Items, tc.want)
+			}
+		})
+	}
+}
+
+// TestHookTaskUpdateDescriptionOnlyEmitsNoPlan: nothing the plan shows
+// changed.
+func TestHookTaskUpdateDescriptionOnlyEmitsNoPlan(t *testing.T) {
+	noPlan(t, "post_tool_use_taskupdate_description_only.json")
+}
+
+// TestHookTaskListResyncs: the response is the complete list, so it is
+// sent wholesale — which heals any update the daemon missed.
+func TestHookTaskListResyncs(t *testing.T) {
+	ev := planOf(t, "post_tool_use_tasklist.json")
+	if ev.Kind != wire.AgentEventPlan {
+		t.Fatalf("kind = %q, want plan (wholesale)", ev.Kind)
+	}
+	want := []wire.PlanItem{
+		{ID: "1", Text: "alpha renamed", Status: wire.PlanStatusDone},
+		{ID: "3", Text: "gamma", Status: wire.PlanStatusActive},
+		{ID: "4", Text: "delta", Status: wire.PlanStatusPending},
+	}
+	if len(ev.Items) != len(want) {
+		t.Fatalf("items = %+v, want %+v", ev.Items, want)
+	}
+	for i := range want {
+		if ev.Items[i] != want[i] {
+			t.Errorf("item %d = %+v, want %+v", i, ev.Items[i], want[i])
+		}
+	}
+}
+
+// TestHookTaskListEmptyStillResyncs: an empty list is a real answer —
+// every task cleared — and must reach the daemon, or a stale plan would
+// outlive the tasks it described.
+func TestHookTaskListEmptyStillResyncs(t *testing.T) {
+	evs := mapHookPayload([]byte(`{"hook_event_name":"PostToolUse","tool_name":"TaskList",
+		"tool_use_id":"toolu_1","tool_input":{},"tool_response":{"tasks":[]}}`))
+	if len(evs) != 2 || evs[1].Kind != wire.AgentEventPlan || len(evs[1].Items) != 0 {
+		t.Errorf("got %+v, want tool_end + an empty plan", evs)
+	}
+}
+
+// TestHookFailedPlanningCallChangesNoPlan: a failed call did not change
+// the agent's list, so it must not change Hive's — for the task tools
+// and for TodoWrite alike.
+func TestHookFailedPlanningCallChangesNoPlan(t *testing.T) {
+	for _, f := range []string{
+		"post_tool_use_failure_taskupdate.json",
+		"post_tool_use_failure_todowrite.json",
+	} {
+		t.Run(f, func(t *testing.T) {
+			evs := mapHookPayload(readFixture(t, f))
+			if len(evs) != 1 {
+				t.Fatalf("got %d events, want only the failed tool_end", len(evs))
+			}
+			if evs[0].OK == nil || *evs[0].OK {
+				t.Errorf("OK = %v, want false", evs[0].OK)
+			}
+		})
+	}
+}
+
+// TestIDStringAcceptsNumbers: Claude sends "1", but a number is the
+// obvious way for that field to change shape.
+func TestIDStringAcceptsNumbers(t *testing.T) {
+	for in, want := range map[any]string{"7": "7", float64(7): "7", nil: "", true: ""} {
+		if got := idString(in); got != want {
+			t.Errorf("idString(%v) = %q, want %q", in, got, want)
+		}
+	}
+}

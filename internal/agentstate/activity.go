@@ -169,40 +169,123 @@ func (m *Machine) toolEnd(ev Event, now time.Time) {
 }
 
 // setPlan replaces the plan wholesale, carrying each item's tool tally
-// forward by matching text.
+// forward.
 //
-// Wholesale replacement is what the reporters give us — a Claude
-// TodoWrite call carries the entire list every time — but a naive
-// replacement would reset every tally on each fire, since TodoWrite
-// fires repeatedly as the plan evolves. Matching by text is
-// first-match-wins: an agent can emit two steps with identical text,
-// and truncation at MaxPlanTextLen can make two long steps identical,
-// so each old item is consumed at most once.
+// Wholesale replacement is what two reporters give us — a TodoWrite
+// call, and the complete list in a TaskList response — but a naive
+// replacement would reset every tally each time, since both fire
+// repeatedly as the plan evolves.
+//
+// Tallies are matched by ID where the item has one (the task tools),
+// which is exact. Items without one (TodoWrite) fall back to matching
+// text, first-match-wins: an agent can emit two steps with identical
+// text, and truncation at MaxPlanTextLen can make two long steps
+// identical, so each old item is consumed at most once.
 func (m *Machine) setPlan(items []wire.PlanItem) {
-	if len(items) > wire.MaxPlanItems {
-		items = items[:wire.MaxPlanItems]
-	}
 	old := m.act.plan
 	used := make([]bool, len(old))
-	next := make([]wire.PlanItem, 0, len(items))
+	next := make([]wire.PlanItem, 0, min(len(items), wire.MaxPlanItems))
 	for _, it := range items {
-		it.Text = truncatePlanText(it.Text)
-		if !wire.PlanStatuses[it.Status] {
-			// Coerced, not dropped: losing a step entirely is worse
-			// than mislabelling one.
-			it.Status = wire.PlanStatusPending
+		if len(next) == wire.MaxPlanItems {
+			break
 		}
+		// A deleted step in a full list — never expected, but a
+		// TaskList response is agent-authored — is simply absent.
+		if it.Status == wire.PlanStatusDeleted {
+			continue
+		}
+		it = normalisePlanItem(it)
 		it.Tools = 0
-		for i := range old {
-			if !used[i] && old[i].Text == it.Text {
-				it.Tools = old[i].Tools
-				used[i] = true
-				break
-			}
+		if i := matchOld(old, used, it); i >= 0 {
+			it.Tools = old[i].Tools
+			used[i] = true
 		}
 		next = append(next, it)
 	}
 	m.act.plan = next
+}
+
+// matchOld finds the unconsumed old item it replaces: by ID when it has
+// one, else by text. -1 when there is none.
+func matchOld(old []wire.PlanItem, used []bool, it wire.PlanItem) int {
+	for i := range old {
+		if used[i] {
+			continue
+		}
+		if it.ID != "" {
+			if old[i].ID == it.ID {
+				return i
+			}
+			continue
+		}
+		if old[i].ID == "" && old[i].Text == it.Text {
+			return i
+		}
+	}
+	return -1
+}
+
+// mergePlanItems applies individual step updates by ID — the shape
+// Claude's task tools report. Each field present on the update is
+// applied and each absent one is left alone: a status-only TaskUpdate
+// carries no text, and a rename carries no status, so treating an
+// empty field as "clear it" would blank a step on every update.
+//
+// An ID the plan has never seen is added, not refused. That happens
+// when Hive attached after the agent created the task, or the create's
+// hook event was lost; the step is still real, and the next TaskList
+// resync fills in whatever text it is missing. Items with no ID cannot
+// be merged into anything and are ignored.
+func (m *Machine) mergePlanItems(items []wire.PlanItem) {
+	for _, up := range items {
+		if up.ID == "" {
+			continue
+		}
+		idx := -1
+		for i := range m.act.plan {
+			if m.act.plan[i].ID == up.ID {
+				idx = i
+				break
+			}
+		}
+
+		if up.Status == wire.PlanStatusDeleted {
+			if idx >= 0 {
+				m.act.plan = append(m.act.plan[:idx], m.act.plan[idx+1:]...)
+			}
+			continue
+		}
+
+		if idx < 0 {
+			if len(m.act.plan) >= wire.MaxPlanItems {
+				continue
+			}
+			created := normalisePlanItem(wire.PlanItem{ID: up.ID, Text: up.Text, Status: up.Status})
+			m.act.plan = append(m.act.plan, created)
+			continue
+		}
+
+		cur := &m.act.plan[idx]
+		if up.Text != "" {
+			cur.Text = truncatePlanText(up.Text)
+		}
+		if wire.PlanStatuses[up.Status] {
+			cur.Status = up.Status
+		}
+		// The tally is never taken from an update: it is the daemon's
+		// own count, and a reporter has no business overwriting it.
+	}
+}
+
+// normalisePlanItem caps the text and coerces an unrecognised status to
+// pending — coerced, not dropped: losing a step entirely is worse than
+// mislabelling one.
+func normalisePlanItem(it wire.PlanItem) wire.PlanItem {
+	it.Text = truncatePlanText(it.Text)
+	if !wire.PlanStatuses[it.Status] {
+		it.Status = wire.PlanStatusPending
+	}
+	return it
 }
 
 // truncatePlanText caps a plan step at the wire limit, on a rune

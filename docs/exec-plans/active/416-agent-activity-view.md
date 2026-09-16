@@ -305,6 +305,17 @@ Phase 1 ships standalone value: Claude sessions get a live plan indicator in the
 
 ## Approach
 
+> **Revised 2026-09-16 (operator-approved) — read the Decision log first.** The plan
+> source below was designed around `TodoWrite`, which current Claude Code disables by
+> default and, on current models, does not provide at all. Phase 1 now takes the plan
+> from `TaskCreate` / `TaskUpdate` (per-item `plan_item`, merged by ID in the daemon)
+> and `TaskList` (wholesale resync), keeps `TodoWrite` as a fallback, and opts Claude
+> sessions into the task tools via `CLAUDE_CODE_ENABLE_TODO_TOOLS=1` — on by default,
+> Settings toggle, shared gate with the hooks, never overriding the user. Everything
+> else in this section stands. Verified end-to-end by `TestClaudeProbeTaskToolsOptIn`
+> against a real Opus 5 session, with a negative control (setting off → `plan_total`
+> 0) run once and discarded.
+
 ### Why this shape
 
 The data is already in flight and already discarded at one line
@@ -642,7 +653,46 @@ what the `state_source` proxy does and does not cover.
 
 **Applied: 4 of 4 must-fix, 9 of 9 nice-to-have.**
 
+## PR convergence ledger
+
+Append-only, one line per `/hs-review-loop` iteration.
+
+- **2026-09-16 iter 1** — verdict: (not reported); mergeable: MERGEABLE; findings_hash: empty; threads_open: 5; action: escalated:operator-stopped-premise-invalidated; head_sha: 44735aef. Stopped by the operator mid-iteration after the TodoWrite premise was disproven. The worker had already pushed one autofix commit (44735aef, 5 safe fixes, all verified correct — including a real bug: GET_ACTIVITY on a closed session returned `true`, which closes the GUI's whole control connection) and resolved 5 of 10 CodeRabbit threads. The remaining 5 are untouched. Re-run from scratch after the plan-source revision.
+
 ## Decision log
+
+- **2026-09-16** — **Plan revision (operator-approved): the plan comes from Claude's Task
+  tools, not TodoWrite.** Why: TodoWrite is disabled by default in favour of
+  TaskCreate/TaskGet/TaskList/TaskUpdate, and on current models (Opus 5 / Sonnet 5)
+  Claude Code provides NEITHER unless the session opts in
+  (code.claude.com/docs/en/tools-reference, "Task tool availability"). As originally
+  built, the pie would never have appeared on the default model. The spec and design
+  doc named TodoWrite and it was carried into the plan without being verified — the
+  hook events were checked against a live session, the tool the plan depends on was
+  not. Every Task-tool shape below is from a captured payload, not from docs or memory.
+- **2026-09-16** — Task tools are INCREMENTAL, so the daemon assembles the plan.
+  TaskCreate carries no id in its input — Claude assigns it, and it appears only in the
+  PostToolUse `tool_response.task.id`. TaskUpdate is `{taskId, status?, subject?}` and
+  sends only what changed; `status: "deleted"` removes a task. `hived hook` is a new
+  process per event and cannot hold the list, so a new `plan_item` event upserts one
+  task by id and the daemon merges only the fields present. `TaskList`'s response is
+  the complete list and is used as a free wholesale resync. TodoWrite stays as a
+  wholesale `plan` for older configurations.
+- **2026-09-16** — Only a successful PostToolUse mutates the plan. Why: a failed
+  TaskUpdate did not change Claude's list, so it must not change Hive's.
+- **2026-09-16** — **Hive opts Claude sessions into the task tools by default, with a
+  Settings toggle (operator decision).** `CLAUDE_CODE_ENABLE_TODO_TOOLS=1` at spawn,
+  unless the user's own environment already sets that variable — an explicit choice is
+  never overridden. Why: without it the feature is dead on the default model. Mirrors
+  the spec's existing rule for Pi's Hive-registered todo tool (Hive adds a tool, on by
+  default, disableable). Cost, stated in the docs: the tools spend context on every
+  session — the toggle is the mitigation. Read at spawn, so the toggle affects newly
+  started sessions only.
+- **2026-09-16** — The setting lives in `internal/agent`, persisted beside
+  `agents.json`, written by the GUI and read by the daemon at spawn. Why: that is
+  exactly how `agents.json` already works (GUI `SaveCustomAgents` writes it,
+  `cmd/hived/main.go` reads it), it is agent config rather than registry state so the
+  "registry is the only writer" hard rule is not in play, and it needs no wire change.
 
 - **2026-09-16** — Hook fixtures now mirror payloads captured from a live Claude
   session rather than hand-written guesses. Why: the hand-written
@@ -699,6 +749,10 @@ what the `state_source` proxy does and does not cover.
 - **2026-09-16** — PLAN approved via the HTML plan review (round 1, no revisions
   requested) after two rounds of adversarial second opinion. Stage → IMPLEMENT.
 - **2026-09-16** — Phase 1 implemented and pushed as PR #417. Stage → REVIEW.
+- **2026-09-16** — Review loop stopped by the operator: TodoWrite premise disproven.
+  Plan revised to the task tools + opt-in; implemented on the same branch. Real-Claude
+  probe passes (plan_total 2, plan_done ≥1 in 8.7s on Opus 5); negative control with
+  the setting off confirmed plan_total 0.
 
 ## Open questions / risks
 

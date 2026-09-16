@@ -1045,6 +1045,16 @@ export async function StartUpdate() {
 export async function ApplyUpdateAndRestart() {
   return '';
 }
+// agent-settings.json. Stateful rather than a fixed reply so a test can
+// save a value and see the modal read it back on reopen.
+const agentSettings = { claude_task_tools: true };
+export async function GetAgentSettings() {
+  return { ...agentSettings };
+}
+export async function SaveAgentSettings(s: { claude_task_tools: boolean }) {
+  agentSettings.claude_task_tools = s.claude_task_tools;
+}
+
 export async function GetUpdateSettings() {
   return { channel: 'release', source_repo: '' };
 }

@@ -523,15 +523,24 @@ type AgentEvent struct {
 	// bool cannot tell them apart.
 	OK *bool `json:"ok,omitempty"`
 
-	// Items carries AgentEventPlan: the agent's whole plan, replacing
-	// any previous one wholesale.
+	// Items carries AgentEventPlan — the agent's whole plan, replacing
+	// any previous one wholesale — or AgentEventPlanItem, where each
+	// item is merged into the existing plan by ID.
 	Items []PlanItem `json:"items,omitempty"`
 }
 
 // PlanItem is one step of an agent's plan, as reported by its tier —
 // a Claude TodoWrite call, or Pi's Hive-registered todo tool.
 type PlanItem struct {
+	// ID is the agent's own identifier for the step, when it has one.
+	// Claude's task tools do (TaskCreate assigns it); TodoWrite does
+	// not. An item with an ID can be updated in place by a later
+	// AgentEventPlanItem; an item without one can only be replaced as
+	// part of a whole plan.
+	ID string `json:"id,omitempty"`
 	// Text is the step as the agent worded it, capped at MaxPlanTextLen.
+	// On an AgentEventPlanItem an empty Text means "unchanged", because
+	// a status-only TaskUpdate carries no text.
 	Text string `json:"text"`
 	// Status is one of PlanStatus*. An unrecognised status from the
 	// reporter is coerced to PlanStatusPending rather than dropped:
@@ -548,6 +557,10 @@ const (
 	PlanStatusPending = "pending"
 	PlanStatusActive  = "active"
 	PlanStatusDone    = "done"
+	// PlanStatusDeleted is valid ONLY on an AgentEventPlanItem, where it
+	// removes the step with that ID. It is never stored, so it is not in
+	// PlanStatuses.
+	PlanStatusDeleted = "deleted"
 )
 
 // PlanStatuses is the validation allowlist for PlanItem.Status.
@@ -636,6 +649,13 @@ const (
 	AgentEventToolStart = "tool_start"
 	AgentEventToolEnd   = "tool_end"
 	AgentEventPlan      = "plan"
+	// AgentEventPlanItem updates individual plan steps by ID rather than
+	// replacing the plan. Claude's task tools report one task per call —
+	// TaskCreate adds one, TaskUpdate changes one field of one — and the
+	// hook that observes them is a fresh process per event with no
+	// memory of the list, so the daemon is the only place the plan can
+	// be assembled.
+	AgentEventPlanItem = "plan_item"
 )
 
 // AgentEventKinds is the validation allowlist for AgentEvent.Kind, the
@@ -656,6 +676,7 @@ var AgentEventKinds = map[string]bool{
 	AgentEventToolStart:          true,
 	AgentEventToolEnd:            true,
 	AgentEventPlan:               true,
+	AgentEventPlanItem:           true,
 }
 
 // SessionEvent is the SESSION_EVENT payload, broadcast to every

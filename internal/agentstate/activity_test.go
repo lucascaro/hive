@@ -389,3 +389,164 @@ func itoa(i int) string {
 	}
 	return string(b)
 }
+
+// --- Per-item plan updates: Claude's task tools ---
+
+func mergeAt(m *Machine, at time.Time, items ...wire.PlanItem) {
+	m.Apply(Event{
+		Kind: KindPlanItem, Source: wire.StateSourceHook,
+		At: at, Now: at, Items: items,
+	})
+}
+
+// TestMergePlanItemsLifecycle walks one task through what a real
+// session does: create, start, complete, rename, delete.
+func TestMergePlanItemsLifecycle(t *testing.T) {
+	m, base := hooked(t)
+	tick := func(n int) time.Time { return base.Add(time.Duration(n) * time.Second) }
+
+	mergeAt(m, tick(1), wire.PlanItem{ID: "1", Text: "alpha", Status: wire.PlanStatusPending})
+	mergeAt(m, tick(2), wire.PlanItem{ID: "2", Text: "beta", Status: wire.PlanStatusPending})
+	_, plan := m.Activity()
+	if len(plan) != 2 {
+		t.Fatalf("after two creates: %d items, want 2", len(plan))
+	}
+
+	// Status-only update: the text must survive. Treating the empty
+	// Text as "clear it" would blank the step on every update.
+	mergeAt(m, tick(3), wire.PlanItem{ID: "1", Status: wire.PlanStatusActive})
+	_, plan = m.Activity()
+	if plan[0].Text != "alpha" || plan[0].Status != wire.PlanStatusActive {
+		t.Errorf("after status update: %+v, want alpha/active", plan[0])
+	}
+
+	// Rename-only update: the status must survive.
+	mergeAt(m, tick(4), wire.PlanItem{ID: "1", Text: "alpha renamed"})
+	_, plan = m.Activity()
+	if plan[0].Text != "alpha renamed" || plan[0].Status != wire.PlanStatusActive {
+		t.Errorf("after rename: %+v, want alpha renamed/active", plan[0])
+	}
+
+	mergeAt(m, tick(5), wire.PlanItem{ID: "1", Status: wire.PlanStatusDone})
+	if s := m.Snapshot(); s.PlanDone != 1 || s.PlanTotal != 2 {
+		t.Errorf("summary = %d/%d, want 1/2", s.PlanDone, s.PlanTotal)
+	}
+
+	// Delete removes the step outright — it must not linger as a
+	// pending item dragging the fraction down.
+	mergeAt(m, tick(6), wire.PlanItem{ID: "2", Status: wire.PlanStatusDeleted})
+	_, plan = m.Activity()
+	if len(plan) != 1 || plan[0].ID != "1" {
+		t.Errorf("after delete: %+v, want only task 1", plan)
+	}
+	if s := m.Snapshot(); s.PlanDone != 1 || s.PlanTotal != 1 {
+		t.Errorf("summary after delete = %d/%d, want 1/1", s.PlanDone, s.PlanTotal)
+	}
+}
+
+// TestMergePlanItemUnknownIDIsAdded: Hive attached after the agent
+// created the task, or the create's hook event was lost. The step is
+// still real; refusing it would under-count the plan.
+func TestMergePlanItemUnknownIDIsAdded(t *testing.T) {
+	m, base := hooked(t)
+	mergeAt(m, base, wire.PlanItem{ID: "9", Status: wire.PlanStatusActive})
+	_, plan := m.Activity()
+	if len(plan) != 1 || plan[0].ID != "9" || plan[0].Status != wire.PlanStatusActive {
+		t.Errorf("plan = %+v, want task 9 added as active", plan)
+	}
+}
+
+// TestMergePlanItemDeleteUnknownIsHarmless: deleting a task the daemon
+// never saw is a no-op, not a new "deleted" step.
+func TestMergePlanItemDeleteUnknownIsHarmless(t *testing.T) {
+	m, base := hooked(t)
+	mergeAt(m, base, wire.PlanItem{ID: "9", Status: wire.PlanStatusDeleted})
+	if _, plan := m.Activity(); len(plan) != 0 {
+		t.Errorf("plan = %+v, want empty", plan)
+	}
+}
+
+// TestMergePlanItemWithoutIDIgnored: it cannot be merged into anything.
+func TestMergePlanItemWithoutIDIgnored(t *testing.T) {
+	m, base := hooked(t)
+	mergeAt(m, base, wire.PlanItem{Text: "orphan", Status: wire.PlanStatusActive})
+	if _, plan := m.Activity(); len(plan) != 0 {
+		t.Errorf("plan = %+v, want empty", plan)
+	}
+}
+
+// TestMergePlanItemKeepsTally: the tally is the daemon's own count; an
+// update from a reporter never resets or overwrites it.
+func TestMergePlanItemKeepsTally(t *testing.T) {
+	m, base := hooked(t)
+	mergeAt(m, base, wire.PlanItem{ID: "1", Text: "work", Status: wire.PlanStatusActive})
+	start(m, base.Add(time.Second), "c1", "Bash", "x")
+	end(m, base.Add(2*time.Second), "c1", true)
+	start(m, base.Add(3*time.Second), "c2", "Edit", "y")
+
+	mergeAt(m, base.Add(4*time.Second), wire.PlanItem{ID: "1", Status: wire.PlanStatusDone, Tools: 99})
+	_, plan := m.Activity()
+	if plan[0].Tools != 2 {
+		t.Errorf("tally = %d, want 2 (never taken from an update)", plan[0].Tools)
+	}
+}
+
+// TestTaskListResyncKeepsTalliesByID: a TaskList wholesale resync must
+// carry tallies by ID — exactly, even when a task was renamed, which
+// text matching would lose.
+func TestTaskListResyncKeepsTalliesByID(t *testing.T) {
+	m, base := hooked(t)
+	mergeAt(m, base, wire.PlanItem{ID: "1", Text: "old name", Status: wire.PlanStatusActive})
+	start(m, base.Add(time.Second), "c1", "Bash", "x")
+	end(m, base.Add(2*time.Second), "c1", true)
+
+	setPlanAt(m, base.Add(3*time.Second),
+		wire.PlanItem{ID: "1", Text: "new name", Status: wire.PlanStatusDone},
+		wire.PlanItem{ID: "2", Text: "fresh", Status: wire.PlanStatusPending},
+	)
+	_, plan := m.Activity()
+	if plan[0].Tools != 1 {
+		t.Errorf("renamed task tally = %d, want 1 (matched by ID, not text)", plan[0].Tools)
+	}
+	if plan[1].Tools != 0 {
+		t.Errorf("new task tally = %d, want 0", plan[1].Tools)
+	}
+}
+
+// TestIDMatchNeverCrossesToTextMatch: an item WITH an ID must not steal
+// the tally of an ID-less item that happens to share its text.
+func TestIDMatchNeverCrossesToTextMatch(t *testing.T) {
+	m, base := hooked(t)
+	setPlanAt(m, base, wire.PlanItem{Text: "shared", Status: wire.PlanStatusActive})
+	start(m, base.Add(time.Second), "c1", "Bash", "x")
+	end(m, base.Add(2*time.Second), "c1", true)
+
+	setPlanAt(m, base.Add(3*time.Second), wire.PlanItem{ID: "1", Text: "shared", Status: wire.PlanStatusActive})
+	if _, plan := m.Activity(); plan[0].Tools != 0 {
+		t.Errorf("tally = %d, want 0 (an ID item must not match an ID-less one)", plan[0].Tools)
+	}
+}
+
+// TestMergePlanItemsCapped: a runaway agent cannot grow the plan past
+// the wire limit one create at a time.
+func TestMergePlanItemsCapped(t *testing.T) {
+	m, base := hooked(t)
+	for i := 0; i < wire.MaxPlanItems+20; i++ {
+		mergeAt(m, base.Add(time.Duration(i)*time.Millisecond),
+			wire.PlanItem{ID: itoa(i), Text: "t", Status: wire.PlanStatusPending})
+	}
+	if _, plan := m.Activity(); len(plan) != wire.MaxPlanItems {
+		t.Errorf("plan has %d items, want the cap %d", len(plan), wire.MaxPlanItems)
+	}
+}
+
+// TestPlanItemChangesNoState: like a wholesale plan, a per-item update
+// is not a state transition.
+func TestPlanItemChangesNoState(t *testing.T) {
+	m, base := hooked(t)
+	m.Apply(Event{Kind: KindWaitingInput, Source: wire.StateSourceHook, At: base, Now: base})
+	mergeAt(m, base.Add(time.Second), wire.PlanItem{ID: "1", Text: "x", Status: wire.PlanStatusActive})
+	if got := m.Snapshot().State; got != wire.StateWaitingInput {
+		t.Errorf("state = %q, want waiting_input", got)
+	}
+}

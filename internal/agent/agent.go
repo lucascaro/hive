@@ -63,6 +63,13 @@ type Def struct {
 	// non-empty; an empty field means "unavailable, skip your surface"
 	// rather than an error.
 	SpawnArgs func(sp SpawnInfo) []string
+	// SpawnEnv, when non-nil, returns extra environment variables for
+	// the same spawns SpawnArgs covers — first spawn and every
+	// resume/restart. Entries are appended AFTER the inherited
+	// environment and the later duplicate wins, so an adapter must not
+	// return a variable the user already set; see claudeSpawnEnv.
+	// nil for every agent but Claude.
+	SpawnEnv func(sp SpawnInfo) []string
 	// PositionalPrompt reports that the agent takes an opening prompt
 	// as a bare argv positional and still starts INTERACTIVELY (rather
 	// than dropping into one-shot print mode). Measured under a real
@@ -134,6 +141,7 @@ var (
 			SessionIDFlag: "--session-id",
 			ResumeArgs:    claudeResumeArgs,
 			SpawnArgs:     claudeSpawnArgs,
+			SpawnEnv:      claudeSpawnEnv,
 			// Verified interactive under a PTY; see PositionalPrompt.
 			PositionalPrompt: true,
 		},

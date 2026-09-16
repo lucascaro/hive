@@ -16,6 +16,7 @@ import (
 	"io"
 	"net"
 	"os"
+	"strconv"
 	"strings"
 	"time"
 
@@ -191,20 +192,165 @@ func toolEvents(base wire.AgentEvent, p hookPayload, name string) []wire.AgentEv
 	ok := name != "PostToolUseFailure"
 	base.OK = &ok
 
-	// A TodoWrite call IS the agent's plan. It is still a tool call,
-	// so it reports as one, and the plan rides alongside it.
-	if base.Tool == "TodoWrite" {
-		if items := derivePlan(p["tool_input"]); len(items) > 0 {
-			plan := wire.AgentEvent{
-				Source: base.Source,
-				At:     base.At,
-				Kind:   wire.AgentEventPlan,
-				Items:  items,
-			}
-			return []wire.AgentEvent{base, plan}
-		}
+	// A failed planning call did not change the agent's list, so it
+	// must not change Hive's. It still reports as a tool call.
+	if !ok {
+		return []wire.AgentEvent{base}
+	}
+	if plan, found := planEvent(base, p); found {
+		return []wire.AgentEvent{base, plan}
 	}
 	return []wire.AgentEvent{base}
+}
+
+// planEvent derives the plan update carried by a successful planning
+// tool call, if base.Tool is one. The call is still a tool call and is
+// reported as one; the plan rides alongside it.
+//
+// Every shape here was captured from a live Claude Code session
+// (2.1.273), not taken from docs — the planning tools changed under
+// this feature once already:
+//
+//   - TaskCreate  input {subject, description}. The task's ID is
+//     assigned by Claude and appears ONLY in the PostToolUse
+//     tool_response.task.id, which is why this runs on Post alone.
+//   - TaskUpdate  input {taskId, status?, subject?} — only the fields
+//     that changed. status "deleted" removes the task.
+//   - TaskList    tool_response.tasks is the COMPLETE list, so it is
+//     sent as a wholesale plan: a free resync that heals any update the
+//     daemon missed.
+//   - TodoWrite   input.todos is the whole list, for configurations
+//     that still use it (CLAUDE_CODE_ENABLE_TASKS=0 on older models).
+func planEvent(base wire.AgentEvent, p hookPayload) (wire.AgentEvent, bool) {
+	ev := wire.AgentEvent{Source: base.Source, At: base.At}
+	input, _ := p["tool_input"].(map[string]any)
+	response, _ := p["tool_response"].(map[string]any)
+
+	switch base.Tool {
+	case "TodoWrite":
+		ev.Kind = wire.AgentEventPlan
+		ev.Items = derivePlan(p["tool_input"])
+		return ev, len(ev.Items) > 0
+
+	case "TaskList":
+		ev.Kind = wire.AgentEventPlan
+		ev.Items = deriveTaskList(response)
+		// An empty list is a real answer — every task was completed and
+		// cleared, or none were made — so it is sent, unlike TodoWrite.
+		return ev, response != nil && response["tasks"] != nil
+
+	case "TaskCreate":
+		task, _ := response["task"].(map[string]any)
+		id := idString(task["id"])
+		if id == "" {
+			// Without the ID nothing can ever update this step, and a
+			// step that can never complete is worse than no step.
+			return ev, false
+		}
+		text := capPlanText(stringField(input, "subject"))
+		if text == "" {
+			text = capPlanText(stringField(task, "subject"))
+		}
+		ev.Kind = wire.AgentEventPlanItem
+		ev.Items = []wire.PlanItem{{ID: id, Text: text, Status: wire.PlanStatusPending}}
+		return ev, true
+
+	case "TaskUpdate":
+		id := idString(input["taskId"])
+		if id == "" {
+			id = idString(response["taskId"])
+		}
+		if id == "" {
+			return ev, false
+		}
+		item := wire.PlanItem{ID: id, Text: capPlanText(stringField(input, "subject"))}
+		if raw, present := input["status"].(string); present {
+			item.Status = taskStatus(raw)
+		}
+		// An update that touched neither the text nor the status — a
+		// description edit, a dependency change — moves nothing the
+		// plan shows.
+		if item.Text == "" && item.Status == "" {
+			return ev, false
+		}
+		ev.Kind = wire.AgentEventPlanItem
+		ev.Items = []wire.PlanItem{item}
+		return ev, true
+	}
+	return ev, false
+}
+
+// deriveTaskList reads a TaskList response into a whole plan.
+func deriveTaskList(response map[string]any) []wire.PlanItem {
+	raw, _ := response["tasks"].([]any)
+	items := make([]wire.PlanItem, 0, min(len(raw), wire.MaxPlanItems))
+	for _, r := range raw {
+		if len(items) == wire.MaxPlanItems {
+			break
+		}
+		t, ok := r.(map[string]any)
+		if !ok {
+			continue
+		}
+		id := idString(t["id"])
+		status := taskStatus(stringField(t, "status"))
+		if id == "" || status == wire.PlanStatusDeleted {
+			continue
+		}
+		if status == "" {
+			status = wire.PlanStatusPending
+		}
+		items = append(items, wire.PlanItem{
+			ID:     id,
+			Text:   capPlanText(stringField(t, "subject")),
+			Status: status,
+		})
+	}
+	return items
+}
+
+// taskStatus maps Claude's task statuses onto the wire vocabulary. The
+// empty string means "no status given", which a TaskUpdate needs to
+// tell apart from pending. An unrecognised value becomes pending, the
+// same coercion the daemon applies: mislabelled beats missing.
+func taskStatus(s string) string {
+	switch s {
+	case "":
+		return ""
+	case "in_progress":
+		return wire.PlanStatusActive
+	case "completed":
+		return wire.PlanStatusDone
+	case "deleted":
+		return wire.PlanStatusDeleted
+	default:
+		return wire.PlanStatusPending
+	}
+}
+
+// idString reads a task ID. Claude sends a string ("1"), but a JSON
+// number is accepted too, since that is the obvious way for the field
+// to change shape.
+func idString(v any) string {
+	switch id := v.(type) {
+	case string:
+		return id
+	case float64:
+		return strconv.FormatFloat(id, 'f', -1, 64)
+	}
+	return ""
+}
+
+func stringField(m map[string]any, key string) string {
+	s, _ := m[key].(string)
+	return s
+}
+
+func capPlanText(s string) string {
+	if len(s) > wire.MaxPlanTextLen {
+		s = strings.ToValidUTF8(s[:wire.MaxPlanTextLen], "")
+	}
+	return s
 }
 
 // derivePlan reads TodoWrite's todo list.
@@ -243,11 +389,8 @@ func derivePlan(input any) []wire.PlanItem {
 		if text == "" {
 			continue
 		}
-		if len(text) > wire.MaxPlanTextLen {
-			text = strings.ToValidUTF8(text[:wire.MaxPlanTextLen], "")
-		}
 		status, _ := t["status"].(string)
-		items = append(items, wire.PlanItem{Text: text, Status: planStatus(status)})
+		items = append(items, wire.PlanItem{Text: capPlanText(text), Status: planStatus(status)})
 	}
 	return items
 }

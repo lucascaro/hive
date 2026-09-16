@@ -92,6 +92,10 @@ const (
 	// state — an agent revising its plan is not a state transition —
 	// but it does refresh the tier clock like every other event.
 	KindPlan = "plan"
+	// KindPlanItem merges individual steps into the plan by ID — the
+	// shape Claude's task tools report. Like KindPlan it changes no
+	// state.
+	KindPlanItem = "plan_item"
 )
 
 // Event is one agent-reported observation.
@@ -427,6 +431,8 @@ func (m *Machine) Apply(ev Event) bool {
 		// No state change by design: revising a plan is not a
 		// transition. The tier clock was refreshed above.
 		m.setPlan(ev.Items)
+	case KindPlanItem:
+		m.mergePlanItems(ev.Items)
 	case KindError:
 		m.state = wire.StateError
 		m.lastSummary = text

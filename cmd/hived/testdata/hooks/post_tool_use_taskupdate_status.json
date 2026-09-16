@@ -1,0 +1,22 @@
+{
+  "session_id": "test-session",
+  "hook_event_name": "PostToolUse",
+  "tool_name": "TaskUpdate",
+  "tool_input": {
+    "taskId": "1",
+    "status": "in_progress"
+  },
+  "tool_use_id": "toolu_01TU",
+  "tool_response": {
+    "success": true,
+    "taskId": "1",
+    "updatedFields": [
+      "status"
+    ],
+    "statusChange": {
+      "from": "pending",
+      "to": "in_progress"
+    }
+  },
+  "duration_ms": 12
+}
