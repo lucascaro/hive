@@ -1327,7 +1327,7 @@ ordering guard; the serialized send queue (step 1) delivers in stamp order so it
    list gains `tool_start`, `tool_end`, `plan`; the scraper is widened to also collect every
    `kind:\s*"…"` literal in the file (so kinds inside `send([...])` are checked, not just `post("…")`), and
    to assert that **every** collected kind is on the allowlist; `TestPiDefUsesSpawnArgs` also asserts `SpawnEnv`.
-4. `cmd/hived/toollabel_test.go` — `TestDeriveLabel` reads `testdata/toollabel/vectors.json`
+4. `cmd/hived/toollabel_test.go` — `TestDeriveLabel` reads `internal/agent/pi/testdata/toollabel_vectors.json`
    (honouring `want_go`); fails if the file has zero vectors.
 5. `internal/agent/settings.go` — `PiTodoTool`, `PiTodoToolEnv`, `piSpawnEnv`, resolve/save.
 6. `internal/agent/agent.go` — `IDPi.SpawnEnv`; `SpawnEnv` doc comment "nil for every agent but Claude" → "Claude and Pi".
@@ -1613,6 +1613,7 @@ Non-vacuity checks run once during implementation and recorded in Progress:
   - **Load probe replaced by live probes.** `pi -e <ext> --list-models` exits 0 even when an extension throws on load (checked with a deliberately throwing extension), so the planned no-token `TestPiProbeExtensionLoadsWithTodoTool` would have been vacuous. Replaced by `TestPiProbeTodoToolPlan` (real pi calls `hive_todo` → plan 1/2 + a completed `hive_todo` in the activity ring) and `TestPiProbeTodoToolOff` (setting off → plan_total 0), one API call each. The existing probe body became the shared `startPiProbe` helper.
   - **Step 0 verified against the running pi 0.85.1** (global install, not pi-devkit's 0.85.0): `tool_execution_end.result` carries `details` (`agent-loop.js` `emitToolExecutionEnd`), the toolResult message keeps `isError` and `details`, `session_start.reason` and `session_tree` exist as planned. No API deviation.
   - **Shared vectors carry more than the Go table did**: non-object inputs, a non-string value falling through to the next key, look-alike hyphens, U+0085 / U+FEFF word-splitting, the two documented ceilings, and one pinned URL divergence (`want_go` / `want_ts`). The ceilings now fail rather than skip if raised; the Go `Skip` tests remain as the documented escape hatch.
+  - **Vectors live in `internal/agent/pi/testdata/toollabel_vectors.json`, not `cmd/hived/testdata/`.** `check-daemon-contract.sh` ignores only `_test.go` and `.md` under `cmd/hived`, so test data there demanded a contract bump or override label for a client-invisible change. The plan sections above were updated to the new path.
 
 ## Progress
 
