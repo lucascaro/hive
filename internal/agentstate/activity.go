@@ -1,6 +1,7 @@
 package agentstate
 
 import (
+	"slices"
 	"time"
 
 	"github.com/lucascaro/hive/internal/wire"
@@ -35,6 +36,9 @@ type openCall struct {
 	target    string
 	startedAt time.Time
 	planIdx   int
+	// agentID / agentType are set for a call inside a subagent.
+	agentID   string
+	agentType string
 }
 
 // activity is the per-session ring plus the latest plan snapshot.
@@ -57,6 +61,15 @@ type activity struct {
 	// that tools had ended.
 	delta    wire.ToolEvent
 	hasDelta bool
+
+	// subagents are the running subagents, id → the reporter stamp of
+	// their start (reconcile compares it with a Stop's). ended remembers
+	// recently ended ids, oldest first, so a subagent_start delivered
+	// after its subagent_end cannot resurrect it: hooks are separate
+	// processes and arrive in any order. Both are capped at
+	// wire.MaxRunningAgents.
+	subagents map[string]time.Time
+	ended     []string
 }
 
 // currentPlanIdx is the plan item the agent says it is on, or -1.
@@ -83,12 +96,17 @@ func (a *activity) push(ev wire.ToolEvent) {
 // evictOldestOpen drops the longest-running unfinished call. A Go map
 // has no order, so "oldest" is defined explicitly by startedAt; at 32
 // entries the scan is cheaper than maintaining a second index.
+//
+// Subagent calls go first: a wide fan-out must not evict the main
+// thread's running call, which is what CurrentTool names.
 func (a *activity) evictOldestOpen() {
 	var oldestID string
 	var oldestAt time.Time
+	oldestSub := false
 	for id, c := range a.open {
-		if oldestID == "" || c.startedAt.Before(oldestAt) {
-			oldestID, oldestAt = id, c.startedAt
+		isSub := c.agentID != ""
+		if oldestID == "" || (isSub && !oldestSub) || (isSub == oldestSub && c.startedAt.Before(oldestAt)) {
+			oldestID, oldestAt, oldestSub = id, c.startedAt, isSub
 		}
 	}
 	if oldestID != "" {
@@ -106,8 +124,16 @@ func (a *activity) evictOldestOpen() {
 // have no outcome and no duration to record, and inventing one would
 // put a false "succeeded" in the timeline. Their tally already counted
 // at start.
+//
+// Only the main thread's calls: a subagent's run outlives the parent's
+// turn (Claude fires the parent's Stop while subagents still work), so
+// its calls are forgotten at its own subagent_end instead.
 func (a *activity) endTurn(at time.Time) {
-	a.open = nil
+	for id, c := range a.open {
+		if c.agentID == "" {
+			delete(a.open, id)
+		}
+	}
 	if at.After(a.turnEndedAt) {
 		a.turnEndedAt = at
 	}
@@ -178,7 +204,11 @@ func (m *Machine) recordFinishedTurnStart(ev Event, now time.Time) {
 // the reporter's: durations must not be able to straddle a clock
 // adjustment on the reporting side.
 func (m *Machine) toolStart(ev Event, now time.Time) {
-	idx := m.act.currentPlanIdx()
+	// A subagent's call belongs to no step of the parent's plan.
+	idx := -1
+	if ev.AgentID == "" {
+		idx = m.act.currentPlanIdx()
+	}
 	// The tally is incremented at START, so a tool that never reports
 	// an end still counts against the step that launched it.
 	if idx >= 0 {
@@ -188,6 +218,8 @@ func (m *Machine) toolStart(ev Event, now time.Time) {
 		Tool:      ev.Tool,
 		Target:    ev.Target,
 		CallID:    ev.CallID,
+		AgentID:   ev.AgentID,
+		AgentType: ev.AgentType,
 		StartedAt: now.UTC().Format(time.RFC3339Nano),
 		PlanIdx:   idx,
 	}
@@ -212,6 +244,8 @@ func (m *Machine) toolStart(ev Event, now time.Time) {
 		target:    ev.Target,
 		startedAt: now,
 		planIdx:   idx,
+		agentID:   ev.AgentID,
+		agentType: ev.AgentType,
 	}
 }
 
@@ -220,12 +254,14 @@ func (m *Machine) toolStart(ev Event, now time.Time) {
 // and we missed the beginning" is more useful than silence.
 func (m *Machine) toolEnd(ev Event, now time.Time) {
 	out := wire.ToolEvent{
-		Tool:    ev.Tool,
-		Target:  ev.Target,
-		CallID:  ev.CallID,
-		EndedAt: now.UTC().Format(time.RFC3339Nano),
-		OK:      ev.OK,
-		PlanIdx: -1,
+		Tool:      ev.Tool,
+		Target:    ev.Target,
+		CallID:    ev.CallID,
+		AgentID:   ev.AgentID,
+		AgentType: ev.AgentType,
+		EndedAt:   now.UTC().Format(time.RFC3339Nano),
+		OK:        ev.OK,
+		PlanIdx:   -1,
 	}
 	if ev.CallID != "" {
 		if open, ok := m.act.open[ev.CallID]; ok {
@@ -243,9 +279,14 @@ func (m *Machine) toolEnd(ev Event, now time.Time) {
 			if out.Target == "" {
 				out.Target = open.target
 			}
+			if out.AgentID == "" {
+				out.AgentID, out.AgentType = open.agentID, open.agentType
+			}
 		}
 	}
-	if out.PlanIdx < 0 {
+	// An unpaired end is stamped with the step that is active now — for
+	// the main thread only. A subagent's call belongs to no step.
+	if out.PlanIdx < 0 && out.AgentID == "" {
 		out.PlanIdx = m.act.currentPlanIdx()
 	}
 	m.act.push(out)
@@ -430,9 +471,86 @@ func (m *Machine) planSummary() (done, total int, current string) {
 	// there can be several; the newest is the one worth naming.
 	var newest time.Time
 	for _, c := range m.act.open {
+		// The main thread's tool, never a subagent's: parallel
+		// subagents would otherwise take turns overwriting it.
+		if c.agentID != "" {
+			continue
+		}
 		if current == "" || c.startedAt.After(newest) {
 			current, newest = c.tool, c.startedAt
 		}
 	}
 	return done, total, current
+}
+
+// applySubagent handles an event tagged with a subagent's AgentID, after
+// Apply has refreshed the tier clock. It records the subagent's tools in
+// the ring and follows its lifecycle, and deliberately does nothing
+// else: no state, no plan, no CurrentTool. Planning calls from a
+// subagent are dropped — in Claude Code 2.1.273 a subagent has no task
+// tools at all, so this guards only TodoWrite configurations.
+func (m *Machine) applySubagent(ev Event, now time.Time) {
+	switch ev.Kind {
+	case KindToolStart:
+		m.toolStart(ev, now)
+	case KindToolEnd:
+		m.toolEnd(ev, now)
+	case KindSubagentStart:
+		m.act.subagentStart(ev.AgentID, ev.At)
+	case KindSubagentEnd:
+		m.act.subagentEnd(ev.AgentID)
+	}
+}
+
+func (a *activity) subagentStart(id string, at time.Time) {
+	if _, running := a.subagents[id]; running || slices.Contains(a.ended, id) {
+		return
+	}
+	if len(a.subagents) >= wire.MaxRunningAgents {
+		return
+	}
+	if a.subagents == nil {
+		a.subagents = make(map[string]time.Time)
+	}
+	a.subagents[id] = at
+}
+
+// subagentEnd ends one subagent: it stops counting, its unfinished
+// calls are forgotten (same rule as endTurn: no end, no invented
+// outcome), and it is remembered as ended.
+func (a *activity) subagentEnd(id string) {
+	delete(a.subagents, id)
+	for callID, c := range a.open {
+		if c.agentID == id {
+			delete(a.open, callID)
+		}
+	}
+	if slices.Contains(a.ended, id) {
+		return
+	}
+	a.ended = append(a.ended, id)
+	if len(a.ended) > wire.MaxRunningAgents {
+		a.ended = slices.Delete(a.ended, 0, len(a.ended)-wire.MaxRunningAgents)
+	}
+}
+
+// reconcileSubagents ends every tracked subagent that a turn end at `at`
+// does not list as running. It heals a subagent_end that never arrived
+// (an interrupted subagent, a lost hook). Only subagents that started
+// before the turn ended are judged: one that started after it was
+// generated cannot be in its list, and is not missing.
+func (a *activity) reconcileSubagents(running []string, at time.Time) {
+	for id, startedAt := range a.subagents {
+		if startedAt.Before(at) && !slices.Contains(running, id) {
+			a.subagentEnd(id)
+		}
+	}
+}
+
+// clearSubagents forgets every subagent and its calls, for a session
+// that has ended.
+func (a *activity) clearSubagents() {
+	for id := range a.subagents {
+		a.subagentEnd(id)
+	}
 }

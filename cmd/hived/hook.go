@@ -118,6 +118,7 @@ func mapHookPayload(raw []byte) []wire.AgentEvent {
 	case "Stop":
 		ev.Kind = wire.AgentEventTurnEnd
 		ev.Text = firstString(p, "last_assistant_message")
+		ev.RunningAgents = runningSubagents(p)
 	case "StopFailure":
 		ev.Kind = wire.AgentEventError
 		ev.Text = firstString(p, "error_type", "error", "reason")
@@ -157,6 +158,17 @@ func mapHookPayload(raw []byte) []wire.AgentEvent {
 		// keeping exactly the working-state effect the collapsed form
 		// had, so the split changes no glyph.
 		return toolEvents(ev, p, name)
+	case "SubagentStart", "SubagentStop":
+		// Captured from Claude Code 2.1.273: both carry agent_id and
+		// agent_type, and session_id is the PARENT's. SubagentStop's own
+		// background_tasks still lists the stopping agent as running, so
+		// it is deliberately not read here — only Stop's is.
+		ev.Kind = wire.AgentEventSubagentStart
+		if name == "SubagentStop" {
+			ev.Kind = wire.AgentEventSubagentEnd
+		}
+		ev.AgentID = firstString(p, "agent_id")
+		ev.AgentType = firstString(p, "agent_type")
 	case "SessionEnd":
 		ev.Kind = wire.AgentEventSessionEnd
 	case "SessionStart":
@@ -182,6 +194,10 @@ func toolEvents(base wire.AgentEvent, p hookPayload, name string) []wire.AgentEv
 	// Bash calls are indistinguishable by name — so when this is
 	// absent the event still reports, it simply never pairs.
 	base.CallID = firstString(p, "tool_use_id")
+	// Present only when the call ran inside a subagent. The parent's
+	// own Agent call carries neither.
+	base.AgentID = firstString(p, "agent_id")
+	base.AgentType = firstString(p, "agent_type")
 
 	if name == "PreToolUse" {
 		base.Kind = wire.AgentEventToolStart
@@ -203,6 +219,27 @@ func toolEvents(base wire.AgentEvent, p hookPayload, name string) []wire.AgentEv
 	return []wire.AgentEvent{base}
 }
 
+// runningSubagents reads Claude's Stop background_tasks into the ids of
+// the subagents still running. nil when the key is absent — an older
+// Claude that does not report it must not end every tracked subagent.
+func runningSubagents(p hookPayload) *[]string {
+	tasks, ok := p["background_tasks"].([]any)
+	if !ok {
+		return nil
+	}
+	ids := []string{}
+	for _, t := range tasks {
+		task, _ := t.(map[string]any)
+		if firstString(task, "type") != "subagent" || firstString(task, "status") != "running" {
+			continue
+		}
+		if id := firstString(task, "id"); id != "" {
+			ids = append(ids, id)
+		}
+	}
+	return &ids
+}
+
 // planEvent derives the plan update carried by a successful planning
 // tool call, if base.Tool is one. The call is still a tool call and is
 // reported as one; the plan rides alongside it.
@@ -222,7 +259,7 @@ func toolEvents(base wire.AgentEvent, p hookPayload, name string) []wire.AgentEv
 //   - TodoWrite   input.todos is the whole list, for configurations
 //     that still use it (CLAUDE_CODE_ENABLE_TASKS=0 on older models).
 func planEvent(base wire.AgentEvent, p hookPayload) (wire.AgentEvent, bool) {
-	ev := wire.AgentEvent{Source: base.Source, At: base.At}
+	ev := wire.AgentEvent{Source: base.Source, At: base.At, AgentID: base.AgentID, AgentType: base.AgentType}
 	input, _ := p["tool_input"].(map[string]any)
 	response, _ := p["tool_response"].(map[string]any)
 

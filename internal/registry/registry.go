@@ -254,6 +254,8 @@ func (e *Entry) Info() wire.SessionInfo {
 		PlanDone:       st.PlanDone,
 		PlanTotal:      st.PlanTotal,
 		CurrentTool:    st.CurrentTool,
+
+		SubagentsRunning: st.SubagentsRunning,
 	}
 }
 
@@ -494,6 +496,10 @@ func (r *Registry) ApplyAgentEvent(id string, ev wire.AgentEvent) error {
 		CallID: ev.CallID,
 		OK:     ev.OK,
 		Items:  ev.Items,
+
+		AgentID:       ev.AgentID,
+		AgentType:     ev.AgentType,
+		RunningAgents: ev.RunningAgents,
 	})
 	if changed {
 		r.announceStateLocked(e, prev, ev.Kind)

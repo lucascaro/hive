@@ -238,6 +238,10 @@ type SessionInfo struct {
 	// CurrentTool is the tool running right now, or empty. Just the
 	// name — the derived label lives in the ring.
 	CurrentTool string `json:"current_tool,omitempty"`
+	// SubagentsRunning counts the agent's subagents that have started
+	// and not yet ended. Subagent tool calls never drive CurrentTool,
+	// State or the plan; this is the only place they show on the row.
+	SubagentsRunning int `json:"subagents_running,omitempty"`
 }
 
 // MaxTitleLen bounds SessionInfo.Title. The title is attacker-influenced
@@ -525,6 +529,21 @@ type AgentEvent struct {
 	// bool cannot tell them apart.
 	OK *bool `json:"ok,omitempty"`
 
+	// AgentID / AgentType tag an event that happened inside one of the
+	// agent's subagents (Claude's agent_id / agent_type hook fields).
+	// Empty on the main thread. Only tool, plan and subagent kinds carry
+	// them: a tagged event is recorded but never moves the session's
+	// state, current tool, plan or plan-step tally, because a subagent's
+	// work runs beside the parent's turn and can outlive it.
+	AgentID   string `json:"agent_id,omitempty"`
+	AgentType string `json:"agent_type,omitempty"`
+	// RunningAgents rides AgentEventTurnEnd: the ids of the subagents
+	// still running when the turn ended, from Claude's Stop
+	// background_tasks. nil means the reporter did not say, and changes
+	// nothing; an empty list means none are running. It heals a
+	// subagent_end the daemon never received.
+	RunningAgents *[]string `json:"running_agents,omitempty"`
+
 	// Items carries AgentEventPlan — the agent's whole plan, replacing
 	// any previous one wholesale — or AgentEventPlanItem, where each
 	// item is merged into the existing plan by ID.
@@ -587,6 +606,9 @@ const (
 	// tool_use_id is about 30 bytes (toolu_…), and task IDs are small
 	// integers.
 	MaxActivityIDLen = 128
+	// MaxRunningAgents bounds AgentEvent.RunningAgents and the number of
+	// subagents the daemon tracks per session.
+	MaxRunningAgents = 32
 )
 
 // ToolEvent is one tool call as the daemon recorded it. Durations are
@@ -597,6 +619,10 @@ type ToolEvent struct {
 	Tool   string `json:"tool"`
 	Target string `json:"target,omitempty"`
 	CallID string `json:"call_id,omitempty"`
+	// AgentID / AgentType are set when the call ran inside a subagent,
+	// so a timeline can nest it under the parent's Agent call.
+	AgentID   string `json:"agent_id,omitempty"`
+	AgentType string `json:"agent_type,omitempty"`
 	// StartedAt / EndedAt are RFC3339Nano, daemon clock. StartedAt is
 	// empty for an end that never paired with a start.
 	StartedAt string `json:"started_at,omitempty"`
@@ -666,6 +692,11 @@ const (
 	// memory of the list, so the daemon is the only place the plan can
 	// be assembled.
 	AgentEventPlanItem = "plan_item"
+	// AgentEventSubagentStart / AgentEventSubagentEnd bracket one
+	// subagent's run, keyed by AgentID. They change no state; the
+	// daemon counts them into SessionInfo.SubagentsRunning.
+	AgentEventSubagentStart = "subagent_start"
+	AgentEventSubagentEnd   = "subagent_end"
 )
 
 // AgentEventKinds is the validation allowlist for AgentEvent.Kind, the
@@ -687,6 +718,8 @@ var AgentEventKinds = map[string]bool{
 	AgentEventToolEnd:            true,
 	AgentEventPlan:               true,
 	AgentEventPlanItem:           true,
+	AgentEventSubagentStart:      true,
+	AgentEventSubagentEnd:        true,
 }
 
 // SessionEvent is the SESSION_EVENT payload, broadcast to every

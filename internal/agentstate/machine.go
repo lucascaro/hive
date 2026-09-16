@@ -96,6 +96,11 @@ const (
 	// shape Claude's task tools report. Like KindPlan it changes no
 	// state.
 	KindPlanItem = "plan_item"
+	// KindSubagentStart / KindSubagentEnd bracket one subagent's run,
+	// keyed by Event.AgentID. They change no state; they feed
+	// Snapshot.SubagentsRunning.
+	KindSubagentStart = "subagent_start"
+	KindSubagentEnd   = "subagent_end"
 )
 
 // Event is one agent-reported observation.
@@ -125,6 +130,17 @@ type Event struct {
 
 	// Items carries KindPlan.
 	Items []wire.PlanItem
+
+	// AgentID / AgentType tag an event from inside a subagent. A tagged
+	// event is recorded — the ring keeps it, the count follows its
+	// lifecycle — but never moves State, CurrentTool, the plan or the
+	// plan-step tally: a subagent's work runs beside the parent's turn
+	// and outlives it.
+	AgentID   string
+	AgentType string
+	// RunningAgents rides KindTurnEnd: the subagents still running when
+	// the turn ended. nil means not reported.
+	RunningAgents *[]string
 }
 
 // Snapshot is the machine's externally visible state, as a value.
@@ -146,6 +162,8 @@ type Snapshot struct {
 	PlanDone    int
 	PlanTotal   int
 	CurrentTool string
+	// SubagentsRunning counts subagents started and not yet ended.
+	SubagentsRunning int
 }
 
 // Machine tracks one session. The zero value is not usable; call New.
@@ -157,6 +175,13 @@ type Machine struct {
 
 	lastOutputAt time.Time
 	hookSeenAt   time.Time // zero ⇔ no hook/extension event ever seen
+	// orderAt is the ordering guard's reference: the stamp of the last
+	// MAIN-THREAD event applied. It is kept apart from hookSeenAt
+	// because subagent hooks race the parent's — a subagent's
+	// PostToolUse routinely lands milliseconds before the parent's
+	// Stop — and letting one advance the guard would get the Stop
+	// dropped as out of order.
+	orderAt time.Time
 
 	// act is the tool ring and plan snapshot. Its lifetime is this
 	// struct's: New zeroes it, and a fresh Machine on restart/revive
@@ -181,13 +206,14 @@ func New(now time.Time) *Machine {
 func (m *Machine) Snapshot() Snapshot {
 	done, total, current := m.planSummary()
 	return Snapshot{
-		State:       m.state,
-		Source:      m.source,
-		LastPrompt:  m.lastPrompt,
-		LastSummary: m.lastSummary,
-		PlanDone:    done,
-		PlanTotal:   total,
-		CurrentTool: current,
+		SubagentsRunning: len(m.act.subagents),
+		State:            m.state,
+		Source:           m.source,
+		LastPrompt:       m.lastPrompt,
+		LastSummary:      m.lastSummary,
+		PlanDone:         done,
+		PlanTotal:        total,
+		CurrentTool:      current,
 	}
 }
 
@@ -265,6 +291,7 @@ func (m *Machine) Exit() bool {
 		return false
 	}
 	m.state = wire.StateExited
+	m.act.clearSubagents()
 	return true
 }
 
@@ -367,8 +394,13 @@ func (m *Machine) Apply(ev Event) bool {
 		now = ev.At
 	}
 
-	if !m.hookSeenAt.IsZero() {
-		if behind := m.hookSeenAt.Sub(ev.At); behind > 0 && behind < HookStaleAfter {
+	// Subagent events skip the guard: their handling is
+	// order-independent (set semantics for the count, CallID pairing for
+	// tools) and they never move state, so there is nothing for an
+	// inversion to get wrong.
+	sub := ev.AgentID != ""
+	if !sub && !m.orderAt.IsZero() {
+		if behind := m.orderAt.Sub(ev.At); behind > 0 && behind < HookStaleAfter {
 			return m.applyLateActivity(ev, now)
 		}
 	}
@@ -376,7 +408,19 @@ func (m *Machine) Apply(ev Event) bool {
 	before := m.Snapshot()
 
 	m.source = ev.Source
-	m.hookSeenAt = ev.At
+	if sub {
+		// Liveness only, never backwards: a subagent still reporting
+		// keeps the hook tier trusted after the parent's turn ended.
+		if ev.At.After(m.hookSeenAt) {
+			m.hookSeenAt = ev.At
+		}
+	} else {
+		// Assigned, not max'd: a main-thread report HookStaleAfter or
+		// more behind is a clock that stepped, and the newest report
+		// wins — see the guard above.
+		m.hookSeenAt = ev.At
+		m.orderAt = ev.At
+	}
 	text := truncate(ev.Text)
 
 	// Exit is terminal, on every feeder. A hook process still in flight
@@ -389,6 +433,11 @@ func (m *Machine) Apply(ev Event) bool {
 	// starts from a fresh Machine and not from a stale one.
 	if m.state == wire.StateExited {
 		return false
+	}
+
+	if sub {
+		m.applySubagent(ev, now)
+		return m.Snapshot() != before
 	}
 
 	switch ev.Kind {
@@ -405,6 +454,9 @@ func (m *Machine) Apply(ev Event) bool {
 		m.state = wire.StateWaitingInput
 		m.lastSummary = text
 		m.act.endTurn(ev.At)
+		if ev.RunningAgents != nil {
+			m.act.reconcileSubagents(*ev.RunningAgents, ev.At)
+		}
 	case KindIdle:
 		m.state = wire.StateIdle
 		m.lastSummary = text
@@ -442,6 +494,7 @@ func (m *Machine) Apply(ev Event) bool {
 	case KindSessionEnd:
 		m.state = wire.StateExited
 		m.act.endTurn(ev.At)
+		m.act.clearSubagents()
 	case KindPing:
 		// No state change by design.
 	default:
