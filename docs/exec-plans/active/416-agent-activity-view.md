@@ -282,8 +282,78 @@ lessons matched.
 - **Phase 2** — Pi tier: `tool_execution_*` → tool_start/tool_end, `registerTool('todo')`,
   and the settings path (persisted field → Wails → UI → a channel hive.ts can read).
 - **Phase 3** — inspector panel + activity grid.
+- **Phase 1b (follow-up to Phase 1, own PR)** — subagent attribution. See
+  [Phase 1b](#phase-1b--subagent-attribution-follow-up). Lands after Phase 1 merges and
+  before Phase 2, so Pi's wire work is built on the attributed shape.
 
 Phase 1 ships standalone value: Claude sessions get a live plan indicator in the sidebar.
+
+### Phase 1b — subagent attribution (follow-up)
+
+**Problem.** Claude fires `PreToolUse` / `PostToolUse` for tool calls made *inside*
+subagents, and those payloads carry `agent_id` (present only inside a subagent) and
+`agent_type` (code.claude.com/docs/en/hooks, common input fields). Phase 1 reads neither,
+so once a session fans out (Agent tool, parallel subagents, background workflows):
+
+1. `current_tool` is one value that parallel subagents overwrite — the sidebar flickers.
+2. The parent's `Agent` call stays open for the whole fan-out while subagent events land
+   in the ring as if the main thread ran them.
+3. The per-step tally stamps subagent tool calls onto the parent's active plan item.
+4. A subagent's `TaskCreate` / `TaskUpdate` may merge into the parent's plan.
+5. Background agents may fire hooks after the parent's `Stop`, flipping state back to
+   `working`.
+
+Phase 1 is not blocked by this: single-thread sessions are correct, and the failure is
+cosmetic/misleading rather than a state or privacy regression.
+
+**Step 0 — capture before building (gate).** Same rule that caught the TodoWrite error:
+no shape from docs or memory. Run a real Claude session with a capture hook on
+`PreToolUse`, `PostToolUse`, `PostToolUseFailure`, `SubagentStart`, `SubagentStop`,
+`Stop`, and drive (a) two parallel foreground subagents, (b) a background agent that
+outlives the parent turn, (c) a subagent that calls `TaskCreate`. Record in the decision
+log:
+- whether `session_id` is the parent's for subagent tool calls;
+- the exact `agent_id` / `agent_type` fields and the `SubagentStart` / `SubagentStop` shapes;
+- whether subagent task tools share the parent's task list (answers risk 4);
+- whether hooks arrive after the parent's `Stop` (answers risk 5).
+Commit the captured payloads as fixtures. Anything below that the capture contradicts is
+revised before code.
+
+**Design (option B, operator-approved 2026-09-16).**
+- **Wire.** `tool_start` / `tool_end` gain optional `agent_id` and `agent_type`, omitted
+  for main-thread calls. Additive fields only — verify a Phase-1 daemon decodes them
+  without error. New *kinds* are a different matter: `serveEvent` (`daemon.go`, "unknown kind" log) drops an unknown
+  `AGENT_EVENT` kind, so skew becomes a state regression. No new kind is added unless
+  Step 0 shows `SubagentStart` / `SubagentStop` are needed for the count (then
+  `subagent_start` / `subagent_end` kinds, with the `DaemonContract` bump and skew note
+  that implies).
+- **`current_tool` and the plan come from the main thread only** — events with no
+  `agent_id`. Subagent planning calls never mutate the parent's plan (unless Step 0
+  shows a shared list, in which case they mutate it and that is correct).
+- **Ring.** Subagent tool events are still stored, tagged with `agent_id` / `agent_type`,
+  so Phase 3's panel can nest them under the parent's `Agent` call. The tally is stamped
+  only for main-thread events.
+- **`SessionInfo` gains `subagents_running`** (count of open subagents), and the sidebar
+  row shows it without growing the row. Placement decided against a mock before coding.
+- **State.** If Step 0 confirms post-`Stop` hooks, a subagent tool event must not flip a
+  settled session back to `working`; the session reads settled with a running-subagent
+  count instead. If it does not confirm, no state change.
+- **Label derivation and privacy rule unchanged** — `agent_type` is a type name, not an
+  argument, and is the only new string that crosses.
+- **All three wire clients move in lock-step**, as in Phase 1.
+
+**Tests (TDD, before implementation).**
+- `mapHookPayload` table: captured subagent payloads emit `agent_id` / `agent_type`;
+  main-thread payloads omit them.
+- Machine: interleaved main + two subagent streams leave `current_tool` on the main
+  thread's call; subagent `TaskCreate` leaves the parent plan unchanged (or per Step 0);
+  tally counts only main-thread events; `subagents_running` rises and falls, and is
+  cleared on session close.
+- State: post-`Stop` subagent event does not reopen `working` (only if Step 0 confirms).
+- Playwright (`CI=1`): the subagent count does not change row height.
+
+**Out of scope for 1b.** Rendering subagent trees (Phase 3 panel), cross-session views
+(still gated on agent-orchestration phases), Pi subagents (Pi has none today).
 
 ## Decisions taken at the clarifying round
 
@@ -784,6 +854,16 @@ Append-only. The latest entry is authoritative.
   sibling field on `registry.Entry`. Why: `Machine` is already created, replaced and
   freed at the three lifecycle sites (`registry.go:190,401-407,1387`), so the spec's
   "trimmed on session close, no second place to leak" costs zero new code.
+- **2026-09-16** — **Subagent attribution deferred to a Phase 1b follow-up (operator
+  decision, option B).** Claude's tool hooks fire inside subagents with `agent_id` /
+  `agent_type`, which Phase 1 ignores. Chosen: tag subagent events on the wire, drive
+  `current_tool` and the plan from the main thread only, and surface a running-subagent
+  count. Rejected: adding the fields now with no behaviour (A — Phase 1 is nearly done,
+  and fields without the semantics would need a second pass anyway) and deferring
+  entirely (C — Phase 2 would shape Pi's wire work around a single-agent assumption).
+  Compared against herdr (HEAD 2026-09-16): it tracks lifecycle state only, detects
+  Claude by screen manifest, and has no plan/tool/subagent view, so it offers no prior
+  art for this layer.
 
 ## Progress
 
@@ -831,4 +911,8 @@ Append-only. The latest entry is authoritative.
   clock, per the spec.
 - **Phase 1 emits `plan` only from Claude.** Pi sessions show the agent code alone until
   Phase 2, which is the designed empty state, not a regression.
+- **Phase 1 misattributes subagent activity.** Sessions that fan out (subagents,
+  background workflows) show a flickering `current_tool`, subagent calls tallied on the
+  parent's plan step, and possibly subagent tasks in the parent plan. Known and accepted
+  for Phase 1; fixed by [Phase 1b](#phase-1b--subagent-attribution-follow-up).
 

@@ -75,6 +75,20 @@ ignored and the plan indicator simply never appears. The opt-in probe
 shows up on upgrade rather than in a user's sidebar; it was confirmed to
 fail with the setting off.
 
+**Subagents — planned, phase 1b.** Claude fires the same tool hooks for
+calls made *inside* subagents, adding `agent_id` (present only there)
+and `agent_type`. Phase 1 ignores both, so a session that fans out
+attributes subagent tools to the main thread: `current_tool` flickers
+between parallel subagents, their calls are tallied on the parent's
+plan step, and their planning calls may reach the parent's plan. The
+follow-up tags tool events with `agent_id` / `agent_type`, drives
+`current_tool` and the plan from the main thread alone, keeps subagent
+events in the ring for the panel to nest, and adds a
+`subagents_running` count to `SessionInfo`. Payload shapes — including
+whether subagents share the parent's task list and whether hooks arrive
+after the parent's `Stop` — are captured from a live session before any
+of this is built. See the exec plan's Phase 1b.
+
 **Pi (extension tier) — planned, phase 2.** Nothing below ships in
 phase 1; the Pi extension reports no tool or plan events yet. Verified against
 `@earendil-works/pi-coding-agent` 0.85.1 (`dist/core/extensions/types.d.ts`):
