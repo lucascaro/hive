@@ -352,6 +352,29 @@ func TestEventModeCapsActivityFields(t *testing.T) {
 	}
 }
 
+// TestEventModeCapsTargetRuneSafe: Target used to be cut by byte count,
+// so a multi-byte label could reach the ring (and every client) ending in
+// half a rune.
+func TestEventModeCapsTargetRuneSafe(t *testing.T) {
+	skipOnWindows(t)
+	d := startTestDaemon(t)
+	id := bootstrapSessionID(t, d)
+	// One ASCII byte shifts every rune boundary off the cap.
+	target := "x" + strings.Repeat("世", wire.MaxTargetLen)
+
+	reportTool(t, d, wire.AgentEvent{SessionID: id, Kind: wire.AgentEventToolStart, Tool: "Read", CallID: "c1", Target: target})
+	reportTool(t, d, wire.AgentEvent{SessionID: id, Kind: wire.AgentEventToolEnd, Tool: "Read", CallID: "c1"})
+	waitFor(t, 2*time.Second, func() bool {
+		m, err := d.Registry().ActivitySnapshot(id)
+		return err == nil && len(m.Events) == 1
+	})
+	msg, _ := d.Registry().ActivitySnapshot(id)
+	got := msg.Events[0].Target
+	if len(got) > wire.MaxTargetLen || !utf8.ValidString(got) {
+		t.Errorf("Target = %d bytes, valid UTF-8 %v; want <= %d valid bytes", len(got), utf8.ValidString(got), wire.MaxTargetLen)
+	}
+}
+
 func TestCapBytesRuneSafe(t *testing.T) {
 	s := strings.Repeat("世", 100) // 3 bytes per rune
 	got := capBytes(s, 10)
