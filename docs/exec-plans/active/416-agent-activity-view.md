@@ -792,6 +792,7 @@ Append-only. The latest entry is authoritative.
   the setting off confirmed plan_total 0.
 
 - **2026-09-16** — Gate NEEDS_FOLLOWUP (phase 1/3); doc accuracy: three stale "reads exactly one frame" comments — internal/wire/control.go:19-23, internal/wire/frame.go:131-135, internal/daemon/daemon.go:654-658.
+- **2026-09-16** — Gate follow-up fixed on this branch in f8b92755 (operator decision: hold at GATE, fix, re-gate). Four comments corrected to match serveEvent draining up to eventMaxFrames: internal/wire/control.go (ModeEvent, AgentEvent), internal/wire/frame.go (FrameAgentEvent), internal/daemon/daemon.go (eventReadDeadline). The fourth (the AgentEvent doc) was found by sweeping for the same claim. Comment-only — verified no non-comment line changed — so it was NOT put through another review-loop round.
 ## Open questions / risks
 
 - **TodoWrite's payload shape is undocumented.** Mitigated by reading `content` with an
