@@ -220,7 +220,7 @@ export function SessionRow(p: SessionRowProps) {
           role="img"
           aria-label={`Plan: ${plan.done} of ${plan.total} steps done${
             plan.stale ? ', not currently reporting' : ''
-          }`}
+          }${s.current_tool ? `, running ${s.current_tool}` : ''}`}
           title={`${plan.done}/${plan.total} steps${
             s.current_tool ? ` · ${s.current_tool}` : ''
           }`}

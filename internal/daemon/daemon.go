@@ -1236,7 +1236,7 @@ func (d *Daemon) handleControlFrame(ctx context.Context, ops controlOps, ft wire
 		msg, err := d.reg.ActivitySnapshot(req.SessionID)
 		if err != nil {
 			ops.sendError("no_such_session", "that session is not open")
-			return true
+			return false
 		}
 		_ = ops.writeJSON(wire.FrameActivity, msg)
 	case wire.FrameRestoreSession:

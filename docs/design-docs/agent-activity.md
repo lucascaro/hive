@@ -8,7 +8,8 @@ one component in three places.
 This is the observability layer that [control-plane.md](control-plane.md)
 stops short of. The control plane answers "is this session working,
 waiting, or gone". This doc answers "working on **what**". It changes
-nothing in the control plane and adds no new IPC.
+nothing in the control plane's state model; the IPC it adds is the
+`GET_ACTIVITY` request and `ACTIVITY` broadcast described under [Wire](#wire).
 
 Implemented by [416 — agent activity view](../product-specs/416-agent-activity-view.md).
 
@@ -40,7 +41,8 @@ whole list. No new hook needs wiring and no new process is spawned;
 these invocations already happen on every tool call of every Hive
 Claude session.
 
-**Pi (extension tier).** Verified against
+**Pi (extension tier) — planned, phase 2.** Nothing below ships in
+phase 1; the Pi extension reports no tool or plan events yet. Verified against
 `@earendil-works/pi-coding-agent` 0.85.1 (`dist/core/extensions/types.d.ts`):
 
 | Event | Payload | Use |
@@ -136,6 +138,9 @@ the item keeps its own counter.
 
 One component, three placements — activity is a *renderer*, not a
 screen:
+
+Phase 1 ships only the sidebar row; the inspector panel and activity
+grid are planned for phase 3.
 
 - **Inspector panel** beside the terminal in single-session view,
   toggled by key, read-only so the terminal keeps focus.

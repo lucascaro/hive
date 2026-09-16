@@ -126,6 +126,9 @@ describe('SessionRow plan indicator', () => {
       }),
     );
     expect(el?.getAttribute('title')).toBe('2/5 steps · Bash');
+    expect(el?.getAttribute('aria-label')).toBe(
+      'Plan: 2 of 5 steps done, running Bash',
+    );
   });
 
   it('marks a plan off the reporting tier as not live', () => {

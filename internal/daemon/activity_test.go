@@ -279,6 +279,11 @@ func TestActivityDurationFromDaemonClock(t *testing.T) {
 		Tool: "Bash", CallID: "c1",
 		At: time.Now().Add(-time.Hour).UTC().Format(time.RFC3339Nano),
 	})
+	// Pin the start before the end: each report is its own connection
+	// and goroutine. See TestGetActivityReturnsRing.
+	waitFor(t, 2*time.Second, func() bool {
+		return findSession(d, id).CurrentTool == "Bash"
+	})
 	reportTool(t, d, wire.AgentEvent{
 		SessionID: id, Kind: wire.AgentEventToolEnd,
 		Tool: "Bash", CallID: "c1",
