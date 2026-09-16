@@ -168,7 +168,7 @@ Labels are derived with a separator-agnostic basename on both sides —
 never `filepath.Base`, which honours only the compiling platform's
 separator. Otherwise the same edit reads `machine.go` on macOS and
 `internal\agentstate\machine.go` on Windows. The two reporters share one
-table of label cases, `cmd/hived/testdata/toollabel/vectors.json`, which
+table of label cases, `internal/agent/pi/testdata/toollabel_vectors.json`, which
 the Go and TypeScript suites both run.
 
 ## Wire

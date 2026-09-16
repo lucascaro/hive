@@ -439,7 +439,7 @@ function str(v: unknown): string {
 //
 // A port of cmd/hived/toollabel.go, the Claude reporter's half of the
 // privacy rule; read that file for why each rule exists. The two must
-// agree, and cmd/hived/testdata/toollabel/vectors.json is the table
+// agree, and testdata/toollabel_vectors.json (beside this file) is the table
 // both test suites run to keep them agreeing.
 
 // An allowlist, in order: a tool whose arguments are not recognised

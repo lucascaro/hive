@@ -555,7 +555,7 @@ test("planFromBranch skips an errored hive_todo result", () => {
 });
 
 test("deriveTarget matches the shared label vectors", () => {
-  const url = new URL("../../../cmd/hived/testdata/toollabel/vectors.json", import.meta.url);
+  const url = new URL("./testdata/toollabel_vectors.json", import.meta.url);
   const doc = JSON.parse(fs.readFileSync(url, "utf8"));
   assert.ok(doc.cases.length > 0, "vectors.json has no cases");
   for (const tc of doc.cases) {

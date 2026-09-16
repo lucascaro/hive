@@ -10,8 +10,8 @@ import (
 	"github.com/lucascaro/hive/internal/wire"
 )
 
-// labelVector is one case of testdata/toollabel/vectors.json. The file
-// is shared with the Pi extension's TypeScript reporter
+// labelVector is one case of internal/agent/pi/testdata/
+// toollabel_vectors.json. The file is shared with the Pi extension's TypeScript reporter
 // (internal/agent/pi/hive.test.ts), which runs every case too: the
 // privacy rule has two implementations, and one table is what keeps them
 // from drifting. WantGo overrides Want only for a pinned divergence
@@ -27,7 +27,7 @@ type labelVector struct {
 // that mentions a secret is there because the obvious implementation
 // would have leaked it.
 func TestDeriveLabel(t *testing.T) {
-	raw, err := os.ReadFile(filepath.Join("testdata", "toollabel", "vectors.json"))
+	raw, err := os.ReadFile(filepath.Join("..", "..", "internal", "agent", "pi", "testdata", "toollabel_vectors.json"))
 	if err != nil {
 		t.Fatal(err)
 	}

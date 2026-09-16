@@ -1244,7 +1244,7 @@ Spec criteria this phase closes:
    `baseName` = after last `/` or `\`, 120-byte rune-safe cap. Non-object input → "".
 
 4. **Shared label vectors.** Move `TestDeriveLabel`'s inline table to
-   `cmd/hived/testdata/toollabel/vectors.json` (`[{name, input, want, want_go?, want_ts?}]`).
+   `internal/agent/pi/testdata/toollabel_vectors.json` (`[{name, input, want, want_go?, want_ts?}]`).
    `toollabel_test.go` and `hive.test.ts` both iterate it; `want_go` / `want_ts` exist only for pinned
    URL-parser divergences (JS `new URL` strips default ports and lowercases hosts). The Windows-path vector
    has a single `want` — it must agree in both languages (C2). The other Go-only tests
@@ -1347,7 +1347,7 @@ ordering guard; the serialized send queue (step 1) delivers in stamp order so it
 
 ### New files
 
-- `cmd/hived/testdata/toollabel/vectors.json` — shared label vectors (Go + TS).
+- `internal/agent/pi/testdata/toollabel_vectors.json` — shared label vectors (Go + TS).
 - `.changesets/pi-tool-activity-and-plan.md` — `bump: minor`, user-visible: Pi sessions show the current
   tool and plan progress; Settings → Agents Pi toggle.
 
