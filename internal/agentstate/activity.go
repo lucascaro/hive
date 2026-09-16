@@ -344,11 +344,17 @@ func (m *Machine) setPlan(items []wire.PlanItem, at time.Time) {
 		next = append(next, it)
 	}
 	m.act.plan = next
-	// A full list is the newest word on every step in it.
-	m.act.itemAt = make(map[string]time.Time, len(next))
+	// A full list is the newest word on every step in it, and on every
+	// old step it omits: an older update to an omitted step must not
+	// resurrect it (itemAt outlives deletes).
+	for _, it := range old {
+		if it.ID != "" {
+			m.act.stampItem(it.ID, at)
+		}
+	}
 	for _, it := range next {
 		if it.ID != "" {
-			m.act.itemAt[it.ID] = at
+			m.act.stampItem(it.ID, at)
 		}
 	}
 }

@@ -95,3 +95,20 @@ func TestLatePlanItemLeavesStateAlone(t *testing.T) {
 		t.Errorf("PlanDone = %d, want 1: the late completion applies", s.PlanDone)
 	}
 }
+
+// A full plan that omits a step is the newest word on that step too: an
+// older plan_item for it, delivered after, must not bring it back.
+func TestLatePlanItemDoesNotResurrectStepOmittedByFullPlan(t *testing.T) {
+	m, base := hooked(t)
+	ms := func(n int) time.Time { return base.Add(time.Duration(n) * time.Millisecond) }
+	planItemAt(m, ms(10), "1", "a", wire.PlanStatusPending)
+	planItemAt(m, ms(11), "2", "b", wire.PlanStatusPending)
+	m.Apply(Event{
+		Kind: KindPlan, Source: wire.StateSourceHook, At: ms(30), Now: ms(30),
+		Items: []wire.PlanItem{{ID: "1", Text: "a", Status: wire.PlanStatusPending}},
+	})
+	planItemAt(m, ms(20), "2", "", wire.PlanStatusActive)
+	if s := m.Snapshot(); s.PlanTotal != 1 {
+		t.Errorf("PlanTotal = %d, want 1: an older update resurrected an omitted step", s.PlanTotal)
+	}
+}

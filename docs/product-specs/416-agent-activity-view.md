@@ -57,8 +57,9 @@ just ran, how long it took, whether it failed).
   Pie colour is the session state; the filled slice is the fraction of
   plan items done. Both existing lines — name and window title —
   survive untouched, and no row grows. A session with no plan shows no
-  pie, exactly as today. Running subagents show as a numeral badge on
-  the pie's corner (phase 1b), on an empty outline when there is no plan.
+  pie, exactly as today. Running subagents (`subagents_running` > 0)
+  show as a numeral badge on the pie's corner (phase 1b); with no plan,
+  the badge sits on an empty outline. With neither, nothing renders.
 - **Inspector panel.** Toggled by key beside the terminal in
   single-session view, read-only so the terminal keeps keyboard focus.
   Plan steps with their tool calls nested beneath; only the current
