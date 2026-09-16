@@ -576,6 +576,7 @@ test.describe('Settings > Appearance', () => {
       'terminal',
       'classic',
       'dracula',
+      'alucard',
       'nord',
       'gruvbox-dark',
       'tokyo-night',
@@ -587,6 +588,7 @@ test.describe('Settings > Appearance', () => {
       'catppuccin-latte',
       'github-dark',
       'github-light',
+      'hex',
     ]);
     // The community presets ship inside an <optgroup>; `.options` flattens
     // those, so the list above proves order but not that the grouping
