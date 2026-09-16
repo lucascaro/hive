@@ -16,6 +16,7 @@ import (
 	"time"
 
 	"github.com/lucascaro/hive/internal/agent"
+	"github.com/lucascaro/hive/internal/session"
 	"github.com/lucascaro/hive/internal/wire"
 )
 
@@ -380,13 +381,17 @@ func TestClaudeProbeErrorSurvivesIdlePrompt(t *testing.T) {
 // Opt-in — it costs one API call:
 //
 //	HIVE_PROBE_CLAUDE=1 go test ./cmd/hived/ -run TestClaudeProbeTaskToolsOptIn -v
-func TestClaudeProbeTaskToolsOptIn(t *testing.T) {
-	if os.Getenv("HIVE_PROBE_CLAUDE") != "1" {
-		t.Skip("set HIVE_PROBE_CLAUDE=1 to run the real-claude probe")
-	}
-	if _, err := exec.LookPath("claude"); err != nil {
-		t.Skip("claude not on PATH")
-	}
+//
+// probeWait polls the session's SessionInfo until cond holds, failing
+// with the terminal's tail on timeout.
+type probeWait func(within time.Duration, cond func(wire.SessionInfo) bool, what string) wire.SessionInfo
+
+// startClaudeProbe starts a real Claude session under a test daemon with
+// Hive's hooks wired, past the folder-trust dialog and onto the hook
+// tier, and returns its PTY and a poller. Shared by the probes that
+// drive Claude through a prompt and watch what the daemon derives.
+func startClaudeProbe(t *testing.T) (*session.Session, probeWait) {
+	t.Helper()
 	// Strip the nesting markers, as the probes above do — and, here, it
 	// matters twice: a CLAUDE_CODE_ENABLE_TODO_TOOLS inherited from the
 	// Claude session running this test would count as the user's own
@@ -422,7 +427,7 @@ func TestClaudeProbeTaskToolsOptIn(t *testing.T) {
 	// Tapped for the whole run, so a timeout can print what the terminal
 	// actually showed instead of leaving the failure to guesswork.
 	sink := &captureSink{}
-	wait := func(within time.Duration, cond func(wire.SessionInfo) bool, what string) wire.SessionInfo {
+	var wait probeWait = func(within time.Duration, cond func(wire.SessionInfo) bool, what string) wire.SessionInfo {
 		t.Helper()
 		deadline := time.Now().Add(within)
 		for {
@@ -449,7 +454,7 @@ func TestClaudeProbeTaskToolsOptIn(t *testing.T) {
 	if err != nil {
 		t.Fatalf("subscribe: %v", err)
 	}
-	defer unsub()
+	t.Cleanup(unsub)
 
 	// A fresh directory gets the folder-trust dialog; Enter accepts. Text
 	// typed while it is up would go into the dialog, not the prompt.
@@ -466,6 +471,17 @@ func TestClaudeProbeTaskToolsOptIn(t *testing.T) {
 	}
 	wait(30*time.Second, func(i wire.SessionInfo) bool { return i.StateSource == wire.StateSourceHook }, "hook tier")
 	time.Sleep(2 * time.Second)
+	return sess, wait
+}
+
+func TestClaudeProbeTaskToolsOptIn(t *testing.T) {
+	if os.Getenv("HIVE_PROBE_CLAUDE") != "1" {
+		t.Skip("set HIVE_PROBE_CLAUDE=1 to run the real-claude probe")
+	}
+	if _, err := exec.LookPath("claude"); err != nil {
+		t.Skip("claude not on PATH")
+	}
+	sess, wait := startClaudeProbe(t)
 
 	// Task tools need no permission, so nothing here can stall on a
 	// prompt. Two tasks and one completion exercise TaskCreate (the ID
@@ -490,5 +506,37 @@ func TestClaudeProbeTaskToolsOptIn(t *testing.T) {
 		t.Errorf("plan_total = %d, want 2", info.PlanTotal)
 	}
 	wait(60*time.Second, func(i wire.SessionInfo) bool { return i.PlanDone >= 1 }, "TaskUpdate completing alpha")
+	_, _ = sess.Write([]byte("/exit\r"))
+}
+
+// TestClaudeProbeSubagentCount drives a real Claude session through one
+// subagent and checks what Phase 2 derives from it: SubagentStart /
+// SubagentStop wired and mapped, subagents_running rising and returning
+// to 0, and a subagent's tools never showing as the session's tool.
+func TestClaudeProbeSubagentCount(t *testing.T) {
+	if os.Getenv("HIVE_PROBE_CLAUDE") != "1" {
+		t.Skip("set HIVE_PROBE_CLAUDE=1 to run the real-claude probe")
+	}
+	if _, err := exec.LookPath("claude"); err != nil {
+		t.Skip("claude not on PATH")
+	}
+	sess, wait := startClaudeProbe(t)
+
+	// Sent in two writes for the same paste reason as the task-tools probe.
+	_, _ = sess.Write([]byte("Launch one general-purpose subagent with the Agent tool whose task is: " +
+		"run the shell command `sleep 8` and reply ok. Wait for it, then reply done."))
+	time.Sleep(700 * time.Millisecond)
+	_, _ = sess.Write([]byte("\r"))
+
+	wait(120*time.Second, func(i wire.SessionInfo) bool { return i.SubagentsRunning >= 1 }, "subagents_running to rise")
+	// While the subagent runs its Bash, the main thread is inside its
+	// Agent call: the session's tool is Agent, never the subagent's Bash.
+	for end := time.Now().Add(5 * time.Second); time.Now().Before(end); time.Sleep(100 * time.Millisecond) {
+		info := wait(time.Second, func(wire.SessionInfo) bool { return true }, "info")
+		if info.CurrentTool == "Bash" {
+			t.Fatalf("current_tool = Bash while a subagent ran it; subagent tools must not drive the session's tool")
+		}
+	}
+	wait(120*time.Second, func(i wire.SessionInfo) bool { return i.SubagentsRunning == 0 }, "subagents_running back to 0")
 	_, _ = sess.Write([]byte("/exit\r"))
 }

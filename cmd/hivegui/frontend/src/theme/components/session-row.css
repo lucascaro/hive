@@ -43,26 +43,59 @@
    margin-left reset defeats the `* + *` column-gap rule, which would
    otherwise shove it off-centre. */
 .hv-session-row__plan {
+  position: relative;
   grid-column: 1;
   grid-row: 2;
   justify-self: center;
+  /* Top of row 2, just under the icon. Centred, it drifted to the row's
+     bottom edge whenever row 2 had no title in it, and read as a stray
+     mark rather than part of the icon above. */
+  align-self: start;
   margin-left: 0 !important;
   width: var(--hv-plan-size);
   height: var(--hv-plan-size);
   border-radius: 50%;
-  /* A filled pie, not a hollow ring. The column is 14px, so the mark is
-     ~12px: at that size a ring's arc is a hairline and its hole eats
-     more than half the mark, while every pixel of a pie carries the
-     value. Drawn with conic-gradient rather than an inline <svg
+  /* A filled pie inside a 1.5px outline. The column is 14px, so the mark
+     is ~12px: a progress RING's arc would be a hairline there, so the
+     value is still carried by the pie's area. The outline is the track.
+     It replaced a 22% colour-mix disc, which on dark themes (Hex,
+     Dracula) turned into a slate-grey blob that read as nothing at 0%.
+     Drawn with conic-gradient rather than an inline <svg
      stroke-dasharray> because icons come from the sprite and a
      data-driven arc cannot be a static sprite symbol.
 
      --hv-plan-pct is set inline by SessionRow; the colour follows the
-     row's state, set per state below. */
+     row's state, set per state below. With no plan (a subagent badge
+     alone) it is unset, and the mark is the empty outline. */
   background: conic-gradient(
     var(--hv-plan-color) calc(var(--hv-plan-pct, 0) * 1%),
-    color-mix(in srgb, var(--hv-plan-color) 22%, transparent) 0
+    transparent 0
   );
+  box-shadow: inset 0 0 0 1.5px var(--hv-plan-color);
+}
+/* The running-subagent count (spec 416 Phase 2, placement A), on the
+   pie's lower-right corner. Absolutely positioned, so it cannot size the
+   grid cell or the row; the 8px column gap to its right absorbs the
+   overhang. Solid foreground so a digit stays legible at 8px on any
+   state colour. */
+.hv-session-row__subagents {
+  position: absolute;
+  right: -6px;
+  bottom: -4px;
+  min-width: 10px;
+  height: 10px;
+  padding: 0 2px;
+  box-sizing: border-box;
+  border-radius: var(--radius-sm);
+  background: var(--fg);
+  color: var(--bg);
+  /* Below the type scale on purpose: the smallest token is --text-xs
+     (11px), taller than the 10px badge that holds the digit. */
+  font-size: 8px; /* ui-lint: allow */
+  font-weight: 700;
+  line-height: 10px;
+  text-align: center;
+  font-variant-numeric: tabular-nums;
 }
 :root {
   --hv-plan-size: 12px;
@@ -90,6 +123,7 @@
 /* A plan whose tier has gone quiet must not read as live. A stale plan
    shown as current is worse than no plan at all. */
 .hv-session-row__plan--stale { --hv-plan-color: var(--fg-subtle) !important; }
+.hv-session-row__plan--stale .hv-session-row__subagents { background: var(--fg-subtle); }
 
 /* Where the session came from. Not a button: the inbox is reached from
    the project card's badge, and a second route to it on every row would
@@ -381,9 +415,10 @@
 
    This is the one place the placement costs something: 10px comes off
    the title's track at the density whose whole point is the title.
-   Scoped with :has() so ONLY a row that actually has a plan pays it —
-   an unscoped rule widened every row at this density, including the
-   sessions with no plan at all, which is a cost for nothing. Measured
+   Scoped with :has() so ONLY a row that actually shows the indicator
+   (a plan, or a subagent badge) pays it — an unscoped rule widened
+   every row at this density, including the sessions with neither,
+   which is a cost for nothing. Measured
    by the truncation assertion in sidebar-plan-pie.spec.ts rather than
    eyeballed. */
 :root[data-density='compact'] {
@@ -398,6 +433,8 @@
 }
 :root[data-density='compact'] .hv-session-row__plan {
   grid-row: 1;
+  align-self: center;
+  margin-top: 0;
   justify-self: end;
 }
 /* One line, and it is the window TITLE that survives — the line that

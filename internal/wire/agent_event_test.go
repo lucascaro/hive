@@ -2,7 +2,9 @@ package wire
 
 import (
 	"bytes"
+	"encoding/json"
 	"reflect"
+	"strings"
 	"testing"
 )
 
@@ -115,6 +117,7 @@ func TestAgentEventKindsAllowlist(t *testing.T) {
 		AgentEventWaitingPermission, AgentEventPing,
 		AgentEventPermissionResolved, AgentEventError, AgentEventSessionEnd,
 		AgentEventToolStart, AgentEventToolEnd, AgentEventPlan, AgentEventPlanItem,
+		AgentEventSubagentStart, AgentEventSubagentEnd,
 	}
 	if len(AgentEventKinds) != len(want) {
 		t.Fatalf("AgentEventKinds has %d entries, want %d", len(AgentEventKinds), len(want))
@@ -135,5 +138,36 @@ func TestAgentEventKindsAllowlist(t *testing.T) {
 func TestModeEventValue(t *testing.T) {
 	if ModeEvent != "event" {
 		t.Errorf("ModeEvent = %q, want %q", ModeEvent, "event")
+	}
+}
+
+// TestAgentEventRunningAgentsRoundTrip: "not reported" and "none
+// running" are different answers — the first changes nothing, the
+// second ends every tracked subagent — so both must survive the wire.
+func TestAgentEventRunningAgentsRoundTrip(t *testing.T) {
+	absent, err := json.Marshal(AgentEvent{Kind: AgentEventTurnEnd})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(string(absent), "running_agents") {
+		t.Errorf("nil RunningAgents must be omitted, got %s", absent)
+	}
+	empty := []string{}
+	raw, err := json.Marshal(AgentEvent{Kind: AgentEventTurnEnd, RunningAgents: &empty, AgentID: "a1", AgentType: "general-purpose"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(raw), `"running_agents":[]`) {
+		t.Errorf("an empty list must stay on the wire, got %s", raw)
+	}
+	var got AgentEvent
+	if err := json.Unmarshal(raw, &got); err != nil {
+		t.Fatal(err)
+	}
+	if got.RunningAgents == nil || len(*got.RunningAgents) != 0 {
+		t.Errorf("RunningAgents = %v after round trip, want non-nil empty", got.RunningAgents)
+	}
+	if got.AgentID != "a1" || got.AgentType != "general-purpose" {
+		t.Errorf("agent = (%q, %q), want (a1, general-purpose)", got.AgentID, got.AgentType)
 	}
 }

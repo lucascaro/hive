@@ -81,6 +81,10 @@ export interface SessionInfo {
   plan_done?: number;
   plan_total?: number;
   current_tool?: string;
+  // Subagents the agent has started and not yet ended
+  // (SessionInfo.SubagentsRunning). Their tools never drive
+  // current_tool, state or the plan, so this is where they show.
+  subagents_running?: number;
   // The first thing this session was asked to do, and what the agent
   // said as it finished its last turn. Both absent on the heuristic
   // tier, which cannot know either.

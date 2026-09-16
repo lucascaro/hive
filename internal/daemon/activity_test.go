@@ -268,6 +268,27 @@ func TestSessionInfoCarriesPlanSummary(t *testing.T) {
 	})
 }
 
+// TestSessionInfoCarriesSubagentsRunning drives the count over the
+// events socket, which proves the registry copies AgentID and
+// RunningAgents into the machine: a subagent_start raises it, and a
+// turn_end listing no running subagents reconciles it back to 0.
+func TestSessionInfoCarriesSubagentsRunning(t *testing.T) {
+	skipOnWindows(t)
+	d := startTestDaemon(t)
+	id := bootstrapSessionID(t, d)
+	past := time.Now().Add(-time.Second).UTC().Format(time.RFC3339Nano)
+
+	reportTool(t, d, wire.AgentEvent{SessionID: id, Kind: wire.AgentEventSubagentStart, AgentID: "a1", AgentType: "general-purpose", At: past})
+	waitFor(t, 2*time.Second, func() bool { return findSession(d, id).SubagentsRunning == 1 })
+
+	none := []string{}
+	reportTool(t, d, wire.AgentEvent{SessionID: id, Kind: wire.AgentEventTurnEnd, RunningAgents: &none})
+	waitFor(t, 2*time.Second, func() bool {
+		info := findSession(d, id)
+		return info.SubagentsRunning == 0 && info.State == wire.StateWaitingInput
+	})
+}
+
 // TestActivityDurationFromDaemonClock: the daemon times the pair
 // itself, so a reporter whose clock is an hour out cannot produce a
 // nonsense duration.
@@ -349,6 +370,47 @@ func TestEventModeCapsActivityFields(t *testing.T) {
 	}
 	if msg.Events[0].StartedAt == "" {
 		t.Error("the capped end did not pair with the capped start: the cap must be applied identically to both")
+	}
+}
+
+// TestEventModeCapsSubagentFields: AgentID, AgentType and RunningAgents
+// are reporter-supplied like Tool and CallID, and are bounded at the
+// same trust boundary for the same reason.
+func TestEventModeCapsSubagentFields(t *testing.T) {
+	skipOnWindows(t)
+	d := startTestDaemon(t)
+	id := bootstrapSessionID(t, d)
+	huge := strings.Repeat("x", 8192)
+
+	reportTool(t, d, wire.AgentEvent{SessionID: id, Kind: wire.AgentEventToolStart, Tool: "Bash", CallID: "c1", AgentID: huge, AgentType: huge})
+	reportTool(t, d, wire.AgentEvent{SessionID: id, Kind: wire.AgentEventToolEnd, Tool: "Bash", CallID: "c1", AgentID: huge, AgentType: huge})
+	waitFor(t, 2*time.Second, func() bool {
+		m, err := d.Registry().ActivitySnapshot(id)
+		return err == nil && len(m.Events) == 1
+	})
+	msg, _ := d.Registry().ActivitySnapshot(id)
+	if got := len(msg.Events[0].AgentID); got == 0 || got > wire.MaxActivityIDLen {
+		t.Errorf("AgentID is %d bytes, want 1..%d", got, wire.MaxActivityIDLen)
+	}
+	if got := len(msg.Events[0].AgentType); got == 0 || got > wire.MaxToolNameLen {
+		t.Errorf("AgentType is %d bytes, want 1..%d", got, wire.MaxToolNameLen)
+	}
+
+	if got := capRunningAgents(nil); got != nil {
+		t.Errorf("capRunningAgents(nil) = %v, want nil", *got)
+	}
+	many := make([]string, 1000)
+	for i := range many {
+		many[i] = huge
+	}
+	got := capRunningAgents(&many)
+	if got == nil || len(*got) > wire.MaxRunningAgents {
+		t.Fatalf("capRunningAgents kept %v entries, want <= %d", got, wire.MaxRunningAgents)
+	}
+	for _, a := range *got {
+		if len(a) > wire.MaxActivityIDLen {
+			t.Fatalf("a running agent id is %d bytes, want <= %d", len(a), wire.MaxActivityIDLen)
+		}
 	}
 }
 

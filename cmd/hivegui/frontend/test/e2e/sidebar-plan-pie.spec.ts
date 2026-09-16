@@ -81,6 +81,28 @@ async function setPlan(page: Page, done: number, total: number, tool = '') {
   if (total > 0) await expect(pie(page)).toBeVisible();
 }
 
+async function setSubagents(page: Page, running: number) {
+  const id = await firstSessionId(page);
+  await page.evaluate(
+    ([i, n]) => window.__hive.setSessionSubagents?.(i as string, n as number),
+    [id, running] as const,
+  );
+}
+
+async function setTitle(page: Page, title: string) {
+  await page.evaluate((t) => {
+    const s = window.__hive.state?.sessions[0];
+    if (!s) return;
+    s.title = t;
+    window.__hive.emit(
+      'session:event',
+      JSON.stringify({ kind: 'title', session: s }),
+    );
+  }, title);
+}
+
+const badge = (page: Page) => row(page).locator('.hv-session-row__subagents');
+
 test.describe('sidebar plan indicator', () => {
   test('absent until the session has a plan', async ({ page }) => {
     await boot(page);
@@ -215,5 +237,79 @@ test.describe('sidebar plan indicator', () => {
     );
 
     expect(stale).not.toEqual(live);
+  });
+
+  test('stays tucked under the icon when row 2 has no title', async ({
+    page,
+  }) => {
+    // Centred in row 2, the mark sank to the row's bottom edge whenever
+    // there was no title beside it, and read as a stray blob.
+    await boot(page);
+    await setTitle(page, '');
+    await setPlan(page, 0, 3, 'Bash');
+    const icon = await box(page, '.hv-session-row__state');
+    const mark = await box(page, '.hv-session-row__plan');
+    expect(mark.top - icon.bottom).toBeGreaterThanOrEqual(0);
+    expect(mark.top - icon.bottom).toBeLessThanOrEqual(5);
+  });
+
+  test('an empty plan is an outline in the state colour, not a grey disc', async ({
+    page,
+  }) => {
+    await boot(page);
+    await setPlan(page, 0, 3, 'Bash');
+    const paint = await pie(page).evaluate((el) => {
+      const cs = getComputedStyle(el);
+      return { shadow: cs.boxShadow, image: cs.backgroundImage };
+    });
+    expect(paint.shadow).toContain('inset');
+    expect(paint.image).not.toContain('color-mix');
+  });
+});
+
+test.describe('sidebar subagent badge', () => {
+  test('rides the pie without changing row height, at any density', async ({
+    page,
+  }) => {
+    await boot(page);
+    for (const [density, expected] of [
+      ['normal', 40],
+      ['tight', 34],
+      ['compact', 28],
+    ] as const) {
+      if (density !== 'normal') await setDensity(page, density);
+      await setPlan(page, 2, 5, 'Agent');
+      await setSubagents(page, 0);
+      await expect(badge(page)).toHaveCount(0);
+      const without = await rowHeight(page);
+
+      await setSubagents(page, 3);
+      await expect(badge(page)).toHaveText('3');
+      const withBadge = await rowHeight(page);
+      expect(withBadge).toBeCloseTo(expected, 0);
+      expect(withBadge).toBe(without);
+
+      // Visible, not clipped by the row or covered by a neighbour: the
+      // topmost element at the badge's centre is the badge itself.
+      const hit = await badge(page).evaluate((el) => {
+        const r = el.getBoundingClientRect();
+        const top = document.elementFromPoint(
+          r.left + r.width / 2,
+          r.top + r.height / 2,
+        );
+        return top === el;
+      });
+      expect(hit, `badge is covered or clipped at ${density}`).toBe(true);
+    }
+  });
+
+  test('shows on an empty outline when there is no plan', async ({ page }) => {
+    await boot(page);
+    await setPlan(page, 0, 0);
+    await expect(pie(page)).toHaveCount(0);
+    await setSubagents(page, 2);
+    await expect(pie(page)).toHaveCount(1);
+    await expect(badge(page)).toHaveText('2');
+    expect(await rowHeight(page)).toBeCloseTo(40, 0);
   });
 });

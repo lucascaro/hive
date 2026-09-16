@@ -4,9 +4,9 @@
 - **Issue:** — (locally allocated number; **not** a GitHub issue. PR #416 on GitHub is
   `feat: add Alucard and Hex theme presets`, an unrelated merged PR. Never write `Fixes #416`.)
 - **Design:** [docs/design-docs/agent-activity.md](../../design-docs/agent-activity.md)
-- **Phase:** 1 of 3
-- **PR:** #417
-- **Branch:** feature/416-agent-activity-view
+- **Phase:** 2 of 4 (subagent attribution; Phase 1 shipped in #417)
+- **PR:** #420
+- **Branch:** feature/416-phase-1b
 - **Mocks:** https://claude.ai/artifact/7RjZw99RbKNV1iS13r2dtb (placement study — pie vs ring)
 - **Status:** active
 
@@ -14,7 +14,7 @@
 
 Stop discarding the tool name, tool arguments and plan that the Claude hook
 tier already delivers (Phase 1; the Pi extension tier sends none of this today
-and gains it in Phase 2), keep a bounded per-session ring of
+and gains it in Phase 3), keep a bounded per-session ring of
 them in the daemon, and render the result in three placements from one component.
 The *why* lives in the spec and design doc; this file is the *how*.
 
@@ -279,11 +279,431 @@ lessons matched.
 - **Phase 1 (this plan)** — data plane + sidebar. wire frames/kinds/fields,
   agentstate ring + plan, hook.go split + label derivation, 3 wire clients,
   DaemonContract 10→11, SessionRow plan pie.
-- **Phase 2** — Pi tier: `tool_execution_*` → tool_start/tool_end, `registerTool('todo')`,
+- **Phase 2 (follow-up to Phase 1, own PR; was "1b")** — subagent attribution. See
+  [Phase 2](#phase-2--subagent-attribution-follow-up). Lands after Phase 1 merges and
+  before Phase 3, so Pi's wire work is built on the attributed shape.
+- **Phase 3** — Pi tier: `tool_execution_*` → tool_start/tool_end, `registerTool('todo')`,
   and the settings path (persisted field → Wails → UI → a channel hive.ts can read).
-- **Phase 3** — inspector panel + activity grid.
+- **Phase 4** — inspector panel + activity grid.
 
 Phase 1 ships standalone value: Claude sessions get a live plan indicator in the sidebar.
+
+### Phase 2 — subagent attribution (follow-up)
+
+**Problem.** Claude fires `PreToolUse` / `PostToolUse` for tool calls made *inside*
+subagents, and those payloads carry `agent_id` (present only inside a subagent) and
+`agent_type` (code.claude.com/docs/en/hooks, common input fields). Phase 1 reads neither,
+so once a session fans out (Agent tool, parallel subagents, background workflows):
+
+1. `current_tool` is one value that parallel subagents overwrite — the sidebar flickers.
+2. The parent's `Agent` call stays open for the whole fan-out while subagent events land
+   in the ring as if the main thread ran them.
+3. The per-step tally stamps subagent tool calls onto the parent's active plan item.
+4. A subagent's `TaskCreate` / `TaskUpdate` may merge into the parent's plan.
+5. Background agents may fire hooks after the parent's `Stop`, flipping state back to
+   `working`.
+
+Phase 1 is not blocked by this: single-thread sessions are correct, and the failure is
+cosmetic/misleading rather than a state or privacy regression.
+
+**Step 0 — capture before building (gate).** Same rule that caught the TodoWrite error:
+no shape from docs or memory. Run a real Claude session with a capture hook on
+`PreToolUse`, `PostToolUse`, `PostToolUseFailure`, `SubagentStart`, `SubagentStop`,
+`Stop`, and drive (a) two parallel foreground subagents, (b) a background agent that
+outlives the parent turn, (c) a subagent that calls `TaskCreate`. Record in the decision
+log:
+- whether `session_id` is the parent's for subagent tool calls;
+- the exact `agent_id` / `agent_type` fields and the `SubagentStart` / `SubagentStop` shapes;
+- whether subagent task tools share the parent's task list (answers risk 4);
+- whether hooks arrive after the parent's `Stop` (answers risk 5).
+Commit the captured payloads as fixtures. Anything below that the capture contradicts is
+revised before code.
+
+**Step 0 results (captured 2026-09-16, Claude Code 2.1.273, `claude -p` with a capture
+hook; fixtures in `cmd/hived/testdata/hooks/subagent/`, paths and message bodies
+redacted).**
+- `session_id` on every subagent event is the **parent's**. Subagent tool events add
+  `agent_id` (17-char hex, e.g. `a5cb8f30deab1983f`) and `agent_type`
+  (`general-purpose`). Main-thread events carry neither key.
+- `SubagentStart` = `{agent_id, agent_type}` + common fields. `SubagentStop` adds
+  `agent_transcript_path`, `last_assistant_message`, `stop_hook_active`,
+  `background_tasks`.
+- **Risk 4 does not occur in this build:** a general-purpose subagent has no TaskCreate /
+  TaskList (its `ToolSearch select:TaskCreate,TaskList` returned nothing), and the
+  parent's TaskList afterwards showed only the parent's task. The main-thread-only plan
+  rule stays as a one-line guard (TodoWrite availability in subagents was not captured).
+- **Risk 5 confirmed:** the parent's `Stop` fires while subagents still run, and their tool
+  events arrive afterwards (13 s later for a parallel pair, 21 s for a background agent).
+  `Stop` carries `background_tasks: [{id, type:"subagent", status:"running", agent_type,
+  description}]`, but it lists only subagents running *at that Stop*.
+- **Risk 2 depends on how the model launched the agent:** a foreground Agent call's
+  `PostToolUse` arrived only after `SubagentStop` (sonnet run). In the haiku run, the two
+  calls launched without `run_in_background` still got `PostToolUse` within 50 ms, and a
+  `Stop` followed while they ran. Hive must not assume either.
+
+**Design (option B, operator-approved 2026-09-16).**
+- **Wire.** `tool_start` / `tool_end` gain optional `agent_id` and `agent_type`, omitted
+  for main-thread calls. Additive fields only — verify a Phase-1 daemon decodes them
+  without error. New *kinds* are a different matter: `serveEvent` (`daemon.go`, "unknown kind" log) drops an unknown
+  `AGENT_EVENT` kind, so skew becomes a state regression. No new kind is added unless
+  Step 0 shows `SubagentStart` / `SubagentStop` are needed for the count (then
+  `subagent_start` / `subagent_end` kinds, with the `DaemonContract` bump and skew note
+  that implies).
+- **`current_tool` and the plan come from the main thread only** — events with no
+  `agent_id`. Subagent planning calls never mutate the parent's plan (unless Step 0
+  shows a shared list, in which case they mutate it and that is correct).
+- **Ring.** Subagent tool events are still stored, tagged with `agent_id` / `agent_type`,
+  so Phase 4's panel can nest them under the parent's `Agent` call. The tally is stamped
+  only for main-thread events.
+- **`SessionInfo` gains `subagents_running`** (count of open subagents), and the sidebar
+  row shows it without growing the row. Placement decided against a mock before coding.
+- **State.** If Step 0 confirms post-`Stop` hooks, a subagent tool event must not flip a
+  settled session back to `working`; the session reads settled with a running-subagent
+  count instead. If it does not confirm, no state change.
+- **Label derivation and privacy rule unchanged** — `agent_type` is a type name, not an
+  argument, and is the only new string that crosses.
+- **All three wire clients move in lock-step**, as in Phase 1.
+
+**Tests (TDD, before implementation).**
+- `mapHookPayload` table: captured subagent payloads emit `agent_id` / `agent_type`;
+  main-thread payloads omit them.
+- Machine: interleaved main + two subagent streams leave `current_tool` on the main
+  thread's call; subagent `TaskCreate` leaves the parent plan unchanged (or per Step 0);
+  tally counts only main-thread events; `subagents_running` rises and falls, and is
+  cleared on session close.
+- State: post-`Stop` subagent event does not reopen `working` (only if Step 0 confirms).
+- Playwright (`CI=1`): the subagent count does not change row height.
+
+**Out of scope for Phase 2.** Rendering subagent trees (Phase 4 panel), cross-session views
+(still gated on agent-orchestration phases), Pi subagents (Pi has none today).
+
+**Approved plan (operator, 2026-09-16, via plan-html round 1).** Supersedes the Design bullets
+above wherever they differ.
+
+Supersedes the "Design (option B)" bullets in the exec plan's Phase 2 section, using the
+Step 0 capture (fixtures: `cmd/hived/testdata/hooks/subagent/*.jsonl`) and two operator
+decisions: the count comes from new `subagent_start` / `subagent_end` kinds, and its
+placement A was picked from the mock at https://claude.ai/artifact/G8wkTR3asbCuyoUNuwPcqE.
+
+#### Phase 2 — Approach
+
+One rule, applied once at the machine: **an event carrying `AgentID` belongs to a
+subagent. It is recorded, but it never moves the session's state, `current_tool`, the plan,
+or the plan-step tally.** The main thread is every event without `AgentID`.
+
+Scope of the rule: only `tool_start`, `tool_end`, `plan`, `plan_item`, `subagent_start` and
+`subagent_end` ever carry `AgentID`. `hook.go` never sets it on `PermissionRequest`,
+`Notification` or any other kind, so a permission prompt raised inside a subagent still sets
+`waiting_permission` on the session, which is correct: the user has to answer it.
+
+1. **Hook → wire (`cmd/hived/hook.go`).**
+   - `toolEvents`: copy `agent_id` / `agent_type` into `AgentEvent.AgentID/AgentType`.
+     `planEvent` builds a fresh event, so it must copy them too, or a subagent's planning
+     call would reach the plan as main-thread.
+   - New cases: `SubagentStart` → `subagent_start`, `SubagentStop` → `subagent_end`. Both
+     carry AgentID/AgentType.
+   - `Stop` → `turn_end` also carries `RunningAgents *[]string`: the ids in
+     `background_tasks` with `type == "subagent"` and `status == "running"`. It is nil when
+     the key is absent (older Claude), so absence never clears anything.
+   - `internal/agent/claude.go` `claudeHookEvents` adds `SubagentStart`, `SubagentStop`.
+     Sessions spawned before the upgrade keep the old hook set until restarted, so they
+     show no count. Documented, not migrated.
+2. **Wire (`internal/wire/control.go`).** `AgentEvent` gains `AgentID`, `AgentType`
+   (omitempty) and `RunningAgents *[]string` (`running_agents,omitempty`). `ToolEvent`
+   (ring entry) gains `AgentID` / `AgentType`, so Phase 4 can nest subagent calls under
+   the parent's `Agent` call. New kinds `AgentEventSubagentStart` / `AgentEventSubagentEnd`
+   go in `AgentEventKinds`. `SessionInfo` gains `SubagentsRunning int
+   json:"subagents_running,omitempty"`.
+3. **Daemon trust boundary (`internal/daemon/daemon.go` `applyEventFrame`).** Cap
+   `AgentID` at `MaxActivityIDLen` and `AgentType` at `MaxToolNameLen` with `capBytes`.
+   Cap `RunningAgents` at `activityOpenCap`-sized length (32) with each id capped. Without
+   this, a local writer could store a frame's worth per field.
+4. **Machine (`internal/agentstate`).**
+   - `Event` gains `AgentID`, `AgentType`, `RunningAgents`. `registry.ApplyAgentEvent`
+     copies all three, since that copy is field-by-field and silently drops new fields.
+   - `openCall` gains `agentID` / `agentType`. `toolEnd` inherits them from the open call,
+     as it already does Tool/Target.
+   - **Ordering guard:** today `Apply` sets `hookSeenAt = ev.At` for every event, and the
+     guard sends anything behind it to `applyLateActivity`, which drops every non-tool kind.
+     Subagent hooks race the parent's (Step 0: subagent A's PostToolUse and SubagentStop land
+     milliseconds before the parent's Stop). A subagent event applied first would push
+     `hookSeenAt` past the Stop's stamp and get the parent's `Stop` dropped. Split the clock:
+     - `orderAt`: the guard's reference, advanced by main-thread events only.
+     - `hookSeenAt`: tier liveness for `trusted()`. A main-thread event that passes the guard
+       **assigns** `hookSeenAt = ev.At`, as today, which keeps the documented clock-step
+       recovery ("a gap of HookStaleAfter or more is a clock that moved, and the newest
+       report wins"). Only subagent-tagged events use `max(hookSeenAt, ev.At)`. Subagent
+       activity keeps the hook tier trusted, so screen repaints from a running subagent do
+       not reopen the heuristic tier.
+     The guard's gate becomes `!m.orderAt.IsZero()`. Subagent-tagged events skip the guard
+     and never reach `applyLateActivity`. Their handling is order-independent: set
+     semantics for the count, CallID pairing for tools. The bypass still refreshes
+     `source` / `hookSeenAt` first and still honours the `StateExited` early return, so a
+     `subagent_start` after `session_end` cannot repopulate a dead session's count.
+   - **State:** in `Apply`, `KindToolStart` / `KindToolEnd` set `StateWorking` only when
+     `ev.AgentID == ""`. This fixes Risk 5: a subagent tool event after the parent's `Stop`
+     no longer flips `waiting_input` back to `working`.
+   - **Tally:** `toolStart` skips `plan[idx].Tools++` and stamps `PlanIdx = -1` for
+     subagent events. (`recordFinishedTurnStart` never sees one: subagent events skip the
+     ordering guard, so they never reach the late path.) `toolEnd`'s unpaired fallback
+     (`out.PlanIdx = currentPlanIdx()`) is skipped for them too. It would otherwise stamp the
+     main plan's step on an unpaired subagent end: an evicted call, one forgotten at
+     `subagent_end`, or a PostToolUse racing past its SubagentStop.
+   - **`current_tool`:** `planSummary` skips open calls with `agentID != ""`.
+   - **`endTurn`** forgets main-thread open calls only. Subagent calls outlive the parent's
+     turn (Step 0), so forgetting them loses their durations. Subagent calls are forgotten
+     at their `subagent_end`, at `session_end`, and by the existing open cap. The cap's
+     eviction prefers subagent calls, so a fan-out cannot evict the main thread's
+     running call.
+   - **Finished-turn rule:** a subagent `tool_start` stamped at or before `turnEndedAt`
+     still opens normally. The "belongs to a finished turn" rule in the live path and in
+     `recordFinishedTurnStart` applies to main-thread starts only, because a subagent is not
+     bound to the parent's turn.
+   - **Plan:** `setPlan` / `mergePlanItems` are skipped when `AgentID != ""`. In this build
+     subagents have no task tools (Step 0), so this is a one-line guard for TodoWrite
+     configurations, which were not captured.
+   - **Count:** `activity.subagents map[string]time.Time` (agent id → start `At`) plus a
+     small `ended` set (bounded to 32, FIFO) so that a late `subagent_start` arriving after
+     its `subagent_end` does not resurrect the agent. `Snapshot` gains
+     `SubagentsRunning int` (comparable, so `announceStateLocked` repaints on change). The
+     map is capped at 32 entries.
+     - `subagent_start`: add, unless ended.
+     - `subagent_end`: delete, mark ended, forget that agent's open calls.
+     - `turn_end` with `RunningAgents != nil`: **reconcile** by removing every tracked
+       agent that started before the Stop's `At` and is not in the list. This heals a
+       missed `SubagentStop` (interrupts were not captured) without racing a subagent that
+       started after the Stop was generated. A removed agent is treated exactly like
+       `subagent_end`: its open calls are forgotten, and it joins the ended set so a late
+       start cannot resurrect it. Reconcile runs on `turn_end` only, never on
+       `subagent_end`. `SubagentStop`'s own `background_tasks` still lists the stopping
+       agent as `running` (fixture line 17), so `hook.go` does not read it there.
+     - `session_end`, `Exit()`, and a fresh `Machine` clear it. `Exit()` has to do it
+       explicitly, because it does not touch `act` today.
+     - `prompt` does **not** clear it: a background subagent spans parent turns (Step 0).
+5. **Clients.** `app_control.go` and `hived-ws-bridge` forward raw payloads, and
+   `testclient` and `hivebar` decode `wire.SessionInfo`, so nothing needs a code change.
+   Only the frontend types (`src/app/state.ts`: `SessionInfo.subagents_running`, plus
+   `agent_id` / `agent_type` on the ToolEvent type for Phase 4 parity) and the sidebar row
+   change. `registry/events.go` `broadcastActivityLocked` sends no ACTIVITY for
+   `subagent_start` / `subagent_end`: the count travels on SESSION_EVENT, and forgotten open
+   calls have no outcome to report (the same rule `endTurn` follows). Phase 4 revisits it
+   if the panel needs lifecycle rows.
+6. **Sidebar (`SessionRow.tsx`, `session-row.css`): placement A, picked by the operator
+   from the mock.** A numeral badge sits on the pie's bottom-right corner. It is
+   absolutely positioned inside the pie's grid cell (column 1 / row 2 at comfortable,
+   row 1 at compact), so it cannot change the row's height. With no plan and a count > 0,
+   a hollow placeholder ring carries the badge. With no plan and count 0, nothing renders,
+   as today. The indicator's `aria-label` and `title` gain ", N subagents running". Above
+   9 the badge reads `9+`. The badge takes the same stale treatment as the pie.
+7. **`buildinfo.DaemonContract` 11 → 12**, with a history entry. A new GUI works against an
+   old daemon (the count is just absent), but new `hived hook` binaries send kinds an old
+   daemon drops at `daemon.go:793` and then closes the connection. That is the same hazard
+   entry 11 describes.
+
+##### Phase 2 — Why this beats the obvious alternative
+
+The obvious alternative is filtering subagent events in `hook.go` and never sending
+them. That loses the ring entries Phase 4 needs, and the daemon would have no count.
+Filtering in the registry instead would split the rule across two packages. The machine
+already owns state, tally, and `current_tool`, so the rule lives in the one place all
+three are computed.
+
+#### Phase 2 — Files to change
+
+1. `cmd/hived/hook.go`: AgentID/AgentType on tool and plan events; SubagentStart/Stop
+   cases; `RunningAgents` from `Stop.background_tasks`.
+2. `internal/agent/claude.go`: two hooks added to `claudeHookEvents`.
+3. `internal/wire/control.go`: AgentEvent and ToolEvent fields, `RunningAgents`, two
+   kinds plus the allowlist, `SessionInfo.SubagentsRunning`, doc comments.
+4. `internal/daemon/daemon.go`: caps for the new fields.
+5. `internal/agentstate/machine.go`: Kind mirrors, `Event` fields, `Snapshot` field,
+   `Apply` state guard, new kind cases, `Exit()` clears the count.
+6. `internal/agentstate/activity.go`: `openCall` fields, subagent set and ended set,
+   tally, `current_tool`, `endTurn`, late path, eviction preference, reconcile.
+7. `internal/registry/registry.go`: `ApplyAgentEvent` copies the new fields; `Entry.Info()`
+   copies `SubagentsRunning`.
+8. `internal/buildinfo/contract.go`: bump to 12, history entry.
+9. `cmd/hivegui/frontend/src/app/state.ts`: `subagents_running?: number`.
+10. `cmd/hivegui/frontend/src/components/SessionRow.tsx`: count rendering, labels.
+11. `cmd/hivegui/frontend/src/theme/components/session-row.css`: the chosen placement at
+    both densities.
+12. `cmd/hivegui/frontend/test/e2e/wails-mock.ts`: `setSessionSubagents(id, n)`.
+13. `docs/design-docs/agent-activity.md`: replace "Subagents — planned, phase 2" with the
+    shipped behaviour; update the wired-hooks list at :35, and fix the stale "collapses all
+    three to permission_resolved" text next to it (:35-40).
+13a. `cmd/hived/claude_probe_test.go`: the opt-in live probe gains a one-subagent case.
+14. `docs/design-docs/daemon-contract.md`: only if its history table restates entries
+    (checked during implementation).
+15. `docs/product-specs/416-agent-activity-view.md`: add Phase 2 success criteria (the
+    gate validates against the spec) and the hook list at :30.
+16. `docs/exec-plans/active/416-agent-activity-view.md`: this plan, Progress, Decision
+    log.
+
+#### Phase 2 — New files
+
+- `.changesets/agent-activity-subagents.md` (a new file, because `agent-activity-plan-pie.md`
+  already shipped in #417's release notes path and its `pr: 417` is fixed): `type: changed`, `bump: minor`. Sidebar
+  shows running subagents; subagent tools no longer hijack the session's current tool,
+  state or plan tally.
+- `cmd/hivegui/frontend/test/e2e/sidebar-subagents.spec.ts`: Playwright row-height and
+  label checks. It could instead extend `sidebar-plan-pie.spec.ts` if it stays small; the
+  choice is made while writing.
+
+#### Phase 2 — Tests (written first, each seen failing)
+
+Go, `cmd/hived/hook_test.go`:
+- `TestHookSubagentToolEventsCarryAgent`: replays every tool line of
+  `parallel-and-background.jsonl`. Subagent lines emit `AgentID`/`AgentType`; main-thread
+  lines emit neither.
+- `TestHookSubagentStartStop`: SubagentStart/Stop lines map to the new kinds with
+  AgentID/AgentType.
+- `TestHookStopRunningAgents`: a Stop line with `background_tasks` yields the running
+  subagent ids. A Stop with `[]` yields a non-nil empty list. A Stop without the key
+  yields nil.
+- `TestHookSubagentPlanEventCarriesAgent`: a synthetic subagent TaskCreate PostToolUse
+  gives a plan event whose AgentID is set.
+
+Go, `internal/agent/claude_test.go`:
+- `TestClaudeSettingsRegistersSubagentHooks`: decode the generated settings JSON and assert
+  `SubagentStart` and `SubagentStop` **by name**. The existing test loops over
+  `claudeHookEvents` itself, so it would pass whatever the list contains.
+
+Go, `internal/wire/agent_event_test.go`:
+- Update `TestAgentEventKindsAllowlist`.
+- `TestAgentEventRunningAgentsRoundTrip`: nil stays absent, and empty stays present
+  (`running_agents:[]`).
+
+Go, `internal/agentstate/activity_test.go`:
+- `TestSubagentToolKeepsMainCurrentTool`: main `Agent` start, then two subagents'
+  interleaved starts and ends. `CurrentTool` stays `Agent`.
+- `TestSubagentToolDoesNotTallyPlanStep`: tally counts only main-thread starts; subagent
+  ring entries have `PlanIdx -1` and AgentID set, including an **unpaired** subagent
+  tool_end while a plan step is active.
+- `TestSubagentEventDoesNotDropParentStop`: subagent tool_end At=t+5ms applied, then the
+  parent's turn_end At=t. State is `waiting_input`, and the reconcile ran.
+- `TestSubagentEventsKeepHookTierTrusted`: after turn_end, subagent events 25 s and 50 s
+  later keep `trusted()` true at 55 s.
+- `TestClockStepBackAfterSubagentEvent`: subagent event at T, then a main-thread event at
+  T−40 s applies, and `trusted()` is measured from T−40 s.
+- `TestSubagentStartAfterSessionEndIgnored`: count stays 0 on an exited session.
+- `TestPermissionInsideSubagentStillWaits`: a waiting_permission event (never tagged)
+  arriving between subagent tool events sets `waiting_permission`.
+- `TestSubagentToolAfterStopKeepsWaiting`: turn_end, then a subagent tool_start and
+  tool_end. State stays `waiting_input`, the ring records both, and the call pairs with a
+  duration.
+- `TestTurnEndKeepsSubagentOpenCalls`: a subagent call open across `turn_end` still pairs.
+- `TestLateSubagentStartIsOpenNotFinishedTurn`: a subagent start stamped before
+  `turnEndedAt` is paired, not recorded as a finished-turn start.
+- `TestSubagentPlanEventIgnored`: plan and plan_item with AgentID leave the plan
+  unchanged.
+- `TestSubagentsRunningCount`: start A, start B → 2; end A → 1; a duplicate start B stays
+  1; end B → 0.
+- `TestLateSubagentStartAfterEndStaysEnded`.
+- `TestTurnEndReconcilesSubagents`: tracked {A (before Stop), C (after Stop)}, Stop lists
+  [] → A removed, C kept; A's open call is forgotten; a late subagent_start for A does not
+  bring it back. A nil list changes nothing.
+- `TestSubagentsClearedOnSessionEndAndExit`.
+- `TestOpenCapEvictsSubagentCallsFirst`.
+- `TestSubagentCountIsCapped`.
+
+(`TestApplyMapsEveryKind` is deliberately not extended: unknown kinds already change no
+state, so a "no state change" row would pass on unmodified code.)
+
+Go, `internal/daemon/activity_test.go`:
+- `TestSessionInfoCarriesSubagentsRunning`: subagent_start over the events socket lands
+  in SESSION_EVENT's `subagents_running`. A turn_end with `running_agents: []` sent over
+  the same socket reconciles it to 0. That proves the registry copies `AgentID`,
+  `AgentType` and `RunningAgents`.
+- Extend `TestEventModeCapsActivityFields` with oversized AgentID, AgentType and
+  RunningAgents.
+- `TestFixtureTimelineParallelAndBackground` (in `cmd/hived`, where `mapHookPayload`
+  lives): replay the captured fixture line by line into `agentstate.Machine.Apply`
+  **directly**, with a hand-built `wire.AgentEvent` → `agentstate.Event` copy. Going through
+  `Registry.ApplyAgentEvent` would clamp the synthetic future-dated stamps to
+  `time.Now()` (registry.go:475-477) and collapse the inversion pass. Stamp `At` =
+  `time.Now().Add(-time.Minute)` + 10 ms × line (the fixtures keep arrival order but not
+  receive times). The registry's copy of the new fields is covered separately by the
+  daemon socket tests below. Sample after chosen lines (1-based):
+  - count 1 after line 10, 2 after 14, 1 after 17, 0 after 24, 1 after 26, 0 after 37;
+  - after line 23 (subagent B's tool events, following the Stops at 18-19): state still
+    `waiting_input`. Today's `main` shows `working` here, which is the Risk 5 regression.
+  - after line 39 (SessionEnd): `exited`, count 0.
+  A second pass swaps the `At` stamps of lines 17 and 18, so the parent's Stop applies
+  after a later-stamped SubagentStop. The line-23 assertion must still hold; this pass
+  fails under the unsplit ordering clock.
+
+Frontend, vitest `test/dom/ui-session-row-plan.test.tsx` (or a sibling file):
+- The count renders for `subagents_running > 0` with and without a plan, not for 0 or
+  absent. The pie label includes the count.
+
+Playwright (`CI=1`), `sidebar-subagents.spec.ts`:
+- Row height is identical with count 0 and 3, at comfortable and compact density.
+- The count element is visible and not clipped (`elementFromPoint` at its centre hits
+  it).
+
+#### Phase 2 — Verification
+
+```
+go test ./cmd/hived ./internal/agent ./internal/wire ./internal/agentstate ./internal/daemon ./internal/registry
+scripts/test.sh go
+scripts/test.sh unit && scripts/test.sh dom
+cd cmd/hivegui/frontend && CI=1 npx playwright test sidebar-subagents sidebar-plan-pie
+scripts/check-daemon-contract.sh origin/main HEAD
+scripts/ui-lint.sh
+./scripts/ci-bootstrap.sh   # fresh worktree: generates the wailsjs bindings typecheck needs
+cd cmd/hivegui/frontend && npx biome ci . && npm run typecheck
+```
+
+Each new test is run against the unmodified code first and must fail. The fixture
+timeline test is the end-to-end proof: on today's `main` it shows `working` after the
+mid-timeline Stop.
+
+Manual: `HIVE_PROBE_CLAUDE=1` live probe (`cmd/hived/claude_probe_test.go`) extended with
+a one-subagent prompt that asserts `subagents_running` rises and returns to 0. It runs
+by hand like the Phase 1 probe, not in CI.
+
+#### Phase 2 — Open questions / risks
+
+- **An interrupted subagent may never fire `SubagentStop`** (not captured). The next
+  parent `Stop` reconcile heals it. Until that Stop, the count can read high.
+- **Interactive vs `-p`:** both captures were headless. The interactive TUI could order
+  hooks differently. The machine rules are order-independent (set semantics,
+  late-path admission), so this should not matter, and the live probe re-checks it.
+- **Older Claude builds and unknown hook names:** `minHooksVersion` is 2.1.0; only 2.1.273
+  was captured. Before registering the new hooks, check Claude Code's changelog for when
+  `SubagentStart` appeared, and whether an older build rejects a `--settings` file naming a
+  hook it does not know. If it rejects the file, every hook breaks. If so, gate the two
+  names on a version constant in `claude.go`, mirroring `minHooksVersion`, and record it in
+  the decision log.
+- **Old sessions** keep old hook settings until restarted: no count, and subagent tool
+  events are still tagged, because tagging reads fields on hooks already registered.
+- **Open-call cap 32** is shared. With eviction preferring subagent calls, a very wide
+  fan-out loses subagent durations first. That is acceptable.
+- **Ended-set bound 32:** a session with more than 32 subagents ending between a late
+  start and its end could resurrect one. The count stays capped and the next Stop's
+  reconcile heals it.
+- Ruled out: counting from `Stop.background_tasks` alone (operator decision); dropping
+  subagent events in `hook.go` (loses Phase 4's nesting data).
+
+#### Phase 2 — Second opinion
+
+- **Round 1:** verdict revise, confidence 8. Seven must-fix items, all applied:
+  - the ordering-guard hole (subagent events advancing `hookSeenAt` got the parent's Stop dropped);
+  - the `toolEnd` unpaired-fallback plan index;
+  - a wrong fixture timeline test (it ends in SessionEnd, and its line-18 sample passed on main);
+  - two vacuous tests (the hook list looping over itself, and the unknown-kind state row);
+  - the contract-check command missing its args;
+  - reconcile not forgetting calls or marking agents ended.
+- **Round 2:** verdict revise, confidence 8. All round-1 items were confirmed resolved. Two new
+  must-fix items, both applied but not re-reviewed (the loop allows one re-review):
+  - `max()` on `hookSeenAt` for main-thread events broke clock-step recovery. Main-thread
+    events now assign it, and only subagent events use `max`.
+  - The fixture test's synthetic future stamps would be clamped by the registry. It now
+    drives `Machine.Apply` directly with past stamps, and the registry copy is covered by
+    the socket test.
+  - Nice-to-haves applied: stale late-path text, exited-session bypass, and the guard gating
+    on `orderAt`.
+
 
 ## Decisions taken at the clarifying round
 
@@ -430,7 +850,7 @@ maintaining a second index.
       Events    []ToolEvent `json:"events,omitempty"`
       Plan      []PlanItem  `json:"plan,omitempty"`
       Full      bool        `json:"full,omitempty"`   // true = GET response, false = delta
-      // Reserved for Phase 3's age display. Set by the daemon from its own
+      // Reserved for Phase 4's age display. Set by the daemon from its own
       // clock; nothing in Phase 1 reads it. Declared now so the frame shape
       // does not change between phases.
       StaleAt   string      `json:"stale_at,omitempty"`
@@ -500,7 +920,7 @@ Colour is the session-state token, desaturating to `--fg-subtle` when the plan i
 
 **Staleness rides `state_source` in Phase 1 — a deliberate partial.** The row cannot see
 `HookStaleAfter`, and `plan_done`/`plan_total`/`current_tool` do not carry it. Phase 1 uses
-the existing `state_source` as a proxy: `state_source !== 'hook'` (and, in Phase 2,
+the existing `state_source` as a proxy: `state_source !== 'hook'` (and, in Phase 3,
 `!== 'extension'`) with a non-zero `plan_total` means "plan present but not live", and the
 pie takes `--fg-subtle`.
 
@@ -517,9 +937,9 @@ session at rest emits no output to trigger `Output` in the first place.
   rest renders as live however old it is.
 
 That gap is accepted for Phase 1: staleness appears in the spec's *Desired behavior*, not
-its *Success criteria*, and the panel-and-tile age display it describes is Phase 3. The
+its *Success criteria*, and the panel-and-tile age display it describes is Phase 4. The
 real fix is `ActivityMsg.StaleAt`, carried from the daemon's own clock and consumed by the
-Phase 3 renderers.
+Phase 4 renderers.
 
 ## Files to change
 
@@ -665,6 +1085,9 @@ Append-only, one line per `/hs-review-loop` iteration.
 - **2026-09-16 iter 5** — verdict: REQUEST_CHANGES; mergeable: MERGEABLE; findings_hash: 3778d8dca35b6ce7a656c0ef37ea0dd54431646bc942c5b5e8ba1e5483e9f9ae; threads_open: 2; action: escalated:max-iterations+risky-fix-needs-decision; head_sha: 3ca14f68. Max iterations (5) reached. Both findings resolved by operator decision in the following commit; operator chose to proceed to /hs-merge-gate without a further review round.
 - **2026-09-16 iter 6** — verdict: REQUEST_CHANGES; mergeable: MERGEABLE; findings_hash: 7113525c098795eefc4565e01971a2d60f9a6b58ed0ae3225d29dd535dcd0de1; threads_open: 0; action: escalated:risky-fix-needs-decision; head_sha: 19294278. Operator-approved extra round past the 5-iteration cap. One IMPORTANT finding (Tool/CallID uncapped at the daemon boundary), fixed in the following commit. CI: macOS failed on a proxy.golang.org module-download timeout (no test ran); Linux failed on worktrees.spec.ts:247 toBeFocused (passed on retry). That spec has failed twice on this branch and not in main's last 40 failed runs, but passed 160/160 locally including 120 repeats at 12 workers, and this PR touches no focus code: recorded as likely flaky, not proven.
 - **2026-09-16 iter 7** — verdict: APPROVE; mergeable: MERGEABLE; findings_hash: empty; threads_open: 0; action: stop; head_sha: d2ffdc87. Converged. Four reviewers clean; CI passed on Linux, macOS and Windows with no retries (worktrees.spec.ts:247 did not recur). Two MINOR items noted, not applied before the gate: stale 'reads exactly one frame' comments (serveEvent now drains up to eventMaxFrames), and Text/Target still byte-cut rather than via capBytes.
+- **2026-09-16 iter 1 (PR #420, phase 1b)** — verdict: COMMENT; mergeable: MERGEABLE; findings_hash: 972d54d7a2a78481d345f79edaf3146595204465154c10b0048c853b73cfe32d; threads_open: 3; action: escalated:ci-check-failed; head_sha: 891b5b02. Autofix added a DOM test for the no-plan stale badge and fixed a CSS comment. Linux CI failed `ui-lint --strict` on the badge's raw radius and font size, which were in the PR head before autofix; fixed by the orchestrator in 9c70f0a1 (`--radius-sm`, and a documented allow for the 8px digit, below the 11px type scale). Three CodeRabbit threads arrived after the push.
+- **2026-09-16 iter 2 (PR #420)** — verdict: COMMENT; mergeable: MERGEABLE; findings_hash: 71240f8d1caf9c1ff0fc669564fe52167bcdf485b0541f060f83cc4bc7adf1b9; threads_open: 1; action: escalated:risky-fix-needs-decision; head_sha: dae4c033. Autofix: `setPlan` now stamps omitted steps so a late `plan_item` cannot resurrect them (IMPORTANT, with a new test), and the spec's no-plan badge wording was clarified. CI passed. Escalated on CodeRabbit r4030941237 (an inverted subagent tool pair leaves an orphan open call); operator chose not to open a start for an already-ended subagent, fixed in the following commit and the thread resolved.
+- **2026-09-16 iter 3 (PR #420)** — verdict: APPROVE; mergeable: MERGEABLE; findings_hash: empty; threads_open: 0; action: stop; head_sha: 7ad3e398. Converged. Four dimension reviewers were clean. CI passed on Linux, macOS and Windows once the worker's pending checks finished (orchestrator re-checked). One low-confidence doc drift, not filed, was fixed in the GATE commit: the Tally bullet credited `recordFinishedTurnStart` with skipping subagent events, but that path never sees them.
 
 ## Gate verdict
 
@@ -681,6 +1104,11 @@ Append-only. The latest entry is authoritative.
     - acceptance — PASS — confirmed the only code change since the previous run (f8b92755) is comment-only; re-ran hook, agentstate, daemon, wire, agent and registry spawn-gate tests, Playwright sidebar-plan-pie 7/7, DOM 11/11, and the DaemonContract check. DEFERRED: Pi extension tests; the TypeScript half of separator-agnostic labels; the channel hive.ts will read the Pi todo-tool setting through (phase 2); panel and activity-grid Playwright checks (phase 3). The real-Claude opt-in probe skips outside HIVE_PROBE_CLAUDE=1 by design and was run by hand on 2026-09-16 (passed, with a negative control).
     - non-goals — PASS — unchanged from the previous run and re-verified against the full PR diff.
     - doc accuracy — PASS — the four corrected comments match serveEvent (drains up to eventMaxFrames, invalid frame closes, read deadline refreshed per frame); a repo-wide sweep found no remaining false one-frame claim; changeset, site/features.json, README, DESIGN.md, design doc and spec re-confirmed; CHANGELOG.md and the generated spec index untouched. Noted, not this PR: AGENTS.md cites a nonexistent `.changesets/README.md` (predates the branch).
+- **2026-09-16** — verdict: PASS; phase: 2/4; checks: 3 passed / 0 failed / 0 followups / 3 deferred; followups: none; one-line: all six Phase 2 (subagent attribution) criteria verified by running their tests, no Phase 1 regression, every non-goal held, docs accurate to the code.
+  - 2026-09-16 dimensions:
+    - acceptance — PASS — each Phase 2 criterion ran green: hook mapping (four `TestHook*` subagent tests), machine rule and count (17 agentstate tests), the Stop race (`TestSubagentEventDoesNotDropParentStop`, `TestFixtureTimelineParallelAndBackground` with the inverted-stamp pass), daemon caps and `SessionInfoCarriesSubagentsRunning`, `DaemonContract = 12`, and Playwright `sidebar-plan-pie` 11/11 including the badge row-height and no-clip checks. Phase 1 criteria: the Go suites, DOM 16/16 and the pie Playwright tests are green; the outlined-pie restyle is an operator decision, not a regression. DEFERRED: Pi extension tests and the TypeScript half of separator-agnostic labels (Phase 3); panel and grid Playwright checks (Phase 4).
+    - non-goals — PASS — no persistence, and no raw tool arguments on any wire type (new fields are only agent_id, agent_type, running_agents and subagents_running). No transcript view, cost accounting, plugin API, cross-session view, subagent tree, Pi tier, panel or grid in the diff.
+    - doc accuracy — PASS — changeset valid (type added, pr 420). Design doc, spec sidebar text and Phase 2 criteria, and contract entry 12 all match the code. CHANGELOG.md and the generated index are untouched, and README/DESIGN/site hold nothing stale. Two source comments still said "phase 1b" after the renumbering; fixed in 451702b9 before this verdict.
 
 ## Decision log
 
@@ -784,6 +1212,56 @@ Append-only. The latest entry is authoritative.
   sibling field on `registry.Entry`. Why: `Machine` is already created, replaced and
   freed at the three lifecycle sites (`registry.go:190,401-407,1387`), so the spec's
   "trimmed on session close, no second place to leak" costs zero new code.
+- **2026-09-16** — **Subagent attribution deferred to a Phase 1b follow-up (operator
+  decision, option B).** Claude's tool hooks fire inside subagents with `agent_id` /
+  `agent_type`, which Phase 1 ignores. Chosen: tag subagent events on the wire, drive
+  `current_tool` and the plan from the main thread only, and surface a running-subagent
+  count. Rejected: adding the fields now with no behaviour (A — Phase 1 is nearly done,
+  and fields without the semantics would need a second pass anyway) and deferring
+  entirely (C — Phase 2 would shape Pi's wire work around a single-agent assumption).
+  Compared against herdr (HEAD 2026-09-16): it tracks lifecycle state only, detects
+  Claude by screen manifest, and has no plan/tool/subagent view, so it offers no prior
+  art for this layer.
+- **2026-09-16** — **Phase 1b Step 0 run headless (operator decision).** `claude -p
+  --settings <tmp>` with a capture hook, so the operator's settings and sessions stayed
+  untouched. Two runs cost $0.12 (haiku) and one sonnet run. Findings are in the Phase 1b
+  section.
+- **2026-09-16** — **Phase 1 follow-ups ship as their own PR (#419), not inside 1b
+  (operator decision).** These are the rune-safe Text/Target cap, the registry-test
+  `SHELL` isolation and the missing `.changesets/README.md`. They don't depend on 1b.
+- **2026-09-16** — **`subagents_running` comes from new `subagent_start` / `subagent_end`
+  kinds (operator decision).** Rejected: counting from `Stop.background_tasks`. It never
+  sees foreground subagents, and it stays stale-high between Stops. The new kinds need a
+  `DaemonContract` bump, because an old daemon drops unknown kinds.
+- **2026-09-16** — **Count placement is picked from a mock at the 1b plan stop (operator
+  decision).**
+- **2026-09-16** — **Placement A: numeral badge on the plan pie (operator decision).**
+  Rejected B (chip in row 1, takes width from the name), C (orbit segments, hard to count
+  past 4) and D (line-2 prefix, costs subtitle characters). Mock:
+  https://claude.ai/artifact/G8wkTR3asbCuyoUNuwPcqE.
+- **2026-09-16** — **No version gate for the subagent hooks.** `SubagentStart` shipped
+  in Claude Code 2.0.43, which predates `minHooksVersion` 2.1.0, so both hooks exist
+  wherever Hive registers hooks at all.
+- **2026-09-16** — **Plan pie redrawn as an outlined pie (operator decision, from
+  screenshots).** The operator reported the pip as misaligned and odd. It measured
+  centred under the icon. The actual faults were two: the 22% colour-mix track turned
+  into a slate-grey disc on dark themes (Hex), and centring in row 2 sank the pip to the
+  row's bottom edge when the row had no title. The pip is now a 1.5px outline in the
+  state colour with a solid fill, top-aligned in row 2. Both faults are pinned by
+  Playwright tests that fail on the old CSS.
+- **2026-09-16** — **Late plan updates are judged per step, and the fix ships in the 1b
+  PR (operator decision).** Found live: this session was 3 of 4 steps through its task
+  list and the sidebar showed 1/4. Claude runs one message's task-tool calls in
+  parallel, and their `plan_item` events arrive inverted. The late path dropped every
+  plan item, losing completions until the next `TaskList`. Each step now keeps the stamp
+  of its newest update, and a late update applies unless it is older for that same
+  step. Rejected: accepting late items unconditionally, which would let a completed step
+  regress. A late wholesale `plan` is still dropped.
+- **2026-09-16** — **Phase 1b renumbered to Phase 2 of 4 (operator decision).** The merge
+  gate needs an integer `Phase: N of M`. Pi moves to Phase 3, and the inspector panel and
+  activity grid to Phase 4. Forward-looking text in this plan, the spec and the design
+  doc was renumbered. Append-only history (decision log, ledger, gate verdicts, progress)
+  keeps the "1b" name it was written with.
 
 ## Progress
 
@@ -799,6 +1277,12 @@ Append-only. The latest entry is authoritative.
 
 - **2026-09-16** — Gate NEEDS_FOLLOWUP (phase 1/3); doc accuracy: three stale "reads exactly one frame" comments — internal/wire/control.go:19-23, internal/wire/frame.go:131-135, internal/daemon/daemon.go:654-658.
 - **2026-09-16** — Gate follow-up fixed on this branch in f8b92755 (operator decision: hold at GATE, fix, re-gate). Four comments corrected to match serveEvent draining up to eventMaxFrames: internal/wire/control.go (ModeEvent, AgentEvent), internal/wire/frame.go (FrameAgentEvent), internal/daemon/daemon.go (eventReadDeadline). The fourth (the AgentEvent doc) was found by sweeping for the same claim. Comment-only — verified no non-comment line changed — so it was NOT put through another review-loop round.
+- **2026-09-16** — Phase 1b implemented on `feature/416-phase-1b`: hook mapping, wire
+  fields and kinds, daemon caps, machine subagent rule with split ordering clock, count
+  and reconcile, registry copy, sidebar badge, contract 12, docs, changeset. Mutation
+  checks confirmed that the split-clock, subagent-state and clock-step tests each fail
+  when their fix is reverted. Live probes `TestClaudeProbeTaskToolsOptIn` and
+  `TestClaudeProbeSubagentCount` passed (`HIVE_PROBE_CLAUDE=1`).
 ## Open questions / risks
 
 - **TodoWrite's payload shape is undocumented.** Mitigated by reading `content` with an
@@ -830,5 +1314,9 @@ Append-only. The latest entry is authoritative.
   Claude's own `duration_ms` is deliberately **not** used: durations stay on the daemon's
   clock, per the spec.
 - **Phase 1 emits `plan` only from Claude.** Pi sessions show the agent code alone until
-  Phase 2, which is the designed empty state, not a regression.
+  Phase 3, which is the designed empty state, not a regression.
+- **Phase 1 misattributes subagent activity.** Sessions that fan out (subagents,
+  background workflows) show a flickering `current_tool`, subagent calls tallied on the
+  parent's plan step, and possibly subagent tasks in the parent plan. Known and accepted
+  for Phase 1; fixed by [Phase 2](#phase-2--subagent-attribution-follow-up).
 

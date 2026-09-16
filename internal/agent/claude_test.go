@@ -162,3 +162,25 @@ func TestSemverLess(t *testing.T) {
 		}
 	}
 }
+
+// TestClaudeSettingsRegistersSubagentHooks names the subagent hooks
+// explicitly: the loop in TestClaudeSettingsJSONQuotesPath walks
+// claudeHookEvents itself, so it would pass whatever the list holds.
+func TestClaudeSettingsRegistersSubagentHooks(t *testing.T) {
+	t.Cleanup(SetClaudeVersionProbeForTest(func() ([]byte, error) {
+		return []byte("2.1.273 (Claude Code)"), nil
+	}))
+	args := claudeSpawnArgs(SpawnInfo{HivedPath: "/usr/local/bin/hived"})
+	if len(args) != 2 {
+		t.Fatalf("args = %v, want [--settings <json>]", args)
+	}
+	var settings claudeSettings
+	if err := json.Unmarshal([]byte(args[1]), &settings); err != nil {
+		t.Fatalf("unmarshal settings: %v", err)
+	}
+	for _, ev := range []string{"SubagentStart", "SubagentStop"} {
+		if len(settings.Hooks[ev]) != 1 {
+			t.Errorf("hooks[%s] not registered: %+v", ev, settings.Hooks[ev])
+		}
+	}
+}

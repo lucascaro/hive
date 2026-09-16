@@ -814,6 +814,9 @@ func (d *Daemon) applyEventFrame(payload []byte) bool {
 	for i := range ev.Items {
 		ev.Items[i].ID = capBytes(ev.Items[i].ID, wire.MaxActivityIDLen)
 	}
+	ev.AgentID = capBytes(ev.AgentID, wire.MaxActivityIDLen)
+	ev.AgentType = capBytes(ev.AgentType, wire.MaxToolNameLen)
+	ev.RunningAgents = capRunningAgents(ev.RunningAgents)
 	if err := d.reg.ApplyAgentEvent(ev.SessionID, ev); err != nil {
 		// Unknown session id: the agent's hook fired after the session
 		// was already killed, or against a stale HIVE_SESSION_ID from a
@@ -822,6 +825,24 @@ func (d *Daemon) applyEventFrame(payload []byte) bool {
 		log.Printf("hived: event mode: %s: %v", ev.SessionID, err)
 	}
 	return true
+}
+
+// capRunningAgents bounds a turn_end's running-subagent list: at most
+// wire.MaxRunningAgents ids, each capped like any other activity id.
+// nil stays nil — "not reported" must not become "none running".
+func capRunningAgents(ids *[]string) *[]string {
+	if ids == nil {
+		return nil
+	}
+	src := *ids
+	if len(src) > wire.MaxRunningAgents {
+		src = src[:wire.MaxRunningAgents]
+	}
+	out := make([]string, len(src))
+	for i, id := range src {
+		out[i] = capBytes(id, wire.MaxActivityIDLen)
+	}
+	return &out
 }
 
 // capBytes truncates s to at most n bytes without splitting a UTF-8

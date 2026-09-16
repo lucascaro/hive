@@ -1,6 +1,6 @@
 ---
 issue: null
-pr: 417
+pr: 420
 title: "Agent activity view: see the plan and the tools, not just the state"
 type: enhancement
 complexity: L
@@ -50,14 +50,16 @@ just ran, how long it took, whether it failed).
 
 **Three placements, one component.**
 
-- **Sidebar row.** A small filled pie sits in the cell *under* the
+- **Sidebar row.** A small outlined pie sits in the cell *under* the
   state icon — 12px, 11px at `tight` density, 10px at `compact`, where
   the row is one line and the pie moves up to row 1. (This supersedes
   the mocks' 30px ring behind the agent code, which Phase 1 dropped.)
   Pie colour is the session state; the filled slice is the fraction of
   plan items done. Both existing lines — name and window title —
   survive untouched, and no row grows. A session with no plan shows no
-  pie, exactly as today.
+  pie, exactly as today. Running subagents (`subagents_running` > 0)
+  show as a numeral badge on the pie's corner (phase 2); with no plan,
+  the badge sits on an empty outline. With neither, nothing renders.
 - **Inspector panel.** Toggled by key beside the terminal in
   single-session view, read-only so the terminal keeps keyboard focus.
   Plan steps with their tool calls nested beneath; only the current
@@ -131,6 +133,29 @@ No disk format.
   change row height or the agent code's type; the panel toggles without
   stealing terminal focus; the grid keybinding swaps tiles and back.
   vitest is CSS-blind and cannot answer the first of these.
+
+### Phase 2 — subagent attribution
+
+- `mapHookPayload` copies `agent_id` / `agent_type` onto tool and plan
+  events. `SubagentStart` / `SubagentStop` map to `subagent_start` /
+  `subagent_end`. `Stop`'s `background_tasks` becomes `running_agents`,
+  which is nil when the key is absent. Tests replay payloads captured
+  from a live session.
+- A subagent-tagged event never changes the session's state,
+  `current_tool`, plan or plan-step tally. Its tool calls are still
+  recorded in the ring with `agent_id` / `agent_type`, and pair across
+  the parent's turn end.
+- `SessionInfo.subagents_running` rises and falls with the lifecycle
+  events. A late start after its end does not resurrect a subagent, a
+  `Stop` reconciles the count, and it clears on session end and exit.
+- A subagent event that races ahead of the parent's `Stop` does not get
+  the `Stop` dropped as out of order. A replay of the captured timeline
+  with those two stamps inverted proves it.
+- The daemon caps `agent_id`, `agent_type` and `running_agents` at its
+  trust boundary. `DaemonContract` is bumped for the new kinds.
+- **Playwright:** the subagent badge changes no row height at any
+  density and is not clipped. The pie stays under the icon when the row
+  has no title.
 
 ## Non-goals
 

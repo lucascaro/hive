@@ -84,7 +84,7 @@ func claudeResumeArgs(sessionID, cwd string) []string {
 var claudeHookEvents = []string{
 	"SessionStart", "UserPromptSubmit", "Stop", "StopFailure",
 	"Notification", "PermissionRequest", "PreToolUse", "PostToolUse",
-	"PostToolUseFailure", "SessionEnd",
+	"PostToolUseFailure", "SessionEnd", "SubagentStart", "SubagentStop",
 }
 
 type claudeHookEntry struct {

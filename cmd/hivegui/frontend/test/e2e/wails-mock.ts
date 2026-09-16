@@ -1310,6 +1310,12 @@ if (typeof window !== 'undefined') {
       s.current_tool = tool;
       emit('session:event', JSON.stringify({ kind: 'state', session: s }));
     },
+    setSessionSubagents(id: string, running: number) {
+      const s = state.sessions.find((x) => x.id === id);
+      if (!s) return;
+      s.subagents_running = running;
+      emit('session:event', JSON.stringify({ kind: 'state', session: s }));
+    },
     listeners,
     stdinLog,
     stdinText(id?: string) {
