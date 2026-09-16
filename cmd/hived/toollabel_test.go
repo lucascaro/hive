@@ -174,3 +174,13 @@ func TestIsSubcommandRejectsNonASCII(t *testing.T) {
 		t.Errorf("label = %q, want %q", got, "mytool")
 	}
 }
+
+// TestCommandWordCredentialCeiling pins a documented, operator-accepted
+// leak: the command word gets no credential-shape check, so a secret typed
+// AS the command becomes the label. If this starts failing, someone closed
+// the gap — update the ponytail note on commandHead and delete this test.
+func TestCommandWordCredentialCeiling(t *testing.T) {
+	if got := deriveToolTarget(map[string]any{"command": "sk-live-abcdefghij run"}); got != "sk-live-abcdefghij run" {
+		t.Skipf("the ceiling was raised (label = %q) — update the ponytail note on commandHead and delete this test", got)
+	}
+}

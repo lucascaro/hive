@@ -662,9 +662,30 @@ Append-only, one line per `/hs-review-loop` iteration.
 - **2026-09-16 iter 2** — verdict: REQUEST_CHANGES; mergeable: MERGEABLE; findings_hash: 2297d0b1bf382db08dcfeae0920dd06542ad98df504143fe8aaecc64a3975856; threads_open: 3; action: escalated:ci-check-failed+risky-fix+new-threads; head_sha: c5daa840.
 - **2026-09-16 iter 3** — verdict: REQUEST_CHANGES; mergeable: MERGEABLE; findings_hash: 85a363d22763ab80cbe89d9d6939c16920ea4dabb5bbbcd5f1df54f2c1d5ad14; threads_open: 0; action: escalated:risky-fix-needs-decision; head_sha: ca66e6df.
 - **2026-09-16 iter 4** — verdict: REQUEST_CHANGES; mergeable: MERGEABLE; findings_hash: 345a723ef25dfd8d97e4f226782da4cdd97c77db20aead390ffb3692eacd87ca; threads_open: 0; action: escalated:risky-fix-needs-decision; head_sha: b9160bd6.
+- **2026-09-16 iter 5** — verdict: REQUEST_CHANGES; mergeable: MERGEABLE; findings_hash: 3778d8dca35b6ce7a656c0ef37ea0dd54431646bc942c5b5e8ba1e5483e9f9ae; threads_open: 2; action: escalated:max-iterations+risky-fix-needs-decision; head_sha: 3ca14f68. Max iterations (5) reached. Both findings resolved by operator decision in the following commit; operator chose to proceed to /hs-merge-gate without a further review round.
 
 ## Decision log
 
+- **2026-09-16** — **Command-word credential leak accepted and documented (operator
+  decision).** Four review rounds each found a new secret shape slipping past the label
+  heuristic (bare second word → env-assignment first word → Unicode look-alikes → a
+  credential typed as the command word itself). Offered an allowlist of known command
+  words, a further first-word shape check, or a comment fix; the operator chose the
+  comment fix. So a secret typed AS the command (`sk-live-… run`) becomes the local label.
+  It never leaves the machine. Pinned by `TestCommandWordCredentialCeiling`; the upgrade
+  path is an allowlist.
+- **2026-09-16** — **Late tool events record activity only; turns clear running calls
+  (operator decision).** A late tool_end used to be dropped whole by the ordering guard,
+  orphaning its call and pinning `current_tool`. Late tool events now pair and time but
+  never move state or the staleness clock; late plan events stay dropped (an older plan
+  update would regress a step). Every turn-ending event clears calls still marked
+  running. Chosen over activity-only without a clear, and over an age-based sweep.
+- **2026-09-16** — **A late tool_start from a finished turn is never marked running
+  (operator decision).** The turn-end clear left a hole: a start stamped inside a turn
+  but arriving after it ended reopened a call in a session waiting for the user. The
+  machine now records the reporter timestamp of the last turn end; a late start stamped
+  at or before it goes to the timeline only. Chosen over a state-based guard, which would
+  let a previous turn's late start run into the next turn.
 - **2026-09-16** — **Plan revision (operator-approved): the plan comes from Claude's Task
   tools, not TodoWrite.** Why: TodoWrite is disabled by default in favour of
   TaskCreate/TaskGet/TaskList/TaskUpdate, and on current models (Opus 5 / Sonnet 5)

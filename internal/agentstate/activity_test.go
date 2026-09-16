@@ -677,3 +677,55 @@ func TestTurnEndDoesNotInventOutcomes(t *testing.T) {
 		t.Errorf("ring = %+v, want no invented outcome for a call that never ended", events)
 	}
 }
+
+// TestLateStartFromFinishedTurnIsNotRunning is the regression test for a
+// late tool_start reopening a call after its turn ended. The turn ends at
+// t5; a start stamped t3 arrives afterwards. It belongs to the finished
+// turn: it must reach the timeline, but never show as running in a
+// session that is waiting for the user.
+func TestLateStartFromFinishedTurnIsNotRunning(t *testing.T) {
+	m, base := hooked(t)
+	at := func(sec int) time.Time { return base.Add(time.Duration(sec) * time.Second) }
+	m.Apply(Event{Kind: KindPrompt, Source: wire.StateSourceHook, At: at(1), Now: at(1)})
+	m.Apply(Event{Kind: KindTurnEnd, Source: wire.StateSourceHook, At: at(5), Now: at(5)})
+
+	m.Apply(Event{
+		Kind: KindToolStart, Source: wire.StateSourceHook,
+		At: at(3), Now: at(6), // stamped inside the finished turn, arriving after it
+		CallID: "late", Tool: "Bash", Target: "npm test",
+	})
+
+	snap := m.Snapshot()
+	if snap.CurrentTool != "" {
+		t.Errorf("CurrentTool = %q, want empty: the start belongs to a finished turn", snap.CurrentTool)
+	}
+	if snap.State != wire.StateWaitingInput {
+		t.Errorf("state = %q, want waiting_input", snap.State)
+	}
+	events, _ := m.Activity()
+	if len(events) != 1 || events[0].CallID != "late" {
+		t.Errorf("ring = %+v, want the late start recorded in the timeline", events)
+	}
+}
+
+// TestLateStartInsideCurrentTurnStillRuns: the turn-end stamp must only
+// refuse starts from a FINISHED turn. A start that is late only relative
+// to a newer event in the current turn — ordinary with parallel tools —
+// is still running.
+func TestLateStartInsideCurrentTurnStillRuns(t *testing.T) {
+	m, base := hooked(t)
+	at := func(sec int) time.Time { return base.Add(time.Duration(sec) * time.Second) }
+	m.Apply(Event{Kind: KindTurnEnd, Source: wire.StateSourceHook, At: at(5), Now: at(5)})
+	m.Apply(Event{Kind: KindPrompt, Source: wire.StateSourceHook, At: at(6), Now: at(6)})
+	start(m, at(8), "b", "Read", "go.mod")
+
+	m.Apply(Event{
+		Kind: KindToolStart, Source: wire.StateSourceHook,
+		At: at(7), Now: at(9), // behind b's start, but after the turn ended at t5
+		CallID: "a", Tool: "Bash", Target: "go test",
+	})
+
+	if _, running := m.act.open["a"]; !running {
+		t.Error("a start inside the current turn must be running even when it arrives late")
+	}
+}

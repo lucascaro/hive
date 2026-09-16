@@ -404,11 +404,11 @@ func (m *Machine) Apply(ev Event) bool {
 	case KindTurnEnd:
 		m.state = wire.StateWaitingInput
 		m.lastSummary = text
-		m.act.endTurn()
+		m.act.endTurn(ev.At)
 	case KindIdle:
 		m.state = wire.StateIdle
 		m.lastSummary = text
-		m.act.endTurn()
+		m.act.endTurn(ev.At)
 	case KindWaitingInput:
 		// An error already wants the user, and says more. Claude fires
 		// Notification(idle_prompt) ~60s after ANY turn, a failed one
@@ -438,10 +438,10 @@ func (m *Machine) Apply(ev Event) bool {
 	case KindError:
 		m.state = wire.StateError
 		m.lastSummary = text
-		m.act.endTurn()
+		m.act.endTurn(ev.At)
 	case KindSessionEnd:
 		m.state = wire.StateExited
-		m.act.endTurn()
+		m.act.endTurn(ev.At)
 	case KindPing:
 		// No state change by design.
 	default:

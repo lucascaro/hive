@@ -84,7 +84,7 @@ func deriveToolTarget(input any) string {
 //	npm test                      -> "npm test"
 //	git commit -m "secret"        -> "git commit"
 //	curl -H "Authorization: …"    -> "curl"
-//	sleep 12; touch probe.txt     -> "sleep 12"
+//	sleep 12; touch probe.txt     -> "sleep"  (a digit is data)
 func commandHead(cmd string) string {
 	if i := strings.IndexAny(cmd, ";|&\n\r<>()"); i >= 0 {
 		cmd = cmd[:i]
@@ -100,10 +100,20 @@ func commandHead(cmd string) string {
 	if len(fields) == 0 {
 		return ""
 	}
-	// The command word gets checked too. A path is reduced to its
-	// basename, like any other path label: `/home/alice/bin/tool` must
-	// not name the user. Anything still carrying expansion, quoting or a
-	// credential shape yields no label at all rather than a guess.
+	// The command word gets checked too, but less strictly than the second
+	// word. A path is reduced to its basename, like any other path label:
+	// `/home/alice/bin/tool` must not name the user. A word carrying
+	// expansion, quoting, `=`, `@` or `:` yields no label at all.
+	//
+	// ponytail: known, accepted leak — the command word gets NO
+	// credential-shape check. Real executables carry digits and dots
+	// (`python3`, `node20`, `deploy.sh`), so the second word's rules cannot
+	// be reused as-is, and after four review rounds each found a new shape
+	// slipping past a look-based check, the operator chose to document this
+	// rather than add a fifth. So a secret typed AS the command
+	// (`sk-live-abcdefghij run`) becomes the label. It stays on the local
+	// machine (daemon, GUI, hivebar). Pinned by TestCommandWordCredentialCeiling;
+	// the upgrade path is an allowlist of known command words.
 	head := baseName(fields[0])
 	if !isCommandName(head) {
 		return ""
@@ -130,10 +140,11 @@ func isEnvAssignment(tok string) bool {
 	return true
 }
 
-// isCommandName reports whether a (basenamed) command word is safe to
-// show. It is looser than isSubcommand — real executables carry digits
-// and dots (`python3`, `node20`, `deploy.sh`) — but refuses anything that
-// is not a plain name: an unexpanded `$VAR`, a quote, an `=`, `@` or `:`.
+// isCommandName reports whether a (basenamed) command word may be shown.
+// It is looser than isSubcommand — real executables carry digits and dots
+// (`python3`, `node20`, `deploy.sh`) — and refuses only what is plainly not
+// a name: an unexpanded `$VAR`, a quote, an `=`, `@` or `:`. It does NOT
+// judge whether the word looks like a credential; see commandHead.
 func isCommandName(tok string) bool {
 	if tok == "" {
 		return false

@@ -43,6 +43,12 @@ type activity struct {
 	plan []wire.PlanItem
 	open map[string]openCall
 
+	// turnEndedAt is the reporter timestamp (ev.At) of the most recent
+	// event that ended a turn. A late tool_start stamped at or before it
+	// belongs to that finished turn. Same clock the ordering guard in
+	// Apply compares, so the two agree on what "before" means.
+	turnEndedAt time.Time
+
 	// delta is the tool event the most recent Apply produced, for the
 	// ACTIVITY broadcast. It is NOT "the last ring entry": a tool_start
 	// that carries a call_id goes into open rather than the ring (it
@@ -100,8 +106,11 @@ func (a *activity) evictOldestOpen() {
 // have no outcome and no duration to record, and inventing one would
 // put a false "succeeded" in the timeline. Their tally already counted
 // at start.
-func (a *activity) endTurn() {
+func (a *activity) endTurn(at time.Time) {
 	a.open = nil
+	if at.After(a.turnEndedAt) {
+		a.turnEndedAt = at
+	}
 }
 
 // applyLateActivity handles an event the ordering guard in Apply has
@@ -127,6 +136,15 @@ func (m *Machine) applyLateActivity(ev Event, now time.Time) bool {
 	before := m.Snapshot()
 	switch ev.Kind {
 	case KindToolStart:
+		// A start stamped at or before the last turn end belongs to that
+		// finished turn: endTurn already forgot its siblings, and opening
+		// it now would show a tool running in a session that is waiting
+		// for the user. It still goes into the timeline, just never as
+		// running.
+		if !m.act.turnEndedAt.IsZero() && !ev.At.After(m.act.turnEndedAt) {
+			m.recordFinishedTurnStart(ev, now)
+			break
+		}
 		m.toolStart(ev, now)
 	case KindToolEnd:
 		m.toolEnd(ev, now)
@@ -134,6 +152,26 @@ func (m *Machine) applyLateActivity(ev Event, now time.Time) bool {
 		return false
 	}
 	return m.Snapshot() != before
+}
+
+// recordFinishedTurnStart records a tool start that belongs to a turn
+// that has already ended: in the ring and the delta, like any start, but
+// never in open, so it is not reported as running. The step's tally
+// still counts it.
+func (m *Machine) recordFinishedTurnStart(ev Event, now time.Time) {
+	idx := m.act.currentPlanIdx()
+	if idx >= 0 {
+		m.act.plan[idx].Tools++
+	}
+	started := wire.ToolEvent{
+		Tool:      ev.Tool,
+		Target:    ev.Target,
+		CallID:    ev.CallID,
+		StartedAt: now.UTC().Format(time.RFC3339Nano),
+		PlanIdx:   idx,
+	}
+	m.act.push(started)
+	m.act.delta, m.act.hasDelta = started, true
 }
 
 // toolStart records a tool beginning. now is the DAEMON's clock, not
