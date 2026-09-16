@@ -1347,6 +1347,12 @@ Append-only. The latest entry is authoritative.
 
 - **2026-09-16** — **Phase 3 reset to RESEARCH, not IMPLEMENT (operator decision).** Phase 2 merged in #420. The Approach covers Phases 1–2 only; Phase 3 (Pi tier + settings path) has a scope line and no approved design, so it gets its own research and plan approval.
 
+- **2026-09-16** — Phase 3 clarifying round (operator answers):
+  - Pi tool name **`hive_todo`**, not `todo` — Pi's example extension registers `todo`; loading both would clash.
+  - **Separate Pi checkbox**: new `pi_todo_tool` key in `agent-settings.json` (default on) + its own env var, not a relabelled `claude_task_tools` (key and Claude-specific hint already shipped).
+  - **Shared JSON label vectors** read by both `toollabel_test.go` and `hive.test.ts`; known Go/JS URL divergences pinned per language.
+  - Plan pie empty after a daemon restart (operator report) is a **separate follow-up**, not Phase 3 scope. Live Claude sessions revived at 16:14:08 carry `CLAUDE_CODE_ENABLE_TODO_TOOLS=1`, so the flag is not reset; hypothesis is the in-memory plan being lost while resumed conversations never re-send it. Unconfirmed.
+
 ## Progress
 
 - **2026-09-15** — RESEARCH complete; three-way fan-out (Go daemon, frontend, Pi
