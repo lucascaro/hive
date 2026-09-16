@@ -222,6 +222,20 @@ type SessionInfo struct {
 	// recent turn, or the error it reported. Same capping rules and
 	// same in-memory lifetime as LastPrompt.
 	LastSummary string `json:"last_summary,omitempty"`
+
+	// PlanDone / PlanTotal / CurrentTool are the compact activity
+	// summary the sidebar row and hivebar render. They ride this
+	// existing snapshot rather than the activity ring, so a late
+	// joiner is correct with no extra round trip and no client has to
+	// read 200 events per session to draw one row.
+	//
+	// PlanTotal 0 means "no plan" and the row renders exactly as it
+	// did before this field existed.
+	PlanDone  int `json:"plan_done,omitempty"`
+	PlanTotal int `json:"plan_total,omitempty"`
+	// CurrentTool is the tool running right now, or empty. Just the
+	// name — the derived label lives in the ring.
+	CurrentTool string `json:"current_tool,omitempty"`
 }
 
 // MaxTitleLen bounds SessionInfo.Title. The title is attacker-influenced
@@ -481,6 +495,124 @@ type AgentEvent struct {
 	// being refused — a clock the daemon does not control should not be
 	// able to drop an otherwise-valid event.
 	At string `json:"at,omitempty"`
+
+	// Tool, Target, CallID and OK carry AgentEventToolStart /
+	// AgentEventToolEnd. Every one is optional, so an AgentEvent from a
+	// reporter that predates them round-trips unchanged.
+	//
+	// Tool is the agent's own spelling of the tool name ("Bash",
+	// "Edit"; Pi's are lowercase). Not normalised: the vocabularies
+	// genuinely differ and flattening them would lose which agent ran
+	// what.
+	Tool string `json:"tool,omitempty"`
+	// Target is the DERIVED label — a basename, a command head, a URL
+	// host — never a raw argument. The reporter derives it and sends
+	// only this; see the privacy rule in
+	// docs/design-docs/agent-activity.md. Capped at MaxTargetLen.
+	Target string `json:"target,omitempty"`
+	// CallID pairs a tool_start with its tool_end. On the Claude side
+	// this is the hook payload's tool_use_id; on the Pi side it is
+	// toolCallId. Empty when the reporter did not supply one — the
+	// event is still recorded, it simply never pairs and carries no
+	// duration. Pairing by Tool is NOT a fallback: agents run tools in
+	// parallel and two concurrent Bash calls are indistinguishable by
+	// name.
+	CallID string `json:"call_id,omitempty"`
+	// OK reports whether a finished tool succeeded. A pointer because
+	// "absent" and "false" are different answers and omitempty on a
+	// bool cannot tell them apart.
+	OK *bool `json:"ok,omitempty"`
+
+	// Items carries AgentEventPlan: the agent's whole plan, replacing
+	// any previous one wholesale.
+	Items []PlanItem `json:"items,omitempty"`
+}
+
+// PlanItem is one step of an agent's plan, as reported by its tier —
+// a Claude TodoWrite call, or Pi's Hive-registered todo tool.
+type PlanItem struct {
+	// Text is the step as the agent worded it, capped at MaxPlanTextLen.
+	Text string `json:"text"`
+	// Status is one of PlanStatus*. An unrecognised status from the
+	// reporter is coerced to PlanStatusPending rather than dropped:
+	// losing a step entirely is worse than mislabelling one.
+	Status string `json:"status"`
+	// Tools counts the tool calls made while this step was active. It
+	// lives on the item, NOT derived from the event ring, because the
+	// ring evicts and a count derived from it would silently shrink.
+	Tools int `json:"tools,omitempty"`
+}
+
+// Plan item statuses.
+const (
+	PlanStatusPending = "pending"
+	PlanStatusActive  = "active"
+	PlanStatusDone    = "done"
+)
+
+// PlanStatuses is the validation allowlist for PlanItem.Status.
+var PlanStatuses = map[string]bool{
+	PlanStatusPending: true,
+	PlanStatusActive:  true,
+	PlanStatusDone:    true,
+}
+
+// Activity caps. MaxTargetLen is far below MaxSummaryLen because a
+// derived label is a basename or a command head, and a long one is a
+// sign the derivation over-captured rather than a label worth keeping.
+const (
+	MaxTargetLen   = 120
+	MaxPlanTextLen = 200
+	MaxPlanItems   = 100
+)
+
+// ToolEvent is one tool call as the daemon recorded it. Durations are
+// computed from the daemon's own clock across the CallID pair, never
+// from the two reporter timestamps, which can straddle a clock
+// adjustment.
+type ToolEvent struct {
+	Tool   string `json:"tool"`
+	Target string `json:"target,omitempty"`
+	CallID string `json:"call_id,omitempty"`
+	// StartedAt / EndedAt are RFC3339Nano, daemon clock. StartedAt is
+	// empty for an end that never paired with a start.
+	StartedAt string `json:"started_at,omitempty"`
+	EndedAt   string `json:"ended_at,omitempty"`
+	// DurationMS is set only when both ends are known.
+	DurationMS int64 `json:"duration_ms,omitempty"`
+	// OK is nil while the tool is still running.
+	OK *bool `json:"ok,omitempty"`
+	// PlanIdx is the plan item that was active when this started, or
+	// -1 when there was no plan.
+	PlanIdx int `json:"plan_idx"`
+}
+
+// ActivityMsg is the ACTIVITY payload. One struct serves both
+// directions: the answer to GET_ACTIVITY (Full=true, the whole stored
+// ring plus the current plan) and each delta that follows. Two payload
+// shapes on one subject would make every reader branch for no gain.
+type ActivityMsg struct {
+	SessionID string `json:"session_id"`
+	// Events is the whole ring when Full, or the single changed event
+	// on a delta.
+	Events []ToolEvent `json:"events,omitempty"`
+	// Plan is the current plan snapshot, sent whenever it changed (and
+	// always when Full).
+	Plan []PlanItem `json:"plan,omitempty"`
+	// Full distinguishes a GET_ACTIVITY answer from a delta.
+	Full bool `json:"full,omitempty"`
+	// StaleAt is reserved for the inspector panel's age display: the
+	// daemon-clock instant past which this session's tier is no longer
+	// reporting. Set by the daemon; nothing reads it yet. Declared now
+	// so the frame shape does not change when the panel lands.
+	StaleAt string `json:"stale_at,omitempty"`
+}
+
+// GetActivityReq is the GET_ACTIVITY payload — issued when a panel or
+// activity tile first renders, so nobody pays for the whole ring of
+// every session at connect. Clients track the deltas afterwards.
+type GetActivityReq struct {
+	SessionID string `json:"session_id"`
 }
 
 // AgentEvent kinds. These are the wire spelling of agentstate.Kind*;
@@ -497,6 +629,13 @@ const (
 	AgentEventPermissionResolved = "permission_resolved"
 	AgentEventError              = "error"
 	AgentEventSessionEnd         = "session_end"
+	// Tool and plan reporting. AgentEventToolStart and
+	// AgentEventToolEnd keep the working-state effect that the
+	// collapsed AgentEventPermissionResolved used to carry: a tool
+	// running means the agent is working.
+	AgentEventToolStart = "tool_start"
+	AgentEventToolEnd   = "tool_end"
+	AgentEventPlan      = "plan"
 )
 
 // AgentEventKinds is the validation allowlist for AgentEvent.Kind, the
@@ -514,6 +653,9 @@ var AgentEventKinds = map[string]bool{
 	AgentEventPermissionResolved: true,
 	AgentEventError:              true,
 	AgentEventSessionEnd:         true,
+	AgentEventToolStart:          true,
+	AgentEventToolEnd:            true,
+	AgentEventPlan:               true,
 }
 
 // SessionEvent is the SESSION_EVENT payload, broadcast to every

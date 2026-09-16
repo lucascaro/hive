@@ -52,6 +52,7 @@ interface HiveTestApi {
   ): Promise<string>;
   killSession?(id: string, force?: boolean): Promise<string>;
   setSessionState?(id: string, next: string, source?: string): void;
+  setSessionPlan?(id: string, done: number, total: number, tool?: string): void;
   ringBell?(id: string): void;
   createSessionWithWorktree?(name: string, branch?: string): Promise<string>;
   createSessionInWorktree?(name: string, worktreePath: string): Promise<string>;

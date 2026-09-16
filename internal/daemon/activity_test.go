@@ -1,0 +1,296 @@
+package daemon
+
+import (
+	"net"
+	"testing"
+	"time"
+
+	"github.com/lucascaro/hive/internal/wire"
+)
+
+// reportTool pushes one activity event in over a ModeEvent connection,
+// the way `hived hook` does.
+func reportTool(t *testing.T, d *Daemon, ev wire.AgentEvent) {
+	t.Helper()
+	c := dialEvent(t, d)
+	defer c.Close()
+	ev.Source = wire.StateSourceHook
+	if err := wire.WriteJSON(c, wire.FrameAgentEvent, ev); err != nil {
+		t.Fatalf("write agent event: %v", err)
+	}
+}
+
+// awaitActivity reads to the next ACTIVITY frame.
+func awaitActivity(t *testing.T, c net.Conn) wire.ActivityMsg {
+	t.Helper()
+	_ = c.SetReadDeadline(time.Now().Add(3 * time.Second))
+	defer func() { _ = c.SetReadDeadline(time.Time{}) }()
+	for {
+		ft, payload, err := wire.ReadFrame(c)
+		if err != nil {
+			t.Fatalf("read: %v", err)
+		}
+		if ft != wire.FrameActivity {
+			continue
+		}
+		var msg wire.ActivityMsg
+		if err := jsonUnmarshal(payload, &msg); err != nil {
+			t.Fatalf("unmarshal ACTIVITY: %v", err)
+		}
+		return msg
+	}
+}
+
+// TestActivityBroadcastReachesControlClients: a tool event reported on
+// the event socket fans out as ACTIVITY to an already-connected
+// control client, through the same pub/sub every other event uses.
+func TestActivityBroadcastReachesControlClients(t *testing.T) {
+	skipOnWindows(t)
+	d := startTestDaemon(t)
+	id := bootstrapSessionID(t, d)
+
+	c := dial(t, d)
+	defer c.Close()
+	handshake(t, c, wire.Hello{Mode: wire.ModeControl})
+
+	reportTool(t, d, wire.AgentEvent{
+		SessionID: id, Kind: wire.AgentEventToolStart,
+		Tool: "Bash", Target: "npm test", CallID: "call-1",
+	})
+
+	msg := awaitActivity(t, c)
+	if msg.SessionID != id {
+		t.Errorf("session = %q, want %q", msg.SessionID, id)
+	}
+	if msg.Full {
+		t.Errorf("a delta must not be marked Full")
+	}
+	if len(msg.Events) != 1 {
+		t.Fatalf("got %d events, want 1", len(msg.Events))
+	}
+	if msg.Events[0].Tool != "Bash" || msg.Events[0].Target != "npm test" {
+		t.Errorf("event = %+v, want Bash/npm test", msg.Events[0])
+	}
+}
+
+// TestActivityPlanBroadcast: a plan event fans out the whole plan.
+func TestActivityPlanBroadcast(t *testing.T) {
+	skipOnWindows(t)
+	d := startTestDaemon(t)
+	id := bootstrapSessionID(t, d)
+
+	c := dial(t, d)
+	defer c.Close()
+	handshake(t, c, wire.Hello{Mode: wire.ModeControl})
+
+	reportTool(t, d, wire.AgentEvent{
+		SessionID: id, Kind: wire.AgentEventPlan,
+		Items: []wire.PlanItem{
+			{Text: "one", Status: wire.PlanStatusDone},
+			{Text: "two", Status: wire.PlanStatusActive},
+		},
+	})
+
+	msg := awaitActivity(t, c)
+	if len(msg.Plan) != 2 {
+		t.Fatalf("got %d plan items, want 2", len(msg.Plan))
+	}
+	if msg.Plan[0].Status != wire.PlanStatusDone || msg.Plan[1].Status != wire.PlanStatusActive {
+		t.Errorf("plan = %+v", msg.Plan)
+	}
+}
+
+// TestGetActivityReturnsRing: GET_ACTIVITY answers with the whole
+// stored ring and plan, marked Full so a client can tell a snapshot
+// from a delta.
+func TestGetActivityReturnsRing(t *testing.T) {
+	skipOnWindows(t)
+	d := startTestDaemon(t)
+	id := bootstrapSessionID(t, d)
+
+	reportTool(t, d, wire.AgentEvent{
+		SessionID: id, Kind: wire.AgentEventPlan,
+		Items: []wire.PlanItem{{Text: "step", Status: wire.PlanStatusActive}},
+	})
+	reportTool(t, d, wire.AgentEvent{
+		SessionID: id, Kind: wire.AgentEventToolStart,
+		Tool: "Edit", Target: "machine.go", CallID: "c1",
+	})
+	// Each report arrives on its own connection and the daemon serves
+	// each on its own goroutine, so the end could otherwise be applied
+	// BEFORE the start and never pair. In production the two hooks are
+	// separated by however long the tool actually ran; here the order
+	// has to be pinned explicitly. CurrentTool going non-empty is the
+	// observable proof the start landed.
+	waitFor(t, 2*time.Second, func() bool {
+		return findSession(d, id).CurrentTool == "Edit"
+	})
+	reportTool(t, d, wire.AgentEvent{
+		SessionID: id, Kind: wire.AgentEventToolEnd,
+		Tool: "Edit", CallID: "c1",
+	})
+
+	waitFor(t, 2*time.Second, func() bool {
+		msg, err := d.Registry().ActivitySnapshot(id)
+		return err == nil && len(msg.Events) == 1 && len(msg.Plan) == 1
+	})
+
+	c := dial(t, d)
+	defer c.Close()
+	handshake(t, c, wire.Hello{Mode: wire.ModeControl})
+	if err := wire.WriteJSON(c, wire.FrameGetActivity, wire.GetActivityReq{SessionID: id}); err != nil {
+		t.Fatalf("write GET_ACTIVITY: %v", err)
+	}
+
+	// The connection may still be draining the initial snapshot and any
+	// deltas; read to the first Full one.
+	deadline := time.Now().Add(3 * time.Second)
+	for {
+		msg := awaitActivity(t, c)
+		if !msg.Full {
+			if time.Now().After(deadline) {
+				t.Fatal("no Full ACTIVITY arrived")
+			}
+			continue
+		}
+		if len(msg.Events) != 1 {
+			t.Fatalf("got %d events, want 1", len(msg.Events))
+		}
+		if msg.Events[0].Target != "machine.go" {
+			t.Errorf("target = %q, want machine.go", msg.Events[0].Target)
+		}
+		if len(msg.Plan) != 1 || msg.Plan[0].Text != "step" {
+			t.Errorf("plan = %+v, want one item 'step'", msg.Plan)
+		}
+		return
+	}
+}
+
+// TestSessionModeCannotGetActivity is the spec's authorization
+// criterion. GET_ACTIVITY is deliberately absent from
+// sessionModeFrames, so a ModeSession connection — the one kind a
+// program running INSIDE a session can open — is refused outright
+// rather than being served its own scoped view. The only in-session
+// client today is `hive idea`, nothing there consumes activity, and
+// the derived labels are the most sensitive thing this feature
+// carries.
+func TestSessionModeCannotGetActivity(t *testing.T) {
+	skipOnWindows(t)
+	d := startTestDaemon(t)
+	id := bootstrapSessionID(t, d)
+
+	reportTool(t, d, wire.AgentEvent{
+		SessionID: id, Kind: wire.AgentEventToolStart,
+		Tool: "Bash", Target: "secret-ish", CallID: "c1",
+	})
+
+	c := dialEvents(t, d)
+	defer c.Close()
+	if err := wire.WriteJSON(c, wire.FrameHello, wire.Hello{
+		Version: wire.PROTOCOL_VERSION, Client: "test/0",
+		Mode: wire.ModeSession, SessionID: id,
+	}); err != nil {
+		t.Fatalf("write hello: %v", err)
+	}
+	// Its OWN session's activity, which is the most permissive thing it
+	// could ask for — and still refused.
+	if err := wire.WriteJSON(c, wire.FrameGetActivity, wire.GetActivityReq{SessionID: id}); err != nil {
+		t.Fatalf("write GET_ACTIVITY: %v", err)
+	}
+	if err := awaitModeNotAllowed(t, c); err != nil {
+		t.Fatalf("want mode_not_allowed: %v", err)
+	}
+}
+
+// TestSessionModeGetsNoActivityBroadcast: refusing the request verb
+// would be pointless if a restricted connection could sit on the
+// socket and harvest the deltas instead — the same reasoning that
+// scopes idea events.
+func TestSessionModeGetsNoActivityBroadcast(t *testing.T) {
+	skipOnWindows(t)
+	d := startTestDaemon(t)
+	id := bootstrapSessionID(t, d)
+
+	c := dialEvents(t, d)
+	defer c.Close()
+	if err := wire.WriteJSON(c, wire.FrameHello, wire.Hello{
+		Version: wire.PROTOCOL_VERSION, Client: "test/0",
+		Mode: wire.ModeSession, SessionID: id,
+	}); err != nil {
+		t.Fatalf("write hello: %v", err)
+	}
+
+	reportTool(t, d, wire.AgentEvent{
+		SessionID: id, Kind: wire.AgentEventToolStart,
+		Tool: "Bash", Target: "npm test", CallID: "c1",
+	})
+
+	// Read everything that arrives in a bounded window; none of it may
+	// be ACTIVITY.
+	_ = c.SetReadDeadline(time.Now().Add(700 * time.Millisecond))
+	for {
+		ft, _, err := wire.ReadFrame(c)
+		if err != nil {
+			return // deadline or close: nothing more is coming
+		}
+		if ft == wire.FrameActivity {
+			t.Fatal("a ModeSession connection received an ACTIVITY frame")
+		}
+	}
+}
+
+// TestSessionInfoCarriesPlanSummary: the sidebar renders a row from
+// these three fields alone and never reads the ring, so they have to
+// ride the snapshot every client already receives.
+func TestSessionInfoCarriesPlanSummary(t *testing.T) {
+	skipOnWindows(t)
+	d := startTestDaemon(t)
+	id := bootstrapSessionID(t, d)
+
+	reportTool(t, d, wire.AgentEvent{
+		SessionID: id, Kind: wire.AgentEventPlan,
+		Items: []wire.PlanItem{
+			{Text: "one", Status: wire.PlanStatusDone},
+			{Text: "two", Status: wire.PlanStatusDone},
+			{Text: "three", Status: wire.PlanStatusActive},
+		},
+	})
+	reportTool(t, d, wire.AgentEvent{
+		SessionID: id, Kind: wire.AgentEventToolStart,
+		Tool: "WebFetch", Target: "example.com", CallID: "c1",
+	})
+
+	waitFor(t, 2*time.Second, func() bool {
+		info := findSession(d, id)
+		return info.PlanDone == 2 && info.PlanTotal == 3 && info.CurrentTool == "WebFetch"
+	})
+}
+
+// TestActivityDurationFromDaemonClock: the daemon times the pair
+// itself, so a reporter whose clock is an hour out cannot produce a
+// nonsense duration.
+func TestActivityDurationFromDaemonClock(t *testing.T) {
+	skipOnWindows(t)
+	d := startTestDaemon(t)
+	id := bootstrapSessionID(t, d)
+
+	reportTool(t, d, wire.AgentEvent{
+		SessionID: id, Kind: wire.AgentEventToolStart,
+		Tool: "Bash", CallID: "c1",
+		At: time.Now().Add(-time.Hour).UTC().Format(time.RFC3339Nano),
+	})
+	reportTool(t, d, wire.AgentEvent{
+		SessionID: id, Kind: wire.AgentEventToolEnd,
+		Tool: "Bash", CallID: "c1",
+		At: time.Now().Add(-time.Hour).UTC().Format(time.RFC3339Nano),
+	})
+
+	waitFor(t, 2*time.Second, func() bool {
+		msg, err := d.Registry().ActivitySnapshot(id)
+		if err != nil || len(msg.Events) != 1 {
+			return false
+		}
+		// Real elapsed time here is milliseconds, not an hour.
+		return msg.Events[0].DurationMS < 60_000
+	})
+}

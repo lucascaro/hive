@@ -1289,6 +1289,17 @@ if (typeof window !== 'undefined') {
       s.state_source = source;
       emit('session:event', JSON.stringify({ kind: 'state', session: s }));
     },
+    // The compact plan summary the sidebar renders from. MockSession
+    // intersects the real SessionInfo, so these fields need no separate
+    // mock-side declaration — they arrived with the wire type.
+    setSessionPlan(id: string, done: number, total: number, tool = '') {
+      const s = state.sessions.find((x) => x.id === id);
+      if (!s) return;
+      s.plan_done = done;
+      s.plan_total = total;
+      s.current_tool = tool;
+      emit('session:event', JSON.stringify({ kind: 'state', session: s }));
+    },
     listeners,
     stdinLog,
     stdinText(id?: string) {

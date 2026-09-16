@@ -368,6 +368,13 @@ func (s *session) dispatch(req rpcReq) {
 			return
 		}
 		s.respond(req.ID, "", s.controlWriteJSON(wire.FrameListClosed, p))
+	case "GetActivity":
+		var p wire.GetActivityReq
+		if err := parseParams(req.Params, &p); err != nil {
+			s.respond(req.ID, nil, err)
+			return
+		}
+		s.respond(req.ID, "", s.controlWriteJSON(wire.FrameGetActivity, p))
 	case "ListIdeas":
 		var p wire.ListIdeasReq
 		if err := parseParams(req.Params, &p); err != nil {

@@ -24,6 +24,21 @@ package buildinfo
 // History (newest first), so a bump is a decision with a record and
 // not just a number going up:
 //
+//	11 — Agent activity. The three hooks that used to collapse into one
+//	    permission_resolved now report tool_start / tool_end / plan,
+//	    AgentEvent carries tool/target/call_id/ok/items, SessionInfo
+//	    carries plan_done/plan_total/current_tool, and two frames are
+//	    new: GET_ACTIVITY (0x2b) and ACTIVITY (0x2c).
+//	    The bump is NOT merely "the new GUI shows no activity against
+//	    an old daemon". An old daemon drops any AGENT_EVENT whose kind
+//	    is outside its allowlist (internal/daemon: "unknown kind"), so
+//	    a new `hived hook` reporting tool_start/tool_end to one loses
+//	    the working-state effect permission_resolved used to deliver —
+//	    a session mid-tool reads as idle or stays stuck on its last
+//	    wait. That is a STATE regression, the same class as 2, not just
+//	    a missing feature. The hook binary and the daemon ship in one
+//	    bundle, so they only disagree across an in-place upgrade, which
+//	    is exactly what this constant is read to prevent.
 //	10 — Finished and failed agent turns want the user. turn_end now
 //	    lands in waiting_input, an agent-reported error stands until the
 //	    user looks and counts toward needs_attention, and the new `idle`
@@ -102,7 +117,7 @@ package buildinfo
 //	    before this cannot see or clear the flag.
 //	1 — first contract; everything up to and including the
 //	    CLIENT_COMMAND relay.
-const DaemonContract = 10
+const DaemonContract = 11
 
 // Identity is this binary's full build identity. `hived --version
 // --json` prints it, and Welcome carries the same three values, so a

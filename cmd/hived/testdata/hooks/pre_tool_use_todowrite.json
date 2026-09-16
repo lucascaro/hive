@@ -1,0 +1,7 @@
+{
+  "session_id": "test-session",
+  "hook_event_name": "PreToolUse",
+  "tool_name": "TodoWrite",
+  "tool_use_id": "toolu_01TODO",
+  "tool_input": {"todos": [{"content": "read the spec", "status": "completed", "activeForm": "Reading the spec"}]}
+}

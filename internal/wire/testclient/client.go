@@ -204,6 +204,11 @@ func (c *Client) ListIdeas(projectID string) error {
 	return c.cli.WriteJSON(wire.FrameListIdeas, wire.ListIdeasReq{ProjectID: projectID})
 }
 
+// GetActivity asks for one session's stored tool ring and plan.
+func (c *Client) GetActivity(sessionID string) error {
+	return c.cli.WriteJSON(wire.FrameGetActivity, wire.GetActivityReq{SessionID: sessionID})
+}
+
 // AwaitIdeas consumes the next IDEAS snapshot.
 func (c *Client) AwaitIdeas(timeout time.Duration) (wire.IdeasResp, error) {
 	var resp wire.IdeasResp

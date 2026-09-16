@@ -606,6 +606,18 @@ func (a *App) ListIdeas(projectID string) error {
 	return cs.WriteJSON(wire.FrameListIdeas, wire.ListIdeasReq{ProjectID: projectID})
 }
 
+// GetActivity asks for one session's stored tool ring and plan. The
+// frontend calls it when an activity view first renders a session;
+// after that the ACTIVITY fan-out keeps it current, which is why
+// nobody pays for the whole ring of every session at connect.
+func (a *App) GetActivity(sessionID string) error {
+	cs, err := a.requireControl()
+	if err != nil {
+		return err
+	}
+	return cs.WriteJSON(wire.FrameGetActivity, wire.GetActivityReq{SessionID: sessionID})
+}
+
 // AddIdea files one idea. sessionID is the session it was captured
 // from and may be empty; projectID may be empty too, in which case the
 // daemon resolves it from sessionID's live registry entry. An empty

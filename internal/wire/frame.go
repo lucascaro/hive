@@ -158,6 +158,17 @@ const (
 	// open sidebar, not just the connection that set it, and PROJECT_EVENT
 	// already fans out to all of them. See the WORKTREE_EVENT note above.
 	FrameSetWorktreeLabel FrameType = 0x2a // C → S, JSON, control
+
+	// Agent activity — what a session's agent is doing inside a turn:
+	// the tool it is running and where it is in its own plan. ACTIVITY
+	// carries both the answer to GET_ACTIVITY (Full=true, the whole
+	// stored ring) and the per-event deltas that follow, because two
+	// payload shapes on one subject would make every reader branch.
+	// Deltas are NOT subscription-gated: they are ~100 bytes at a
+	// handful per second on a connection that already streams raw PTY
+	// bytes, and the activity grid wants every session anyway.
+	FrameGetActivity FrameType = 0x2b // C → S, JSON, control
+	FrameActivity    FrameType = 0x2c // S → C, JSON, control
 )
 
 func (t FrameType) String() string {
@@ -246,6 +257,10 @@ func (t FrameType) String() string {
 		return "IDEA_EVENT"
 	case FrameSetWorktreeLabel:
 		return "SET_WORKTREE_LABEL"
+	case FrameGetActivity:
+		return "GET_ACTIVITY"
+	case FrameActivity:
+		return "ACTIVITY"
 	default:
 		return fmt.Sprintf("UNKNOWN(0x%02x)", byte(t))
 	}

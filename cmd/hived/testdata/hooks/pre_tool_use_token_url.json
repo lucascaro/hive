@@ -1,0 +1,7 @@
+{
+  "session_id": "test-session",
+  "hook_event_name": "PreToolUse",
+  "tool_name": "WebFetch",
+  "tool_use_id": "toolu_01URL",
+  "tool_input": {"url": "https://api.example.com/v1/reports?token=SUPERSECRETTOKEN&page=2"}
+}

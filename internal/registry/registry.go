@@ -251,6 +251,9 @@ func (e *Entry) Info() wire.SessionInfo {
 		StateSource:    st.Source,
 		LastPrompt:     st.LastPrompt,
 		LastSummary:    st.LastSummary,
+		PlanDone:       st.PlanDone,
+		PlanTotal:      st.PlanTotal,
+		CurrentTool:    st.CurrentTool,
 	}
 }
 
@@ -329,6 +332,12 @@ type Registry struct {
 	// ideaListeners receive idea events. Separate for the same reason
 	// projectListeners are.
 	ideaListeners map[IdeaListener]struct{}
+
+	// activityListeners receive ACTIVITY deltas. Separate for the same
+	// reason ideaListeners are, and because activity is the highest
+	// frequency feed the registry has: a slow activity consumer must
+	// not cost a client its session events.
+	activityListeners map[ActivityListener]struct{}
 
 	// createMu serializes the synchronous prefix of Create (id/color
 	// resolution, name planning, order splicing). The daemon now runs
@@ -471,14 +480,28 @@ func (r *Registry) ApplyAgentEvent(id string, ev wire.AgentEvent) error {
 		return ErrNotFound
 	}
 	prev := e.stateSnapshot()
-	if e.machine().Apply(agentstate.Event{
+	changed := e.machine().Apply(agentstate.Event{
 		Kind:   ev.Kind,
 		Source: ev.Source,
 		At:     at,
 		Text:   ev.Text,
-	}) {
+		// The daemon's own clock, so a tool's duration is measured
+		// across two of OUR readings rather than across two reporter
+		// processes' clocks. See agentstate.Event.Now.
+		Now:    now,
+		Tool:   ev.Tool,
+		Target: ev.Target,
+		CallID: ev.CallID,
+		OK:     ev.OK,
+		Items:  ev.Items,
+	})
+	if changed {
 		r.announceStateLocked(e, prev, ev.Kind)
 	}
+	// Activity fans out on its own channel regardless of whether the
+	// session's STATE changed: a second tool in the same step moves no
+	// dot but is exactly what the timeline exists to show.
+	r.broadcastActivityLocked(e, ev.Kind)
 	return nil
 }
 
@@ -771,14 +794,15 @@ func Open(stateDir string) (*Registry, error) {
 		stateDir = StateDir()
 	}
 	r := &Registry{
-		entries:          make(map[string]*Entry),
-		stateDir:         stateDir,
-		projects:         make(map[string]*Project),
-		ideas:            make(map[string]*IdeaFile),
-		listeners:        make(map[Listener]struct{}),
-		projectListeners: make(map[ProjectListener]struct{}),
-		ideaListeners:    make(map[IdeaListener]struct{}),
-		tickStop:         make(chan struct{}),
+		entries:           make(map[string]*Entry),
+		stateDir:          stateDir,
+		projects:          make(map[string]*Project),
+		ideas:             make(map[string]*IdeaFile),
+		listeners:         make(map[Listener]struct{}),
+		projectListeners:  make(map[ProjectListener]struct{}),
+		ideaListeners:     make(map[IdeaListener]struct{}),
+		activityListeners: make(map[ActivityListener]struct{}),
+		tickStop:          make(chan struct{}),
 	}
 	if err := r.load(); err != nil {
 		return nil, fmt.Errorf("registry: load: %w", err)
@@ -1564,9 +1588,13 @@ func (r *Registry) Close() error {
 	for ch := range r.ideaListeners {
 		close(ch)
 	}
+	for ch := range r.activityListeners {
+		close(ch)
+	}
 	r.listeners = nil
 	r.projectListeners = nil
 	r.ideaListeners = nil
+	r.activityListeners = nil
 	entries := r.entries
 	r.entries = nil
 	r.order = nil

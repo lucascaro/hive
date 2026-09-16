@@ -58,10 +58,12 @@ func runHook(stdin io.Reader) {
 		hookDebugf("read stdin: %v", err)
 		raw = nil
 	}
-	ev := mapHookPayload(raw)
-	ev.SessionID = sessionID
+	evs := mapHookPayload(raw)
+	for i := range evs {
+		evs[i].SessionID = sessionID
+	}
 
-	if err := sendHookEvent(sock, ev); err != nil {
+	if err := sendHookEvents(sock, evs); err != nil {
 		hookDebugf("send: %v", err)
 	}
 }
@@ -84,20 +86,24 @@ func hookDebugf(format string, args ...any) {
 // parse error.
 type hookPayload map[string]any
 
-// mapHookPayload turns Claude's hook JSON into the AgentEvent to
+// mapHookPayload turns Claude's hook JSON into the AgentEvents to
 // report. Malformed/empty stdin, or a payload missing hook_event_name,
 // maps to KindPing — same tolerant-parsing rule as an unknown event
 // name: it keeps the hook tier alive (refreshes the machine's
 // staleness clock) without changing state, rather than dropping the
 // session back to the heuristic tier over a hook Hive doesn't
 // recognise yet.
-func mapHookPayload(raw []byte) wire.AgentEvent {
+//
+// It returns a SLICE because one payload can be two observations: a
+// TodoWrite PostToolUse is both "a tool finished" and "here is the
+// agent's whole plan". Every other payload yields exactly one event.
+func mapHookPayload(raw []byte) []wire.AgentEvent {
 	ev := wire.AgentEvent{Source: wire.StateSourceHook, At: time.Now().UTC().Format(time.RFC3339Nano)}
 
 	var p hookPayload
 	if len(raw) == 0 || json.Unmarshal(raw, &p) != nil {
 		ev.Kind = wire.AgentEventPing
-		return ev
+		return []wire.AgentEvent{ev}
 	}
 	name, _ := p["hook_event_name"].(string)
 	switch name {
@@ -142,7 +148,14 @@ func mapHookPayload(raw []byte) wire.AgentEvent {
 		// matters for latency — a tool that runs for a minute is
 		// "working", not "waiting for you" — and the other two cover a
 		// build of Claude Code that does not fire it.
-		ev.Kind = wire.AgentEventPermissionResolved
+		//
+		// These three used to collapse into one permission_resolved,
+		// dropping tool_name and tool_input on the floor. They now
+		// carry the tool through — see deriveToolTarget for why the
+		// arguments themselves never leave this process — while
+		// keeping exactly the working-state effect the collapsed form
+		// had, so the split changes no glyph.
+		return toolEvents(ev, p, name)
 	case "SessionEnd":
 		ev.Kind = wire.AgentEventSessionEnd
 	case "SessionStart":
@@ -152,7 +165,104 @@ func mapHookPayload(raw []byte) wire.AgentEvent {
 	default:
 		ev.Kind = wire.AgentEventPing
 	}
-	return ev
+	return []wire.AgentEvent{ev}
+}
+
+// toolEvents builds the events for one Pre/Post tool hook.
+//
+// base carries Source and At, already stamped by mapHookPayload.
+func toolEvents(base wire.AgentEvent, p hookPayload, name string) []wire.AgentEvent {
+	base.Tool = firstString(p, "tool_name")
+	base.Target = deriveToolTarget(p["tool_input"])
+	// tool_use_id is Claude's own identifier for the call, present on
+	// both PreToolUse and PostToolUse. It is what lets the daemon pair
+	// the two ends and time the call. Pairing by tool_name is NOT a
+	// fallback — Claude runs tools in parallel, and two concurrent
+	// Bash calls are indistinguishable by name — so when this is
+	// absent the event still reports, it simply never pairs.
+	base.CallID = firstString(p, "tool_use_id")
+
+	if name == "PreToolUse" {
+		base.Kind = wire.AgentEventToolStart
+		return []wire.AgentEvent{base}
+	}
+
+	base.Kind = wire.AgentEventToolEnd
+	ok := name != "PostToolUseFailure"
+	base.OK = &ok
+
+	// A TodoWrite call IS the agent's plan. It is still a tool call,
+	// so it reports as one, and the plan rides alongside it.
+	if base.Tool == "TodoWrite" {
+		if items := derivePlan(p["tool_input"]); len(items) > 0 {
+			plan := wire.AgentEvent{
+				Source: base.Source,
+				At:     base.At,
+				Kind:   wire.AgentEventPlan,
+				Items:  items,
+			}
+			return []wire.AgentEvent{base, plan}
+		}
+	}
+	return []wire.AgentEvent{base}
+}
+
+// derivePlan reads TodoWrite's todo list.
+//
+// TodoWrite's payload shape is Claude-internal and undocumented, so
+// this reads defensively: the step text comes from "content" with
+// "activeForm" as a fallback, and an unrecognised status is coerced to
+// pending rather than dropping the step. A plan that renders one step
+// with the wrong colour is better than a plan missing a step.
+//
+// Unlike tool arguments, the todo text is the whole point of the
+// feature and is meant to be shown — it is the agent's own summary of
+// what it set out to do, not a command line.
+func derivePlan(input any) []wire.PlanItem {
+	m, ok := input.(map[string]any)
+	if !ok {
+		return nil
+	}
+	raw, ok := m["todos"].([]any)
+	if !ok {
+		return nil
+	}
+	if len(raw) > wire.MaxPlanItems {
+		raw = raw[:wire.MaxPlanItems]
+	}
+	items := make([]wire.PlanItem, 0, len(raw))
+	for _, r := range raw {
+		t, ok := r.(map[string]any)
+		if !ok {
+			continue
+		}
+		text, _ := t["content"].(string)
+		if text == "" {
+			text, _ = t["activeForm"].(string)
+		}
+		if text == "" {
+			continue
+		}
+		if len(text) > wire.MaxPlanTextLen {
+			text = strings.ToValidUTF8(text[:wire.MaxPlanTextLen], "")
+		}
+		status, _ := t["status"].(string)
+		items = append(items, wire.PlanItem{Text: text, Status: planStatus(status)})
+	}
+	return items
+}
+
+// planStatus maps Claude's todo statuses onto the wire vocabulary.
+func planStatus(s string) string {
+	switch s {
+	case "in_progress":
+		return wire.PlanStatusActive
+	case "completed":
+		return wire.PlanStatusDone
+	default:
+		// "pending", and anything unrecognised.
+		return wire.PlanStatusPending
+	}
 }
 
 // firstString returns the first key present in p whose value is a
@@ -174,10 +284,18 @@ func firstString(p hookPayload, keys ...string) string {
 	return ""
 }
 
-// sendHookEvent dials sock, speaks HELLO{mode:event} + AGENT_EVENT, and
-// closes without waiting for a reply — the daemon sends none in
-// ModeEvent.
-func sendHookEvent(sock string, ev wire.AgentEvent) error {
+// sendHookEvents dials sock, speaks HELLO{mode:event} + one
+// AGENT_EVENT per event, and closes without waiting for a reply — the
+// daemon sends none in ModeEvent.
+//
+// All events share ONE connection. A TodoWrite reports two, and
+// dialing twice would double the handshake cost on the hottest path
+// the daemon has, for no benefit: the daemon reads frames in order off
+// the same connection.
+func sendHookEvents(sock string, evs []wire.AgentEvent) error {
+	if len(evs) == 0 {
+		return nil
+	}
 	// The hook reports what the user is doing. Check the socket
 	// directory before handing that to whatever is listening: the path
 	// arrives in an inherited environment variable.
@@ -199,5 +317,10 @@ func sendHookEvent(sock string, ev wire.AgentEvent) error {
 	}); err != nil {
 		return err
 	}
-	return wire.WriteJSON(conn, wire.FrameAgentEvent, ev)
+	for _, ev := range evs {
+		if err := wire.WriteJSON(conn, wire.FrameAgentEvent, ev); err != nil {
+			return err
+		}
+	}
+	return nil
 }

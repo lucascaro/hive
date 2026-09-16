@@ -734,37 +734,77 @@ func (d *Daemon) serveEventsOnly(ctx context.Context, conn net.Conn) {
 	}
 }
 
-// serveEvent handles a ModeEvent connection: read exactly one frame,
-// which must be FrameAgentEvent, validate it, apply it to the
-// registry, and close. No Welcome, no reply of any kind — the hook
-// that dialed has nothing useful to do with one and never waits for
-// one (see cmd/hived/hook.go).
+// eventMaxFrames bounds one ModeEvent connection. A reporter sends one
+// or two frames (a TodoWrite PostToolUse is both a tool_end and a
+// plan); the cap is what stops a wedged or hostile dialer streaming
+// events forever on a connection that has no other backstop.
+const eventMaxFrames = 8
+
+// serveEvent handles a ModeEvent connection: read AGENT_EVENT frames
+// until the peer closes, validating and applying each, then close. No
+// Welcome, no reply of any kind — the hook that dialed has nothing
+// useful to do with one and never waits for one (see
+// cmd/hived/hook.go).
+//
+// This drains rather than reading exactly one frame because a single
+// hook payload can be two observations. Both ride ONE connection:
+// dialing twice would double the handshake cost on the hottest path
+// the daemon has. The read deadline is refreshed per frame, so a
+// reporter that stalls mid-stream is still cut off.
 func (d *Daemon) serveEvent(conn net.Conn) {
-	_ = conn.SetReadDeadline(time.Now().Add(eventReadDeadline))
-	ft, payload, err := wire.ReadFrame(conn)
-	if err != nil {
-		log.Printf("hived: event mode: read frame: %v", err)
-		return
+	for n := 0; n < eventMaxFrames; n++ {
+		_ = conn.SetReadDeadline(time.Now().Add(eventReadDeadline))
+		ft, payload, err := wire.ReadFrame(conn)
+		if err != nil {
+			// EOF is the ordinary end of every reporter connection: it
+			// wrote its frames and closed. Only a genuine read error
+			// is worth a line.
+			if !errors.Is(err, io.EOF) && n == 0 {
+				log.Printf("hived: event mode: read frame: %v", err)
+			}
+			return
+		}
+		if ft != wire.FrameAgentEvent {
+			log.Printf("hived: event mode: expected AGENT_EVENT, got %s", ft)
+			return
+		}
+		// An invalid frame drops the whole connection, exactly as it
+		// did when this arm read a single frame. A reporter that sent
+		// one bad event is not a reporter whose next event should be
+		// trusted, and keeping the connection open after refusing
+		// input would be a new and weaker contract.
+		if !d.applyEventFrame(payload) {
+			return
+		}
 	}
-	if ft != wire.FrameAgentEvent {
-		log.Printf("hived: event mode: expected AGENT_EVENT, got %s", ft)
-		return
-	}
+	log.Printf("hived: event mode: dropping connection after %d frames", eventMaxFrames)
+}
+
+// applyEventFrame validates one AGENT_EVENT payload and applies it.
+// It reports whether the frame was valid; an invalid one closes the
+// connection at the caller.
+func (d *Daemon) applyEventFrame(payload []byte) bool {
 	var ev wire.AgentEvent
 	if err := jsonUnmarshal(payload, &ev); err != nil {
 		log.Printf("hived: event mode: malformed AGENT_EVENT: %v", err)
-		return
+		return false
 	}
 	if !wire.AgentEventKinds[ev.Kind] {
 		log.Printf("hived: event mode: unknown kind %q", ev.Kind)
-		return
+		return false
 	}
 	if ev.Source != wire.StateSourceHook && ev.Source != wire.StateSourceExtension {
 		log.Printf("hived: event mode: unknown source %q", ev.Source)
-		return
+		return false
 	}
 	if len(ev.Text) > wire.MaxSummaryLen {
 		ev.Text = ev.Text[:wire.MaxSummaryLen]
+	}
+	// The derived label is bounded here too. The reporter caps it, but
+	// the daemon is the trust boundary: hive.ts is a file on disk that
+	// a user can edit, and this value is rebroadcast to every client.
+	if len(ev.Target) > wire.MaxTargetLen {
+		ev.Target = ev.Target[:wire.MaxTargetLen]
 	}
 	if err := d.reg.ApplyAgentEvent(ev.SessionID, ev); err != nil {
 		// Unknown session id: the agent's hook fired after the session
@@ -773,6 +813,7 @@ func (d *Daemon) serveEvent(conn net.Conn) {
 		// the hook itself never sees this, it already closed.
 		log.Printf("hived: event mode: %s: %v", ev.SessionID, err)
 	}
+	return true
 }
 
 // serveControl handles a session-management connection.
@@ -806,6 +847,8 @@ func (d *Daemon) serveControl(ctx context.Context, conn net.Conn, hello wire.Hel
 	defer pUnsub()
 	iListener, iUnsub := d.reg.SubscribeIdeas()
 	defer iUnsub()
+	aListener, aUnsub := d.reg.SubscribeActivity()
+	defer aUnsub()
 	cmdListener, cmdUnsub := d.commands.Subscribe()
 	defer cmdUnsub()
 
@@ -876,6 +919,25 @@ func (d *Daemon) serveControl(ctx context.Context, conn net.Conn, hello wire.Hel
 					continue
 				}
 				if err := writeJSON(wire.FrameIdeaEvent, ev); err != nil {
+					return
+				}
+			case act, ok := <-aListener:
+				if !ok {
+					return
+				}
+				// A ModeSession connection gets no activity at all —
+				// not even its own. GET_ACTIVITY is refused for the
+				// same reason (see sessionModeFrames): the only
+				// in-session client today is `hive idea`, nothing
+				// there consumes activity, and the derived labels are
+				// the most sensitive thing this feature carries.
+				// Opening this up later is one map entry; withdrawing
+				// it after something depends on it is a breaking
+				// change.
+				if restricted {
+					continue
+				}
+				if err := writeJSON(wire.FrameActivity, act); err != nil {
 					return
 				}
 			case cmd, ok := <-cmdListener:
@@ -1163,6 +1225,20 @@ func (d *Daemon) handleControlFrame(ctx context.Context, ops controlOps, ft wire
 		})
 	case wire.FrameListClosed:
 		_ = ops.writeJSON(wire.FrameClosed, wire.ClosedResp{Closed: d.reg.ListClosed()})
+	case wire.FrameGetActivity:
+		// Not in sessionModeFrames, so a ModeSession connection never
+		// reaches this arm — the restricted check at the top of
+		// handleControlFrame refuses it with ErrCodeModeNotAllowed.
+		req, ok := decodeReq[wire.GetActivityReq](payload, ops.sendError)
+		if !ok {
+			return false
+		}
+		msg, err := d.reg.ActivitySnapshot(req.SessionID)
+		if err != nil {
+			ops.sendError("no_such_session", "that session is not open")
+			return true
+		}
+		_ = ops.writeJSON(wire.FrameActivity, msg)
 	case wire.FrameRestoreSession:
 		req, ok := decodeReq[wire.RestoreSessionReq](payload, ops.sendError)
 		if !ok {
