@@ -70,6 +70,14 @@ type activity struct {
 	// wire.MaxRunningAgents.
 	subagents map[string]time.Time
 	ended     []string
+
+	// itemAt is the reporter stamp of the newest update applied to each
+	// plan step, by ID. Parallel task-tool calls deliver their plan_item
+	// events in any order, so ordering is judged per step: a late update
+	// to one step must still land, and only an older update to the SAME
+	// step is stale. Kept past a delete, so an older update cannot
+	// resurrect the step.
+	itemAt map[string]time.Time
 }
 
 // currentPlanIdx is the plan item the agent says it is on, or -1.
@@ -152,9 +160,15 @@ func (a *activity) endTurn(at time.Time) {
 // left untouched: a late event still must not flip a waiting session
 // back to working.
 //
-// Every other kind stays dropped, plans included: an older plan update
-// applied late would regress a step, a completed task back to in
-// progress, which order-independent pairing cannot excuse.
+// A plan_item applies too, judged per step by mergePlanItems: Claude runs
+// the task-tool calls of one message in parallel, so their updates invert
+// routinely, and dropping them lost whole steps and completions until
+// the agent happened to call TaskList. An older update to the same step
+// is still discarded.
+//
+// Every other kind stays dropped, a wholesale plan included: an older
+// full list applied late would regress steps that later per-step updates
+// already moved on.
 func (m *Machine) applyLateActivity(ev Event, now time.Time) bool {
 	if m.state == wire.StateExited {
 		return false
@@ -174,6 +188,8 @@ func (m *Machine) applyLateActivity(ev Event, now time.Time) bool {
 		m.toolStart(ev, now)
 	case KindToolEnd:
 		m.toolEnd(ev, now)
+	case KindPlanItem:
+		m.mergePlanItems(ev.Items, ev.At)
 	default:
 		return false
 	}
@@ -306,7 +322,7 @@ func (m *Machine) toolEnd(ev Event, now time.Time) {
 // text, first-match-wins: an agent can emit two steps with identical
 // text, and truncation at MaxPlanTextLen can make two long steps
 // identical, so each old item is consumed at most once.
-func (m *Machine) setPlan(items []wire.PlanItem) {
+func (m *Machine) setPlan(items []wire.PlanItem, at time.Time) {
 	old := m.act.plan
 	used := make([]bool, len(old))
 	next := make([]wire.PlanItem, 0, min(len(items), wire.MaxPlanItems))
@@ -328,6 +344,13 @@ func (m *Machine) setPlan(items []wire.PlanItem) {
 		next = append(next, it)
 	}
 	m.act.plan = next
+	// A full list is the newest word on every step in it.
+	m.act.itemAt = make(map[string]time.Time, len(next))
+	for _, it := range next {
+		if it.ID != "" {
+			m.act.itemAt[it.ID] = at
+		}
+	}
 }
 
 // matchOld finds the unconsumed old item it replaces: by ID when it has
@@ -361,7 +384,13 @@ func matchOld(old []wire.PlanItem, used []bool, it wire.PlanItem) int {
 // hook event was lost; the step is still real, and the next TaskList
 // resync fills in whatever text it is missing. Items with no ID cannot
 // be merged into anything and are ignored.
-func (m *Machine) mergePlanItems(items []wire.PlanItem) {
+//
+// at is the update's reporter stamp. An update older than the newest one
+// already applied to that step is stale and changes nothing, except to
+// fill in text the step is still missing: a TaskUpdate delivered before
+// its TaskCreate creates the step with no text, and the create's text is
+// never wrong.
+func (m *Machine) mergePlanItems(items []wire.PlanItem, at time.Time) {
 	for _, up := range items {
 		if up.ID == "" {
 			continue
@@ -373,6 +402,14 @@ func (m *Machine) mergePlanItems(items []wire.PlanItem) {
 				break
 			}
 		}
+
+		if last, seen := m.act.itemAt[up.ID]; seen && at.Before(last) {
+			if idx >= 0 && m.act.plan[idx].Text == "" && up.Text != "" {
+				m.act.plan[idx].Text = truncatePlanText(up.Text)
+			}
+			continue
+		}
+		m.act.stampItem(up.ID, at)
 
 		if up.Status == wire.PlanStatusDeleted {
 			if idx >= 0 {
@@ -552,5 +589,23 @@ func (a *activity) reconcileSubagents(running []string, at time.Time) {
 func (a *activity) clearSubagents() {
 	for id := range a.subagents {
 		a.subagentEnd(id)
+	}
+}
+
+// stampItem records the newest update applied to a plan step. The map
+// outlives deletes on purpose (see itemAt), so it is bounded here: past
+// twice the plan cap, stamps for steps no longer in the plan go.
+func (a *activity) stampItem(id string, at time.Time) {
+	if a.itemAt == nil {
+		a.itemAt = make(map[string]time.Time)
+	}
+	a.itemAt[id] = at
+	if len(a.itemAt) <= 2*wire.MaxPlanItems {
+		return
+	}
+	for k := range a.itemAt {
+		if !slices.ContainsFunc(a.plan, func(it wire.PlanItem) bool { return it.ID == k }) {
+			delete(a.itemAt, k)
+		}
 	}
 }

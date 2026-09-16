@@ -484,9 +484,9 @@ func (m *Machine) Apply(ev Event) bool {
 	case KindPlan:
 		// No state change by design: revising a plan is not a
 		// transition. The tier clock was refreshed above.
-		m.setPlan(ev.Items)
+		m.setPlan(ev.Items, ev.At)
 	case KindPlanItem:
-		m.mergePlanItems(ev.Items)
+		m.mergePlanItems(ev.Items, ev.At)
 	case KindError:
 		m.state = wire.StateError
 		m.lastSummary = text
