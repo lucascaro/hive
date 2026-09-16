@@ -143,6 +143,39 @@ func TestHookToolEventFields(t *testing.T) {
 	}
 }
 
+// TestHookFailureCarriesToolAndCallID pins the PostToolUseFailure shape
+// against a payload captured from a live session.
+//
+// PostToolUseFailure fires INSTEAD of PostToolUse when a tool fails —
+// verified by running `exit 3` through a real Claude session with a
+// capture hook: PreToolUse then PostToolUseFailure, no PostToolUse. It
+// carries the same tool_use_id as its PreToolUse, and — unlike the
+// hand-written fixture this replaced, which had only `error` — it
+// carries tool_input as well. So the ok=false arm is reachable, it
+// pairs, and it derives a label like any other tool event.
+func TestHookFailureCarriesToolAndCallID(t *testing.T) {
+	start := first(t, mapHookPayload(readFixture(t, "pre_tool_use.json")))
+	fail := first(t, mapHookPayload(readFixture(t, "post_tool_use_failure.json")))
+
+	if fail.CallID == "" {
+		t.Error("a failure must carry tool_use_id, or it can never pair with its start")
+	}
+	if fail.Tool != "Bash" {
+		t.Errorf("tool = %q, want Bash", fail.Tool)
+	}
+	// tool_input is present on the failure too, so the label is derived
+	// from it exactly as on the success path.
+	if fail.Target != "npm test" {
+		t.Errorf("target = %q, want %q", fail.Target, "npm test")
+	}
+	// And the live capture showed the id is byte-identical across the
+	// pair; the fixtures use different ids only because they describe
+	// two different calls.
+	if start.CallID == "" {
+		t.Error("PreToolUse must carry tool_use_id")
+	}
+}
+
 // TestHookCallID pins tool_use_id → call_id, and the documented
 // behaviour when it is absent: the event still reports, it just never
 // pairs. Pairing by tool name is not a fallback — Claude runs tools in

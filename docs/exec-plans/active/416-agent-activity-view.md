@@ -644,6 +644,12 @@ what the `state_source` proxy does and does not cover.
 
 ## Decision log
 
+- **2026-09-16** — Hook fixtures now mirror payloads captured from a live Claude
+  session rather than hand-written guesses. Why: the hand-written
+  `post_tool_use_failure.json` carried only `error`, which made the `ok=false`
+  arm look unreachable and hid that the failure path carries `tool_input` and
+  `tool_use_id` like every other tool event.
+
 - **2026-09-16** — `serveEvent` drains its ModeEvent connection (bounded at 8
   frames) rather than reading exactly one. Why: a TodoWrite payload is two
   events and both ride one connection; dialing twice would double the handshake
@@ -712,12 +718,18 @@ what the `state_source` proxy does and does not cover.
 - **Theme preset count in the design doc is wrong.** `themes.css` defines **20** presets;
   the doc says six and `icon.css:28` says 18. Fix the doc to say "every preset" rather
   than a number that keeps going stale.
-- **`PostToolUseFailure` may be dead weight.** The existing fixture carries `error` and no
-  `tool_input`, and it is possible Claude reports a failed tool as an ordinary
-  `PostToolUse` with the failure inside `tool_response` — in which case the `ok=false` arm
-  never fires and every real event reads `ok=true`. `ok` is a spec-named field, so confirm
-  against a live session before writing the table row rather than shipping a field that is
-  permanently true. The pre-existing speculative handling stays either way.
+- ~~**`PostToolUseFailure` may be dead weight.**~~ **RESOLVED against a live session
+  (2026-09-16).** Ran `exit 3` through a real Claude session with a capture hook on all
+  three tool events. `PostToolUseFailure` fired and `PostToolUse` did **not** — they are
+  mutually exclusive, so the `ok=false` arm is reachable and `ok` is not permanently true.
+  The capture also corrected an assumption: the failure payload carries **`tool_input` and
+  `tool_use_id`**, not just `error`, so it derives a label and pairs like any other tool
+  event. It additionally carries `error`, `is_interrupt` and `duration_ms`.
+  The three hand-written fixtures were unrealistic (no `tool_use_id`, no `tool_input` on
+  the failure) — that is what made this look like a risk — and have been replaced with the
+  captured shapes, plus `TestHookFailureCarriesToolAndCallID`.
+  Claude's own `duration_ms` is deliberately **not** used: durations stay on the daemon's
+  clock, per the spec.
 - **Phase 1 emits `plan` only from Claude.** Pi sessions show the agent code alone until
   Phase 2, which is the designed empty state, not a regression.
 
