@@ -798,15 +798,11 @@ func (d *Daemon) applyEventFrame(payload []byte) bool {
 		log.Printf("hived: event mode: unknown source %q", ev.Source)
 		return false
 	}
-	if len(ev.Text) > wire.MaxSummaryLen {
-		ev.Text = ev.Text[:wire.MaxSummaryLen]
-	}
+	ev.Text = capBytes(ev.Text, wire.MaxSummaryLen)
 	// The derived label is bounded here too. The reporter caps it, but
 	// the daemon is the trust boundary: hive.ts is a file on disk that
 	// a user can edit, and this value is rebroadcast to every client.
-	if len(ev.Target) > wire.MaxTargetLen {
-		ev.Target = ev.Target[:wire.MaxTargetLen]
-	}
+	ev.Target = capBytes(ev.Target, wire.MaxTargetLen)
 	// Tool, CallID and every plan item's ID are bounded for the same
 	// reason: without a cap, anything that can write to the events socket
 	// could store a frame's worth (up to wire.MaxPayload) per field in
