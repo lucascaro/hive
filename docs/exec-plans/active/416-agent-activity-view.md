@@ -666,6 +666,16 @@ Append-only, one line per `/hs-review-loop` iteration.
 - **2026-09-16 iter 6** — verdict: REQUEST_CHANGES; mergeable: MERGEABLE; findings_hash: 7113525c098795eefc4565e01971a2d60f9a6b58ed0ae3225d29dd535dcd0de1; threads_open: 0; action: escalated:risky-fix-needs-decision; head_sha: 19294278. Operator-approved extra round past the 5-iteration cap. One IMPORTANT finding (Tool/CallID uncapped at the daemon boundary), fixed in the following commit. CI: macOS failed on a proxy.golang.org module-download timeout (no test ran); Linux failed on worktrees.spec.ts:247 toBeFocused (passed on retry). That spec has failed twice on this branch and not in main's last 40 failed runs, but passed 160/160 locally including 120 repeats at 12 workers, and this PR touches no focus code: recorded as likely flaky, not proven.
 - **2026-09-16 iter 7** — verdict: APPROVE; mergeable: MERGEABLE; findings_hash: empty; threads_open: 0; action: stop; head_sha: d2ffdc87. Converged. Four reviewers clean; CI passed on Linux, macOS and Windows with no retries (worktrees.spec.ts:247 did not recur). Two MINOR items noted, not applied before the gate: stale 'reads exactly one frame' comments (serveEvent now drains up to eventMaxFrames), and Text/Target still byte-cut rather than via capBytes.
 
+## Gate verdict
+
+Append-only. The latest entry is authoritative.
+
+- **2026-09-16** — verdict: NEEDS_FOLLOWUP; phase: 1/3; checks: 2 passed / 0 failed / 1 followups / 3 deferred (pass/fail/followup count dimensions; deferred counts acceptance criteria); followups: none; one-line: every Phase 1 success criterion and every non-goal passes, but three code comments still say a ModeEvent connection reads exactly one frame.
+  - 2026-09-16 dimensions:
+    - acceptance — PASS — every Phase 1 criterion verified by running its tests (hook, agentstate, daemon, wire, agent, registry spawn-gate; Playwright sidebar-plan-pie 7/7; DOM 11/11). DEFERRED: Pi extension tests (phase 2); the TypeScript half of separator-agnostic labels (phase 2); the panel and activity-grid Playwright checks (phase 3). The real-Claude opt-in probe skips outside `HIVE_PROBE_CLAUDE=1` by design; it was run by hand on 2026-09-16 and passed, with a negative control confirming plan_total 0 with the setting off.
+    - non-goals — PASS — activity is memory-only (agent-settings.json holds only the task-tools boolean); no raw tool arguments on any wire type; no transcript view, token/cost accounting, plugin loading or cross-session view; no Pi tier, inspector panel or activity grid in the diff.
+    - doc accuracy — NEEDS_FOLLOWUP — changeset (type added, pr 417), site/features.json, README, DESIGN.md, design doc and spec all accurate; CHANGELOG.md and the generated spec index untouched. Three comments are false: internal/wire/control.go:19-23, internal/wire/frame.go:131-135 and internal/daemon/daemon.go:654-658 say a ModeEvent connection reads exactly one frame, but serveEvent drains up to eventMaxFrames (8). regression_of: n/a (changeset type is added). Also noted, not from this PR: AGENTS.md cites `.changesets/README.md` as the changeset schema, and that file does not exist.
+
 ## Decision log
 
 - **2026-09-16** — **Command-word credential leak accepted and documented (operator
@@ -781,6 +791,7 @@ Append-only, one line per `/hs-review-loop` iteration.
   probe passes (plan_total 2, plan_done ≥1 in 8.7s on Opus 5); negative control with
   the setting off confirmed plan_total 0.
 
+- **2026-09-16** — Gate NEEDS_FOLLOWUP (phase 1/3); doc accuracy: three stale "reads exactly one frame" comments — internal/wire/control.go:19-23, internal/wire/frame.go:131-135, internal/daemon/daemon.go:654-658.
 ## Open questions / risks
 
 - **TodoWrite's payload shape is undocumented.** Mitigated by reading `content` with an
