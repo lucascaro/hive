@@ -1230,6 +1230,24 @@ Append-only. The latest entry is authoritative.
   Rejected B (chip in row 1, takes width from the name), C (orbit segments, hard to count
   past 4) and D (line-2 prefix, costs subtitle characters). Mock:
   https://claude.ai/artifact/G8wkTR3asbCuyoUNuwPcqE.
+- **2026-09-16** — **No version gate for the subagent hooks.** `SubagentStart` shipped
+  in Claude Code 2.0.43, which predates `minHooksVersion` 2.1.0, so both hooks exist
+  wherever Hive registers hooks at all.
+- **2026-09-16** — **Plan pie redrawn as an outlined pie (operator decision, from
+  screenshots).** The operator reported the pip as misaligned and odd. It measured
+  centred under the icon. The actual faults were two: the 22% colour-mix track turned
+  into a slate-grey disc on dark themes (Hex), and centring in row 2 sank the pip to the
+  row's bottom edge when the row had no title. The pip is now a 1.5px outline in the
+  state colour with a solid fill, top-aligned in row 2. Both faults are pinned by
+  Playwright tests that fail on the old CSS.
+- **2026-09-16** — **Late plan updates are judged per step, and the fix ships in the 1b
+  PR (operator decision).** Found live: this session was 3 of 4 steps through its task
+  list and the sidebar showed 1/4. Claude runs one message's task-tool calls in
+  parallel, and their `plan_item` events arrive inverted. The late path dropped every
+  plan item, losing completions until the next `TaskList`. Each step now keeps the stamp
+  of its newest update, and a late update applies unless it is older for that same
+  step. Rejected: accepting late items unconditionally, which would let a completed step
+  regress. A late wholesale `plan` is still dropped.
 
 ## Progress
 
@@ -1245,6 +1263,12 @@ Append-only. The latest entry is authoritative.
 
 - **2026-09-16** — Gate NEEDS_FOLLOWUP (phase 1/3); doc accuracy: three stale "reads exactly one frame" comments — internal/wire/control.go:19-23, internal/wire/frame.go:131-135, internal/daemon/daemon.go:654-658.
 - **2026-09-16** — Gate follow-up fixed on this branch in f8b92755 (operator decision: hold at GATE, fix, re-gate). Four comments corrected to match serveEvent draining up to eventMaxFrames: internal/wire/control.go (ModeEvent, AgentEvent), internal/wire/frame.go (FrameAgentEvent), internal/daemon/daemon.go (eventReadDeadline). The fourth (the AgentEvent doc) was found by sweeping for the same claim. Comment-only — verified no non-comment line changed — so it was NOT put through another review-loop round.
+- **2026-09-16** — Phase 1b implemented on `feature/416-phase-1b`: hook mapping, wire
+  fields and kinds, daemon caps, machine subagent rule with split ordering clock, count
+  and reconcile, registry copy, sidebar badge, contract 12, docs, changeset. Mutation
+  checks confirmed that the split-clock, subagent-state and clock-step tests each fail
+  when their fix is reverted. Live probes `TestClaudeProbeTaskToolsOptIn` and
+  `TestClaudeProbeSubagentCount` passed (`HIVE_PROBE_CLAUDE=1`).
 ## Open questions / risks
 
 - **TodoWrite's payload shape is undocumented.** Mitigated by reading `content` with an
