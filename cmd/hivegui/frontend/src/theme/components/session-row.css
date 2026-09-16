@@ -413,9 +413,10 @@
 
    This is the one place the placement costs something: 10px comes off
    the title's track at the density whose whole point is the title.
-   Scoped with :has() so ONLY a row that actually has a plan pays it —
-   an unscoped rule widened every row at this density, including the
-   sessions with no plan at all, which is a cost for nothing. Measured
+   Scoped with :has() so ONLY a row that actually shows the indicator
+   (a plan, or a subagent badge) pays it — an unscoped rule widened
+   every row at this density, including the sessions with neither,
+   which is a cost for nothing. Measured
    by the truncation assertion in sidebar-plan-pie.spec.ts rather than
    eyeballed. */
 :root[data-density='compact'] {

@@ -207,6 +207,18 @@ describe('SessionRow subagent badge', () => {
     expect(mark?.getAttribute('title')).toBe('1 subagent');
   });
 
+  it('marks a no-plan badge stale off the reporting tier', () => {
+    // With no plan to inherit from, the badge reads state_source itself.
+    const hooked = plan(row({ subagents_running: 1, state_source: 'hook' }));
+    expect(hooked?.className).not.toContain('--stale');
+    const heuristic = plan(
+      row({ subagents_running: 1, state_source: 'heuristic' }),
+    );
+    expect(heuristic?.className).toContain('hv-session-row__plan--stale');
+    const absent = plan(row({ subagents_running: 1 }));
+    expect(absent?.className).toContain('hv-session-row__plan--stale');
+  });
+
   it('caps the badge at 9+', () => {
     expect(badge(row({ subagents_running: 9 }))?.textContent).toBe('9');
     const el = row({ subagents_running: 14 });
