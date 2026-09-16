@@ -48,6 +48,11 @@ func skipOnWindows(t *testing.T) {
 
 func freshRegistry(t *testing.T) *Registry {
 	t.Helper()
+	// Sessions without an explicit Shell run through $SHELL -l -i, which
+	// loads the developer's rc files. Anything those print (a keychain
+	// warning, shell-integration escapes) changes the screen and breaks
+	// the screen-digest state tests locally while CI stays green.
+	t.Setenv("SHELL", "/bin/sh")
 	r, err := Open(t.TempDir())
 	if err != nil {
 		t.Fatalf("Open: %v", err)
