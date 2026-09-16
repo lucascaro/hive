@@ -41,6 +41,9 @@ each quit says whether it came from Quit, the close button, or a signal such as
 `killall`. Notification clicks and page reloads are logged too. When Hive restarts
 itself unexpectedly, the log now points at what did it. Nothing else changes.
 
+### Fixed
+A tool label that ends in a non-ASCII character (a filename, for example) is no longer cut mid-character when it is shortened to fit the activity view.
+
 ## [2.8.0] — 2026-09-14
 
 ### Added
