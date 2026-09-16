@@ -1,9 +1,12 @@
 package registry
 
 import (
+	"context"
 	"os"
 	"slices"
 	"testing"
+
+	"github.com/lucascaro/hive/internal/session"
 
 	"github.com/lucascaro/hive/internal/agent"
 	"github.com/lucascaro/hive/internal/wire"
@@ -61,4 +64,52 @@ func TestAgentEnvFollowsTheHookGate(t *testing.T) {
 			}
 		})
 	}
+}
+
+// TestEverySpawnPathCarriesHooksAndOptInTogether is the regression test
+// for the Restart bug: create, restart and boot revive each spawn a
+// Claude session, and each must carry the hook wiring AND the task-tool
+// opt-in, or neither. Restart used to add the hooks and drop the opt-in,
+// so a restarted session silently lost its plan.
+func TestEverySpawnPathCarriesHooksAndOptInTogether(t *testing.T) {
+	skipOnWindows(t)
+	rec := captureStartSession(t)
+	r := freshRegistry(t)
+	r.SetHivedPath("/usr/local/bin/hived")
+	agent.SetCustomDir(t.TempDir())
+	t.Cleanup(func() { agent.SetCustomDir("") })
+	unsetEnv(t, agent.ClaudeTaskToolsEnv)
+	t.Cleanup(agent.SetClaudeVersionProbeForTest(func() ([]byte, error) {
+		return []byte("2.1.273 (Claude Code)"), nil
+	}))
+	optIn := agent.ClaudeTaskToolsEnv + "=1"
+
+	last := func() session.Options {
+		rec.mu.Lock()
+		defer rec.mu.Unlock()
+		if len(rec.opts) == 0 {
+			t.Fatal("nothing was spawned")
+		}
+		return rec.opts[len(rec.opts)-1]
+	}
+	check := func(path string) {
+		t.Helper()
+		o := last()
+		hooked := slices.Contains(o.Cmd, "--settings")
+		opted := slices.Contains(o.Env, optIn)
+		if !hooked || !opted {
+			t.Errorf("%s: hooks=%v opt-in=%v, want both; cmd=%v env=%v", path, hooked, opted, o.Cmd, o.Env)
+		}
+	}
+
+	e, err := r.Create(context.Background(), wire.CreateSpec{Name: "c", Agent: "claude", Shell: "/bin/bash"})
+	if err != nil {
+		t.Fatalf("Create: %v", err)
+	}
+	check("create")
+
+	if err := r.Restart(e.ID); err != nil {
+		t.Fatalf("Restart: %v", err)
+	}
+	check("restart")
 }

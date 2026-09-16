@@ -323,6 +323,7 @@ func TestHookNeverLeaksToolInput(t *testing.T) {
 	}{
 		{"pre_tool_use_secret_header.json", "sk-live-SUPERSECRET", "curl"},
 		{"pre_tool_use_token_url.json", "SUPERSECRETTOKEN", "api.example.com"},
+		{"pre_tool_use_env_prefix_secret.json", "ghp_SUPERSECRETPREFIX", "gh api"},
 		{"pre_tool_use_windows_path.json", "C:\\Users\\dev", "machine.go"},
 	}
 	for _, tc := range secrets {

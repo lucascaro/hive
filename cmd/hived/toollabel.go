@@ -90,14 +90,55 @@ func commandHead(cmd string) string {
 		cmd = cmd[:i]
 	}
 	fields := strings.Fields(cmd)
+	// Leading NAME=value words are environment assignments, not the
+	// command — and they are exactly where an inline secret goes:
+	// `GITHUB_TOKEN=ghp_… gh api user`. Taken as the head, the token was
+	// the label. Skip them, as the shell does.
+	for len(fields) > 0 && isEnvAssignment(fields[0]) {
+		fields = fields[1:]
+	}
 	if len(fields) == 0 {
 		return ""
 	}
-	head := fields[0]
+	// The command word gets checked too. A path is reduced to its
+	// basename, like any other path label: `/home/alice/bin/tool` must
+	// not name the user. Anything still carrying expansion, quoting or a
+	// credential shape yields no label at all rather than a guess.
+	head := baseName(fields[0])
+	if !isCommandName(head) {
+		return ""
+	}
 	if len(fields) > 1 && isSubcommand(fields[1]) {
 		head += " " + fields[1]
 	}
 	return head
+}
+
+// isEnvAssignment reports whether a shell word is a NAME=value
+// assignment: a valid variable name followed by `=`.
+func isEnvAssignment(tok string) bool {
+	name, _, found := strings.Cut(tok, "=")
+	if !found || name == "" {
+		return false
+	}
+	for i, r := range name {
+		letter := r == '_' || (r >= 'A' && r <= 'Z') || (r >= 'a' && r <= 'z')
+		if !letter && (i == 0 || r < '0' || r > '9') {
+			return false
+		}
+	}
+	return true
+}
+
+// isCommandName reports whether a (basenamed) command word is safe to
+// show. It is looser than isSubcommand — real executables carry digits
+// and dots (`python3`, `node20`, `deploy.sh`) — but refuses anything that
+// is not a plain name: an unexpanded `$VAR`, a quote, an `=`, `@` or `:`.
+func isCommandName(tok string) bool {
+	if tok == "" {
+		return false
+	}
+	return !strings.ContainsAny(tok, `=$"'@:`+"`")
 }
 
 // maxSubcommandLen bounds a second word. Real subcommands are short
@@ -115,6 +156,9 @@ const maxSubcommandLen = 20
 //   - flags (`-x`), and anything containing a path separator, `=`, `$`, a
 //     quote or a backtick — the original rule;
 //   - `@` and `:` — `deploy@prod-db`, `host:port`, `user:token`;
+//   - `.` — a filename (`manage.py`, `prod.tfvars`, `id_rsa.pub`) is an
+//     argument, and a sensitive one as often as not; subcommands do not
+//     carry a dot;
 //   - any digit — API keys, tokens, IDs and version pins almost always
 //     carry one, and subcommands almost never do;
 //   - two or more `-`/`_` separators — the shape of key prefixes like
@@ -132,7 +176,7 @@ func isSubcommand(tok string) bool {
 	if tok == "" || strings.HasPrefix(tok, "-") || len(tok) > maxSubcommandLen {
 		return false
 	}
-	if strings.ContainsAny(tok, `/\=$"'@:`+"`") {
+	if strings.ContainsAny(tok, `/\=$"'@:.`+"`") {
 		return false
 	}
 	if strings.ContainsAny(tok, "0123456789") {

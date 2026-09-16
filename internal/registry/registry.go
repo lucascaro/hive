@@ -771,20 +771,32 @@ func (r *Registry) spawnInfo() agent.SpawnInfo {
 	return agent.SpawnInfo{HivedPath: r.hivedPath, StateDir: r.stateDir}
 }
 
-// appendSpawnArgs appends the agent's Def.SpawnArgs (if any) to cmd —
-// the hook-tier wiring for Restart and the boot-revive path in Revive.
-// No-op (returns cmd unchanged) for an unknown agent or one with no
-// SpawnArgs.
-func (r *Registry) appendSpawnArgs(cmd []string, agentID string) []string {
+// applyAgentSpawn appends everything the agent adapter adds at spawn —
+// argv (Def.SpawnArgs, the hook wiring) AND environment (Def.SpawnEnv,
+// the task-tool opt-in) — to opts. It is the ONLY place Restart and the
+// boot-revive path add either, so neither can be added without the
+// other.
+//
+// That pairing used to be a convention across three call sites and it
+// broke: Restart appended the hooks but never the environment, so a
+// restarted Claude session kept its hooks and silently lost its plan.
+// The create path pairs them through agentDef instead.
+func (r *Registry) applyAgentSpawn(opts *session.Options, agentID string) {
 	def, ok := agent.Get(agent.ID(agentID))
-	if !ok || def.SpawnArgs == nil {
-		return cmd
+	if !ok {
+		return
 	}
-	extra := def.SpawnArgs(r.spawnInfo())
-	if len(extra) == 0 {
-		return cmd
+	sp := r.spawnInfo()
+	if def.SpawnArgs != nil {
+		if extra := def.SpawnArgs(sp); len(extra) > 0 {
+			opts.Cmd = append(append([]string(nil), opts.Cmd...), extra...)
+		}
 	}
-	return append(append([]string(nil), cmd...), extra...)
+	if def.SpawnEnv != nil {
+		if extra := def.SpawnEnv(sp); len(extra) > 0 {
+			opts.Env = append(append([]string(nil), opts.Env...), extra...)
+		}
+	}
 }
 
 // Open creates or loads a Registry rooted at stateDir. Existing
@@ -1118,12 +1130,7 @@ func (r *Registry) Revive(id string, opts session.Options) error {
 			} else {
 				opts.Cmd = def.Cmd
 			}
-			opts.Cmd = r.appendSpawnArgs(opts.Cmd, agentID)
-			// Same block, same gate as the argv above: the adapter's
-			// environment rides along exactly when its hooks do.
-			if def.SpawnEnv != nil {
-				opts.Env = append(append([]string(nil), opts.Env...), def.SpawnEnv(r.spawnInfo())...)
-			}
+			r.applyAgentSpawn(&opts, agentID)
 		}
 	}
 	opts.Env = append(append([]string(nil), opts.Env...), r.hiveEnv(id)...)
@@ -1240,7 +1247,7 @@ func (r *Registry) Restart(id string) error {
 		default:
 			opts.Cmd = def.Cmd
 		}
-		opts.Cmd = r.appendSpawnArgs(opts.Cmd, agentID)
+		r.applyAgentSpawn(&opts, agentID)
 	}
 	// Pass the project cwd as the fallback. Revive promotes opts.Cwd to
 	// wtPath when the worktree directory still exists; if the user removed

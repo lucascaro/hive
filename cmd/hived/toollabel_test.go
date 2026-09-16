@@ -47,6 +47,20 @@ func TestDeriveLabel(t *testing.T) {
 		{"hyphenated subcommand kept", map[string]any{"command": "git cherry-pick abc"}, "git cherry-pick"},
 		{"docker subcommand kept", map[string]any{"command": "docker compose up"}, "docker compose"},
 
+		// --- the command word itself (the first token was never checked) ---
+		{"inline env secret before the command", map[string]any{"command": "GITHUB_TOKEN=ghp_abc123 gh api user"}, "gh api"},
+		{"several assignments", map[string]any{"command": "A=1 B=two npm test"}, "npm test"},
+		{"assignments and nothing else", map[string]any{"command": "SECRET=hunter2"}, ""},
+		{"path command basenamed", map[string]any{"command": "/home/alice/bin/tool build"}, "tool build"},
+		{"relative script basenamed", map[string]any{"command": "./scripts/deploy.sh"}, "deploy.sh"},
+		{"windows command basenamed", map[string]any{"command": `C:\Users\alice\tool.exe build`}, "tool.exe build"},
+		// The command word may carry digits; a filename argument is data.
+		{"executable with digits kept, filename dropped", map[string]any{"command": "python3 manage.py"}, "python3"},
+		{"sensitive filename argument dropped", map[string]any{"command": "terraform prod.tfvars"}, "terraform"},
+		{"unexpanded variable as command", map[string]any{"command": "$DEPLOY_CMD --prod"}, ""},
+		{"quoted command", map[string]any{"command": `"my tool" run`}, ""},
+		{"not an assignment: equals mid-word", map[string]any{"command": "1FOO=bar run"}, ""},
+
 		// --- credential- and host-shaped second words (the heuristic) ---
 		{"key prefix with digits", map[string]any{"command": "mytool sk-live-abc123"}, "mytool"},
 		{"key prefix, letters only", map[string]any{"command": "mytool sk-live-abcdef"}, "mytool"},
@@ -124,5 +138,17 @@ func TestCapLabelRuneBoundary(t *testing.T) {
 func TestIsSubcommandKnownCeiling(t *testing.T) {
 	if !isSubcommand("AbCdEfGhIjKlMnOp") {
 		t.Skip("the ceiling was raised — update the ponytail note on isSubcommand and delete this test")
+	}
+}
+
+// TestIsEnvAssignment pins the shell's rule for a leading NAME=value.
+func TestIsEnvAssignment(t *testing.T) {
+	for tok, want := range map[string]bool{
+		"FOO=bar": true, "_X=1": true, "a1_b=": true, "GITHUB_TOKEN=ghp_x": true,
+		"=bar": false, "1FOO=bar": false, "FO-O=bar": false, "foo": false, "": false,
+	} {
+		if got := isEnvAssignment(tok); got != want {
+			t.Errorf("isEnvAssignment(%q) = %v, want %v", tok, got, want)
+		}
 	}
 }
