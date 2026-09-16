@@ -128,11 +128,11 @@ const (
 	FrameClientCommand   FrameType = 0x20 // C → S, JSON, control
 	FrameClientBroadcast FrameType = 0x21 // S → C, JSON, control
 
-	// FrameAgentEvent is the sole frame of a ModeEvent connection: one
-	// observation from an agent's hook or extension tier (`hived hook`,
-	// or the Pi extension), reported as an AgentEvent. The daemon reads
-	// exactly this one frame and closes — see internal/daemon's ModeEvent
-	// arm.
+	// FrameAgentEvent is the only frame type a ModeEvent connection
+	// carries: one observation from an agent's hook or extension tier
+	// (`hived hook`, or the Pi extension), reported as an AgentEvent. A
+	// connection may carry several, read in order until the reporter
+	// closes, up to eventMaxFrames — see internal/daemon's serveEvent.
 	FrameAgentEvent FrameType = 0x22 // C → S, JSON, event
 
 	// Ideas. A captured note owned by a project, filed from anywhere

@@ -652,10 +652,10 @@ func (d *Daemon) serve(ctx context.Context, conn net.Conn) {
 	}
 }
 
-// eventReadDeadline bounds a ModeEvent connection's single read. A hook
-// process dials, writes one frame and closes; a client that connects
-// and then stalls (or never sends the frame at all) must not pin a
-// goroutine forever.
+// eventReadDeadline bounds each read on a ModeEvent connection, and is
+// refreshed per frame in serveEvent. A hook process dials, writes its
+// frames and closes; a client that connects and then stalls (or never
+// sends a frame at all) must not pin a goroutine forever.
 const eventReadDeadline = 2 * time.Second
 
 // sessionModeIdleDeadline bounds each read on a ModeSession connection.

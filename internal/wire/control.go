@@ -16,11 +16,13 @@ const (
 	ModeControl Mode = "control" // session management; never streams DATA
 	ModeAttach  Mode = "attach"  // attach to an existing session by ID
 	ModeCreate  Mode = "create"  // create a new session, then behave as attach
-	// ModeEvent is a one-shot connection used by an agent's hook or
-	// extension tier to report a state observation (`hived hook`, or
-	// the Pi extension). Exactly one FrameAgentEvent frame is read and
-	// applied, then the connection is closed — there is no Welcome and
-	// the connection never streams DATA.
+	// ModeEvent is a short-lived connection used by an agent's hook or
+	// extension tier to report observations (`hived hook`, or the Pi
+	// extension). The daemon reads FrameAgentEvent frames until the
+	// reporter closes, at most eventMaxFrames of them — one hook payload
+	// can be two observations, such as a tool ending and the plan it
+	// updated. An invalid frame closes the connection. There is no
+	// Welcome and the connection never streams DATA.
 	ModeEvent Mode = "event"
 	// ModeSession is a narrowed control connection for a program
 	// running INSIDE a Hive session — `hive idea` today. It reaches the
@@ -475,8 +477,8 @@ const (
 	SessionEventState = "state"
 )
 
-// AgentEvent is the payload of FrameAgentEvent — the sole frame of a
-// ModeEvent connection. It carries one observation from an agent's
+// AgentEvent is the payload of FrameAgentEvent — the only frame type a
+// ModeEvent connection carries. It carries one observation from an agent's
 // hook or extension tier (`hived hook`, or the Pi extension) about
 // what the session it is running is doing right now.
 type AgentEvent struct {
