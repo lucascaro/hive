@@ -1192,6 +1192,260 @@ Append-only. The latest entry is authoritative.
     - non-goals — PASS — no persistence, and no raw tool arguments on any wire type (new fields are only agent_id, agent_type, running_agents and subagents_running). No transcript view, cost accounting, plugin API, cross-session view, subagent tree, Pi tier, panel or grid in the diff.
     - doc accuracy — PASS — changeset valid (type added, pr 420). Design doc, spec sidebar text and Phase 2 criteria, and contract entry 12 all match the code. CHANGELOG.md and the generated index are untouched, and README/DESIGN/site hold nothing stale. Two source comments still said "phase 1b" after the renumbering; fixed in 451702b9 before this verdict.
 
+## Phase 3 plan (approved 2026-09-16 via HTML review, round 1)
+
+Scope (from the plan's operator-approved phase split): Pi `tool_execution_*` → `tool_start`/`tool_end`,
+a Hive-registered todo tool → `plan`, and the settings path that turns it off. Operator decisions:
+tool name `hive_todo`; separate Pi checkbox (`pi_todo_tool`); shared JSON label vectors.
+
+Spec criteria this phase closes:
+- (C1) Pi extension tests: `tool_execution_start` / `tool_execution_end` post the right events;
+  `registerTool` produces a plan; the todo tool disabled posts nothing and registers nothing.
+- (C2) Label derivation is separator-agnostic: a Windows path renders as its basename in **both** reporters.
+- (C3, carried) No raw tool arguments cross the socket — only `target` and plan `items` — asserted in a test.
+- (C4, carried) Hive adds a tool to the user's agent only as a setting, on by default, disableable.
+- (C5, carried) Durations come from the daemon clock — the extension sends no duration/timestamps beyond `at`.
+
+### Approach
+
+**No daemon or wire change.** Phases 1–2 already accept `tool_start`/`tool_end`/`plan` with
+`tool`, `target`, `call_id`, `ok`, `items` from `source: "extension"`. Phase 3 is reporter + settings only.
+
+1. **Encoder generalised to N events per connection.** `encodeFrames(sessionId, events, at)` takes an
+   array of `{kind, text?, tool?, target?, call_id?, ok?, items?}` and emits HELLO + one AGENT_EVENT per
+   entry (daemon allows 8 per connection). `post(kind, text?, fields?)` becomes a one-element wrapper over
+   `send(events)`. Why: a successful `hive_todo` call must deliver `tool_end` and `plan` together with the
+   same `at`, exactly as `hook.go:484-515` does for Claude — two dials would let them race.
+   **Sends are serialized.** Today every `post` dials its own connection, so a parallel tool's `tool_end`
+   stamped a few ms after a `plan` can reach the daemon first, and `applyLateActivity`
+   (`activity.go:169-172`) then drops the wholesale `plan` silently — fatal if it was the final "all done"
+   update. `send` appends to a FIFO and the next dial starts only on the previous connection's `close`
+   (the daemon applies frames before closing, `daemon.go:755-781`), so delivery order = stamp order. The
+   existing 2 s socket timeout bounds a wedged daemon; the queue is capped at 64 pending reports and the queue is bounded (fire-and-forget contract unchanged). A connect error, a timeout, or a
+   synchronous throw from `net.createConnection` (the `catch` at `hive.ts:99`) all advance the queue — it
+   never stalls. `send` rejects batches over 8 events (the daemon's `eventMaxFrames`, `daemon.go:742`).
+   Full-queue policy: drop the **oldest** pending report, not the newest — a wedged daemon's backlog of
+   64 × 2 s would otherwise deliver state older than `HookStaleAfter` (30 s) while the freshest report is
+   discarded.
+   Every field is capped in TS before encoding: text 512 B, target 120 B, tool / call_id 128 B,
+   plan text 200 B, ≤100 items (a generalised `truncateBytes(s, max)`; `truncate` stays as the 512 wrapper).
+
+2. **Tool events.** Subscribe to the **non-blocking** `tool_execution_start` / `tool_execution_end`
+   (never `tool_call` / `tool_result`, per the design doc).
+   - start → `tool_start {tool: toolName, target: deriveTarget(args), call_id: toolCallId}`
+   - end → `tool_end {tool, call_id, ok: !isError}` (target omitted; the daemon falls back to the start's,
+     `activity.go:295-300`). `ok` is always sent explicitly, including `false`.
+   - Raw `args` / `result` are never put in a frame: the frame body is built from an explicit field list,
+     never a spread of the Pi event.
+
+3. **`deriveTarget(args)` — a TS port of `cmd/hived/toollabel.go`**, same key allowlist and order
+   (`command` → commandHead; `file_path`/`path`/`notebook_path` → baseName; `url` → urlHost), same
+   `isEnvAssignment` / `isCommandName` / `isSubcommand` rules, byte-length checks via `Buffer.byteLength`,
+   `baseName` = after last `/` or `\`, 120-byte rune-safe cap. Non-object input → "".
+
+4. **Shared label vectors.** Move `TestDeriveLabel`'s inline table to
+   `cmd/hived/testdata/toollabel/vectors.json` (`[{name, input, want, want_go?, want_ts?}]`).
+   `toollabel_test.go` and `hive.test.ts` both iterate it; `want_go` / `want_ts` exist only for pinned
+   URL-parser divergences (JS `new URL` strips default ports and lowercases hosts). The Windows-path vector
+   has a single `want` — it must agree in both languages (C2). The other Go-only tests
+   (`TestIsSubcommandKnownCeiling`, `TestCommandWordCredentialCeiling`, …) stay in Go; their vectors are
+   added to the JSON too so the TS port inherits the same documented ceilings.
+
+5. **`hive_todo` tool.** Registered with `pi.registerTool` only when `process.env.HIVE_PI_TODO_TOOL !== "0"`.
+   - `parameters`: a **plain JSON-Schema object** (`{type:"object", properties:{todos:{type:"array",
+     maxItems:100, items:{type:"object", properties:{text:{type:"string"}, status:{type:"string",
+     enum:["pending","active","done"]}}, required:["text","status"]}}}, required:["todos"]}`), because
+     `hive.ts` is loaded by `node --test` with no node_modules and a value import of `typebox` would crash
+     the module. `import type` only. Verified research-time that typebox 1.3.7 `Compile` accepts it.
+   - Semantics: wholesale replace (the whole list each call), matching `plan` kind and Claude's `TodoWrite`.
+     No IDs; the daemon carries tallies forward by text.
+   - `execute` returns `{content: [text summary], details: {todos}}` — state lives in the tool result
+     details, as Pi's own `examples/extensions/todo.ts` does, so it survives branch/resume.
+   - `execute` does **not** post and keeps no side state. The plan is posted from `tool_execution_end` when
+     `toolName === "hive_todo" && !isError`, together with that `tool_end`, read from
+     `event.result?.details?.todos` (`ToolExecutionEndEvent.result` is the `AgentToolResult` carrying
+     `details`, `types.d.ts:623-629` — re-verified at step 0). No call-ID map, so nothing can leak when an
+     end never fires. Missing/malformed `details` → only `tool_end`. `result` itself never enters a frame
+     (C3). A failed or blocked call changes no plan. Why not post from `execute`: it runs before end and
+     would land a plan for a call Pi later reports as errored/aborted.
+   - An empty `todos` list posts `plan` with `items: []`; `omitempty` drops it and `setPlan(nil)` clears —
+     a test pins that the frame is still a `plan` kind.
+
+6. **Resume/branch reconstruction.** One helper `planFromBranch(ctx)` walks
+   `ctx.sessionManager.getBranch()` for the last `toolResult` message with `toolName === "hive_todo"`, `isError !== true` and
+   `details.todos` (an `afterToolCall` hook can flip `isError` while keeping `execute`'s `details`,
+   `agent-loop.js:504-512,549-552`; the live end handler posts no plan for such a call, so the rebuild
+   must skip it too). It runs on `session_start` (every `reason`: startup/reload/new/resume/fork) and on
+   `session_tree` (a `/tree` jump changes branch without `session_start`, `types.d.ts:506,918`). It
+   **always** posts a `plan` when the tool is enabled — the found list, or `items: []` when none — so `/new`,
+   a fork, or a jump to a branch without a todo call clears the previous conversation's plan instead of
+   leaving it on screen (`setPlan` is the only thing that clears it, `machine.go:484-487`). On
+   `session_start` it rides the same send as the existing `ping`. Wrapped in try/catch like
+   `lastAssistantText`; a throw posts `items: []`. Disabled tool ⇒ no plan frame at all. Without this a Pi `/resume` or restart shows no plan until the next call — the same
+   symptom the operator reported for Claude, avoidable here because Pi keeps the state in the session.
+
+7. **Setting path — reuse Phase 1's `agent-settings.json` / `Def.SpawnEnv`.**
+   - `internal/agent/settings.go`: `PiTodoTool bool json:"pi_todo_tool"` (default true, pointer on disk),
+     `const PiTodoToolEnv = "HIVE_PI_TODO_TOOL"`, `piSpawnEnv(sp)`.
+   - `piSpawnEnv` shares `piSpawnArgs`' gate (extension file present) and returns an **explicit**
+     `HIVE_PI_TODO_TOOL=1` or `=0` every time. Explicit both ways because the variable is Hive's own and an
+     inherited value (hived launched from inside a Hive session) must not override the setting — unlike
+     `CLAUDE_CODE_ENABLE_TODO_TOOLS`, which is the user's variable and is left alone.
+   - `IDPi` Def gets `SpawnEnv: piSpawnEnv`. Create, revive and restart already apply it via
+     `applyAgentSpawn` / `resolveAgentEnv`; custom `pi …` agents inherit it (`custom.go:168-175`).
+   - Wails `AgentSettings` gains `PiTodoTool` (mapped both ways in `GetAgentSettings`/`SaveAgentSettings`).
+   - Settings → Agents: second checkbox "Show Pi's plan progress in the sidebar", hint: adds a `hive_todo`
+     tool to Pi sessions Hive starts, uses some context, newly started sessions only.
+     Loaded/saved in the same guarded block as the Claude one (both fields saved together — `SaveSettings`
+     writes the whole struct).
+   - Extension side: disabled ⇒ no `registerTool`, no plan reconstruction, no plan frames. Tool events for
+     other tools still flow (they are not what the setting governs).
+
+8. **Daemon contract: no bump.** Nothing under `internal/{wire,daemon,session,registry}` or `cmd/hived`
+   non-test code changes (the only `cmd/hived` changes are `_test.go` + testdata, which
+   `check-daemon-contract.sh` ignores). An old daemon + new GUI writes a key nobody reads (harmless).
+   The extension file is embedded in hived and rewritten at daemon start, so new behaviour arrives with the
+   daemon binary — same as any other hived change that isn't a protocol change.
+
+Alternative ruled out: posting plan items (`plan_item`) with IDs. Wholesale `plan` is simpler, needs no ID
+stability, and the list is already whole in the tool call. A late wholesale `plan` would be dropped by the
+ordering guard; the serialized send queue (step 1) delivers in stamp order so it never arrives late.
+
+### Files to change
+
+1. `internal/agent/pi/hive.ts` — `truncateBytes`; `encodeFrames(sessionId, events, at)`; `send`/`post`;
+   `deriveTarget` + helpers (exported for tests); `tool_execution_start`/`_end` handlers; `hive_todo`
+   registration gated on `HIVE_PI_TODO_TOOL`; plan from `tool_execution_end` `result.details`; `planFromBranch` on `session_start` / `session_tree`; header
+   comment ("one AGENT_EVENT" → "one or more").
+2. `internal/agent/pi/hive.test.ts` — fakes gain `registerTool` (recording); `collectFrames` typed
+   `Record<string, unknown>`; subscription-list assertion gains `tool_execution_start`, `tool_execution_end`,
+   `session_tree`; vectors path resolved from `import.meta.url` (the Go runner's cwd is `internal/agent`);
+   new tests (below).
+3. `internal/agent/pi_test.go` — `TestPiExtensionFramesAreValidWireFrames` calls the new signature and
+   adds a two-event case (HELLO + 2 AGENT_EVENTs, all decoded by `wire.ReadFrame`, `ok:false` survives as
+   `*bool` false, `items` decode to `[]wire.PlanItem`); `TestPiExtensionKindsAreOnTheAllowlist` required
+   list gains `tool_start`, `tool_end`, `plan`; the scraper is widened to also collect every
+   `kind:\s*"…"` literal in the file (so kinds inside `send([...])` are checked, not just `post("…")`), and
+   to assert that **every** collected kind is on the allowlist; `TestPiDefUsesSpawnArgs` also asserts `SpawnEnv`.
+4. `cmd/hived/toollabel_test.go` — `TestDeriveLabel` reads `testdata/toollabel/vectors.json`
+   (honouring `want_go`); fails if the file has zero vectors.
+5. `internal/agent/settings.go` — `PiTodoTool`, `PiTodoToolEnv`, `piSpawnEnv`, resolve/save.
+6. `internal/agent/agent.go` — `IDPi.SpawnEnv`; `SpawnEnv` doc comment "nil for every agent but Claude" → "Claude and Pi".
+7. `internal/agent/custom.go` — comment at :170-172.
+8. `internal/agent/settings_test.go` — replace `TestOnlyClaudeHasSpawnEnv` with `TestOnlyClaudeAndPiHaveSpawnEnv`; fix the `SpawnEnv != nil` expectation in `TestCustomAgentInheritsSpawnEnv`; new tests (below).
+9. `internal/registry/agent_env_test.go` — extend `TestEverySpawnPathCarriesHooksAndOptInTogether` with a Pi entry (create + restart + revive carry `-e` and `HIVE_PI_TODO_TOOL` together).
+10. `cmd/hivegui/app_calls.go` — `AgentSettings.PiTodoTool` both directions.
+11. `cmd/hivegui/frontend/src/components/modals/Settings.tsx` — second checkbox + hint, same load/save guard.
+12. `cmd/hivegui/frontend/test/dom/settings.test.tsx` — Pi toggle describe block.
+13. `test/e2e/wails-mock.ts`, `test/e2e-real/wails-bridge.ts`,
+    `cmd/hivegui/frontend/test/dom/settings-updates.test.tsx:49` — `pi_todo_tool: true` in agent settings mocks.
+14. `README.md:27-34` — Pi gets a plan via Hive's `hive_todo` tool; toggle location.
+15. `site/features.json` "Agent plan progress" blurb — Claude and Pi sessions.
+16. `docs/design-docs/agent-activity.md:59-71,104-123` — drop "planned, phase 3"; tool is `hive_todo`;
+    setting and env var; plan reconstructed from tool-result details on resume.
+17. `cmd/hived/pi_probe_test.go` — opt-in (`HIVE_PROBE_PI=1`) load check (see Tests).
+
+### New files
+
+- `cmd/hived/testdata/toollabel/vectors.json` — shared label vectors (Go + TS).
+- `.changesets/pi-tool-activity-and-plan.md` — `bump: minor`, user-visible: Pi sessions show the current
+  tool and plan progress; Settings → Agents Pi toggle.
+
+### Tests
+
+TS — `internal/agent/pi/hive.test.ts` (node:test, run via Go `TestPiExtensionRunsNodeTests`):
+- `tool_execution_start posts tool_start with tool, derived target and call_id` — args `{command:"FOO=1 npm test --secret=x"}` → `{kind:"tool_start", tool:"bash", target:"npm test", call_id}`; asserts the frame's JSON contains neither `--secret` nor any `args` key (C3).
+- `tool_execution_end posts tool_end with explicit ok` — `isError:false` → `ok:true`; `isError:true` → `ok:false` present (not omitted); no `result` content in the frame (C3).
+- `hive_todo success posts tool_end and plan on one connection` — fire start, call the registered `execute` with 2 todos, fire end → exactly one connection carrying `[tool_end, plan]`, same `at`, items `{text,status}` with no `tools`/`id`.
+- `hive_todo failure changes no plan` — end with `isError:true` → only `tool_end`, no `plan`.
+- `hive_todo end without details posts only tool_end` — `result` undefined / `details` missing / `todos` not an array.
+- `hive_todo empty list clears the plan` — `todos:[]` → a `plan` frame is sent.
+- `plan caps: 100 items, 200-byte text on a rune boundary`.
+- `todo tool disabled registers nothing and posts no plan` — `HIVE_PI_TODO_TOOL=0` → `registerTool` never called; a `tool_execution_end` for `hive_todo` and a `session_start` with a hive_todo branch post no `plan` (C1).
+- `todo tool enabled by default` — env var unset and `=1` → registered once, name `hive_todo`, parameters is a plain object with `required:["todos"]`.
+- `session_start reconstructs the plan from the last hive_todo tool result`.
+- `session_start reason "new" with no hive_todo result posts an empty plan` (clears the previous conversation's).
+- `session_tree rebuilds the plan for the new branch` — branch A has todos, jump to branch B without → `items: []`; back to A → A's list.
+- `malformed branch entries post ping and an empty plan`.
+- `rebuild skips an errored hive_todo result` — last result `isError:true` with `details.todos` → the previous good list (or `[]`).
+- `sends are serialized in stamp order` — test server delays closing connection 1; a second `post` fired meanwhile does not connect until connection 1 closes, and payloads arrive with non-decreasing `at`.
+- `a refused connection does not stall the queue` — first dial errors (socket path removed then restored), second report still arrives.
+- `queue is capped and drops the oldest` — with a server that never closes, pending stays ≤64 (exported `pendingSends()` test hook) and after the server closes the newest report is among those delivered.
+- `a synchronous connect throw advances the queue` — invalid socket path that throws synchronously, next report still sent.
+- `send rejects a batch over 8 events`.
+- `deriveTarget matches the shared vectors` — iterates `vectors.json` using `want_ts ?? want`; includes the Windows path vector (C2).
+- `encodeFrames caps every string field` — oversized tool/target/call_id/text.
+
+Go:
+- `cmd/hived/toollabel_test.go` `TestDeriveLabel` — now vector-driven; fails on an empty vector file.
+- `internal/agent/pi_test.go` `TestPiExtensionFramesAreValidWireFrames` — two-event decode as above.
+- `internal/agent/pi_test.go` `TestPiExtensionKindsAreOnTheAllowlist` — requires `tool_start`/`tool_end`/`plan`.
+- `internal/agent/settings_test.go`: `TestSettingsPiTodoToolMissingKeyDefaultsOn`, `TestSettingsRoundTrip` (extended with the Pi field), `TestPiSpawnEnvExplicitBothWays` (on → `=1`, off → `=0`), `TestPiSpawnEnvIgnoresInheritedValue` (lookupEnv reports `HIVE_PI_TODO_TOOL=0`, setting on → still `=1`), `TestPiSpawnEnvNeedsTheExtension` (no file → nil), `TestOnlyClaudeAndPiHaveSpawnEnv`.
+- `internal/registry/agent_env_test.go` `TestEverySpawnPathCarriesHooksAndOptInTogether` — Pi rows.
+- `cmd/hived/pi_probe_test.go` `TestPiProbeExtensionLoadsWithTodoTool` (`HIVE_PROBE_PI=1`) — `pi -e <written hive.ts> --list-models` with env set exits 0 with no extension load error, with the tool on and off (no tokens spent; per prior lesson).
+
+DOM — `cmd/hivegui/frontend/test/dom/settings.test.tsx` `describe('settings: Pi plan progress toggle')`:
+loads `pi_todo_tool` (default on when missing), saves both fields together, disabled + not saved when the
+settings file failed to load, hint mentions `hive_todo`, "newly started sessions only", aria-describedby.
+
+### Verification
+
+```
+node --test internal/agent/pi/                      # TS suite incl. vectors + disabled-tool tests
+go test ./internal/agent/... ./cmd/hived/... ./internal/registry/...
+scripts/test.sh                                      # go · unit · dom · e2e
+scripts/ui-lint.sh
+scripts/check-daemon-contract.sh origin/main         # expect: no bump required
+HIVE_PROBE_PI=1 go test ./cmd/hived -run TestPiProbe  # manual, real pi
+```
+Non-vacuity checks run once during implementation and recorded in Progress:
+- flip one vector's `want` → both Go and TS fail;
+- put a bogus kind inside `send([{kind:"bogus"}])` → `TestPiExtensionKindsAreOnTheAllowlist` fails;
+- revert the queue to per-post dials → the serialization test fails;
+- remove the empty-plan post on `session_start` → the `reason "new"` test fails;
+- make `tool_execution_end` spread the event into the frame → the C3 no-raw-args test fails;
+- drop the `HIVE_PI_TODO_TOOL` gate → the disabled test fails;
+- post the plan from `execute` instead of end → the failure-changes-no-plan test fails.
+
+### Open questions / risks
+
+- **Pi API drift**: installed pi-devkit is 0.85.0, running pi 0.85.1. Step 0 of implementation: verify
+  `registerTool` / `tool_execution_*` / tool-result `details` shape against the running pi's
+  `docs/extensions.md` and the load probe before writing handlers; log deviations in the decision log.
+- **CI actually runs the TS half**: `TestPiExtensionRunsNodeTests` skips when node can't strip types
+  (`pi_test.go:286-289`); confirm the CI job running `go test ./internal/agent/...` is the node-24 job
+  (`ci.yml:113`), or C2's "both reporters" could pass with the TS half skipped.
+- **Mixed-version downgrade**: an older GUI's `SaveAgentSettings` rewrites the file without
+  `pi_todo_tool`, silently turning a user's "off" back on. Harmless; recorded in the decision log.
+- **Permission windows**: `tool_execution_start` fires before a blocking `confirm()`, so order is
+  tool_start → waiting_permission → ui_prompt_end → tool_end; correct because `at` is stamped in the handler.
+  A parallel tool starting *inside* another extension's wait flips state to working — accepted, matches Claude.
+- **Go/JS URL parity** is close, not exact; divergences are pinned, not hidden.
+- **Restart after disabling**: a resumed Pi conversation that used `hive_todo` then has it unregistered;
+  the model sees a missing tool. Accepted, documented in the hint ("newly started sessions").
+- **Tool name**: `hive_todo` shows in the sidebar as the current tool while it runs — acceptable.
+- **Scraper coupling**: `TestPiExtensionKindsAreOnTheAllowlist` checks literal kinds in `post("…")` and
+  `kind: "…"`; a kind built from a variable is invisible to it. Documented in a comment beside `send`.
+- **`/reload`** creates a new extension instance with its own queue, so the old instance's
+  `session_shutdown` idle and the new `session_start` ping+plan can still race. Harmless: a late idle is
+  dropped by the ordering guard and the plan is newer.
+
+### Second opinion
+
+- **Round 1 — revise (confidence 7).** Five must-fix items, all applied: (1) the kind-allowlist scraper
+  was blind to kinds inside `send([...])` → widened to `kind: "…"` literals with a bogus-kind non-vacuity
+  step; (2) `/new` / fork left the previous plan on screen → every `session_start` posts a plan, empty when
+  none; (3) `session_tree` jumps ignored → same rebuild helper; (4) a wholesale `plan` could arrive after a
+  later-stamped event and be dropped silently → serialized send queue; (5) the call-ID stash map could leak
+  and was unverified → removed, plan read from `tool_execution_end` `result.details`.
+- **Round 2 — revise (confidence 7).** Round-1 items confirmed resolved (`session_tree` fires after the
+  leaf moves; same-`at` frames are not "late", `machine.go:403`; `result` carries `details`,
+  `agent-loop.js:532-539`). One new must-fix, applied without a third review (the loop runs at most two):
+  the branch rebuild must skip `hive_todo` results with `isError: true`, with a test. Nice-to-haves also
+  applied: stale "stash-by-call-id" and scraper-coupling text removed; queue advances on synchronous
+  connect throws; full queue drops the **oldest** report (a 64 × 2 s backlog would otherwise exceed
+  `HookStaleAfter`); `send` rejects batches over 8 frames; `/reload` race noted as harmless.
+
 ## Decision log
 
 - **2026-09-16** — **Command-word credential leak accepted and documented (operator
@@ -1353,6 +1607,8 @@ Append-only. The latest entry is authoritative.
   - **Shared JSON label vectors** read by both `toollabel_test.go` and `hive.test.ts`; known Go/JS URL divergences pinned per language.
   - Plan pie empty after a daemon restart (operator report) is a **separate follow-up**, not Phase 3 scope. Live Claude sessions revived at 16:14:08 carry `CLAUDE_CODE_ENABLE_TODO_TOOLS=1`, so the flag is not reset; hypothesis is the in-memory plan being lost while resumed conversations never re-send it. Unconfirmed.
 
+- **2026-09-16** — Phase 3 wedged-daemon queue policy: drop the **oldest** pending report when 64 are queued (a 64 × 2 s backlog would otherwise outlive `HookStaleAfter` and discard the freshest state). Mixed-version downgrade (older GUI rewrites `agent-settings.json` without `pi_todo_tool`, turning a user's "off" back on) accepted as harmless.
+
 ## Progress
 
 - **2026-09-15** — RESEARCH complete; three-way fan-out (Go daemon, frontend, Pi
@@ -1374,6 +1630,8 @@ Append-only. The latest entry is authoritative.
   when their fix is reverted. Live probes `TestClaudeProbeTaskToolsOptIn` and
   `TestClaudeProbeSubagentCount` passed (`HIVE_PROBE_CLAUDE=1`).
 - **2026-09-16** — Phase 2 merged (#420). Phase reset: `Phase: 3 of 4`, PR/Branch cleared, spec stage GATE → RESEARCH on `feature/416-phase-3`.
+
+- **2026-09-16** — Phase 3 PLAN approved via the HTML plan review (round 1, no feedback) after two second-opinion rounds (revise → revise, all must-fix applied). Stage → IMPLEMENT.
 
 ## Open questions / risks
 

@@ -5,7 +5,7 @@ title: "Agent activity view: see the plan and the tools, not just the state"
 type: enhancement
 complexity: L
 priority: P2
-stage: PLAN
+stage: IMPLEMENT
 ---
 
 # Agent activity view: see the plan and the tools, not just the state
