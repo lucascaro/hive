@@ -274,6 +274,88 @@ Conventions this feature touches:
 `brain-search` over the feature's terms returned no qualifying entries — no prior
 lessons matched.
 
+### Phase 3 research (2026-09-16, after #420)
+
+Two Explore workers (Pi wire path; settings path) against `origin/main` at 8a4b761d.
+
+**Pi extension today.** `internal/agent/pi/hive.ts` has no tool events and no
+`registerTool`. `encodeFrames(sessionId, kind, text, at)` (:45-59) builds HELLO + exactly
+one AGENT_EVENT and cannot carry `tool`/`target`/`call_id`/`ok`/`items`. `truncate()`
+(:69-75) is hard-wired to 512 bytes. `post(kind, text)` (:85-102) dials once per event and
+stamps `at` at call time. Test fakes `fakePi()`/`handlerPi()` (`hive.test.ts:16-26`) have no
+`registerTool`, so the first call throws in every existing test until both grow one;
+`collectFrames` is typed `Record<string,string>`; :100-115 pins the exact subscription list.
+
+**Wire shape the daemon already accepts** (Phases 1-2, no daemon change needed):
+`wire.AgentEvent` (`internal/wire/control.go:505-551`) — `tool`, `target`, `call_id`,
+`ok *bool`, `items []PlanItem`; `agent_id`/`agent_type` must stay unset for Pi (a set
+`agent_id` stops the event moving state/plan, `agentstate/machine.go:401`). `PlanItem`
+(:555-575) `{id?, text, status, tools?}` — reporter never sends `tools`. Caps (:597-611):
+target 120, plan text 200, 100 items, tool name / call_id 128. `applyEventFrame`
+(`daemon.go:788-825`) truncates, allows 8 frames per connection. `setPlan`
+(`activity.go:328-363`) replaces wholesale and carries tallies forward by ID then text;
+`setPlan(nil)` clears, so an empty todo list (dropped by `omitempty`) still clears.
+A late wholesale `plan` is dropped by the ordering guard (`activity.go:172-197`);
+`tool_end` falls back to the start's tool/target (:295-300).
+
+**Label derivation to port** (`cmd/hived/toollabel.go`): key allowlist in order
+`command`→`commandHead`; `file_path`/`path`/`notebook_path`→`baseName`; `url`→`urlHost`.
+`baseName` = text after the last `/` or `\` (:216-221). `commandHead` (:88-125): cut at
+`; | & \n \r < > ( )`, split whitespace, drop leading `NAME=value`, reject heads with
+`` = $ " ' @ : ` ``, append a subcommand only when `isSubcommand` accepts it (:188-209).
+`capLabel` 120 bytes rune-safe. No shared vectors — the table is inline Go
+(`toollabel_test.go:13-86`). Pi built-in arg keys (`bash`/`powershell` `command`;
+`read`/`write`/`edit`/`ls`/`grep`/`find` `path`) all hit the existing allowlist. JS
+`new URL().host` drops default ports and lowercases; Go `url.Parse` does not — parity is
+close, not exact. Byte vs UTF-16 lengths and `\s` vs `strings.Fields` differ at the edges.
+
+**Nothing keys off tool names** for display (`SessionRow.tsx:251,258` renders
+`current_tool` as text); lowercase Pi names show as `bash · npm test`.
+
+**Pi API** (pi-coding-agent 0.85.0 in `~/checkout/pi-devkit`; running pi 0.85.1):
+`registerTool(ToolDefinition)` (`types.d.ts:944`); `ToolDefinition` needs `name`, `label`,
+`description`, `parameters` (TypeBox schema), `execute(toolCallId, params, signal, onUpdate,
+ctx) → {content, details}`. `tool_execution_start` fires **before** the blocking
+`tool_call` hook/permission `confirm()`; `tool_execution_end` fires for blocked and aborted
+calls too; parallel mode ends in any order (`pi-agent-core/dist/agent-loop.js`).
+**TypeBox cannot be value-imported**: Pi's jiti loader aliases `typebox`, but
+`node --test` loads `hive.ts` with no node_modules. A plain JSON-Schema object as
+`parameters` validates under typebox 1.3.7 `Compile` (checked). Pi's own example todo
+extension is also named `todo` — a name clash if the user loads both.
+
+**Settings path — reuse Phase 1's.** `agent-settings.json` (`internal/agent/settings.go:22`)
+with pointer-`omitempty` fields defaulting on (:43-62), read at every spawn by
+`spawnSettings()` (:118-126). `Def.SpawnEnv` (`agent.go:66-72`) is wired only for Claude
+(:144); create (`registry/create.go:128`), revive (`registry.go:1139`) and restart
+(`:1256`) all apply it via `applyAgentSpawn` (:790-807), and custom `pi …` agents inherit it
+(`custom.go:168-175`). Wails `AgentSettings` maps fields by hand (`app_calls.go:114-135`);
+UI checkbox at `Settings.tsx:668-684` (label "Show Claude's plan progress in the sidebar"),
+local state, save guarded when load failed (:576-582). Mocks carry the field at
+`test/e2e/wails-mock.ts:1048-1056` and `test/e2e-real/wails-bridge.ts:327-334`.
+`TestOnlyClaudeHasSpawnEnv` (`settings_test.go:212`) and the `SpawnEnv != nil` check at
+:205 break once Pi gets a `SpawnEnv`.
+
+**Tests / CI.** `node --test` runs via Go `TestPiExtensionRunsNodeTests`
+(`internal/agent/pi_test.go:300-322`, node 24 in CI). `TestPiExtensionFramesAreValidWireFrames`
+(:161-236) expects exactly 2 frames. `TestPiExtensionKindsAreOnTheAllowlist` (:248-295)
+scrapes string literals inside `post(...)` — an object literal there would feed its keys
+into the allowlist check. Opt-in real probe `cmd/hived/pi_probe_test.go` (`HIVE_PROBE_PI=1`).
+
+**Daemon contract.** `DaemonContract = 12`. `check-daemon-contract.sh` watches
+`internal/{wire,daemon,session,registry}` and `cmd/hived` only. A Pi-extension + settings
+change touches none → no bump required (contract 10's note shows an extension-behaviour
+bump has precedent; judgement call).
+
+**Docs touched.** `README.md:27-34`, `site/features.json:3-6` ("a Claude session"),
+`docs/design-docs/agent-activity.md:59-71,104-123` ("planned, phase 3"), code comments
+"nil for every agent but Claude" (`agent.go:71`, `custom.go:170-172`), plus a new changeset.
+
+**Phase 3 prior lessons.**
+- Verify the Pi API sketch against the installed package's `docs/extensions.md` before
+  building; smoke-test loading with `pi -e <path> --list-models` (no tokens).
+- pi-devkit's node_modules can trail the running pi (0.85.0 vs 0.85.1) — compare versions
+  before relying on a newer API.
+
 ## Phase split (operator-approved)
 
 - **Phase 1 (this plan)** — data plane + sidebar. wire frames/kinds/fields,
