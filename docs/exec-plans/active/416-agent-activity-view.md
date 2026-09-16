@@ -676,6 +676,12 @@ Append-only. The latest entry is authoritative.
     - non-goals — PASS — activity is memory-only (agent-settings.json holds only the task-tools boolean); no raw tool arguments on any wire type; no transcript view, token/cost accounting, plugin loading or cross-session view; no Pi tier, inspector panel or activity grid in the diff.
     - doc accuracy — NEEDS_FOLLOWUP — changeset (type added, pr 417), site/features.json, README, DESIGN.md, design doc and spec all accurate; CHANGELOG.md and the generated spec index untouched. Three comments are false: internal/wire/control.go:19-23, internal/wire/frame.go:131-135 and internal/daemon/daemon.go:654-658 say a ModeEvent connection reads exactly one frame, but serveEvent drains up to eventMaxFrames (8). regression_of: n/a (changeset type is added). Also noted, not from this PR: AGENTS.md cites `.changesets/README.md` as the changeset schema, and that file does not exist.
 
+- **2026-09-16** — verdict: PASS; phase: 1/3; checks: 3 passed / 0 failed / 0 followups / 6 deferred (pass/fail/followup count dimensions; deferred counts acceptance criteria); followups: none; one-line: re-run after fixing the doc-accuracy follow-up on this branch — every Phase 1 criterion, every non-goal and every doc check passes.
+  - 2026-09-16 dimensions:
+    - acceptance — PASS — confirmed the only code change since the previous run (f8b92755) is comment-only; re-ran hook, agentstate, daemon, wire, agent and registry spawn-gate tests, Playwright sidebar-plan-pie 7/7, DOM 11/11, and the DaemonContract check. DEFERRED: Pi extension tests; the TypeScript half of separator-agnostic labels; the channel hive.ts will read the Pi todo-tool setting through (phase 2); panel and activity-grid Playwright checks (phase 3). The real-Claude opt-in probe skips outside HIVE_PROBE_CLAUDE=1 by design and was run by hand on 2026-09-16 (passed, with a negative control).
+    - non-goals — PASS — unchanged from the previous run and re-verified against the full PR diff.
+    - doc accuracy — PASS — the four corrected comments match serveEvent (drains up to eventMaxFrames, invalid frame closes, read deadline refreshed per frame); a repo-wide sweep found no remaining false one-frame claim; changeset, site/features.json, README, DESIGN.md, design doc and spec re-confirmed; CHANGELOG.md and the generated spec index untouched. Noted, not this PR: AGENTS.md cites a nonexistent `.changesets/README.md` (predates the branch).
+
 ## Decision log
 
 - **2026-09-16** — **Command-word credential leak accepted and documented (operator
