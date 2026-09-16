@@ -41,7 +41,7 @@ func runGit(dir string, args ...string) (string, error) {
 	return strings.TrimSpace(string(out)), nil
 }
 
-// checkLatest reports whether the checkout's upstream branch carries a
+// checkLatest reports whether the pinned remote's main carries a
 // commit the running binary does not.
 //
 // The comparison is against the *running build*, not against HEAD,
@@ -50,6 +50,10 @@ func runGit(dir string, args ...string) (string, error) {
 // date tree. When the build id can't be located in the repo (a "dev"
 // build, a dirty build, a commit that was force-pushed away) we fall
 // back to comparing HEAD, which is the best signal left.
+//
+// The checkout's own branch plays no part: what stageLatest builds is
+// the remote's main in its own tree (update_source_tree.go), so that
+// is what the check has to measure against.
 func checkLatest(repo string) (UpdateInfo, error) {
 	info := UpdateInfo{
 		Channel: ChannelLatest,
@@ -57,18 +61,20 @@ func checkLatest(repo string) (UpdateInfo, error) {
 		Stage:   StageIdle,
 	}
 
-	upstream, err := runGitFn(repo, "rev-parse", "--abbrev-ref", "--symbolic-full-name", "@{upstream}")
+	remote, err := pinnedRemote(repo)
 	if err != nil {
-		// No upstream is a configuration state, not a failure: say so
-		// and skip rather than raising an error banner every 6 hours.
+		// No pinned remote is a configuration state, not a failure:
+		// say so and skip rather than raising an error banner every
+		// 6 hours.
 		info.Skipped = true
-		info.Message = "checkout has no upstream branch to track"
+		info.Message = err.Error()
 		return info, nil
 	}
+	upstream := remote + "/" + latestBranch
 
 	// Fetch before comparing, or the answer is however stale the last
 	// manual fetch was.
-	if _, err := runGitFn(repo, "fetch", "--quiet"); err != nil {
+	if _, err := runGitFn(repo, "fetch", "--quiet", remote); err != nil {
 		return info, err
 	}
 

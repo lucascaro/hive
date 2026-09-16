@@ -293,7 +293,7 @@ func TestSigningTeamIDMatchesSource(t *testing.T) {
 // applyStagedBundle serves both update channels. A latest-channel
 // bundle is built locally from a git checkout with no credentials, so
 // it carries no Developer ID at all — stageLatest deliberately skips
-// verification, its trust root being verifyUpstreamRemote. Verifying
+// verification, its trust root being pinnedRemote. Verifying
 // it at apply time would tell a user who just waited out a
 // multi-minute build that their own build is "not signed by the Hive
 // developer" — and only from the day a Team ID is pinned, long after
@@ -321,8 +321,9 @@ func TestApplyStagedBundleSkipsVerifyForLatestChannel(t *testing.T) {
 	}
 	t.Cleanup(func() { executablePath = prevExe })
 
-	// stageLatest returns a path inside the user's checkout, never
-	// under updatesRoot(), so the swap must go through untouched.
+	// stageLatest returns a path inside its own build tree, which sits
+	// beside updatesRoot() and never under it, so the swap must go
+	// through untouched.
 	latest := stubBundle(t, filepath.Join(t.TempDir(), "cmd", "hivegui", "build", "bin"), "new")
 	if err := applyStagedBundle(latest); err != nil {
 		t.Fatalf("applyStagedBundle(latest-channel bundle) = %v; a locally built bundle carries no "+

@@ -11,7 +11,8 @@ import (
 )
 
 // Update channels. "release" tracks tagged GitHub releases; "latest"
-// tracks the tip of the source checkout's upstream branch.
+// tracks the tip of main on this repository's remote, fetched through
+// and built beside the source checkout (update_source_tree.go).
 const (
 	ChannelRelease = "release"
 	ChannelLatest  = "latest"

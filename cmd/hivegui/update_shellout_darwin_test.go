@@ -113,12 +113,16 @@ func TestStageUpdateRoutesByChannel(t *testing.T) {
 	writeFile(t, filepath.Join(dir, "update.json"),
 		fmt.Sprintf(`{"channel":"latest","source_repo":%q}`, repo))
 
-	// Latest: a dirty tree refuses before anything else happens.
-	g := &fakeGit{answers: map[string]string{"status --porcelain": " M x.go"}}
+	// Latest: a checkout with no remote at the pinned repository refuses
+	// before anything else happens.
+	g := &fakeGit{answers: map[string]string{
+		"remote":                "origin",
+		"remote get-url origin": "https://github.com/someone-else/hive.git",
+	}}
 	g.install(t)
 	_, err := stageUpdate(UpdateInfo{Channel: ChannelLatest}, func(string) {})
-	if err == nil || !strings.Contains(err.Error(), "uncommitted changes") {
-		t.Fatalf("latest channel err = %v, want the dirty-tree refusal from stageLatest", err)
+	if err == nil || !strings.Contains(err.Error(), "refusing to build") {
+		t.Fatalf("latest channel err = %v, want the unpinned-remote refusal from stageLatest", err)
 	}
 
 	// Release: no such release asset. Crucially, it must NOT have gone
@@ -338,27 +342,26 @@ func TestRunBuildScriptReportsMissingScript(t *testing.T) {
 	}
 }
 
-// stageLatest's other refusal: a detached HEAD has no upstream to
-// fast-forward from, and pulling would either fail confusingly or move
-// the user somewhere they did not ask to go.
-func TestStageLatestRefusesDetachedHead(t *testing.T) {
-	dir := isolateStateDir(t)
-	repo := fakeHiveCheckout(t)
-	writeFile(t, filepath.Join(dir, "update.json"),
-		fmt.Sprintf(`{"channel":"latest","source_repo":%q}`, repo))
-
-	g := &fakeGit{
-		answers: map[string]string{"status --porcelain": ""},
-		errs:    map[string]error{"symbolic-ref --quiet": fmt.Errorf("exit status 1")},
-	}
-	g.install(t)
+// The checkout's HEAD is not the updater's business: a detached HEAD
+// used to be refused because there was nothing to fast-forward, and now
+// there is nothing to fast-forward at all. The build runs in the
+// channel's own tree, and the checkout is never asked what it has out.
+func TestStageLatestIgnoresTheCheckoutsHead(t *testing.T) {
+	g := latestRepo(t, nil, map[string]error{"symbolic-ref --quiet": fmt.Errorf("exit status 1")})
+	var builtIn string
+	prev := runBuildFn
+	runBuildFn = func(repo string, _ func(string)) error { builtIn = repo; return fmt.Errorf("stop here") }
+	t.Cleanup(func() { runBuildFn = prev })
 
 	_, err := stageLatest(UpdateInfo{Channel: ChannelLatest}, func(string) {})
-	if err == nil || !strings.Contains(err.Error(), "detached HEAD") {
-		t.Fatalf("stageLatest err = %v, want the detached-HEAD refusal", err)
+	if err == nil || !strings.Contains(err.Error(), "stop here") {
+		t.Fatalf("stageLatest err = %v, want it to reach the build step", err)
 	}
-	if g.ran("pull") {
-		t.Error("stageLatest pulled onto a detached HEAD")
+	if want := latestBuildTree(); builtIn != want {
+		t.Errorf("build.sh ran in %q, want the build tree %q", builtIn, want)
+	}
+	if g.ran("pull") || g.ran("symbolic-ref") {
+		t.Errorf("stageLatest touched or inspected the checkout's HEAD; calls: %q", g.calls)
 	}
 }
 
@@ -535,17 +538,11 @@ func latestRepo(t *testing.T, answers map[string]string, errs map[string]error) 
 	if answers == nil {
 		answers = map[string]string{}
 	}
-	if _, ok := answers["status --porcelain"]; !ok {
-		answers["status --porcelain"] = ""
-	}
-	if _, ok := answers["rev-parse --abbrev-ref --symbolic-full-name @{upstream}"]; !ok {
-		answers["rev-parse --abbrev-ref --symbolic-full-name @{upstream}"] = "origin/main"
+	if _, ok := answers["remote"]; !ok {
+		answers["remote"] = "origin"
 	}
 	if _, ok := answers["remote get-url origin"]; !ok {
 		answers["remote get-url origin"] = "git@github.com:" + updateRepo + ".git"
-	}
-	if _, ok := answers["rev-list --left-right --count origin/main...HEAD"]; !ok {
-		answers["rev-list --left-right --count origin/main...HEAD"] = "0\t0"
 	}
 	g := &fakeGit{answers: answers, errs: errs}
 	g.install(t)
@@ -555,7 +552,7 @@ func latestRepo(t *testing.T, answers map[string]string, errs map[string]error) 
 // The source repo path is read out of update.json and its contents get
 // built and executed. validateSourceRepo only proves the directory
 // *looks* like hive — .git, build.sh and a module line are all
-// plantable — so the upstream remote is the real check.
+// plantable — so the pinned remote is the real check.
 func TestStageLatestRefusesForeignRemote(t *testing.T) {
 	g := latestRepo(t, map[string]string{
 		"remote get-url origin": "https://github.com/someone-else/hive.git",
@@ -569,8 +566,8 @@ func TestStageLatestRefusesForeignRemote(t *testing.T) {
 	if err == nil || !strings.Contains(err.Error(), "refusing to build") {
 		t.Fatalf("stageLatest err = %v, want a refusal naming the foreign remote", err)
 	}
-	if g.ran("pull") {
-		t.Error("stageLatest pulled from an unpinned remote")
+	if g.ran("fetch") || g.ran("worktree") {
+		t.Errorf("stageLatest fetched from an unpinned remote; calls: %q", g.calls)
 	}
 	if built {
 		t.Error("stageLatest built code from an unpinned remote")
@@ -599,8 +596,9 @@ func TestStageLatestAcceptsBothRemoteSpellings(t *testing.T) {
 	}
 }
 
-// A pull runs the checkout's own hooks before build.sh gets a turn, so
-// a planted post-merge hook would execute from a button press.
+// Adding the worktree runs the checkout's own post-checkout hook before
+// build.sh gets a turn, so a planted hook would execute from a button
+// press. The checkout is never pulled at all any more.
 func TestStageLatestDisablesGitHooks(t *testing.T) {
 	g := latestRepo(t, nil, nil)
 	prev := runBuildFn
@@ -609,38 +607,33 @@ func TestStageLatestDisablesGitHooks(t *testing.T) {
 
 	_, _ = stageLatest(UpdateInfo{Channel: ChannelLatest}, func(string) {})
 
-	var pull string
-	for _, c := range g.calls {
-		if strings.Contains(c, "pull") {
-			pull = c
-		}
+	add := firstCall(g, "worktree add")
+	if add < 0 {
+		t.Fatalf("stageLatest never added the build tree; calls: %q", g.calls)
 	}
-	if pull == "" {
-		t.Fatal("stageLatest never pulled")
+	if !strings.Contains(g.calls[add], "core.hooksPath=/dev/null") {
+		t.Errorf("worktree add = %q, want hooks disabled", g.calls[add])
 	}
-	if !strings.Contains(pull, "core.hooksPath=/dev/null") {
-		t.Errorf("pull invocation = %q, want hooks disabled", pull)
-	}
-	if !strings.Contains(pull, "--ff-only") {
-		t.Errorf("pull invocation = %q, want --ff-only", pull)
+	if g.ran("pull") {
+		t.Errorf("stageLatest pulled the checkout; calls: %q", g.calls)
 	}
 }
 
-// A pull that fails must stop the staging, not fall through to building
-// whatever is currently checked out.
-func TestStageLatestStopsOnPullFailure(t *testing.T) {
-	latestRepo(t, nil, map[string]error{"-c core.hooksPath=/dev/null": fmt.Errorf("would clobber local changes")})
+// A fetch that fails must stop the staging, not fall through to
+// building whatever the build tree last had.
+func TestStageLatestStopsOnFetchFailure(t *testing.T) {
+	latestRepo(t, nil, map[string]error{"fetch --quiet": fmt.Errorf("fatal: unable to access 'https://github.com/'")})
 	built := false
 	prev := runBuildFn
 	runBuildFn = func(string, func(string)) error { built = true; return nil }
 	t.Cleanup(func() { runBuildFn = prev })
 
 	_, err := stageLatest(UpdateInfo{Channel: ChannelLatest}, func(string) {})
-	if err == nil || !strings.Contains(err.Error(), "would clobber") {
-		t.Fatalf("stageLatest err = %v, want the pull failure surfaced", err)
+	if err == nil || !strings.Contains(err.Error(), "unable to access") {
+		t.Fatalf("stageLatest err = %v, want the fetch failure surfaced", err)
 	}
 	if built {
-		t.Error("stageLatest built after a failed pull")
+		t.Error("stageLatest built after a failed fetch")
 	}
 }
 

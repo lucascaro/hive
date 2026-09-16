@@ -245,6 +245,14 @@ latest channel.
   running images out of the install directory for the duration of a
   multi-minute build, leaving the install broken if the app dies
   mid-build.
+- **2026-09-16** — The install-dir-is-build-dir collision is gone rather
+  than refused: the latest channel now builds in a linked worktree of the
+  checkout under the state dir (`update_source_tree.go`), on every
+  platform, so an update never erases the checkout's build directory and
+  the checkout's branch, dirty state and HEAD no longer matter.
+  `TestStageLatestRefusesBuildDirInstall` (shipped as
+  `TestCheckLatestInstallLayoutRefusesBuildDir`) became
+  `TestStageLatestBuildsThePrivateTreeNotTheCheckout`.
 - **2026-09-12** — darwin `canApply` stays unconditionally true. Why:
   macOS cannot be compiled or tested locally; a real probe there is a
   behaviour change that belongs in its own PR.

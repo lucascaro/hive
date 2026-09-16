@@ -235,13 +235,22 @@ func extractOne(f *zip.File, dest string) error {
 
 // ---------------------------- latest channel -----------------------------
 
-// stageLatest fast-forwards the source checkout and builds it.
+// stageLatest checks out the pinned remote's main into the channel's
+// own build tree and builds it there.
 //
-// Every refusal is pre-flighted before the pull or the build runs —
-// the install-layout ones here, the checkout ones in preflightCheckout.
-// That ordering is the whole point: a build is minutes long, and a
+// Every refusal is pre-flighted before the tree moves or the build
+// runs — the writable-install probe here, the remote pin in
+// pinnedRemote, the fetch in prepareBuildTree. That ordering is the
+// whole point: a build is minutes long, and a
 // failure the updater could have predicted from the start should not
 // cost the user those minutes with the button stuck on "Updating…".
+//
+// Building in a tree of its own is also what lets a Hive run straight
+// out of the checkout's cmd/hivegui/build/bin: `wails build -clean`
+// wipes that directory, and Windows will not delete a mapped image, so
+// building the checkout itself used to be refused for that layout.
+// The build now wipes the build tree's directory instead, and the
+// checkout's is simply where the swap installs to.
 func stageLatest(info UpdateInfo, progress func(string)) (string, error) {
 	settings, err := loadUpdateSettings()
 	if err != nil {
@@ -251,13 +260,9 @@ func stageLatest(info UpdateInfo, progress func(string)) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	buildDir := buildOutputDir(repo)
 
 	install, err := installDirFn()
 	if err != nil {
-		return "", err
-	}
-	if err := checkLatestInstallLayout(install, buildDir); err != nil {
 		return "", err
 	}
 	if err := ensureWritable(install); err != nil {
@@ -267,26 +272,24 @@ func stageLatest(info UpdateInfo, progress func(string)) (string, error) {
 	progress("Checking the source checkout…")
 	// The checkout path comes out of update.json, and validateSourceRepo
 	// only proves the directory *looks* like hive — .git, build.sh and a
-	// module line are all plantable. Pinning the upstream remote, which
-	// preflightCheckout does among its other refusals, is the check
-	// that the code about to be pulled and executed is actually ours.
-	if err := preflightCheckout(repo); err != nil {
+	// module line are all plantable. Pinning the remote is the check
+	// that the code about to be fetched and executed is actually ours.
+	remote, err := pinnedRemote(repo)
+	if err != nil {
 		return "", err
 	}
 
-	progress("Pulling latest commits…")
-	// core.hooksPath=/dev/null: a pull runs the checkout's own hooks
-	// (post-merge, post-checkout) before build.sh gets a turn, so a
-	// planted hook would execute from a button press. Nothing this
-	// button does needs hooks.
-	if _, err := runGitFn(repo, "-c", "core.hooksPath=/dev/null", "pull", "--ff-only"); err != nil {
+	progress("Fetching latest commits…")
+	tree, err := prepareBuildTree(repo, remote)
+	if err != nil {
 		return "", err
 	}
 
 	progress("Building… (this takes a few minutes)")
-	if err := runBuildFn(repo, progress); err != nil {
+	if err := runBuildFn(tree, progress); err != nil {
 		return "", err
 	}
+	buildDir := buildOutputDir(tree)
 	if err := verifyPayload(buildDir); err != nil {
 		return "", err
 	}
@@ -296,28 +299,6 @@ func stageLatest(info UpdateInfo, progress func(string)) (string, error) {
 // buildOutputDir is where build.sh leaves the Windows binaries.
 func buildOutputDir(repo string) string {
 	return filepath.Join(repo, "cmd", "hivegui", "build", "bin")
-}
-
-// checkLatestInstallLayout refuses the one layout the latest channel
-// cannot update: Hive running straight out of its own build directory.
-//
-// `wails build -clean` wipes cmd/hivegui/build/bin before writing to
-// it, and Windows will not delete a mapped image — so the build would
-// fail on the running hivegui.exe before producing anything. macOS
-// never hits this because POSIX unlink happily removes a running
-// binary's directory entry.
-//
-// Refusing is the deliberate choice over working around it. The
-// workaround is to move the running images out of the install directory
-// for the duration of a multi-minute build, which leaves the user with
-// no installed Hive if the app dies in the middle.
-func checkLatestInstallLayout(install, buildDir string) error {
-	if !sameDir(install, buildDir) {
-		return nil
-	}
-	return fmt.Errorf("this copy of Hive runs from its own build directory (%s), which the build step has to erase. "+
-		"Copy %s and %s somewhere outside the checkout — %%LOCALAPPDATA%%\\Programs\\Hive is the usual spot — "+
-		"and run Hive from there; updates then apply in place", install, guiExe, daemonExe)
 }
 
 // runBuildScript runs build.sh through bash and streams its output into

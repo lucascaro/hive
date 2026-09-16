@@ -15,7 +15,7 @@ import (
 // TestMain points the two platform seams at stubs that fail loudly.
 // Several tests below assert that StartUpdate/ApplyUpdateAndRestart
 // *refuse* — and the production seams are a GitHub download (or a
-// `git pull` + `./build.sh` over the developer's own checkout) and an
+// `git worktree add` + `./build.sh` beside the developer's checkout) and an
 // in-place swap of the running Hive.app followed by a real daemon
 // restart. The moment one of those guards regresses, the test that
 // exists to catch it would instead replace the developer's install.

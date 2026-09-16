@@ -13,34 +13,19 @@ import "path/filepath"
 // instead of discovering it by clicking Update — which is the whole
 // complaint this port exists to fix.
 //
-// It deliberately does not try to predict a build failure. Missing
-// toolchains, a dirty tree and a detached HEAD are all things
-// stageLatest reports with a specific message, and all things the user
-// can fix without moving their install.
+// It deliberately does not try to predict a build failure. A missing
+// toolchain or an unreachable remote are things stageLatest reports
+// with a specific message, and things the user can fix without moving
+// their install. Where the install lives relative to the checkout no
+// longer matters either: the latest channel builds in its own tree
+// (update_source_tree.go), so even the checkout's cmd/hivegui/build/bin
+// is just a directory the swap installs into.
 func updateCapability() (bool, string) {
 	install, err := installDirFn()
 	if err != nil {
 		return false, "Hive cannot tell where it is installed, so it cannot update in place"
 	}
 	if err := ensureWritable(install); err != nil {
-		return false, err.Error()
-	}
-	// The latest channel builds into a directory it first erases, which
-	// cannot be the one Hive is running from. Checked here as well as in
-	// stageLatest so the button is never offered for an install that
-	// cannot take it.
-	settings, err := loadUpdateSettings()
-	if err != nil || settings.Channel != ChannelLatest {
-		return true, ""
-	}
-	repo, err := resolveSourceRepo(settings.SourceRepo)
-	if err != nil {
-		// Not a capability problem: the latest-channel check reports a
-		// missing or unusable checkout itself, with a better message
-		// than anything this function could offer.
-		return true, ""
-	}
-	if err := checkLatestInstallLayout(install, buildOutputDir(repo)); err != nil {
 		return false, err.Error()
 	}
 	return true, ""

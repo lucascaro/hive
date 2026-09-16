@@ -846,9 +846,7 @@ function SettingsDialog({ root }: { root: HTMLElement }): ReactNode {
             }
           >
             <option value={CHANNEL_RELEASE}>Release — tagged versions</option>
-            <option value={CHANNEL_LATEST}>
-              Latest — tip of your checkout
-            </option>
+            <option value={CHANNEL_LATEST}>Latest — tip of main</option>
           </select>
         </label>
         {/* A container, not a field: it holds the labelled input and the

@@ -69,8 +69,7 @@ export function describeVersion(info: UpdateInfoLike): string {
  *
  * `canApply` is the backend's answer, not a guess from the user agent.
  * It is false wherever the in-app swap cannot run — a platform with no
- * implementation, an install directory Hive cannot write to, a checkout
- * the updater would have to erase while running from it — and
+ * implementation, an install directory Hive cannot write to — and
  * `canApplyReason` says which. The button never offers to stage a build
  * it could not install; the reason is what the user reads instead. */
 export function updateButtonState(

@@ -172,7 +172,7 @@ updates it looks for depends on the channel you pick in
 | Channel | Checks | Applying it |
 |---------|--------|-------------|
 | **Release** (default) | A newer tagged release than the running version | Downloads the macOS zip, verifies its SHA-256 against the published `checksums.txt`, unpacks it |
-| **Latest** | Whether your source checkout's upstream branch has commits the running build doesn't | `git pull --ff-only` then `./build.sh` in that checkout |
+| **Latest** | Whether `main` on this repository's remote has commits the running build doesn't | Fetches, checks `main` out into a worktree of its own, runs `./build.sh` there |
 
 The release check is a single anonymous `GET` to
 `api.github.com/repos/lucascaro/hive/releases/latest` (no identifying
@@ -181,14 +181,17 @@ channel, untagged dev builds — anything built without `./build.sh
 --version <tag>` — skip the check entirely and never call out; the
 latest channel is the one built for those.
 
-The latest channel pulls and *executes* code, so it refuses any checkout
-whose tracked branch does not come from this repository, and runs git
-with hooks disabled.
+The latest channel fetches and *executes* code, so it refuses any
+checkout with no remote pointing at this repository, and runs git with
+hooks disabled.
 
 The latest channel needs to know where your checkout is. Hive finds it
 by walking up from its own binary, which works for a locally built app;
-for an installed `Hive.app` you point at the directory yourself. It
-refuses to pull over a dirty working tree or a detached HEAD.
+for an installed `Hive.app` you point at the directory yourself. The
+checkout only supplies the remote and the object store: the build runs
+in a linked worktree of it (`latest-src` under Hive's state directory),
+detached at the remote's `main`, so whatever branch you have checked
+out is left exactly as it was — dirty, detached or diverged.
 
 The SHA-256 manifest is an **integrity** check: it is published in the
 same release as the zip, so it catches a truncated or corrupted download.
@@ -218,9 +221,7 @@ Two things are worth knowing on Windows. The download is checksum-verified
 but not signature-verified — macOS pins the bundle to Hive's Apple Developer
 team, and no Windows release binary is signed, so there is no equivalent
 publisher to pin. And Hive has to be installed somewhere it can write:
-`%LOCALAPPDATA%\Programs\Hive` is the usual spot. Running it out of a
-checkout's own `cmd/hivegui/build/bin` is refused on the latest channel,
-because the build step erases that directory.
+`%LOCALAPPDATA%\Programs\Hive` is the usual spot.
 
 ## Layout
 

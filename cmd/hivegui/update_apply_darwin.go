@@ -153,11 +153,12 @@ func stageRelease(info UpdateInfo, progress func(string)) (string, error) {
 
 // ---------------------------- latest channel -----------------------------
 
-// stageLatest fast-forwards the source checkout and builds it.
+// stageLatest checks out the pinned remote's main into the channel's
+// own build tree and builds it there.
 //
-// Everything that can be refused is refused before the checkout moves
-// or the build starts — see preflightCheckout for the list and the
-// order.
+// Everything that can be refused is refused before the tree moves or
+// the build starts: the remote pin in pinnedRemote, then the fetch in
+// prepareBuildTree.
 func stageLatest(info UpdateInfo, progress func(string)) (string, error) {
 	settings, err := loadUpdateSettings()
 	if err != nil {
@@ -171,27 +172,26 @@ func stageLatest(info UpdateInfo, progress func(string)) (string, error) {
 	progress("Checking the source checkout…")
 	// The checkout path comes out of update.json, and validateSourceRepo
 	// only proves the directory *looks* like hive — .git, build.sh and a
-	// module line are all plantable. Pinning the upstream remote, which
-	// preflightCheckout does among its other refusals, is the check
-	// that the code about to be pulled and executed is actually ours.
-	if err := preflightCheckout(repo); err != nil {
+	// module line are all plantable. Pinning the remote is the check
+	// that the code about to be fetched and executed is actually ours.
+	remote, err := pinnedRemote(repo)
+	if err != nil {
 		return "", err
 	}
 
-	progress("Pulling latest commits…")
-	// core.hooksPath=/dev/null: a pull runs the checkout's own hooks
-	// (post-merge, post-checkout) before build.sh gets a turn, so a
-	// planted hook would execute from a button press. Nothing this
-	// button does needs hooks.
-	if _, err := runGitFn(repo, "-c", "core.hooksPath=/dev/null", "pull", "--ff-only"); err != nil {
+	progress("Fetching latest commits…")
+	// The build happens in the channel's own worktree of the checkout,
+	// never in the checkout itself — see update_source_tree.go.
+	tree, err := prepareBuildTree(repo, remote)
+	if err != nil {
 		return "", err
 	}
 
 	progress("Building… (this takes a few minutes)")
-	if err := runBuildFn(repo, progress); err != nil {
+	if err := runBuildFn(tree, progress); err != nil {
 		return "", err
 	}
-	bundle := filepath.Join(repo, "cmd", "hivegui", "build", "bin", bundleName)
+	bundle := filepath.Join(tree, "cmd", "hivegui", "build", "bin", bundleName)
 	if err := verifyBundle(bundle); err != nil {
 		return "", err
 	}
@@ -280,7 +280,7 @@ func applyStagedBundle(staged string) error {
 	// and a latest-channel bundle was built locally from a git
 	// checkout with no credentials, so it carries no Developer ID at
 	// all — stageLatest deliberately skips this check, its trust root
-	// being verifyUpstreamRemote. Verifying it here would tell a user
+	// being pinnedRemote. Verifying it here would tell a user
 	// who just waited out a multi-minute build that their own build is
 	// "not signed by the Hive developer", and it would only start
 	// doing so the day a Team ID is pinned.

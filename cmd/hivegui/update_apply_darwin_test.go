@@ -154,33 +154,36 @@ func TestStageReleaseRequiresChecksumManifest(t *testing.T) {
 	}
 }
 
-func TestStageLatestRefusesDirtyWorktree(t *testing.T) {
+// A dirty checkout used to be refused, because pulling over
+// uncommitted work is how you lose it. Nothing is pulled over it any
+// more: the build runs in the channel's own tree, and the checkout's
+// state is never even read.
+func TestStageLatestBuildsBesideADirtyCheckout(t *testing.T) {
 	dir := isolateStateDir(t)
 	repo := fakeHiveCheckout(t)
 	writeFile(t, filepath.Join(dir, "update.json"),
 		fmt.Sprintf(`{"channel":"latest","source_repo":%q}`, repo))
 
 	g := &fakeGit{answers: map[string]string{
-		"status --porcelain": " M cmd/hivegui/app.go",
+		"remote":                "origin",
+		"remote get-url origin": "git@github.com:" + updateRepo + ".git",
+		"status --porcelain":    " M cmd/hivegui/app.go",
 	}}
 	g.install(t)
-	built := false
+	var builtIn string
 	prev := runBuildFn
-	runBuildFn = func(string, func(string)) error { built = true; return nil }
+	runBuildFn = func(repo string, _ func(string)) error { builtIn = repo; return fmt.Errorf("stop here") }
 	t.Cleanup(func() { runBuildFn = prev })
 
 	_, err := stageLatest(UpdateInfo{Channel: ChannelLatest}, func(string) {})
-	if err == nil {
-		t.Fatal("stageLatest = nil error on a dirty tree, want a refusal")
+	if err == nil || !strings.Contains(err.Error(), "stop here") {
+		t.Fatalf("stageLatest err = %v, want it to reach the build step", err)
 	}
-	if !strings.Contains(err.Error(), "uncommitted changes") {
-		t.Errorf("error = %q, want it to name the uncommitted changes", err)
+	if want := latestBuildTree(); builtIn != want {
+		t.Errorf("build.sh ran in %q, want the build tree %q", builtIn, want)
 	}
-	if g.ran("pull") {
-		t.Error("stageLatest pulled over a dirty working tree")
-	}
-	if built {
-		t.Error("stageLatest built despite refusing to pull")
+	if g.ran("pull") || g.ran("status") {
+		t.Errorf("stageLatest touched or inspected the dirty checkout; calls: %q", g.calls)
 	}
 }
 

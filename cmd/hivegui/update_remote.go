@@ -11,8 +11,8 @@ import (
 // compared whole — a substring match let evil.example/lucascaro/hive
 // through, and this gate guards a pull that is then executed.
 //
-// It lives in a non-suffixed file, away from its only (darwin-only)
-// caller, so its table test runs on every platform CI builds.
+// Its only caller is pinnedRemote (update_source_tree.go), which is
+// portable too, so its table test runs on every platform CI builds.
 func remoteIsUpstream(remote string) bool {
 	remote = strings.TrimSpace(remote)
 	var host, path string

@@ -9,6 +9,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -347,24 +348,52 @@ func TestVerifyPayloadRejectsEmptyExe(t *testing.T) {
 	}
 }
 
-// The latest channel builds into a directory it erases first, so it
-// cannot be the directory Hive is running from.
-func TestCheckLatestInstallLayoutRefusesBuildDir(t *testing.T) {
-	repo := t.TempDir()
+// The latest channel builds in its own tree under the state dir, never
+// in the checkout. So a Hive running straight out of the checkout's
+// cmd/hivegui/build/bin — the layout `wails build -clean` used to
+// collide with — is now just another install directory, and the
+// checkout's own state (here: a dirty tree on a feature branch) is
+// never consulted, let alone pulled.
+func TestStageLatestBuildsThePrivateTreeNotTheCheckout(t *testing.T) {
+	dir := isolateStateDir(t)
+	repo := fakeHiveCheckout(t)
+	writeFile(t, filepath.Join(dir, "update.json"), `{"channel":"latest","source_repo":`+strconv.Quote(repo)+`}`)
 	build := buildOutputDir(repo)
 	if err := os.MkdirAll(build, 0o755); err != nil {
 		t.Fatal(err)
 	}
-	if err := checkLatestInstallLayout(build, build); err == nil {
-		t.Fatal("running from the build directory was accepted")
+	useInstallDir(t, build)
+
+	answers := pinnedCheckout()
+	answers["status --porcelain"] = " M cmd/hivegui/app.go"
+	answers["symbolic-ref --quiet --short HEAD"] = "feat/thing"
+	g := &fakeGit{answers: answers}
+	g.install(t)
+
+	var builtIn string
+	prev := runBuildFn
+	runBuildFn = func(repo string, _ func(string)) error {
+		builtIn = repo
+		writeFile(t, filepath.Join(buildOutputDir(repo), guiExe), "gui")
+		writeFile(t, filepath.Join(buildOutputDir(repo), daemonExe), "daemon")
+		return nil
 	}
-	// Case differences must not be a way around it.
-	if err := checkLatestInstallLayout(strings.ToUpper(build), build); err == nil {
-		t.Error("an upper-cased spelling of the build directory was accepted")
+	t.Cleanup(func() { runBuildFn = prev })
+
+	staged, err := stageLatest(UpdateInfo{Channel: ChannelLatest}, func(string) {})
+	if err != nil {
+		t.Fatalf("stageLatest = %v, want a build from the private tree", err)
 	}
-	other := t.TempDir()
-	if err := checkLatestInstallLayout(other, build); err != nil {
-		t.Errorf("a normal install was refused: %v", err)
+	if want := latestBuildTree(); builtIn != want {
+		t.Errorf("build.sh ran in %q, want the build tree %q", builtIn, want)
+	}
+	if want := buildOutputDir(latestBuildTree()); staged != want {
+		t.Errorf("staged = %q, want %q", staged, want)
+	}
+	for _, forbidden := range []string{"pull", "status", "symbolic-ref"} {
+		if g.ran(forbidden) {
+			t.Errorf("stageLatest ran %q against the checkout; calls: %q", forbidden, g.calls)
+		}
 	}
 }
 
@@ -486,6 +515,25 @@ func TestUpdateCapabilityRefusesUnwritableInstall(t *testing.T) {
 	}
 	if reason == "" {
 		t.Error("updateCapability refused without saying why")
+	}
+}
+
+// The latest channel no longer builds in the checkout, so a Hive
+// running out of the checkout's build directory is an install like any
+// other and the button must be offered for it.
+func TestUpdateCapabilityAcceptsAnInstallInTheCheckoutsBuildDir(t *testing.T) {
+	dir := isolateStateDir(t)
+	repo := fakeHiveCheckout(t)
+	writeFile(t, filepath.Join(dir, "update.json"), `{"channel":"latest","source_repo":`+strconv.Quote(repo)+`}`)
+	build := buildOutputDir(repo)
+	if err := os.MkdirAll(build, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	useInstallDir(t, build)
+
+	ok, reason := updateCapability()
+	if !ok {
+		t.Fatalf("updateCapability = false (%q) for an install in the checkout's build dir, want true", reason)
 	}
 }
 
