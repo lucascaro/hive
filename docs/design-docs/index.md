@@ -9,6 +9,8 @@ Index entries are short. Detailed rationale belongs in the per-doc files.
 <!-- One row per design doc. Add: `- [Title](slug.md) — one-line description` -->
 - [UI design system](ui/README.md) — tokens, themes, icons, components, patterns for the GUI; decisions + mocks
 - [The control plane](control-plane.md) — daemon-owned session state across agent CLIs: the three knowledge tiers, the `event` wire mode, what is deliberately out of scope
+- [Agent orchestration](agent-orchestration.md) — the per-session grant that lets an agent message, watch and spawn siblings; phased and evidence-gated
+- [Agent activity](agent-activity.md) — what an agent is doing *inside* a turn: plan and tool events from the hook/extension tiers, the source-side privacy rule, one renderer in three placements
 
 ## Core beliefs
 

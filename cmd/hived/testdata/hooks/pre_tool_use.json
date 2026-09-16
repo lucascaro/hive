@@ -2,5 +2,9 @@
   "session_id": "test-session",
   "hook_event_name": "PreToolUse",
   "tool_name": "Bash",
-  "tool_input": {"command": "sleep 12; touch probe.txt"}
+  "tool_input": {
+    "command": "sleep 12; touch probe.txt",
+    "description": "Slow probe"
+  },
+  "tool_use_id": "toolu_01PROBE"
 }

@@ -1,0 +1,18 @@
+{
+  "session_id": "test-session",
+  "hook_event_name": "PostToolUseFailure",
+  "tool_name": "TodoWrite",
+  "tool_input": {
+    "todos": [
+      {
+        "content": "should never appear",
+        "status": "pending",
+        "activeForm": "x"
+      }
+    ]
+  },
+  "tool_use_id": "toolu_01TWF",
+  "error": "Tool failed",
+  "is_interrupt": false,
+  "duration_ms": 9
+}

@@ -107,6 +107,33 @@ func (a *App) SaveCustomAgents(list []CustomAgent) error {
 	return agent.SaveCustom(in)
 }
 
+// AgentSettings is the payload of GetAgentSettings/SaveAgentSettings —
+// a main-package mirror of agent.Settings, for the same reason
+// CustomAgent mirrors agent.Custom: Wails generates the TypeScript model
+// from the bound type.
+type AgentSettings struct {
+	// ClaudeTaskTools opts newly started Claude sessions into Claude
+	// Code's task tools, which is where the sidebar's plan progress
+	// comes from.
+	ClaudeTaskTools bool `json:"claude_task_tools"`
+}
+
+// GetAgentSettings reads agent-settings.json. A malformed file is an
+// error rather than the defaults, so the Settings screen can refuse to
+// save over the file the user was trying to fix.
+func (a *App) GetAgentSettings() (AgentSettings, error) {
+	s, err := agent.LoadSettings()
+	return AgentSettings{ClaudeTaskTools: s.ClaudeTaskTools}, err
+}
+
+// SaveAgentSettings writes agent-settings.json. hived reads it when it
+// spawns a session, so no IPC is needed — and so the change reaches
+// newly started sessions only: a running process keeps the environment
+// it was started with.
+func (a *App) SaveAgentSettings(s AgentSettings) error {
+	return agent.SaveSettings(agent.Settings{ClaudeTaskTools: s.ClaudeTaskTools})
+}
+
 // CreateSessionOpts is the request CreateSession takes. A struct, not
 // a parameter list: the positional form had reached twelve arguments,
 // which is well past the point where the next reader can call it
@@ -604,6 +631,18 @@ func (a *App) ListIdeas(projectID string) error {
 		return err
 	}
 	return cs.WriteJSON(wire.FrameListIdeas, wire.ListIdeasReq{ProjectID: projectID})
+}
+
+// GetActivity asks for one session's stored tool ring and plan. The
+// frontend calls it when an activity view first renders a session;
+// after that the ACTIVITY fan-out keeps it current, which is why
+// nobody pays for the whole ring of every session at connect.
+func (a *App) GetActivity(sessionID string) error {
+	cs, err := a.requireControl()
+	if err != nil {
+		return err
+	}
+	return cs.WriteJSON(wire.FrameGetActivity, wire.GetActivityReq{SessionID: sessionID})
 }
 
 // AddIdea files one idea. sessionID is the session it was captured

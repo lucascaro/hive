@@ -251,6 +251,9 @@ func (e *Entry) Info() wire.SessionInfo {
 		StateSource:    st.Source,
 		LastPrompt:     st.LastPrompt,
 		LastSummary:    st.LastSummary,
+		PlanDone:       st.PlanDone,
+		PlanTotal:      st.PlanTotal,
+		CurrentTool:    st.CurrentTool,
 	}
 }
 
@@ -329,6 +332,12 @@ type Registry struct {
 	// ideaListeners receive idea events. Separate for the same reason
 	// projectListeners are.
 	ideaListeners map[IdeaListener]struct{}
+
+	// activityListeners receive ACTIVITY deltas. Separate for the same
+	// reason ideaListeners are, and because activity is the highest
+	// frequency feed the registry has: a slow activity consumer must
+	// not cost a client its session events.
+	activityListeners map[ActivityListener]struct{}
 
 	// createMu serializes the synchronous prefix of Create (id/color
 	// resolution, name planning, order splicing). The daemon now runs
@@ -471,14 +480,28 @@ func (r *Registry) ApplyAgentEvent(id string, ev wire.AgentEvent) error {
 		return ErrNotFound
 	}
 	prev := e.stateSnapshot()
-	if e.machine().Apply(agentstate.Event{
+	changed := e.machine().Apply(agentstate.Event{
 		Kind:   ev.Kind,
 		Source: ev.Source,
 		At:     at,
 		Text:   ev.Text,
-	}) {
+		// The daemon's own clock, so a tool's duration is measured
+		// across two of OUR readings rather than across two reporter
+		// processes' clocks. See agentstate.Event.Now.
+		Now:    now,
+		Tool:   ev.Tool,
+		Target: ev.Target,
+		CallID: ev.CallID,
+		OK:     ev.OK,
+		Items:  ev.Items,
+	})
+	if changed {
 		r.announceStateLocked(e, prev, ev.Kind)
 	}
+	// Activity fans out on its own channel regardless of whether the
+	// session's STATE changed: a second tool in the same step moves no
+	// dot but is exactly what the timeline exists to show.
+	r.broadcastActivityLocked(e, ev.Kind)
 	return nil
 }
 
@@ -748,20 +771,32 @@ func (r *Registry) spawnInfo() agent.SpawnInfo {
 	return agent.SpawnInfo{HivedPath: r.hivedPath, StateDir: r.stateDir}
 }
 
-// appendSpawnArgs appends the agent's Def.SpawnArgs (if any) to cmd —
-// the hook-tier wiring for Restart and the boot-revive path in Revive.
-// No-op (returns cmd unchanged) for an unknown agent or one with no
-// SpawnArgs.
-func (r *Registry) appendSpawnArgs(cmd []string, agentID string) []string {
+// applyAgentSpawn appends everything the agent adapter adds at spawn —
+// argv (Def.SpawnArgs, the hook wiring) AND environment (Def.SpawnEnv,
+// the task-tool opt-in) — to opts. It is the ONLY place Restart and the
+// boot-revive path add either, so neither can be added without the
+// other.
+//
+// That pairing used to be a convention across three call sites and it
+// broke: Restart appended the hooks but never the environment, so a
+// restarted Claude session kept its hooks and silently lost its plan.
+// The create path pairs them through agentDef instead.
+func (r *Registry) applyAgentSpawn(opts *session.Options, agentID string) {
 	def, ok := agent.Get(agent.ID(agentID))
-	if !ok || def.SpawnArgs == nil {
-		return cmd
+	if !ok {
+		return
 	}
-	extra := def.SpawnArgs(r.spawnInfo())
-	if len(extra) == 0 {
-		return cmd
+	sp := r.spawnInfo()
+	if def.SpawnArgs != nil {
+		if extra := def.SpawnArgs(sp); len(extra) > 0 {
+			opts.Cmd = append(append([]string(nil), opts.Cmd...), extra...)
+		}
 	}
-	return append(append([]string(nil), cmd...), extra...)
+	if def.SpawnEnv != nil {
+		if extra := def.SpawnEnv(sp); len(extra) > 0 {
+			opts.Env = append(append([]string(nil), opts.Env...), extra...)
+		}
+	}
 }
 
 // Open creates or loads a Registry rooted at stateDir. Existing
@@ -771,14 +806,15 @@ func Open(stateDir string) (*Registry, error) {
 		stateDir = StateDir()
 	}
 	r := &Registry{
-		entries:          make(map[string]*Entry),
-		stateDir:         stateDir,
-		projects:         make(map[string]*Project),
-		ideas:            make(map[string]*IdeaFile),
-		listeners:        make(map[Listener]struct{}),
-		projectListeners: make(map[ProjectListener]struct{}),
-		ideaListeners:    make(map[IdeaListener]struct{}),
-		tickStop:         make(chan struct{}),
+		entries:           make(map[string]*Entry),
+		stateDir:          stateDir,
+		projects:          make(map[string]*Project),
+		ideas:             make(map[string]*IdeaFile),
+		listeners:         make(map[Listener]struct{}),
+		projectListeners:  make(map[ProjectListener]struct{}),
+		ideaListeners:     make(map[IdeaListener]struct{}),
+		activityListeners: make(map[ActivityListener]struct{}),
+		tickStop:          make(chan struct{}),
 	}
 	if err := r.load(); err != nil {
 		return nil, fmt.Errorf("registry: load: %w", err)
@@ -1094,7 +1130,7 @@ func (r *Registry) Revive(id string, opts session.Options) error {
 			} else {
 				opts.Cmd = def.Cmd
 			}
-			opts.Cmd = r.appendSpawnArgs(opts.Cmd, agentID)
+			r.applyAgentSpawn(&opts, agentID)
 		}
 	}
 	opts.Env = append(append([]string(nil), opts.Env...), r.hiveEnv(id)...)
@@ -1211,7 +1247,7 @@ func (r *Registry) Restart(id string) error {
 		default:
 			opts.Cmd = def.Cmd
 		}
-		opts.Cmd = r.appendSpawnArgs(opts.Cmd, agentID)
+		r.applyAgentSpawn(&opts, agentID)
 	}
 	// Pass the project cwd as the fallback. Revive promotes opts.Cwd to
 	// wtPath when the worktree directory still exists; if the user removed
@@ -1564,9 +1600,13 @@ func (r *Registry) Close() error {
 	for ch := range r.ideaListeners {
 		close(ch)
 	}
+	for ch := range r.activityListeners {
+		close(ch)
+	}
 	r.listeners = nil
 	r.projectListeners = nil
 	r.ideaListeners = nil
+	r.activityListeners = nil
 	entries := r.entries
 	r.entries = nil
 	r.order = nil

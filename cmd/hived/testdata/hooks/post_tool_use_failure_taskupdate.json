@@ -1,0 +1,13 @@
+{
+  "session_id": "test-session",
+  "hook_event_name": "PostToolUseFailure",
+  "tool_name": "TaskUpdate",
+  "tool_input": {
+    "taskId": "1",
+    "status": "completed"
+  },
+  "tool_use_id": "toolu_01TF",
+  "error": "Task not found: 1",
+  "is_interrupt": false,
+  "duration_ms": 9
+}

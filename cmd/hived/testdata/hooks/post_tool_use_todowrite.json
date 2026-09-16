@@ -1,0 +1,12 @@
+{
+  "session_id": "test-session",
+  "hook_event_name": "PostToolUse",
+  "tool_name": "TodoWrite",
+  "tool_use_id": "toolu_01TODO",
+  "tool_input": {"todos": [
+    {"content": "read the spec", "status": "completed", "activeForm": "Reading the spec"},
+    {"content": "write the code", "status": "in_progress", "activeForm": "Writing the code"},
+    {"content": "run the tests", "status": "pending", "activeForm": "Running the tests"},
+    {"activeForm": "Filing the PR", "status": "banana"}
+  ]}
+}

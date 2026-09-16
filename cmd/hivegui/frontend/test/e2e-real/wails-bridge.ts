@@ -324,6 +324,15 @@ export async function ListCustomAgents() {
 export async function SaveCustomAgents() {
   return undefined;
 }
+// agent-settings.json is a GUI-owned file, not a daemon verb, so there is
+// nothing for the ws-bridge to forward; the defaults are what a fresh
+// install reads.
+export async function GetAgentSettings() {
+  return { claude_task_tools: true };
+}
+export async function SaveAgentSettings() {
+  return undefined;
+}
 export async function CreateProject() {
   return '';
 }

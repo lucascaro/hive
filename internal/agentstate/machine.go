@@ -83,6 +83,19 @@ const (
 	// HookStaleAfter — and so an unknown or renamed hook event has
 	// somewhere harmless to land.
 	KindPing = "ping"
+	// KindToolStart / KindToolEnd report one tool call. They keep the
+	// working-state effect the collapsed KindPermissionResolved
+	// carried: a tool running means the agent is working.
+	KindToolStart = "tool_start"
+	KindToolEnd   = "tool_end"
+	// KindPlan replaces the agent's plan wholesale. It changes no
+	// state — an agent revising its plan is not a state transition —
+	// but it does refresh the tier clock like every other event.
+	KindPlan = "plan"
+	// KindPlanItem merges individual steps into the plan by ID — the
+	// shape Claude's task tools report. Like KindPlan it changes no
+	// state.
+	KindPlanItem = "plan_item"
 )
 
 // Event is one agent-reported observation.
@@ -91,6 +104,27 @@ type Event struct {
 	Source Source
 	At     time.Time
 	Text   string // prompt / summary / error text; capped by Apply
+
+	// Now is the DAEMON's clock at the moment the event was received,
+	// as distinct from At, which is the reporter's claim about when it
+	// observed the thing. Tool durations are measured across Now,
+	// never across At: the two ends of a pair come from two separate
+	// reporter processes and can straddle a clock adjustment.
+	//
+	// Zero falls back to At, so a caller that does not set it still
+	// gets sane (if reporter-derived) timings.
+	Now time.Time
+
+	// Tool activity, carried by KindToolStart / KindToolEnd. Target is
+	// the reporter-derived label — a basename, a command head, a URL
+	// host — never a raw argument.
+	Tool   string
+	Target string
+	CallID string
+	OK     *bool
+
+	// Items carries KindPlan.
+	Items []wire.PlanItem
 }
 
 // Snapshot is the machine's externally visible state, as a value.
@@ -99,6 +133,19 @@ type Snapshot struct {
 	Source      Source
 	LastPrompt  string
 	LastSummary string
+
+	// PlanDone / PlanTotal / CurrentTool are the compact activity
+	// summary. They are part of Snapshot — and therefore part of the
+	// "did anything change" comparison Apply returns — so a tool
+	// starting or a plan step completing repaints the sidebar through
+	// the announce path that already exists.
+	//
+	// Every field here must stay comparable with ==; Apply depends on
+	// it. That is why the plan itself is reached through Activity()
+	// rather than carried here as a slice.
+	PlanDone    int
+	PlanTotal   int
+	CurrentTool string
 }
 
 // Machine tracks one session. The zero value is not usable; call New.
@@ -110,6 +157,11 @@ type Machine struct {
 
 	lastOutputAt time.Time
 	hookSeenAt   time.Time // zero ⇔ no hook/extension event ever seen
+
+	// act is the tool ring and plan snapshot. Its lifetime is this
+	// struct's: New zeroes it, and a fresh Machine on restart/revive
+	// discards it. See activity.go.
+	act activity
 }
 
 // New returns a machine for a session that has just come into
@@ -127,11 +179,15 @@ func New(now time.Time) *Machine {
 
 // Snapshot returns the current state as a value.
 func (m *Machine) Snapshot() Snapshot {
+	done, total, current := m.planSummary()
 	return Snapshot{
 		State:       m.state,
 		Source:      m.source,
 		LastPrompt:  m.lastPrompt,
 		LastSummary: m.lastSummary,
+		PlanDone:    done,
+		PlanTotal:   total,
+		CurrentTool: current,
 	}
 }
 
@@ -305,9 +361,15 @@ func (m *Machine) Apply(ev Event) bool {
 	// than special-cased — a state-dependent rewind rule is more machine
 	// for a case that is hard to reach and self-corrects on the next
 	// event.
+	// The daemon's own clock, for tool durations. See Event.Now.
+	now := ev.Now
+	if now.IsZero() {
+		now = ev.At
+	}
+
 	if !m.hookSeenAt.IsZero() {
 		if behind := m.hookSeenAt.Sub(ev.At); behind > 0 && behind < HookStaleAfter {
-			return false
+			return m.applyLateActivity(ev, now)
 		}
 	}
 
@@ -342,9 +404,11 @@ func (m *Machine) Apply(ev Event) bool {
 	case KindTurnEnd:
 		m.state = wire.StateWaitingInput
 		m.lastSummary = text
+		m.act.endTurn(ev.At)
 	case KindIdle:
 		m.state = wire.StateIdle
 		m.lastSummary = text
+		m.act.endTurn(ev.At)
 	case KindWaitingInput:
 		// An error already wants the user, and says more. Claude fires
 		// Notification(idle_prompt) ~60s after ANY turn, a failed one
@@ -357,11 +421,27 @@ func (m *Machine) Apply(ev Event) bool {
 		m.state = wire.StateWaitingPermission
 	case KindPermissionResolved:
 		m.state = wire.StateWorking
+	case KindToolStart:
+		// Same state effect as the permission_resolved these were
+		// split out of: a tool running means the agent is working.
+		m.state = wire.StateWorking
+		m.toolStart(ev, now)
+	case KindToolEnd:
+		m.state = wire.StateWorking
+		m.toolEnd(ev, now)
+	case KindPlan:
+		// No state change by design: revising a plan is not a
+		// transition. The tier clock was refreshed above.
+		m.setPlan(ev.Items)
+	case KindPlanItem:
+		m.mergePlanItems(ev.Items)
 	case KindError:
 		m.state = wire.StateError
 		m.lastSummary = text
+		m.act.endTurn(ev.At)
 	case KindSessionEnd:
 		m.state = wire.StateExited
+		m.act.endTurn(ev.At)
 	case KindPing:
 		// No state change by design.
 	default:

@@ -125,7 +125,7 @@ func (r *Registry) finishCreate(ctx context.Context, e *Entry, spec wire.CreateS
 		Cwd:   p.cwd,
 		Cols:  spec.Cols,
 		Rows:  spec.Rows,
-		Env:   r.hiveEnv(p.id),
+		Env:   append(r.hiveEnv(p.id), r.resolveAgentEnv(spec)...),
 	})
 	if err != nil {
 		log.Printf("registry: session.Start failed for %s (agent=%q cmd=%v): %v",
@@ -542,16 +542,41 @@ func (r *Registry) insertEntry(spec wire.CreateSpec, p createPlan) (*Entry, erro
 // branch — an explicit spec.Cmd is the "raw Cmd from a client that
 // doesn't speak agent IDs" case, and we don't mutate user-supplied
 // argv there any more than we inject SessionIDFlag into it.
-func (r *Registry) resolveAgentCmd(spec wire.CreateSpec, id string) []string {
-	cmd := spec.Cmd
-	if len(cmd) > 0 || spec.Agent == "" {
-		return cmd
+// agentDef is the built-in or custom agent whose OWN command a create
+// will run, or ok=false when it runs an explicit spec.Cmd or no agent.
+//
+// It is the single gate for everything an agent adapter adds at spawn
+// — argv (SpawnArgs) in resolveAgentCmd, environment (SpawnEnv) in
+// resolveAgentEnv. Both must agree: an explicit Cmd gets no hooks, so it
+// must not get the environment that only pays off through those hooks
+// either.
+func agentDef(spec wire.CreateSpec) (agent.Def, bool) {
+	if len(spec.Cmd) > 0 || spec.Agent == "" {
+		return agent.Def{}, false
 	}
 	def, ok := agent.Get(agent.ID(spec.Agent))
 	if !ok || len(def.Cmd) == 0 {
-		return cmd
+		return agent.Def{}, false
 	}
-	cmd = def.Cmd
+	return def, true
+}
+
+// resolveAgentEnv is the agent adapter's extra environment for a
+// create, gated exactly like resolveAgentCmd's SpawnArgs.
+func (r *Registry) resolveAgentEnv(spec wire.CreateSpec) []string {
+	def, ok := agentDef(spec)
+	if !ok || def.SpawnEnv == nil {
+		return nil
+	}
+	return def.SpawnEnv(r.spawnInfo())
+}
+
+func (r *Registry) resolveAgentCmd(spec wire.CreateSpec, id string) []string {
+	def, ok := agentDef(spec)
+	if !ok {
+		return spec.Cmd
+	}
+	cmd := def.Cmd
 	// Carrying on in a worktree the user already worked in: use the
 	// agent's path-scoped resume. It continues the most recent
 	// conversation for this directory, which is the only handle we

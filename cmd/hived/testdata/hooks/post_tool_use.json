@@ -2,5 +2,14 @@
   "session_id": "test-session",
   "hook_event_name": "PostToolUse",
   "tool_name": "Bash",
-  "tool_input": {"command": "ls"}
+  "tool_input": {
+    "command": "ls"
+  },
+  "tool_use_id": "toolu_01LS",
+  "tool_response": {
+    "stdout": "README.md\n",
+    "stderr": "",
+    "interrupted": false
+  },
+  "duration_ms": 41
 }

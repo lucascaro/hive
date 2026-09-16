@@ -30,6 +30,8 @@ export {
   ListAgents,
   ListCustomAgents,
   SaveCustomAgents,
+  GetAgentSettings,
+  SaveAgentSettings,
   CreateProject,
   KillProject,
   UpdateProject,

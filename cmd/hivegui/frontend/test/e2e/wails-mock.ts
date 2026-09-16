@@ -1045,6 +1045,16 @@ export async function StartUpdate() {
 export async function ApplyUpdateAndRestart() {
   return '';
 }
+// agent-settings.json. Stateful rather than a fixed reply so a test can
+// save a value and see the modal read it back on reopen.
+const agentSettings = { claude_task_tools: true };
+export async function GetAgentSettings() {
+  return { ...agentSettings };
+}
+export async function SaveAgentSettings(s: { claude_task_tools: boolean }) {
+  agentSettings.claude_task_tools = s.claude_task_tools;
+}
+
 export async function GetUpdateSettings() {
   return { channel: 'release', source_repo: '' };
 }
@@ -1287,6 +1297,17 @@ if (typeof window !== 'undefined') {
       if (!s) return;
       s.state = next;
       s.state_source = source;
+      emit('session:event', JSON.stringify({ kind: 'state', session: s }));
+    },
+    // The compact plan summary the sidebar renders from. MockSession
+    // intersects the real SessionInfo, so these fields need no separate
+    // mock-side declaration — they arrived with the wire type.
+    setSessionPlan(id: string, done: number, total: number, tool = '') {
+      const s = state.sessions.find((x) => x.id === id);
+      if (!s) return;
+      s.plan_done = done;
+      s.plan_total = total;
+      s.current_tool = tool;
       emit('session:event', JSON.stringify({ kind: 'state', session: s }));
     },
     listeners,

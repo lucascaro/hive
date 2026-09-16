@@ -2,5 +2,11 @@
   "session_id": "test-session",
   "hook_event_name": "PostToolUseFailure",
   "tool_name": "Bash",
-  "error": "exit status 1"
+  "tool_input": {
+    "command": "npm test -- --coverage"
+  },
+  "tool_use_id": "toolu_01FAIL",
+  "error": "Exit code 1",
+  "is_interrupt": false,
+  "duration_ms": 792
 }

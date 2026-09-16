@@ -28,6 +28,34 @@ import { displayTitle } from '../lib/term-title.js';
 import { useAppStore } from '../store/store.js';
 import type { SessionInfo } from '../app/state.js';
 
+// planOf reads the compact summary the daemon puts on SessionInfo. The
+// row renders from these fields alone and never reads the activity
+// ring — that is the whole reason the summary rides the snapshot.
+//
+// Staleness is approximated by state_source rather than measured:
+// when the hook tier goes quiet past HookStaleAfter while the session
+// is working, the machine hands it back to the heuristic tier, and
+// that shows up here. It does NOT catch a hook that died while the
+// session was at rest (Output bails on the waits, Tick only demotes
+// working), so a plan orphaned at rest still reads as live. The real
+// fix is ActivityMsg.StaleAt, which the inspector panel will consume.
+function planOf(s: SessionInfo): {
+  done: number;
+  total: number;
+  pct: number;
+  stale: boolean;
+} | null {
+  const total = s.plan_total ?? 0;
+  if (total <= 0) return null;
+  const done = Math.min(Math.max(s.plan_done ?? 0, 0), total);
+  return {
+    done,
+    total,
+    pct: Math.round((done / total) * 100),
+    stale: (s.state_source ?? 'heuristic') === 'heuristic',
+  };
+}
+
 export interface SessionRowProps {
   session: SessionInfo;
   state: SessionState;
@@ -95,6 +123,7 @@ export function SessionRow(p: SessionRowProps) {
   const s = p.session;
   const name = s.name ?? 'session';
   const sub = subtitleFor(s, p.state);
+  const plan = planOf(s);
   const code = agentCode(s.agent);
   // The agent's own colour, from the catalog ListAgents() returned at
   // boot. Undefined before that reply lands and for a custom agent that
@@ -174,6 +203,30 @@ export function SessionRow(p: SessionRowProps) {
         className="hv-session-row__state"
         detail={stateTooltip(s, p.state)}
       />
+      {plan ? (
+        /* The plan indicator takes the cell UNDER the state icon
+           (grid-column 1 / grid-row 2), which was empty: the window
+           title starts at column 2. Because the cell is unused it
+           cannot push the row taller, which is what a mark placed
+           behind the agent code would have risked.
+
+           At compact density there is no row 2 — the title moves up
+           into row 1 — so the CSS moves this into row 1 beside the
+           icon and widens column 1 to fit both. */
+        <span
+          className={`hv-session-row__plan${
+            plan.stale ? ' hv-session-row__plan--stale' : ''
+          }`}
+          role="img"
+          aria-label={`Plan: ${plan.done} of ${plan.total} steps done${
+            plan.stale ? ', not currently reporting' : ''
+          }${s.current_tool ? `, running ${s.current_tool}` : ''}`}
+          title={`${plan.done}/${plan.total} steps${
+            s.current_tool ? ` · ${s.current_tool}` : ''
+          }`}
+          style={{ '--hv-plan-pct': plan.pct } as CSSProperties}
+        />
+      ) : null}
       {/* Name and title are direct grid children, not a stacked column:
           line 2 spans from the name's column to the row's right edge
           (session-row.css), which a wrapper confined to column 2 could

@@ -33,6 +33,63 @@
    the name's column to the row's right edge, under the meta column
    rather than stopping before it. */
 .hv-session-row__sub { grid-column: 2 / -1; grid-row: 2; }
+/* The plan indicator sits UNDER the state icon, in a cell that was
+   empty — the window title starts at column 2. An unused cell cannot
+   push the row taller, so unlike a mark placed behind the agent code
+   this needs no absolute positioning to stay out of the layout.
+
+   `justify-self: center` rather than stretch: the mark is round and
+   the column is 14px, so it centres under the icon above it. The
+   margin-left reset defeats the `* + *` column-gap rule, which would
+   otherwise shove it off-centre. */
+.hv-session-row__plan {
+  grid-column: 1;
+  grid-row: 2;
+  justify-self: center;
+  margin-left: 0 !important;
+  width: var(--hv-plan-size);
+  height: var(--hv-plan-size);
+  border-radius: 50%;
+  /* A filled pie, not a hollow ring. The column is 14px, so the mark is
+     ~12px: at that size a ring's arc is a hairline and its hole eats
+     more than half the mark, while every pixel of a pie carries the
+     value. Drawn with conic-gradient rather than an inline <svg
+     stroke-dasharray> because icons come from the sprite and a
+     data-driven arc cannot be a static sprite symbol.
+
+     --hv-plan-pct is set inline by SessionRow; the colour follows the
+     row's state, set per state below. */
+  background: conic-gradient(
+    var(--hv-plan-color) calc(var(--hv-plan-pct, 0) * 1%),
+    color-mix(in srgb, var(--hv-plan-color) 22%, transparent) 0
+  );
+}
+:root {
+  --hv-plan-size: 12px;
+}
+/* The mark takes the row's state colour, so plan progress and session
+   state read as one signal rather than two competing ones. Working and
+   running share --state-running for the same reason the state icon
+   does: "healthy" is one colour in every theme. */
+.hv-session-row__plan { --hv-plan-color: var(--state-info); }
+.hv-session-row[data-state='running'] .hv-session-row__plan,
+.hv-session-row[data-state='working'] .hv-session-row__plan {
+  --hv-plan-color: var(--state-running);
+}
+.hv-session-row[data-state='attention'] .hv-session-row__plan,
+.hv-session-row[data-state='waiting-permission'] .hv-session-row__plan {
+  --hv-plan-color: var(--state-attention);
+}
+.hv-session-row[data-state='error'] .hv-session-row__plan,
+.hv-session-row[data-state='failed'] .hv-session-row__plan {
+  --hv-plan-color: var(--state-error);
+}
+.hv-session-row[data-state='exited'] .hv-session-row__plan {
+  --hv-plan-color: var(--fg-subtle);
+}
+/* A plan whose tier has gone quiet must not read as live. A stale plan
+   shown as current is worse than no plan at all. */
+.hv-session-row__plan--stale { --hv-plan-color: var(--fg-subtle) !important; }
 
 /* Where the session came from. Not a button: the inbox is reached from
    the project card's badge, and a second route to it on every row would
@@ -308,6 +365,7 @@
   min-height: 34px;
   font-size: var(--text-sm);
 }
+:root[data-density='tight'] { --hv-plan-size: 11px; }
 :root[data-density='tight'] .hv-session-row__sub {
   font-size: var(--text-xs);
   line-height: 1.3;
@@ -316,6 +374,31 @@
 :root[data-density='compact'] .hv-session-row {
   min-height: 28px;
   font-size: var(--text-sm);
+}
+/* Compact has no row 2 — the title moves up into row 1 below — so the
+   plan indicator has nowhere to sit beneath the icon. It moves INTO
+   row 1 beside the icon, and column 1 widens to hold both.
+
+   This is the one place the placement costs something: 10px comes off
+   the title's track at the density whose whole point is the title.
+   Scoped with :has() so ONLY a row that actually has a plan pays it —
+   an unscoped rule widened every row at this density, including the
+   sessions with no plan at all, which is a cost for nothing. Measured
+   by the truncation assertion in sidebar-plan-pie.spec.ts rather than
+   eyeballed. */
+:root[data-density='compact'] {
+  --hv-plan-size: 10px;
+}
+:root[data-density='compact']
+  .hv-session-row:has(.hv-session-row__plan) {
+  grid-template-columns: 24px minmax(0, 1fr) auto auto auto;
+}
+:root[data-density='compact'] .hv-session-row__state {
+  justify-self: start;
+}
+:root[data-density='compact'] .hv-session-row__plan {
+  grid-row: 1;
+  justify-self: end;
 }
 /* One line, and it is the window TITLE that survives — the line that
    tells two sessions on one worktree apart. The title moves up into line

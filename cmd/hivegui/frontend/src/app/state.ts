@@ -66,6 +66,21 @@ export interface SessionInfo {
   // so a guess. The UI marks the difference rather than presenting a
   // guess as a fact.
   state_source?: string;
+  // How far the agent is through its own plan, and what it is running
+  // right now (internal/wire/control.go SessionInfo.PlanDone /
+  // PlanTotal / CurrentTool).
+  //
+  // plan_total absent or 0 means "no plan", and the row renders exactly
+  // as it did before these existed — which is every session on the
+  // heuristic tier, and every Claude session that has not called
+  // TodoWrite yet.
+  //
+  // Single-spelled snake_case like `state` and `state_source`: they are
+  // daemon-owned and arrive as raw wire JSON, so there is no camelCase
+  // bridge variant to fall back to.
+  plan_done?: number;
+  plan_total?: number;
+  current_tool?: string;
   // The first thing this session was asked to do, and what the agent
   // said as it finished its last turn. Both absent on the heuristic
   // tier, which cannot know either.

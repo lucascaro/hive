@@ -120,13 +120,7 @@ var claudeHivedPathWarnOnce sync.Once
 // semantics, the symptom is the user's own hooks silently not firing in
 // Hive sessions, and no test in this repo will catch it.
 func claudeSpawnArgs(sp SpawnInfo) []string {
-	if sp.HivedPath == "" {
-		claudeHivedPathWarnOnce.Do(func() {
-			log.Printf("agent: hived path could not be resolved; claude sessions run on the heuristic state tier only")
-		})
-		return nil
-	}
-	if !claudeVersionSupportsHooks() {
+	if !claudeHooksAvailable(sp) {
 		return nil
 	}
 	group := []claudeHookGroup{{Hooks: []claudeHookEntry{
@@ -142,6 +136,22 @@ func claudeSpawnArgs(sp SpawnInfo) []string {
 		return nil
 	}
 	return []string{"--settings", string(blob)}
+}
+
+// claudeHooksAvailable is the single gate for everything Hive adds to
+// a Claude spawn: the hook wiring in claudeSpawnArgs, and the task-tool
+// opt-in in claudeSpawnEnv. They must agree — the opt-in spends context
+// in every session and is only worth it when the hooks are there to
+// carry the plan back — and two copies of this check had already
+// drifted once (the env side skipped the version gate).
+func claudeHooksAvailable(sp SpawnInfo) bool {
+	if sp.HivedPath == "" {
+		claudeHivedPathWarnOnce.Do(func() {
+			log.Printf("agent: hived path could not be resolved; claude sessions run on the heuristic state tier only")
+		})
+		return false
+	}
+	return claudeVersionSupportsHooks()
 }
 
 // claudeHookCommand builds the shell command line Claude Code runs for

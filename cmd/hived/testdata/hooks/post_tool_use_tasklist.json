@@ -1,0 +1,32 @@
+{
+  "session_id": "test-session",
+  "hook_event_name": "PostToolUse",
+  "tool_name": "TaskList",
+  "tool_input": {},
+  "tool_use_id": "toolu_01TL",
+  "tool_response": {
+    "tasks": [
+      {
+        "id": "1",
+        "subject": "alpha renamed",
+        "status": "completed",
+        "blockedBy": []
+      },
+      {
+        "id": "3",
+        "subject": "gamma",
+        "status": "in_progress",
+        "blockedBy": [
+          "1"
+        ]
+      },
+      {
+        "id": "4",
+        "subject": "delta",
+        "status": "pending",
+        "blockedBy": []
+      }
+    ]
+  },
+  "duration_ms": 12
+}

@@ -21,6 +21,13 @@ const listCustomAgents = vi.fn(
 const saveCustomAgents = vi.fn(
   (_agents: main.CustomAgent[]): Promise<void> => Promise.resolve(),
 );
+const getAgentSettings = vi.fn(
+  (): Promise<main.AgentSettings> =>
+    Promise.resolve({ claude_task_tools: true } as main.AgentSettings),
+);
+const saveAgentSettings = vi.fn(
+  (_s: main.AgentSettings): Promise<void> => Promise.resolve(),
+);
 
 // Forwarded variadically off Parameters<>, not at a fixed arity: a mock
 // that drops an argument the real binding gained still satisfies
@@ -66,6 +73,10 @@ vi.mock('../../src/bridge.js', () => ({
     listCustomAgents(...a),
   SaveCustomAgents: (...a: Parameters<typeof saveCustomAgents>) =>
     saveCustomAgents(...a),
+  GetAgentSettings: (...a: Parameters<typeof getAgentSettings>) =>
+    getAgentSettings(...a),
+  SaveAgentSettings: (...a: Parameters<typeof saveAgentSettings>) =>
+    saveAgentSettings(...a),
   MenuBarLoginItemStatus: () => Promise.resolve(menuBarStatus),
   SetMenuBarLoginItem: (...a: Parameters<typeof setMenuBarLoginItem>) =>
     setMenuBarLoginItem(...a),
@@ -123,6 +134,10 @@ beforeAll(async () => {
 beforeEach(() => {
   listCustomAgents.mockReset().mockResolvedValue([]);
   saveCustomAgents.mockReset().mockResolvedValue(undefined);
+  getAgentSettings
+    .mockReset()
+    .mockResolvedValue({ claude_task_tools: true } as main.AgentSettings);
+  saveAgentSettings.mockReset().mockResolvedValue(undefined);
   refocusActiveTerm.mockReset();
   setFocusedTile.mockReset();
   setMenuBarLoginItem.mockReset().mockResolvedValue(undefined);
@@ -183,6 +198,80 @@ describe('splitCommand', () => {
     expect(splitCommand('   ')).toEqual([]);
     expect(splitCommand('')).toEqual([]);
     expect(splitCommand(null)).toEqual([]);
+  });
+});
+
+describe('settings: Claude plan progress toggle', () => {
+  const box = () => el<HTMLInputElement>('settings-claude-task-tools');
+
+  it('loads the saved value', async () => {
+    getAgentSettings.mockResolvedValue({
+      claude_task_tools: false,
+    } as main.AgentSettings);
+    open();
+    await flush();
+    expect(box().checked).toBe(false);
+    expect(box().disabled).toBe(false);
+  });
+
+  it('defaults to on, matching the Go default', async () => {
+    open();
+    await flush();
+    expect(box().checked).toBe(true);
+  });
+
+  it('saves the toggled value', async () => {
+    open();
+    await flush();
+    fireEvent.click(box());
+    expect(box().checked).toBe(false);
+
+    click(el('settings-save'));
+    await flush();
+    expect(saveAgentSettings).toHaveBeenCalledWith({
+      claude_task_tools: false,
+    });
+    expect(el('settings').classList.contains('hidden')).toBe(true);
+  });
+
+  it('never saves over a file it could not read', async () => {
+    // Saving the defaults would overwrite agent-settings.json — the very
+    // file the user now has to fix.
+    getAgentSettings.mockRejectedValue(new Error('parse agent-settings.json'));
+    open();
+    await flush();
+    expect(box().disabled).toBe(true);
+    expect(el('settings-error').textContent).toContain('agent-settings.json');
+
+    click(el('settings-save'));
+    await flush();
+    expect(saveAgentSettings).not.toHaveBeenCalled();
+  });
+
+  it('never saves the display default before the real value loads', async () => {
+    // Save clicked while GetAgentSettings is still in flight: the box shows
+    // `true`, but that is a default, not the user's saved value — writing
+    // it would overwrite a saved `false`.
+    getAgentSettings.mockImplementation(() => new Promise(() => {}));
+    open();
+    await flush();
+    expect(box().disabled).toBe(true);
+
+    click(el('settings-save'));
+    await flush();
+    expect(saveAgentSettings).not.toHaveBeenCalled();
+  });
+
+  it('says what it costs and when it applies', async () => {
+    open();
+    await flush();
+    const hint = el('settings-claude-task-tools-hint').textContent ?? '';
+    expect(hint).toMatch(/context/);
+    expect(hint).toMatch(/newly started sessions only/);
+    expect(hint).toContain('CLAUDE_CODE_ENABLE_TODO_TOOLS');
+    expect(box().getAttribute('aria-describedby')).toBe(
+      'settings-claude-task-tools-hint',
+    );
   });
 });
 

@@ -1,0 +1,18 @@
+{
+  "session_id": "test-session",
+  "hook_event_name": "PostToolUse",
+  "tool_name": "TaskUpdate",
+  "tool_input": {
+    "taskId": "1",
+    "description": "now with more detail"
+  },
+  "tool_use_id": "toolu_01TX",
+  "tool_response": {
+    "success": true,
+    "taskId": "1",
+    "updatedFields": [
+      "description"
+    ]
+  },
+  "duration_ms": 12
+}

@@ -38,6 +38,17 @@ type captureSink struct {
 	buf bytes.Buffer
 }
 
+// tail returns the last n bytes written, for a failure message.
+func (c *captureSink) tail(n int) string {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	b := c.buf.Bytes()
+	if len(b) > n {
+		b = b[len(b)-n:]
+	}
+	return string(b)
+}
+
 func (c *captureSink) Write(p []byte) (int, error) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
@@ -343,5 +354,141 @@ func TestClaudeProbeErrorSurvivesIdlePrompt(t *testing.T) {
 		}
 		time.Sleep(250 * time.Millisecond)
 	}
+	_, _ = sess.Write([]byte("/exit\r"))
+}
+
+// TestClaudeProbeTaskToolsOptIn is the tripwire for the plan indicator's
+// one external dependency: Claude Code honouring
+// CLAUDE_CODE_ENABLE_TODO_TOOLS. On current models (Opus 5 / Sonnet 5)
+// Claude provides no task tools unless a session opts in, and without
+// them Hive receives no plan at all. If a Claude release renames or
+// drops that variable, nothing errors — the variable is silently
+// ignored, the sidebar pie simply never appears, and the Settings toggle
+// keeps reading "on" while doing nothing. This probe is how that shows
+// up on upgrade rather than in a user's sidebar.
+//
+// Unlike the probes above it passes NO explicit Cmd: it creates
+// `Agent: "claude"` so the real spawn path runs — resolveAgentCmd for the
+// hooks AND resolveAgentEnv for the opt-in, gated together. A probe that
+// hand-assembled the environment would keep passing after the production
+// wiring broke.
+//
+// Discriminating only where the task tools are opt-in, i.e. the current
+// default model. On an older model that ships them by default this would
+// pass with or without the variable.
+//
+// Opt-in — it costs one API call:
+//
+//	HIVE_PROBE_CLAUDE=1 go test ./cmd/hived/ -run TestClaudeProbeTaskToolsOptIn -v
+func TestClaudeProbeTaskToolsOptIn(t *testing.T) {
+	if os.Getenv("HIVE_PROBE_CLAUDE") != "1" {
+		t.Skip("set HIVE_PROBE_CLAUDE=1 to run the real-claude probe")
+	}
+	if _, err := exec.LookPath("claude"); err != nil {
+		t.Skip("claude not on PATH")
+	}
+	// Strip the nesting markers, as the probes above do — and, here, it
+	// matters twice: a CLAUDE_CODE_ENABLE_TODO_TOOLS inherited from the
+	// Claude session running this test would count as the user's own
+	// choice, so Hive would (correctly) not set it, and the probe would
+	// not be testing Hive's opt-in at all.
+	for _, kv := range os.Environ() {
+		k, v, _ := strings.Cut(kv, "=")
+		if k == "CLAUDECODE" || k == "CLAUDE_PID" || strings.HasPrefix(k, "CLAUDE_CODE_") {
+			k, v := k, v
+			t.Cleanup(func() { _ = os.Setenv(k, v) })
+			_ = os.Unsetenv(k)
+		}
+	}
+
+	d := startHookTestDaemon(t)
+	exe, _ := os.Executable()
+	// What hived's main does at startup: point Claude's hooks at this
+	// binary (TestMain dispatches `hook`), and the settings loader at a
+	// fresh directory — no agent-settings.json, so the default (on).
+	d.Registry().SetHivedPath(exe)
+	agent.SetCustomDir(t.TempDir())
+	t.Cleanup(func() { agent.SetCustomDir("") })
+
+	e, err := d.Registry().Create(context.Background(), wire.CreateSpec{
+		Agent: "claude", Cwd: t.TempDir(), Cols: 120, Rows: 40,
+	})
+	if err != nil {
+		t.Fatalf("create: %v", err)
+	}
+	id := e.ID
+	t.Cleanup(func() { _ = d.Registry().Kill(id, true) })
+
+	// Tapped for the whole run, so a timeout can print what the terminal
+	// actually showed instead of leaving the failure to guesswork.
+	sink := &captureSink{}
+	wait := func(within time.Duration, cond func(wire.SessionInfo) bool, what string) wire.SessionInfo {
+		t.Helper()
+		deadline := time.Now().Add(within)
+		for {
+			info, ok := findSessionByID(d, id)
+			if ok && cond(info) {
+				return info
+			}
+			if time.Now().After(deadline) {
+				t.Fatalf("timed out waiting for %s; last info = %+v\n--- terminal tail ---\n%s",
+					what, info, sink.tail(1500))
+			}
+			time.Sleep(100 * time.Millisecond)
+		}
+	}
+	wait(20*time.Second, func(i wire.SessionInfo) bool { return i.Alive }, "alive")
+	sess := d.Registry().Get(id).Session()
+	if sess == nil {
+		t.Fatal("no live session")
+	}
+	unsub, err := sess.SubscribeWithAtomicReplay(sink, func(replay []byte) error {
+		_, err := sink.Write(replay)
+		return err
+	})
+	if err != nil {
+		t.Fatalf("subscribe: %v", err)
+	}
+	defer unsub()
+
+	// A fresh directory gets the folder-trust dialog; Enter accepts. Text
+	// typed while it is up would go into the dialog, not the prompt.
+	trustBy := time.Now().Add(20 * time.Second)
+	for time.Now().Before(trustBy) {
+		if sink.contains("trust") {
+			_, _ = sess.Write([]byte("\r"))
+			break
+		}
+		if info, _ := findSessionByID(d, id); info.StateSource == wire.StateSourceHook {
+			break
+		}
+		time.Sleep(200 * time.Millisecond)
+	}
+	wait(30*time.Second, func(i wire.SessionInfo) bool { return i.StateSource == wire.StateSourceHook }, "hook tier")
+	time.Sleep(2 * time.Second)
+
+	// Task tools need no permission, so nothing here can stall on a
+	// prompt. Two tasks and one completion exercise TaskCreate (the ID
+	// read from the PostToolUse response) and TaskUpdate (a merge by ID).
+	//
+	// The Enter goes in its OWN write, after a pause. Sent in the same
+	// write as a prompt this long, Claude Code takes the whole burst as a
+	// paste, and a return inside a paste does not submit — the first run
+	// of this probe sat with the prompt typed into the box, unsent, and
+	// timed out. (The shorter prompts in the probes above get away with a
+	// single write.)
+	_, _ = sess.Write([]byte("Using only your task list tools, and without creating any files: " +
+		"create a task named alpha and a task named beta, then mark alpha completed. Then reply done."))
+	time.Sleep(700 * time.Millisecond)
+	_, _ = sess.Write([]byte("\r"))
+
+	// plan_total > 0 is the whole chain at once: the variable reached the
+	// process, Claude provided the tools, the hook parsed TaskCreate, and
+	// the daemon merged it.
+	info := wait(120*time.Second, func(i wire.SessionInfo) bool { return i.PlanTotal >= 2 }, "a plan from the task tools")
+	if info.PlanTotal != 2 {
+		t.Errorf("plan_total = %d, want 2", info.PlanTotal)
+	}
+	wait(60*time.Second, func(i wire.SessionInfo) bool { return i.PlanDone >= 1 }, "TaskUpdate completing alpha")
 	_, _ = sess.Write([]byte("/exit\r"))
 }
