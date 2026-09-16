@@ -297,3 +297,23 @@ func TestPermissionInsideSubagentStillWaits(t *testing.T) {
 		t.Errorf("state = %q, want waiting_permission", got)
 	}
 }
+
+// An inverted pair from a subagent that has already ended: its end was
+// recorded unpaired, its subagent_end has passed, and nothing will ever
+// close a call opened now. The start reaches the ring but never opens.
+func TestLateStartForEndedSubagentIsNotOpened(t *testing.T) {
+	m, base := hooked(t)
+	ms := func(n int) time.Time { return base.Add(time.Duration(n) * time.Millisecond) }
+	lifecycle(m, KindSubagentStart, ms(0), "A")
+	subEnd(m, ms(20), "A", "a1")
+	lifecycle(m, KindSubagentEnd, ms(30), "A")
+	subStart(m, ms(10), "A", "a1", "Bash")
+
+	if n := len(m.act.open); n != 0 {
+		t.Errorf("open calls = %d, want 0: a start for an ended subagent must not open", n)
+	}
+	events, _ := m.Activity()
+	if len(events) != 2 || events[1].AgentID != "A" || events[1].StartedAt == "" {
+		t.Errorf("ring = %+v, want the unpaired end then the start, both recorded", events)
+	}
+}

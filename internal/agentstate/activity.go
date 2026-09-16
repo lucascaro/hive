@@ -243,9 +243,12 @@ func (m *Machine) toolStart(ev Event, now time.Time) {
 	// exactly what "in flight" means on the wire.
 	m.act.delta, m.act.hasDelta = started, true
 
-	if ev.CallID == "" {
-		// Nothing to pair with. Record it as an already-closed entry so
-		// the timeline still shows that the tool ran.
+	// Nothing to pair with: no call id, or a subagent that has already
+	// ended — its end arrived first, and a call opened now would never be
+	// closed. Record it as an already-closed entry so the timeline still
+	// shows that the tool ran. Same rule as a main-thread start that
+	// belongs to a finished turn.
+	if ev.CallID == "" || (ev.AgentID != "" && slices.Contains(m.act.ended, ev.AgentID)) {
 		m.act.push(started)
 		return
 	}
