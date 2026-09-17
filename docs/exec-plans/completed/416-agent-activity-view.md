@@ -8,7 +8,7 @@
 - **PR:** #422
 - **Branch:** feature/416-phase-4
 - **Mocks:** https://claude.ai/artifact/7RjZw99RbKNV1iS13r2dtb (placement study — pie vs ring)
-- **Status:** active
+- **Status:** completed
 
 ## Summary
 
@@ -1242,6 +1242,11 @@ Append-only. The latest entry is authoritative.
     - acceptance — PASS — carried from the run above; the fix commit touched docs only (`git diff` between the two runs: spec and exec plan). DEFERRED: inspector panel and activity grid Playwright checks (Phase 4).
     - non-goals — PASS — carried from the run above, same reason.
     - doc accuracy — PASS — spec:75 and plan:367 now say `hive_todo`; changeset (type added, bump minor, pr 421; hover claim matches `SessionRow.tsx` title), README, `site/features.json`, design doc, Settings hint and code comments consistent; `CHANGELOG.md` and `index.md` untouched.
+- **2026-09-16** — verdict: PASS; phase: 4/4; checks: 3 passed / 0 failed / 0 followups; followups: none; one-line: every spec 416 criterion holds on the final branch (phase 4 panel, grid, working-only staleness, `plan: []`, keys incl. non-mac chords, focus and merge rules; phases 1–3 regression green). Non-goals untouched, docs accurate. Operator-deferred: `no_such_session` pending request.
+  - 2026-09-16 dimensions:
+    - acceptance — PASS — Go: `TestStaleAt*`, `TestTakeAccepted*`, `TestActivityDeltaForEveryTierEvent`, `TestActivitySnapshotCarriesStaleAt`, `TestActivityPlanEmptiedMarshalsEmptyArray`, `TestActivityFrameWireCarriesStaleAtAndEmptyPlan`; `check-daemon-contract.sh` 12→13. vitest 108/108 (activity, keymap, shortcuts, activity-panel/focus/restart). Playwright 27/27 (activity-panel, activity-grid, keymap-activity, sidebar-plan-pie). Phase 1–3 packages incl. `internal/agent` all ok.
+    - non-goals — PASS — no persistence writes; wire and UI carry only tool/target; no transcript, cost or plugin loading (the registry is a static in-repo map); the activity grid is per-session tiles, the spec's own placement, not an aggregate view.
+    - doc accuracy — PASS — changeset valid (added/minor/pr 422); README, features.json, help, palette and macOS menu agree with `activityKey`; design doc Wire/Staleness/Rendering match events.go, control.go and activity.ts; UI catalogue tokens are present; contract entry 13 is accurate; no stale forward-looking text; CHANGELOG and index untouched.
 
 ## Phase 3 plan (approved 2026-09-16 via HTML review, round 1)
 

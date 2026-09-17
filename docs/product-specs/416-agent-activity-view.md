@@ -1,11 +1,12 @@
 ---
 issue: null
 pr: 422
+shipped: 2026-09-16
 title: "Agent activity view: see the plan and the tools, not just the state"
 type: enhancement
 complexity: L
 priority: P2
-stage: GATE
+stage: DONE
 ---
 
 # Agent activity view: see the plan and the tools, not just the state
