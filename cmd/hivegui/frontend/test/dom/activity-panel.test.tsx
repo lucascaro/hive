@@ -5,7 +5,7 @@ import { act, cleanup, fireEvent, render } from '@testing-library/react';
 // GetActivity is the one bridge call the activity store makes; the
 // answer arrives on the event stream, which these tests hand-feed.
 vi.mock('../../src/bridge.js', () => ({
-  GetActivity: vi.fn(() => Promise.resolve('')),
+  GetActivity: vi.fn(() => Promise.resolve()),
 }));
 
 import * as bridge from '../../src/bridge.js';
@@ -52,7 +52,7 @@ beforeEach(() => {
   resetStore({ sessions: [session()] });
   activityStore.setState({ byId: new Map() });
   GetActivity.mockReset();
-  GetActivity.mockImplementation(() => Promise.resolve(''));
+  GetActivity.mockImplementation(() => Promise.resolve());
 });
 afterEach(cleanup);
 
