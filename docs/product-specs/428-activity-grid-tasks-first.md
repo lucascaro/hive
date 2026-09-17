@@ -1,12 +1,12 @@
 ---
 issue: 428
-pr: null
+pr: 429
 shipped: null
 title: "Activity grid: show the plan's tasks, not just the tool feed"
 type: enhancement
 complexity: S
 priority: P2
-stage: IMPLEMENT
+stage: REVIEW
 ---
 
 # Activity grid: show the plan's tasks, not just the tool feed

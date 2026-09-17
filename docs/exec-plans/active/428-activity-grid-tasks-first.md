@@ -2,6 +2,8 @@
 
 - **Spec:** [docs/product-specs/428-activity-grid-tasks-first.md](../../product-specs/428-activity-grid-tasks-first.md)
 - **Issue:** #428
+- **PR:** #429
+- **Branch:** `feature/428-activity-grid-tasks-first`
 - **Status:** active
 
 ## Summary
