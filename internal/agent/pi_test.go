@@ -24,6 +24,9 @@ func TestPiDefUsesSpawnArgs(t *testing.T) {
 	if d.SpawnArgs == nil {
 		t.Fatal("pi has no SpawnArgs; the extension tier would never be wired")
 	}
+	if d.SpawnEnv == nil {
+		t.Fatal("pi has no SpawnEnv; the todo-tool setting would never reach the extension")
+	}
 }
 
 func TestEnsurePiExtensionWritesAtomicallyAndOnlyWhenStale(t *testing.T) {
@@ -155,7 +158,14 @@ func TestPiExtensionFramesAreValidWireFrames(t *testing.T) {
 	}
 	script := `
 const m = await import("./pi/hive.ts");
-process.stdout.write(m.encodeFrames("sess-42", "turn_end", "done", "2026-09-04T12:00:00.000Z").toString("base64"));
+const at = "2026-09-04T12:00:00.000Z";
+process.stdout.write(Buffer.concat([
+  m.encodeFrames("sess-42", [{ kind: "turn_end", text: "done" }], at),
+  m.encodeFrames("sess-42", [
+    { kind: "tool_end", tool: "hive_todo", call_id: "c1", ok: false },
+    { kind: "plan", items: [{ text: "step", status: "active" }] },
+  ], at),
+]).toString("base64"));
 `
 	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
 	defer cancel()
@@ -216,8 +226,44 @@ process.stdout.write(m.encodeFrames("sess-42", "turn_end", "done", "2026-09-04T1
 		t.Errorf("text/at = %q/%q, want %q/non-empty", ev.Text, ev.At, "done")
 	}
 
+	// The second report: HELLO, then a tool_end and a plan on the same
+	// connection — the shape a successful hive_todo call produces.
+	if ft, _, err = wire.ReadFrame(r); err != nil || ft != wire.FrameHello {
+		t.Fatalf("second report: first frame %s, err %v; want HELLO", ft, err)
+	}
+	var evs []wire.AgentEvent
+	for range 2 {
+		ft, payload, err := wire.ReadFrame(r)
+		if err != nil || ft != wire.FrameAgentEvent {
+			t.Fatalf("second report: frame %s, err %v; want AGENT_EVENT", ft, err)
+		}
+		var ev wire.AgentEvent
+		if err := json.Unmarshal(payload, &ev); err != nil {
+			t.Fatalf("unmarshal AGENT_EVENT: %v", err)
+		}
+		if !wire.AgentEventKinds[ev.Kind] {
+			t.Errorf("kind = %q, which the daemon's allowlist refuses", ev.Kind)
+		}
+		evs = append(evs, ev)
+	}
+	end, plan := evs[0], evs[1]
+	if end.Kind != wire.AgentEventToolEnd || end.Tool != "hive_todo" || end.CallID != "c1" {
+		t.Errorf("tool_end = %+v", end)
+	}
+	// ok:false must survive as an explicit false, not decode as absent.
+	if end.OK == nil || *end.OK {
+		t.Errorf("tool_end ok = %v, want explicit false", end.OK)
+	}
+	if plan.Kind != wire.AgentEventPlan || len(plan.Items) != 1 ||
+		plan.Items[0].Text != "step" || plan.Items[0].Status != wire.PlanStatusActive {
+		t.Errorf("plan = %+v", plan)
+	}
+	if end.At != plan.At {
+		t.Errorf("events of one report stamped %q and %q, want the same at", end.At, plan.At)
+	}
+
 	if r.Len() != 0 {
-		t.Errorf("%d trailing bytes after the two frames", r.Len())
+		t.Errorf("%d trailing bytes after the two reports", r.Len())
 	}
 }
 
@@ -229,8 +275,9 @@ process.stdout.write(m.encodeFrames("sess-42", "turn_end", "done", "2026-09-04T1
 // would pass. A refused kind is dropped silently at the daemon, which
 // looks exactly like "Pi never reports anything".
 //
-// Scope: this reads string literals passed to post(...). Every call in
-// the extension is written that way on purpose; a future post(someVar)
+// Scope: this reads string literals passed to post(...) and every
+// `kind: "..."` literal inside a send([...]) call. Every call in the
+// extension is written that way on purpose; a kind held in a variable
 // would not be seen here, so keep the kind literal at the call site.
 func TestPiExtensionKindsAreOnTheAllowlist(t *testing.T) {
 	// Comments name every kind in prose, so strip them before scraping.
@@ -258,6 +305,16 @@ func TestPiExtensionKindsAreOnTheAllowlist(t *testing.T) {
 			found[lit[1]] = true
 		}
 	}
+	// Batched reports: send([{ kind: "tool_end", ... }, { kind: "plan", ... }]).
+	// Scoped to send calls because runEnd's own { kind: "done" } result is
+	// not a wire kind.
+	sendCall := regexp.MustCompile(`(?s)send\(\[(.*?)\]\)`)
+	kindField := regexp.MustCompile(`kind:\s*"([a-z_]+)"`)
+	for _, call := range sendCall.FindAllStringSubmatch(code.String(), -1) {
+		for _, lit := range kindField.FindAllStringSubmatch(call[1], -1) {
+			found[lit[1]] = true
+		}
+	}
 	if len(found) == 0 {
 		t.Fatal("scraped no kinds from the extension; the regex no longer matches post(...)")
 	}
@@ -272,6 +329,7 @@ func TestPiExtensionKindsAreOnTheAllowlist(t *testing.T) {
 	for _, kind := range []string{
 		"ping", "prompt", "permission_resolved", "turn_end", "idle", "error",
 		"waiting_permission", "waiting_input", "session_end",
+		"tool_start", "tool_end", "plan",
 	} {
 		if !found[kind] {
 			t.Errorf("extension no longer posts %q", kind)

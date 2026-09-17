@@ -101,8 +101,7 @@ The ordering guard compares main-thread events only. Subagent hooks race
 the parent's, and one landing first would otherwise get the parent's
 `Stop` dropped as out of order.
 
-**Pi (extension tier) — planned, phase 3.** Nothing below ships in
-phase 1; the Pi extension reports no tool or plan events yet. Verified against
+**Pi (extension tier) — phase 3.** Verified against
 `@earendil-works/pi-coding-agent` 0.85.1 (`dist/core/extensions/types.d.ts`):
 
 | Event | Payload | Use |
@@ -118,9 +117,32 @@ non-blocking `tool_execution_*` pair.
 
 Pi has **no built-in todo tool** — `dist/core/tools/` is bash, edit,
 read, write, grep, find, ls, powershell. The plan comes instead from a
-`todo` tool the Hive extension registers through `pi.registerTool()`,
-on by default and disableable in settings. This is Hive adding a tool
-to the user's agent, so it is a setting, not a constant.
+`hive_todo` tool the Hive extension registers through `pi.registerTool()`
+(not `todo`: Pi's own example extension already uses that name), on by
+default and disableable in settings. This is Hive adding a tool to the
+user's agent, so it is a setting, not a constant: `pi_todo_tool` in
+`agent-settings.json`, passed to each Pi session Hive starts as
+`HIVE_PI_TODO_TOOL=1` or `=0`. Explicit both ways, because it is Hive's
+own variable and a value the daemon inherited must not override the
+setting. Off, the extension registers nothing and reports no plan.
+
+The tool takes the whole list on every call, so it reports a wholesale
+`plan`, together with the call's `tool_end` on one connection. The
+plan is read from `tool_execution_end`'s result details, so a failed
+call changes no plan. Those details are also where the list lives in
+the session, as in Pi's own todo example: on every `session_start`
+(startup, reload, `/new`, `/resume`, fork) and on a `/tree` jump the
+extension reports the plan of the branch it landed on — the last
+successful `hive_todo` result, or an empty plan — so a resumed session
+shows its plan straight away and a new one never shows the old one's.
+
+The extension sends its reports one at a time: the next connection is
+dialed only once the previous one closed. The daemon drops a wholesale
+`plan` stamped older than an event it already applied, and with a
+connection per report a parallel tool's `tool_end` could overtake the
+last plan update and erase it. The queue is bounded at 64 and drops its
+oldest report when full; behind a wedged daemon the backlog is stale
+anyway.
 
 **Everyone else (heuristic tier).** Shell, Codex, Gemini, Aider and
 custom agents produce no activity. They get an explicit "no activity
@@ -143,9 +165,11 @@ point: the ring is readable by every GUI window and by `hivebar`, and
 a redaction the daemon performs is a redaction the daemon can regress.
 
 Labels are derived with a separator-agnostic basename on both sides —
-`filepath.Base` in Go, an equivalent in TypeScript that does not assume
-`/`. Otherwise the same edit reads `machine.go` on macOS and
-`internal\agentstate\machine.go` on Windows.
+never `filepath.Base`, which honours only the compiling platform's
+separator. Otherwise the same edit reads `machine.go` on macOS and
+`internal\agentstate\machine.go` on Windows. The two reporters share one
+table of label cases, `internal/agent/pi/testdata/toollabel_vectors.json`, which
+the Go and TypeScript suites both run.
 
 ## Wire
 

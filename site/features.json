@@ -1,7 +1,7 @@
 [
   {
     "title": "Agent plan progress",
-    "blurb": "See how far a Claude session is through its own plan without reading its scrollback: a small pie under the state dot fills as the agent works through its task list, and fades when the agent stops reporting. Turn it off under Settings → Agents.",
+    "blurb": "See how far a Claude or Pi session is through its own plan without reading its scrollback: a small pie under the state dot fills as the agent works through its task list, and fades when the agent stops reporting. Turn it off per agent under Settings → Agents.",
     "status": "shipped",
     "since": "Unreleased"
   },

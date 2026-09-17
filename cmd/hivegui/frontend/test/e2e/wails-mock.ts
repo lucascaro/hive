@@ -1047,12 +1047,16 @@ export async function ApplyUpdateAndRestart() {
 }
 // agent-settings.json. Stateful rather than a fixed reply so a test can
 // save a value and see the modal read it back on reopen.
-const agentSettings = { claude_task_tools: true };
+const agentSettings = { claude_task_tools: true, pi_todo_tool: true };
 export async function GetAgentSettings() {
   return { ...agentSettings };
 }
-export async function SaveAgentSettings(s: { claude_task_tools: boolean }) {
+export async function SaveAgentSettings(s: {
+  claude_task_tools: boolean;
+  pi_todo_tool: boolean;
+}) {
   agentSettings.claude_task_tools = s.claude_task_tools;
+  agentSettings.pi_todo_tool = s.pi_todo_tool;
 }
 
 export async function GetUpdateSettings() {

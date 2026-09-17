@@ -151,6 +151,7 @@ function SettingsDialog({ root }: { root: HTMLElement }): ReactNode {
   // agent-settings.json. Defaults to on, matching the Go default, so a
   // slow read never flashes the box unchecked first.
   const [claudeTaskTools, setClaudeTaskTools] = useState(true);
+  const [piTodoTool, setPiTodoTool] = useState(true);
   const [agentSettingsFailed, setAgentSettingsFailed] = useState(false);
   // Save must never write agent settings it has not read: the checkbox's
   // initial `true` is a display default, not the user's value, and saving
@@ -298,6 +299,7 @@ function SettingsDialog({ root }: { root: HTMLElement }): ReactNode {
       .then((s) => {
         if (!live) return;
         setClaudeTaskTools(s?.claude_task_tools ?? true);
+        setPiTodoTool(s?.pi_todo_tool ?? true);
         setAgentSettingsFailed(false);
         setAgentSettingsLoaded(true);
       })
@@ -578,6 +580,7 @@ function SettingsDialog({ root }: { root: HTMLElement }): ReactNode {
           ? undefined
           : SaveAgentSettings({
               claude_task_tools: claudeTaskTools,
+              pi_todo_tool: piTodoTool,
             } as main.AgentSettings),
       )
       .then(() =>
@@ -681,6 +684,23 @@ function SettingsDialog({ root }: { root: HTMLElement }): ReactNode {
           the model's context, and applies to newly started sessions only. If
           you set <code>CLAUDE_CODE_ENABLE_TODO_TOOLS</code> yourself, Hive
           leaves it alone.
+        </p>
+        <label className="settings-check">
+          <input
+            id="settings-pi-todo-tool"
+            type="checkbox"
+            checked={piTodoTool}
+            disabled={!agentSettingsLoaded || agentSettingsFailed}
+            aria-describedby="settings-pi-todo-tool-hint"
+            onChange={(e) => setPiTodoTool(e.target.checked)}
+          />
+          <span>Show Pi's plan progress in the sidebar</span>
+        </label>
+        <p id="settings-pi-todo-tool-hint" className="settings-hint">
+          Pi has no task list of its own, so Hive adds a <code>hive_todo</code>{' '}
+          tool to the Pi sessions it starts, and the sidebar shows how far each
+          one is through its plan. It uses some of the model's context, and
+          applies to newly started sessions only.
         </p>
         <div id="settings-agents-list" ref={listRef}>
           {loading ? (

@@ -68,7 +68,7 @@ type Def struct {
 	// resume/restart. Entries are appended AFTER the inherited
 	// environment and the later duplicate wins, so an adapter must not
 	// return a variable the user already set; see claudeSpawnEnv.
-	// nil for every agent but Claude.
+	// nil for every agent but Claude and Pi.
 	SpawnEnv func(sp SpawnInfo) []string
 	// PositionalPrompt reports that the agent takes an opening prompt
 	// as a bare argv positional and still starts INTERACTIVELY (rather
@@ -214,6 +214,7 @@ var (
 				return []string{"pi", "--session-id", id}
 			},
 			SpawnArgs: piSpawnArgs,
+			SpawnEnv:  piSpawnEnv,
 			// Verified interactive under a PTY; see PositionalPrompt.
 			PositionalPrompt: true,
 		},

@@ -56,19 +56,29 @@ func TestSettingsDefaultWhenMissing(t *testing.T) {
 	if !s.ClaudeTaskTools {
 		t.Error("ClaudeTaskTools defaults to OFF; the feature would show nothing on the default model")
 	}
+	if !s.PiTodoTool {
+		t.Error("PiTodoTool defaults to OFF; a Pi session would have no plan to show")
+	}
 }
 
 func TestSettingsRoundTrip(t *testing.T) {
 	settingsDir(t, "")
-	if err := SaveSettings(Settings{ClaudeTaskTools: false}); err != nil {
-		t.Fatalf("save: %v", err)
-	}
-	s, err := LoadSettings()
-	if err != nil {
-		t.Fatalf("load: %v", err)
-	}
-	if s.ClaudeTaskTools {
-		t.Error("saved off, loaded on")
+	// Each field independently, so a save that wrote one field over the
+	// other fails here.
+	for _, want := range []Settings{
+		{ClaudeTaskTools: false, PiTodoTool: true},
+		{ClaudeTaskTools: true, PiTodoTool: false},
+	} {
+		if err := SaveSettings(want); err != nil {
+			t.Fatalf("save: %v", err)
+		}
+		got, err := LoadSettings()
+		if err != nil {
+			t.Fatalf("load: %v", err)
+		}
+		if got != want {
+			t.Errorf("saved %+v, loaded %+v", want, got)
+		}
 	}
 }
 
@@ -81,8 +91,21 @@ func TestSettingsMissingKeyDefaultsOn(t *testing.T) {
 	if err != nil {
 		t.Fatalf("load: %v", err)
 	}
-	if !s.ClaudeTaskTools {
-		t.Error("a file without the key read as off; want the default (on)")
+	if !s.ClaudeTaskTools || !s.PiTodoTool {
+		t.Errorf("a file without the keys read as %+v; want the defaults (on)", s)
+	}
+}
+
+// TestSettingsPiTodoToolMissingKeyDefaultsOn: a file an older Hive wrote
+// holds only claude_task_tools. It must not switch the Pi tool off.
+func TestSettingsPiTodoToolMissingKeyDefaultsOn(t *testing.T) {
+	settingsDir(t, `{"claude_task_tools": false}`)
+	s, err := LoadSettings()
+	if err != nil {
+		t.Fatalf("load: %v", err)
+	}
+	if !s.PiTodoTool || s.ClaudeTaskTools {
+		t.Errorf("loaded %+v, want pi_todo_tool on (missing key) and claude_task_tools off", s)
 	}
 }
 
@@ -208,10 +231,10 @@ func TestCustomAgentInheritsSpawnEnv(t *testing.T) {
 	}
 }
 
-// TestOnlyClaudeHasSpawnEnv: no other built-in grows the variable.
-func TestOnlyClaudeHasSpawnEnv(t *testing.T) {
+// TestOnlyClaudeAndPiHaveSpawnEnv: no other built-in grows a variable.
+func TestOnlyClaudeAndPiHaveSpawnEnv(t *testing.T) {
 	for id, d := range defsByID {
-		if (d.SpawnEnv != nil) != (id == IDClaude) {
+		if (d.SpawnEnv != nil) != (id == IDClaude || id == IDPi) {
 			t.Errorf("%s: SpawnEnv set = %v", id, d.SpawnEnv != nil)
 		}
 	}
@@ -229,5 +252,66 @@ func TestClaudeSpawnEnvNeedsASupportedVersion(t *testing.T) {
 	}
 	if got := claudeSpawnArgs(hooked); len(got) != 0 {
 		t.Fatalf("setup: hooks = %v on an unsupported Claude, want none", got)
+	}
+}
+
+// piExtensionDir is a state dir with the Pi extension written, which is
+// what piSpawnArgs — and so piSpawnEnv — gates on.
+func piExtensionDir(t *testing.T) SpawnInfo {
+	t.Helper()
+	dir := t.TempDir()
+	if err := EnsurePiExtension(dir); err != nil {
+		t.Fatal(err)
+	}
+	return SpawnInfo{StateDir: dir}
+}
+
+// TestPiSpawnEnvExplicitBothWays: on and off are both sent, and the
+// setting is read at spawn, so the next session sees a change.
+func TestPiSpawnEnvExplicitBothWays(t *testing.T) {
+	settingsDir(t, "")
+	sp := piExtensionDir(t)
+	if got := piSpawnEnv(sp); len(got) != 1 || got[0] != PiTodoToolEnv+"=1" {
+		t.Errorf("default env = %v, want [%s=1]", got, PiTodoToolEnv)
+	}
+	if err := SaveSettings(Settings{ClaudeTaskTools: true, PiTodoTool: false}); err != nil {
+		t.Fatalf("save: %v", err)
+	}
+	if got := piSpawnEnv(sp); len(got) != 1 || got[0] != PiTodoToolEnv+"=0" {
+		t.Errorf("env with the setting off = %v, want [%s=0]", got, PiTodoToolEnv)
+	}
+}
+
+// TestPiSpawnEnvIgnoresInheritedValue: HIVE_PI_TODO_TOOL is Hive's own
+// variable. A value in the daemon's environment — inherited when hived
+// runs inside a Hive-spawned session — must not override the setting,
+// which the explicit "=1" guarantees because the later duplicate wins.
+func TestPiSpawnEnvIgnoresInheritedValue(t *testing.T) {
+	settingsDir(t, "")
+	t.Setenv(PiTodoToolEnv, "0")
+	if got := piSpawnEnv(piExtensionDir(t)); len(got) != 1 || got[0] != PiTodoToolEnv+"=1" {
+		t.Errorf("env = %v with an inherited =0 and the setting on, want [%s=1]", got, PiTodoToolEnv)
+	}
+}
+
+// TestPiSpawnEnvNeedsTheExtension: no extension on disk, no -e, and no
+// variable for an extension that is not loaded.
+func TestPiSpawnEnvNeedsTheExtension(t *testing.T) {
+	settingsDir(t, "")
+	if got := piSpawnEnv(SpawnInfo{StateDir: t.TempDir()}); got != nil {
+		t.Errorf("env = %v with no extension on disk, want nil", got)
+	}
+	if got := piSpawnEnv(SpawnInfo{}); got != nil {
+		t.Errorf("env = %v with no state dir, want nil", got)
+	}
+}
+
+// TestCustomPiAgentInheritsSpawnEnv: `pi --model x` gets the setting
+// exactly when it gets the extension, from the same name match.
+func TestCustomPiAgentInheritsSpawnEnv(t *testing.T) {
+	writeCustom(t, `[{"id":"pix","name":"Pi X","cmd":["pi","--model","x"]}]`)
+	d, ok := findDef(customDefs(), "pix")
+	if !ok || d.SpawnEnv == nil || d.SpawnArgs == nil {
+		t.Errorf("pi-based custom agent: SpawnArgs=%v SpawnEnv=%v, want both", d.SpawnArgs != nil, d.SpawnEnv != nil)
 	}
 }

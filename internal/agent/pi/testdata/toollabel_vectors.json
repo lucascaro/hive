@@ -1,0 +1,357 @@
+{
+  "_comment": "Shared tool-label vectors. cmd/hived/toollabel_test.go (Claude reporter) and internal/agent/pi/hive.test.ts (Pi reporter) both run every case. `want` must hold in both languages; `want_go` / `want_ts` exist only for pinned URL-parser divergences.",
+  "cases": [
+    {
+      "name": "unix path",
+      "input": {
+        "file_path": "/Users/dev/hive/internal/agentstate/machine.go"
+      },
+      "want": "machine.go"
+    },
+    {
+      "name": "windows path",
+      "input": {
+        "file_path": "C:\\Users\\dev\\hive\\internal\\agentstate\\machine.go"
+      },
+      "want": "machine.go"
+    },
+    {
+      "name": "bare filename",
+      "input": {
+        "path": "README.md"
+      },
+      "want": "README.md"
+    },
+    {
+      "name": "notebook",
+      "input": {
+        "notebook_path": "/tmp/analysis/run.ipynb"
+      },
+      "want": "run.ipynb"
+    },
+    {
+      "name": "single token",
+      "input": {
+        "command": "ls"
+      },
+      "want": "ls"
+    },
+    {
+      "name": "subcommand kept",
+      "input": {
+        "command": "npm test"
+      },
+      "want": "npm test"
+    },
+    {
+      "name": "git subcommand",
+      "input": {
+        "command": "git commit -m \"fix the thing\""
+      },
+      "want": "git commit"
+    },
+    {
+      "name": "flag is not a subcommand",
+      "input": {
+        "command": "ls -la /etc"
+      },
+      "want": "ls"
+    },
+    {
+      "name": "secret in a header",
+      "input": {
+        "command": "curl -H \"Authorization: Bearer sk-live-SECRET\" https://api.example.com"
+      },
+      "want": "curl"
+    },
+    {
+      "name": "metacharacter terminates",
+      "input": {
+        "command": "sleep 12; touch probe.txt"
+      },
+      "want": "sleep"
+    },
+    {
+      "name": "hyphenated subcommand kept",
+      "input": {
+        "command": "git cherry-pick abc"
+      },
+      "want": "git cherry-pick"
+    },
+    {
+      "name": "docker subcommand kept",
+      "input": {
+        "command": "docker compose up"
+      },
+      "want": "docker compose"
+    },
+    {
+      "name": "inline env secret before the command",
+      "input": {
+        "command": "GITHUB_TOKEN=ghp_abc123 gh api user"
+      },
+      "want": "gh api"
+    },
+    {
+      "name": "several assignments",
+      "input": {
+        "command": "A=1 B=two npm test"
+      },
+      "want": "npm test"
+    },
+    {
+      "name": "assignments and nothing else",
+      "input": {
+        "command": "SECRET=hunter2"
+      },
+      "want": ""
+    },
+    {
+      "name": "path command basenamed",
+      "input": {
+        "command": "/home/alice/bin/tool build"
+      },
+      "want": "tool build"
+    },
+    {
+      "name": "relative script basenamed",
+      "input": {
+        "command": "./scripts/deploy.sh"
+      },
+      "want": "deploy.sh"
+    },
+    {
+      "name": "windows command basenamed",
+      "input": {
+        "command": "C:\\Users\\alice\\tool.exe build"
+      },
+      "want": "tool.exe build"
+    },
+    {
+      "name": "executable with digits kept, filename dropped",
+      "input": {
+        "command": "python3 manage.py"
+      },
+      "want": "python3"
+    },
+    {
+      "name": "sensitive filename argument dropped",
+      "input": {
+        "command": "terraform prod.tfvars"
+      },
+      "want": "terraform"
+    },
+    {
+      "name": "unexpanded variable as command",
+      "input": {
+        "command": "$DEPLOY_CMD --prod"
+      },
+      "want": ""
+    },
+    {
+      "name": "quoted command",
+      "input": {
+        "command": "\"my tool\" run"
+      },
+      "want": ""
+    },
+    {
+      "name": "not an assignment: equals mid-word",
+      "input": {
+        "command": "1FOO=bar run"
+      },
+      "want": ""
+    },
+    {
+      "name": "key prefix with digits",
+      "input": {
+        "command": "mytool sk-live-abc123"
+      },
+      "want": "mytool"
+    },
+    {
+      "name": "key prefix, letters only",
+      "input": {
+        "command": "mytool sk-live-abcdef"
+      },
+      "want": "mytool"
+    },
+    {
+      "name": "slack-style token",
+      "input": {
+        "command": "notify xoxb-AAAA-BBBB"
+      },
+      "want": "notify"
+    },
+    {
+      "name": "github token",
+      "input": {
+        "command": "gh ghp_AbCdEf1234"
+      },
+      "want": "gh"
+    },
+    {
+      "name": "user at host",
+      "input": {
+        "command": "ssh deploy@prod-db"
+      },
+      "want": "ssh"
+    },
+    {
+      "name": "host and port",
+      "input": {
+        "command": "nc db.internal:5432"
+      },
+      "want": "nc"
+    },
+    {
+      "name": "user and secret",
+      "input": {
+        "command": "login admin:hunter"
+      },
+      "want": "login"
+    },
+    {
+      "name": "long opaque token",
+      "input": {
+        "command": "mytool AbCdEfGhIjKlMnOpQrStUv"
+      },
+      "want": "mytool"
+    },
+    {
+      "name": "pipe terminates",
+      "input": {
+        "command": "cat /etc/passwd | grep root"
+      },
+      "want": "cat"
+    },
+    {
+      "name": "env assignment refused",
+      "input": {
+        "command": "env TOKEN=secret deploy"
+      },
+      "want": "env"
+    },
+    {
+      "name": "path arg refused",
+      "input": {
+        "command": "python /home/dev/secret_script.py"
+      },
+      "want": "python"
+    },
+    {
+      "name": "empty command",
+      "input": {
+        "command": "   "
+      },
+      "want": ""
+    },
+    {
+      "name": "url host only",
+      "input": {
+        "url": "https://api.example.com/v1/x?token=SECRET"
+      },
+      "want": "api.example.com"
+    },
+    {
+      "name": "url with port",
+      "input": {
+        "url": "http://localhost:8080/debug"
+      },
+      "want": "localhost:8080"
+    },
+    {
+      "name": "relative url has no host",
+      "input": {
+        "url": "/just/a/path"
+      },
+      "want": ""
+    },
+    {
+      "name": "unknown key yields nothing",
+      "input": {
+        "pattern": "password|secret"
+      },
+      "want": ""
+    },
+    {
+      "name": "empty input",
+      "input": {},
+      "want": ""
+    },
+    {
+      "name": "non-object: null",
+      "input": null,
+      "want": ""
+    },
+    {
+      "name": "non-object: bare string",
+      "input": "a bare string",
+      "want": ""
+    },
+    {
+      "name": "non-object: number",
+      "input": 42,
+      "want": ""
+    },
+    {
+      "name": "non-object: list",
+      "input": [
+        "a",
+        "list"
+      ],
+      "want": ""
+    },
+    {
+      "name": "non-string value skipped, next key used",
+      "input": {
+        "command": 42,
+        "path": "/a/b.txt"
+      },
+      "want": "b.txt"
+    },
+    {
+      "name": "look-alike hyphens refused as subcommand",
+      "input": {
+        "command": "mytool sk\u2010live\u2010abc"
+      },
+      "want": "mytool"
+    },
+    {
+      "name": "NEL separates words like strings.Fields",
+      "input": {
+        "command": "npm\u0085test"
+      },
+      "want": "npm test"
+    },
+    {
+      "name": "BOM is not whitespace in strings.Fields",
+      "input": {
+        "command": "npm\ufefftest"
+      },
+      "want": "npm\ufefftest"
+    },
+    {
+      "name": "documented ceiling: short all-letter secret passes as subcommand",
+      "input": {
+        "command": "mytool AbCdEfGhIjKlMnOp"
+      },
+      "want": "mytool AbCdEfGhIjKlMnOp"
+    },
+    {
+      "name": "documented ceiling: secret typed as the command word",
+      "input": {
+        "command": "sk-live-abcdefghij run"
+      },
+      "want": "sk-live-abcdefghij run"
+    },
+    {
+      "name": "url host case and default port (parser divergence)",
+      "input": {
+        "url": "https://API.Example.com:443/x"
+      },
+      "want_go": "API.Example.com:443",
+      "want_ts": "api.example.com"
+    }
+  ]
+}

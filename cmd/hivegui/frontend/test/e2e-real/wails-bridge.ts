@@ -328,7 +328,7 @@ export async function SaveCustomAgents() {
 // nothing for the ws-bridge to forward; the defaults are what a fresh
 // install reads.
 export async function GetAgentSettings() {
-  return { claude_task_tools: true };
+  return { claude_task_tools: true, pi_todo_tool: true };
 }
 export async function SaveAgentSettings() {
   return undefined;

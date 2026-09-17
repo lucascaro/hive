@@ -31,7 +31,9 @@ What works:
   sessions it starts — on by default, off under Settings → Agents, and
   never overriding a value you set yourself. Pi sessions get the same precision through a small
   extension Hive ships with the daemon and loads with `pi -e` — nothing
-  to install, and inert when you run `pi` outside Hive
+  to install, and inert when you run `pi` outside Hive. Pi has no task
+  list of its own, so the extension adds a `hive_todo` tool that feeds
+  the same plan pie — on by default, off under Settings → Agents
 - Idea inbox — notes captured against a project instead of derailing the
   session you are in. Every session Hive spawns can file one from its
   own shell:

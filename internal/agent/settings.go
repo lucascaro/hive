@@ -30,6 +30,11 @@ const SettingsFileName = "agent-settings.json"
 // See code.claude.com/docs/en/tools-reference, "Task tool availability".
 const ClaudeTaskToolsEnv = "CLAUDE_CODE_ENABLE_TODO_TOOLS"
 
+// PiTodoToolEnv tells Hive's Pi extension (internal/agent/pi/hive.ts)
+// whether to register its hive_todo tool: "0" means off. Unlike
+// ClaudeTaskToolsEnv it is Hive's own variable, not the user's.
+const PiTodoToolEnv = "HIVE_PI_TODO_TOOL"
+
 // Settings is the user-facing shape of agent-settings.json.
 type Settings struct {
 	// ClaudeTaskTools opts Hive's Claude sessions into Claude Code's
@@ -38,6 +43,12 @@ type Settings struct {
 	// current default model. Off costs the plan indicator and saves the
 	// context those tools spend in every session.
 	ClaudeTaskTools bool `json:"claude_task_tools"`
+	// PiTodoTool has Hive's Pi extension add a hive_todo tool to the Pi
+	// sessions Hive starts. Pi ships no todo tool, so this is where a Pi
+	// session's plan comes from. On by default for the same reason as
+	// ClaudeTaskTools; off saves the tool's context and keeps Hive from
+	// adding anything to the user's agent.
+	PiTodoTool bool `json:"pi_todo_tool"`
 }
 
 // settingsFile is the on-disk shape. Fields are pointers so a key
@@ -46,17 +57,21 @@ type Settings struct {
 // not silently switch that setting off.
 type settingsFile struct {
 	ClaudeTaskTools *bool `json:"claude_task_tools,omitempty"`
+	PiTodoTool      *bool `json:"pi_todo_tool,omitempty"`
 }
 
 // DefaultSettings is what a fresh install, or a missing key, means.
 func DefaultSettings() Settings {
-	return Settings{ClaudeTaskTools: true}
+	return Settings{ClaudeTaskTools: true, PiTodoTool: true}
 }
 
 func (f settingsFile) resolve() Settings {
 	s := DefaultSettings()
 	if f.ClaudeTaskTools != nil {
 		s.ClaudeTaskTools = *f.ClaudeTaskTools
+	}
+	if f.PiTodoTool != nil {
+		s.PiTodoTool = *f.PiTodoTool
 	}
 	return s
 }
@@ -101,8 +116,7 @@ func SaveSettings(s Settings) error {
 	if err != nil {
 		return err
 	}
-	on := s.ClaudeTaskTools
-	blob, err := json.MarshalIndent(settingsFile{ClaudeTaskTools: &on}, "", "  ")
+	blob, err := json.MarshalIndent(settingsFile{ClaudeTaskTools: &s.ClaudeTaskTools, PiTodoTool: &s.PiTodoTool}, "", "  ")
 	if err != nil {
 		return err
 	}
@@ -151,6 +165,25 @@ func claudeSpawnEnv(sp SpawnInfo) []string {
 		return nil
 	}
 	return []string{ClaudeTaskToolsEnv + "=1"}
+}
+
+// piSpawnEnv is the Pi adapter's environment: whether the extension
+// registers its hive_todo tool.
+//
+// It shares piSpawnArgs' gate — no extension on disk means no -e, and a
+// variable for an extension that is not loaded would be noise. And it is
+// explicit both ways, where claudeSpawnEnv only ever adds "=1": this is
+// Hive's own variable, so a value inherited by the daemon (hived started
+// from inside a Hive-spawned Pi session, say) must never override the
+// setting. The later duplicate wins, so appending it always is enough.
+func piSpawnEnv(sp SpawnInfo) []string {
+	if piSpawnArgs(sp) == nil {
+		return nil
+	}
+	if spawnSettings().PiTodoTool {
+		return []string{PiTodoToolEnv + "=1"}
+	}
+	return []string{PiTodoToolEnv + "=0"}
 }
 
 // lookupEnv is os.LookupEnv, swappable so tests can model a user who

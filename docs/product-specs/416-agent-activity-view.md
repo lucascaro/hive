@@ -1,6 +1,6 @@
 ---
 issue: null
-pr: 420
+pr: 421
 title: "Agent activity view: see the plan and the tools, not just the state"
 type: enhancement
 complexity: L
@@ -72,8 +72,8 @@ just ran, how long it took, whether it failed).
 
 **Agent coverage.** Claude via the hook tier, Pi via the extension
 tier. Pi's tool events come from `tool_execution_start` /
-`tool_execution_end`; its plan comes from a `todo` tool the Hive
-extension registers via `pi.registerTool()`, **on by default, with a
+`tool_execution_end`; its plan comes from a `hive_todo` tool the
+Hive extension registers via `pi.registerTool()`, **on by default, with a
 setting to disable it**. Every heuristic-tier agent — shell, Codex,
 Gemini, Aider, custom — shows an explicit "no activity data" empty
 state.
@@ -123,7 +123,7 @@ No disk format.
   and the sidebar row renders from those alone.
 - Pi extension tests (`internal/agent/pi/hive.test.ts`):
   `tool_execution_start` / `tool_execution_end` post the right events;
-  `registerTool` produces a plan; the todo tool disabled posts nothing
+  `registerTool` produces a plan; the `hive_todo` tool disabled posts nothing
   and registers nothing.
 - Label derivation is separator-agnostic: a Windows path renders as its
   basename in both reporters.

@@ -113,3 +113,47 @@ func TestEverySpawnPathCarriesHooksAndOptInTogether(t *testing.T) {
 	}
 	check("restart")
 }
+
+// TestEveryPiSpawnPathCarriesExtensionAndTodoSettingTogether: the Pi
+// half of the test above. Create and restart each carry the extension
+// (`-e`) AND the todo-tool setting, or neither, and the setting is read
+// at spawn — a restart after switching it off must carry "=0".
+func TestEveryPiSpawnPathCarriesExtensionAndTodoSettingTogether(t *testing.T) {
+	skipOnWindows(t)
+	rec := captureStartSession(t)
+	r := freshRegistry(t)
+	agent.SetCustomDir(t.TempDir())
+	t.Cleanup(func() { agent.SetCustomDir("") })
+	if err := agent.EnsurePiExtension(r.stateDir); err != nil {
+		t.Fatal(err)
+	}
+
+	check := func(path, want string) {
+		t.Helper()
+		rec.mu.Lock()
+		defer rec.mu.Unlock()
+		if len(rec.opts) == 0 {
+			t.Fatal("nothing was spawned")
+		}
+		o := rec.opts[len(rec.opts)-1]
+		loaded := slices.Contains(o.Cmd, "-e")
+		set := slices.Contains(o.Env, want)
+		if !loaded || !set {
+			t.Errorf("%s: extension=%v %s=%v, want both; cmd=%v env=%v", path, loaded, want, set, o.Cmd, o.Env)
+		}
+	}
+
+	e, err := r.Create(context.Background(), wire.CreateSpec{Name: "p", Agent: "pi", Shell: "/bin/bash"})
+	if err != nil {
+		t.Fatalf("Create: %v", err)
+	}
+	check("create", agent.PiTodoToolEnv+"=1")
+
+	if err := agent.SaveSettings(agent.Settings{ClaudeTaskTools: true, PiTodoTool: false}); err != nil {
+		t.Fatalf("save: %v", err)
+	}
+	if err := r.Restart(e.ID); err != nil {
+		t.Fatalf("Restart: %v", err)
+	}
+	check("restart", agent.PiTodoToolEnv+"=0")
+}
