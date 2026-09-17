@@ -24,6 +24,14 @@ package buildinfo
 // History (newest first), so a bump is a decision with a record and
 // not just a number going up:
 //
+//	14 — Self-healing Pi state (spec 423). AgentEvent gains instance /
+//	    seq, an ordering key on the Pi extension's state-bearing
+//	    reports; the daemon applies an unseen key without the timestamp
+//	    guard and treats a seen one as proof of life only. Pi sessions
+//	    are spawned with HIVE_PI_HEARTBEAT=1, and the extension re-sends
+//	    its latest state every 5 s. An old daemon ignores the key, so the
+//	    heartbeat is gated on that variable: re-applying beats through
+//	    the timestamp guard would re-raise waits the user had cleared.
 //	13 — Activity staleness. ACTIVITY is sent for every accepted
 //	    agent event (a bare liveness frame for kinds that carry no
 //	    activity), every frame and the GET_ACTIVITY answer carry
@@ -136,7 +144,7 @@ package buildinfo
 //	    before this cannot see or clear the flag.
 //	1 — first contract; everything up to and including the
 //	    CLIENT_COMMAND relay.
-const DaemonContract = 13
+const DaemonContract = 14
 
 // Identity is this binary's full build identity. `hived --version
 // --json` prints it, and Welcome carries the same three values, so a

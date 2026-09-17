@@ -548,6 +548,19 @@ type AgentEvent struct {
 	// any previous one wholesale — or AgentEventPlanItem, where each
 	// item is merged into the existing plan by ID.
 	Items []PlanItem `json:"items,omitempty"`
+
+	// Instance and Seq order the Pi extension's state-bearing reports
+	// exactly (spec 423). Instance is minted each time the extension
+	// loads; Seq counts that instance's state-bearing events from 1.
+	// The extension re-sends its latest one every few seconds, so a
+	// lost report heals: the daemon applies a key it has not seen and
+	// treats a seen one as proof of life only — which is also why a
+	// wait the user cleared stays cleared.
+	//
+	// Both or neither, and only on StateSourceExtension. plan, ping and
+	// session_end are never keyed; they keep the timestamp ordering.
+	Instance string `json:"instance,omitempty"`
+	Seq      uint64 `json:"seq,omitempty"`
 }
 
 // PlanItem is one step of an agent's plan, as reported by its tier —

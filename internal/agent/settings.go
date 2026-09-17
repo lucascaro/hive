@@ -180,11 +180,20 @@ func piSpawnEnv(sp SpawnInfo) []string {
 	if piSpawnArgs(sp) == nil {
 		return nil
 	}
+	// The heartbeat is only safe against a daemon that understands the
+	// ordering key; this daemon does, and it is the one spawning pi.
+	heartbeat := PiHeartbeatEnv + "=1"
 	if spawnSettings().PiTodoTool {
-		return []string{PiTodoToolEnv + "=1"}
+		return []string{PiTodoToolEnv + "=1", heartbeat}
 	}
-	return []string{PiTodoToolEnv + "=0"}
+	return []string{PiTodoToolEnv + "=0", heartbeat}
 }
+
+// PiHeartbeatEnv enables the Pi extension's state heartbeat (spec 423).
+// Set only by a daemon that orders extension events by instance and
+// seq: an older daemon would re-apply every heartbeat through the
+// timestamp guard and re-raise a wait the user had cleared.
+const PiHeartbeatEnv = "HIVE_PI_HEARTBEAT"
 
 // lookupEnv is os.LookupEnv, swappable so tests can model a user who
 // set the variable without mutating the real process environment

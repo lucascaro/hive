@@ -594,3 +594,229 @@ func TestStaleTickDemotesTheSourceNotJustTheState(t *testing.T) {
 			"inference, not the agent's report", got.Source)
 	}
 }
+
+// piKeyed is an extension event carrying spec 423's ordering key. now is
+// the daemon's receipt time; at is the reporter's stamp.
+func piKeyed(kind, instance string, seq uint64, at, now time.Time) Event {
+	return Event{Kind: kind, Source: wire.StateSourceExtension, At: at, Now: now, Instance: instance, Seq: seq}
+}
+
+// deliver is what registry.ApplyAgentEvent does: a seen key is a
+// replay, anything else is applied.
+func deliver(m *Machine, ev Event) bool {
+	if handled, changed := m.Replay(ev); handled {
+		return changed
+	}
+	return m.Apply(ev)
+}
+
+func TestReplayIsLivenessOnly(t *testing.T) {
+	m := New(t0)
+	ev := piKeyed(KindWaitingInput, "A", 5, t0, t0)
+	deliver(m, ev)
+	m.ClearWaiting()
+
+	later := t0.Add(HookStaleAfter - time.Second)
+	replay := ev
+	replay.Now = later
+	if handled, changed := m.Replay(replay); !handled || changed {
+		t.Fatalf("Replay = (%v, %v), want (true, false)", handled, changed)
+	}
+	if got := m.Snapshot().State; got != wire.StateIdle {
+		t.Errorf("state = %q, want idle — a cleared wait must stay cleared", got)
+	}
+	// Liveness came from the replay's receipt time, not its old stamp.
+	if !m.trusted(later.Add(HookStaleAfter - time.Second)) {
+		t.Error("a replay did not refresh liveness")
+	}
+}
+
+// The reported bug's cure: the question's waiting_input was lost, and
+// the heartbeat re-sending it lands it.
+func TestReplayHealsLostState(t *testing.T) {
+	m := New(t0)
+	deliver(m, piKeyed(KindToolStart, "A", 1, t0, t0))
+	lost := piKeyed(KindWaitingInput, "A", 2, t0.Add(time.Second), t0.Add(time.Second))
+	// ...never delivered. Five seconds later the heartbeat repeats it.
+	lost.Now = t0.Add(6 * time.Second)
+	if handled, _ := m.Replay(lost); handled {
+		t.Fatal("an unseen key was treated as a replay")
+	}
+	m.Apply(lost)
+	if got := m.Snapshot(); got.State != wire.StateWaitingInput || got.Source != wire.StateSourceExtension {
+		t.Errorf("snapshot = %+v, want waiting_input on the extension tier", got)
+	}
+}
+
+// plan and ping are unkeyed, so a delivered one cannot mask a lost
+// state report.
+func TestLostStateNotMaskedByLaterPlan(t *testing.T) {
+	m := New(t0)
+	deliver(m, piKeyed(KindToolStart, "A", 2, t0, t0))
+	lost := piKeyed(KindWaitingInput, "A", 3, t0.Add(time.Second), t0.Add(time.Second))
+	deliver(m, Event{Kind: KindPlan, Source: wire.StateSourceExtension, At: t0.Add(2 * time.Second)})
+	deliver(m, Event{Kind: KindPing, Source: wire.StateSourceExtension, At: t0.Add(3 * time.Second)})
+	lost.Now = t0.Add(6 * time.Second)
+	deliver(m, lost)
+	if got := m.Snapshot().State; got != wire.StateWaitingInput {
+		t.Errorf("state = %q, want waiting_input", got)
+	}
+}
+
+func TestOlderSeqSameInstanceIsReplay(t *testing.T) {
+	m := New(t0)
+	deliver(m, piKeyed(KindTurnEnd, "A", 5, t0, t0))
+	if handled, changed := m.Replay(piKeyed(KindToolStart, "A", 4, t0, t0)); !handled || changed {
+		t.Fatalf("Replay = (%v, %v), want (true, false)", handled, changed)
+	}
+	if got := m.Snapshot().State; got != wire.StateWaitingInput {
+		t.Errorf("state = %q, want waiting_input (unchanged)", got)
+	}
+}
+
+// Pi re-runs the extension for /new, /resume, fork and /reload: a new
+// instance starts from seq 1. A straggler from the old one is accepted
+// too, and the new instance's next heartbeat corrects it.
+func TestNewInstanceAccepted(t *testing.T) {
+	m := New(t0)
+	deliver(m, piKeyed(KindToolStart, "A", 50, t0, t0))
+	idle := piKeyed(KindIdle, "B", 1, t0.Add(time.Second), t0.Add(time.Second))
+	deliver(m, idle)
+	if got := m.Snapshot().State; got != wire.StateIdle {
+		t.Fatalf("state = %q after a new instance's idle, want idle", got)
+	}
+	deliver(m, piKeyed(KindToolStart, "A", 51, t0.Add(500*time.Millisecond), t0.Add(2*time.Second)))
+	if got := m.Snapshot().State; got != wire.StateWorking {
+		t.Fatalf("setup: straggler not applied, state = %q", got)
+	}
+	idle.Now = t0.Add(6 * time.Second)
+	deliver(m, idle)
+	if got := m.Snapshot().State; got != wire.StateIdle {
+		t.Errorf("state = %q after B's heartbeat, want idle", got)
+	}
+}
+
+// After a stall the heuristic tier owns the session. The next replay
+// restores the extension's last word — including the user's clear —
+// rather than re-running the event.
+func TestReplayAfterHeuristicTakeoverRestoresTier(t *testing.T) {
+	m := New(t0)
+	end := piKeyed(KindTurnEnd, "A", 2, t0, t0)
+	deliver(m, end)
+	m.ClearWaiting()
+	late := t0.Add(HookStaleAfter + time.Minute)
+	m.Output(late)
+	if got := m.Snapshot(); got.Source != wire.StateSourceHeuristic {
+		t.Fatalf("setup: source = %q, want heuristic", got.Source)
+	}
+	end.Now = late.Add(time.Second)
+	if handled, changed := m.Replay(end); !handled || !changed {
+		t.Fatalf("Replay = (%v, %v), want (true, true)", handled, changed)
+	}
+	if got := m.Snapshot(); got.State != wire.StateIdle || got.Source != wire.StateSourceExtension {
+		t.Errorf("snapshot = %+v, want idle on the extension tier — the clear must stick", got)
+	}
+}
+
+func TestReplayedToolStartAfterTakeoverAddsNoRingEntry(t *testing.T) {
+	m := New(t0)
+	start := piKeyed(KindToolStart, "A", 1, t0, t0)
+	start.Tool, start.CallID = "bash", "c1"
+	deliver(m, start)
+	tools, _ := m.Activity()
+	ring := len(tools)
+	late := t0.Add(HookStaleAfter + time.Minute)
+	m.Output(late)
+	start.Now = late
+	deliver(m, start)
+	tools, _ = m.Activity()
+	if got := len(tools); got != ring {
+		t.Errorf("ring length = %d, want %d", got, ring)
+	}
+	if got := m.Snapshot().State; got != wire.StateWorking {
+		t.Errorf("state = %q, want working restored", got)
+	}
+}
+
+// A keyed tool_end and the unkeyed plan on its connection share one
+// stamp; the plan must still apply (the #421 plan-loss bug).
+func TestKeyedToolEndAndPlanSameAtAppliesPlan(t *testing.T) {
+	m := New(t0)
+	at := t0.Add(time.Second)
+	deliver(m, piKeyed(KindToolEnd, "A", 1, at, at.Add(time.Millisecond)))
+	deliver(m, Event{Kind: KindPlan, Source: wire.StateSourceExtension, At: at, Now: at.Add(2 * time.Millisecond),
+		Items: []wire.PlanItem{{Text: "ship it", Status: wire.PlanStatusDone}}})
+	if got := m.Snapshot(); got.PlanTotal != 1 {
+		t.Errorf("PlanTotal = %d, want 1 — the plan was dropped behind the keyed event", got.PlanTotal)
+	}
+}
+
+// Healing a report with an old stamp must not move the timestamp guard
+// backwards, or an unkeyed event older than one already applied would
+// be accepted again.
+func TestHealedOldAtDoesNotMoveOrderAtBack(t *testing.T) {
+	m := New(t0)
+	deliver(m, piKeyed(KindToolStart, "A", 1, t0.Add(10*time.Second), t0.Add(10*time.Second)))
+	deliver(m, piKeyed(KindWaitingInput, "A", 2, t0.Add(5*time.Second), t0.Add(15*time.Second)))
+	if !m.orderAt.Equal(t0.Add(10 * time.Second)) {
+		t.Errorf("orderAt = %v, want it held at the newest stamp", m.orderAt)
+	}
+}
+
+// A Pi that stops reporting still goes stale: keyed liveness does not
+// outlive HookStaleAfter.
+func TestKeyedSessionStillGoesStale(t *testing.T) {
+	m := New(t0)
+	deliver(m, piKeyed(KindToolStart, "A", 1, t0, t0))
+	m.Output(t0.Add(HookStaleAfter + time.Second))
+	if got := m.Snapshot(); got.State != wire.StateWorking || got.Source != wire.StateSourceHeuristic {
+		t.Errorf("snapshot = %+v, want working/heuristic", got)
+	}
+}
+
+func TestKeyedEventAfterExitStaysExited(t *testing.T) {
+	m := New(t0)
+	end := piKeyed(KindTurnEnd, "A", 1, t0, t0)
+	deliver(m, end)
+	m.Exit()
+	deliver(m, end)
+	deliver(m, piKeyed(KindToolStart, "A", 2, t0, t0))
+	if got := m.Snapshot().State; got != wire.StateExited {
+		t.Errorf("state = %q, want exited", got)
+	}
+}
+
+// Accepted behavior (spec 423 plan): two live instances beating in
+// turn flip the key, and each flip re-applies — which can re-raise a
+// wait the user cleared. Only misuse gets here (a leaked interval, a
+// nested pi inheriting HIVE_SESSION_ID). Pinned so a change is a
+// decision, not an accident.
+func TestAlternatingInstancesDocumented(t *testing.T) {
+	m := New(t0)
+	a := piKeyed(KindTurnEnd, "A", 1, t0, t0)
+	b := piKeyed(KindIdle, "B", 1, t0, t0)
+	deliver(m, a)
+	deliver(m, b)
+	deliver(m, a)
+	if got := m.Snapshot().State; got != wire.StateWaitingInput {
+		t.Errorf("state = %q, want waiting_input (the documented re-raise)", got)
+	}
+}
+
+// Clients render staleness from StaleAt; a heartbeat must move it, or a
+// live, quiet Pi would read stale after HookStaleAfter.
+func TestReplayRefreshesStaleAt(t *testing.T) {
+	m := New(t0)
+	ev := piKeyed(KindIdle, "A", 1, t0, t0)
+	deliver(m, ev)
+	m.TakeAccepted()
+	ev.Now = t0.Add(20 * time.Second)
+	deliver(m, ev)
+	at, ok := m.StaleAt()
+	if !ok || !at.Equal(ev.Now.Add(HookStaleAfter)) {
+		t.Errorf("StaleAt = %v (%v), want %v", at, ok, ev.Now.Add(HookStaleAfter))
+	}
+	if !m.TakeAccepted() {
+		t.Error("a replay was not marked accepted; no liveness frame would go out")
+	}
+}

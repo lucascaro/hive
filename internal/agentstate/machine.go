@@ -141,6 +141,12 @@ type Event struct {
 	// RunningAgents rides KindTurnEnd: the subagents still running when
 	// the turn ended. nil means not reported.
 	RunningAgents *[]string
+
+	// Instance / Seq are the Pi extension's ordering key
+	// (wire.AgentEvent.Instance). Empty Instance means unkeyed: the
+	// timestamp guard orders it, as it does every hook event.
+	Instance string
+	Seq      uint64
 }
 
 // Snapshot is the machine's externally visible state, as a value.
@@ -191,6 +197,16 @@ type Machine struct {
 	// guard. Consumed by TakeAccepted, like LastToolDelta's hasDelta, so
 	// the registry never broadcasts a dropped event.
 	accepted bool
+
+	// extInstance / extSeq are the newest ordering key applied, and
+	// extState is the state as of the extension tier's last say — the
+	// keyed event's result, or a user's ClearWaiting or a bell that
+	// followed it. A heartbeat replaying a seen key onto a session the
+	// heuristic tier took over restores extState rather than re-running
+	// the event, so a wait the user cleared stays cleared. See Replay.
+	extInstance string
+	extSeq      uint64
+	extState    State
 
 	// act is the tool ring and plan snapshot. Its lifetime is this
 	// struct's: New zeroes it, and a fresh Machine on restart/revive
@@ -288,6 +304,7 @@ func (m *Machine) Bell(now time.Time) bool {
 		return false
 	}
 	m.state = wire.StateWaitingInput
+	m.noteExtState()
 	return true
 }
 
@@ -329,7 +346,55 @@ func (m *Machine) ClearWaiting() bool {
 	default:
 		return false
 	}
+	m.noteExtState()
 	return true
+}
+
+// noteExtState records a state change made while the extension tier
+// owns the session, so a later restore (Replay) brings back what the
+// user last saw rather than the event that preceded it.
+func (m *Machine) noteExtState() {
+	if m.source == wire.StateSourceExtension {
+		m.extState = m.state
+	}
+}
+
+// Replay handles an extension event whose ordering key was already
+// applied — the extension's heartbeat re-sending its latest report
+// (spec 423). handled is false for anything else, which then goes
+// through Apply.
+//
+// On the extension tier a replay is proof of life and nothing more:
+// no state, no text, no tool or plan change — only the liveness clocks
+// (and the accepted flag, so clients get a bare staleness refresh). After a stall long enough for the
+// heuristic tier to take the session (HookStaleAfter, then a repaint),
+// it restores the tier and extState instead of re-running the event:
+// re-running a turn_end would re-raise a wait the user cleared, and a
+// tool_start would duplicate its ring entry.
+//
+// Liveness is the daemon's clock, not ev.At: a replay carries the
+// original stamp, which is as old as the report it repeats.
+func (m *Machine) Replay(ev Event) (handled, changed bool) {
+	if ev.Instance == "" || ev.Instance != m.extInstance || ev.Seq > m.extSeq {
+		return false, false
+	}
+	now := ev.Now
+	if now.IsZero() {
+		now = ev.At
+	}
+	m.hookSeenAt = now
+	m.reportedAt = now
+	if m.state == wire.StateExited {
+		return true, false
+	}
+	m.accepted = true
+	if m.source == wire.StateSourceExtension {
+		return true, false
+	}
+	before := m.Snapshot()
+	m.source = wire.StateSourceExtension
+	m.state = m.extState
+	return true, m.Snapshot() != before
 }
 
 // Tick applies the passage of time: a working session that has emitted
@@ -408,7 +473,10 @@ func (m *Machine) Apply(ev Event) bool {
 	// tools) and they never move state, so there is nothing for an
 	// inversion to get wrong.
 	sub := ev.AgentID != ""
-	if !sub && !m.orderAt.IsZero() {
+	// A keyed event is ordered by its key, which Replay has already
+	// checked; the stamp says nothing more.
+	keyed := ev.Instance != ""
+	if !sub && !keyed && !m.orderAt.IsZero() {
 		if behind := m.orderAt.Sub(ev.At); behind > 0 && behind < HookStaleAfter {
 			return m.applyLateActivity(ev, now)
 		}
@@ -425,6 +493,19 @@ func (m *Machine) Apply(ev Event) bool {
 		// keeps the hook tier trusted after the parent's turn ended.
 		if ev.At.After(m.hookSeenAt) {
 			m.hookSeenAt = ev.At
+		}
+	} else if keyed {
+		// Liveness from our clock (a healed report carries an old
+		// stamp). orderAt is max'd from ev.At, never ev.Now: a keyed
+		// tool_end and the unkeyed plan on its connection share one
+		// stamp, and the plan must not sort behind it. Max, so a healed
+		// old stamp never drags the guard backwards.
+		m.hookSeenAt = now
+		if ev.At.After(m.orderAt) {
+			m.orderAt = ev.At
+		}
+		if ev.Instance != m.extInstance || ev.Seq > m.extSeq {
+			m.extInstance, m.extSeq = ev.Instance, ev.Seq
 		}
 	} else {
 		// Assigned, not max'd: a main-thread report HookStaleAfter or
@@ -515,6 +596,9 @@ func (m *Machine) Apply(ev Event) bool {
 		// alive rather than dropping the session back to heuristics.
 	}
 
+	if keyed {
+		m.extState = m.state
+	}
 	return m.Snapshot() != before
 }
 

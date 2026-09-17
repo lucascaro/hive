@@ -25,6 +25,7 @@
 // derived label (deriveTarget) and the plan items do. eventBody builds
 // every frame from an explicit field list for exactly that reason —
 // nothing here spreads a Pi event into a payload.
+import { randomUUID } from "node:crypto";
 import net from "node:net";
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 
@@ -58,6 +59,33 @@ export const TODO_TOOL_NAME = "hive_todo";
 // user turned the tool off in Settings → Agents.
 export const TODO_TOOL_ENV = "HIVE_PI_TODO_TOOL";
 
+// Set to "1" by hived (internal/agent/settings.go, piSpawnEnv) when the
+// daemon orders keyed reports. Without it there is no heartbeat: an
+// older daemon would re-apply every beat and re-raise a wait the user
+// had already cleared.
+export const HEARTBEAT_ENV = "HIVE_PI_HEARTBEAT";
+
+// How often the latest state-bearing report is re-sent (spec 423). Well
+// under agentstate.HookStaleAfter (30 s), so a live Pi never goes
+// stale, and short enough that a lost report heals before anyone
+// wonders why a question is not flagged. Mutable for tests only.
+export const heartbeat = { ms: 5000 };
+
+// The kinds that move session state. Only these carry the ordering key
+// and are replayed: a plan or ping taking a sequence number could make a
+// lost state report look already applied, and it could then never heal.
+export const STATE_KINDS = new Set([
+  "prompt",
+  "permission_resolved",
+  "tool_start",
+  "tool_end",
+  "turn_end",
+  "idle",
+  "error",
+  "waiting_input",
+  "waiting_permission",
+]);
+
 const PLAN_STATUSES = new Set(["pending", "active", "done"]);
 
 export type PlanItem = { text: string; status: string };
@@ -72,6 +100,8 @@ export type ReportEvent = {
   call_id?: string;
   ok?: boolean;
   items?: PlanItem[];
+  instance?: string;
+  seq?: number;
 };
 
 function frame(type: number, payload: unknown): Buffer {
@@ -95,6 +125,7 @@ function eventBody(sessionId: string, e: ReportEvent, at: string) {
     ...(e.call_id ? { call_id: truncateBytes(e.call_id, MAX_ID_LEN) } : {}),
     ...(typeof e.ok === "boolean" ? { ok: e.ok } : {}),
     ...(Array.isArray(e.items) ? { items: capPlan(e.items) } : {}),
+    ...(e.instance && e.seq ? { instance: e.instance, seq: e.seq } : {}),
     at,
   };
 }
@@ -184,17 +215,28 @@ export function createSender(sock: string, sid: string, timeoutMs = 2000) {
     }
   };
 
+  // sendFrames queues one already-encoded report — the heartbeat's
+  // byte-for-byte replay goes through here.
+  const sendFrames = (buf: Buffer) => {
+    queue.push(buf);
+    if (queue.length > MAX_PENDING_REPORTS) queue.shift();
+    pump();
+  };
+
   return {
     // send reports events as one connection. `at` is stamped here, not
     // at dial time: it is when Pi observed this (wire.AgentEvent's
     // documented contract), and the daemon orders events by it.
-    send(events: ReportEvent[]): boolean {
+    // onEncoded sees the stamp, so a caller can keep a replayable copy
+    // of one event with the same `at`.
+    send(events: ReportEvent[], onEncoded?: (at: string) => void): boolean {
       if (events.length === 0 || events.length > MAX_EVENTS_PER_REPORT) return false;
-      queue.push(encodeFrames(sid, events, new Date().toISOString()));
-      if (queue.length > MAX_PENDING_REPORTS) queue.shift();
-      pump();
+      const at = new Date().toISOString();
+      onEncoded?.(at);
+      sendFrames(encodeFrames(sid, events, at));
       return true;
     },
+    sendFrames,
     // pending is the number of reports not yet dialed. For tests.
     pending: () => queue.length,
   };
@@ -272,7 +314,37 @@ export default function (pi: ExtensionAPI) {
   if (!sid || !sock) return; // not under Hive: inert
 
   const todoTool = process.env[TODO_TOOL_ENV] !== "0";
-  const sender = createSender(sock, sid);
+  const rawSender = createSender(sock, sid);
+
+  // The ordering key (spec 423). Pi runs this factory again for /new,
+  // /resume, fork and /reload, so each of those is a new instance with
+  // its own count; the daemon accepts any instance it has not seen.
+  const instance = randomUUID();
+  let seq = 0;
+  // The latest state-bearing report, encoded as sent. The heartbeat
+  // re-sends exactly these bytes: a daemon that already applied the key
+  // treats it as proof of life, and one that lost it applies it now.
+  let lastState: Buffer | null = null;
+
+  const sender = {
+    send(events: ReportEvent[]): boolean {
+      const keyed = events.map((e) => (STATE_KINDS.has(e.kind) ? { ...e, instance, seq: ++seq } : e));
+      return rawSender.send(keyed, (at) => {
+        const last = keyed.filter((e) => e.seq).pop();
+        if (last) lastState = encodeFrames(sid, [last], at);
+      });
+    },
+  };
+
+  let beat: ReturnType<typeof setInterval> | undefined;
+  if (process.env[HEARTBEAT_ENV] === "1") {
+    beat = setInterval(() => {
+      // Only when nothing is queued: behind a wedged daemon a backlog
+      // is already stale, and heartbeats must not grow it.
+      if (lastState && rawSender.pending() === 0) rawSender.sendFrames(lastState);
+    }, heartbeat.ms);
+    beat.unref?.();
+  }
 
   // post reports a single event. Pass the kind as a string literal:
   // TestPiExtensionKindsAreOnTheAllowlist scrapes post("…") calls and
@@ -303,12 +375,20 @@ export default function (pi: ExtensionAPI) {
     } as any);
   }
 
-  pi.on("session_start", (_event, ctx) => {
+  pi.on("session_start", (_event, ctx: any) => {
     // Every start — startup, reload, /new, /resume, fork — reports the
     // plan of the branch it lands on, empty when there is none, so a
     // new conversation never shows the previous one's plan.
-    if (todoTool) sender.send([{ kind: "ping" }, { kind: "plan", items: planFromBranch(ctx) }]);
-    else post("ping");
+    //
+    // And a state, so this instance has something to heal with: a
+    // straggler from the instance it replaced can land after it, and
+    // only this instance's heartbeat corrects that. idle unless a run
+    // is live — /new, /resume and fork abort the turn first, but
+    // /reload does not.
+    const running = typeof ctx?.isIdle === "function" && ctx.isIdle() === false;
+    const state: ReportEvent = { kind: running ? "permission_resolved" : "idle" };
+    if (todoTool) sender.send([{ kind: "ping" }, state, { kind: "plan", items: planFromBranch(ctx) }]);
+    else sender.send([{ kind: "ping" }, state]);
   });
 
   // A /tree jump moves to another branch without a session_start.
@@ -425,6 +505,9 @@ export default function (pi: ExtensionAPI) {
   // is a wire change; revisit if the stale prompt is confusing in
   // practice.
   pi.on("session_shutdown", (event) => {
+    // Every shutdown ends this instance, quit or not: the runtime that
+    // replaces it runs this factory again and starts its own heartbeat.
+    if (beat) clearInterval(beat);
     turnInFlight = false;
     if (event?.reason === "quit") post("session_end");
     else post("idle");

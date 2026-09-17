@@ -482,7 +482,7 @@ func (r *Registry) ApplyAgentEvent(id string, ev wire.AgentEvent) error {
 		return ErrNotFound
 	}
 	prev := e.stateSnapshot()
-	changed := e.machine().Apply(agentstate.Event{
+	aev := agentstate.Event{
 		Kind:   ev.Kind,
 		Source: ev.Source,
 		At:     at,
@@ -500,7 +500,23 @@ func (r *Registry) ApplyAgentEvent(id string, ev wire.AgentEvent) error {
 		AgentID:       ev.AgentID,
 		AgentType:     ev.AgentType,
 		RunningAgents: ev.RunningAgents,
-	})
+
+		Instance: ev.Instance,
+		Seq:      ev.Seq,
+	}
+	// A heartbeat repeating a report already applied: proof of life,
+	// or a restore after the heuristic tier took over. It carries no
+	// tool or plan change, so the activity frame is the bare liveness
+	// one every accepted report gets — clients need the moved stale_at,
+	// or a live, quiet Pi would read stale after HookStaleAfter.
+	if handled, restored := e.machine().Replay(aev); handled {
+		if restored {
+			r.announceStateLocked(e, prev, "replay")
+		}
+		r.broadcastActivityLocked(e, wire.AgentEventPing)
+		return nil
+	}
+	changed := e.machine().Apply(aev)
 	if changed {
 		r.announceStateLocked(e, prev, ev.Kind)
 	}
