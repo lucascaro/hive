@@ -87,10 +87,12 @@ describe('applyActivity events', () => {
   });
 
   it('keeps a completed call whose end delta raced ahead of a snapshot without it', () => {
+    // The snapshot was taken before the end was accepted, so its stale_at
+    // is older than the delta's.
     const a = run(
-      msg({ events: [startEv('c1', 1)] }),
-      msg({ events: [endEv('c1', 2)] }),
-      msg({ full: true, events: [], plan: [] }),
+      msg({ events: [startEv('c1', 1)], stale_at: t(31) }),
+      msg({ events: [endEv('c1', 2)], stale_at: t(32) }),
+      msg({ full: true, events: [], plan: [], stale_at: t(31) }),
     );
     expect(a.events).toHaveLength(1);
     expect(a.events[0].ok).toBe(true);
@@ -137,8 +139,13 @@ describe('applyActivity events', () => {
 
   it('orders by the daemon clock, not arrival', () => {
     const a = run(
-      msg({ events: [endEv('late', 9)] }),
-      msg({ full: true, events: [endEv('early', 2)], plan: [] }),
+      msg({ events: [endEv('late', 9)], stale_at: t(40) }),
+      msg({
+        full: true,
+        events: [endEv('early', 2)],
+        plan: [],
+        stale_at: t(39),
+      }),
     );
     expect(a.events.map((e) => e.call_id)).toEqual(['early', 'late']);
   });
@@ -175,6 +182,27 @@ describe('applyActivity plan and stale_at', () => {
     );
     expect(a.plan.map((p) => p.text)).toEqual(['new']);
     expect(a.staleAt).toBe(t(40));
+  });
+
+  it('orders stale_at below a millisecond (RFC3339Nano)', () => {
+    const newer = '2026-09-16T12:00:05.000000900Z';
+    const older = '2026-09-16T12:00:05.000000100Z';
+    const a = run(
+      msg({ plan: plan('new'), stale_at: newer }),
+      msg({ plan: plan('old'), stale_at: older }),
+    );
+    expect(a.plan[0].text).toBe('new');
+    expect(a.staleAt).toBe(newer);
+  });
+
+  it('a current full snapshot replaces events from before it', () => {
+    // A restart keeps the session id but starts a fresh ring; its empty
+    // snapshot must not leave the previous life's calls on screen.
+    const a = run(
+      msg({ events: [endEv('old', 2)], stale_at: t(30) }),
+      msg({ full: true, events: [], plan: [], stale_at: t(40) }),
+    );
+    expect(a.events).toEqual([]);
   });
 
   it('compares stale_at as instants, not strings', () => {

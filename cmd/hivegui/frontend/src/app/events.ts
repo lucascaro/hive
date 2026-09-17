@@ -489,6 +489,15 @@ export function wireDaemonEvents(injected: EventsDeps) {
     const wasPending = prevPhase !== undefined && !isReady(prevPhase);
     setAlive(info.id, !!info.alive);
     setSessionPhase(info.id, phase);
+    // A restart (back to ready) or a revive (dead to alive) gives the
+    // daemon a fresh activity machine under the same id. Drop the old
+    // life here, running calls included, so a shown panel refetches.
+    if (
+      (wasPending && isReady(phase)) ||
+      (prev === false && info.alive === true && isReady(phase))
+    ) {
+      forgetActivity(info.id);
+    }
     // A session that hasn't finished starting is not dead — it has no
     // PTY *yet*. Death is only meaningful once the daemon says ready.
     if (!isReady(phase)) return;

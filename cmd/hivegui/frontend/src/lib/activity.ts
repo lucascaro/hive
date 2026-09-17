@@ -76,16 +76,30 @@ function instant(s: string | undefined): number {
   return Number.isNaN(n) ? 0 : n;
 }
 
+// stampNs orders two daemon stamps at their full RFC3339Nano precision.
+// Date.parse keeps milliseconds, and two accepted reports can land inside
+// one; comparing those as equal would let the older frame win.
+function stampNs(s: string): bigint {
+  const m = /^(.*?)(?:\.(\d+))?(Z|[+-]\d\d:\d\d)$/.exec(s);
+  if (!m) return BigInt(0);
+  const secMs = Date.parse(m[1] + m[3]);
+  if (Number.isNaN(secMs)) return BigInt(0);
+  const frac = (m[2] ?? '').padEnd(9, '0').slice(0, 9);
+  return BigInt(secMs) * BigInt(1_000_000) + BigInt(frac);
+}
+
 const whenOf = (e: ToolEvent) => instant(e.started_at ?? e.ended_at);
 
 // applyActivity folds one ACTIVITY frame into a session's state.
 //
 // A GET_ACTIVITY answer and the deltas are written by different daemon
-// goroutines, so they arrive in either order. Two rules make that safe:
-// events merge as a union by call — a snapshot adds and completes calls
-// but never removes one the client already holds (it may be an end that
-// raced ahead of the snapshot) — and a frame whose stale_at is older than
-// the one already stored cannot replace the plan or stale_at.
+// goroutines, so they arrive in either order. stale_at orders them: it
+// only moves forward per session. A frame older than what is stored never
+// replaces the plan, stale_at or the events — an older snapshot only adds
+// and completes calls, so an end that raced ahead of it survives. A
+// current snapshot replaces the events outright, which is what clears the
+// previous life of a restarted session (its running calls are dropped
+// by the store when the session restarts).
 export function applyActivity(
   prev: SessionActivity,
   msg: ActivityMsg,
@@ -93,12 +107,17 @@ export function applyActivity(
   const older =
     !!msg.stale_at &&
     !!prev.staleAt &&
-    instant(msg.stale_at) < instant(prev.staleAt);
+    stampNs(msg.stale_at) < stampNs(prev.staleAt);
 
   let events = prev.events;
-  if (msg.events && msg.events.length > 0) {
-    const byKey = new Map(prev.events.map((e) => [keyOf(e), e]));
-    for (const ev of msg.events) {
+  // A current snapshot is the whole finished ring, so it replaces the
+  // finished calls held here. It never carries a running call (the daemon
+  // keeps those outside its ring), so those stay.
+  const current = !!msg.full && !older;
+  if (current || (msg.events && msg.events.length > 0)) {
+    const base = current ? prev.events.filter((e) => !isDone(e)) : prev.events;
+    const byKey = new Map(base.map((e) => [keyOf(e), e]));
+    for (const ev of msg.events ?? []) {
       const k = keyOf(ev);
       const had = byKey.get(k);
       // A late start never regresses a finished call.

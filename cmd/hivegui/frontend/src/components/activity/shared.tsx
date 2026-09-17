@@ -38,7 +38,7 @@ export function useActivityView(sessionId: string): ActivityView | null {
   if (stale) {
     staleText = heuristic
       ? 'Not reporting — may be out of date'
-      : `No report for ${formatAge(staleForMs(data.staleAt, now))}`;
+      : `Stale for ${formatAge(staleForMs(data.staleAt, now))}`;
   }
   return { info, data, now, empty, stale, staleText };
 }

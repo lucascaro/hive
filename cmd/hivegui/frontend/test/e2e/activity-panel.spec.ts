@@ -76,13 +76,28 @@ const termCols = (page: Page) =>
       )?.cols ?? 0,
   );
 
+// The column count once layout has settled: two reads 300ms apart that
+// agree. Read straight after boot it can still be moving (font load,
+// sidebar width); on Windows CI a pre-settle 145 became the baseline the
+// steady 127 was compared against.
+async function settledCols(page: Page): Promise<number> {
+  let prev = -1;
+  for (let i = 0; i < 20; i++) {
+    const cur = await termCols(page);
+    if (cur > 0 && cur === prev) return cur;
+    prev = cur;
+    await page.waitForTimeout(300);
+  }
+  throw new Error(`terminal cols never settled (last ${prev})`);
+}
+
 test.describe('spec 416 inspector panel', () => {
   test('opens beside the terminal, refits it, and closes again', async ({
     page,
   }) => {
     await boot(page);
+    const colsBefore = await settledCols(page);
     const before = await termBox(page);
-    const colsBefore = await termCols(page);
     await expect(page.locator('#activity-panel')).toBeHidden();
 
     await page.keyboard.press(TOGGLE);
@@ -262,7 +277,7 @@ test.describe('spec 416 inspector panel', () => {
     await expect(root).toHaveAttribute('data-stale', '');
     await expect(
       page.locator('#activity-panel .hv-activity__stale'),
-    ).toContainText('No report for 2m');
+    ).toContainText('Stale for 2m');
     // The desaturation is real CSS, not just an attribute.
     const colors = await page.evaluate(() => {
       const tool = document.querySelector('#activity-panel .hv-activity__tool');

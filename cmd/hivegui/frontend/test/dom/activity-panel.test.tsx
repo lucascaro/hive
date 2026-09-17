@@ -144,7 +144,7 @@ describe('ActivityPanel', () => {
       'data-stale',
     );
     expect(container.querySelector('.hv-activity__stale')?.textContent).toMatch(
-      /No report for \d+m/,
+      /Stale for \d+m/,
     );
   });
 
