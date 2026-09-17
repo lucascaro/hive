@@ -5,7 +5,8 @@
 //
 // This file is deliberately paranoid about never surfacing anything to
 // Claude: no stdout output (Claude parses hook stdout for some event
-// types), and it always exits 0 — a user running `claude` outside Hive
+// types) except the one deliberate SessionStart nudge in
+// sessionStartOutput, and it always exits 0 — a user running `claude` outside Hive
 // with a copied --settings file, or the daemon being down, must look
 // exactly like no hook ran at all.
 package main
@@ -20,6 +21,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/lucascaro/hive/internal/agent"
 	"github.com/lucascaro/hive/internal/daemon"
 	"github.com/lucascaro/hive/internal/wire"
 )
@@ -59,6 +61,10 @@ func runHook(stdin io.Reader) {
 		hookDebugf("read stdin: %v", err)
 		raw = nil
 	}
+	if out := sessionStartOutput(raw); out != nil {
+		_, _ = os.Stdout.Write(out)
+	}
+
 	evs := mapHookPayload(raw)
 	for i := range evs {
 		evs[i].SessionID = sessionID
@@ -67,6 +73,43 @@ func runHook(stdin io.Reader) {
 	if err := sendHookEvents(sock, evs); err != nil {
 		hookDebugf("send: %v", err)
 	}
+}
+
+// taskToolsNudge is added to a Claude session's context at start so it
+// actually uses its task tools. They are deferred behind ToolSearch, and
+// without a nudge the model rarely loads them for work it could just do,
+// so Hive gets no plan to show. The wording is deliberately firm: a
+// softer "for three or more steps, use TaskCreate" reached the model and
+// changed nothing (0 of 2 runs on Claude Code 2.1.274), this one got
+// tasks created in 3 of 4.
+const taskToolsNudge = "Hive (the terminal manager running this session) shows the user your " +
+	"progress ONLY through your task list. Before your first other tool call on any request " +
+	"that involves more than one action, call ToolSearch to load TaskCreate and TaskUpdate, " +
+	"create one task per step, then mark each in_progress when starting and completed when done. " +
+	"This applies even to quick tasks; skipping it leaves the user blind."
+
+// sessionStartOutput is the hook stdout for a SessionStart payload: the
+// task-tools nudge as additionalContext, or nil for every other event,
+// and when the session was not given the task tools (the setting is off
+// or the user set the variable to 0) — a nudge toward tools that do not
+// exist would only cost context. SessionStart also fires on resume and
+// after compaction, so the nudge survives both.
+func sessionStartOutput(raw []byte) []byte {
+	if v := os.Getenv(agent.ClaudeTaskToolsEnv); v == "" || v == "0" || strings.EqualFold(v, "false") {
+		return nil
+	}
+	var p hookPayload
+	if json.Unmarshal(raw, &p) != nil || p["hook_event_name"] != "SessionStart" {
+		return nil
+	}
+	out, err := json.Marshal(map[string]any{"hookSpecificOutput": map[string]string{
+		"hookEventName":     "SessionStart",
+		"additionalContext": taskToolsNudge,
+	}})
+	if err != nil {
+		return nil
+	}
+	return out
 }
 
 // hookDebugf logs to stderr only when HIVE_HOOK_DEBUG=1 — never

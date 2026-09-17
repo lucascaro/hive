@@ -8,6 +8,7 @@ import (
 	"testing"
 	"unicode/utf8"
 
+	"github.com/lucascaro/hive/internal/agent"
 	"github.com/lucascaro/hive/internal/wire"
 )
 
@@ -106,6 +107,39 @@ func TestHookNoEnvExitsZero(t *testing.T) {
 	// assertion isn't available without a network seam, but the run
 	// completing quickly is exactly the "did nothing" we're pinning.
 	runHook(strings.NewReader(`{"hook_event_name":"Stop","last_assistant_message":"x"}`))
+}
+
+// TestHookSessionStartNudge: the task-tools nudge goes out on
+// SessionStart only, and only when the session has the task tools.
+func TestHookSessionStartNudge(t *testing.T) {
+	start := readFixture(t, "session_start.json")
+
+	t.Setenv(agent.ClaudeTaskToolsEnv, "1")
+	out := sessionStartOutput(start)
+	var got struct {
+		HookSpecificOutput struct {
+			HookEventName     string `json:"hookEventName"`
+			AdditionalContext string `json:"additionalContext"`
+		} `json:"hookSpecificOutput"`
+	}
+	if err := json.Unmarshal(out, &got); err != nil {
+		t.Fatalf("output %q is not JSON: %v", out, err)
+	}
+	if got.HookSpecificOutput.HookEventName != "SessionStart" || got.HookSpecificOutput.AdditionalContext != taskToolsNudge {
+		t.Errorf("output = %s", out)
+	}
+	for _, fx := range []string{"stop.json", "user_prompt_submit.json", "malformed.json"} {
+		if out := sessionStartOutput(readFixture(t, fx)); out != nil {
+			t.Errorf("%s: output %s, want none", fx, out)
+		}
+	}
+
+	for _, v := range []string{"", "0", "false"} {
+		t.Setenv(agent.ClaudeTaskToolsEnv, v)
+		if out := sessionStartOutput(start); out != nil {
+			t.Errorf("%s=%q: output %s, want none", agent.ClaudeTaskToolsEnv, v, out)
+		}
+	}
 }
 
 // --- Activity: tool events, plan extraction, and the privacy rule ---
