@@ -35,10 +35,11 @@ import type { SessionInfo } from '../app/state.js';
 // Staleness is approximated by state_source rather than measured:
 // when the hook tier goes quiet past HookStaleAfter while the session
 // is working, the machine hands it back to the heuristic tier, and
-// that shows up here. It does NOT catch a hook that died while the
-// session was at rest (Output bails on the waits, Tick only demotes
-// working), so a plan orphaned at rest still reads as live. The real
-// fix is ActivityMsg.StaleAt, which the inspector panel will consume.
+// that shows up here — the same moment ActivityMsg.stale_at would say
+// so, which is why the row does not read the activity store. It does
+// NOT catch a hook that died while the session was at rest (Output
+// bails on the waits, Tick only demotes working), and nothing can: no
+// reporter heartbeats, so a healthy tier at rest is just as silent.
 function planOf(s: SessionInfo): {
   done: number;
   total: number;

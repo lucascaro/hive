@@ -25,6 +25,7 @@
 //
 // Membership comes from store/terms.ts's useTermIds — which ids have a
 // live host, never the SessionTerm values. Observable, not reactive.
+import { activityRenderers } from './activity/registry.js';
 import { createPortal } from 'react-dom';
 import { useRef, type ReactNode } from 'react';
 
@@ -77,8 +78,28 @@ function TileChrome({ id }: { id: string }): ReactNode {
             term.overlays,
           )
         : null}
+      {term.overlays ? (
+        <ActivityTileMount id={id} host={term.overlays} />
+      ) : null}
     </>
   );
+}
+
+// The activity grid's tile body. Mounted only while the activity grid is
+// shown, so a tile asks for its snapshot when it first appears there and
+// never before. Beside TileOverlays in the same mount: both are
+// absolutely positioned over the body.
+function ActivityTileMount({
+  id,
+  host,
+}: {
+  id: string;
+  host: HTMLElement;
+}): ReactNode {
+  const shown = useAppStore((s) => s.activityGrid && s.view !== 'single');
+  if (!shown) return null;
+  const Tile = activityRenderers.tile;
+  return createPortal(<Tile sessionId={id} />, host);
 }
 
 // The header's children, in the order the e2e specs select them:

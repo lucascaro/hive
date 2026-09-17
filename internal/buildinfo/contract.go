@@ -24,6 +24,14 @@ package buildinfo
 // History (newest first), so a bump is a decision with a record and
 // not just a number going up:
 //
+//	13 — Activity staleness. ACTIVITY is sent for every accepted
+//	    agent event (a bare liveness frame for kinds that carry no
+//	    activity), every frame and the GET_ACTIVITY answer carry
+//	    stale_at on the daemon clock, and ActivityMsg.plan is no longer
+//	    omitempty: null means unchanged, [] means emptied. A GUI built
+//	    after this, against an older daemon, never learns a plan was
+//	    emptied and renders no staleness in the inspector panel or
+//	    activity grid.
 //	12 — Subagent attribution. Two new AgentEvent kinds,
 //	    subagent_start / subagent_end, from Claude's SubagentStart /
 //	    SubagentStop hooks; AgentEvent and ToolEvent gain agent_id /
@@ -128,7 +136,7 @@ package buildinfo
 //	    before this cannot see or clear the flag.
 //	1 — first contract; everything up to and including the
 //	    CLIENT_COMMAND relay.
-const DaemonContract = 12
+const DaemonContract = 13
 
 // Identity is this binary's full build identity. `hived --version
 // --json` prints it, and Welcome carries the same three values, so a

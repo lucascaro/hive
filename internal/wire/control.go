@@ -646,14 +646,18 @@ type ActivityMsg struct {
 	// on a delta.
 	Events []ToolEvent `json:"events,omitempty"`
 	// Plan is the current plan snapshot, sent whenever it changed (and
-	// always when Full).
-	Plan []PlanItem `json:"plan,omitempty"`
+	// always when Full). Not omitempty, because an emptied plan must be
+	// told apart from an unchanged one: null means unchanged, [] means
+	// the plan is now empty.
+	Plan []PlanItem `json:"plan"`
 	// Full distinguishes a GET_ACTIVITY answer from a delta.
 	Full bool `json:"full,omitempty"`
-	// StaleAt is reserved for the inspector panel's age display: the
-	// daemon-clock instant past which this session's tier is no longer
-	// reporting. Set by the daemon; nothing reads it yet. Declared now
-	// so the frame shape does not change when the panel lands.
+	// StaleAt is the daemon-clock instant (RFC3339Nano, UTC) past which
+	// this session's tier counts as silent: its last accepted report
+	// plus agentstate.HookStaleAfter. Set on every frame; empty on the
+	// heuristic tier. It is monotonic per session, so clients also use
+	// it to order a snapshot against deltas. It means stale only while
+	// the session is working — a tier at rest is silent by design.
 	StaleAt string `json:"stale_at,omitempty"`
 }
 

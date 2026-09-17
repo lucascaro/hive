@@ -1,0 +1,164 @@
+/* Agent activity renderers (spec 416): the inspector panel beside the
+   terminal and the activity grid's tile body. Existing tokens only, so
+   every theme preset works. docs/design-docs/agent-activity.md */
+
+/* ---------- activity grid: the tile body swap ---------- */
+/* Hidden, not display:none and not unmounted: the xterm keeps its size
+   (no refit storm, no WebGL slot churn) and comes back as it was. */
+#terms.grid.activity .term-host .term-body { visibility: hidden; }
+/* Focus is dropped in the activity grid, so .term-focused is gone; the
+   active tile still needs to read as the one ⌘Enter opens. */
+#terms.grid.activity .term-host.active {
+  border-color: var(--session-color, var(--fg-muted));
+}
+.activity-tile {
+  position: absolute;
+  /* Below the 28px tile header (tile-header.css). */
+  top: 28px;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 4;
+  background: var(--term-bg);
+}
+
+/* ---------- shared ---------- */
+.hv-activity {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  font-family: var(--font-ui);
+  font-size: var(--text-sm);
+  color: var(--fg);
+  user-select: none;
+  cursor: default;
+}
+.hv-activity--panel {
+  height: 100%;
+  box-sizing: border-box;
+  padding: var(--space-2) var(--space-3);
+  background: var(--surface);
+  border-left: 1px solid var(--border);
+}
+.hv-activity--tile { padding: var(--space-1) var(--space-2); box-sizing: border-box; }
+
+.hv-activity__head {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  min-height: 20px;
+  flex-shrink: 0;
+}
+.hv-activity__title { font-weight: 600; }
+.hv-activity__stale {
+  margin-left: auto;
+  font-size: var(--text-xs);
+  color: var(--fg-subtle);
+}
+.hv-activity__section {
+  margin-top: var(--space-3);
+  padding-bottom: var(--space-1);
+  font-size: var(--text-xs);
+  color: var(--fg-muted);
+  border-bottom: 1px solid var(--border);
+  flex-shrink: 0;
+}
+.hv-activity__empty,
+.hv-activity__none {
+  padding: var(--space-2) 0;
+  color: var(--fg-muted);
+  font-size: var(--text-xs);
+  list-style: none;
+}
+.hv-activity ol { list-style: none; margin: 0; padding: 0; }
+
+/* ---------- plan ---------- */
+.hv-activity__plan { flex-shrink: 0; max-height: 50%; overflow-y: auto; margin-top: var(--space-2); }
+.hv-activity__step-row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+  padding: 2px 0;
+  cursor: pointer;
+  color: var(--fg-muted);
+}
+.hv-activity__step[data-status='active'] > .hv-activity__step-row { color: var(--fg); }
+.hv-activity__step[data-status='done'] > .hv-activity__step-row { color: var(--fg-subtle); }
+.hv-activity__mark {
+  display: inline-flex;
+  width: 12px;
+  height: 12px;
+  flex-shrink: 0;
+  color: var(--state-running);
+}
+.hv-activity__step[data-status='active'] .hv-activity__mark {
+  border-radius: 50%;
+  box-shadow: inset 0 0 0 1.5px var(--state-running);
+}
+.hv-activity__step-text {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.hv-activity__pill {
+  flex-shrink: 0;
+  min-width: 16px;
+  padding: 0 var(--space-1);
+  border-radius: var(--radius-sm);
+  background: var(--sel);
+  color: var(--fg-muted);
+  font-size: var(--text-xs);
+  text-align: center;
+  font-variant-numeric: tabular-nums;
+}
+.hv-activity__calls { padding-left: var(--space-5); }
+.hv-activity__subagent-name { font-size: var(--text-xs); color: var(--state-info); }
+
+/* ---------- pips ---------- */
+.hv-activity__pips { display: flex; flex-wrap: wrap; gap: 3px; }
+.hv-activity__pip {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  box-shadow: inset 0 0 0 1.5px var(--fg-subtle);
+}
+.hv-activity__pip[data-status='active'] { box-shadow: inset 0 0 0 1.5px var(--state-running); }
+.hv-activity__pip[data-status='done'] { background: var(--state-running); box-shadow: none; }
+
+/* ---------- calls ---------- */
+.hv-activity__timeline { flex: 1; min-height: 0; overflow-y: auto; }
+.hv-activity__call {
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-1);
+  padding: 1px 0;
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+  white-space: nowrap;
+}
+.hv-activity__tool { color: var(--accent); flex-shrink: 0; }
+.hv-activity__target {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  color: var(--fg-muted);
+}
+.hv-activity__target::before { content: '· '; color: var(--fg-subtle); }
+.hv-activity__outcome { margin-left: auto; padding-left: var(--space-2); color: var(--fg-subtle); flex-shrink: 0; }
+.hv-activity__call[data-running] .hv-activity__outcome { color: var(--state-running); }
+.hv-activity__call[data-failed] .hv-activity__outcome { color: var(--state-error); }
+
+/* ---------- stale: the activity must not read as live ---------- */
+.hv-activity[data-stale] .hv-activity__tool,
+.hv-activity[data-stale] .hv-activity__mark,
+.hv-activity[data-stale] .hv-activity__subagent-name,
+.hv-activity[data-stale] .hv-activity__call .hv-activity__outcome {
+  color: var(--fg-subtle);
+}
+.hv-activity[data-stale] .hv-activity__pip[data-status='done'] { background: var(--fg-subtle); }
+.hv-activity[data-stale] .hv-activity__pip[data-status='active'],
+.hv-activity[data-stale] .hv-activity__step[data-status='active'] .hv-activity__mark {
+  box-shadow: inset 0 0 0 1.5px var(--fg-subtle);
+}

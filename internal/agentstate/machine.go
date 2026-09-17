@@ -182,6 +182,15 @@ type Machine struct {
 	// Stop — and letting one advance the guard would get the Stop
 	// dropped as out of order.
 	orderAt time.Time
+	// reportedAt is the DAEMON's clock (Event.Now) at the last accepted
+	// tier report, main-thread or subagent. It exists only for StaleAt:
+	// hookSeenAt is the reporter's stamp and orders events, and a
+	// deadline shown to a client must be on the clock the daemon owns.
+	reportedAt time.Time
+	// accepted records that the most recent Apply got past the ordering
+	// guard. Consumed by TakeAccepted, like LastToolDelta's hasDelta, so
+	// the registry never broadcasts a dropped event.
+	accepted bool
 
 	// act is the tool ring and plan snapshot. Its lifetime is this
 	// struct's: New zeroes it, and a fresh Machine on restart/revive
@@ -406,6 +415,9 @@ func (m *Machine) Apply(ev Event) bool {
 	}
 
 	before := m.Snapshot()
+	// Liveness counts even for a session that has exited (the tier
+	// clock below is refreshed too); acceptance waits for the exit check.
+	m.reportedAt = now
 
 	m.source = ev.Source
 	if sub {
@@ -434,6 +446,7 @@ func (m *Machine) Apply(ev Event) bool {
 	if m.state == wire.StateExited {
 		return false
 	}
+	m.accepted = true
 
 	if sub {
 		m.applySubagent(ev, now)
@@ -503,6 +516,29 @@ func (m *Machine) Apply(ev Event) bool {
 	}
 
 	return m.Snapshot() != before
+}
+
+// StaleAt is the daemon-clock instant past which this session's tier
+// counts as silent: the last accepted report plus HookStaleAfter. ok is
+// false on the heuristic tier, where there is nothing to go stale.
+//
+// Silence is only meaningful while working. Neither Claude's hooks nor
+// the Pi extension heartbeat, so a healthy tier at rest is exactly as
+// quiet as a dead one; clients apply the deadline to working sessions
+// only.
+func (m *Machine) StaleAt() (time.Time, bool) {
+	if m.source == wire.StateSourceHeuristic || m.reportedAt.IsZero() {
+		return time.Time{}, false
+	}
+	return m.reportedAt.Add(HookStaleAfter), true
+}
+
+// TakeAccepted reports whether the most recent Apply accepted its event,
+// and consumes the flag.
+func (m *Machine) TakeAccepted() bool {
+	ok := m.accepted
+	m.accepted = false
+	return ok
 }
 
 // wantsUser reports the states that stand until the user acts on them:

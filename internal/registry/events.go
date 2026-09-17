@@ -2,7 +2,9 @@ package registry
 
 import (
 	"log"
+	"time"
 
+	"github.com/lucascaro/hive/internal/agentstate"
 	"github.com/lucascaro/hive/internal/wire"
 )
 
@@ -108,28 +110,38 @@ func (r *Registry) SubscribeActivity() (ActivityListener, func()) {
 // broadcastActivityLocked fans out one delta for the event just
 // applied. Callers hold r.mu.
 //
-// Only the activity kinds produce a delta; every other agent
-// event (prompt, idle, the waits) moves state and nothing else, and
-// sending an empty ACTIVITY for those would be pure noise on the
-// busiest feed the registry has.
+// Every accepted tier event sends one, stamped with stale_at: the kinds
+// that carry activity send it (one tool event, or the whole plan), and
+// the rest (prompt, turn end, ping, the waits, subagent lifecycle) send
+// a bare liveness frame. Without those, a client's stale_at would lag
+// every report that is not a tool or plan, and a session thinking for
+// longer than HookStaleAfter between tool calls would read as stale. A
+// frame is ~80 bytes, a handful per turn, on a feed that already
+// carries PTY bytes.
+//
+// An event the machine rejected (the out-of-order guard) sends nothing.
 func (r *Registry) broadcastActivityLocked(e *Entry, kind string) {
-	var msg wire.ActivityMsg
+	m := e.machine()
+	if !m.TakeAccepted() {
+		// Consume any tool delta too, so it cannot leak into a later
+		// frame. A rejected event never sets one today; this keeps the
+		// pairing honest if that changes.
+		m.LastToolDelta()
+		return
+	}
+	msg := wire.ActivityMsg{SessionID: e.ID, StaleAt: staleAtString(m)}
 	switch kind {
 	case wire.AgentEventToolStart, wire.AgentEventToolEnd:
-		ev, ok := e.machine().LastToolDelta()
-		if !ok {
-			return
+		if ev, ok := m.LastToolDelta(); ok {
+			msg.Events = []wire.ToolEvent{ev}
 		}
-		msg = wire.ActivityMsg{SessionID: e.ID, Events: []wire.ToolEvent{ev}}
 	case wire.AgentEventPlan, wire.AgentEventPlanItem:
 		// A per-item update still sends the whole plan. It is at most
 		// MaxPlanItems small rows, and a client that only ever receives
 		// complete plans never has to replicate the merge rules — the
-		// daemon stays the one place a plan is assembled.
-		_, plan := e.machine().Activity()
-		msg = wire.ActivityMsg{SessionID: e.ID, Plan: plan}
-	default:
-		return
+		// daemon stays the one place a plan is assembled. Activity()
+		// returns a non-nil slice, so an emptied plan marshals as [].
+		_, msg.Plan = m.Activity()
 	}
 	for ch := range r.activityListeners {
 		select {
@@ -143,6 +155,16 @@ func (r *Registry) broadcastActivityLocked(e *Entry, kind string) {
 			close(ch)
 		}
 	}
+}
+
+// staleAtString is the machine's StaleAt on the wire: RFC3339Nano UTC,
+// empty when the session has no reporting tier.
+func staleAtString(m *agentstate.Machine) string {
+	at, ok := m.StaleAt()
+	if !ok {
+		return ""
+	}
+	return at.UTC().Format(time.RFC3339Nano)
 }
 
 // ActivitySnapshot returns one session's whole stored ring and plan —
@@ -161,5 +183,6 @@ func (r *Registry) ActivitySnapshot(id string) (wire.ActivityMsg, error) {
 		Events:    events,
 		Plan:      plan,
 		Full:      true,
+		StaleAt:   staleAtString(e.machine()),
 	}, nil
 }

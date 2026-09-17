@@ -114,6 +114,11 @@ func buildAppMenu(a *App) *menu.Menu {
 	view.AddText("Toggle All Sessions Grid",
 		keys.Combo("g", keys.ShiftKey, keys.CmdOrCtrlKey),
 		emit("menu:toggle-all-grid"))
+	view.AddSeparator()
+	view.AddText("Toggle Agent Activity", keys.CmdOrCtrl("j"), emit("menu:toggle-activity"))
+	view.AddText("Agent Activity Grid",
+		keys.Combo("j", keys.ShiftKey, keys.CmdOrCtrlKey),
+		emit("menu:activity-grid"))
 
 	sess := m.AddSubmenu("Session")
 	sess.AddText("Next Session", keys.CmdOrCtrl("down"), emit("menu:next-session"))

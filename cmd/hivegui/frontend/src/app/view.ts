@@ -411,6 +411,14 @@ export function restoreProject(id: string | null) {
   }
 }
 
+// gridWouldTile: whether entering `view` would give a real grid rather
+// than setView's downgrade to single (a grid of one tile).
+export function gridWouldTile(view: ViewMode): boolean {
+  return (
+    resolveView(view, gridScopeFor(view, activeProjectId()).length) === view
+  );
+}
+
 export function setView(view: ViewMode, opts: { persist?: boolean } = {}) {
   // A grid of one tile looks like focused mode but loses the focused-mode
   // keybindings, so ⌘G / ⇧⌘G below the floor stay where they are.

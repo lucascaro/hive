@@ -34,6 +34,14 @@ What works:
   to install, and inert when you run `pi` outside Hive. Pi has no task
   list of its own, so the extension adds a `hive_todo` tool that feeds
   the same plan pie — on by default, off under Settings → Agents
+- Agent activity — what a Claude or Pi session is doing, without reading
+  its scrollback. ⌘J opens an inspector beside the terminal: the plan's
+  steps with the tool calls each one ran (`Bash · npm test`, never the
+  full arguments), and the whole timeline below. In a grid, ⌘J swaps
+  every tile's terminal for its activity — plan pips and the live tool
+  feed — and ⇧⌘J gets there from any view. A session whose agent stops
+  reporting mid-turn greys out and says how long it has been quiet.
+  (Ctrl+Shift+J / Ctrl+Alt+Shift+J on Windows and Linux.)
 - Idea inbox — notes captured against a project instead of derailing the
   session you are in. Every session Hive spawns can file one from its
   own shell:
@@ -274,6 +282,7 @@ build.sh           # macOS universal build
 | ⌘1–9 | Jump to nth session |
 | ⌘= / ⌘- / ⌘0 | Font size up / down / reset |
 | ⌘S | Toggle sidebar |
+| ⌘J / ⇧⌘J | Agent activity: the inspector panel beside the terminal (single view) or the activity grid (grid) / go to the activity grid from any view. Ctrl+Shift+J / Ctrl+Alt+Shift+J on Windows and Linux, where Ctrl+J is the terminal's newline |
 | ⇧⌘K / ⌘/ | Command palette / keyboard-shortcuts overlay |
 
 Full list in the app: **⌘/**. (Ctrl replaces ⌘ on Windows and Linux.)

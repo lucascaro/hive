@@ -1,5 +1,11 @@
 [
   {
+    "title": "Agent activity view",
+    "blurb": "See what a Claude or Pi session is doing without reading its scrollback. ⌘J (Ctrl+Shift+J on Windows and Linux) opens an inspector beside the terminal with the agent's plan, the tools each step ran and a live timeline; in a grid, the same key turns every tile into its session's plan and tool feed. A session whose agent stops reporting mid-turn greys out and says for how long.",
+    "status": "shipped",
+    "since": "Unreleased"
+  },
+  {
     "title": "Agent plan progress",
     "blurb": "See how far a Claude or Pi session is through its own plan without reading its scrollback: a small pie under the state dot fills as the agent works through its task list, and fades when the agent stops reporting. Turn it off per agent under Settings → Agents.",
     "status": "shipped",

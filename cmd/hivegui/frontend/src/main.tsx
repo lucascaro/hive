@@ -106,6 +106,8 @@ import {
   toggleSidebar,
   toggleProjectGrid,
   toggleAllGrid,
+  toggleActivity,
+  showActivityGrid,
   focusActiveSession,
   deleteActiveProject,
   openWorktreesForActiveProject,
@@ -215,6 +217,16 @@ const paletteCommands = [
     id: 'toggle-all-grid',
     name: 'Toggle All Sessions Grid',
     run: toggleAllGrid,
+  },
+  {
+    id: 'toggle-activity',
+    name: 'Toggle Agent Activity',
+    run: toggleActivity,
+  },
+  {
+    id: 'activity-grid',
+    name: 'Agent Activity Grid',
+    run: showActivityGrid,
   },
   {
     id: 'focus-active-session',

@@ -29,6 +29,7 @@
 // The containers' own classes (.hidden, .error, .mismatch) are still
 // applied by each component's layout effect: they sit on the portal
 // target, outside this tree.
+import { ActivityPanelHost } from './activity/ActivityPanelHost.js';
 import { createPortal } from 'react-dom';
 import { PendingPrompt } from './PendingPrompt.js';
 import type { ReactNode } from 'react';
@@ -128,6 +129,8 @@ export function App(): ReactNode {
       {/* One portal per live terminal tile, into hosts app/session-term.ts
           owns. Renders no layout of its own — see TileChrome.tsx. */}
       <TileChromeHost />
+      {/* The inspector panel beside the terminal (spec 416). */}
+      <ActivityPanelHost />
       {/* #banners is `display: contents` (layout.css), so the three
           banners stay direct children of the #app grid and keep their
           row placement. */}
