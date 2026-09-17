@@ -167,6 +167,7 @@ func TestEventFrameRefusesMalformedKey(t *testing.T) {
 		"seq without instance": {Kind: wire.AgentEventPrompt, Source: wire.StateSourceExtension, Seq: 1},
 		"instance without seq": {Kind: wire.AgentEventPrompt, Source: wire.StateSourceExtension, Instance: "a"},
 		"key on the hook tier": {Kind: wire.AgentEventPrompt, Source: wire.StateSourceHook, Instance: "a", Seq: 1},
+		"key on a subagent":    {Kind: wire.AgentEventToolStart, Source: wire.StateSourceExtension, Instance: "a", Seq: 1, AgentID: "sub-1"},
 	} {
 		t.Run(name, func(t *testing.T) {
 			d := startTestDaemon(t)

@@ -170,3 +170,4 @@ Disposition: all applied. `orderAt = max(orderAt, ev.At)`; a takeover replay res
 ## PR convergence ledger
 
 - **2026-09-16 iter 1** — verdict: COMMENT; mergeable: MERGEABLE; findings_hash: 521e10f93880f43b5ef3def59a32bb29b0924be4d025c9c0cf9729571acfde35; threads_open: 0; action: escalated:risky-fix-needs-human-decision; head_sha: c40e6bc.
+- **2026-09-17 iter 2** — verdict: APPROVE; mergeable: MERGEABLE; findings_hash: empty; threads_open: 0; action: stop; head_sha: a8ffa4de.

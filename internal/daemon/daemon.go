@@ -799,10 +799,12 @@ func (d *Daemon) applyEventFrame(payload []byte) bool {
 		return false
 	}
 	// A key is half the ordering contract or none of it, and only the
-	// extension speaks it: a keyed hook event would never be recognised
-	// as a replay and would re-apply on every heartbeat.
+	// extension's main thread speaks it: a keyed hook or subagent event
+	// never records its key (Apply's subagent branch skips it), so it
+	// would never be recognised as a replay and would re-apply on every
+	// heartbeat.
 	if (ev.Instance == "") != (ev.Seq == 0) ||
-		(ev.Instance != "" && ev.Source != wire.StateSourceExtension) {
+		(ev.Instance != "" && (ev.Source != wire.StateSourceExtension || ev.AgentID != "")) {
 		log.Printf("hived: event mode: malformed ordering key (source %q)", ev.Source)
 		return false
 	}
