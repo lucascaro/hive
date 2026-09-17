@@ -24,6 +24,9 @@
 
 /* ---------- shared ---------- */
 .hv-activity {
+  /* Pip geometry, read back by the tile's two-row cap below. */
+  --pip-size: 8px;
+  --pip-gap: 3px;
   display: flex;
   flex-direction: column;
   min-height: 0;
@@ -41,6 +44,33 @@
   border-left: 1px solid var(--border);
 }
 .hv-activity--tile { padding: var(--space-1) var(--space-2); box-sizing: border-box; }
+
+/* Spec 428: in a tile the tasks are the body and the feed takes what is
+   left. The feed's flex-basis of 0 keeps it out of the column's content
+   height, so it only ever grows into free space: a plan taller than the
+   tile leaves none and the feed collapses to zero while the list scrolls.
+   min-height: 0 is what lets both actually shrink. position: relative
+   makes the list the rows' offsetParent — ActivityTile's auto-scroll
+   measures offsetTop against it. */
+.hv-activity--tile .hv-activity__plan {
+  flex: 0 1 auto;
+  min-height: 0;
+  max-height: 100%;
+  margin-top: 0;
+  overflow-y: auto;
+  position: relative;
+}
+.hv-activity--tile .hv-activity__timeline { flex: 1 1 0; min-height: 0; overflow: hidden; }
+/* Two pip rows: the head does not shrink and the pips wrap, so an uncapped
+   strip would crowd out the list it summarizes on a long plan. Derived
+   from the pip geometry, so resizing a pip cannot silently make it 1.x
+   rows. */
+.hv-activity--tile .hv-activity__pips {
+  max-height: calc(2 * var(--pip-size) + var(--pip-gap));
+  overflow: hidden;
+}
+/* The panel's rows are click-to-pin; a tile's are inert. */
+.hv-activity--tile .hv-activity__step-row { cursor: default; font-size: var(--text-xs); }
 
 .hv-activity__head {
   display: flex;
@@ -117,10 +147,10 @@
 .hv-activity__subagent-name { font-size: var(--text-xs); color: var(--state-info); }
 
 /* ---------- pips ---------- */
-.hv-activity__pips { display: flex; flex-wrap: wrap; gap: 3px; }
+.hv-activity__pips { display: flex; flex-wrap: wrap; gap: var(--pip-gap); }
 .hv-activity__pip {
-  width: 8px;
-  height: 8px;
+  width: var(--pip-size);
+  height: var(--pip-size);
   border-radius: 50%;
   box-shadow: inset 0 0 0 1.5px var(--fg-subtle);
 }

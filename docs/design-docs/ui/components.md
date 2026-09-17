@@ -118,7 +118,7 @@ Decided in [mocks/sidebar-redesign.html](mocks/sidebar-redesign.html) (G3c).
 
 - One component family in `src/components/activity/`, looked up through `registry.ts` by placement (`panel`, `tile`). A second visualization is a new file plus one registry entry.
 - **Panel:** `#activity-panel`, #app's third column (`--activity-panel-width`) in single view. `--surface`, left border. Plan steps with a `chevron` disclosure, a done `check`, and a tool-count pill (`--sel`, `--text-xs`); the timeline below in `--font-mono --text-xs`, tool name `--accent`, target `--fg-muted`, outcome `--fg-subtle` (`--state-running` while running, `--state-error` on failure).
-- **Tile:** absolutely positioned under the 28px tile header over a `visibility: hidden` terminal body. Plan as 8px pips (outline pending, `--state-running` ring active, filled done), then the same call rows.
+- **Tile:** absolutely positioned under the 28px tile header over a `visibility: hidden` terminal body. The plan's task rows are the body — the same mark + text row as the panel, without its chevron or pill, the current step emphasized and scrolled into view. Above them a capped two-row strip of 8px pips (outline pending, `--state-running` ring active, filled done) carries the whole plan's shape, decorative (`aria-hidden`) beside the list. The same call rows follow, taking whatever height the tasks leave — `flex: 1 1 0` with `min-height: 0`, so they collapse to nothing on a plan taller than the tile.
 - **Stale:** `data-stale` recolours tool names, marks and pips to `--fg-subtle`; the head says how long the tier has been quiet.
 - Read-only and never focusable: no buttons, no `tabIndex`, and the root cancels `mousedown` so the terminal keeps the keyboard.
 

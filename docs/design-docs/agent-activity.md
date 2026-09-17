@@ -277,7 +277,16 @@ The layouts are settled and drawn in the round-five mocks. In short:
   current step is expanded by default; the rest collapse to one line
   with a disclosure triangle and a tool-count pill. The full timeline
   scrolls in its own section below.
-- **Grid tile** — plan shape as pips, body given to the live tool feed.
+- **Grid tile** — the plan's task text is the body: one line per step,
+  the current one emphasized and scrolled into view, the whole plan's
+  shape still summarized by a capped pip strip in the head. The live
+  tool feed takes whatever height the tasks leave, down to none.
+
+> **Superseded (2026-09-17, spec 428).** Phase 4 shipped the tile as
+> "plan shape as pips, body given to the live tool feed". The pips
+> carried the task text only in a hover `title`, which put the most
+> useful fact out of reach at a glance. The bullet above is what the
+> tile renders now.
 
 Placement, as built in phase 4:
 
