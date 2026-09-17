@@ -20,9 +20,13 @@ import (
 // assumption true — with the bind first, a client that dialed during
 // boot sat in the kernel backlog until its HELLO timed out.
 //
-// The test races a watcher against New: the instant the socket file
-// appears it dials and handshakes, and the handshake must complete
-// well inside wire's own timeout.
+// The test races a watcher against New: the instant the socket
+// accepts a connection it handshakes, and the handshake must complete
+// well inside wire's own timeout. The watcher polls with Dial, not
+// Stat: net.Listen is bind(2) then listen(2), and the socket file
+// exists from the bind, so a dial in that gap is refused even though
+// the file is there. A refusal is "not up yet"; a connect that then
+// stalls in the backlog is the regression this test exists to catch.
 func TestBootSocketMeansAnswerable(t *testing.T) {
 	skipOnWindows(t)
 	tmp := shortTempDir(t)
@@ -40,18 +44,12 @@ func TestBootSocketMeansAnswerable(t *testing.T) {
 	}
 	res := make(chan result, 1)
 	go func() {
-		for {
-			if _, err := os.Stat(sock); err == nil {
-				break
-			}
+		conn, err := net.Dial("unix", sock)
+		for err != nil {
 			time.Sleep(time.Millisecond)
+			conn, err = net.Dial("unix", sock)
 		}
 		start := time.Now()
-		conn, err := net.Dial("unix", sock)
-		if err != nil {
-			res <- result{err: err}
-			return
-		}
 		defer conn.Close()
 		_, err = wire.Handshake(conn, wire.Hello{Client: "test/0", Mode: wire.ModeControl})
 		res <- result{err: err, elapsed: time.Since(start)}
@@ -79,10 +77,10 @@ func TestBootSocketMeansAnswerable(t *testing.T) {
 	select {
 	case r := <-res:
 		if r.err != nil {
-			t.Fatalf("handshake on a socket that exists: %v", r.err)
+			t.Fatalf("handshake on a socket that accepted the connection: %v", r.err)
 		}
 		if r.elapsed > 2*time.Second {
-			t.Fatalf("handshake took %v after the socket appeared; the socket is not a readiness signal", r.elapsed)
+			t.Fatalf("handshake took %v after the socket accepted; the socket is not a readiness signal", r.elapsed)
 		}
 	case <-time.After(15 * time.Second):
 		t.Fatal("timed out waiting for the socket to appear")

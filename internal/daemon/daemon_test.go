@@ -354,15 +354,9 @@ func TestControlProjectsRoundTrip(t *testing.T) {
 		t.Fatalf("create project: %v", err)
 	}
 
-	// Expect a PROJECT_EVENT(added).
-	_ = conn.SetReadDeadline(time.Now().Add(2 * time.Second))
-	ft, payload, err := wire.ReadFrame(conn)
-	if err != nil {
-		t.Fatalf("read project event: %v", err)
-	}
-	if ft != wire.FrameProjectEvent {
-		t.Fatalf("expected PROJECT_EVENT, got %s", ft)
-	}
+	// Expect a PROJECT_EVENT(added). The bootstrap session's state and
+	// phase events share this connection, so skip past them.
+	payload := readControlFrame(t, conn, wire.FrameProjectEvent, 2*time.Second)
 	var ev wire.ProjectEvent
 	_ = jsonUnmarshal(payload, &ev)
 	if ev.Kind != wire.ProjectEventAdded || ev.Project.Name != "alpha" {
@@ -371,13 +365,7 @@ func TestControlProjectsRoundTrip(t *testing.T) {
 
 	// LIST_PROJECTS should now return both projects.
 	_ = wire.WriteJSON(conn, wire.FrameListProjects, wire.ListProjectsReq{})
-	ft, payload, err = wire.ReadFrame(conn)
-	if err != nil {
-		t.Fatalf("read projects: %v", err)
-	}
-	if ft != wire.FrameProjects {
-		t.Fatalf("expected PROJECTS, got %s", ft)
-	}
+	payload = readControlFrame(t, conn, wire.FrameProjects, 2*time.Second)
 	var resp wire.ProjectsResp
 	_ = jsonUnmarshal(payload, &resp)
 	if len(resp.Projects) != 2 {

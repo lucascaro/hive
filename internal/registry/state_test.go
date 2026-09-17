@@ -61,6 +61,18 @@ func paint(t *testing.T, e *Entry, sess *session.Session, text string) {
 	t.Fatalf("screen never changed after writing %q", text)
 }
 
+// manualClock stops the registry's own state ticker and waits for it to
+// exit, so a test driving sample with a chosen clock is the only sampler.
+// Left running, the ticker samples the same machine with wall-clock time:
+// a tick landing between a test's time.Now() and its first sample moves
+// lastOutputAt past the test's clock, and the quiet timeout the test
+// expects then fires a sample later than it asserts.
+func manualClock(t *testing.T, r *Registry) {
+	t.Helper()
+	r.tickOnce.Do(func() { close(r.tickStop) })
+	<-r.tickDone
+}
+
 // sample drives one tick of the state sampler at a chosen time.
 func sample(r *Registry, e *Entry, now time.Time) {
 	r.mu.Lock()
@@ -81,6 +93,7 @@ func sample(r *Registry, e *Entry, now time.Time) {
 func TestTerminalQueriesAreNotWork(t *testing.T) {
 	skipOnWindows(t)
 	r := freshRegistry(t)
+	manualClock(t, r)
 	e, _ := liveSession(t, r, wire.CreateSpec{
 		Name: "poller", Agent: "claude",
 		Cmd: []string{"sh", "-c",
@@ -126,6 +139,7 @@ func TestTerminalQueriesAreNotWork(t *testing.T) {
 func TestVisibleOutputIsWork(t *testing.T) {
 	skipOnWindows(t)
 	r := freshRegistry(t)
+	manualClock(t, r)
 	e, sess := liveSession(t, r, wire.CreateSpec{Name: "shell"})
 
 	now := time.Now()
@@ -150,6 +164,7 @@ func TestVisibleOutputIsWork(t *testing.T) {
 func TestUnchangedScreenBroadcastsNothing(t *testing.T) {
 	skipOnWindows(t)
 	r := freshRegistry(t)
+	manualClock(t, r)
 	e, sess := liveSession(t, r, wire.CreateSpec{Name: "still"})
 
 	now := time.Now()
@@ -205,6 +220,7 @@ func TestQuietGoesIdle(t *testing.T) {
 func TestBellWaitsUntilTheUserLooks(t *testing.T) {
 	skipOnWindows(t)
 	r := freshRegistry(t)
+	manualClock(t, r)
 	e, sess := liveSession(t, r, wire.CreateSpec{Name: "bell"})
 
 	r.noteBell(e.ID)
@@ -238,6 +254,7 @@ func TestBellWaitsUntilTheUserLooks(t *testing.T) {
 func TestHeuristicIdleDoesNotRaiseAttention(t *testing.T) {
 	skipOnWindows(t)
 	r := freshRegistry(t)
+	manualClock(t, r)
 	e, sess := liveSession(t, r, wire.CreateSpec{Name: "shell"})
 
 	now := time.Now()
@@ -549,6 +566,7 @@ func TestApplyAgentEventHealsLostState(t *testing.T) {
 func TestKeyedOldStampStaysTrusted(t *testing.T) {
 	skipOnWindows(t)
 	r := freshRegistry(t)
+	manualClock(t, r)
 	e, sess := liveSession(t, r, wire.CreateSpec{Name: "pi"})
 	started := time.Now().Add(-2 * agentstate.HookStaleAfter)
 	// A healed report: first delivery, arriving now with an old stamp.
