@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.9.0] — 2026-09-17
+
 ### Added
 See what a Claude or Pi session is doing without reading its scrollback. ⌘J
 (Ctrl+Shift+J on Windows and Linux) opens an inspector beside the terminal: the
@@ -1657,7 +1659,8 @@ own session daemon, replacing the v1 tmux + Bubble Tea architecture.
   sidebar/grid and fire an OS notification.
 - No telemetry in shipped binaries.
 
-[Unreleased]: https://github.com/lucascaro/hive/compare/v2.8.0...HEAD
+[Unreleased]: https://github.com/lucascaro/hive/compare/v2.9.0...HEAD
+[2.9.0]: https://github.com/lucascaro/hive/compare/v2.8.0...v2.9.0
 [2.8.0]: https://github.com/lucascaro/hive/compare/v2.7.0...v2.8.0
 [2.7.0]: https://github.com/lucascaro/hive/compare/v2.6.0...v2.7.0
 [2.6.0]: https://github.com/lucascaro/hive/compare/v2.5.0...v2.6.0
