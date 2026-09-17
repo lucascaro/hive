@@ -25,28 +25,33 @@ async function boot(page: Page, staleInMs = 600_000) {
     null,
     { timeout: 3000 },
   );
-  const id = await page.evaluate(() => window.__hive.state?.sessions[0]?.id ?? '');
-  await page.evaluate(([sid, staleIn]) => {
-    window.__hive.setSessionState?.(sid as string, 'working', 'hook');
-    window.__hive.setActivity?.(sid as string, {
-      stale_at: new Date(Date.now() + (staleIn as number)).toISOString(),
-      plan: [
-        { id: 'a', text: 'read the spec', status: 'done', tools: 3 },
-        { id: 'b', text: 'write the panel', status: 'active', tools: 1 },
-        { id: 'c', text: 'ship it', status: 'pending' },
-      ],
-      events: Array.from({ length: 60 }, (_, i) => ({
-        tool: i % 2 ? 'Read' : 'Edit',
-        target: `file-${i}.ts`,
-        call_id: `c${i}`,
-        plan_idx: i < 50 ? 0 : 1,
-        started_at: new Date(Date.now() - 60_000 + i).toISOString(),
-        ended_at: new Date(Date.now() - 59_000 + i).toISOString(),
-        duration_ms: 1000,
-        ok: true,
-      })),
-    });
-  }, [id, staleInMs] as const);
+  const id = await page.evaluate(
+    () => window.__hive.state?.sessions[0]?.id ?? '',
+  );
+  await page.evaluate(
+    ([sid, staleIn]) => {
+      window.__hive.setSessionState?.(sid as string, 'working', 'hook');
+      window.__hive.setActivity?.(sid as string, {
+        stale_at: new Date(Date.now() + (staleIn as number)).toISOString(),
+        plan: [
+          { id: 'a', text: 'read the spec', status: 'done', tools: 3 },
+          { id: 'b', text: 'write the panel', status: 'active', tools: 1 },
+          { id: 'c', text: 'ship it', status: 'pending' },
+        ],
+        events: Array.from({ length: 60 }, (_, i) => ({
+          tool: i % 2 ? 'Read' : 'Edit',
+          target: `file-${i}.ts`,
+          call_id: `c${i}`,
+          plan_idx: i < 50 ? 0 : 1,
+          started_at: new Date(Date.now() - 60_000 + i).toISOString(),
+          ended_at: new Date(Date.now() - 59_000 + i).toISOString(),
+          duration_ms: 1000,
+          ok: true,
+        })),
+      });
+    },
+    [id, staleInMs] as const,
+  );
   return id;
 }
 
@@ -72,7 +77,9 @@ const termCols = (page: Page) =>
   );
 
 test.describe('spec 416 inspector panel', () => {
-  test('opens beside the terminal, refits it, and closes again', async ({ page }) => {
+  test('opens beside the terminal, refits it, and closes again', async ({
+    page,
+  }) => {
     await boot(page);
     const before = await termBox(page);
     const colsBefore = await termCols(page);
@@ -87,22 +94,31 @@ test.describe('spec 416 inspector panel', () => {
     // terminal painted underneath.
     const hit = await panel.evaluate((el) => {
       const r = el.getBoundingClientRect();
-      const at = document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2);
+      const at = document.elementFromPoint(
+        r.left + r.width / 2,
+        r.top + r.height / 2,
+      );
       return !!at && el.contains(at);
     });
     expect(hit).toBe(true);
 
-    await expect.poll(async () => (await termBox(page)).right).toBeLessThan(before.right - 100);
+    await expect
+      .poll(async () => (await termBox(page)).right)
+      .toBeLessThan(before.right - 100);
     await expect.poll(() => termCols(page)).toBeLessThan(colsBefore);
     expect(await isTermFocused(page)).toBe(true);
 
     await page.keyboard.press(TOGGLE);
     await expect(panel).toBeHidden();
-    await expect.poll(async () => (await termBox(page)).right).toBe(before.right);
+    await expect
+      .poll(async () => (await termBox(page)).right)
+      .toBe(before.right);
     await expect.poll(() => termCols(page)).toBe(colsBefore);
   });
 
-  test('clicking and scrolling the panel never takes the keyboard', async ({ page }) => {
+  test('clicking and scrolling the panel never takes the keyboard', async ({
+    page,
+  }) => {
     const id = await boot(page);
     await page.keyboard.press(TOGGLE);
     const panel = page.locator('#activity-panel');
@@ -110,7 +126,10 @@ test.describe('spec 416 inspector panel', () => {
     await page.waitForTimeout(PAST_FOCUS_GUARD_MS);
 
     await panel.locator('.hv-activity__step-row').first().click();
-    await expect(panel.locator('.hv-activity__step').first()).toHaveAttribute('data-open', '');
+    await expect(panel.locator('.hv-activity__step').first()).toHaveAttribute(
+      'data-open',
+      '',
+    );
     await page.waitForTimeout(PAST_FOCUS_GUARD_MS);
     expect(await isTermFocused(page)).toBe(true);
 
@@ -124,10 +143,14 @@ test.describe('spec 416 inspector panel', () => {
 
     await page.evaluate(() => window.__hive.resetStdin());
     await page.keyboard.type('hi');
-    await expect.poll(() => page.evaluate((sid) => window.__hive.stdinText(sid), id)).toContain('hi');
+    await expect
+      .poll(() => page.evaluate((sid) => window.__hive.stdinText(sid), id))
+      .toContain('hi');
   });
 
-  test('only the active step starts open, with the item tally on collapsed steps', async ({ page }) => {
+  test('only the active step starts open, with the item tally on collapsed steps', async ({
+    page,
+  }) => {
     await boot(page);
     await page.keyboard.press(TOGGLE);
     const steps = page.locator('#activity-panel .hv-activity__step');
@@ -140,16 +163,28 @@ test.describe('spec 416 inspector panel', () => {
   test('a delta shows up live', async ({ page }) => {
     const id = await boot(page);
     await page.keyboard.press(TOGGLE);
-    await expect(page.locator('#activity-panel .hv-activity__step')).toHaveCount(3);
+    await expect(
+      page.locator('#activity-panel .hv-activity__step'),
+    ).toHaveCount(3);
     await page.evaluate((sid) => {
       window.__hive.emitActivity?.({
         session_id: sid,
-        events: [{ tool: 'Bash', target: 'npm test', call_id: 'live-1', plan_idx: 1, started_at: new Date().toISOString() }],
+        events: [
+          {
+            tool: 'Bash',
+            target: 'npm test',
+            call_id: 'live-1',
+            plan_idx: 1,
+            started_at: new Date().toISOString(),
+          },
+        ],
         stale_at: new Date(Date.now() + 600_000).toISOString(),
       });
     }, id);
     await expect(
-      page.locator('#activity-panel .hv-activity__timeline .hv-activity__call').first(),
+      page
+        .locator('#activity-panel .hv-activity__timeline .hv-activity__call')
+        .first(),
     ).toContainText('npm test');
   });
 
@@ -175,17 +210,28 @@ test.describe('spec 416 inspector panel', () => {
     await expect
       .poll(() =>
         page.evaluate(
-          () => document.querySelector('#terms .term-host.visible')?.getBoundingClientRect().left ?? 999,
+          () =>
+            document
+              .querySelector('#terms .term-host.visible')
+              ?.getBoundingClientRect().left ?? 999,
         ),
       )
       .toBeLessThan(20);
     const geo = await page.evaluate(() => {
-      const p = document.getElementById('activity-panel')?.getBoundingClientRect();
-      const t = document.querySelector('#terms .term-host.visible')?.getBoundingClientRect();
+      const p = document
+        .getElementById('activity-panel')
+        ?.getBoundingClientRect();
+      const t = document
+        .querySelector('#terms .term-host.visible')
+        ?.getBoundingClientRect();
       if (!p || !t) return null;
-      const at = document.elementFromPoint(p.left + p.width / 2, p.top + p.height / 2);
+      const at = document.elementFromPoint(
+        p.left + p.width / 2,
+        p.top + p.height / 2,
+      );
       return {
-        panelHit: !!at && !!document.getElementById('activity-panel')?.contains(at),
+        panelHit:
+          !!at && !!document.getElementById('activity-panel')?.contains(at),
         panelWidth: p.width,
         termRight: t.right,
         panelLeft: p.left,
@@ -199,16 +245,24 @@ test.describe('spec 416 inspector panel', () => {
   test('fresh while working before stale_at', async ({ page }) => {
     await boot(page);
     await page.keyboard.press(TOGGLE);
-    await expect(page.locator('#activity-panel .hv-activity__step')).toHaveCount(3);
-    await expect(page.locator('#activity-panel .hv-activity')).not.toHaveAttribute('data-stale', '');
+    await expect(
+      page.locator('#activity-panel .hv-activity__step'),
+    ).toHaveCount(3);
+    await expect(
+      page.locator('#activity-panel .hv-activity'),
+    ).not.toHaveAttribute('data-stale', '');
   });
 
-  test('stale while working past stale_at; not once at rest', async ({ page }) => {
+  test('stale while working past stale_at; not once at rest', async ({
+    page,
+  }) => {
     const id = await boot(page, -120_000);
     await page.keyboard.press(TOGGLE);
     const root = page.locator('#activity-panel .hv-activity');
     await expect(root).toHaveAttribute('data-stale', '');
-    await expect(page.locator('#activity-panel .hv-activity__stale')).toContainText('No report for 2m');
+    await expect(
+      page.locator('#activity-panel .hv-activity__stale'),
+    ).toContainText('No report for 2m');
     // The desaturation is real CSS, not just an attribute.
     const colors = await page.evaluate(() => {
       const tool = document.querySelector('#activity-panel .hv-activity__tool');
@@ -221,17 +275,24 @@ test.describe('spec 416 inspector panel', () => {
     });
     expect(colors.tool).toBe(colors.subtle);
 
-    await page.evaluate((sid) => window.__hive.setSessionState?.(sid, 'waiting_input', 'hook'), id);
+    await page.evaluate(
+      (sid) => window.__hive.setSessionState?.(sid, 'waiting_input', 'hook'),
+      id,
+    );
     await expect(root).not.toHaveAttribute('data-stale', '');
   });
 
-  test('a shell session shows the no-activity empty state', async ({ page }) => {
+  test('a shell session shows the no-activity empty state', async ({
+    page,
+  }) => {
     const id = await boot(page);
     await page.evaluate((sid) => {
       window.__hive.setSessionState?.(sid, 'idle', '');
       window.__hive.setActivity?.(sid, { plan: [], events: [] });
     }, id);
     await page.keyboard.press(TOGGLE);
-    await expect(page.locator('#activity-panel .hv-activity__empty')).toContainText('No activity data');
+    await expect(
+      page.locator('#activity-panel .hv-activity__empty'),
+    ).toContainText('No activity data');
   });
 });

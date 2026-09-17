@@ -162,11 +162,10 @@ document.addEventListener(
 );
 
 // blurTerminals drops keyboard focus from any terminal, for the activity
-// grid. A bare blur() is not enough: an armed focus guard would put it
-// straight back, and visibility:hidden does not reliably blur a focused
-// textarea in WKWebView.
+// grid: visibility:hidden does not reliably blur a focused textarea in
+// WKWebView. Call it after the activity grid is on — the focus guard
+// then sees it as modal (focusSnapshot) and leaves the blur alone.
 export function blurTerminals(): void {
-  _focusGuard = null;
   sweepFocusBorder();
   const ae = document.activeElement;
   if (ae instanceof HTMLElement && ae.closest('.term-host')) ae.blur();

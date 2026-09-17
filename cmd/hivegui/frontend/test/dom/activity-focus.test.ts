@@ -71,7 +71,10 @@ beforeAll(async () => {
   textarea.className = 'xterm-helper-textarea';
   host.appendChild(textarea);
   document.getElementById('terms')?.appendChild(host);
-  setTerm('s1', { host, term: { focus: () => textarea.focus() } } as unknown as TermTile);
+  setTerm('s1', {
+    host,
+    term: { focus: () => textarea.focus() },
+  } as unknown as TermTile);
 });
 
 beforeEach(() => {
@@ -99,7 +102,7 @@ describe('activity grid focus', () => {
     expect(document.activeElement).not.toBe(textarea);
   });
 
-  it('blurTerminals drops focus and disarms the guard that would restore it', async () => {
+  it('blurTerminals drops focus, and an armed guard does not restore it', async () => {
     focus.setFocusedTile('s1');
     await settle();
     expect(document.activeElement).toBe(textarea);

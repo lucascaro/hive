@@ -26,17 +26,24 @@ const past = new Date(Date.now() - 120_000).toISOString();
 const future = new Date(Date.now() + 120_000).toISOString();
 
 function session(over: Partial<SessionInfo> = {}): SessionInfo {
-  return { id: SID, name: 'api', state: 'working', state_source: 'hook', ...over } as SessionInfo;
+  return {
+    id: SID,
+    name: 'api',
+    state: 'working',
+    state_source: 'hook',
+    ...over,
+  } as SessionInfo;
 }
 
 function frame(m: Partial<ActivityMsg>) {
   act(() => applyActivityFrame({ session_id: SID, ...m }));
 }
 
-const flush = () => act(async () => {
-  await Promise.resolve();
-  await Promise.resolve();
-});
+const flush = () =>
+  act(async () => {
+    await Promise.resolve();
+    await Promise.resolve();
+  });
 
 const PLAN = [
   { id: 'a', text: 'read the spec', status: 'done' as const, tools: 7 },
@@ -44,8 +51,26 @@ const PLAN = [
   { id: 'c', text: 'ship it', status: 'pending' as const },
 ];
 const EVENTS = [
-  { tool: 'Read', target: 'spec.md', call_id: 'r1', plan_idx: 0, started_at: past, ended_at: past, duration_ms: 20, ok: true },
-  { tool: 'Edit', target: 'activity.ts', call_id: 'e1', plan_idx: 1, started_at: past, ended_at: past, duration_ms: 40, ok: false },
+  {
+    tool: 'Read',
+    target: 'spec.md',
+    call_id: 'r1',
+    plan_idx: 0,
+    started_at: past,
+    ended_at: past,
+    duration_ms: 20,
+    ok: true,
+  },
+  {
+    tool: 'Edit',
+    target: 'activity.ts',
+    call_id: 'e1',
+    plan_idx: 1,
+    started_at: past,
+    ended_at: past,
+    duration_ms: 40,
+    ok: false,
+  },
 ];
 
 beforeEach(() => {
@@ -67,7 +92,9 @@ describe('ActivityPanel', () => {
     expect(steps[2]).not.toHaveAttribute('data-open');
     // The tally is the item's counter, not the one ring event left.
     expect(steps[0].querySelector('.hv-activity__pill')).toHaveTextContent('7');
-    expect(steps[1].querySelectorAll('.hv-activity__calls .hv-activity__call')).toHaveLength(1);
+    expect(
+      steps[1].querySelectorAll('.hv-activity__calls .hv-activity__call'),
+    ).toHaveLength(1);
   });
 
   it('toggles a step with its disclosure row', () => {
@@ -84,7 +111,9 @@ describe('ActivityPanel', () => {
     const { container } = render(<ActivityPanel sessionId={SID} />);
     frame({ full: true, plan: PLAN, events: EVENTS });
     expect(
-      container.querySelectorAll('button, a[href], input, textarea, select, [tabindex]'),
+      container.querySelectorAll(
+        'button, a[href], input, textarea, select, [tabindex]',
+      ),
     ).toHaveLength(0);
     const root = container.querySelector('.hv-activity') as Element;
     expect(fireEvent.mouseDown(root)).toBe(false); // defaultPrevented
@@ -93,7 +122,9 @@ describe('ActivityPanel', () => {
   it('shows the timeline newest first with the failure', () => {
     const { container } = render(<ActivityPanel sessionId={SID} />);
     frame({ full: true, plan: PLAN, events: EVENTS });
-    const rows = container.querySelectorAll('.hv-activity__timeline .hv-activity__call');
+    const rows = container.querySelectorAll(
+      '.hv-activity__timeline .hv-activity__call',
+    );
     expect(rows[0]).toHaveTextContent('Edit');
     expect(rows[0]).toHaveAttribute('data-failed');
   });
@@ -109,15 +140,21 @@ describe('ActivityPanel', () => {
   it('renders stale with an age while working past stale_at', () => {
     const { container } = render(<ActivityPanel sessionId={SID} />);
     frame({ full: true, plan: PLAN, events: EVENTS, stale_at: past });
-    expect(container.querySelector('.hv-activity')).toHaveAttribute('data-stale');
-    expect(container.querySelector('.hv-activity__stale')?.textContent).toMatch(/No report for \d+m/);
+    expect(container.querySelector('.hv-activity')).toHaveAttribute(
+      'data-stale',
+    );
+    expect(container.querySelector('.hv-activity__stale')?.textContent).toMatch(
+      /No report for \d+m/,
+    );
   });
 
   it('is not stale at rest, however old stale_at is', () => {
     resetStore({ sessions: [session({ state: 'waiting_input' })] });
     const { container } = render(<ActivityPanel sessionId={SID} />);
     frame({ full: true, plan: PLAN, events: EVENTS, stale_at: past });
-    expect(container.querySelector('.hv-activity')).not.toHaveAttribute('data-stale');
+    expect(container.querySelector('.hv-activity')).not.toHaveAttribute(
+      'data-stale',
+    );
   });
 });
 
@@ -142,7 +179,9 @@ describe('snapshot requests', () => {
   });
 
   it('does not loop on a rejected request', async () => {
-    GetActivity.mockImplementation(() => Promise.reject(new Error('not connected')));
+    GetActivity.mockImplementation(() =>
+      Promise.reject(new Error('not connected')),
+    );
     const { rerender } = render(<ActivityPanel sessionId={SID} />);
     await flush();
     for (let i = 0; i < 5; i++) {
