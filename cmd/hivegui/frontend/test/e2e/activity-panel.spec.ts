@@ -76,74 +76,37 @@ const termCols = (page: Page) =>
       )?.cols ?? 0,
   );
 
-// The column count once layout has settled: two reads 300ms apart that
-// agree. Read straight after boot it can still be moving (font load,
-// sidebar width); on Windows CI a pre-settle 145 became the baseline the
-// steady 127 was compared against.
-async function settledCols(page: Page): Promise<number> {
-  let prev = -1;
-  for (let i = 0; i < 20; i++) {
-    const cur = await termCols(page);
-    if (cur > 0 && cur === prev) return cur;
-    prev = cur;
-    await page.waitForTimeout(300);
-  }
-  throw new Error(`terminal cols never settled (last ${prev})`);
-}
+// What the fit addon would size the visible terminal to right now. The
+// refit claim is compared against this, not against the cols read at
+// boot: xterm fits once before the web font's metrics settle and does not
+// refit when they do, so on Windows CI the boot value (145) and a correct
+// refit at the same width (127) legitimately differ.
+const fitCols = (page: Page) =>
+  page.evaluate(
+    () =>
+      (
+        Array.from(window.__hive_state?.terms.values() ?? []).find((t) =>
+          t.host.classList.contains('visible'),
+        ) as unknown as
+          | { fit: { proposeDimensions(): { cols: number } | undefined } }
+          | undefined
+      )?.fit.proposeDimensions()?.cols ?? 0,
+  );
+
+const bodyWidth = (page: Page) =>
+  page
+    .locator('#terms .term-host.visible .term-body')
+    .evaluate((el) => el.clientWidth);
 
 test.describe('spec 416 inspector panel', () => {
   test('opens beside the terminal, refits it, and closes again', async ({
     page,
   }) => {
     await boot(page);
-    const colsBefore = await settledCols(page);
     const before = await termBox(page);
+    const bodyBefore = await bodyWidth(page);
+    const fitBefore = await fitCols(page);
     await expect(page.locator('#activity-panel')).toBeHidden();
-    // Diagnostic (Windows CI ends at fewer cols than it started with after
-    // the panel closes): record every body resize, what fit proposed and
-    // whether it threw, printed only if the final assertion fails.
-    await page.evaluate(() => {
-      type Fit = {
-        fit(): void;
-        proposeDimensions(): { cols: number; rows: number } | undefined;
-      };
-      const t = Array.from(window.__hive_state?.terms.values() ?? []).find(
-        (x) => x.host.classList.contains('visible'),
-      ) as unknown as { body: HTMLElement; fit: Fit; term: { cols: number } };
-      const log: unknown[] = [];
-      (window as unknown as { __refitLog: unknown[] }).__refitLog = log;
-      const t0 = performance.now();
-      const at = () => Math.round(performance.now() - t0);
-      new ResizeObserver(() =>
-        log.push({ at: at(), ro: t.body.clientWidth, cols: t.term.cols }),
-      ).observe(t.body);
-      const orig = t.fit.fit.bind(t.fit);
-      t.fit.fit = () => {
-        let proposed: unknown;
-        try {
-          proposed = t.fit.proposeDimensions();
-        } catch (e) {
-          proposed = `propose threw: ${e}`;
-        }
-        try {
-          orig();
-          log.push({
-            at: at(),
-            fit: t.body.clientWidth,
-            proposed,
-            cols: t.term.cols,
-          });
-        } catch (e) {
-          log.push({
-            at: at(),
-            fit: t.body.clientWidth,
-            proposed,
-            threw: String(e),
-          });
-          throw e;
-        }
-      };
-    });
 
     await page.keyboard.press(TOGGLE);
     const panel = page.locator('#activity-panel');
@@ -165,7 +128,7 @@ test.describe('spec 416 inspector panel', () => {
     await expect
       .poll(async () => (await termBox(page)).right)
       .toBeLessThan(before.right - 100);
-    await expect.poll(() => termCols(page)).toBeLessThan(colsBefore);
+    await expect.poll(() => termCols(page)).toBeLessThan(fitBefore);
     expect(await isTermFocused(page)).toBe(true);
 
     await page.keyboard.press(TOGGLE);
@@ -173,30 +136,12 @@ test.describe('spec 416 inspector panel', () => {
     await expect
       .poll(async () => (await termBox(page)).right)
       .toBe(before.right);
-    try {
-      await expect.poll(() => termCols(page)).toBe(colsBefore);
-    } catch (err) {
-      const trace = await page.evaluate(() => {
-        const t = Array.from(window.__hive_state?.terms.values() ?? []).find(
-          (x) => x.host.classList.contains('visible'),
-        ) as unknown as {
-          body: HTMLElement;
-          fit: { proposeDimensions(): unknown };
-          term: { cols: number; element?: HTMLElement };
-        };
-        return {
-          log: (window as unknown as { __refitLog: unknown[] }).__refitLog,
-          final: {
-            body: t.body.clientWidth,
-            xterm: t.term.element?.clientWidth,
-            proposed: t.fit.proposeDimensions(),
-            cols: t.term.cols,
-          },
-        };
-      });
-      console.log(`REFIT-TRACE ${JSON.stringify(trace)}`);
-      throw err;
-    }
+    await expect.poll(() => bodyWidth(page)).toBe(bodyBefore);
+    // Refit to the restored width: exactly what fit proposes there.
+    await expect
+      .poll(async () => (await termCols(page)) === (await fitCols(page)))
+      .toBe(true);
+    expect(await termCols(page)).toBeGreaterThan(0);
   });
 
   test('clicking and scrolling the panel never takes the keyboard', async ({
