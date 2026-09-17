@@ -188,6 +188,15 @@ type Machine struct {
 	// Stop — and letting one advance the guard would get the Stop
 	// dropped as out of order.
 	orderAt time.Time
+	// reportedAt is the DAEMON's clock (Event.Now) at the last accepted
+	// tier report, main-thread or subagent. It exists only for StaleAt:
+	// hookSeenAt is the reporter's stamp and orders events, and a
+	// deadline shown to a client must be on the clock the daemon owns.
+	reportedAt time.Time
+	// accepted records that the most recent Apply got past the ordering
+	// guard. Consumed by TakeAccepted, like LastToolDelta's hasDelta, so
+	// the registry never broadcasts a dropped event.
+	accepted bool
 
 	// extInstance / extSeq are the newest ordering key applied, and
 	// extState is the state as of the extension tier's last say — the
@@ -356,7 +365,8 @@ func (m *Machine) noteExtState() {
 // through Apply.
 //
 // On the extension tier a replay is proof of life and nothing more:
-// no state, no text, no activity. After a stall long enough for the
+// no state, no text, no tool or plan change — only the liveness clocks
+// (and the accepted flag, so clients get a bare staleness refresh). After a stall long enough for the
 // heuristic tier to take the session (HookStaleAfter, then a repaint),
 // it restores the tier and extState instead of re-running the event:
 // re-running a turn_end would re-raise a wait the user cleared, and a
@@ -373,7 +383,12 @@ func (m *Machine) Replay(ev Event) (handled, changed bool) {
 		now = ev.At
 	}
 	m.hookSeenAt = now
-	if m.source == wire.StateSourceExtension || m.state == wire.StateExited {
+	m.reportedAt = now
+	if m.state == wire.StateExited {
+		return true, false
+	}
+	m.accepted = true
+	if m.source == wire.StateSourceExtension {
 		return true, false
 	}
 	before := m.Snapshot()
@@ -468,6 +483,9 @@ func (m *Machine) Apply(ev Event) bool {
 	}
 
 	before := m.Snapshot()
+	// Liveness counts even for a session that has exited (the tier
+	// clock below is refreshed too); acceptance waits for the exit check.
+	m.reportedAt = now
 
 	m.source = ev.Source
 	if sub {
@@ -509,6 +527,7 @@ func (m *Machine) Apply(ev Event) bool {
 	if m.state == wire.StateExited {
 		return false
 	}
+	m.accepted = true
 
 	if sub {
 		m.applySubagent(ev, now)
@@ -581,6 +600,29 @@ func (m *Machine) Apply(ev Event) bool {
 		m.extState = m.state
 	}
 	return m.Snapshot() != before
+}
+
+// StaleAt is the daemon-clock instant past which this session's tier
+// counts as silent: the last accepted report plus HookStaleAfter. ok is
+// false on the heuristic tier, where there is nothing to go stale.
+//
+// Silence is only meaningful while working. Neither Claude's hooks nor
+// the Pi extension heartbeat, so a healthy tier at rest is exactly as
+// quiet as a dead one; clients apply the deadline to working sessions
+// only.
+func (m *Machine) StaleAt() (time.Time, bool) {
+	if m.source == wire.StateSourceHeuristic || m.reportedAt.IsZero() {
+		return time.Time{}, false
+	}
+	return m.reportedAt.Add(HookStaleAfter), true
+}
+
+// TakeAccepted reports whether the most recent Apply accepted its event,
+// and consumes the flag.
+func (m *Machine) TakeAccepted() bool {
+	ok := m.accepted
+	m.accepted = false
+	return ok
 }
 
 // wantsUser reports the states that stand until the user acts on them:

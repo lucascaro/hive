@@ -52,6 +52,8 @@
   --space-4: 16px; --space-5: 20px; --space-6: 24px;
   --radius-sm: 4px;
   --radius-md: 6px;
+  /* The agent activity inspector column (layout.css). */
+  --activity-panel-width: 320px;
   --shadow-popover: 0 8px 24px rgba(0, 0, 0, 0.45);
   --motion-fast: 120ms;
   /* Collapse/expand of the project card and worktree group panel. Mirrored

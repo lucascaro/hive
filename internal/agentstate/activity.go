@@ -193,6 +193,7 @@ func (m *Machine) applyLateActivity(ev Event, now time.Time) bool {
 	default:
 		return false
 	}
+	m.accepted, m.reportedAt = true, now
 	return m.Snapshot() != before
 }
 

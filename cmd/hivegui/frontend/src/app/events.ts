@@ -41,6 +41,12 @@ import {
   updateSession,
 } from '../store/store.js';
 import { deleteTerm, termsMap } from '../store/terms.js';
+import {
+  applyActivityFrame,
+  forgetActivity,
+  resetActivityOnSessionList,
+} from '../store/activity.js';
+import type { ActivityMsg } from '../lib/activity.js';
 import { appStore } from '../store/store.js';
 import { setStatus, flashStatus, reportFailure, setBootState } from './dom.js';
 import { orderedSessions } from './selectors.js';
@@ -437,6 +443,17 @@ export function wireDaemonEvents(injected: EventsDeps) {
     else if (ev.kind === 'updated') updateIdea(ev.idea);
   });
 
+  // Agent activity (spec 416): every session's tool calls and plan, plus
+  // the GET_ACTIVITY answers. A malformed frame costs one delta, not the
+  // feed — and it is too frequent to flash a status line for.
+  EventsOn('activity:event', (jsonStr: string) => {
+    try {
+      applyActivityFrame(JSON.parse(jsonStr) as ActivityMsg);
+    } catch {
+      /* dropped */
+    }
+  });
+
   EventsOn('project:event', (jsonStr: string) => {
     const ev = JSON.parse(jsonStr) as ProjectEvent;
     const i = appData().projects.findIndex((p) => p.id === ev.project.id);
@@ -472,6 +489,15 @@ export function wireDaemonEvents(injected: EventsDeps) {
     const wasPending = prevPhase !== undefined && !isReady(prevPhase);
     setAlive(info.id, !!info.alive);
     setSessionPhase(info.id, phase);
+    // A restart (back to ready) or a revive (dead to alive) gives the
+    // daemon a fresh activity machine under the same id. Drop the old
+    // life here, running calls included, so a shown panel refetches.
+    if (
+      (wasPending && isReady(phase)) ||
+      (prev === false && info.alive === true && isReady(phase))
+    ) {
+      forgetActivity(info.id);
+    }
     // A session that hasn't finished starting is not dead — it has no
     // PTY *yet*. Death is only meaningful once the daemon says ready.
     if (!isReady(phase)) return;
@@ -542,6 +568,8 @@ export function wireDaemonEvents(injected: EventsDeps) {
     for (const id of attentionEdge)
       if (!liveIds.has(id)) attentionEdge.delete(id);
     pruneNav(appData().nav, (id) => liveIds.has(id));
+    // Sent on every (re)connect: refetch what may have missed deltas.
+    resetActivityOnSessionList(liveIds);
     if (!appData().activeId && appData().sessions.length > 0) {
       deps.switchTo(orderedSessions()[0].id);
     }
@@ -625,6 +653,7 @@ export function wireDaemonEvents(injected: EventsDeps) {
       // Offers undo, but only for a close this client issued.
       onSessionRemoved(ev.session.id);
       forgetSession(ev.session.id);
+      forgetActivity(ev.session.id);
       const nextId =
         appData().activeId === ev.session.id
           ? neighbourOf(ev.session.id)

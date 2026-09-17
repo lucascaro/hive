@@ -27,6 +27,7 @@ export {
   ListClosedSessions,
   UpdateSession,
   SetSessionAttention,
+  GetActivity,
   ListAgents,
   ListCustomAgents,
   SaveCustomAgents,

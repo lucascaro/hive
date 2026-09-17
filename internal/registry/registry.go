@@ -505,13 +505,15 @@ func (r *Registry) ApplyAgentEvent(id string, ev wire.AgentEvent) error {
 		Seq:      ev.Seq,
 	}
 	// A heartbeat repeating a report already applied: proof of life,
-	// or a restore after the heuristic tier took over. Never activity,
-	// so nothing is broadcast on that channel — at one beat per Pi
-	// session every few seconds, that would be pure noise.
+	// or a restore after the heuristic tier took over. It carries no
+	// tool or plan change, so the activity frame is the bare liveness
+	// one every accepted report gets — clients need the moved stale_at,
+	// or a live, quiet Pi would read stale after HookStaleAfter.
 	if handled, restored := e.machine().Replay(aev); handled {
 		if restored {
 			r.announceStateLocked(e, prev, "replay")
 		}
+		r.broadcastActivityLocked(e, wire.AgentEventPing)
 		return nil
 	}
 	changed := e.machine().Apply(aev)

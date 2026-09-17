@@ -486,9 +486,10 @@ func piReport(id, kind, instance string, seq uint64, at time.Time) wire.AgentEve
 		At: at.Format(time.RFC3339Nano), Instance: instance, Seq: seq}
 }
 
-// A heartbeat repeating a report already applied broadcasts nothing —
-// not state, not activity. One beat per Pi session every few seconds
-// would otherwise be a steady stream to every client.
+// A heartbeat repeating a report already applied moves no state and no
+// activity: no session event, and only a bare liveness ACTIVITY frame
+// (fresh stale_at, no tool event, no plan). A re-applied tool_start
+// would carry the tool again.
 func TestReplayDoesNotBroadcast(t *testing.T) {
 	skipOnWindows(t)
 	r := freshRegistry(t)
@@ -506,12 +507,18 @@ func TestReplayDoesNotBroadcast(t *testing.T) {
 	if err := r.ApplyAgentEvent(e.ID, ev); err != nil {
 		t.Fatal(err)
 	}
-	select {
-	case got := <-ch:
-		t.Errorf("replay broadcast session event %q", got.Kind)
-	case got := <-act:
-		t.Errorf("replay broadcast activity %+v", got)
-	case <-time.After(200 * time.Millisecond):
+	deadline := time.After(200 * time.Millisecond)
+	for done := false; !done; {
+		select {
+		case got := <-ch:
+			t.Errorf("replay broadcast session event %q", got.Kind)
+		case got := <-act:
+			if len(got.Events) != 0 || got.Plan != nil || got.StaleAt == "" {
+				t.Errorf("replay activity = %+v, want a bare liveness frame", got)
+			}
+		case <-deadline:
+			done = true
+		}
 	}
 }
 

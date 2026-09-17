@@ -213,6 +213,18 @@ Two new `AgentEvent` kinds and a broadcast frame. Nothing else moves.
 - **`GET_ACTIVITY{session_id}`** returns the stored ring, issued when a
   panel or activity tile first renders. Clients then track the
   broadcast deltas. Nobody pays for 200 events × N sessions at connect.
+- **`stale_at`** rides every `ACTIVITY` frame and the `GET_ACTIVITY`
+  answer: the daemon-clock instant of the tier's last accepted report
+  plus `HookStaleAfter`. So that a client's copy never lags a report,
+  every accepted agent event sends a frame — the kinds with no activity
+  (prompt, turn end, ping, the waits, subagent lifecycle) send a bare
+  liveness frame. An event the ordering guard rejects sends nothing.
+  `stale_at` is monotonic per session, which also lets a client order a
+  snapshot against deltas: they are written by different daemon
+  goroutines and arrive in either order.
+- **`plan`** on a frame is `null` when unchanged and `[]` when the plan
+  was emptied. It is never omitted-as-empty, which would make the two
+  indistinguishable.
 
 Durations are computed by the daemon from its own clock across the
 `call_id` pair, never from the two reporter timestamps, which can
@@ -241,8 +253,8 @@ the item keeps its own counter.
 One component, three placements — activity is a *renderer*, not a
 screen:
 
-Phase 1 ships only the sidebar row; the inspector panel and activity
-grid are planned for phase 4.
+Phase 1 shipped the sidebar row; phase 4 the inspector panel and the
+activity grid.
 
 - **Inspector panel** beside the terminal in single-session view,
   toggled by key, read-only so the terminal keeps focus.
@@ -267,6 +279,27 @@ The layouts are settled and drawn in the round-five mocks. In short:
   scrolls in its own section below.
 - **Grid tile** — plan shape as pips, body given to the live tool feed.
 
+Placement, as built in phase 4:
+
+- **The panel is `#app`'s third column** (`#activity-panel`), not a child
+  of `#terms` — whose children `grid-layout.ts` owns — and not inside the
+  terminal host, whose `mousedown` selects the session. The terminal
+  refits through its own ResizeObserver.
+- **The activity grid is an overlay in each tile's `.tile-overlays`**,
+  over a terminal body set to `visibility: hidden`. The xterm is never
+  unmounted and keeps its size, so leaving the activity grid costs no
+  refit, WebGL slot or re-attach. Entering it drops keyboard focus, and
+  focus code treats it like a modal, so no keystroke reaches a terminal
+  nobody can see.
+- **Keys:** ⌘J toggles the panel in single view and the activity grid in
+  a grid; ⇧⌘J goes to the activity grid from anywhere (with one session,
+  it opens the panel). Off macOS they are Ctrl+Shift+J and
+  Ctrl+Alt+Shift+J: plain Ctrl+J is the terminal's newline byte, which
+  Claude Code documents as its multiline key.
+- **Subagent calls** group by `agent_id` under the plan step. Nothing on
+  the wire links a subagent to the parent call that spawned it, so they
+  cannot nest under that call.
+
 Every colour is an existing token — `--state-running`,
 `--state-attention`, `--state-error`, `--state-info`, `--accent` — so
 every theme preset works without a new token.
@@ -289,13 +322,24 @@ than no plan.** Past the staleness threshold the panel and tile show
 the plan's age and the ring desaturates to `--fg-subtle`: the same
 rule the state machine already applies, extended to activity.
 
+**Only while working.** Neither Claude's hooks nor the Pi extension
+heartbeat, so a healthy tier at rest is as silent as a dead one. The
+renderers show stale when the session is on the heuristic tier, or when
+it is working and `stale_at` has passed. A session at rest never does,
+and a hook that dies while the session is at rest cannot be detected —
+the same limit the state machine has (`Tick` only demotes working).
+`stale_at` is compared with the GUI's clock; on one host that is the
+daemon's, and over a remote bridge a skew larger than `HookStaleAfter`
+would misreport.
+
 ## Cross-platform
 
-This adds no platform-conditional code. `internal/daemon/socket.go`
-uses AF_UNIX on Windows as well — there is no named-pipe split — and
-the Claude hooks carrying this data already fire on both platforms
-today. The only platform-specific details are the separator-agnostic
-label derivation above and the daemon-side duration clock.
+The only platform-conditional code is the activity chords (see
+Rendering). `internal/daemon/socket.go` uses AF_UNIX on Windows as
+well — there is no named-pipe split — and the Claude hooks carrying
+this data already fire on both platforms today. The other
+platform-specific details are the separator-agnostic label derivation
+above and the daemon-side duration clock.
 
 ## What is deliberately not here
 

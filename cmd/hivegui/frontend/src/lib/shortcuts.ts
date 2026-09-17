@@ -93,6 +93,18 @@ function ctrlAlt(
 // Arrow-key sequences: mac glyphs read fine run together (↑↓←→);
 // word labels need separators so non-mac renders "Up/Down/Left/Right"
 // instead of the unreadable "UpDownLeftRight".
+// The agent-activity chords (lib/keymap.ts activityKey): ⌘J / ⇧⌘J on
+// macOS, but Ctrl+Shift+J / Ctrl+Alt+Shift+J elsewhere, because plain
+// Ctrl+J is the terminal's newline byte.
+function activityToggle(isMac: boolean): string {
+  return mod(isMac, 'J', { shift: !isMac });
+}
+function activityGrid(isMac: boolean): string {
+  return isMac
+    ? mod(true, 'J', { shift: true })
+    : ctrlAlt(false, 'J', { shift: true });
+}
+
 function arrowSeq(isMac: boolean, ...keys: string[]): string {
   return keys.map((k) => keyLabel(k, isMac)).join(isMac ? '' : '/');
 }
@@ -167,6 +179,11 @@ export function shortcutGroups({ isMac }: { isMac: boolean }): ShortcutGroup[] {
           label: 'Grid: focus the active session (single view)',
         },
         { keys: m('S'), label: 'Toggle sidebar' },
+        {
+          keys: activityToggle(isMac),
+          label: 'Agent activity: panel (single view) / activity grid (grid)',
+        },
+        { keys: activityGrid(isMac), label: 'Agent activity grid' },
         {
           keys: `${m('=')} / ${m('-')} / ${m('0')}`,
           label: 'Zoom in / out / reset',
@@ -268,6 +285,8 @@ export function paletteShortcuts({
     'toggle-sidebar': m('S'),
     'toggle-project-grid': m('G'),
     'toggle-all-grid': m('G', { shift: true }),
+    'toggle-activity': activityToggle(isMac),
+    'activity-grid': activityGrid(isMac),
     'focus-active-session': m('enter'),
     'zoom-in': m('='),
     'zoom-out': m('-'),

@@ -4,11 +4,11 @@
 - **Issue:** — (locally allocated number; **not** a GitHub issue. PR #416 on GitHub is
   `feat: add Alucard and Hex theme presets`, an unrelated merged PR. Never write `Fixes #416`.)
 - **Design:** [docs/design-docs/agent-activity.md](../../design-docs/agent-activity.md)
-- **Phase:** 3 of 4 (Pi tier; Phase 1 shipped in #417, Phase 2 in #420)
-- **PR:** #421
-- **Branch:** feature/416-phase-3
+- **Phase:** 4 of 4 (inspector panel + activity grid; Phase 1 shipped in #417, Phase 2 in #420, Phase 3 in #421)
+- **PR:** #422
+- **Branch:** feature/416-phase-4
 - **Mocks:** https://claude.ai/artifact/7RjZw99RbKNV1iS13r2dtb (placement study — pie vs ring)
-- **Status:** active
+- **Status:** completed
 
 ## Summary
 
@@ -355,6 +355,39 @@ bump has precedent; judgement call).
   building; smoke-test loading with `pi -e <path> --list-models` (no tokens).
 - pi-devkit's node_modules can trail the running pi (0.85.0 vs 0.85.1) — compare versions
   before relying on a newer API.
+
+
+### Phase 4 research (2026-09-16, after #421)
+
+Paths under `cmd/hivegui/frontend/` unless rooted elsewhere.
+
+**Data plane exists; the frontend never consumes it.**
+- Event `activity:event` (`internal/wire/client.go:134`), emitted as a JSON string by the GUI (`cmd/hivegui/app_control.go:452`) and the ws-bridge (`cmd/hived-ws-bridge/main.go:552`). No `EventsOn('activity:event')` in `src/app/events.ts` (handlers :359-845, `idea:event` pattern :427); no store slice, no TS types.
+- `App.GetActivity(sessionID)` (`cmd/hivegui/app_calls.go:643`, bridge RPC `main.go:371`) is generated in `wailsjs/go/main/App.d.ts:29` but **not** re-exported from `src/bridge.ts`; absent from `test/e2e/wails-mock.ts` and `test/e2e-real/wails-bridge.ts`. Answer arrives as `activity:event` with `full: true`.
+- Wire (`internal/wire/control.go`): `ToolEvent` :618 (`tool, target, call_id, agent_id, agent_type, started_at, ended_at, duration_ms, ok *bool, plan_idx` — -1 = no plan, not omitempty); `PlanItem` :555 (`id, text, status, tools` — tally survives eviction); `ActivityMsg` :643 (`session_id, events, plan, full, stale_at`). Deltas (`internal/registry/events.go:115-146`): tool kinds send `{events:[ev]}`, plan kinds send `{plan: whole}`.
+- `ActivityRingCap = 200` (`internal/agentstate/activity.go:26`); open calls (≤32, :31) live **outside** the ring, so a `full` snapshot never shows a running tool — the client merges start/end deltas by `call_id`.
+- ModeSession connections get neither `GET_ACTIVITY` nor the fan-out (`internal/daemon/daemon.go:966-983, 1269-1282`).
+
+**Gaps.**
+- **G1 — `stale_at` is declared, never set.** `ActivitySnapshot` (`events.go:151-165`) omits it. `hookSeenAt` is set from the reporter's `ev.At` (`internal/agentstate/machine.go:414-421`), while `stale_at` is documented as daemon clock. `HookStaleAfter = 30s` (machine.go:58). Filling it is a wire/daemon change → `buildinfo.DaemonContract` bump (`scripts/check-daemon-contract.sh`).
+- **G2 — a plan emptied to zero items is indistinguishable from "no plan change".** `plan` is `omitempty`; replace/delete-to-empty (`activity.go:349,425`) produces a delta with no `plan` key. Wire fix or frontend fallback on `SessionInfo.plan_total == 0`.
+- **G3 — no per-agent tier on the frontend.** Only per-session `state_source` (`''`=heuristic, `hook`, `extension`). Claude can sit on heuristic (hooks unavailable, `internal/agent/claude.go:147`), so "no activity data" = heuristic source **and** empty snapshot.
+
+**Single-session layout.** `#terms` (`index.html:164`) is not React-owned; `#terms.single .term-host { position:absolute; inset:6px }` (`src/theme/layout.css:64-86`), `applySingle()` `src/app/grid-layout.ts:60`. Hosts are `.term-host > .tile-header + .term-body + .tile-overlays` (`src/app/session-term.ts:237-261`); React must not create/reparent hosts, only portal into `.tile-header`/`.tile-overlays` (`src/components/TileChrome.tsx:1-25`). xterm refits via ResizeObserver (`session-term.ts:300`). A `mousedown` on the host calls `setActive` (:597), so a panel inside the host selects the session.
+
+**Focus.** `setFocusedTile()` (`src/app/focus.ts:164`) re-asserts xterm focus; `decideFocusAction` (`src/lib/focus.ts:32-54`) preserves focus only for real INPUT/TEXTAREA — a non-focusable panel is consistent with this. Playwright precedents: `test/e2e/focus-invariants.spec.ts`, `cmd-enter-grid-focus.spec.ts`.
+
+**Grid.** `applyGridLayout()` (`grid-layout.ts:135-260`); `TileChromeHost` portals per-tile header and `TileOverlays` (`TileChrome.tsx:45-80`); chrome state in `store.tileChrome` (`src/store/store.ts:83`). Tile body swap = absolutely-positioned overlay in `.tile-overlays` over `.term-body`, xterm stays mounted. View modes `single|grid-project|grid-all` (`src/lib/view.ts`, persisted `hive.view`).
+
+**Keybindings.** No registry: if/else chain in `src/app/keyboard.ts:350-520`, menu actions :827. Every new shortcut touches `keyboard.ts`, `src/lib/shortcuts.ts` (`shortcutGroups` View :178-199, `paletteShortcuts` :245), palette table `src/main.tsx:~200`, `cmd/hivegui/menu_darwin.go:107-116`, `README.md:251-277`, tests `test/unit/shortcuts.test.ts`, `status-hints.test.ts`. Free ⌘ letters: D F J L O R U Y (+ shifted).
+
+**Reusable.** `planOf`/`subagentsOf` private in `src/components/SessionRow.tsx:42-78` (move to `lib/`); stale proxy :55, comment :35-41 names `StaleAt` as Phase 4's fix. Pie CSS `src/theme/components/session-row.css:60-126`. Tokens `--fg-subtle --accent --state-*` (`src/theme/tokens.css:11-20`). `Icon` sprite for the disclosure triangle.
+
+**Constraints.** `scripts/ui-lint.sh --strict` in CI: no raw hex, no px `font-size`/`border-radius`, no icon-shaped Unicode in `src/app|components|theme`. React 19.2, zustand 5. Playwright mock reaches wailsjs only via `src/bridge.ts`; mock helpers `window.__hive.emit`/`setSessionPlan` (`wails-mock.ts:1299-1321`), types `test/e2e/hive-global.d.ts`; pattern `test/e2e/sidebar-plan-pie.spec.ts`. Docs: `README.md` features :17 + keybinds, `docs/design-docs/agent-activity.md` Rendering ("Phase 1 ships only the sidebar row…"), `.changesets/` + `site/features.json`.
+
+**Conventions card (Phase 4 delta).** Build `./build.sh`; tests `scripts/test.sh [go unit dom e2e]`; Playwright `cd cmd/hivegui/frontend && CI=1 npx playwright test test/e2e/<spec>`; lint `scripts/ui-lint.sh --strict`, `npx biome ci .`, and for Go changes `GOOS={darwin,linux,windows} staticcheck ./... && go vet ./...`; `npm run typecheck` (fresh worktree: `./scripts/ci-bootstrap.sh` first). CSS/layout claims validated in Playwright with `elementFromPoint`, never by vitest.
+
+**Phase 4 prior lessons.** No brain entries matched.
 
 ## Phase split (operator-approved)
 
@@ -1172,6 +1205,12 @@ Append-only, one line per `/hs-review-loop` iteration.
 - **2026-09-16 iter 3 (PR #420)** — verdict: APPROVE; mergeable: MERGEABLE; findings_hash: empty; threads_open: 0; action: stop; head_sha: 7ad3e398. Converged. Four dimension reviewers were clean. CI passed on Linux, macOS and Windows once the worker's pending checks finished (orchestrator re-checked). One low-confidence doc drift, not filed, was fixed in the GATE commit: the Tally bullet credited `recordFinishedTurnStart` with skipping subagent events, but that path never sees them.
 - **2026-09-16 iter 1 (PR #421, phase 3)** — verdict: APPROVE; mergeable: MERGEABLE; findings_hash: empty; threads_open: 1; action: continue; head_sha: 230a33fd. Four dimension reviewers clean (one MINOR: the Pi spawn-env test covers create and restart but not revive, which shares `applyAgentSpawn` with restart). CI passed on Linux, macOS and Windows. One CodeRabbit thread arrived after the review, so the loop continues.
 - **2026-09-16 iter 2 (PR #421)** — verdict: APPROVE; mergeable: MERGEABLE; findings_hash: e43fcc416cf2413f189c91f0c735e75c913583bca579a19bf228a8340924f24d; threads_open: 0; action: stop; head_sha: dd958dcf. Review clean. The one CodeRabbit thread (CWE-200, `hive.ts` labels can carry a secret typed as the command word or a short all-letter second word) was resolved with rationale, not a code change: both are the operator-accepted ceilings already documented in `cmd/hived/toollabel.go` and pinned by the shared vectors; an allowlist would change labelling policy for both agents. Surfaced to the operator. Worker coerced to REQUEST_CHANGES only for the open thread; convergence verified directly afterwards: all required checks passed on dd958dcf (Linux, macOS, Windows, CodeQL, CodeRabbit) with 0 unresolved threads.
+- **2026-09-16 iter 1 (PR #422, phase 4)** — verdict: APPROVE; mergeable: MERGEABLE; findings_hash: empty; threads_open: 0; action: stop; head_sha: 1a52cef3. Review split across four dimension agents, all clean except one MINOR: `Machine.Apply` set `accepted` before the exited-session early return, so a dropped event still sent a liveness frame. Fixed on the branch after the verdict (test `TestTakeAcceptedFalseAfterExit`, seen failing first); convergence on the new head verified directly below.
+- **2026-09-16 iter 2 (PR #422)** — verdict: REQUEST_CHANGES (coerced: 4 CodeRabbit threads + CI red on 48084a01); mergeable: MERGEABLE; findings_hash: empty; threads_open: 0; action: autofix+push; head_sha: 7e9f161a. Handled in the orchestrator, not a worker. All four threads were valid and fixed, each with a test seen failing first and mutation-checked: a current full snapshot replaces finished calls (previously a restarted session kept its old calls); `stale_at` compared at nanosecond precision; restart or revive drops client activity; the "Stale for" label; features.json non-mac chord. CI: Windows `activity-panel` read a pre-settle 145 cols as its baseline. Diagnosed from the trace (145, then 99 open, then 127 steady; local steady is also 127), so the test now waits for settled cols. Linux `TestBroadcast_TwoControlConns` got a `title` event before `added`, a session-event race in code this PR does not touch; left for the rerun.
+- **2026-09-16 iter 3 (PR #422)** — verdict: COMMENT; mergeable: MERGEABLE; findings_hash: 0d3486497fb055c2767dc67dec2852baeb19b183e7e9788c2e43b00fc2950605; threads_open: 0; action: autofix+push; head_sha: fa4528cc. Autofix added the MINOR `stampNs` UTC-offset test. The worker escalated two IMPORTANT findings as needing a human decision; the orchestrator judged both to be correctness/UX fixes with no product decision and fixed them in iter 4: (1) a GET_ACTIVITY answer from before a restart, arriving after `forgetActivity`, applied as current; (2) the loading and failed states rendered as "No tool calls yet". CI passed on fa4528cc.
+- **2026-09-16 iter 4 (PR #422)** — verdict: REQUEST_CHANGES (iter 3's two IMPORTANT findings); mergeable: MERGEABLE; findings_hash: 0d3486497fb055c2767dc67dec2852baeb19b183e7e9788c2e43b00fc2950605; threads_open: 0; action: autofix+push; head_sha: 2a39d92e. Orchestrator fix, tests seen failing first and mutation-checked. The store now counts pending GET_ACTIVITY requests and, after a restart, discards the answers owed to the previous run; this relies on answers arriving in request order on the one control connection. A snapshot nobody requested is ignored. The panel and tile say Loading… or Couldn't load activity, and the no-activity empty state waits for a loaded snapshot.
+- **2026-09-16 iter 5 (PR #422)** — verdict: COMMENT; mergeable: MERGEABLE; findings_hash: 6b727b9494d5e26f76ceee7381adedf8c0500482ef8156e09666b0afc05950a7; threads_open: 0; action: escalated:max-iterations-risky-fix-and-windows-ci; head_sha: 1d0ab594. (a) IMPORTANT: a GET_ACTIVITY answered with `no_such_session` never decrements `pending`, because the error frame carries no session id. A session closed with a request outstanding leaves a store entry until reconnect, and a panel on an unknown id stays on Loading… forever. Autofix marked the fix RISKY. (b) Windows CI `activity-panel.spec.ts` failed again with settled cols. **Correction to iter 2:** the trace shows 145 twice (settled), 99 while open, then 127 steady after close. It was not a pre-settle baseline: on Windows CI the terminal does not refit to its final width after the panel column closes. Not reproduced on macOS, even with CPU throttling (steady cols match there), so no fix is attempted without a repro.
+- **2026-09-16 converged after escalation (PR #422)** — verdict: APPROVE; mergeable: MERGEABLE; findings_hash: empty; threads_open: 0; action: stop; head_sha: bb4afb97. The two iter 5 items were settled by the operator. (1) no_such_session was deferred to a follow-up; its CodeRabbit thread was resolved with that rationale, and the request guard for sessions missing from the list (bb4afb97, from the second CodeRabbit thread) closes the removal route. (2) The Windows refit was diagnosed with a CI trace as a spec baseline error: the cell size changes after the first fit, and the app's refit was correct. The spec now compares against fit's own proposal. All required checks passed on Linux, macOS and Windows, plus CodeQL and CodeRabbit. Convergence was verified directly with `gh pr checks` and a thread query, not a sixth worker iteration.
 
 ## Gate verdict
 
@@ -1203,6 +1242,11 @@ Append-only. The latest entry is authoritative.
     - acceptance — PASS — carried from the run above; the fix commit touched docs only (`git diff` between the two runs: spec and exec plan). DEFERRED: inspector panel and activity grid Playwright checks (Phase 4).
     - non-goals — PASS — carried from the run above, same reason.
     - doc accuracy — PASS — spec:75 and plan:367 now say `hive_todo`; changeset (type added, bump minor, pr 421; hover claim matches `SessionRow.tsx` title), README, `site/features.json`, design doc, Settings hint and code comments consistent; `CHANGELOG.md` and `index.md` untouched.
+- **2026-09-16** — verdict: PASS; phase: 4/4; checks: 3 passed / 0 failed / 0 followups; followups: none; one-line: every spec 416 criterion holds on the final branch (phase 4 panel, grid, working-only staleness, `plan: []`, keys incl. non-mac chords, focus and merge rules; phases 1–3 regression green). Non-goals untouched, docs accurate. Operator-deferred: `no_such_session` pending request.
+  - 2026-09-16 dimensions:
+    - acceptance — PASS — Go: `TestStaleAt*`, `TestTakeAccepted*`, `TestActivityDeltaForEveryTierEvent`, `TestActivitySnapshotCarriesStaleAt`, `TestActivityPlanEmptiedMarshalsEmptyArray`, `TestActivityFrameWireCarriesStaleAtAndEmptyPlan`; `check-daemon-contract.sh` 12→13. vitest 108/108 (activity, keymap, shortcuts, activity-panel/focus/restart). Playwright 27/27 (activity-panel, activity-grid, keymap-activity, sidebar-plan-pie). Phase 1–3 packages incl. `internal/agent` all ok.
+    - non-goals — PASS — no persistence writes; wire and UI carry only tool/target; no transcript, cost or plugin loading (the registry is a static in-repo map); the activity grid is per-session tiles, the spec's own placement, not an aggregate view.
+    - doc accuracy — PASS — changeset valid (added/minor/pr 422); README, features.json, help, palette and macOS menu agree with `activityKey`; design doc Wire/Staleness/Rendering match events.go, control.go and activity.ts; UI catalogue tokens are present; contract entry 13 is accurate; no stale forward-looking text; CHANGELOG and index untouched.
 
 ## Phase 3 plan (approved 2026-09-16 via HTML review, round 1)
 
@@ -1458,6 +1502,158 @@ Non-vacuity checks run once during implementation and recorded in Progress:
   connect throws; full queue drops the **oldest** report (a 64 × 2 s backlog would otherwise exceed
   `HookStaleAfter`); `send` rejects batches over 8 frames; `/reload` race noted as harmless.
 
+## Phase 4 plan (approved 2026-09-16 via HTML review, round 1)
+
+Scope (operator-approved phase split): inspector panel + activity grid. Operator decisions (see Decision log, 2026-09-16 Phase 4 entries): daemon-side **working-only** staleness via `stale_at`; `plan: []` wire fix; ⌘J / ⌘⇧J; one PR.
+
+Spec criteria this phase closes:
+- (C1) Playwright: the panel toggles without stealing terminal focus.
+- (C2) Playwright: the grid keybinding swaps tiles and back.
+- (C3, Desired behavior) Panel: plan steps with tool calls nested beneath; only the current step expanded; others collapse to one line with a disclosure triangle and tool-count pill; full timeline scrolls in its own section below.
+- (C4, Desired behavior) Grid tile: plan shape as pips, body = live tool feed.
+- (C5, Desired behavior) Every heuristic-tier session shows an explicit "no activity data" empty state.
+- (C6, Desired behavior, as re-decided) Staleness: past `stale_at` while working (or on the heuristic tier) the panel and tile show the age and desaturate to `--fg-subtle`.
+- (C7, Non-goals) The extension point is an in-repo renderer registry: a second visualization is a new file.
+- (C8, carried) `GET_ACTIVITY` is issued when a panel or tile first renders; clients track deltas afterwards. ModeSession stays refused.
+
+New spec criteria added in this PR (`### Phase 4 — inspector panel and activity grid`), each mapped to a test below:
+- The daemon stamps `stale_at` from its own clock on every `ACTIVITY` frame and on `GET_ACTIVITY`; every tier event (not only tool/plan kinds) emits a delta carrying it; a heuristic-only session carries none.
+- A plan delta that empties the plan carries `"plan": []`; a tool delta carries no plan change. `DaemonContract` bumped.
+- A session at rest never renders stale, however old `stale_at` is.
+- ⌘J in single view toggles the panel; in a grid view toggles the activity grid; ⌘⇧J reaches the activity grid from any view; ⌘Enter, arrows and the other grid shortcuts still work in the activity grid.
+
+### Approach
+
+**Daemon (small, contract-bumped).**
+1. `agentstate.Machine` gains `reportedAt time.Time` — the **daemon** clock (`ev.Now`) of the last accepted tier event, main-thread or subagent, including the late-activity path. `StaleAt() (time.Time, bool)` returns `reportedAt + HookStaleAfter`, false when no tier event was ever seen or source is heuristic. Kept apart from `hookSeenAt` (reporter clock, ordering/trust) on purpose: changing `trusted()`'s clock is not this phase's business.
+2. `registry.broadcastActivityLocked` sends a frame for **every** applied kind: tool kinds `{events:[ev]}`, plan kinds `{plan: whole}`, everything else `{}` — all stamped `stale_at`. A rejected event (out-of-order guard) sends nothing. Today only tool kinds are protected (`LastToolDelta`'s `hasDelta`); plan kinds re-broadcast on a rejected event (kind switch at `internal/registry/events.go:115-133`, called from `registry.go:510`). The machine gains an `accepted` flag set by `Apply` / `applyLateActivity` and consumed like `hasDelta` (`Machine.TakeAccepted() bool`); `broadcastActivityLocked` returns early when it is false, for every kind. The "noise" comment is rewritten: the operator accepted one ~80-byte frame per hook event for correct staleness. `ActivitySnapshot` stamps `stale_at` too.
+3. `wire.ActivityMsg.Plan` drops `omitempty`. Semantics documented on the field: `null`/absent = unchanged, `[]` = emptied. `Machine.Activity()` already returns a non-nil slice (`make`), so plan kinds marshal `[]`; tool and liveness deltas leave it nil (`null`). `StaleAt` doc updated (no longer "reserved"; format RFC3339Nano UTC, daemon clock).
+4. `buildinfo.DaemonContract` 12 → 13 with a history line.
+
+**Frontend data plane.**
+5. `src/lib/activity.ts` (pure, unit-tested): TS mirrors of `ToolEvent`, `PlanItem`, `ActivityMsg`; `applyActivity(prev, msg)` reducer. **Ordering:** `GET_ACTIVITY` is written from the read loop (`daemon.go:1282`) and deltas from the listener goroutine (`daemon.go:965-983`), so a full frame and a delta can arrive in either order. `stale_at` is a per-session monotonic daemon-clock stamp (`reportedAt` only moves on accepted events), so it doubles as the frame's version: a frame whose `stale_at` is older than the stored one never replaces the plan or `stale_at`. Events merge as a **union by `call_id`** — a `full` frame adds and completes calls but never removes a client event missing from the snapshot (an end delta that raced ahead of it). `full` replaces the plan unconditionally when not older (`null` → empty); a delta merges one event by `call_id` (end replaces its start; no `call_id` → append); client cap 200 completed + open; `plan` replaced when it is an array, untouched when `null`/absent; `stale_at` replaced when present. `isStale(state, source, staleAt, now)` = heuristic source, **or** `state === 'working'` and `now > staleAt`. `groupTimeline(plan, events)` → per step: main-thread calls (`agent_id` empty) plus subagent calls grouped by `agent_id` (labelled `agent_type`); unassigned (`plan_idx -1`) in their own group. No link from a subagent to its parent's `Agent` call exists on the wire, so nesting is by `agent_id` under the step, not under the call — recorded as a deviation from the Phase 2 aspiration.
+6. `src/store/activity.ts` — zustand store `Map<sessionId, ActivityState & {loaded}>`, same module pattern as `store/terms.ts`. `EventsOn('activity:event')` in `events.ts` (idea:event pattern) feeds it; `session:event removed` drops the entry; Refetch happens on **reconnect**, not disconnect: the first `session:list` after a `control:disconnect` marks every entry unloaded (nothing is fetched while the connection is down).
+7. `useActivity(id)` hook: subscribes to one session's entry and issues `GetActivity(id)` once while unloaded **and not in flight**. A per-session `inFlight` flag is set on call and cleared by the full frame, by a rejected promise (`requireControl` fails while disconnected), and by the reconnect reset (not by `control:error`: its payload is `{code, message}` with no session id, `daemon.go:1279`, so it cannot be matched to a request; a `no_such_session` session is removed by `session:event` anyway) — so a failing session never loops; it retries only after the next reconnect or remount. `GetActivity` re-exported from `src/bridge.ts`, added to `test/e2e/wails-mock.ts` (answers from mock state via `activity:event` full) and `test/e2e-real/wails-bridge.ts` (bridge RPC `GetActivity {session_id}` already exists).
+8. `useNow(ms)` — one shared 5 s ticker, mounted only while a panel or activity grid is visible, so age text and the stale flip advance without any event.
+
+**Rendering (one component, three placements).**
+9. `src/components/activity/registry.ts` — `const activityRenderers: Record<'panel' | 'tile', ComponentType<{sessionId}>>`. Placements look up the renderer by key; a second visualization is a new file plus one entry. No plugin API.
+10. `ActivityPanel.tsx` — header (agent, stale age), plan steps: the `active` step expanded by default, the rest collapsed to one line with a disclosure triangle (`Icon` sprite) and a pill showing `item.tools` (the eviction-proof tally). Expanded step lists its grouped calls. Below, a scrollable timeline section (newest first): `tool · target`, duration (running: elapsed from `started_at`), failure mark. Empty state: heuristic source and no events and no plan → "No activity data — this agent doesn't report its plan or tools." Heuristic **with** data renders as stale.
+11. `ActivityTile.tsx` — pips (one per plan item, colour by status), then the live tool feed filling the body; same stale and empty rules.
+12. **Focus.** Every element in both renderers is non-focusable (disclosure triangles are `div`s, no `tabIndex`), and the roots cancel `mousedown` (`preventDefault`) so a click never moves focus off the xterm. Disclosure state is component-local.
+13. **Panel placement: a third `#app` column, not inside `#terms`.** `index.html` gains `<aside id="activity-panel" hidden>` in `#app` row 3 beside `#terms`; `App.tsx` portals `activityRenderers.panel` into it for the active session. `#app.activity-panel-open` sets `grid-template-columns: var(--sidebar-width) 1fr var(--activity-panel-width)`, and a combined `#app.sidebar-hidden.activity-panel-open { grid-template-columns: 0 1fr var(--activity-panel-width) }` so hiding the sidebar cannot drop the panel column (`layout.css:30-32`). The aside sets `grid-row: 3; grid-column: 3`. Full-width rows (`banner.css:20`, `status-bar.css:10` use `1 / -1`) span it automatically; `.empty-state` (`empty-state.css:8,42`, `grid-column: 2`) is unaffected; `#minimized-tray` stays in column 2. The terminal host refits through its existing ResizeObserver. Why not inside `#terms` or the host: `#terms` children are owned by `grid-layout.ts`, and a panel inside the host triggers `setActive` on `mousedown` (`session-term.ts:597`). Shown only when `view === 'single'` and the flag is on.
+14. **Activity grid: an overlay inside each tile, xterm untouched.** `TileOverlays` renders `activityRenderers.tile` when the store's `activityGrid` flag is on and the view is a grid. `#terms.grid.activity .term-body { visibility: hidden }` — hidden, not unmounted and not `display:none`, so the xterm keeps its size (no refit storm, no WebGL slot churn). `visibility:hidden` does not reliably blur a focused textarea in WKWebView, so entering the activity grid blurs the active xterm. A bare `blur()` is not enough: the focusout guard (`focus.ts:138-161`, armed by `setFocusedTile` at :174, e.g. by `setView`) would refocus it, and every later focus drive (⌘→, re-layout, session add/remove) would too. So `focusSnapshot` (`focus.ts:169,276`) treats the activity grid like `modalOpen`: while it is on, `applyFocus` does nothing and the guard is disarmed. Leaving it (⌘J, ⌘Enter into single) refocuses through the existing `setFocusedTile` path. The keydown handler is on `document`, so app shortcuts keep working with nothing focused. The tile header stays. `grid-layout.ts` toggles `.activity` on `#terms`; `gridSignature` gains the flag so the class flips with it.
+15. **Keys and flags.** Store gains `activityPanel` and `activityGrid` booleans. Only `activityPanel` persists (`hive.activityPanel`); `activityGrid` does not, so a restart never lands in a grid of hidden terminals. Ctrl on non-mac via the existing `cmdOrCtrl` gate:
+    - ⌘J: single → toggle `activityPanel`; grid → toggle `activityGrid`.
+    - ⌘⇧J: grid → toggle `activityGrid` on (off if already on); single → `activityGrid = true` and `setView('grid-project')`. If `resolveView` keeps it single (< 2 sessions), open the panel instead so the key never does nothing.
+    - Nothing else in `keyboard.ts` is gated on the flags, so ⌘Enter, arrows, ⌘1-9 and ⌘G keep working. ⌘Enter lands in single view with the terminal visible; the grid flag persists for the next grid.
+    **Ctrl+J on Linux/Windows — operator decision needed.** `cmdOrCtrl` makes ⌘J plain Ctrl+J there (byte 0x0a). Claude Code documents Ctrl+J as its newline key that works in every terminal, and Hive's spec 217 relies on it (`docs/exec-plans/completed/217-cmd-enter-insert-newline-not-submit.md:24-26`). Binding it would take the main agent's multiline key on non-mac, which is worse than the existing Ctrl+G/S/E bindings. Proposed: on non-mac, the panel/activity-grid toggle is **Ctrl+Shift+J** and 'go to activity grid' is **Ctrl+Alt+Shift+J**; mac keeps ⌘J / ⌘⇧J. A Playwright case with a non-mac user agent asserts Ctrl+J still reaches `stdinText` as 0x0a.
+    Wired end to end: `keyboard.ts`, menu actions map (`menu:toggle-activity`, `menu:activity-grid`), `menu_darwin.go` View menu, `shortcuts.ts` (`shortcutGroups` View + `paletteShortcuts`), palette table in `main.tsx`, `README.md` keybinds.
+
+**Why this beats the obvious alternative.** The obvious alternative is to render activity in React-owned containers that replace the terminal. That breaks the host-ownership rule (`TileChrome.tsx:1-25`), churns WebGL slots and PTY attachments, and forces every existing grid key to learn a new mode. Overlays and a sibling column add a view with no change to how terminals live.
+
+### Files to change
+
+1. `internal/agentstate/machine.go` — `reportedAt`, set in `Apply` (all accepted paths) and `applyLateActivity`; `StaleAt()`.
+2. `internal/agentstate/activity.go` — `applyLateActivity` touch if it lives here.
+3. `internal/wire/control.go` — `ActivityMsg.Plan` without `omitempty`, field docs for `Plan` and `StaleAt`.
+4. `internal/registry/events.go` — `broadcastActivityLocked` covers every kind with `stale_at`; `ActivitySnapshot` stamps it; comments.
+5. `internal/registry/registry.go` / `internal/agentstate/activity.go` — `accepted` flag + `TakeAccepted()`; `broadcastActivityLocked` skips rejected events for every kind (fixes today's plan-kind re-broadcast on a rejected event).
+6. `internal/buildinfo/contract.go` — 13 + history.
+7. `cmd/hivegui/frontend/src/bridge.ts` — export `GetActivity`.
+8. `cmd/hivegui/frontend/src/app/events.ts` — `activity:event` handler; removal and disconnect hooks.
+9. `cmd/hivegui/frontend/src/store/store.ts` — `activityPanel` / `activityGrid` flags, setters, persistence.
+10. `cmd/hivegui/frontend/src/app/keyboard.ts` — ⌘J / ⌘⇧J, menu action entries.
+11. `cmd/hivegui/frontend/src/app/grid-layout.ts` — `.activity` class on `#terms` in grid passes; cleared in `applySingle`.
+12. `cmd/hivegui/frontend/src/components/GridView.tsx` — flag in `gridSignature`.
+13. `cmd/hivegui/frontend/src/components/TileOverlays.tsx` / `TileChrome.tsx` — render the tile renderer.
+14. `cmd/hivegui/frontend/src/components/App.tsx` — panel portal.
+15. `cmd/hivegui/frontend/index.html` — `<aside id="activity-panel">`.
+16. `cmd/hivegui/frontend/src/theme/layout.css` — third column, `.activity` body hiding; `tokens.css` — `--activity-panel-width`.
+17. `cmd/hivegui/frontend/src/lib/shortcuts.ts`, `src/main.tsx` — help, palette.
+18. `cmd/hivegui/menu_darwin.go` — two View items.
+18a. `cmd/hivegui/frontend/src/app/focus.ts` — `focusSnapshot` treats `activityGrid` like `modalOpen`; guard disarmed while on.
+18b. `cmd/hivegui/frontend/src/lib/keymap.ts` — pure predicate for the platform split (⌘J/⌘⇧J mac, Ctrl+Shift+J / Ctrl+Alt+Shift+J elsewhere), unit-tested.
+19. `cmd/hivegui/frontend/src/components/SessionRow.tsx` — comment at :35-41 corrected (stale_at is working-only; at-rest gap is undetectable without a heartbeat). Pie logic unchanged.
+20. `cmd/hivegui/frontend/test/e2e/wails-mock.ts`, `test/e2e/hive-global.d.ts`, `test/e2e-real/wails-bridge.ts` — `GetActivity`, `__hive.emitActivity(msg)`, `__hive.setActivity(id, {events, plan, stale_at})`.
+21. `README.md` — feature bullet + keybinds table.
+22. `docs/design-docs/agent-activity.md` — Wire (`stale_at` on every frame, `plan: []`), Rendering (panel column, tile overlay, registry), Staleness (working-only, the at-rest limit and why).
+23. `docs/product-specs/416-agent-activity-view.md` — Staleness paragraph corrected; Phase 4 criteria section.
+24. `docs/design-docs/ui/components.md` — the activity renderers, if the catalogue lists tile overlays.
+25. `site/features.json` — extend the "Agent plan progress" entry (or add "Agent activity view").
+
+### New files
+
+- `cmd/hivegui/frontend/src/lib/activity.ts` — wire types, reducer, `isStale`, `groupTimeline`, `formatAge`.
+- `cmd/hivegui/frontend/src/store/activity.ts` — per-session activity store + `useActivity`, `useNow`.
+- `cmd/hivegui/frontend/src/components/activity/registry.ts` — renderer registry.
+- `cmd/hivegui/frontend/src/components/activity/ActivityPanel.tsx`, `ActivityTile.tsx`, `ActivityEmpty.tsx`.
+- `cmd/hivegui/frontend/src/theme/components/activity.css`.
+- `.changesets/agent-activity-panel-grid.md`.
+- `cmd/hivegui/frontend/test/unit/activity.test.ts`, `test/dom/activity-panel.test.tsx`, `test/e2e/activity-panel.spec.ts`, `test/e2e/activity-grid.spec.ts`.
+
+### Tests (written first, each seen failing)
+
+Go:
+- `internal/agentstate/activity_test.go` `TestStaleAtUsesDaemonClock` — event `At` an hour in the past, `Now` = t → `StaleAt` = t + `HookStaleAfter`.
+- `TestStaleAtAdvancesOnPingAndSubagent` — ping and a subagent tool event each move it; a rejected (out-of-order) event does not.
+- `TestStaleAtAbsentOnHeuristic` — fresh machine → `ok == false`.
+- `TestTakeAcceptedFalseForOutOfOrderEvent` — a main-thread event older than `orderAt` (outside the late-activity window) leaves `TakeAccepted()` false; a normal event sets it once.
+- `internal/registry/events_test.go` `TestActivityDeltaForEveryTierEvent` — `prompt`, `ping`, `turn_end`, `subagent_start`, `subagent_end` each reach an activity listener with `stale_at` set and no events/plan; a rejected event of **each** kind (tool, plan, ping) reaches none.
+- `TestActivitySnapshotCarriesStaleAt`.
+- `TestActivityPlanEmptiedMarshalsEmptyArray` — plan → items, then plan with zero items: the second frame's JSON contains `"plan":[]`; a `tool_start` frame's JSON does not contain `"plan":[`.
+- `internal/daemon/activity_test.go` `TestActivityFrameWireCarriesStaleAtAndEmptyPlan` — over a real control connection: a ping yields an ACTIVITY frame with `stale_at`; emptying the plan yields raw bytes containing `"plan":[]`. Existing ModeSession and fan-out tests (:49,79,211) still green.
+
+Unit (`test/unit/activity.test.ts`):
+- `applyActivity`: start delta then end delta → one completed event; `full` arriving after a start delta keeps the open call; `full` then end delta for it completes it; cap evicts oldest completed only; `plan: null` on a delta keeps plan; `plan: []` clears it; `full` with `plan: null` after a non-empty plan clears it; an end delta **then** a full frame without that call keeps the completed call; a plan delta whose `stale_at` is older than the stored one (queued before the snapshot, arriving after) changes nothing; `stale_at` absent keeps the previous one.
+- `isStale`: heuristic → true; working and past → true; waiting_input and past → **false**; working and future → false.
+- `groupTimeline`: main-thread vs subagent grouping, `plan_idx -1` bucket, tally read from `item.tools` not counted from events.
+- `shortcuts.test.ts`: ⌘J and ⌘⇧J listed in View group and palette.
+
+DOM (`test/dom/activity-panel.test.tsx`):
+- only the active step expanded; collapsed step shows its `tools` pill; clicking the triangle toggles; no element in the panel is focusable (`querySelectorAll` focusable selector is empty).
+- empty state for heuristic + no data; stale class + age text for working + past `stale_at`; at rest + past → no stale class.
+- mount issues exactly one `GetActivity` per session; a rejected `GetActivity` promise leaves it at exactly one call across re-renders; after `control:disconnect` **no** call is made, and after the following `session:list` exactly one more.
+
+Playwright (Wails mock, `CI=1`):
+- `activity-panel.spec.ts`: ⌘J opens the panel — `elementFromPoint` at the panel's centre is inside `#activity-panel`, the terminal's right edge moved left, the xterm refit (cols decreased); `document.activeElement` is the xterm textarea after ⌘J, and — after waiting past the focus guard's settle window (`focus.ts:138`) so the guard cannot be what restores it — after clicking a step and after scrolling the timeline; typing reaches `stdinText(id)`; ⌘J again closes and restores width; panel hidden in grid view; with the sidebar hidden (⌘S) and the panel open, `elementFromPoint` still hits `#activity-panel` and the terminal occupies column 2.
+- `activity-grid.spec.ts`: in grid ⌘J → `elementFromPoint` in every tile body hits `.activity-tile`, `getComputedStyle(.term-body).visibility === 'hidden'`, `.term-body.clientWidth > 0`, pips count = plan items; typing while shown adds nothing to `stdinText` — checked right after plain ⌘J, right after ⌘⇧J from single, after ⌘→, and after a new session is emitted; ⌘J back → hits `.xterm`, the terminal renders non-blank (written marker text visible in the xterm rows) and typing reaches `stdinText` again; from single ⌘⇧J → grid with activity tiles; ⌘Enter in activity grid → single view with terminal focused; ⌘→ moves the active tile; a delta emitted while shown appears in the tile feed; with one session ⌘⇧J opens the panel. `keymap-activity.spec.ts` (non-mac user agent): Ctrl+J in single view still writes 0x0a to `stdinText`; Ctrl+Shift+J toggles the panel.
+- `sidebar-plan-pie.spec.ts` unchanged and green.
+
+### Verification
+
+```bash
+go test ./internal/agentstate/ ./internal/registry/ ./internal/daemon/ ./internal/wire/...
+for os in darwin linux windows; do GOOS=$os go vet ./... && GOOS=$os staticcheck ./...; done
+scripts/check-daemon-contract.sh origin/main HEAD
+./scripts/ci-bootstrap.sh   # generated wailsjs bindings for typecheck
+cd cmd/hivegui/frontend && npm run typecheck && npx biome ci . && npx vitest run
+cd cmd/hivegui/frontend && CI=1 npx playwright test test/e2e/activity-panel.spec.ts test/e2e/activity-grid.spec.ts test/e2e/sidebar-plan-pie.spec.ts test/e2e/focus-invariants.spec.ts test/e2e/shift-enter-newline.spec.ts test/e2e/keymap-activity.spec.ts
+scripts/ui-lint.sh --strict && scripts/ui-lint.sh --contrast
+scripts/test.sh
+```
+
+Mutation checks, each must fail its test: `isStale` ignoring state (at-rest test); `broadcastActivityLocked` back to tool/plan kinds only (every-tier-event test); `omitempty` restored (empty-plan test); `reportedAt` from `ev.At` (daemon-clock test); panel root without `mousedown` preventDefault (Playwright focus-after-click); `.term-body` `display:none` instead of `visibility:hidden` (`clientWidth > 0` assertion); overlay without hiding the body (`visibility` assertion); no blur on entry (no-stdin assertion); `accepted` flag ignored (rejected-plan-kind test); activity grid not treated as modal in `focusSnapshot` (no-stdin after ⌘→); union merge replaced by replace (end-then-full reducer test); no `inFlight` guard (rejected-GetActivity DOM test); `full` dropping open calls (reducer test).
+
+Manual: `wails dev`, a real Claude session with `CLAUDE_CODE_ENABLE_TODO_TOOLS=1` and a Pi session — panel and grid show live tools and plan; kill the hook mid-turn → panel greys within ~35 s; a finished turn left for 2 min → not grey.
+
+### Open questions / risks
+
+- **Frame volume.** Every hook event now broadcasts. Claude sends ~3 non-tool hooks per turn; negligible against PTY bytes, but the slow-listener drop policy applies to a busier channel. Watch `dropping slow activity listener` in e2e-real logs.
+- **Clock skew GUI ↔ daemon.** `isStale` compares daemon-clock `stale_at` with the GUI clock. Same host in the app; over the ws-bridge a remote skew > 30 s would mis-flag. Accepted, noted in the design doc.
+- **At-rest dead hook stays undetectable** (decision log). Not a regression.
+- **Subagent nesting under the parent `Agent` call** is not possible from the wire (no parent `call_id`); grouped by `agent_id` within the step instead. Adding a link is a reporter + wire change, out of scope.
+- **`visibility:hidden` on `.term-body`** — verify the xterm WebGL renderer does not drop its context while invisible (Playwright asserts the terminal renders again after toggling back).
+- **Menu accelerators on darwin** follow the ⌘G pattern (`menu_darwin.go:113` + `keyboard.ts`); the Playwright spec presses the keys through the keydown path and a unit test covers the menu action map, so a double fire would toggle twice and fail the open assertion.
+- **Menu ⌘J on non-mac** — Wails only builds a native menu on darwin; Linux/Windows rely on the keydown path (same as ⌘G).
+- Alternatives ruled out: panel inside `.term-host` (mousedown selects the session; host is not React-owned); unmounting terminals for the activity grid (WebGL slot budget, PTY re-attach); a frontend-only staleness proxy (operator rejected).
+
+### Second opinion
+
+- **Round 1 — revise, confidence 7.** 9 must-fix; 8 applied (accepted flag so rejected events never broadcast; `inFlight` guard; refetch on reconnect; combined sidebar-hidden column rule; non-vacuous `display:none` check; `visibility` assertion; blur + no-stdin test; `full` with null plan). Not applied in round 1: Ctrl+J on non-mac (argued consistency) — superseded in round 2.
+- **Round 2 — revise, confidence 7.** 5 must-fix, all applied: focus guard would refocus hidden terminals (activity grid now modal-like in `focusSnapshot`, three no-stdin checkpoints); snapshot/delta can arrive in either order (union-by-`call_id` merge, `stale_at` as version, reducer tests); `control:error` has no session id (clause and vacuous test dropped); **the round-1 Ctrl+J rationale was wrong** — Claude Code's documented newline key is Ctrl+J, so non-mac now uses Ctrl+Shift+J / Ctrl+Alt+Shift+J, pending operator approval; the mousedown mutation check now waits past the focus guard window.
+- Nice-to-haves taken: subagent lifecycle liveness frames tested; daemon-level wire test; RFC3339Nano doc; `activityGrid` not persisted; citation fixed. Not taken: toggling `.activity` from React instead of `gridSignature` (one extra layout pass per toggle is negligible).
+
 ## Decision log
 
 - **2026-09-16** — **Command-word credential leak accepted and documented (operator
@@ -1627,6 +1823,28 @@ Non-vacuity checks run once during implementation and recorded in Progress:
   - **Shared vectors carry more than the Go table did**: non-object inputs, a non-string value falling through to the next key, look-alike hyphens, U+0085 / U+FEFF word-splitting, the two documented ceilings, and one pinned URL divergence (`want_go` / `want_ts`). The ceilings now fail rather than skip if raised; the Go `Skip` tests remain as the documented escape hatch.
   - **Vectors live in `internal/agent/pi/testdata/toollabel_vectors.json`, not `cmd/hived/testdata/`.** `check-daemon-contract.sh` ignores only `_test.go` and `.md` under `cmd/hived`, so test data there demanded a contract bump or override label for a client-invisible change. The plan sections above were updated to the new path.
 
+- **2026-09-16** — **Phase 4 reset to RESEARCH, not IMPLEMENT (operator: `/hs-feature-loop 416 stage 4`).** Phase 3 merged in #421. Phase 4 (inspector panel + activity grid) has a scope line and settled mocks but no approved design, so it gets its own research and plan approval, as Phase 3 did.
+
+- **2026-09-16** — Phase 4 clarifying round (operator answers):
+  - **Staleness is daemon-side.** The daemon fills `ActivityMsg.stale_at` from a daemon-clock seen-at (not the reporter-clock `hookSeenAt`); `DaemonContract` bump. Also closes the sidebar pie's "hook dies at rest" gap (`SessionRow.tsx:35-41`).
+  - **Empty plan is a wire fix:** plan-kind deltas carry `plan: []` explicitly.
+  - **Keys:** ⌘J toggles the inspector panel in single view; in a grid view the same ⌘J toggles that grid into the activity grid, each session in its tile's place. ⌘⇧J goes to the activity grid from anywhere, including a focused session. ⌘Enter and the other grid shortcuts keep working in the activity grid.
+  - **One PR** for Phase 4 of 4 (no further split).
+  - Assumption (not asked): ⌘⇧J from single view enters the last-used grid mode (`grid-project` if none) with activity on; the activity flag persists across grid-mode switches like `hive.view`.
+
+- **2026-09-16** — **Correction to the Phase 4 staleness answer above (operator re-decided).** Filling `stale_at` does **not** close the sidebar's "hook died at rest" gap: neither Claude hooks nor the Pi extension heartbeat, so a healthy tier at rest is silent exactly like a dead one. Chosen design: **working-only staleness**. The daemon keeps a daemon-clock last-report instant; every tier event (not only tool/plan kinds) sends an `ACTIVITY` delta carrying `stale_at`, and `GET_ACTIVITY` carries it too. Clients render stale when `state_source` is heuristic, or `state == working` and now > `stale_at`. At-rest sessions never desaturate; the at-rest gap stays documented as undetectable. Rejected: frontend-only proxy (no stamp for plan-only updates); a Pi-only heartbeat (Claude cannot heartbeat, adds Pi scope).
+
+- **2026-09-16** — Phase 4 implementation deviations from the approved plan:
+  - **Failed `GET_ACTIVITY` retries only after the next session list**, not "or remount": the failure is a store flag, and clearing it on remount would re-open the loop the guard exists to stop.
+  - **Activity-grid focus rules are tested in jsdom, not Playwright.** Chromium blurs a focused textarea under `visibility:hidden` on its own, so the Playwright no-stdin checks pass even with the guard removed (mutation-checked). `test/dom/activity-focus.test.ts` covers `focusSnapshot` treating the activity grid as modal and `blurTerminals`, and fails under both mutations. WKWebView behaviour is not exercised by any automated test.
+  - **`blurTerminals` does not clear the focus guard**: the guard's own modal check already leaves the blur alone once the flag is on (a mutation removing the clear passed), so the line was deleted.
+  - **"Terminal renders non-blank after toggling back"** is checked as `elementFromPoint` hitting `.xterm`, body `visibility: visible`, and typing reaching the PTY — not a pixel check.
+  - `gridWouldTile` lives in `view.ts` rather than keyboard.ts importing `grid-layout.ts`, whose module-scope ResizeObserver broke four DOM suites that mock `view.js`.
+
+- **2026-09-16** — **After review escalation on #422 (operator decisions):** (1) the `no_such_session` GET_ACTIVITY path is deferred to a follow-up: an error frame without a session id leaves `pending` stuck, so a session closed mid-request keeps a store entry until reconnect, and a panel on an unknown id shows Loading…. Known issue, not fixed in phase 4. (2) the Windows panel-close refit is diagnosed before any fix: the spec now records every body resize and fit call and prints them if the final cols assertion fails.
+
+- **2026-09-16** — **Windows panel refit diagnosed; my iter 5 claim that it was an app bug was wrong.** With the trace on Windows CI, body width was 1046 both before open and after close, and fit proposed 145×38 at boot but 127×35 after close. The cell size grew in between; the close-time refit was correct. The boot value comes from xterm's first fit running before the web font's metrics settle, and nothing refits when they do. That is a pre-existing startup issue, not phase 4's, and a candidate follow-up: refit on `document.fonts` load. The spec now compares the refit with fit's own proposal at the restored width, and fails when the close refit is skipped (mutation-checked).
+
 ## Progress
 
 - **2026-09-15** — RESEARCH complete; three-way fan-out (Go daemon, frontend, Pi
@@ -1654,6 +1872,12 @@ Non-vacuity checks run once during implementation and recorded in Progress:
 - **2026-09-16** — Phase 3 implemented on `feature/416-phase-3`: Pi extension tool events, `hive_todo` tool + plan (live and rebuilt on `session_start` / `session_tree`), serialized bounded send queue, TS label port over shared vectors, `pi_todo_tool` setting → `HIVE_PI_TODO_TOOL`, Settings checkbox, docs, changeset. Checks: `scripts/test.sh` green (go · 517 unit · 809 dom · 341 e2e), `scripts/ui-lint.sh`, `biome ci`. Mutation checks, each confirmed failing its test: vector flip (Go and TS), `eventBody` spreading the event, removed env gate, failed call posting a plan, bogus kind inside `send([...])`, unserialized queue, `session_start` skipping the empty plan, rebuild ignoring `isError`, queue dropping newest, synchronous throw stalling; plus raw `args` added at the call site still dropped by `eventBody` (test passes, as intended). Live probes `TestPiProbeReportsThroughTheExtension`, `TestPiProbeTodoToolPlan`, `TestPiProbeTodoToolOff` pass (`HIVE_PROBE_PI=1`, pi 0.85.1); the Off probe fails (plan_total 1) with the env gate removed.
 
 - **2026-09-16** — Gate FAIL (phase 3/4); doc accuracy: spec line 75 and phase-split table line 367 name the Pi tool `todo`, not `hive_todo`.
+
+- **2026-09-16** — Phase 3 merged (#421). Reset for Phase 4: `Phase: 4 of 4`, `PR:`/`Branch:` cleared, spec `stage: RESEARCH`, branch `feature/416-phase-4` from `origin/main`.
+
+- **2026-09-16** — Phase 4 PLAN approved via the HTML plan review (round 1, no feedback) after two second-opinion rounds (revise → revise, all round-2 must-fix applied). Non-mac keys Ctrl+Shift+J / Ctrl+Alt+Shift+J accepted as drafted. Stage → IMPLEMENT.
+
+- **2026-09-16** — Phase 4 implemented on `feature/416-phase-4`: daemon `stale_at` on every accepted tier event + `TakeAccepted` gate + `plan: []` + contract 13; frontend activity reducer/store, panel column, activity-grid tile overlay, ⌘J/⇧⌘J (Ctrl+Shift+J / Ctrl+Alt+Shift+J off mac), help/palette/menu/README, design doc, spec criteria, changeset. Checks: `CI=1 scripts/test.sh` green (go · 547 unit · 824 dom · 357 e2e), `biome ci`, `tsc`, `ui-lint --strict`, `--contrast`, `go vet` + `staticcheck` ×3 OS (one pre-existing Windows U1000 in `internal/daemon/lock.go`), `check-daemon-contract.sh`. Mutation checks, each confirmed failing its test: `omitempty` restored, `reportedAt` from `ev.At`, `TakeAccepted` ignored, liveness frames dropped, snapshot `stale_at` removed; reducer `isStale` ignoring state, full replacing events, late start regressing, string `stale_at` compare, full null plan kept; `failed` guard removed (runaway), reset keeping flags, `keepFocus` no-op, stale CSS selector broken, combined sidebar-hidden rule removed, `display:none` / no hiding for the tile body, modal-like focus snapshot removed, blur removed, plain Ctrl+J accepted off mac. Not done: manual smoke in the built app with a live Claude/Pi session (WKWebView focus and the native-menu ⌘J path unverified).
 
 ## Open questions / risks
 

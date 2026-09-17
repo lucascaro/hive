@@ -55,6 +55,14 @@ interface HiveTestApi {
   setSessionPlan?(id: string, done: number, total: number, tool?: string): void;
   setSessionSubagents?(id: string, running: number): void;
   ringBell?(id: string): void;
+  // Activity (spec 416): seed the GET_ACTIVITY answer, emit a raw
+  // ACTIVITY frame, and read which sessions were requested.
+  setActivity?(
+    id: string,
+    activity: { events?: unknown[]; plan?: unknown[]; stale_at?: string },
+  ): void;
+  emitActivity?(msg: Record<string, unknown>): void;
+  activityRequests?: string[];
   createSessionWithWorktree?(name: string, branch?: string): Promise<string>;
   createSessionInWorktree?(name: string, worktreePath: string): Promise<string>;
   setWorktreeLabel?(

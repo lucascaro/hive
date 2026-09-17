@@ -1,11 +1,12 @@
 ---
 issue: null
-pr: 421
+pr: 422
+shipped: 2026-09-16
 title: "Agent activity view: see the plan and the tools, not just the state"
 type: enhancement
 complexity: L
 priority: P2
-stage: GATE
+stage: DONE
 ---
 
 # Agent activity view: see the plan and the tools, not just the state
@@ -87,6 +88,14 @@ label. The timeline reads `Bash · npm test`, not the command.
 the plan is still in memory and must not read as live: the panel and
 tile show its age and the pie desaturates to `--fg-subtle`.
 
+> **Correction (2026-09-16, phase 4).** Silence only means something
+> while the session is working. Neither Claude's hooks nor the Pi
+> extension send a heartbeat, so a healthy tier at rest is exactly as
+> quiet as a dead one. The panel and tile therefore render stale when
+> the session is on the heuristic tier, or when it is working and the
+> daemon's `stale_at` has passed. A session at rest never renders stale,
+> and a hook that dies while the session is at rest stays undetectable.
+
 **Retention.** A bounded in-memory ring (~200 tool events) plus the
 latest plan snapshot, per session, dying with the daemon like the PTY.
 No disk format.
@@ -156,6 +165,26 @@ No disk format.
 - **Playwright:** the subagent badge changes no row height at any
   density and is not clipped. The pie stays under the icon when the row
   has no title.
+
+### Phase 4 — inspector panel and activity grid
+
+- The daemon stamps `stale_at` from its own clock on every `ACTIVITY`
+  frame and on the `GET_ACTIVITY` answer. Every accepted tier event
+  sends a frame, including a bare liveness frame for kinds that carry no
+  activity. A rejected (out-of-order) event sends none. A heuristic-only
+  session carries no `stale_at`.
+- A plan update that empties the plan carries `"plan": []`; a tool frame
+  carries no plan change. `DaemonContract` is bumped.
+- A session at rest never renders stale, however old `stale_at` is.
+- ⌘J in single view toggles the panel; in a grid it toggles the activity
+  grid. ⇧⌘J reaches the activity grid from any view. ⌘Enter, arrows and
+  the other grid shortcuts still work there. Off macOS the chords are
+  Ctrl+Shift+J and Ctrl+Alt+Shift+J, and plain Ctrl+J still reaches the
+  terminal as a newline.
+- In the activity grid no keystroke reaches a terminal, including after
+  a spatial move or a new session.
+- A snapshot and the deltas merge whatever order they arrive in, and a
+  failed `GET_ACTIVITY` is not retried until the next reconnect.
 
 ## Non-goals
 

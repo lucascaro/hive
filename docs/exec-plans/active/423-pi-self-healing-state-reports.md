@@ -153,13 +153,14 @@ Disposition: all applied. `orderAt = max(orderAt, ev.At)`; a takeover replay res
 - **2026-09-17** — Focus dwell dropped from this spec. Why: operator chose the option that drops it; it can return as its own issue.
 - **2026-09-17** — Key is (random instance, seq) on state-bearing events only; no clock. Why: round-1 review: a clock epoch can freeze a session after a clock step, and keying plan/ping masks lost state.
 - **2026-09-17** — A seen key after heuristic takeover restores a tracked `extState` rather than re-applying the event. Why: round-2 review; re-applying re-raised cleared waits and duplicated ring entries, and restoring only the tier would leave the heuristic's guess trusted forever.
+- **2026-09-17** — Contract is 14, not 13: #422 took 13 while this was in flight. A replay now sends the bare liveness ACTIVITY frame #422 introduced, which carries the moved `stale_at`. Why: without it a live, quiet Pi reads stale in the inspector after 30 s. This supersedes the plan's "a replay never broadcasts activity"; it still never carries a tool event or plan.
 - **2026-09-17** — Heartbeat gated by `HIVE_PI_HEARTBEAT` from the spawning daemon. Why: against an old daemon a keyless replay would re-raise cleared waits every 5 s.
 
 ## Progress
 
 - **2026-09-16** — First approach implemented and pushed (c40e6bc); review escalated a flicker; operator rescoped.
 - **2026-09-17** — Research for the new approach done; plan drafted.
-- **2026-09-17** — Plan approved after two review rounds. First approach reverted (0ba211e7). Implemented: wire key, daemon refusal, machine `Replay`/keyed `Apply`/`extState`, registry short-circuit, `HIVE_PI_HEARTBEAT` spawn env, extension key + heartbeat, contract 13, docs, changeset. Checks: go build/vet/staticcheck/test, node --test (39). Mutation checks: each machine rule (restore on takeover, orderAt from `At` and max'd, clear noted, guard bypass), the registry replay short-circuit and receipt-clock liveness, and the extension's keyed kinds, shutdown stop, `isIdle` and env gate each fail at least one test. The "heartbeat skips while queued" guard has no test: pending() is not observable without a 2 s wedged-daemon fixture.
+- **2026-09-17** — Plan approved after two review rounds. First approach reverted (0ba211e7). Implemented: wire key, daemon refusal, machine `Replay`/keyed `Apply`/`extState`, registry short-circuit, `HIVE_PI_HEARTBEAT` spawn env, extension key + heartbeat, contract 14 (after merging main), docs, changeset. Checks: go build/vet/staticcheck/test, node --test (39). Mutation checks: each machine rule (restore on takeover, orderAt from `At` and max'd, clear noted, guard bypass), the registry replay short-circuit and receipt-clock liveness, and the extension's keyed kinds, shutdown stop, `isIdle` and env gate each fail at least one test. The "heartbeat skips while queued" guard has no test: pending() is not observable without a 2 s wedged-daemon fixture.
 
 ## Open questions
 

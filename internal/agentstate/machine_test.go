@@ -802,3 +802,21 @@ func TestAlternatingInstancesDocumented(t *testing.T) {
 		t.Errorf("state = %q, want waiting_input (the documented re-raise)", got)
 	}
 }
+
+// Clients render staleness from StaleAt; a heartbeat must move it, or a
+// live, quiet Pi would read stale after HookStaleAfter.
+func TestReplayRefreshesStaleAt(t *testing.T) {
+	m := New(t0)
+	ev := piKeyed(KindIdle, "A", 1, t0, t0)
+	deliver(m, ev)
+	m.TakeAccepted()
+	ev.Now = t0.Add(20 * time.Second)
+	deliver(m, ev)
+	at, ok := m.StaleAt()
+	if !ok || !at.Equal(ev.Now.Add(HookStaleAfter)) {
+		t.Errorf("StaleAt = %v (%v), want %v", at, ok, ev.Now.Add(HookStaleAfter))
+	}
+	if !m.TakeAccepted() {
+		t.Error("a replay was not marked accepted; no liveness frame would go out")
+	}
+}

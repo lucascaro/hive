@@ -123,6 +123,8 @@ describe('paletteShortcuts', () => {
     expect(m['toggle-sidebar']).toBe('⌘S');
     expect(m['toggle-project-grid']).toBe('⌘G');
     expect(m['toggle-all-grid']).toBe('⇧⌘G');
+    expect(m['toggle-activity']).toBe('⌘J');
+    expect(m['activity-grid']).toBe('⇧⌘J');
     expect(m['zoom-in']).toBe('⌘=');
     expect(m['zoom-out']).toBe('⌘-');
     expect(m['zoom-reset']).toBe('⌘0');
@@ -145,5 +147,22 @@ describe('paletteShortcuts', () => {
     expect(m['delete-project']).toBe('Ctrl+Shift+Backspace');
     expect(m['next-session']).toBe('Ctrl+Down');
     expect(m['open-os-terminal']).toBe('Ctrl+`');
+  });
+});
+
+describe('agent activity chords (spec 416)', () => {
+  it('leave plain Ctrl+J to the terminal off macOS', () => {
+    const m = paletteShortcuts({ isMac: false });
+    expect(m['toggle-activity']).toBe('Ctrl+Shift+J');
+    expect(m['activity-grid']).toBe('Ctrl+Alt+Shift+J');
+  });
+  it('are listed in the View group on both platforms', () => {
+    for (const isMac of [true, false]) {
+      const view = shortcutGroups({ isMac }).find((g) => g.title === 'View');
+      const keys = view?.items.map((i) => i.keys) ?? [];
+      const p = paletteShortcuts({ isMac });
+      expect(keys).toContain(p['toggle-activity']);
+      expect(keys).toContain(p['activity-grid']);
+    }
   });
 });

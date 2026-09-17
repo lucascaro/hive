@@ -168,6 +168,53 @@ func TestGetActivityReturnsRing(t *testing.T) {
 	}
 }
 
+// TestActivityFrameWireCarriesStaleAtAndEmptyPlan: over a real control
+// connection, a ping yields a liveness ACTIVITY frame with stale_at, and
+// emptying the plan puts "plan":[] in the raw bytes — not just in an
+// in-process marshal.
+func TestActivityFrameWireCarriesStaleAtAndEmptyPlan(t *testing.T) {
+	skipOnWindows(t)
+	d := startTestDaemon(t)
+	id := bootstrapSessionID(t, d)
+
+	c := dial(t, d)
+	defer c.Close()
+	handshake(t, c, wire.Hello{Mode: wire.ModeControl})
+
+	// awaitRaw reads to the next ACTIVITY frame and returns its bytes.
+	awaitRaw := func() string {
+		t.Helper()
+		_ = c.SetReadDeadline(time.Now().Add(3 * time.Second))
+		defer func() { _ = c.SetReadDeadline(time.Time{}) }()
+		for {
+			ft, payload, err := wire.ReadFrame(c)
+			if err != nil {
+				t.Fatalf("read: %v", err)
+			}
+			if ft == wire.FrameActivity {
+				return string(payload)
+			}
+		}
+	}
+
+	reportTool(t, d, wire.AgentEvent{SessionID: id, Kind: wire.AgentEventPing})
+	if raw := awaitRaw(); !strings.Contains(raw, `"stale_at":"`) {
+		t.Errorf("ping frame = %s, want stale_at", raw)
+	}
+
+	reportTool(t, d, wire.AgentEvent{
+		SessionID: id, Kind: wire.AgentEventPlan,
+		Items: []wire.PlanItem{{Text: "one", Status: wire.PlanStatusActive}},
+	})
+	if raw := awaitRaw(); !strings.Contains(raw, `"plan":[{`) {
+		t.Fatalf("plan frame = %s, want one item", raw)
+	}
+	reportTool(t, d, wire.AgentEvent{SessionID: id, Kind: wire.AgentEventPlan})
+	if raw := awaitRaw(); !strings.Contains(raw, `"plan":[]`) {
+		t.Errorf("emptied plan frame = %s, want \"plan\":[]", raw)
+	}
+}
+
 // TestSessionModeCannotGetActivity is the spec's authorization
 // criterion. GET_ACTIVITY is deliberately absent from
 // sessionModeFrames, so a ModeSession connection — the one kind a
