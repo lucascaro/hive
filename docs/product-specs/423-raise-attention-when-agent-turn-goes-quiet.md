@@ -4,7 +4,8 @@ title: Raise needs-attention when an agent turn goes quiet without reporting its
 type: bug
 complexity: S
 priority: P2
-stage: IMPLEMENT
+pr: 424
+stage: REVIEW
 ---
 
 # Raise needs-attention when an agent turn goes quiet without reporting its end

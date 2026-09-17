@@ -3,6 +3,8 @@
 - **Spec:** [docs/product-specs/423-raise-attention-when-agent-turn-goes-quiet.md](../../product-specs/423-raise-attention-when-agent-turn-goes-quiet.md)
 - **Issue:** #423
 - **Status:** active
+- **PR:** #424
+- **Branch:** feature/423-raise-attention-when-agent-turn-goes-quiet
 
 ## Summary
 
