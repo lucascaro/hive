@@ -20,7 +20,6 @@ import {
 } from './undo-close.js';
 import type { IdeaInfo, SessionInfo, ProjectInfo } from './state.js';
 import { readNeedsAttention } from './state.js';
-import { ATTENTION_DWELL_MS, createAttentionDwell } from './attention-dwell.js';
 import {
   addIdea,
   addProject,
@@ -203,21 +202,6 @@ export async function reconnectControl(
 // See the frozen transition table,
 // docs/exec-plans/completed/336-session-state-model.md.
 const attentionEdge = new Set<string>();
-
-// Spec 423: looking at a Pi session that wants you, for a few seconds,
-// clears its status. See attention-dwell.ts for why only Pi.
-const attentionDwell = createAttentionDwell({
-  delayMs: ATTENTION_DWELL_MS,
-  activeId: () => appData().activeId,
-  hasFocus: () => document.hasFocus(),
-  eligible: (id) => {
-    const s = appData().sessions.find((x) => x.id === id);
-    return !!s && s.agent === 'pi' && readNeedsAttention(s);
-  },
-  clear: (id) => clearAttention(id),
-  setTimer: (fn, ms) => window.setTimeout(fn, ms),
-  clearTimer: (h) => window.clearTimeout(h as number),
-});
 let sawFirstSessionList = false;
 
 // syncAttentionClass keeps a tile's `.attention` pulse class in sync
@@ -229,7 +213,6 @@ let sawFirstSessionList = false;
 function syncAttentionClass(session: SessionInfo, silent = false) {
   const wants = readNeedsAttention(session);
   termsMap().get(session.id)?.host.classList.toggle('attention', wants);
-  attentionDwell.poke();
   const was = attentionEdge.has(session.id);
   if (wants && !was) {
     attentionEdge.add(session.id);
@@ -246,8 +229,7 @@ function syncAttentionClass(session: SessionInfo, silent = false) {
 
 // noteUserInput records that the user typed into a session, which is
 // the one unambiguous "I have seen this" signal there is. Window focus
-// alone is not — except for a Pi session looked at for a few seconds
-// (attention-dwell.ts, spec 423): a focused window can sit untouched for an hour, and a bell
+// is not: a focused window can sit untouched for an hour, and a bell
 // that arrives while the session is already active fires no focus event
 // at all — which is how a session came to sit marked "waiting for you"
 // forever while the person it was waiting for was looking right at it.
@@ -351,10 +333,10 @@ export function wireDaemonEvents(injected: EventsDeps) {
   // window focused but no element inside it, so typing would land on
   // the body and be lost.
   //
-  // Not an immediate clear: the frozen transition table's client-driven
-  // clears are noteUserInput (a keystroke) and setActive's switch guard,
-  // and a window regaining focus is neither. It only starts the Pi dwell
-  // (spec 423), which clears after the user has kept looking. An earlier version of this
+  // Deliberately NOT a third place that clears attention: the frozen
+  // transition table allows exactly two client-driven clears —
+  // noteUserInput (a keystroke) and setActive's switch guard — and a
+  // window regaining focus is neither. An earlier version of this
   // handler did clear here too, which is a real "I looked" in some
   // cases but not others (a window can be refocused with the mouse over
   // a background tile), so it is left to the two paths that are always
@@ -366,9 +348,7 @@ export function wireDaemonEvents(injected: EventsDeps) {
       /* bridge absent in tests */
     }
     deps.refocusActiveTerm();
-    attentionDwell.poke();
   });
-  window.addEventListener('blur', () => attentionDwell.cancel());
 
   // Commands relayed by the daemon from another client — in practice
   // the menu bar, which has no window of its own and so cannot focus a

@@ -544,14 +544,12 @@ func sourceName(s string) string {
 // announceStateLocked broadcasts a state change and raises attention
 // when the new state is one the user has to act on.
 //
-// Attention follows the state alone. What keeps it meaningful is that
-// silence by itself never produces a wait: "no bytes for two seconds" is
-// true of every `ls` in every shell, and turning that into the flag that
-// drives desktop notifications would make the flag worthless within a
-// minute of use. So a heuristic session raises it only on a bell, and
-// an agent session on its own report — or, for a Pi turn that went
-// stale without reporting its end, on the tick that notices (spec 423;
-// see agentstate.Machine.Tick).
+// Attention is only ever raised for a session whose state came from the
+// agent itself. The heuristic tier deliberately does not participate:
+// "no bytes for two seconds" is true of every `ls` in every shell, and
+// turning that into the flag that drives desktop notifications would
+// make the flag worthless within a minute of use. On that tier the bell
+// remains the only thing that asks for the user, exactly as before.
 func (r *Registry) announceStateLocked(e *Entry, prev agentstate.Snapshot, reason string) {
 	cur := e.stateSnapshot()
 	if cur == prev {
