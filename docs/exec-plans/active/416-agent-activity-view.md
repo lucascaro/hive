@@ -1837,6 +1837,8 @@ Manual: `wails dev`, a real Claude session with `CLAUDE_CODE_ENABLE_TODO_TOOLS=1
 
 - **2026-09-16** — **After review escalation on #422 (operator decisions):** (1) the `no_such_session` GET_ACTIVITY path is deferred to a follow-up: an error frame without a session id leaves `pending` stuck, so a session closed mid-request keeps a store entry until reconnect, and a panel on an unknown id shows Loading…. Known issue, not fixed in phase 4. (2) the Windows panel-close refit is diagnosed before any fix: the spec now records every body resize and fit call and prints them if the final cols assertion fails.
 
+- **2026-09-16** — **Windows panel refit diagnosed; my iter 5 claim that it was an app bug was wrong.** With the trace on Windows CI, body width was 1046 both before open and after close, and fit proposed 145×38 at boot but 127×35 after close. The cell size grew in between; the close-time refit was correct. The boot value comes from xterm's first fit running before the web font's metrics settle, and nothing refits when they do. That is a pre-existing startup issue, not phase 4's, and a candidate follow-up: refit on `document.fonts` load. The spec now compares the refit with fit's own proposal at the restored width, and fails when the close refit is skipped (mutation-checked).
+
 ## Progress
 
 - **2026-09-15** — RESEARCH complete; three-way fan-out (Go daemon, frontend, Pi
