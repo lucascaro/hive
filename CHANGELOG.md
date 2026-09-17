@@ -8,6 +8,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Changed
+The activity grid now shows what each agent is working on, in words. A tile's
+body is the session's task list — one line per step, the current one
+highlighted and scrolled into view — instead of a row of dots whose text you
+could only reach by hovering. The live tool feed is still there, in whatever
+height the tasks leave over: on a roomy tile you get both, and on a long plan
+the tasks win. Sessions with no plan are unchanged.
 Claude sessions started by Hive now fill the plan pie much more often. Claude
 had the task tools but rarely used them, so Hive had no progress to show. When
 the Claude task tools setting is on, Hive now tells each session at startup to

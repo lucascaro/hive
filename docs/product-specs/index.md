@@ -27,6 +27,7 @@ The *what* and *why* of work this project plans to do. Each spec describes user 
 | Issue | Title | PR | Shipped | Spec |
 |-------|-------|----|---------|------|
 | #423 | Pi reports self-healing session state (no stale-turn guessing) | #424 | 2026-09-17 | [423-pi-self-healing-state-reports](423-pi-self-healing-state-reports.md) |
+| #428 | Activity grid: show the plan's tasks, not just the tool feed | #429 | 2026-09-17 | [428-activity-grid-tasks-first](428-activity-grid-tasks-first.md) |
 | — | Agent activity view: see the plan and the tools, not just the state | #422 | 2026-09-16 | [416-agent-activity-view](416-agent-activity-view.md) |
 | #407 | Hide minimized sessions from the sidebar | #408 | 2026-09-13 | [407-hide-minimized-sessions-from-the-sidebar](407-hide-minimized-sessions-from-the-sidebar.md) |
 | #395 | Name a worktree group by double-clicking its title | #396 | 2026-09-12 | [395-rename-sessions-from-worktree-group-title](395-rename-sessions-from-worktree-group-title.md) |
