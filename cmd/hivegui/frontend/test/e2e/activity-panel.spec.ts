@@ -179,12 +179,15 @@ test.describe('spec 416 inspector panel', () => {
         panelHit: !!at && !!document.getElementById('activity-panel')?.contains(at),
         panelWidth: p.width,
         termRight: t.right,
+        termLeft: t.left,
         panelLeft: p.left,
       };
     });
     expect(geo?.panelHit).toBe(true);
     expect(geo?.panelWidth).toBeGreaterThan(200);
     expect(geo?.termRight ?? 0).toBeLessThanOrEqual(geo?.panelLeft ?? 0);
+    // The sidebar's track is really gone, not left as an empty column.
+    expect(geo?.termLeft ?? 999).toBeLessThan(20);
   });
 
   test('fresh while working before stale_at', async ({ page }) => {
