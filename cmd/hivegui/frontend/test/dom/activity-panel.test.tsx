@@ -285,4 +285,11 @@ describe('load states', () => {
       "Couldn't load activity",
     );
   });
+
+  it('never asks for a session that is not in the session list', async () => {
+    resetStore({ sessions: [] });
+    render(<ActivityPanel sessionId={SID} />);
+    await flush();
+    expect(GetActivity).not.toHaveBeenCalled();
+  });
 });

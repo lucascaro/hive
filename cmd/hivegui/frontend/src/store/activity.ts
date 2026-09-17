@@ -138,8 +138,13 @@ const EMPTY = emptyActivity();
 export type ActivityLoad = 'loading' | 'failed' | 'loaded';
 
 // useSessionActivity subscribes to one session and fetches its snapshot
-// while it is not loaded.
-export function useSessionActivity(id: string): {
+// while it is not loaded. `enabled` is false for a session the list no
+// longer has: a renderer can outlive its session by a commit, and asking
+// then would open a request the daemon answers with no_such_session.
+export function useSessionActivity(
+  id: string,
+  enabled = true,
+): {
   data: SessionActivity;
   load: ActivityLoad;
 } {
@@ -149,8 +154,8 @@ export function useSessionActivity(id: string): {
   const failed = entry?.failed ?? false;
   // biome-ignore lint/correctness/useExhaustiveDependencies: the flags are the trigger; requestActivity reads the store itself
   useEffect(() => {
-    requestActivity(id);
-  }, [id, loaded, pending, failed]);
+    if (enabled) requestActivity(id);
+  }, [id, enabled, loaded, pending, failed]);
   return {
     data: entry?.data ?? EMPTY,
     load: loaded ? 'loaded' : failed ? 'failed' : 'loading',

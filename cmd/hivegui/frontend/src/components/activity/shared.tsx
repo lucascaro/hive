@@ -32,7 +32,7 @@ export interface ActivityView {
 
 export function useActivityView(sessionId: string): ActivityView | null {
   const info = useAppStore((s) => s.sessions.find((x) => x.id === sessionId));
-  const { data, load } = useSessionActivity(sessionId);
+  const { data, load } = useSessionActivity(sessionId, !!info);
   const now = useNow();
   if (!info) return null;
   const heuristic = !info.state_source || info.state_source === 'heuristic';
