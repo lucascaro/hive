@@ -144,6 +144,24 @@ last plan update and erase it. The queue is bounded at 64 and drops its
 oldest report when full; behind a wedged daemon the backlog is stale
 anyway.
 
+Its state reports also heal themselves (spec 423). Every state-bearing
+event (`prompt`, `permission_resolved`, `tool_start`, `tool_end`,
+`turn_end`, `idle`, `error` and the two waits) carries an ordering key:
+`instance`, minted each time Pi loads the extension (startup, `/new`,
+`/resume`, fork, `/reload`), and `seq`, counting that instance's state
+events. Every 5 s the extension re-sends its latest state event
+byte-for-byte, but only when nothing is queued and only when the
+spawning daemon set `HIVE_PI_HEARTBEAT=1`. The daemon applies a key it
+has not seen, which is how a lost report heals, and treats a seen one
+as proof of life. So a wait the user cleared stays cleared, and a live
+Pi never goes stale and falls back to guessing from the terminal. If
+the heuristic tier took the session during a stall, the next beat
+restores the extension's last state, including a clear. `plan`, `ping`
+and `session_end` stay unkeyed and keep the timestamp ordering: a
+delivered plan must never make a lost state report look already
+applied. Only the latest state heals; a lost tool event from the middle
+of a batch leaves a gap in the timeline.
+
 **Everyone else (heuristic tier).** Shell, Codex, Gemini, Aider and
 custom agents produce no activity. They get an explicit "no activity
 data" empty state, never a blank panel that reads as a bug.

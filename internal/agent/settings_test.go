@@ -271,14 +271,14 @@ func piExtensionDir(t *testing.T) SpawnInfo {
 func TestPiSpawnEnvExplicitBothWays(t *testing.T) {
 	settingsDir(t, "")
 	sp := piExtensionDir(t)
-	if got := piSpawnEnv(sp); len(got) != 1 || got[0] != PiTodoToolEnv+"=1" {
-		t.Errorf("default env = %v, want [%s=1]", got, PiTodoToolEnv)
+	if got := piSpawnEnv(sp); len(got) != 2 || got[0] != PiTodoToolEnv+"=1" {
+		t.Errorf("default env = %v, want [%s=1 ...]", got, PiTodoToolEnv)
 	}
 	if err := SaveSettings(Settings{ClaudeTaskTools: true, PiTodoTool: false}); err != nil {
 		t.Fatalf("save: %v", err)
 	}
-	if got := piSpawnEnv(sp); len(got) != 1 || got[0] != PiTodoToolEnv+"=0" {
-		t.Errorf("env with the setting off = %v, want [%s=0]", got, PiTodoToolEnv)
+	if got := piSpawnEnv(sp); len(got) != 2 || got[0] != PiTodoToolEnv+"=0" {
+		t.Errorf("env with the setting off = %v, want [%s=0 ...]", got, PiTodoToolEnv)
 	}
 }
 
@@ -289,8 +289,25 @@ func TestPiSpawnEnvExplicitBothWays(t *testing.T) {
 func TestPiSpawnEnvIgnoresInheritedValue(t *testing.T) {
 	settingsDir(t, "")
 	t.Setenv(PiTodoToolEnv, "0")
-	if got := piSpawnEnv(piExtensionDir(t)); len(got) != 1 || got[0] != PiTodoToolEnv+"=1" {
+	if got := piSpawnEnv(piExtensionDir(t)); len(got) != 2 || got[0] != PiTodoToolEnv+"=1" {
 		t.Errorf("env = %v with an inherited =0 and the setting on, want [%s=1]", got, PiTodoToolEnv)
+	}
+}
+
+// TestPiSpawnEnvEnablesHeartbeat: this daemon orders keyed extension
+// events, so every pi it spawns gets the heartbeat (spec 423), whatever
+// the todo-tool setting says.
+func TestPiSpawnEnvEnablesHeartbeat(t *testing.T) {
+	settingsDir(t, "")
+	sp := piExtensionDir(t)
+	for _, todo := range []bool{true, false} {
+		if err := SaveSettings(Settings{ClaudeTaskTools: true, PiTodoTool: todo}); err != nil {
+			t.Fatalf("save: %v", err)
+		}
+		got := piSpawnEnv(sp)
+		if len(got) == 0 || got[len(got)-1] != PiHeartbeatEnv+"=1" {
+			t.Errorf("todo=%v: env = %v, want %s=1", todo, got, PiHeartbeatEnv)
+		}
 	}
 }
 

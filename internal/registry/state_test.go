@@ -479,3 +479,78 @@ func TestExitedReachesTheStateThroughTheRealPTY(t *testing.T) {
 	}
 	t.Fatal("session never reported the exit")
 }
+
+// piReport is a keyed Pi extension event as the daemon receives it.
+func piReport(id, kind, instance string, seq uint64, at time.Time) wire.AgentEvent {
+	return wire.AgentEvent{SessionID: id, Kind: kind, Source: wire.StateSourceExtension,
+		At: at.Format(time.RFC3339Nano), Instance: instance, Seq: seq}
+}
+
+// A heartbeat repeating a report already applied broadcasts nothing —
+// not state, not activity. One beat per Pi session every few seconds
+// would otherwise be a steady stream to every client.
+func TestReplayDoesNotBroadcast(t *testing.T) {
+	skipOnWindows(t)
+	r := freshRegistry(t)
+	e, _ := liveSession(t, r, wire.CreateSpec{Name: "pi"})
+	ev := piReport(e.ID, wire.AgentEventToolStart, "A", 1, time.Now())
+	ev.Tool, ev.CallID = "bash", "c1"
+	if err := r.ApplyAgentEvent(e.ID, ev); err != nil {
+		t.Fatal(err)
+	}
+	ch, unsub := r.Subscribe()
+	defer unsub()
+	drain(ch)
+	act, unsubAct := r.SubscribeActivity()
+	defer unsubAct()
+	if err := r.ApplyAgentEvent(e.ID, ev); err != nil {
+		t.Fatal(err)
+	}
+	select {
+	case got := <-ch:
+		t.Errorf("replay broadcast session event %q", got.Kind)
+	case got := <-act:
+		t.Errorf("replay broadcast activity %+v", got)
+	case <-time.After(200 * time.Millisecond):
+	}
+}
+
+// The heal end to end through ApplyAgentEvent: the question's report was
+// lost, its replay raises needs_attention.
+func TestApplyAgentEventHealsLostState(t *testing.T) {
+	skipOnWindows(t)
+	r := freshRegistry(t)
+	e, _ := liveSession(t, r, wire.CreateSpec{Name: "pi"})
+	now := time.Now()
+	if err := r.ApplyAgentEvent(e.ID, piReport(e.ID, wire.AgentEventToolStart, "A", 1, now)); err != nil {
+		t.Fatal(err)
+	}
+	// seq 2 was lost; the heartbeat delivers it.
+	if err := r.ApplyAgentEvent(e.ID, piReport(e.ID, wire.AgentEventWaitingInput, "A", 2, now)); err != nil {
+		t.Fatal(err)
+	}
+	info := r.Get(e.ID).Info()
+	if info.State != wire.StateWaitingInput || !info.NeedsAttention {
+		t.Errorf("state = %q needs_attention = %v, want waiting_input and true", info.State, info.NeedsAttention)
+	}
+}
+
+// A heartbeat carries its report's original stamp, which can be far
+// older than HookStaleAfter. Liveness must come from the daemon's clock
+// at receipt, or every heal would land on a tier that is already stale
+// and the next repaint would hand the session to the heuristic tier.
+func TestKeyedOldStampStaysTrusted(t *testing.T) {
+	skipOnWindows(t)
+	r := freshRegistry(t)
+	e, sess := liveSession(t, r, wire.CreateSpec{Name: "pi"})
+	started := time.Now().Add(-2 * agentstate.HookStaleAfter)
+	// A healed report: first delivery, arriving now with an old stamp.
+	if err := r.ApplyAgentEvent(e.ID, piReport(e.ID, wire.AgentEventIdle, "A", 1, started)); err != nil {
+		t.Fatal(err)
+	}
+	paint(t, e, sess, "typing\n")
+	sample(r, e, time.Now())
+	if info := r.Get(e.ID).Info(); info.StateSource != wire.StateSourceExtension || info.State != wire.StateIdle {
+		t.Errorf("state = %q source = %q, want idle on the extension tier", info.State, info.StateSource)
+	}
+}

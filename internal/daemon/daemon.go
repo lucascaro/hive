@@ -798,6 +798,15 @@ func (d *Daemon) applyEventFrame(payload []byte) bool {
 		log.Printf("hived: event mode: unknown source %q", ev.Source)
 		return false
 	}
+	// A key is half the ordering contract or none of it, and only the
+	// extension speaks it: a keyed hook event would never be recognised
+	// as a replay and would re-apply on every heartbeat.
+	if (ev.Instance == "") != (ev.Seq == 0) ||
+		(ev.Instance != "" && ev.Source != wire.StateSourceExtension) {
+		log.Printf("hived: event mode: malformed ordering key (source %q)", ev.Source)
+		return false
+	}
+	ev.Instance = capBytes(ev.Instance, wire.MaxActivityIDLen)
 	ev.Text = capBytes(ev.Text, wire.MaxSummaryLen)
 	// The derived label is bounded here too. The reporter caps it, but
 	// the daemon is the trust boundary: hive.ts is a file on disk that

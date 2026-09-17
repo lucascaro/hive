@@ -482,7 +482,7 @@ func (r *Registry) ApplyAgentEvent(id string, ev wire.AgentEvent) error {
 		return ErrNotFound
 	}
 	prev := e.stateSnapshot()
-	changed := e.machine().Apply(agentstate.Event{
+	aev := agentstate.Event{
 		Kind:   ev.Kind,
 		Source: ev.Source,
 		At:     at,
@@ -500,7 +500,21 @@ func (r *Registry) ApplyAgentEvent(id string, ev wire.AgentEvent) error {
 		AgentID:       ev.AgentID,
 		AgentType:     ev.AgentType,
 		RunningAgents: ev.RunningAgents,
-	})
+
+		Instance: ev.Instance,
+		Seq:      ev.Seq,
+	}
+	// A heartbeat repeating a report already applied: proof of life,
+	// or a restore after the heuristic tier took over. Never activity,
+	// so nothing is broadcast on that channel — at one beat per Pi
+	// session every few seconds, that would be pure noise.
+	if handled, restored := e.machine().Replay(aev); handled {
+		if restored {
+			r.announceStateLocked(e, prev, "replay")
+		}
+		return nil
+	}
+	changed := e.machine().Apply(aev)
 	if changed {
 		r.announceStateLocked(e, prev, ev.Kind)
 	}

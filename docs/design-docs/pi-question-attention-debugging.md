@@ -1,10 +1,18 @@
 # Handoff: Pi question without "needs attention"
 
 Status: **unreproduced**. Written so the investigation can continue on the
-machine where the bug shows up. The fix shipped alongside this note (a
-stale agent turn that goes quiet raises attention) masks the symptom
-after ~32 s; it does not explain why the question's own `waiting_input`
-was lost. Find that here.
+machine where the bug shows up.
+
+The change shipped alongside this note (spec 423) makes Pi's state
+reports heal themselves: every state report carries an ordering key, and
+the extension re-sends its latest one every 5 s. That cures any cause in
+which the report was sent and then lost or misordered on the way to the
+daemon. It cannot cure hypothesis 2 (Pi never emitted
+`ui_prompt_start`), hypothesis 3 (the GUI cleared the wait), or
+hypothesis 1 when the inversion happens inside Pi (handlers called
+end-after-start), because in those cases the extension's own latest
+state is already what the daemon shows. If the symptom survives this
+change, it is one of those, and the log below tells them apart.
 
 ## Symptom
 
@@ -28,10 +36,11 @@ Sometimes the session does not show needs-attention. It later reads idle.
   path in 0.85.1, so a plain-text question ending the turn posts `turn_end`.
 - `announceStateLocked` (`internal/registry/registry.go`) derives
   attention from state alone, not from the tier.
-- Before the fix, `Machine.Tick` turned a stale-tier `working` into
+- `Machine.Tick` turns a stale-tier `working` into
   `idle`/heuristic after `HookStaleAfter` (30 s) of no events plus
   `QuietAfter` (2 s) of static screen. That is the "working → idle, no
-  attention" the user sees.
+  attention" the user sees. With the heartbeat, a live Pi no longer goes
+  stale, so this path now needs Pi itself to stop reporting.
 
 ## Hypotheses, most likely first
 
@@ -75,7 +84,7 @@ Each line reads `state: <id> <from> -> <to> src=<tier> reason=<cause>`.
 | `-> waiting_input reason=waiting_input`, then `-> working reason=permission_resolved\|tool_start\|tool_end` | Hypothesis 1: the wait was overwritten |
 | no `waiting_input` line around the question | Hypothesis 2: Pi never reported it |
 | `waiting_input -> idle reason=clear` | Hypothesis 3: the GUI marked it seen |
-| `working -> waiting_input src=heuristic reason=tick` about 32 s after the question | the new fallback caught it; look at the lines before it for the cause |
+| `-> waiting_input src=extension reason=waiting_input` a few seconds after the question, with no earlier one | the heartbeat healed a lost report; the original send failed |
 
 ## Once reproduced
 

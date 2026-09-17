@@ -160,7 +160,7 @@ func TestPiExtensionFramesAreValidWireFrames(t *testing.T) {
 const m = await import("./pi/hive.ts");
 const at = "2026-09-04T12:00:00.000Z";
 process.stdout.write(Buffer.concat([
-  m.encodeFrames("sess-42", [{ kind: "turn_end", text: "done" }], at),
+  m.encodeFrames("sess-42", [{ kind: "turn_end", text: "done", instance: "inst-1", seq: 7 }], at),
   m.encodeFrames("sess-42", [
     { kind: "tool_end", tool: "hive_todo", call_id: "c1", ok: false },
     { kind: "plan", items: [{ text: "step", status: "active" }] },
@@ -224,6 +224,9 @@ process.stdout.write(Buffer.concat([
 	}
 	if ev.Text != "done" || ev.At == "" {
 		t.Errorf("text/at = %q/%q, want %q/non-empty", ev.Text, ev.At, "done")
+	}
+	if ev.Instance != "inst-1" || ev.Seq != 7 {
+		t.Errorf("instance/seq = %q/%d, want %q/7 — the ordering key must survive the wire", ev.Instance, ev.Seq, "inst-1")
 	}
 
 	// The second report: HELLO, then a tool_end and a plan on the same

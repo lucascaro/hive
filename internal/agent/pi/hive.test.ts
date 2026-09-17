@@ -403,8 +403,9 @@ test("tool_execution_start posts tool_start with the tool, a derived label and t
   }, 1);
   const events = conns.flat();
   assert.equal(events.length, 1);
-  const { at, ...rest } = events[0];
+  const { at, instance, seq, ...rest } = events[0];
   assert.ok(at);
+  assert.ok(instance && seq === 1, "state-bearing events carry the ordering key");
   assert.deepEqual(rest, { session_id: "s1", kind: "tool_start", source: "extension", tool: "bash", target: "npm test", call_id: "call-1" });
   // The privacy rule, asserted on the bytes that crossed the socket.
   const raw = JSON.stringify(conns);
@@ -505,11 +506,11 @@ test("disabled todo tool registers nothing and posts no plan", unixOnly, async (
         {},
       );
     },
-    2,
+    3,
     { HIVE_PI_TODO_TOOL: "0" },
   );
   assert.deepEqual(tools, []);
-  assert.deepEqual(conns.flat().map((e) => e.kind), ["ping", "tool_end"]);
+  assert.deepEqual(conns.flat().map((e) => e.kind), ["ping", "idle", "tool_end"]);
 });
 
 test("session_start reports the plan of the branch it lands on", unixOnly, async () => {
@@ -521,14 +522,14 @@ test("session_start reports the plan of the branch it lands on", unixOnly, async
     // A branch Pi cannot read degrades to an empty plan, not a lost ping.
     start({ reason: "fork" }, { sessionManager: { getBranch: () => [null, { message: { role: "toolResult", toolName: "hive_todo", details: 7 } }] } });
     start({ reason: "startup" }, {});
-  }, 8);
+  }, 12);
   assert.deepEqual(
     conns.map((c) => c.map((e) => [e.kind, e.items])),
     [
-      [["ping", undefined], ["plan", [{ text: "a", status: "active" }]]],
-      [["ping", undefined], ["plan", []]],
-      [["ping", undefined], ["plan", []]],
-      [["ping", undefined], ["plan", []]],
+      [["ping", undefined], ["idle", undefined], ["plan", [{ text: "a", status: "active" }]]],
+      [["ping", undefined], ["idle", undefined], ["plan", []]],
+      [["ping", undefined], ["idle", undefined], ["plan", []]],
+      [["ping", undefined], ["idle", undefined], ["plan", []]],
     ],
   );
 });
@@ -714,4 +715,131 @@ test("send refuses a batch the daemon would cut off", () => {
   assert.equal(s.send(Array.from({ length: 9 }, () => ({ kind: "ping" }))), false);
   assert.equal(s.send([]), false);
   assert.equal(s.pending(), 0);
+});
+
+// --- Spec 423: ordering key and heartbeat ---
+
+test("state-bearing events get increasing seq under one instance; plan and ping are unkeyed", unixOnly, async () => {
+  const conns = await underHive((pi) => {
+    pi.handlers.get("session_start")!({ reason: "startup" }, { sessionManager: { getBranch: () => [] } });
+    pi.handlers.get("agent_start")!({}, {});
+    pi.handlers.get("tool_execution_end")!(
+      { toolCallId: "t", toolName: "hive_todo", result: { details: { todos: [{ text: "a", status: "done" }] } }, isError: false },
+      {},
+    );
+  }, 6);
+  const events = conns.flat();
+  assert.deepEqual(
+    events.map((e) => [e.kind, e.seq]),
+    [["ping", undefined], ["idle", 1], ["plan", undefined], ["permission_resolved", 2], ["tool_end", 3], ["plan", undefined]],
+  );
+  const instances = new Set(events.filter((e) => e.seq).map((e) => e.instance));
+  assert.equal(instances.size, 1);
+});
+
+test("session_start reports working, not idle, while a run is live", unixOnly, async () => {
+  const conns = await underHive((pi) => {
+    pi.handlers.get("session_start")!({ reason: "reload" }, { isIdle: () => false, sessionManager: { getBranch: () => [] } });
+  }, 3);
+  assert.deepEqual(conns.flat().map((e) => e.kind), ["ping", "permission_resolved", "plan"]);
+});
+
+test("a new factory run is a new instance", unixOnly, async () => {
+  const events = await collectFrames(async (sock) => {
+    withEnv({ HIVE_SESSION_ID: "s1", HIVE_SOCKET: sock }, () => {
+      for (let i = 0; i < 2; i++) {
+        const pi = handlerPi();
+        mod.default(pi as never);
+        pi.handlers.get("agent_start")!({}, {});
+      }
+    });
+    await new Promise((r) => setTimeout(r, 300));
+  }, 2);
+  assert.equal(events.length, 2);
+  assert.equal(events[0].seq, 1);
+  assert.equal(events[1].seq, 1);
+  assert.notEqual(events[0].instance, events[1].instance);
+});
+
+// withHeartbeat runs a factory with the heartbeat on at a test cadence,
+// collecting raw connection bytes so a replay can be compared exactly.
+async function rawConnections(fire: (pi: ReturnType<typeof handlerPi>) => void | Promise<void>, env: Record<string, string | undefined>, waitMs: number) {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "hive-pi-"));
+  const sock = path.join(dir, "h.sock");
+  const conns: Buffer[] = [];
+  const server = net.createServer((conn) => {
+    const chunks: Buffer[] = [];
+    conn.on("data", (c) => chunks.push(c));
+    conn.on("end", () => conns.push(Buffer.concat(chunks)));
+  });
+  await new Promise<void>((r) => server.listen(sock, r));
+  const saved = mod.heartbeat.ms;
+  mod.heartbeat.ms = 50;
+  let pi!: ReturnType<typeof handlerPi>;
+  try {
+    withEnv({ HIVE_SESSION_ID: "s1", HIVE_SOCKET: sock, ...env }, () => {
+      pi = handlerPi();
+      mod.default(pi as never);
+    });
+    await fire(pi);
+    await new Promise((r) => setTimeout(r, waitMs));
+    pi.handlers.get("session_shutdown")?.({ reason: "quit" }, {});
+    await new Promise((r) => setTimeout(r, 100));
+  } finally {
+    mod.heartbeat.ms = saved;
+    server.close();
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+  return conns;
+}
+
+test("heartbeat re-sends the last state-bearing report byte-for-byte", unixOnly, async () => {
+  const conns = await rawConnections(
+    (pi) => {
+      pi.handlers.get("agent_start")!({}, {});
+      pi.handlers.get("ui_prompt_start")!({ kind: "custom" }, {});
+    },
+    { HIVE_PI_HEARTBEAT: "1" },
+    300,
+  );
+  // agent_start, ui_prompt_start, then beats; the last one is session_end.
+  const original = conns[1];
+  const beats = conns.slice(2, -1);
+  assert.ok(beats.length >= 2, `beats: ${beats.length}`);
+  for (const b of beats) assert.ok(b.equals(original), "a beat differs from the report it replays");
+});
+
+test("heartbeat never replays a plan or ping", unixOnly, async () => {
+  const conns = await rawConnections(
+    (pi) => {
+      pi.handlers.get("agent_start")!({}, {});
+      pi.handlers.get("session_tree")!({}, { sessionManager: { getBranch: () => [] } });
+    },
+    { HIVE_PI_HEARTBEAT: "1" },
+    300,
+  );
+  const beats = conns.slice(2, -1);
+  assert.ok(beats.length >= 2);
+  for (const b of beats) assert.ok(b.equals(conns[0]), "a beat replayed something other than permission_resolved");
+});
+
+test("no heartbeat without HIVE_PI_HEARTBEAT", unixOnly, async () => {
+  const conns = await rawConnections((pi) => pi.handlers.get("agent_start")!({}, {}), { HIVE_PI_HEARTBEAT: undefined }, 300);
+  // agent_start and session_end only.
+  assert.equal(conns.length, 2);
+});
+
+test("heartbeat stops on a non-quit session_shutdown", unixOnly, async () => {
+  const conns = await rawConnections(
+    async (pi) => {
+      pi.handlers.get("agent_start")!({}, {});
+      pi.handlers.get("session_shutdown")!({ reason: "new" }, {});
+      await new Promise((r) => setTimeout(r, 50));
+    },
+    { HIVE_PI_HEARTBEAT: "1" },
+    300,
+  );
+  // agent_start, shutdown's idle, maybe one beat in the 50 ms before it,
+  // then nothing until the harness's own quit.
+  assert.ok(conns.length <= 4, `connections: ${conns.length}`);
 });

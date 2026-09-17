@@ -159,6 +159,7 @@ Disposition: all applied. `orderAt = max(orderAt, ev.At)`; a takeover replay res
 
 - **2026-09-16** — First approach implemented and pushed (c40e6bc); review escalated a flicker; operator rescoped.
 - **2026-09-17** — Research for the new approach done; plan drafted.
+- **2026-09-17** — Plan approved after two review rounds. First approach reverted (0ba211e7). Implemented: wire key, daemon refusal, machine `Replay`/keyed `Apply`/`extState`, registry short-circuit, `HIVE_PI_HEARTBEAT` spawn env, extension key + heartbeat, contract 13, docs, changeset. Checks: go build/vet/staticcheck/test, node --test (39). Mutation checks: each machine rule (restore on takeover, orderAt from `At` and max'd, clear noted, guard bypass), the registry replay short-circuit and receipt-clock liveness, and the extension's keyed kinds, shutdown stop, `isIdle` and env gate each fail at least one test. The "heartbeat skips while queued" guard has no test: pending() is not observable without a 2 s wedged-daemon fixture.
 
 ## Open questions
 

@@ -158,3 +158,29 @@ func assertConnClosed(t *testing.T, c net.Conn) {
 		t.Fatalf("expected connection to be closed, got a byte instead")
 	}
 }
+
+// Spec 423: the ordering key is both fields or neither, and only the
+// extension speaks it. Anything else is refused whole.
+func TestEventFrameRefusesMalformedKey(t *testing.T) {
+	skipOnWindows(t)
+	for name, ev := range map[string]wire.AgentEvent{
+		"seq without instance": {Kind: wire.AgentEventPrompt, Source: wire.StateSourceExtension, Seq: 1},
+		"instance without seq": {Kind: wire.AgentEventPrompt, Source: wire.StateSourceExtension, Instance: "a"},
+		"key on the hook tier": {Kind: wire.AgentEventPrompt, Source: wire.StateSourceHook, Instance: "a", Seq: 1},
+	} {
+		t.Run(name, func(t *testing.T) {
+			d := startTestDaemon(t)
+			id := bootstrapSessionID(t, d)
+			c := dialEvent(t, d)
+			defer c.Close()
+			ev.SessionID = id
+			if err := wire.WriteJSON(c, wire.FrameAgentEvent, ev); err != nil {
+				t.Fatalf("write: %v", err)
+			}
+			assertConnClosed(t, c)
+			if info := findSession(d, id); info.State != wire.StateIdle {
+				t.Errorf("state = %q, want idle (unchanged)", info.State)
+			}
+		})
+	}
+}
