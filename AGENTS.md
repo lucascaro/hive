@@ -235,7 +235,10 @@ applies to `docs/product-specs/index.md`.
   `removed`, or `security`. `bump` is `minor` for a feature, `patch` for a fix.
 - Use concise, user-facing language — describe what changed and why it matters,
   not internal implementation details.
-- A docs- or CI-only PR can skip the changeset with the `no-changeset` label.
+- A PR that only touches docs, `features/`, root markdown, `.github/`,
+  `scripts/` or tests needs no changeset and no label — `scripts/check-changeset.sh`
+  (shared by the pre-push hook and CI) exempts those paths. Anything else with
+  no user-visible effect uses the `no-changeset` label.
 - Skip purely cosmetic or internal refactors with no user-visible effect (e.g.
   renaming a private variable). Use judgment.
 - To catch a missing changeset before pushing, install the local gate once per

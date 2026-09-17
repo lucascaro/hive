@@ -65,8 +65,9 @@ See [DESIGN.md](DESIGN.md) for a full description of every package and how they 
    YAML frontmatter (`type`, `bump`, optional `issue` / `pr`) and the changelog bullet as the
    body. See `.changesets/README.md` for the schema. **Do not edit `CHANGELOG.md` directly** —
    it is regenerated on `main` from `.changesets/`, and a PR that touches it fails CI unless
-   labelled `regen-override`. A docs- or CI-only PR can skip the changeset with the
-   `no-changeset` label. To catch a missing changeset before you push, install the local
+   labelled `regen-override`. A PR touching only docs, `features/`, root markdown, `.github/`,
+   `scripts/` or tests needs no changeset (see `scripts/check-changeset.sh`); other
+   changes with no user-visible effect use the `no-changeset` label. To catch a missing changeset before you push, install the local
    gate as a `pre-push` hook — once per clone, shared by every worktree:
    `./scripts/dev-setup.sh`.
 5. **Update `DESIGN.md`** if your change adds or removes packages, alters a major interface, or otherwise changes the high-level structure described there.
