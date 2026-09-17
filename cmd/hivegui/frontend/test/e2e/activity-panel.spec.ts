@@ -99,6 +99,51 @@ test.describe('spec 416 inspector panel', () => {
     const colsBefore = await settledCols(page);
     const before = await termBox(page);
     await expect(page.locator('#activity-panel')).toBeHidden();
+    // Diagnostic (Windows CI ends at fewer cols than it started with after
+    // the panel closes): record every body resize, what fit proposed and
+    // whether it threw, printed only if the final assertion fails.
+    await page.evaluate(() => {
+      type Fit = {
+        fit(): void;
+        proposeDimensions(): { cols: number; rows: number } | undefined;
+      };
+      const t = Array.from(window.__hive_state?.terms.values() ?? []).find(
+        (x) => x.host.classList.contains('visible'),
+      ) as unknown as { body: HTMLElement; fit: Fit; term: { cols: number } };
+      const log: unknown[] = [];
+      (window as unknown as { __refitLog: unknown[] }).__refitLog = log;
+      const t0 = performance.now();
+      const at = () => Math.round(performance.now() - t0);
+      new ResizeObserver(() =>
+        log.push({ at: at(), ro: t.body.clientWidth, cols: t.term.cols }),
+      ).observe(t.body);
+      const orig = t.fit.fit.bind(t.fit);
+      t.fit.fit = () => {
+        let proposed: unknown;
+        try {
+          proposed = t.fit.proposeDimensions();
+        } catch (e) {
+          proposed = `propose threw: ${e}`;
+        }
+        try {
+          orig();
+          log.push({
+            at: at(),
+            fit: t.body.clientWidth,
+            proposed,
+            cols: t.term.cols,
+          });
+        } catch (e) {
+          log.push({
+            at: at(),
+            fit: t.body.clientWidth,
+            proposed,
+            threw: String(e),
+          });
+          throw e;
+        }
+      };
+    });
 
     await page.keyboard.press(TOGGLE);
     const panel = page.locator('#activity-panel');
@@ -128,7 +173,30 @@ test.describe('spec 416 inspector panel', () => {
     await expect
       .poll(async () => (await termBox(page)).right)
       .toBe(before.right);
-    await expect.poll(() => termCols(page)).toBe(colsBefore);
+    try {
+      await expect.poll(() => termCols(page)).toBe(colsBefore);
+    } catch (err) {
+      const trace = await page.evaluate(() => {
+        const t = Array.from(window.__hive_state?.terms.values() ?? []).find(
+          (x) => x.host.classList.contains('visible'),
+        ) as unknown as {
+          body: HTMLElement;
+          fit: { proposeDimensions(): unknown };
+          term: { cols: number; element?: HTMLElement };
+        };
+        return {
+          log: (window as unknown as { __refitLog: unknown[] }).__refitLog,
+          final: {
+            body: t.body.clientWidth,
+            xterm: t.term.element?.clientWidth,
+            proposed: t.fit.proposeDimensions(),
+            cols: t.term.cols,
+          },
+        };
+      });
+      console.log(`REFIT-TRACE ${JSON.stringify(trace)}`);
+      throw err;
+    }
   });
 
   test('clicking and scrolling the panel never takes the keyboard', async ({

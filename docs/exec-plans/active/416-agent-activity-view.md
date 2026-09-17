@@ -1835,6 +1835,8 @@ Manual: `wails dev`, a real Claude session with `CLAUDE_CODE_ENABLE_TODO_TOOLS=1
   - **"Terminal renders non-blank after toggling back"** is checked as `elementFromPoint` hitting `.xterm`, body `visibility: visible`, and typing reaching the PTY — not a pixel check.
   - `gridWouldTile` lives in `view.ts` rather than keyboard.ts importing `grid-layout.ts`, whose module-scope ResizeObserver broke four DOM suites that mock `view.js`.
 
+- **2026-09-16** — **After review escalation on #422 (operator decisions):** (1) the `no_such_session` GET_ACTIVITY path is deferred to a follow-up: an error frame without a session id leaves `pending` stuck, so a session closed mid-request keeps a store entry until reconnect, and a panel on an unknown id shows Loading…. Known issue, not fixed in phase 4. (2) the Windows panel-close refit is diagnosed before any fix: the spec now records every body resize and fit call and prints them if the final cols assertion fails.
+
 ## Progress
 
 - **2026-09-15** — RESEARCH complete; three-way fan-out (Go daemon, frontend, Pi
