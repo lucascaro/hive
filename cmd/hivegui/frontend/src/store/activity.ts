@@ -27,7 +27,13 @@ import {
 export interface ActivityEntry {
   data: SessionActivity;
   loaded: boolean;
-  inFlight: boolean;
+  // GET_ACTIVITY requests sent and not yet answered.
+  pending: number;
+  // Answers still to come for requests made before this entry was reset
+  // by a restart. Answers arrive in request order on the one control
+  // connection, so the next `discard` full frames belong to the previous
+  // run and are dropped.
+  discard: number;
   // The request failed (no control connection, unknown session). Not
   // retried until the next session list — a reconnect — or the loop
   // would be one GET_ACTIVITY per render.
@@ -45,7 +51,8 @@ export const activityStore = createStore<ActivityData>()(() => ({
 const blank = (): ActivityEntry => ({
   data: emptyActivity(),
   loaded: false,
-  inFlight: false,
+  pending: 0,
+  discard: 0,
   failed: false,
 });
 
@@ -62,60 +69,92 @@ function patch(id: string, fn: (e: ActivityEntry) => ActivityEntry): void {
 export function applyActivityFrame(msg: ActivityMsg): void {
   if (!msg?.session_id) return;
   patch(msg.session_id, (e) => {
+    if (msg.full) {
+      // A snapshot is only ever the answer to a request this client made.
+      // One for a request from before a restart describes the previous
+      // run; one nobody asked for describes nothing current.
+      if (e.discard > 0) return { ...e, discard: e.discard - 1 };
+      if (e.pending === 0) return e;
+      return {
+        ...e,
+        data: applyActivity(e.data, msg),
+        loaded: true,
+        pending: e.pending - 1,
+        failed: false,
+      };
+    }
     const data = applyActivity(e.data, msg);
-    if (msg.full) return { data, loaded: true, inFlight: false, failed: false };
     return data === e.data ? e : { ...e, data };
   });
 }
 
 export function requestActivity(id: string): void {
   const e = activityStore.getState().byId.get(id);
-  if (e && (e.loaded || e.inFlight || e.failed)) return;
-  patch(id, (cur) => ({ ...cur, inFlight: true }));
+  if (e && (e.loaded || e.pending > 0 || e.failed)) return;
+  patch(id, (cur) => ({ ...cur, pending: cur.pending + 1 }));
   Promise.resolve()
     .then(() => GetActivity(id))
     .catch(() =>
-      patch(id, (cur) => ({ ...cur, inFlight: false, failed: true })),
+      patch(id, (cur) => ({
+        ...cur,
+        pending: Math.max(0, cur.pending - 1),
+        failed: true,
+      })),
     );
 }
 
 // A session list is what the daemon sends on every (re)connect. Snapshots
 // taken before it may have missed deltas while the connection was down,
 // so every entry is refetched by whoever is showing it; ids the list no
-// longer has are dropped.
+// longer has are dropped. Requests on the old connection will never be
+// answered, so nothing is pending or to be discarded any more.
 export function resetActivityOnSessionList(liveIds: ReadonlySet<string>): void {
   const { byId } = activityStore.getState();
   if (byId.size === 0) return;
   const m = new Map<string, ActivityEntry>();
   for (const [id, e] of byId) {
     if (liveIds.has(id))
-      m.set(id, { ...e, loaded: false, inFlight: false, failed: false });
+      m.set(id, { ...e, loaded: false, pending: 0, discard: 0, failed: false });
   }
   activityStore.setState({ byId: m });
 }
 
+// forgetActivity drops a session's activity: on removal, and on a restart
+// or revive, where the daemon starts a fresh run under the same id. Any
+// answer still owed for the old run is marked to be discarded.
 export function forgetActivity(id: string): void {
   const { byId } = activityStore.getState();
-  if (!byId.has(id)) return;
+  const e = byId.get(id);
+  if (!e) return;
   const m = new Map(byId);
-  m.delete(id);
+  const owed = e.pending + e.discard;
+  if (owed > 0) m.set(id, { ...blank(), discard: owed });
+  else m.delete(id);
   activityStore.setState({ byId: m });
 }
 
 const EMPTY = emptyActivity();
 
+export type ActivityLoad = 'loading' | 'failed' | 'loaded';
+
 // useSessionActivity subscribes to one session and fetches its snapshot
 // while it is not loaded.
-export function useSessionActivity(id: string): SessionActivity {
+export function useSessionActivity(id: string): {
+  data: SessionActivity;
+  load: ActivityLoad;
+} {
   const entry = useStore(activityStore, (s) => s.byId.get(id));
-  const loaded = entry?.loaded;
-  const inFlight = entry?.inFlight;
-  const failed = entry?.failed;
+  const loaded = entry?.loaded ?? false;
+  const pending = entry?.pending ?? 0;
+  const failed = entry?.failed ?? false;
   // biome-ignore lint/correctness/useExhaustiveDependencies: the flags are the trigger; requestActivity reads the store itself
   useEffect(() => {
     requestActivity(id);
-  }, [id, loaded, inFlight, failed]);
-  return entry?.data ?? EMPTY;
+  }, [id, loaded, pending, failed]);
+  return {
+    data: entry?.data ?? EMPTY,
+    load: loaded ? 'loaded' : failed ? 'failed' : 'loading',
+  };
 }
 
 // ---------- shared clock ----------

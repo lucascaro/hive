@@ -5,6 +5,7 @@ import type { ReactNode } from 'react';
 
 import {
   ActivityEmpty,
+  NoCalls,
   CallRow,
   keepFocus,
   useActivityView,
@@ -16,7 +17,7 @@ const FEED_MAX = 40;
 export function ActivityTile({ sessionId }: { sessionId: string }): ReactNode {
   const view = useActivityView(sessionId);
   if (!view) return null;
-  const { info, data, now, empty, stale, staleText } = view;
+  const { info, data, load, now, empty, stale, staleText } = view;
   const working = info.state === 'working';
   return (
     // biome-ignore lint/a11y/noStaticElementInteractions: mousedown only keeps focus off the hidden terminal
@@ -53,7 +54,7 @@ export function ActivityTile({ sessionId }: { sessionId: string }): ReactNode {
           ) : null}
           <ol className="hv-activity__timeline" aria-label="Tool calls">
             {data.events.length === 0 ? (
-              <li className="hv-activity__none">No tool calls yet</li>
+              <NoCalls load={load} />
             ) : (
               data.events
                 .slice(-FEED_MAX)

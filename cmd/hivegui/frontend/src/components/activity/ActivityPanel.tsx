@@ -11,6 +11,7 @@ import { groupTimeline, type StepGroup } from '../../lib/activity.js';
 import { Icon } from '../Icon.js';
 import {
   ActivityEmpty,
+  NoCalls,
   CallRow,
   keepFocus,
   useActivityView,
@@ -19,7 +20,7 @@ import {
 export function ActivityPanel({ sessionId }: { sessionId: string }): ReactNode {
   const view = useActivityView(sessionId);
   if (!view) return null;
-  const { info, data, now, empty, stale, staleText } = view;
+  const { info, data, load, now, empty, stale, staleText } = view;
   const working = info.state === 'working';
   // Calls outside any step show in the timeline only.
   const { steps } = groupTimeline(data.plan, data.events);
@@ -55,7 +56,7 @@ export function ActivityPanel({ sessionId }: { sessionId: string }): ReactNode {
           <div className="hv-activity__section">Timeline</div>
           <ol className="hv-activity__timeline" aria-label="Timeline">
             {data.events.length === 0 ? (
-              <li className="hv-activity__none">No tool calls yet</li>
+              <NoCalls load={load} />
             ) : (
               [...data.events]
                 .reverse()

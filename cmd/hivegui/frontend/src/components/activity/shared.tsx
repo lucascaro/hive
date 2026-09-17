@@ -11,12 +11,17 @@ import {
   type SessionActivity,
   type ToolEvent,
 } from '../../lib/activity.js';
-import { useSessionActivity, useNow } from '../../store/activity.js';
+import {
+  type ActivityLoad,
+  useSessionActivity,
+  useNow,
+} from '../../store/activity.js';
 import { useAppStore } from '../../store/store.js';
 
 export interface ActivityView {
   info: SessionInfo;
   data: SessionActivity;
+  load: ActivityLoad;
   now: number;
   // The tier cannot report activity and nothing was ever reported.
   empty: boolean;
@@ -27,11 +32,17 @@ export interface ActivityView {
 
 export function useActivityView(sessionId: string): ActivityView | null {
   const info = useAppStore((s) => s.sessions.find((x) => x.id === sessionId));
-  const data = useSessionActivity(sessionId);
+  const { data, load } = useSessionActivity(sessionId);
   const now = useNow();
   if (!info) return null;
   const heuristic = !info.state_source || info.state_source === 'heuristic';
-  const empty = heuristic && data.events.length === 0 && data.plan.length === 0;
+  // "No activity data" is a claim about the agent, so it waits for the
+  // snapshot: while loading, or after a failed load, nothing is known.
+  const empty =
+    load === 'loaded' &&
+    heuristic &&
+    data.events.length === 0 &&
+    data.plan.length === 0;
   const stale =
     !empty && isStale(info.state, info.state_source, data.staleAt, now);
   let staleText = '';
@@ -40,7 +51,7 @@ export function useActivityView(sessionId: string): ActivityView | null {
       ? 'Not reporting — may be out of date'
       : `Stale for ${formatAge(staleForMs(data.staleAt, now))}`;
   }
-  return { info, data, now, empty, stale, staleText };
+  return { info, data, load, now, empty, stale, staleText };
 }
 
 // Every renderer root cancels mousedown: the renderers are read-only, and
@@ -53,6 +64,18 @@ export function ActivityEmpty(): ReactNode {
       No activity data — this agent doesn't report its plan or tools.
     </div>
   );
+}
+
+// The timeline's placeholder when it has no calls to show. A snapshot
+// still on its way, or one that failed, is not an empty session.
+export function NoCalls({ load }: { load: ActivityLoad }): ReactNode {
+  const text =
+    load === 'loading'
+      ? 'Loading…'
+      : load === 'failed'
+        ? "Couldn't load activity — it will retry when Hive reconnects"
+        : 'No tool calls yet';
+  return <li className="hv-activity__none">{text}</li>;
 }
 
 // One call: `Tool · target`, then its outcome. A call still open while

@@ -15,6 +15,7 @@ import type { ActivityMsg } from '../../src/lib/activity.js';
 import {
   activityStore,
   applyActivityFrame,
+  forgetActivity,
   resetActivityOnSessionList,
 } from '../../src/store/activity.js';
 import { resetStore } from '../../src/store/store.js';
@@ -211,5 +212,77 @@ describe('snapshot requests', () => {
     act(() => resetActivityOnSessionList(new Set([SID])));
     await flush();
     expect(GetActivity).toHaveBeenCalledTimes(2);
+  });
+
+  it('drops the answer to a request made before a restart', async () => {
+    const { container } = render(<ActivityPanel sessionId={SID} />);
+    await flush();
+    expect(GetActivity).toHaveBeenCalledTimes(1);
+    // The session restarts while that request is still outstanding; the
+    // panel asks again for the new run.
+    act(() => forgetActivity(SID));
+    await flush();
+    expect(GetActivity).toHaveBeenCalledTimes(2);
+    // Answers come back in request order on the one control connection:
+    // the old run's first, then the new run's (empty).
+    frame({ full: true, plan: PLAN, events: EVENTS });
+    expect(container.querySelector('.hv-activity__step')).toBeNull();
+    frame({ full: true, plan: [], events: [] });
+    expect(container.querySelector('.hv-activity__step')).toBeNull();
+    expect(activityStore.getState().byId.get(SID)?.loaded).toBe(true);
+  });
+
+  it('ignores a full frame nobody asked for', () => {
+    act(() =>
+      applyActivityFrame({
+        session_id: SID,
+        full: true,
+        plan: PLAN,
+        events: EVENTS,
+      }),
+    );
+    expect(activityStore.getState().byId.get(SID)?.loaded ?? false).toBe(false);
+    expect(
+      activityStore.getState().byId.get(SID)?.data.plan ?? [],
+    ).toHaveLength(0);
+  });
+});
+
+describe('load states', () => {
+  it('says it is loading until the snapshot arrives', async () => {
+    const { container } = render(<ActivityPanel sessionId={SID} />);
+    await flush();
+    expect(container.querySelector('.hv-activity__none')).toHaveTextContent(
+      'Loading',
+    );
+    frame({ full: true, plan: [], events: [] });
+    expect(container.querySelector('.hv-activity__none')).toHaveTextContent(
+      'No tool calls yet',
+    );
+  });
+
+  it('says the load failed, rather than showing an empty session', async () => {
+    GetActivity.mockImplementation(() => Promise.reject(new Error('down')));
+    const panel = render(<ActivityPanel sessionId={SID} />);
+    await flush();
+    expect(
+      panel.container.querySelector('.hv-activity__none'),
+    ).toHaveTextContent("Couldn't load activity");
+    panel.unmount();
+    const tile = render(<ActivityTile sessionId={SID} />);
+    expect(
+      tile.container.querySelector('.hv-activity__none'),
+    ).toHaveTextContent("Couldn't load activity");
+  });
+
+  it('a failed load on a heuristic session is not the no-activity empty state', async () => {
+    resetStore({ sessions: [session({ state_source: '' })] });
+    GetActivity.mockImplementation(() => Promise.reject(new Error('down')));
+    const { container } = render(<ActivityPanel sessionId={SID} />);
+    await flush();
+    expect(container.querySelector('.hv-activity__empty')).toBeNull();
+    expect(container.querySelector('.hv-activity__none')).toHaveTextContent(
+      "Couldn't load activity",
+    );
   });
 });
