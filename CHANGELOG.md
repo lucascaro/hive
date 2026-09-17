@@ -71,6 +71,7 @@ itself unexpectedly, the log now points at what did it. Nothing else changes.
 
 ### Fixed
 A tool label that ends in a non-ASCII character (a filename, for example) is no longer cut mid-character when it is shortened to fit the activity view.
+A Pi session no longer loses its "needs attention" state when a state report from Pi goes missing: Pi now re-sends its latest state every few seconds, so a question shows as waiting within about 5 seconds even if the first report was lost. A live Pi session also stays on reported state instead of falling back to guessing from terminal output, so the state tooltip reads "reported by the agent" more often. Updating restarts the daemon.
 
 ## [2.8.0] — 2026-09-14
 
