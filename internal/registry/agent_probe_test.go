@@ -46,6 +46,7 @@ func TestAgentTUIStateFlow(t *testing.T) {
 				t.Skipf("%s not on PATH", bin)
 			}
 			r := freshRegistry(t)
+			manualClock(t, r)
 			e, err := r.Create(context.Background(), wire.CreateSpec{
 				Name: string(id), Cols: 120, Rows: 40,
 				Agent: string(id), Cmd: def.Cmd,

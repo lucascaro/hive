@@ -354,6 +354,7 @@ func TestIdeaNotLinkedToAKilledSession(t *testing.T) {
 func TestShellNeverReceivesATypedPrompt(t *testing.T) {
 	skipOnWindows(t)
 	r := freshRegistry(t)
+	manualClock(t, r)
 	marker := filepath.Join(t.TempDir(), "executed")
 	e, sess := liveSession(t, r, wire.CreateSpec{
 		Name: "shell", Agent: "shell", Shell: "/bin/sh",
@@ -589,6 +590,7 @@ func TestArgvPromptStripsCmdMetacharactersOnWindowsOnly(t *testing.T) {
 func TestPendingPromptIsOfferedNotTyped(t *testing.T) {
 	skipOnWindows(t)
 	r, p := ideaRegistry(t)
+	manualClock(t, r)
 	idea, err := r.AddIdea(IdeaSpec{ProjectID: p.ID, Text: "fix the sidebar"})
 	if err != nil {
 		t.Fatalf("AddIdea: %v", err)
