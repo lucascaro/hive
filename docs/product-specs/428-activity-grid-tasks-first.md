@@ -6,7 +6,7 @@ title: "Activity grid: show the plan's tasks, not just the tool feed"
 type: enhancement
 complexity: S
 priority: P2
-stage: REVIEW
+stage: GATE
 ---
 
 # Activity grid: show the plan's tasks, not just the tool feed

@@ -39,8 +39,9 @@ What works:
   steps with the tool calls each one ran (`Bash · npm test`, never the
   full arguments), and the whole timeline below. In a grid, ⌘J swaps
   every tile's terminal for its activity — the plan's tasks, with the tool
-  feed in whatever space they leave — and ⇧⌘J gets there from any view. A session whose agent stops
-  reporting mid-turn greys out and says how long it has been quiet.
+  feed in whatever space they leave — and ⇧⌘J gets there from any view. A
+  session whose agent stops reporting mid-turn greys out and says how long
+  it has been quiet.
   (Ctrl+Shift+J / Ctrl+Alt+Shift+J on Windows and Linux.)
 - Idea inbox — notes captured against a project instead of derailing the
   session you are in. Every session Hive spawns can file one from its

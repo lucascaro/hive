@@ -354,3 +354,9 @@ third pass, per the loop's rule.
 - **2026-09-17** — `.hv-activity__call` rows stay in the DOM behind a
   zero-height `overflow: hidden` feed, so the collapse is asserted on
   `clientHeight`, not on row count.
+
+## PR convergence ledger
+
+Append-only, one line per `/hs-review-loop` iteration.
+
+- **2026-09-17 iter 1** — verdict: APPROVE; mergeable: MERGEABLE; findings_hash: empty; threads_open: 0; action: stop; head_sha: 2bf71cda.
