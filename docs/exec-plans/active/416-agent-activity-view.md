@@ -1823,6 +1823,13 @@ Manual: `wails dev`, a real Claude session with `CLAUDE_CODE_ENABLE_TODO_TOOLS=1
 
 - **2026-09-16** — **Correction to the Phase 4 staleness answer above (operator re-decided).** Filling `stale_at` does **not** close the sidebar's "hook died at rest" gap: neither Claude hooks nor the Pi extension heartbeat, so a healthy tier at rest is silent exactly like a dead one. Chosen design: **working-only staleness**. The daemon keeps a daemon-clock last-report instant; every tier event (not only tool/plan kinds) sends an `ACTIVITY` delta carrying `stale_at`, and `GET_ACTIVITY` carries it too. Clients render stale when `state_source` is heuristic, or `state == working` and now > `stale_at`. At-rest sessions never desaturate; the at-rest gap stays documented as undetectable. Rejected: frontend-only proxy (no stamp for plan-only updates); a Pi-only heartbeat (Claude cannot heartbeat, adds Pi scope).
 
+- **2026-09-16** — Phase 4 implementation deviations from the approved plan:
+  - **Failed `GET_ACTIVITY` retries only after the next session list**, not "or remount": the failure is a store flag, and clearing it on remount would re-open the loop the guard exists to stop.
+  - **Activity-grid focus rules are tested in jsdom, not Playwright.** Chromium blurs a focused textarea under `visibility:hidden` on its own, so the Playwright no-stdin checks pass even with the guard removed (mutation-checked). `test/dom/activity-focus.test.ts` covers `focusSnapshot` treating the activity grid as modal and `blurTerminals`, and fails under both mutations. WKWebView behaviour is not exercised by any automated test.
+  - **`blurTerminals` does not clear the focus guard**: the guard's own modal check already leaves the blur alone once the flag is on (a mutation removing the clear passed), so the line was deleted.
+  - **"Terminal renders non-blank after toggling back"** is checked as `elementFromPoint` hitting `.xterm`, body `visibility: visible`, and typing reaching the PTY — not a pixel check.
+  - `gridWouldTile` lives in `view.ts` rather than keyboard.ts importing `grid-layout.ts`, whose module-scope ResizeObserver broke four DOM suites that mock `view.js`.
+
 ## Progress
 
 - **2026-09-15** — RESEARCH complete; three-way fan-out (Go daemon, frontend, Pi
@@ -1854,6 +1861,8 @@ Manual: `wails dev`, a real Claude session with `CLAUDE_CODE_ENABLE_TODO_TOOLS=1
 - **2026-09-16** — Phase 3 merged (#421). Reset for Phase 4: `Phase: 4 of 4`, `PR:`/`Branch:` cleared, spec `stage: RESEARCH`, branch `feature/416-phase-4` from `origin/main`.
 
 - **2026-09-16** — Phase 4 PLAN approved via the HTML plan review (round 1, no feedback) after two second-opinion rounds (revise → revise, all round-2 must-fix applied). Non-mac keys Ctrl+Shift+J / Ctrl+Alt+Shift+J accepted as drafted. Stage → IMPLEMENT.
+
+- **2026-09-16** — Phase 4 implemented on `feature/416-phase-4`: daemon `stale_at` on every accepted tier event + `TakeAccepted` gate + `plan: []` + contract 13; frontend activity reducer/store, panel column, activity-grid tile overlay, ⌘J/⇧⌘J (Ctrl+Shift+J / Ctrl+Alt+Shift+J off mac), help/palette/menu/README, design doc, spec criteria, changeset. Checks: `CI=1 scripts/test.sh` green (go · 547 unit · 824 dom · 357 e2e), `biome ci`, `tsc`, `ui-lint --strict`, `--contrast`, `go vet` + `staticcheck` ×3 OS (one pre-existing Windows U1000 in `internal/daemon/lock.go`), `check-daemon-contract.sh`. Mutation checks, each confirmed failing its test: `omitempty` restored, `reportedAt` from `ev.At`, `TakeAccepted` ignored, liveness frames dropped, snapshot `stale_at` removed; reducer `isStale` ignoring state, full replacing events, late start regressing, string `stale_at` compare, full null plan kept; `failed` guard removed (runaway), reset keeping flags, `keepFocus` no-op, stale CSS selector broken, combined sidebar-hidden rule removed, `display:none` / no hiding for the tile body, modal-like focus snapshot removed, blur removed, plain Ctrl+J accepted off mac. Not done: manual smoke in the built app with a live Claude/Pi session (WKWebView focus and the native-menu ⌘J path unverified).
 
 ## Open questions / risks
 
