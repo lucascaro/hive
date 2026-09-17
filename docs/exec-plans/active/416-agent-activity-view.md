@@ -364,7 +364,7 @@ bump has precedent; judgement call).
 - **Phase 2 (follow-up to Phase 1, own PR; was "1b")** — subagent attribution. See
   [Phase 2](#phase-2--subagent-attribution-follow-up). Lands after Phase 1 merges and
   before Phase 3, so Pi's wire work is built on the attributed shape.
-- **Phase 3** — Pi tier: `tool_execution_*` → tool_start/tool_end, `registerTool('todo')`,
+- **Phase 3** — Pi tier: `tool_execution_*` → tool_start/tool_end, `registerTool('hive_todo')` (named `todo` when this split was approved; renamed at the Phase 3 clarifying round),
   and the settings path (persisted field → Wails → UI → a channel hive.ts can read).
 - **Phase 4** — inspector panel + activity grid.
 
@@ -1193,6 +1193,11 @@ Append-only. The latest entry is authoritative.
     - acceptance — PASS — each Phase 2 criterion ran green: hook mapping (four `TestHook*` subagent tests), machine rule and count (17 agentstate tests), the Stop race (`TestSubagentEventDoesNotDropParentStop`, `TestFixtureTimelineParallelAndBackground` with the inverted-stamp pass), daemon caps and `SessionInfoCarriesSubagentsRunning`, `DaemonContract = 12`, and Playwright `sidebar-plan-pie` 11/11 including the badge row-height and no-clip checks. Phase 1 criteria: the Go suites, DOM 16/16 and the pie Playwright tests are green; the outlined-pie restyle is an operator decision, not a regression. DEFERRED: Pi extension tests and the TypeScript half of separator-agnostic labels (Phase 3); panel and grid Playwright checks (Phase 4).
     - non-goals — PASS — no persistence, and no raw tool arguments on any wire type (new fields are only agent_id, agent_type, running_agents and subagents_running). No transcript view, cost accounting, plugin API, cross-session view, subagent tree, Pi tier, panel or grid in the diff.
     - doc accuracy — PASS — changeset valid (type added, pr 420). Design doc, spec sidebar text and Phase 2 criteria, and contract entry 12 all match the code. CHANGELOG.md and the generated index are untouched, and README/DESIGN/site hold nothing stale. Two source comments still said "phase 1b" after the renumbering; fixed in 451702b9 before this verdict.
+- **2026-09-16** — verdict: FAIL; phase: 3/4; checks: 2 passed / 1 failed / 0 followups / 1 deferred; followups: none; one-line: doc accuracy — the spec and the plan's phase-split table still name the Pi tool `todo` instead of `hive_todo`.
+  - 2026-09-16 dimensions:
+    - acceptance — PASS — Pi extension tests (32/32: tool_start/tool_end events, hive_todo plan, disabled tool registers and posts nothing), shared label vectors with the Windows-path case read by both `toollabel_test.go` and `hive.test.ts`, no-raw-args assertion on socket bytes, no reporter durations; Go suites for agent, hived, registry, agentstate and daemon green. DEFERRED: inspector panel and activity grid Playwright checks (Phase 4).
+    - non-goals — PASS — no wire, daemon or buildinfo change (`check-daemon-contract.sh`: no daemon-side changes); `eventBody` sends allowlisted fields only; `result.usage` never read; no plugin surface, cross-session view or Phase 4 scope; `planFromBranch` reads Pi's own session, not Hive persistence.
+    - doc accuracy — FAIL — `docs/product-specs/416-agent-activity-view.md:75` says the plan comes from a `todo` tool, and `docs/exec-plans/active/416-agent-activity-view.md:367` says `registerTool('todo')`, both contradicting the operator's `hive_todo` decision. Changeset, README, `site/features.json`, design doc, Settings hint and the Phase 3 plan body are accurate.
 
 ## Phase 3 plan (approved 2026-09-16 via HTML review, round 1)
 
@@ -1202,7 +1207,7 @@ tool name `hive_todo`; separate Pi checkbox (`pi_todo_tool`); shared JSON label 
 
 Spec criteria this phase closes:
 - (C1) Pi extension tests: `tool_execution_start` / `tool_execution_end` post the right events;
-  `registerTool` produces a plan; the todo tool disabled posts nothing and registers nothing.
+  `registerTool` produces a plan; the `hive_todo` tool disabled posts nothing and registers nothing.
 - (C2) Label derivation is separator-agnostic: a Windows path renders as its basename in **both** reporters.
 - (C3, carried) No raw tool arguments cross the socket — only `target` and plan `items` — asserted in a test.
 - (C4, carried) Hive adds a tool to the user's agent only as a setting, on by default, disableable.
@@ -1642,6 +1647,8 @@ Non-vacuity checks run once during implementation and recorded in Progress:
 - **2026-09-16** — Phase 3 PLAN approved via the HTML plan review (round 1, no feedback) after two second-opinion rounds (revise → revise, all must-fix applied). Stage → IMPLEMENT.
 
 - **2026-09-16** — Phase 3 implemented on `feature/416-phase-3`: Pi extension tool events, `hive_todo` tool + plan (live and rebuilt on `session_start` / `session_tree`), serialized bounded send queue, TS label port over shared vectors, `pi_todo_tool` setting → `HIVE_PI_TODO_TOOL`, Settings checkbox, docs, changeset. Checks: `scripts/test.sh` green (go · 517 unit · 809 dom · 341 e2e), `scripts/ui-lint.sh`, `biome ci`. Mutation checks, each confirmed failing its test: vector flip (Go and TS), `eventBody` spreading the event, removed env gate, failed call posting a plan, bogus kind inside `send([...])`, unserialized queue, `session_start` skipping the empty plan, rebuild ignoring `isError`, queue dropping newest, synchronous throw stalling; plus raw `args` added at the call site still dropped by `eventBody` (test passes, as intended). Live probes `TestPiProbeReportsThroughTheExtension`, `TestPiProbeTodoToolPlan`, `TestPiProbeTodoToolOff` pass (`HIVE_PROBE_PI=1`, pi 0.85.1); the Off probe fails (plan_total 1) with the env gate removed.
+
+- **2026-09-16** — Gate FAIL (phase 3/4); doc accuracy: spec line 75 and phase-split table line 367 name the Pi tool `todo`, not `hive_todo`.
 
 ## Open questions / risks
 
