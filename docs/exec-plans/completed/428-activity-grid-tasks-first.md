@@ -4,7 +4,7 @@
 - **Issue:** #428
 - **PR:** #429
 - **Branch:** `feature/428-activity-grid-tasks-first`
-- **Status:** active
+- **Status:** completed
 
 ## Summary
 
@@ -355,8 +355,23 @@ third pass, per the loop's rule.
   zero-height `overflow: hidden` feed, so the collapse is asserted on
   `clientHeight`, not on row count.
 
+- **2026-09-17** — Gate FAIL; `docs/design-docs/ui/components.md` Tile bullet still described the pre-428 shape, and `site/features.json`'s blurb did not mention the task list. Both fixed on the branch (the PR is open, so the fix belongs in it); re-running the doc dimension.
+
 ## PR convergence ledger
 
 Append-only, one line per `/hs-review-loop` iteration.
 
 - **2026-09-17 iter 1** — verdict: APPROVE; mergeable: MERGEABLE; findings_hash: empty; threads_open: 0; action: stop; head_sha: 2bf71cda.
+
+## Gate verdict
+
+- **2026-09-17** — verdict: FAIL; phase: —; checks: 16 passed / 1 failed / 1 followup; followups: none (fixed in the PR); one-line: acceptance and non-goals clean, but `docs/design-docs/ui/components.md:121` still described the tile as pips plus call rows.
+  - 2026-09-17 dimensions:
+    - acceptance — PASS — all 9 success criteria traced to a passing Playwright or dom assertion; 12/12 activity-grid e2e, 835/835 dom.
+    - non-goals — PASS — no `internal/`, `cmd/hived/`, wire or agent-tier edit; panel diff is comment-only; `SessionRow`/`session-row.css` untouched. Noted: the shared `.hv-activity__pips`/`__pip` rule was modified to hoist `8px`/`3px` into equal-valued custom properties — behaviourally a no-op for the panel.
+    - doc accuracy — FAIL — `docs/design-docs/ui/components.md:121` (a live design doc, untouched by the diff) still described the tile as pips plus call rows; `site/features.json` blurb was borderline stale.
+- **2026-09-17** — verdict: PASS; phase: —; checks: 18 passed / 0 failed / 0 followups; followups: none; one-line: doc dimension re-run clean after the two doc fixes; acceptance and non-goals unchanged from the first run.
+  - 2026-09-17 dimensions (re-run):
+    - acceptance — PASS — unchanged from the first run (no code touched by the doc fixes).
+    - non-goals — PASS — unchanged from the first run.
+    - doc accuracy — PASS — `components.md` Tile bullet verified against `activity.css:63,68-71` and `ActivityTile.tsx:71`; `site/features.json` reworded and still valid JSON with `status`/`since` intact; repo-wide sweep found only current or historical mentions.

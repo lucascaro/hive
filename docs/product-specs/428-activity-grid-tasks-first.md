@@ -1,17 +1,18 @@
 ---
 issue: 428
 pr: 429
-shipped: null
+shipped: 2026-09-17
 title: "Activity grid: show the plan's tasks, not just the tool feed"
 type: enhancement
 complexity: S
 priority: P2
-stage: GATE
+stage: DONE
 ---
 
 # Activity grid: show the plan's tasks, not just the tool feed
 
 - **Issue:** [#428](https://github.com/lucascaro/hive/issues/428)
+- **Exec plan:** [docs/exec-plans/completed/428-activity-grid-tasks-first.md](../exec-plans/completed/428-activity-grid-tasks-first.md)
 - **Refines:** [416](416-agent-activity-view.md)
 
 ## Problem
