@@ -5,7 +5,7 @@ type: bug
 complexity: M
 priority: P2
 pr: 424
-stage: REVIEW
+stage: GATE
 ---
 
 # Pi reports self-healing session state (no stale-turn guessing)
