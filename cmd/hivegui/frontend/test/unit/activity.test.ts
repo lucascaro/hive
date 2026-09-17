@@ -195,6 +195,18 @@ describe('applyActivity plan and stale_at', () => {
     expect(a.staleAt).toBe(newer);
   });
 
+  it('orders stale_at across UTC offsets', () => {
+    // 12:00:05+02:00 is 10:00:05Z, earlier than 11:00:00.5Z.
+    const newer = '2026-09-16T11:00:00.5Z';
+    const older = '2026-09-16T12:00:05.000000900+02:00';
+    const a = run(
+      msg({ plan: plan('new'), stale_at: newer }),
+      msg({ plan: plan('old'), stale_at: older }),
+    );
+    expect(a.plan[0].text).toBe('new');
+    expect(a.staleAt).toBe(newer);
+  });
+
   it('a current full snapshot replaces events from before it', () => {
     // A restart keeps the session id but starts a fresh ring; its empty
     // snapshot must not leave the previous life's calls on screen.
