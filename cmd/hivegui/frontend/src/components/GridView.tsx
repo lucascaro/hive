@@ -12,7 +12,8 @@ import {
   applySingle,
   gridScopeSessions,
 } from '../app/grid-layout.js';
-import { appStore, useAppStore } from '../store/store.js';
+import { activityGridShown, appStore, useAppStore } from '../store/store.js';
+import { mustEl } from '../app/el.js';
 
 // Live read of the store, for the layout effect's non-reactive lookups.
 const appData = () => appStore.getState();
@@ -40,8 +41,9 @@ const appData = () => appStore.getState();
 //   bell rate.
 //
 // What IS in: the view mode, the active tile, the grid's project scope,
-// and the ordered id list of the sessions the scope actually tiles —
-// which is what carries minimize/restore, add/remove and reorder.
+// the ordered id list of the sessions the scope actually tiles —
+// which is what carries minimize/restore, add/remove and reorder — and
+// whether the activity grid is on, which is a class on #terms.
 // A string, so the store's Object.is comparison holds and a notification
 // that changes none of it re-renders nothing.
 function gridSignature(): string {
@@ -49,6 +51,7 @@ function gridSignature(): string {
     appData().view,
     appData().activeId ?? '',
     appData().gridProjectId ?? '',
+    activityGridShown() ? 'activity' : '',
     gridScopeSessions()
       .map((s) => s.id)
       .join(' '),
@@ -72,6 +75,9 @@ export function GridView(): ReactNode {
   useLayoutEffect(() => {
     if (appData().view === 'single') applySingle(appData().activeId);
     else applyGridLayout();
+    // Tiles swap their terminal body for activity (theme/components/
+    // activity.css). A class, not unmounting: see TileOverlays.
+    mustEl('terms').classList.toggle('activity', activityGridShown());
   }, [signature]);
 
   return null;

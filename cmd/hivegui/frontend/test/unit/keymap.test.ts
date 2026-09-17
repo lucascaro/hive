@@ -9,6 +9,7 @@ import {
   KILL_LINE_FORWARD_SEQ,
   isHelpOverlayKey,
   navHistoryKey,
+  activityKey,
   NEWLINE_SEQ,
 } from '../../src/lib/keymap.js';
 
@@ -321,6 +322,38 @@ describe('macForwardKillSeq', () => {
         ev({ altKey: true, metaKey: true, key: 'Delete' }),
         true,
       ),
+    ).toBeNull();
+  });
+});
+
+describe('activityKey', () => {
+  const j = (o = {}) => ev({ key: 'j', code: 'KeyJ', ...o });
+  it('macOS: ⌘J toggles, ⌘⇧J goes to the grid', () => {
+    expect(activityKey(j({ metaKey: true }), true)).toBe('toggle');
+    expect(
+      activityKey(j({ metaKey: true, shiftKey: true, key: 'J' }), true),
+    ).toBe('grid');
+  });
+  it('macOS: plain Ctrl+J is left to the terminal', () => {
+    expect(activityKey(j({ ctrlKey: true }), true)).toBeNull();
+  });
+  it('elsewhere: plain Ctrl+J (0x0a newline) is left to the terminal', () => {
+    expect(activityKey(j({ ctrlKey: true }), false)).toBeNull();
+  });
+  it('elsewhere: Ctrl+Shift+J toggles, Ctrl+Alt+Shift+J goes to the grid', () => {
+    expect(
+      activityKey(j({ ctrlKey: true, shiftKey: true, key: 'J' }), false),
+    ).toBe('toggle');
+    expect(
+      activityKey(
+        j({ ctrlKey: true, altKey: true, shiftKey: true, key: 'J' }),
+        false,
+      ),
+    ).toBe('grid');
+  });
+  it('ignores other keys', () => {
+    expect(
+      activityKey(ev({ metaKey: true, key: 'k', code: 'KeyK' }), true),
     ).toBeNull();
   });
 });

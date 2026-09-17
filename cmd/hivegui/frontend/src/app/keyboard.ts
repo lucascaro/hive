@@ -24,8 +24,11 @@ import {
   addAttentionRestoredProject,
   clearAttentionRestored,
   isModalOpen,
+  setActivityGrid,
+  setActivityPanel,
   setAttentionReturnId,
 } from '../store/store.js';
+import { blurTerminals } from './focus.js';
 import { flashStatus, reportFailure } from './dom.js';
 import {
   orderedSessions,
@@ -65,7 +68,7 @@ import {
   toggleHelpOverlay,
 } from './modals/help-overlay.js';
 import { closeWhatsNew } from './modals/whats-new.js';
-import { isHelpOverlayKey, navHistoryKey } from '../lib/keymap.js';
+import { activityKey, isHelpOverlayKey, navHistoryKey } from '../lib/keymap.js';
 import {
   switchTo,
   setView,
@@ -75,6 +78,7 @@ import {
   minimizeSession,
   minimizeProject,
   isSessionHidden,
+  gridWouldTile,
 } from './view.js';
 import { manualUpdateCheck, reloadGui, restartHive } from './banners.js';
 import { clearAttention } from './events.js';
@@ -376,6 +380,17 @@ window.addEventListener(
       return;
     }
 
+    // Agent activity (⌘J / ⌘⇧J; Ctrl+Shift+J / Ctrl+Alt+Shift+J
+    // elsewhere). Before the gate: off macOS these are not plain Ctrl
+    // chords, and plain Ctrl+J must keep reaching the terminal.
+    const act = activityKey(e, isMac);
+    if (act) {
+      swallow();
+      if (act === 'toggle') toggleActivity();
+      else showActivityGrid();
+      return;
+    }
+
     const meta = cmdOrCtrl(e);
     if (!meta) return;
 
@@ -557,6 +572,47 @@ export function focusActiveSession() {
 
 export function toggleProjectGrid() {
   setView(appData().view === 'grid-project' ? 'single' : 'grid-project');
+}
+
+// ⌘J. In single view it opens or closes the inspector panel; in a grid
+// it swaps every tile between its terminal and its activity. Neither
+// takes keyboard focus: the panel is read-only, and the activity grid
+// has nothing typeable, so it drops focus instead of stranding keys in
+// a hidden terminal.
+export function toggleActivity() {
+  const s = appData();
+  if (s.view === 'single') {
+    setActivityPanel(!s.activityPanel);
+    // The terminal column resizes; refit can blur the textarea, same as
+    // toggleSidebar.
+    deps.focusActiveTerm();
+    setTimeout(() => deps.focusActiveTerm(), 100);
+    return;
+  }
+  setActivityGrid(!s.activityGrid);
+  if (appData().activityGrid) blurTerminals();
+  else deps.focusActiveTerm();
+}
+
+// ⌘⇧J. The activity grid from anywhere. From single view it enters the
+// project grid; with fewer than two sessions there is no grid to enter,
+// so it opens the panel rather than doing nothing. Already on, it goes
+// back to the terminals.
+export function showActivityGrid() {
+  const s = appData();
+  if (s.view !== 'single') {
+    toggleActivity();
+    return;
+  }
+  if (!gridWouldTile('grid-project')) {
+    if (!s.activityPanel) toggleActivity();
+    return;
+  }
+  // Flag first, so the focus drive setView schedules sees the activity
+  // grid and leaves the terminals alone.
+  setActivityGrid(true);
+  setView('grid-project');
+  blurTerminals();
 }
 
 export function toggleAllGrid() {
@@ -827,6 +883,8 @@ const menuActions = {
   'menu:toggle-sidebar': toggleSidebar,
   'menu:toggle-project-grid': toggleProjectGrid,
   'menu:toggle-all-grid': toggleAllGrid,
+  'menu:toggle-activity': toggleActivity,
+  'menu:activity-grid': showActivityGrid,
   'menu:next-session': () => navSession(+1),
   'menu:prev-session': () => navSession(-1),
   'menu:move-session-forward': () => reorderActive(+1),

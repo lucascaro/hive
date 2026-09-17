@@ -176,3 +176,28 @@ export function navHistoryKey(
   if (!(e.key === '-' || e.key === '_' || e.code === 'Minus')) return null;
   return e.shiftKey ? 'forward' : 'back';
 }
+
+// activityKey maps the agent-activity chords (spec 416):
+//
+//   macOS          ⌘J   'toggle'  panel in single view, activity grid in a grid
+//                  ⌘⇧J  'grid'    the activity grid from any view
+//   elsewhere      Ctrl+Shift+J / Ctrl+Alt+Shift+J
+//
+// Not plain Ctrl+J off macOS: that is byte 0x0a, the newline key Claude
+// Code documents for every terminal, and Hive's own Shift+Enter newline
+// (spec 217) depends on agents honouring it. Taking it would cost the
+// main agent its multiline input.
+//
+// Dispatched BEFORE the cmdOrCtrl() gate, like navHistoryKey.
+export function activityKey(
+  e: KeyEventLike,
+  isMac: boolean,
+): 'toggle' | 'grid' | null {
+  if (!(e.code === 'KeyJ' || e.key === 'j' || e.key === 'J')) return null;
+  if (isMac) {
+    if (!e.metaKey || e.ctrlKey || e.altKey) return null;
+    return e.shiftKey ? 'grid' : 'toggle';
+  }
+  if (!e.ctrlKey || e.metaKey || !e.shiftKey) return null;
+  return e.altKey ? 'grid' : 'toggle';
+}

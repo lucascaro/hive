@@ -13,7 +13,7 @@ import {
   ACTION_FOCUS,
   type FocusSnapshot,
 } from '../lib/focus.js';
-import { anyModalOpen } from '../store/store.js';
+import { activityGridShown, anyModalOpen } from '../store/store.js';
 import { pushNav } from '../lib/nav-history.js';
 import { clearAttention } from './events.js';
 import { scrollTrace } from './trace.js';
@@ -161,6 +161,17 @@ document.addEventListener(
   true,
 );
 
+// blurTerminals drops keyboard focus from any terminal, for the activity
+// grid. A bare blur() is not enough: an armed focus guard would put it
+// straight back, and visibility:hidden does not reliably blur a focused
+// textarea in WKWebView.
+export function blurTerminals(): void {
+  _focusGuard = null;
+  sweepFocusBorder();
+  const ae = document.activeElement;
+  if (ae instanceof HTMLElement && ae.closest('.term-host')) ae.blur();
+}
+
 export function setFocusedTile(id: string | null) {
   // First decision: synchronous, before any rAF. If we already know we
   // should clear, do it immediately so a modal/null transition can't be
@@ -273,7 +284,9 @@ function focusSnapshot(id: string | null): FocusSnapshot {
   const ae = document.activeElement;
   return {
     id,
-    modalOpen: anyModalOpen(),
+    // The activity grid hides every terminal; driving focus into one
+    // would send keystrokes to a PTY nobody can see.
+    modalOpen: anyModalOpen() || activityGridShown(),
     activeTag: ae ? ae.tagName : '',
     activeClasses: ae ? ae.classList : '',
     knownTermIds: termsMap(),

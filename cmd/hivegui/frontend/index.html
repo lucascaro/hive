@@ -162,6 +162,10 @@
        hv-dialog — the palette is its own popup. -->
   <div id="command-palette" class="hidden" role="dialog" aria-label="Command palette"></div>
   <main id="terms" aria-label="Terminals"></main>
+  <!-- The agent activity inspector (spec 416): #app's third column in
+       single view. Empty: components/activity/ActivityPanelHost.tsx
+       portals the panel into it and un-hides it. -->
+  <aside id="activity-panel" aria-label="Agent activity" hidden></aside>
   <!-- The single React root's container. It stays empty: components/App.tsx
        renders every region as a portal into the element that region already
        owns, so nothing is ever painted here. `hidden` is display:none, so

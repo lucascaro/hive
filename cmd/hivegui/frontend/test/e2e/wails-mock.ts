@@ -1013,6 +1013,36 @@ export async function RequestReloadAllGUIs() {
 // that focuses a session sees needs_attention drop the way the real
 // daemon would broadcast it, rather than the flag surviving only in
 // the store.
+// --- activity (spec 416) ---
+//
+// The daemon's per-session ring + plan, as the GET_ACTIVITY answer would
+// carry it. Seeded by specs through __hive.setActivity; the deltas that
+// follow are hand-emitted through __hive.emitActivity, exactly the frame
+// the daemon broadcasts.
+type MockActivity = { events?: unknown[]; plan?: unknown[]; stale_at?: string };
+const activityById = new Map<string, MockActivity>();
+const activityRequests: string[] = [];
+
+export async function GetActivity(id: string) {
+  maybeFail('GetActivity');
+  activityRequests.push(id);
+  const a = activityById.get(id) ?? {};
+  // The daemon answers on the control stream, not as the call's return.
+  setTimeout(() => {
+    emit(
+      'activity:event',
+      JSON.stringify({
+        session_id: id,
+        full: true,
+        events: a.events ?? [],
+        plan: a.plan ?? [],
+        stale_at: a.stale_at,
+      }),
+    );
+  }, 0);
+  return '';
+}
+
 export async function SetSessionAttention(id: string, want: boolean) {
   maybeFail('SetSessionAttention');
   const s = state.sessions.find((x) => x.id === id);
@@ -1320,6 +1350,13 @@ if (typeof window !== 'undefined') {
       s.subagents_running = running;
       emit('session:event', JSON.stringify({ kind: 'state', session: s }));
     },
+    setActivity(id: string, activity: MockActivity) {
+      activityById.set(id, activity);
+    },
+    emitActivity(msg: Record<string, unknown>) {
+      emit('activity:event', JSON.stringify(msg));
+    },
+    activityRequests,
     listeners,
     stdinLog,
     stdinText(id?: string) {

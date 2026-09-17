@@ -22,6 +22,8 @@
 #sidebar { grid-row: 3 / span 2; grid-column: 1; }
 #sidebar-resizer { grid-row: 3 / span 2; grid-column: 1; }
 #terms { grid-row: 3; grid-column: 2; }
+#activity-panel { grid-row: 3; grid-column: 3; min-width: 0; min-height: 0; }
+#activity-panel[hidden] { display: none; }
 #minimized-tray { grid-row: 4; grid-column: 2; }
 
 body.resizing-sidebar { cursor: col-resize; user-select: none; }
@@ -29,6 +31,16 @@ body.resizing-sidebar #app { transition: none; }
 
 #app.sidebar-hidden {
   grid-template-columns: 0 1fr;
+}
+/* The activity inspector (spec 416) adds a third column. The combined
+   rule matters: with the sidebar hidden, #app.sidebar-hidden alone would
+   drop the panel's track. Full-width rows (banners, status bar) span
+   1 / -1 and pick the column up on their own. */
+#app.activity-panel-open {
+  grid-template-columns: var(--sidebar-width, 220px) 1fr var(--activity-panel-width);
+}
+#app.sidebar-hidden.activity-panel-open {
+  grid-template-columns: 0 1fr var(--activity-panel-width);
 }
 #app.sidebar-hidden #sidebar {
   visibility: hidden;

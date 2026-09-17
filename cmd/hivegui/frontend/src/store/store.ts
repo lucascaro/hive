@@ -56,6 +56,7 @@ import type { ChoiceSpec } from '../app/modals/choice-dialog.js';
 export const SIDEBAR_MIN_WIDTH = 220;
 export const SIDEBAR_MAX_WIDTH = 480;
 export const SIDEBAR_WIDTH_STORAGE_KEY = 'hive.sidebarWidth';
+export const ACTIVITY_PANEL_STORAGE_KEY = 'hive.activityPanel';
 export const FONT_SIZE_STORAGE_KEY = 'hive.fontSize';
 
 export interface AppData {
@@ -88,6 +89,13 @@ export interface AppData {
   gridProjectId: string | null;
   fontSize: number;
   sidebarWidth: number;
+  // Agent activity (spec 416). activityPanel: the inspector beside the
+  // terminal in single view — persisted, it is a layout preference.
+  // activityGrid: grid tiles show activity instead of their terminal —
+  // NOT persisted, so a restart never opens on a grid of hidden
+  // terminals.
+  activityPanel: boolean;
+  activityGrid: boolean;
   // ---------- chrome (Phase 2) ----------
   // The status bar's RENDERED output, not a second copy of the flash
   // engine: lib/status.ts's createStatus still owns FLASH_MIN_MS and the
@@ -443,6 +451,8 @@ function initialData(): AppData {
     gridProjectId: null, // project shown in grid-project mode
     fontSize: loadSavedFontSize(),
     sidebarWidth: loadSavedSidebarWidth(),
+    activityPanel: readStorage(ACTIVITY_PANEL_STORAGE_KEY) === '1',
+    activityGrid: false,
     // index.html paints "connecting…" into #status-text before any
     // script runs; StatusBar must not blank it on mount.
     status: { text: 'connecting…', isError: false },
@@ -874,6 +884,15 @@ export function setSidebarWidth(w: number): void {
   set({ sidebarWidth: next });
 }
 
+export function setActivityPanel(open: boolean): void {
+  writeStorage(ACTIVITY_PANEL_STORAGE_KEY, open ? '1' : '0');
+  set({ activityPanel: open });
+}
+
+export function setActivityGrid(on: boolean): void {
+  set({ activityGrid: on });
+}
+
 // ---------- chrome ----------
 
 // The status bar's persistent+flash arbitration is NOT here. app/dom.ts
@@ -1047,6 +1066,14 @@ export function modalEntry<T extends ModalId>(
 // same fact and there is nothing left to keep in sync. The choice dialog
 // counts: it is asking a question that may destroy work, and it sits
 // over everything.
+// The activity grid is on screen: a grid view whose tiles show activity
+// instead of their terminals. Nothing is typeable then, so focus code
+// treats it like a modal and never drives a hidden terminal's textarea.
+export function activityGridShown(): boolean {
+  const s = get();
+  return s.activityGrid && s.view !== 'single';
+}
+
 export function anyModalOpen(): boolean {
   const s = get();
   return s.modals.length > 0 || s.choiceDialog !== null;

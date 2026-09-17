@@ -397,6 +397,9 @@ export async function ReloadGUI() {
 export async function RequestReloadAllGUIs() {
   return '';
 }
+export async function GetActivity(id: string) {
+  return call('GetActivity', { session_id: id });
+}
 export async function SetSessionAttention(id: string, want: boolean) {
   return call('SetSessionAttention', { session_id: id, want: !!want });
 }
