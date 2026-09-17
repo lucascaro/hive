@@ -2,7 +2,7 @@
 
 - **Spec:** [docs/product-specs/423-pi-self-healing-state-reports.md](../../product-specs/423-pi-self-healing-state-reports.md)
 - **Issue:** #423
-- **Status:** active
+- **Status:** completed
 - **PR:** #424
 - **Branch:** feature/423-raise-attention-when-agent-turn-goes-quiet
 
@@ -172,3 +172,11 @@ Disposition: all applied. `orderAt = max(orderAt, ev.At)`; a takeover replay res
 - **2026-09-16 iter 1** — verdict: COMMENT; mergeable: MERGEABLE; findings_hash: 521e10f93880f43b5ef3def59a32bb29b0924be4d025c9c0cf9729571acfde35; threads_open: 0; action: escalated:risky-fix-needs-human-decision; head_sha: c40e6bc.
 - **2026-09-17 iter 2** — verdict: APPROVE; mergeable: MERGEABLE; findings_hash: empty; threads_open: 0; action: stop; head_sha: a8ffa4de.
 - **2026-09-17 iter 3** — verdict: APPROVE; mergeable: MERGEABLE; findings_hash: empty; threads_open: 0; action: stop; head_sha: 7295a8a3.
+
+## Gate verdict
+
+- **2026-09-17** — verdict: PASS; phase: —; checks: 19 passed / 0 failed / 0 followups; followups: none; one-line: all 8 success criteria are shown by tests, all 4 non-goals hold, and the docs, changeset and contract 14 note are accurate.
+  - 2026-09-17 dimensions:
+    - acceptance — PASS — criteria 1-8 covered by machine, registry, daemon, agent and hive.test.ts tests. Criterion 6 is also shown directly by `TestKeyedOldStampStaysTrusted` (a repaint after a keyed report stays `src=extension`).
+    - non-goals — PASS — hook.go, claude* and cmd/hivegui are untouched; the unkeyed Apply path is logically unchanged; no dwell; timers unchanged.
+    - doc accuracy — PASS — changeset `regression_of: declared-absent`; agent-activity.md, the debugging handoff, wire comments and contract history 14 match the code; spec 336 is unchanged and still true.
