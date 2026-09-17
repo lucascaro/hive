@@ -1198,6 +1198,11 @@ Append-only. The latest entry is authoritative.
     - acceptance — PASS — Pi extension tests (32/32: tool_start/tool_end events, hive_todo plan, disabled tool registers and posts nothing), shared label vectors with the Windows-path case read by both `toollabel_test.go` and `hive.test.ts`, no-raw-args assertion on socket bytes, no reporter durations; Go suites for agent, hived, registry, agentstate and daemon green. DEFERRED: inspector panel and activity grid Playwright checks (Phase 4).
     - non-goals — PASS — no wire, daemon or buildinfo change (`check-daemon-contract.sh`: no daemon-side changes); `eventBody` sends allowlisted fields only; `result.usage` never read; no plugin surface, cross-session view or Phase 4 scope; `planFromBranch` reads Pi's own session, not Hive persistence.
     - doc accuracy — FAIL — `docs/product-specs/416-agent-activity-view.md:75` says the plan comes from a `todo` tool, and `docs/exec-plans/active/416-agent-activity-view.md:367` says `registerTool('todo')`, both contradicting the operator's `hive_todo` decision. Changeset, README, `site/features.json`, design doc, Settings hint and the Phase 3 plan body are accurate.
+- **2026-09-16** — verdict: PASS; phase: 3/4; checks: 3 passed / 0 failed / 0 followups / 1 deferred; followups: none; one-line: re-run after the doc fix (25fde342) — the spec and phase split now name the Pi tool `hive_todo`; code unchanged since the acceptance and non-goals passes.
+  - 2026-09-16 dimensions:
+    - acceptance — PASS — carried from the run above; the fix commit touched docs only (`git diff` between the two runs: spec and exec plan). DEFERRED: inspector panel and activity grid Playwright checks (Phase 4).
+    - non-goals — PASS — carried from the run above, same reason.
+    - doc accuracy — PASS — spec:75 and plan:367 now say `hive_todo`; changeset (type added, bump minor, pr 421; hover claim matches `SessionRow.tsx` title), README, `site/features.json`, design doc, Settings hint and code comments consistent; `CHANGELOG.md` and `index.md` untouched.
 
 ## Phase 3 plan (approved 2026-09-16 via HTML review, round 1)
 
