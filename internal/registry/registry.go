@@ -363,6 +363,8 @@ type Registry struct {
 	tickStop chan struct{}
 	// tickOnce guards tickStop against a double Close.
 	tickOnce sync.Once
+	// tickDone closes when the state ticker has returned.
+	tickDone chan struct{}
 }
 
 // Phase reports the entry's current lifecycle phase (wire.Phase*), or
@@ -837,6 +839,7 @@ func Open(stateDir string) (*Registry, error) {
 		ideaListeners:     make(map[IdeaListener]struct{}),
 		activityListeners: make(map[ActivityListener]struct{}),
 		tickStop:          make(chan struct{}),
+		tickDone:          make(chan struct{}),
 	}
 	if err := r.load(); err != nil {
 		return nil, fmt.Errorf("registry: load: %w", err)
@@ -859,6 +862,7 @@ const stateTickInterval = 500 * time.Millisecond
 // is a timestamp comparison, and per-session timers would mean
 // creating and cancelling one on every chunk of PTY output.
 func (r *Registry) tickStates() {
+	defer close(r.tickDone)
 	t := time.NewTicker(stateTickInterval)
 	defer t.Stop()
 	for {

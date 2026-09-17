@@ -64,6 +64,10 @@ test('no attach error is ever painted into a starting or closing pane', async ({
   const id = await page.evaluate(
     () => window.__hive.state?.sessions.find((s) => s.name === 'doomed')?.id,
   );
+  // `closing` only lasts as long as the phase hold. 400ms is shorter than
+  // the evaluate round trip plus the locator's poll on a slow Windows CI
+  // runner, which then never sees the class; hold long enough to observe.
+  await holdPhases(page, 2000);
   await page.evaluate((sid) => window.__hive.killSession?.(sid as string), id);
 
   // The tile dims and stops taking input the moment the daemon starts

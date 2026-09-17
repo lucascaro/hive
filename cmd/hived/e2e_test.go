@@ -21,6 +21,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"net"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -197,13 +198,16 @@ func (d *spawnedDaemon) stop(t *testing.T) {
 func waitForSocket(t *testing.T, sock string, timeout time.Duration) {
 	t.Helper()
 	deadline := time.Now().Add(timeout)
+	// Dial, not Stat: the socket file exists from bind(2), but a
+	// connect before listen(2) is refused.
 	for time.Now().Before(deadline) {
-		if _, err := os.Stat(sock); err == nil {
+		if c, err := net.Dial("unix", sock); err == nil {
+			_ = c.Close()
 			return
 		}
 		time.Sleep(25 * time.Millisecond)
 	}
-	t.Fatalf("hived socket %s did not appear within %s", sock, timeout)
+	t.Fatalf("hived socket %s did not accept a connection within %s", sock, timeout)
 }
 
 // dialControl opens a control-mode client and drains initial snapshots.
