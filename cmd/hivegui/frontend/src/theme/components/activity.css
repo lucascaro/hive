@@ -42,6 +42,29 @@
 }
 .hv-activity--tile { padding: var(--space-1) var(--space-2); box-sizing: border-box; }
 
+/* Spec 428: in a tile the tasks are the body and the feed takes what is
+   left. The feed's flex-basis of 0 keeps it out of the column's content
+   height, so it only ever grows into free space: a plan taller than the
+   tile leaves none and the feed collapses to zero while the list scrolls.
+   min-height: 0 is what lets both actually shrink. position: relative
+   makes the list the rows' offsetParent — ActivityTile's auto-scroll
+   measures offsetTop against it. */
+.hv-activity--tile .hv-activity__plan {
+  flex: 0 1 auto;
+  min-height: 0;
+  max-height: 100%;
+  margin-top: 0;
+  overflow-y: auto;
+  position: relative;
+}
+.hv-activity--tile .hv-activity__timeline { flex: 1 1 0; min-height: 0; overflow: hidden; }
+/* Two pip rows (8px pip + 3px gap + 8px pip): the head does not shrink and
+   the pips wrap, so an uncapped strip would crowd out the list it
+   summarizes on a long plan. */
+.hv-activity--tile .hv-activity__pips { max-height: calc(2 * 8px + 3px); overflow: hidden; }
+/* The panel's rows are click-to-pin; a tile's are inert. */
+.hv-activity--tile .hv-activity__step-row { cursor: default; font-size: var(--text-xs); }
+
 .hv-activity__head {
   display: flex;
   align-items: center;

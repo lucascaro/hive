@@ -166,6 +166,39 @@ describe('ActivityTile', () => {
     expect(container.querySelectorAll('.hv-activity__pip')).toHaveLength(3);
     expect(container.querySelectorAll('.hv-activity__call')).toHaveLength(2);
   });
+
+  // Spec 428: the tasks are the tile's body. The heights they get are a
+  // Playwright claim (test/e2e/activity-grid.spec.ts) — this is markup.
+  it('renders every task, with the current one marked', () => {
+    const { container } = render(<ActivityTile sessionId={SID} />);
+    frame({ full: true, plan: PLAN, events: EVENTS });
+    const texts = Array.from(
+      container.querySelectorAll('.hv-activity__step-text'),
+    ).map((el) => el.textContent);
+    expect(texts).toEqual(['read the spec', 'write the reducer', 'ship it']);
+    // The row wrapper activity.css selects on as a direct child.
+    expect(
+      container.querySelector(
+        '.hv-activity__step[data-status="active"] > .hv-activity__step-row',
+      ),
+    ).not.toBeNull();
+    // The pips are decorative beside it; the list carries the name.
+    expect(container.querySelector('.hv-activity__pips')).toHaveAttribute(
+      'aria-hidden',
+      'true',
+    );
+    expect(container.querySelector('.hv-activity__plan')).toHaveAttribute(
+      'aria-label',
+      'Plan: 1 of 3 done',
+    );
+  });
+
+  it('renders no task list for a session with no plan', () => {
+    const { container } = render(<ActivityTile sessionId={SID} />);
+    frame({ full: true, plan: [], events: EVENTS });
+    expect(container.querySelector('.hv-activity__plan')).toBeNull();
+    expect(container.querySelectorAll('.hv-activity__call')).toHaveLength(2);
+  });
 });
 
 describe('snapshot requests', () => {

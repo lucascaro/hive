@@ -76,6 +76,8 @@ export function ActivityPanel({ sessionId }: { sessionId: string }): ReactNode {
   );
 }
 
+// ActivityTile renders the same mark + text row without the chevron, pill
+// and nested calls. Keep the two in step — activity.css styles both.
 function PlanStep({
   step,
   working,

@@ -71,6 +71,10 @@ just ran, how long it took, whether it failed).
   the same component at tile size: plan shape as pips, body given to
   the live tool feed.
 
+  > **Superseded (2026-09-17).** [Spec 428](428-activity-grid-tasks-first.md)
+  > makes the tile's body the plan's task text, with the feed taking the
+  > leftover height and the pips kept as a capped header strip.
+
 **Agent coverage.** Claude via the hook tier, Pi via the extension
 tier. Pi's tool events come from `tool_execution_start` /
 `tool_execution_end`; its plan comes from a `hive_todo` tool the
