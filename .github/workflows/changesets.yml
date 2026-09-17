@@ -10,8 +10,10 @@
 #   1. block-generated-edits — hard-fails any PR diff touching a generated
 #      file. Bypass: apply the `regen-override` label.
 #   2. verify-generated     — runs the regenerator against the PR merge ref
-#      to catch interaction bugs; requires at least one new
-#      `.changesets/*.md` (unless labelled `no-changeset`).
+#      to catch interaction bugs; runs scripts/check-changeset.sh, which
+#      requires a new `.changesets/*.md` unless every changed path is exempt
+#      (docs, planning, root markdown, CI/tooling, tests). Bypass for other
+#      no-user-impact changes: the `no-changeset` label.
 #   3. regenerate-generated — on push to main, regenerates aggregates and
 #      direct-pushes the result with `[skip ci]`. A protected `main` must
 #      let this identity through, or the push is rejected and the job fails
@@ -120,24 +122,31 @@ jobs:
         # NOT `--check` — that would fail any PR that adds a source file
         # because the committed generated copies legitimately lag.
         run: scripts/regen-generated.sh
-      - name: Require a changeset unless labelled no-changeset
+      - name: Self-test the changeset gate
+        # The exempt list decides which PRs skip the changelog; prove it
+        # still refuses app code before it judges this PR.
+        run: scripts/check-changeset-selftest.sh
+      - name: Require a changeset unless exempt or labelled no-changeset
         env:
           PR_LABELS: ${{ toJson(github.event.pull_request.labels) }}
+          BASE: ${{ github.event.pull_request.base.sha }}
+          HEAD: ${{ github.event.pull_request.head.sha }}
         run: |
-          BASE="${{ github.event.pull_request.base.sha }}"
-          HEAD="${{ github.event.pull_request.head.sha }}"
           if printf '%s' "$PR_LABELS" | jq -e '.[] | select(.name == "no-changeset")' >/dev/null 2>&1; then
             echo "OK: no-changeset label present — skipping requirement."
             exit 0
           fi
-          if git diff --name-only "$BASE"..."$HEAD" -- ':(glob).changesets/*.md' | grep -vE '^\.changesets/(README\.md|\.gitkeep)$' | grep -q .; then
-            echo "OK: PR adds at least one changeset."
-            exit 0
+          # Same script as the local pre-push hook, so the two cannot drift.
+          # Exit 1 = changeset missing; anything else = the gate itself broke.
+          rc=0
+          scripts/check-changeset.sh "$BASE" "$HEAD" 2>err.txt || rc=$?
+          cat err.txt
+          if [ "$rc" -eq 1 ]; then
+            echo "::error::PR has no .changesets/*.md entry and touches user-visible paths."
+          elif [ "$rc" -ne 0 ]; then
+            echo "::error::check-changeset.sh failed with exit $rc (not a missing changeset; see output above)."
           fi
-          echo "::error::PR has no .changesets/*.md entry."
-          echo "Add a per-PR changeset (see .changesets/README.md for the schema),"
-          echo "or apply the 'no-changeset' label if this is a docs/CI-only change."
-          exit 1
+          exit "$rc"
 
   regenerate-generated:
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
