@@ -1,6 +1,7 @@
 ---
 type: added
 bump: minor
+pr: 422
 ---
 
 See what a Claude or Pi session is doing without reading its scrollback. ⌘J

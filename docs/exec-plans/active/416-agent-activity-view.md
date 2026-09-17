@@ -5,8 +5,8 @@
   `feat: add Alucard and Hex theme presets`, an unrelated merged PR. Never write `Fixes #416`.)
 - **Design:** [docs/design-docs/agent-activity.md](../../design-docs/agent-activity.md)
 - **Phase:** 4 of 4 (inspector panel + activity grid; Phase 1 shipped in #417, Phase 2 in #420, Phase 3 in #421)
-- **PR:** —
-- **Branch:** —
+- **PR:** #422
+- **Branch:** feature/416-phase-4
 - **Mocks:** https://claude.ai/artifact/7RjZw99RbKNV1iS13r2dtb (placement study — pie vs ring)
 - **Status:** active
 
