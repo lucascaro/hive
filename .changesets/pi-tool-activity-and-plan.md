@@ -1,6 +1,7 @@
 ---
 type: added
 bump: minor
+pr: 421
 ---
 
 Pi sessions now report their tool calls and plan the same way Claude sessions
