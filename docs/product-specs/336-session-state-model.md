@@ -84,6 +84,10 @@ settings untouched.
   covered: `Output` takes a still-painting session to
   `working`/`heuristic`, and `Tick` takes a quiet one to
   `idle`/`heuristic`.
+  *Amended by [423](423-raise-attention-when-agent-turn-goes-quiet.md):*
+  a Pi (extension-tier) turn that went stale while still open ticks to
+  `waiting_input`/`heuristic` instead, and a Pi session the user keeps
+  looking at for 3 s clears its attention without a keystroke.
   The deliberate exception is a state that wants the user.
   `waiting_input`, `waiting_permission` and an agent-reported `error`
   are never ended by elapsed time or by output on any tier — only by

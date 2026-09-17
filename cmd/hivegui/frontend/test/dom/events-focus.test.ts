@@ -81,10 +81,11 @@ function emit(event: string, payload: unknown) {
 describe('wireDaemonEvents window-focus handler', () => {
   it('refocuses the active term, and clears nothing locally', () => {
     // The frozen transition table (docs/exec-plans/active/
-    // 336-session-state-model.md) allows exactly two client-driven
+    // 336-session-state-model.md) allows two immediate client-driven
     // clears — a keystroke and switching TO a session — and a window
     // regaining focus is neither. An earlier version of this handler
-    // did clear here too; that is gone.
+    // did clear here too; that is gone. Focus only starts the Pi dwell
+    // (spec 423), covered below.
     const refocusActiveTerm = vi.fn();
     wireDaemonEvents({
       switchTo,
@@ -119,6 +120,51 @@ describe('wireDaemonEvents window-focus handler', () => {
     expect(state.sessions.find((s) => s.id === 'sess-1')?.needs_attention).toBe(
       true,
     );
+  });
+});
+
+// Spec 423: a focused window resting on a Pi session that wants the user
+// clears its status after the dwell. Nothing else does.
+describe('attention dwell', () => {
+  it('clears a watched Pi session after 3 s, and never a shell', () => {
+    vi.useFakeTimers();
+    const hasFocus = vi.spyOn(document, 'hasFocus').mockReturnValue(true);
+    try {
+      const setAttention = vi.mocked(bridge.SetSessionAttention);
+      emit(
+        'session:list',
+        JSON.stringify({
+          sessions: [
+            { id: 'pi-1', agent: 'pi', needs_attention: true },
+            { id: 'sh-1', needs_attention: true },
+          ],
+        }),
+      );
+
+      state.activeId = 'sh-1';
+      setAttention.mockClear();
+      window.dispatchEvent(new Event('focus'));
+      vi.advanceTimersByTime(10_000);
+      expect(setAttention).not.toHaveBeenCalled();
+
+      state.activeId = 'pi-1';
+      window.dispatchEvent(new Event('focus'));
+      vi.advanceTimersByTime(2999);
+      expect(setAttention).not.toHaveBeenCalled();
+      vi.advanceTimersByTime(1);
+      expect(setAttention).toHaveBeenCalledWith('pi-1', false);
+
+      // Blur before the dwell ends cancels it.
+      setAttention.mockClear();
+      window.dispatchEvent(new Event('focus'));
+      vi.advanceTimersByTime(1000);
+      window.dispatchEvent(new Event('blur'));
+      vi.advanceTimersByTime(10_000);
+      expect(setAttention).not.toHaveBeenCalled();
+    } finally {
+      hasFocus.mockRestore();
+      vi.useRealTimers();
+    }
   });
 });
 

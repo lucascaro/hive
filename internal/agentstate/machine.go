@@ -183,6 +183,24 @@ type Machine struct {
 	// dropped as out of order.
 	orderAt time.Time
 
+	// turnOpen is "Pi started the current working stretch and nothing
+	// has ended it". It exists for one decision, in Tick: a turn that
+	// goes silent without reporting its end is waiting on the user, not
+	// finished. Pi does not always tell us — a question whose
+	// waiting_input never landed has left sessions reading idle with a
+	// question on screen (spec 423).
+	//
+	// Extension tier only: Claude's hooks report every end but Esc and a
+	// denied permission, and for those idle is the right answer.
+	//
+	// Not "any session that ever reported": Output reclaims a stale,
+	// finished session to working on every keystroke echo, so that rule
+	// would light up a session two seconds after the user stops typing
+	// into it. Only an event that means "the agent is running" opens a
+	// turn — not prompt, which Pi posts before a send can still fail
+	// with no agent_start or agent_settled to follow.
+	turnOpen bool
+
 	// act is the tool ring and plan snapshot. Its lifetime is this
 	// struct's: New zeroes it, and a fresh Machine on restart/revive
 	// discards it. See activity.go.
@@ -291,6 +309,7 @@ func (m *Machine) Exit() bool {
 		return false
 	}
 	m.state = wire.StateExited
+	m.turnOpen = false
 	m.act.clearSubagents()
 	return true
 }
@@ -309,8 +328,13 @@ func (m *Machine) Exit() bool {
 func (m *Machine) ClearWaiting() bool {
 	switch m.state {
 	case wire.StateWaitingInput, wire.StateError:
-		// Nothing runs until the next prompt is submitted.
+		// Nothing runs until the next prompt is submitted. That closes
+		// the turn too: a declined question ends it with no event, and a
+		// turn left open would raise attention again the next time the
+		// user types and pauses. Pi's answer to a mid-turn question
+		// reopens it (ui_prompt_end → permission_resolved).
 		m.state = wire.StateIdle
+		m.turnOpen = false
 	case wire.StateWaitingPermission:
 		// The agent was mid-turn and the answer resumes it. Claude fires
 		// no hook between "allowed" and the tool finishing (PreToolUse
@@ -327,6 +351,10 @@ func (m *Machine) ClearWaiting() bool {
 // nothing for QuietAfter has finished its turn. Only the heuristic tier
 // times out — a trusted tier reports its own turn_end, and inventing
 // one for it would race the real thing.
+//
+// A Pi turn that went stale while still open (see turnOpen) lands in
+// waiting_input rather than idle: Pi stopped without saying so, and a
+// stopped agent is waiting on the user. That fires once per turn.
 func (m *Machine) Tick(now time.Time) bool {
 	if m.state != wire.StateWorking || m.trusted(now) {
 		return false
@@ -334,7 +362,12 @@ func (m *Machine) Tick(now time.Time) bool {
 	if now.Sub(m.lastOutputAt) < QuietAfter {
 		return false
 	}
-	m.state = wire.StateIdle
+	if m.turnOpen {
+		m.state = wire.StateWaitingInput
+		m.turnOpen = false
+	} else {
+		m.state = wire.StateIdle
+	}
 	// The tier is stale by definition here — trusted() said so above —
 	// so this idle is ours, inferred from silence, not something the
 	// agent reported. Say so, the way Output does when it takes a
@@ -451,6 +484,7 @@ func (m *Machine) Apply(ev Event) bool {
 			m.lastPrompt = text
 		}
 	case KindTurnEnd:
+		m.turnOpen = false
 		m.state = wire.StateWaitingInput
 		m.lastSummary = text
 		m.act.endTurn(ev.At)
@@ -458,6 +492,7 @@ func (m *Machine) Apply(ev Event) bool {
 			m.act.reconcileSubagents(*ev.RunningAgents, ev.At)
 		}
 	case KindIdle:
+		m.turnOpen = false
 		m.state = wire.StateIdle
 		m.lastSummary = text
 		m.act.endTurn(ev.At)
@@ -473,13 +508,16 @@ func (m *Machine) Apply(ev Event) bool {
 		m.state = wire.StateWaitingPermission
 	case KindPermissionResolved:
 		m.state = wire.StateWorking
+		m.openTurn(ev)
 	case KindToolStart:
 		// Same state effect as the permission_resolved these were
 		// split out of: a tool running means the agent is working.
 		m.state = wire.StateWorking
+		m.openTurn(ev)
 		m.toolStart(ev, now)
 	case KindToolEnd:
 		m.state = wire.StateWorking
+		m.openTurn(ev)
 		m.toolEnd(ev, now)
 	case KindPlan:
 		// No state change by design: revising a plan is not a
@@ -488,10 +526,12 @@ func (m *Machine) Apply(ev Event) bool {
 	case KindPlanItem:
 		m.mergePlanItems(ev.Items, ev.At)
 	case KindError:
+		m.turnOpen = false
 		m.state = wire.StateError
 		m.lastSummary = text
 		m.act.endTurn(ev.At)
 	case KindSessionEnd:
+		m.turnOpen = false
 		m.state = wire.StateExited
 		m.act.endTurn(ev.At)
 		m.act.clearSubagents()
@@ -503,6 +543,14 @@ func (m *Machine) Apply(ev Event) bool {
 	}
 
 	return m.Snapshot() != before
+}
+
+// openTurn marks a Pi turn as running. See turnOpen for why only the
+// extension tier counts.
+func (m *Machine) openTurn(ev Event) {
+	if ev.Source == wire.StateSourceExtension {
+		m.turnOpen = true
+	}
 }
 
 // wantsUser reports the states that stand until the user acts on them:

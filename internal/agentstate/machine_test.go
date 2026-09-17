@@ -594,3 +594,171 @@ func TestStaleTickDemotesTheSourceNotJustTheState(t *testing.T) {
 			"inference, not the agent's report", got.Source)
 	}
 }
+
+// piEvent is hookEvent for the extension tier — the tier spec 423's
+// stale-turn rule is scoped to.
+func piEvent(kind string, at time.Time) Event {
+	return Event{Kind: kind, Source: wire.StateSourceExtension, At: at}
+}
+
+// stale is a moment the tier has gone stale at, with the screen quiet
+// since the last repaint at t.
+func stale(t time.Time) time.Time { return t.Add(HookStaleAfter + QuietAfter + time.Second) }
+
+// Spec 423: Pi stopped mid-turn without reporting it — the reported case
+// is a question whose waiting_input never landed. A turn that goes quiet
+// while open is waiting on the user, not finished.
+func TestStaleAgentTurnTicksToWaitingInput(t *testing.T) {
+	for _, kind := range []string{KindPermissionResolved, KindToolStart, KindToolEnd} {
+		t.Run(kind, func(t *testing.T) {
+			m := New(t0)
+			m.Apply(piEvent(kind, t0))
+			if !m.Tick(stale(t0)) {
+				t.Fatal("tick changed nothing")
+			}
+			got := m.Snapshot()
+			if got.State != wire.StateWaitingInput || got.Source != wire.StateSourceHeuristic {
+				t.Errorf("snapshot = %+v, want waiting_input guessed by the heuristic tier", got)
+			}
+		})
+	}
+}
+
+// Claude works: its hooks report their own ends, and the paths they miss
+// (Esc, a denied permission) are ones where idle is right.
+func TestHookTierStaleTurnStillTicksIdle(t *testing.T) {
+	m := New(t0)
+	m.Apply(hookEvent(KindToolStart, t0, ""))
+	m.Tick(stale(t0))
+	if got := m.Snapshot().State; got != wire.StateIdle {
+		t.Errorf("state = %q, want idle", got)
+	}
+}
+
+// Pi posts prompt on input, before a send can still fail with no
+// agent_start or agent_settled behind it. A prompt alone opens nothing.
+func TestPromptAloneDoesNotOpenATurn(t *testing.T) {
+	m := New(t0)
+	m.Apply(piEvent(KindPrompt, t0))
+	m.Tick(stale(t0))
+	if got := m.Snapshot().State; got != wire.StateIdle {
+		t.Errorf("state = %q, want idle", got)
+	}
+}
+
+// typeAndPause is the user typing into a stale session and stopping.
+func typeAndPause(m *Machine, at time.Time) {
+	m.Output(at)
+	m.Tick(at.Add(QuietAfter))
+}
+
+func TestStaleTickAfterReportedEndStaysIdle(t *testing.T) {
+	for _, tc := range []struct {
+		kind string
+		want string
+	}{
+		{KindTurnEnd, wire.StateIdle},
+		{KindIdle, wire.StateIdle},
+		{KindError, wire.StateIdle},
+		{KindSessionEnd, wire.StateExited},
+	} {
+		t.Run(tc.kind, func(t *testing.T) {
+			m := New(t0)
+			m.Apply(piEvent(KindToolStart, t0))
+			m.Apply(piEvent(tc.kind, t0.Add(time.Second)))
+			// Load-bearing for turn_end and error, which land in a wait:
+			// the user looking is what puts the session back to idle
+			// before they type.
+			m.ClearWaiting()
+			typeAndPause(m, stale(t0))
+			if got := m.Snapshot().State; got != tc.want {
+				t.Errorf("state = %q, want %q", got, tc.want)
+			}
+		})
+	}
+}
+
+// Output reclaims a stale finished session on every keystroke echo, so
+// "this session once reported" must not be what raises attention.
+func TestTypingIntoStaleAgentSessionDoesNotRaiseAttention(t *testing.T) {
+	m := New(t0)
+	m.Apply(piEvent(KindToolStart, t0))
+	m.Apply(piEvent(KindIdle, t0.Add(time.Second)))
+	typeAndPause(m, stale(t0))
+	if got := m.Snapshot().State; got != wire.StateIdle {
+		t.Errorf("state = %q, want idle", got)
+	}
+}
+
+func TestStaleTurnAttentionFiresOnce(t *testing.T) {
+	m := New(t0)
+	m.Apply(piEvent(KindToolStart, t0))
+	late := stale(t0)
+	m.Tick(late)
+	if !m.ClearWaiting() {
+		t.Fatal("setup: tick did not raise a wait")
+	}
+	typeAndPause(m, late.Add(time.Second))
+	if got := m.Snapshot().State; got != wire.StateIdle {
+		t.Fatalf("state = %q after typing, want idle — the raise fires once", got)
+	}
+
+	// The next turn re-arms it.
+	next := late.Add(time.Minute)
+	m.Apply(piEvent(KindPermissionResolved, next))
+	m.Tick(stale(next))
+	if got := m.Snapshot().State; got != wire.StateWaitingInput {
+		t.Errorf("state = %q for a new stale turn, want waiting_input", got)
+	}
+}
+
+// A declined question ends the turn with no event (see ClearWaiting).
+func TestAnsweredWaitClosesTheTurn(t *testing.T) {
+	m := New(t0)
+	m.Apply(piEvent(KindToolStart, t0))
+	m.Apply(piEvent(KindWaitingInput, t0.Add(time.Second)))
+	m.ClearWaiting()
+	typeAndPause(m, stale(t0))
+	if got := m.Snapshot().State; got != wire.StateIdle {
+		t.Errorf("state = %q, want idle", got)
+	}
+}
+
+// Answering a permission resumes the turn, so it stays open.
+func TestAnsweredPermissionKeepsTheTurnOpen(t *testing.T) {
+	m := New(t0)
+	m.Apply(piEvent(KindToolStart, t0))
+	m.Apply(piEvent(KindWaitingPermission, t0.Add(time.Second)))
+	m.ClearWaiting()
+	m.Tick(stale(t0))
+	if got := m.Snapshot().State; got != wire.StateWaitingInput {
+		t.Errorf("state = %q, want waiting_input", got)
+	}
+}
+
+// A late tool event goes through applyLateActivity, which must not
+// reopen a turn that has already ended.
+func TestLateEventDoesNotReopenTheTurn(t *testing.T) {
+	m := New(t0)
+	m.Apply(piEvent(KindToolStart, t0))
+	m.Apply(piEvent(KindTurnEnd, t0.Add(2*time.Second)))
+	m.Apply(piEvent(KindToolStart, t0.Add(time.Second)))
+	m.ClearWaiting()
+	typeAndPause(m, stale(t0))
+	if got := m.Snapshot().State; got != wire.StateIdle {
+		t.Errorf("state = %q, want idle", got)
+	}
+}
+
+func TestSubagentEventDoesNotOpenATurn(t *testing.T) {
+	m := New(t0)
+	m.Apply(piEvent(KindTurnEnd, t0))
+	sub := piEvent(KindToolStart, t0.Add(time.Second))
+	sub.AgentID = "a1"
+	m.Apply(sub)
+	m.ClearWaiting()
+	typeAndPause(m, stale(t0))
+	if got := m.Snapshot().State; got != wire.StateIdle {
+		t.Errorf("state = %q, want idle", got)
+	}
+}

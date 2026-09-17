@@ -479,3 +479,31 @@ func TestExitedReachesTheStateThroughTheRealPTY(t *testing.T) {
 	}
 	t.Fatal("session never reported the exit")
 }
+
+// Spec 423 end to end through the sampler: a Pi turn that went stale
+// without reporting its end reaches clients as needs_attention, not as
+// a quiet idle.
+func TestStaleAgentTurnRaisesNeedsAttention(t *testing.T) {
+	skipOnWindows(t)
+	r := freshRegistry(t)
+	e, _ := liveSession(t, r, wire.CreateSpec{Name: "pi"})
+
+	started := time.Now().Add(-time.Minute) // already past HookStaleAfter
+	if err := r.ApplyAgentEvent(e.ID, wire.AgentEvent{
+		Kind:   wire.AgentEventToolStart,
+		Source: wire.StateSourceExtension,
+		At:     started.Format(time.RFC3339Nano),
+	}); err != nil {
+		t.Fatalf("ApplyAgentEvent: %v", err)
+	}
+	// Two samples: the first may still see the shell's startup paint.
+	now := time.Now()
+	sample(r, e, now)
+	sample(r, e, now.Add(agentstate.QuietAfter+time.Second))
+
+	info := r.Get(e.ID).Info()
+	if info.State != wire.StateWaitingInput || !info.NeedsAttention {
+		t.Errorf("state = %q needs_attention = %v, want waiting_input and true",
+			info.State, info.NeedsAttention)
+	}
+}
