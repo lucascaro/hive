@@ -92,3 +92,16 @@ func TestTakeAcceptedFalseForOutOfOrderEvent(t *testing.T) {
 		t.Error("late tool_start applied but not marked accepted")
 	}
 }
+
+// TestTakeAcceptedFalseAfterExit: Apply drops every event once the
+// session has exited, so the registry must not broadcast one.
+func TestTakeAcceptedFalseAfterExit(t *testing.T) {
+	m, base := hooked(t)
+	m.Apply(Event{Kind: KindSessionEnd, Source: wire.StateSourceHook, At: base, Now: base})
+	m.TakeAccepted()
+	later := base.Add(time.Second)
+	m.Apply(Event{Kind: KindPing, Source: wire.StateSourceHook, At: later, Now: later})
+	if m.TakeAccepted() {
+		t.Error("an event dropped for an exited session was marked accepted")
+	}
+}

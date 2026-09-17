@@ -415,7 +415,9 @@ func (m *Machine) Apply(ev Event) bool {
 	}
 
 	before := m.Snapshot()
-	m.accepted, m.reportedAt = true, now
+	// Liveness counts even for a session that has exited (the tier
+	// clock below is refreshed too); acceptance waits for the exit check.
+	m.reportedAt = now
 
 	m.source = ev.Source
 	if sub {
@@ -444,6 +446,7 @@ func (m *Machine) Apply(ev Event) bool {
 	if m.state == wire.StateExited {
 		return false
 	}
+	m.accepted = true
 
 	if sub {
 		m.applySubagent(ev, now)
