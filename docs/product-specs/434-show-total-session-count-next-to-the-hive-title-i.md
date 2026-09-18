@@ -5,7 +5,7 @@ type: enhancement
 complexity: S
 priority: P3
 pr: 435
-stage: REVIEW
+stage: GATE
 ---
 
 # Show total session count next to the Hive title in the sidebar

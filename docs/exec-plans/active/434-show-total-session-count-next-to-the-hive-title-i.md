@@ -108,3 +108,7 @@ From `cmd/hivegui/frontend`:
 - **2026-09-18** — Plan approved (chat, first pass).
 - **2026-09-18** — Implemented: count portal in `SidebarHeaderControls`, `.brand-count` CSS, DOM + e2e tests, changeset.
 - **2026-09-18** — PR #435 opened.
+
+## PR convergence ledger
+
+- **2026-09-18 iter 1** — verdict: APPROVE; mergeable: MERGEABLE; findings_hash: empty; threads_open: 0; action: stop; head_sha: 2982d62.
