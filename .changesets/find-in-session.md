@@ -2,6 +2,7 @@
 type: added
 bump: minor
 issue: 431
+pr: 432
 ---
 
 Find text in a session with ⌘F (Ctrl+Shift+F on Windows and Linux). On a regular

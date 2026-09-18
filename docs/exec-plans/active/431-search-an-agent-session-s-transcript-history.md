@@ -3,6 +3,8 @@
 - **Spec:** [docs/product-specs/431-search-an-agent-session-s-transcript-history.md](../../product-specs/431-search-an-agent-session-s-transcript-history.md)
 - **Issue:** #431
 - **Status:** active
+- **PR:** [#432](https://github.com/lucascaro/hive/pull/432)
+- **Branch:** `feature/431-find-text-in-a-session`
 
 ## Summary
 
@@ -359,6 +361,7 @@ No third round was run: the pipeline allows one revise-and-recheck cycle, and lo
 - **2026-09-17** — Second opinion round 2: `revise` (confidence 8, 6 must-fix). All 6 applied. Drafter found an eighth independently (JSON-encoding cap hole).
 - **2026-09-17** — Operator feedback at the plan stop merged #430 into this feature behind one ⌘F binding. Spec rewritten, plan re-drafted, re-rendered.
 - **2026-09-17** — **Plan approved** (html, 2 rounds). Stage → IMPLEMENT.
+- **2026-09-17** — Implemented. Full suite green: 574 unit, 857 dom, 371 e2e, whole Go suite. PR [#432](https://github.com/lucascaro/hive/pull/432) opened. Stage → REVIEW.
 
 ## Open questions
 
