@@ -27,6 +27,7 @@ The *what* and *why* of work this project plans to do. Each spec describes user 
 | Issue | Title | PR | Shipped | Spec |
 |-------|-------|----|---------|------|
 | #431 | Find text in a session, including alt-screen agents | #432 | 2026-09-18 | [431-search-an-agent-session-s-transcript-history](431-search-an-agent-session-s-transcript-history.md) |
+| #434 | Show total session count next to the Hive title in the sidebar | #435 | 2026-09-18 | [434-show-total-session-count-next-to-the-hive-title-i](434-show-total-session-count-next-to-the-hive-title-i.md) |
 | #423 | Pi reports self-healing session state (no stale-turn guessing) | #424 | 2026-09-17 | [423-pi-self-healing-state-reports](423-pi-self-healing-state-reports.md) |
 | #428 | Activity grid: show the plan's tasks, not just the tool feed | #429 | 2026-09-17 | [428-activity-grid-tasks-first](428-activity-grid-tasks-first.md) |
 | #430 | Find text in a session with ⌘F | — | 2026-09-17 | [430-find-text-in-a-session-with-cmd-f](430-find-text-in-a-session-with-cmd-f.md) |
