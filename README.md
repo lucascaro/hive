@@ -284,6 +284,7 @@ build.sh           # macOS universal build
 | ⌘= / ⌘- / ⌘0 | Font size up / down / reset |
 | ⌘S | Toggle sidebar |
 | ⌘J / ⇧⌘J | Agent activity: the inspector panel beside the terminal (single view) or the activity grid (grid) / go to the activity grid from any view. Ctrl+Shift+J / Ctrl+Alt+Shift+J on Windows and Linux, where Ctrl+J is the terminal's newline |
+| ⌘F | Find in the active session. On a normal shell it searches the terminal's scrollback and highlights in place; on a full-screen agent (Claude, Pi), where the terminal keeps no scrollback, it searches that session's transcript on disk instead — so it finds text that scrolled away long ago. Ctrl+Shift+F on Windows and Linux, where Ctrl+F is the shell's forward-char |
 | ⇧⌘K / ⌘/ | Command palette / keyboard-shortcuts overlay |
 
 Full list in the app: **⌘/**. (Ctrl replaces ⌘ on Windows and Linux.)

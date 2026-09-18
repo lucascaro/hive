@@ -5,6 +5,8 @@ import (
 	"log"
 	"os"
 	"path/filepath"
+	"sort"
+	"strings"
 	"sync"
 )
 
@@ -81,4 +83,56 @@ func piSpawnArgs(sp SpawnInfo) []string {
 		return nil
 	}
 	return []string{"-e", path}
+}
+
+// encodePiSessionsDir mirrors pi's on-disk encoding for the per-cwd
+// transcript directory under ~/.pi/agent/sessions/: the leading "/" is
+// dropped, the remaining separators become "-", and the whole thing is
+// wrapped in a literal "--" at both ends.
+//
+// Deliberately NOT encodeClaudeProjectDir. Claude folds "." to "-" as
+// well; pi does not, so ".worktrees" stays ".worktrees". Reusing the
+// claude encoder here resolves to a directory that does not exist, and
+// the failure is silent — the session just looks like it has no
+// history. TestEncodePiSessionsDir pins the difference.
+func encodePiSessionsDir(cwd string) string {
+	s := filepath.ToSlash(filepath.Clean(cwd))
+	s = strings.TrimPrefix(s, "/")
+	s = strings.ReplaceAll(s, "/", "-")
+	return "--" + s + "--"
+}
+
+// piTranscriptPaths returns the transcript files pi wrote for
+// sessionID under cwd, oldest first, or nil when none exist.
+//
+// pi names each file "<timestamp>_<session-id>.jsonl" using the
+// --session-id it was given verbatim — Hive passes its own entry id
+// there (registry.appendSpawnArgs), so the suffix is an exact handle
+// rather than a heuristic. The timestamp prefix is pi's own and not
+// derivable, hence a glob rather than a join.
+//
+// A slice rather than a single path: nothing guarantees pi writes only
+// one file per id, and sorting by name puts them in timestamp order
+// for free. Observed reality today is one file per id.
+func piTranscriptPaths(sessionID, cwd string) []string {
+	if sessionID == "" || cwd == "" {
+		return nil
+	}
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return nil
+	}
+	dir := filepath.Join(home, ".pi", "agent", "sessions", encodePiSessionsDir(cwd))
+	// The id goes through filepath.Match as a literal, so an id
+	// containing a glob metacharacter would match the wrong files.
+	// Hive ids are uuids, but probe/test ids are arbitrary strings.
+	if strings.ContainsAny(sessionID, "*?[\\") {
+		return nil
+	}
+	hits, err := filepath.Glob(filepath.Join(dir, "*_"+sessionID+".jsonl"))
+	if err != nil || len(hits) == 0 {
+		return nil
+	}
+	sort.Strings(hits)
+	return hits
 }

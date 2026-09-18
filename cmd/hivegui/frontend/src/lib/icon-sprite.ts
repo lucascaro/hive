@@ -23,6 +23,7 @@ export const ICON_NAMES = [
   'single',
   'branch',
   'chevron-down',
+  'chevron-up',
   'chevron-right',
   'settings',
   'search',

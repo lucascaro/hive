@@ -77,6 +77,10 @@ import { initWorktrees } from './app/modals/worktrees.js';
 import { initQuickIdea, openQuickIdea } from './app/modals/quick-idea.js';
 import { initIdeaInbox, refreshIdeas } from './app/modals/idea-inbox.js';
 import { openHelpOverlay, initHelpOverlay } from './app/modals/help-overlay.js';
+import { initFindBox } from './app/find-box.js';
+import { getTerm } from './store/terms.js';
+import { openFindInSession } from './app/find-session.js';
+import { SearchTranscript, GetTranscriptLines } from './bridge.js';
 import { openWhatsNew, initWhatsNew } from './app/modals/whats-new.js';
 import { wireDaemonEvents, reconnectControl } from './app/events.js';
 import { flushSync } from 'react-dom';
@@ -229,6 +233,11 @@ const paletteCommands = [
     run: showActivityGrid,
   },
   {
+    id: 'find-in-session',
+    name: 'Find in Session',
+    run: openFindInSession,
+  },
+  {
     id: 'focus-active-session',
     name: 'Focus Active Session',
     run: focusActiveSession,
@@ -304,6 +313,16 @@ initWorktrees({
     openLauncher(projectId, { worktreePath, continueConversation }),
 });
 initHelpOverlay({ setFocusedTile, focusActiveTerm });
+// The find box talks to the daemon through the bridge and to the
+// terminal through SessionTerm; both are injected so find-box.ts stays
+// testable against a plain object.
+initFindBox({
+  searchTranscript: (id, query, max) => SearchTranscript(id, query, max),
+  getTranscriptLines: (id, reqID, center, count) =>
+    GetTranscriptLines(id, reqID, center, count),
+  term: (id) => getTerm(id) ?? null,
+  focusActiveTerm,
+});
 initQuickIdea({ setFocusedTile, refocusActiveTerm });
 initIdeaInbox({ setFocusedTile, refocusActiveTerm });
 initWhatsNew({ setFocusedTile, focusActiveTerm });

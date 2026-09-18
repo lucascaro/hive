@@ -35,6 +35,7 @@ import {
   namespacedKey,
 } from '../lib/collapsed.js';
 import { SEEN_KEY } from '../lib/whats-new.js';
+import type { FindSource } from '../lib/find.js';
 import { createNavHistory, type NavHistory } from '../lib/nav-history.js';
 import type { PhasePanel } from '../lib/phase-steps.js';
 import type { ModeHint } from '../lib/status.js';
@@ -667,6 +668,70 @@ export interface TileChromeState {
   // ready edge and leave a bare spinner for that window.
   phaseVisible: boolean;
   phasePanel: PhasePanel | null;
+  // The find box (spec 431): null when closed. Per-session rather than
+  // a global modals entry, because anyModalOpen() means "owns the
+  // keyboard app-wide" and a per-tile find box must not block the app.
+  find: FindState | null;
+}
+
+// FindState is one session's find box.
+//
+// `source` is chosen from the terminal's buffer type at open and
+// re-evaluated when the buffer changes, so an agent starting (or a vim
+// opening on a shell) switches the box over without closing it.
+//
+// `reqId` is a monotonic counter for window requests. Window responses
+// carry no query and two requests differing only in their centre share
+// a revision, so without it two in-flight windows can land out of order
+// and paint the wrong context around the active match.
+export interface FindState {
+  query: string;
+  source: FindSource;
+  index: number;
+  total: number;
+  /** The xterm addon caps its reported count at 1000. */
+  capped: boolean;
+  /** False until the first response lands, so the box shows pending. */
+  ready: boolean;
+  /** Empty when searchable; a wire.Transcript* reason otherwise. */
+  reason: string;
+  matches: TranscriptMatch[];
+  lines: TranscriptLine[];
+  lineStart: number;
+  totalLines: number;
+  reqId: number;
+}
+
+export interface TranscriptMatch {
+  line: number;
+  col: number;
+  len: number;
+  role?: string;
+  preview?: string;
+}
+
+export interface TranscriptLine {
+  line: number;
+  role?: string;
+  text: string;
+  truncated?: boolean;
+}
+
+export function initialFind(source: FindSource): FindState {
+  return {
+    query: '',
+    source,
+    index: 0,
+    total: 0,
+    capped: false,
+    ready: false,
+    reason: '',
+    matches: [],
+    lines: [],
+    lineStart: 0,
+    totalLines: 0,
+    reqId: 0,
+  };
 }
 
 export function initialTileChrome(phase: string) {
@@ -676,6 +741,7 @@ export function initialTileChrome(phase: string) {
     deadReason: '',
     phaseVisible: false,
     phasePanel: null,
+    find: null,
   } satisfies TileChromeState;
 }
 

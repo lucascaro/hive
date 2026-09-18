@@ -7,6 +7,8 @@ import { Terminal } from '@xterm/xterm';
 import { FitAddon } from '@xterm/addon-fit';
 import { WebglAddon } from '@xterm/addon-webgl';
 import { WebLinksAddon } from '@xterm/addon-web-links';
+import { SearchAddon } from '@xterm/addon-search';
+import { onBufferChange as onFindBufferChange } from './find-box.js';
 
 import { monoFontFamily, xtermTheme } from '../theme/theme';
 import {
@@ -94,6 +96,24 @@ import {
 import { clearAttention, noteUserInput } from './events.js';
 import { updateAppTitle } from './view.js';
 import { setActive, refocusActiveTerm } from './focus.js';
+
+// Plain substring, case-insensitive: regex, whole-word and
+// case-sensitive toggles are explicit non-goals for this pass (spec 431).
+// decorations light every match, not just the active one.
+const SEARCH_OPTS = {
+  regex: false,
+  wholeWord: false,
+  caseSensitive: false,
+  decorations: {
+    matchBackground: '#4b5563',
+    activeMatchBackground: '#f59e0b',
+    matchOverviewRuler: '#4b5563',
+    activeMatchColorOverviewRuler: '#f59e0b',
+  },
+} as const;
+
+// @xterm/addon-search hard-caps the result count it reports.
+const SEARCH_RESULT_CAP = 1000;
 
 // Live read of the store. A function, not a destructured snapshot: this
 // module runs inside event handlers and must never cache a slice across
@@ -205,6 +225,22 @@ export class SessionTerm {
 
   // Scroll follow-intent.
   _followBottom = true;
+  // _searchActive: the find box owns the viewport (spec 431).
+  //
+  // findNext moves the viewport and four separate sites would drag it
+  // back. Clearing _followBottom alone does not cover them — it
+  // *enables* scrollback.ts's replay-done restore branch, and it does
+  // not survive resetFollowIntent(), which any mid-search re-attach
+  // calls. The flag guards all four explicitly.
+  _searchActive = false;
+  search!: SearchAddon;
+  // The query the addon currently holds decorations for, so an
+  // unchanged match set is never re-decorated (a visible flash on a
+  // streaming session).
+  _searchQuery = '';
+  _lastSearchResult: { resultIndex: number; resultCount: number } | null = null;
+  // The follow state to put back when the box closes.
+  _followBeforeSearch = true;
   _lastUserScrollTs = -Infinity;
   _lastReplayTs = -Infinity;
   _lastViewportY = 0;
@@ -288,6 +324,27 @@ export class SessionTerm {
     });
     this.fit = new FitAddon();
     this.term.loadAddon(this.fit);
+    this.search = new SearchAddon();
+    this.term.loadAddon(this.search);
+    this._wireSearchResults();
+    // Recreate the addon on every buffer transition.
+    //
+    // Defence in depth for a hard defect found by spec 430's PoC: ANY
+    // search performed while the alternate buffer is active permanently
+    // poisons the addon for the normal buffer — clearDecorations() does
+    // not clear it, an empty-query search does not clear it, only a
+    // fresh instance recovers. Untreated it reads as "search a Claude
+    // session, Claude exits, search again, silently find nothing,
+    // forever".
+    //
+    // The primary defence is that the find box never asks the addon to
+    // search while the alt buffer is active (lib/find.ts's
+    // mayUseSearchAddon); this makes a slip non-permanent rather than
+    // fatal, and also hands the box a clean addon per transition.
+    this.term.buffer.onBufferChange(() => {
+      this._recreateSearchAddon();
+      onFindBufferChange(this.info.id, this.term.buffer.active.type);
+    });
     this.term.open(this.body);
 
     // Single source of truth for "tile geometry changed". Fires post-
@@ -778,6 +835,7 @@ export class SessionTerm {
       // scrollToBottom → onScroll re-entry.
       if (
         this._followBottom &&
+        !this._searchActive &&
         !this._repinning &&
         buf.baseY - to > STICKY_BOTTOM_LINES &&
         !userDriven
@@ -1069,7 +1127,10 @@ export class SessionTerm {
       // bar. The disconnect is surfaced once ("control disconnected").
       ResizeSession(this.info.id, this.term.cols, this.term.rows);
     }
-    if (wasAtBottom) this.term.scrollToBottom();
+    // Not while the find box owns the viewport: a sidebar drag or a
+    // window resize mid-search would otherwise yank the reader off the
+    // match they searched for.
+    if (wasAtBottom && !this._searchActive) this.term.scrollToBottom();
 
     // If the column count changed materially relative to the
     // *baseline* (the cols active at the last replay, or initial
@@ -1142,7 +1203,9 @@ export class SessionTerm {
         // otherwise leave the skip decision (fresh) and the restore decision
         // (stale) disagreeing — e.g. a user who scrolled up mid-debounce gets
         // a replay AND gets yanked back to the bottom by its done handler.
-        const following = this._followBottom;
+        // While searching, the replay must not want the bottom: the
+        // reader's position is the match, not the tail.
+        const following = this._followBottom && !this._searchActive;
         this._replayWantsBottom = following;
         const { replay, baseline } = decideResizeReplay({
           bufferType: this.term.buffer.active.type,
@@ -1291,6 +1354,108 @@ export class SessionTerm {
     this.term.write(this.decoder.decode(bytes, { stream: true }));
   }
 
+  /** The active buffer type, for the find box's source selection. */
+  bufferType(): string | undefined {
+    return this.term.buffer?.active?.type;
+  }
+
+  /**
+   * Claims the viewport for the find box. Saves the follow state so
+   * close() can put it back.
+   */
+  beginSearch() {
+    if (this._searchActive) return;
+    this._followBeforeSearch = this._followBottom;
+    this._searchActive = true;
+    this._followBottom = false;
+  }
+
+  /** Releases the claim and restores the pre-search follow state. */
+  endSearch() {
+    if (!this._searchActive) return;
+    this._searchActive = false;
+    this._followBottom = this._followBeforeSearch;
+    if (this._followBottom) {
+      // Deferred: close() also restores terminal focus, and doing both
+      // in one frame is what flakes the focus/renderer race.
+      setTimeout(() => {
+        if (!this._searchActive) this.term.scrollToBottom();
+      }, 250);
+    }
+  }
+
+  searchNext(query: string) {
+    return this._runSearch(query, true);
+  }
+
+  searchPrev(query: string) {
+    return this._runSearch(query, false);
+  }
+
+  clearSearch() {
+    this._searchQuery = '';
+    try {
+      this.search?.clearDecorations();
+    } catch {
+      /* addon may be mid-recreation */
+    }
+  }
+
+  _runSearch(query: string, forward: boolean) {
+    const empty = { index: 0, total: 0, capped: false };
+    if (!query || !this.search) return empty;
+    // The invariant that keeps the addon usable for the rest of this
+    // session's life. The find box should never route here on the alt
+    // buffer; this is the backstop.
+    if (this.term.buffer.active.type === 'alternate') return empty;
+
+    let found = false;
+    try {
+      found = forward
+        ? this.search.findNext(query, SEARCH_OPTS)
+        : this.search.findPrevious(query, SEARCH_OPTS);
+    } catch {
+      return empty;
+    }
+    this._searchQuery = query;
+    const r = this._lastSearchResult;
+    if (!found || !r) return empty;
+    // The addon hard-caps resultCount at 1000; a bare 1000 would be a
+    // confidently wrong number, so the caller renders "1000+".
+    return {
+      index: r.resultIndex,
+      total: r.resultCount,
+      capped: r.resultCount >= SEARCH_RESULT_CAP,
+    };
+  }
+
+  _recreateSearchAddon() {
+    try {
+      this.search?.dispose();
+    } catch {
+      /* already disposed */
+    }
+    this.search = new SearchAddon();
+    this.term.loadAddon(this.search);
+    this._wireSearchResults();
+    // Re-apply the active query in the same frame: recreation
+    // necessarily drops decorations, and without this every alt-screen
+    // transition leaves a visible gap in the highlighting.
+    if (this._searchQuery && this.term.buffer.active.type !== 'alternate') {
+      try {
+        this.search.findNext(this._searchQuery, SEARCH_OPTS);
+      } catch {
+        /* nothing to re-apply */
+      }
+    }
+  }
+
+  _wireSearchResults() {
+    this.search.onDidChangeResults((r) => {
+      this._lastSearchResult = r ?? null;
+    });
+  }
+
   destroy() {
     // Intentionally silent: destroy() tears down a session that's already
     // gone; a failed CloseAttach has nothing for the user to act on.
@@ -1321,6 +1486,15 @@ export class SessionTerm {
       this._hasWebglSlot = false;
     }
     this.webgl = null;
+    // Before term.dispose(): a search re-run landing after the terminal
+    // is gone would call into a disposed addon. Same reasoning as the
+    // _revealRaf cancellation above.
+    try {
+      this.search?.dispose();
+    } catch {
+      /* already gone */
+    }
+    this._lastSearchResult = null;
     this.term.dispose();
     dropTileChrome(this.info.id);
     this.host.remove();

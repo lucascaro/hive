@@ -162,6 +162,13 @@ export interface ProjectInfo {
 // accepted where lib/scrollback.ts wants a ReplayTerm — events.ts hands
 // tiles straight to handleScrollbackEvent/abandonReplays, and the
 // alternative was a cast at each of those five call sites.
+/** One search step's result. `capped` marks the addon's 1000 ceiling. */
+export interface SearchHit {
+  index: number;
+  total: number;
+  capped: boolean;
+}
+
 export interface TermTile extends ReplayFlags {
   host: HTMLElement;
   // The chrome mount points. components/TileChrome.tsx portals the
@@ -192,6 +199,15 @@ export interface TermTile extends ReplayFlags {
         };
       })
     | null;
+  // The find box (spec 431). Optional for the same reason as `term`:
+  // the DOM-test stubs render no terminal, so there is nothing to
+  // search. Implemented by SessionTerm.
+  bufferType?(): string | undefined;
+  beginSearch?(): void;
+  endSearch?(): void;
+  searchNext?(query: string): SearchHit;
+  searchPrev?(query: string): SearchHit;
+  clearSearch?(): void;
   // Dead-session overlay. Required for the same reason as `attached`:
   // session-term.ts:613 initializes it and setDead writes it on every
   // transition, so readers branch on the value, never on absence.

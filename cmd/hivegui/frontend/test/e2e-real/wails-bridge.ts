@@ -400,6 +400,33 @@ export async function RequestReloadAllGUIs() {
 export async function GetActivity(id: string) {
   return call('GetActivity', { session_id: id });
 }
+// Transcript search (spec 431). The ws-bridge names these verbs
+// exactly as the Wails methods, and the daemon answers on the control
+// stream as transcript:matches / transcript:lines.
+export async function SearchTranscript(
+  id: string,
+  query: string,
+  maxMatches: number,
+) {
+  return call('SearchTranscript', {
+    session_id: id,
+    query,
+    max_matches: maxMatches,
+  });
+}
+export async function GetTranscriptLines(
+  id: string,
+  reqID: number,
+  center: number,
+  count: number,
+) {
+  return call('GetTranscriptLines', {
+    session_id: id,
+    req_id: reqID,
+    center,
+    count,
+  });
+}
 export async function SetSessionAttention(id: string, want: boolean) {
   return call('SetSessionAttention', { session_id: id, want: !!want });
 }

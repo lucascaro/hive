@@ -52,6 +52,31 @@ var claudeSessionExists = func(sessionID, cwd string) bool {
 	return err == nil
 }
 
+// claudeTranscriptPaths returns the transcript file claude writes for
+// sessionID under cwd, or nil when it cannot be located. Claude pins
+// the conversation to the id Hive chose (SessionIDFlag), so the path is
+// an exact derivation rather than a search.
+//
+// Layout: ~/.claude/projects/<encoded-cwd>/<id>.jsonl.
+//
+// A non-existent file yields nil so the caller can tell "this agent
+// keeps no transcripts" from "this agent should have one and it is not
+// there" — the two render differently in the GUI.
+func claudeTranscriptPaths(sessionID, cwd string) []string {
+	if sessionID == "" || cwd == "" {
+		return nil
+	}
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return nil
+	}
+	p := filepath.Join(home, ".claude", "projects", encodeClaudeProjectDir(cwd), sessionID+".jsonl")
+	if _, err := os.Stat(p); err != nil {
+		return nil
+	}
+	return []string{p}
+}
+
 // SetClaudeSessionExistsForTest replaces the on-disk transcript probe
 // with a stub. Returns a restore function to defer in tests. Lives in
 // a regular .go file (not _test.go) so it's reachable from other

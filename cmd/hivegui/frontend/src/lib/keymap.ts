@@ -201,3 +201,26 @@ export function activityKey(
   if (!e.ctrlKey || e.metaKey || !e.shiftKey) return null;
   return e.altKey ? 'grid' : 'toggle';
 }
+
+// findKey maps the in-session find chord (spec 431):
+//
+//   macOS          ⌘F  — but see below: it arrives as a menu event
+//   elsewhere      Ctrl+Shift+F
+//
+// Not plain Ctrl+F off macOS. xterm converts Ctrl+letter to a C0
+// control char, so Ctrl+F is 0x06 — readline's forward-char, live in
+// bash, zsh and every agent's input line. Taking it would break moving
+// the cursor right. Same reasoning as activityKey's Ctrl+Shift+J.
+//
+// On macOS this returns false for ⌘F on purpose. The native menu
+// accelerator intercepts the key before the webview (see the ⌘/ note in
+// app/keyboard.ts), so the real entry point there is the
+// `menu:find-in-session` event, and a keydown branch would be dead code
+// that only fires in tests.
+//
+// Dispatched BEFORE the cmdOrCtrl() gate, like activityKey.
+export function findKey(e: KeyEventLike, isMac: boolean): boolean {
+  if (!(e.code === 'KeyF' || e.key === 'f' || e.key === 'F')) return false;
+  if (isMac) return false;
+  return Boolean(e.ctrlKey && e.shiftKey && !e.metaKey && !e.altKey);
+}

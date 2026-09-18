@@ -105,6 +105,13 @@ function activityGrid(isMac: boolean): string {
     : ctrlAlt(false, 'J', { shift: true });
 }
 
+// The find chord (lib/keymap.ts findKey): ⌘F on macOS, but
+// Ctrl+Shift+F elsewhere, because plain Ctrl+F is 0x06 — readline's
+// forward-char, live in every shell and agent input line.
+function findInSession(isMac: boolean): string {
+  return mod(isMac, 'F', { shift: !isMac });
+}
+
 function arrowSeq(isMac: boolean, ...keys: string[]): string {
   return keys.map((k) => keyLabel(k, isMac)).join(isMac ? '' : '/');
 }
@@ -184,6 +191,10 @@ export function shortcutGroups({ isMac }: { isMac: boolean }): ShortcutGroup[] {
           label: 'Agent activity: panel (single view) / activity grid (grid)',
         },
         { keys: activityGrid(isMac), label: 'Agent activity grid' },
+        {
+          keys: findInSession(isMac),
+          label: 'Find in session (transcript on full-screen agents)',
+        },
         {
           keys: `${m('=')} / ${m('-')} / ${m('0')}`,
           label: 'Zoom in / out / reset',
@@ -287,6 +298,7 @@ export function paletteShortcuts({
     'toggle-all-grid': m('G', { shift: true }),
     'toggle-activity': activityToggle(isMac),
     'activity-grid': activityGrid(isMac),
+    'find-in-session': findInSession(isMac),
     'focus-active-session': m('enter'),
     'zoom-in': m('='),
     'zoom-out': m('-'),

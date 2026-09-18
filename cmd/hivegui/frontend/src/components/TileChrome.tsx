@@ -27,6 +27,7 @@
 // live host, never the SessionTerm values. Observable, not reactive.
 import { activityRenderers } from './activity/registry.js';
 import { createPortal } from 'react-dom';
+import { FindBox } from './FindBox.js';
 import { useRef, type ReactNode } from 'react';
 
 import { UpdateSession } from '../bridge.js';
@@ -81,6 +82,13 @@ function TileChrome({ id }: { id: string }): ReactNode {
       {term.overlays ? (
         <ActivityTileMount id={id} host={term.overlays} />
       ) : null}
+      {/* The find box is per-session state, so it portals into this
+          tile's overlay host rather than into a singleton dialog root:
+          anyModalOpen() means "owns the keyboard app-wide", and a
+          per-tile find box must not block the rest of the app. */}
+      {term.overlays && chrome.find
+        ? createPortal(<FindBox id={id} find={chrome.find} />, term.overlays)
+        : null}
     </>
   );
 }

@@ -1,0 +1,199 @@
+import { describe, expect, it } from 'vitest';
+import {
+  findSourceFor,
+  formatCount,
+  highlightSegments,
+  mayUseSearchAddon,
+  stepIndex,
+  unavailableMessage,
+} from '../../src/lib/find';
+import { findKey } from '../../src/lib/keymap';
+
+describe('findSourceFor', () => {
+  it('routes the alternate buffer to the transcript', () => {
+    expect(findSourceFor('alternate')).toBe('transcript');
+  });
+
+  it('routes the normal buffer to the terminal buffer', () => {
+    expect(findSourceFor('normal')).toBe('buffer');
+  });
+
+  // An unknown buffer type must not take the terminal away from the
+  // user; buffer search degrades to finding less, never to finding the
+  // wrong thing.
+  it('treats an unknown or missing buffer type as normal', () => {
+    expect(findSourceFor(undefined)).toBe('buffer');
+    expect(findSourceFor('')).toBe('buffer');
+    expect(findSourceFor('something-new')).toBe('buffer');
+  });
+});
+
+describe('mayUseSearchAddon', () => {
+  // The invariant that makes the addon-poisoning defect unreachable:
+  // any search run while the alternate buffer is active permanently
+  // breaks the addon for the normal buffer for the rest of the
+  // session's life.
+  it('is false on the alternate buffer', () => {
+    expect(mayUseSearchAddon('alternate')).toBe(false);
+  });
+
+  it('is true on the normal buffer', () => {
+    expect(mayUseSearchAddon('normal')).toBe(true);
+    expect(mayUseSearchAddon(undefined)).toBe(true);
+  });
+});
+
+describe('highlightSegments', () => {
+  it('splits around a single match', () => {
+    expect(highlightSegments('a needle here', [{ col: 2, len: 6 }])).toEqual([
+      { text: 'a ', hit: false, at: -1, start: 0 },
+      { text: 'needle', hit: true, at: 0, start: 2 },
+      { text: ' here', hit: false, at: -1, start: 8 },
+    ]);
+  });
+
+  it('handles a match at the start of the line', () => {
+    expect(highlightSegments('needle here', [{ col: 0, len: 6 }])).toEqual([
+      { text: 'needle', hit: true, at: 0, start: 0 },
+      { text: ' here', hit: false, at: -1, start: 6 },
+    ]);
+  });
+
+  it('handles a match at the end of the line', () => {
+    expect(highlightSegments('a needle', [{ col: 2, len: 6 }])).toEqual([
+      { text: 'a ', hit: false, at: -1, start: 0 },
+      { text: 'needle', hit: true, at: 0, start: 2 },
+    ]);
+  });
+
+  it('numbers multiple matches on one line', () => {
+    const segs = highlightSegments('x y x', [
+      { col: 0, len: 1 },
+      { col: 4, len: 1 },
+    ]);
+    expect(segs.filter((s) => s.hit).map((s) => s.at)).toEqual([0, 1]);
+  });
+
+  it('returns the whole line when there are no matches', () => {
+    expect(highlightSegments('plain', [])).toEqual([
+      { text: 'plain', hit: false, at: -1, start: 0 },
+    ]);
+  });
+
+  // A stale match list paired with a fresh line must degrade to
+  // highlighting nothing, never to a crash or a wrong slice.
+  it('skips out-of-range and overlapping matches', () => {
+    expect(highlightSegments('short', [{ col: 99, len: 3 }])).toEqual([
+      { text: 'short', hit: false, at: -1, start: 0 },
+    ]);
+    expect(highlightSegments('short', [{ col: 0, len: 0 }])).toEqual([
+      { text: 'short', hit: false, at: -1, start: 0 },
+    ]);
+    const overlapping = highlightSegments('abcdef', [
+      { col: 0, len: 3 },
+      { col: 1, len: 3 },
+    ]);
+    expect(overlapping.filter((s) => s.hit)).toHaveLength(1);
+  });
+
+  // A match running past the end of the line is clipped, not dropped:
+  // the daemon truncates long lines, so the tail of a match can be cut.
+  it('clips a match that runs past the end of the line', () => {
+    expect(highlightSegments('abc', [{ col: 1, len: 99 }])).toEqual([
+      { text: 'a', hit: false, at: -1, start: 0 },
+      { text: 'bc', hit: true, at: 0, start: 1 },
+    ]);
+  });
+});
+
+describe('formatCount', () => {
+  it('is 1-based for the user', () => {
+    expect(formatCount(0, 17)).toBe('1/17');
+    expect(formatCount(16, 17)).toBe('17/17');
+  });
+
+  it('renders the empty case', () => {
+    expect(formatCount(0, 0)).toBe('0/0');
+  });
+
+  // The xterm addon hard-caps its reported count at 1000; a bare 1000
+  // would be a confidently wrong number.
+  it('marks a capped total', () => {
+    expect(formatCount(0, 1000, true)).toBe('1/1000+');
+  });
+});
+
+describe('stepIndex', () => {
+  it('wraps forward past the end', () => {
+    expect(stepIndex(2, 3, 1)).toBe(0);
+  });
+
+  it('wraps backward past the start', () => {
+    expect(stepIndex(0, 3, -1)).toBe(2);
+  });
+
+  it('is a no-op with no matches', () => {
+    expect(stepIndex(0, 0, 1)).toBe(0);
+  });
+});
+
+describe('unavailableMessage', () => {
+  // "This agent keeps none" and "it should have one and none was found"
+  // must not read the same: the second is transient, and conflating
+  // them tells a real Claude session it has no history.
+  it('distinguishes an unsupported agent from a missing file', () => {
+    expect(unavailableMessage('unsupported_agent')).not.toBe(
+      unavailableMessage('no_transcript_file'),
+    );
+  });
+
+  it('has a fallback for an unknown reason', () => {
+    expect(unavailableMessage('something-new')).toBeTruthy();
+  });
+});
+
+describe('findKey', () => {
+  const ev = (o: Partial<Record<string, unknown>> = {}) => ({
+    key: 'f',
+    code: 'KeyF',
+    metaKey: false,
+    ctrlKey: false,
+    altKey: false,
+    shiftKey: false,
+    ...o,
+  });
+
+  it('fires on Ctrl+Shift+F off macOS', () => {
+    expect(findKey(ev({ ctrlKey: true, shiftKey: true }), false)).toBe(true);
+  });
+
+  // Plain Ctrl+F is 0x06 — readline's forward-char, live in every
+  // agent's input line.
+  it('never fires on plain Ctrl+F', () => {
+    expect(findKey(ev({ ctrlKey: true }), false)).toBe(false);
+    expect(findKey(ev({ ctrlKey: true }), true)).toBe(false);
+  });
+
+  // On macOS the native menu accelerator intercepts before the webview,
+  // so a keydown branch there would be dead code that only fires in
+  // tests.
+  it('does not fire on macOS, where the menu owns the chord', () => {
+    expect(findKey(ev({ metaKey: true }), true)).toBe(false);
+    expect(findKey(ev({ metaKey: true, shiftKey: true }), true)).toBe(false);
+  });
+
+  it('ignores other keys and stray modifiers', () => {
+    expect(
+      findKey(
+        ev({ key: 'g', code: 'KeyG', ctrlKey: true, shiftKey: true }),
+        false,
+      ),
+    ).toBe(false);
+    expect(
+      findKey(ev({ ctrlKey: true, shiftKey: true, altKey: true }), false),
+    ).toBe(false);
+    expect(
+      findKey(ev({ ctrlKey: true, shiftKey: true, metaKey: true }), false),
+    ).toBe(false);
+  });
+});

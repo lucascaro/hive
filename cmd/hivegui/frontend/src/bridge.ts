@@ -28,6 +28,8 @@ export {
   UpdateSession,
   SetSessionAttention,
   GetActivity,
+  SearchTranscript,
+  GetTranscriptLines,
   ListAgents,
   ListCustomAgents,
   SaveCustomAgents,

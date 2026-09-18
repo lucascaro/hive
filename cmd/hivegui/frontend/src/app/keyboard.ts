@@ -62,6 +62,8 @@ import {
 } from './modals/choice-dialog.js';
 import { trapFocus } from '../lib/focus-trap.js';
 import { inlineRenameActive, cancelInlineRename } from './inline-rename.js';
+import { findKey } from '../lib/keymap.js';
+import { findBoxActive, toggleFindInSession } from './find-session.js';
 import {
   openHelpOverlay,
   closeHelpOverlay,
@@ -152,6 +154,15 @@ window.addEventListener(
     // stopPropagation cannot win. Without this, Escape inside a rename
     // in the worktree browser closed the whole panel and silently
     // discarded the edit.
+    // The find box owns the keyboard while its input has focus. This
+    // gate, not the input's own listener, is the mechanism: this window
+    // listener is capture-phase, so a capture stopPropagation() on the
+    // input could not stop it. Escape and Enter are handled by the box
+    // itself; ⌘A/⌘C/⌘V fall through as ordinary text editing.
+    if (findBoxActive()) {
+      if (e.key === 'Escape' || e.key === 'Enter') return;
+      if (!cmdOrCtrl(e)) return;
+    }
     if (inlineRenameActive()) {
       if (e.key === 'Escape') {
         e.preventDefault();
@@ -388,6 +399,17 @@ window.addEventListener(
       swallow();
       if (act === 'toggle') toggleActivity();
       else showActivityGrid();
+      return;
+    }
+
+    // Find in session (⌘F on macOS via the native menu; Ctrl+Shift+F
+    // elsewhere). Before the gate for the same reason as activityKey:
+    // off macOS this is not a plain Ctrl chord, and plain Ctrl+F is
+    // 0x06 — readline's forward-char — which must keep reaching the
+    // terminal.
+    if (findKey(e, isMac)) {
+      swallow();
+      toggleFindInSession();
       return;
     }
 
@@ -884,6 +906,7 @@ const menuActions = {
   'menu:toggle-project-grid': toggleProjectGrid,
   'menu:toggle-all-grid': toggleAllGrid,
   'menu:toggle-activity': toggleActivity,
+  'menu:find-in-session': toggleFindInSession,
   'menu:activity-grid': showActivityGrid,
   'menu:next-session': () => navSession(+1),
   'menu:prev-session': () => navSession(-1),

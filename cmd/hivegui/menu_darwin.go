@@ -108,6 +108,18 @@ func buildAppMenu(a *App) *menu.Menu {
 	view.AddText("Zoom Out", keys.CmdOrCtrl("-"), emit("menu:zoom-out"))
 	view.AddText("Actual Size", keys.CmdOrCtrl("0"), emit("menu:zoom-reset"))
 	view.AddSeparator()
+	// Find lives under View rather than Edit because Edit is Wails'
+	// stock menu.EditMenu() (appended above) — it gives us Cut / Copy /
+	// Paste / Select All for free and there is no supported way to add
+	// an item to it. View is the next-best home.
+	//
+	// This menu item is the REAL entry point for ⌘F on macOS: the native
+	// accelerator intercepts the key before the webview, so keymap.ts's
+	// findKey() deliberately never fires here. It is a toggle for the
+	// same reason as the shortcuts overlay — the accelerator fires on
+	// every press, and a second ⌘F must not stack a second box.
+	view.AddText("Find in Session…", keys.CmdOrCtrl("f"), emit("menu:find-in-session"))
+	view.AddSeparator()
 	view.AddText("Toggle Sidebar", keys.CmdOrCtrl("s"), emit("menu:toggle-sidebar"))
 	view.AddSeparator()
 	view.AddText("Toggle Project Grid", keys.CmdOrCtrl("g"), emit("menu:toggle-project-grid"))

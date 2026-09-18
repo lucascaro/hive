@@ -16,6 +16,7 @@
     <path d="M7 8v8M17 9v1a4 4 0 0 1-4 4H9"/>
   </symbol>
   <symbol id="hv-chevron-down" viewBox="0 0 24 24"><path d="M6 9l6 6 6-6"/></symbol>
+  <symbol id="hv-chevron-up" viewBox="0 0 24 24"><path d="M6 15l6-6 6 6"/></symbol>
   <symbol id="hv-chevron-right" viewBox="0 0 24 24"><path d="M9 6l6 6-6 6"/></symbol>
   <symbol id="hv-settings" viewBox="0 0 24 24">
     <circle cx="12" cy="12" r="3.2"/>

@@ -169,6 +169,20 @@ const (
 	// bytes, and the activity grid wants every session anyway.
 	FrameGetActivity FrameType = 0x2b // C → S, JSON, control
 	FrameActivity    FrameType = 0x2c // S → C, JSON, control
+
+	// Transcript search — find text in an agent's on-disk conversation
+	// transcript. The daemon searches and answers with capped match
+	// anchors plus, separately, a bounded window of lines around one
+	// match. The file is never shipped whole: a frame is capped at
+	// MaxPayload and real transcripts reach tens of MB.
+	//
+	// Control-mode only, like GET_ACTIVITY. Letting an agent running
+	// inside a session read its own transcript is a separate decision
+	// with its own privacy question.
+	FrameSearchTranscript   FrameType = 0x2d // C → S, JSON, control
+	FrameTranscriptMatches  FrameType = 0x2e // S → C, JSON, control
+	FrameGetTranscriptLines FrameType = 0x2f // C → S, JSON, control
+	FrameTranscriptLines    FrameType = 0x30 // S → C, JSON, control
 )
 
 func (t FrameType) String() string {
@@ -261,6 +275,14 @@ func (t FrameType) String() string {
 		return "GET_ACTIVITY"
 	case FrameActivity:
 		return "ACTIVITY"
+	case FrameSearchTranscript:
+		return "SEARCH_TRANSCRIPT"
+	case FrameTranscriptMatches:
+		return "TRANSCRIPT_MATCHES"
+	case FrameGetTranscriptLines:
+		return "GET_TRANSCRIPT_LINES"
+	case FrameTranscriptLines:
+		return "TRANSCRIPT_LINES"
 	default:
 		return fmt.Sprintf("UNKNOWN(0x%02x)", byte(t))
 	}

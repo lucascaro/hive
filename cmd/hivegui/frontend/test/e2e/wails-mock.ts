@@ -1043,6 +1043,110 @@ export async function GetActivity(id: string) {
   return '';
 }
 
+// Transcript search (spec 431). The mock owns a per-session transcript
+// so a spec can set one up and drive the find box end to end; sessions
+// without one answer "unsupported_agent", which is exactly what the
+// daemon says for a plain shell.
+type MockTranscript = { lines: { line: number; role?: string; text: string }[] };
+const transcriptById = new Map<string, MockTranscript>();
+
+export async function SearchTranscript(
+  id: string,
+  query: string,
+  maxMatches: number,
+) {
+  maybeFail('SearchTranscript');
+  const tr = transcriptById.get(id);
+  setTimeout(() => {
+    if (!tr) {
+      emit(
+        'transcript:matches',
+        JSON.stringify({
+          session_id: id,
+          query,
+          available: false,
+          reason: 'unsupported_agent',
+        }),
+      );
+      return;
+    }
+    const needle = query.toLowerCase();
+    const matches: Record<string, unknown>[] = [];
+    if (needle) {
+      for (const ln of tr.lines) {
+        const hay = ln.text.toLowerCase();
+        let from = 0;
+        for (;;) {
+          const at = hay.indexOf(needle, from);
+          if (at < 0 || matches.length >= maxMatches) break;
+          matches.push({
+            line: ln.line,
+            col: at,
+            len: query.length,
+            role: ln.role,
+            preview: ln.text,
+          });
+          from = at + needle.length;
+        }
+      }
+    }
+    emit(
+      'transcript:matches',
+      JSON.stringify({
+        session_id: id,
+        query,
+        available: true,
+        total: matches.length,
+        total_lines: tr.lines.length,
+        matches,
+      }),
+    );
+  }, 0);
+  return '';
+}
+
+export async function GetTranscriptLines(
+  id: string,
+  reqID: number,
+  center: number,
+  count: number,
+) {
+  maybeFail('GetTranscriptLines');
+  const tr = transcriptById.get(id);
+  setTimeout(() => {
+    if (!tr) {
+      emit(
+        'transcript:lines',
+        JSON.stringify({
+          session_id: id,
+          req_id: reqID,
+          available: false,
+          reason: 'unsupported_agent',
+        }),
+      );
+      return;
+    }
+    // Same centre-and-clamp the daemon applies, so a spec asserting on
+    // `start` is asserting the real contract.
+    const n = Math.min(count, tr.lines.length);
+    let start = center - Math.floor(n / 2);
+    if (start < 0) start = 0;
+    if (start > tr.lines.length - n) start = tr.lines.length - n;
+    emit(
+      'transcript:lines',
+      JSON.stringify({
+        session_id: id,
+        req_id: reqID,
+        start,
+        total_lines: tr.lines.length,
+        available: true,
+        lines: tr.lines.slice(start, start + n),
+      }),
+    );
+  }, 0);
+  return '';
+}
+
 export async function SetSessionAttention(id: string, want: boolean) {
   maybeFail('SetSessionAttention');
   const s = state.sessions.find((x) => x.id === id);
@@ -1352,6 +1456,12 @@ if (typeof window !== 'undefined') {
     },
     setActivity(id: string, activity: MockActivity) {
       activityById.set(id, activity);
+    },
+    /** Gives a session a transcript so ⌘F can search it. */
+    setTranscript(id: string, texts: string[], role = 'assistant') {
+      transcriptById.set(id, {
+        lines: texts.map((text, i) => ({ line: i, role, text })),
+      });
     },
     emitActivity(msg: Record<string, unknown>) {
       emit('activity:event', JSON.stringify(msg));

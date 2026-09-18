@@ -648,6 +648,35 @@ func (a *App) GetActivity(sessionID string) error {
 	return cs.WriteJSON(wire.FrameGetActivity, wire.GetActivityReq{SessionID: sessionID})
 }
 
+// SearchTranscript asks the daemon to search one session's agent
+// transcript. The answer arrives as the "transcript:matches" event.
+//
+// The daemon searches rather than handing over the file: a frame is
+// capped at 1 MiB and real transcripts reach tens of MB.
+func (a *App) SearchTranscript(sessionID string, query string, maxMatches int) error {
+	cs, err := a.requireControl()
+	if err != nil {
+		return err
+	}
+	return cs.WriteJSON(wire.FrameSearchTranscript, wire.SearchTranscriptReq{
+		SessionID: sessionID, Query: query, MaxMatches: maxMatches,
+	})
+}
+
+// GetTranscriptLines asks for a window of transcript lines centered on
+// one match. reqID is echoed back so the caller can discard a stale
+// response: two windows differing only in center carry no other
+// distinguishing field and can land out of order.
+func (a *App) GetTranscriptLines(sessionID string, reqID int, center int, count int) error {
+	cs, err := a.requireControl()
+	if err != nil {
+		return err
+	}
+	return cs.WriteJSON(wire.FrameGetTranscriptLines, wire.GetTranscriptLinesReq{
+		SessionID: sessionID, ReqID: reqID, Center: center, Count: count,
+	})
+}
+
 // AddIdea files one idea. sessionID is the session it was captured
 // from and may be empty; projectID may be empty too, in which case the
 // daemon resolves it from sessionID's live registry entry. An empty
