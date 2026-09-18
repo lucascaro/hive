@@ -377,6 +377,50 @@ func TestCacheFullReparseWhenFileShrinks(t *testing.T) {
 	}
 }
 
+// A forked Claude session resolves to two files, original then fork.
+// Growth in the last one is a tail append; growth or shrinkage in an
+// earlier one shifts every later index and must force a full re-parse
+// rather than appending out of order or duplicating lines.
+func TestCacheMultiPathRefresh(t *testing.T) {
+	dir := t.TempDir()
+	a := writeFile(t, dir, "a.jsonl", rec("a1"))
+	b := writeFile(t, dir, "b.jsonl", rec("b1"))
+	paths := []string{a, b}
+	var c Cache
+	check := func(step string, want ...string) {
+		t.Helper()
+		got, err := c.Lines("s1", paths)
+		if err != nil {
+			t.Fatalf("%s: %v", step, err)
+		}
+		if len(got) != len(want) {
+			t.Fatalf("%s: got %+v, want %v", step, got, want)
+		}
+		for i, w := range want {
+			if got[i].Text != w || got[i].Index != i {
+				t.Fatalf("%s: line %d = {%q idx %d}, want {%q idx %d}", step, i, got[i].Text, got[i].Index, w, i)
+			}
+		}
+	}
+	appendTo := func(p, body string) {
+		t.Helper()
+		f, err := os.OpenFile(p, os.O_APPEND|os.O_WRONLY, 0o600)
+		if err != nil {
+			t.Fatal(err)
+		}
+		f.WriteString(body)
+		f.Close()
+	}
+
+	check("initial", "a1", "b1")
+	appendTo(b, rec("b2"))
+	check("last file grew", "a1", "b1", "b2")
+	appendTo(a, rec("a2"))
+	check("earlier file grew", "a1", "a2", "b1", "b2")
+	writeFile(t, dir, "a.jsonl", rec("fresh"))
+	check("earlier file shrank", "fresh", "b1", "b2")
+}
+
 func TestCacheDropReleases(t *testing.T) {
 	dir := t.TempDir()
 	p := writeFile(t, dir, "a.jsonl", rec("alpha"))
