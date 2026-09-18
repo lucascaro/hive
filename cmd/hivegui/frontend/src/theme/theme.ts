@@ -200,6 +200,103 @@ export function xtermTheme(doc: Document = document) {
   };
 }
 
+// Parses #rgb / #rrggbb into [r, g, b], or null for anything else
+// (color-mix(), rgb(), an unset token). Callers fall back rather than
+// guess, because a wrong colour is worse than the plain accent.
+export function parseHex(c: string): [number, number, number] | null {
+  const m = /^#([0-9a-f]{3}|[0-9a-f]{6})$/i.exec(c.trim());
+  if (!m) return null;
+  const h =
+    m[1].length === 3
+      ? m[1]
+          .split('')
+          .map((x) => x + x)
+          .join('')
+      : m[1];
+  return [0, 2, 4].map((i) => Number.parseInt(h.slice(i, i + 2), 16)) as [
+    number,
+    number,
+    number,
+  ];
+}
+
+// Mixes `a` over `b` at weight t (0..1) and returns #rrggbb, or `a`
+// unchanged when either is not plain hex.
+export function mixHex(a: string, b: string, t: number): string {
+  const pa = parseHex(a);
+  const pb = parseHex(b);
+  if (!pa || !pb) return a;
+  return `#${pa
+    .map((x, i) =>
+      Math.round(x * t + pb[i] * (1 - t))
+        .toString(16)
+        .padStart(2, '0'),
+    )
+    .join('')}`;
+}
+
+// Match highlighting for the in-session find (spec 431), from the theme.
+//
+// The active match is a solid accent fill — the brightest colour every
+// preset defines — and every other match an accent outline, so matches
+// are unmissable and the active one is never confused with the rest.
+// @xterm/addon-search only accepts #RRGGBB, hence the normalization.
+//
+// Read per search, not once: a theme switch mid-session must carry over.
+export function findDecorations(doc: Document = document) {
+  const cs = getComputedStyle(doc.documentElement);
+  const v = (n: string) => cs.getPropertyValue(n).trim();
+  // Never undefined: the addon only reports result counts when
+  // decorations are enabled, so dropping them would silently turn every
+  // search into 0/0. A preset whose accent is not plain hex falls back
+  // to the base token's accent.
+  const accent = toHex6(v('--accent')) ?? FIND_FALLBACK_ACCENT;
+  // No matchBackground on purpose. The active match is painted by a
+  // second decoration on the same cells, and the terminal renderer lets
+  // the ordinary match's fill win over the active one's — measured in a
+  // browser, the active match was indistinguishable from the rest. With
+  // only the active match carrying a fill, nothing can cover it; the
+  // others are marked by a bright accent outline instead.
+  return {
+    matchBorder: accent,
+    matchOverviewRuler: accent,
+    activeMatchBackground: accent,
+    activeMatchBorder: accent,
+    activeMatchColorOverviewRuler: accent,
+  };
+}
+
+// The terminal theme to use while a find box is open (spec 431).
+//
+// @xterm/addon-search marks the active match by SELECTING it, and the
+// selection paints over the active decoration's fill — measured in a
+// browser, the active match showed as the pale 30% selection tint, not
+// the accent. While the box has focus the terminal is unfocused, so it
+// is the inactive-selection colour that shows. Making the selection the
+// solid accent (with the accent's own text colour) for the lifetime of
+// the box is what makes the active match bright; closing the box puts
+// xtermTheme() back, so ordinary text selection is unaffected.
+export function findTermTheme(doc: Document = document) {
+  const cs = getComputedStyle(doc.documentElement);
+  const accent =
+    toHex6(cs.getPropertyValue('--accent').trim()) ?? FIND_FALLBACK_ACCENT;
+  const onAccent = cs.getPropertyValue('--on-accent').trim();
+  return {
+    ...xtermTheme(doc),
+    selectionBackground: accent,
+    selectionInactiveBackground: accent,
+    ...(onAccent ? { selectionForeground: onAccent } : {}),
+  };
+}
+
+// tokens.css's --accent: the value every preset starts from.
+const FIND_FALLBACK_ACCENT = '#ffb454';
+
+// Normalizes #rgb / #rrggbb to #rrggbb, or null when not plain hex.
+function toHex6(c: string): string | null {
+  return parseHex(c) ? mixHex(c, c, 1) : null;
+}
+
 // The terminal's font is a token like every other value, so xterm has to
 // be told it explicitly — it has no cascade of its own. The fallback is
 // for jsdom, where no stylesheet resolves and getPropertyValue returns ''.

@@ -144,8 +144,13 @@
   color: var(--fg);
 }
 
+/* Same scheme as the terminal's own decorations (theme.ts
+ * findDecorations): every match is a strong accent tint with an accent
+ * outline, the active one is the solid accent. The accent is the
+ * brightest colour every preset defines, so matches are unmissable. */
 .hv-find-hit {
-  background: var(--sel);
+  background: color-mix(in srgb, var(--accent) 45%, transparent);
+  outline: 1px solid var(--accent);
   border-radius: var(--radius-sm);
 }
 

@@ -197,3 +197,33 @@ describe('findKey', () => {
     ).toBe(false);
   });
 });
+
+describe('theme colour mixing for find highlights', () => {
+  it('parses both hex forms', async () => {
+    const { parseHex } = await import('../../src/theme/theme');
+    expect(parseHex('#000')).toEqual([0, 0, 0]);
+    expect(parseHex('#f59e0b')).toEqual([245, 158, 11]);
+  });
+
+  // The addon rejects anything but #RRGGBB, so anything else must be
+  // reported as unparseable rather than guessed at.
+  it('rejects non-hex colours', async () => {
+    const { parseHex } = await import('../../src/theme/theme');
+    expect(parseHex('color-mix(in srgb, red 50%, blue)')).toBeNull();
+    expect(parseHex('')).toBeNull();
+    expect(parseHex('#12')).toBeNull();
+  });
+
+  it('mixes at the given weight and always emits #rrggbb', async () => {
+    const { mixHex } = await import('../../src/theme/theme');
+    expect(mixHex('#ffffff', '#000', 1)).toBe('#ffffff');
+    expect(mixHex('#ffffff', '#000', 0)).toBe('#000000');
+    expect(mixHex('#ffffff', '#000000', 0.5)).toBe('#808080');
+    expect(mixHex('#fff', '#fff', 1)).toBe('#ffffff');
+  });
+
+  it('returns the first colour unchanged when either is not hex', async () => {
+    const { mixHex } = await import('../../src/theme/theme');
+    expect(mixHex('#abcdef', 'transparent', 0.5)).toBe('#abcdef');
+  });
+});

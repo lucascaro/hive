@@ -12,13 +12,25 @@
 //     it for the normal buffer for the rest of the session's life;
 //   - responses that no longer match the box are discarded, since two
 //     searches can be in flight and land out of order.
-import { describe, it, expect, vi, beforeAll, beforeEach, afterEach } from 'vitest';
+import {
+  describe,
+  it,
+  expect,
+  vi,
+  beforeAll,
+  beforeEach,
+  afterEach,
+} from 'vitest';
 import { act, render } from '@testing-library/react';
-import { appStore, initialTileChrome, resetStore } from '../../src/store/store.js';
+import {
+  appStore,
+  initialTileChrome,
+  resetStore,
+} from '../../src/store/store.js';
 
 type FindBoxModule = typeof import('../../src/app/find-box.js');
 let mod: FindBoxModule;
-let FindBox: (typeof import('../../src/components/FindBox.js'))['FindBox'];
+let FindBox: typeof import('../../src/components/FindBox.js')['FindBox'];
 
 const SID = 's1';
 
@@ -130,7 +142,11 @@ describe('source selection', () => {
     expect(find()?.source).toBe('transcript');
     // The box stays open and re-runs the query against the new source.
     expect(find()).not.toBeNull();
-    expect(searchTranscript).toHaveBeenCalledWith(SID, 'needle', expect.any(Number));
+    expect(searchTranscript).toHaveBeenCalledWith(
+      SID,
+      'needle',
+      expect.any(Number),
+    );
   });
 
   it('does nothing when the buffer change does not change the source', () => {
@@ -384,21 +400,41 @@ describe('the box UI', () => {
   it('focuses its input on mount, with no click', () => {
     act(() => mod.openFindBox(SID));
     const { container } = renderBox();
-    const input = container.querySelector('[data-find-input]') as HTMLInputElement;
+    const input = container.querySelector(
+      '[data-find-input]',
+    ) as HTMLInputElement;
     expect(document.activeElement).toBe(input);
+  });
+
+  // macOS autocorrect / autocapitalize would rewrite a search term
+  // under the user's cursor; a query is not prose.
+  it('disables autocorrect, autocapitalize and spellcheck on the input', () => {
+    act(() => mod.openFindBox(SID));
+    const { container } = renderBox();
+    const input = container.querySelector(
+      '[data-find-input]',
+    ) as HTMLInputElement;
+    expect(input.getAttribute('autocorrect')).toBe('off');
+    expect(input.getAttribute('autocapitalize')).toBe('off');
+    expect(input.getAttribute('autocomplete')).toBe('off');
+    expect(input.getAttribute('spellcheck')).toBe('false');
   });
 
   it('renders the count', () => {
     act(() => mod.openFindBox(SID));
     act(() => mod.runQuery(SID, 'needle'));
     const { container } = renderBox();
-    expect(container.querySelector('[data-find-count]')?.textContent).toBe('1/3');
+    expect(container.querySelector('[data-find-count]')?.textContent).toBe(
+      '1/3',
+    );
   });
 
   it('closes on Escape from the input', () => {
     act(() => mod.openFindBox(SID));
     const { container } = renderBox();
-    const input = container.querySelector('[data-find-input]') as HTMLInputElement;
+    const input = container.querySelector(
+      '[data-find-input]',
+    ) as HTMLInputElement;
     act(() => {
       input.dispatchEvent(
         new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }),
@@ -411,7 +447,9 @@ describe('the box UI', () => {
   it('closes on the close control', () => {
     act(() => mod.openFindBox(SID));
     const { container } = renderBox();
-    const close = container.querySelector('[data-find-close]') as HTMLButtonElement;
+    const close = container.querySelector(
+      '[data-find-close]',
+    ) as HTMLButtonElement;
     act(() => close.click());
     expect(find()).toBeNull();
     expect(focusActiveTerm).toHaveBeenCalled();

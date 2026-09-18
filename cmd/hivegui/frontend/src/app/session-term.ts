@@ -10,7 +10,12 @@ import { WebLinksAddon } from '@xterm/addon-web-links';
 import { SearchAddon } from '@xterm/addon-search';
 import { onBufferChange as onFindBufferChange } from './find-box.js';
 
-import { monoFontFamily, xtermTheme } from '../theme/theme';
+import {
+  findDecorations,
+  findTermTheme,
+  monoFontFamily,
+  xtermTheme,
+} from '../theme/theme';
 import {
   OpenSession,
   CloseAttach,
@@ -99,18 +104,16 @@ import { setActive, refocusActiveTerm } from './focus.js';
 
 // Plain substring, case-insensitive: regex, whole-word and
 // case-sensitive toggles are explicit non-goals for this pass (spec 431).
-// decorations light every match, not just the active one.
-const SEARCH_OPTS = {
-  regex: false,
-  wholeWord: false,
-  caseSensitive: false,
-  decorations: {
-    matchBackground: '#4b5563',
-    activeMatchBackground: '#f59e0b',
-    matchOverviewRuler: '#4b5563',
-    activeMatchColorOverviewRuler: '#f59e0b',
-  },
-} as const;
+// Decorations come from the theme on every call (theme/theme.ts
+// findDecorations), so a theme switch mid-search is picked up.
+function searchOpts() {
+  return {
+    regex: false,
+    wholeWord: false,
+    caseSensitive: false,
+    decorations: findDecorations(),
+  };
+}
 
 // @xterm/addon-search hard-caps the result count it reports.
 const SEARCH_RESULT_CAP = 1000;
@@ -1372,6 +1375,9 @@ export class SessionTerm {
     this._followBeforeSearch = this._followBottom;
     this._searchActive = true;
     this._followBottom = false;
+    // The active match is shown as a selection; make it the bright
+    // accent for as long as the box is open (theme.ts findTermTheme).
+    this.term.options.theme = findTermTheme();
   }
 
   /** Releases the claim and restores the pre-search follow state. */
@@ -1379,6 +1385,9 @@ export class SessionTerm {
     if (!this._searchActive) return;
     this._searchActive = false;
     this._followBottom = this._followBeforeSearch;
+    // Back to the ordinary theme, so normal text selection keeps its
+    // usual colour.
+    this.term.options.theme = xtermTheme();
     if (this._followBottom) {
       // Deferred: close() also restores terminal focus, and doing both
       // in one frame is what flakes the focus/renderer race.
@@ -1416,8 +1425,8 @@ export class SessionTerm {
     let found = false;
     try {
       found = forward
-        ? this.search.findNext(query, SEARCH_OPTS)
-        : this.search.findPrevious(query, SEARCH_OPTS);
+        ? this.search.findNext(query, searchOpts())
+        : this.search.findPrevious(query, searchOpts());
     } catch (err) {
       // Not silent: a swallowed throw here once made the whole buffer
       // search report 0/0 with nothing in the console to say why.
@@ -1450,7 +1459,7 @@ export class SessionTerm {
     // transition leaves a visible gap in the highlighting.
     if (this._searchQuery && this.term.buffer.active.type !== 'alternate') {
       try {
-        this.search.findNext(this._searchQuery, SEARCH_OPTS);
+        this.search.findNext(this._searchQuery, searchOpts());
       } catch {
         /* nothing to re-apply */
       }
@@ -1646,7 +1655,9 @@ export function applyXtermTheme() {
   for (const st of allTerms()) {
     const opts = st.term?.options;
     if (opts) {
-      opts.theme = theme;
+      // A tile with an open find box keeps its bright match selection
+      // across the switch, recomputed from the new preset.
+      opts.theme = st._searchActive ? findTermTheme() : theme;
       opts.fontFamily = fontFamily;
     }
     // Same reason applyFontSize refits: --font-mono genuinely differs

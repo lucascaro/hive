@@ -47,6 +47,12 @@ export function FindBox({ id, find }: { id: string; find: FindState }) {
           className="hv-find-input"
           data-find-input={id}
           type="text"
+          // A search term is not prose: macOS autocorrect and
+          // autocapitalize would rewrite it under the user's cursor.
+          autoCorrect="off"
+          autoCapitalize="off"
+          autoComplete="off"
+          spellCheck={false}
           placeholder="Find"
           aria-label="Find in session"
           value={find.query}
