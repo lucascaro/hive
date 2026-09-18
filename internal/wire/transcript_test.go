@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"strings"
 	"testing"
+	"unicode/utf8"
 )
 
 func TestTranscriptFramesRoundTrip(t *testing.T) {
@@ -177,5 +178,21 @@ func TestTranscriptControlEventNames(t *testing.T) {
 		if !ok || got != want {
 			t.Errorf("%s -> %q ok=%v, want %q", ft, got, ok, want)
 		}
+	}
+}
+
+func TestClampSearchReqBoundsQuery(t *testing.T) {
+	r := SearchTranscriptReq{Query: "a" + strings.Repeat("é", MaxTranscriptQuery)} // the cut splits an é
+	ClampSearchReq(&r)
+	if len(r.Query) > MaxTranscriptQuery || !utf8.ValidString(r.Query) {
+		t.Fatalf("query not clamped to a valid prefix: %d bytes", len(r.Query))
+	}
+	if len(r.Query) != MaxTranscriptQuery-1 {
+		t.Fatalf("got %d bytes, want %d", len(r.Query), MaxTranscriptQuery-1)
+	}
+	short := SearchTranscriptReq{Query: "hello"}
+	ClampSearchReq(&short)
+	if short.Query != "hello" {
+		t.Fatalf("short query changed: %q", short.Query)
 	}
 }

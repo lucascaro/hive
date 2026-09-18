@@ -1,6 +1,9 @@
 package wire
 
-import "encoding/json"
+import (
+	"encoding/json"
+	"unicode/utf8"
+)
 
 // Transcript search payloads.
 //
@@ -23,6 +26,10 @@ const (
 	// MaxTranscriptLineText bounds one line's text. A single Claude
 	// tool_result line routinely exceeds MaxPayload on its own.
 	MaxTranscriptLineText = 2000
+	// MaxTranscriptQuery bounds a search query in bytes. The query is
+	// echoed in the reply, which FitTranscriptMatches cannot shrink, so
+	// an unbounded one could push the reply past MaxPayload.
+	MaxTranscriptQuery = 1024
 
 	// TranscriptPayloadBudget is the marshalled-size ceiling the daemon
 	// shrinks a response to fit.
@@ -162,6 +169,13 @@ type TranscriptLinesMsg struct {
 func ClampSearchReq(r *SearchTranscriptReq) {
 	if r.MaxMatches <= 0 || r.MaxMatches > MaxTranscriptMatches {
 		r.MaxMatches = MaxTranscriptMatches
+	}
+	if len(r.Query) > MaxTranscriptQuery {
+		q := r.Query[:MaxTranscriptQuery]
+		for len(q) > 0 && !utf8.ValidString(q) {
+			q = q[:len(q)-1] // back off a rune split by the cut
+		}
+		r.Query = q
 	}
 }
 
