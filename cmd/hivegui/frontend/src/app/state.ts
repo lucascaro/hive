@@ -207,6 +207,7 @@ export interface TermTile extends ReplayFlags {
   endSearch?(): void;
   searchNext?(query: string): SearchHit;
   searchPrev?(query: string): SearchHit;
+  searchNewest?(query: string): SearchHit;
   clearSearch?(): void;
   // Dead-session overlay. Required for the same reason as `attached`:
   // session-term.ts:613 initializes it and setDead writes it on every

@@ -1047,7 +1047,9 @@ export async function GetActivity(id: string) {
 // so a spec can set one up and drive the find box end to end; sessions
 // without one answer "unsupported_agent", which is exactly what the
 // daemon says for a plain shell.
-type MockTranscript = { lines: { line: number; role?: string; text: string }[] };
+type MockTranscript = {
+  lines: { line: number; role?: string; text: string }[];
+};
 const transcriptById = new Map<string, MockTranscript>();
 
 export async function SearchTranscript(
@@ -1072,21 +1074,30 @@ export async function SearchTranscript(
     }
     const needle = query.toLowerCase();
     const matches: Record<string, unknown>[] = [];
+    // Newest first, like the daemon (internal/transcript.Search): the
+    // match nearest the bottom comes first, later columns before earlier
+    // ones, and a cap keeps the newest.
     if (needle) {
-      for (const ln of tr.lines) {
+      for (let li = tr.lines.length - 1; li >= 0; li--) {
+        const ln = tr.lines[li];
         const hay = ln.text.toLowerCase();
+        const cols: number[] = [];
         let from = 0;
         for (;;) {
           const at = hay.indexOf(needle, from);
-          if (at < 0 || matches.length >= maxMatches) break;
+          if (at < 0) break;
+          cols.push(at);
+          from = at + needle.length;
+        }
+        for (let ci = cols.length - 1; ci >= 0; ci--) {
+          if (matches.length >= maxMatches) break;
           matches.push({
             line: ln.line,
-            col: at,
+            col: cols[ci],
             len: query.length,
             role: ln.role,
             preview: ln.text,
           });
-          from = at + needle.length;
         }
       }
     }

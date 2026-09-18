@@ -357,6 +357,13 @@ No third round was run: the pipeline allows one revise-and-recheck cycle, and lo
 - **2026-09-17** — Caps are enforced on **marshalled** size, not raw byte length, and projection strips control characters. Why: `json.Marshal` expands control bytes 6x, so the raw-byte caps did not actually bound the frame.
 - **2026-09-17** — Both frames stay off the `sessionModeFrames` allowlist (control-mode only). Why: matches GET_ACTIVITY; letting an in-session agent read its own transcript is a separate decision with its own privacy question.
 
+- **2026-09-17** — Buffer find reported 0/0: addon decorations are a proposed xterm API and every findNext threw without `allowProposedApi`; the throw was swallowed. Enabled the option and stopped swallowing silently. Why: found by operator in an isolated run, reproduced in a real browser.
+- **2026-09-17** — Find bar pinned top-right in both modes. Why: operator — "search box should be in the same place for both modes".
+- **2026-09-17** — Highlights from the theme accent; ordinary matches outline-only, active match a solid fill via the selection colour while the box is open. Why: operator asked for a much brighter highlight, and screenshots showed the active match was indistinguishable — the ordinary fill and the selection both painted over it.
+- **2026-09-17** — Find input disables autocorrect/autocapitalize/autocomplete/spellcheck. Why: operator — macOS was autocorrecting queries.
+- **2026-09-17** — **Search runs bottom to top in both modes; spec criteria 3, 3a and 8 amended.** Why: operator — "most recent output first, in both modes". Consequences taken with it: the daemon searches newest-first so truncation keeps the newest matches; a live refresh re-anchors on the match being read (by line and column) instead of jumping to the newest; the arrow icons follow screen direction (up = older = Enter).
+- **2026-09-17** — Live refresh was never wired in production (`onSessionOutput` had no caller; buffer mode never forwarded the addon's own re-search). Wired both, plus a second trailing refresh 1.5s after output settles, because the agent writes its transcript record when a message finishes. Why: operator asked for live transcript updates; checking for it found the gap.
+
 ## Progress
 
 - **2026-09-17** — Plan created; research started.

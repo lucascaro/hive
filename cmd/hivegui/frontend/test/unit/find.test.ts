@@ -4,6 +4,8 @@ import {
   formatCount,
   highlightSegments,
   mayUseSearchAddon,
+  newestFirstIndex,
+  reanchorIndex,
   stepIndex,
   unavailableMessage,
 } from '../../src/lib/find';
@@ -225,5 +227,41 @@ describe('theme colour mixing for find highlights', () => {
   it('returns the first colour unchanged when either is not hex', async () => {
     const { mixHex } = await import('../../src/theme/theme');
     expect(mixHex('#abcdef', 'transparent', 0.5)).toBe('#abcdef');
+  });
+});
+
+describe('newestFirstIndex', () => {
+  // The addon counts top-down; the box counts from the bottom.
+  it('maps the bottom-most result to 0', () => {
+    expect(newestFirstIndex(2, 3)).toBe(0);
+    expect(newestFirstIndex(0, 3)).toBe(2);
+  });
+
+  it('clamps the addon’s -1 (beyond the highlight limit) to 0', () => {
+    expect(newestFirstIndex(-1, 5)).toBe(0);
+  });
+
+  it('is 0 with no results', () => {
+    expect(newestFirstIndex(0, 0)).toBe(0);
+  });
+});
+
+describe('reanchorIndex', () => {
+  // New output prepends newer matches; the user must stay on theirs.
+  it('follows the same match after newer ones are prepended', () => {
+    const next = [
+      { line: 50, col: 0 },
+      { line: 40, col: 0 },
+      { line: 10, col: 3 },
+    ];
+    expect(reanchorIndex({ line: 10, col: 3 }, next)).toBe(2);
+  });
+
+  it('falls back to the newest when the match is gone', () => {
+    expect(reanchorIndex({ line: 1, col: 1 }, [{ line: 9, col: 0 }])).toBe(0);
+  });
+
+  it('is 0 for a fresh search with no previous match', () => {
+    expect(reanchorIndex(undefined, [{ line: 9, col: 0 }])).toBe(0);
   });
 });

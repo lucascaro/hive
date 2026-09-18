@@ -8,7 +8,11 @@ import { FitAddon } from '@xterm/addon-fit';
 import { WebglAddon } from '@xterm/addon-webgl';
 import { WebLinksAddon } from '@xterm/addon-web-links';
 import { SearchAddon } from '@xterm/addon-search';
-import { onBufferChange as onFindBufferChange } from './find-box.js';
+import {
+  onBufferChange as onFindBufferChange,
+  onFindResults,
+  onSessionOutput as onFindOutput,
+} from './find-box.js';
 
 import {
   findDecorations,
@@ -1342,6 +1346,9 @@ export class SessionTerm {
   }
 
   writeData(b64: string) {
+    // Live transcript refresh while a find box is open (spec 431
+    // criterion 8). Free when no box is open: one boolean check.
+    if (this._searchActive) onFindOutput(this.info.id);
     const bin = atob(b64);
     const bytes = new Uint8Array(bin.length);
     for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
@@ -1402,6 +1409,17 @@ export class SessionTerm {
   }
 
   searchPrev(query: string) {
+    return this._runSearch(query, false);
+  }
+
+  /**
+   * Starts a new query from the bottom, so the first match is the newest
+   * (spec 431: search runs bottom to top). The addon searches relative to
+   * the current selection, so it is cleared first — otherwise a new
+   * keystroke would continue upward from the previous query's match.
+   */
+  searchNewest(query: string) {
+    this.term.clearSelection();
     return this._runSearch(query, false);
   }
 
@@ -1469,6 +1487,11 @@ export class SessionTerm {
   _wireSearchResults() {
     this.search.onDidChangeResults((r) => {
       this._lastSearchResult = r ?? null;
+      // The addon also fires this when it re-runs the search on its own
+      // (new output, a resize). Forwarding it is what keeps the box's
+      // count live; the synchronous return of findNext/findPrevious only
+      // covers the searches the box itself issued.
+      if (r && this._searchActive) onFindResults(this.info.id, r);
     });
   }
 

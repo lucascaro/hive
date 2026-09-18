@@ -2,6 +2,7 @@ package transcript
 
 import (
 	"encoding/json"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -127,8 +128,9 @@ func TestSearchIsCaseInsensitiveSubstring(t *testing.T) {
 	if trunc || len(m) != 2 {
 		t.Fatalf("got %+v trunc=%v", m, trunc)
 	}
-	if m[0].Col != 0 || m[1].Col != 10 {
-		t.Fatalf("columns %d,%d", m[0].Col, m[1].Col)
+	// Newest first: within a line the later column comes first.
+	if m[0].Col != 10 || m[1].Col != 0 {
+		t.Fatalf("columns %d,%d, want 10,0", m[0].Col, m[1].Col)
 	}
 	if m[0].Len != 5 {
 		t.Fatalf("Len = %d, want the query length", m[0].Len)
@@ -140,6 +142,45 @@ func TestSearchTruncatesAtLimit(t *testing.T) {
 	m, trunc := Search(got, "x", 3)
 	if !trunc || len(m) != 3 {
 		t.Fatalf("got %d matches trunc=%v", len(m), trunc)
+	}
+}
+
+// Most recent first: the match nearest the bottom of the transcript is
+// the first one the user sees.
+func TestSearchIsNewestFirst(t *testing.T) {
+	got := lines(t,
+		rec("needle one"),
+		rec("filler"),
+		rec("needle two"),
+		rec("needle three"))
+	m, _ := Search(got, "needle", 10)
+	if len(m) != 3 {
+		t.Fatalf("got %+v", m)
+	}
+	for i, want := range []int{3, 2, 0} {
+		if m[i].Line != want {
+			t.Fatalf("match %d on line %d, want %d (newest first): %+v", i, m[i].Line, want, m)
+		}
+	}
+}
+
+// A capped search must keep the NEWEST matches. Scanning oldest-first
+// and cutting at the limit would drop exactly the matches the user is
+// looking for.
+func TestSearchTruncationKeepsNewest(t *testing.T) {
+	var recs []string
+	for i := range 10 {
+		recs = append(recs, rec(fmt.Sprintf("needle %d", i)))
+	}
+	got := lines(t, recs...)
+	m, trunc := Search(got, "needle", 3)
+	if !trunc || len(m) != 3 {
+		t.Fatalf("got %d trunc=%v", len(m), trunc)
+	}
+	for i, want := range []int{9, 8, 7} {
+		if m[i].Line != want {
+			t.Fatalf("kept line %d at %d, want %d — truncation dropped the newest: %+v", m[i].Line, i, want, m)
+		}
 	}
 }
 

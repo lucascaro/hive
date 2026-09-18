@@ -41,14 +41,18 @@ const focusActiveTerm = vi.fn();
 // A stand-in SessionTerm. `bufferType` is a let so a test can flip the
 // buffer mid-run, which is what an agent starting does.
 let bufferType = 'normal';
-const searchNext = vi.fn(() => ({ index: 0, total: 3, capped: false }));
-const searchPrev = vi.fn(() => ({ index: 2, total: 3, capped: false }));
+// The addon reports TOP-DOWN indexes; index 2 of 3 is the bottom-most
+// match, which the box shows as 1/3 because search runs bottom to top.
+const searchNewest = vi.fn(() => ({ index: 2, total: 3, capped: false }));
+const searchNext = vi.fn(() => ({ index: 2, total: 3, capped: false }));
+const searchPrev = vi.fn(() => ({ index: 1, total: 3, capped: false }));
 const clearSearch = vi.fn();
 const beginSearch = vi.fn();
 const endSearch = vi.fn();
 
 const term = {
   bufferType: () => bufferType,
+  searchNewest,
   searchNext,
   searchPrev,
   clearSearch,
@@ -169,6 +173,7 @@ describe('the addon is never searched on the alternate buffer', () => {
     act(() => mod.stepMatch(SID, 1));
     act(() => mod.stepMatch(SID, -1));
 
+    expect(searchNewest).not.toHaveBeenCalled();
     expect(searchNext).not.toHaveBeenCalled();
     expect(searchPrev).not.toHaveBeenCalled();
   });
@@ -176,7 +181,7 @@ describe('the addon is never searched on the alternate buffer', () => {
   it('does call the addon on a normal buffer', () => {
     act(() => mod.openFindBox(SID));
     act(() => mod.runQuery(SID, 'needle'));
-    expect(searchNext).toHaveBeenCalledWith('needle');
+    expect(searchNewest).toHaveBeenCalledWith('needle');
   });
 });
 
@@ -185,7 +190,9 @@ describe('buffer-source searching', () => {
     act(() => mod.openFindBox(SID));
     act(() => mod.runQuery(SID, 'n'));
     act(() => mod.runQuery(SID, 'ne'));
-    expect(searchNext).toHaveBeenCalledTimes(2);
+    // Every keystroke restarts from the bottom, so a new query always
+    // lands on its newest match.
+    expect(searchNewest).toHaveBeenCalledTimes(2);
     expect(find()?.total).toBe(3);
   });
 
@@ -197,13 +204,38 @@ describe('buffer-source searching', () => {
     expect(find()?.total).toBe(0);
   });
 
-  it('steps forward and backward through matches', () => {
+  // Search runs bottom to top: the first match is the newest, "next"
+  // goes UP to an older one (findPrevious), "previous" goes down.
+  it('starts at the newest match and steps upward to older ones', () => {
     act(() => mod.openFindBox(SID));
     act(() => mod.runQuery(SID, 'needle'));
+    expect(find()?.index).toBe(0); // top-down 2 of 3 -> newest-first 0
+
     act(() => mod.stepMatch(SID, 1));
-    expect(searchNext).toHaveBeenCalledTimes(2); // the query, then the step
-    act(() => mod.stepMatch(SID, -1));
     expect(searchPrev).toHaveBeenCalledTimes(1);
+    expect(searchNext).not.toHaveBeenCalled();
+    expect(find()?.index).toBe(1); // top-down 1 of 3 -> newest-first 1
+
+    act(() => mod.stepMatch(SID, -1));
+    expect(searchNext).toHaveBeenCalledTimes(1);
+  });
+
+  // The addon re-runs the search itself on new output and reports it;
+  // that report is what keeps the count live.
+  it('updates the count from the addon’s own refreshes', () => {
+    act(() => mod.openFindBox(SID));
+    act(() => mod.runQuery(SID, 'needle'));
+    act(() => mod.onFindResults(SID, { resultIndex: 4, resultCount: 5 }));
+    expect(find()?.total).toBe(5);
+    expect(find()?.index).toBe(0); // bottom-most of 5
+  });
+
+  it('ignores addon reports when the box shows the transcript', () => {
+    bufferType = 'alternate';
+    act(() => mod.openFindBox(SID));
+    act(() => mod.runQuery(SID, 'needle'));
+    act(() => mod.onFindResults(SID, { resultIndex: 0, resultCount: 9 }));
+    expect(find()?.total).not.toBe(9);
   });
 });
 
@@ -353,6 +385,88 @@ describe('transcript responses', () => {
   });
 });
 
+describe('newest-first transcript navigation', () => {
+  function openWith(matches: { line: number; col: number; len: number }[]) {
+    bufferType = 'alternate';
+    act(() => mod.openFindBox(SID));
+    act(() => mod.runQuery(SID, 'needle'));
+    act(() =>
+      mod.applyMatches({
+        session_id: SID,
+        query: 'needle',
+        available: true,
+        total: matches.length,
+        total_lines: 100,
+        matches,
+      }),
+    );
+  }
+
+  it('starts on the newest match (the daemon sends newest first)', () => {
+    openWith([
+      { line: 90, col: 0, len: 6 },
+      { line: 10, col: 0, len: 6 },
+    ]);
+    expect(find()?.index).toBe(0);
+    expect(getTranscriptLines).toHaveBeenLastCalledWith(
+      SID,
+      expect.any(Number),
+      90,
+      expect.any(Number),
+    );
+  });
+
+  // New output prepends newer matches. Keeping the index would silently
+  // move the user to a different match; they must stay on theirs.
+  it('stays on the match being read when a refresh adds newer ones', () => {
+    openWith([
+      { line: 50, col: 0, len: 6 },
+      { line: 10, col: 2, len: 6 },
+    ]);
+    act(() => mod.stepMatch(SID, 1)); // older: line 10
+    expect(find()?.matches[find()?.index ?? -1]?.line).toBe(10);
+
+    act(() =>
+      mod.applyMatches({
+        session_id: SID,
+        query: 'needle',
+        available: true,
+        total: 3,
+        total_lines: 120,
+        matches: [
+          { line: 110, col: 0, len: 6 }, // arrived while reading
+          { line: 50, col: 0, len: 6 },
+          { line: 10, col: 2, len: 6 },
+        ],
+      }),
+    );
+    expect(find()?.index).toBe(2);
+    expect(find()?.matches[2]?.line).toBe(10);
+  });
+
+  it('a new query starts again at the newest', () => {
+    openWith([
+      { line: 50, col: 0, len: 6 },
+      { line: 10, col: 0, len: 6 },
+    ]);
+    act(() => mod.stepMatch(SID, 1));
+    act(() => mod.runQuery(SID, 'other'));
+    act(() =>
+      mod.applyMatches({
+        session_id: SID,
+        query: 'other',
+        available: true,
+        total: 2,
+        matches: [
+          { line: 70, col: 0, len: 5 },
+          { line: 10, col: 0, len: 5 },
+        ],
+      }),
+    );
+    expect(find()?.index).toBe(0);
+  });
+});
+
 describe('re-search on session output', () => {
   // Criterion 8's GUI half: text arriving while the box is open becomes
   // findable without reopening it. The Go cache tests cannot reach this.
@@ -375,6 +489,49 @@ describe('re-search on session output', () => {
         'needle',
         expect.any(Number),
       );
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  // The agent writes its transcript record when a message FINISHES,
+  // which can land after output goes quiet — so there is a second,
+  // later refresh.
+  it('refreshes again once output settles', async () => {
+    vi.useFakeTimers();
+    try {
+      bufferType = 'alternate';
+      act(() => mod.openFindBox(SID));
+      act(() => mod.runQuery(SID, 'needle'));
+      searchTranscript.mockClear();
+
+      act(() => mod.onSessionOutput(SID));
+      await act(async () => {
+        vi.advanceTimersByTime(300);
+      });
+      expect(searchTranscript).toHaveBeenCalledTimes(1);
+      await act(async () => {
+        vi.advanceTimersByTime(1500);
+      });
+      expect(searchTranscript).toHaveBeenCalledTimes(2);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  // Buffer mode refreshes through the addon's own re-search; a transcript
+  // request there would be wasted work against the wrong source.
+  it('does not request the transcript for a buffer-mode box', async () => {
+    vi.useFakeTimers();
+    try {
+      act(() => mod.openFindBox(SID));
+      act(() => mod.runQuery(SID, 'needle'));
+      searchTranscript.mockClear();
+      act(() => mod.onSessionOutput(SID));
+      await act(async () => {
+        vi.advanceTimersByTime(3000);
+      });
+      expect(searchTranscript).not.toHaveBeenCalled();
     } finally {
       vi.useRealTimers();
     }

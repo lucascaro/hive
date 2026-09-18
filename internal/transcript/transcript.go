@@ -228,9 +228,18 @@ func isCtrl(r rune) bool {
 	return r < 0x20 || r == 0x7f
 }
 
-// Search returns every case-insensitive substring match of query across
-// lines, in order, stopping at limit. The bool reports whether the
-// results were truncated.
+// Search returns case-insensitive substring matches of query across
+// lines, MOST RECENT FIRST, stopping at limit. The bool reports whether
+// the results were truncated.
+//
+// Newest-first because the feature exists to answer "what did it just
+// say": the first match shown is the one nearest the bottom, and
+// stepping moves back through history. The order also decides what
+// truncation drops — scanning from the end means a capped search keeps
+// the newest matches, which are the ones the user wants, rather than
+// the oldest.
+//
+// Within a line, later columns are newer, so they come first too.
 //
 // Plain substring by design: regex, whole-word and case-sensitive
 // toggles are explicit non-goals for this pass.
@@ -240,23 +249,23 @@ func Search(lines []Line, query string, limit int) ([]Match, bool) {
 	}
 	q := strings.ToLower(query)
 	var out []Match
-	for _, ln := range lines {
+	for li := len(lines) - 1; li >= 0; li-- {
+		ln := lines[li]
 		hay := strings.ToLower(ln.Text)
-		off := 0
-		for {
+		var cols []int
+		for off := 0; off <= len(hay); {
 			i := strings.Index(hay[off:], q)
 			if i < 0 {
 				break
 			}
-			at := off + i
+			cols = append(cols, off+i)
+			off += i + len(q)
+		}
+		for ci := len(cols) - 1; ci >= 0; ci-- {
 			if len(out) >= limit {
 				return out, true
 			}
-			out = append(out, Match{Line: ln.Index, Col: at, Len: len(query), Role: ln.Role})
-			off = at + len(q)
-			if off > len(hay) {
-				break
-			}
+			out = append(out, Match{Line: ln.Index, Col: cols[ci], Len: len(query), Role: ln.Role})
 		}
 	}
 	return out, false

@@ -73,21 +73,24 @@ export function FindBox({ id, find }: { id: string; find: FindState }) {
         <span className="hv-find-count" data-find-count={id}>
           {formatCount(find.index, find.total, find.capped)}
         </span>
+        {/* Search runs bottom to top, so the arrows follow the screen:
+            up is the next, OLDER match (same as Enter), down the newer
+            one (Shift+Enter). */}
         <button
           type="button"
           className="hv-find-btn"
-          aria-label="Previous match"
-          data-find-prev={id}
-          onClick={() => stepMatch(id, -1)}
+          aria-label="Next match (older, above)"
+          data-find-next={id}
+          onClick={() => stepMatch(id, 1)}
         >
           <Icon name="chevron-up" />
         </button>
         <button
           type="button"
           className="hv-find-btn"
-          aria-label="Next match"
-          data-find-next={id}
-          onClick={() => stepMatch(id, 1)}
+          aria-label="Previous match (newer, below)"
+          data-find-prev={id}
+          onClick={() => stepMatch(id, -1)}
         >
           <Icon name="chevron-down" />
         </button>

@@ -134,24 +134,43 @@ test.describe('spec 431 find in session', () => {
     await bootAsLinux(page);
     const id = await activeId(page);
     await page.evaluate((sid) => {
-      // 60 lines is more than one screen, so line 5 is off-screen
-      // scrollback by the time the box opens.
+      // 80 lines is well past one screen, so line 5 is off-screen
+      // scrollback while line 75 is on screen at the bottom.
       const lines = Array.from(
-        { length: 60 },
+        { length: 80 },
         (_, i) =>
-          `line ${i} ${i === 5 || i === 20 || i === 40 ? 'needle' : 'hay'}\r\n`,
+          `line ${i} ${i === 5 || i === 40 || i === 75 ? 'needle' : 'hay'}\r\n`,
       ).join('');
       window.__hive.emit('pty:data', sid, btoa(lines));
     }, id);
+
+    // How far the viewport sits above the bottom of the scrollback.
+    const fromBottom = () =>
+      page.evaluate(() => {
+        const vp = document.querySelector(
+          '.term-focused .xterm-viewport',
+        ) as HTMLElement | null;
+        return vp ? vp.scrollHeight - vp.clientHeight - vp.scrollTop : -1;
+      });
 
     await page.keyboard.press('Control+Shift+f');
     await page.locator('[data-find-input]').fill('needle');
     await expect(page.locator('[data-find-count]')).toHaveText('1/3');
 
+    // Bottom to top: the first match is the NEWEST (line 75, on screen),
+    // so the viewport has not moved off the bottom. Were the first match
+    // the oldest (line 5), the addon would have scrolled up to it.
+    await expect.poll(fromBottom).toBeLessThanOrEqual(2);
+
+    // Enter goes to the next OLDER match — up the output.
     await page.keyboard.press('Enter');
     await expect(page.locator('[data-find-count]')).toHaveText('2/3');
     await page.keyboard.press('Enter');
     await expect(page.locator('[data-find-count]')).toHaveText('3/3');
+    // The oldest match is off-screen scrollback: the viewport moved up.
+    await expect.poll(fromBottom).toBeGreaterThan(2);
+
+    // Shift+Enter comes back down toward the newest.
     await page.keyboard.press('Shift+Enter');
     await expect(page.locator('[data-find-count]')).toHaveText('2/3');
   });
@@ -231,19 +250,28 @@ test.describe('spec 431 find in session', () => {
       window.__hive.emit('pty:data', sid, btoa(`${esc}[?1049h`));
     }, id);
 
+    const active = page.locator('.hv-find-line-active');
+
     await page.keyboard.press('Control+Shift+f');
     await page.locator('[data-find-input]').fill('needle');
     await expect(page.locator('[data-find-count]')).toHaveText('1/3');
+    // Bottom to top: 1/3 is the NEWEST match, the last line.
+    await expect(active).toContainText('needle three');
 
+    // Enter goes to the next OLDER match.
     await page.keyboard.press('Enter');
     await expect(page.locator('[data-find-count]')).toHaveText('2/3');
+    await expect(active).toContainText('needle two');
 
     await page.keyboard.press('Shift+Enter');
     await expect(page.locator('[data-find-count]')).toHaveText('1/3');
+    await expect(active).toContainText('needle three');
 
-    // And it wraps rather than sticking at the ends.
+    // And it wraps rather than sticking at the ends: newer than the
+    // newest is the oldest.
     await page.keyboard.press('Shift+Enter');
     await expect(page.locator('[data-find-count]')).toHaveText('3/3');
+    await expect(active).toContainText('needle one');
   });
 
   // The bar sits in exactly the same place whichever source is active.
@@ -276,5 +304,63 @@ test.describe('spec 431 find in session', () => {
       1,
     );
     expect(Math.abs(inTranscript.y - inBuffer.y)).toBeLessThanOrEqual(1);
+  });
+
+  // Criterion 8, transcript half: text the agent writes while the box is
+  // open becomes findable without reopening — and the user stays on the
+  // match they were reading rather than being yanked to the new one.
+  test('the transcript updates live while the box is open', async ({
+    page,
+  }) => {
+    await bootAsLinux(page);
+    const id = await activeId(page);
+    await page.evaluate((sid) => {
+      window.__hive.setTranscript?.(sid, ['start', 'the first needle', 'end']);
+      const esc = String.fromCharCode(27);
+      window.__hive.emit('pty:data', sid, btoa(`${esc}[?1049h`));
+    }, id);
+
+    await page.keyboard.press('Control+Shift+f');
+    await page.locator('[data-find-input]').fill('needle');
+    await expect(page.locator('[data-find-count]')).toHaveText('1/1');
+
+    // The agent writes a new message, and prints to the terminal.
+    await page.evaluate((sid) => {
+      window.__hive.setTranscript?.(sid, [
+        'start',
+        'the first needle',
+        'end',
+        'a brand new needle',
+      ]);
+      window.__hive.emit('pty:data', sid, btoa('more output\r\n'));
+    }, id);
+
+    // Found without reopening. 2/2: the new match is now the newest, and
+    // the user is still on the one they were reading, which is second.
+    await expect(page.locator('[data-find-count]')).toHaveText('2/2');
+    await expect(page.locator('.hv-find-line-active')).toContainText(
+      'the first needle',
+    );
+  });
+
+  // Criterion 8, buffer half: the addon re-runs the search itself on new
+  // output; the count must follow it rather than go stale.
+  test('the buffer count updates live while the box is open', async ({
+    page,
+  }) => {
+    await bootAsLinux(page);
+    const id = await activeId(page);
+    await page.evaluate((sid) => {
+      window.__hive.emit('pty:data', sid, btoa('one needle\r\n'));
+    }, id);
+
+    await page.keyboard.press('Control+Shift+f');
+    await page.locator('[data-find-input]').fill('needle');
+    await expect(page.locator('[data-find-count]')).toHaveText('1/1');
+
+    await page.evaluate((sid) => {
+      window.__hive.emit('pty:data', sid, btoa('another needle\r\n'));
+    }, id);
+    await expect(page.locator('[data-find-count]')).toHaveText(/\/2$/);
   });
 });

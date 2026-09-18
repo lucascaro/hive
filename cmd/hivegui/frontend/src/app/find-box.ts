@@ -13,6 +13,8 @@ import { flushSync } from 'react-dom';
 import {
   findSourceFor,
   mayUseSearchAddon,
+  newestFirstIndex,
+  reanchorIndex,
   stepIndex,
   type FindSource,
 } from '../lib/find.js';
@@ -39,6 +41,12 @@ const MAX_MATCHES = 500;
  * feels immediate.
  */
 const OUTPUT_DEBOUNCE_MS = 250;
+
+/**
+ * Second, later refresh after output stops. Covers the agent writing its
+ * transcript record only once a message is complete.
+ */
+const SETTLE_REFRESH_MS = 1500;
 
 export interface FindDeps {
   /** Asks the daemon to search a session's transcript. */
@@ -71,6 +79,8 @@ export interface FindDeps {
 export interface FindTerm {
   bufferType?(): string | undefined;
   searchNext?(query: string): SearchHit;
+  /** Starts a new query from the bottom — the newest match. */
+  searchNewest?(query: string): SearchHit;
   searchPrev?(query: string): SearchHit;
   clearSearch?(): void;
   beginSearch?(): void;
@@ -81,6 +91,7 @@ const NO_HIT: SearchHit = { index: 0, total: 0, capped: false };
 
 let deps: FindDeps;
 let outputTimer: ReturnType<typeof setTimeout> | null = null;
+let settleTimer: ReturnType<typeof setTimeout> | null = null;
 
 export function initFindBox(d: FindDeps) {
   deps = d;
@@ -129,6 +140,10 @@ export function closeFindBox(sessionID: string) {
     clearTimeout(outputTimer);
     outputTimer = null;
   }
+  if (settleTimer) {
+    clearTimeout(settleTimer);
+    settleTimer = null;
+  }
   const term = deps.term(sessionID);
   term?.clearSearch?.();
   // Release the viewport claim and restore the pre-search follow state
@@ -167,7 +182,10 @@ function cssEscape(s: string): string {
 export function runQuery(sessionID: string, query: string) {
   const state = find(sessionID);
   if (!state) return;
-  patchFind(sessionID, { query, index: 0 });
+  // A new query drops the old matches, so applyMatches knows this is a
+  // fresh search (start at the newest) rather than a live refresh
+  // (stay on the match the user is reading).
+  patchFind(sessionID, { query, index: 0, matches: [] });
 
   if (state.source === 'transcript') {
     void deps.searchTranscript(sessionID, query, MAX_MATCHES);
@@ -191,14 +209,8 @@ export function runQuery(sessionID: string, query: string) {
   // buffer is active permanently poisons the addon for the normal
   // buffer for the rest of the session's life.
   if (!mayUseSearchAddon(term.bufferType?.())) return;
-  const r = term.searchNext?.(query) ?? NO_HIT;
-  patchFind(sessionID, {
-    query,
-    index: r.index,
-    total: r.total,
-    capped: r.capped,
-    ready: true,
-  });
+  // Bottom to top (spec 431): a new query starts from the newest match.
+  applyHit(sessionID, term.searchNewest?.(query) ?? NO_HIT);
 }
 
 /** Steps to the next or previous match. */
@@ -206,6 +218,9 @@ export function stepMatch(sessionID: string, delta: number) {
   const state = find(sessionID);
   if (!state || state.total <= 0) return;
 
+  // delta > 0 is "next", which in a bottom-to-top search means OLDER —
+  // further up the output. The transcript list is newest-first, so older
+  // is a higher index.
   if (state.source === 'transcript') {
     const index = stepIndex(state.index, state.total, delta);
     patchFind(sessionID, { index });
@@ -215,11 +230,41 @@ export function stepMatch(sessionID: string, delta: number) {
 
   const term = deps.term(sessionID);
   if (!term || !mayUseSearchAddon(term.bufferType?.())) return;
+  // In the terminal, older is upward: findPrevious.
   const r =
     delta >= 0
-      ? (term.searchNext?.(state.query) ?? NO_HIT)
-      : (term.searchPrev?.(state.query) ?? NO_HIT);
-  patchFind(sessionID, { index: r.index, total: r.total, capped: r.capped });
+      ? (term.searchPrev?.(state.query) ?? NO_HIT)
+      : (term.searchNext?.(state.query) ?? NO_HIT);
+  applyHit(sessionID, r);
+}
+
+/** Writes an addon result into the box, converted to newest-first. */
+function applyHit(sessionID: string, r: SearchHit) {
+  patchFind(sessionID, {
+    index: newestFirstIndex(r.index, r.total),
+    total: r.total,
+    capped: r.capped,
+    ready: true,
+  });
+}
+
+/**
+ * The addon re-runs the search on its own when output arrives or the
+ * terminal resizes, and reports the new result set here. This is what
+ * keeps the buffer-mode count live (spec 431 criterion 8); without it the
+ * addon's refreshed highlights and the box's number disagree.
+ */
+export function onFindResults(
+  sessionID: string,
+  r: { resultIndex: number; resultCount: number },
+) {
+  const state = find(sessionID);
+  if (state?.source !== 'buffer' || !state.query) return;
+  applyHit(sessionID, {
+    index: r.resultIndex,
+    total: r.resultCount,
+    capped: r.resultCount >= 1000,
+  });
 }
 
 /** Asks for the transcript window centered on the active match. */
@@ -259,6 +304,10 @@ export function applyMatches(msg: {
   if ((msg.query ?? '') !== state.query) return;
 
   const matches = msg.matches ?? [];
+  // Newest-first from the daemon. A fresh search starts at the newest
+  // (runQuery cleared the old matches); a live refresh stays on the
+  // match the user was reading, which new output has pushed down the list.
+  const index = reanchorIndex(state.matches[state.index], matches);
   patchFind(sessionID, {
     ready: true,
     reason: msg.available ? '' : (msg.reason ?? 'unavailable'),
@@ -266,9 +315,9 @@ export function applyMatches(msg: {
     total: msg.total ?? matches.length,
     capped: Boolean(msg.truncated),
     totalLines: msg.total_lines ?? msg.totalLines ?? 0,
-    index: 0,
+    index,
   });
-  if (msg.available) requestWindowFor(sessionID, 0);
+  if (msg.available) requestWindowFor(sessionID, index);
 }
 
 /**
@@ -341,16 +390,41 @@ export function onBufferChange(
  */
 export function onSessionOutput(sessionID: string) {
   const state = find(sessionID);
-  if (!state?.query) return;
+  // Buffer mode needs nothing here: the addon refreshes itself on write
+  // and reports through onFindResults.
+  if (state?.source !== 'transcript' || !state.query) return;
   if (outputTimer) clearTimeout(outputTimer);
+  if (settleTimer) clearTimeout(settleTimer);
+  // Two trailing refreshes, both reset by every new chunk of output:
+  //  - a quick one, so text the agent has already written shows up fast;
+  //  - a settle one, because the agent writes its transcript record when
+  //    a message FINISHES, which can land after the terminal goes quiet.
+  //    Refreshing only on output would then miss the newest message until
+  //    the next burst.
+  // Each is cheap: the daemon re-parses only the transcript's new tail.
   outputTimer = setTimeout(() => {
     outputTimer = null;
-    if (find(sessionID)) runQuery(sessionID, find(sessionID)?.query ?? '');
+    refreshTranscript(sessionID);
   }, OUTPUT_DEBOUNCE_MS);
+  settleTimer = setTimeout(() => {
+    settleTimer = null;
+    refreshTranscript(sessionID);
+  }, SETTLE_REFRESH_MS);
+}
+
+// A refresh, not runQuery: the matches are kept so applyMatches can
+// re-anchor on the one the user is reading.
+function refreshTranscript(sessionID: string) {
+  const cur = find(sessionID);
+  if (cur?.source === 'transcript' && cur.query) {
+    void deps.searchTranscript(sessionID, cur.query, MAX_MATCHES);
+  }
 }
 
 /** Test seam: drops the pending output debounce. */
 export function resetFindBoxForTest() {
   if (outputTimer) clearTimeout(outputTimer);
   outputTimer = null;
+  if (settleTimer) clearTimeout(settleTimer);
+  settleTimer = null;
 }

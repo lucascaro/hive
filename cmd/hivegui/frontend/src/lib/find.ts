@@ -142,3 +142,33 @@ export function unavailableMessage(reason: string): string {
       return 'No searchable history.';
   }
 }
+
+/**
+ * Converts @xterm/addon-search's top-down result index into the
+ * newest-first index the find box shows (spec 431: search runs bottom to
+ * top, so `1/N` is the match nearest the bottom).
+ *
+ * The addon reports resultIndex -1 when the active match lies beyond its
+ * highlight limit; that clamps to 0 rather than rendering "0/N".
+ */
+export function newestFirstIndex(resultIndex: number, total: number): number {
+  if (total <= 0 || resultIndex < 0) return 0;
+  return Math.max(0, Math.min(total - 1, total - 1 - resultIndex));
+}
+
+/**
+ * Finds where the match the user was on sits in a refreshed, newest-first
+ * list, by line and column.
+ *
+ * New output prepends newer matches, so the same match moves to a higher
+ * index; keeping the index fixed would silently jump the user to a
+ * different match. Falls back to 0 (the newest) when the match is gone.
+ */
+export function reanchorIndex(
+  prev: { line: number; col: number } | undefined,
+  next: { line: number; col: number }[],
+): number {
+  if (!prev) return 0;
+  const i = next.findIndex((m) => m.line === prev.line && m.col === prev.col);
+  return i < 0 ? 0 : i;
+}
