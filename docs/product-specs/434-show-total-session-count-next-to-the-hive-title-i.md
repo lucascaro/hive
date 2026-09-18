@@ -5,13 +5,14 @@ type: enhancement
 complexity: S
 priority: P3
 pr: 435
-stage: GATE
+shipped: 2026-09-18
+stage: DONE
 ---
 
 # Show total session count next to the Hive title in the sidebar
 
 - **Issue:** [#434](https://github.com/lucascaro/hive/issues/434)
-- **Exec plan:** [docs/exec-plans/active/434-show-total-session-count-next-to-the-hive-title-i.md](../exec-plans/active/434-show-total-session-count-next-to-the-hive-title-i.md)
+- **Exec plan:** [docs/exec-plans/completed/434-show-total-session-count-next-to-the-hive-title-i.md](../exec-plans/completed/434-show-total-session-count-next-to-the-hive-title-i.md)
 
 ## Problem
 

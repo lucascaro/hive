@@ -2,7 +2,7 @@
 
 - **Spec:** [docs/product-specs/434-show-total-session-count-next-to-the-hive-title-i.md](../../product-specs/434-show-total-session-count-next-to-the-hive-title-i.md)
 - **Issue:** #434
-- **Status:** active
+- **Status:** completed
 - **PR:** #435
 - **Branch:** feature/434-sidebar-session-total
 
@@ -112,3 +112,11 @@ From `cmd/hivegui/frontend`:
 ## PR convergence ledger
 
 - **2026-09-18 iter 1** — verdict: APPROVE; mergeable: MERGEABLE; findings_hash: empty; threads_open: 0; action: stop; head_sha: 2982d62.
+
+## Gate verdict
+
+- **2026-09-18** — verdict: PASS; phase: —; checks: 13 passed / 0 failed / 0 followups; followups: none; one-line: all 5 success criteria observable and tested, no non-goal bleed, changeset accurate; CI green after one rerun of two unrelated flaky e2e specs (activity-grid:325 macOS, session-lifecycle:47 Windows).
+  - 2026-09-18 dimensions:
+    - acceptance — PASS — 5/5 criteria; DOM test (4 cases) + sidebar-header-actions e2e (5 tests) green
+    - non-goals — PASS — 3/3; single unfiltered `sessions.length`, plain non-interactive span
+    - doc accuracy — PASS — changeset schema + body match code; no sidebar-header doc to update; CHANGELOG untouched (generated)
