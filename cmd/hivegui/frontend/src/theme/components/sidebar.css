@@ -11,9 +11,10 @@
 
 
 /* gap + `margin-right: auto` on .brand rather than plain
-   space-between: with three children (brand + two icon buttons)
+   space-between: with four children (brand + three icon buttons)
    space-between would spread the buttons to opposite ends of the
-   header. The brand still eats the slack, so it keeps truncating. */
+   header. The brand still eats the slack, so it keeps truncating —
+   together with the session total React portals inside it. */
 #sidebar header {
   display: flex;
   align-items: center;
@@ -32,6 +33,19 @@
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+/* The total session count after "Hive" — the project card count's look
+   (.hv-project-card__count), undoing the brand's accent, weight and
+   tracking. */
+#sidebar header .brand-count {
+  margin-left: 2px;
+  color: var(--fg-subtle);
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+  font-weight: 400;
+  letter-spacing: 0;
+  font-variant-numeric: tabular-nums;
 }
 
 /* The pinned project label's height: the group header's sticky offset is

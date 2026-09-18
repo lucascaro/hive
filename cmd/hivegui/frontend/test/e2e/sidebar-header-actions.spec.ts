@@ -63,6 +63,40 @@ test('all three header buttons sit together on the right of the brand', async ({
   }
 });
 
+// Spec 434. The DOM test proves the total is a child of .brand; only a real
+// browser proves it LAYS OUT right after "Hive" rather than being flung
+// right with the button cluster by .brand's `margin-right: auto`.
+test('the session total sits inside the brand, right after Hive', async ({
+  page,
+}) => {
+  await boot(page);
+  // The mock seeds one session; a second checks the plural title too.
+  await page.evaluate((n) => window.__hive.addSession?.(n), 's2');
+  await page.waitForFunction(
+    () => (window.__hive.state?.sessions.length ?? 0) >= 2,
+  );
+
+  const count = page.locator('#sidebar header .brand > .brand-count');
+  await expect(count).toHaveText('2');
+  await expect(count).toHaveAttribute('title', '2 sessions');
+
+  const brandBox = (await page
+    .locator('#sidebar header .brand')
+    .boundingBox())!;
+  const countBox = (await count.boundingBox())!;
+  const newBtnBox = (await page.locator('#new-project-btn').boundingBox())!;
+
+  // Contained in the brand box, not overflowing it.
+  expect(countBox.x).toBeGreaterThanOrEqual(brandBox.x);
+  expect(countBox.x + countBox.width).toBeLessThanOrEqual(
+    brandBox.x + brandBox.width + 0.5,
+  );
+  // Right after the "Hive" glyphs, not pushed to the far side.
+  expect(countBox.x - brandBox.x).toBeLessThan(60);
+  // And clear of the button cluster.
+  expect(countBox.x + countBox.width).toBeLessThanOrEqual(newBtnBox.x);
+});
+
 for (const id of ['check-updates-btn', 'whats-new-btn']) {
   test(`the ${id} button is reachable and hit-testable`, async ({ page }) => {
     await boot(page);
