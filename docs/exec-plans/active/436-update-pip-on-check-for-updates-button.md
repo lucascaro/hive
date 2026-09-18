@@ -113,3 +113,4 @@ The per-version dismissal (`hive.updateDismissedFor`, `showUpdateBanner`'s `vers
 ## PR convergence ledger
 
 - **2026-09-18 iter 1** — verdict: COMMENT; mergeable: MERGEABLE; findings_hash: 889a451ee8fc115c28f4bb0d2053ea54d495c12d39614826a160bd287cd609cf; threads_open: 0; action: escalated:risky-fix-needs-human-decision; head_sha: 27d1c78.
+- **2026-09-18 iter 2** — verdict: APPROVE; mergeable: MERGEABLE; findings_hash: 11ffe2671caa2df058580c7f97b0c554d7480fb4b7b442681e536dfbc3059ade; threads_open: 0; action: autofix+push; head_sha: 1787fa6.
