@@ -137,7 +137,7 @@ func TestCheckLatestFallsBackToHeadForUnknownBuild(t *testing.T) {
 
 func TestCheckLatestSkipsWithoutUpstream(t *testing.T) {
 	g := &fakeGit{errs: map[string]error{
-		"rev-parse --abbrev-ref": fmt.Errorf("no upstream configured"),
+		"rev-parse --abbrev-ref": fmt.Errorf("git rev-parse: fatal: no upstream configured for branch 'main'"),
 	}}
 	g.install(t)
 
@@ -153,5 +153,36 @@ func TestCheckLatestSkipsWithoutUpstream(t *testing.T) {
 	}
 	if g.ran("fetch") {
 		t.Error("checkLatest fetched despite having no upstream to compare against")
+	}
+}
+
+func TestCheckLatestSkipsOnDetachedHead(t *testing.T) {
+	g := &fakeGit{errs: map[string]error{
+		"rev-parse --abbrev-ref": fmt.Errorf("git rev-parse: fatal: HEAD does not point to a branch"),
+	}}
+	g.install(t)
+
+	info, err := checkLatest("/repo")
+	if err != nil || !info.Skipped {
+		t.Fatalf("checkLatest = (%+v, %v) on a detached HEAD, want a skip", info, err)
+	}
+}
+
+// A git that cannot run at all — the Xcode license gate on the
+// /usr/bin/git shim was the real case — must surface its own message,
+// not be relabelled as a missing upstream.
+func TestCheckLatestSurfacesGitFailure(t *testing.T) {
+	license := "git rev-parse: You have not agreed to the Xcode license agreements."
+	g := &fakeGit{errs: map[string]error{
+		"rev-parse --abbrev-ref": fmt.Errorf("%s", license),
+	}}
+	g.install(t)
+
+	info, err := checkLatest("/repo")
+	if err == nil || !strings.Contains(err.Error(), "Xcode license") {
+		t.Fatalf("checkLatest err = %v, want git's own failure", err)
+	}
+	if info.Skipped {
+		t.Error("Skipped = true for a git failure, want an error instead")
 	}
 }

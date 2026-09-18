@@ -1230,6 +1230,11 @@ export async function UpdateStatus() {
 export async function StartUpdate() {
   return '';
 }
+// What UpdateBuildLog answers; set by specs through __hive.setBuildLog.
+let buildLog = '';
+export async function UpdateBuildLog() {
+  return buildLog;
+}
 export async function ApplyUpdateAndRestart() {
   return '';
 }
@@ -1454,6 +1459,9 @@ if (typeof window !== 'undefined') {
     },
     // Ideas the daemon already knew about when this window connected —
     // the boot LIST_IDEAS is what delivers them, so seed before it.
+    setBuildLog(text: string) {
+      buildLog = text;
+    },
     seedIdeas(ideas: MockIdea[]) {
       state.ideas.length = 0;
       state.ideas.push(...ideas);

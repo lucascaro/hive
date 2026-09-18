@@ -69,6 +69,18 @@ var loginPATH = sync.OnceValue(func() string {
 // by resolveLoginPATH's own tests.
 var loginPATHFn = loginPATH
 
+// git resolves on the same PATH build.sh gets, so a Spotlight launch and
+// a terminal launch run the same git. See gitCommandFn.
+func init() {
+	gitCommandFn = func() (string, []string) {
+		env := envWithLoginPATH(os.Environ())
+		if bin := lookPathIn(pathOf(env), "git"); bin != "" {
+			return bin, env
+		}
+		return "git", env
+	}
+}
+
 // resolveLoginPATH runs shell and returns the PATH it reports, or ""
 // if the probe fails. Split from loginPATH so tests can drive it with
 // a fake shell without fighting the process-wide cache.
@@ -211,19 +223,29 @@ func missingBuildTools(path string) []string {
 }
 
 // executableIn reports whether name resolves to an executable file on
-// the given PATH. exec.LookPath answers for the *current* process's
-// PATH, which is the one we are replacing.
+// the given PATH.
 func executableIn(path, name string) bool {
+	return lookPathIn(path, name) != ""
+}
+
+// lookPathIn returns the file name resolves to on the given PATH, or ""
+// when it resolves to nothing. Relative entries are ignored. exec.LookPath answers for the *current*
+// process's PATH, which is the one we are replacing.
+func lookPathIn(path, name string) string {
 	for _, dir := range filepath.SplitList(path) {
-		if dir == "" {
-			dir = "."
+		// An empty entry means the working directory. Skip it, as
+		// exec.LookPath refuses such results (ErrDot): this picks the
+		// binary that runs, and a checkout-relative `git` must not win.
+		if dir == "" || !filepath.IsAbs(dir) {
+			continue
 		}
-		st, err := os.Stat(filepath.Join(dir, name))
+		p := filepath.Join(dir, name)
+		st, err := os.Stat(p)
 		if err == nil && !st.IsDir() && st.Mode()&0o111 != 0 {
-			return true
+			return p
 		}
 	}
-	return false
+	return ""
 }
 
 // pathOf returns the PATH entry of an environment slice.

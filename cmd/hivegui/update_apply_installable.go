@@ -15,12 +15,14 @@ package main
 // still compiles and tests them.
 
 import (
+	"bufio"
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"io"
+	"log"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -239,6 +241,9 @@ func commitNoun(n int) string {
 func verifyUpstreamRemote(repo string) (string, error) {
 	upstream, err := runGitFn(repo, "rev-parse", "--abbrev-ref", "--symbolic-full-name", "@{upstream}")
 	if err != nil {
+		if !isNoUpstreamErr(err) {
+			return "", err
+		}
 		return "", fmt.Errorf("%s has no upstream branch to pull from", repo)
 	}
 	remote, _, found := strings.Cut(upstream, "/")
@@ -307,4 +312,81 @@ func plainProgressLine(s string) string {
 		}
 	}
 	return strings.TrimSpace(b.String())
+}
+
+// Caps on the output a build keeps for the log viewer. A normal build is
+// a few hundred short lines; these only matter for a runaway one, and all
+// of them keep the tail — where a failure is. Lines are capped as well as
+// the total, because the scanner admits lines up to 1 MiB and a line cap
+// alone would still let a few thousand of those pile up.
+const (
+	maxBuildLogLines     = 10000
+	maxBuildLogBytes     = 2 << 20
+	maxBuildLogLineBytes = 4 << 10
+)
+
+// streamBuildOutput relays build.sh's output to progress one line at a
+// time and returns all of it as plain text, plus the last line worth
+// quoting in an error.
+//
+// Both are ANSI-stripped (see plainProgressLine): the log is rendered
+// as text in a modal, where a colour escape is literal garbage.
+func streamBuildOutput(r io.Reader, progress func(string)) (output, summary string) {
+	// lines[start:] is the kept tail; the dropped head is compacted away
+	// once it outgrows the tail, so trimming is amortised O(1) per line.
+	var lines []string
+	start, size := 0, 0
+	keep := func(line string) {
+		lines = append(lines, line)
+		size += len(line) + 1
+		for len(lines)-start > maxBuildLogLines || size > maxBuildLogBytes {
+			size -= len(lines[start]) + 1
+			lines[start] = ""
+			start++
+		}
+		if start > len(lines)/2 {
+			lines = append(lines[:0], lines[start:]...)
+			start = 0
+		}
+	}
+	sc := bufio.NewScanner(r)
+	sc.Buffer(make([]byte, 0, 64<<10), 1<<20)
+	for sc.Scan() {
+		line := truncateLogLine(plainProgressLine(sc.Text()))
+		keep(line)
+		if line == "" {
+			continue
+		}
+		progress(line)
+		if !isBuildNoise(line) {
+			summary = line
+		}
+	}
+	// A scanner error (a line past the 1MB cap, a read fault) stops the
+	// loop with the pipe still open. build.sh then blocks on a full pipe
+	// buffer and cmd.Wait sits there until the timeout, with the button
+	// stuck on "Updating…" the whole time. Draining lets the child
+	// finish and Wait return.
+	if err := sc.Err(); err != nil {
+		log.Printf("hivegui: build.sh output scan stopped early: %v", err)
+		keep(fmt.Sprintf("[hive: output truncated: %v]", err))
+		_, _ = io.Copy(io.Discard, r)
+	}
+	return strings.Join(lines[start:], "\n"), summary
+}
+
+// truncateLogLine cuts a line to maxBuildLogLineBytes on a rune boundary.
+func truncateLogLine(line string) string {
+	if len(line) <= maxBuildLogLineBytes {
+		return line
+	}
+	return strings.ToValidUTF8(line[:maxBuildLogLineBytes], "") + " […]"
+}
+
+// isBuildNoise reports trailer lines that say nothing about the build.
+// Wails prints its sponsorship plea after every build, failed ones
+// included, so quoting the last line of a failed build quoted that.
+func isBuildNoise(line string) bool {
+	return strings.Contains(line, "please consider sponsoring") ||
+		strings.HasPrefix(line, "https://github.com/sponsors/")
 }

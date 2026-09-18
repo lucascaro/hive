@@ -169,6 +169,42 @@ func TestStartUpdateSurfacesStagingFailure(t *testing.T) {
 	}
 }
 
+// A failed build keeps its full output for the log viewer, flags it on
+// the status, and a failure that was not a build does not.
+func TestStartUpdateKeepsBuildLogOnBuildFailure(t *testing.T) {
+	a := &App{}
+	a.rememberCheck(UpdateInfo{Available: true, Latest: "9.9.9", Stage: StageAvailable})
+	be := &buildError{err: fmt.Errorf("exit status 1"), summary: "boom", log: "line 1\nboom"}
+	_, release := stubStaging(t, "", fmt.Errorf("stage: %w", be))
+	close(release)
+
+	if err := a.StartUpdate(); err != nil {
+		t.Fatalf("StartUpdate: %v", err)
+	}
+	info := waitForStage(t, a, StageError)
+	if !info.HasBuildLog {
+		t.Error("HasBuildLog = false after a build failure, want true")
+	}
+	if got := a.UpdateBuildLog(); got != "line 1\nboom" {
+		t.Errorf("UpdateBuildLog = %q, want the build's output", got)
+	}
+	if !strings.Contains(info.Message, "exit status 1") || !strings.Contains(info.Message, "boom") {
+		t.Errorf("Message = %q, want exit status and summary", info.Message)
+	}
+
+	// A retry starts clean: the old log must not outlive the attempt.
+	a.rememberCheck(UpdateInfo{Available: true, Latest: "9.9.9", Stage: StageAvailable})
+	_, release2 := stubStaging(t, "", fmt.Errorf("checksum mismatch"))
+	close(release2)
+	if err := a.StartUpdate(); err != nil {
+		t.Fatalf("StartUpdate retry: %v", err)
+	}
+	info = waitForStage(t, a, StageError)
+	if info.HasBuildLog || a.UpdateBuildLog() != "" {
+		t.Errorf("non-build failure kept a build log: HasBuildLog=%v log=%q", info.HasBuildLog, a.UpdateBuildLog())
+	}
+}
+
 // A newer release landing after staging must invalidate the staged
 // bundle — otherwise Restart installs a build that is already behind.
 func TestRememberCheckDropsStaleStaging(t *testing.T) {

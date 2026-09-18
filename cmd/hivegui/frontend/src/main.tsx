@@ -82,6 +82,7 @@ import { getTerm } from './store/terms.js';
 import { openFindInSession } from './app/find-session.js';
 import { SearchTranscript, GetTranscriptLines } from './bridge.js';
 import { openWhatsNew, initWhatsNew } from './app/modals/whats-new.js';
+import { initBuildLog } from './app/modals/build-log.js';
 import { wireDaemonEvents, reconnectControl } from './app/events.js';
 import { flushSync } from 'react-dom';
 import { createRoot } from 'react-dom/client';
@@ -327,6 +328,7 @@ initFindBox({
 initQuickIdea({ setFocusedTile, refocusActiveTerm });
 initIdeaInbox({ setFocusedTile, refocusActiveTerm });
 initWhatsNew({ setFocusedTile, focusActiveTerm });
+initBuildLog({ setFocusedTile, focusActiveTerm });
 // ---------- boot the app ----------
 
 // The pane starts in focused mode. Set before the first paint rather than
