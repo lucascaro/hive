@@ -18,6 +18,10 @@ import {
 import type { FindState } from '../store/store.js';
 import { Icon } from './Icon.js';
 
+// The bar is rendered FIRST in both modes and styled identically, so it
+// sits in exactly the same spot whichever source is active — the
+// transcript, when there is one, fills the tile below it. The user's eye
+// should never have to hunt for the box because an agent is running.
 export function FindBox({ id, find }: { id: string; find: FindState }) {
   const inputRef = useRef<HTMLInputElement>(null);
 
@@ -37,20 +41,6 @@ export function FindBox({ id, find }: { id: string; find: FindState }) {
       className={takeover ? 'hv-find hv-find-takeover' : 'hv-find'}
       data-find-source={find.source}
     >
-      {takeover ? (
-        <div className="hv-find-body" data-find-body={id}>
-          {!find.ready ? (
-            <p className="hv-find-note">Reading transcript…</p>
-          ) : unavailable ? (
-            <p className="hv-find-note" data-find-unavailable="1">
-              {unavailableMessage(find.reason)}
-            </p>
-          ) : (
-            <TranscriptLines find={find} />
-          )}
-        </div>
-      ) : null}
-
       <div className="hv-find-bar">
         <input
           ref={inputRef}
@@ -105,6 +95,20 @@ export function FindBox({ id, find }: { id: string; find: FindState }) {
           <Icon name="x" />
         </button>
       </div>
+
+      {takeover ? (
+        <div className="hv-find-body" data-find-body={id}>
+          {!find.ready ? (
+            <p className="hv-find-note">Reading transcript…</p>
+          ) : unavailable ? (
+            <p className="hv-find-note" data-find-unavailable="1">
+              {unavailableMessage(find.reason)}
+            </p>
+          ) : (
+            <TranscriptLines find={find} />
+          )}
+        </div>
+      ) : null}
     </search>
   );
 }
@@ -116,10 +120,10 @@ function TranscriptLines({ find }: { find: FindState }) {
   // Centre the active match in the scroller. The daemon already centres
   // the fetched window on it; this handles the scroll within that
   // window so the line is readable in context rather than at an edge.
+  // The deps are the triggers, not values the body reads: the effect must
+  // re-run when the active match moves or a new window arrives.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: deps are re-run triggers
   useEffect(() => {
-    // Deliberately keyed on index + window start rather than on the ref:
-    // the effect must re-run when the active match moves OR when a new
-    // window arrives, and both are captured by those two values.
     activeRef.current?.scrollIntoView({ block: 'center' });
   }, [find.index, find.lineStart]);
 

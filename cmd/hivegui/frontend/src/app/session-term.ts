@@ -312,6 +312,10 @@ export class SessionTerm {
       // material on older machines with many tiles. Off by default.
       cursorBlink: false,
       scrollback: 5000,
+      // Required by @xterm/addon-search's match decorations, which are a
+      // proposed xterm API: without it every findNext throws "You must
+      // set the allowProposedApi option" and find reports 0/0 (spec 431).
+      allowProposedApi: true,
       smoothScrollDuration: 0,
       theme: xtermTheme(),
       // Route OSC 8 hyperlinks (used by Claude CLI and others) through
@@ -1414,7 +1418,10 @@ export class SessionTerm {
       found = forward
         ? this.search.findNext(query, SEARCH_OPTS)
         : this.search.findPrevious(query, SEARCH_OPTS);
-    } catch {
+    } catch (err) {
+      // Not silent: a swallowed throw here once made the whole buffer
+      // search report 0/0 with nothing in the console to say why.
+      console.warn('find: search addon threw', err);
       return empty;
     }
     this._searchQuery = query;

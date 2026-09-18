@@ -22,6 +22,11 @@
  * session; the rest of the tile stays clickable. */
 .hv-find-bar {
   pointer-events: auto;
+  /* Pinned to the top-right in BOTH modes. In the takeover the container
+   * spans the whole tile, so align-self keeps the bar where the
+   * buffer-mode bar sits rather than letting it stretch or drift. */
+  align-self: flex-end;
+  flex: 0 0 auto;
   display: flex;
   align-items: center;
   gap: var(--space-1);

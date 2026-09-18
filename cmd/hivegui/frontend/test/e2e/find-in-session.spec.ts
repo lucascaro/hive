@@ -120,6 +120,42 @@ test.describe('spec 431 find in session', () => {
     await expect(page.locator('[data-find-source="buffer"]')).toBeVisible();
   });
 
+  // Criterion 5: the normal-buffer search actually finds text, including
+  // off-screen scrollback, and steps with wrap-around.
+  //
+  // Asserts real counts against the real @xterm/addon-search, not just
+  // that the source is 'buffer'. The first version of this spec only
+  // checked the source, and the whole buffer search shipped reporting
+  // 0/0: the addon's match decorations are a proposed xterm API, every
+  // findNext threw without allowProposedApi, and the throw was caught.
+  test('a normal-buffer session finds and steps through matches', async ({
+    page,
+  }) => {
+    await bootAsLinux(page);
+    const id = await activeId(page);
+    await page.evaluate((sid) => {
+      // 60 lines is more than one screen, so line 5 is off-screen
+      // scrollback by the time the box opens.
+      const lines = Array.from(
+        { length: 60 },
+        (_, i) =>
+          `line ${i} ${i === 5 || i === 20 || i === 40 ? 'needle' : 'hay'}\r\n`,
+      ).join('');
+      window.__hive.emit('pty:data', sid, btoa(lines));
+    }, id);
+
+    await page.keyboard.press('Control+Shift+f');
+    await page.locator('[data-find-input]').fill('needle');
+    await expect(page.locator('[data-find-count]')).toHaveText('1/3');
+
+    await page.keyboard.press('Enter');
+    await expect(page.locator('[data-find-count]')).toHaveText('2/3');
+    await page.keyboard.press('Enter');
+    await expect(page.locator('[data-find-count]')).toHaveText('3/3');
+    await page.keyboard.press('Shift+Enter');
+    await expect(page.locator('[data-find-count]')).toHaveText('2/3');
+  });
+
   // Criterion 7, the alt-screen half, plus criterion 6: the transcript
   // is the source, and it finds text the terminal buffer does not hold.
   test('an alt-screen session searches its transcript', async ({ page }) => {
@@ -138,7 +174,7 @@ test.describe('spec 431 find in session', () => {
       // ESC is built at runtime: a literal escape byte here would not
       // survive serialization into the page.
       const esc = String.fromCharCode(27);
-      window.__hive.emit('pty:data', sid, btoa(esc + '[?1049h'));
+      window.__hive.emit('pty:data', sid, btoa(`${esc}[?1049h`));
     }, id);
 
     await page.keyboard.press('Control+Shift+f');
@@ -164,7 +200,7 @@ test.describe('spec 431 find in session', () => {
       // ESC is built at runtime: a literal escape byte here would not
       // survive serialization into the page.
       const esc = String.fromCharCode(27);
-      window.__hive.emit('pty:data', sid, btoa(esc + '[?1049h'));
+      window.__hive.emit('pty:data', sid, btoa(`${esc}[?1049h`));
     }, id);
 
     await page.keyboard.press('Control+Shift+f');
@@ -192,7 +228,7 @@ test.describe('spec 431 find in session', () => {
       // ESC is built at runtime: a literal escape byte here would not
       // survive serialization into the page.
       const esc = String.fromCharCode(27);
-      window.__hive.emit('pty:data', sid, btoa(esc + '[?1049h'));
+      window.__hive.emit('pty:data', sid, btoa(`${esc}[?1049h`));
     }, id);
 
     await page.keyboard.press('Control+Shift+f');
@@ -208,5 +244,37 @@ test.describe('spec 431 find in session', () => {
     // And it wraps rather than sticking at the ends.
     await page.keyboard.press('Shift+Enter');
     await expect(page.locator('[data-find-count]')).toHaveText('3/3');
+  });
+
+  // The bar sits in exactly the same place whichever source is active.
+  // Measured in a real browser, because vitest cannot see layout: an
+  // earlier version rendered the transcript first and the bar at the
+  // bottom of the tile in takeover mode.
+  test('the bar is in the same place in both modes', async ({ page }) => {
+    await bootAsLinux(page);
+    const id = await activeId(page);
+
+    await page.keyboard.press('Control+Shift+f');
+    const bar = page.locator('.hv-find-bar');
+    await expect(page.locator('[data-find-source="buffer"]')).toBeVisible();
+    const inBuffer = await bar.boundingBox();
+    await page.keyboard.press('Escape');
+
+    await page.evaluate((sid) => {
+      window.__hive.setTranscript?.(sid, ['one', 'two', 'three']);
+      const esc = String.fromCharCode(27);
+      window.__hive.emit('pty:data', sid, btoa(`${esc}[?1049h`));
+    }, id);
+    await page.keyboard.press('Control+Shift+f');
+    await expect(page.locator('[data-find-source="transcript"]')).toBeVisible();
+    const inTranscript = await bar.boundingBox();
+
+    if (!inBuffer || !inTranscript) throw new Error('bar has no box');
+    // Right and top edges within a pixel; the bar must not move.
+    const right = (b: { x: number; width: number }) => b.x + b.width;
+    expect(Math.abs(right(inTranscript) - right(inBuffer))).toBeLessThanOrEqual(
+      1,
+    );
+    expect(Math.abs(inTranscript.y - inBuffer.y)).toBeLessThanOrEqual(1);
   });
 });

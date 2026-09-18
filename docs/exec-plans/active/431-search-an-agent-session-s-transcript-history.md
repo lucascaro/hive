@@ -320,7 +320,11 @@ scripts/check-changeset.sh
 
 Manual row, runnable without eyes per `docs/verifying-the-gui-by-hand.md`: `wails dev`, then a throwaway Playwright script against `http://localhost:34115` that opens the overlay on a real Claude session, searches a string known to be in the transcript but scrolled off, and reads the match count from the DOM.
 
-### Open questions / risks
+### PR convergence ledger
+
+Append-only, one line per /hs-review-loop iteration.
+
+## Open questions / risks
 
 - **First-search latency on a 21.9 MB transcript.** The cache makes every search after the first cheap, but the first one parses the whole file. Mitigation: parse on overlay open rather than on first keystroke, so the cost lands during the open animation. **The overlay renders an explicit pending state until the first response arrives — never a frozen empty box**, which is the failure mode that would otherwise only be discovered by using the GUI. If the parse is still slow once measured, the fallback is a byte-offset index built on a streaming first pass. Not designed now — measure first.
 - **Daemon memory.** One cached projection can hold ~15 MB of text. Bounded by holding exactly one session's, and by dropping it when the overlay closes. Worth a hard cap with truncation-from-the-head if a transcript ever exceeds it.
