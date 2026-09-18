@@ -711,11 +711,33 @@ export function SidebarHeaderControls(): ReactNode {
   // record the read while leaving the dot on screen until a reload.
   const whatsNewSeen = useAppStore((s) => s.whatsNewSeen);
   const unread = hasUnread(latestVersion(), whatsNewSeen);
+  // Every session, minimized ones included — the same count a project
+  // card shows. A number selector, so the header re-renders only when it
+  // changes.
+  const total = useAppStore((s) => s.sessions.length);
   const newProjectBtn = document.getElementById('new-project-btn');
   const header = newProjectBtn?.parentElement;
   if (!newProjectBtn || !header) return null;
+  const brand = header.querySelector('.brand');
   return (
     <>
+      {/* Inside .brand, after the "Hive" text: a header sibling would be
+          pushed into the button cluster by .brand's `margin-right: auto`.
+          The text space keeps the accessible name "Hive 3", not "Hive3". */}
+      {brand &&
+        total > 0 &&
+        createPortal(
+          <>
+            {' '}
+            <span
+              className="brand-count"
+              title={`${total} session${total === 1 ? '' : 's'}`}
+            >
+              {total}
+            </span>
+          </>,
+          brand,
+        )}
       {createPortal(<Icon name="plus" />, newProjectBtn)}
       {createPortal(
         <IconButton
