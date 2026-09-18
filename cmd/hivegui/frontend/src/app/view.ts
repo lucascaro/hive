@@ -30,6 +30,7 @@ import {
   spatialTarget,
 } from './grid-layout.js';
 import { resolveView, type ViewMode } from '../lib/view.js';
+import { closeFindForAllSessions } from './find-session.js';
 import { snapVisibleTermsToBottom } from '../lib/view-scroll.js';
 import { readProjectId } from '../lib/wire.js';
 import { isMac } from '../lib/platform.js';
@@ -429,6 +430,9 @@ export function setView(view: ViewMode, opts: { persist?: boolean } = {}) {
   );
   if (target !== view) flashStatus('only one session — staying focused');
   view = target;
+  // The find box is single-view only; close it before the grid's mode
+  // snap would revoke its viewport claim.
+  if (view !== 'single') closeFindForAllSessions();
   withLayout(() => {
     store.setView(view, opts.persist !== false);
     if (view === 'grid-project') {

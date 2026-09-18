@@ -34,6 +34,7 @@ import (
 	"github.com/lucascaro/hive/internal/buildinfo"
 	"github.com/lucascaro/hive/internal/registry"
 	"github.com/lucascaro/hive/internal/session"
+	"github.com/lucascaro/hive/internal/transcript"
 	"github.com/lucascaro/hive/internal/wire"
 )
 
@@ -72,6 +73,21 @@ type Daemon struct {
 	// commands relays client-to-client verbs (see commands.go). Not
 	// state, so it is not in the registry.
 	commands *commandHub
+
+	// transcripts caches the projection of exactly one session's agent
+	// transcript — the most recently searched. One, not many, because
+	// cross-session search is a non-goal, and holding a single
+	// projection bounds memory without an eviction policy to get wrong.
+	//
+	// The known cost, accepted deliberately (spec 431, review of PR 432):
+	// alternating searches between two sessions re-parses each one's file
+	// on every switch. That is one full read per switch — well under a
+	// second for the largest transcripts seen — against holding several
+	// multi-MB projections for a pattern the feature does not target. It
+	// is released after IdleDrop without use.
+	// It is a read-through cache over files other programs own, not
+	// state, so it is not in the registry either.
+	transcripts transcript.Cache
 
 	// shutdown is closed by Shutdown to stop Run the same way a
 	// cancelled context does. A client asking to exit in-band (the
@@ -1291,6 +1307,30 @@ func (d *Daemon) handleControlFrame(ctx context.Context, ops controlOps, ft wire
 			return false
 		}
 		_ = ops.writeJSON(wire.FrameActivity, msg)
+	case wire.FrameSearchTranscript:
+		// Not in sessionModeFrames, like GET_ACTIVITY: an agent running
+		// inside a session reading its own transcript is a separate
+		// decision with its own privacy question.
+		req, ok := decodeReq[wire.SearchTranscriptReq](payload, ops.sendError)
+		if !ok {
+			return false
+		}
+		// Off the read loop, like every slow op: a first search reads and
+		// projects up to MaxFileBytes from disk, which would otherwise
+		// hold up every other frame on this connection. Replies can now
+		// arrive out of order; each carries the request's id and query,
+		// which the client uses to discard stale ones.
+		d.runOp(func() {
+			_ = ops.writeJSON(wire.FrameTranscriptMatches, d.searchTranscript(req))
+		})
+	case wire.FrameGetTranscriptLines:
+		req, ok := decodeReq[wire.GetTranscriptLinesReq](payload, ops.sendError)
+		if !ok {
+			return false
+		}
+		d.runOp(func() {
+			_ = ops.writeJSON(wire.FrameTranscriptLines, d.transcriptLines(req))
+		})
 	case wire.FrameRestoreSession:
 		req, ok := decodeReq[wire.RestoreSessionReq](payload, ops.sendError)
 		if !ok {

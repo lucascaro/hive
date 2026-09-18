@@ -62,6 +62,21 @@ interface HiveTestApi {
     activity: { events?: unknown[]; plan?: unknown[]; stale_at?: string },
   ): void;
   emitActivity?(msg: Record<string, unknown>): void;
+  /** Gives a session a transcript so the find box can search it. */
+  setTranscript?(
+    id: string,
+    lines: (
+      | string
+      | {
+          role?: string;
+          text: string;
+          msg?: number;
+          kind?: string;
+          tool?: string;
+        }
+    )[],
+    role?: string,
+  ): void;
   activityRequests?: string[];
   createSessionWithWorktree?(name: string, branch?: string): Promise<string>;
   createSessionInWorktree?(name: string, worktreePath: string): Promise<string>;

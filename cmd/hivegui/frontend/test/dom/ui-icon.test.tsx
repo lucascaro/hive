@@ -53,6 +53,9 @@ describe('<Icon>', () => {
     for (const name of ICON_NAMES) {
       expect(document.getElementById(`hv-${name}`), name).not.toBeNull();
     }
-    expect(ICON_NAMES).toHaveLength(27);
+    // Bump deliberately when adding an icon: the count is a tripwire
+    // against a name declared with no symbol behind it, which renders an
+    // empty <use> rather than failing.
+    expect(ICON_NAMES).toHaveLength(28);
   });
 });

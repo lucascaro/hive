@@ -36,6 +36,14 @@ export interface ReplayFlags {
   _replayPrevFromBottom?: number;
   _replaysInFlight?: number;
   _followBottom?: boolean;
+  // _searchActive: the find box owns the viewport (spec 431).
+  //
+  // findNext moves the viewport, and four separate sites would drag it
+  // back. Clearing _followBottom alone does NOT cover them: it *enables*
+  // the replay-done restore branch below, which then overwrites
+  // _followBottom from geometry — and it does not survive
+  // resetFollowIntent(), which any mid-search re-attach calls.
+  _searchActive?: boolean;
 }
 
 // applyRebaseline reads exactly one thing off the terminal.
@@ -200,6 +208,11 @@ export function resetFollowIntent(
   st: ReplayFlags | null | undefined,
 ): ReplayFlags | null | undefined {
   if (!st) return st;
+  // A find box owns the viewport; re-latching "show me the latest"
+  // here would silently revoke its claim. Any mid-search
+  // ensureAttached() reaches this, so without the guard a search jump
+  // is undone by the next re-attach.
+  if (st._searchActive) return st;
   st._followBottom = true;
   delete st._replayWantsBottom;
   delete st._replayPrevFromBottom;
@@ -300,6 +313,12 @@ export function handleScrollbackEvent(
         // restore their reading position instead of yanking them back.
         // This prevents the replay-done handler from overriding the
         // user's scroll intent — the root cause of the scroll-jump bug.
+        // The find box's claim beats both branches: neither snap to
+        // the bottom nor "restore the reader's position", because the
+        // reader's position right now is the match they searched for.
+        if (st._searchActive) {
+          return;
+        }
         if (wantsBottom && st._followBottom) {
           if (typeof term.scrollToBottom === 'function') term.scrollToBottom();
           // Replay landed at the bottom — keep following. (Without this,

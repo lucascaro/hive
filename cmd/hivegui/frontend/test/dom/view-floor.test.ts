@@ -55,6 +55,12 @@ vi.mock('../../src/bridge.js', () => {
   };
 });
 
+// The find box is single-view only: a switch to any grid must close it.
+const closeFindForAllSessions = vi.fn();
+vi.mock('../../src/app/find-session.js', () => ({
+  closeFindForAllSessions: () => closeFindForAllSessions(),
+}));
+
 let state: typeof import('../../src/store/store.js').hiveStateView;
 let view: typeof import('../../src/app/view.js');
 
@@ -190,5 +196,21 @@ describe('enforceViewFloor', () => {
   it('is a no-op in focused mode', () => {
     view.enforceViewFloor();
     expect(state.view).toBe('single');
+  });
+});
+
+describe('setView closes the find box', () => {
+  beforeEach(() => closeFindForAllSessions.mockClear());
+
+  it('closes it on a switch to a grid', () => {
+    view.setView('grid-project');
+    expect(closeFindForAllSessions).toHaveBeenCalledTimes(1);
+  });
+
+  it('leaves it open when the floor keeps the view focused', () => {
+    state.activeId = 'z';
+    state.currentProjectId = 'p2';
+    view.setView('grid-project');
+    expect(closeFindForAllSessions).not.toHaveBeenCalled();
   });
 });

@@ -61,6 +61,7 @@ import { DAEMON_STATE } from '../lib/session-state.js';
 import { handleScrollbackEvent, abandonReplays } from '../lib/scrollback.js';
 import { createScrollTrace } from '../lib/scroll-debug.js';
 import type { ScrollTrace } from '../lib/scroll-debug.js';
+import { applyLines, applyMatches } from './find-box.js';
 
 // Live read of the store. A function, not a destructured snapshot: this
 // module runs inside event handlers and must never cache a slice across
@@ -449,6 +450,25 @@ export function wireDaemonEvents(injected: EventsDeps) {
   EventsOn('activity:event', (jsonStr: string) => {
     try {
       applyActivityFrame(JSON.parse(jsonStr) as ActivityMsg);
+    } catch {
+      /* dropped */
+    }
+  });
+
+  // Transcript search (spec 431). Both responses are dropped on a parse
+  // failure rather than surfaced: a malformed frame costs one search,
+  // and the box re-issues on the next keystroke.
+  EventsOn('transcript:matches', (jsonStr: string) => {
+    try {
+      applyMatches(JSON.parse(jsonStr));
+    } catch {
+      /* dropped */
+    }
+  });
+
+  EventsOn('transcript:lines', (jsonStr: string) => {
+    try {
+      applyLines(JSON.parse(jsonStr));
     } catch {
       /* dropped */
     }

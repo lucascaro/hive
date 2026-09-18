@@ -132,6 +132,9 @@ var controlEvents = map[FrameType]string{
 	FrameIdeaEvent: "idea:event",
 
 	FrameActivity: "activity:event",
+
+	FrameTranscriptMatches: "transcript:matches",
+	FrameTranscriptLines:   "transcript:lines",
 }
 
 var attachEvents = map[FrameType]string{

@@ -209,6 +209,36 @@ func (c *Client) GetActivity(sessionID string) error {
 	return c.cli.WriteJSON(wire.FrameGetActivity, wire.GetActivityReq{SessionID: sessionID})
 }
 
+// SearchTranscript asks the daemon to search a session's agent
+// transcript. Use AwaitTranscriptMatches to consume the response.
+func (c *Client) SearchTranscript(sessionID, query string, maxMatches int) error {
+	return c.cli.WriteJSON(wire.FrameSearchTranscript, wire.SearchTranscriptReq{
+		SessionID: sessionID, Query: query, MaxMatches: maxMatches,
+	})
+}
+
+// GetTranscriptLines asks for a window of transcript lines centered on
+// center. Use AwaitTranscriptLines to consume the response.
+func (c *Client) GetTranscriptLines(sessionID string, reqID, center, count int) error {
+	return c.cli.WriteJSON(wire.FrameGetTranscriptLines, wire.GetTranscriptLinesReq{
+		SessionID: sessionID, ReqID: reqID, Center: center, Count: count,
+	})
+}
+
+// AwaitTranscriptMatches consumes the next TRANSCRIPT_MATCHES response.
+func (c *Client) AwaitTranscriptMatches(timeout time.Duration) (wire.TranscriptMatchesMsg, error) {
+	var resp wire.TranscriptMatchesMsg
+	err := c.awaitSnapshot(wire.FrameTranscriptMatches, "TRANSCRIPT_MATCHES", timeout, &resp)
+	return resp, err
+}
+
+// AwaitTranscriptLines consumes the next TRANSCRIPT_LINES response.
+func (c *Client) AwaitTranscriptLines(timeout time.Duration) (wire.TranscriptLinesMsg, error) {
+	var resp wire.TranscriptLinesMsg
+	err := c.awaitSnapshot(wire.FrameTranscriptLines, "TRANSCRIPT_LINES", timeout, &resp)
+	return resp, err
+}
+
 // AwaitIdeas consumes the next IDEAS snapshot.
 func (c *Client) AwaitIdeas(timeout time.Duration) (wire.IdeasResp, error) {
 	var resp wire.IdeasResp

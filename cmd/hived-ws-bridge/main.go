@@ -375,6 +375,20 @@ func (s *session) dispatch(req rpcReq) {
 			return
 		}
 		s.respond(req.ID, "", s.controlWriteJSON(wire.FrameGetActivity, p))
+	case "SearchTranscript":
+		var p wire.SearchTranscriptReq
+		if err := parseParams(req.Params, &p); err != nil {
+			s.respond(req.ID, nil, err)
+			return
+		}
+		s.respond(req.ID, "", s.controlWriteJSON(wire.FrameSearchTranscript, p))
+	case "GetTranscriptLines":
+		var p wire.GetTranscriptLinesReq
+		if err := parseParams(req.Params, &p); err != nil {
+			s.respond(req.ID, nil, err)
+			return
+		}
+		s.respond(req.ID, "", s.controlWriteJSON(wire.FrameGetTranscriptLines, p))
 	case "ListIdeas":
 		var p wire.ListIdeasReq
 		if err := parseParams(req.Params, &p); err != nil {

@@ -24,6 +24,13 @@ package buildinfo
 // History (newest first), so a bump is a decision with a record and
 // not just a number going up:
 //
+//	15 — Transcript search (spec 431). SEARCH_TRANSCRIPT /
+//	    TRANSCRIPT_MATCHES and GET_TRANSCRIPT_LINES / TRANSCRIPT_LINES:
+//	    the daemon reads an agent's on-disk JSONL transcript and answers
+//	    capped match anchors plus a bounded window of lines. A GUI built
+//	    with this cannot find text on an alt-screen session against an
+//	    older daemon — the frames are simply unanswered, so ⌘F would
+//	    hang on a pending state rather than degrade.
 //	14 — Self-healing Pi state (spec 423). AgentEvent gains instance /
 //	    seq, an ordering key on the Pi extension's state-bearing
 //	    reports; the daemon applies an unseen key without the timestamp
@@ -144,7 +151,7 @@ package buildinfo
 //	    before this cannot see or clear the flag.
 //	1 — first contract; everything up to and including the
 //	    CLIENT_COMMAND relay.
-const DaemonContract = 14
+const DaemonContract = 15
 
 // Identity is this binary's full build identity. `hived --version
 // --json` prints it, and Welcome carries the same three values, so a

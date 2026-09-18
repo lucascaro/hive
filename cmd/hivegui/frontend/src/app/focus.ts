@@ -16,6 +16,7 @@ import {
 import { activityGridShown, anyModalOpen } from '../store/store.js';
 import { pushNav } from '../lib/nav-history.js';
 import { clearAttention } from './events.js';
+import { closeFindForAllSessions } from './find-session.js';
 import { scrollTrace } from './trace.js';
 
 // Live read of the store. A function, not a destructured snapshot: this
@@ -53,6 +54,7 @@ export function setActive(id: string | null) {
   if (!_navSuppress && id && id !== appData().activeId)
     pushNav(appData().nav, appData().activeId);
   const switched = id !== null && id !== appData().activeId;
+  const changed = id !== appData().activeId;
   if (id) {
     // Only on an actual switch. clearAttention is an RPC to the daemon,
     // not a local write — there is no local copy left to drop.
@@ -71,6 +73,9 @@ export function setActive(id: string | null) {
     if (pid) setCurrentProjectId(pid);
   }
   setActiveId(id);
+  // Search ends when its session loses focus. After setActiveId, so the
+  // focus a closing box hands back lands on the newly active session.
+  if (changed) closeFindForAllSessions(id);
   // Schedule focus after the next paint so any DOM reorder / visibility
   // change from applyGridLayout / applySingle has settled. xterm.focus()
   // moves focus to its hidden textarea; that fires .onFocus, which

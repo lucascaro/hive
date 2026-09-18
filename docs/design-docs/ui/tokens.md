@@ -68,6 +68,7 @@ Presets `native-dark`, `native-light` and `classic` set `--font-ui` to the syste
 
 | Token | Value |
 |---|---|
+| `--radius-xs` | 2px (transcript lines, prompts and match highlights in the find box) |
 | `--radius-sm` | 4px (chips, pills, icon buttons) |
 | `--radius-md` | 6px (project cards, dialogs, launcher) |
 | `--shadow-popover` | `0 8px 24px rgba(0,0,0,.45)` (launcher, dialogs only) |
@@ -76,7 +77,7 @@ Presets `native-dark`, `native-light` and `classic` set `--font-ui` to the syste
 
 `@media (prefers-reduced-motion: reduce)` sets both motion tokens to `0s`.
 
-`ui-lint`'s **radius** rule fails a literal `border-radius: <n>px` outside `tokens.css`, because `terminal` sets both radius tokens to `0` and a literal ignores it. It is px-only, so `border-radius: 50%` (a circle, not a scale step) needs no suppression. Four sub-scale hairline roundings — 1px drag indicators, the 2px project swatch, the 3px worktree badge — carry an `allow` comment: `--radius-sm` on a 10px swatch reads as a circle.
+`ui-lint`'s **radius** rule fails a literal `border-radius: <n>px` outside `tokens.css`, because `terminal` sets every radius token to `0` and a literal ignores it. It is px-only, so `border-radius: 50%` (a circle, not a scale step) needs no suppression. Four sub-scale hairline roundings — 1px drag indicators, the 2px project swatch, the 3px worktree badge — carry an `allow` comment: `--radius-sm` on a 10px swatch reads as a circle.
 
 ## Focus
 

@@ -63,6 +63,18 @@ type Def struct {
 	// non-empty; an empty field means "unavailable, skip your surface"
 	// rather than an error.
 	SpawnArgs func(sp SpawnInfo) []string
+	// TranscriptPaths, when non-nil, resolves the agent's on-disk
+	// conversation transcripts for a session, oldest first. nil means
+	// "this agent keeps no transcript Hive can read" — distinct from
+	// returning an empty slice, which means "it should have one and it
+	// is not there". The GUI renders those two differently, so do not
+	// collapse them.
+	//
+	// sessionID is the Entry's AgentSessionID, NOT Hive's session id:
+	// the two diverge for sessions created with ContinueConversation
+	// (registry.appendSpawnArgs skips the id flag) and for a
+	// user-supplied argv. cwd is the session's working directory.
+	TranscriptPaths func(sessionID, cwd string) []string
 	// SpawnEnv, when non-nil, returns extra environment variables for
 	// the same spawns SpawnArgs covers — first spawn and every
 	// resume/restart. Entries are appended AFTER the inherited
@@ -132,16 +144,17 @@ var (
 			Color: "#9ca3af",
 		},
 		IDClaude: {
-			ID:            IDClaude,
-			Name:          "Claude",
-			Cmd:           []string{"claude"},
-			ResumeCmd:     []string{"claude", "--continue"},
-			Color:         "#f59e0b",
-			InstallCmd:    []string{"npm", "install", "-g", "@anthropic-ai/claude-code"},
-			SessionIDFlag: "--session-id",
-			ResumeArgs:    claudeResumeArgs,
-			SpawnArgs:     claudeSpawnArgs,
-			SpawnEnv:      claudeSpawnEnv,
+			ID:              IDClaude,
+			Name:            "Claude",
+			Cmd:             []string{"claude"},
+			ResumeCmd:       []string{"claude", "--continue"},
+			Color:           "#f59e0b",
+			InstallCmd:      []string{"npm", "install", "-g", "@anthropic-ai/claude-code"},
+			SessionIDFlag:   "--session-id",
+			ResumeArgs:      claudeResumeArgs,
+			SpawnArgs:       claudeSpawnArgs,
+			TranscriptPaths: claudeTranscriptPaths,
+			SpawnEnv:        claudeSpawnEnv,
 			// Verified interactive under a PTY; see PositionalPrompt.
 			PositionalPrompt: true,
 		},
@@ -213,8 +226,9 @@ var (
 			ResumeArgs: func(id, _ string) []string {
 				return []string{"pi", "--session-id", id}
 			},
-			SpawnArgs: piSpawnArgs,
-			SpawnEnv:  piSpawnEnv,
+			SpawnArgs:       piSpawnArgs,
+			SpawnEnv:        piSpawnEnv,
+			TranscriptPaths: piTranscriptPaths,
 			// Verified interactive under a PTY; see PositionalPrompt.
 			PositionalPrompt: true,
 		},

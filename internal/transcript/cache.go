@@ -1,0 +1,183 @@
+package transcript
+
+import (
+	"io"
+	"os"
+	"sync"
+	"time"
+)
+
+// Cache holds the projection of exactly one session's transcript.
+//
+// One, not many, because cross-session search is a non-goal: the user
+// searches the session in front of them. Holding a single projection
+// bounds daemon memory at one transcript's worth of text without any
+// eviction policy to get wrong.
+//
+// Re-projecting a 20 MB file on every keystroke is not viable, so a
+// grown file re-parses only from the last consumed byte offset. That
+// also delivers "text that arrives while the box is open becomes
+// findable" as a property rather than a feature: every search re-reads
+// the tail.
+type Cache struct {
+	mu sync.Mutex
+
+	key   string // session id the projection belongs to
+	paths []string
+	sizes []int64 // bytes consumed per path, parallel to paths
+	lines []Line
+	// proj carries message numbering and tool-call names across the
+	// tail re-parses; reset whenever the projection restarts from zero.
+	proj *projector
+
+	// idle drops the projection after IdleDrop without a lookup, so a
+	// daemon whose find box was closed does not hold a transcript's text
+	// indefinitely. gen tells the timer whether it is still the latest:
+	// one that fires while a lookup holds the lock must not drop the
+	// projection that lookup just refreshed.
+	idle *time.Timer
+	gen  uint64
+}
+
+// IdleDrop is how long a projection is kept after its last lookup. A
+// variable so tests can shorten it.
+var IdleDrop = 5 * time.Minute
+
+// touchLocked restarts the idle clock. Called with c.mu held.
+func (c *Cache) touchLocked() {
+	c.gen++
+	gen := c.gen
+	if c.idle != nil {
+		c.idle.Stop()
+	}
+	c.idle = time.AfterFunc(IdleDrop, func() { c.dropIfIdle(gen) })
+}
+
+func (c *Cache) dropIfIdle(gen uint64) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if c.gen != gen {
+		return // used since this timer was set
+	}
+	c.dropLocked()
+}
+
+// Lines returns the projection for sessionID, refreshing it from disk.
+//
+// Switching sessions drops the previous projection entirely — that is
+// the memory bound. Refreshing re-reads only what each file grew by,
+// except when a file shrank, which forces a full re-parse: a rewritten
+// or rotated file invalidates every offset, and seeking past its new
+// EOF would silently return nothing.
+func (c *Cache) Lines(sessionID string, paths []string) ([]Line, error) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.touchLocked()
+
+	if sessionID != c.key || !samePaths(paths, c.paths) {
+		c.key = sessionID
+		c.paths = append([]string(nil), paths...)
+		c.sizes = make([]int64, len(paths))
+		c.lines = nil
+		c.proj = newProjector()
+	}
+
+	for i, p := range c.paths {
+		st, err := os.Stat(p)
+		if err != nil {
+			return c.lines, err
+		}
+		switch {
+		case st.Size() == c.sizes[i]:
+			continue // unchanged; nothing to re-read
+		case st.Size() < c.sizes[i]:
+			// Shrank: every offset is meaningless now.
+			return c.reprojectLocked()
+		}
+		// A file that is not the last one having grown means lines
+		// would need to be inserted mid-list; indices after it would
+		// all shift. Rare enough (an agent writing to an older file)
+		// that a full re-parse is the honest answer.
+		if i != len(c.paths)-1 {
+			return c.reprojectLocked()
+		}
+		n, err := c.appendTailLocked(p, c.sizes[i])
+		if err != nil {
+			return c.lines, err
+		}
+		c.sizes[i] += n
+	}
+	return c.lines, nil
+}
+
+// appendTailLocked projects the bytes of p after off, returning how
+// many bytes it consumed. The count excludes a trailing partial record
+// so the next refresh re-reads it once it is complete.
+func (c *Cache) appendTailLocked(p string, off int64) (int64, error) {
+	// MaxFileBytes bounds the whole file, not each refresh: a fresh
+	// LimitReader per tail read would add another MaxFileBytes to
+	// c.lines on every refresh of an oversized transcript.
+	remaining := MaxFileBytes - off
+	if remaining <= 0 {
+		return 0, nil
+	}
+	f, err := os.Open(p)
+	if err != nil {
+		return 0, err
+	}
+	defer f.Close()
+	if _, err := f.Seek(off, io.SeekStart); err != nil {
+		return 0, err
+	}
+	lines, n, err := c.proj.project(io.LimitReader(f, remaining), c.lines)
+	if err != nil {
+		return 0, err
+	}
+	c.lines = lines
+	return n, nil
+}
+
+func (c *Cache) reprojectLocked() ([]Line, error) {
+	c.lines = nil
+	c.proj = newProjector()
+	for i := range c.sizes {
+		c.sizes[i] = 0
+	}
+	for i, p := range c.paths {
+		n, err := c.appendTailLocked(p, 0)
+		if err != nil {
+			return c.lines, err
+		}
+		c.sizes[i] = n
+	}
+	return c.lines, nil
+}
+
+// Drop releases the cached projection now. In production it is released
+// by the idle timer (see IdleDrop), or replaced when another session is
+// searched.
+func (c *Cache) Drop() {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if c.idle != nil {
+		c.idle.Stop()
+		c.idle = nil
+	}
+	c.dropLocked()
+}
+
+func (c *Cache) dropLocked() {
+	c.key, c.paths, c.sizes, c.lines, c.proj = "", nil, nil, nil, nil
+}
+
+func samePaths(a, b []string) bool {
+	if len(a) != len(b) {
+		return false
+	}
+	for i := range a {
+		if a[i] != b[i] {
+			return false
+		}
+	}
+	return true
+}
