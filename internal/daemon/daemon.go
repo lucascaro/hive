@@ -78,6 +78,13 @@ type Daemon struct {
 	// transcript — the most recently searched. One, not many, because
 	// cross-session search is a non-goal, and holding a single
 	// projection bounds memory without an eviction policy to get wrong.
+	//
+	// The known cost, accepted deliberately (spec 431, review of PR 432):
+	// alternating searches between two sessions re-parses each one's file
+	// on every switch. That is one full read per switch — well under a
+	// second for the largest transcripts seen — against holding several
+	// multi-MB projections for a pattern the feature does not target. It
+	// is released after IdleDrop without use.
 	// It is a read-through cache over files other programs own, not
 	// state, so it is not in the registry either.
 	transcripts transcript.Cache

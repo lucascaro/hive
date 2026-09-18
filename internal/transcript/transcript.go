@@ -19,6 +19,7 @@ import (
 	"io"
 	"os"
 	"strings"
+	"unicode"
 	"unicode/utf8"
 )
 
@@ -45,11 +46,20 @@ type Line struct {
 	// Tool names the tool whose output this is, for Kind "tool". Display
 	// only — it is not part of Text, so it is never searched.
 	Tool string
+
+	// lower is Text folded for matching, computed once at projection so a
+	// search does not re-lowercase every line of a large transcript on
+	// every keystroke. ascii records that Text is pure ASCII, the common
+	// case, where byte, rune and UTF-16 offsets all coincide.
+	lower string
+	ascii bool
 }
 
-// Match is one substring hit. Col is a byte offset into the Line's Text
-// as the caller will receive it, so a caller can highlight without any
-// arithmetic of its own.
+// Match is one substring hit. Col and Len are in UTF-16 code units of
+// the Line's Text — the unit JavaScript strings index by — so the GUI
+// highlights with a plain slice. Bytes would be wrong on any line with a
+// non-ASCII character before the match, and real transcripts are full of
+// them (✓, →, ⎿, —).
 type Match struct {
 	Line int
 	Col  int
@@ -136,6 +146,7 @@ func (p *projector) appendRecord(dst []Line, raw []byte) []Line {
 			dst = append(dst, Line{
 				Index: len(dst), Role: role, Text: part,
 				Msg: p.msg, Kind: pc.kind, Tool: pc.tool,
+				lower: fold(part), ascii: isASCII(part),
 			})
 			emitted = true
 		}
@@ -366,11 +377,17 @@ func Search(lines []Line, query string, limit int) ([]Match, bool) {
 	if query == "" || limit <= 0 {
 		return nil, false
 	}
-	q := strings.ToLower(query)
+	q := fold(query)
+	qRunes := utf8.RuneCountInString(q)
 	var out []Match
 	for li := len(lines) - 1; li >= 0; li-- {
 		ln := lines[li]
-		hay := strings.ToLower(ln.Text)
+		hay, ascii := ln.lower, ln.ascii
+		if hay == "" && ln.Text != "" {
+			// A Line not built by the projector (tests, callers
+			// assembling lines by hand) has no cached fold.
+			hay, ascii = fold(ln.Text), isASCII(ln.Text)
+		}
 		var cols []int
 		for off := 0; off <= len(hay); {
 			i := strings.Index(hay[off:], q)
@@ -384,10 +401,64 @@ func Search(lines []Line, query string, limit int) ([]Match, bool) {
 			if len(out) >= limit {
 				return out, true
 			}
-			out = append(out, Match{Line: ln.Index, Col: cols[ci], Len: len(query), Role: ln.Role})
+			col, n := cols[ci], len(q)
+			if !ascii {
+				col, n = utf16Span(ln.Text, utf8.RuneCountInString(hay[:cols[ci]]), qRunes)
+			}
+			out = append(out, Match{Line: ln.Index, Col: col, Len: n, Role: ln.Role})
 		}
 	}
 	return out, false
+}
+
+// fold lowercases s one rune at a time. unicode.ToLower maps each rune to
+// exactly one rune, so the folded text lines up rune-for-rune with the
+// original — which is what lets a match found in it be located in the
+// text the user sees. strings.ToLower does not guarantee that: the Kelvin
+// sign (3 bytes) folds to "k" (1 byte), shifting every offset after it.
+func fold(s string) string {
+	if isASCII(s) {
+		return strings.ToLower(s) // byte-for-byte for ASCII
+	}
+	var b strings.Builder
+	b.Grow(len(s))
+	for _, r := range s {
+		b.WriteRune(unicode.ToLower(r))
+	}
+	return b.String()
+}
+
+func isASCII(s string) bool {
+	for i := 0; i < len(s); i++ {
+		if s[i] >= utf8.RuneSelf {
+			return false
+		}
+	}
+	return true
+}
+
+// utf16Span returns the UTF-16 offset and length of the runes
+// [startRune, startRune+nRunes) of s. Invalid UTF-8 counts as one unit per
+// byte, matching both the rune walk in fold and the U+FFFD that JSON
+// encoding substitutes, which is what the client ends up indexing.
+func utf16Span(s string, startRune, nRunes int) (col, n int) {
+	i := 0
+	for _, r := range s {
+		w := 1
+		if r >= 0x10000 {
+			w = 2 // a surrogate pair
+		}
+		switch {
+		case i < startRune:
+			col += w
+		case i < startRune+nRunes:
+			n += w
+		default:
+			return col, n
+		}
+		i++
+	}
+	return col, n
 }
 
 // CapText truncates s to at most max bytes without splitting a rune,

@@ -129,23 +129,62 @@ describe('source selection', () => {
   // An agent starting, or a vim opening on a shell, flips the source
   // under an open box.
   it('re-picks the source when the buffer changes under an open box', () => {
-    act(() => mod.openFindBox(SID));
-    act(() => mod.runQuery(SID, 'needle'));
-    expect(find()?.source).toBe('buffer');
+    vi.useFakeTimers();
+    try {
+      act(() => mod.openFindBox(SID));
+      act(() => mod.runQuery(SID, 'needle'));
+      expect(find()?.source).toBe('buffer');
 
-    bufferType = 'alternate';
-    act(() => mod.onBufferChange(SID, 'alternate'));
+      bufferType = 'alternate';
+      act(() => mod.onBufferChange(SID, 'alternate'));
 
-    expect(find()?.source).toBe('transcript');
-    // The box stays open and re-runs the query against the new source.
-    expect(find()).not.toBeNull();
-    expect(searchTranscript).toHaveBeenCalledWith(
-      SID,
-      'needle',
-      expect.any(Number),
-    );
+      expect(find()?.source).toBe('transcript');
+      // The box stays open and re-runs the query against the new source,
+      // once the typing debounce has passed.
+      expect(find()).not.toBeNull();
+      act(() => {
+        vi.advanceTimersByTime(mod.TYPE_DEBOUNCE_MS);
+      });
+      expect(searchTranscript).toHaveBeenCalledWith(
+        SID,
+        'needle',
+        expect.any(Number),
+      );
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
+  // One daemon search per pause in typing, not per keystroke: each search
+  // scans the whole transcript on the GUI's control connection.
+  it('coalesces a burst of keystrokes into one search for the final query', () => {
+    vi.useFakeTimers();
+    try {
+      bufferType = 'alternate';
+      act(() => mod.openFindBox(SID));
+      searchTranscript.mockClear();
+      for (const q of ['n', 'ne', 'nee', 'need', 'needl', 'needle']) {
+        act(() => mod.runQuery(SID, q));
+        act(() => {
+          vi.advanceTimersByTime(mod.TYPE_DEBOUNCE_MS / 2);
+        });
+      }
+      expect(searchTranscript).not.toHaveBeenCalled();
+      // The box reflects the typing at once, even before the search runs.
+      expect(find()?.query).toBe('needle');
+      act(() => {
+        vi.advanceTimersByTime(mod.TYPE_DEBOUNCE_MS);
+      });
+      expect(searchTranscript).toHaveBeenCalledTimes(1);
+      expect(searchTranscript).toHaveBeenCalledWith(
+        SID,
+        'needle',
+        expect.any(Number),
+      );
+    } finally {
+      vi.useRealTimers();
+    }
+  });
   it('does nothing when the buffer change does not change the source', () => {
     act(() => mod.openFindBox(SID));
     searchTranscript.mockClear();
@@ -637,6 +676,10 @@ describe('re-search on session output', () => {
       bufferType = 'alternate';
       act(() => mod.openFindBox(SID));
       act(() => mod.runQuery(SID, 'needle'));
+      // Let the typing debounce fire first, so only refreshes are counted.
+      act(() => {
+        vi.advanceTimersByTime(mod.TYPE_DEBOUNCE_MS);
+      });
       searchTranscript.mockClear();
 
       act(() => mod.onSessionOutput(SID));

@@ -56,6 +56,15 @@ const MAX_MATCHES = 500;
 const OUTPUT_DEBOUNCE_MS = 250;
 
 /**
+ * Debounce for transcript searches while typing. A search reaches the
+ * daemon, which scans the session's whole transcript on the GUI's control
+ * connection; one per keystroke on a large transcript made that
+ * connection stall while the user typed. 100ms is under the threshold
+ * where typing feels laggy. Buffer searches are local and not debounced.
+ */
+export const TYPE_DEBOUNCE_MS = 100;
+
+/**
  * Second, later refresh after output stops. Covers the agent writing its
  * transcript record only once a message is complete.
  */
@@ -107,6 +116,7 @@ let deps: FindDeps;
 // and its pending refresh must not be cancelled by this one's output.
 const outputTimers = new Map<string, ReturnType<typeof setTimeout>>();
 const settleTimers = new Map<string, ReturnType<typeof setTimeout>>();
+const typingTimers = new Map<string, ReturnType<typeof setTimeout>>();
 
 function clearTimer(
   timers: Map<string, ReturnType<typeof setTimeout>>,
@@ -162,6 +172,7 @@ export function closeFindBox(
   if (!find(sessionID)) return;
   clearTimer(outputTimers, sessionID);
   clearTimer(settleTimers, sessionID);
+  clearTimer(typingTimers, sessionID);
   const term = deps.term(sessionID);
   term?.clearSearch?.();
   // Release the viewport claim and restore the pre-search follow state
@@ -212,7 +223,21 @@ export function runQuery(sessionID: string, query: string) {
     // loaded range makes the answer reload the tail, rather than leaving
     // the reader on the last match's window.
     if (!query) patchFind(sessionID, { lines: [], extendReqId: 0 });
-    void deps.searchTranscript(sessionID, query, MAX_MATCHES);
+    // Debounced: the box and its count reflect the keystroke at once
+    // (the query is in state already); the daemon is asked once typing
+    // pauses. Responses carry their query, so one landing for an older
+    // keystroke is discarded rather than painted.
+    clearTimer(typingTimers, sessionID);
+    typingTimers.set(
+      sessionID,
+      setTimeout(() => {
+        typingTimers.delete(sessionID);
+        const cur = find(sessionID);
+        if (cur?.source === 'transcript') {
+          void deps.searchTranscript(sessionID, cur.query, MAX_MATCHES);
+        }
+      }, TYPE_DEBOUNCE_MS),
+    );
     return;
   }
 
@@ -549,4 +574,6 @@ export function resetFindBoxForTest() {
   outputTimers.clear();
   for (const t of settleTimers.values()) clearTimeout(t);
   settleTimers.clear();
+  for (const t of typingTimers.values()) clearTimeout(t);
+  typingTimers.clear();
 }

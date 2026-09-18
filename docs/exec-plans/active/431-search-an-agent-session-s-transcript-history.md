@@ -324,6 +324,8 @@ Manual row, runnable without eyes per `docs/verifying-the-gui-by-hand.md`: `wail
 
 Append-only, one line per /hs-review-loop iteration.
 
+- **2026-09-18 iter 1** — verdict: REQUEST_CHANGES (COMMENT coerced: 4 IMPORTANT, 14 threads); mergeable: MERGEABLE; findings_hash: 0ae932d98becace2b05ccd77909eac244fa69480a46c2d605aef2d7594fe5222; threads_open: 6; action: escalated:risky-fix-needs-human-decision; head_sha: 8446441.
+
 ## Open questions / risks
 
 - **First-search latency on a 21.9 MB transcript.** The cache makes every search after the first cheap, but the first one parses the whole file. Mitigation: parse on overlay open rather than on first keystroke, so the cost lands during the open animation. **The overlay renders an explicit pending state until the first response arrives — never a frozen empty box**, which is the failure mode that would otherwise only be discovered by using the GUI. If the parse is still slow once measured, the fallback is a byte-offset index built on a streaming first pass. Not designed now — measure first.
@@ -369,6 +371,7 @@ No third round was run: the pipeline allows one revise-and-recheck cycle, and lo
 - **2026-09-18** — Transcript rendered as an agent session: the projector now emits a message id, a kind (user/assistant/tool/meta) and the tool name — display only, not searched, which keeps the 3Q decision to leave tool-call JSON out of search. Per-message headers (sticky), prompts set off, tool output muted under its tool and collapsed past 12 lines unless it holds a match. The old per-line role column was 9ch wide and pi's role `toolResult` is 10 characters, which is the likely source of the "tool result breaking into a new line" report; wrapped lines now use a hanging indent so a continuation reads as one.
 - **2026-09-18** — Escape in the box is consumed and focus returns to the terminal only after the key event, so no engine can re-target it at the session (reported on WebKit; not reproducible in Chromium). The find chord closes an open box.
 - **2026-09-18** — ⌘F with the box open refocuses it and selects the query; it never closes the box (Escape and the close control do). Corrects the entry above: the operator's "cmd+f selects all text in the search box" described the behaviour they wanted, and was misread as a bug report. The macOS menu item had been wired to a toggle from the start, which is what closed the box in the real app; every path — menu, chord, chord inside the box — now routes to open-or-refocus.
+- **2026-09-18** — Review iter 1 escalated three changes; operator decided all at the recommended option. (1) Match offsets are UTF-16 code units, found by folding rune-for-rune (`unicode.ToLower` is 1:1 per rune; `strings.ToLower` shifts byte offsets past a Kelvin sign) — the wire field's meaning changes, but contract 15 has never shipped, so no bump. (2) The fold is computed once per line at projection, and the GUI debounces transcript search by 100ms while typing. (3) The single-slot cache stays, with the accepted re-parse-on-switch cost stated at the field. (4) An unused projection is released after 5 minutes idle, via a generation-checked timer so a timer firing mid-lookup cannot drop a freshly refreshed projection.
 
 ## Progress
 

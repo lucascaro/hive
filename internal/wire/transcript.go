@@ -64,8 +64,10 @@ type SearchTranscriptReq struct {
 	MaxMatches int `json:"max_matches,omitempty"`
 }
 
-// TranscriptMatch is one hit. Col is a byte offset into the line's text
-// as the client receives it, so highlighting needs no arithmetic.
+// TranscriptMatch is one hit. Col and Len are in UTF-16 code units of the
+// line's text — the unit a JavaScript string indexes by — so the client
+// highlights with a plain slice. Not bytes: those are wrong on any line
+// with a non-ASCII character before the match.
 type TranscriptMatch struct {
 	Line    int    `json:"line"`
 	Col     int    `json:"col"`

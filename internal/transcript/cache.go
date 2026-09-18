@@ -4,6 +4,7 @@ import (
 	"io"
 	"os"
 	"sync"
+	"time"
 )
 
 // Cache holds the projection of exactly one session's transcript.
@@ -28,6 +29,37 @@ type Cache struct {
 	// proj carries message numbering and tool-call names across the
 	// tail re-parses; reset whenever the projection restarts from zero.
 	proj *projector
+
+	// idle drops the projection after IdleDrop without a lookup, so a
+	// daemon whose find box was closed does not hold a transcript's text
+	// indefinitely. gen tells the timer whether it is still the latest:
+	// one that fires while a lookup holds the lock must not drop the
+	// projection that lookup just refreshed.
+	idle *time.Timer
+	gen  uint64
+}
+
+// IdleDrop is how long a projection is kept after its last lookup. A
+// variable so tests can shorten it.
+var IdleDrop = 5 * time.Minute
+
+// touchLocked restarts the idle clock. Called with c.mu held.
+func (c *Cache) touchLocked() {
+	c.gen++
+	gen := c.gen
+	if c.idle != nil {
+		c.idle.Stop()
+	}
+	c.idle = time.AfterFunc(IdleDrop, func() { c.dropIfIdle(gen) })
+}
+
+func (c *Cache) dropIfIdle(gen uint64) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if c.gen != gen {
+		return // used since this timer was set
+	}
+	c.dropLocked()
 }
 
 // Lines returns the projection for sessionID, refreshing it from disk.
@@ -40,6 +72,7 @@ type Cache struct {
 func (c *Cache) Lines(sessionID string, paths []string) ([]Line, error) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
+	c.touchLocked()
 
 	if sessionID != c.key || !samePaths(paths, c.paths) {
 		c.key = sessionID
@@ -120,11 +153,20 @@ func (c *Cache) reprojectLocked() ([]Line, error) {
 	return c.lines, nil
 }
 
-// Drop releases the cached projection. No production caller yet: the
-// projection is released only when a different session is searched.
+// Drop releases the cached projection now. In production it is released
+// by the idle timer (see IdleDrop), or replaced when another session is
+// searched.
 func (c *Cache) Drop() {
 	c.mu.Lock()
 	defer c.mu.Unlock()
+	if c.idle != nil {
+		c.idle.Stop()
+		c.idle = nil
+	}
+	c.dropLocked()
+}
+
+func (c *Cache) dropLocked() {
 	c.key, c.paths, c.sizes, c.lines, c.proj = "", nil, nil, nil, nil
 }
 

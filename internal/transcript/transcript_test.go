@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 	"unicode/utf8"
 )
 
@@ -487,5 +488,117 @@ func TestCacheCarriesProjectionStateAcrossTail(t *testing.T) {
 	}
 	if got[1].Msg == got[0].Msg {
 		t.Fatalf("message ids collided across the tail parse: %+v", got)
+	}
+}
+
+// --- offsets are UTF-16, the unit the GUI's JavaScript indexes by ---
+
+func searchOne(t *testing.T, text, query string) Match {
+	t.Helper()
+	m, _ := Search(lines(t, rec(text)), query, 10)
+	if len(m) != 1 {
+		t.Fatalf("Search(%q, %q) = %+v, want one match", text, query, m)
+	}
+	return m[0]
+}
+
+// The bug this fixes: ✓ is 3 bytes but 1 UTF-16 unit, so a byte offset
+// put the highlight two characters to the right of the match.
+func TestSearchOffsetIsUTF16AfterNonASCII(t *testing.T) {
+	m := searchOne(t, "✓ test passed", "test")
+	if m.Col != 2 || m.Len != 4 {
+		t.Fatalf("Col=%d Len=%d, want 2/4 (✓ is one unit, not three bytes)", m.Col, m.Len)
+	}
+}
+
+// Characters outside the BMP are two UTF-16 units — a surrogate pair.
+func TestSearchOffsetCountsSurrogatePairs(t *testing.T) {
+	m := searchOne(t, "😀 done", "done")
+	if m.Col != 3 {
+		t.Fatalf("Col=%d, want 3 (the emoji is two units)", m.Col)
+	}
+}
+
+// Length is UTF-16 too, when the match itself is non-ASCII.
+func TestSearchLengthIsUTF16(t *testing.T) {
+	m := searchOne(t, "a café b", "café")
+	if m.Col != 2 || m.Len != 4 {
+		t.Fatalf("Col=%d Len=%d, want 2/4", m.Col, m.Len)
+	}
+}
+
+// strings.ToLower folds the Kelvin sign (3 bytes) to "k" (1 byte), which
+// shifted every later offset. Folding rune by rune keeps them aligned.
+func TestSearchOffsetsSurviveLengthChangingFold(t *testing.T) {
+	m := searchOne(t, "K then needle", "needle")
+	if m.Col != 7 || m.Len != 6 {
+		t.Fatalf("Col=%d Len=%d, want 7/6", m.Col, m.Len)
+	}
+}
+
+// Case-insensitive across non-ASCII letters, found via the cached fold.
+func TestSearchFoldsNonASCIICase(t *testing.T) {
+	m := searchOne(t, "ÉCOLE", "école")
+	if m.Col != 0 || m.Len != 5 {
+		t.Fatalf("Col=%d Len=%d, want 0/5", m.Col, m.Len)
+	}
+}
+
+// Projection computes the fold once, so a search does not re-lowercase
+// the whole transcript per keystroke.
+func TestProjectionCachesTheFold(t *testing.T) {
+	got := lines(t, rec("MiXeD Case"))
+	if got[0].lower != "mixed case" || !got[0].ascii {
+		t.Fatalf("lower=%q ascii=%v", got[0].lower, got[0].ascii)
+	}
+}
+
+// --- the cache releases an idle projection ---
+
+func withIdleDrop(t *testing.T, d time.Duration) {
+	t.Helper()
+	prev := IdleDrop
+	IdleDrop = d
+	t.Cleanup(func() { IdleDrop = prev })
+}
+
+func cachedLines(c *Cache) int {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return len(c.lines)
+}
+
+// Nothing tells the daemon the find box closed, so an unused projection
+// is released after IdleDrop rather than held until another search.
+func TestCacheDropsAfterIdle(t *testing.T) {
+	withIdleDrop(t, 30*time.Millisecond)
+	p := writeFile(t, t.TempDir(), "a.jsonl", rec("alpha"))
+	var c Cache
+	if _, err := c.Lines("s1", []string{p}); err != nil {
+		t.Fatal(err)
+	}
+	deadline := time.Now().Add(2 * time.Second)
+	for cachedLines(&c) != 0 {
+		if time.Now().After(deadline) {
+			t.Fatal("projection still held after the idle period")
+		}
+		time.Sleep(5 * time.Millisecond)
+	}
+}
+
+// Each lookup restarts the clock: a projection in use is never dropped
+// out from under the search that is using it.
+func TestCacheIdleClockRestartsOnUse(t *testing.T) {
+	withIdleDrop(t, 80*time.Millisecond)
+	p := writeFile(t, t.TempDir(), "a.jsonl", rec("alpha"))
+	var c Cache
+	for range 6 {
+		if _, err := c.Lines("s1", []string{p}); err != nil {
+			t.Fatal(err)
+		}
+		time.Sleep(30 * time.Millisecond) // well inside the idle period
+		if cachedLines(&c) == 0 {
+			t.Fatal("dropped while still in use")
+		}
 	}
 }
