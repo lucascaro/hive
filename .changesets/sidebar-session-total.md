@@ -2,7 +2,7 @@
 type: added
 bump: minor
 issue: 434
-pr: 0
+pr: 435
 ---
 
 The sidebar header shows how many sessions you have, as a small number next to

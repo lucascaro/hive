@@ -4,7 +4,8 @@ title: "Show total session count next to the Hive title in the sidebar"
 type: enhancement
 complexity: S
 priority: P3
-stage: IMPLEMENT
+pr: 435
+stage: REVIEW
 ---
 
 # Show total session count next to the Hive title in the sidebar

@@ -3,6 +3,8 @@
 - **Spec:** [docs/product-specs/434-show-total-session-count-next-to-the-hive-title-i.md](../../product-specs/434-show-total-session-count-next-to-the-hive-title-i.md)
 - **Issue:** #434
 - **Status:** active
+- **PR:** #435
+- **Branch:** feature/434-sidebar-session-total
 
 ## Summary
 
@@ -105,3 +107,4 @@ From `cmd/hivegui/frontend`:
 - **2026-09-18** — Spec and plan created; research done (fast lane).
 - **2026-09-18** — Plan approved (chat, first pass).
 - **2026-09-18** — Implemented: count portal in `SidebarHeaderControls`, `.brand-count` CSS, DOM + e2e tests, changeset.
+- **2026-09-18** — PR #435 opened.
