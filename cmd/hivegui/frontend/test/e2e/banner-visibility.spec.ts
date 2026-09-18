@@ -17,17 +17,20 @@ async function boot(page: Page) {
 test('a hidden banner button is actually not rendered', async ({ page }) => {
   await boot(page);
 
-  // "Checking for updates…" is the transient shape: no download URL, so
-  // the Download action must be hidden, while the banner itself shows.
+  // A staging banner with no download URL: the banner shows unasked
+  // (the user started this update), and the Download action must be
+  // hidden. Not update:available — a background result only sets the
+  // check-for-updates button's dot now (#436).
   await page.evaluate(() =>
     // Go emits a struct here, not a JSON string — the banner handlers
     // read fields off the payload directly.
-    window.__hive.emit('update:available', {
+    window.__hive.emit('update:progress', {
       available: true,
       current: '2.4.0',
       latest: '2.5.0',
       url: '',
-      stage: 'available',
+      stage: 'staging',
+      message: 'Downloading…',
       channel: 'release',
     }),
   );

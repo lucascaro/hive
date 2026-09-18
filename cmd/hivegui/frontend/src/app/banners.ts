@@ -24,7 +24,12 @@ import {
   OpenURL,
 } from '../bridge.js';
 import { flashStatus, reportFailure } from './dom.js';
-import { appStore, hideBanner, setBanner } from '../store/store.js';
+import {
+  appStore,
+  hideBanner,
+  setBanner,
+  setUpdatePending,
+} from '../store/store.js';
 import { CHANNEL_LATEST, updateButtonState } from '../lib/update-state.js';
 // Type-only, so the generated module is erased before Vite resolves it.
 import type { main } from '../../wailsjs/go/models';
@@ -233,16 +238,16 @@ export async function applyUpdateAndRestart(versionLabel = '', kind = '') {
   }
 }
 
-// Update-available banner. Backend's startUpdateCheckLoop emits
+// Update banner. Backend's startUpdateCheckLoop emits
 // "update:available" on startup + every 6h when a newer GitHub
-// release tag than buildinfo.Version() is found. The user can also
-// trigger it manually via the "Check for Updates…" menu item, which
-// calls CheckForUpdate() and surfaces *all* outcomes (including
-// "you're up to date" and "skipped: dev build") so the click feels
-// responsive. Dismissals are remembered per-version in localStorage
-// so the 6h tick doesn't re-nag for a release the user has already
-// seen.
-const UPDATE_DISMISS_KEY = 'hive.updateDismissedFor';
+// release tag than buildinfo.Version() is found. That background
+// result does NOT raise the banner: it puts a dot on the sidebar's
+// "Check for updates" button (store.updatePending) and waits to be
+// asked. A check the user runs — the button, the "Check for Updates…"
+// menu item, the palette — calls CheckForUpdate() and surfaces *all*
+// outcomes (including "you're up to date" and "skipped: dev build") so
+// the click feels responsive. Staging, ready and failed updates show the
+// banner unprompted: the user started those.
 let updateBannerAutoHideTimer: ReturnType<typeof setTimeout> | null = null;
 
 // renderUpdateAction drives the Update / Updating… / Restart button from
@@ -263,10 +268,9 @@ function renderUpdateAction(info: main.UpdateInfo | null) {
         hidden: false,
         label: btn.label,
         disabled: btn.disabled,
-        // Kept on the button, not on the banner: the banner's
-        // data-version is the per-version dismiss key, and
-        // showUpdateBanner drops it on every show — so by the time the
-        // button says Restart it would be gone.
+        // Kept on the button, not on the banner: showUpdateBanner
+        // replaces the banner's data on every show, so by the time the
+        // button says Restart anything stored there would be gone.
         data: { action: btn.action, version: info?.latest || '' },
       },
     },
@@ -275,17 +279,12 @@ function renderUpdateAction(info: main.UpdateInfo | null) {
 
 function showUpdateBanner(
   text: string,
-  { downloadUrl = '', showDownload = true, autoHideMs = 0, version = '' } = {},
+  { downloadUrl = '', showDownload = true, autoHideMs = 0 } = {},
 ) {
   setBanner('update', {
     text,
     visible: true,
-    // `data` is replaced wholesale, which is how the per-version
-    // dismissal key gets cleared on every show — only the "available"
-    // branch passes one back. Without that, dismissing a transient
-    // banner ("up to date", "checking…") would write a stale version
-    // into localStorage.
-    data: version ? { url: downloadUrl, version } : { url: downloadUrl },
+    data: { url: downloadUrl },
     // A banner with no trusted URL still tells the user an update
     // exists; it just doesn't offer a one-click Download for an
     // untrusted target.
@@ -306,14 +305,10 @@ function hideUpdateBanner() {
   hideBanner('update');
 }
 
-/** Dismiss handler for the update slot; wired in components/Banners.tsx. */
+/** Dismiss handler for the update slot; wired in components/Banners.tsx.
+ * Only hides it: nothing re-raises the banner unasked any more, and the
+ * button's dot stays until a check reports no update pending. */
 export function dismissUpdateBanner() {
-  const v = appStore.getState().banners.update.data?.version || '';
-  if (v) {
-    try {
-      localStorage.setItem(UPDATE_DISMISS_KEY, v);
-    } catch {}
-  }
   hideUpdateBanner();
 }
 
@@ -324,8 +319,9 @@ export function openDownloadUrl() {
 }
 
 // Transient (non-actionable) banners auto-hide so they don't linger
-// after the user has registered the message. The "available" banner
-// stays sticky — it has a Download button the user actually needs.
+// after the user has registered the message. The "available" banner a
+// manual check raises stays sticky — it has a Download button the user
+// actually needs.
 const UPDATE_TRANSIENT_MS = 4000;
 
 function applyUpdateInfo(
@@ -333,6 +329,9 @@ function applyUpdateInfo(
   { manual = false }: { manual?: boolean } = {},
 ) {
   if (!info) return;
+  // After the null guard: the boot poll resolves null when there is
+  // nothing to report, and that must not clear a dot an event just set.
+  setUpdatePending(!!info.available);
   renderUpdateAction(info);
   // Staging and its outcomes are always worth showing: the user asked
   // for this, and a failure that only lived in the Settings modal would
@@ -365,11 +364,8 @@ function applyUpdateInfo(
     return;
   }
   if (info.available) {
-    let dismissed = '';
-    try {
-      dismissed = localStorage.getItem(UPDATE_DISMISS_KEY) || '';
-    } catch {}
-    if (!manual && dismissed === info.latest) return;
+    // Unasked, it is the button's dot's job (set above), not a banner's.
+    if (!manual) return;
     // info.url is empty when the Go side rejected the release's
     // html_url for failing the github.com/<repo>/ prefix check
     // (defense-in-depth against a tampered or spoofed response).
@@ -384,7 +380,7 @@ function applyUpdateInfo(
     const text = needsReleasePage
       ? `${base} Open releases page manually.`
       : base;
-    showUpdateBanner(text, { downloadUrl: info.url, version: info.latest });
+    showUpdateBanner(text, { downloadUrl: info.url });
     return;
   }
   if (manual) {
@@ -406,8 +402,8 @@ function wireUpdateBanner() {
   );
 
   // Pull once on load. The Go side's periodic loop only fires every
-  // 6h, so without this the user wouldn't see an "available" banner
-  // until 6h after launch.
+  // 6h, so without this the button's dot wouldn't appear until 6h
+  // after launch.
   // Intentionally silent: background boot poll. The manual menu path
   // below surfaces every outcome, including failures.
   CheckForUpdate()
