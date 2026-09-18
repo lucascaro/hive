@@ -1,11 +1,8 @@
 package main
 
 import (
-	"bufio"
 	"context"
 	"fmt"
-	"io"
-	"log"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -200,7 +197,8 @@ func stageLatest(info UpdateInfo, progress func(string)) (string, error) {
 
 // runBuildScript runs ./build.sh and streams its output into progress.
 // Only the most recent line is reported — build.sh is chatty and the
-// button has one line to show it in.
+// button has one line to show it in. A failure carries the whole output
+// (buildError) for the log viewer.
 func runBuildScript(repo string, progress func(string)) error {
 	ctx, cancel := context.WithTimeout(context.Background(), buildTimeout)
 	defer cancel()
@@ -225,31 +223,9 @@ func runBuildScript(repo string, progress func(string)) error {
 	if err := cmd.Start(); err != nil {
 		return fmt.Errorf("run build.sh: %w", err)
 	}
-	var tail string
-	sc := bufio.NewScanner(stdout)
-	sc.Buffer(make([]byte, 0, 64<<10), 1<<20)
-	for sc.Scan() {
-		line := plainProgressLine(sc.Text())
-		if line == "" {
-			continue
-		}
-		tail = line
-		progress(line)
-	}
-	// A scanner error (a line past the 1MB cap, a read fault) stops the
-	// loop with the pipe still open. build.sh then blocks on a full pipe
-	// buffer and cmd.Wait sits there until the 30-minute timeout, with
-	// the button stuck on "Updating…" the whole time. Draining lets the
-	// child finish and Wait return.
-	if err := sc.Err(); err != nil {
-		log.Printf("hivegui: build.sh output scan stopped early: %v", err)
-		_, _ = io.Copy(io.Discard, stdout)
-	}
+	output, summary := streamBuildOutput(stdout, progress)
 	if err := cmd.Wait(); err != nil {
-		if tail != "" {
-			return fmt.Errorf("build.sh failed: %s", tail)
-		}
-		return fmt.Errorf("build.sh failed: %w", err)
+		return &buildError{err: err, summary: summary, log: output}
 	}
 	return nil
 }

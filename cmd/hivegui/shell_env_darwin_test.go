@@ -210,3 +210,23 @@ func TestPathSourceDescriptionNamesTheActualSource(t *testing.T) {
 		t.Errorf("pathSourceDescription with no SHELL = %q, want it to say the PATH was inherited", got)
 	}
 }
+
+// runGit must resolve git on the login PATH, not the process one: from a
+// Spotlight launch the process PATH finds /usr/bin/git, the xcrun shim
+// that fails until the Xcode license is accepted.
+func TestRunGitUsesLoginPATH(t *testing.T) {
+	dir := t.TempDir()
+	fake := filepath.Join(dir, "git")
+	if err := os.WriteFile(fake, []byte("#!/bin/sh\necho login-path-git\n"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	stubLoginPATH(t, dir)
+
+	out, err := runGit(dir, "--version")
+	if err != nil {
+		t.Fatalf("runGit: %v", err)
+	}
+	if out != "login-path-git" {
+		t.Errorf("runGit ran %q, want the git on the login PATH", out)
+	}
+}

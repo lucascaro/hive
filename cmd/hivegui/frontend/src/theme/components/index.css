@@ -36,6 +36,7 @@
 @import './pending-prompt.css';
 @import './choice-dialog.css';
 @import './whats-new.css';
+@import './build-log.css';
 
 /* Last: xterm's own DOM, which we only ever subtract from. */
 @import './xterm-overrides.css';

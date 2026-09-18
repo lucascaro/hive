@@ -70,6 +70,7 @@ import {
   toggleHelpOverlay,
 } from './modals/help-overlay.js';
 import { closeWhatsNew } from './modals/whats-new.js';
+import { closeBuildLog } from './modals/build-log.js';
 import { activityKey, isHelpOverlayKey, navHistoryKey } from '../lib/keymap.js';
 import {
   switchTo,
@@ -334,6 +335,17 @@ window.addEventListener(
         e.stopPropagation();
       }
       return; // the What's New modal owns the keyboard while open
+    }
+    if (isModalOpen('build-log')) {
+      // Same gate as What's New, for the same reasons.
+      if (e.key === 'Escape') {
+        e.preventDefault();
+        e.stopPropagation();
+        closeBuildLog();
+      } else if (trapFocus(pageEl('build-log'), e)) {
+        e.stopPropagation();
+      }
+      return; // the build log owns the keyboard while open
     }
 
     // Dead-session overlay: route Enter/Escape to the active session's
@@ -1007,7 +1019,8 @@ function ideaKeysBlocked(): boolean {
     isModalOpen('settings') ||
     isModalOpen('worktrees') ||
     isModalOpen('help') ||
-    isModalOpen('whats-new')
+    isModalOpen('whats-new') ||
+    isModalOpen('build-log')
   );
 }
 

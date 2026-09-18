@@ -450,6 +450,9 @@ export async function UpdateStatus() {
 export async function StartUpdate() {
   return '';
 }
+export async function UpdateBuildLog() {
+  return '';
+}
 export async function ApplyUpdateAndRestart() {
   return '';
 }

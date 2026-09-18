@@ -4,7 +4,6 @@ package main
 
 import (
 	"archive/zip"
-	"bufio"
 	"context"
 	"fmt"
 	"io"
@@ -322,7 +321,8 @@ func checkLatestInstallLayout(install, buildDir string) error {
 
 // runBuildScript runs build.sh through bash and streams its output into
 // progress. Only the most recent line is reported — build.sh is chatty
-// and the button has one line to show it in.
+// and the button has one line to show it in. A failure carries the whole
+// output (buildError) for the log viewer.
 //
 // build.sh is a shell script, so Windows needs bash to run it at all;
 // Git for Windows ships one. The invocation is `bash -lc` for the login
@@ -358,34 +358,9 @@ func runBuildScript(repo string, progress func(string)) error {
 	if err := cmd.Start(); err != nil {
 		return fmt.Errorf("run build.sh: %w", err)
 	}
-	var tail string
-	sc := bufio.NewScanner(stdout)
-	sc.Buffer(make([]byte, 0, 64<<10), 1<<20)
-	for sc.Scan() {
-		line := plainProgressLine(sc.Text())
-		if line == "" {
-			continue
-		}
-		tail = line
-		progress(line)
-	}
-	// A scanner error (a line past the 1MB cap, a read fault) stops the
-	// loop with the pipe still open. build.sh then blocks on a full pipe
-	// buffer and cmd.Wait sits there until the timeout, with the button
-	// stuck on "Updating…" the whole time. Draining lets the child
-	// finish and Wait return.
-	if err := sc.Err(); err != nil {
-		log.Printf("hivegui: build.sh output scan stopped early: %v", err)
-		_, _ = io.Copy(io.Discard, stdout)
-	}
+	output, summary := streamBuildOutput(stdout, progress)
 	if err := cmd.Wait(); err != nil {
-		if tail != "" {
-			// Keep the exit status: the last line of a failed build is
-			// often unrelated trailing noise, and dropping err left the
-			// status unrecoverable from the UI.
-			return fmt.Errorf("build.sh failed (%v): %s", err, tail)
-		}
-		return fmt.Errorf("build.sh failed: %w", err)
+		return &buildError{err: err, summary: summary, log: output}
 	}
 	return nil
 }

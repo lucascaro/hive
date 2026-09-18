@@ -87,6 +87,8 @@ interface HiveTestApi {
   ): Promise<string>;
   seedWorktrees?(worktrees: MockWorktree[], branches?: MockBranch[]): void;
   seedIdeas?(ideas: MockIdea[]): void;
+  /** What the UpdateBuildLog binding answers. */
+  setBuildLog?(text: string): void;
   replayLog?: { id: string; t: number }[];
   replayCount?(id?: string): number;
   resetReplay?(): void;

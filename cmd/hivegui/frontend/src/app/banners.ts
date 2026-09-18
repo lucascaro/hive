@@ -275,7 +275,13 @@ function renderUpdateAction(info: main.UpdateInfo | null) {
 
 function showUpdateBanner(
   text: string,
-  { downloadUrl = '', showDownload = true, autoHideMs = 0, version = '' } = {},
+  {
+    downloadUrl = '',
+    showDownload = true,
+    showBuildLog = false,
+    autoHideMs = 0,
+    version = '',
+  } = {},
 ) {
   setBanner('update', {
     text,
@@ -289,7 +295,12 @@ function showUpdateBanner(
     // A banner with no trusted URL still tells the user an update
     // exists; it just doesn't offer a one-click Download for an
     // untrusted target.
-    actions: { download: { hidden: !(showDownload && downloadUrl) } },
+    actions: {
+      download: { hidden: !(showDownload && downloadUrl) },
+      // Every show sets it, so a later "Checking…" or "up to date" banner
+      // cannot inherit the button from the failure before it.
+      log: { hidden: !showBuildLog },
+    },
   });
   if (updateBannerAutoHideTimer) {
     clearTimeout(updateBannerAutoHideTimer);
@@ -346,6 +357,7 @@ function applyUpdateInfo(
     showUpdateBanner(btn.status, {
       downloadUrl: info.url || '',
       showDownload: info.stage !== 'ready',
+      showBuildLog: info.stage === 'error' && !!info.hasBuildLog,
     });
     return;
   }

@@ -149,7 +149,8 @@ export type ModalId =
   | 'quick-idea'
   | 'idea-inbox'
   | 'help'
-  | 'whats-new';
+  | 'whats-new'
+  | 'build-log';
 
 // `seq` is the opening's generation, minted by openModal. A component
 // keys its per-open state off it (`key={entry.seq}`), which is what makes
@@ -171,7 +172,10 @@ export type ModalEntry =
   | { id: 'quick-idea'; seq: number; projectId: string; idea?: IdeaInfo | null }
   | { id: 'idea-inbox'; seq: number; projectId: string; projectName: string }
   | { id: 'help'; seq: number }
-  | { id: 'whats-new'; seq: number };
+  | { id: 'whats-new'; seq: number }
+  // The failed build's output, fetched once on open: it is a snapshot
+  // of an attempt that is over, so there is nothing to keep in sync.
+  | { id: 'build-log'; seq: number; log: string };
 
 // The open question, plus the generation that lets a second ask remount
 // the body. The spec is the caller's — see app/modals/choice-dialog.ts,
@@ -465,7 +469,11 @@ function initialData(): AppData {
       // The primary action starts hidden — same as the old markup's
       // display:none default for a banner with nothing to act on.
       // renderUpdateAction reveals it once there is something to do.
-      update: { ...EMPTY_BANNER, actions: { action: { hidden: true } } },
+      // "View log" likewise: only a failed build has one.
+      update: {
+        ...EMPTY_BANNER,
+        actions: { action: { hidden: true }, log: { hidden: true } },
+      },
     },
     modals: [],
     worktreesPayload: null,

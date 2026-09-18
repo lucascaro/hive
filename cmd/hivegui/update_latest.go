@@ -18,6 +18,16 @@ import (
 // restart_unix.go. Production always uses runGit.
 var runGitFn = runGit
 
+// gitCommandFn, when set, picks the git binary and the environment it
+// runs with. macOS resolves both from the login-shell PATH
+// (shell_env_darwin.go): an app opened from Spotlight or Finder otherwise
+// finds /usr/bin/git — Apple's xcrun shim, which refuses to run until
+// the Xcode license is accepted — even when the user's terminal has a
+// working git earlier on its PATH. The binary has to be resolved here
+// rather than left to cmd.Env, because exec resolves a bare name against
+// the process PATH. Nil elsewhere: "git" on the process environment.
+var gitCommandFn func() (bin string, env []string)
+
 // gitTimeout bounds every git invocation. `fetch` talks to the network,
 // so this is generous; the rest return in milliseconds.
 var gitTimeout = 60 * time.Second
@@ -28,8 +38,13 @@ var gitTimeout = 60 * time.Second
 func runGit(dir string, args ...string) (string, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), gitTimeout)
 	defer cancel()
-	cmd := proc.CommandContext(ctx, "git", args...)
+	bin, env := "git", []string(nil)
+	if gitCommandFn != nil {
+		bin, env = gitCommandFn()
+	}
+	cmd := proc.CommandContext(ctx, bin, args...)
 	cmd.Dir = dir
+	cmd.Env = env
 	out, err := cmd.Output()
 	if err != nil {
 		var ee *exec.ExitError
@@ -59,6 +74,12 @@ func checkLatest(repo string) (UpdateInfo, error) {
 
 	upstream, err := runGitFn(repo, "rev-parse", "--abbrev-ref", "--symbolic-full-name", "@{upstream}")
 	if err != nil {
+		if !isNoUpstreamErr(err) {
+			// git itself failed — missing, or refusing to run until the
+			// Xcode license is accepted. Reporting that as "no upstream"
+			// sent the user hunting for a branch problem that wasn't there.
+			return info, err
+		}
 		// No upstream is a configuration state, not a failure: say so
 		// and skip rather than raising an error banner every 6 hours.
 		info.Skipped = true
@@ -101,6 +122,16 @@ func checkLatest(repo string) (UpdateInfo, error) {
 		info.Message = fmt.Sprintf("%d commit(s) behind %s", n, upstream)
 	}
 	return info, nil
+}
+
+// isNoUpstreamErr reports whether a failed `rev-parse @{upstream}` failed
+// because there is nothing to track: a branch with no upstream, or a
+// detached HEAD. runGit folds git's stderr into the error, which is what
+// makes this distinguishable from git not running at all.
+func isNoUpstreamErr(err error) bool {
+	msg := err.Error()
+	return strings.Contains(msg, "no upstream configured") ||
+		strings.Contains(msg, "HEAD does not point to a branch")
 }
 
 func isHex(s string) bool {
