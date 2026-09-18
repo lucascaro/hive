@@ -3,7 +3,9 @@ package agent
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
+	"time"
 )
 
 // Pi's encoding is NOT claude's. Claude folds "." to "-" as well, so
@@ -133,15 +135,41 @@ func TestPiTranscriptPathsRejectsGlobMetacharacters(t *testing.T) {
 	}
 }
 
-func TestClaudeTranscriptPaths(t *testing.T) {
-	const cwd = "/Users/u/repo"
-	const id = "be0af6d6-947e-468c-a7e2-518a869cd69b"
+// claudeDir points HOME at a temp dir and returns the Claude project
+// directory for cwd inside it.
+func claudeDir(t *testing.T, cwd string) string {
+	t.Helper()
 	home := t.TempDir()
 	t.Setenv("HOME", home)
 	dir := filepath.Join(home, ".claude", "projects", encodeClaudeProjectDir(cwd))
 	if err := os.MkdirAll(dir, 0o700); err != nil {
 		t.Fatal(err)
 	}
+	return dir
+}
+
+// claudeFile writes a transcript whose records carry the given ids, the
+// shape verified on a real fork: camelCase sessionId is the file's own,
+// snake_case session_id is the conversation it descends from. mod sets
+// the file's mtime so ordering is explicit rather than timing-dependent.
+func claudeFile(t *testing.T, dir, own, origin string, mod time.Time) string {
+	t.Helper()
+	p := filepath.Join(dir, own+".jsonl")
+	body := `{"type":"file-history-snapshot","messageId":"m1"}` + "\n" +
+		`{"type":"assistant","sessionId":"` + own + `","session_id":"` + origin + `","message":{"role":"assistant","content":[{"type":"text","text":"hi"}]}}` + "\n"
+	if err := os.WriteFile(p, []byte(body), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chtimes(p, mod, mod); err != nil {
+		t.Fatal(err)
+	}
+	return p
+}
+
+func TestClaudeTranscriptPaths(t *testing.T) {
+	const cwd = "/Users/u/repo"
+	const id = "be0af6d6-947e-468c-a7e2-518a869cd69b"
+	dir := claudeDir(t, cwd)
 
 	// Absent until claude writes it: a session started but never used
 	// has no transcript, and that must not read as an error.
@@ -149,13 +177,129 @@ func TestClaudeTranscriptPaths(t *testing.T) {
 		t.Fatalf("expected nil before the file exists, got %v", got)
 	}
 
-	want := filepath.Join(dir, id+".jsonl")
-	if err := os.WriteFile(want, []byte("{}\n"), 0o600); err != nil {
-		t.Fatal(err)
-	}
+	want := claudeFile(t, dir, id, id, time.Now())
 	got := claudeTranscriptPaths(id, cwd)
 	if len(got) != 1 || got[0] != want {
 		t.Fatalf("got %v, want [%s]", got, want)
+	}
+}
+
+// The bug this exists for: Claude forked the conversation into a new file
+// (a new sessionId, the full history copied, session_id pointing back),
+// the original stopped growing, and the transcript was cut off at the
+// fork because only <id>.jsonl was read.
+func TestClaudeTranscriptPathsFollowsFork(t *testing.T) {
+	const cwd = "/Users/u/repo"
+	const id = "bad19ab3-d4b8-4d22-9368-ebc95f073b92"
+	dir := claudeDir(t, cwd)
+	now := time.Now()
+	claudeFile(t, dir, id, id, now.Add(-time.Hour))
+	fork := claudeFile(t, dir, "c49564f2-afdb-403c-9efe-a52b5fa126db", id, now)
+
+	got := claudeTranscriptPaths(id, cwd)
+	if len(got) != 1 || got[0] != fork {
+		t.Fatalf("got %v, want the fork [%s]", got, fork)
+	}
+}
+
+// The resolution is memoized on the directory mtime; a fork created
+// AFTER a first lookup must still be picked up on the next one.
+func TestClaudeTranscriptPathsNoticesLaterFork(t *testing.T) {
+	const cwd = "/Users/u/repo"
+	const id = "orig"
+	dir := claudeDir(t, cwd)
+	now := time.Now()
+	own := claudeFile(t, dir, id, id, now.Add(-time.Hour))
+	if got := claudeTranscriptPaths(id, cwd); len(got) != 1 || got[0] != own {
+		t.Fatalf("before the fork: got %v", got)
+	}
+	fork := claudeFile(t, dir, "fork", id, now)
+	// Make the directory change unambiguous even on a coarse clock.
+	later := now.Add(time.Minute)
+	if err := os.Chtimes(dir, later, later); err != nil {
+		t.Fatal(err)
+	}
+	if got := claudeTranscriptPaths(id, cwd); len(got) != 1 || got[0] != fork {
+		t.Fatalf("after the fork: got %v, want [%s]", got, fork)
+	}
+}
+
+// A fork of a fork: the newest descendant wins.
+func TestClaudeTranscriptPathsPicksNewestFork(t *testing.T) {
+	const cwd = "/Users/u/repo"
+	const id = "orig"
+	dir := claudeDir(t, cwd)
+	now := time.Now()
+	claudeFile(t, dir, id, id, now.Add(-2*time.Hour))
+	claudeFile(t, dir, "fork-a", id, now.Add(-time.Hour))
+	newest := claudeFile(t, dir, "fork-b", id, now)
+
+	got := claudeTranscriptPaths(id, cwd)
+	if len(got) != 1 || got[0] != newest {
+		t.Fatalf("got %v, want [%s]", got, newest)
+	}
+}
+
+// Sibling sessions share the project directory, and they are usually the
+// newer files. Only a file that descends from THIS session may win.
+func TestClaudeTranscriptPathsIgnoresNewerUnrelatedSessions(t *testing.T) {
+	const cwd = "/Users/u/repo"
+	const id = "mine"
+	dir := claudeDir(t, cwd)
+	now := time.Now()
+	own := claudeFile(t, dir, id, id, now.Add(-time.Hour))
+	claudeFile(t, dir, "sibling", "sibling", now)
+
+	got := claudeTranscriptPaths(id, cwd)
+	if len(got) != 1 || got[0] != own {
+		t.Fatalf("got %v, want own [%s]", got, own)
+	}
+}
+
+// A fork already contains the history, so it replaces the original
+// rather than being appended to it — never both.
+func TestClaudeTranscriptPathsNeverConcatenates(t *testing.T) {
+	const cwd = "/Users/u/repo"
+	const id = "orig"
+	dir := claudeDir(t, cwd)
+	now := time.Now()
+	claudeFile(t, dir, id, id, now.Add(-time.Hour))
+	claudeFile(t, dir, "fork", id, now)
+	if got := claudeTranscriptPaths(id, cwd); len(got) != 1 {
+		t.Fatalf("got %d paths, want exactly 1: %v", len(got), got)
+	}
+}
+
+// Only files written after the original are candidates: a fork is newer
+// than the file it copied. An OLDER file claiming the id is not read.
+func TestClaudeTranscriptPathsSkipsOlderFiles(t *testing.T) {
+	const cwd = "/Users/u/repo"
+	const id = "orig"
+	dir := claudeDir(t, cwd)
+	now := time.Now()
+	own := claudeFile(t, dir, id, id, now)
+	claudeFile(t, dir, "older", id, now.Add(-time.Hour))
+	got := claudeTranscriptPaths(id, cwd)
+	if len(got) != 1 || got[0] != own {
+		t.Fatalf("got %v, want own [%s]", got, own)
+	}
+}
+
+// The origin sits past large leading records in a real file; the scan
+// must reach it.
+func TestClaudeForkOriginSkipsLeadingRecords(t *testing.T) {
+	dir := t.TempDir()
+	p := filepath.Join(dir, "f.jsonl")
+	var b strings.Builder
+	for range 200 {
+		b.WriteString(`{"type":"attachment","attachment":{"blob":"` + strings.Repeat("x", 1000) + `"}}` + "\n")
+	}
+	b.WriteString(`{"type":"assistant","session_id":"origin-id"}` + "\n")
+	if err := os.WriteFile(p, []byte(b.String()), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if got := claudeForkOrigin(p); got != "origin-id" {
+		t.Fatalf("got %q", got)
 	}
 }
 

@@ -1,8 +1,11 @@
 package agent
 
 import (
+	"bufio"
+	"bytes"
 	"context"
 	"encoding/json"
+	"io"
 	"log"
 	"os"
 	"path/filepath"
@@ -52,16 +55,28 @@ var claudeSessionExists = func(sessionID, cwd string) bool {
 	return err == nil
 }
 
-// claudeTranscriptPaths returns the transcript file claude writes for
-// sessionID under cwd, or nil when it cannot be located. Claude pins
-// the conversation to the id Hive chose (SessionIDFlag), so the path is
-// an exact derivation rather than a search.
+// claudeTranscriptPaths returns the transcript file holding the
+// conversation Hive started as sessionID under cwd, or nil when none
+// exists.
 //
-// Layout: ~/.claude/projects/<encoded-cwd>/<id>.jsonl.
+// Usually that is <encoded-cwd>/<sessionID>.jsonl — Claude pins the
+// conversation to the id Hive chose (SessionIDFlag). But Claude can FORK a
+// conversation into a new file: backgrounding a session as a job,
+// --fork-session, /branch, resuming from its picker. The fork copies the
+// whole history, gets a new "sessionId" of its own, and carries on there,
+// while the original file stops growing. Reading only <sessionID>.jsonl
+// then silently cuts the transcript off at the fork.
 //
-// A non-existent file yields nil so the caller can tell "this agent
-// keeps no transcripts" from "this agent should have one and it is not
-// there" — the two render differently in the GUI.
+// A fork keeps the original id in its records' snake_case "session_id"
+// field (verified on a real fork: 608 records with sessionId=<fork> and
+// session_id=<original>). So the newest file in the directory that
+// descends from sessionID is the live one. Only files modified after the
+// original are candidates — a fork is written after the file it copied —
+// which excludes nearly everything in a busy project directory.
+//
+// A slice for the TranscriptPaths contract, but always at most one path:
+// a fork already contains the history, so concatenating the original and
+// the fork would show everything twice.
 func claudeTranscriptPaths(sessionID, cwd string) []string {
 	if sessionID == "" || cwd == "" {
 		return nil
@@ -70,11 +85,106 @@ func claudeTranscriptPaths(sessionID, cwd string) []string {
 	if err != nil {
 		return nil
 	}
-	p := filepath.Join(home, ".claude", "projects", encodeClaudeProjectDir(cwd), sessionID+".jsonl")
-	if _, err := os.Stat(p); err != nil {
+	dir := filepath.Join(home, ".claude", "projects", encodeClaudeProjectDir(cwd))
+	// Memoized on the directory's mtime. This runs on every search
+	// request — per keystroke — and a forked session would otherwise
+	// re-scan every newer sibling each time. Both events that change the
+	// answer (the original file appearing, a fork being created) create a
+	// file, which bumps the directory mtime; a fork merely growing does
+	// not need a re-resolve.
+	dirInfo, err := os.Stat(dir)
+	if err != nil {
 		return nil
 	}
-	return []string{p}
+	key := dir + "\x00" + sessionID
+	claudeResolveMu.Lock()
+	if c, ok := claudeResolveCache[key]; ok && c.dirMod.Equal(dirInfo.ModTime()) {
+		claudeResolveMu.Unlock()
+		return c.paths
+	}
+	claudeResolveMu.Unlock()
+	paths := resolveClaudeTranscript(dir, sessionID)
+	claudeResolveMu.Lock()
+	claudeResolveCache[key] = claudeResolved{dirMod: dirInfo.ModTime(), paths: paths}
+	claudeResolveMu.Unlock()
+	return paths
+}
+
+type claudeResolved struct {
+	dirMod time.Time
+	paths  []string
+}
+
+var (
+	claudeResolveMu    sync.Mutex
+	claudeResolveCache = map[string]claudeResolved{}
+)
+
+// resolveClaudeTranscript does the uncached work for claudeTranscriptPaths.
+func resolveClaudeTranscript(dir, sessionID string) []string {
+	own := filepath.Join(dir, sessionID+".jsonl")
+	best, bestMod := "", time.Time{}
+	if st, err := os.Stat(own); err == nil {
+		best, bestMod = own, st.ModTime()
+	}
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		if best == "" {
+			return nil
+		}
+		return []string{best}
+	}
+	for _, ent := range entries {
+		name := ent.Name()
+		if ent.IsDir() || !strings.HasSuffix(name, ".jsonl") || name == sessionID+".jsonl" {
+			continue
+		}
+		info, err := ent.Info()
+		if err != nil || !info.ModTime().After(bestMod) {
+			continue
+		}
+		p := filepath.Join(dir, name)
+		if claudeForkOrigin(p) == sessionID {
+			best, bestMod = p, info.ModTime()
+		}
+	}
+	if best == "" {
+		return nil
+	}
+	return []string{best}
+}
+
+// claudeForkScanBytes bounds how much of a candidate file is read to find
+// its origin. The first record carrying session_id sits ~180 KB into a
+// real transcript (preceding records are snapshots and attachments), so
+// this leaves ample headroom while keeping a scan of a 20 MB file cheap.
+const claudeForkScanBytes = 1 << 20
+
+// claudeForkOrigin returns the snake_case "session_id" of the first
+// record in path that carries one — the conversation the file descends
+// from — or "" when none appears within claudeForkScanBytes.
+func claudeForkOrigin(path string) string {
+	f, err := os.Open(path)
+	if err != nil {
+		return ""
+	}
+	defer f.Close()
+	sc := bufio.NewScanner(io.LimitReader(f, claudeForkScanBytes))
+	sc.Buffer(make([]byte, 0, 64<<10), claudeForkScanBytes)
+	for sc.Scan() {
+		line := sc.Bytes()
+		// Cheap pre-filter: most records never mention the field.
+		if !bytes.Contains(line, []byte(`"session_id"`)) {
+			continue
+		}
+		var rec struct {
+			SessionID string `json:"session_id"`
+		}
+		if json.Unmarshal(line, &rec) == nil && rec.SessionID != "" {
+			return rec.SessionID
+		}
+	}
+	return ""
 }
 
 // SetClaudeSessionExistsForTest replaces the on-disk transcript probe

@@ -425,4 +425,43 @@ test.describe('spec 431 find in session', () => {
     await expect(page.locator('.hv-find-line-active')).toContainText('zebra');
     await expect.poll(() => inView('.hv-find-line-active')).toBe(true);
   });
+
+  // The find chord is a toggle: pressed while the box has focus it
+  // closes the box, rather than selecting the query text.
+  test('the find chord closes an open box', async ({ page }) => {
+    await bootAsLinux(page);
+    await page.keyboard.press('Control+Shift+f');
+    await expect(page.locator('.hv-find')).toBeVisible();
+    await page.locator('[data-find-input]').fill('needle');
+    await page.keyboard.press('Control+Shift+f');
+    await expect(page.locator('.hv-find')).toHaveCount(0);
+    await assertAlignedFocus(page);
+  });
+
+  // Escape closes the box and nothing else: in particular it must never
+  // reach the session, where it would interrupt an agent.
+  for (const alt of [false, true]) {
+    test(`Escape never reaches the session (${alt ? 'transcript' : 'buffer'})`, async ({
+      page,
+    }) => {
+      await bootAsLinux(page);
+      const id = await activeId(page);
+      if (alt) {
+        await page.evaluate((sid) => {
+          window.__hive.setTranscript?.(sid, ['a needle']);
+          const esc = String.fromCharCode(27);
+          window.__hive.emit('pty:data', sid, btoa(`${esc}[?1049h`));
+        }, id);
+      }
+      await page.evaluate(() => window.__hive.resetStdin());
+      await page.keyboard.press('Control+Shift+f');
+      await page.locator('[data-find-input]').fill('needle');
+      await page.keyboard.press('Escape');
+      await expect(page.locator('.hv-find')).toHaveCount(0);
+      await assertAlignedFocus(page);
+      // Give any stray key time to arrive before asserting its absence.
+      await page.waitForTimeout(200);
+      expect(await page.evaluate(() => window.__hive.stdinText())).toBe('');
+    });
+  }
 });

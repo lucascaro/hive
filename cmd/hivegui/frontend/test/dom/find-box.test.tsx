@@ -579,7 +579,7 @@ describe('the box UI', () => {
     );
   });
 
-  it('closes on Escape from the input', () => {
+  it('closes on Escape from the input', async () => {
     act(() => mod.openFindBox(SID));
     const { container } = renderBox();
     const input = container.querySelector(
@@ -591,7 +591,55 @@ describe('the box UI', () => {
       );
     });
     expect(find()).toBeNull();
-    expect(focusActiveTerm).toHaveBeenCalled();
+    // Focus goes back to the terminal only after the key event is done,
+    // so no engine can re-target the Escape at the session.
+    expect(focusActiveTerm).not.toHaveBeenCalled();
+    await new Promise((r) => setTimeout(r, 0));
+    expect(focusActiveTerm).toHaveBeenCalledTimes(1);
+  });
+
+  // Escape reaching an agent interrupts it; the box consumes it.
+  it('does not let Escape propagate past the box', () => {
+    act(() => mod.openFindBox(SID));
+    const { container } = renderBox();
+    const seen = vi.fn();
+    document.addEventListener('keydown', seen);
+    try {
+      const input = container.querySelector(
+        '[data-find-input]',
+      ) as HTMLInputElement;
+      act(() => {
+        input.dispatchEvent(
+          new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }),
+        );
+      });
+      expect(seen).not.toHaveBeenCalled();
+    } finally {
+      document.removeEventListener('keydown', seen);
+    }
+  });
+
+  // The chord is a toggle: pressed with the box focused it closes the
+  // box rather than selecting the query.
+  it('closes when the find chord is pressed in the input', () => {
+    act(() => mod.openFindBox(SID));
+    const { container } = renderBox();
+    const input = container.querySelector(
+      '[data-find-input]',
+    ) as HTMLInputElement;
+    // jsdom reports a non-mac platform, so the chord is Ctrl+Shift+F.
+    act(() => {
+      input.dispatchEvent(
+        new KeyboardEvent('keydown', {
+          key: 'F',
+          code: 'KeyF',
+          ctrlKey: true,
+          shiftKey: true,
+          bubbles: true,
+        }),
+      );
+    });
+    expect(find()).toBeNull();
   });
 
   it('closes on the close control', () => {

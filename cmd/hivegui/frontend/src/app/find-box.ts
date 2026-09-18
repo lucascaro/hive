@@ -134,7 +134,10 @@ export function openFindBox(sessionID: string) {
   focusFindInput(sessionID);
 }
 
-export function closeFindBox(sessionID: string) {
+export function closeFindBox(
+  sessionID: string,
+  opts: { deferFocus?: boolean } = {},
+) {
   if (!find(sessionID)) return;
   if (outputTimer) {
     clearTimeout(outputTimer);
@@ -154,7 +157,14 @@ export function closeFindBox(sessionID: string) {
   // lands a microtask later and focusActiveTerm() would run while the
   // box is still visible, which app/focus.ts refuses to act through.
   flushSync(() => patchTileChrome(sessionID, { find: null }));
-  deps.focusActiveTerm();
+  // Closing from a key press (Escape, the find chord) hands focus back
+  // only AFTER the event has finished. Moving focus to the terminal
+  // mid-keydown lets an engine deliver the rest of that key to the
+  // terminal — and Escape reaching an agent interrupts it. Chromium does
+  // not do this, but the app runs on WebKit, where the same key was
+  // reported to reach the session.
+  if (opts.deferFocus) setTimeout(() => deps.focusActiveTerm(), 0);
+  else deps.focusActiveTerm();
 }
 
 export function toggleFindBox(sessionID: string) {

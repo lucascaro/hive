@@ -18,6 +18,28 @@ import {
 } from '../lib/find.js';
 import type { FindState } from '../store/store.js';
 import { Icon } from './Icon.js';
+import { findKey } from '../lib/keymap.js';
+import { isMac } from '../lib/platform.js';
+
+// The find chord pressed while the box already has focus closes it, so
+// ⌘F / Ctrl+Shift+F is a toggle rather than "select my query". On macOS
+// the native menu accelerator normally takes ⌘F before the webview sees
+// it (and toggles too); this covers the builds and focus states where
+// the keydown reaches the input instead.
+function isFindChord(e: {
+  key: string;
+  code: string;
+  metaKey: boolean;
+  ctrlKey: boolean;
+  altKey: boolean;
+  shiftKey: boolean;
+}): boolean {
+  if (isMac) {
+    const f = e.code === 'KeyF' || e.key === 'f' || e.key === 'F';
+    return f && e.metaKey && !e.ctrlKey && !e.altKey;
+  }
+  return findKey(e, false);
+}
 
 // The bar is rendered FIRST in both modes and styled identically, so it
 // sits in exactly the same spot whichever source is active — the
@@ -92,9 +114,12 @@ export function FindBox({ id, find }: { id: string; find: FindState }) {
           value={find.query}
           onChange={(e) => runQuery(id, e.target.value)}
           onKeyDown={(e) => {
-            if (e.key === 'Escape') {
+            // Both close keys are consumed here: nothing else — least of
+            // all the session — may see them.
+            if (e.key === 'Escape' || isFindChord(e)) {
               e.preventDefault();
-              closeFindBox(id);
+              e.stopPropagation();
+              closeFindBox(id, { deferFocus: true });
             } else if (e.key === 'Enter') {
               e.preventDefault();
               stepMatch(id, e.shiftKey ? -1 : 1);
