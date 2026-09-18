@@ -80,6 +80,15 @@ describe('highlightSegments', () => {
     expect(segs.filter((s) => s.hit).map((s) => s.at)).toEqual([0, 1]);
   });
 
+  // The daemon lists a line's matches rightmost first.
+  it('highlights every match when they arrive in descending column order', () => {
+    const segs = highlightSegments('x y x', [
+      { col: 4, len: 1 },
+      { col: 0, len: 1 },
+    ]);
+    expect(segs.filter((s) => s.hit).map((s) => s.start)).toEqual([0, 4]);
+  });
+
   it('returns the whole line when there are no matches', () => {
     expect(highlightSegments('plain', [])).toEqual([
       { text: 'plain', hit: false, at: -1, start: 0 },

@@ -66,6 +66,9 @@ export interface LineMatch {
  * before it counts. Out-of-range or overlapping matches are skipped
  * rather than throwing — a stale match list paired with a fresh line
  * must degrade to "highlights nothing" and never to a crash.
+ *
+ * Matches may arrive in any order — the daemon lists a line's matches
+ * newest (rightmost) first — so they are walked by column.
  */
 export function highlightSegments(
   text: string,
@@ -74,7 +77,7 @@ export function highlightSegments(
   const out: Segment[] = [];
   let cursor = 0;
   let n = 0;
-  for (const m of matches) {
+  for (const m of [...matches].sort((a, b) => a.col - b.col)) {
     if (m.len <= 0) continue;
     if (m.col < cursor || m.col >= text.length) continue;
     const end = Math.min(m.col + m.len, text.length);
