@@ -5,7 +5,7 @@ type: enhancement
 complexity: S
 priority: P3
 pr: 437
-stage: REVIEW
+stage: GATE
 ---
 
 # Show an update pip on the Check for updates button instead of auto-showing the update bar
