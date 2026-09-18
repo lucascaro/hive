@@ -141,3 +141,44 @@ test("the gift opens What's New, and Escape closes it", async ({ page }) => {
   await page.keyboard.press('Escape');
   await expect(dialog).toBeHidden();
 });
+
+// #436: a background update check reports as a dot on ⤓, not a banner.
+// jsdom proves the class; only a real layout proves the ::after dot is
+// actually painted on this button.
+test('a background update shows a dot on the check-for-updates button, not a banner', async ({
+  page,
+}) => {
+  await boot(page);
+  const btn = page.locator('#check-updates-btn');
+  const dot = () =>
+    btn.evaluate((el) => {
+      const cs = getComputedStyle(el, '::after');
+      return { content: cs.content, width: Number.parseFloat(cs.width) || 0 };
+    });
+
+  // Baseline: the mock's boot poll reports nothing, so no dot yet — the
+  // dot below is this feature's, not some other rule's.
+  await expect(btn).not.toHaveClass(/hv-unread/);
+  expect((await dot()).content).toBe('none');
+
+  await page.evaluate(() =>
+    window.__hive.emit('update:available', {
+      available: true,
+      current: '2.4.0',
+      latest: '2.5.0',
+      url: '',
+      stage: 'available',
+      channel: 'release',
+    }),
+  );
+
+  await expect(btn).toHaveClass(/hv-unread/);
+  await expect(btn).toHaveAttribute(
+    'aria-label',
+    'Check for updates — update available',
+  );
+  const after = await dot();
+  expect(after.content).not.toBe('none');
+  expect(after.width).toBeGreaterThan(0);
+  await expect(page.locator('#update-banner')).toBeHidden();
+});

@@ -10,7 +10,7 @@
 // island and reads its DOM, same as the imperative version did.
 import { describe, it, expect, vi, beforeAll, beforeEach } from 'vitest';
 import { render, fireEvent, act } from '@testing-library/react';
-import { resetStore } from '../../src/store/store.js';
+import { appStore, resetStore } from '../../src/store/store.js';
 
 const bridge = vi.hoisted(() => ({
   // Typed params so mock.calls[0] destructures — the dialog's wording
@@ -59,6 +59,37 @@ function emit(event: string, payload: unknown) {
 const settle = () => new Promise((r) => setTimeout(r, 0));
 
 let Banners: typeof import('../../src/components/Banners.js')['Banners'];
+let banners: typeof import('../../src/app/banners.js');
+
+// A check the user asked for — the ⤓ button, the menu item, the palette.
+// Only this path raises the "available" banner; a background result
+// (update:available, the boot poll) only sets the button's dot.
+async function manualCheck(info: unknown) {
+  bridge.CheckForUpdate.mockResolvedValueOnce(info as null);
+  await act(() => banners.manualUpdateCheck());
+}
+
+const pending = () => appStore.getState().updatePending;
+
+const AVAILABLE = {
+  available: true,
+  canApply: true,
+  current: '2.4.0',
+  latest: '2.5.0',
+  url: 'https://github.com/lucascaro/hive/releases/tag/v2.5.0',
+  stage: 'available',
+  channel: 'release',
+};
+
+// The manual branch must show the version itself, not just leave the
+// "Checking for updates…" banner up: the action button is filled in
+// before any early return, so it alone cannot prove the banner showed.
+function expectAvailableBanner(version: string) {
+  expect(el('update-banner').hidden).toBe(false);
+  const text = bannerText().textContent ?? '';
+  expect(text).toContain(version);
+  expect(text).not.toContain('Checking');
+}
 
 beforeAll(async () => {
   // dom.ts runs side effects on import (it decorates #terms), and
@@ -73,8 +104,8 @@ beforeAll(async () => {
   // app/banners.js (and its dom.js side effects) before the scaffold
   // above is in place.
   ({ Banners } = await import('../../src/components/Banners.js'));
-  const mod = await import('../../src/app/banners.js');
-  mod.initBanners();
+  banners = await import('../../src/app/banners.js');
+  banners.initBanners();
   await settle();
 });
 
@@ -92,16 +123,9 @@ beforeEach(() => {
 });
 
 describe('update banner action button', () => {
-  it('offers Update when a release is available, and starts staging on click', () => {
-    emit('update:available', {
-      available: true,
-      canApply: true,
-      current: '2.4.0',
-      latest: '2.5.0',
-      url: 'https://github.com/lucascaro/hive/releases/tag/v2.5.0',
-      stage: 'available',
-      channel: 'release',
-    });
+  it('offers Update when a release is available, and starts staging on click', async () => {
+    await manualCheck(AVAILABLE);
+    expectAvailableBanner('2.5.0');
     const action = actionBtn();
     expect(action.hidden).toBe(false);
     expect(action.textContent).toBe('Update');
@@ -192,8 +216,8 @@ describe('update banner action button', () => {
   // info.url is empty either because Go rejected the release's html_url
   // for failing the prefix check, or because the channel has no release
   // at all. Only the first is fixed by opening the releases page.
-  it('points at the releases page when a release URL was refused', () => {
-    emit('update:available', {
+  it('points at the releases page when a release URL was refused', async () => {
+    await manualCheck({
       available: true,
       canApply: false,
       current: '2.4.0',
@@ -202,14 +226,15 @@ describe('update banner action button', () => {
       stage: 'available',
       channel: 'release',
     });
+    expectAvailableBanner('2.5.0');
     expect(bannerText().textContent).toContain('Open releases page manually.');
   });
 
   // The latest channel tracks a git checkout. There is no release
   // artifact to download, so sending the user to the releases page sent
   // them looking for something that does not exist.
-  it('does not point at the releases page on the latest channel', () => {
-    emit('update:available', {
+  it('does not point at the releases page on the latest channel', async () => {
+    await manualCheck({
       available: true,
       canApply: false,
       canApplyReason: 'D:\\src\\hive is not writable by Hive',
@@ -219,6 +244,7 @@ describe('update banner action button', () => {
       stage: 'available',
       channel: 'latest',
     });
+    expectAvailableBanner('cf539dc');
     const text = bannerText().textContent ?? '';
     expect(text).not.toContain('Open releases page');
     expect(text).toContain('cf539dc');
@@ -240,51 +266,56 @@ describe('update banner action button', () => {
   });
 });
 
-// The dismissal paths were rewritten onto the banner primitive's handle
-// in phase 4 and had no coverage: the update banner remembers a dismissed
-// version in localStorage, and the daemon banner remembers the build it
-// was dismissed for. Both are "don't nag me again about THIS one" rules
-// that must not degrade into "never show me anything again".
-describe('update banner dismissal', () => {
+// A background check reports on the ⤓ button, not in a banner nobody
+// asked for (#436). The dot stays until no update is pending — there is
+// no "seen" state — so dismissing the banner must not clear it, and a
+// later poll must not bring the banner back.
+describe('update pip', () => {
   const dismiss = () =>
     fireEvent.click(part<HTMLButtonElement>('.hv-banner__dismiss'));
 
-  it('remembers the dismissed version and stays down for it', () => {
-    const available = {
-      available: true,
-      canApply: true,
-      current: '2.4.0',
-      latest: '2.5.0',
-      url: 'https://github.com/lucascaro/hive/releases/tag/v2.5.0',
-      stage: 'available',
-      channel: 'release',
-    };
-    emit('update:available', available);
-    expect(el('update-banner').hidden).toBe(false);
-
-    dismiss();
+  it('a background update:available sets the pip and leaves the banner down', () => {
+    emit('update:available', AVAILABLE);
     expect(el('update-banner').hidden).toBe(true);
-    expect(localStorage.getItem('hive.updateDismissedFor')).toBe('2.5.0');
-
-    // The 6h poll re-fires the same version: it must stay down.
-    emit('update:available', available);
-    expect(el('update-banner').hidden).toBe(true);
-
-    // A newer release is a different fact and must surface.
-    emit('update:available', { ...available, latest: '2.6.0' });
-    expect(el('update-banner').hidden).toBe(false);
+    expect(pending()).toBe(true);
   });
 
-  it('does not write a dismissal key for a transient banner', () => {
-    // "Checking…" / "up to date" carry no version; dismissing one must
-    // not poison the key for a real release.
-    emit('update:progress', {
-      available: true,
-      canApply: true,
-      stage: 'staging',
-      message: 'Downloading…',
-    });
+  it('dismissing the banner keeps the pip, and a later poll does not reopen it', async () => {
+    await manualCheck(AVAILABLE);
+    expectAvailableBanner('2.5.0');
+    expect(pending()).toBe(true);
+
     dismiss();
+    expect(el('update-banner').hidden).toBe(true);
+
+    // The 6h poll re-fires: the banner stays down, the dot stays up.
+    emit('update:available', AVAILABLE);
+    expect(el('update-banner').hidden).toBe(true);
+    expect(pending()).toBe(true);
+    // The per-version dismissal key is gone with the auto banner.
     expect(localStorage.getItem('hive.updateDismissedFor')).toBeNull();
+  });
+
+  it('a check reporting no update clears the pip', async () => {
+    emit('update:available', AVAILABLE);
+    expect(pending()).toBe(true);
+    await manualCheck({ available: false, current: '2.5.0' });
+    expect(pending()).toBe(false);
+  });
+
+  it('a background result with no update clears the pip', () => {
+    emit('update:available', AVAILABLE);
+    expect(pending()).toBe(true);
+    // Go emits this shape after a settings change forgets the last check
+    // (forgetUpdateState, then setStage(StageIdle)) — reachable, not
+    // hypothetical.
+    emit('update:progress', { available: false, stage: 'idle' });
+    expect(pending()).toBe(false);
+  });
+
+  it('keeps the pip through staging', () => {
+    emit('update:available', AVAILABLE);
+    emit('update:progress', { ...AVAILABLE, stage: 'staging' });
+    expect(pending()).toBe(true);
   });
 });

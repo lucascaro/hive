@@ -21,7 +21,8 @@
 .hv-icon-btn:disabled { opacity: 0.5; pointer-events: none; }
 .hv-icon-btn:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
 
-/* Unread marker — the sidebar's What's New gift (components/Sidebar.tsx >
+/* Unread marker — the sidebar's What's New gift, and the Check for updates
+   button when a newer version is available (components/Sidebar.tsx >
    SidebarHeaderControls). A dot rather than a count: the modal is a list of
    releases, not a queue, so there is no number that means anything. Uses the
    same --state-attention every other "this wants you" surface uses, so the

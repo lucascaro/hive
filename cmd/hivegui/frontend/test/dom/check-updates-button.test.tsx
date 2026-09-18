@@ -11,7 +11,7 @@
 // the imperative iconButton() until that primitive was deleted with the
 // rest of src/ui/.)
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { render } from '@testing-library/react';
+import { act, render } from '@testing-library/react';
 import type { appStore as AppStore } from '../../src/store/store.js';
 
 const bridge = vi.hoisted(() => ({
@@ -141,5 +141,89 @@ describe('sidebar check-for-updates button', () => {
     btn().click();
     await settle();
     expect(updateBannerText()).toMatch(/^Update check failed:/);
+  });
+});
+
+// #436: a background check reports here, as a dot, instead of raising the
+// update banner. The dot is the same `hv-unread` ::after the What's New
+// gift uses, so the accessible name has to carry it in words.
+describe('check-for-updates pip', () => {
+  const AVAILABLE = {
+    available: true,
+    canApply: true,
+    current: '2.4.0',
+    latest: '2.5.0',
+    stage: 'available',
+    channel: 'release',
+  };
+
+  async function initBanners() {
+    const banners = await import('../../src/app/banners.js');
+    await act(async () => {
+      banners.initBanners();
+      await settle();
+    });
+  }
+
+  function emit(event: string, payload: unknown) {
+    act(() => {
+      for (const call of bridge.EventsOn.mock.calls) {
+        if (call[0] === event) (call[1] as (p: unknown) => void)(payload);
+      }
+    });
+  }
+
+  it('shows the unread dot and says so when an update is pending', async () => {
+    await mount(true);
+    expect(btn().classList.contains('hv-unread')).toBe(false);
+    act(() => store.setState({ updatePending: true }));
+    expect(btn().classList.contains('hv-unread')).toBe(true);
+    expect(btn().getAttribute('aria-label')).toBe(
+      'Check for updates — update available',
+    );
+    act(() => store.setState({ updatePending: false }));
+    expect(btn().classList.contains('hv-unread')).toBe(false);
+    expect(btn().getAttribute('aria-label')).toBe('Check for updates');
+  });
+
+  it('a background update:available puts the dot on the button, not a banner', async () => {
+    await mount(true);
+    await initBanners();
+    emit('update:available', AVAILABLE);
+    expect(btn().classList.contains('hv-unread')).toBe(true);
+    expect(store.getState().banners.update.visible).toBe(false);
+  });
+
+  it('the boot poll sets the dot, and clears it when nothing is pending', async () => {
+    bridge.CheckForUpdate.mockResolvedValueOnce(AVAILABLE as never);
+    await mount(true);
+    await initBanners();
+    expect(btn().classList.contains('hv-unread')).toBe(true);
+    expect(store.getState().banners.update.visible).toBe(false);
+
+    // A fresh boot on the installed version: the poll reports nothing
+    // pending and the dot goes.
+    vi.resetModules();
+    bridge.CheckForUpdate.mockResolvedValueOnce({
+      available: false,
+      current: '2.5.0',
+    } as never);
+    await mount(true);
+    await act(() => store.setState({ updatePending: true }));
+    await initBanners();
+    expect(btn().classList.contains('hv-unread')).toBe(false);
+  });
+
+  it('clicking the dotted button shows the available version', async () => {
+    await mount(true);
+    await initBanners();
+    emit('update:available', AVAILABLE);
+    bridge.CheckForUpdate.mockResolvedValueOnce(AVAILABLE as never);
+    await act(async () => {
+      btn().click();
+      await settle();
+    });
+    expect(store.getState().banners.update.visible).toBe(true);
+    expect(updateBannerText()).toContain('2.5.0');
   });
 });

@@ -178,10 +178,12 @@ no longer costs you a restart. See
 ## Updating
 
 Hive checks for updates in the background — once on launch and every
-six hours — and shows an "Update available" banner. You can also run the
-check yourself: the ⤓ button in the sidebar header, next to **+**, or
-**File → Check for Updates…** on macOS. Either way the result lands in
-the same banner, including "up to date" and check failures. Which
+six hours. When one is available it puts a dot on the ⤓ button in the
+sidebar header, next to **+**, rather than interrupting you with a
+banner; the dot stays until you update. Click ⤓ (or use **File → Check
+for Updates…** on macOS) to run the check yourself: the result lands in
+the update banner, including "up to date" and check failures, and an
+update you start shows its progress there without being asked. Which
 updates it looks for depends on the channel you pick in
 **Settings → Updates**:
 
