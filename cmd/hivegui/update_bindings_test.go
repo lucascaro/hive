@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"os"
 	"path/filepath"
 	"strings"
@@ -108,6 +109,49 @@ func TestSaveUpdateSettingsForgetsStateOnChannelChange(t *testing.T) {
 	}
 	if err := a.StartUpdate(); err == nil {
 		t.Error("StartUpdate = nil error right after a channel change, want it to require a fresh check")
+	}
+}
+
+// Forgetting the check has to reach the windows. Each may be showing an
+// "update available" dot from the check just forgotten (#436); without an
+// event it would outlive the settings change until the next 6h poll.
+func TestSaveUpdateSettingsTellsWindowsTheUpdateIsGone(t *testing.T) {
+	isolateStateDir(t)
+	repo := fakeHiveCheckout(t)
+	var got []UpdateInfo
+	prev := emitFn
+	emitFn = func(_ *App, name string, data ...any) {
+		if name == "update:progress" && len(data) == 1 {
+			if info, ok := data[0].(UpdateInfo); ok {
+				got = append(got, info)
+			}
+		}
+	}
+	t.Cleanup(func() { emitFn = prev })
+	// Any non-nil ctx: setStage only emits when there is one, and emitFn
+	// is swapped so Wails never sees it.
+	a := &App{ctx: context.Background()}
+	a.rememberCheck(UpdateInfo{
+		Available: true, Latest: "2.5.0", Channel: ChannelRelease, Stage: StageAvailable,
+	})
+
+	if err := a.SaveUpdateSettings(UpdateSettings{Channel: ChannelLatest, SourceRepo: repo}); err != nil {
+		t.Fatalf("SaveUpdateSettings: %v", err)
+	}
+	if len(got) != 1 {
+		t.Fatalf("update:progress emitted %d times, want 1", len(got))
+	}
+	if got[0].Available || got[0].Stage != StageIdle {
+		t.Errorf("update:progress = %+v, want an idle, not-available update", got[0])
+	}
+
+	// An unchanged save forgets nothing, so it has nothing to announce.
+	got = nil
+	if err := a.SaveUpdateSettings(UpdateSettings{Channel: ChannelLatest, SourceRepo: repo}); err != nil {
+		t.Fatalf("SaveUpdateSettings: %v", err)
+	}
+	if len(got) != 0 {
+		t.Errorf("update:progress emitted %d times on an unchanged save, want 0", len(got))
 	}
 }
 

@@ -4,8 +4,6 @@ import (
 	"fmt"
 	"log"
 	"sync"
-
-	wruntime "github.com/wailsapp/wails/v2/pkg/runtime"
 )
 
 // Seams so the state machine below can be tested without downloading a
@@ -128,7 +126,7 @@ func (a *App) setStage(stage, message string) {
 	snapshot := a.update.last
 	a.update.mu.Unlock()
 	if a.ctx != nil {
-		wruntime.EventsEmit(a.ctx, "update:progress", snapshot)
+		emitFn(a, "update:progress", snapshot)
 	}
 }
 

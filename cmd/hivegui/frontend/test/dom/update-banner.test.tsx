@@ -306,9 +306,9 @@ describe('update pip', () => {
   it('a background result with no update clears the pip', () => {
     emit('update:available', AVAILABLE);
     expect(pending()).toBe(true);
-    // Go emits this shape after a settings change forgets the last check
-    // (forgetUpdateState, then setStage(StageIdle)) — reachable, not
-    // hypothetical.
+    // Exactly what SaveUpdateSettings emits when a settings change forgets
+    // the last check (update_prefs.go: forgetUpdateState, then
+    // setStage(StageIdle)) — every window's dot has to go with it.
     emit('update:progress', { available: false, stage: 'idle' });
     expect(pending()).toBe(false);
   });

@@ -84,7 +84,7 @@ The per-version dismissal (`hive.updateDismissedFor`, `showUpdateBanner`'s `vers
 ## Open questions / risks
 
 - Users who dismissed a version keep a stale `hive.updateDismissedFor` in localStorage; inert, not cleaned up.
-- Changing the channel in Settings clears Go's `last` without an event (update_prefs.go:143-145), so a pip can outlive the channel it was for until the next poll or click. Accepted: Settings is a non-goal, and a click re-checks and clears it.
+- ~~Changing the channel in Settings clears Go's `last` without an event, so a pip can outlive it.~~ Fixed in review (see Decision log).
 - The macOS menu/palette/`check_update` all route through `manualUpdateCheck`, so they keep the banner.
 
 ## Second opinion
@@ -97,6 +97,7 @@ The per-version dismissal (`hive.updateDismissedFor`, `showUpdateBanner`'s `vers
 - **2026-09-18** — Pip stays until the update is installed (not cleared on click/seen). Why: operator choice; it mirrors a real pending state, and makes the per-version dismissal key dead code, which is deleted rather than preserved.
 - **2026-09-18** — Assumption: manual checks (button, macOS menu, palette, `check_update` command) keep showing the banner, and staging/ready/error keep auto-showing it. Why: the user initiated those; only unsolicited background results move to the pip.
 - **2026-09-18** — Assumption: clicking the pipped button runs the existing `manualUpdateCheck` (fresh check, then banner with Update action). Why: no new path; the result is always current.
+- **2026-09-18** — Review iter 1 escalated the stale-dot-after-settings-change gap (RISKY: Go change). Operator chose to fix: `SaveUpdateSettings` now calls `setStage(StageIdle, "")` after `forgetUpdateState()`, and `setStage` emits through the existing `emitFn` seam so it is testable. Why: the dot, unlike the old banner, cannot be dismissed.
 
 ## Progress
 
@@ -108,3 +109,7 @@ The per-version dismissal (`hive.updateDismissedFor`, `showUpdateBanner`'s `vers
 - **2026-09-18** — PR #437 opened.
 
 ## Open questions
+
+## PR convergence ledger
+
+- **2026-09-18 iter 1** — verdict: COMMENT; mergeable: MERGEABLE; findings_hash: 889a451ee8fc115c28f4bb0d2053ea54d495c12d39614826a160bd287cd609cf; threads_open: 0; action: escalated:risky-fix-needs-human-decision; head_sha: 27d1c78.

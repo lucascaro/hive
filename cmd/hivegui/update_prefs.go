@@ -140,8 +140,15 @@ func (a *App) SaveUpdateSettings(s UpdateSettings) error {
 	// invalidate rather than compare against the defaults it stood in
 	// for — otherwise saving settings that happen to equal the defaults
 	// would silently keep a bundle staged under something else.
+	//
+	// Then say so. Every open window may be showing an "update available"
+	// dot on its Check for updates button from the check just forgotten;
+	// without an event they would keep it until the next 6h poll, pointing
+	// at an update nothing backs any more. Idle with an empty UpdateInfo
+	// clears the dot and raises no banner.
 	if prevErr != nil || prev != s {
 		a.forgetUpdateState()
+		a.setStage(StageIdle, "")
 	}
 	return nil
 }
