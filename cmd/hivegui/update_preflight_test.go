@@ -63,6 +63,13 @@ func TestPreflightCheckoutRefusals(t *testing.T) {
 			want: "no upstream branch",
 		},
 		{
+			// git refusing to run at all is not a missing upstream: the
+			// user needs git's own message, not a branch problem.
+			name: "git itself fails",
+			errs: map[string]error{"rev-parse --abbrev-ref": fmt.Errorf("git rev-parse: You have not agreed to the Xcode license agreements.")},
+			want: "Xcode license",
+		},
+		{
 			name:    "foreign remote",
 			answers: map[string]string{"remote get-url origin": "https://github.com/someone-else/hive.git"},
 			want:    "refusing to build",
