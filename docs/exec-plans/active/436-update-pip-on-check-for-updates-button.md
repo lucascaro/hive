@@ -84,7 +84,7 @@ The per-version dismissal (`hive.updateDismissedFor`, `showUpdateBanner`'s `vers
 ## Open questions / risks
 
 - Users who dismissed a version keep a stale `hive.updateDismissedFor` in localStorage; inert, not cleaned up.
-- ~~Changing the channel in Settings clears Go's `last` without an event, so a pip can outlive it.~~ Fixed in review (see Decision log).
+- Changing update settings clears the dot in the saving window only; other windows keep theirs until their next poll — #438.
 - The macOS menu/palette/`check_update` all route through `manualUpdateCheck`, so they keep the banner.
 
 ## Second opinion
@@ -98,6 +98,7 @@ The per-version dismissal (`hive.updateDismissedFor`, `showUpdateBanner`'s `vers
 - **2026-09-18** — Assumption: manual checks (button, macOS menu, palette, `check_update` command) keep showing the banner, and staging/ready/error keep auto-showing it. Why: the user initiated those; only unsolicited background results move to the pip.
 - **2026-09-18** — Assumption: clicking the pipped button runs the existing `manualUpdateCheck` (fresh check, then banner with Update action). Why: no new path; the result is always current.
 - **2026-09-18** — Review iter 1 escalated the stale-dot-after-settings-change gap (RISKY: Go change). Operator chose to fix: `SaveUpdateSettings` now calls `setStage(StageIdle, "")` after `forgetUpdateState()`, and `setStage` emits through the existing `emitFn` seam so it is testable. Why: the dot, unlike the old banner, cannot be dismissed.
+- **2026-09-18** — Review iter 3: the settings-change clear only reaches the saving window (each window is its own process). Operator chose to reword the comments to "this window" and track a daemon broadcast as #438. Why: other windows already kept their old-settings check and staged bundle before this PR; fixing that is a wire change out of this scope.
 
 ## Progress
 
@@ -114,3 +115,4 @@ The per-version dismissal (`hive.updateDismissedFor`, `showUpdateBanner`'s `vers
 
 - **2026-09-18 iter 1** — verdict: COMMENT; mergeable: MERGEABLE; findings_hash: 889a451ee8fc115c28f4bb0d2053ea54d495c12d39614826a160bd287cd609cf; threads_open: 0; action: escalated:risky-fix-needs-human-decision; head_sha: 27d1c78.
 - **2026-09-18 iter 2** — verdict: APPROVE; mergeable: MERGEABLE; findings_hash: 11ffe2671caa2df058580c7f97b0c554d7480fb4b7b442681e536dfbc3059ade; threads_open: 0; action: autofix+push; head_sha: 1787fa6.
+- **2026-09-18 iter 3** — verdict: COMMENT; mergeable: MERGEABLE; findings_hash: 512bdaa8fb697355c30443791945129fb2ad3f64bbbccbfdc70e2718f84ca0aa; threads_open: 0; action: escalated:risky-fix-needs-human-decision; head_sha: 17950c6.

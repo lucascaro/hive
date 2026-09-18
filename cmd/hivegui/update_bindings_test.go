@@ -112,9 +112,10 @@ func TestSaveUpdateSettingsForgetsStateOnChannelChange(t *testing.T) {
 	}
 }
 
-// Forgetting the check has to reach the windows. Each may be showing an
-// "update available" dot from the check just forgotten (#436); without an
-// event it would outlive the settings change until the next 6h poll.
+// Forgetting the check has to reach the frontend. This window may be
+// showing an "update available" dot from the check just forgotten (#436);
+// without an event it would outlive the settings change until the next 6h
+// poll. (Other windows are separate processes — #438.)
 func TestSaveUpdateSettingsTellsWindowsTheUpdateIsGone(t *testing.T) {
 	isolateStateDir(t)
 	repo := fakeHiveCheckout(t)

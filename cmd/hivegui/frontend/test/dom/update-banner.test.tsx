@@ -308,7 +308,7 @@ describe('update pip', () => {
     expect(pending()).toBe(true);
     // Exactly what SaveUpdateSettings emits when a settings change forgets
     // the last check (update_prefs.go: forgetUpdateState, then
-    // setStage(StageIdle)) — every window's dot has to go with it.
+    // setStage(StageIdle)) — the saving window's dot has to go with it.
     emit('update:progress', { available: false, stage: 'idle' });
     expect(pending()).toBe(false);
   });
