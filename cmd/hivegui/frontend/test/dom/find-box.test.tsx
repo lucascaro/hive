@@ -78,13 +78,6 @@ beforeEach(() => {
     term: () => term,
     focusActiveTerm,
   });
-  // jsdom implements no layout, so Element.scrollIntoView does not
-  // exist. The component calls it to centre the active match; stub it
-  // rather than guarding in production code, where every real browser
-  // has it.
-  if (!Element.prototype.scrollIntoView) {
-    Element.prototype.scrollIntoView = function scrollIntoView() {};
-  }
   // requestAnimationFrame is used to focus the input after React
   // commits; jsdom has it, but run it synchronously so the tests do not
   // have to wait a frame.

@@ -7,11 +7,12 @@
 // the agent's transcript above the terminal, with the active match
 // centred in its surrounding conversation.
 
-import { useEffect, useRef } from 'react';
+import { useEffect, useLayoutEffect, useRef } from 'react';
 import { closeFindBox, runQuery, stepMatch } from '../app/find-box.js';
 import {
   formatCount,
   highlightSegments,
+  transcriptScrollTarget,
   unavailableMessage,
   type LineMatch,
 } from '../lib/find.js';
@@ -35,6 +36,39 @@ export function FindBox({ id, find }: { id: string; find: FindState }) {
 
   const takeover = find.source === 'transcript';
   const unavailable = takeover && find.ready && find.reason !== '';
+  const bodyRef = useRef<HTMLDivElement>(null);
+  const active = find.matches[find.index];
+
+  // Keep the transcript pane on what matters: the bottom (most recent)
+  // when nothing is selected, the active match centred when something is
+  // (lib/find.ts transcriptScrollTarget has the rules).
+  //
+  // Keyed on the active match's LINE and column, not its index: while
+  // typing the index stays 0 but the match moves to a different line,
+  // and an index-keyed effect never re-ran. Also keyed on `lines`, since
+  // the window around a new match arrives after the match does.
+  //
+  // Sets scrollTop on the pane directly rather than calling
+  // scrollIntoView, which also scrolls every scrollable ancestor — here,
+  // the tile the box is drawn over.
+  //
+  // Layout effect so the pane never paints at the wrong position first.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: deps are re-run triggers
+  useLayoutEffect(() => {
+    const body = bodyRef.current;
+    if (!body || !takeover) return;
+    const el = active
+      ? body.querySelector<HTMLElement>(`[data-find-line="${active.line}"]`)
+      : null;
+    const top = transcriptScrollTarget({
+      hasActive: Boolean(active),
+      scrollHeight: body.scrollHeight,
+      clientHeight: body.clientHeight,
+      activeTop: el ? el.offsetTop : undefined,
+      activeHeight: el ? el.offsetHeight : undefined,
+    });
+    if (top !== null) body.scrollTop = top;
+  }, [active?.line, active?.col, find.lines, takeover, find.ready]);
 
   return (
     <search
@@ -106,7 +140,7 @@ export function FindBox({ id, find }: { id: string; find: FindState }) {
       </div>
 
       {takeover ? (
-        <div className="hv-find-body" data-find-body={id}>
+        <div className="hv-find-body" data-find-body={id} ref={bodyRef}>
           {!find.ready ? (
             <p className="hv-find-note">Reading transcript…</p>
           ) : unavailable ? (
@@ -123,18 +157,7 @@ export function FindBox({ id, find }: { id: string; find: FindState }) {
 }
 
 function TranscriptLines({ find }: { find: FindState }) {
-  const activeRef = useRef<HTMLDivElement>(null);
   const active = find.matches[find.index];
-
-  // Centre the active match in the scroller. The daemon already centres
-  // the fetched window on it; this handles the scroll within that
-  // window so the line is readable in context rather than at an edge.
-  // The deps are the triggers, not values the body reads: the effect must
-  // re-run when the active match moves or a new window arrives.
-  // biome-ignore lint/correctness/useExhaustiveDependencies: deps are re-run triggers
-  useEffect(() => {
-    activeRef.current?.scrollIntoView({ block: 'center' });
-  }, [find.index, find.lineStart]);
 
   if (find.lines.length === 0) {
     return <p className="hv-find-note">No transcript lines to show.</p>;
@@ -150,7 +173,6 @@ function TranscriptLines({ find }: { find: FindState }) {
         return (
           <div
             key={ln.line}
-            ref={isActive ? activeRef : undefined}
             className={
               isActive ? 'hv-find-line hv-find-line-active' : 'hv-find-line'
             }

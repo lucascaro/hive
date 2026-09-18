@@ -96,6 +96,9 @@
 }
 
 .hv-find-body {
+  /* The offset parent of the transcript lines, so a line's offsetTop is
+   * measured within this pane (FindBox's scroll maths depends on it). */
+  position: relative;
   flex: 1 1 auto;
   min-height: 0;
   overflow-y: auto;

@@ -7,6 +7,7 @@ import {
   newestFirstIndex,
   reanchorIndex,
   stepIndex,
+  transcriptScrollTarget,
   unavailableMessage,
 } from '../../src/lib/find';
 import { findKey } from '../../src/lib/keymap';
@@ -263,5 +264,50 @@ describe('reanchorIndex', () => {
 
   it('is 0 for a fresh search with no previous match', () => {
     expect(reanchorIndex(undefined, [{ line: 9, col: 0 }])).toBe(0);
+  });
+});
+
+describe('transcriptScrollTarget', () => {
+  const pane = { scrollHeight: 2000, clientHeight: 500 };
+
+  // The transcript opens on the most recent output.
+  it('goes to the bottom when there is no active match', () => {
+    expect(transcriptScrollTarget({ ...pane, hasActive: false })).toBe(1500);
+  });
+
+  it('centres a rendered active match', () => {
+    expect(
+      transcriptScrollTarget({
+        ...pane,
+        hasActive: true,
+        activeTop: 1000,
+        activeHeight: 20,
+      }),
+    ).toBe(760); // 1000 - (500 - 20) / 2
+  });
+
+  it('clamps at both ends of the pane', () => {
+    expect(
+      transcriptScrollTarget({ ...pane, hasActive: true, activeTop: 10 }),
+    ).toBe(0);
+    expect(
+      transcriptScrollTarget({ ...pane, hasActive: true, activeTop: 1990 }),
+    ).toBe(1500);
+  });
+
+  // While typing, the match lands before its window of lines. Jumping to
+  // the bottom in that gap would make the pane move twice.
+  it('holds still while the active match is not rendered yet', () => {
+    expect(transcriptScrollTarget({ ...pane, hasActive: true })).toBeNull();
+  });
+
+  it('is 0 when the content fits', () => {
+    expect(
+      transcriptScrollTarget({
+        scrollHeight: 300,
+        clientHeight: 500,
+        hasActive: false,
+      }),
+    ).toBe(0);
   });
 });

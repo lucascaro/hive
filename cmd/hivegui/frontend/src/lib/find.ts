@@ -172,3 +172,30 @@ export function reanchorIndex(
   const i = next.findIndex((m) => m.line === prev.line && m.col === prev.col);
   return i < 0 ? 0 : i;
 }
+
+/**
+ * Where the transcript pane should scroll to, or null to leave it alone.
+ *
+ * - No active match (the box just opened, or the query finds nothing):
+ *   the bottom. The transcript opens on the most recent output, the same
+ *   direction the search runs in.
+ * - An active match that is rendered: centred, so it is readable in its
+ *   surrounding conversation.
+ * - An active match whose line is not rendered yet: null. While typing,
+ *   the new match lands before the window of lines around it does;
+ *   scrolling to the bottom in that gap would make the pane jump twice.
+ */
+export function transcriptScrollTarget(p: {
+  hasActive: boolean;
+  scrollHeight: number;
+  clientHeight: number;
+  /** The active line's offset within the pane, when it is rendered. */
+  activeTop?: number;
+  activeHeight?: number;
+}): number | null {
+  const max = Math.max(0, p.scrollHeight - p.clientHeight);
+  if (!p.hasActive) return max;
+  if (p.activeTop === undefined) return null;
+  const centred = p.activeTop - (p.clientHeight - (p.activeHeight ?? 0)) / 2;
+  return Math.max(0, Math.min(max, Math.round(centred)));
+}

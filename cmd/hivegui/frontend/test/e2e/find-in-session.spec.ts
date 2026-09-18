@@ -363,4 +363,66 @@ test.describe('spec 431 find in session', () => {
     }, id);
     await expect(page.locator('[data-find-count]')).toHaveText(/\/2$/);
   });
+
+  // The transcript pane opens on the most recent output, and follows the
+  // active match as typing moves it. Layout, so it is asserted in a real
+  // browser: vitest cannot see scroll positions.
+  test('the transcript opens at the bottom and follows the match while typing', async ({
+    page,
+  }) => {
+    await bootAsLinux(page);
+    const id = await activeId(page);
+    await page.evaluate((sid) => {
+      // Far more lines than fit, so the pane really scrolls. Two
+      // distinctive words: one early, one mid-way.
+      const lines = Array.from({ length: 200 }, (_, i) => {
+        if (i === 20) return 'an early marker: zebra';
+        if (i === 120) return 'a later marker: zeppelin';
+        return `ordinary line ${i}`;
+      });
+      window.__hive.setTranscript?.(sid, lines);
+      const esc = String.fromCharCode(27);
+      window.__hive.emit('pty:data', sid, btoa(`${esc}[?1049h`));
+    }, id);
+
+    const pane = page.locator('.hv-find-body');
+    // Whether an element's box lies inside the pane's visible area.
+    const inView = (sel: string) =>
+      page.evaluate((s) => {
+        const body = document.querySelector('.hv-find-body');
+        const el = document.querySelector(s);
+        if (!body || !el) return false;
+        const b = body.getBoundingClientRect();
+        const r = el.getBoundingClientRect();
+        return r.top >= b.top && r.bottom <= b.bottom;
+      }, sel);
+
+    await page.keyboard.press('Control+Shift+f');
+    await expect(page.locator('[data-find-source="transcript"]')).toBeVisible();
+
+    // Opened at the bottom: the newest line is visible and the pane is
+    // scrolled to its end.
+    await expect(page.locator('.hv-find-line').last()).toContainText(
+      'ordinary line 199',
+    );
+    await expect
+      .poll(() =>
+        pane.evaluate((b) => b.scrollHeight - b.clientHeight - b.scrollTop),
+      )
+      .toBeLessThanOrEqual(1);
+    await expect.poll(() => inView('.hv-find-line:last-child')).toBe(true);
+
+    // Typing moves the match; each new position is brought into view.
+    const input = page.locator('[data-find-input]');
+    await input.pressSequentially('ze');
+    await input.pressSequentially('p');
+    await expect(page.locator('.hv-find-line-active')).toContainText(
+      'zeppelin',
+    );
+    await expect.poll(() => inView('.hv-find-line-active')).toBe(true);
+
+    await input.fill('zebra');
+    await expect(page.locator('.hv-find-line-active')).toContainText('zebra');
+    await expect.poll(() => inView('.hv-find-line-active')).toBe(true);
+  });
 });
