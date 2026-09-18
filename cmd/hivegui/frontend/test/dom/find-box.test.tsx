@@ -760,14 +760,16 @@ describe('the box UI', () => {
     }
   });
 
-  // The chord is a toggle: pressed with the box focused it closes the
-  // box rather than selecting the query.
-  it('closes when the find chord is pressed in the input', () => {
+  // The find-field convention: the chord pressed in the box selects the
+  // query so typing replaces it. It never closes the box.
+  it('selects the query when the find chord is pressed in the input', () => {
     act(() => mod.openFindBox(SID));
+    act(() => mod.runQuery(SID, 'needle'));
     const { container } = renderBox();
     const input = container.querySelector(
       '[data-find-input]',
     ) as HTMLInputElement;
+    input.setSelectionRange(input.value.length, input.value.length);
     // jsdom reports a non-mac platform, so the chord is Ctrl+Shift+F.
     act(() => {
       input.dispatchEvent(
@@ -780,7 +782,16 @@ describe('the box UI', () => {
         }),
       );
     });
-    expect(find()).toBeNull();
+    expect(find()).not.toBeNull();
+    expect(input.selectionStart).toBe(0);
+    expect(input.selectionEnd).toBe('needle'.length);
+  });
+
+  it('opening an already-open box refocuses it rather than stacking or closing', () => {
+    act(() => mod.openFindBox(SID));
+    const first = find();
+    act(() => mod.openFindBox(SID));
+    expect(find()).toBe(first);
   });
 
   it('closes on the close control', () => {

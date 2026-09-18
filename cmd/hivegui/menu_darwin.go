@@ -115,9 +115,9 @@ func buildAppMenu(a *App) *menu.Menu {
 	//
 	// This menu item is the REAL entry point for ⌘F on macOS: the native
 	// accelerator intercepts the key before the webview, so keymap.ts's
-	// findKey() deliberately never fires here. It is a toggle for the
-	// same reason as the shortcuts overlay — the accelerator fires on
-	// every press, and a second ⌘F must not stack a second box.
+	// findKey() deliberately never fires here. It opens the box, or with
+	// the box already open refocuses it and selects the query — the
+	// find-field convention. It never closes it; Escape does.
 	view.AddText("Find in Session…", keys.CmdOrCtrl("f"), emit("menu:find-in-session"))
 	view.AddSeparator()
 	view.AddText("Toggle Sidebar", keys.CmdOrCtrl("s"), emit("menu:toggle-sidebar"))

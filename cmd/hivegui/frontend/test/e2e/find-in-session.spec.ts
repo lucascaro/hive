@@ -428,16 +428,48 @@ test.describe('spec 431 find in session', () => {
     await expect.poll(() => inView('.hv-find-line-active')).toBe(true);
   });
 
-  // The find chord is a toggle: pressed while the box has focus it
-  // closes the box, rather than selecting the query text.
-  test('the find chord closes an open box', async ({ page }) => {
+  // The find-field convention: pressing the chord again refocuses the box
+  // and selects the query, so typing replaces it — from the box itself or
+  // after clicking back into the terminal. It never closes the box.
+  test('the find chord refocuses the box and selects the query', async ({
+    page,
+  }) => {
     await bootAsLinux(page);
     await page.keyboard.press('Control+Shift+f');
-    await expect(page.locator('.hv-find')).toBeVisible();
-    await page.locator('[data-find-input]').fill('needle');
+    const input = page.locator('[data-find-input]');
+    await input.fill('needle');
+
+    const selection = () =>
+      input.evaluate((el: HTMLInputElement) => ({
+        focused: document.activeElement === el,
+        start: el.selectionStart,
+        end: el.selectionEnd,
+      }));
+
+    // From inside the box.
+    await input.press('End');
     await page.keyboard.press('Control+Shift+f');
-    await expect(page.locator('.hv-find')).toHaveCount(0);
-    await assertAlignedFocus(page);
+    await expect(page.locator('.hv-find')).toBeVisible();
+    await expect.poll(selection).toEqual({ focused: true, start: 0, end: 6 });
+
+    // From the terminal, after the user clicked back into it.
+    await page.locator('.term-focused .xterm-screen').click();
+    await expect.poll(() => selection().then((s) => s.focused)).toBe(false);
+    await page.keyboard.press('Control+Shift+f');
+    await expect(page.locator('.hv-find')).toBeVisible();
+    await expect.poll(selection).toEqual({ focused: true, start: 0, end: 6 });
+
+    // Typing now replaces the query.
+    await page.keyboard.type('other');
+    await expect(input).toHaveValue('other');
+
+    // The macOS entry point: the native menu item fires this event on
+    // every ⌘F (the accelerator never reaches the webview). It was once
+    // wired to a toggle, so ⌘F closed an open box.
+    await input.press('End');
+    await page.evaluate(() => window.__hive.emit('menu:find-in-session'));
+    await expect(page.locator('.hv-find')).toBeVisible();
+    await expect.poll(selection).toEqual({ focused: true, start: 0, end: 5 });
   });
 
   // Escape closes the box and nothing else: in particular it must never

@@ -7,7 +7,7 @@
 
 import { appStore } from '../store/store.js';
 import { VIEW_SINGLE } from '../lib/view.js';
-import { closeFindBox, openFindBox, toggleFindBox } from './find-box.js';
+import { closeFindBox, openFindBox } from './find-box.js';
 
 /**
  * The session ⌘F applies to: the active one, in single view only.
@@ -30,18 +30,15 @@ export function findBoxActive(): boolean {
 }
 
 /**
- * Toggles the find box for the focused session.
+ * Opens the find box, or — when it is already open — refocuses it with
+ * the query selected, so typing replaces it. That is the find-field
+ * convention in browsers and editors; ⌘F never closes the box. Escape
+ * and the close control do.
  *
- * Toggle rather than open because on macOS the native menu accelerator
- * is the entry point and fires on every press — the same reason the
- * help overlay exposes a toggle.
+ * The one entry point for the chord, the macOS menu item (which fires on
+ * every press, since the native accelerator intercepts before the
+ * webview) and the command palette.
  */
-export function toggleFindInSession() {
-  const id = targetSession();
-  if (id) toggleFindBox(id);
-}
-
-/** Opens (or refocuses) the box. The menu item's target. */
 export function openFindInSession() {
   const id = targetSession();
   if (id) openFindBox(id);

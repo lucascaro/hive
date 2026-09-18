@@ -121,11 +121,8 @@ function patchFind(sessionID: string, patch: Partial<FindState>) {
 }
 
 /**
- * Opens the box for a session, or refocuses it when already open.
- *
- * Toggle-and-refocus rather than plain open because on macOS the entry
- * point is the native menu accelerator, which fires on every press —
- * a second ⌘F must not stack a second box.
+ * Opens the box for a session, or refocuses it with the query selected
+ * when it is already open — never a second box, and never a close.
  */
 export function openFindBox(sessionID: string) {
   const term = deps.term(sessionID);
@@ -178,11 +175,6 @@ export function closeFindBox(
   // reported to reach the session.
   if (opts.deferFocus) setTimeout(() => deps.focusActiveTerm(), 0);
   else deps.focusActiveTerm();
-}
-
-export function toggleFindBox(sessionID: string) {
-  if (find(sessionID)) closeFindBox(sessionID);
-  else openFindBox(sessionID);
 }
 
 function focusFindInput(sessionID: string) {

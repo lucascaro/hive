@@ -63,7 +63,7 @@ import {
 import { trapFocus } from '../lib/focus-trap.js';
 import { inlineRenameActive, cancelInlineRename } from './inline-rename.js';
 import { findKey } from '../lib/keymap.js';
-import { findBoxActive, toggleFindInSession } from './find-session.js';
+import { findBoxActive, openFindInSession } from './find-session.js';
 import {
   openHelpOverlay,
   closeHelpOverlay,
@@ -409,7 +409,7 @@ window.addEventListener(
     // terminal.
     if (findKey(e, isMac)) {
       swallow();
-      toggleFindInSession();
+      openFindInSession();
       return;
     }
 
@@ -906,7 +906,7 @@ const menuActions = {
   'menu:toggle-project-grid': toggleProjectGrid,
   'menu:toggle-all-grid': toggleAllGrid,
   'menu:toggle-activity': toggleActivity,
-  'menu:find-in-session': toggleFindInSession,
+  'menu:find-in-session': openFindInSession,
   'menu:activity-grid': showActivityGrid,
   'menu:next-session': () => navSession(+1),
   'menu:prev-session': () => navSession(-1),
