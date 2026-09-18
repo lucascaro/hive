@@ -384,7 +384,9 @@ function TranscriptLines({ find }: { find: FindState }) {
                               className={
                                 !seg.hit
                                   ? undefined
-                                  : isActive && seg.start === active.col
+                                  : isActive &&
+                                      seg.start ===
+                                        active.col - (ln.offset ?? 0)
                                     ? 'hv-find-hit hv-find-hit-active'
                                     : 'hv-find-hit'
                               }

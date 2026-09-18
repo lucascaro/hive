@@ -830,6 +830,10 @@ describe('review round 2', () => {
     );
     const { container } = renderBox();
     expect(container.querySelector('.hv-find-hit')?.textContent).toBe('needle');
+    // The active match keeps its emphasis on a sliced line.
+    expect(container.querySelector('.hv-find-hit-active')?.textContent).toBe(
+      'needle',
+    );
     // A leading ellipsis marks that the line was cut before the slice.
     expect(
       container
