@@ -3,6 +3,8 @@
 - **Spec:** [docs/product-specs/436-update-pip-on-check-for-updates-button.md](../../product-specs/436-update-pip-on-check-for-updates-button.md)
 - **Issue:** #436
 - **Status:** active
+- **PR:** #437
+- **Branch:** feature/436-update-pip-on-check-for-updates-button
 
 ## Summary
 
@@ -102,5 +104,7 @@ The per-version dismissal (`hive.updateDismissedFor`, `showUpdateBanner`'s `vers
 
 - **2026-09-18** — Plan approved (chat, fast lane).
 - **2026-09-18** — Implemented; 8 new dom tests fail on the old source and pass now; `scripts/test.sh unit dom e2e`, `biome ci`, `typecheck` green.
+
+- **2026-09-18** — PR #437 opened.
 
 ## Open questions

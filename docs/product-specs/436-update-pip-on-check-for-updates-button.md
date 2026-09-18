@@ -4,7 +4,8 @@ title: Show an update pip on the Check for updates button instead of auto-showin
 type: enhancement
 complexity: S
 priority: P3
-stage: IMPLEMENT
+pr: 437
+stage: REVIEW
 ---
 
 # Show an update pip on the Check for updates button instead of auto-showing the update bar

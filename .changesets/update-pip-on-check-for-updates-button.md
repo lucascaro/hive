@@ -2,6 +2,7 @@
 type: changed
 bump: patch
 issue: 436
+pr: 437
 ---
 
 A background update check no longer pops the update banner. When a new version
