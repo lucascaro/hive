@@ -4,8 +4,9 @@ title: "Find text in a session, including alt-screen agents"
 type: enhancement
 complexity: L
 priority: P2
-stage: GATE
+stage: DONE
 pr: 432
+shipped: 2026-09-18
 supersedes: 430
 ---
 

@@ -2,7 +2,7 @@
 
 - **Spec:** [docs/product-specs/431-search-an-agent-session-s-transcript-history.md](../../product-specs/431-search-an-agent-session-s-transcript-history.md)
 - **Issue:** #431
-- **Status:** active
+- **Status:** completed
 - **PR:** [#432](https://github.com/lucascaro/hive/pull/432)
 - **Branch:** `feature/431-find-text-in-a-session`
 
@@ -389,6 +389,16 @@ No third round was run: the pipeline allows one revise-and-recheck cycle, and lo
 - **2026-09-17** — Operator feedback at the plan stop merged #430 into this feature behind one ⌘F binding. Spec rewritten, plan re-drafted, re-rendered.
 - **2026-09-17** — **Plan approved** (html, 2 rounds). Stage → IMPLEMENT.
 - **2026-09-17** — Implemented. Full suite green: 574 unit, 857 dom, 371 e2e, whole Go suite. PR [#432](https://github.com/lucascaro/hive/pull/432) opened. Stage → REVIEW.
+- **2026-09-18** — Gate NEEDS_FOLLOWUP; criterion 10 (open/close while streaming keeps scroll position, no stutter) has no test exercising it. Criteria 1–9, 3a, 11, non-goals and doc accuracy PASS.
+- **2026-09-18** — Operator verified criterion 10 by hand in the built app; recorded as PASS on manual evidence. Gate PASS.
+
+## Gate verdict
+
+- **2026-09-18** — verdict: PASS; phase: —; checks: 12 passed / 0 failed / 0 followups; followups: none; one-line: every success criterion delivered (criterion 10 verified by hand by the operator, no automated test), no non-goal implemented, docs match.
+  - 2026-09-18 dimensions:
+    - acceptance — PASS — criteria 1–9, 3a, 11 shown by go test, vitest (101) and find-in-session e2e (19); criterion 10 (open/close while streaming) had no test, operator verified manually
+    - non-goals — PASS
+    - doc accuracy — PASS — README, .changesets/find-in-session.md (type: added; regression_of N/A), design docs, tokens.md, 430 superseded
 
 ## Open questions
 
