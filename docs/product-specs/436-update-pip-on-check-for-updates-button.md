@@ -16,7 +16,7 @@ When the background update check finds a new version, Hive pops the update banne
 
 ## Desired behavior
 
-A background update check that finds a newer version no longer shows the update banner. Instead the sidebar's ⤓ "Check for updates" button shows the same dot the What's New gift uses for unread. Clicking the button runs a check and shows the banner with the version and its Update / Download actions, as it does today. Anything the user started — a manual check from the button, the macOS menu or the palette, and staging, ready and failed updates — still shows the banner. The pip stays until no update is pending (i.e. after installing).
+A background update check that finds a newer version no longer shows the update banner. Instead the sidebar's ⤓ "Check for updates" button shows the same dot the What's New gift uses for unread. Clicking the button runs a check and shows the banner with the version and its Update / Download actions, as it does today. Anything the user started — a manual check from the button, the macOS menu or the palette, and staging, ready and failed updates — still shows the banner. The pip stays until a check reports no update available.
 
 ## Success criteria
 

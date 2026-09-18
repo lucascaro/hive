@@ -307,7 +307,7 @@ function hideUpdateBanner() {
 
 /** Dismiss handler for the update slot; wired in components/Banners.tsx.
  * Only hides it: nothing re-raises the banner unasked any more, and the
- * button's dot stays until the update is installed. */
+ * button's dot stays until a check reports no update pending. */
 export function dismissUpdateBanner() {
   hideUpdateBanner();
 }

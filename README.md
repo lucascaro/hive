@@ -180,7 +180,7 @@ no longer costs you a restart. See
 Hive checks for updates in the background — once on launch and every
 six hours. When one is available it puts a dot on the ⤓ button in the
 sidebar header, next to **+**, rather than interrupting you with a
-banner; the dot stays until you update. Click ⤓ (or use **File → Check
+banner; the dot stays while an update is pending. Click ⤓ (or use **File → Check
 for Updates…** on macOS) to run the check yourself: the result lands in
 the update banner, including "up to date" and check failures, and an
 update you start shows its progress there without being asked. Which
