@@ -401,3 +401,91 @@ func TestReadAllConcatenatesInOrder(t *testing.T) {
 		t.Fatalf("got %+v", got)
 	}
 }
+
+// --- message structure, for rendering like an agent session ---
+
+func TestProjectGroupsLinesIntoMessages(t *testing.T) {
+	got := lines(t,
+		`{"type":"user","message":{"role":"user","content":"line one\nline two"}}`+"\n",
+		`{"type":"assistant","message":{"role":"assistant","content":[{"type":"text","text":"reply"}]}}`+"\n")
+	if len(got) != 3 {
+		t.Fatalf("got %+v", got)
+	}
+	if got[0].Msg != got[1].Msg {
+		t.Fatalf("lines of one prompt must share a message: %+v", got)
+	}
+	if got[2].Msg == got[0].Msg {
+		t.Fatalf("the reply is a new message: %+v", got)
+	}
+	if got[0].Kind != "user" || got[2].Kind != "assistant" {
+		t.Fatalf("kinds %q %q", got[0].Kind, got[2].Kind)
+	}
+}
+
+// Claude records its tool results as role "user"; they must not render
+// as prompts the user typed. The tool is named from the earlier call.
+func TestProjectClaudeToolResultIsToolKindWithName(t *testing.T) {
+	got := lines(t,
+		`{"type":"assistant","message":{"role":"assistant","content":[{"type":"tool_use","id":"t1","name":"Bash","input":{"command":"ls"}}]}}`+"\n",
+		`{"type":"user","message":{"role":"user","content":[{"type":"tool_result","tool_use_id":"t1","content":"file.go"}]}}`+"\n")
+	if len(got) != 1 {
+		t.Fatalf("got %+v", got)
+	}
+	if got[0].Kind != "tool" || got[0].Tool != "Bash" {
+		t.Fatalf("got kind=%q tool=%q", got[0].Kind, got[0].Tool)
+	}
+	// The name is display-only: never part of the searched text.
+	if strings.Contains(got[0].Text, "Bash") {
+		t.Fatalf("tool name leaked into text: %q", got[0].Text)
+	}
+}
+
+func TestProjectPiToolResultUsesToolName(t *testing.T) {
+	got := lines(t,
+		`{"type":"message","message":{"role":"toolResult","toolName":"read","content":[{"type":"text","text":"contents"}]}}`+"\n")
+	if len(got) != 1 || got[0].Kind != "tool" || got[0].Tool != "read" {
+		t.Fatalf("got %+v", got)
+	}
+}
+
+// Slash-command echoes and injected reminders are the harness talking,
+// not the user; they render quietly so real prompts stand out.
+func TestProjectMarksHarnessTextAsMeta(t *testing.T) {
+	got := lines(t,
+		`{"type":"user","message":{"role":"user","content":"<command-name>/compact</command-name>"}}`+"\n",
+		`{"type":"user","isMeta":true,"message":{"role":"user","content":"caveat text"}}`+"\n",
+		`{"type":"user","message":{"role":"user","content":"a real prompt"}}`+"\n")
+	if len(got) != 3 {
+		t.Fatalf("got %+v", got)
+	}
+	if got[0].Kind != "meta" || got[1].Kind != "meta" || got[2].Kind != "user" {
+		t.Fatalf("kinds %q %q %q", got[0].Kind, got[1].Kind, got[2].Kind)
+	}
+}
+
+// The cache re-projects only the new tail; message numbering and tool
+// names must carry across that boundary, or a result arriving after a
+// refresh loses its tool name and collides with an earlier message id.
+func TestCacheCarriesProjectionStateAcrossTail(t *testing.T) {
+	dir := t.TempDir()
+	call := `{"type":"assistant","message":{"role":"assistant","content":[{"type":"text","text":"running"},{"type":"tool_use","id":"t9","name":"Grep"}]}}` + "\n"
+	p := writeFile(t, dir, "a.jsonl", call)
+	var c Cache
+	first, err := c.Lines("s1", []string{p})
+	if err != nil || len(first) != 1 {
+		t.Fatalf("setup: %+v %v", first, err)
+	}
+	f, _ := os.OpenFile(p, os.O_APPEND|os.O_WRONLY, 0o600)
+	f.WriteString(`{"type":"user","message":{"role":"user","content":[{"type":"tool_result","tool_use_id":"t9","content":"hit"}]}}` + "\n")
+	f.Close()
+	got, err := c.Lines("s1", []string{p})
+	if err != nil || len(got) != 2 {
+		t.Fatalf("got %+v %v", got, err)
+	}
+	if got[1].Tool != "Grep" {
+		t.Fatalf("tool name lost across the tail parse: %+v", got[1])
+	}
+	if got[1].Msg == got[0].Msg {
+		t.Fatalf("message ids collided across the tail parse: %+v", got)
+	}
+}

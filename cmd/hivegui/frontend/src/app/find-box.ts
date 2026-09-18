@@ -29,7 +29,20 @@ import {
 import type { SearchHit } from './state.js';
 
 /** Window of transcript lines fetched around the active match. */
-const WINDOW_LINES = 80;
+const WINDOW_LINES = 200;
+
+/** Lines fetched per scroll-driven extension of the loaded range. */
+const EXTEND_LINES = 200;
+
+/**
+ * The most lines kept rendered at once. Scrolling far back extends the
+ * range upward and trims the far end, so a 20 MB transcript never ends up
+ * in the DOM; there is no virtualization in this app to lean on.
+ */
+export const MAX_LOADED_LINES = 1200;
+
+/** One counter for every window request, replace or extend alike. */
+let reqCounter = 0;
 
 /** Matches requested per search. Mirrors the daemon's own cap. */
 const MAX_MATCHES = 500;
@@ -198,6 +211,10 @@ export function runQuery(sessionID: string, query: string) {
   patchFind(sessionID, { query, index: 0, matches: [] });
 
   if (state.source === 'transcript') {
+    // Emptying the query returns to the most recent output: dropping the
+    // loaded range makes the answer reload the tail, rather than leaving
+    // the reader on the last match's window.
+    if (!query) patchFind(sessionID, { lines: [], extendReqId: 0 });
     void deps.searchTranscript(sessionID, query, MAX_MATCHES);
     return;
   }
@@ -283,8 +300,10 @@ function requestWindowFor(sessionID: string, index: number) {
   if (!state) return;
   const match = state.matches[index];
   const center = match ? match.line : Math.max(0, state.totalLines - 1);
-  const reqId = state.reqId + 1;
-  patchFind(sessionID, { reqId });
+  const reqId = ++reqCounter;
+  // A replace orphans any extension still in flight: its lines belong to
+  // the range being thrown away.
+  patchFind(sessionID, { reqId, extendReqId: 0 });
   void deps.getTranscriptLines(sessionID, reqId, center, WINDOW_LINES);
 }
 
@@ -312,6 +331,17 @@ export function applyMatches(msg: {
   const state = find(sessionID);
   if (state?.source !== 'transcript') return;
   if ((msg.query ?? '') !== state.query) return;
+
+  // No query and a range already loaded: this is a live refresh of the
+  // plain transcript view. Only the line count changes; the pane appends
+  // new lines itself if the reader is at the bottom. Replacing the window
+  // here would yank someone reading history back to the end.
+  if (!state.query && state.lines.length > 0 && msg.available) {
+    patchFind(sessionID, {
+      totalLines: msg.total_lines ?? msg.totalLines ?? state.totalLines,
+    });
+    return;
+  }
 
   const matches = msg.matches ?? [];
   // Newest-first from the daemon. A fresh search starts at the newest
@@ -353,6 +383,17 @@ export function applyLines(msg: {
   const state = find(sessionID);
   if (!state) return;
   const reqID = msg.req_id ?? msg.reqID ?? 0;
+  const totalLines = msg.total_lines ?? msg.totalLines ?? state.totalLines;
+
+  if (reqID !== 0 && reqID === state.extendReqId) {
+    patchFind(sessionID, {
+      ...mergeLines(state, msg.lines ?? []),
+      extendReqId: 0,
+      totalLines,
+      loadSeq: state.loadSeq + 1,
+    });
+    return;
+  }
   if (reqID !== state.reqId) return;
 
   patchFind(sessionID, {
@@ -360,8 +401,74 @@ export function applyLines(msg: {
     reason: msg.available ? '' : (msg.reason ?? 'unavailable'),
     lines: msg.lines ?? [],
     lineStart: msg.start ?? 0,
-    totalLines: msg.total_lines ?? msg.totalLines ?? state.totalLines,
+    totalLines,
+    lastLoad: 'replace',
+    loadSeq: state.loadSeq + 1,
   });
+}
+
+/**
+ * Folds an extension into the loaded range: older lines go above, newer
+ * below. Only lines outside the current range are taken, so an extension
+ * overlapping it cannot duplicate a line. Past MAX_LOADED_LINES the far
+ * end is trimmed — the end the reader is moving away from.
+ */
+export function mergeLines(
+  state: Pick<FindState, 'lines' | 'lineStart'>,
+  incoming: TranscriptLine[],
+): Pick<FindState, 'lines' | 'lineStart' | 'lastLoad'> {
+  const start = state.lineStart;
+  const end = start + state.lines.length;
+  const older = incoming.filter((l) => l.line < start);
+  if (older.length > 0) {
+    const merged = older.concat(state.lines).slice(0, MAX_LOADED_LINES);
+    return { lines: merged, lineStart: merged[0].line, lastLoad: 'prepend' };
+  }
+  const newer = incoming.filter((l) => l.line >= end);
+  let merged = state.lines.concat(newer);
+  if (merged.length > MAX_LOADED_LINES) {
+    merged = merged.slice(merged.length - MAX_LOADED_LINES);
+  }
+  return {
+    lines: merged,
+    lineStart: merged.length > 0 ? merged[0].line : start,
+    lastLoad: 'append',
+  };
+}
+
+/**
+ * Loads the block of lines above ('up') or below ('down') the loaded
+ * range. Called by the pane as the reader nears either edge, and to fill
+ * a pane that is not yet full. At most one extension is in flight.
+ */
+export function extendLines(sessionID: string, dir: 'up' | 'down') {
+  const s = find(sessionID);
+  if (s?.source !== 'transcript' || s.extendReqId !== 0 || !s.ready) return;
+  // Nothing loaded yet: the replace that loads the first window is in
+  // flight, and extending from an empty range would fetch the wrong end.
+  if (s.lines.length === 0) return;
+  const end = s.lineStart + s.lines.length;
+  let start: number;
+  let count: number;
+  if (dir === 'up') {
+    if (s.lineStart <= 0) return;
+    count = Math.min(EXTEND_LINES, s.lineStart);
+    start = s.lineStart - count;
+  } else {
+    if (end >= s.totalLines) return;
+    count = Math.min(EXTEND_LINES, s.totalLines - end);
+    start = end;
+  }
+  const reqId = ++reqCounter;
+  patchFind(sessionID, { extendReqId: reqId });
+  // The daemon centres a window on `center` and starts it count/2 above,
+  // so this centre yields exactly [start, start + count).
+  void deps.getTranscriptLines(
+    sessionID,
+    reqId,
+    start + Math.floor(count / 2),
+    count,
+  );
 }
 
 /**
@@ -402,7 +509,8 @@ export function onSessionOutput(sessionID: string) {
   const state = find(sessionID);
   // Buffer mode needs nothing here: the addon refreshes itself on write
   // and reports through onFindResults.
-  if (state?.source !== 'transcript' || !state.query) return;
+  // With no query too: the plain transcript view follows new output.
+  if (state?.source !== 'transcript') return;
   if (outputTimer) clearTimeout(outputTimer);
   if (settleTimer) clearTimeout(settleTimer);
   // Two trailing refreshes, both reset by every new chunk of output:
@@ -426,13 +534,14 @@ export function onSessionOutput(sessionID: string) {
 // re-anchor on the one the user is reading.
 function refreshTranscript(sessionID: string) {
   const cur = find(sessionID);
-  if (cur?.source === 'transcript' && cur.query) {
+  if (cur?.source === 'transcript') {
     void deps.searchTranscript(sessionID, cur.query, MAX_MATCHES);
   }
 }
 
 /** Test seam: drops the pending output debounce. */
 export function resetFindBoxForTest() {
+  reqCounter = 0;
   if (outputTimer) clearTimeout(outputTimer);
   outputTimer = null;
   if (settleTimer) clearTimeout(settleTimer);

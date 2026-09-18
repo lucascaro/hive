@@ -410,7 +410,9 @@ test.describe('spec 431 find in session', () => {
         pane.evaluate((b) => b.scrollHeight - b.clientHeight - b.scrollTop),
       )
       .toBeLessThanOrEqual(1);
-    await expect.poll(() => inView('.hv-find-line:last-child')).toBe(true);
+    // Addressed by line: lines are nested per message now, so
+    // :last-child matches the first line of every message.
+    await expect.poll(() => inView('[data-find-line="199"]')).toBe(true);
 
     // Typing moves the match; each new position is brought into view.
     const input = page.locator('[data-find-input]');
@@ -464,4 +466,170 @@ test.describe('spec 431 find in session', () => {
       expect(await page.evaluate(() => window.__hive.stdinText())).toBe('');
     });
   }
+
+  // The transcript pane used to hold one fixed window, so scrolling up
+  // stopped dead and the history looked cut off. It now loads older
+  // history as the reader nears the top, and each load leaves the line
+  // they were reading where it was on screen.
+  test('scrolling up loads older history without losing your place', async ({
+    page,
+  }) => {
+    await bootAsLinux(page);
+    const id = await activeId(page);
+    await page.evaluate((sid) => {
+      const lines = Array.from({ length: 1000 }, (_, i) => `history line ${i}`);
+      window.__hive.setTranscript?.(sid, lines);
+      const esc = String.fromCharCode(27);
+      window.__hive.emit('pty:data', sid, btoa(`${esc}[?1049h`));
+    }, id);
+
+    await page.keyboard.press('Control+Shift+f');
+    await expect(page.locator('.hv-find-line').last()).toContainText(
+      'history line 999',
+    );
+
+    const pane = page.locator('.hv-find-body');
+    // The first line on screen and its distance from the pane's top.
+    const topLine = () =>
+      pane.evaluate((b) => {
+        for (const el of b.querySelectorAll<HTMLElement>('[data-find-line]')) {
+          if (el.offsetTop + el.offsetHeight > b.scrollTop) {
+            return {
+              line: Number(el.dataset.findLine),
+              off: el.offsetTop - b.scrollTop,
+            };
+          }
+        }
+        return null;
+      });
+
+    const firstLoaded = () =>
+      page.evaluate(() =>
+        Number(
+          document
+            .querySelector('.hv-find-body [data-find-line]')
+            ?.getAttribute('data-find-line') ?? -1,
+        ),
+      );
+
+    // Go to the top of what is loaded; that is near the edge, so the
+    // block above loads. Whatever line was on screen must still be on
+    // screen, at the same place, once it lands. Repeat to the start.
+    for (let round = 0; round < 10; round++) {
+      const loadedFrom = await firstLoaded();
+      if (loadedFrom === 0) break;
+      await pane.evaluate((b) => {
+        b.scrollTop = 0;
+      });
+      const before = await topLine();
+      await expect.poll(firstLoaded).toBeLessThan(loadedFrom);
+      const after = await topLine();
+      expect(before).not.toBeNull();
+      // After a prepend the anchor line is still the first on screen...
+      expect(after?.line).toBe(before?.line);
+      // ...and has not moved.
+      expect(
+        Math.abs((after?.off ?? 0) - (before?.off ?? 0)),
+      ).toBeLessThanOrEqual(2);
+    }
+    // All the way back to the very first line of the transcript.
+    await expect(page.locator('[data-find-line="0"]')).toContainText(
+      'history line 0',
+    );
+    // And never the whole transcript in the DOM at once.
+    expect(await page.locator('.hv-find-line').count()).toBeLessThanOrEqual(
+      1200,
+    );
+  });
+
+  // With no query, the transcript follows new output while the reader is
+  // at the bottom, like a terminal.
+  test('the plain transcript follows new output at the bottom', async ({
+    page,
+  }) => {
+    await bootAsLinux(page);
+    const id = await activeId(page);
+    const base = Array.from({ length: 50 }, (_, i) => `old line ${i}`);
+    await page.evaluate(
+      ([sid, lines]) => {
+        window.__hive.setTranscript?.(sid as string, lines as string[]);
+        const esc = String.fromCharCode(27);
+        window.__hive.emit('pty:data', sid as string, btoa(`${esc}[?1049h`));
+      },
+      [id, base],
+    );
+    await page.keyboard.press('Control+Shift+f');
+    await expect(page.locator('.hv-find-line').last()).toContainText(
+      'old line 49',
+    );
+
+    await page.evaluate(
+      ([sid, lines]) => {
+        window.__hive.setTranscript?.(sid as string, [
+          ...(lines as string[]),
+          'fresh output arrives',
+        ]);
+        window.__hive.emit('pty:data', sid as string, btoa('x'));
+      },
+      [id, base],
+    );
+    await expect(page.locator('.hv-find-line').last()).toContainText(
+      'fresh output arrives',
+    );
+    // Still pinned to the bottom.
+    await expect
+      .poll(() =>
+        page
+          .locator('.hv-find-body')
+          .evaluate((b) => b.scrollHeight - b.clientHeight - b.scrollTop),
+      )
+      .toBeLessThanOrEqual(4);
+  });
+
+  // The real pi transcript that looked cut off: it ends in a long tool
+  // output, so the first window starts in the middle of it. When older
+  // history loads, the output's true start arrives and its collapse
+  // re-cuts — the line the view was anchored on stops being rendered,
+  // and the pane fell back to the top. A reader at the bottom must stay
+  // at the bottom.
+  test('opens on the latest output even when it ends in a long tool result', async ({
+    page,
+  }) => {
+    await bootAsLinux(page);
+    const id = await activeId(page);
+    await page.evaluate((sid) => {
+      const lines: {
+        text: string;
+        msg: number;
+        kind: string;
+        tool?: string;
+      }[] = [];
+      for (let i = 0; i < 60; i++)
+        lines.push({ text: `earlier ${i}`, msg: 0, kind: 'assistant' });
+      lines.push({ text: 'run the thing', msg: 1, kind: 'user' });
+      for (let i = 0; i < 320; i++) {
+        lines.push({ text: `output ${i}`, msg: 2, kind: 'tool', tool: 'bash' });
+      }
+      window.__hive.setTranscript?.(sid, lines);
+      const esc = String.fromCharCode(27);
+      window.__hive.emit('pty:data', sid, btoa(`${esc}[?1049h`));
+    }, id);
+
+    await page.keyboard.press('Control+Shift+f');
+    // The whole history is reachable and loaded back to its start...
+    await expect(page.locator('[data-find-line="0"]')).toBeAttached();
+    // ...the long output is collapsed under its tool's name...
+    await expect(page.locator('[data-tx-more]')).toContainText(
+      'Show 312 more lines',
+    );
+    await expect(page.locator('.hv-tx-user')).toContainText('run the thing');
+    // ...and the view sits at the bottom: the most recent output.
+    await expect
+      .poll(() =>
+        page
+          .locator('.hv-find-body')
+          .evaluate((b) => b.scrollHeight - b.clientHeight - b.scrollTop),
+      )
+      .toBeLessThanOrEqual(4);
+  });
 });

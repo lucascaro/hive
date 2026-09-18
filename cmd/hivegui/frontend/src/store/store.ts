@@ -700,6 +700,20 @@ export interface FindState {
   lineStart: number;
   totalLines: number;
   reqId: number;
+  /**
+   * The in-flight request extending the loaded range up or down, or 0.
+   * Separate from reqId: an extension merges into the lines, a replace
+   * swaps them, and a new replace must orphan any pending extension.
+   */
+  extendReqId: number;
+  /**
+   * How the lines last changed, and a counter that bumps on every change,
+   * so the pane knows whether to jump (a replace: a new search or match),
+   * hold the reader's place (a prepend: older history loaded above) or
+   * follow the bottom (an append: newer output while pinned there).
+   */
+  lastLoad: 'replace' | 'prepend' | 'append';
+  loadSeq: number;
 }
 
 export interface TranscriptMatch {
@@ -715,6 +729,12 @@ export interface TranscriptLine {
   role?: string;
   text: string;
   truncated?: boolean;
+  /** Message id: consecutive lines sharing it render as one message. */
+  msg?: number;
+  /** 'user' | 'assistant' | 'tool' | 'meta' — how the message renders. */
+  kind?: string;
+  /** For tool output, the tool that produced it. */
+  tool?: string;
 }
 
 export function initialFind(source: FindSource): FindState {
@@ -731,6 +751,9 @@ export function initialFind(source: FindSource): FindState {
     lineStart: 0,
     totalLines: 0,
     reqId: 0,
+    extendReqId: 0,
+    lastLoad: 'replace',
+    loadSeq: 0,
   };
 }
 

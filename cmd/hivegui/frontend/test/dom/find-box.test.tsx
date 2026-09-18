@@ -460,6 +460,147 @@ describe('newest-first transcript navigation', () => {
   });
 });
 
+describe('scroll-loaded history', () => {
+  const ln = (a: number, b: number) =>
+    Array.from({ length: b - a }, (_, i) => ({
+      line: a + i,
+      text: `l${a + i}`,
+    }));
+
+  it('merges older lines above, without duplicates', () => {
+    const r = mod.mergeLines(
+      { lines: ln(100, 200), lineStart: 100 },
+      ln(0, 120),
+    );
+    expect(r.lastLoad).toBe('prepend');
+    expect(r.lineStart).toBe(0);
+    expect(r.lines).toHaveLength(200);
+    expect(r.lines.map((l) => l.line)).toEqual(ln(0, 200).map((l) => l.line));
+  });
+
+  it('merges newer lines below, without duplicates', () => {
+    const r = mod.mergeLines({ lines: ln(0, 100), lineStart: 0 }, ln(80, 150));
+    expect(r.lastLoad).toBe('append');
+    expect(r.lines.map((l) => l.line)).toEqual(ln(0, 150).map((l) => l.line));
+  });
+
+  // Scrolling far back must not put a whole transcript in the DOM: the
+  // end the reader is moving away from is trimmed.
+  it('trims the far end past the cap', () => {
+    const cap = mod.MAX_LOADED_LINES;
+    const up = mod.mergeLines(
+      { lines: ln(1000, 1000 + cap), lineStart: 1000 },
+      ln(800, 1000),
+    );
+    expect(up.lines).toHaveLength(cap);
+    expect(up.lineStart).toBe(800); // kept the new top, trimmed the bottom
+    const down = mod.mergeLines(
+      { lines: ln(0, cap), lineStart: 0 },
+      ln(cap, cap + 200),
+    );
+    expect(down.lines).toHaveLength(cap);
+    expect(down.lineStart).toBe(200); // kept the new bottom, trimmed the top
+  });
+
+  function openLoaded() {
+    bufferType = 'alternate';
+    act(() => mod.openFindBox(SID));
+    act(() =>
+      mod.applyMatches({
+        session_id: SID,
+        query: '',
+        available: true,
+        total_lines: 1000,
+      }),
+    );
+    act(() =>
+      mod.applyLines({
+        session_id: SID,
+        req_id: find()?.reqId,
+        start: 800,
+        total_lines: 1000,
+        available: true,
+        lines: ln(800, 1000),
+      }),
+    );
+  }
+
+  it('requests exactly the block above the loaded range', () => {
+    openLoaded();
+    getTranscriptLines.mockClear();
+    act(() => mod.extendLines(SID, 'up'));
+    // centre 700 with count 200 is the window [600, 800).
+    expect(getTranscriptLines).toHaveBeenCalledWith(
+      SID,
+      expect.any(Number),
+      700,
+      200,
+    );
+  });
+
+  it('keeps at most one extension in flight', () => {
+    openLoaded();
+    getTranscriptLines.mockClear();
+    act(() => mod.extendLines(SID, 'up'));
+    act(() => mod.extendLines(SID, 'up'));
+    expect(getTranscriptLines).toHaveBeenCalledTimes(1);
+  });
+
+  it('does not extend past either end', () => {
+    openLoaded();
+    getTranscriptLines.mockClear();
+    act(() => mod.extendLines(SID, 'down')); // already at the last line
+    expect(getTranscriptLines).not.toHaveBeenCalled();
+  });
+
+  // A new search replaces the range; an extension still in flight
+  // belongs to the old one and must not be merged into the new.
+  it('drops an extension orphaned by a replace', () => {
+    openLoaded();
+    act(() => mod.extendLines(SID, 'up'));
+    const staleExtend = find()?.extendReqId ?? 0;
+    act(() => mod.runQuery(SID, 'l5'));
+    act(() =>
+      mod.applyMatches({
+        session_id: SID,
+        query: 'l5',
+        available: true,
+        total: 1,
+        total_lines: 1000,
+        matches: [{ line: 5, col: 0, len: 2 }],
+      }),
+    );
+    act(() =>
+      mod.applyLines({
+        session_id: SID,
+        req_id: staleExtend,
+        start: 600,
+        available: true,
+        lines: ln(600, 800),
+      }),
+    );
+    expect(find()?.lines.some((l) => l.line === 600)).toBe(false);
+  });
+
+  // With no query, a live refresh only raises the line count: replacing
+  // the window would yank someone reading history back to the end.
+  it('a no-query live refresh does not replace the loaded range', () => {
+    openLoaded();
+    getTranscriptLines.mockClear();
+    act(() =>
+      mod.applyMatches({
+        session_id: SID,
+        query: '',
+        available: true,
+        total_lines: 1010,
+      }),
+    );
+    expect(find()?.totalLines).toBe(1010);
+    expect(getTranscriptLines).not.toHaveBeenCalled();
+    expect(find()?.lineStart).toBe(800);
+  });
+});
+
 describe('re-search on session output', () => {
   // Criterion 8's GUI half: text arriving while the box is open becomes
   // findable without reopening it. The Go cache tests cannot reach this.

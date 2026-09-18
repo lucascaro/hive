@@ -2,12 +2,15 @@ import { describe, expect, it } from 'vitest';
 import {
   findSourceFor,
   formatCount,
+  groupMessages,
+  messageLabel,
   highlightSegments,
   mayUseSearchAddon,
   newestFirstIndex,
   reanchorIndex,
   stepIndex,
   transcriptScrollTarget,
+  visibleLineCount,
   unavailableMessage,
 } from '../../src/lib/find';
 import { findKey } from '../../src/lib/keymap';
@@ -309,5 +312,99 @@ describe('transcriptScrollTarget', () => {
         hasActive: false,
       }),
     ).toBe(0);
+  });
+});
+
+describe('groupMessages', () => {
+  it('groups consecutive lines of one message', () => {
+    const g = groupMessages([
+      { line: 0, msg: 1, kind: 'user' },
+      { line: 1, msg: 1, kind: 'user' },
+      { line: 2, msg: 2, kind: 'assistant' },
+    ]);
+    expect(g.map((x) => x.lines.length)).toEqual([2, 1]);
+    expect(g.map((x) => x.kind)).toEqual(['user', 'assistant']);
+  });
+
+  it('carries the tool name of a tool-output message', () => {
+    const g = groupMessages([{ line: 0, msg: 5, kind: 'tool', tool: 'Bash' }]);
+    expect(g[0].tool).toBe('Bash');
+  });
+
+  // An older daemon sends no message ids: every line stands alone rather
+  // than all collapsing into one giant group.
+  it('keeps lines without a message id separate', () => {
+    const g = groupMessages([{ line: 0 }, { line: 1 }]);
+    expect(g).toHaveLength(2);
+  });
+});
+
+describe('messageLabel', () => {
+  it('labels prompts and tool output, not assistant text', () => {
+    expect(messageLabel({ kind: 'user' })).toBe('You');
+    expect(messageLabel({ kind: 'tool', tool: 'Bash' })).toBe('Bash');
+    expect(messageLabel({ kind: 'tool' })).toBe('Tool output');
+    expect(messageLabel({ kind: 'assistant' })).toBe('');
+  });
+});
+
+describe('visibleLineCount', () => {
+  const lines = (n: number) =>
+    Array.from({ length: n }, (_, i) => ({ line: i }));
+
+  it('collapses long tool output', () => {
+    expect(
+      visibleLineCount({
+        kind: 'tool',
+        lines: lines(300),
+        hasMatch: false,
+        expanded: false,
+      }),
+    ).toEqual({ shown: 8, hidden: 292 });
+  });
+
+  it('never collapses prose', () => {
+    expect(
+      visibleLineCount({
+        kind: 'assistant',
+        lines: lines(300),
+        hasMatch: false,
+        expanded: false,
+      }),
+    ).toEqual({ shown: 300, hidden: 0 });
+  });
+
+  it('leaves short tool output alone', () => {
+    expect(
+      visibleLineCount({
+        kind: 'tool',
+        lines: lines(12),
+        hasMatch: false,
+        expanded: false,
+      }),
+    ).toEqual({ shown: 12, hidden: 0 });
+  });
+
+  // Search must never be hidden behind a collapse.
+  it('shows everything when a line matches', () => {
+    expect(
+      visibleLineCount({
+        kind: 'tool',
+        lines: lines(300),
+        hasMatch: true,
+        expanded: false,
+      }),
+    ).toEqual({ shown: 300, hidden: 0 });
+  });
+
+  it('shows everything once expanded', () => {
+    expect(
+      visibleLineCount({
+        kind: 'tool',
+        lines: lines(300),
+        hasMatch: false,
+        expanded: true,
+      }),
+    ).toEqual({ shown: 300, hidden: 0 });
   });
 });

@@ -113,6 +113,13 @@ type TranscriptLine struct {
 	Role      string `json:"role,omitempty"`
 	Text      string `json:"text"`
 	Truncated bool   `json:"truncated,omitempty"`
+	// Msg groups lines into messages so the client renders a message as
+	// a unit; Kind is "user" | "assistant" | "tool" | "meta"; Tool names
+	// the tool whose output this is. Presentation only — see
+	// transcript.Line.
+	Msg  int    `json:"msg"`
+	Kind string `json:"kind,omitempty"`
+	Tool string `json:"tool,omitempty"`
 }
 
 // TranscriptLinesMsg answers GetTranscriptLinesReq.

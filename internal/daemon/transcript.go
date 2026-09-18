@@ -78,6 +78,7 @@ func (d *Daemon) transcriptLines(req wire.GetTranscriptLinesReq) wire.Transcript
 		text, cut := transcript.CapText(ln.Text, wire.MaxTranscriptLineText)
 		msg.Lines = append(msg.Lines, wire.TranscriptLine{
 			Line: ln.Index, Role: ln.Role, Text: text, Truncated: cut,
+			Msg: ln.Msg, Kind: ln.Kind, Tool: ln.Tool,
 		})
 	}
 	return wire.FitTranscriptLines(msg)

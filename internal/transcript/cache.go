@@ -25,6 +25,9 @@ type Cache struct {
 	paths []string
 	sizes []int64 // bytes consumed per path, parallel to paths
 	lines []Line
+	// proj carries message numbering and tool-call names across the
+	// tail re-parses; reset whenever the projection restarts from zero.
+	proj *projector
 }
 
 // Lines returns the projection for sessionID, refreshing it from disk.
@@ -43,6 +46,7 @@ func (c *Cache) Lines(sessionID string, paths []string) ([]Line, error) {
 		c.paths = append([]string(nil), paths...)
 		c.sizes = make([]int64, len(paths))
 		c.lines = nil
+		c.proj = newProjector()
 	}
 
 	for i, p := range c.paths {
@@ -85,7 +89,7 @@ func (c *Cache) appendTailLocked(p string, off int64) (int64, error) {
 	if _, err := f.Seek(off, io.SeekStart); err != nil {
 		return 0, err
 	}
-	lines, n, err := projectFile(io.LimitReader(f, MaxFileBytes), c.lines)
+	lines, n, err := c.proj.project(io.LimitReader(f, MaxFileBytes), c.lines)
 	if err != nil {
 		return 0, err
 	}
@@ -95,6 +99,7 @@ func (c *Cache) appendTailLocked(p string, off int64) (int64, error) {
 
 func (c *Cache) reprojectLocked() ([]Line, error) {
 	c.lines = nil
+	c.proj = newProjector()
 	for i := range c.sizes {
 		c.sizes[i] = 0
 	}
@@ -113,7 +118,7 @@ func (c *Cache) reprojectLocked() ([]Line, error) {
 func (c *Cache) Drop() {
 	c.mu.Lock()
 	defer c.mu.Unlock()
-	c.key, c.paths, c.sizes, c.lines = "", nil, nil, nil
+	c.key, c.paths, c.sizes, c.lines, c.proj = "", nil, nil, nil, nil
 }
 
 func samePaths(a, b []string) bool {

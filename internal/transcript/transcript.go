@@ -29,6 +29,22 @@ type Line struct {
 	Index int
 	Role  string
 	Text  string
+	// Msg groups lines into messages: every line of one prompt, one
+	// assistant text block or one tool result shares a Msg, and it rises
+	// monotonically through the file. The GUI renders a message as a unit
+	// — one header, tight line spacing, space between messages — which is
+	// what makes the transcript read like an agent session rather than a
+	// log.
+	Msg int
+	// Kind is what the message is, for presentation: "user" (a typed
+	// prompt), "assistant", "tool" (a tool's output) or "meta" (the agent
+	// harness talking — slash-command echoes, injected reminders). Role
+	// alone cannot tell these apart: Claude records tool results, and its
+	// own command echoes, as role "user".
+	Kind string
+	// Tool names the tool whose output this is, for Kind "tool". Display
+	// only — it is not part of Text, so it is never searched.
+	Tool string
 }
 
 // Match is one substring hit. Col is a byte offset into the Line's Text
@@ -48,7 +64,26 @@ type Match struct {
 // Reading stops at the last complete record before the limit.
 const MaxFileBytes = 64 << 20
 
-// projectFile reads r and appends display lines to dst, returning the
+// projector carries the state projection needs across records — and
+// across calls, since the cache re-projects only a transcript's new tail.
+type projector struct {
+	msg int
+	// tools maps a tool call's id to its name. Claude's tool_result only
+	// names its call by tool_use_id; the name lives on the assistant's
+	// earlier tool_use block.
+	tools map[string]string
+}
+
+func newProjector() *projector {
+	return &projector{tools: map[string]string{}}
+}
+
+// projectFile projects r with a fresh projector. See (*projector).project.
+func projectFile(r io.Reader, dst []Line) ([]Line, int64, error) {
+	return newProjector().project(r, dst)
+}
+
+// project reads r and appends display lines to dst, returning the
 // extended slice and the number of bytes consumed.
 //
 // The byte count advances only past records that ended in a newline. A
@@ -56,14 +91,14 @@ const MaxFileBytes = 64 << 20
 // bytes were consumed, the completed record would never be re-read and
 // the most recent line — the one the user is most likely looking for —
 // would be invisible forever.
-func projectFile(r io.Reader, dst []Line) ([]Line, int64, error) {
+func (p *projector) project(r io.Reader, dst []Line) ([]Line, int64, error) {
 	br := bufio.NewReaderSize(r, 64<<10)
 	var consumed int64
 	for {
 		raw, err := br.ReadBytes('\n')
 		if len(raw) > 0 && raw[len(raw)-1] == '\n' {
 			consumed += int64(len(raw))
-			dst = appendRecord(dst, bytes.TrimRight(raw, "\r\n"))
+			dst = p.appendRecord(dst, bytes.TrimRight(raw, "\r\n"))
 		}
 		if err != nil {
 			if err == io.EOF {
@@ -78,7 +113,7 @@ func projectFile(r io.Reader, dst []Line) ([]Line, int64, error) {
 // lines. A record that fails to parse is skipped rather than aborting
 // the file: transcripts are written by other programs and one bad line
 // must not cost the user the other fifty thousand.
-func appendRecord(dst []Line, raw []byte) []Line {
+func (p *projector) appendRecord(dst []Line, raw []byte) []Line {
 	raw = bytes.TrimSpace(raw)
 	if len(raw) == 0 {
 		return dst
@@ -91,13 +126,21 @@ func appendRecord(dst []Line, raw []byte) []Line {
 	if rec.Message != nil && rec.Message.Role != "" {
 		role = rec.Message.Role
 	}
-	for _, s := range rec.texts() {
-		for _, part := range strings.Split(s, "\n") {
+	for _, pc := range rec.pieces(p.tools) {
+		var emitted bool
+		for _, part := range strings.Split(pc.text, "\n") {
 			part = sanitize(part)
 			if part == "" {
 				continue
 			}
-			dst = append(dst, Line{Index: len(dst), Role: role, Text: part})
+			dst = append(dst, Line{
+				Index: len(dst), Role: role, Text: part,
+				Msg: p.msg, Kind: pc.kind, Tool: pc.tool,
+			})
+			emitted = true
+		}
+		if emitted {
+			p.msg++
 		}
 	}
 	return dst
@@ -108,6 +151,7 @@ func appendRecord(dst []Line, raw []byte) []Line {
 // "message"; fields either does not use stay zero.
 type record struct {
 	Type    string   `json:"type"`
+	IsMeta  bool     `json:"isMeta"`
 	Message *message `json:"message"`
 	Content *content `json:"content"`
 }
@@ -115,6 +159,8 @@ type record struct {
 type message struct {
 	Role    string   `json:"role"`
 	Content *content `json:"content"`
+	// ToolName is pi's: its toolResult messages name their tool directly.
+	ToolName string `json:"toolName"`
 }
 
 // content is the string-or-array shape both agents use. Claude's
@@ -146,38 +192,78 @@ type block struct {
 	Type    string   `json:"type"`
 	Text    string   `json:"text"`
 	Content *content `json:"content"`
+	// A tool call's id and name (Claude "tool_use", pi "toolCall"), and
+	// the id a Claude tool_result answers.
+	ID        string `json:"id"`
+	Name      string `json:"name"`
+	ToolUseID string `json:"tool_use_id"`
 }
 
-// texts returns the displayable strings of a record, in order.
+// piece is one displayable run of a record: its text and what it is.
+type piece struct {
+	kind string
+	tool string
+	text string
+}
+
+// pieces returns the displayable parts of a record, in order, recording
+// any tool calls it makes in tools so later results can be named.
 //
 // Deliberately excluded: assistant "thinking" blocks and the JSON of
-// "tool_use" inputs. The user is re-finding what they saw on screen,
-// and searching raw argument JSON adds noise the spec rules out.
-func (r *record) texts() []string {
-	var out []string
+// tool-call inputs. The user is re-finding what they saw on screen, and
+// searching raw argument JSON adds noise the spec rules out.
+func (r *record) pieces(tools map[string]string) []piece {
+	var out []piece
+	role := r.Type
+	if r.Message != nil && r.Message.Role != "" {
+		role = r.Message.Role
+	}
+	textKind := kindForRole(role)
+	if r.IsMeta {
+		textKind = "meta"
+	}
 	add := func(c *content) {
 		if c == nil {
 			return
 		}
 		if c.Text != "" {
-			out = append(out, c.Text)
+			k := textKind
+			if k == "user" && isHarnessText(c.Text) {
+				k = "meta"
+			}
+			out = append(out, piece{kind: k, text: c.Text})
 			return
 		}
 		for _, b := range c.Blocks {
 			switch b.Type {
 			case "text", "":
-				if b.Text != "" {
-					out = append(out, b.Text)
+				if b.Text == "" {
+					continue
+				}
+				k := textKind
+				if k == "user" && isHarnessText(b.Text) {
+					k = "meta"
+				}
+				tool := ""
+				if k == "tool" && r.Message != nil {
+					tool = r.Message.ToolName
+				}
+				out = append(out, piece{kind: k, tool: tool, text: b.Text})
+			case "tool_use", "toolCall":
+				if b.ID != "" && b.Name != "" {
+					tools[b.ID] = b.Name
 				}
 			case "tool_result":
-				if b.Content != nil {
-					if b.Content.Text != "" {
-						out = append(out, b.Content.Text)
-					}
-					for _, inner := range b.Content.Blocks {
-						if inner.Text != "" {
-							out = append(out, inner.Text)
-						}
+				if b.Content == nil {
+					continue
+				}
+				name := tools[b.ToolUseID]
+				if b.Content.Text != "" {
+					out = append(out, piece{kind: "tool", tool: name, text: b.Content.Text})
+				}
+				for _, inner := range b.Content.Blocks {
+					if inner.Text != "" {
+						out = append(out, piece{kind: "tool", tool: name, text: inner.Text})
 					}
 				}
 			}
@@ -188,6 +274,39 @@ func (r *record) texts() []string {
 	}
 	add(r.Content)
 	return out
+}
+
+// kindForRole maps a record's role onto a presentation kind.
+func kindForRole(role string) string {
+	switch role {
+	case "user":
+		return "user"
+	case "assistant":
+		return "assistant"
+	case "toolResult", "tool":
+		return "tool"
+	default:
+		return "meta"
+	}
+}
+
+// isHarnessText reports text the agent's harness wrote into a user
+// record rather than the user typing it: slash-command echoes, their
+// captured output, injected reminders. Shown quietly so a real prompt
+// stands out.
+func isHarnessText(s string) bool {
+	s = strings.TrimSpace(s)
+	for _, tag := range []string{
+		"<command-name>", "<command-message>", "<command-args>",
+		"<local-command-stdout>", "<local-command-stderr>",
+		"<local-command-caveat>", "<system-reminder>", "<bash-input>",
+		"<bash-stdout>", "<bash-stderr>", "<task-notification>",
+	} {
+		if strings.HasPrefix(s, tag) {
+			return true
+		}
+	}
+	return false
 }
 
 // sanitize strips control characters, keeping tab.
@@ -313,12 +432,13 @@ func Window(lines []Line, center, count int) ([]Line, int) {
 // file per session.
 func ReadAll(paths []string) ([]Line, error) {
 	var out []Line
+	proj := newProjector()
 	for _, p := range paths {
 		f, err := os.Open(p)
 		if err != nil {
 			return out, err
 		}
-		out, _, err = projectFile(io.LimitReader(f, MaxFileBytes), out)
+		out, _, err = proj.project(io.LimitReader(f, MaxFileBytes), out)
 		f.Close()
 		if err != nil {
 			return out, err

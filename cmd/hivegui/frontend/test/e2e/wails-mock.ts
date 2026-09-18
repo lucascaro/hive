@@ -1047,9 +1047,15 @@ export async function GetActivity(id: string) {
 // so a spec can set one up and drive the find box end to end; sessions
 // without one answer "unsupported_agent", which is exactly what the
 // daemon says for a plain shell.
-type MockTranscript = {
-  lines: { line: number; role?: string; text: string }[];
+type MockLine = {
+  line: number;
+  role?: string;
+  text: string;
+  msg?: number;
+  kind?: string;
+  tool?: string;
 };
+type MockTranscript = { lines: MockLine[] };
 const transcriptById = new Map<string, MockTranscript>();
 
 export async function SearchTranscript(
@@ -1469,9 +1475,19 @@ if (typeof window !== 'undefined') {
       activityById.set(id, activity);
     },
     /** Gives a session a transcript so ⌘F can search it. */
-    setTranscript(id: string, texts: string[], role = 'assistant') {
+    // Plain strings are one message per line; objects pass through the
+    // message structure (msg/kind/tool) the daemon projects.
+    setTranscript(
+      id: string,
+      lines: (string | Omit<MockLine, 'line'>)[],
+      role = 'assistant',
+    ) {
       transcriptById.set(id, {
-        lines: texts.map((text, i) => ({ line: i, role, text })),
+        lines: lines.map((l, i) =>
+          typeof l === 'string'
+            ? { line: i, role, text: l, msg: i, kind: role }
+            : { ...l, line: i },
+        ),
       });
     },
     emitActivity(msg: Record<string, unknown>) {

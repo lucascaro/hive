@@ -199,3 +199,86 @@ export function transcriptScrollTarget(p: {
   const centred = p.activeTop - (p.clientHeight - (p.activeHeight ?? 0)) / 2;
   return Math.max(0, Math.min(max, Math.round(centred)));
 }
+
+/** A run of consecutive lines that belong to one message. */
+export interface MessageGroup<L> {
+  /** Stable key: the message id, or the first line's index as fallback. */
+  key: number;
+  kind: string;
+  tool?: string;
+  lines: L[];
+}
+
+/**
+ * Groups transcript lines into messages for rendering (spec 431: read
+ * like an agent session — one header per message, not one per line).
+ *
+ * Only CONSECUTIVE lines with the same message id group: a window of
+ * lines is a contiguous slice, so a message is never split and rejoined.
+ * A line without a message id (an older daemon) stands alone, grouped by
+ * its own line number, which degrades to the previous per-line layout.
+ */
+export function groupMessages<
+  L extends { line: number; msg?: number; kind?: string; tool?: string },
+>(lines: L[]): MessageGroup<L>[] {
+  const out: MessageGroup<L>[] = [];
+  for (const ln of lines) {
+    const id = ln.msg ?? -1 - ln.line;
+    const last = out[out.length - 1];
+    if (last && last.key === id) {
+      last.lines.push(ln);
+      continue;
+    }
+    out.push({
+      key: id,
+      kind: ln.kind ?? 'assistant',
+      tool: ln.tool,
+      lines: [ln],
+    });
+  }
+  return out;
+}
+
+/** The header a message shows, or '' for none. */
+export function messageLabel(g: { kind: string; tool?: string }): string {
+  switch (g.kind) {
+    case 'user':
+      return 'You';
+    case 'tool':
+      return g.tool || 'Tool output';
+    default:
+      return '';
+  }
+}
+
+/** Tool output longer than this collapses. */
+export const TOOL_COLLAPSE_OVER = 12;
+/** How many lines a collapsed tool output shows. */
+export const TOOL_COLLAPSED_LINES = 8;
+
+/**
+ * How many of a message's lines to render, and whether it is collapsed.
+ *
+ * Long tool output collapses to its first lines, the way an agent
+ * session shows a tool's result — otherwise one 300-line command buries
+ * the conversation around it. A collapsed message is never allowed to
+ * hide a search result: it renders in full when any of its lines holds
+ * a match, or when the user expanded it.
+ */
+export function visibleLineCount(g: {
+  kind: string;
+  lines: { line: number }[];
+  hasMatch: boolean;
+  expanded: boolean;
+}): { shown: number; hidden: number } {
+  const n = g.lines.length;
+  if (
+    g.kind !== 'tool' ||
+    n <= TOOL_COLLAPSE_OVER ||
+    g.hasMatch ||
+    g.expanded
+  ) {
+    return { shown: n, hidden: 0 };
+  }
+  return { shown: TOOL_COLLAPSED_LINES, hidden: n - TOOL_COLLAPSED_LINES };
+}
