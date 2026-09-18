@@ -81,6 +81,13 @@ func (c *Cache) Lines(sessionID string, paths []string) ([]Line, error) {
 // many bytes it consumed. The count excludes a trailing partial record
 // so the next refresh re-reads it once it is complete.
 func (c *Cache) appendTailLocked(p string, off int64) (int64, error) {
+	// MaxFileBytes bounds the whole file, not each refresh: a fresh
+	// LimitReader per tail read would add another MaxFileBytes to
+	// c.lines on every refresh of an oversized transcript.
+	remaining := MaxFileBytes - off
+	if remaining <= 0 {
+		return 0, nil
+	}
 	f, err := os.Open(p)
 	if err != nil {
 		return 0, err
@@ -89,7 +96,7 @@ func (c *Cache) appendTailLocked(p string, off int64) (int64, error) {
 	if _, err := f.Seek(off, io.SeekStart); err != nil {
 		return 0, err
 	}
-	lines, n, err := c.proj.project(io.LimitReader(f, MaxFileBytes), c.lines)
+	lines, n, err := c.proj.project(io.LimitReader(f, remaining), c.lines)
 	if err != nil {
 		return 0, err
 	}
@@ -113,8 +120,8 @@ func (c *Cache) reprojectLocked() ([]Line, error) {
 	return c.lines, nil
 }
 
-// Drop releases the cached projection. Called when the find box closes
-// so an idle daemon is not holding a session's transcript in memory.
+// Drop releases the cached projection. No production caller yet: the
+// projection is released only when a different session is searched.
 func (c *Cache) Drop() {
 	c.mu.Lock()
 	defer c.mu.Unlock()

@@ -103,8 +103,19 @@ export interface FindTerm {
 const NO_HIT: SearchHit = { index: 0, total: 0, capped: false };
 
 let deps: FindDeps;
-let outputTimer: ReturnType<typeof setTimeout> | null = null;
-let settleTimer: ReturnType<typeof setTimeout> | null = null;
+// Per session: switching tiles leaves another session's find box open,
+// and its pending refresh must not be cancelled by this one's output.
+const outputTimers = new Map<string, ReturnType<typeof setTimeout>>();
+const settleTimers = new Map<string, ReturnType<typeof setTimeout>>();
+
+function clearTimer(
+  timers: Map<string, ReturnType<typeof setTimeout>>,
+  sessionID: string,
+) {
+  const t = timers.get(sessionID);
+  if (t !== undefined) clearTimeout(t);
+  timers.delete(sessionID);
+}
 
 export function initFindBox(d: FindDeps) {
   deps = d;
@@ -149,14 +160,8 @@ export function closeFindBox(
   opts: { deferFocus?: boolean } = {},
 ) {
   if (!find(sessionID)) return;
-  if (outputTimer) {
-    clearTimeout(outputTimer);
-    outputTimer = null;
-  }
-  if (settleTimer) {
-    clearTimeout(settleTimer);
-    settleTimer = null;
-  }
+  clearTimer(outputTimers, sessionID);
+  clearTimer(settleTimers, sessionID);
   const term = deps.term(sessionID);
   term?.clearSearch?.();
   // Release the viewport claim and restore the pre-search follow state
@@ -503,8 +508,8 @@ export function onSessionOutput(sessionID: string) {
   // and reports through onFindResults.
   // With no query too: the plain transcript view follows new output.
   if (state?.source !== 'transcript') return;
-  if (outputTimer) clearTimeout(outputTimer);
-  if (settleTimer) clearTimeout(settleTimer);
+  clearTimer(outputTimers, sessionID);
+  clearTimer(settleTimers, sessionID);
   // Two trailing refreshes, both reset by every new chunk of output:
   //  - a quick one, so text the agent has already written shows up fast;
   //  - a settle one, because the agent writes its transcript record when
@@ -512,14 +517,20 @@ export function onSessionOutput(sessionID: string) {
   //    Refreshing only on output would then miss the newest message until
   //    the next burst.
   // Each is cheap: the daemon re-parses only the transcript's new tail.
-  outputTimer = setTimeout(() => {
-    outputTimer = null;
-    refreshTranscript(sessionID);
-  }, OUTPUT_DEBOUNCE_MS);
-  settleTimer = setTimeout(() => {
-    settleTimer = null;
-    refreshTranscript(sessionID);
-  }, SETTLE_REFRESH_MS);
+  outputTimers.set(
+    sessionID,
+    setTimeout(() => {
+      outputTimers.delete(sessionID);
+      refreshTranscript(sessionID);
+    }, OUTPUT_DEBOUNCE_MS),
+  );
+  settleTimers.set(
+    sessionID,
+    setTimeout(() => {
+      settleTimers.delete(sessionID);
+      refreshTranscript(sessionID);
+    }, SETTLE_REFRESH_MS),
+  );
 }
 
 // A refresh, not runQuery: the matches are kept so applyMatches can
@@ -534,8 +545,8 @@ function refreshTranscript(sessionID: string) {
 /** Test seam: drops the pending output debounce. */
 export function resetFindBoxForTest() {
   reqCounter = 0;
-  if (outputTimer) clearTimeout(outputTimer);
-  outputTimer = null;
-  if (settleTimer) clearTimeout(settleTimer);
-  settleTimer = null;
+  for (const t of outputTimers.values()) clearTimeout(t);
+  outputTimers.clear();
+  for (const t of settleTimers.values()) clearTimeout(t);
+  settleTimers.clear();
 }

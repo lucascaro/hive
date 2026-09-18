@@ -1080,6 +1080,7 @@ export async function SearchTranscript(
     }
     const needle = query.toLowerCase();
     const matches: Record<string, unknown>[] = [];
+    let truncated = false;
     // Newest first, like the daemon (internal/transcript.Search): the
     // match nearest the bottom comes first, later columns before earlier
     // ones, and a cap keeps the newest.
@@ -1096,7 +1097,10 @@ export async function SearchTranscript(
           from = at + needle.length;
         }
         for (let ci = cols.length - 1; ci >= 0; ci--) {
-          if (matches.length >= maxMatches) break;
+          if (matches.length >= maxMatches) {
+            truncated = true;
+            break;
+          }
           matches.push({
             line: ln.line,
             col: cols[ci],
@@ -1114,6 +1118,7 @@ export async function SearchTranscript(
         query,
         available: true,
         total: matches.length,
+        truncated,
         total_lines: tr.lines.length,
         matches,
       }),

@@ -2,6 +2,7 @@ package daemon
 
 import (
 	"encoding/json"
+	"net"
 	"os"
 	"path/filepath"
 	"strings"
@@ -15,12 +16,13 @@ import (
 // readTranscriptMatches drains until the first TRANSCRIPT_MATCHES.
 // A control connection is still delivering its initial snapshots and
 // any session deltas, so the answer is not necessarily the next frame.
-func readTranscriptMatches(t *testing.T, c interface {
-	Read([]byte) (int, error)
-}) wire.TranscriptMatchesMsg {
+func readTranscriptMatches(t *testing.T, c net.Conn) wire.TranscriptMatchesMsg {
 	t.Helper()
-	deadline := time.Now().Add(3 * time.Second)
-	for time.Now().Before(deadline) {
+	// A read deadline, not a loop condition: ReadFrame blocks, so a
+	// missing answer would otherwise hang the test instead of failing it.
+	_ = c.SetReadDeadline(time.Now().Add(3 * time.Second))
+	defer func() { _ = c.SetReadDeadline(time.Time{}) }()
+	for {
 		ft, payload, err := wire.ReadFrame(c)
 		if err != nil {
 			t.Fatalf("read frame: %v", err)
@@ -34,16 +36,15 @@ func readTranscriptMatches(t *testing.T, c interface {
 		}
 		return msg
 	}
-	t.Fatal("no TRANSCRIPT_MATCHES within the deadline")
-	return wire.TranscriptMatchesMsg{}
 }
 
-func readTranscriptLines(t *testing.T, c interface {
-	Read([]byte) (int, error)
-}) wire.TranscriptLinesMsg {
+func readTranscriptLines(t *testing.T, c net.Conn) wire.TranscriptLinesMsg {
 	t.Helper()
-	deadline := time.Now().Add(3 * time.Second)
-	for time.Now().Before(deadline) {
+	// A read deadline, not a loop condition: ReadFrame blocks, so a
+	// missing answer would otherwise hang the test instead of failing it.
+	_ = c.SetReadDeadline(time.Now().Add(3 * time.Second))
+	defer func() { _ = c.SetReadDeadline(time.Time{}) }()
+	for {
 		ft, payload, err := wire.ReadFrame(c)
 		if err != nil {
 			t.Fatalf("read frame: %v", err)
@@ -57,8 +58,6 @@ func readTranscriptLines(t *testing.T, c interface {
 		}
 		return msg
 	}
-	t.Fatal("no TRANSCRIPT_LINES within the deadline")
-	return wire.TranscriptLinesMsg{}
 }
 
 func jsonlRecord(t *testing.T, role, text string) string {

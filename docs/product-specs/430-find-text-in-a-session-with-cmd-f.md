@@ -5,6 +5,7 @@ type: enhancement
 complexity: M
 priority: P2
 stage: DONE
+shipped: 2026-09-17
 superseded_by: 431
 ---
 
@@ -45,7 +46,7 @@ Finding a string in a running session means scrolling and reading. Hive has no i
 
 ## Notes
 
-**HELD at PLAN (2026-09-17).** Not approved for implementation. The alt-screen ceiling recorded below was measured during planning and the operator judged it fatal to the feature as scoped: an in-terminal find box searches one screenful on agent sessions. Planning also established that the daemon's 8 MiB per-session ring *does* retain alt-screen bytes (`internal/session/vt.go:166-171`), so history search is more feasible than this spec's non-goals imply. That brainstorm produced spec [431](431-search-an-agent-session-s-transcript-history.md), which covers agent-session history via transcripts; the two are intended to coexist (⌘F stays in-terminal for what the buffer holds, 431 gets its own binding). See [docs/design-docs/session-history-search.md](../design-docs/session-history-search.md) and the exec plan's `## Hold`.
+**HELD at PLAN (2026-09-17).** Not approved for implementation. The alt-screen ceiling recorded below was measured during planning and the operator judged it fatal to the feature as scoped: an in-terminal find box searches one screenful on agent sessions. Planning also established that the daemon's 8 MiB per-session ring *does* retain alt-screen bytes (`internal/session/vt.go:166-171`), so history search is more feasible than this spec's non-goals imply. That brainstorm produced spec [431](431-search-an-agent-session-s-transcript-history.md), which covers agent-session history via transcripts; the two were then intended to coexist with 431 on its own binding. Superseded: the merged feature has one ⌘F entry point and picks terminal or transcript search by the active buffer type (see 431's Notes, "Why one binding"). See [docs/design-docs/session-history-search.md](../design-docs/session-history-search.md) and the exec plan's `## Hold`.
 
 Two deviations were identified during planning and would need this spec amended before any implementation: criterion 1's "Ctrl+F elsewhere" must become Ctrl+Shift+F (plain Ctrl+F is `0x06`, readline's `forward-char`), and the Desired-behavior claim of grid-tile parity conflicts with the operator's single-view-only decision. Left unamended because the feature is held.
 

@@ -227,6 +227,8 @@ export function FindBox({ id, find }: { id: string; find: FindState }) {
               e.stopPropagation();
               e.currentTarget.select();
             } else if (e.key === 'Enter') {
+              // Enter confirms an IME candidate while composing.
+              if (e.nativeEvent.isComposing) return;
               e.preventDefault();
               stepMatch(id, e.shiftKey ? -1 : 1);
             }
@@ -357,7 +359,13 @@ function TranscriptLines({ find }: { find: FindState }) {
                           ).map((seg) => (
                             <span
                               key={seg.start}
-                              className={seg.hit ? 'hv-find-hit' : undefined}
+                              className={
+                                !seg.hit
+                                  ? undefined
+                                  : isActive && seg.start === active.col
+                                    ? 'hv-find-hit hv-find-hit-active'
+                                    : 'hv-find-hit'
+                              }
                             >
                               {seg.text}
                             </span>

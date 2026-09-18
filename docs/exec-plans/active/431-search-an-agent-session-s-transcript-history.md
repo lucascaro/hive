@@ -39,9 +39,9 @@ bins:   hived · hivegui · hived-ws-bridge
 
 ### Transcript sources on disk
 
-**Claude** — `~/.claude/projects/<encoded-cwd>/<session-uuid>.jsonl`. The encoder already exists and is tested: `encodeClaudeProjectDir` (`internal/agent/claude.go:18-31`) folds `/`, `.` and `:` to `-`. Hive pins its own session id via `--session-id` (`internal/agent/agent.go:134-147`), so `AgentSessionID` == Hive's session id and the path is an **exact derivation**. `claudeSessionExists` (`claude.go:42-53`) only `os.Stat`s it.
+**Claude** — `~/.claude/projects/<encoded-cwd>/<session-uuid>.jsonl`. The encoder already exists and is tested: `encodeClaudeProjectDir` (`internal/agent/claude.go:18-31`) folds `/`, `.` and `:` to `-`. Hive pins its own session id via `--session-id` (`internal/agent/agent.go:134-147`), so on a pinned first launch `AgentSessionID` == Hive's session id and the path is an **exact derivation**. The resolver's input is `Entry.AgentSessionID`, not `Entry.ID`: a caller-supplied `spec.Cmd` gets no injected id (empty `AgentSessionID`), and `ContinueConversation` resumes via the cwd-scoped `ResumeCmd` without a new id, so neither is an exact `<entry.ID>` mapping. Both resolve to TranscriptMissing when the id is empty or names no file. `claudeSessionExists` (`claude.go:42-53`) only `os.Stat`s it.
 
-**pi** — `~/.pi/agent/sessions/<encoded-cwd>/<timestamp>_<session-id>.jsonl`. **The spec's open question is resolved: this is an exact mapping, not a heuristic.** `internal/registry/create.go:587-590` appends `def.SessionIDFlag, id` at first spawn, passing Hive's own entry id as pi's `--session-id`, and pi writes that string **verbatim** as the filename suffix. Evidence, gathered on this machine:
+**pi** — `~/.pi/agent/sessions/<encoded-cwd>/<timestamp>_<session-id>.jsonl`. **The spec's open question is resolved: this is an exact mapping, not a heuristic** — for pinned first launches; the glob key is `Entry.AgentSessionID`, with the same missing-transcript result as Claude when it is empty or names no file. `internal/registry/create.go:587-590` appends `def.SessionIDFlag, id` at first spawn, passing Hive's own entry id as pi's `--session-id`, and pi writes that string **verbatim** as the filename suffix. Evidence, gathered on this machine:
 
 - A Hive probe transcript is named `2026-09-07T01-43-35-209Z_hive-probe-1788745415.jsonl` — the suffix is not a uuid at all, which proves it is the caller-supplied `--session-id` echoed literally rather than an id pi generated.
 - Across all 91 pi transcripts: 46 carry a UUIDv4 suffix (Hive spawns — `internal/registry/create.go:305` uses `uuid.NewString()`, which is v4), 44 carry UUIDv7 (pi's own generation for non-Hive launches), and one carries the literal probe string.
@@ -215,7 +215,7 @@ The same hazard exists for **window** responses and needs a different key: `Tran
 
     `SearchTranscriptReq{SessionID, Query, MaxMatches}` — `MaxMatches` clamped to `MaxTranscriptMatches`.
     `TranscriptMatchesMsg{SessionID, Query, Available, Reason, Total, Truncated, TotalLines, Revision, Matches}` — `Query` is echoed so the client can discard stale responses.
-    `GetTranscriptLinesReq{SessionID, ReqID, Start, Count}` — `Count` clamped to `MaxTranscriptWindow`, `Start` clamped to `[0, TotalLines-1]`. `ReqID` is a client-side monotonic counter echoed on the response; see the stale-response rule.
+    `GetTranscriptLinesReq{SessionID, ReqID, Center, Count}` — `Count` clamped to `MaxTranscriptWindow`; the daemon centers the window on `Center` and clamps the resulting `Start` (reported on the response) to `[0, TotalLines-1]`. `ReqID` is a client-side monotonic counter echoed on the response; see the stale-response rule.
     `TranscriptLinesMsg{SessionID, ReqID, Start, TotalLines, Revision, Lines}`.
 
     **Why this is load-bearing:** a single Claude `tool_result` line routinely exceeds 1 MiB on its own. Without per-line truncation `WriteFrame` returns `ErrFrameTooLarge` (`internal/wire/frame.go:32-34,274-289`), nothing reaches the wire, and the overlay waits forever on a response that was never sent.

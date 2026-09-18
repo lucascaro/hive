@@ -49,6 +49,11 @@
   font-size: var(--text-sm);
 }
 
+.hv-find-input:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
 .hv-find-input::placeholder {
   color: var(--fg-muted);
 }
@@ -234,7 +239,7 @@
   border-radius: var(--radius-xs);
 }
 
-.hv-find-line-active .hv-find-hit {
+.hv-find-hit-active {
   background: var(--accent);
   color: var(--on-accent);
 }

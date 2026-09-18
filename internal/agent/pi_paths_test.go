@@ -23,6 +23,7 @@ func TestEncodePiSessionsDir(t *testing.T) {
 		{"trailing slash", "/Users/u/repo/", "--Users-u-repo--"},
 		{"dotfile component", "/Users/u/.config/thing", "--Users-u-.config-thing--"},
 		{"nested", "/a/b/c/d", "--a-b-c-d--"},
+		{"colon", "/a/b:c", "--a-b-c--"},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -47,6 +48,7 @@ func withHome(t *testing.T, cwd string) string {
 	t.Helper()
 	home := t.TempDir()
 	t.Setenv("HOME", home)
+	t.Setenv("USERPROFILE", home) // os.UserHomeDir on Windows
 	dir := filepath.Join(home, ".pi", "agent", "sessions", encodePiSessionsDir(cwd))
 	if err := os.MkdirAll(dir, 0o700); err != nil {
 		t.Fatal(err)
@@ -141,6 +143,7 @@ func claudeDir(t *testing.T, cwd string) string {
 	t.Helper()
 	home := t.TempDir()
 	t.Setenv("HOME", home)
+	t.Setenv("USERPROFILE", home) // os.UserHomeDir on Windows
 	dir := filepath.Join(home, ".claude", "projects", encodeClaudeProjectDir(cwd))
 	if err := os.MkdirAll(dir, 0o700); err != nil {
 		t.Fatal(err)

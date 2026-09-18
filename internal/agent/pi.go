@@ -87,7 +87,7 @@ func piSpawnArgs(sp SpawnInfo) []string {
 
 // encodePiSessionsDir mirrors pi's on-disk encoding for the per-cwd
 // transcript directory under ~/.pi/agent/sessions/: the leading "/" is
-// dropped, the remaining separators become "-", and the whole thing is
+// dropped, the remaining separators and ":" become "-", and the whole thing is
 // wrapped in a literal "--" at both ends.
 //
 // Deliberately NOT encodeClaudeProjectDir. Claude folds "." to "-" as
@@ -98,7 +98,9 @@ func piSpawnArgs(sp SpawnInfo) []string {
 func encodePiSessionsDir(cwd string) string {
 	s := filepath.ToSlash(filepath.Clean(cwd))
 	s = strings.TrimPrefix(s, "/")
-	s = strings.ReplaceAll(s, "/", "-")
+	// pi replaces "/", "\\" and ":" (session-manager.ts), so a Windows
+	// drive "C:" becomes "C-".
+	s = strings.NewReplacer("/", "-", "\\", "-", ":", "-").Replace(s)
 	return "--" + s + "--"
 }
 
