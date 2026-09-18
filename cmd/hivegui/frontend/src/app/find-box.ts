@@ -231,6 +231,9 @@ export function runQuery(sessionID: string, query: string) {
     // pauses. Responses carry their query, so one landing for an older
     // keystroke is discarded rather than painted.
     clearTimer(typingTimers, sessionID);
+    // Invalidate the in-flight request now, not when the timer fires: a
+    // reply to it must not paint during the debounce window.
+    patchFind(sessionID, { searchReqId: ++reqCounter });
     typingTimers.set(
       sessionID,
       setTimeout(() => {

@@ -704,6 +704,31 @@ describe('review round 2', () => {
     expect(find()?.total).toBe(3);
   });
 
+  // Typing away and back within the debounce: the reply to the request
+  // sent before must not paint while the new one is still pending.
+  it('invalidates the previous request as soon as a query is typed', () => {
+    openTx();
+    const before = find()?.searchReqId ?? 0;
+    vi.useFakeTimers();
+    try {
+      act(() => mod.runQuery(SID, 'needl'));
+      act(() => mod.runQuery(SID, 'needle'));
+      act(() =>
+        mod.applyMatches({
+          session_id: SID,
+          req_id: before,
+          query: 'needle',
+          available: true,
+          total: 1,
+          matches: [{ line: 1, col: 0, len: 6 }],
+        }),
+      );
+      expect(find()?.total ?? 0).toBe(0);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it('clears a stale unavailable state when a refresh succeeds', () => {
     openTx('');
     act(() =>
