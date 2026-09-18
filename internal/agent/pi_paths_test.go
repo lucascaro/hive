@@ -205,8 +205,27 @@ func TestClaudeTranscriptPathsFollowsFork(t *testing.T) {
 	}
 }
 
-// The resolution is memoized on the directory mtime; a fork created
-// AFTER a first lookup must still be picked up on the next one.
+// pinDirMtime sets dir's mtime back to mod, standing in for a file created
+// within the same mtime tick as an earlier lookup — the case a coarse
+// clock (Windows CI) hit when resolution was memoized on the directory.
+func pinDirMtime(t *testing.T, dir string, mod time.Time) {
+	t.Helper()
+	if err := os.Chtimes(dir, mod, mod); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func dirMtime(t *testing.T, dir string) time.Time {
+	t.Helper()
+	st, err := os.Stat(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return st.ModTime()
+}
+
+// A fork created AFTER a first lookup is picked up on the next one, even
+// when the directory's mtime did not move.
 func TestClaudeTranscriptPathsNoticesLaterFork(t *testing.T) {
 	const cwd = "/Users/u/repo"
 	const id = "orig"
@@ -216,14 +235,49 @@ func TestClaudeTranscriptPathsNoticesLaterFork(t *testing.T) {
 	if got := claudeTranscriptPaths(id, cwd); len(got) != 1 || got[0] != own {
 		t.Fatalf("before the fork: got %v", got)
 	}
+	before := dirMtime(t, dir)
 	fork := claudeFile(t, dir, "fork", id, now)
-	// Make the directory change unambiguous even on a coarse clock.
-	later := now.Add(time.Minute)
-	if err := os.Chtimes(dir, later, later); err != nil {
-		t.Fatal(err)
-	}
+	pinDirMtime(t, dir, before)
 	if got := claudeTranscriptPaths(id, cwd); len(got) != 1 || got[0] != fork {
 		t.Fatalf("after the fork: got %v, want [%s]", got, fork)
+	}
+}
+
+// The session's own file appearing after a lookup that found nothing is
+// picked up, with the directory's mtime unchanged.
+func TestClaudeTranscriptPathsNoticesLaterOwnFile(t *testing.T) {
+	const cwd = "/Users/u/repo"
+	const id = "late"
+	dir := claudeDir(t, cwd)
+	before := dirMtime(t, dir)
+	if got := claudeTranscriptPaths(id, cwd); got != nil {
+		t.Fatalf("expected nil before the file exists, got %v", got)
+	}
+	want := claudeFile(t, dir, id, id, time.Now())
+	pinDirMtime(t, dir, before)
+	if got := claudeTranscriptPaths(id, cwd); len(got) != 1 || got[0] != want {
+		t.Fatalf("got %v, want [%s]", got, want)
+	}
+}
+
+// A fork read before it has written its session_id link is re-read once
+// it has: an empty origin is never cached.
+func TestClaudeTranscriptPathsRereadsUnlinkedFork(t *testing.T) {
+	const cwd = "/Users/u/repo"
+	const id = "root"
+	dir := claudeDir(t, cwd)
+	now := time.Now()
+	own := claudeFile(t, dir, id, id, now.Add(-time.Hour))
+	forkPath := filepath.Join(dir, "young.jsonl")
+	if err := os.WriteFile(forkPath, []byte(`{"type":"file-history-snapshot"}`+"\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if got := claudeTranscriptPaths(id, cwd); len(got) != 1 || got[0] != own {
+		t.Fatalf("before the link: got %v, want [%s]", got, own)
+	}
+	fork := claudeFile(t, dir, "young", id, now)
+	if got := claudeTranscriptPaths(id, cwd); len(got) != 1 || got[0] != fork {
+		t.Fatalf("after the link: got %v, want [%s]", got, fork)
 	}
 }
 

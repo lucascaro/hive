@@ -326,6 +326,8 @@ Append-only, one line per /hs-review-loop iteration.
 
 - **2026-09-18 iter 1** — verdict: REQUEST_CHANGES (COMMENT coerced: 4 IMPORTANT, 14 threads); mergeable: MERGEABLE; findings_hash: 0ae932d98becace2b05ccd77909eac244fa69480a46c2d605aef2d7594fe5222; threads_open: 6; action: escalated:risky-fix-needs-human-decision; head_sha: 8446441.
 - **2026-09-18 iter 2** — verdict: COMMENT (2 IMPORTANT, 3 MINOR; 14 old threads resolved, 5 new CodeRabbit); mergeable: MERGEABLE; findings_hash: 53c51fca40bac74855588bb192c0b4b4b1900fb5eecf04a971c73d6d5d0c1421; threads_open: 5; action: escalated:risky-fix-needs-human-decision; head_sha: 0bc7321.
+- **2026-09-18 iter 3** — verdict: REQUEST_CHANGES (COMMENT coerced: 1 IMPORTANT, fixed); mergeable: MERGEABLE; findings_hash: 261627030dfa6b9d0ac2db66621ca0460ae841679f2e4c7771dd3b269352b661; threads_open: 0; action: autofix+push; head_sha: 2358dbb.
+- **2026-09-18 iter 4** — verdict: REQUEST_CHANGES (1 BLOCKING, fixed in 0893ccc); mergeable: MERGEABLE; findings_hash: 333abcb2e6cea73a9c7ac7c11725d0db1bd1253cc61656810f3ba9fcac6d2538; threads_open: 0; action: escalated:ci-check-failed; head_sha: 0893ccc.
 
 ## Open questions / risks
 

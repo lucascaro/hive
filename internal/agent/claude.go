@@ -86,41 +86,54 @@ func claudeTranscriptPaths(sessionID, cwd string) []string {
 		return nil
 	}
 	dir := filepath.Join(home, ".claude", "projects", encodeClaudeProjectDir(cwd))
-	// Memoized on the directory's mtime. This runs on every search
-	// request — per keystroke — and a forked session would otherwise
-	// re-scan every newer sibling each time. Both events that change the
-	// answer (the original file appearing, a fork being created) create a
-	// file, which bumps the directory mtime; a fork merely growing does
-	// not need a re-resolve.
-	dirInfo, err := os.Stat(dir)
-	if err != nil {
-		return nil
-	}
-	key := dir + "\x00" + sessionID
-	claudeResolveMu.Lock()
-	if c, ok := claudeResolveCache[key]; ok && c.dirMod.Equal(dirInfo.ModTime()) {
-		claudeResolveMu.Unlock()
-		return c.paths
-	}
-	claudeResolveMu.Unlock()
-	paths := resolveClaudeTranscript(dir, sessionID)
-	claudeResolveMu.Lock()
-	claudeResolveCache[key] = claudeResolved{dirMod: dirInfo.ModTime(), paths: paths}
-	claudeResolveMu.Unlock()
-	return paths
+	return resolveClaudeTranscript(dir, sessionID)
 }
 
-type claudeResolved struct {
-	dirMod time.Time
-	paths  []string
-}
-
+// Fork origins, by file path. This runs on every search request — per
+// keystroke — and reading each candidate's head to find its origin is the
+// expensive part; listing the directory is not. A file's origin is fixed
+// the moment it is written, so it is cached per path and never goes stale.
+//
+// Deliberately NOT a memo of the whole answer keyed on the directory's
+// mtime, which is what this replaced: a transcript or fork created within
+// one mtime tick of a lookup leaves the mtime unchanged, and the stale
+// answer — "no transcript yet", or no fork — was served for as long as
+// the directory stayed quiet. Windows' coarse directory mtimes exposed it
+// in CI; it could happen on any filesystem.
 var (
-	claudeResolveMu    sync.Mutex
-	claudeResolveCache = map[string]claudeResolved{}
+	claudeOriginMu    sync.Mutex
+	claudeOriginCache = map[string]string{}
 )
 
-// resolveClaudeTranscript does the uncached work for claudeTranscriptPaths.
+// claudeOriginCacheMax bounds the cache. Far above the transcripts one
+// project directory holds; exceeding it just starts the cache over.
+const claudeOriginCacheMax = 4096
+
+// cachedForkOrigin is claudeForkOrigin with the per-path cache. An empty
+// answer is not cached: a fork just created may not have written its first
+// session_id record yet, and must be re-read until it has.
+func cachedForkOrigin(path string) string {
+	claudeOriginMu.Lock()
+	origin, ok := claudeOriginCache[path]
+	claudeOriginMu.Unlock()
+	if ok {
+		return origin
+	}
+	origin = claudeForkOrigin(path)
+	if origin == "" {
+		return ""
+	}
+	claudeOriginMu.Lock()
+	if len(claudeOriginCache) >= claudeOriginCacheMax {
+		claudeOriginCache = map[string]string{}
+	}
+	claudeOriginCache[path] = origin
+	claudeOriginMu.Unlock()
+	return origin
+}
+
+// resolveClaudeTranscript finds the newest file in dir descending from
+// sessionID: its own <sessionID>.jsonl or a later fork of it.
 func resolveClaudeTranscript(dir, sessionID string) []string {
 	own := filepath.Join(dir, sessionID+".jsonl")
 	best, bestMod := "", time.Time{}
@@ -144,7 +157,7 @@ func resolveClaudeTranscript(dir, sessionID string) []string {
 			continue
 		}
 		p := filepath.Join(dir, name)
-		if claudeForkOrigin(p) == sessionID {
+		if cachedForkOrigin(p) == sessionID {
 			best, bestMod = p, info.ModTime()
 		}
 	}

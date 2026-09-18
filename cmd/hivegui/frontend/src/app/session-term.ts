@@ -210,6 +210,7 @@ export class SessionTerm {
   // _revealAfterPhase), so "is the overlay up" is its own flag.
   phaseOverlayShown = false;
   _phaseRevealTimer = 0;
+  _endSearchTimer = 0;
 
   // Renderer.
   webgl: WebglAddon | null = null;
@@ -1398,7 +1399,8 @@ export class SessionTerm {
     if (this._followBottom) {
       // Deferred: close() also restores terminal focus, and doing both
       // in one frame is what flakes the focus/renderer race.
-      setTimeout(() => {
+      this._endSearchTimer = window.setTimeout(() => {
+        this._endSearchTimer = 0;
         if (!this._searchActive) this.term.scrollToBottom();
       }, 250);
     }
@@ -1501,6 +1503,7 @@ export class SessionTerm {
     CloseAttach(this.info.id).catch(() => {});
     if (this._revealRaf) cancelAnimationFrame(this._revealRaf);
     if (this._phaseRevealTimer) clearTimeout(this._phaseRevealTimer);
+    if (this._endSearchTimer) clearTimeout(this._endSearchTimer);
     this.ro.disconnect();
     if (this._dprWatcher) {
       try {
