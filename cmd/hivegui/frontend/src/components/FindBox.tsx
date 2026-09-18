@@ -53,6 +53,12 @@ function isFindChord(e: {
 // sits in exactly the same spot whichever source is active — the
 // transcript, when there is one, fills the tile below it. The user's eye
 // should never have to hunt for the box because an agent is running.
+// Match columns are relative to the full line; a long line arrives as a
+// slice starting `offset` units in, so shift them onto the slice.
+function rebase(ms: LineMatch[], offset: number): LineMatch[] {
+  return offset ? ms.map((m) => ({ col: m.col - offset, len: m.len })) : ms;
+}
+
 // How close to an edge of the transcript pane the reader gets before the
 // next block of history loads.
 const EDGE_PX = 400;
@@ -62,15 +68,28 @@ const EDGE_PX = 400;
 function topVisibleLine(
   body: HTMLElement,
 ): { line: number; offset: number } | null {
-  for (const el of body.querySelectorAll<HTMLElement>('[data-find-line]')) {
+  // Binary search: lines are in document order, so their offsetTop only
+  // grows. Runs on every scroll event over up to MAX_LOADED_LINES lines.
+  const els = body.querySelectorAll<HTMLElement>('[data-find-line]');
+  let lo = 0;
+  let hi = els.length - 1;
+  let found = -1;
+  while (lo <= hi) {
+    const mid = (lo + hi) >> 1;
+    const el = els[mid];
     if (el.offsetTop + el.offsetHeight > body.scrollTop) {
-      return {
-        line: Number(el.dataset.findLine),
-        offset: el.offsetTop - body.scrollTop,
-      };
+      found = mid;
+      hi = mid - 1;
+    } else {
+      lo = mid + 1;
     }
   }
-  return null;
+  if (found < 0) return null;
+  const el = els[found];
+  return {
+    line: Number(el.dataset.findLine),
+    offset: el.offsetTop - body.scrollTop,
+  };
 }
 
 // Puts a remembered line back where it was on screen. False when the
@@ -353,9 +372,12 @@ function TranscriptLines({ find }: { find: FindState }) {
                           }
                           data-find-line={ln.line}
                         >
+                          {ln.offset ? (
+                            <span className="hv-find-cut">… </span>
+                          ) : null}
                           {highlightSegments(
                             ln.text,
-                            byLine.get(ln.line) ?? [],
+                            rebase(byLine.get(ln.line) ?? [], ln.offset ?? 0),
                           ).map((seg) => (
                             <span
                               key={seg.start}

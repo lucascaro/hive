@@ -59,7 +59,12 @@ const (
 // SearchTranscriptReq asks the daemon to search a session's transcript.
 type SearchTranscriptReq struct {
 	SessionID string `json:"session_id"`
-	Query     string `json:"query"`
+	// ReqID is a client-side counter echoed on the answer. The query alone
+	// cannot order replies: a live refresh re-sends the SAME query (a quick
+	// and a settle refresh after output), and with searches answered off
+	// the control read loop an older reply can land after a newer one.
+	ReqID int    `json:"req_id,omitempty"`
+	Query string `json:"query"`
 	// MaxMatches is clamped to MaxTranscriptMatches. Zero means the cap.
 	MaxMatches int `json:"max_matches,omitempty"`
 }
@@ -83,6 +88,7 @@ type TranscriptMatch struct {
 // in flight and land out of order.
 type TranscriptMatchesMsg struct {
 	SessionID  string            `json:"session_id"`
+	ReqID      int               `json:"req_id,omitempty"`
 	Query      string            `json:"query"`
 	Available  bool              `json:"available"`
 	Reason     string            `json:"reason,omitempty"`
@@ -107,6 +113,18 @@ type GetTranscriptLinesReq struct {
 	Center int `json:"center"`
 	// Count is clamped to MaxTranscriptWindow. Zero means the cap.
 	Count int `json:"count,omitempty"`
+	// Focus names the active match, when there is one. A line longer than
+	// MaxTranscriptLineText is sent as a slice; for the focused line that
+	// slice is taken around the match, so the match is on screen and
+	// highlighted rather than cut off past the end.
+	Focus *TranscriptFocus `json:"focus,omitempty"`
+}
+
+// TranscriptFocus locates the active match: its line, and its UTF-16
+// column within that line.
+type TranscriptFocus struct {
+	Line int `json:"line"`
+	Col  int `json:"col"`
 }
 
 // TranscriptLine is one displayable line.
@@ -115,6 +133,11 @@ type TranscriptLine struct {
 	Role      string `json:"role,omitempty"`
 	Text      string `json:"text"`
 	Truncated bool   `json:"truncated,omitempty"`
+	// Offset is the UTF-16 position of Text's first character within the
+	// full line: non-zero when a long line was sliced around the focused
+	// match. Match columns are relative to the full line, so a client
+	// subtracts Offset to highlight within Text.
+	Offset int `json:"offset,omitempty"`
 	// Msg groups lines into messages so the client renders a message as
 	// a unit; Kind is "user" | "assistant" | "tool" | "meta"; Tool names
 	// the tool whose output this is. Presentation only — see

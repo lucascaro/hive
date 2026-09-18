@@ -114,7 +114,12 @@ describe('source selection', () => {
     expect(find()?.source).toBe('transcript');
     // Opening on the tail rather than a blank box: the empty query is
     // issued immediately so the view has something to show.
-    expect(searchTranscript).toHaveBeenCalledWith(SID, '', expect.any(Number));
+    expect(searchTranscript).toHaveBeenCalledWith(
+      SID,
+      '',
+      expect.any(Number),
+      expect.any(Number),
+    );
   });
 
   it('claims the viewport on open and releases it on close', () => {
@@ -149,6 +154,7 @@ describe('source selection', () => {
         SID,
         'needle',
         expect.any(Number),
+        expect.any(Number),
       );
     } finally {
       vi.useRealTimers();
@@ -179,6 +185,7 @@ describe('source selection', () => {
       expect(searchTranscript).toHaveBeenCalledWith(
         SID,
         'needle',
+        expect.any(Number),
         expect.any(Number),
       );
     } finally {
@@ -301,6 +308,8 @@ describe('transcript responses', () => {
       expect.any(Number),
       5,
       expect.any(Number),
+      expect.any(Number),
+      expect.any(Number),
     );
   });
 
@@ -413,6 +422,8 @@ describe('transcript responses', () => {
       expect.any(Number),
       30,
       expect.any(Number),
+      expect.any(Number),
+      expect.any(Number),
     );
   });
 });
@@ -444,6 +455,8 @@ describe('newest-first transcript navigation', () => {
       SID,
       expect.any(Number),
       90,
+      expect.any(Number),
+      expect.any(Number),
       expect.any(Number),
     );
   });
@@ -574,6 +587,8 @@ describe('scroll-loaded history', () => {
       expect.any(Number),
       700,
       200,
+      expect.any(Number),
+      expect.any(Number),
     );
   });
 
@@ -640,6 +655,190 @@ describe('scroll-loaded history', () => {
   });
 });
 
+describe('review round 2', () => {
+  function openTx(query = 'needle') {
+    bufferType = 'alternate';
+    act(() => mod.openFindBox(SID));
+    if (query) {
+      vi.useFakeTimers();
+      try {
+        act(() => mod.runQuery(SID, query));
+        act(() => {
+          vi.advanceTimersByTime(mod.TYPE_DEBOUNCE_MS);
+        });
+      } finally {
+        vi.useRealTimers();
+      }
+    }
+  }
+
+  // A live refresh re-sends the SAME query, so only the request id can
+  // tell an older reply from a newer one.
+  it('discards a reply to an older request with the same query', () => {
+    openTx();
+    const latest = find()?.searchReqId ?? 0;
+    act(() =>
+      mod.applyMatches({
+        session_id: SID,
+        req_id: latest,
+        query: 'needle',
+        available: true,
+        total: 3,
+        matches: [
+          { line: 9, col: 0, len: 6 },
+          { line: 5, col: 0, len: 6 },
+          { line: 1, col: 0, len: 6 },
+        ],
+      }),
+    );
+    act(() =>
+      mod.applyMatches({
+        session_id: SID,
+        req_id: latest - 1, // an older search for the same query, landing late
+        query: 'needle',
+        available: true,
+        total: 1,
+        matches: [{ line: 1, col: 0, len: 6 }],
+      }),
+    );
+    expect(find()?.total).toBe(3);
+  });
+
+  it('clears a stale unavailable state when a refresh succeeds', () => {
+    openTx('');
+    act(() =>
+      mod.applyLines({
+        session_id: SID,
+        req_id: find()?.reqId,
+        start: 0,
+        total_lines: 10,
+        available: true,
+        lines: [{ line: 0, text: 'x' }],
+      }),
+    );
+    // Something reported the transcript unavailable...
+    act(() => {
+      appStore.setState((s) => {
+        const tc = new Map(s.tileChrome);
+        const cur = tc.get(SID);
+        if (cur?.find)
+          tc.set(SID, {
+            ...cur,
+            find: { ...cur.find, reason: 'no_transcript_file' },
+          });
+        return { tileChrome: tc };
+      });
+    });
+    // ...then a no-query live refresh finds it available again.
+    act(() =>
+      mod.applyMatches({
+        session_id: SID,
+        req_id: find()?.searchReqId,
+        query: '',
+        available: true,
+        total_lines: 12,
+      }),
+    );
+    expect(find()?.reason).toBe('');
+  });
+
+  it('stops extending once an extension reports the transcript unavailable', () => {
+    openTx('');
+    act(() =>
+      mod.applyLines({
+        session_id: SID,
+        req_id: find()?.reqId,
+        start: 800,
+        total_lines: 1000,
+        available: true,
+        lines: Array.from({ length: 200 }, (_, i) => ({
+          line: 800 + i,
+          text: 'x',
+        })),
+      }),
+    );
+    act(() => mod.extendLines(SID, 'up'));
+    act(() =>
+      mod.applyLines({
+        session_id: SID,
+        req_id: find()?.extendReqId,
+        available: false,
+        reason: 'no_transcript_file',
+      }),
+    );
+    getTranscriptLines.mockClear();
+    act(() => mod.extendLines(SID, 'up'));
+    act(() => mod.extendLines(SID, 'down'));
+    expect(getTranscriptLines).not.toHaveBeenCalled();
+  });
+
+  // The window request names the active match, so a long line holding it
+  // comes back sliced around the match rather than cut before it.
+  it('passes the active match as the window focus', () => {
+    openTx();
+    getTranscriptLines.mockClear();
+    act(() =>
+      mod.applyMatches({
+        session_id: SID,
+        req_id: find()?.searchReqId,
+        query: 'needle',
+        available: true,
+        total: 1,
+        total_lines: 40,
+        matches: [{ line: 7, col: 5123, len: 6 }],
+      }),
+    );
+    expect(getTranscriptLines).toHaveBeenLastCalledWith(
+      SID,
+      expect.any(Number),
+      7,
+      expect.any(Number),
+      7,
+      5123,
+    );
+  });
+
+  it('highlights within a sliced line by rebasing on its offset', () => {
+    openTx();
+    act(() =>
+      mod.applyMatches({
+        session_id: SID,
+        req_id: find()?.searchReqId,
+        query: 'needle',
+        available: true,
+        total: 1,
+        total_lines: 1,
+        matches: [{ line: 0, col: 5000, len: 6 }],
+      }),
+    );
+    act(() =>
+      mod.applyLines({
+        session_id: SID,
+        req_id: find()?.reqId,
+        start: 0,
+        available: true,
+        // The slice begins 4990 units into the line.
+        lines: [
+          {
+            line: 0,
+            text: 'xxxxxxxxxxneedleyyyy',
+            offset: 4990,
+            truncated: true,
+          },
+        ],
+      }),
+    );
+    const { container } = renderBox();
+    expect(container.querySelector('.hv-find-hit')?.textContent).toBe('needle');
+    // A leading ellipsis marks that the line was cut before the slice.
+    expect(
+      container
+        .querySelector('[data-find-line="0"]')
+        ?.textContent?.startsWith('…'),
+    ).toBe(true);
+  });
+});
+
 describe('re-search on session output', () => {
   // Criterion 8's GUI half: text arriving while the box is open becomes
   // findable without reopening it. The Go cache tests cannot reach this.
@@ -660,6 +859,7 @@ describe('re-search on session output', () => {
       expect(searchTranscript).toHaveBeenCalledWith(
         SID,
         'needle',
+        expect.any(Number),
         expect.any(Number),
       );
     } finally {

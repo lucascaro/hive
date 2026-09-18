@@ -1056,12 +1056,15 @@ type MockLine = {
   tool?: string;
 };
 type MockTranscript = { lines: MockLine[] };
+// Stands in for wire.MaxTranscriptLineText (2000 bytes; ASCII here).
+const MOCK_LINE_CAP = 2000;
 const transcriptById = new Map<string, MockTranscript>();
 
 export async function SearchTranscript(
   id: string,
   query: string,
   maxMatches: number,
+  reqID = 0,
 ) {
   maybeFail('SearchTranscript');
   const tr = transcriptById.get(id);
@@ -1071,6 +1074,7 @@ export async function SearchTranscript(
         'transcript:matches',
         JSON.stringify({
           session_id: id,
+          req_id: reqID,
           query,
           available: false,
           reason: 'unsupported_agent',
@@ -1115,6 +1119,7 @@ export async function SearchTranscript(
       'transcript:matches',
       JSON.stringify({
         session_id: id,
+        req_id: reqID,
         query,
         available: true,
         total: matches.length,
@@ -1132,6 +1137,8 @@ export async function GetTranscriptLines(
   reqID: number,
   center: number,
   count: number,
+  focusLine = -1,
+  focusCol = -1,
 ) {
   maybeFail('GetTranscriptLines');
   const tr = transcriptById.get(id);
@@ -1162,7 +1169,32 @@ export async function GetTranscriptLines(
         start,
         total_lines: tr.lines.length,
         available: true,
-        lines: tr.lines.slice(start, start + n),
+        // Long lines are sliced like the daemon does
+        // (transcript.SliceAround): the focused line around the match,
+        // every other one from its head, with the slice's offset.
+        lines: tr.lines.slice(start, start + n).map((l) => {
+          if (l.text.length <= MOCK_LINE_CAP) return l;
+          if (l.line === focusLine && focusCol >= (MOCK_LINE_CAP * 2) / 3) {
+            const from = Math.max(
+              0,
+              Math.min(
+                focusCol - Math.floor(MOCK_LINE_CAP / 3),
+                l.text.length - MOCK_LINE_CAP,
+              ),
+            );
+            return {
+              ...l,
+              text: l.text.slice(from, from + MOCK_LINE_CAP),
+              offset: from,
+              truncated: true,
+            };
+          }
+          return {
+            ...l,
+            text: l.text.slice(0, MOCK_LINE_CAP),
+            truncated: true,
+          };
+        }),
       }),
     );
   }, 0);

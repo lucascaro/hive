@@ -1,9 +1,16 @@
 package daemon
 
 import (
+	"time"
+
 	"github.com/lucascaro/hive/internal/transcript"
 	"github.com/lucascaro/hive/internal/wire"
 )
+
+// transcriptTestDelay stands in for a slow first read of a large
+// transcript. Tests only: it proves a slow search does not hold up other
+// frames on the control connection. Zero in production.
+var transcriptTestDelay time.Duration
 
 // searchTranscript answers SEARCH_TRANSCRIPT.
 //
@@ -15,8 +22,11 @@ import (
 // GUI renders "no searchable history" from it, and an error frame would
 // be indistinguishable from a protocol fault.
 func (d *Daemon) searchTranscript(req wire.SearchTranscriptReq) wire.TranscriptMatchesMsg {
+	if transcriptTestDelay > 0 {
+		time.Sleep(transcriptTestDelay)
+	}
 	wire.ClampSearchReq(&req)
-	msg := wire.TranscriptMatchesMsg{SessionID: req.SessionID, Query: req.Query}
+	msg := wire.TranscriptMatchesMsg{SessionID: req.SessionID, ReqID: req.ReqID, Query: req.Query}
 
 	paths, reason := d.reg.TranscriptPaths(req.SessionID)
 	if reason != wire.TranscriptOK {
@@ -75,10 +85,18 @@ func (d *Daemon) transcriptLines(req wire.GetTranscriptLinesReq) wire.Transcript
 	window, start := transcript.Window(lines, req.Center, req.Count)
 	msg.Start = start
 	for _, ln := range window {
-		text, cut := transcript.CapText(ln.Text, wire.MaxTranscriptLineText)
+		// A long line is sliced for display. The focused one — the line
+		// with the active match — is sliced around the match, so a hit
+		// past the first MaxTranscriptLineText bytes is still shown and
+		// highlighted; every other line keeps its head.
+		focus := -1
+		if req.Focus != nil && req.Focus.Line == ln.Index {
+			focus = req.Focus.Col
+		}
+		text, off, cut := transcript.SliceAround(ln.Text, focus, wire.MaxTranscriptLineText)
 		msg.Lines = append(msg.Lines, wire.TranscriptLine{
 			Line: ln.Index, Role: ln.Role, Text: text, Truncated: cut,
-			Msg: ln.Msg, Kind: ln.Kind, Tool: ln.Tool,
+			Offset: off, Msg: ln.Msg, Kind: ln.Kind, Tool: ln.Tool,
 		})
 	}
 	return wire.FitTranscriptLines(msg)

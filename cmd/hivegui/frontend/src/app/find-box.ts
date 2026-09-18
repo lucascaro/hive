@@ -76,6 +76,7 @@ export interface FindDeps {
     sessionID: string,
     query: string,
     maxMatches: number,
+    reqID: number,
   ): Promise<void>;
   /** Asks the daemon for a window of transcript lines. */
   getTranscriptLines(
@@ -83,6 +84,8 @@ export interface FindDeps {
     reqID: number,
     center: number,
     count: number,
+    focusLine: number,
+    focusCol: number,
   ): Promise<void>;
   /** The SessionTerm for a session, or null when it is not mounted. */
   term(sessionID: string): FindTerm | null;
@@ -160,7 +163,7 @@ export function openFindBox(sessionID: string) {
     // Open on the tail of the transcript rather than a blank box: the
     // empty query is answered with the line count, and the window
     // request below fills the view.
-    void deps.searchTranscript(sessionID, '', MAX_MATCHES);
+    sendSearch(sessionID, '');
   }
   focusFindInput(sessionID);
 }
@@ -234,7 +237,7 @@ export function runQuery(sessionID: string, query: string) {
         typingTimers.delete(sessionID);
         const cur = find(sessionID);
         if (cur?.source === 'transcript') {
-          void deps.searchTranscript(sessionID, cur.query, MAX_MATCHES);
+          sendSearch(sessionID, cur.query);
         }
       }, TYPE_DEBOUNCE_MS),
     );
@@ -326,7 +329,16 @@ function requestWindowFor(sessionID: string, index: number) {
   // A replace orphans any extension still in flight: its lines belong to
   // the range being thrown away.
   patchFind(sessionID, { reqId, extendReqId: 0 });
-  void deps.getTranscriptLines(sessionID, reqId, center, WINDOW_LINES);
+  // The active match is the focus: a long line holding it comes back as a
+  // slice around the match, so a hit deep in the line is still shown.
+  void deps.getTranscriptLines(
+    sessionID,
+    reqId,
+    center,
+    WINDOW_LINES,
+    match ? match.line : -1,
+    match ? match.col : -1,
+  );
 }
 
 /**
@@ -340,6 +352,8 @@ function requestWindowFor(sessionID: string, index: number) {
 export function applyMatches(msg: {
   session_id?: string;
   sessionID?: string;
+  req_id?: number;
+  reqID?: number;
   query?: string;
   available?: boolean;
   reason?: string;
@@ -353,6 +367,11 @@ export function applyMatches(msg: {
   const state = find(sessionID);
   if (state?.source !== 'transcript') return;
   if ((msg.query ?? '') !== state.query) return;
+  // The same query is sent more than once (live refreshes), so the query
+  // alone cannot order replies; the request id can. A reply without one
+  // (an older daemon) is taken on the query check alone.
+  const reqID = msg.req_id ?? msg.reqID ?? 0;
+  if (reqID !== 0 && reqID !== state.searchReqId) return;
 
   // No query and a range already loaded: this is a live refresh of the
   // plain transcript view. Only the line count changes; the pane appends
@@ -361,6 +380,9 @@ export function applyMatches(msg: {
   if (!state.query && state.lines.length > 0 && msg.available) {
     patchFind(sessionID, {
       totalLines: msg.total_lines ?? msg.totalLines ?? state.totalLines,
+      // An earlier unavailable answer (a transcript not yet on disk) is
+      // over once one arrives; left set, it would keep hiding the lines.
+      reason: '',
     });
     return;
   }
@@ -408,6 +430,16 @@ export function applyLines(msg: {
   const totalLines = msg.total_lines ?? msg.totalLines ?? state.totalLines;
 
   if (reqID !== 0 && reqID === state.extendReqId) {
+    if (msg.available === false) {
+      // Record why and stop: extendLines refuses while a reason is set,
+      // so scrolling does not re-request a transcript that is gone.
+      patchFind(sessionID, {
+        extendReqId: 0,
+        ready: true,
+        reason: msg.reason ?? 'unavailable',
+      });
+      return;
+    }
     patchFind(sessionID, {
       ...mergeLines(state, msg.lines ?? []),
       extendReqId: 0,
@@ -466,6 +498,7 @@ export function mergeLines(
 export function extendLines(sessionID: string, dir: 'up' | 'down') {
   const s = find(sessionID);
   if (s?.source !== 'transcript' || s.extendReqId !== 0 || !s.ready) return;
+  if (s.reason !== '') return; // unavailable: nothing more to load
   // Nothing loaded yet: the replace that loads the first window is in
   // flight, and extending from an empty range would fetch the wrong end.
   if (s.lines.length === 0) return;
@@ -490,6 +523,8 @@ export function extendLines(sessionID: string, dir: 'up' | 'down') {
     reqId,
     start + Math.floor(count / 2),
     count,
+    -1,
+    -1,
   );
 }
 
@@ -563,8 +598,21 @@ export function onSessionOutput(sessionID: string) {
 function refreshTranscript(sessionID: string) {
   const cur = find(sessionID);
   if (cur?.source === 'transcript') {
-    void deps.searchTranscript(sessionID, cur.query, MAX_MATCHES);
+    sendSearch(sessionID, cur.query);
   }
+}
+
+/**
+ * Sends a transcript search stamped with a fresh request id. The query
+ * alone cannot order replies: a live refresh re-sends the same query (a
+ * quick and a settle refresh), and searches are answered off the daemon's
+ * read loop, so an older reply can land after a newer one. applyMatches
+ * keeps only the reply to the latest request.
+ */
+function sendSearch(sessionID: string, query: string) {
+  const reqId = ++reqCounter;
+  patchFind(sessionID, { searchReqId: reqId });
+  void deps.searchTranscript(sessionID, query, MAX_MATCHES, reqId);
 }
 
 /** Test seam: drops the pending output debounce. */

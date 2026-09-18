@@ -589,16 +589,90 @@ func TestCacheDropsAfterIdle(t *testing.T) {
 // Each lookup restarts the clock: a projection in use is never dropped
 // out from under the search that is using it.
 func TestCacheIdleClockRestartsOnUse(t *testing.T) {
-	withIdleDrop(t, 80*time.Millisecond)
+	// A wide margin between use and expiry (50ms of sleep against a
+	// 300ms idle period), so a loaded CI runner cannot make it flake.
+	withIdleDrop(t, 300*time.Millisecond)
 	p := writeFile(t, t.TempDir(), "a.jsonl", rec("alpha"))
 	var c Cache
-	for range 6 {
+	for range 8 {
 		if _, err := c.Lines("s1", []string{p}); err != nil {
 			t.Fatal(err)
 		}
-		time.Sleep(30 * time.Millisecond) // well inside the idle period
+		time.Sleep(50 * time.Millisecond) // well inside the idle period
 		if cachedLines(&c) == 0 {
 			t.Fatal("dropped while still in use")
 		}
+	}
+}
+
+// One tool result is one message, even when its content has several text
+// blocks — otherwise each block repeats the tool's name as a header.
+func TestProjectToolResultBlocksShareOneMessage(t *testing.T) {
+	got := lines(t,
+		`{"type":"assistant","message":{"role":"assistant","content":[{"type":"tool_use","id":"t1","name":"Read"}]}}`+"\n",
+		`{"type":"user","message":{"role":"user","content":[{"type":"tool_result","tool_use_id":"t1","content":[{"type":"text","text":"part one"},{"type":"text","text":"part two"}]}]}}`+"\n")
+	if len(got) != 2 {
+		t.Fatalf("got %+v", got)
+	}
+	if got[0].Msg != got[1].Msg {
+		t.Fatalf("blocks of one result split into messages %d and %d", got[0].Msg, got[1].Msg)
+	}
+	if got[0].Tool != "Read" || got[1].Tool != "Read" {
+		t.Fatalf("tool names %q %q", got[0].Tool, got[1].Tool)
+	}
+}
+
+// --- slicing long lines around the active match ---
+
+func TestSliceAroundLeavesShortLinesAlone(t *testing.T) {
+	if s, off, cut := SliceAround("short", 3, 100); s != "short" || off != 0 || cut {
+		t.Fatalf("got %q %d %v", s, off, cut)
+	}
+}
+
+// The review finding: a match past the byte cap was on the right line but
+// never highlighted, because the line was cut before it.
+func TestMatchColIndexesEmittedText(t *testing.T) {
+	long := strings.Repeat("x", 5000) + "NEEDLE" + strings.Repeat("y", 100)
+	m := searchOne(t, long, "needle")
+	text, off, cut := SliceAround(long, m.Col, 2000)
+	if !cut || off == 0 {
+		t.Fatalf("expected a slice with an offset, got off=%d cut=%v", off, cut)
+	}
+	rel := m.Col - off
+	if rel < 0 || rel+m.Len > len(text) || text[rel:rel+m.Len] != "NEEDLE" {
+		t.Fatalf("match does not index the emitted text: rel=%d len=%d", rel, len(text))
+	}
+	if len(text) > 2000 {
+		t.Fatalf("slice %d bytes over the cap", len(text))
+	}
+}
+
+// A match near the start keeps the plain head cut: no offset to apply.
+func TestSliceAroundKeepsTheHeadForAnEarlyFocus(t *testing.T) {
+	long := "NEEDLE" + strings.Repeat("y", 5000)
+	text, off, _ := SliceAround(long, 0, 2000)
+	if off != 0 || !strings.HasPrefix(text, "NEEDLE") {
+		t.Fatalf("off=%d head=%q", off, text[:10])
+	}
+}
+
+// The offset is in UTF-16 units, like match columns, and the cut never
+// splits a rune.
+func TestSliceAroundOffsetIsUTF16AndRuneSafe(t *testing.T) {
+	long := strings.Repeat("✓", 3000) + "NEEDLE"
+	m := searchOne(t, long, "needle")
+	text, off, _ := SliceAround(long, m.Col, 2000)
+	if !utf8.ValidString(text) {
+		t.Fatal("slice split a rune")
+	}
+	// Each check mark is one UTF-16 unit; the slice's own prefix of check
+	// marks plus the offset must land exactly on the match.
+	prefix := strings.Index(text, "NEEDLE")
+	if prefix < 0 {
+		t.Fatal("match not in the slice")
+	}
+	if got := off + utf8.RuneCountInString(text[:prefix]); got != m.Col {
+		t.Fatalf("offset %d + in-slice units does not reach the match col %d (got %d)", off, m.Col, got)
 	}
 }

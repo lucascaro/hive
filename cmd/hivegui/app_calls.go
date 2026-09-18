@@ -653,13 +653,13 @@ func (a *App) GetActivity(sessionID string) error {
 //
 // The daemon searches rather than handing over the file: a frame is
 // capped at 1 MiB and real transcripts reach tens of MB.
-func (a *App) SearchTranscript(sessionID string, query string, maxMatches int) error {
+func (a *App) SearchTranscript(sessionID string, query string, maxMatches int, reqID int) error {
 	cs, err := a.requireControl()
 	if err != nil {
 		return err
 	}
 	return cs.WriteJSON(wire.FrameSearchTranscript, wire.SearchTranscriptReq{
-		SessionID: sessionID, Query: query, MaxMatches: maxMatches,
+		SessionID: sessionID, ReqID: reqID, Query: query, MaxMatches: maxMatches,
 	})
 }
 
@@ -667,14 +667,21 @@ func (a *App) SearchTranscript(sessionID string, query string, maxMatches int) e
 // one match. reqID is echoed back so the caller can discard a stale
 // response: two windows differing only in center carry no other
 // distinguishing field and can land out of order.
-func (a *App) GetTranscriptLines(sessionID string, reqID int, center int, count int) error {
+//
+// focusLine/focusCol name the active match (focusLine < 0 for none), so a
+// long line holding it is sent as a slice around the match.
+func (a *App) GetTranscriptLines(sessionID string, reqID int, center int, count int, focusLine int, focusCol int) error {
 	cs, err := a.requireControl()
 	if err != nil {
 		return err
 	}
-	return cs.WriteJSON(wire.FrameGetTranscriptLines, wire.GetTranscriptLinesReq{
+	req := wire.GetTranscriptLinesReq{
 		SessionID: sessionID, ReqID: reqID, Center: center, Count: count,
-	})
+	}
+	if focusLine >= 0 {
+		req.Focus = &wire.TranscriptFocus{Line: focusLine, Col: focusCol}
+	}
+	return cs.WriteJSON(wire.FrameGetTranscriptLines, req)
 }
 
 // AddIdea files one idea. sessionID is the session it was captured

@@ -268,14 +268,23 @@ func (r *record) pieces(tools map[string]string) []piece {
 				if b.Content == nil {
 					continue
 				}
-				name := tools[b.ToolUseID]
+				// One tool result is one message, however many text
+				// blocks its content holds: separate pieces would each get
+				// their own message id and repeat the tool's name.
+				texts := []string{}
 				if b.Content.Text != "" {
-					out = append(out, piece{kind: "tool", tool: name, text: b.Content.Text})
+					texts = append(texts, b.Content.Text)
 				}
 				for _, inner := range b.Content.Blocks {
 					if inner.Text != "" {
-						out = append(out, piece{kind: "tool", tool: name, text: inner.Text})
+						texts = append(texts, inner.Text)
 					}
+				}
+				if len(texts) > 0 {
+					out = append(out, piece{
+						kind: "tool", tool: tools[b.ToolUseID],
+						text: strings.Join(texts, "\n"),
+					})
 				}
 			}
 		}
@@ -473,6 +482,57 @@ func CapText(s string, max int) (string, bool) {
 		cut--
 	}
 	return s[:cut], true
+}
+
+// SliceAround returns at most max bytes of s, cut on rune boundaries, for
+// display. With focus < 0, or a focus near enough the start to survive a
+// plain cut, it is the head of s. Otherwise the slice is taken around the
+// UTF-16 column focus, with the focus a third of the way in, so a match
+// deep in a long line is shown with context before and after it.
+//
+// off is the UTF-16 position of the slice's first character in s: a
+// caller subtracts it from match columns (which are relative to all of s)
+// to highlight within the slice. cut reports whether anything was left
+// out at either end.
+func SliceAround(s string, focus, max int) (text string, off int, cut bool) {
+	if max <= 0 || len(s) <= max {
+		return s, 0, false
+	}
+	if focus < 0 {
+		head, c := CapText(s, max)
+		return head, 0, c
+	}
+	// Byte index of the focus column.
+	at, units := len(s), 0
+	for i, r := range s {
+		if units >= focus {
+			at = i
+			break
+		}
+		units++
+		if r >= 0x10000 {
+			units++
+		}
+	}
+	if at < max*2/3 {
+		head, c := CapText(s, max)
+		return head, 0, c
+	}
+	start := at - max/3
+	if start > len(s)-max {
+		start = len(s) - max
+	}
+	// Forward to a rune boundary, not back: stepping back would make the
+	// slice longer than max from here, and the cap would then trim the
+	// end — dropping the tail of a match that sits near the line's end.
+	for start < len(s) && !utf8.RuneStart(s[start]) {
+		start++
+	}
+	body, _ := CapText(s[start:], max)
+	// utf16Span returns (units before the span, units in it); the span
+	// here is everything before the slice.
+	_, off = utf16Span(s, 0, utf8.RuneCountInString(s[:start]))
+	return body, off, true
 }
 
 // Window returns at most count lines centered on center, clamped to the

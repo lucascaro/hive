@@ -299,3 +299,59 @@ func TestGetTranscriptLinesRejectsNegativeCenter(t *testing.T) {
 		t.Fatalf("Count = %d", req.Count)
 	}
 }
+
+// Searches run off the control read loop: a slow one — a first read of a
+// large transcript — must not hold up the next request on the same
+// connection. The quick request's answer has to arrive first.
+func TestSlowTranscriptSearchDoesNotBlockTheControlLoop(t *testing.T) {
+	skipOnWindows(t)
+	transcriptTestDelay = 600 * time.Millisecond
+	t.Cleanup(func() { transcriptTestDelay = 0 })
+
+	d := startTestDaemon(t)
+	c := dial(t, d)
+	defer c.Close()
+	handshake(t, c, wire.Hello{Mode: wire.ModeControl})
+
+	if err := wire.WriteJSON(c, wire.FrameSearchTranscript, wire.SearchTranscriptReq{
+		SessionID: "nope", Query: "x", ReqID: 7,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if err := wire.WriteJSON(c, wire.FrameListClosed, struct{}{}); err != nil {
+		t.Fatal(err)
+	}
+
+	_ = c.SetReadDeadline(time.Now().Add(3 * time.Second))
+	var order []wire.FrameType
+	for len(order) < 2 {
+		ft, _, err := wire.ReadFrame(c)
+		if err != nil {
+			t.Fatalf("read: %v (got %v so far)", err, order)
+		}
+		if ft == wire.FrameClosed || ft == wire.FrameTranscriptMatches {
+			order = append(order, ft)
+		}
+	}
+	if order[0] != wire.FrameClosed {
+		t.Fatalf("the slow search blocked the next request: got %v", order)
+	}
+}
+
+// The search's request id comes back on its answer, so the client can
+// order replies to the same query.
+func TestSearchTranscriptEchoesRequestID(t *testing.T) {
+	skipOnWindows(t)
+	d := startTestDaemon(t)
+	c := dial(t, d)
+	defer c.Close()
+	handshake(t, c, wire.Hello{Mode: wire.ModeControl})
+	if err := wire.WriteJSON(c, wire.FrameSearchTranscript, wire.SearchTranscriptReq{
+		SessionID: "nope", Query: "x", ReqID: 41,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if msg := readTranscriptMatches(t, c); msg.ReqID != 41 {
+		t.Fatalf("ReqID = %d, want 41", msg.ReqID)
+	}
+}

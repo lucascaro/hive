@@ -1315,13 +1315,22 @@ func (d *Daemon) handleControlFrame(ctx context.Context, ops controlOps, ft wire
 		if !ok {
 			return false
 		}
-		_ = ops.writeJSON(wire.FrameTranscriptMatches, d.searchTranscript(req))
+		// Off the read loop, like every slow op: a first search reads and
+		// projects up to MaxFileBytes from disk, which would otherwise
+		// hold up every other frame on this connection. Replies can now
+		// arrive out of order; each carries the request's id and query,
+		// which the client uses to discard stale ones.
+		d.runOp(func() {
+			_ = ops.writeJSON(wire.FrameTranscriptMatches, d.searchTranscript(req))
+		})
 	case wire.FrameGetTranscriptLines:
 		req, ok := decodeReq[wire.GetTranscriptLinesReq](payload, ops.sendError)
 		if !ok {
 			return false
 		}
-		_ = ops.writeJSON(wire.FrameTranscriptLines, d.transcriptLines(req))
+		d.runOp(func() {
+			_ = ops.writeJSON(wire.FrameTranscriptLines, d.transcriptLines(req))
+		})
 	case wire.FrameRestoreSession:
 		req, ok := decodeReq[wire.RestoreSessionReq](payload, ops.sendError)
 		if !ok {

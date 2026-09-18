@@ -407,9 +407,11 @@ export async function SearchTranscript(
   id: string,
   query: string,
   maxMatches: number,
+  reqID: number,
 ) {
   return call('SearchTranscript', {
     session_id: id,
+    req_id: reqID,
     query,
     max_matches: maxMatches,
   });
@@ -419,12 +421,15 @@ export async function GetTranscriptLines(
   reqID: number,
   center: number,
   count: number,
+  focusLine: number,
+  focusCol: number,
 ) {
   return call('GetTranscriptLines', {
     session_id: id,
     req_id: reqID,
     center,
     count,
+    ...(focusLine >= 0 ? { focus: { line: focusLine, col: focusCol } } : {}),
   });
 }
 export async function SetSessionAttention(id: string, want: boolean) {

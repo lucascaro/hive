@@ -700,6 +700,8 @@ export interface FindState {
   lineStart: number;
   totalLines: number;
   reqId: number;
+  /** The latest search request; replies to any other are discarded. */
+  searchReqId: number;
   /**
    * The in-flight request extending the loaded range up or down, or 0.
    * Separate from reqId: an extension merges into the lines, a replace
@@ -735,6 +737,12 @@ export interface TranscriptLine {
   kind?: string;
   /** For tool output, the tool that produced it. */
   tool?: string;
+  /**
+   * UTF-16 position of `text` within the full line: non-zero when a long
+   * line was sliced around the active match. Match columns are relative
+   * to the full line, so they are rebased by this to highlight in `text`.
+   */
+  offset?: number;
 }
 
 export function initialFind(source: FindSource): FindState {
@@ -751,6 +759,7 @@ export function initialFind(source: FindSource): FindState {
     lineStart: 0,
     totalLines: 0,
     reqId: 0,
+    searchReqId: 0,
     extendReqId: 0,
     lastLoad: 'replace',
     loadSeq: 0,

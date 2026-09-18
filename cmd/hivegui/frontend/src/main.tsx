@@ -317,9 +317,10 @@ initHelpOverlay({ setFocusedTile, focusActiveTerm });
 // terminal through SessionTerm; both are injected so find-box.ts stays
 // testable against a plain object.
 initFindBox({
-  searchTranscript: (id, query, max) => SearchTranscript(id, query, max),
-  getTranscriptLines: (id, reqID, center, count) =>
-    GetTranscriptLines(id, reqID, center, count),
+  searchTranscript: (id, query, max, reqID) =>
+    SearchTranscript(id, query, max, reqID),
+  getTranscriptLines: (id, reqID, center, count, focusLine, focusCol) =>
+    GetTranscriptLines(id, reqID, center, count, focusLine, focusCol),
   term: (id) => getTerm(id) ?? null,
   focusActiveTerm,
 });

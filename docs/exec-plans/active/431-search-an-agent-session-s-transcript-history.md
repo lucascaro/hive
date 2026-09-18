@@ -325,6 +325,7 @@ Manual row, runnable without eyes per `docs/verifying-the-gui-by-hand.md`: `wail
 Append-only, one line per /hs-review-loop iteration.
 
 - **2026-09-18 iter 1** — verdict: REQUEST_CHANGES (COMMENT coerced: 4 IMPORTANT, 14 threads); mergeable: MERGEABLE; findings_hash: 0ae932d98becace2b05ccd77909eac244fa69480a46c2d605aef2d7594fe5222; threads_open: 6; action: escalated:risky-fix-needs-human-decision; head_sha: 8446441.
+- **2026-09-18 iter 2** — verdict: COMMENT (2 IMPORTANT, 3 MINOR; 14 old threads resolved, 5 new CodeRabbit); mergeable: MERGEABLE; findings_hash: 53c51fca40bac74855588bb192c0b4b4b1900fb5eecf04a971c73d6d5d0c1421; threads_open: 5; action: escalated:risky-fix-needs-human-decision; head_sha: 0bc7321.
 
 ## Open questions / risks
 
@@ -372,6 +373,7 @@ No third round was run: the pipeline allows one revise-and-recheck cycle, and lo
 - **2026-09-18** — Escape in the box is consumed and focus returns to the terminal only after the key event, so no engine can re-target it at the session (reported on WebKit; not reproducible in Chromium). The find chord closes an open box.
 - **2026-09-18** — ⌘F with the box open refocuses it and selects the query; it never closes the box (Escape and the close control do). Corrects the entry above: the operator's "cmd+f selects all text in the search box" described the behaviour they wanted, and was misread as a bug report. The macOS menu item had been wired to a toggle from the start, which is what closed the box in the real app; every path — menu, chord, chord inside the box — now routes to open-or-refocus.
 - **2026-09-18** — Review iter 1 escalated three changes; operator decided all at the recommended option. (1) Match offsets are UTF-16 code units, found by folding rune-for-rune (`unicode.ToLower` is 1:1 per rune; `strings.ToLower` shifts byte offsets past a Kelvin sign) — the wire field's meaning changes, but contract 15 has never shipped, so no bump. (2) The fold is computed once per line at projection, and the GUI debounces transcript search by 100ms while typing. (3) The single-slot cache stays, with the accepted re-parse-on-switch cost stated at the field. (4) An unused projection is released after 5 minutes idle, via a generation-checked timer so a timer firing mid-lookup cannot drop a freshly refreshed projection.
+- **2026-09-18** — Review iter 2. Transcript search and window requests now run off the daemon's control read loop via `runOp` (operator's call): a first read of a large transcript no longer holds up session updates. Replies can land out of order, so searches now carry a request id too — the query alone cannot order the quick and settle refreshes, which re-send the same query. Implemented the plan's long-line re-basing, missed in the first pass: the window request names the active match as its focus, a line over the cap is sliced around it (`transcript.SliceAround`), and the slice's UTF-16 offset lets the client rebase match columns. Also: a stale "unavailable" clears on a successful refresh, an unavailable extension stops further requests, and a tool result with several text blocks is one message.
 
 ## Progress
 
