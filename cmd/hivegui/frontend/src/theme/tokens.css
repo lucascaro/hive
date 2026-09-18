@@ -50,6 +50,7 @@
 
   --space-1: 4px; --space-2: 8px; --space-3: 12px;
   --space-4: 16px; --space-5: 20px; --space-6: 24px;
+  --radius-xs: 2px;
   --radius-sm: 4px;
   --radius-md: 6px;
   /* The agent activity inspector column (layout.css). */

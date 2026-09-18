@@ -150,7 +150,7 @@
   --term-bg: #0a0a0a; --term-fg: #d6d6d6;
   --font-ui: "JetBrains Mono", "SF Mono", Menlo, Consolas, monospace;
   --font-mono: "JetBrains Mono", "SF Mono", Menlo, Consolas, monospace;
-  --radius-sm: 0; --radius-md: 0;
+  --radius-xs: 0; --radius-sm: 0; --radius-md: 0;
   --shadow-popover: 0 0 0 1px var(--border);
   /* Near-monochrome ANSI: the greys carry structure, amber carries
      attention. Red is kept as a desaturated brick rather than a grey —

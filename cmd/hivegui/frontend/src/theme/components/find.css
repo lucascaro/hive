@@ -32,7 +32,7 @@
   gap: var(--space-1);
   margin: var(--space-2);
   padding: var(--space-1) var(--space-2);
-  background: var(--surface-raised);
+  background: var(--sel);
   border: 1px solid var(--border);
   border-radius: var(--radius-md);
   box-shadow: var(--shadow-popover);
@@ -92,7 +92,7 @@
 .hv-find-takeover {
   inset: 0;
   pointer-events: auto;
-  background: var(--surface);
+  background: var(--bg);
 }
 
 .hv-find-body {
@@ -117,10 +117,10 @@
 .hv-find-lines {
   display: flex;
   flex-direction: column;
-  gap: var(--space-4);
+  gap: var(--space-3);
   font-family: var(--font-mono);
   font-size: var(--text-sm);
-  line-height: 1.5;
+  line-height: 1.3;
 }
 
 .hv-tx-msg {
@@ -131,11 +131,13 @@
 
 .hv-tx-label {
   /* Sticky, so the tool or speaker stays named while its output
-   * scrolls past — a long result otherwise loses its heading. */
+   * scrolls past — a long result otherwise loses its heading. Its
+   * background must match .hv-find-takeover's, or the stuck label shows
+   * as a band over the pane. */
   position: sticky;
   top: 0;
   z-index: 1;
-  background: var(--surface);
+  background: var(--bg);
   color: var(--fg-muted);
   font-family: var(--font-ui);
   font-size: var(--text-xs);
@@ -150,7 +152,7 @@
 .hv-find-line {
   padding: 0 var(--space-1) 0 calc(var(--space-1) + 2ch);
   text-indent: -2ch;
-  border-radius: var(--radius-sm);
+  border-radius: var(--radius-xs);
   white-space: pre-wrap;
   overflow-wrap: break-word;
 }
@@ -166,9 +168,9 @@
 
 .hv-tx-user .hv-tx-body {
   padding: var(--space-2) var(--space-2);
-  background: var(--surface-raised);
+  background: var(--sel);
   border-left: 2px solid var(--accent);
-  border-radius: var(--radius-sm);
+  border-radius: var(--radius-xs);
   color: var(--fg);
 }
 
@@ -188,7 +190,7 @@
 
 .hv-tx-tool .hv-tx-body {
   padding-left: var(--space-2);
-  border-left: 1px solid var(--border);
+  border-left: 2px solid var(--border);
   color: var(--fg-muted);
 }
 
@@ -200,7 +202,7 @@
   color: var(--accent);
   background: transparent;
   border: 0;
-  border-radius: var(--radius-sm);
+  border-radius: var(--radius-xs);
   font-family: var(--font-ui);
   font-size: var(--text-xs);
   cursor: pointer;
@@ -229,7 +231,7 @@
 .hv-find-hit {
   background: color-mix(in srgb, var(--accent) 45%, transparent);
   outline: 1px solid var(--accent);
-  border-radius: var(--radius-sm);
+  border-radius: var(--radius-xs);
 }
 
 .hv-find-line-active .hv-find-hit {
