@@ -328,6 +328,9 @@ Append-only, one line per /hs-review-loop iteration.
 - **2026-09-18 iter 2** — verdict: COMMENT (2 IMPORTANT, 3 MINOR; 14 old threads resolved, 5 new CodeRabbit); mergeable: MERGEABLE; findings_hash: 53c51fca40bac74855588bb192c0b4b4b1900fb5eecf04a971c73d6d5d0c1421; threads_open: 5; action: escalated:risky-fix-needs-human-decision; head_sha: 0bc7321.
 - **2026-09-18 iter 3** — verdict: REQUEST_CHANGES (COMMENT coerced: 1 IMPORTANT, fixed); mergeable: MERGEABLE; findings_hash: 261627030dfa6b9d0ac2db66621ca0460ae841679f2e4c7771dd3b269352b661; threads_open: 0; action: autofix+push; head_sha: 2358dbb.
 - **2026-09-18 iter 4** — verdict: REQUEST_CHANGES (1 BLOCKING, fixed in 0893ccc); mergeable: MERGEABLE; findings_hash: 333abcb2e6cea73a9c7ac7c11725d0db1bd1253cc61656810f3ba9fcac6d2538; threads_open: 0; action: escalated:ci-check-failed; head_sha: 0893ccc.
+- **2026-09-18 iter 5** — verdict: REQUEST_CHANGES (COMMENT coerced: 1 IMPORTANT, 2 threads, fixed in c67ac3f; MINOR query cap fixed by hand in f4ba399); mergeable: MERGEABLE; findings_hash: 0217e423a3ad85cdc66ec200d162cee3eb8ce37f100730ef9697d45726dc38ac; threads_open: 0; action: escalated:iteration-cap (operator approved an extra round); head_sha: f4ba399.
+- **2026-09-18 iter 6** — verdict: REQUEST_CHANGES (COMMENT coerced: 1 IMPORTANT test gap, fixed in 16c4892); mergeable: MERGEABLE; findings_hash: 0e1213ac6987a29712fa2aa842b8b54790ffa06fdcca898226e558b637759ca7; threads_open: 0; action: autofix+push; head_sha: 16c4892. Operator feedback landed alongside: 54a8b55 closes the find box when another session takes focus.
+- **2026-09-18 iter 7** — verdict: APPROVE; mergeable: MERGEABLE; findings_hash: (empty); threads_open: 0; action: converged; head_sha: 54a8b55.
 
 ## Open questions / risks
 
