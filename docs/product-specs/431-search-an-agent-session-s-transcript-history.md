@@ -32,7 +32,7 @@ That split is why this is one feature and not two. An in-terminal find that sear
 2. Typing updates highlights and the `n/total` count on every keystroke, with no explicit submit.
 3. Search runs bottom to top, in both modes. The first match shown — `1/N` — is the most recent one (closest to the bottom of the output); Enter and the "next" control move to the next *older* match, Shift+Enter and "previous" to the next *newer* one, wrapping at both ends. The active match is centered and readable in its surrounding context, and is visually distinct from the other matches.
 3a. When a search's matches are capped, the most recent ones are kept.
-4. Esc and the close control both dismiss it and restore the terminal to its prior state: same scroll position, same keyboard focus, no visible repaint artifact.
+4. Esc and the close control both dismiss it and restore the terminal to its prior state: same scroll position, same keyboard focus, no visible repaint artifact. Focusing a different session, or leaving single view, also closes it: search belongs to the session it was opened on.
 5. On a regular text session, the search finds text anywhere in what the terminal buffer holds, including scrollback that is off-screen.
 6. On an alt-screen session, a string that scrolled off long ago — and is therefore unfindable in the terminal buffer — is found.
 7. The source is selected automatically from the buffer type. The user is never asked which, and no separate binding exists for the two.

@@ -110,6 +110,26 @@ test.describe('spec 431 find in session', () => {
     await assertAlignedFocus(page);
   });
 
+  // Search belongs to the session it was opened on: focusing another
+  // session ends it, and the newly focused one takes the keyboard.
+  test('focusing a different session closes it', async ({ page }) => {
+    await bootAsLinux(page);
+    await page.evaluate(() => window.__hive.addSession?.('second'));
+    await expect(page.locator('.hv-session-row')).toHaveCount(2);
+    await assertAlignedFocus(page);
+    const first = await activeId(page);
+    await page.keyboard.press('Control+Shift+f');
+    await expect(page.locator('.hv-find')).toBeVisible();
+
+    await page
+      .locator(`.hv-session-row:not([data-sid="${first}"])`)
+      .first()
+      .click();
+    await expect.poll(() => activeId(page)).not.toBe(first);
+    await expect(page.locator('.hv-find')).toHaveCount(0);
+    await assertAlignedFocus(page);
+  });
+
   // Criterion 7, the normal-buffer half: a shell session searches the
   // terminal, not a transcript, and is never asked which.
   test('a normal-buffer session uses the terminal as its source', async ({

@@ -45,13 +45,15 @@ export function openFindInSession() {
 }
 
 /**
- * Closes any open find box.
+ * Closes every open find box except the one on `keep`.
  *
- * Called on view change: the box is single-view only, and a grid flip
- * would otherwise strand its viewport claim.
+ * Called on view change (the box is single-view only, and a grid flip
+ * would otherwise strand its viewport claim) and when another session
+ * takes focus: search belongs to the session it was opened on, so
+ * leaving that session ends it.
  */
-export function closeFindForAllSessions() {
+export function closeFindForAllSessions(keep: string | null = null) {
   for (const [id, chrome] of appStore.getState().tileChrome) {
-    if (chrome.find) closeFindBox(id);
+    if (chrome.find && id !== keep) closeFindBox(id);
   }
 }
