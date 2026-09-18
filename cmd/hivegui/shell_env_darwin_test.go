@@ -230,3 +230,22 @@ func TestRunGitUsesLoginPATH(t *testing.T) {
 		t.Errorf("runGit ran %q, want the git on the login PATH", out)
 	}
 }
+
+// lookPathIn chooses the git that runs. A relative or empty PATH entry
+// resolves against the working directory — a checkout — so it must never
+// win, the same rule exec.LookPath enforces with ErrDot.
+func TestLookPathInIgnoresRelativeEntries(t *testing.T) {
+	dir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(dir, "git"), []byte("#!/bin/sh\n"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	t.Chdir(dir)
+	for _, path := range []string{"", ":", ".", "./"} {
+		if got := lookPathIn(path, "git"); got != "" {
+			t.Errorf("lookPathIn(%q) = %q, want no match from the working directory", path, got)
+		}
+	}
+	if got := lookPathIn(":"+dir, "git"); got != filepath.Join(dir, "git") {
+		t.Errorf("lookPathIn with an absolute entry = %q, want it found", got)
+	}
+}

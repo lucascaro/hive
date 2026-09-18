@@ -229,12 +229,15 @@ func executableIn(path, name string) bool {
 }
 
 // lookPathIn returns the file name resolves to on the given PATH, or ""
-// when it resolves to nothing. exec.LookPath answers for the *current*
+// when it resolves to nothing. Relative entries are ignored. exec.LookPath answers for the *current*
 // process's PATH, which is the one we are replacing.
 func lookPathIn(path, name string) string {
 	for _, dir := range filepath.SplitList(path) {
-		if dir == "" {
-			dir = "."
+		// An empty entry means the working directory. Skip it, as
+		// exec.LookPath refuses such results (ErrDot): this picks the
+		// binary that runs, and a checkout-relative `git` must not win.
+		if dir == "" || !filepath.IsAbs(dir) {
+			continue
 		}
 		p := filepath.Join(dir, name)
 		st, err := os.Stat(p)

@@ -5,6 +5,7 @@ package main
 import (
 	"strings"
 	"testing"
+	"unicode/utf8"
 )
 
 // The log viewer renders text, so colour escapes and CR redraws must be
@@ -55,5 +56,34 @@ func TestStreamBuildOutputKeepsTheTailWhenCapped(t *testing.T) {
 	}
 	if lines[len(lines)-1] != "the failure" {
 		t.Errorf("last kept line = %q, want the tail", lines[len(lines)-1])
+	}
+}
+
+// The line cap alone let a runaway build hold thousands of 1 MiB lines.
+// Each line is cut, and the total is bounded, still keeping the tail.
+func TestStreamBuildOutputBoundsBytes(t *testing.T) {
+	var b strings.Builder
+	long := strings.Repeat("é", maxBuildLogLineBytes) // 2 bytes a rune
+	for i := 0; i < 2*maxBuildLogBytes/maxBuildLogLineBytes; i++ {
+		b.WriteString(long + "\n")
+	}
+	b.WriteString("the failure")
+	log, summary := streamBuildOutput(strings.NewReader(b.String()), func(string) {})
+
+	if len(log) > maxBuildLogBytes {
+		t.Errorf("kept %d bytes, want at most %d", len(log), maxBuildLogBytes)
+	}
+	lines := strings.Split(log, "\n")
+	if lines[len(lines)-1] != "the failure" {
+		t.Errorf("last kept line = %q, want the tail", lines[len(lines)-1])
+	}
+	if first := lines[0]; len(first) > maxBuildLogLineBytes+len(" […]") || !strings.HasSuffix(first, " […]") {
+		t.Errorf("long line kept %d bytes, want it cut to %d with a marker", len(first), maxBuildLogLineBytes)
+	}
+	if !utf8.ValidString(log) {
+		t.Error("truncation split a rune")
+	}
+	if summary != "the failure" {
+		t.Errorf("summary = %q", summary)
 	}
 }
