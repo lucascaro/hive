@@ -2,7 +2,7 @@
 
 - **Spec:** [docs/product-specs/436-update-pip-on-check-for-updates-button.md](../../product-specs/436-update-pip-on-check-for-updates-button.md)
 - **Issue:** #436
-- **Status:** active
+- **Status:** completed
 - **PR:** #437
 - **Branch:** feature/436-update-pip-on-check-for-updates-button
 
@@ -117,3 +117,11 @@ The per-version dismissal (`hive.updateDismissedFor`, `showUpdateBanner`'s `vers
 - **2026-09-18 iter 2** — verdict: APPROVE; mergeable: MERGEABLE; findings_hash: 11ffe2671caa2df058580c7f97b0c554d7480fb4b7b442681e536dfbc3059ade; threads_open: 0; action: autofix+push; head_sha: 1787fa6.
 - **2026-09-18 iter 3** — verdict: COMMENT; mergeable: MERGEABLE; findings_hash: 512bdaa8fb697355c30443791945129fb2ad3f64bbbccbfdc70e2718f84ca0aa; threads_open: 0; action: escalated:risky-fix-needs-human-decision; head_sha: 17950c6.
 - **2026-09-18 iter 4** — verdict: APPROVE; mergeable: MERGEABLE; findings_hash: empty; threads_open: 0; action: stop; head_sha: bcd067d.
+
+## Gate verdict
+
+- **2026-09-18** — verdict: PASS; phase: —; checks: 12 passed / 0 failed / 0 followups; followups: none (known limitation tracked separately as #438); one-line: all 5 success criteria observable and tested, no non-goal bleed, README + changeset accurate.
+  - 2026-09-18 dimensions:
+    - acceptance — PASS — 5/5 criteria; vitest 24/24, Playwright 8/8, Go SaveUpdateSettings 7/7
+    - non-goals — PASS — no Settings.tsx / menu_darwin.go / whats-new.ts / cadence changes; update_prefs.go idle emit is not a UI or cadence change
+    - doc accuracy — PASS — README "Updating" rewritten; changeset valid (type changed, regression_of n/a); generated files untouched; no features.json entry needed for bump: patch

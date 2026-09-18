@@ -5,10 +5,14 @@ type: enhancement
 complexity: S
 priority: P3
 pr: 437
-stage: GATE
+shipped: 2026-09-18
+stage: DONE
 ---
 
 # Show an update pip on the Check for updates button instead of auto-showing the update bar
+
+- **Issue:** [#436](https://github.com/lucascaro/hive/issues/436)
+- **Exec plan:** [docs/exec-plans/completed/436-update-pip-on-check-for-updates-button.md](../exec-plans/completed/436-update-pip-on-check-for-updates-button.md)
 
 ## Problem
 
