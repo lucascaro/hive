@@ -19,6 +19,10 @@ and results update live while the box is open, without losing your place.
 The transcript reads like the agent session it came from: your prompts stand out,
 each tool's output sits under the tool's name with long output collapsed, and it
 opens on the most recent output with older history loading as you scroll up.
+The sidebar header shows how many sessions you have, as a small number next to
+the Hive title. It counts every session, including minimized ones and those in
+minimized projects, updates as sessions open and close, and hides when there are
+none. Hover it for "N sessions".
 
 ### Changed
 The activity grid now shows what each agent is working on, in words. A tile's
@@ -31,6 +35,10 @@ Claude sessions started by Hive now fill the plan pie much more often. Claude
 had the task tools but rarely used them, so Hive had no progress to show. When
 the Claude task tools setting is on, Hive now tells each session at startup to
 track multi-step work in its task list.
+A background update check no longer pops the update banner. When a new version
+is available, the sidebar's ⤓ "Check for updates" button shows a dot instead;
+click it to see the version and install it. Updates you start still show their
+progress in the banner.
 
 ## [2.9.0] — 2026-09-17
 

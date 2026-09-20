@@ -63,6 +63,40 @@ test('all three header buttons sit together on the right of the brand', async ({
   }
 });
 
+// Spec 434. The DOM test proves the total is a child of .brand; only a real
+// browser proves it LAYS OUT right after "Hive" rather than being flung
+// right with the button cluster by .brand's `margin-right: auto`.
+test('the session total sits inside the brand, right after Hive', async ({
+  page,
+}) => {
+  await boot(page);
+  // The mock seeds one session; a second checks the plural title too.
+  await page.evaluate((n) => window.__hive.addSession?.(n), 's2');
+  await page.waitForFunction(
+    () => (window.__hive.state?.sessions.length ?? 0) >= 2,
+  );
+
+  const count = page.locator('#sidebar header .brand > .brand-count');
+  await expect(count).toHaveText('2');
+  await expect(count).toHaveAttribute('title', '2 sessions');
+
+  const brandBox = (await page
+    .locator('#sidebar header .brand')
+    .boundingBox())!;
+  const countBox = (await count.boundingBox())!;
+  const newBtnBox = (await page.locator('#new-project-btn').boundingBox())!;
+
+  // Contained in the brand box, not overflowing it.
+  expect(countBox.x).toBeGreaterThanOrEqual(brandBox.x);
+  expect(countBox.x + countBox.width).toBeLessThanOrEqual(
+    brandBox.x + brandBox.width + 0.5,
+  );
+  // Right after the "Hive" glyphs, not pushed to the far side.
+  expect(countBox.x - brandBox.x).toBeLessThan(60);
+  // And clear of the button cluster.
+  expect(countBox.x + countBox.width).toBeLessThanOrEqual(newBtnBox.x);
+});
+
 for (const id of ['check-updates-btn', 'whats-new-btn']) {
   test(`the ${id} button is reachable and hit-testable`, async ({ page }) => {
     await boot(page);
@@ -106,4 +140,45 @@ test("the gift opens What's New, and Escape closes it", async ({ page }) => {
 
   await page.keyboard.press('Escape');
   await expect(dialog).toBeHidden();
+});
+
+// #436: a background update check reports as a dot on ⤓, not a banner.
+// jsdom proves the class; only a real layout proves the ::after dot is
+// actually painted on this button.
+test('a background update shows a dot on the check-for-updates button, not a banner', async ({
+  page,
+}) => {
+  await boot(page);
+  const btn = page.locator('#check-updates-btn');
+  const dot = () =>
+    btn.evaluate((el) => {
+      const cs = getComputedStyle(el, '::after');
+      return { content: cs.content, width: Number.parseFloat(cs.width) || 0 };
+    });
+
+  // Baseline: the mock's boot poll reports nothing, so no dot yet — the
+  // dot below is this feature's, not some other rule's.
+  await expect(btn).not.toHaveClass(/hv-unread/);
+  expect((await dot()).content).toBe('none');
+
+  await page.evaluate(() =>
+    window.__hive.emit('update:available', {
+      available: true,
+      current: '2.4.0',
+      latest: '2.5.0',
+      url: '',
+      stage: 'available',
+      channel: 'release',
+    }),
+  );
+
+  await expect(btn).toHaveClass(/hv-unread/);
+  await expect(btn).toHaveAttribute(
+    'aria-label',
+    'Check for updates — update available',
+  );
+  const after = await dot();
+  expect(after.content).not.toBe('none');
+  expect(after.width).toBeGreaterThan(0);
+  await expect(page.locator('#update-banner')).toBeHidden();
 });

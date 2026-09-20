@@ -71,6 +71,11 @@ export interface AppData {
   // and the command palette — and component state only one of them can
   // reach leaves the dot up after the palette already recorded the read.
   whatsNewSeen: string | null;
+  // Whether the last update check that reached the frontend found a newer
+  // version. Drives the dot on the sidebar's "Check for updates" button,
+  // which is where a background check reports — it no longer raises the
+  // update banner on its own. Written only by banners.ts › applyUpdateInfo.
+  updatePending: boolean;
   // False until hydratePersistedProjectSets has run. applyProjectList
   // refuses to prune while it is false: pruning an un-hydrated (empty)
   // set persists [] and wipes the user's tray — bug #340 exactly.
@@ -417,6 +422,7 @@ function initialData(): AppData {
     //   NOT loaded here: the storage key is suffixed with the daemon's
     //   state-dir id, which only an async binding can tell us. main.tsx
     //   calls hydratePersistedProjectSets before connecting.
+    updatePending: false,
     whatsNewSeen: readStorage(SEEN_KEY), // NOT namespaced per daemon like
     //   the two sets below: "what have I read" is a fact about the person,
     //   not about which registry this window is attached to. Read eagerly
@@ -880,6 +886,12 @@ export function markWhatsNewSeen(version: string): void {
   set({ whatsNewSeen: version });
 }
 
+/** Set the "an update is available" dot on the check-for-updates button. */
+export function setUpdatePending(pending: boolean): void {
+  if (get().updatePending === pending) return;
+  set({ updatePending: pending });
+}
+
 export function toggleCollapsed(pid: string): void {
   const cur = get().collapsed;
   const next = cur.has(pid) ? setWithout(cur, pid) : setWith(cur, pid);
@@ -1028,10 +1040,9 @@ export function setBootState(view: BootStateView | null): void {
 // computed along with the data-action the click handler dispatches on —
 // the button would revert to a generic "Update" mid-click.
 //
-// `data`, by contrast, IS replaced wholesale, and showUpdateBanner
-// depends on it: dropping the per-version dismissal key on every show is
-// what stops a transient banner ("up to date") from writing a stale
-// version into localStorage.
+// `data`, by contrast, IS replaced wholesale: showUpdateBanner rewrites
+// it on every show, so a download URL from an earlier banner never
+// survives into one that has none.
 export function setBanner(slot: BannerSlot, patch: Partial<BannerData>): void {
   const cur = get().banners[slot];
   let actions = cur.actions;
