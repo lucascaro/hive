@@ -370,6 +370,26 @@ does not need a human.
   writing a second typing for the same boundary. The store's term tile is
   untyped there, so an inline `as` is where the type has to come from; having
   two spellings of it would invite them to diverge.
+- **2026-09-20** — Review iteration 1 raised three IMPORTANT findings; verified
+  each in a real browser before acting, and one was misdiagnosed. The inert
+  `.shadow` override is indeed dead code, but not because it loses a specificity
+  war: xterm 6 constructs its scrollable element with `useShadows:false`, so the
+  node is never created at all (confirmed against a filled, scrolled terminal and
+  in the shipped bundle). Deleted the rule rather than adding the suggested
+  `--vscode-scrollbar-shadow: transparent`, which would also have been dead.
+- **2026-09-20** — Restored the `.xterm-viewport::-webkit-scrollbar` suppression
+  that the first pass deleted. v6 does keep `overflow-y: scroll` on that element,
+  so base.css's global 8px skin would reserve a gutter under macOS "Always show
+  scrollbars" — invisible under the overlay scrollbars headless Chromium uses,
+  which is why the first round missed it. Cheap and cannot regress anything, so
+  restored rather than proven.
+- **2026-09-20** — Re-valued the three scrollbar tokens in all 19 non-empty preset
+  blocks rather than only the five light ones. `themes.css`'s header rule is
+  strictly honoured today — six sampled tokens each appear in all 19 — so a
+  partial addition broke a live invariant even though coverage was complete for
+  current presets. Did **not** add a token-completeness test: no such guard
+  exists for any other token, and inventing one for these three alone is scope
+  that belongs to a separate change.
 - **2026-09-20** — Regenerated the wailsjs bindings after branching. Why: the
   bindings had been generated against the older worktree HEAD, so `tsc` failed
   on `UpdateBuildLog` / `hasBuildLog` from #433 — errors in files this change
@@ -401,6 +421,10 @@ does not need a human.
   green: `tsc --noEmit`, `biome ci .`, `vitest run` (1501 tests, 112 files),
   `playwright test` (389 passed / 31 skipped), `ui-lint.sh --strict`.
   `test:e2e:real` 25/26, the one failure being the pre-existing #440.
+
+## PR convergence ledger
+
+Append-only, one line per `/hs-review-loop` iteration.
 
 ## Open questions
 

@@ -2,6 +2,11 @@
    to hive-dark and look broken in light. docs/design-docs/ui/themes.md */
 
 :root[data-theme="classic"] {
+  /* Same values as the tokens.css default, stated explicitly: this file's
+     header rule is that every block re-values every token. */
+  --scrollbar-thumb: rgba(255, 255, 255, 0.08);
+  --scrollbar-thumb-hover: rgba(255, 255, 255, 0.18);
+  --scrollbar-thumb-active: rgba(255, 255, 255, 0.26);
   --bg: #000;
   --surface: #0a0a0a;
   --surface-raised: #111;
@@ -86,6 +91,11 @@
    token and inherits the type/space/motion scales from tokens.css — those
    are one scale for the whole app, not a per-preset choice. */
 :root[data-theme="native-dark"] {
+  /* Same values as the tokens.css default, stated explicitly: this file's
+     header rule is that every block re-values every token. */
+  --scrollbar-thumb: rgba(255, 255, 255, 0.08);
+  --scrollbar-thumb-hover: rgba(255, 255, 255, 0.18);
+  --scrollbar-thumb-active: rgba(255, 255, 255, 0.26);
   --bg: #1e1e1f; --surface: #252527; --surface-raised: #27272a; --border: #3a3a3d;
   --fg: #ececed; --fg-muted: #b8b8bc; --fg-subtle: #7a7a80;
   --accent: #e6a23c; --on-accent: #1a1a1a; --sel: #3b3b40;
@@ -147,6 +157,11 @@
    the mock value is 2.96:1 on #0a0a0a and misses the >= 3 decorative rule
    by a hair. */
 :root[data-theme="terminal"] {
+  /* Same values as the tokens.css default, stated explicitly: this file's
+     header rule is that every block re-values every token. */
+  --scrollbar-thumb: rgba(255, 255, 255, 0.08);
+  --scrollbar-thumb-hover: rgba(255, 255, 255, 0.18);
+  --scrollbar-thumb-active: rgba(255, 255, 255, 0.26);
   --bg: #0a0a0a; --surface: #0a0a0a; --surface-raised: #0f0f0f; --border: #232323;
   --fg: #d6d6d6; --fg-muted: #9c9c9c; --fg-subtle: #6f6f6f;
   --accent: #e8c170; --on-accent: #000000; --sel: #1a1a1a;
@@ -207,6 +222,11 @@
    chrome, --surface the canonical #282a36; purple is the accent because pink
    is spoken for by --state-error. ANSI 16 is Dracula's own published set. */
 :root[data-theme="dracula"] {
+  /* Same values as the tokens.css default, stated explicitly: this file's
+     header rule is that every block re-values every token. */
+  --scrollbar-thumb: rgba(255, 255, 255, 0.08);
+  --scrollbar-thumb-hover: rgba(255, 255, 255, 0.18);
+  --scrollbar-thumb-active: rgba(255, 255, 255, 0.26);
   --contrast-exempt: 1;
   --bg: #21222c; --surface: #282a36; --surface-raised: #2f3140; --border: #44475a;
   --fg: #f8f8f2; --fg-muted: #c8cee0; --fg-subtle: #6272a4;
@@ -242,6 +262,11 @@
    published values to preserve and no reason to opt out of the contrast
    gate. Checked like a first-party preset; do not add --contrast-exempt. */
 :root[data-theme="alucard"] {
+  /* Same values as the tokens.css default, stated explicitly: this file's
+     header rule is that every block re-values every token. */
+  --scrollbar-thumb: rgba(255, 255, 255, 0.08);
+  --scrollbar-thumb-hover: rgba(255, 255, 255, 0.18);
+  --scrollbar-thumb-active: rgba(255, 255, 255, 0.26);
   --bg: #0a0908; --surface: #13110f; --surface-raised: #1b1815; --border: #2a231e;
   --fg: #ece4d8; --fg-muted: #b6ab99; --fg-subtle: #7d7364;
   --accent: #d9a862; --on-accent: #14120f; --sel: #2a231e;
@@ -267,6 +292,11 @@
    ANSI maps the bright row to the same eight hues as the normal row; that is
    upstream's choice, kept. */
 :root[data-theme="nord"] {
+  /* Same values as the tokens.css default, stated explicitly: this file's
+     header rule is that every block re-values every token. */
+  --scrollbar-thumb: rgba(255, 255, 255, 0.08);
+  --scrollbar-thumb-hover: rgba(255, 255, 255, 0.18);
+  --scrollbar-thumb-active: rgba(255, 255, 255, 0.26);
   --contrast-exempt: 1;
   --bg: #2e3440; --surface: #3b4252; --surface-raised: #434c5e; --border: #4c566a;
   --fg: #eceff4; --fg-muted: #d8dee9; --fg-subtle: #7b88a1;
@@ -289,6 +319,11 @@
 /* Gruvbox Dark — MIT, Pavel Pertsev. bg0/bg0_s/bg1 for the grounds, the
    "bright" Aurora-equivalents for the states, and gruvbox's own sixteen. */
 :root[data-theme="gruvbox-dark"] {
+  /* Same values as the tokens.css default, stated explicitly: this file's
+     header rule is that every block re-values every token. */
+  --scrollbar-thumb: rgba(255, 255, 255, 0.08);
+  --scrollbar-thumb-hover: rgba(255, 255, 255, 0.18);
+  --scrollbar-thumb-active: rgba(255, 255, 255, 0.26);
   --contrast-exempt: 1;
   --bg: #282828; --surface: #32302f; --surface-raised: #3c3836; --border: #504945;
   --fg: #ebdbb2; --fg-muted: #d5c4a1; --fg-subtle: #928374;
@@ -312,6 +347,11 @@
    with the theme's blue selection, and its published ANSI including the
    distinct bright row. */
 :root[data-theme="tokyo-night"] {
+  /* Same values as the tokens.css default, stated explicitly: this file's
+     header rule is that every block re-values every token. */
+  --scrollbar-thumb: rgba(255, 255, 255, 0.08);
+  --scrollbar-thumb-hover: rgba(255, 255, 255, 0.18);
+  --scrollbar-thumb-active: rgba(255, 255, 255, 0.26);
   --contrast-exempt: 1;
   --bg: #1a1b26; --surface: #24283b; --surface-raised: #2a2e42; --border: #3b4261;
   --fg: #c0caf5; --fg-muted: #a9b1d6; --fg-subtle: #737aa2;
@@ -334,6 +374,11 @@
 /* Catppuccin Mocha — MIT, Catppuccin. base/surface0/surface1 for the grounds,
    text/subtext1/overlay1 for the type ramp, mauve as the accent. */
 :root[data-theme="catppuccin-mocha"] {
+  /* Same values as the tokens.css default, stated explicitly: this file's
+     header rule is that every block re-values every token. */
+  --scrollbar-thumb: rgba(255, 255, 255, 0.08);
+  --scrollbar-thumb-hover: rgba(255, 255, 255, 0.18);
+  --scrollbar-thumb-active: rgba(255, 255, 255, 0.26);
   --contrast-exempt: 1;
   --bg: #1e1e2e; --surface: #313244; --surface-raised: #3a3c4e; --border: #585b70;
   --fg: #cdd6f4; --fg-muted: #bac2de; --fg-subtle: #7f849c;
@@ -357,6 +402,11 @@
    (Atom's UI text) rather than the syntax foreground #abb2bf, which is the
    muted step here — the same split Atom itself makes between chrome and code. */
 :root[data-theme="one-dark"] {
+  /* Same values as the tokens.css default, stated explicitly: this file's
+     header rule is that every block re-values every token. */
+  --scrollbar-thumb: rgba(255, 255, 255, 0.08);
+  --scrollbar-thumb-hover: rgba(255, 255, 255, 0.18);
+  --scrollbar-thumb-active: rgba(255, 255, 255, 0.26);
   --contrast-exempt: 1;
   --bg: #21252b; --surface: #282c34; --surface-raised: #2f343d; --border: #3e4451;
   --fg: #d7dae0; --fg-muted: #abb2bf; --fg-subtle: #7f8796;
@@ -382,6 +432,11 @@
    every editor. Purple is the accent because green, orange, pink and cyan are
    all spoken for by the state family. */
 :root[data-theme="neon"] {
+  /* Same values as the tokens.css default, stated explicitly: this file's
+     header rule is that every block re-values every token. */
+  --scrollbar-thumb: rgba(255, 255, 255, 0.08);
+  --scrollbar-thumb-hover: rgba(255, 255, 255, 0.18);
+  --scrollbar-thumb-active: rgba(255, 255, 255, 0.26);
   --contrast-exempt: 1;
   --bg: #1e1f1c; --surface: #272822; --surface-raised: #2f302a; --border: #49483e;
   --fg: #f8f8f2; --fg-muted: #cfd0c2; --fg-subtle: #90907e;
@@ -405,6 +460,11 @@
    sibling on base03/base02 grounds; base1/base0/base01 for the type ramp.
    Solarized's bright ANSI row is its grey ramp by design, in both moods. */
 :root[data-theme="solarized-dark"] {
+  /* Same values as the tokens.css default, stated explicitly: this file's
+     header rule is that every block re-values every token. */
+  --scrollbar-thumb: rgba(255, 255, 255, 0.08);
+  --scrollbar-thumb-hover: rgba(255, 255, 255, 0.18);
+  --scrollbar-thumb-active: rgba(255, 255, 255, 0.26);
   --contrast-exempt: 1;
   --bg: #002b36; --surface: #073642; --surface-raised: #0c4552; --border: #586e75;
   --fg: #93a1a1; --fg-muted: #839496; --fg-subtle: #586e75;
@@ -483,6 +543,11 @@
 /* GitHub Dark — MIT, GitHub Primer. Primer's dark canvas/default+subtle
    grounds and fg ramp, accent.emphasis blue, and Primer's terminal ANSI. */
 :root[data-theme="github-dark"] {
+  /* Same values as the tokens.css default, stated explicitly: this file's
+     header rule is that every block re-values every token. */
+  --scrollbar-thumb: rgba(255, 255, 255, 0.08);
+  --scrollbar-thumb-hover: rgba(255, 255, 255, 0.18);
+  --scrollbar-thumb-active: rgba(255, 255, 255, 0.26);
   --contrast-exempt: 1;
   --bg: #0d1117; --surface: #151b23; --surface-raised: #1c2128; --border: #3d444d;
   --fg: #e6edf3; --fg-muted: #9198a1; --fg-subtle: #6e7681;
@@ -539,6 +604,11 @@
    published values to preserve and no reason to opt out of the contrast
    gate. Checked like a first-party preset; do not add --contrast-exempt. */
 :root[data-theme="hex"] {
+  /* Same values as the tokens.css default, stated explicitly: this file's
+     header rule is that every block re-values every token. */
+  --scrollbar-thumb: rgba(255, 255, 255, 0.08);
+  --scrollbar-thumb-hover: rgba(255, 255, 255, 0.18);
+  --scrollbar-thumb-active: rgba(255, 255, 255, 0.26);
   --bg: #0c0813; --surface: #150f20; --surface-raised: #1c1429; --border: #2c2140;
   --fg: #e8e2f5; --fg-muted: #b0a6c8; --fg-subtle: #7a6e95;
   --accent: #a978ff; --on-accent: #16102a; --sel: #2a1f44;

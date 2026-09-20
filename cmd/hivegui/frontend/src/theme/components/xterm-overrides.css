@@ -1,13 +1,21 @@
-/* xterm 6 draws its own scrollbar (VS Code's scrollable element) rather than
-   relying on a native overflow scrollbar, so the old ::-webkit-scrollbar
-   suppression on .xterm-viewport no longer applies to anything. The slider
-   itself is themed from --scrollbar-thumb* via xtermTheme() in theme.ts, which
-   is what keeps it identical to the app scrollbar in base.css.
+/* xterm 6 draws its own scrollbar (VS Code's scrollable element) instead of
+   relying on the native overflow one, and the slider is themed from
+   --scrollbar-thumb* via xtermTheme() in theme.ts — that is what keeps it
+   identical to the app scrollbar in base.css.
 
-   What still needs overriding is the inset shadow xterm renders at the scroll
-   boundaries: it is driven by --vscode-scrollbar-shadow, a variable hive never
-   defines, so it falls back to solid black and reads as a dark band across the
-   top of a scrolled terminal. */
-.xterm .xterm-scrollable-element > .shadow {
+   The native scrollbar still has to be suppressed here, though: v6 keeps
+   `overflow-y: scroll` on .xterm-viewport (css/xterm.css), so without this the
+   global 8px ::-webkit-scrollbar skin in base.css reserves a gutter inside every
+   terminal tile under macOS "Always show scrollbars" — stealing width from the
+   columns fit() computes, next to a slider that is already drawn.
+
+   No rule is needed for xterm's inset scroll shadows: it constructs the
+   scrollable element with useShadows:false, so those nodes are never created
+   (verified in a real browser against a filled, scrolled terminal). */
+.xterm-viewport::-webkit-scrollbar {
   display: none;
+  width: 0;
+}
+.xterm-viewport {
+  scrollbar-width: none;
 }
