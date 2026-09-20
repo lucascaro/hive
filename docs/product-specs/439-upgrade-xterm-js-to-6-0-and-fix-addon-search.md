@@ -1,11 +1,12 @@
 ---
 issue: 439
 pr: 441
+shipped: 2026-09-20
 title: "Upgrade xterm.js to 6.0 and fix the addon-search version mismatch"
 type: enhancement
 complexity: M
 priority: P2
-stage: GATE
+stage: DONE
 ---
 
 # Upgrade xterm.js to 6.0 and fix the addon-search version mismatch
@@ -14,7 +15,7 @@ stage: GATE
 - **Type:** enhancement
 - **Complexity:** M
 - **Priority:** P2
-- **Exec plan:** [docs/exec-plans/active/439-upgrade-xterm-js-to-6-0-and-fix-addon-search.md](../exec-plans/active/439-upgrade-xterm-js-to-6-0-and-fix-addon-search.md)
+- **Exec plan:** [docs/exec-plans/completed/439-upgrade-xterm-js-to-6-0-and-fix-addon-search.md](../exec-plans/completed/439-upgrade-xterm-js-to-6-0-and-fix-addon-search.md)
 
 ## Problem
 

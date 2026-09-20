@@ -4,7 +4,7 @@
 - **Issue:** #439
 - **PR:** #441
 - **Branch:** `feature/439-upgrade-xterm-6`
-- **Status:** active
+- **Status:** completed
 
 ## Summary
 
@@ -458,6 +458,12 @@ does not need a human.
   `test:e2e:real` 25/26, the one failure being the pre-existing #440.
 
 ## Gate verdict
+
+- **2026-09-20** — verdict: PASS; phase: —; checks: 6 passed / 0 failed / 0 followups; followups: none; one-line: criterion 4 closed on the branch with a non-vacuous poisoning test; all three dimensions PASS.
+  - 2026-09-20 dimensions:
+    - acceptance — PASS — criterion 4 re-verified independently: with `_recreateSearchAddon` disabled the new direct-addon test fails with the documented `0/0` signature and the UI round-trip test is unaffected, exactly as commit `1eaa6f8f` claims. typecheck, biome, vitest 1501, playwright 391, `go test ./...` all green; e2e-real 25/26 with only the out-of-scope #440.
+    - non-goals — PASS — carried from the first run; no code changed since except added tests.
+    - doc accuracy — PASS — carried from the first run.
 
 - **2026-09-20** — verdict: NEEDS_FOLLOWUP; phase: —; checks: 5 passed / 0 failed / 1 followup; followups: pending; one-line: upgrade delivers every criterion except find-box coverage across a normal/alt buffer transition, which has no real-xterm test at any layer.
   - 2026-09-20 dimensions:
