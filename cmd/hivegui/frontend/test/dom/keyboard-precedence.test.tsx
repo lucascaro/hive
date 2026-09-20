@@ -10,7 +10,7 @@
 // a rename inside it — and then Escape closes the wrong thing, or
 // destroys something.
 //
-// Table-driven over all nine layers. Each case opens its layer AND every
+// Table-driven over all ten layers. Each case opens its layer AND every
 // layer below it, then presses Escape and asserts exactly one handler
 // ran. Pinning it this way is what makes a reordered ladder fail: a gate
 // that moved down is shadowed by the one that took its place.
@@ -104,6 +104,7 @@ const closeSettings = vi.fn();
 const closeWorktrees = vi.fn();
 const closeHelpOverlay = vi.fn();
 const closeWhatsNew = vi.fn();
+const closeHelp = vi.fn();
 const closeCommandPalette = vi.fn();
 vi.mock('../../src/app/modals/settings.js', () => ({
   closeSettings: () => closeSettings(),
@@ -123,6 +124,12 @@ vi.mock('../../src/app/modals/help-overlay.js', () => ({
   closeHelpOverlay: () => closeHelpOverlay(),
   openHelpOverlay: vi.fn(),
   toggleHelpOverlay: vi.fn(),
+}));
+vi.mock('../../src/app/modals/help.js', () => ({
+  closeHelp: () => closeHelp(),
+  openHelp: vi.fn(),
+  initHelp: vi.fn(),
+  handOffToShortcuts: vi.fn(),
 }));
 vi.mock('../../src/app/modals/whats-new.js', () => ({
   closeWhatsNew: () => closeWhatsNew(),
@@ -281,6 +288,11 @@ const LAYERS: {
     ran: () => closeHelpOverlay.mock.calls.length > 0,
   },
   {
+    name: 'help modal',
+    open: () => openModal({ id: 'help-modal' }),
+    ran: () => closeHelp.mock.calls.length > 0,
+  },
+  {
     name: "what's new",
     open: () => openModal({ id: 'whats-new' }),
     ran: () => closeWhatsNew.mock.calls.length > 0,
@@ -311,6 +323,7 @@ beforeEach(() => {
     closeSettings,
     closeWorktrees,
     closeHelpOverlay,
+    closeHelp,
     closeWhatsNew,
     closeCommandPalette,
     closeQuickIdea,
@@ -492,6 +505,7 @@ describe('the ⌘I menu path behaves like the keydown path', () => {
       () => openModal({ id: 'worktrees', projectId: 'p', projectName: '' }),
     ],
     ['the help overlay', () => openModal({ id: 'help' })],
+    ['the Help modal', () => openModal({ id: 'help-modal' })],
     ['the What’s New modal', () => openModal({ id: 'whats-new' })],
   ])('menu:quick-idea is a no-op under %s', (_name, open) => {
     open();

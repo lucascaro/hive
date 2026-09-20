@@ -61,7 +61,7 @@ beforeEach(() => {
 afterEach(cleanup);
 
 describe('the sidebar gift', () => {
-  it('renders third in the header, after new-project and check-updates', async () => {
+  it('renders third in the header, between check-updates and help', async () => {
     await mount();
     const ids = [...document.querySelectorAll('header button')].map(
       (b) => b.id,
@@ -70,6 +70,7 @@ describe('the sidebar gift', () => {
       'new-project-btn',
       'check-updates-btn',
       'whats-new-btn',
+      'help-btn',
     ]);
   });
 

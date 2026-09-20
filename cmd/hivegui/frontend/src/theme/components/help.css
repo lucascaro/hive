@@ -1,0 +1,68 @@
+/* Help modal (sidebar help icon). The shell is the dialog primitive; what is
+   left is three stacked sections — definitions, one shortcut row, the links
+   out. Single column for the same reason What's New is: these are sentences,
+   not key/label pairs. */
+/* Same focusability trick as #whats-new-body: `.hv-dialog__body` is the
+   scroller, and the concepts are pure text with the rows below them tabbable,
+   so this only needs the visible ring when it does take focus. */
+#help-modal-body:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+#help-modal-body section + section {
+  margin-top: var(--space-4);
+  padding-top: var(--space-4);
+  border-top: 1px solid var(--border);
+}
+#help-modal-body h4 {
+  margin: 0 0 var(--space-2);
+  font-size: var(--text-xs);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--fg-muted);
+}
+.help-concepts {
+  margin: 0;
+  display: grid;
+  gap: var(--space-2);
+}
+.help-concepts dt {
+  font-size: var(--text-sm);
+  font-weight: 600;
+  color: var(--fg);
+}
+.help-concepts dd {
+  margin: 0;
+  font-size: var(--text-sm);
+  line-height: 1.5;
+  color: var(--fg-muted);
+}
+.help-links {
+  display: grid;
+  gap: var(--space-1);
+}
+/* One row shape for both the shortcut handoff and the links: they do the same
+   thing from the user's side — activate and something opens. */
+.help-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+  width: 100%;
+  padding: var(--space-2);
+  border: 1px solid transparent;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  font: inherit;
+  font-size: var(--text-sm);
+  color: var(--fg);
+  text-align: left;
+  cursor: pointer;
+}
+.help-row:hover {
+  background: var(--hover);
+}
+.help-row:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
