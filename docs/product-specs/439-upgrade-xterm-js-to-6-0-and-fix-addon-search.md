@@ -49,8 +49,9 @@ paid for twice. Unit and DOM tests are jsdom and cannot see any of it; only
 The frontend runs xterm 6.x with all four addons on their matching 6.x-era
 versions, no silent cross-major pairing. Scroll, follow-bottom, find, and
 alt-screen behavior are indistinguishable from today's, proven by tests that
-exercise the real renderer rather than jsdom. Users see a smaller bundle and less
-redraw flicker in agent TUIs.
+exercise the real renderer rather than jsdom. Users see less redraw flicker in
+agent TUIs; the measured bundle growth (+18% raw, +24% gzipped) is accepted, not
+a benefit claimed.
 
 ## Success criteria
 
