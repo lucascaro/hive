@@ -106,6 +106,10 @@ const closeHelpOverlay = vi.fn();
 const closeWhatsNew = vi.fn();
 const closeHelp = vi.fn();
 const closeCommandPalette = vi.fn();
+// The two halves of the ⌘/ menu path. Spied rather than bare vi.fn()s
+// because which of them runs is the whole assertion below.
+const toggleHelpOverlay = vi.fn();
+const handOffToShortcuts = vi.fn();
 vi.mock('../../src/app/modals/settings.js', () => ({
   closeSettings: () => closeSettings(),
   openSettings: vi.fn(),
@@ -123,13 +127,13 @@ vi.mock('../../src/app/modals/command-palette.js', () => ({
 vi.mock('../../src/app/modals/help-overlay.js', () => ({
   closeHelpOverlay: () => closeHelpOverlay(),
   openHelpOverlay: vi.fn(),
-  toggleHelpOverlay: vi.fn(),
+  toggleHelpOverlay: () => toggleHelpOverlay(),
 }));
 vi.mock('../../src/app/modals/help.js', () => ({
   closeHelp: () => closeHelp(),
   openHelp: vi.fn(),
   initHelp: vi.fn(),
-  handOffToShortcuts: vi.fn(),
+  handOffToShortcuts: () => handOffToShortcuts(),
 }));
 vi.mock('../../src/app/modals/whats-new.js', () => ({
   closeWhatsNew: () => closeWhatsNew(),
@@ -324,6 +328,8 @@ beforeEach(() => {
     closeWorktrees,
     closeHelpOverlay,
     closeHelp,
+    toggleHelpOverlay,
+    handOffToShortcuts,
     closeWhatsNew,
     closeCommandPalette,
     closeQuickIdea,
@@ -512,5 +518,24 @@ describe('the ⌘I menu path behaves like the keydown path', () => {
     menu('menu:quick-idea');
     expect(openQuickIdea).not.toHaveBeenCalled();
     expect(closeQuickIdea).not.toHaveBeenCalled();
+  });
+
+  // The Help modal advertises ⌘/ next to its shortcuts row, and the
+  // window listener's help-modal branch turns that key into a handoff.
+  // On macOS that branch never runs — menu_darwin.go binds ⌘/ to this
+  // menu item — so a bare toggle here would stack the overlay on top of
+  // an open Help modal: two aria-modal dialogs, with Escape then closing
+  // the overlay and stranding Help underneath.
+  it('menu:keyboard-shortcuts hands off instead of stacking on the Help modal', () => {
+    openModal({ id: 'help-modal' });
+    menu('menu:keyboard-shortcuts');
+    expect(handOffToShortcuts).toHaveBeenCalledTimes(1);
+    expect(toggleHelpOverlay).not.toHaveBeenCalled();
+  });
+
+  it('menu:keyboard-shortcuts still toggles the overlay with Help shut', () => {
+    menu('menu:keyboard-shortcuts');
+    expect(toggleHelpOverlay).toHaveBeenCalledTimes(1);
+    expect(handOffToShortcuts).not.toHaveBeenCalled();
   });
 });

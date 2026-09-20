@@ -954,7 +954,21 @@ const menuActions = {
   // the key before the webview on macOS, so the keydown close path
   // (Escape/⌘/ in the window listener) never sees ⌘/ while the menu
   // owns it.
-  'menu:keyboard-shortcuts': () => toggleHelpOverlay(),
+  //
+  // For the same reason this has to repeat the Help modal's ⌘/ branch
+  // (see the isModalOpen('help-modal') gate in the window listener): on
+  // macOS that branch never runs, so a bare toggle here would open the
+  // shortcuts overlay ON TOP of an open Help modal — two aria-modal
+  // dialogs at once, with Escape then closing the overlay and leaving
+  // Help stranded underneath. The handoff is the same one the modal's
+  // shortcuts row performs.
+  'menu:keyboard-shortcuts': () => {
+    if (isModalOpen('help-modal')) {
+      handOffToShortcuts();
+      return;
+    }
+    toggleHelpOverlay();
+  },
   'menu:toggle-scroll-debug': () => toggleScrollDebug(),
   'menu:copy-scroll-trace': () => copyScrollTrace(),
 };

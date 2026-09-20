@@ -56,7 +56,9 @@ async function mount() {
 const helpBtn = () => document.getElementById('help-btn') as HTMLButtonElement;
 const dialog = () => document.getElementById('help-modal') as HTMLElement;
 const overlay = () => document.getElementById('help-overlay') as HTMLElement;
-const open = () => document.getElementById('help-modal') !== null;
+// The root div is static markup, so its existence proves nothing — open
+// state is the `hidden` class, exactly as every other case here reads it.
+const open = () => !dialog().classList.contains('hidden');
 
 beforeEach(() => {
   localStorage.clear();

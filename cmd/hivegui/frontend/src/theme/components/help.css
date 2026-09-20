@@ -2,13 +2,10 @@
    left is three stacked sections — definitions, one shortcut row, the links
    out. Single column for the same reason What's New is: these are sentences,
    not key/label pairs. */
-/* Same focusability trick as #whats-new-body: `.hv-dialog__body` is the
-   scroller, and the concepts are pure text with the rows below them tabbable,
-   so this only needs the visible ring when it does take focus. */
-#help-modal-body:focus-visible {
-  outline: 2px solid var(--accent);
-  outline-offset: 2px;
-}
+/* No #whats-new-body-style tabIndex here, and so no focus ring to match it:
+   that one is tabbable because its list is pure text with nothing focusable
+   in it, whereas the shortcuts row and the link rows below carry their own
+   tab stops. */
 #help-modal-body section + section {
   margin-top: var(--space-4);
   padding-top: var(--space-4);
