@@ -2,6 +2,8 @@
 
 - **Spec:** [docs/product-specs/442-add-a-help-button-and-help-modal.md](../../product-specs/442-add-a-help-button-and-help-modal.md)
 - **Issue:** #442
+- **PR:** #443
+- **Branch:** `feature/442-help-modal`
 - **Status:** active
 
 ## Summary
@@ -292,12 +294,28 @@ Both rounds reported no injection attempts in the spec or plan text.
 - **2026-09-20** — Verify the four-icon header layout with an e2e assertion rather than by
   eye. Why: AGENTS.md's manual-smoke rule rejects "build it and look", and the first draft
   of that check was a tautology at the default width.
+- **2026-09-20** — Assert the header's INTRINSIC width against SIDEBAR_MIN_WIDTH rather
+  than forcing a narrow `--sidebar-width`. Why: measured during implementation — #sidebar
+  is a grid item with the default `min-width: auto`, so the column floors at min-content
+  and a 180px request renders identically to 220px (both 219px). The planned "narrow"
+  case was therefore a second no-op. The real failure mode is that floor rising past 220,
+  which would stop the sidebar being resized to its documented minimum. Today the header
+  needs ~173px, and the assertion was confirmed to fail when the threshold is lowered.
+- **2026-09-20** — `handOffToShortcuts()` lives in `app/modals/help.ts`, not in
+  `components/modals/Help.tsx`. Why: `app/keyboard.ts` needs it for the ⌘/ branch, and
+  app/ importing a component would invert the existing layering.
+- **2026-09-20** — Split the Help e2e cases into their own `help-modal.spec.ts`, leaving
+  `sidebar-header-actions.spec.ts` to layout only. Why: the plan put both in the layout
+  file; behaviour and layout are different jobs and the layout file says so in its header.
 
 ## Progress
 
 - **2026-09-20** — Spec created from issue #442; triaged enhancement / M / P2; research
   recorded.
 - **2026-09-20** — Plan approved after two second-opinion rounds; stage PLAN -> IMPLEMENT.
+- **2026-09-20** — Implemented; all checks green (typecheck, biome ci, ui-lint --strict,
+  ui-lint --contrast, CI=1 scripts/test.sh: 397 passed / 31 skipped, one unrelated
+  worktrees.spec.ts flake that passed on retry). PR #443 opened; stage IMPLEMENT -> REVIEW.
 
 ## Open questions
 

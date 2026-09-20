@@ -1,5 +1,6 @@
 ---
 issue: 442
+pr: 443
 type: added
 bump: minor
 ---

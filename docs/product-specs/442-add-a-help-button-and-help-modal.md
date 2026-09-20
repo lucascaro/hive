@@ -1,10 +1,11 @@
 ---
 issue: 442
+pr: 443
 title: "Add a Help button and Help modal to the sidebar header"
 type: enhancement
 complexity: M
 priority: P2
-stage: IMPLEMENT
+stage: REVIEW
 ---
 
 # Add a Help button and Help modal to the sidebar header
