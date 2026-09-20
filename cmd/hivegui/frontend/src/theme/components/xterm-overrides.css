@@ -1,11 +1,13 @@
-/* xterm.js renders its own scrollbar inside .xterm-viewport — hide it
-   completely. Scrollback still works via mouse wheel / trackpad and is
-   the same buffer whether or not the bar is visible. */
-.xterm-viewport::-webkit-scrollbar {
-  display: none;
-  width: 0;
-}
-.xterm-viewport {
-  scrollbar-width: none;
-}
+/* xterm 6 draws its own scrollbar (VS Code's scrollable element) rather than
+   relying on a native overflow scrollbar, so the old ::-webkit-scrollbar
+   suppression on .xterm-viewport no longer applies to anything. The slider
+   itself is themed from --scrollbar-thumb* via xtermTheme() in theme.ts, which
+   is what keeps it identical to the app scrollbar in base.css.
 
+   What still needs overriding is the inset shadow xterm renders at the scroll
+   boundaries: it is driven by --vscode-scrollbar-shadow, a variable hive never
+   defines, so it falls back to solid black and reads as a dark band across the
+   top of a scrolled terminal. */
+.xterm .xterm-scrollable-element > .shadow {
+  display: none;
+}

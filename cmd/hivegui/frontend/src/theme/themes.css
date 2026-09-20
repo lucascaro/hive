@@ -48,6 +48,11 @@
    as a template for a preset that isn't sharing hive-dark's scales — that
    preset must set every token, per the file-header rule above. */
 :root[data-theme="hive-light"] {
+  /* Dark slider: the default white one is invisible on a light ground.
+     Consumed by base.css and by theme.ts's xterm scrollbar keys. */
+  --scrollbar-thumb: rgba(0, 0, 0, 0.16);
+  --scrollbar-thumb-hover: rgba(0, 0, 0, 0.28);
+  --scrollbar-thumb-active: rgba(0, 0, 0, 0.38);
   --bg: #f4f4f7; --surface: #ffffff; --surface-raised: #f8f8fb; --border: #e2e3ea;
   --fg: #1a1b22; --fg-muted: #4f5262; --fg-subtle: #8a8d9c;
   --accent: #c47a12; --on-accent: #1a1b22; --sel: #eceef5;
@@ -106,6 +111,11 @@
    clears AA (#a35f0d is 5.00:1; the mock's #e6a23c would be 1.9:1, unusable
    for a button label). */
 :root[data-theme="native-light"] {
+  /* Dark slider: the default white one is invisible on a light ground.
+     Consumed by base.css and by theme.ts's xterm scrollbar keys. */
+  --scrollbar-thumb: rgba(0, 0, 0, 0.16);
+  --scrollbar-thumb-hover: rgba(0, 0, 0, 0.28);
+  --scrollbar-thumb-active: rgba(0, 0, 0, 0.38);
   --bg: #ffffff; --surface: #f3f3f3; --surface-raised: #ffffff; --border: #e0e0e0;
   --fg: #1c1c1e; --fg-muted: #4c4c52; --fg-subtle: #6e6e76;
   --accent: #a35f0d; --on-accent: #ffffff; --sel: #dfe6f5;
@@ -419,6 +429,11 @@
    design, which is what makes it the palette that departs furthest from the
    AA bar on its own #fdf6e3 ground — upstream's intent, kept. */
 :root[data-theme="solarized-light"] {
+  /* Dark slider: the default white one is invisible on a light ground.
+     Consumed by base.css and by theme.ts's xterm scrollbar keys. */
+  --scrollbar-thumb: rgba(0, 0, 0, 0.16);
+  --scrollbar-thumb-hover: rgba(0, 0, 0, 0.28);
+  --scrollbar-thumb-active: rgba(0, 0, 0, 0.38);
   --contrast-exempt: 1;
   --bg: #fdf6e3; --surface: #eee8d5; --surface-raised: #fdf6e3; --border: #ddd6c1;
   --fg: #586e75; --fg-muted: #657b83; --fg-subtle: #93a1a1;
@@ -441,6 +456,11 @@
 /* Catppuccin Latte — MIT, Catppuccin. Mantle/base/white for the grounds so a
    row card genuinely lifts off the panel, text/subtext0/overlay1 for type. */
 :root[data-theme="catppuccin-latte"] {
+  /* Dark slider: the default white one is invisible on a light ground.
+     Consumed by base.css and by theme.ts's xterm scrollbar keys. */
+  --scrollbar-thumb: rgba(0, 0, 0, 0.16);
+  --scrollbar-thumb-hover: rgba(0, 0, 0, 0.28);
+  --scrollbar-thumb-active: rgba(0, 0, 0, 0.38);
   --contrast-exempt: 1;
   --bg: #e6e9ef; --surface: #eff1f5; --surface-raised: #ffffff; --border: #ccd0da;
   --fg: #4c4f69; --fg-muted: #5c5f77; --fg-subtle: #8c8fa1;
@@ -486,6 +506,11 @@
    fg.default/fg.muted/fg.subtle type ramp, accent.emphasis blue, and Primer's
    own terminal ANSI. */
 :root[data-theme="github-light"] {
+  /* Dark slider: the default white one is invisible on a light ground.
+     Consumed by base.css and by theme.ts's xterm scrollbar keys. */
+  --scrollbar-thumb: rgba(0, 0, 0, 0.16);
+  --scrollbar-thumb-hover: rgba(0, 0, 0, 0.28);
+  --scrollbar-thumb-active: rgba(0, 0, 0, 0.38);
   --contrast-exempt: 1;
   --bg: #ffffff; --surface: #f6f8fa; --surface-raised: #ffffff; --border: #d1d9e0;
   --fg: #1f2328; --fg-muted: #59636e; --fg-subtle: #818b98;

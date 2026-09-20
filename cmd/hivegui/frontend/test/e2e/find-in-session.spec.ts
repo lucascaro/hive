@@ -165,12 +165,21 @@ test.describe('spec 431 find in session', () => {
     }, id);
 
     // How far the viewport sits above the bottom of the scrollback.
+    // Distance from the bottom, read off the terminal buffer rather than the
+    // viewport element's scroll geometry. xterm 6 moved scrolling into its own
+    // scrollable element, so .xterm-viewport no longer carries the full scroll
+    // height and the DOM form reads 0 however far the terminal has scrolled.
+    // baseY - viewportY is terminal state, not a renderer implementation detail.
+    // Same shape as test/e2e-real/term-harness.ts's bufferHas: the store's
+    // term tile is untyped at this boundary, so the cast is where the type
+    // comes from.
     const fromBottom = () =>
       page.evaluate(() => {
-        const vp = document.querySelector(
-          '.term-focused .xterm-viewport',
-        ) as HTMLElement | null;
-        return vp ? vp.scrollHeight - vp.clientHeight - vp.scrollTop : -1;
+        const st = [...(window.__hive_state?.terms?.values() || [])][0] as
+          | { term?: { buffer?: { active?: import('@xterm/xterm').IBuffer } } }
+          | undefined;
+        const buf = st?.term?.buffer?.active;
+        return buf ? buf.baseY - buf.viewportY : -1;
       });
 
     await page.keyboard.press('Control+Shift+f');

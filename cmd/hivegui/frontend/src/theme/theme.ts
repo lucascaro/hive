@@ -189,8 +189,23 @@ export function xtermTheme(doc: Document = document) {
     const value = v(`--ansi-${i}`);
     if (value) ansi[key] = value;
   });
+  // xterm 6 draws its own scrollbar and themes the slider from these three
+  // keys. They read the same tokens base.css skins the app scrollbar with, so
+  // the two cannot drift. Omitted when absent, for the same reason the ANSI
+  // slots are: xterm's own default beats an empty string.
+  const scrollbar: Record<string, string> = {};
+  const SCROLLBAR_KEYS = [
+    ['scrollbarSliderBackground', '--scrollbar-thumb'],
+    ['scrollbarSliderHoverBackground', '--scrollbar-thumb-hover'],
+    ['scrollbarSliderActiveBackground', '--scrollbar-thumb-active'],
+  ] as const;
+  for (const [key, token] of SCROLLBAR_KEYS) {
+    const value = v(token);
+    if (value) scrollbar[key] = value;
+  }
   return {
     ...ansi,
+    ...scrollbar,
     background: v('--term-bg'),
     foreground: v('--term-fg'),
     cursor: accent,

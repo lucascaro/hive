@@ -13,6 +13,15 @@
   --on-accent: #15120a;
   --sel: #1c1e28;
   --hover: color-mix(in srgb, var(--sel) 60%, transparent);
+  /* Scrollbar slider. One definition for both scrollbars: base.css skins the
+     app's, and theme.ts hands the same values to xterm as
+     scrollbarSlider{,Hover,Active}Background. Literal rgba(), not color-mix:
+     getPropertyValue cannot resolve color-mix, and theme.ts must read these
+     as strings. Every light preset re-values them in themes.css — a white
+     slider is invisible on a light ground. */
+  --scrollbar-thumb: rgba(255, 255, 255, 0.08);
+  --scrollbar-thumb-hover: rgba(255, 255, 255, 0.18);
+  --scrollbar-thumb-active: rgba(255, 255, 255, 0.26);
   --btn: #1a1c25;
   --btn-border: #2b2e3b;
   --state-running: #5fd7a5;

@@ -1035,3 +1035,52 @@ test('an attention row pulses an overlay, not its own background', async ({
   );
   expect(name).toBe('hv-attn-tint');
 });
+
+// xterm 6 draws its own scrollbar and themes the slider from
+// scrollbarSlider*Background. Those come from the same --scrollbar-thumb*
+// tokens base.css skins the app's scrollbar with, so the two are one visual
+// fact with one definition. This test is what stops them drifting apart: it
+// asserts the terminal's slider resolves to the token value, in a dark preset
+// and a light one — the light case matters because a white slider that is
+// merely subtle on #0f1014 is invisible on #ffffff.
+for (const preset of ['hive-dark', 'hive-light'] as const) {
+  test(`the terminal scrollbar slider matches the app scrollbar (${preset})`, async ({
+    page,
+  }) => {
+    await page.addInitScript(
+      (p) => localStorage.setItem('hive.theme', p),
+      preset,
+    );
+    await boot(page);
+
+    const token = await page.evaluate(() =>
+      getComputedStyle(document.documentElement)
+        .getPropertyValue('--scrollbar-thumb')
+        .trim(),
+    );
+    expect(token).not.toBe('');
+
+    // The slider xterm renders, not the element we asked it to paint: reading
+    // the option back would only prove we set what we set.
+    const slider = page
+      .locator('.term-focused .xterm-scrollable-element > .scrollbar .slider')
+      .first();
+    await expect(slider).toHaveCount(1);
+    const painted = await slider.evaluate(
+      (el) => getComputedStyle(el).backgroundColor,
+    );
+
+    // Both sides through the same parser: the token is authored as rgba(),
+    // getComputedStyle returns its own normalisation of it.
+    const normalise = async (color: string) =>
+      page.evaluate((c) => {
+        const probe = document.createElement('div');
+        probe.style.backgroundColor = c;
+        document.body.appendChild(probe);
+        const out = getComputedStyle(probe).backgroundColor;
+        probe.remove();
+        return out;
+      }, color);
+    expect(painted).toBe(await normalise(token));
+  });
+}
