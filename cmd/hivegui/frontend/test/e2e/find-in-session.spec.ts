@@ -236,6 +236,138 @@ test.describe('spec 431 find in session', () => {
     await expect(page.locator('.hv-find-hit')).toHaveText('needle');
   });
 
+  // Spec 439's criterion 4, the UI half: find still works on the normal
+  // buffer after a full alt-screen round trip, against the real
+  // @xterm/addon-search under the xterm 6 pairing.
+  //
+  // This is the only test in the tree that LEAVES the alternate buffer
+  // (DECRST 1049l) — every other alt-screen test enters and stays.
+  //
+  // It does NOT exercise the #430/#431 poisoning defence, and must not be
+  // read as doing so: the find box's own guard never lets the addon search
+  // while the alt buffer is active, so this path cannot reach the defect.
+  // Verified by disabling `_recreateSearchAddon` — this test still passes.
+  // The test below is the one that pins the defence.
+  test('the normal buffer is still searchable after an alt-screen round trip', async ({
+    page,
+  }) => {
+    await bootAsLinux(page);
+    const id = await activeId(page);
+    expect(id).not.toBe('');
+
+    const esc = String.fromCharCode(27);
+
+    await page.evaluate((sid) => {
+      const lines = Array.from(
+        { length: 80 },
+        (_, i) =>
+          `line ${i} ${i === 5 || i === 40 || i === 75 ? 'needle' : 'hay'}\r\n`,
+      ).join('');
+      window.__hive.emit('pty:data', sid, btoa(lines));
+    }, id);
+
+    // Baseline: the real addon finds all three in the normal buffer.
+    await page.keyboard.press('Control+Shift+f');
+    await expect(page.locator('[data-find-source="buffer"]')).toBeVisible();
+    await page.locator('[data-find-input]').fill('needle');
+    await expect(page.locator('[data-find-count]')).toHaveText('1/3');
+    await page.keyboard.press('Escape');
+
+    // Into the alternate screen, and search there — the step that used to
+    // poison the addon for good.
+    await page.evaluate(
+      ([sid, e]) => {
+        window.__hive.setTranscript?.(sid, ['a needle in the transcript']);
+        window.__hive.emit('pty:data', sid, btoa(`${e}[?1049h`));
+      },
+      [id, esc] as const,
+    );
+    await page.keyboard.press('Control+Shift+f');
+    await expect(page.locator('[data-find-source="transcript"]')).toBeVisible();
+    await page.locator('[data-find-input]').fill('needle');
+    await expect(page.locator('[data-find-count]')).toHaveText('1/1');
+    await page.keyboard.press('Escape');
+
+    // Back out to the normal buffer.
+    await page.evaluate(
+      ([sid, e]) => {
+        window.__hive.emit('pty:data', sid, btoa(`${e}[?1049l`));
+      },
+      [id, esc] as const,
+    );
+
+    // The assertion that matters: real counts, not 0/0.
+    await page.keyboard.press('Control+Shift+f');
+    await expect(page.locator('[data-find-source="buffer"]')).toBeVisible();
+    await page.locator('[data-find-input]').fill('needle');
+    await expect(page.locator('[data-find-count]')).toHaveText('1/3');
+    await page.keyboard.press('Enter');
+    await expect(page.locator('[data-find-count]')).toHaveText('2/3');
+  });
+
+  // Spec 439's criterion 4, the defence-in-depth half: the #430/#431
+  // poisoning defect must not return under xterm 6 + addon-search 0.16.0.
+  //
+  // The defect: ANY search performed against the addon while the alternate
+  // buffer is active permanently poisons it for the normal buffer —
+  // clearDecorations() does not clear it, an empty-query search does not
+  // clear it, only a fresh instance recovers. `_recreateSearchAddon` is the
+  // cure and runs on every buffer transition.
+  //
+  // This drives the addon DIRECTLY, bypassing the find box, on purpose: the
+  // UI guard means no user action can reach the poisoning, so the guard is
+  // what makes it unreachable and this is what proves the cure still works
+  // if the guard ever regresses. That is the same shape as spec 430's PoC.
+  test('a search against the alt buffer does not poison the normal buffer', async ({
+    page,
+  }) => {
+    await bootAsLinux(page);
+    const id = await activeId(page);
+    expect(id).not.toBe('');
+
+    const esc = String.fromCharCode(27);
+
+    await page.evaluate((sid) => {
+      const lines = Array.from(
+        { length: 80 },
+        (_, i) =>
+          `line ${i} ${i === 5 || i === 40 || i === 75 ? 'needle' : 'hay'}\r\n`,
+      ).join('');
+      window.__hive.emit('pty:data', sid, btoa(lines));
+    }, id);
+
+    // Alt screen, then search the addon directly — the poisoning step.
+    await page.evaluate(
+      ([sid, e]) => {
+        window.__hive.emit('pty:data', sid, btoa(`${e}[?1049h`));
+      },
+      [id, esc] as const,
+    );
+    const poisoned = await page.evaluate((sid) => {
+      const st = window.__hive_state?.terms?.get(sid) as
+        | { search?: { findNext?: (q: string) => boolean } }
+        | undefined;
+      return st?.search?.findNext?.('needle') ?? null;
+    }, id);
+    // The alt buffer holds no matches, so this finding nothing is expected;
+    // what matters is the state it leaves the addon in.
+    expect(poisoned).not.toBeNull();
+
+    // Back to the normal buffer — the transition that recreates the addon.
+    await page.evaluate(
+      ([sid, e]) => {
+        window.__hive.emit('pty:data', sid, btoa(`${e}[?1049l`));
+      },
+      [id, esc] as const,
+    );
+
+    // Without the cure the addon reports 0/0 here, forever.
+    await page.keyboard.press('Control+Shift+f');
+    await expect(page.locator('[data-find-source="buffer"]')).toBeVisible();
+    await page.locator('[data-find-input]').fill('needle');
+    await expect(page.locator('[data-find-count]')).toHaveText('1/3');
+  });
+
   // Criterion 9: a session with no readable transcript says so, rather
   // than showing an empty box that looks broken.
   test('an alt-screen session with no transcript says so', async ({ page }) => {

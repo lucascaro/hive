@@ -439,11 +439,31 @@ does not need a human.
 - **2026-09-20** — Open question 3 resolved by operator decision: proceed with the
   full upgrade despite the measured size increase.
 - **2026-09-20** — Plan approved. Stage advanced to IMPLEMENT.
+- **2026-09-20** — Closed the gate's coverage gap on the branch with two tests,
+  not one. The first (normal -> alt -> normal via DECRST 1049l) still passed with
+  `_recreateSearchAddon` disabled, so it does not pin the poisoning defence —
+  the find box's guard means no user action can reach the defect, and its
+  comment now says exactly that. The second drives the addon directly while the
+  alt buffer is active, the shape of spec 430's PoC. With the defence disabled
+  it reports `0/0`, the documented poisoning signature. Two findings worth
+  keeping: the defect still exists under xterm 6 + addon-search 0.16.0, and
+  `_recreateSearchAddon` still cures it.
+- **2026-09-20** — Gate NEEDS_FOLLOWUP; criterion 4 (find box across a
+  normal/alt buffer transition) has no real-xterm coverage — no spec emits
+  `1049l`, and the one dom test that names the defect mocks the search addon.
 - **2026-09-20** — Implemented on `feature/439-upgrade-xterm-6`, branched from
   `origin/main` at `2cc319d4` (the worktree was 2 commits stale). All checks
   green: `tsc --noEmit`, `biome ci .`, `vitest run` (1501 tests, 112 files),
   `playwright test` (389 passed / 31 skipped), `ui-lint.sh --strict`.
   `test:e2e:real` 25/26, the one failure being the pre-existing #440.
+
+## Gate verdict
+
+- **2026-09-20** — verdict: NEEDS_FOLLOWUP; phase: —; checks: 5 passed / 0 failed / 1 followup; followups: pending; one-line: upgrade delivers every criterion except find-box coverage across a normal/alt buffer transition, which has no real-xterm test at any layer.
+  - 2026-09-20 dimensions:
+    - acceptance — NEEDS_FOLLOWUP — criterion 4 ("find box behavior holds across a normal/alt buffer transition") is unverified: no spec anywhere emits `1049l` to leave the alt buffer, so no test re-searches the normal buffer with the real `@xterm/addon-search` after a transition. The only test naming the defect, `test/dom/find-box.test.tsx:205`, is jsdom with hand-rolled `searchNext`/`searchPrev` fakes and its own comment concedes the poisoning "only manifests after the app exits, so it cannot be seen in-process" — it pins the guard, not the defect. Criteria 1, 2, 3, 5, 6 pass: versions coherent; `scroll-codex.spec.ts:380` genuinely floods past the 5000-line cap before resizing; `:470` covers the scrolled-up reader; go + unit + dom + e2e all green and e2e-real 25/26 with only the out-of-scope #440; changeset present.
+    - non-goals — PASS — `session-term.ts` and `scrollback.ts` have zero changed lines, `check-daemon-contract.sh` reports no daemon-side changes, no 6.1 beta, no OSC 52 / DEC 2026 / progress-addon wiring, no bundle budget, `glyph-utf8.spec.ts` untouched.
+    - doc accuracy — PASS — changeset valid and `CHANGELOG.md` untouched; `site/features.json` entry with `since: "Unreleased"` and `whats-new.test.ts` green; `tokens.md` / `themes.md` registry rows verified against the actual values in `theme.ts` / `base.css` / `themes.css`; README and `DESIGN.md` justified as correctly untouched.
 
 ## PR convergence ledger
 
