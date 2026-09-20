@@ -1,6 +1,17 @@
-/* xterm.js renders its own scrollbar inside .xterm-viewport — hide it
-   completely. Scrollback still works via mouse wheel / trackpad and is
-   the same buffer whether or not the bar is visible. */
+/* xterm 6 draws its own scrollbar (VS Code's scrollable element) instead of
+   relying on the native overflow one, and the slider is themed from
+   --scrollbar-thumb* via xtermTheme() in theme.ts — that is what keeps it
+   identical to the app scrollbar in base.css.
+
+   The native scrollbar still has to be suppressed here, though: v6 keeps
+   `overflow-y: scroll` on .xterm-viewport (css/xterm.css), so without this the
+   global 8px ::-webkit-scrollbar skin in base.css reserves a gutter inside every
+   terminal tile under macOS "Always show scrollbars" — stealing width from the
+   columns fit() computes, next to a slider that is already drawn.
+
+   No rule is needed for xterm's inset scroll shadows: it constructs the
+   scrollable element with useShadows:false, so those nodes are never created
+   (verified in a real browser against a filled, scrolled terminal). */
 .xterm-viewport::-webkit-scrollbar {
   display: none;
   width: 0;
@@ -9,3 +20,24 @@
   scrollbar-width: none;
 }
 
+/* Paint the viewport from the theme. xterm 5 did this itself — its
+   _handleThemeChange set _viewportElement.style.backgroundColor from the theme
+   — and xterm 6 dropped it, setting only height/width on that element. What is
+   left is xterm.css's hard-coded `.xterm .xterm-viewport { background-color:
+   #000 }`, which main.tsx imports.
+
+   The viewport is inset:0 inside .xterm while .xterm-screen covers only
+   cols x cellWidth by rows x cellHeight, so fit()'s rounding remainder is
+   viewport showing through: measured at 16px below and 18px right on a default
+   window. Invisible on dark presets, a black L-shaped band on the five light
+   ones.
+
+   `:root` is load-bearing, not decoration: xterm's own rule is
+   `.xterm .xterm-viewport` at (0,2,0), and xterm.css is injected by main.tsx's
+   module import *after* index.html's <link> to this file — so a matching
+   (0,2,0) selector ties and then loses on order. (0,3,0) wins regardless of
+   load order. Verified in Chromium: without it the viewport still computes to
+   rgb(0,0,0) on hive-light. */
+:root .xterm .xterm-viewport {
+  background-color: var(--term-bg);
+}

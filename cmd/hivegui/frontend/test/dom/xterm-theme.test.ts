@@ -107,6 +107,37 @@ describe('ANSI palette', () => {
   });
 });
 
+describe('scrollbar slider', () => {
+  const TOKENS = [
+    ['--scrollbar-thumb', 'scrollbarSliderBackground'],
+    ['--scrollbar-thumb-hover', 'scrollbarSliderHoverBackground'],
+    ['--scrollbar-thumb-active', 'scrollbarSliderActiveBackground'],
+  ] as const;
+
+  it('returns the scrollbar slider colours from their tokens', () => {
+    const root = document.documentElement;
+    // Distinct sentinel per slot: swapping hover for active is the failure
+    // mode, and a uniform value would not catch it.
+    TOKENS.forEach(([token], i) => {
+      root.style.setProperty(token, `rgba(1, 2, 3, 0.${i + 1})`);
+    });
+    const t = xtermTheme(document) as Record<string, string>;
+    TOKENS.forEach(([, key], i) => {
+      expect(t[key]).toBe(`rgba(1, 2, 3, 0.${i + 1})`);
+    });
+  });
+
+  it('omits the scrollbar keys when the tokens are absent', () => {
+    const root = document.documentElement;
+    for (const [token] of TOKENS) root.style.removeProperty(token);
+    const t = xtermTheme(document) as Record<string, string>;
+    // Same contract as the ANSI slots: xterm's own default (foreground at
+    // 20% opacity) beats being handed ''.
+    for (const [, key] of TOKENS) expect(key in t).toBe(false);
+    expect(t.background).toBeDefined();
+  });
+});
+
 describe('applyXtermTheme', () => {
   let applyXtermTheme: typeof import('../../src/app/session-term.js').applyXtermTheme;
   let state: typeof import('../../src/store/store.js').hiveStateView;

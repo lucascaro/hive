@@ -27,8 +27,12 @@ Semantic roles, defined once in `src/theme/tokens.css` (defaults = `hive-dark`) 
 | `--state-info` | In use / occupied, no action needed (worktree `active`) | `#7fb3d5` |
 | `--term-bg` | xterm background | `#0b0c10` |
 | `--term-fg` | xterm foreground | `#dfe1ea` |
+| `--scrollbar-thumb` | Scrollbar slider, app and terminal | `rgba(255, 255, 255, 0.08)` |
+| `--scrollbar-thumb-hover` | Scrollbar slider, pointer over it | `rgba(255, 255, 255, 0.18)` |
+| `--scrollbar-thumb-active` | Scrollbar slider, being dragged | `rgba(255, 255, 255, 0.26)` |
 
 Rules:
+- The three `--scrollbar-thumb*` tokens define **one** slider for two scrollbars: `base.css` skins the app's `::-webkit-scrollbar-thumb` from them, and `xtermTheme()` hands the same values to xterm as `scrollbarSlider{,Hover,Active}Background` (see [themes.md](themes.md#terminal-xtermjs-mapping)). They are the one colour role a **light** preset must not inherit — the default white slider is invisible on a light ground, so every light preset re-values all three to a dark equivalent. They are written as literal `rgba()` rather than `color-mix()` for the same reason `selectionBackground` is: `getPropertyValue` returns `color-mix()` unresolved and `theme.ts` must read them as strings xterm can parse.
 - `--accent` and `--state-attention` are **different hues on purpose** so "selected" never reads as "needs you". Presets may set them equal only if the preset is monochrome (`terminal`).
 - Session/project colours (user-chosen swatches) are data, not tokens. They render via `--session-color` on the element, as today.
 - Derived shades use `color-mix()` in components, not extra tokens. Cap: one derivation per use site. A state colour used as a *border* or a *fill* is written `color-mix(in srgb, var(--state-x) N%, var(--border))` / `…, transparent)`, so the tint follows the preset instead of pinning a second hex.
