@@ -105,6 +105,7 @@ The xterm `theme` object is rebuilt from tokens whenever the theme changes:
 | `cursor`, `cursorAccent` | `--accent`, `--on-accent` |
 | `selectionBackground` | `--accent` at 30% alpha, written as an 8-digit hex (`#rrggbb` + `4d`). Not `color-mix()`: `getPropertyValue` returns that function unresolved and xterm cannot parse it, but it does accept hex-alpha. A non-7-char `--accent` is passed through unchanged. |
 | ANSI 0–15 | `--ansi-0 … --ansi-15`, positionally (SGR 30–37 then 90–97). A slot the preset leaves unset is omitted from the theme object rather than sent as `''`, so xterm keeps its own default. |
+| `scrollbarSliderBackground`, `scrollbarSliderHoverBackground`, `scrollbarSliderActiveBackground` | `--scrollbar-thumb`, `--scrollbar-thumb-hover`, `--scrollbar-thumb-active`. xterm 6 draws its own scrollbar rather than relying on the native overflow one, and these are the same tokens `base.css` skins the app scrollbar with — one visual fact, one definition, so the two cannot drift. Omitted when the token is unset, as with the ANSI slots. |
 | `fontFamily` | `--font-mono` |
 
 Read via `getComputedStyle(document.documentElement).getPropertyValue(...)` once per theme change, then `term.options.theme = …` and `term.options.fontFamily = …` on every open terminal. Not per frame — `getComputedStyle` is a layout read.

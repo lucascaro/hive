@@ -174,13 +174,13 @@ test.describe('spec 431 find in session', () => {
     // term tile is untyped at this boundary, so the cast is where the type
     // comes from.
     const fromBottom = () =>
-      page.evaluate(() => {
-        const st = [...(window.__hive_state?.terms?.values() || [])][0] as
+      page.evaluate((sid) => {
+        const st = window.__hive_state?.terms?.get(sid) as
           | { term?: { buffer?: { active?: import('@xterm/xterm').IBuffer } } }
           | undefined;
         const buf = st?.term?.buffer?.active;
         return buf ? buf.baseY - buf.viewportY : -1;
-      });
+      }, id);
 
     await page.keyboard.press('Control+Shift+f');
     await page.locator('[data-find-input]').fill('needle');
