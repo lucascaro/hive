@@ -154,6 +154,7 @@ export type ModalId =
   | 'quick-idea'
   | 'idea-inbox'
   | 'help'
+  | 'help-modal'
   | 'whats-new'
   | 'build-log';
 
@@ -177,6 +178,10 @@ export type ModalEntry =
   | { id: 'quick-idea'; seq: number; projectId: string; idea?: IdeaInfo | null }
   | { id: 'idea-inbox'; seq: number; projectId: string; projectName: string }
   | { id: 'help'; seq: number }
+  // The sidebar's Help button. Distinct from 'help' above, which is the
+  // ⌘/ keyboard-shortcuts overlay — the two are separate surfaces and one
+  // hands off to the other, so they must be able to be open independently.
+  | { id: 'help-modal'; seq: number }
   | { id: 'whats-new'; seq: number }
   // The failed build's output, fetched once on open: it is a snapshot
   // of an attempt that is over, so there is nothing to keep in sync.

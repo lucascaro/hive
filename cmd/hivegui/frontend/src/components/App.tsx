@@ -59,6 +59,7 @@ import { StatusBar } from './StatusBar.js';
 import { VersionFooter } from './VersionFooter.js';
 import { ChoiceDialog } from './modals/ChoiceDialog.js';
 import { CommandPalette } from './modals/CommandPalette.js';
+import { Help } from './modals/Help.js';
 import { HelpOverlay } from './modals/HelpOverlay.js';
 import { IdeaInbox } from './modals/IdeaInbox.js';
 import { QuickIdea } from './modals/QuickIdea.js';
@@ -105,6 +106,7 @@ export function App(): ReactNode {
   const worktrees = mustEl('worktrees');
   const projectEditor = mustEl('project-editor');
   const helpOverlay = mustEl('help-overlay');
+  const helpModal = mustEl('help-modal');
   const quickIdea = mustEl('quick-idea');
   const ideaInbox = mustEl('idea-inbox');
   const choiceDialog = mustEl('choice-dialog');
@@ -163,6 +165,7 @@ export function App(): ReactNode {
       {createPortal(<Worktrees root={worktrees} />, worktrees)}
       {createPortal(<ProjectEditor root={projectEditor} />, projectEditor)}
       {createPortal(<HelpOverlay root={helpOverlay} />, helpOverlay)}
+      {createPortal(<Help root={helpModal} />, helpModal)}
       {createPortal(<QuickIdea root={quickIdea} />, quickIdea)}
       {createPortal(<IdeaInbox root={ideaInbox} />, ideaInbox)}
       {createPortal(<ChoiceDialog root={choiceDialog} />, choiceDialog)}

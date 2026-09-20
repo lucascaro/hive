@@ -87,6 +87,10 @@ What works:
 - What's new: the gift in the sidebar header opens a list of what has
   shipped, newest release first, plus what is coming. It carries a dot
   until you have read the current release
+- Help: the question mark beside the gift opens a panel explaining what
+  projects, sessions, worktrees and agents are, with links to the README,
+  docs, issue tracker and releases, and a row into the keyboard-shortcuts
+  overlay. Also reachable from the command palette
 - **Reload GUI** — picks up a new GUI build without touching `hived`,
   so every running shell and agent survives
 - Menu-bar agent (macOS) — daemon version, session list and attention

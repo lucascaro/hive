@@ -69,6 +69,7 @@ import {
   closeHelpOverlay,
   toggleHelpOverlay,
 } from './modals/help-overlay.js';
+import { closeHelp, handOffToShortcuts } from './modals/help.js';
 import { closeWhatsNew } from './modals/whats-new.js';
 import { closeBuildLog } from './modals/build-log.js';
 import { activityKey, isHelpOverlayKey, navHistoryKey } from '../lib/keymap.js';
@@ -320,6 +321,24 @@ window.addEventListener(
         e.stopPropagation();
       }
       return; // overlay owns the keyboard while open
+    }
+    if (isModalOpen('help-modal')) {
+      // Same gate as What's New below, plus one addition: ⌘/ is the binding
+      // this modal puts on screen next to its shortcuts row, so the key does
+      // the same handoff the row does rather than being swallowed. A modal
+      // that displays a binding and then eats it is the worse answer.
+      if (e.key === 'Escape') {
+        e.preventDefault();
+        e.stopPropagation();
+        closeHelp();
+      } else if (isHelpOverlayKey(e)) {
+        e.preventDefault();
+        e.stopPropagation();
+        handOffToShortcuts();
+      } else if (trapFocus(pageEl('help-modal'), e)) {
+        e.stopPropagation();
+      }
+      return; // the Help modal owns the keyboard while open
     }
     if (isModalOpen('whats-new')) {
       // Same gate every other modal gets. Without it ⌘T / ⌘, / ⌘E stack a
@@ -935,7 +954,21 @@ const menuActions = {
   // the key before the webview on macOS, so the keydown close path
   // (Escape/⌘/ in the window listener) never sees ⌘/ while the menu
   // owns it.
-  'menu:keyboard-shortcuts': () => toggleHelpOverlay(),
+  //
+  // For the same reason this has to repeat the Help modal's ⌘/ branch
+  // (see the isModalOpen('help-modal') gate in the window listener): on
+  // macOS that branch never runs, so a bare toggle here would open the
+  // shortcuts overlay ON TOP of an open Help modal — two aria-modal
+  // dialogs at once, with Escape then closing the overlay and leaving
+  // Help stranded underneath. The handoff is the same one the modal's
+  // shortcuts row performs.
+  'menu:keyboard-shortcuts': () => {
+    if (isModalOpen('help-modal')) {
+      handOffToShortcuts();
+      return;
+    }
+    toggleHelpOverlay();
+  },
   'menu:toggle-scroll-debug': () => toggleScrollDebug(),
   'menu:copy-scroll-trace': () => copyScrollTrace(),
 };
@@ -1019,6 +1052,7 @@ function ideaKeysBlocked(): boolean {
     isModalOpen('settings') ||
     isModalOpen('worktrees') ||
     isModalOpen('help') ||
+    isModalOpen('help-modal') ||
     isModalOpen('whats-new') ||
     isModalOpen('build-log')
   );

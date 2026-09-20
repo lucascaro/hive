@@ -38,6 +38,7 @@ import { flashStatus, reportFailure } from '../app/dom.js';
 import { beginInlineRename } from '../app/inline-rename.js';
 import { openLauncher } from '../app/modals/launcher.js';
 import { openProjectEditor } from '../app/modals/project-editor.js';
+import { openHelp } from '../app/modals/help.js';
 import { openWhatsNew } from '../app/modals/whats-new.js';
 import { openWorktrees } from '../app/modals/worktrees.js';
 import { openIdeaInbox } from '../app/modals/idea-inbox.js';
@@ -760,8 +761,8 @@ export function SidebarHeaderControls(): ReactNode {
         />,
         header,
       )}
-      {/* Third and rightmost: What's new. Portal order is DOM order here, so
-          this one has to stay last in the fragment. */}
+      {/* Third: What's new. Portal order is DOM order here, so the order of
+          these portals is the order the buttons appear in. */}
       {createPortal(
         <IconButton
           id="whats-new-btn"
@@ -772,6 +773,19 @@ export function SidebarHeaderControls(): ReactNode {
           size={22}
           className={unread ? 'hv-unread' : undefined}
           onClick={openWhatsNew}
+        />,
+        header,
+      )}
+      {/* Fourth and rightmost: Help. Last in the fragment, so last in the
+          header. It is the least-reached-for of the four, and the gift keeps
+          the outer edge's attention for its unread dot. */}
+      {createPortal(
+        <IconButton
+          id="help-btn"
+          icon="help"
+          label="Help"
+          size={22}
+          onClick={openHelp}
         />,
         header,
       )}

@@ -1,21 +1,26 @@
 import { test, expect, type Page } from '@playwright/test';
 
-// Layout check for the sidebar header's three action buttons (specs 323, 351).
-// The DOM tests prove SidebarHeaderControls renders #check-updates-btn and
-// #whats-new-btn next to #new-project-btn; only a real browser proves the
-// header actually LAYS THEM OUT that way. The header used to be
+// Layout check for the sidebar header's four action buttons (specs 323, 351,
+// 442). The DOM tests prove SidebarHeaderControls renders #check-updates-btn,
+// #whats-new-btn and #help-btn next to #new-project-btn; only a real browser
+// proves the header actually LAYS THEM OUT that way. The header used to be
 // `justify-content: space-between` with two children, which with three
 // children would fling them to opposite ends of the sidebar — a bug no
 // jsdom assertion can see, and the reason this file exists.
 
-const BUTTONS = ['new-project-btn', 'check-updates-btn', 'whats-new-btn'];
+const BUTTONS = [
+  'new-project-btn',
+  'check-updates-btn',
+  'whats-new-btn',
+  'help-btn',
+];
 
 async function boot(page: Page) {
   await page.goto('/');
   await page.waitForSelector('#whats-new-btn');
 }
 
-test('all three header buttons sit together on the right of the brand', async ({
+test('all four header buttons sit together on the right of the brand', async ({
   page,
 }) => {
   await boot(page);
@@ -51,7 +56,7 @@ test('all three header buttons sit together on the right of the brand', async ({
   // The brand keeps the slack, so the cluster is pushed to the right edge.
   expect(boxes[0].x).toBeGreaterThan(brandBox.x + brandBox.width - 1);
 
-  // Same visual weight — all three are the 22px icon-button primitive.
+  // Same visual weight — all four are the 22px icon-button primitive.
   for (const box of boxes) {
     expect(Math.round(box.width)).toBe(22);
     expect(Math.round(box.height)).toBe(22);
@@ -97,7 +102,7 @@ test('the session total sits inside the brand, right after Hive', async ({
   expect(countBox.x + countBox.width).toBeLessThanOrEqual(newBtnBox.x);
 });
 
-for (const id of ['check-updates-btn', 'whats-new-btn']) {
+for (const id of ['check-updates-btn', 'whats-new-btn', 'help-btn']) {
   test(`the ${id} button is reachable and hit-testable`, async ({ page }) => {
     await boot(page);
     const btn = page.locator(`#${id}`);
@@ -181,4 +186,78 @@ test('a background update shows a dot on the check-for-updates button, not a ban
   expect(after.content).not.toBe('none');
   expect(after.width).toBeGreaterThan(0);
   await expect(page.locator('#update-banner')).toBeHidden();
+});
+
+// Spec 442. Four icons now share a header that used to hold two, and the
+// sidebar is resizable down to SIDEBAR_MIN_WIDTH (220, src/store/store.ts).
+//
+// Two things are worth knowing about how that fails, both learned by
+// measuring rather than reasoning. First, you cannot squeeze the header by
+// writing a smaller `--sidebar-width`: #sidebar is a grid item with the
+// default `min-width: auto`, so the column floors at the sidebar's
+// min-content width and a 180px request renders identically to a 220px one.
+// A "narrow" case written that way is a silent duplicate of the test above.
+// Second, the real failure mode is therefore not overflow but the floor
+// RISING: once the header's intrinsic width passes 220, the sidebar can no
+// longer be dragged to its own documented minimum, and every user with a
+// narrow sidebar gets it widened out from under them on upgrade.
+//
+// So this measures the intrinsic width directly. At the time of writing the
+// four icons need ~173px against a 220px budget — room for two more before
+// this fires.
+const SIDEBAR_MIN_WIDTH = 220;
+
+test('the header still fits inside the minimum sidebar width', async ({
+  page,
+}) => {
+  await boot(page);
+
+  const intrinsic = await page.locator('#sidebar header').evaluate((el) => {
+    // A hidden clone at `width: min-content` reports what the real header
+    // would demand if the column stopped giving it room.
+    const probe = el.cloneNode(true) as HTMLElement;
+    probe.style.width = 'min-content';
+    probe.style.position = 'absolute';
+    probe.style.visibility = 'hidden';
+    el.parentElement?.appendChild(probe);
+    const w = probe.getBoundingClientRect().width;
+    probe.remove();
+    return w;
+  });
+  expect(intrinsic).toBeLessThanOrEqual(SIDEBAR_MIN_WIDTH);
+});
+
+test('the header contains all four buttons, with nothing spilling', async ({
+  page,
+}) => {
+  await boot(page);
+  const header = page.locator('#sidebar header');
+
+  // Nothing spills: the header's content box holds its own content. The
+  // adjacency test above passes even on an overflowing header, because the
+  // overflow goes off the right edge while every gap stays 6px.
+  const [scrollWidth, clientWidth] = await header.evaluate((el) => [
+    el.scrollWidth,
+    el.clientWidth,
+  ]);
+  expect(scrollWidth).toBeLessThanOrEqual(clientWidth + 1);
+
+  const headerBox = (await header.boundingBox())!;
+  let previousRight = headerBox.x;
+  for (const id of BUTTONS) {
+    const box = (await page.locator(`#${id}`).boundingBox())!;
+    // Inside the header on both edges...
+    expect(box.x).toBeGreaterThanOrEqual(headerBox.x - 1);
+    expect(box.x + box.width).toBeLessThanOrEqual(
+      headerBox.x + headerBox.width + 1,
+    );
+    // ...not stacked on each other, which is what a collapsed header gives...
+    expect(box.x).toBeGreaterThanOrEqual(previousRight - 1);
+    previousRight = box.x + box.width;
+    // ...and still on the header's single row, not wrapped to a second.
+    expect(box.y).toBeGreaterThanOrEqual(headerBox.y - 1);
+    expect(box.y + box.height).toBeLessThanOrEqual(
+      headerBox.y + headerBox.height + 1,
+    );
+  }
 });

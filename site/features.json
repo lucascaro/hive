@@ -103,6 +103,12 @@
     "since": "2.1.0"
   },
   {
+    "title": "In-app help",
+    "blurb": "A Help panel in the sidebar: what the pieces are, the keyboard shortcuts, and the links out.",
+    "status": "shipped",
+    "since": "Unreleased"
+  },
+  {
     "title": "Scrollback across daemon restart",
     "blurb": "Today scrollback lives with the daemon process.",
     "status": "planned"
