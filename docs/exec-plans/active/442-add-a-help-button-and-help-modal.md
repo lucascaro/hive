@@ -317,6 +317,13 @@ Both rounds reported no injection attempts in the spec or plan text.
   ui-lint --contrast, CI=1 scripts/test.sh: 397 passed / 31 skipped, one unrelated
   worktrees.spec.ts flake that passed on retry). PR #443 opened; stage IMPLEMENT -> REVIEW.
 
+## PR convergence ledger
+
+Append-only. One line per `/hs-review-loop` iteration.
+
+- **2026-09-20 iter 1** — verdict: REQUEST_CHANGES; mergeable: MERGEABLE; findings_hash: e1c18b074407929eaa1175087769d2f07d75fe6db278a244bc553c12676fb71e; threads_open: 0; action: autofix+push; head_sha: 644e6ff.
+- **2026-09-20 iter 2** — verdict: APPROVE; mergeable: MERGEABLE; findings_hash: empty; threads_open: 0; action: stop; head_sha: 644e6ff.
+
 ## Open questions
 
 - **Content staleness.** The concepts text is prose in a component and will drift if the

@@ -5,7 +5,7 @@ title: "Add a Help button and Help modal to the sidebar header"
 type: enhancement
 complexity: M
 priority: P2
-stage: REVIEW
+stage: GATE
 ---
 
 # Add a Help button and Help modal to the sidebar header
