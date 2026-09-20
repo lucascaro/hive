@@ -2,6 +2,7 @@
 type: changed
 bump: minor
 issue: 439
+pr: 441
 ---
 
 Terminals now show a scrollbar. Upgrading the terminal renderer to xterm.js 6

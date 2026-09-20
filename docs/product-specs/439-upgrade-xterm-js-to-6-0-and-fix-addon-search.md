@@ -1,10 +1,11 @@
 ---
 issue: 439
+pr: 441
 title: "Upgrade xterm.js to 6.0 and fix the addon-search version mismatch"
 type: enhancement
 complexity: M
 priority: P2
-stage: IMPLEMENT
+stage: REVIEW
 ---
 
 # Upgrade xterm.js to 6.0 and fix the addon-search version mismatch

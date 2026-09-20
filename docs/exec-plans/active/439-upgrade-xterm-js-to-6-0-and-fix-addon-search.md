@@ -2,6 +2,8 @@
 
 - **Spec:** [docs/product-specs/439-upgrade-xterm-js-to-6-0-and-fix-addon-search.md](../../product-specs/439-upgrade-xterm-js-to-6-0-and-fix-addon-search.md)
 - **Issue:** #439
+- **PR:** #441
+- **Branch:** `feature/439-upgrade-xterm-6`
 - **Status:** active
 
 ## Summary
