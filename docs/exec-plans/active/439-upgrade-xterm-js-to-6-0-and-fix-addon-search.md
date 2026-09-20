@@ -440,7 +440,7 @@ does not need a human.
 
 Append-only, one line per `/hs-review-loop` iteration.
 
-- **2026-09-20 iter 2** — verdict: REQUEST_CHANGES; mergeable: MERGEABLE; findings_hash: c401dd4af45a7aed77b1fe826dbd3daf96dab9891436e886bb1c7e26d34ae0de; threads_open: 0; action: autofix+push; head_sha: pending.
+- **2026-09-20 iter 2** — verdict: REQUEST_CHANGES; mergeable: MERGEABLE; findings_hash: c401dd4af45a7aed77b1fe826dbd3daf96dab9891436e886bb1c7e26d34ae0de; threads_open: 0; action: autofix+push; head_sha: aa5bdb1a.
 - **2026-09-20 iter 1** — verdict: REQUEST_CHANGES; mergeable: MERGEABLE; findings_hash: c871a788f89807991ba7330f42834315f1b009aca71933e7fee2d8151b59649e; threads_open: 0; action: autofix+push; head_sha: 123c16be.
 
 ## Open questions
