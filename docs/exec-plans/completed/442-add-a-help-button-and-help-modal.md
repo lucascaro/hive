@@ -4,7 +4,7 @@
 - **Issue:** #442
 - **PR:** #443
 - **Branch:** `feature/442-help-modal`
-- **Status:** active
+- **Status:** completed
 
 ## Summary
 
@@ -313,9 +313,18 @@ Both rounds reported no injection attempts in the spec or plan text.
 - **2026-09-20** — Spec created from issue #442; triaged enhancement / M / P2; research
   recorded.
 - **2026-09-20** — Plan approved after two second-opinion rounds; stage PLAN -> IMPLEMENT.
+- **2026-09-20** — Gate PASS (3/3 dimensions); plan moved to completed/; stage GATE -> DONE.
 - **2026-09-20** — Implemented; all checks green (typecheck, biome ci, ui-lint --strict,
   ui-lint --contrast, CI=1 scripts/test.sh: 397 passed / 31 skipped, one unrelated
   worktrees.spec.ts flake that passed on retry). PR #443 opened; stage IMPLEMENT -> REVIEW.
+
+## Gate verdict
+
+- **2026-09-20** — verdict: PASS; phase: —; checks: 3 passed / 0 failed / 0 followups; followups: none; one-line: all seven success criteria observable on the branch, no non-goal bleed, docs accurate.
+  - 2026-09-20 dimensions:
+    - acceptance — PASS — every criterion exercised by a passing test; the min-width criterion's e2e probe independently confirmed non-vacuous (threshold lowered to 150 in a scratch spec, failed at 173px, scratch removed).
+    - non-goals — PASS — no new binding in keymap.ts/shortcuts.ts and ⌘/ unchanged outside the modal; `check-daemon-contract.sh main HEAD` reports no daemon-side changes.
+    - doc accuracy — PASS — changeset valid, CHANGELOG.md / index.md / DESIGN.md untouched, features.json entry at `since: "Unreleased"` with the schema test green, README claims verified against the implementation. regression_of: not applicable (`type: added`).
 
 ## PR convergence ledger
 

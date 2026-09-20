@@ -1,11 +1,12 @@
 ---
 issue: 442
 pr: 443
+shipped: 2026-09-20
 title: "Add a Help button and Help modal to the sidebar header"
 type: enhancement
 complexity: M
 priority: P2
-stage: GATE
+stage: DONE
 ---
 
 # Add a Help button and Help modal to the sidebar header
@@ -14,7 +15,7 @@ stage: GATE
 - **Type:** enhancement
 - **Complexity:** M
 - **Priority:** P2
-- **Exec plan:** [docs/exec-plans/active/442-add-a-help-button-and-help-modal.md](../exec-plans/active/442-add-a-help-button-and-help-modal.md)
+- **Exec plan:** [docs/exec-plans/completed/442-add-a-help-button-and-help-modal.md](../exec-plans/completed/442-add-a-help-button-and-help-modal.md)
 
 ## Problem
 
