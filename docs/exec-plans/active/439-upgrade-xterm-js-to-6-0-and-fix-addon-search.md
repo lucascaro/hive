@@ -370,6 +370,20 @@ does not need a human.
   writing a second typing for the same boundary. The store's term tile is
   untyped there, so an inline `as` is where the type has to come from; having
   two spellings of it would invite them to diverge.
+- **2026-09-20** — xterm 6 stopped painting `.xterm-viewport` from the theme
+  (v5's `_handleThemeChange` set its `backgroundColor`; v6 sets only
+  height/width), leaving xterm.css's hard-coded `#000`. Confirmed in Chromium on
+  `hive-light`: the viewport computed `rgb(0,0,0)` with a 16px remainder below
+  and 18px right of `.xterm-screen` — a black L-shaped band on all five light
+  presets. Fixed with `:root .xterm .xterm-viewport { background-color:
+  var(--term-bg) }`.
+- **2026-09-20** — That fix needed `:root` to reach (0,3,0). The first attempt,
+  a bare `.xterm-viewport` at (0,1,0), lost to xterm's own `.xterm
+  .xterm-viewport` at (0,2,0) and left the viewport black — caught only because
+  the browser was re-probed after applying it. A matching (0,2,0) would also
+  lose, because index.html `<link>`s this file in `<head>` while main.tsx
+  injects xterm.css later. The new assertion was checked for vacuity by
+  reverting the rule: both preset cases fail without it.
 - **2026-09-20** — Review iteration 1 raised three IMPORTANT findings; verified
   each in a real browser before acting, and one was misdiagnosed. The inert
   `.shadow` override is indeed dead code, but not because it loses a specificity
@@ -425,6 +439,9 @@ does not need a human.
 ## PR convergence ledger
 
 Append-only, one line per `/hs-review-loop` iteration.
+
+- **2026-09-20 iter 2** — verdict: REQUEST_CHANGES; mergeable: MERGEABLE; findings_hash: c401dd4af45a7aed77b1fe826dbd3daf96dab9891436e886bb1c7e26d34ae0de; threads_open: 0; action: autofix+push; head_sha: pending.
+- **2026-09-20 iter 1** — verdict: REQUEST_CHANGES; mergeable: MERGEABLE; findings_hash: c871a788f89807991ba7330f42834315f1b009aca71933e7fee2d8151b59649e; threads_open: 0; action: autofix+push; head_sha: 123c16be.
 
 ## Open questions
 

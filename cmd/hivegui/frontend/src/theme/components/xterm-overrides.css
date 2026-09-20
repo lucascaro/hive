@@ -19,3 +19,25 @@
 .xterm-viewport {
   scrollbar-width: none;
 }
+
+/* Paint the viewport from the theme. xterm 5 did this itself — its
+   _handleThemeChange set _viewportElement.style.backgroundColor from the theme
+   — and xterm 6 dropped it, setting only height/width on that element. What is
+   left is xterm.css's hard-coded `.xterm .xterm-viewport { background-color:
+   #000 }`, which main.tsx imports.
+
+   The viewport is inset:0 inside .xterm while .xterm-screen covers only
+   cols x cellWidth by rows x cellHeight, so fit()'s rounding remainder is
+   viewport showing through: measured at 16px below and 18px right on a default
+   window. Invisible on dark presets, a black L-shaped band on the five light
+   ones.
+
+   `:root` is load-bearing, not decoration: xterm's own rule is
+   `.xterm .xterm-viewport` at (0,2,0), and xterm.css is injected by main.tsx's
+   module import *after* index.html's <link> to this file — so a matching
+   (0,2,0) selector ties and then loses on order. (0,3,0) wins regardless of
+   load order. Verified in Chromium: without it the viewport still computes to
+   rgb(0,0,0) on hive-light. */
+:root .xterm .xterm-viewport {
+  background-color: var(--term-bg);
+}

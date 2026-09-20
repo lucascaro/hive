@@ -1082,5 +1082,24 @@ for (const preset of ['hive-dark', 'hive-light'] as const) {
         return out;
       }, color);
     expect(painted).toBe(await normalise(token));
+
+    // xterm 5 painted .xterm-viewport from the theme itself; xterm 6 dropped
+    // that, leaving xterm.css's hard-coded `background-color: #000`. The
+    // viewport is inset:0 inside .xterm while .xterm-screen covers only whole
+    // cells, so fit()'s rounding remainder shows the viewport through — a black
+    // band on a light ground. Asserted for both presets: on a dark one the bug
+    // is invisible, which is exactly why it needs pinning here.
+    const termBg = await page.evaluate(() =>
+      getComputedStyle(document.documentElement)
+        .getPropertyValue('--term-bg')
+        .trim(),
+    );
+    const viewportBg = await page.evaluate(() => {
+      const vp = document.querySelector(
+        '.term-focused .xterm-viewport',
+      ) as HTMLElement | null;
+      return vp ? getComputedStyle(vp).backgroundColor : null;
+    });
+    expect(viewportBg).toBe(await normalise(termBg));
   });
 }
