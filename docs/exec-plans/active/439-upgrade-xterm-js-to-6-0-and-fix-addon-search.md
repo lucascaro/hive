@@ -449,6 +449,7 @@ does not need a human.
 
 Append-only, one line per `/hs-review-loop` iteration.
 
+- **2026-09-20 iter 4** — verdict: APPROVE; mergeable: MERGEABLE; findings_hash: empty; threads_open: 0; action: stop; head_sha: b59388d5.
 - **2026-09-20 iter 3** — verdict: COMMENT (coerced to REQUEST_CHANGES: non-empty findings hash); mergeable: MERGEABLE; findings_hash: 8204b2cfbb8a180ffd6d6887930313241f3b5442367ad96c8f69e80c3b71e9c0; threads_open: 0; action: autofix+push; head_sha: 5ba6cef5.
 - **2026-09-20 iter 2** — verdict: REQUEST_CHANGES; mergeable: MERGEABLE; findings_hash: c401dd4af45a7aed77b1fe826dbd3daf96dab9891436e886bb1c7e26d34ae0de; threads_open: 0; action: autofix+push; head_sha: aa5bdb1a.
 - **2026-09-20 iter 1** — verdict: REQUEST_CHANGES; mergeable: MERGEABLE; findings_hash: c871a788f89807991ba7330f42834315f1b009aca71933e7fee2d8151b59649e; threads_open: 0; action: autofix+push; head_sha: 123c16be.
