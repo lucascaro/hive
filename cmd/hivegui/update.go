@@ -93,6 +93,9 @@ type UpdateInfo struct {
 	// "download it manually on this platform".
 	CanApply       bool   `json:"canApply"`
 	CanApplyReason string `json:"canApplyReason,omitempty"`
+	// HasBuildLog is true when Stage is error and the failure was a
+	// build, so the banner can offer the full output (UpdateBuildLog).
+	HasBuildLog bool `json:"hasBuildLog,omitempty"`
 }
 
 // withUpdateCapability stamps the platform's answer onto a check result.

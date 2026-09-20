@@ -19,6 +19,7 @@ import {
   openDownloadUrl,
   restartHive,
 } from '../app/banners.js';
+import { openBuildLog } from '../app/modals/build-log.js';
 import { dismissUndoBanner, undoLastClose } from '../app/undo-close.js';
 import { useAppStore } from '../store/store.js';
 import { Banner } from './Banner.js';
@@ -56,6 +57,7 @@ export function Banners(): ReactNode {
         data={banners.update}
         actions={[
           { id: 'action', label: 'Update', onClick: onUpdateAction },
+          { id: 'log', label: 'View log', onClick: openBuildLog },
           { id: 'download', label: 'Download', onClick: openDownloadUrl },
         ]}
         onDismiss={dismissUpdateBanner}

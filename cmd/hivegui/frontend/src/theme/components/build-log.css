@@ -1,0 +1,17 @@
+/* Failed-build log viewer. The dialog body (dialog.css) is the scroller;
+   the <pre> just wraps so a long compiler line never scrolls sideways. */
+#build-log-text {
+  margin: 0;
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+  line-height: 1.5;
+  color: var(--fg);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  user-select: text;
+  -webkit-user-select: text;
+}
+#build-log-text:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}

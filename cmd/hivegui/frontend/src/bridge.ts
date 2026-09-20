@@ -65,6 +65,7 @@ export {
   CheckForUpdate,
   UpdateStatus,
   StartUpdate,
+  UpdateBuildLog,
   ApplyUpdateAndRestart,
   GetUpdateSettings,
   SaveUpdateSettings,

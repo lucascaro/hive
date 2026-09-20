@@ -1,6 +1,7 @@
 package main
 
 import (
+	"errors"
 	"fmt"
 	"log"
 	"sync"
@@ -50,6 +51,10 @@ type updateState struct {
 	// when the bundle is published rather than at click time: the probe
 	// runs a binary, and the Restart button must not stall on it.
 	restartKind string
+	// buildLog is the full output of the last failed build, for the log
+	// viewer. Kept here rather than on UpdateInfo: it can be thousands of
+	// lines, and UpdateInfo rides every progress event.
+	buildLog string
 	// gen increments whenever the settings a staging run was started
 	// under stop being current. The staging goroutine captures it and
 	// refuses to publish a bundle staged under superseded settings —
@@ -102,6 +107,7 @@ func (a *App) forgetUpdateState() {
 	a.update.bundle = ""
 	a.update.stagedFor = ""
 	a.update.restartKind = ""
+	a.update.buildLog = ""
 	// Anything staging right now was started under settings that no
 	// longer apply; bumping gen is what stops it publishing.
 	a.update.gen++
@@ -155,6 +161,8 @@ func (a *App) StartUpdate() error {
 	a.update.busy = true
 	a.update.last.Stage = StageStaging
 	a.update.last.Message = "Starting…"
+	a.update.last.HasBuildLog = false
+	a.update.buildLog = ""
 	gen := a.update.gen
 	a.update.mu.Unlock()
 
@@ -164,6 +172,11 @@ func (a *App) StartUpdate() error {
 		a.update.mu.Lock()
 		a.update.busy = false
 		if err != nil {
+			var be *buildError
+			if errors.As(err, &be) {
+				a.update.buildLog = be.log
+				a.update.last.HasBuildLog = true
+			}
 			a.update.mu.Unlock()
 			log.Printf("hivegui: staging update failed: %v", err)
 			a.setStage(StageError, err.Error())
@@ -215,6 +228,33 @@ func (a *App) StartUpdate() error {
 	}()
 	return nil
 }
+
+// UpdateBuildLog returns the full output of the last failed build, or ""
+// when there is none. The banner offers it when UpdateInfo.HasBuildLog.
+func (a *App) UpdateBuildLog() string {
+	a.update.mu.Lock()
+	defer a.update.mu.Unlock()
+	return a.update.buildLog
+}
+
+// buildError is a build.sh run that exited non-zero. Error() stays one
+// line for the banner; log is everything the build printed, ANSI-stripped.
+type buildError struct {
+	err     error
+	summary string // last line that says something about the build
+	log     string
+}
+
+func (e *buildError) Error() string {
+	if e.summary == "" {
+		return fmt.Sprintf("build.sh failed: %v", e.err)
+	}
+	// Keep the exit status: the last line of a failed build is often
+	// unrelated trailing noise.
+	return fmt.Sprintf("build.sh failed (%v): %s", e.err, e.summary)
+}
+
+func (e *buildError) Unwrap() error { return e.err }
 
 // ApplyUpdateAndRestart swaps the staged bundle over the installed one
 // and relaunches.
