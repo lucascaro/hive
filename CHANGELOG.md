@@ -9,6 +9,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 - **A Help button in the sidebar, next to What's new.** It opens a Help panel that explains what projects, sessions, worktrees and agents are, links out to the README, docs, issue tracker and releases, and points at the keyboard-shortcuts overlay with its binding shown. Reachable from the command palette too. `⌘/` still opens the shortcuts list directly.
+Settings → Agents can now tailor the new-session menu. Untick an agent to hide
+it from the launcher — its running sessions keep working — and pin favourites
+to put them at the top in the order you drag them into (or ⌥↑/⌥↓). Everything
+you have not pinned keeps sorting by how often you launch it.
+The "Session ended" card now has a **Restart** button, so an exited session can be brought back in place without going through the session's menu. Press `r` on the card to restart, `Enter` to close, `Esc` to dismiss — each button now shows its key.
 Find text in a session with ⌘F (Ctrl+Shift+F on Windows and Linux). On a regular
 shell it searches the terminal's scrollback and highlights matches in place. On a
 full-screen agent like Claude or Pi — where the terminal keeps no scrollback and
