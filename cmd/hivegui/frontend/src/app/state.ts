@@ -212,7 +212,7 @@ export interface TermTile extends ReplayFlags {
   // Dead-session overlay. Required for the same reason as `attached`:
   // session-term.ts:613 initializes it and setDead writes it on every
   // transition, so readers branch on the value, never on absence.
-  // keyboard.ts routes Enter/Escape to the two handlers when it's shown.
+  // keyboard.ts routes Enter/r/Escape to the three handlers when it's shown.
   deadOverlayShown: boolean;
   _closeDead(): void;
   _restartDead(): void;
