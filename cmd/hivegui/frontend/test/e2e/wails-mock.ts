@@ -612,8 +612,16 @@ function closedList() {
       closed_at: t.closedAt,
     }));
 }
-export async function RestartSession(_id: string) {
+// Respawn in place, as the registry does: same entry, alive again.
+// The GUI clears the dead-session card on that alive false→true edge.
+export async function RestartSession(id: string) {
   maybeFail('RestartSession');
+  const s = state.sessions.find((x) => x.id === id);
+  if (s && s.alive === false) {
+    s.alive = true;
+    s.last_error = '';
+    emit('session:event', JSON.stringify({ kind: 'updated', session: s }));
+  }
   return '';
 }
 // Positional args matching the real Wails binding (and the e2e-real

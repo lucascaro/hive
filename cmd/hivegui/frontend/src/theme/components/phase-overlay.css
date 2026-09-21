@@ -73,6 +73,12 @@
 .dead-btn.primary:hover {
   filter: brightness(1.12);
 }
+/* --fg-subtle is picked for the card, not for a session-coloured fill,
+   and all but vanishes on it. Stay in the button's own ink instead,
+   just quieter than the label — still no colour of its own. */
+.dead-btn.primary .hv-kbd {
+  color: color-mix(in srgb, var(--on-accent) 70%, transparent);
+}
 .dead-btn:focus-visible {
   /* Blended toward --fg, not toward white: the point of the endpoint is
      to pull the session colour away from the card behind it, and on a

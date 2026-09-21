@@ -295,6 +295,16 @@ build.sh           # macOS universal build
 
 Full list in the app: **⌘/**. (Ctrl replaces ⌘ on Windows and Linux.)
 
+### When a session ends
+
+A tile whose process has exited shows a card over the terminal.
+
+| Key | Action |
+|---|---|
+| ⏎ | Close the session |
+| R | Restart it in place (same as **Restart** in the session's menu) |
+| Esc | Dismiss the card and keep the tile |
+
 ### Text editing inside a session
 
 These reach the shell or agent CLI rather than the app.

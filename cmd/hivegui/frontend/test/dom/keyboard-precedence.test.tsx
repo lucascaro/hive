@@ -539,3 +539,62 @@ describe('the ⌘I menu path behaves like the keydown path', () => {
     expect(handOffToShortcuts).not.toHaveBeenCalled();
   });
 });
+
+// `r` on the dead-session overlay restarts the session. It is a bare
+// letter, so the routing has to be narrower than Enter/Escape's: only
+// while the overlay is up, never with a modifier (⌘R / Ctrl+R keep their
+// meaning), never on auto-repeat, and never under a modal whose input
+// the letter was typed into.
+describe('r on the dead-session overlay', () => {
+  const mountDead = (shown = true) => {
+    const restartDead = vi.fn();
+    state.activeId = 'a';
+    state.terms.set('a', {
+      deadOverlayShown: shown,
+      _dismissDead: dismissDead,
+      _closeDead: vi.fn(),
+      _restartDead: restartDead,
+    } as never);
+    return restartDead;
+  };
+
+  it('restarts the active session and consumes the key', () => {
+    const restartDead = mountDead();
+    const e = press('r');
+    expect(restartDead).toHaveBeenCalledOnce();
+    expect(e.defaultPrevented).toBe(true);
+  });
+
+  it('accepts R (caps lock / shift)', () => {
+    const restartDead = mountDead();
+    press('R', { shiftKey: true });
+    expect(restartDead).toHaveBeenCalledOnce();
+  });
+
+  for (const [name, opts] of [
+    ['⌘R', { metaKey: true }],
+    ['Ctrl+R', { ctrlKey: true }],
+    ['⌥R', { altKey: true }],
+    ['auto-repeat', { repeat: true }],
+  ] as const) {
+    it(`ignores ${name}`, () => {
+      const restartDead = mountDead();
+      press('r', opts);
+      expect(restartDead).not.toHaveBeenCalled();
+    });
+  }
+
+  it('does nothing while the overlay is hidden', () => {
+    const restartDead = mountDead(false);
+    const e = press('r');
+    expect(restartDead).not.toHaveBeenCalled();
+    expect(e.defaultPrevented).toBe(false);
+  });
+
+  it('is not routed while a modal owns the keyboard', () => {
+    const restartDead = mountDead();
+    openModal({ id: 'settings' });
+    press('r');
+    expect(restartDead).not.toHaveBeenCalled();
+  });
+});

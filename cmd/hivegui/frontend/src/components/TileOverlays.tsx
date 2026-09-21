@@ -19,16 +19,19 @@ import { useEffect, useRef, type ReactNode } from 'react';
 import { anyModalOpen } from '../store/store.js';
 import type { TileChromeState } from '../store/store.js';
 import { Icon, StateIcon } from './Icon.js';
+import { Kbd } from './Kbd.js';
 
 const DEAD_SUBTITLE = 'The process running in this session has exited.';
 
 export function TileOverlays({
   chrome,
   onClose,
+  onRestart,
   onDismiss,
 }: {
   chrome: TileChromeState;
   onClose: () => void;
+  onRestart: () => void;
   onDismiss: () => void;
 }): ReactNode {
   return (
@@ -37,6 +40,7 @@ export function TileOverlays({
         dead={chrome.dead}
         reason={chrome.deadReason}
         onClose={onClose}
+        onRestart={onRestart}
         onDismiss={onDismiss}
       />
       <PhaseOverlay visible={chrome.phaseVisible} panel={chrome.phasePanel} />
@@ -45,18 +49,20 @@ export function TileOverlays({
 }
 
 // Hidden until the underlying process exits (Alive true→false). Centered
-// card with primary "Close session" (Enter) and secondary "Dismiss"
-// (Escape) — keyboard.ts routes those two keys here off the tile's
-// `deadOverlayShown`.
+// card with primary "Close session" (Enter), then "Restart" (r) and
+// "Dismiss" (Escape) — keyboard.ts routes those three keys here off the
+// tile's `deadOverlayShown`.
 function DeadOverlay({
   dead,
   reason,
   onClose,
+  onRestart,
   onDismiss,
 }: {
   dead: boolean;
   reason: string;
   onClose: () => void;
+  onRestart: () => void;
   onDismiss: () => void;
 }): ReactNode {
   const closeRef = useRef<HTMLButtonElement>(null);
@@ -102,7 +108,17 @@ function DeadOverlay({
               onClose();
             }}
           >
-            Close session
+            Close session <Kbd>[enter]</Kbd>
+          </button>
+          <button
+            type="button"
+            className="dead-btn secondary"
+            onClick={(e) => {
+              e.stopPropagation();
+              onRestart();
+            }}
+          >
+            Restart <Kbd>(r)</Kbd>
           </button>
           <button
             type="button"
@@ -112,7 +128,7 @@ function DeadOverlay({
               onDismiss();
             }}
           >
-            Dismiss
+            Dismiss <Kbd>[esc]</Kbd>
           </button>
         </div>
       </div>

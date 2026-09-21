@@ -27,6 +27,7 @@ import {
   ResizeSession,
   RequestScrollbackReplay,
   KillSession,
+  RestartSession,
   SetClipboardText,
   ClipboardGetText,
   OpenURL,
@@ -198,8 +199,13 @@ export class SessionTerm {
 
   // Dead-session overlay. The element is components/TileOverlays.tsx's;
   // this flag is the tile's own copy of "is it up", because keyboard.ts
-  // routes Enter/Escape off it.
+  // routes Enter/Escape/r off it.
   deadOverlayShown = false;
+  // Set while a Restart from the overlay is in flight, so a repeated
+  // click or `r` doesn't send a second RestartSession that would tear
+  // down the process the first one just spawned. Cleared by setDead()
+  // (revived, or died again) and by a failed request.
+  _restartPending = false;
 
   // Lifecycle-phase overlay: the loading panel shown while the daemon
   // is still creating (or tearing down) this session. See
@@ -1544,6 +1550,7 @@ export class SessionTerm {
 
   setDead(isDead: boolean, reason?: string) {
     this.deadOverlayShown = isDead;
+    this._restartPending = false;
     // `dead` on the host stays ours: it is a class on the element this
     // class owns, and the CSS dims the whole tile with it.
     this.host.classList.toggle('dead', isDead);
@@ -1659,6 +1666,18 @@ export class SessionTerm {
 
   _closeDead() {
     KillSession(this.info.id, true).catch(reportFailure('close'));
+  }
+
+  _restartDead() {
+    if (this._restartPending) return;
+    this._restartPending = true;
+    // The overlay stays up until the session is alive again: events.ts
+    // clears it on the alive false→true edge, and a failed restart
+    // leaves it in place so Close/Dismiss are still one key away.
+    RestartSession(this.info.id).catch((err: unknown) => {
+      this._restartPending = false;
+      reportFailure('restart')(err);
+    });
   }
 
   _dismissDead() {

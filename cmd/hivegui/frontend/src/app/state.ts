@@ -215,6 +215,7 @@ export interface TermTile extends ReplayFlags {
   // keyboard.ts routes Enter/Escape to the two handlers when it's shown.
   deadOverlayShown: boolean;
   _closeDead(): void;
+  _restartDead(): void;
   _dismissDead(): void;
   show(): void;
   hide(): void;

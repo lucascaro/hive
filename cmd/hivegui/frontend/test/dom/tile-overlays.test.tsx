@@ -88,6 +88,7 @@ const SESSION: SessionInfo = {
 };
 
 const closeDead = vi.fn();
+const restartDead = vi.fn();
 const dismissDead = vi.fn();
 
 function stubTile(id: string): TermTile {
@@ -111,6 +112,7 @@ function stubTile(id: string): TermTile {
     deadOverlayShown: false,
     phase: '',
     _closeDead: closeDead,
+    _restartDead: restartDead,
     _dismissDead: dismissDead,
     show: () => {},
     hide: () => {},
@@ -157,6 +159,7 @@ const tick = () => act(() => new Promise((r) => setTimeout(r, 0)));
 beforeEach(() => {
   clearTerms();
   closeDead.mockClear();
+  restartDead.mockClear();
   dismissDead.mockClear();
   document.getElementById('terms')?.replaceChildren();
 });
@@ -185,20 +188,35 @@ describe('dead-session overlay', () => {
     );
   });
 
-  it('closes and dismisses through the tile, not through React', () => {
-    // The two handlers stay on SessionTerm: _closeDead kills the
-    // session, _dismissDead records the dismissal and hands focus back.
-    // keyboard.ts routes Enter/Escape to the same pair.
+  it('closes, restarts and dismisses through the tile, not through React', () => {
+    // The handlers stay on SessionTerm: _closeDead kills the session,
+    // _restartDead respawns it in place, _dismissDead records the
+    // dismissal and hands focus back. keyboard.ts routes Enter / r /
+    // Escape to the same three.
     mount({ dead: true });
-    const btns = dead()?.querySelectorAll<HTMLButtonElement>('.dead-btn');
-    expect([...(btns ?? [])].map((b) => b.className)).toEqual([
+    const btns = [
+      ...(dead()?.querySelectorAll<HTMLButtonElement>('.dead-btn') ?? []),
+    ];
+    expect(btns.map((b) => b.className)).toEqual([
       'dead-btn primary',
       'dead-btn secondary',
+      'dead-btn secondary',
     ]);
-    fireEvent.click(btns?.[0] as HTMLButtonElement);
+    // Each button shows the key that triggers it (AGENTS.md › Key
+    // Discoverability).
+    expect(btns.map((b) => b.querySelector('kbd')?.textContent)).toEqual([
+      '[enter]',
+      '(r)',
+      '[esc]',
+    ]);
+    fireEvent.click(btns[0] as HTMLButtonElement);
     expect(closeDead).toHaveBeenCalledOnce();
-    fireEvent.click(btns?.[1] as HTMLButtonElement);
+    fireEvent.click(btns[1] as HTMLButtonElement);
+    expect(restartDead).toHaveBeenCalledOnce();
+    fireEvent.click(btns[2] as HTMLButtonElement);
     expect(dismissDead).toHaveBeenCalledOnce();
+    expect(closeDead).toHaveBeenCalledOnce();
+    expect(restartDead).toHaveBeenCalledOnce();
   });
 
   it('takes focus when it appears', async () => {
