@@ -2,6 +2,7 @@
 type: added
 bump: minor
 issue: 446
+pr: 448
 ---
 
 Settings → Agents can now tailor the new-session menu. Untick an agent to hide

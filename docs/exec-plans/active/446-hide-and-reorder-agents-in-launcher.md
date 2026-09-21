@@ -3,6 +3,8 @@
 - **Spec:** [docs/product-specs/446-hide-and-reorder-agents-in-launcher.md](../../product-specs/446-hide-and-reorder-agents-in-launcher.md)
 - **Issue:** #446
 - **Status:** active
+- **PR:** #448
+- **Branch:** feature/446-hide-and-reorder-agents-in-launcher
 
 ## Summary
 

@@ -4,7 +4,8 @@ title: "Let users hide agents from the launcher and reorder them"
 type: enhancement
 complexity: M
 priority: P2
-stage: IMPLEMENT
+pr: 448
+stage: REVIEW
 ---
 
 # Let users hide agents from the launcher and reorder them
