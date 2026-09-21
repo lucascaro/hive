@@ -2,6 +2,8 @@
 
 - **Spec:** [docs/product-specs/444-launcher-worktree-defaults.md](../../product-specs/444-launcher-worktree-defaults.md)
 - **Issue:** #444
+- **PR:** #445
+- **Branch:** feature/444-launcher-worktree-defaults
 - **Status:** active
 
 ## Summary

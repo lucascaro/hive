@@ -2,6 +2,7 @@
 type: changed
 bump: patch
 issue: 444
+pr: 445
 ---
 
 Starting a session from an idea now opens the agent launcher with "Create in
