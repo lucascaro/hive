@@ -582,9 +582,6 @@ function LauncherBody({
               onChange={(e) => {
                 const on = e.target.checked;
                 setUseWorktree(on);
-                try {
-                  localStorage.setItem('hive.worktree', on ? '1' : '0');
-                } catch {}
                 if (!on) setBranch('');
               }}
             />

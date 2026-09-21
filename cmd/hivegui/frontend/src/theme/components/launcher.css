@@ -66,6 +66,10 @@
    reflow the agent list twice. */
 .launcher-branch {
   display: block;
+  /* border-box: this theme sets box-sizing per rule, and without it the
+     padding and border pushed the field out through the popup's right
+     edge — a sideways scroll whenever the worktree toggle was on. */
+  box-sizing: border-box;
   width: calc(100% - 16px);
   margin: 0 8px 6px;
   padding: 4px 6px;

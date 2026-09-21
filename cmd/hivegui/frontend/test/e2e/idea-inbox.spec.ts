@@ -187,6 +187,14 @@ test('the opening prompt stays inside the launcher popup', async ({ page }) => {
     .getByRole('button', { name: 'Start session' })
     .click();
 
+  // An idea opens with the worktree toggle on, so the branch field is
+  // showing too — it overflowed the popup sideways until it took
+  // box-sizing: border-box.
+  await expect(
+    page.locator('.launcher-worktree input[type=checkbox]'),
+  ).toBeChecked();
+  await expect(page.locator('.launcher-branch')).toBeVisible();
+
   const field = await page.locator('#launcher-prompt').boundingBox();
   const popup = await page.locator('#launcher').boundingBox();
   expect(field).not.toBeNull();
