@@ -28,6 +28,7 @@ The *what* and *why* of work this project plans to do. Each spec describes user 
 |-------|-------|----|---------|------|
 | #439 | Upgrade xterm.js to 6.0 and fix the addon-search version mismatch | #441 | 2026-09-20 | [439-upgrade-xterm-js-to-6-0-and-fix-addon-search](439-upgrade-xterm-js-to-6-0-and-fix-addon-search.md) |
 | #442 | Add a Help button and Help modal to the sidebar header | #443 | 2026-09-20 | [442-add-a-help-button-and-help-modal](442-add-a-help-button-and-help-modal.md) |
+| #444 | Launcher: ideas default to a worktree, plain new session never remembers it | #445 | 2026-09-20 | [444-launcher-worktree-defaults](444-launcher-worktree-defaults.md) |
 | #431 | Find text in a session, including alt-screen agents | #432 | 2026-09-18 | [431-search-an-agent-session-s-transcript-history](431-search-an-agent-session-s-transcript-history.md) |
 | #434 | Show total session count next to the Hive title in the sidebar | #435 | 2026-09-18 | [434-show-total-session-count-next-to-the-hive-title-i](434-show-total-session-count-next-to-the-hive-title-i.md) |
 | #436 | Show an update pip on the Check for updates button instead of auto-showing the update bar | #437 | 2026-09-18 | [436-update-pip-on-check-for-updates-button](436-update-pip-on-check-for-updates-button.md) |

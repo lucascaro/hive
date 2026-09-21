@@ -32,6 +32,11 @@ highlighted and scrolled into view — instead of a row of dots whose text you
 could only reach by hovering. The live tool feed is still there, in whatever
 height the tasks leave over: on a roomy tile you get both, and on a long plan
 the tasks win. Sessions with no plan are unchanged.
+Starting a session from an idea now opens the agent launcher with "Create in
+git worktree" already ticked, since an idea is usually a self-contained piece
+of work. ⌘T and the other plain New Session buttons no longer remember the
+checkbox from your last launch — they always start with it off, and ⇧⌘T is
+still the one-key way to launch in a worktree.
 Claude sessions started by Hive now fill the plan pie much more often. Claude
 had the task tools but rarely used them, so Hive had no progress to show. When
 the Claude task tools setting is on, Hive now tells each session at startup to
