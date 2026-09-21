@@ -380,6 +380,41 @@ test('a11y attributes: palette input label, alertdialog dead overlay, caret butt
   await expect(overlay).toBeHidden();
 });
 
+test('r on the dead-session card restarts the session in place', async ({
+  page,
+}) => {
+  await boot(page);
+  const id = await page.evaluate(() => {
+    const s = window.__hive.state?.sessions[0];
+    if (!s) throw new Error('no session');
+    // The mock's state object is the daemon: flip it, then announce it.
+    s.alive = false;
+    s.last_error = 'boom';
+    window.__hive.emit(
+      'session:event',
+      JSON.stringify({ kind: 'updated', session: s }),
+    );
+    return s.id;
+  });
+  const overlay = page.locator(
+    `.term-host[data-sid="${id}"] .dead-overlay[role="alertdialog"]`,
+  );
+  await expect(overlay).toBeVisible();
+  await expect(overlay.getByRole('button', { name: /Restart/ })).toContainText(
+    '(r)',
+  );
+  await page.keyboard.press('r');
+  // Revived by the mock's RestartSession: the card goes, the session
+  // stays.
+  await expect(overlay).toBeHidden();
+  expect(
+    await page.evaluate(
+      (sid) => window.__hive.state?.sessions.find((s) => s.id === sid)?.alive,
+      id,
+    ),
+  ).toBe(true);
+});
+
 test('the sidebar cannot be dragged below the 220px design floor', async ({
   page,
 }) => {

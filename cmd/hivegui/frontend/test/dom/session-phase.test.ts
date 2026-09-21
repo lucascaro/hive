@@ -16,6 +16,7 @@ import { setTerm, clearTerms } from '../../src/store/terms.js';
 const OpenSession = vi.fn((_id: string, _cols: number, _rows: number) =>
   Promise.resolve({}),
 );
+const RestartSession = vi.fn((_id: string) => Promise.resolve());
 
 vi.mock('../../src/bridge.js', () => {
   const fn = () => vi.fn(() => Promise.resolve());
@@ -30,7 +31,7 @@ vi.mock('../../src/bridge.js', () => {
     CreateSession: fn(),
     DuplicateSession: fn(),
     KillSession: fn(),
-    RestartSession: fn(),
+    RestartSession: (id: string) => RestartSession(id),
     UpdateSession: fn(),
     ListAgents: fn(),
     ListCustomAgents: fn(),
@@ -92,6 +93,8 @@ beforeAll(async () => {
 
 beforeEach(() => {
   OpenSession.mockClear();
+  RestartSession.mockReset();
+  RestartSession.mockImplementation(() => Promise.resolve());
   clearTerms();
   // resetStore FIRST: SessionTerm's constructor now seeds the tileChrome
   // slice, and without a reset a test that reuses a session id would
@@ -309,5 +312,53 @@ describe('setDead', () => {
     // keyboard.ts routes Enter/Escape off this flag, so it tracks the
     // store write rather than lagging it.
     expect(st.deadOverlayShown).toBe(false);
+  });
+});
+
+describe('_restartDead', () => {
+  it('sends one RestartSession per death, however often it is pressed', () => {
+    // A second request while the first is in flight would tear down the
+    // process the first one just spawned.
+    const st = makeTerm({ id: 'r1', name: 'restart me', alive: true });
+    st.setDead(true, 'exit status 1');
+    st._restartDead();
+    st._restartDead();
+    expect(RestartSession).toHaveBeenCalledOnce();
+    expect(RestartSession).toHaveBeenCalledWith('r1');
+    // The overlay is not dropped here: events.ts clears it on the alive
+    // edge, so a failed restart leaves Close/Dismiss in place.
+    expect(st.deadOverlayShown).toBe(true);
+
+    // Revived, then died again: the next restart goes out.
+    st.setDead(false);
+    st.setDead(true, 'exit status 1');
+    st._restartDead();
+    expect(RestartSession).toHaveBeenCalledTimes(2);
+  });
+
+  it('stays guarded while ensureAttached re-asserts the dead card', () => {
+    // Every render/focus/resize of a dead tile goes through
+    // ensureAttached, which calls setDead(true) again. That must not
+    // re-arm Restart while the first request is still in flight.
+    const st = makeTerm({ id: 'r3', name: 'busy', alive: false });
+    store.setAliveById(new Map([['r3', false]]));
+    st.setDead(true, 'exit status 1');
+    st._restartDead();
+    st.ensureAttached();
+    expect(st.deadOverlayShown).toBe(true);
+    st._restartDead();
+    expect(RestartSession).toHaveBeenCalledOnce();
+  });
+
+  it('allows a retry after the request fails', async () => {
+    RestartSession.mockImplementationOnce(() => Promise.reject('boom'));
+    const st = makeTerm({ id: 'r2', name: 'flaky', alive: true });
+    st.setDead(true);
+    st._restartDead();
+    await Promise.resolve();
+    await Promise.resolve();
+    expect(st.deadOverlayShown).toBe(true);
+    st._restartDead();
+    expect(RestartSession).toHaveBeenCalledTimes(2);
   });
 });

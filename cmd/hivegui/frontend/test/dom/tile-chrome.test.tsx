@@ -117,6 +117,7 @@ function stubTile(id: string): { tile: TermTile; host: HTMLDivElement } {
     deadOverlayShown: false,
     phase: '',
     _closeDead: () => {},
+    _restartDead: () => {},
     _dismissDead: () => {},
     show: () => {},
     hide: () => {},

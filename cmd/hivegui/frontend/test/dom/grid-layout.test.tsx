@@ -66,6 +66,7 @@ function fakeTerm(id: string): TermTile {
     writeData() {},
     destroy() {},
     _closeDead() {},
+    _restartDead() {},
     _dismissDead() {},
   } as unknown as TermTile;
 }

@@ -367,7 +367,7 @@ window.addEventListener(
       return; // the build log owns the keyboard while open
     }
 
-    // Dead-session overlay: route Enter/Escape to the active session's
+    // Dead-session overlay: route Enter/Escape/r to the active session's
     // overlay if it's shown. In grid mode the user can still click any
     // tile's buttons directly; this just handles the focused tile.
     const deadOverlayId = appData().activeId;
@@ -384,6 +384,20 @@ window.addEventListener(
           e.preventDefault();
           e.stopPropagation();
           t._dismissDead();
+          return;
+        }
+        // Bare r only: ⌘R / Ctrl+R keep whatever they already do, and
+        // a held key must not queue restarts.
+        if (
+          (e.key === 'r' || e.key === 'R') &&
+          !e.metaKey &&
+          !e.ctrlKey &&
+          !e.altKey &&
+          !e.repeat
+        ) {
+          e.preventDefault();
+          e.stopPropagation();
+          t._restartDead();
           return;
         }
       }

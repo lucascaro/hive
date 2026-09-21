@@ -250,6 +250,16 @@ export function shortcutGroups({ isMac }: { isMac: boolean }): ShortcutGroup[] {
       ],
     },
     {
+      // The card over a tile whose process has exited. Bare keys: the
+      // terminal underneath has nothing left to type into.
+      title: 'Ended session',
+      items: [
+        { keys: keyLabel('enter', isMac), label: 'Close the session' },
+        { keys: 'R', label: 'Restart it in place' },
+        { keys: 'Esc', label: 'Dismiss the card, keep the tile' },
+      ],
+    },
+    {
       title: 'Launcher & dialogs',
       items: [
         { keys: '1–9', label: 'Pick agent by number' },

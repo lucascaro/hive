@@ -74,6 +74,7 @@ function TileChrome({ id }: { id: string }): ReactNode {
             <TileOverlays
               chrome={chrome}
               onClose={() => term._closeDead()}
+              onRestart={() => term._restartDead()}
               onDismiss={() => term._dismissDead()}
             />,
             term.overlays,

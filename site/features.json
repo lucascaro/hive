@@ -1,5 +1,11 @@
 [
   {
+    "title": "Restart an ended session",
+    "blurb": "When a session's process exits, the card over it now offers Restart next to Close and Dismiss, so you can bring it back in place with one click or the r key.",
+    "status": "shipped",
+    "since": "Unreleased"
+  },
+  {
     "title": "Terminal scrollbar",
     "blurb": "Terminals now show a scrollbar, so you can see where you are in the scrollback instead of guessing. It matches the sidebar's and follows whichever theme you are on.",
     "status": "shipped",

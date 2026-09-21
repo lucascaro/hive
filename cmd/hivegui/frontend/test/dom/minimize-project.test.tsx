@@ -678,6 +678,7 @@ describe('grid views', () => {
           writeData() {},
           destroy() {},
           _closeDead() {},
+          _restartDead() {},
           _dismissDead() {},
         };
         setTerm(info.id, tile);
@@ -799,6 +800,7 @@ describe('keyboard navigation skips minimized things', () => {
           writeData() {},
           destroy() {},
           _closeDead() {},
+          _restartDead() {},
           _dismissDead() {},
         };
         setTerm(info.id, tile);

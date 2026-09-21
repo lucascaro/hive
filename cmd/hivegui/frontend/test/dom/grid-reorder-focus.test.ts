@@ -88,6 +88,7 @@ function fakeTerm(): TermTile {
     writeData() {},
     destroy() {},
     _closeDead() {},
+    _restartDead() {},
     _dismissDead() {},
   };
 }
