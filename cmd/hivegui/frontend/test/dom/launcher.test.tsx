@@ -414,7 +414,7 @@ describe('launcher worktree row', () => {
     expect(wt).not.toBeNull();
     const box = wt?.querySelector('input[type=checkbox]') as HTMLInputElement;
     fireEvent.click(box);
-    expect(localStorage.getItem('hive.worktree')).toBe('1');
+    expect(box.checked).toBe(true);
   });
 
   it('sits between the filter box and the agent list', async () => {
@@ -428,6 +428,42 @@ describe('launcher worktree row', () => {
       'launcher-branch hidden',
       'launcher-list',
     ]);
+  });
+});
+
+// The toggle is chosen per opening and never remembered: a plain
+// opening (⌘T, the sidebar +, New Session) is always off, and only a
+// caller that asks for one — ⇧⌘T, an idea's Start session — gets it on.
+describe('launcher worktree default', () => {
+  const wtBox = () =>
+    launcher().querySelector(
+      '.launcher-worktree input[type=checkbox]',
+    ) as HTMLInputElement;
+
+  it('opens with the toggle off, whatever the last opening chose', async () => {
+    await open();
+    fireEvent.click(wtBox());
+    expect(wtBox().checked).toBe(true);
+    act(() => closeLauncher());
+    await open();
+    expect(wtBox().checked).toBe(false);
+  });
+
+  it('never persists the toggle', async () => {
+    await open();
+    fireEvent.click(wtBox());
+    expect(localStorage.getItem('hive.worktree')).toBeNull();
+  });
+
+  it('ignores a preference remembered by an older version', async () => {
+    localStorage.setItem('hive.worktree', '1');
+    await open();
+    expect(wtBox().checked).toBe(false);
+  });
+
+  it('opens with the toggle on when the caller forces it', async () => {
+    await open({ forceWorktree: true });
+    expect(wtBox().checked).toBe(true);
   });
 });
 
@@ -452,8 +488,7 @@ describe('launcher branch name', () => {
   // exempt or it is literally unclickable — which is how it shipped
   // first, because every test set .value directly.
   it('can be focused by clicking it', async () => {
-    localStorage.setItem('hive.worktree', '1');
-    await open();
+    await open({ forceWorktree: true });
     const ev = new window.MouseEvent('mousedown', {
       bubbles: true,
       cancelable: true,
@@ -468,8 +503,7 @@ describe('launcher branch name', () => {
   });
 
   it('still blocks focus moving to the agent rows', async () => {
-    localStorage.setItem('hive.worktree', '1');
-    await open();
+    await open({ forceWorktree: true });
     const rowEl = launcher().querySelector('.launcher-list > *') as HTMLElement;
     const ev = new window.MouseEvent('mousedown', {
       bubbles: true,
@@ -485,8 +519,7 @@ describe('launcher branch name', () => {
   // branch box they are part of the name (`fix-2`) and were being
   // swallowed — the keystroke launched a session instead of typing.
   it('takes digits as text instead of launching a session', async () => {
-    localStorage.setItem('hive.worktree', '1');
-    await open();
+    await open({ forceWorktree: true });
     branchBox().focus();
     const ev = new window.KeyboardEvent('keydown', {
       key: '2',
@@ -503,8 +536,7 @@ describe('launcher branch name', () => {
   });
 
   it('launches on Enter from inside the branch box', async () => {
-    localStorage.setItem('hive.worktree', '1');
-    await open();
+    await open({ forceWorktree: true });
     branchBox().focus();
     typeBranch('typed-here');
     act(() => {
@@ -517,8 +549,7 @@ describe('launcher branch name', () => {
   });
 
   it('closes on Escape from inside the branch box', async () => {
-    localStorage.setItem('hive.worktree', '1');
-    await open();
+    await open({ forceWorktree: true });
     branchBox().focus();
     act(() => {
       branchBox().dispatchEvent(
@@ -529,7 +560,6 @@ describe('launcher branch name', () => {
   });
 
   it('is hidden until the worktree toggle is on', async () => {
-    localStorage.setItem('hive.worktree', '0');
     await open();
     expect(branchBox().classList.contains('hidden')).toBe(true);
     toggleWorktree(true);
@@ -537,8 +567,7 @@ describe('launcher branch name', () => {
   });
 
   it('reaches CreateSession as the branch argument', async () => {
-    localStorage.setItem('hive.worktree', '1');
-    await open();
+    await open({ forceWorktree: true });
     typeBranch('my-feature');
     press('Enter');
     // The whole request, field by field: this is the assertion the
@@ -726,8 +755,7 @@ describe('launcher branch name', () => {
     // The worktree toggle is ON, so the branch field is in the cycle —
     // the full search → prompt → branch → search rotation, asserted by
     // element and not merely by "focus is still somewhere inside".
-    localStorage.setItem('hive.worktree', '1');
-    await open({ initialPrompt: 'seeded', ideaId: 'i7' });
+    await open({ initialPrompt: 'seeded', ideaId: 'i7', forceWorktree: true });
     expect(document.activeElement).toBe(searchBox());
 
     tab();
@@ -752,7 +780,6 @@ describe('launcher branch name', () => {
     // offsetParent rule collapses the field list and makes the test
     // above assert nothing. With the toggle off the branch box carries
     // `.hidden`, so the cycle is search → prompt → search.
-    localStorage.setItem('hive.worktree', '0');
     await open({ initialPrompt: 'seeded', ideaId: 'i7' });
     expect(branchBox().classList.contains('hidden')).toBe(true);
 
@@ -798,8 +825,7 @@ describe('launcher branch name', () => {
   });
 
   it('trims whitespace and sends empty for a blank name', async () => {
-    localStorage.setItem('hive.worktree', '1');
-    await open();
+    await open({ forceWorktree: true });
     typeBranch('   ');
     press('Enter');
     expect(sent().branch).toBe('');
@@ -808,19 +834,17 @@ describe('launcher branch name', () => {
   // A branch typed for one session must not silently become the next
   // session's branch — that would collide or reuse the wrong worktree.
   it('does not leak into the next launcher opening', async () => {
-    localStorage.setItem('hive.worktree', '1');
-    await open();
+    await open({ forceWorktree: true });
     typeBranch('first-only');
     act(() => closeLauncher());
-    await open();
+    await open({ forceWorktree: true });
     expect(branchBox().value).toBe('');
     press('Enter');
     expect(sent().branch).toBe('');
   });
 
   it('is cleared when the worktree toggle goes off', async () => {
-    localStorage.setItem('hive.worktree', '1');
-    await open();
+    await open({ forceWorktree: true });
     typeBranch('discard-me');
     toggleWorktree(false);
     press('Enter');
@@ -832,11 +856,10 @@ describe('launcher branch name', () => {
   // case has to seed one — the rest of the suite never needs project
   // state and deliberately leaves it empty.
   it('disappears along with the toggle on a non-git project', async () => {
-    localStorage.setItem('hive.worktree', '1');
     isGitRepo.mockResolvedValueOnce(false);
     state.projects = [{ id: 'p1', name: 'p', cwd: '/not-a-repo' }];
     try {
-      await open();
+      await open({ forceWorktree: true });
       await act(async () => {
         await flushMicrotasks();
       });
@@ -859,10 +882,12 @@ describe('launcher resume-in-worktree mode', () => {
   });
 
   it('passes the worktree path and never asks for a new worktree', async () => {
-    // Sticky preference is on; resume mode must still not create one.
-    localStorage.setItem('hive.worktree', '1');
+    // Even asked for one, resume mode must still not create a worktree.
     await openWith(() =>
-      openLauncher('p1', { worktreePath: '/repo/.worktrees/resume' }),
+      openLauncher('p1', {
+        worktreePath: '/repo/.worktrees/resume',
+        forceWorktree: true,
+      }),
     );
     await settleAgents();
     press('Enter');

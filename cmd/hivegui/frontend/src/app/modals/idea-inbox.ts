@@ -146,6 +146,10 @@ export function markIdeaDone(idea: IdeaInfo): void {
 // launch. The note then stays in the inbox, which is what makes
 // starting it again against a different agent possible.
 //
+// The worktree toggle starts on: an idea is a self-contained unit of
+// work, so by default it gets its own branch. The launcher still lets
+// the operator switch it off for this launch.
+//
 // The inbox closes first: the launcher anchors itself under the
 // project's card, which is behind this panel.
 export function startSessionFromIdea(idea: IdeaInfo): void {
@@ -154,6 +158,7 @@ export function startSessionFromIdea(idea: IdeaInfo): void {
     initialPrompt: ideaPrompt(idea),
     ideaId: idea.id,
     lockProject: true,
+    forceWorktree: true,
   });
 }
 

@@ -95,16 +95,14 @@ export function bumpAgentUsage(id: string | undefined) {
   } catch {}
 }
 
-// projectId is optional, not just nullable: main.tsx, keyboard.ts and
-// view.ts all call openLauncher() bare and let the `|| activeProjectId()`
+// projectId is optional, not just nullable: main.tsx, keyboard.ts,
+// EmptyState.tsx and Launcher.tsx all call openLauncher() bare and let the `|| activeProjectId()`
 // fallback below pick the project.
 export function openLauncher(projectId?: string | null, opts?: LauncherOpts) {
-  // Re-read the sticky pref each open so a one-shot forceWorktree from a
-  // previous opening doesn't leak into the next regular open.
-  // forceWorktree overrides for this opening only and is intentionally
-  // not persisted.
-  const forced =
-    opts && typeof opts.forceWorktree === 'boolean' ? opts.forceWorktree : null;
+  // The worktree toggle is chosen per opening and never remembered: a
+  // plain opening is always off, and only a caller that asks for one
+  // (⇧⌘T, an idea's Start session) opens with it on. A remembered
+  // choice turned every later ⌘T into a worktree launch.
   const duplicateFrom = opts?.duplicateFrom || null;
   const worktreePath = opts?.worktreePath || '';
   openModal({
@@ -117,9 +115,7 @@ export function openLauncher(projectId?: string | null, opts?: LauncherOpts) {
       // into the same cwd, and in resume mode the worktree already
       // exists — never a new worktree in either.
       useWorktree:
-        duplicateFrom || worktreePath
-          ? false
-          : (forced ?? localStorage.getItem('hive.worktree') === '1'),
+        duplicateFrom || worktreePath ? false : opts?.forceWorktree === true,
       duplicateFrom,
       duplicateCwd: opts?.duplicateCwd || '',
       worktreePath,

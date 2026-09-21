@@ -242,6 +242,8 @@ describe('idea inbox', () => {
       initialPrompt: expect.stringContaining('sidebar is 1px off'),
       ideaId: 'i1',
       lockProject: true,
+      // An idea is a unit of work, so it starts in its own worktree.
+      forceWorktree: true,
     });
     expect(openLauncher.mock.calls[0][1].initialPrompt).toContain(
       'find the root cause',
