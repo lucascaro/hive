@@ -368,12 +368,6 @@
   outline: none;
 }
 
-/* Drag-to-reorder. A class, not a data attribute: transient drag chrome,
-   not row state. The dragged row leaves the flow entirely and
-   .hv-drop-placeholder (sidebar.css) reserves its box at the drop slot, so
-   the list's height never changes mid-drag. */
-.hv-session-row.dragging { display: none; }
-
 .hv-session-row button:focus-visible {
   outline: 2px solid var(--accent);
   outline-offset: 1px;

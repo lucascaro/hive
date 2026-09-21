@@ -115,6 +115,12 @@
     "since": "Unreleased"
   },
   {
+    "title": "Hide and pin agents",
+    "blurb": "Tailor the new-session menu in Settings → Agents: untick the agents you never use, and pin favourites to the top in the order you drag them.",
+    "status": "shipped",
+    "since": "Unreleased"
+  },
+  {
     "title": "Scrollback across daemon restart",
     "blurb": "Today scrollback lives with the daemon process.",
     "status": "planned"

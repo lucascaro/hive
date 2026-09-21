@@ -50,6 +50,7 @@ const bridge = vi.hoisted(() => ({
     Promise.resolve({ claude_task_tools: true, pi_todo_tool: true }),
   ),
   SaveAgentSettings: vi.fn(() => Promise.resolve()),
+  ListAgents: vi.fn(() => Promise.resolve([])),
 }));
 
 vi.mock('../../src/bridge.js', () => bridge);

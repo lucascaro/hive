@@ -1,0 +1,23 @@
+/* Drag-to-reorder, shared by every list that wires rows through
+   lib/drag-row.ts (sidebar sessions and project cards, Settings' pinned
+   agents). Imported late in index.css: the .dragging rule must not lose to a
+   later two-class rule that sets `display`. */
+
+/* The dragged row leaves the flow entirely. A class, not a data attribute:
+   transient drag chrome, not row state. */
+[data-drag-row].dragging { display: none; }
+
+/* Drop placeholder (lib/drag-placeholder.ts). Sized in JS to the dragged
+   element's exact margin box, so swapping the dragged row out of the flow
+   for this leaves the list's height unchanged and nothing below the cursor
+   shifts. It is hit-testable on purpose: an "insert above" spacer lands under
+   the cursor, and a pointer-events: none spacer would let the hit-test fall
+   through to a container with no dragover handler — nothing would call
+   preventDefault and the drop would silently no-op. */
+.hv-drop-placeholder {
+  list-style: none;
+  box-sizing: border-box;
+  border: 1px dashed var(--accent);
+  border-radius: var(--radius-md);
+  background: var(--hover);
+}

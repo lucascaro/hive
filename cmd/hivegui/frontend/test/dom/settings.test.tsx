@@ -31,6 +31,16 @@ const getAgentSettings = vi.fn(
 const saveAgentSettings = vi.fn(
   (_s: main.AgentSettings): Promise<void> => Promise.resolve(),
 );
+// The full agent catalog, which the launcher-visibility list is built
+// from. Three agents, the same shape the Go side returns.
+const CATALOG = [
+  { id: 'shell', name: 'Shell', color: '#888888', available: true },
+  { id: 'claude', name: 'Claude', color: '#d97757', available: true },
+  { id: 'codex', name: 'Codex', color: '#10a37f', available: true },
+] as main.AgentInfo[];
+const listAgents = vi.fn(
+  (): Promise<main.AgentInfo[]> => Promise.resolve(CATALOG),
+);
 
 // Forwarded variadically off Parameters<>, not at a fixed arity: a mock
 // that drops an argument the real binding gained still satisfies
@@ -80,6 +90,7 @@ vi.mock('../../src/bridge.js', () => ({
     getAgentSettings(...a),
   SaveAgentSettings: (...a: Parameters<typeof saveAgentSettings>) =>
     saveAgentSettings(...a),
+  ListAgents: (...a: Parameters<typeof listAgents>) => listAgents(...a),
   MenuBarLoginItemStatus: () => Promise.resolve(menuBarStatus),
   SetMenuBarLoginItem: (...a: Parameters<typeof setMenuBarLoginItem>) =>
     setMenuBarLoginItem(...a),
@@ -142,6 +153,8 @@ beforeEach(() => {
     pi_todo_tool: true,
   } as main.AgentSettings);
   saveAgentSettings.mockReset().mockResolvedValue(undefined);
+  listAgents.mockReset().mockResolvedValue(CATALOG);
+  localStorage.removeItem('hive.agentPrefs');
   refocusActiveTerm.mockReset();
   setFocusedTile.mockReset();
   setMenuBarLoginItem.mockReset().mockResolvedValue(undefined);
@@ -1089,5 +1102,177 @@ describe('system theme pair pickers', () => {
     expect(localStorage.getItem('hive.theme.light')).toBe('github-light');
     expect(light().value).toBe('github-light');
     expect(document.documentElement.dataset.theme).toBe('dracula');
+  });
+});
+
+// Settings → Agents → "In the new-session menu" (LauncherAgents.tsx): the
+// hidden/pinned draft over the full agent catalog, written to
+// hive.agentPrefs on Save only. What the launcher does with it is
+// test/dom/launcher.test.tsx; the ordering rule is test/unit/agent-order.
+describe('settings: launcher visibility', () => {
+  const PREFS = 'hive.agentPrefs';
+  const stored = () => JSON.parse(localStorage.getItem(PREFS) ?? 'null');
+  const agentRow = (id: string) =>
+    document.querySelector<HTMLElement>(
+      `#settings-launcher-agents li[data-agent-id="${id}"]`,
+    ) as HTMLElement;
+  const showBox = (id: string) =>
+    agentRow(id).querySelector<HTMLInputElement>(
+      '.settings-check:not(.settings-launcher-pin) input',
+    ) as HTMLInputElement;
+  const pinBox = (id: string) =>
+    agentRow(id).querySelector<HTMLInputElement>(
+      '.settings-launcher-pin input',
+    ) as HTMLInputElement;
+  const listIds = (listId: string) =>
+    [...document.querySelectorAll<HTMLElement>(`#${listId} > li`)].map(
+      (li) => li.dataset.agentId,
+    );
+  const save = async () => {
+    click(el('settings-save'));
+    await flush();
+  };
+  // jsdom has no DataTransfer: a plain Event carrying just what
+  // lib/drag-row.ts reads. clientY 0 on a zero rect reads as "below".
+  function dropOn(target: HTMLElement, draggedId: string) {
+    const ev = new Event('drop', { bubbles: true, cancelable: true });
+    Object.defineProperty(ev, 'dataTransfer', {
+      value: {
+        types: ['text/x-hive-agent'],
+        getData: (k: string) => (k === 'text/x-hive-agent' ? draggedId : ''),
+      },
+    });
+    Object.defineProperty(ev, 'clientY', { value: 0 });
+    act(() => {
+      target.dispatchEvent(ev);
+    });
+  }
+
+  it('lists every agent with a show and a pin checkbox', async () => {
+    open();
+    await flush();
+    expect(listIds('settings-launcher-rest')).toEqual([
+      'shell',
+      'claude',
+      'codex',
+    ]);
+    for (const id of ['shell', 'claude', 'codex']) {
+      expect(showBox(id).checked).toBe(true);
+      expect(pinBox(id).checked).toBe(false);
+    }
+  });
+
+  it('writes an unticked agent to hidden on Save', async () => {
+    open();
+    await flush();
+    click(showBox('codex'));
+    // Draft only until Save.
+    expect(localStorage.getItem(PREFS)).toBeNull();
+    await save();
+    expect(stored()).toEqual({ hidden: ['codex'], pinned: [] });
+  });
+
+  it('discards visibility edits on cancel', async () => {
+    open();
+    await flush();
+    click(showBox('codex'));
+    click(pinBox('claude'));
+    click(el('settings-cancel'));
+    expect(localStorage.getItem(PREFS)).toBeNull();
+  });
+
+  it('moves a pinned agent into the pinned list, in pin order', async () => {
+    open();
+    await flush();
+    click(pinBox('codex'));
+    click(pinBox('shell'));
+    expect(listIds('settings-launcher-pinned')).toEqual(['codex', 'shell']);
+    expect(listIds('settings-launcher-rest')).toEqual(['claude']);
+    // Only pinned rows are drag rows — a drop can never resolve into the
+    // unpinned list.
+    expect(agentRow('codex').hasAttribute('data-drag-row')).toBe(true);
+    expect(agentRow('claude').hasAttribute('data-drag-row')).toBe(false);
+    await save();
+    expect(stored()).toEqual({ hidden: [], pinned: ['codex', 'shell'] });
+  });
+
+  it('reorders pinned agents by drop, below the last one included', async () => {
+    localStorage.setItem(
+      PREFS,
+      JSON.stringify({ hidden: [], pinned: ['shell', 'claude', 'codex'] }),
+    );
+    open();
+    await flush();
+    dropOn(agentRow('codex'), 'shell');
+    expect(listIds('settings-launcher-pinned')).toEqual([
+      'claude',
+      'codex',
+      'shell',
+    ]);
+    await save();
+    expect(stored().pinned).toEqual(['claude', 'codex', 'shell']);
+  });
+
+  it('moves a pinned agent with Alt+ArrowUp and keeps focus on it', async () => {
+    localStorage.setItem(
+      PREFS,
+      JSON.stringify({ hidden: [], pinned: ['shell', 'claude', 'codex'] }),
+    );
+    open();
+    await flush();
+    pinBox('codex').focus();
+    fireEvent.keyDown(pinBox('codex'), { key: 'ArrowUp', altKey: true });
+    await flush();
+    expect(listIds('settings-launcher-pinned')).toEqual([
+      'shell',
+      'codex',
+      'claude',
+    ]);
+    expect(document.activeElement).toBe(pinBox('codex'));
+    // Without Alt the arrows are left alone.
+    fireEvent.keyDown(pinBox('codex'), { key: 'ArrowUp' });
+    expect(listIds('settings-launcher-pinned')).toEqual([
+      'shell',
+      'codex',
+      'claude',
+    ]);
+  });
+
+  it('drops ids of agents that no longer exist on the next Save', async () => {
+    localStorage.setItem(
+      PREFS,
+      JSON.stringify({ hidden: ['gone'], pinned: ['gone', 'claude'] }),
+    );
+    open();
+    await flush();
+    await save();
+    expect(stored()).toEqual({ hidden: [], pinned: ['claude'] });
+  });
+
+  it('warns when every agent is hidden', async () => {
+    open();
+    await flush();
+    expect(el('settings-launcher-empty')).toBeNull();
+    for (const id of ['shell', 'claude', 'codex']) click(showBox(id));
+    expect(el('settings-launcher-empty')).not.toBeNull();
+  });
+
+  // Same hazard as agents.json: a draft built over a list that failed to
+  // load must never be written over the user's stored choices.
+  it('leaves stored prefs untouched when the agent list fails to load', async () => {
+    // Spaced on purpose: a re-serialised write would compact it, so the
+    // byte comparison below cannot pass by writing the same value back.
+    const before = '{ "hidden": ["codex"], "pinned": ["claude"] }';
+    localStorage.setItem(PREFS, before);
+    listAgents.mockRejectedValue(new Error('daemon gone'));
+    open();
+    await flush();
+    expect(el('settings-launcher-failed')).not.toBeNull();
+    expect(document.querySelector('#settings-launcher-agents')).toBeNull();
+    await save();
+    // The rest of the dialog still saved and closed.
+    expect(saveCustomAgents).toHaveBeenCalled();
+    expect(el('settings').classList.contains('hidden')).toBe(true);
+    expect(localStorage.getItem(PREFS)).toBe(before);
   });
 });

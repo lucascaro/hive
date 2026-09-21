@@ -1,15 +1,16 @@
-// Drop placeholder for the sidebar's drag-to-reorder (sessions and project
-// cards both). The dragged element leaves the layout flow and a spacer of its
+// Drop placeholder for every drag-to-reorder list: sidebar sessions and
+// project cards, and the pinned agents in Settings. Rows wire up through
+// lib/drag-row.ts and mark themselves with `data-drag-row`. The dragged element leaves the layout flow and a spacer of its
 // exact margin box takes its place at the drop slot, so the list's total
 // height never changes mid-drag and nothing below the cursor shifts until the
 // drop actually commits.
 //
 // One module-level drag at a time: HTML5 drag-and-drop only ever has one.
 //
-// The spacer deliberately carries NEITHER `hv-session-row` nor
-// `hv-project-card`. Anything reading the sidebar back off the DOM with that
-// selector pair — the dom tests, the Playwright specs, and this module's own
-// `resolve()` below — would otherwise count the spacer as a phantom row.
+// The spacer deliberately carries neither `data-drag-row` nor any row class.
+// Anything reading a list back off the DOM — the dom tests, the Playwright
+// specs, and this module's own `slot()` below — would otherwise count the
+// spacer as a phantom row. It is an <li>, so every list must be a <ul>/<ol>.
 //
 // The spacer is a REAL drop target, not decoration. An "insert above"
 // placeholder is inserted where the cursor already is, which pushes the target
@@ -21,7 +22,7 @@
 // the neighbours it sits between.
 
 const CLASS = 'hv-drop-placeholder';
-const ROW = '.hv-session-row, .hv-project-card';
+const ROW = '[data-drag-row]';
 
 // The drop event is handed back so the caller can read its own payload key
 // out of the DataTransfer — this module stays agnostic about what is being
@@ -34,7 +35,8 @@ let dragged: HTMLElement | null = null;
 // rest of the gesture. Vestigial as of the React sidebar — keyed
 // reconciliation never replaces the dragged row — but kept while any
 // imperative render path remains (the terminal tile; see the SessionTerm
-// React-ification spec).
+// React-ification spec). Sidebar rows only: other lists get '' and skip
+// recovery, which keyed React rendering makes unnecessary.
 let draggedSelector = '';
 let spacer: HTMLElement | null = null;
 let onDrop: DropHandler | null = null;

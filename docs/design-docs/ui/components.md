@@ -45,7 +45,7 @@ Decided in [mocks/sidebar-structure.html](mocks/sidebar-structure.html) (S2 insi
 - Selected: `--sel` background + 2px `--accent` bar at left edge (`::before`). Hover: `--hover` and reveals actions replacing the meta column — `minus` (minimize), `rotate` (restart, exited/error rows only), `x` (kill, via the native `Confirm()` bridge; `force: false` on a live session so the daemon's dirty-worktree refusal still runs, `force: true` once the session is already dead).
 - Minimized: a minimized session is painted only while it is the active session — `data-minimized`, and the `minus` action flips to `plus` (restore). Otherwise it has no row; it lives in the minimized-sessions tray, so every row besides the active one is a ⌘↑/⌘↓ stop (#407). The project card's count and attention still include it, and so does the row's shared-worktree count.
 - Inline rename (existing feature) swaps line 1 for an input with the same metrics.
-- Drag-reorder handle: whole row, as today.
+- Drag-reorder handle: whole row, as today. The row carries `data-drag-row` and spreads `dragRowProps()` from `src/lib/drag-row.ts` — the one drag implementation, shared with project cards and Settings' pinned agents (see patterns.md › Drag to reorder).
 - The row is composed by `src/components/Sidebar.tsx`, which owns the behaviour around it: drag-reorder, double-click-to-rename, and reading live session state at call time rather than closing over the `SessionInfo` the row was drawn from.
 
 ## `worktreeGroup({ branch, count, color, label, onRenameTitle })` — React, `src/components/WorktreeGroup.tsx`
@@ -109,6 +109,7 @@ Decided in [mocks/sidebar-redesign.html](mocks/sidebar-redesign.html) (G3c).
 ## `launcherItem` / command palette rows
 
 - 32px, `--text-md`, leading `icon` (12px) for agent kind, trailing shortcut in `--font-mono --text-xs --fg-subtle`. Selected → `--sel` + accent bar, same as session row.
+- The launcher's agent list is `orderAgents()` (`src/lib/agent-order.ts`): hidden agents dropped, pinned agents first in the user's order, the rest by launch count. Settings → Agents edits both (`LauncherAgents.tsx`, stored as `hive.agentPrefs`); pinned rows there are drag-reorderable, with ⌥↑/⌥↓ as the keyboard path.
 
 ## Grid tile header
 

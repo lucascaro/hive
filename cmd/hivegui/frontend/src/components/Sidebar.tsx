@@ -20,7 +20,6 @@ import {
   memo,
   useLayoutEffect,
   useRef,
-  type DragEvent as ReactDragEvent,
   type MouseEvent,
   type ReactNode,
 } from 'react';
@@ -45,11 +44,8 @@ import { openIdeaInbox } from '../app/modals/idea-inbox.js';
 import { activeProjectId, orderedSessions } from '../app/selectors.js';
 import type { IdeaInfo, ProjectInfo, SessionInfo } from '../app/state.js';
 import { noteLocalClose } from '../app/undo-close.js';
-import {
-  beginDrag,
-  endDrag,
-  moveTo as movePlaceholder,
-} from '../lib/drag-placeholder.js';
+import { moveIndex } from '../lib/agent-order.js';
+import { dragRowProps } from '../lib/drag-row.js';
 import { attentionSummary, sessionState } from '../lib/session-state.js';
 import { hasUnread, latestVersion } from '../lib/whats-new.js';
 import { readProjectId } from '../lib/wire.js';
@@ -171,8 +167,7 @@ function reorderDroppedProject(
   const targetIdx = ordered.findIndex((p) => p.id === targetID);
   const draggedIdx = ordered.findIndex((p) => p.id === draggedID);
   if (targetIdx < 0 || draggedIdx < 0) return;
-  let newOrder = above ? targetIdx : targetIdx + 1;
-  if (draggedIdx < newOrder) newOrder -= 1;
+  const newOrder = moveIndex(draggedIdx, targetIdx, above);
   if (newOrder === draggedIdx) return;
   UpdateProject(draggedID, '', '', '', newOrder).catch(
     reportFailure('reorder project'),
@@ -252,16 +247,19 @@ const SessionItem = memo(function SessionItem(p: SessionItemProps) {
   // Shared by the row's own drop handler and the placeholder's: an
   // "insert above" spacer sits under the cursor, so the release often
   // lands on the spacer rather than on any row.
-  const commit = (target: HTMLElement, above: boolean, e: DragEvent) => {
-    const sid = e.dataTransfer?.getData('text/x-hive-session');
-    const targetSID = target.dataset.sid ?? '';
-    if (!sid || !targetSID || sid === targetSID) return;
-    const dragged = appData().sessions.find((x) => x.id === sid);
-    const dropped = appData().sessions.find((x) => x.id === targetSID);
-    if (!dragged || !dropped) return;
-    if (readProjectId(dragged) !== readProjectId(dropped)) return;
-    reorderDroppedSession(sid, targetSID, above);
-  };
+  const drag = dragRowProps({
+    mime: 'text/x-hive-session',
+    id,
+    onCommit: (sid, target, above) => {
+      const targetSID = target.dataset.sid ?? '';
+      if (!targetSID || sid === targetSID) return;
+      const dragged = appData().sessions.find((x) => x.id === sid);
+      const dropped = appData().sessions.find((x) => x.id === targetSID);
+      if (!dragged || !dropped) return;
+      if (readProjectId(dragged) !== readProjectId(dropped)) return;
+      reorderDroppedSession(sid, targetSID, above);
+    },
+  });
 
   return (
     <SessionRow
@@ -304,30 +302,7 @@ const SessionItem = memo(function SessionItem(p: SessionItemProps) {
           onDone: () => p.sidebar.refocusActiveTerm(),
         });
       }}
-      onDragStart={(e: ReactDragEvent<HTMLLIElement>) => {
-        const dt = e.dataTransfer;
-        if (!dt) return;
-        dt.effectAllowed = 'move';
-        dt.setData('text/x-hive-session', id);
-        beginDrag(e.currentTarget, commit);
-      }}
-      onDragEnd={() => endDrag()}
-      onDragOver={(e: ReactDragEvent<HTMLLIElement>) => {
-        const dt = e.dataTransfer;
-        if (!dt?.types.includes('text/x-hive-session')) return;
-        e.preventDefault();
-        dt.dropEffect = 'move';
-        const r = e.currentTarget.getBoundingClientRect();
-        movePlaceholder(e.currentTarget, e.clientY - r.top < r.height / 2);
-      }}
-      onDrop={(e: ReactDragEvent<HTMLLIElement>) => {
-        e.preventDefault();
-        const li = e.currentTarget;
-        const r = li.getBoundingClientRect();
-        const above = e.clientY - r.top < r.height / 2;
-        endDrag();
-        commit(li, above, e.nativeEvent);
-      }}
+      drag={drag}
     />
   );
 });
@@ -483,24 +458,30 @@ function ProjectItem(o: ProjectItemProps) {
   );
 
   // dragstart bubbles, so a session-row drag fires here too after its own
-  // handler runs. We must not preventDefault in that case (it would
-  // cancel the session drag). For drags that originate on the project
-  // chrome (action buttons, rename input) we DO want to abort, since the
-  // card itself is the closest draggable.
-  const commit = (target: HTMLElement, above: boolean, e: DragEvent) => {
-    const pid = e.dataTransfer?.getData('text/x-hive-project');
-    const targetPID = target.dataset.pid ?? '';
-    if (!pid || !targetPID || pid === targetPID) return;
-    reorderDroppedProject(pid, targetPID, above);
-  };
-
-  // Anchored on the header's bounds, not the whole card: with sessions
-  // expanded the card is tall, the cursor is almost always above its
-  // midpoint, and the placeholder would land far from the cursor.
-  const aboveHeader = (clientY: number, fallback: HTMLElement): boolean => {
-    const r = (headerRef.current ?? fallback).getBoundingClientRect();
-    return clientY - r.top < r.height / 2;
-  };
+  // handler runs; dragRowProps ignores it rather than preventDefault-ing
+  // (which would cancel the session drag). Drags that originate on the
+  // project chrome — action buttons, the rename inputs — are cancelled,
+  // since the card itself is the closest draggable. The worktree group's
+  // rename editor lives in this card too and is NOT inside a session row,
+  // so without it a text drag inside it would start a project drag.
+  const drag = dragRowProps({
+    mime: 'text/x-hive-project',
+    id: p.id,
+    cancelFrom:
+      '.hv-project-card__actions, .project-name-input, .group-name-input',
+    onCommit: (pid, target, above) => {
+      const targetPID = target.dataset.pid ?? '';
+      if (!targetPID || pid === targetPID) return;
+      reorderDroppedProject(pid, targetPID, above);
+    },
+    // Anchored on the header's bounds, not the whole card: with sessions
+    // expanded the card is tall, the cursor is almost always above its
+    // midpoint, and the placeholder would land far from the cursor.
+    aboveOf: (clientY, card) => {
+      const r = (headerRef.current ?? card).getBoundingClientRect();
+      return clientY - r.top < r.height / 2;
+    },
+  });
 
   return (
     <ProjectCard
@@ -537,54 +518,7 @@ function ProjectItem(o: ProjectItemProps) {
           onDone: () => o.props.refocusActiveTerm(),
         });
       }}
-      onDragStart={(e: ReactDragEvent<HTMLLIElement>) => {
-        const t = e.target;
-        if (t instanceof Element) {
-          // Bubbled from an inner session drag — leave it alone.
-          if (t.closest('.hv-session-row')) return;
-          if (
-            t.closest('.hv-project-card__actions') ||
-            t.closest('.project-name-input') ||
-            // The worktree group's rename editor lives in this card too
-            // and is NOT inside .hv-session-row, so without this a text
-            // drag inside it starts a project drag.
-            t.closest('.group-name-input')
-          ) {
-            e.preventDefault();
-            return;
-          }
-        }
-        const dt = e.dataTransfer;
-        if (!dt) return;
-        dt.effectAllowed = 'move';
-        dt.setData('text/x-hive-project', p.id);
-        beginDrag(e.currentTarget, commit);
-      }}
-      onDragEnd={(e: ReactDragEvent<HTMLLIElement>) => {
-        // Bubbled from an inner session drag, which owns its own teardown.
-        if (e.target instanceof Element && e.target.closest('.hv-session-row'))
-          return;
-        endDrag();
-      }}
-      onDragOver={(e: ReactDragEvent<HTMLLIElement>) => {
-        const dt = e.dataTransfer;
-        if (!dt?.types.includes('text/x-hive-project')) return;
-        e.preventDefault();
-        dt.dropEffect = 'move';
-        movePlaceholder(
-          e.currentTarget,
-          aboveHeader(e.clientY, e.currentTarget),
-        );
-      }}
-      onDrop={(e: ReactDragEvent<HTMLLIElement>) => {
-        const dt = e.dataTransfer;
-        if (!dt?.types.includes('text/x-hive-project')) return;
-        e.preventDefault();
-        const card = e.currentTarget;
-        const above = aboveHeader(e.clientY, card);
-        endDrag();
-        commit(card, above, e.nativeEvent);
-      }}
+      drag={drag}
     >
       {renderRows(o, rows)}
     </ProjectCard>

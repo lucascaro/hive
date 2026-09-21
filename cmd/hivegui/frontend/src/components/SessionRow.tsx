@@ -12,13 +12,8 @@
 // Drag-reorder, inline rename and double-click stay with the caller
 // (components/Sidebar.tsx), which owns that behaviour, and reach the row
 // through the drag/dblclick props and `nameRef`.
-import {
-  useEffect,
-  useRef,
-  type CSSProperties,
-  type DragEvent,
-  type Ref,
-} from 'react';
+import { useEffect, useRef, type CSSProperties, type Ref } from 'react';
+import type { DragRowProps } from '../lib/drag-row.js';
 import { Icon, StateIcon } from './Icon.js';
 import { IconButton } from './IconButton.js';
 import { Kbd } from './Kbd.js';
@@ -93,10 +88,8 @@ export interface SessionRowProps {
   onColor: (hex: string) => void;
   onDoubleClick: () => void;
   nameRef: Ref<HTMLSpanElement>;
-  onDragStart: (e: DragEvent<HTMLLIElement>) => void;
-  onDragEnd: (e: DragEvent<HTMLLIElement>) => void;
-  onDragOver: (e: DragEvent<HTMLLIElement>) => void;
-  onDrop: (e: DragEvent<HTMLLIElement>) => void;
+  // Drag-to-reorder handlers from lib/drag-row.ts, spread onto the row.
+  drag: DragRowProps;
   /** The idea this session was started from, when it came from one. */
   ideaText: string;
   /** Render the window title as the row's PRIMARY line and drop the
@@ -206,7 +199,8 @@ export function SessionRow(p: SessionRowProps) {
       data-selected={p.selected ? '' : undefined}
       data-minimized={p.minimized ? '' : undefined}
       data-wt-shared={shared > 1 ? '' : undefined}
-      draggable
+      data-drag-row=""
+      {...p.drag}
       style={style}
       onClick={(e) => {
         // The colour bar opens the native picker; it must not also
@@ -220,10 +214,6 @@ export function SessionRow(p: SessionRowProps) {
         p.onSelect();
       }}
       onDoubleClick={p.onDoubleClick}
-      onDragStart={p.onDragStart}
-      onDragEnd={p.onDragEnd}
-      onDragOver={p.onDragOver}
-      onDrop={p.onDrop}
     >
       <StateIcon
         state={p.state}

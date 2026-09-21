@@ -30,6 +30,10 @@ Reordering a grouped session has two gestures, because there are two things to m
 
 A member never leaves its group: membership is which worktree it runs in, not where it sits.
 
+## Drag to reorder
+
+Every list that reorders by drag — sidebar sessions, project cards, Settings' pinned agents — goes through one implementation. A row carries `data-drag-row` and spreads `dragRowProps({ mime, id, onCommit, cancelFrom?, aboveOf? })` from `src/lib/drag-row.ts`; the dashed drop placeholder and the dragged row's `display: none` come from `src/lib/drag-placeholder.ts` and `theme/components/drag.css`. The list must be a `<ul>`/`<ol>` (the placeholder is an `<li>`), and only rows that may be dropped among carry `data-drag-row` — a drop resolves against its nearest `data-drag-row` neighbours. A drag bubbling up from a nested drag row (a session inside its project card) is ignored by the outer row, never `preventDefault`-ed, which would cancel the inner drag.
+
 ## Attention bubbling
 
 Attention on a session propagates *up* to every container that can hide it: project card header (swatch ring), collapsed project ("k need you" count), minimized session chip, minimized project chip (state icon + "k" alert count, and the label colour / dot pulse). The collapsed card and the minimized chip both derive their number from one helper, `attentionSummary()` in `lib/session-state.ts`, so the two cannot disagree; it resolves through `sessionState()`, which means a session that is still starting or already gone stops bubbling even if its last-known `needs_attention` flag was set. It propagates *nowhere else* — no window-level flashing, no dock badge beyond what `internal/notify` already does. Clearing: attention clears when the session receives input or is selected, as today; every bubbled indicator clears with it in the same render.

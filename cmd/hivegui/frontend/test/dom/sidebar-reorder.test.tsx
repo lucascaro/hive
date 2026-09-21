@@ -75,9 +75,8 @@ beforeEach(() => {
 // dataTransfer and clientY defined on it, because jsdom implements
 // neither DragEvent nor DataTransfer.
 function dropOn(target: HTMLElement, key: string, draggedID: string) {
-  // getData honours the key, like a real DataTransfer: the session drop
-  // handler does not gate on `types` (it never did) — it asks for its own
-  // payload and gets '' when the drag is carrying something else.
+  // getData honours the key, like a real DataTransfer. Every drop handler
+  // (lib/drag-row.ts) gates on `types` and then asks for its own payload.
   const dt = {
     types: [key],
     dropEffect: '',
@@ -142,6 +141,61 @@ describe('sidebar project reorder', () => {
   it('ignores a drop whose payload is not a project', () => {
     dropOn(cardFor('p2'), 'text/x-hive-session', 'p1');
     expect(projectOrders).toEqual([]);
+  });
+});
+
+// dragstart bubbles: a session row's drag reaches its project card's
+// handler too. The card must leave that drag alone — preventDefault there
+// cancels the SESSION drag in a real browser — while it must cancel drags
+// that start on its own chrome (buttons, rename inputs), where a pointer
+// drag means text selection. The Playwright drags are synthetic, so a wrong
+// preventDefault cancels nothing there; this is the only test that sees it.
+describe('sidebar dragstart guards', () => {
+  function dragStart(target: Element) {
+    const set: Record<string, string> = {};
+    const dt = {
+      effectAllowed: '',
+      setData: (k: string, v: string) => {
+        set[k] = v;
+      },
+    };
+    const ev = new Event('dragstart', { bubbles: true, cancelable: true });
+    Object.defineProperty(ev, 'dataTransfer', { value: dt });
+    target.dispatchEvent(ev);
+    return { prevented: ev.defaultPrevented, set };
+  }
+
+  it('does not cancel a session drag bubbling through its card', () => {
+    const r = dragStart(row('a'));
+    expect(r.prevented).toBe(false);
+    expect(r.set).toEqual({ 'text/x-hive-session': 'a' });
+  });
+
+  it('cancels a drag starting on the card actions', () => {
+    const actions = cardFor('p1').querySelector('.hv-project-card__actions');
+    if (!actions) throw new Error('no actions');
+    const r = dragStart(actions);
+    expect(r.prevented).toBe(true);
+    expect(r.set).toEqual({});
+  });
+
+  it('cancels a drag starting in a worktree group rename input', () => {
+    // The editor is mounted by beginInlineRename; its class is all the
+    // guard keys on, so a stand-in inside the card is equivalent.
+    const input = document.createElement('input');
+    input.className = 'group-name-input';
+    cardFor('p1').appendChild(input);
+    const r = dragStart(input);
+    expect(r.prevented).toBe(true);
+    expect(r.set).toEqual({});
+  });
+
+  it('starts a project drag from the card header', () => {
+    const header = cardFor('p1').querySelector('.hv-project-card__header');
+    if (!header) throw new Error('no header');
+    const r = dragStart(header);
+    expect(r.prevented).toBe(false);
+    expect(r.set).toEqual({ 'text/x-hive-project': 'p1' });
   });
 });
 
