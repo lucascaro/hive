@@ -100,6 +100,7 @@ export function saveAgentPrefs(prefs: AgentPrefs) {
   try {
     localStorage.setItem(AGENT_PREFS_KEY, JSON.stringify(prefs));
   } catch {
-    /* Denied storage: applied for this session, not remembered */
+    /* Denied storage: not saved, so the launcher (which re-reads storage on
+       every open) keeps its previous order. Nothing to recover here. */
   }
 }

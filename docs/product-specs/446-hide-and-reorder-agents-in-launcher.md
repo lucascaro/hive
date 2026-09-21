@@ -5,7 +5,7 @@ type: enhancement
 complexity: M
 priority: P2
 pr: 448
-stage: REVIEW
+stage: GATE
 ---
 
 # Let users hide agents from the launcher and reorder them

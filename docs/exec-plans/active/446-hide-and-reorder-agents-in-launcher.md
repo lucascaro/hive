@@ -208,3 +208,7 @@ Run from `cmd/hivegui/frontend`:
 
 ## Open questions
 - **2026-09-20** — Implemented. Checks: tsc, `biome ci`, vitest 1554/1554, `ui-lint --strict`, mock e2e 400/400. Not verified: the browser's own decision to start a native drag in WKWebView. The synthetic e2e drag cannot cover that (see `fixtures/drag.ts`).
+
+## PR convergence ledger
+
+- **2026-09-20 iter 1** — verdict: APPROVE; mergeable: MERGEABLE; findings_hash: empty; threads_open: 0; action: stop; head_sha: f5ad41b. Two MINORs: fixed the `saveAgentPrefs` comment. Kept the Alt+Arrow binding out of README/⌘/, consistent with other in-dialog keys (launcher 1–9/arrows); the inline hint covers it.
