@@ -43,6 +43,7 @@ import {
   loadAgentUsage,
   openLauncher,
 } from '../../app/modals/launcher.js';
+import { loadAgentPrefs, orderAgents } from '../../lib/agent-order.js';
 import {
   appStore,
   useAppStore,
@@ -119,6 +120,9 @@ function LauncherBody({
   // The usage-ordered list ListAgents returned, kept so filtering
   // re-renders from memory instead of refetching.
   const [agents, setAgents] = useState<main.AgentInfo[]>([]);
+  // The catalog is not empty but Settings hides every agent in it — worth
+  // its own message, since "No agents found" would read as broken.
+  const [allHidden, setAllHidden] = useState(false);
   // True until the request settles. Without it an empty list is
   // indistinguishable from "the query excluded everything", and the
   // first character typed during the round trip would replace the
@@ -230,21 +234,12 @@ function LauncherBody({
       .then((list) => {
         if (!live) return;
         setLoading(false);
-        // Sort by recent usage (most-used first); ties preserve the
-        // agent package's display order. Usage is persisted in
-        // localStorage and incremented on activation.
-        const usage = loadAgentUsage();
-        setAgents(
-          (list || [])
-            .map((a, i) => ({ a, i }))
-            .sort((x, y) => {
-              const ux = usage[x.a.id] || 0,
-                uy = usage[y.a.id] || 0;
-              if (ux !== uy) return uy - ux;
-              return x.i - y.i;
-            })
-            .map((e) => e.a),
-        );
+        // Hidden agents dropped, pinned ones first, the rest by usage —
+        // the rule and its reasons are in lib/agent-order.ts.
+        const all = list || [];
+        const shown = orderAgents(all, loadAgentUsage(), loadAgentPrefs());
+        setAllHidden(all.length > 0 && shown.length === 0);
+        setAgents(shown);
       })
       // Anything thrown in the chain above used to land here silently —
       // the user pressed ⌘T and nothing happened, with no trace. Close
@@ -620,7 +615,11 @@ function LauncherBody({
             <div className="launcher-loading">Loading agents…</div>
           ) : (
             <div className="launcher-empty">
-              {q ? 'No agents match' : 'No agents found'}
+              {q
+                ? 'No agents match'
+                : allHidden
+                  ? 'All agents are hidden — enable some in Settings → Agents'
+                  : 'No agents found'}
             </div>
           )
         ) : null}

@@ -23,7 +23,8 @@ beforeEach(() => {
     '<ul>' +
     ['a', 'b', 'c']
       .map(
-        (id) => `<li id="${id}" data-sid="${id}" class="hv-session-row"></li>`,
+        (id) =>
+          `<li id="${id}" data-sid="${id}" class="hv-session-row" data-drag-row></li>`,
       )
       .join('') +
     '</ul>';
@@ -66,15 +67,16 @@ describe('drag placeholder', () => {
     expect(ids()).toEqual(['a', 'b', '·', 'c']);
   });
 
-  // sidebar.ts's domShape() reads the sidebar back with this selector pair to
-  // decide whether an in-place update is safe. A spacer wearing either class
-  // would read as a phantom row and desync the shape comparison.
-  it('wears neither row class', () => {
+  // Lists are read back off the DOM by row class and by data-drag-row (the
+  // slot resolver itself). A spacer wearing either would read as a phantom
+  // row.
+  it('wears neither row class nor data-drag-row', () => {
     beginDrag(row('a'), noop);
     moveTo(row('b'), true);
     const ph = document.querySelector('.hv-drop-placeholder') as HTMLElement;
     expect(ph.classList.contains('hv-session-row')).toBe(false);
     expect(ph.classList.contains('hv-project-card')).toBe(false);
+    expect(ph.hasAttribute('data-drag-row')).toBe(false);
     expect(ph.getAttribute('aria-hidden')).toBe('true');
   });
 
@@ -125,6 +127,22 @@ describe('drag placeholder', () => {
     ph.dispatchEvent(dropEvent());
     expect(drops).toEqual([['c', true]]);
     expect(document.querySelector('.hv-drop-placeholder')).toBeNull();
+  });
+
+  // The slot resolver keys on data-drag-row, not on the sidebar's classes,
+  // so any list can reuse it (Settings' pinned agents do). Rows without the
+  // attribute — a heading, an unrelated <li> — are skipped.
+  it('resolves slots in a list of neither sessions nor projects', () => {
+    document.body.innerHTML =
+      '<ul><li id="x" data-drag-row></li><li id="gap"></li>' +
+      '<li id="y" data-drag-row></li></ul>';
+    const drops: [string, boolean][] = [];
+    beginDrag(row('x'), (t, above) => drops.push([t.id, above]));
+    moveTo(row('gap'), true);
+    const ph = document.querySelector('.hv-drop-placeholder') as HTMLElement;
+    ph.dispatchEvent(dropEvent());
+    // The spacer sits above the plain <li>; the next drag row is y.
+    expect(drops).toEqual([['y', true]]);
   });
 
   it('resolves a trailing slot against the row it follows', () => {

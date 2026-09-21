@@ -29,10 +29,13 @@ function props(over: Partial<ProjectCardProps> = {}): ProjectCardProps {
     onHeaderDoubleClick: noop,
     headerRef: null,
     nameRef: null,
-    onDragStart: noop,
-    onDragEnd: noop,
-    onDragOver: noop,
-    onDrop: noop,
+    drag: {
+      draggable: true,
+      onDragStart: noop,
+      onDragEnd: noop,
+      onDragOver: noop,
+      onDrop: noop,
+    },
     ...over,
   };
 }

@@ -37,6 +37,7 @@ import {
   EventsOn,
   GetAgentSettings,
   GetUpdateSettings,
+  ListAgents,
   ListCustomAgents,
   MenuBarLoginItemStatus,
   PickDirectory,
@@ -80,6 +81,12 @@ import {
 import { applyUpdateAndRestart } from '../../app/banners.js';
 import { applyXtermTheme } from '../../app/session-term.js';
 import { closeSettings, splitCommand } from '../../app/modals/settings.js';
+import {
+  type AgentPrefs,
+  loadAgentPrefs,
+  saveAgentPrefs,
+} from '../../lib/agent-order.js';
+import { LauncherAgents } from './LauncherAgents.js';
 import { useAppStore } from '../../store/store.js';
 import { Button } from '../Button.js';
 import { Tabs } from '../Tabs.js';
@@ -158,6 +165,15 @@ function SettingsDialog({ root }: { root: HTMLElement }): ReactNode {
   // it before the read lands would overwrite a saved `false`. The box
   // stays disabled until then, so it cannot be changed early either.
   const [agentSettingsLoaded, setAgentSettingsLoaded] = useState(false);
+  // Launcher visibility (hive.agentPrefs): the full agent catalog, null
+  // until ListAgents answers, and the hidden/pinned draft over it. Like
+  // agents.json, the prefs are never written from a list that failed to
+  // load — a draft built over nothing would wipe the stored choices.
+  const [catalog, setCatalog] = useState<main.AgentInfo[] | null>(null);
+  const [catalogFailed, setCatalogFailed] = useState(false);
+  const [launcherPrefs, setLauncherPrefs] = useState<AgentPrefs>(() =>
+    loadAgentPrefs(),
+  );
   const [error, setError] = useState('');
   const [theme, setTheme] = useState<ThemeName>(() => readTheme());
   const [pair, setPair] = useState<SystemPair>(() => readPair());
@@ -293,6 +309,23 @@ function SettingsDialog({ root }: { root: HTMLElement }): ReactNode {
         showError(
           `Could not read agents.json — fix or move the file, then reopen Settings. (${String(err?.message || err)})`,
         );
+      });
+
+    ListAgents()
+      .then((list) => {
+        if (!live) return;
+        const all = list || [];
+        // Ids of agents that no longer exist (a deleted custom agent)
+        // are dropped here, so the next Save clears them out.
+        const known = new Set(all.map((a) => a.id));
+        setLauncherPrefs((p) => ({
+          hidden: p.hidden.filter((id) => known.has(id)),
+          pinned: p.pinned.filter((id) => known.has(id)),
+        }));
+        setCatalog(all);
+      })
+      .catch(() => {
+        if (live) setCatalogFailed(true);
       });
 
     GetAgentSettings()
@@ -589,6 +622,9 @@ function SettingsDialog({ root }: { root: HTMLElement }): ReactNode {
           source_repo: sourceRepo,
         } as main.UpdateSettings),
       )
+      .then(() => {
+        if (catalog && !catalogFailed) saveAgentPrefs(launcherPrefs);
+      })
       .then(closeSettings)
       // Go returns one joined error naming every rejected entry; show it
       // verbatim rather than paraphrasing it into something vaguer.
@@ -769,6 +805,21 @@ function SettingsDialog({ root }: { root: HTMLElement }): ReactNode {
           disabled={!editingEnabled}
           onClick={addAgentRow}
         />
+        <h4>In the new-session menu</h4>
+        {catalogFailed ? (
+          <p className="settings-hint" id="settings-launcher-failed">
+            Could not load the agent list, so launcher visibility cannot be
+            edited right now. Your saved choices are unchanged.
+          </p>
+        ) : catalog === null ? (
+          <p className="settings-hint">Loading…</p>
+        ) : (
+          <LauncherAgents
+            catalog={catalog}
+            prefs={launcherPrefs}
+            onChange={setLauncherPrefs}
+          />
+        )}
       </Panel>
 
       <Panel tab="appearance" active={activeTab}>

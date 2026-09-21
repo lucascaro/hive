@@ -39,5 +39,8 @@
 @import './help.css';
 @import './build-log.css';
 
+/* Late: see drag.css. */
+@import './drag.css';
+
 /* Last: xterm's own DOM, which we only ever subtract from. */
 @import './xterm-overrides.css';

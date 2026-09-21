@@ -49,6 +49,7 @@ interface HiveTestApi {
     name: string,
     insertAfter?: string,
     projectId?: string,
+    agent?: string,
   ): Promise<string>;
   killSession?(id: string, force?: boolean): Promise<string>;
   setSessionState?(id: string, next: string, source?: string): void;

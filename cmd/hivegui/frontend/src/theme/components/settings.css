@@ -103,3 +103,35 @@
   opacity: 0.5;
   cursor: default;
 }
+
+/* Settings → Agents → launcher visibility (LauncherAgents.tsx). Two lists
+   — pinned (drag-reorderable, lib/drag-row.ts) and the rest — styled as
+   one: the gap between them is the only hint that pinned rows are a band. */
+.settings-launcher-list {
+  list-style: none;
+  margin: 0 0 var(--space-2);
+  padding: 0;
+}
+.settings-launcher-agent {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  border-radius: var(--radius-md);
+}
+.settings-launcher-agent[data-drag-row] { cursor: grab; }
+.settings-launcher-agent .settings-check:first-child { flex: 1 1 auto; min-width: 0; }
+.settings-launcher-agent .settings-check { margin: var(--space-1) 0; }
+.settings-launcher-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.settings-launcher-dot {
+  flex-shrink: 0;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  /* background-color, not the shorthand: the value can come from a
+     user-editable agents.json — see .launcher-item .agent-dot. */
+  background-color: var(--agent-color, var(--fg-subtle));
+}

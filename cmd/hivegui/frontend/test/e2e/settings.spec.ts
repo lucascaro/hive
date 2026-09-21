@@ -1,4 +1,5 @@
 import { test, expect, type Page } from '@playwright/test';
+import { dragEvent, dragStart } from './fixtures/drag.js';
 
 // E2E for the settings modal and custom agents: the ⌘, binding, the
 // native menu:settings event, and the round-trip that puts a custom
@@ -458,4 +459,108 @@ test('the menu-bar tab is present only on macOS', async ({ page }) => {
     return el.contains(hit) || el === hit;
   });
   expect(onTop).toBe(true);
+});
+
+// Settings → Agents → "In the new-session menu": hiding and pinning agents
+// for the ⌘T launcher (hive.agentPrefs in localStorage).
+const agentRow = (id: string) =>
+  `#settings-launcher-agents li[data-agent-id="${id}"]`;
+const showBox = (page: Page, id: string) =>
+  page.locator(
+    `${agentRow(id)} .settings-check:not(.settings-launcher-pin) input`,
+  );
+const pinBox = (page: Page, id: string) =>
+  page.locator(`${agentRow(id)} .settings-launcher-pin input`);
+const launcherNames = (page: Page) =>
+  page.locator('#launcher .launcher-item .agent-name').allTextContents();
+
+test('a hidden agent leaves the launcher but its sessions keep working', async ({
+  page,
+}) => {
+  await boot(page);
+  // ⌘P refuses when the source session resolves no cwd, and the mock's
+  // seed project has none — hand it one the way the daemon would.
+  const sid = await page.evaluate(async () => {
+    const p = window.__hive.state?.projects?.[0];
+    if (!p) throw new Error('mock has no seed project');
+    p.cwd = '/tmp/hive-mock';
+    window.__hive.emit?.(
+      'project:event',
+      JSON.stringify({ kind: 'updated', project: p }),
+    );
+    return window.__hive.addSession?.('cx', undefined, undefined, 'codex');
+  });
+  if (!sid) throw new Error('no session');
+  const badge = page.locator(
+    `li.hv-session-row[data-sid="${sid}"] .hv-session-row__agent`,
+  );
+  await expect(badge).toHaveText('co');
+
+  await page.keyboard.press(`${mod}+,`);
+  await showBox(page, 'codex').uncheck();
+  await page.locator('#settings-save').click();
+  await expect(page.locator('#settings')).toBeHidden();
+
+  await page.keyboard.press(`${mod}+t`);
+  await expect(page.locator('#launcher .launcher-item')).toHaveCount(2);
+  expect(await launcherNames(page)).toEqual(['Shell', 'Claude']);
+  await page.keyboard.press('Escape');
+  await expect(page.locator('#launcher')).toBeHidden();
+
+  // Hiding is launcher-only: the existing session keeps its coloured
+  // badge, and duplicating it still starts a Codex session.
+  await expect(badge).toHaveText('co');
+  await expect(badge).not.toHaveClass(/hv-session-row__agent--plain/);
+  await page.locator(`li.hv-session-row[data-sid="${sid}"]`).click();
+  const count = await page.evaluate(
+    () => window.__hive.state?.sessions.length ?? 0,
+  );
+  await page.keyboard.press(`${mod}+p`);
+  await expect
+    .poll(() => page.evaluate(() => window.__hive.state?.sessions.length ?? 0))
+    .toBe(count + 1);
+  expect(
+    await page.evaluate(() => window.__hive.state?.sessions.at(-1)?.agent),
+  ).toBe('codex');
+
+  // Survives a restart: the choice lives in localStorage, not the draft.
+  await page.reload();
+  await boot(page);
+  await page.keyboard.press(`${mod}+,`);
+  await expect(showBox(page, 'codex')).not.toBeChecked();
+  await expect(showBox(page, 'claude')).toBeChecked();
+});
+
+test('pinned agents lead the launcher in the order they were dragged', async ({
+  page,
+}) => {
+  await boot(page);
+  await page.keyboard.press(`${mod}+,`);
+  await pinBox(page, 'claude').check();
+  await pinBox(page, 'codex').check();
+  const pinned = () =>
+    page
+      .locator('#settings-launcher-pinned > li')
+      .evaluateAll((els) => els.map((e) => (e as HTMLElement).dataset.agentId));
+  expect(await pinned()).toEqual(['claude', 'codex']);
+
+  // Drag Codex above Claude, through the same drag code the sidebar uses.
+  const codex = `#settings-launcher-pinned li[data-agent-id="codex"]`;
+  const claude = `#settings-launcher-pinned li[data-agent-id="claude"]`;
+  await dragStart(page, codex);
+  // The dragged row leaves the flow — jsdom cannot see the cascade that
+  // decides this (drag.css must win over the settings row styles).
+  expect(
+    await page.locator(codex).evaluate((e) => getComputedStyle(e).display),
+  ).toBe('none');
+  await dragEvent(page, 'dragover', claude, true);
+  await expect(page.locator('#settings .hv-drop-placeholder')).toHaveCount(1);
+  await dragEvent(page, 'drop', claude, true);
+  await expect.poll(pinned).toEqual(['codex', 'claude']);
+
+  await page.locator('#settings-save').click();
+  await expect(page.locator('#settings')).toBeHidden();
+  await page.keyboard.press(`${mod}+t`);
+  await expect(page.locator('#launcher .launcher-item')).toHaveCount(3);
+  expect(await launcherNames(page)).toEqual(['Codex', 'Claude', 'Shell']);
 });

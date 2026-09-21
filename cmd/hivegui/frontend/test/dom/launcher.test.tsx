@@ -314,6 +314,55 @@ describe('launcher filter box', () => {
   });
 });
 
+// Settings → Agents writes hive.agentPrefs; the launcher reads it on every
+// open. The rule itself is table-tested in test/unit/agent-order.test.ts —
+// these pin that the launcher actually applies it, to the list AND to the
+// filter box.
+describe('launcher agent visibility and pinning', () => {
+  const prefs = (p: { hidden?: string[]; pinned?: string[] }) =>
+    localStorage.setItem(
+      'hive.agentPrefs',
+      JSON.stringify({ hidden: [], pinned: [], ...p }),
+    );
+
+  it('does not list hidden agents', async () => {
+    prefs({ hidden: ['claude'] });
+    await open();
+    expect(names()).toEqual(['Shell', 'Codex CLI']);
+  });
+
+  it('puts pinned agents first in pinned order, the rest by usage', async () => {
+    localStorage.setItem('hive.agentUsage', JSON.stringify({ shell: 1 }));
+    prefs({ pinned: ['codex', 'claude'] });
+    await open();
+    expect(names()).toEqual(['Codex CLI', 'Claude', 'Shell']);
+  });
+
+  it('keeps the usage order for unpinned agents', async () => {
+    localStorage.setItem(
+      'hive.agentUsage',
+      JSON.stringify({ codex: 3, claude: 7 }),
+    );
+    await open();
+    expect(names()).toEqual(['Claude', 'Codex CLI', 'Shell']);
+  });
+
+  it('does not surface a hidden agent through the filter box', async () => {
+    prefs({ hidden: ['codex'] });
+    await open();
+    type('co');
+    expect(names()).toEqual([]);
+  });
+
+  it('says so when every agent is hidden', async () => {
+    prefs({ hidden: ['shell', 'claude', 'codex'] });
+    await open();
+    expect(launcher().querySelector('.launcher-empty')?.textContent).toBe(
+      'All agents are hidden — enable some in Settings → Agents',
+    );
+  });
+});
+
 describe('launcher keyboard', () => {
   it('activates a row by digit while the query is empty', async () => {
     await open();

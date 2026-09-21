@@ -9,13 +9,8 @@
 // header is exposed through `headerRef` (the drag hit-test anchors on its
 // bounds) and the name through `nameRef` (inline rename mounts there) —
 // the three things the imperative projectCard() returned.
-import type {
-  CSSProperties,
-  DragEvent,
-  MouseEvent,
-  ReactNode,
-  Ref,
-} from 'react';
+import type { CSSProperties, MouseEvent, ReactNode, Ref } from 'react';
+import type { DragRowProps } from '../lib/drag-row.js';
 import { isMac } from '../lib/platform.js';
 import { mod } from '../lib/shortcuts.js';
 import { Icon } from './Icon.js';
@@ -43,10 +38,8 @@ export interface ProjectCardProps {
   onHeaderDoubleClick: (e: MouseEvent<HTMLDivElement>) => void;
   headerRef: Ref<HTMLDivElement>;
   nameRef: Ref<HTMLSpanElement>;
-  onDragStart: (e: DragEvent<HTMLLIElement>) => void;
-  onDragEnd: (e: DragEvent<HTMLLIElement>) => void;
-  onDragOver: (e: DragEvent<HTMLLIElement>) => void;
-  onDrop: (e: DragEvent<HTMLLIElement>) => void;
+  // Drag-to-reorder handlers from lib/drag-row.ts, spread onto the card.
+  drag: DragRowProps;
   children?: ReactNode;
 }
 
@@ -76,12 +69,9 @@ export function ProjectCard(p: ProjectCardProps) {
       data-animating={animating ? '' : undefined}
       data-active={p.active ? '' : undefined}
       data-state={p.attention ? 'attention' : undefined}
-      draggable
+      data-drag-row=""
+      {...p.drag}
       style={style}
-      onDragStart={p.onDragStart}
-      onDragEnd={p.onDragEnd}
-      onDragOver={p.onDragOver}
-      onDrop={p.onDrop}
     >
       {/* Click-to-select on the header background is a convenience, not
           the keyboard path: every control inside it is a real <button>,

@@ -13,7 +13,8 @@ What works:
 - Wails-based desktop GUI with xterm.js — full keyboard control,
   font scaling, dark theme
 - Projects (name, color, working dir) — sidebar tree
-- Agent launcher (Claude, Codex, Gemini, Copilot, Aider, Pi, shell)
+- Agent launcher (Claude, Codex, Gemini, Copilot, Aider, Pi, shell) — hide the
+  agents you don't use and pin favourites to the top in Settings → Agents
 - Grid view: per-project (⌘G) or all-sessions (⇧⌘G), spatial arrow nav
 - Multi-window (⇧⌘N) — independent windows share the same daemon
 - BEL → desktop notification + visual pulse on non-focused sessions

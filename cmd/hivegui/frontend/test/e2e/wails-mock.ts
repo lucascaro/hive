@@ -1431,12 +1431,18 @@ if (typeof window !== 'undefined') {
     emit,
     // projectId defaults to the seed project; pass it to build an
     // r.order that interleaves projects, which is where display position
-    // and .order diverge.
-    addSession(name: string, insertAfter?: string, projectId?: string) {
+    // and .order diverge. agent defaults to none (a plain shell row).
+    addSession(
+      name: string,
+      insertAfter?: string,
+      projectId?: string,
+      agent?: string,
+    ) {
       return CreateSession({
         project: projectId || 'p1',
         name,
         insertAfter,
+        agent,
       });
     },
     createSessionWithWorktree(name: string, branch?: string) {
