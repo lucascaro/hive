@@ -95,8 +95,8 @@ export function bumpAgentUsage(id: string | undefined) {
   } catch {}
 }
 
-// projectId is optional, not just nullable: main.tsx, keyboard.ts and
-// EmptyState.tsx all call openLauncher() bare and let the `|| activeProjectId()`
+// projectId is optional, not just nullable: main.tsx, keyboard.ts,
+// EmptyState.tsx and Launcher.tsx all call openLauncher() bare and let the `|| activeProjectId()`
 // fallback below pick the project.
 export function openLauncher(projectId?: string | null, opts?: LauncherOpts) {
   // The worktree toggle is chosen per opening and never remembered: a

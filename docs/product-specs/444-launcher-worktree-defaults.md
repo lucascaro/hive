@@ -5,7 +5,7 @@ title: "Launcher: ideas default to a worktree, plain new session never remembers
 type: enhancement
 complexity: S
 priority: P2
-stage: REVIEW
+stage: GATE
 ---
 
 # Launcher: ideas default to a worktree, plain new session never remembers it

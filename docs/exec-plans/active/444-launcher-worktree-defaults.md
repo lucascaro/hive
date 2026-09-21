@@ -76,3 +76,7 @@ Delete the sticky preference instead of special-casing ⌘T: the default becomes
 - **Verdict:** approve · **Confidence:** 8 · **Round:** 1
 - **Rationale:** All `openLauncher` call sites traced; the file list covers every reader/writer of `hive.worktree`; duplicate/resume force `useWorktree: false` independently of `forced`, so non-goals hold structurally; the new tests fail on today's code.
 - **Nice to have (applied during implementation):** the `openLauncher` comment naming `view.ts` as a bare caller is stale — fix it while in the file.
+
+## PR convergence ledger
+
+- **2026-09-20 iter 1** — verdict: APPROVE; mergeable: MERGEABLE; findings_hash: empty; threads_open: 0; action: stop; head_sha: 31e6453.
