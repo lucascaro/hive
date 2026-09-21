@@ -216,6 +216,8 @@ export interface TermTile extends ReplayFlags {
   deadOverlayShown: boolean;
   _closeDead(): void;
   _restartDead(): void;
+  /** In-flight overlay restart; see SessionTerm. Optional for stubs. */
+  _restartPending?: boolean;
   _dismissDead(): void;
   show(): void;
   hide(): void;

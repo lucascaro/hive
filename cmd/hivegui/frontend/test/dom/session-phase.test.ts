@@ -329,10 +329,25 @@ describe('_restartDead', () => {
     // edge, so a failed restart leaves Close/Dismiss in place.
     expect(st.deadOverlayShown).toBe(true);
 
-    // Died again (e.g. a born-dead agent): the next restart goes out.
+    // Revived, then died again: the next restart goes out.
+    st.setDead(false);
     st.setDead(true, 'exit status 1');
     st._restartDead();
     expect(RestartSession).toHaveBeenCalledTimes(2);
+  });
+
+  it('stays guarded while ensureAttached re-asserts the dead card', () => {
+    // Every render/focus/resize of a dead tile goes through
+    // ensureAttached, which calls setDead(true) again. That must not
+    // re-arm Restart while the first request is still in flight.
+    const st = makeTerm({ id: 'r3', name: 'busy', alive: false });
+    store.setAliveById(new Map([['r3', false]]));
+    st.setDead(true, 'exit status 1');
+    st._restartDead();
+    st.ensureAttached();
+    expect(st.deadOverlayShown).toBe(true);
+    st._restartDead();
+    expect(RestartSession).toHaveBeenCalledOnce();
   });
 
   it('allows a retry after the request fails', async () => {

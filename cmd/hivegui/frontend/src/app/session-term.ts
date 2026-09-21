@@ -203,8 +203,10 @@ export class SessionTerm {
   deadOverlayShown = false;
   // Set while a Restart from the overlay is in flight, so a repeated
   // click or `r` doesn't send a second RestartSession that would tear
-  // down the process the first one just spawned. Cleared by setDead()
-  // (revived, or died again) and by a failed request.
+  // down the process the first one just spawned. Cleared on revival
+  // (setDead(false)), on a fresh death (events.ts onSessionDeath) and by
+  // a failed request — NOT by every setDead(true): ensureAttached
+  // re-asserts that on each render/focus/resize of a dead tile.
   _restartPending = false;
 
   // Lifecycle-phase overlay: the loading panel shown while the daemon
@@ -1550,7 +1552,7 @@ export class SessionTerm {
 
   setDead(isDead: boolean, reason?: string) {
     this.deadOverlayShown = isDead;
-    this._restartPending = false;
+    if (!isDead) this._restartPending = false;
     // `dead` on the host stays ours: it is a class on the element this
     // class owns, and the CSS dims the whole tile with it.
     this.host.classList.toggle('dead', isDead);

@@ -301,6 +301,9 @@ function onSessionDeath(info: SessionInfo) {
     // Flip attached eagerly so a switch-back before pty:disconnect arrives
     // doesn't try to reuse the dying connection.
     t.attached = false;
+    // A fresh death (e.g. a restarted process that died again) re-arms
+    // the card's Restart.
+    t._restartPending = false;
     t.setDead(
       true,
       info.last_error || 'The process running in this session has exited.',
