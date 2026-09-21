@@ -2,7 +2,7 @@
 
 - **Spec:** [docs/product-specs/446-hide-and-reorder-agents-in-launcher.md](../../product-specs/446-hide-and-reorder-agents-in-launcher.md)
 - **Issue:** #446
-- **Status:** active
+- **Status:** completed
 - **PR:** #448
 - **Branch:** feature/446-hide-and-reorder-agents-in-launcher
 
@@ -212,3 +212,11 @@ Run from `cmd/hivegui/frontend`:
 ## PR convergence ledger
 
 - **2026-09-20 iter 1** — verdict: APPROVE; mergeable: MERGEABLE; findings_hash: empty; threads_open: 0; action: stop; head_sha: f5ad41b. Two MINORs: fixed the `saveAgentPrefs` comment. Kept the Alt+Arrow binding out of README/⌘/, consistent with other in-dialog keys (launcher 1–9/arrows); the inline hint covers it.
+
+## Gate verdict
+
+- **2026-09-20** — verdict: PASS; phase: —; checks: 14 passed / 0 failed / 0 followups; followups: none; one-line: all four success criteria met, with dom and e2e tests covering each; non-goals untouched (frontend-only, localStorage); docs, changeset and features.json accurate.
+  - 2026-09-20 dimensions:
+    - acceptance — PASS — hide, badge/duplicate, pin+drag order and reload persistence are each asserted in `settings.spec.ts`; 172 vitest and 39 e2e tests green
+    - non-goals — PASS — no Go, wire or daemon files in the diff; prefs are localStorage only
+    - doc accuracy — PASS — changeset, features.json, README, components.md and patterns.md all match the source; DESIGN.md correctly left unchanged

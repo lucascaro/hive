@@ -5,7 +5,8 @@ type: enhancement
 complexity: M
 priority: P2
 pr: 448
-stage: GATE
+shipped: 2026-09-20
+stage: DONE
 ---
 
 # Let users hide agents from the launcher and reorder them
@@ -14,7 +15,7 @@ stage: GATE
 - **Type:** enhancement
 - **Complexity:** M
 - **Priority:** P2
-- **Exec plan:** [docs/exec-plans/active/446-hide-and-reorder-agents-in-launcher.md](../exec-plans/active/446-hide-and-reorder-agents-in-launcher.md)
+- **Exec plan:** [docs/exec-plans/completed/446-hide-and-reorder-agents-in-launcher.md](../exec-plans/completed/446-hide-and-reorder-agents-in-launcher.md)
 
 ## Problem
 
