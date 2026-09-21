@@ -4,7 +4,7 @@
 - **Issue:** #444
 - **PR:** #445
 - **Branch:** feature/444-launcher-worktree-defaults
-- **Status:** active
+- **Status:** completed
 
 ## Summary
 
@@ -80,3 +80,11 @@ Delete the sticky preference instead of special-casing ⌘T: the default becomes
 ## PR convergence ledger
 
 - **2026-09-20 iter 1** — verdict: APPROVE; mergeable: MERGEABLE; findings_hash: empty; threads_open: 0; action: stop; head_sha: 31e6453.
+
+## Gate verdict
+
+- **2026-09-20** — verdict: PASS; phase: —; checks: 7 passed / 0 failed / 0 followups; followups: none; one-line: all 4 success criteria covered by dom + e2e tests, both non-goals untouched, changeset accurate and README still correct.
+  - 2026-09-20 dimensions:
+    - acceptance — PASS — launcher/idea-inbox dom suites 67/67; each criterion mapped to a named test
+    - non-goals — PASS — no new setting; ⇧⌘T, duplicate, resume call sites and logic unchanged
+    - doc accuracy — PASS — `.changesets/444-launcher-worktree-defaults.md` valid (type: changed); README ⌘T row accurate; CHANGELOG untouched

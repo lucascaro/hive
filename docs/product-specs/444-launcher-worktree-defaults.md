@@ -1,16 +1,17 @@
 ---
 issue: 444
 pr: 445
+shipped: 2026-09-20
 title: "Launcher: ideas default to a worktree, plain new session never remembers it"
 type: enhancement
 complexity: S
 priority: P2
-stage: GATE
+stage: DONE
 ---
 
 # Launcher: ideas default to a worktree, plain new session never remembers it
 
-- **Exec plan:** [docs/exec-plans/active/444-launcher-worktree-defaults.md](../exec-plans/active/444-launcher-worktree-defaults.md)
+- **Exec plan:** [docs/exec-plans/completed/444-launcher-worktree-defaults.md](../exec-plans/completed/444-launcher-worktree-defaults.md)
 
 ## Problem
 
