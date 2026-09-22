@@ -4,7 +4,8 @@ title: "Ask the user when worktree setup fails instead of silently using a stale
 type: bug
 complexity: M
 priority: P1
-stage: IMPLEMENT
+pr: 452
+stage: REVIEW
 ---
 
 # Ask the user when worktree setup fails instead of silently using a stale ref

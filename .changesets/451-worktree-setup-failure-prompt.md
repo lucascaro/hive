@@ -2,6 +2,7 @@
 type: fixed
 bump: patch
 issue: 451
+pr: 452
 ---
 
 New worktree sessions no longer start on stale code without telling you. When

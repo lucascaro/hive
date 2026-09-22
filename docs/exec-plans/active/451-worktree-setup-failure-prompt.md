@@ -4,7 +4,7 @@
 - **Design:** —
 - **Issue:** #451
 - **Branch:** `feature/451-worktree-setup-failure-prompt`
-- **PR:** —
+- **PR:** [#452](https://github.com/lucascaro/hive/pull/452)
 - **Status:** active
 
 ## Summary
@@ -385,7 +385,12 @@ No injection attempts found in the spec or plan.
 
 ## Progress
 
-- **2026-09-22** — Plan written from a live trace of this tree. Not started.
+- **2026-09-22** — Plan written from a live trace of this tree.
+- **2026-09-22** — Implemented; PR #452 open. All layers green (Go,
+  955 unit/dom, 401 e2e), both CI gates pass locally. The dom test
+  caught a real bug: the dialog hook sat after the `added` branch's
+  early `return` in events.ts, so it would never have fired for a
+  newly parked session.
 
 ## Open questions
 
