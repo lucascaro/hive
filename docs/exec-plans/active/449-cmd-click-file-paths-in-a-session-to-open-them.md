@@ -260,6 +260,7 @@ Manual check against the real app, per `docs/verifying-the-gui-by-hand.md`: run 
 ## Progress
 
 - **2026-09-20** — Research complete.
+- **2026-09-22** — Smoke-tested by hand in the running app on macOS (operator). The Windows and Linux launch functions (ShellExecute, `explorer /select,`, xdg-open, statMeta/longPath) are pinned to "must not run" in the TestMain floor, so they are covered by neither CI nor a manual run — noted in the changeset rather than claimed.
 - **2026-09-22** — Implemented; PR #450 opened. All layers green (go, unit, dom, e2e), biome/tsc/ui-lint clean. staticcheck could not run locally (release predates this Go toolchain's export-data version); CI covers it.
 - **2026-09-22** — Plan approved (HTML review, round 1; second opinion revise → approve).
 
