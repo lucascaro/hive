@@ -32,7 +32,7 @@ type processPowerThrottlingState struct {
 	StateMask   uint32
 }
 
-// golang.org/x/sys/windows is only an indirect dependency and does not wrap
+// golang.org/x/sys/windows does not wrap
 // SetProcessInformation at the pinned version, so bind kernel32 lazily; a
 // missing proc then fails at first use rather than at load. Go itself requires
 // Windows 10, so the proc is always present in practice. ProcessPowerThrottling

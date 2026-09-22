@@ -143,6 +143,13 @@ var shellArgv0 = map[string]bool{
 	"xdg-open": true, "explorer": true, "explorer.exe": true,
 	"rundll32": true, "rundll32.exe": true, "mshta": true,
 	"wscript": true, "cscript": true,
+	// The .exe spellings of the same programs: the lookup is on
+	// filepath.Base(argv[0]), and on Windows `bash.exe -c …` is the
+	// same shell as `bash -c …`.
+	"sh.exe": true, "bash.exe": true, "zsh.exe": true, "fish.exe": true,
+	"dash.exe": true, "python.exe": true, "python3.exe": true,
+	"perl.exe": true, "ruby.exe": true, "node.exe": true, "env.exe": true,
+	"mshta.exe": true, "wscript.exe": true, "cscript.exe": true,
 }
 
 func validateEditorSettings(s EditorSettings) error {
@@ -342,7 +349,16 @@ func runEditor(file string, line, col int, meta fileMeta, goos string) error {
 	if err := checkBatchSafety(bin, argv[1:]); err != nil {
 		return err
 	}
-	return proc.Command(bin, argv[1:]...).Start()
+	return startEditorFn(bin, argv[1:])
+}
+
+// startEditorFn is the launch itself, behind a seam so a test can
+// assert what would have been run without running it. Same pattern as
+// openDefaultFn / runArgv. Without it, a test that reaches this line
+// on a developer's own machine really does spawn their editor:
+// `open -a Terminal` on macOS, `/usr/bin/code` on Linux.
+var startEditorFn = func(bin string, args []string) error {
+	return proc.Command(bin, args...).Start()
 }
 
 // checkBatchSafety refuses to pass cmd.exe metacharacters to a .bat or

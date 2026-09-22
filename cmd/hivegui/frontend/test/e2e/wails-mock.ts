@@ -979,7 +979,7 @@ export async function OpenURL(url: string) {
   return '';
 }
 // Files the mock pretends exist, as paths relative to the base dir or
-// absolute. A spec sets them with __hive.setFiles(); anything else
+// absolute. A spec sets them with __hive.setMockFiles(); anything else
 // resolves empty and so gets no underline, which is the real rule.
 let mockFiles: string[] = [];
 export function __setMockFiles(files: string[]) {

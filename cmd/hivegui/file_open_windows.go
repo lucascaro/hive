@@ -1,7 +1,10 @@
 package main
 
 import (
+	"fmt"
 	"os"
+	"strings"
+	"syscall"
 
 	"github.com/lucascaro/hive/internal/proc"
 	"golang.org/x/sys/windows"
@@ -23,8 +26,27 @@ func openDefault(path string) error {
 
 // reveal opens Explorer with the file selected. The comma in
 // "/select," is Explorer's own syntax, not a shell construct.
+//
+// The command line is built by hand because Explorer parses its own
+// lpCommandLine rather than taking an argv. Go's default escaping
+// quotes any argument containing a space, producing
+// `explorer.exe "/select,C:\Users\John Smith\a.txt"` — Explorer does
+// not recognise that shape, silently ignores the argument and opens
+// the default folder. It needs the path quoted *inside* the token:
+// `/select,"C:\..."`. Same SysProcAttr.CmdLine bypass as
+// internal/session/spawn_windows.go.
+//
+// path arrives cleaned and absolute from resolvePath, and a '"' cannot
+// appear in a Windows file name, so it is refused rather than escaped.
 func reveal(path string) error {
-	return proc.Command("explorer.exe", "/select,"+path).Start()
+	if strings.Contains(path, `"`) {
+		return fmt.Errorf("refusing to reveal a path containing a quote: %s", path)
+	}
+	c := proc.Command("explorer.exe")
+	c.SysProcAttr = &syscall.SysProcAttr{
+		CmdLine: `"` + c.Path + `" /select,"` + path + `"`,
+	}
+	return c.Start()
 }
 
 func statMeta(path string) (fileMeta, error) {

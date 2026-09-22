@@ -223,12 +223,30 @@ func TestLoadEditorSettingsStripsBOM(t *testing.T) {
 	}
 }
 
+// stubEditorLaunch records what runEditor would have launched instead
+// of launching it. Without this these tests really do spawn the
+// developer's editor: the app kind resolves `open` from /usr/bin, and
+// the vscode kind resolves /usr/bin/code on any Linux box with VS Code
+// installed.
+func stubEditorLaunch(t *testing.T) *[][]string {
+	t.Helper()
+	var launched [][]string
+	prev := startEditorFn
+	startEditorFn = func(bin string, args []string) error {
+		launched = append(launched, append([]string{bin}, args...))
+		return nil
+	}
+	t.Cleanup(func() { startEditorFn = prev })
+	return &launched
+}
+
 // TestRunEditorAppKindRefusesLaunchable is the ⇧⌘-click half of the
 // launchable-file guard: `open -a <App> <file>` hands the file to an
 // application, and some applications run what they are handed.
 func TestRunEditorAppKindRefusesLaunchable(t *testing.T) {
 	dir := t.TempDir()
 	t.Setenv("HIVE_STATE_DIR", dir)
+	launched := stubEditorLaunch(t)
 	app := &App{}
 	if err := app.SaveEditorSettings(EditorSettings{Kind: editorApp, App: "Terminal"}); err != nil {
 		if runtime.GOOS != "darwin" {
@@ -241,6 +259,11 @@ func TestRunEditorAppKindRefusesLaunchable(t *testing.T) {
 	err := runEditor("/x/run.command", 0, 0, fileMeta{}, "darwin")
 	if !errors.Is(err, errRevealInstead) {
 		t.Fatalf("err = %v, want errRevealInstead for a launchable file", err)
+	}
+
+	// The guard fires before the launch, so nothing was spawned.
+	if len(*launched) != 0 {
+		t.Fatalf("launched %v, want nothing for a launchable file", *launched)
 	}
 
 	// An ordinary file still opens in the application.
@@ -256,6 +279,7 @@ func TestRunEditorAppKindRefusesLaunchable(t *testing.T) {
 func TestRunEditorCLIKindDoesNotRefuseScripts(t *testing.T) {
 	dir := t.TempDir()
 	t.Setenv("HIVE_STATE_DIR", dir)
+	stubEditorLaunch(t)
 	app := &App{}
 	if err := app.SaveEditorSettings(EditorSettings{Kind: editorVSCode}); err != nil {
 		t.Fatal(err)

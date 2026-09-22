@@ -24,9 +24,35 @@ vi.mock('../../src/app/dom.js', () => ({
 
 import {
   createFileLinkProvider,
+  isFileLinkTarget,
   isHiveFileLink,
   openFileLink,
 } from '../../src/app/file-link-provider.js';
+
+// session-term.ts's mouse-protocol workaround swallows a mousedown
+// whenever a link is under the cursor, and calls activate itself on
+// mouseup. A file link does nothing without the modifier, so a plain
+// click on one has to be left alone or it is lost to selection and
+// click-to-position as well. Both kinds of file link count — the OSC 8
+// `file://` one comes from xterm's own provider and carries no
+// hiveFile flag.
+describe('isFileLinkTarget', () => {
+  it('matches the links this provider creates', () => {
+    expect(isFileLinkTarget({ hiveFile: true, text: 'src/a.ts' })).toBe(true);
+  });
+
+  it('matches an OSC 8 file:// link from xterm', () => {
+    expect(isFileLinkTarget({ text: 'file:///tmp/a.md' })).toBe(true);
+    expect(isFileLinkTarget({ text: 'FILE:///tmp/a.md' })).toBe(true);
+  });
+
+  it('leaves ordinary URL links alone, so a plain click still follows them', () => {
+    expect(isFileLinkTarget({ text: 'https://example.com' })).toBe(false);
+    expect(isFileLinkTarget(undefined)).toBe(false);
+    expect(isFileLinkTarget(null)).toBe(false);
+    expect(isFileLinkTarget({})).toBe(false);
+  });
+});
 
 // A terminal stub with just the buffer surface the provider reads.
 // Lines are given as (text, isWrapped). Characters are one cell wide

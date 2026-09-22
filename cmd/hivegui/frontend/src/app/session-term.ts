@@ -35,7 +35,7 @@ import {
 } from '../bridge.js';
 import {
   createFileLinkProvider,
-  isHiveFileLink,
+  isFileLinkTarget,
   openFileLink,
 } from './file-link-provider.js';
 import { isFileUri, parseFileUri } from '../lib/file-links.js';
@@ -477,7 +477,9 @@ export class SessionTerm {
           // to selection and click-to-position. URL links are
           // unchanged — they follow on a plain click as they always
           // have.
-          if (isHiveFileLink(link?.link) && !cmdOrCtrl(e)) {
+          //
+          // Both kinds of file link count — see isFileLinkTarget.
+          if (isFileLinkTarget(link?.link) && !cmdOrCtrl(e)) {
             this._pendingLink = null;
             return;
           }

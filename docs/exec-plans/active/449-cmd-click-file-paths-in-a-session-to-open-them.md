@@ -222,6 +222,8 @@ Manual check against the real app, per `docs/verifying-the-gui-by-hand.md`: run 
 
 - **2026-09-22 iter 1** — verdict: REQUEST_CHANGES; mergeable: MERGEABLE; findings_hash: a744ef39db81dcde839309394d696d9f7b7c1252e72959ddf99d87130b6ff7a5; threads_open: 0; action: escalated:risky-fix-needs-human-decision; head_sha: d4000269.
 - **2026-09-22 iter 2** — verdict: REQUEST_CHANGES; mergeable: MERGEABLE; findings_hash: fec55bb3824f8fb4a78d3b18c37aa6dd8ac2ed3d9eee1ea60b3aaeecb8a65871; threads_open: 4; action: escalated:risky-fix-needs-human-decision; head_sha: 125b09ec.
+- **2026-09-22 iter 2b** — operator-approved fixes applied (app-kind editor guard, safeEvalSymlinks, in-flight cache, TOCTOU accepted with a ponytail comment); 4 CodeRabbit threads replied to and resolved; macOS e2e flake (activity-grid spec 428, untouched by this diff) passed on rerun; action: autofix+push; head_sha: 5a62db61.
+- **2026-09-22 iter 3** — verdict: REQUEST_CHANGES (COMMENT coerced: 8 IMPORTANT, 0 BLOCKING); mergeable: MERGEABLE; findings_hash: 85e965c960cbffdc4a0d05ce7b8814c58e88fe1a4bad81190805d311933e9847; threads_open: 0; action: autofix+push; head_sha: 5a62db61.
 
 ## Open questions / risks
 

@@ -17,6 +17,13 @@ export type EditorKind =
   | 'command'
   | 'app';
 
+// The gesture names, per platform. Ctrl replaces ⌘ off macOS — see the
+// Keybindings Policy in AGENTS.md; lib/shortcuts.ts spells the same two
+// bindings for the shortcuts overlay.
+const OPEN_CLICK = isMac ? '⌘-click' : 'Ctrl+click';
+const EDITOR_CLICK = isMac ? '⇧⌘-click' : 'Ctrl+Shift+click';
+const EDITOR_CLICK_LABEL = isMac ? 'shift-cmd-click' : 'ctrl-shift-click';
+
 export interface EditorDraft {
   kind: EditorKind;
   command: string;
@@ -48,11 +55,11 @@ export function EditorSettings({
   return (
     <>
       <label className="hv-field">
-        <span className="hv-field__label">Editor for ⇧⌘-click</span>
+        <span className="hv-field__label">Editor for {EDITOR_CLICK}</span>
         <select
           id="settings-editor-kind"
           className="hv-input"
-          aria-label="Editor for shift-cmd-click"
+          aria-label={`Editor for ${EDITOR_CLICK_LABEL}`}
           value={draft.kind}
           disabled={disabled}
           onChange={(e) =>
@@ -67,8 +74,8 @@ export function EditorSettings({
         </select>
       </label>
       <p className="settings-hint">
-        ⌘-click opens a file with the OS default app; anything that would run as
-        a program is revealed in the file manager instead.
+        {OPEN_CLICK} opens a file with the OS default app; anything that would
+        run as a program is revealed in the file manager instead.
       </p>
       {draft.kind === 'command' && (
         <label className="hv-field">

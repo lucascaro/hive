@@ -13,7 +13,7 @@
 
 import type { IBufferLine, ILink, ILinkProvider, Terminal } from '@xterm/xterm';
 import { OpenFile, ResolveFilePaths } from '../bridge.js';
-import { findPathCandidates } from '../lib/file-links.js';
+import { findPathCandidates, isFileUri } from '../lib/file-links.js';
 import { cmdOrCtrl } from '../lib/platform.js';
 import { reportFailure } from './dom.js';
 
@@ -26,6 +26,22 @@ export interface HiveFileLink extends ILink {
 
 export function isHiveFileLink(link: unknown): link is HiveFileLink {
   return !!link && (link as HiveFileLink).hiveFile === true;
+}
+
+/**
+ * True when the link under the cursor activates through openFileLink,
+ * and so does nothing without the platform modifier.
+ *
+ * Two kinds qualify: the links this provider creates, and the OSC 8
+ * `file://` links xterm's own OscLinkProvider emits (which
+ * linkHandler.activate routes to openFileLink too). session-term.ts's
+ * mouse-protocol workaround must not swallow a plain click on either,
+ * or the click is lost to selection and click-to-position as well.
+ */
+export function isFileLinkTarget(
+  link: { text?: string; hiveFile?: boolean } | null | undefined,
+): boolean {
+  return isHiveFileLink(link) || isFileUri(link?.text ?? '');
 }
 
 /** True when this mouse event should activate a file link at all. */

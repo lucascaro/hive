@@ -57,6 +57,13 @@ var darwinBundleExts = map[string]bool{
 var darwinFileExts = map[string]bool{
 	".terminal": true, ".webloc": true, ".inetloc": true, ".fileloc": true,
 	".pkg": true, ".mpkg": true, ".dmg": true, ".shortcut": true,
+	// DiskImageMounter mounts all of these exactly as it mounts .dmg.
+	".iso": true, ".cdr": true, ".img": true,
+	".sparseimage": true, ".sparsebundle": true,
+	// .xip expands a signed archive, .mobileconfig opens the
+	// configuration-profile installer, and .webarchive opens in Safari
+	// with a file:// origin.
+	".xip": true, ".mobileconfig": true, ".webarchive": true,
 }
 
 var linuxExts = map[string]bool{
@@ -78,6 +85,14 @@ var windowsExts = map[string]bool{
 	".pif": true, ".reg": true, ".inf": true, ".scf": true,
 	".appref-ms": true, ".application": true, ".gadget": true,
 	".settingcontent-ms": true, ".library-ms": true, ".diagcab": true,
+	// Script hosts and add-in loaders whose handler executes the file:
+	// hh.exe runs .chm, Excel loads .xll as a DLL, .wsc/.sct are
+	// scriptlets, AutoHotkey runs .ahk.
+	".chm": true, ".xll": true, ".xlam": true, ".ppam": true,
+	".ahk": true, ".wsc": true, ".sct": true, ".ws": true,
+	".search-ms": true, ".msix": true, ".appx": true,
+	// Explorer mounts these, which is how a payload gets a drive letter.
+	".iso": true, ".img": true, ".vhd": true, ".vhdx": true,
 }
 
 // isLaunchable reports whether opening path with the OS default
