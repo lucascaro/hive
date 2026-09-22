@@ -2,6 +2,7 @@
 type: added
 bump: minor
 issue: 449
+pr: 450
 ---
 
 ⌘-click a file path in a session to open it. Paths are underlined on

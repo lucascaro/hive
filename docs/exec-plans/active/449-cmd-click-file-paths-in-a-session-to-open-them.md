@@ -3,6 +3,8 @@
 - **Spec:** [docs/product-specs/449-cmd-click-file-paths-in-a-session-to-open-them.md](../../product-specs/449-cmd-click-file-paths-in-a-session-to-open-them.md)
 - **Issue:** #449
 - **Status:** active
+- **PR:** #450
+- **Branch:** feature/449-cmd-click-file-paths
 
 ## Summary
 
@@ -248,6 +250,7 @@ Manual check against the real app, per `docs/verifying-the-gui-by-hand.md`: run 
 ## Progress
 
 - **2026-09-20** — Research complete.
+- **2026-09-22** — Implemented; PR #450 opened. All layers green (go, unit, dom, e2e), biome/tsc/ui-lint clean. staticcheck could not run locally (release predates this Go toolchain's export-data version); CI covers it.
 - **2026-09-22** — Plan approved (HTML review, round 1; second opinion revise → approve).
 
 ## Open questions

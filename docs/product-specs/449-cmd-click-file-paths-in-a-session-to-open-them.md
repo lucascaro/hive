@@ -4,7 +4,8 @@ title: Cmd-click file paths in a session to open them
 type: enhancement
 complexity: L
 priority: P2
-stage: IMPLEMENT
+pr: 450
+stage: REVIEW
 ---
 
 # Cmd-click file paths in a session to open them
