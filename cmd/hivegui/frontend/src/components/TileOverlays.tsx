@@ -18,7 +18,6 @@ import { useEffect, useRef, type ReactNode } from 'react';
 
 import { anyModalOpen } from '../store/store.js';
 import type { TileChromeState } from '../store/store.js';
-import { Button } from './Button.js';
 import { Icon, StateIcon } from './Icon.js';
 import { Kbd } from './Kbd.js';
 
@@ -191,7 +190,20 @@ function PhaseOverlay({
           ))}
         </ul>
         {blocked && onAnswer ? (
-          <Button label="Answer…" kind="primary" onClick={onAnswer} />
+          // The key is shown beside the action it triggers, like the
+          // dead card's buttons above (AGENTS.md key discoverability).
+          // A plain button rather than <Button>, because that primitive
+          // takes a string label and this one carries the hint.
+          <button
+            type="button"
+            className="dead-btn primary"
+            onClick={(e) => {
+              e.stopPropagation();
+              onAnswer();
+            }}
+          >
+            Answer… <Kbd>[enter]</Kbd>
+          </button>
         ) : null}
       </div>
     </div>

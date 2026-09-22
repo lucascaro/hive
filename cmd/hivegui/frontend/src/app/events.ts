@@ -389,10 +389,13 @@ async function askWorktreeChoice(id: string) {
   // 'origin/main' told the user one base while the daemon used
   // another, which is the silent-wrong-base outcome this feature
   // exists to delete.
+  // snake_case ?? camelCase at the boundary, like every other reader.
+  const cachedRef = q.cached_ref ?? q.cachedRef;
+  const cachedAge = q.cached_tip_age_secs ?? q.cachedTipAgeSecs;
   const proceedLabel = !fetchFailed
     ? 'Use project directory'
-    : q.cached_ref
-      ? `Use cached ${q.cached_ref} (${ageWords(q.cached_tip_age_secs)})`
+    : cachedRef
+      ? `Use cached ${cachedRef} (${ageWords(cachedAge)})`
       : 'Use local HEAD (origin never resolved)';
   openWorktreeChoiceId = id;
   const answer = await openChoiceDialog({
@@ -404,7 +407,7 @@ async function askWorktreeChoice(id: string) {
     note: !fetchFailed
       ? `The session can still start in the project directory, without ` +
         `the worktree ${branch}. Nothing is created until you choose.`
-      : q.cached_ref
+      : cachedRef
         ? `The new branch ${branch} would be based on the last fetched ` +
           'state of origin, which may be behind. Retry once the remote is ' +
           'reachable, or use the cached state deliberately.'
@@ -443,9 +446,11 @@ async function askWorktreeChoice(id: string) {
     // dialog owns the keyboard app-wide, so re-asking in the same turn
     // makes Escape inert and leaves the whole GUI unreachable until
     // every parked session is answered. Step aside instead. The
-    // session stays parked and says so on its tile, which carries an
-    // "Answer…" button back to this question (TileOverlays), and any
-    // later event or snapshot for it raises it again.
+    // session stays parked and says so on its tile, which carries the
+    // way back: an "Answer…" button (TileOverlays) and Enter on the
+    // focused tile (keyboard.ts). A later session:list snapshot — a
+    // reconnect, or a new window — raises it again too, but nothing
+    // generates one on its own, so the affordance is the real path.
     askingWorktreeChoice.delete(id);
     return;
   }

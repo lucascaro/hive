@@ -138,8 +138,12 @@ func TestExistingBranchCheckoutNeverParksOnUnreachableOrigin(t *testing.T) {
 	if info := r.Get(e.ID).Info(); info.PendingWorktreeChoice != nil {
 		t.Error("a checkout must never be parked on a fetch it does not depend on")
 	}
-	// The fetch has a 10s budget; not paying it is the point.
-	if elapsed := time.Since(start); elapsed > 8*time.Second {
+	// The fetch has a 10s budget and this path must not pay it. The
+	// bar is deliberately close to that budget rather than to the
+	// milliseconds a checkout really takes: the assertion is "it did
+	// not wait for the fetch", and a tighter bound would flake on a
+	// loaded CI box without catching anything more.
+	if elapsed := time.Since(start); elapsed >= 10*time.Second {
 		t.Errorf("checkout waited %v — it paid for a fetch it should have skipped", elapsed)
 	}
 }
@@ -569,6 +573,168 @@ func TestCancelDoesNotDeleteAnotherSessionsWorktree(t *testing.T) {
 	}
 	if r.Get(live.ID) == nil {
 		t.Error("the live session must survive")
+	}
+}
+
+// The guard must not fail in the other direction. A `git worktree add`
+// that fails after creating the directory (its 30s deadline SIGKILLs
+// git, so git's own junk-cleanup never runs) still leaves debris —
+// and that debris IS ours, because nothing occupied the path before we
+// tried. Claiming ownership only on success would make Cancel leave a
+// worktree behind, against the spec, and Retry fail forever.
+func TestCancelCleansUpDebrisFromAFailedAdd(t *testing.T) {
+	r, e, repo := parkedOnAddFailure(t)
+
+	q := r.Get(e.ID).Info().PendingWorktreeChoice
+	if q == nil {
+		t.Fatal("fixture: the session must be parked on the add failure")
+	}
+	// Simulate the half-made directory a killed `git worktree add`
+	// leaves behind at the planned path.
+	wtDir := filepath.Join(repo, ".worktrees")
+	if err := os.Chmod(wtDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	debris := filepath.Join(wtDir, q.Branch)
+	if err := os.MkdirAll(debris, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	mustWriteFile(t, filepath.Join(debris, "junk"), "half-made\n")
+
+	if err := r.ResolveWorktreeChoice(context.Background(), e.ID,
+		wire.WorktreeChoiceCancel, ""); err != nil {
+		t.Fatalf("cancel: %v", err)
+	}
+	if r.Get(e.ID) != nil {
+		t.Error("cancel must leave no session")
+	}
+	// "Picking Cancel leaves no session and no worktree" — the spec's
+	// success criterion, which an unowned-debris guard would break.
+	if _, err := os.Stat(debris); err == nil {
+		t.Error("cancel left the failed add's directory behind; Retry would then fail forever")
+	}
+}
+
+// The ownership guard has two clauses and they defend different
+// things. Assert the live-entry clause on its own: a plan that DID
+// create its path must still not delete it once a live session lives
+// there (⌘P duplicate adopts a sibling's worktree).
+func TestDiscardRefusesWhileALiveSessionLivesThere(t *testing.T) {
+	skipNonPosix(t)
+	r, p := freshRegistryWithProject(t)
+
+	e, err := r.Create(context.Background(), wire.CreateSpec{
+		ProjectID: p.ID, Shell: "/bin/bash", UseWorktree: true,
+	})
+	if err != nil {
+		t.Fatalf("Create: %v", err)
+	}
+	defer r.Kill(e.ID, true)
+	live := r.Get(e.ID)
+	if live == nil || live.WorktreePath == "" {
+		t.Fatal("fixture: no worktree")
+	}
+	mustWriteFile(t, filepath.Join(live.WorktreePath, "work.txt"), "keep me\n")
+
+	// A plan that legitimately created this very path — the shape a
+	// mid-create kill leaves behind — must still refuse, because an
+	// entry is living there now.
+	r.discardWorktree(createPlan{
+		id:        "some-other-id",
+		wtPath:    live.WorktreePath,
+		wtBranch:  live.WorktreeBranch,
+		wtCreated: true,
+	})
+
+	if _, err := os.Stat(filepath.Join(live.WorktreePath, "work.txt")); err != nil {
+		t.Fatalf("discard deleted a live session's worktree: %v", err)
+	}
+}
+
+// The park sink scrubs credentials and caps the message. Both are
+// security/robustness properties of text that reaches a GUI dialog,
+// hived.log, and every SessionInfo broadcast for the life of the park.
+func TestParkedMessageIsScrubbedAndCapped(t *testing.T) {
+	skipNonPosix(t)
+	repo := initGitRepo(t)
+	// A remote with a token in its userinfo, pointing nowhere.
+	runGit(t, repo, "remote", "add", "origin",
+		"https://user:s3cr3t-token@gh.example.invalid/x/y.git")
+
+	r := freshRegistry(t)
+	p, err := r.CreateProject(wire.CreateProjectReq{Name: "creds", Cwd: repo})
+	if err != nil {
+		t.Fatalf("CreateProject: %v", err)
+	}
+	e, err := r.Create(context.Background(), wire.CreateSpec{
+		ProjectID: p.ID, Shell: "/bin/bash", UseWorktree: true,
+	})
+	if err != nil {
+		t.Fatalf("Create should park: %v", err)
+	}
+	t.Cleanup(func() { _ = r.Kill(e.ID, true) })
+
+	q := r.Get(e.ID).Info().PendingWorktreeChoice
+	if q == nil {
+		t.Fatal("the unreachable remote must park the session")
+	}
+	if strings.Contains(q.Message, "s3cr3t-token") {
+		t.Errorf("the token reached the dialog text: %q", q.Message)
+	}
+	if len(q.Message) > wire.MaxWorktreeChoiceMessage+4 {
+		t.Errorf("message is %d bytes, over the cap", len(q.Message))
+	}
+}
+
+// Retrying a PLAN-time failure must re-plan rather than replay the
+// cached error — and when the re-plan lands on a different branch, the
+// session name must follow it (renameEntry), or the label claims a
+// branch the session is not on.
+func TestRetryAfterPlanFailureReplansAndRenames(t *testing.T) {
+	skipNonPosix(t)
+	repo := initGitRepo(t)
+	r := freshRegistry(t)
+	p, err := r.CreateProject(wire.CreateProjectReq{Name: "planfail", Cwd: repo})
+	if err != nil {
+		t.Fatalf("CreateProject: %v", err)
+	}
+	// A regular file where .worktrees must be a directory: planning
+	// itself fails.
+	blocker := filepath.Join(repo, ".worktrees")
+	mustWriteFile(t, blocker, "not a dir\n")
+
+	e, err := r.Create(context.Background(), wire.CreateSpec{
+		ProjectID: p.ID, Shell: "/bin/bash", UseWorktree: true,
+	})
+	if err != nil {
+		t.Fatalf("Create should park: %v", err)
+	}
+	if r.Get(e.ID).Info().PendingWorktreeChoice == nil {
+		t.Fatal("fixture: the session did not park on the plan failure")
+	}
+	nameWhileParked := r.Get(e.ID).Name
+
+	// Clear the obstruction and retry: planning can now succeed.
+	if err := os.Remove(blocker); err != nil {
+		t.Fatal(err)
+	}
+	if err := r.ResolveWorktreeChoice(context.Background(), e.ID,
+		wire.WorktreeChoiceRetry, ""); err != nil {
+		t.Fatalf("retry: %v", err)
+	}
+	defer r.Kill(e.ID, true)
+
+	got := r.Get(e.ID)
+	if got == nil || got.WorktreePath == "" {
+		t.Fatal("the retry must re-plan and produce a worktree")
+	}
+	if got.WorktreeBranch == "" {
+		t.Fatal("the re-plan must produce a branch")
+	}
+	// The name must describe the branch it actually ended up on.
+	want := strings.ReplaceAll(got.WorktreeBranch, "/", "-")
+	if got.Name != want {
+		t.Errorf("name = %q, want %q (was %q while parked)", got.Name, want, nameWhileParked)
 	}
 }
 

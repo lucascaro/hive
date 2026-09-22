@@ -1490,6 +1490,9 @@ func (r *Registry) kill(id string, force, removeWorktree bool) error {
 	// goes away — same rule the mid-create races follow in create.go.
 	if plan, parked := r.dropParked(id); parked {
 		log.Printf("registry: kill %s: session was parked on a worktree choice; discarding it", id)
+		// A no-op unless this plan's own add created something at that
+		// path — see discardWorktree's ownership rules. A session
+		// parked before its add ever ran has nothing on disk to remove.
 		r.discardWorktree(plan)
 	}
 

@@ -50,7 +50,9 @@ type createPlan struct {
 	wtPath   string
 	wtBranch string
 	// wtCreated records that THIS plan's `git worktree add` actually
-	// created wtPath. Only then may discardWorktree delete it.
+	// created wtPath: set when nothing occupied that path before the
+	// add, whether the add then succeeded or left debris behind. Only
+	// then may discardWorktree delete it.
 	//
 	// A planned-but-not-created path is not owned: a parked create
 	// holds one for as long as the user takes to answer, and
@@ -318,17 +320,20 @@ func (r *Registry) linkIdeaToSession(ideaID, sessionID string) {
 	}
 }
 
-// discardWorktree removes a worktree that THIS plan materialized, for
+// discardWorktree removes a worktree THIS plan is responsible for, for
 // an entry that no longer exists. Never runs for an adopted worktree —
 // that directory belongs to a sibling session.
 //
 // Two ownership checks, because this is `git worktree remove --force`
 // plus os.RemoveAll and a wrong call destroys uncommitted work:
 //
-//   - wtCreated: the plan must have actually created the path. Parking
-//     made this reachable — a parked create holds a planned path
-//     indefinitely while a later session can legitimately resolve to
-//     the same path and create it for real.
+//   - wtCreated: nothing may have occupied the path before this plan's
+//     add. Parking made that distinction matter — a parked create
+//     holds a planned path indefinitely while a later session can
+//     legitimately resolve to the same path and create it for real.
+//     Note it is set for a FAILED add too, when the path was free
+//     beforehand: git is SIGKILLed on its deadline and leaves debris
+//     that only this plan can be responsible for.
 //   - no live entry may be living there. Mirrors the sibling check the
 //     kill path already makes before it cleans up a worktree.
 func (r *Registry) discardWorktree(p createPlan) {
@@ -924,9 +929,28 @@ func (r *Registry) materializeWorktree(ctx context.Context, e *Entry, spec wire.
 // parked fetch failure). Parks on failure rather than falling back to
 // a plain session in the project directory.
 func (r *Registry) addWorktree(ctx context.Context, e *Entry, spec wire.CreateSpec, p *createPlan, root, base string) (bool, error) {
+	// Did anything already occupy this path before we tried? If not,
+	// whatever is there afterwards is OURS — including the debris of a
+	// failed add. `git worktree add` runs under a 30s deadline and is
+	// SIGKILLed on expiry, so git's own junk-cleanup never runs and a
+	// half-made directory (plus its .git/worktrees admin entry) can
+	// survive a failure. Claiming it only on SUCCESS would leave that
+	// debris unowned: every later discard would skip it, Cancel would
+	// leave a worktree behind against the spec, and Retry would fail
+	// with "already exists" forever.
+	//
+	// A path that existed BEFORE our add is never claimed, which is
+	// what keeps the ownership guard honest — that directory may
+	// belong to another session.
+	_, statErr := os.Stat(p.wtPath)
+	existedBefore := statErr == nil
+
 	r.gitMu.Lock()
 	cerr := worktree.CreateWorktreeAt(ctx, root, p.wtBranch, p.wtPath, base)
 	r.gitMu.Unlock()
+	if !existedBefore {
+		p.wtCreated = true
+	}
 	if cerr != nil {
 		return r.parkWorktreeChoice(e, spec, *p, &wire.PendingWorktreeChoice{
 			Kind:    wire.WorktreeChoiceCreateFailed,
@@ -934,7 +958,6 @@ func (r *Registry) addWorktree(ctx context.Context, e *Entry, spec wire.CreateSp
 			Branch:  p.wtBranch,
 		}, base)
 	}
-	p.wtCreated = true
 	p.cwd = p.wtPath
 	r.setPhase(p.id, wire.PhaseWorktree)
 	worktree.EnsureGitignore(root)

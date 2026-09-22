@@ -178,6 +178,18 @@ func tipAndAge(ctx context.Context, repoDir, ref string) (string, time.Duration)
 // resolved base ref fails — that fallback silently produced
 // wrong-base worktrees. The error propagates instead.
 func CreateWorktree(ctx context.Context, repoDir, branch, worktreePath string) error {
+	// Checking out a branch that already exists never consults
+	// upstream, so it must not pay the fetch's latency. Probed HERE,
+	// in the shared function, rather than in one caller: the registry's
+	// create path had this restored on its own, while reopening a
+	// closed session (closed.go) and the worktree browser
+	// (worktrees.go) still paid a 10s fetch they then ignored — the
+	// browser one while holding gitMu, blocking every other create and
+	// kill. Fixing the shared function covers all three.
+	if branchExists(ctx, repoDir, branch) {
+		return CreateWorktreeAt(ctx, repoDir, branch, worktreePath, "")
+	}
+
 	base, err := PrepareBase(ctx, repoDir)
 	if err != nil {
 		var fe *FetchError

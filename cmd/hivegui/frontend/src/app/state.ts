@@ -119,9 +119,14 @@ export interface PendingWorktreeChoice {
   message: string;
   branch?: string;
   cached_ref?: string;
+  /** camelCase tolerated at the boundary, like every other reader. */
+  cachedRef?: string;
   cached_tip?: string;
+  cachedTip?: string;
   /** 0 ⇒ unknown, which renders as "unknown age", not "brand new". */
   cached_tip_age_secs?: number;
+  /** camelCase tolerated at the boundary, like every other reader. */
+  cachedTipAgeSecs?: number;
 }
 
 /** Reads the daemon's attention flag off a session, defaulting to false
