@@ -93,6 +93,13 @@ export interface PhasePanel {
   /** Short line under the spinner, e.g. "Creating worktree…". */
   status: string;
   steps: PhaseStep[];
+  /**
+   * Nothing is in flight: the session is stopped, waiting on the user.
+   * Renderers must not show a spinner for it — a spinner claims work is
+   * happening, and here nothing advances until the question is
+   * answered, so it would never resolve.
+   */
+  blocked?: boolean;
 }
 
 export interface PhaseInput {
@@ -137,6 +144,7 @@ export function phasePanel({
     return {
       status: 'Waiting for your answer…',
       steps: [{ label: 'Worktree setup needs a decision', state: 'active' }],
+      blocked: true,
     };
   }
   if (phase === 'restarting') {

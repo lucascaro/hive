@@ -754,13 +754,17 @@ func (a *App) ResolvePrompt(sessionID string, paste bool) error {
 // The session is waiting indefinitely until this arrives — nothing on
 // the daemon side is blocked while it does, which is what lets the
 // dialog stay up for as long as the user needs.
-func (a *App) ResolveWorktreeChoice(sessionID string, choice string) error {
+// parkID echoes PendingWorktreeChoice.ParkID so an answer composed
+// against a question the session has already moved on from is ignored
+// rather than applied under the new one's meaning. Empty is accepted
+// and means "answer whatever is parked".
+func (a *App) ResolveWorktreeChoice(sessionID string, choice string, parkID string) error {
 	cs, err := a.requireControl()
 	if err != nil {
 		return err
 	}
 	return cs.WriteJSON(wire.FrameResolveWorktreeChoice, wire.ResolveWorktreeChoiceReq{
-		SessionID: sessionID, Choice: choice,
+		SessionID: sessionID, Choice: choice, ParkID: parkID,
 	})
 }
 

@@ -928,7 +928,11 @@ export async function ResolvePrompt(sessionID: string, paste: boolean) {
 // Answering a session parked on a worktree-setup failure. The mock
 // models the outcomes rather than the git: cancel removes the session,
 // anything else clears the question and lets it start.
-export async function ResolveWorktreeChoice(sessionID: string, choice: string) {
+export async function ResolveWorktreeChoice(
+  sessionID: string,
+  choice: string,
+  _parkID = '',
+) {
   maybeFail('ResolveWorktreeChoice');
   const i = state.sessions.findIndex((x) => x.id === sessionID);
   if (i < 0) return '';

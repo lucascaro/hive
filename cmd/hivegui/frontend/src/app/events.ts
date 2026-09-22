@@ -362,6 +362,16 @@ function maybeAskWorktreeChoice(info: SessionInfo) {
     });
 }
 
+/**
+ * Re-raise the question a parked session is waiting on. The tile's
+ * "Answer…" button calls this: a dismissal deliberately does not
+ * answer and does not re-ask, so this is the way back in.
+ */
+export function raiseWorktreeChoice(id: string) {
+  const info = appData().sessions.find((s) => s.id === id);
+  if (info) maybeAskWorktreeChoice(info);
+}
+
 async function askWorktreeChoice(id: string) {
   const info = appData().sessions.find((s) => s.id === id);
   const q = info
@@ -418,15 +428,19 @@ async function askWorktreeChoice(id: string) {
 
   openWorktreeChoiceId = null;
   if (answer === '') {
-    // Dismissed by something unrelated (or by Escape), not answered.
-    // Leave the session parked and ask again at the back of the queue,
-    // so whatever took the modal gets to finish first.
+    // Dismissed, not answered — by Escape, or by unrelated code that
+    // dismisses whatever is open. Do NOT re-raise here: the choice
+    // dialog owns the keyboard app-wide, so re-asking in the same turn
+    // makes Escape inert and leaves the whole GUI unreachable until
+    // every parked session is answered. Step aside instead. The
+    // session stays parked and says so on its tile, which carries an
+    // "Answer…" button back to this question (TileOverlays), and any
+    // later event or snapshot for it raises it again.
     askingWorktreeChoice.delete(id);
-    maybeAskWorktreeChoice(info);
     return;
   }
   try {
-    await ResolveWorktreeChoice(info.id, answer);
+    await ResolveWorktreeChoice(info.id, answer, q.park_id ?? q.parkId ?? '');
   } catch (err) {
     reportFailure('resolve worktree choice')(err);
   } finally {

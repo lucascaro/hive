@@ -846,6 +846,17 @@ func (r *Registry) materializeWorktree(ctx context.Context, e *Entry, spec wire.
 		}, "")
 	}
 
+	// Checking out a branch that ALREADY exists never consults
+	// upstream, so it must not fetch: it would pay up to 10s of
+	// latency for a ref it ignores, and offline it would park behind a
+	// dialog whose text ("the new branch would be based on…") is not
+	// even true for a checkout — or fail outright with no client
+	// attached. Probed first for exactly that reason, which is also
+	// what spec 451's non-goals require.
+	if worktree.BranchExists(root, p.wtBranch) {
+		return r.addWorktree(ctx, e, spec, p, root, "")
+	}
+
 	// Step 1: the fetch. gitMu is held for the subprocess only — never
 	// across the park below, or one user staring at a dialog would
 	// block every other create and kill.
@@ -929,12 +940,20 @@ type parkedCreate struct {
 // create fails, because proceeding silently is the behaviour this
 // whole feature exists to delete.
 func (r *Registry) parkWorktreeChoice(e *Entry, spec wire.CreateSpec, p createPlan, q *wire.PendingWorktreeChoice, base string) (bool, error) {
-	// Scrub at the sink, not at each source. git echoes the remote back
-	// in its errors and an HTTPS remote can carry a token in its
-	// userinfo; this message goes to a GUI dialog and to hived.log.
-	// Every park path funnels through here, so one call covers the
-	// fetch, the add, and the plan-time failures — and any added later.
+	// Scrub AND cap at the sink, not at each source. git echoes the
+	// remote back in its errors and an HTTPS remote can carry a token
+	// in its userinfo; this message goes to a GUI dialog and to
+	// hived.log, and rides every SessionInfo broadcast for as long as
+	// the park lasts. Every park path funnels through here, so one call
+	// covers the fetch, the add, and the plan-time failures — and any
+	// added later.
 	q.Message = worktree.ScrubURLCredentials(q.Message)
+	if len(q.Message) > wire.MaxWorktreeChoiceMessage {
+		q.Message = q.Message[:wire.MaxWorktreeChoiceMessage] + "…"
+	}
+	// Identifies THIS park, so an answer composed against a superseded
+	// question is not applied under its new meaning.
+	q.ParkID = uuid.NewString()
 
 	if !r.canAskUser() {
 		log.Printf("registry: worktree setup failed for %s and no control client is connected to ask: %s", p.id, q.Message)
@@ -981,7 +1000,7 @@ func (r *Registry) parkWorktreeChoice(e *Entry, spec wire.CreateSpec, p createPl
 // Resolving a session that is not parked is a no-op: two clients can
 // race to answer the same dialog, and the loser must not see an error
 // for a decision that was made correctly once.
-func (r *Registry) ResolveWorktreeChoice(ctx context.Context, id, choice string) error {
+func (r *Registry) ResolveWorktreeChoice(ctx context.Context, id, choice, parkID string) error {
 	// Validate before mutating anything. An unknown value used to be
 	// handled by clearing the question and then putting it back, which
 	// could not work: the restore read the entry the clear had just
@@ -994,6 +1013,15 @@ func (r *Registry) ResolveWorktreeChoice(ctx context.Context, id, choice string)
 
 	r.parkedMu.Lock()
 	pc, ok := r.parked[id]
+	if ok && parkID != "" && pc.question != nil && pc.question.ParkID != parkID {
+		// An answer to a question this session has already moved on
+		// from (a retry that failed differently, so "proceed" now means
+		// something else). Ignore it rather than apply it under the new
+		// meaning. An empty parkID is a client too old to echo it.
+		r.parkedMu.Unlock()
+		log.Printf("registry: ignoring stale worktree answer for %s", id)
+		return nil
+	}
 	if ok {
 		delete(r.parked, id)
 	}
@@ -1030,6 +1058,13 @@ func (r *Registry) ResolveWorktreeChoice(ctx context.Context, id, choice string)
 		if plan.wtBranch == "" && plan.wtPlanErr != "" {
 			plan.wtPlanErr = ""
 			r.planWorktreeAndName(pc.spec, &plan)
+			// Re-planning can land on a different branch than the name
+			// was derived from, and a session labelled after a branch
+			// it is not on is exactly what renameAfterWorktreeFailure
+			// exists to prevent.
+			if plan.nameFromBranch && plan.name != "" {
+				r.renameEntry(plan.id, plan.name)
+			}
 		}
 		parked, err := r.materializeWorktree(ctx, pc.entry, pc.spec, &plan)
 		if err != nil || parked {
@@ -1059,6 +1094,11 @@ func (r *Registry) ResolveWorktreeChoice(ctx context.Context, id, choice string)
 		// create_failed: proceed means a plain session in the project
 		// directory, which is what used to happen silently.
 		log.Printf("registry: create %s proceeding without a worktree by user choice", id)
+		// Discard BEFORE blanking the plan: wtPath is the only handle
+		// to the half-made directory, so clearing it first would orphan
+		// that directory with nothing left able to clean it up. Every
+		// other exit in this function discards.
+		r.discardWorktree(plan)
 		plan.wtPath, plan.wtBranch = "", ""
 		return r.finishCreateTail(ctx, pc.entry, pc.spec, plan)
 	}
@@ -1066,6 +1106,21 @@ func (r *Registry) ResolveWorktreeChoice(ctx context.Context, id, choice string)
 	// Unreachable: the switch above validated choice before anything
 	// was touched.
 	return nil
+}
+
+// renameEntry relabels an entry in place, persisting and announcing
+// it. Used when a re-plan moves the worktree branch the name came
+// from. Takes r.mu.
+func (r *Registry) renameEntry(id, name string) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	e, ok := r.entries[id]
+	if !ok || e.Name == name {
+		return
+	}
+	e.Name = name
+	r.persistEntryLoggedLocked(e, "create (renamed after re-plan)")
+	r.broadcastLocked(wire.SessionEventUpdated, e.Info())
 }
 
 // clearPendingChoice drops a parked entry's question and its persisted

@@ -101,11 +101,54 @@ func TestCreateParksOnFetchFailure(t *testing.T) {
 	}
 }
 
+// Checking out a branch that already exists never consults upstream,
+// so an unreachable origin must not park it, delay it, or fail it.
+// This is the spec's non-goal, and it regressed once: the fetch was
+// hoisted ahead of the branch probe, so an offline checkout parked
+// behind a dialog whose text is not even true for a checkout.
+func TestExistingBranchCheckoutNeverParksOnUnreachableOrigin(t *testing.T) {
+	repo, _ := repoWithStaleOrigin(t)
+	// A branch the user already has locally.
+	runGit(t, repo, "branch", "existing-work")
+
+	r := freshRegistry(t)
+	// Nothing could answer a dialog, so a park here would FAIL the
+	// create outright — which is exactly the user-visible regression.
+	r.SetHasControlClient(func() bool { return false })
+	p, err := r.CreateProject(wire.CreateProjectReq{Name: "stale", Cwd: repo})
+	if err != nil {
+		t.Fatalf("CreateProject: %v", err)
+	}
+
+	start := time.Now()
+	e, err := r.Create(context.Background(), wire.CreateSpec{
+		ProjectID:   p.ID,
+		Shell:       "/bin/bash",
+		UseWorktree: true,
+		Branch:      "existing-work",
+	})
+	if err != nil {
+		t.Fatalf("checking out an existing branch must not depend on origin: %v", err)
+	}
+	defer r.Kill(e.ID, true)
+
+	if got := r.Get(e.ID); got == nil || got.WorktreePath == "" {
+		t.Fatal("the checkout must produce a worktree")
+	}
+	if info := r.Get(e.ID).Info(); info.PendingWorktreeChoice != nil {
+		t.Error("a checkout must never be parked on a fetch it does not depend on")
+	}
+	// The fetch has a 10s budget; not paying it is the point.
+	if elapsed := time.Since(start); elapsed > 8*time.Second {
+		t.Errorf("checkout waited %v — it paid for a fetch it should have skipped", elapsed)
+	}
+}
+
 func TestResolveWorktreeChoiceProceedUsesCachedRef(t *testing.T) {
 	r, e, repo := parkedProject(t)
 	cachedTip := gitOutput(t, repo, "rev-parse", "origin/main")
 
-	if err := r.ResolveWorktreeChoice(context.Background(), e.ID, wire.WorktreeChoiceProceed); err != nil {
+	if err := r.ResolveWorktreeChoice(context.Background(), e.ID, wire.WorktreeChoiceProceed, ""); err != nil {
 		t.Fatalf("ResolveWorktreeChoice(proceed): %v", err)
 	}
 	defer r.Kill(e.ID, true)
@@ -133,7 +176,7 @@ func TestResolveWorktreeChoiceRetrySucceeds(t *testing.T) {
 	runGit(t, repo, "remote", "set-url", "origin", good)
 	runGit(t, repo, "push", "-q", "origin", "main")
 
-	if err := r.ResolveWorktreeChoice(context.Background(), e.ID, wire.WorktreeChoiceRetry); err != nil {
+	if err := r.ResolveWorktreeChoice(context.Background(), e.ID, wire.WorktreeChoiceRetry, ""); err != nil {
 		t.Fatalf("ResolveWorktreeChoice(retry): %v", err)
 	}
 	defer r.Kill(e.ID, true)
@@ -149,8 +192,15 @@ func TestResolveWorktreeChoiceRetrySucceeds(t *testing.T) {
 
 func TestResolveWorktreeChoiceCancelRemovesEntry(t *testing.T) {
 	r, e, repo := parkedProject(t)
+	// Read the real branch name off the question: the session name is
+	// a random adjective-noun, so asserting on a guessed literal (an
+	// earlier revision used "feature") can never fail.
+	branch := ""
+	if q := r.Get(e.ID).Info().PendingWorktreeChoice; q != nil {
+		branch = q.Branch
+	}
 
-	if err := r.ResolveWorktreeChoice(context.Background(), e.ID, wire.WorktreeChoiceCancel); err != nil {
+	if err := r.ResolveWorktreeChoice(context.Background(), e.ID, wire.WorktreeChoiceCancel, ""); err != nil {
 		t.Fatalf("ResolveWorktreeChoice(cancel): %v", err)
 	}
 	if got := r.Get(e.ID); got != nil {
@@ -159,8 +209,11 @@ func TestResolveWorktreeChoiceCancelRemovesEntry(t *testing.T) {
 	if entries, _ := filepath.Glob(filepath.Join(repo, ".worktrees", "*")); len(entries) != 0 {
 		t.Errorf("cancel must leave no worktree behind; found %v", entries)
 	}
-	if branches := gitOutput(t, repo, "branch", "--list"); strings.Contains(branches, "feature") {
-		t.Errorf("cancel must leave no branch behind; got %q", branches)
+	if branch == "" {
+		t.Fatal("fixture: the parked question must name the branch, or the assertion below is vacuous")
+	}
+	if branches := gitOutput(t, repo, "branch", "--list"); strings.Contains(branches, branch) {
+		t.Errorf("cancel must leave branch %q behind; got %q", branch, branches)
 	}
 }
 
@@ -181,7 +234,7 @@ func TestKillWhileParkedCleansUp(t *testing.T) {
 	if stillParked {
 		t.Error("kill must drop the parked create state, or it leaks for the daemon's lifetime")
 	}
-	if err := r.ResolveWorktreeChoice(context.Background(), e.ID, wire.WorktreeChoiceProceed); err != nil {
+	if err := r.ResolveWorktreeChoice(context.Background(), e.ID, wire.WorktreeChoiceProceed, ""); err != nil {
 		t.Errorf("resolving a killed session must be a harmless no-op; got %v", err)
 	}
 	if got := r.Get(e.ID); got != nil {
@@ -223,18 +276,18 @@ func TestCreateFailsWithNoControlClient(t *testing.T) {
 
 func TestResolveUnparkedSessionIsNoop(t *testing.T) {
 	r := freshRegistry(t)
-	if err := r.ResolveWorktreeChoice(context.Background(), "no-such-session", wire.WorktreeChoiceProceed); err != nil {
+	if err := r.ResolveWorktreeChoice(context.Background(), "no-such-session", wire.WorktreeChoiceProceed, ""); err != nil {
 		t.Errorf("resolving an unknown session must be a no-op (clients race to answer); got %v", err)
 	}
 
 	// And the same for a real session that is not parked: the second of
 	// two racing GUI windows must not see an error.
 	r2, e, _ := parkedProject(t)
-	if err := r2.ResolveWorktreeChoice(context.Background(), e.ID, wire.WorktreeChoiceProceed); err != nil {
+	if err := r2.ResolveWorktreeChoice(context.Background(), e.ID, wire.WorktreeChoiceProceed, ""); err != nil {
 		t.Fatalf("first resolve: %v", err)
 	}
 	defer r2.Kill(e.ID, true)
-	if err := r2.ResolveWorktreeChoice(context.Background(), e.ID, wire.WorktreeChoiceCancel); err != nil {
+	if err := r2.ResolveWorktreeChoice(context.Background(), e.ID, wire.WorktreeChoiceCancel, ""); err != nil {
 		t.Errorf("second resolve must be a no-op, not an error; got %v", err)
 	}
 	if r2.Get(e.ID) == nil {
@@ -382,7 +435,7 @@ func TestResolveClearsAwaitingMarker(t *testing.T) {
 		t.Fatal("a parked entry must persist the marker, or boot cannot tell it from an ordinary session")
 	}
 
-	if err := r.ResolveWorktreeChoice(context.Background(), e.ID, wire.WorktreeChoiceProceed); err != nil {
+	if err := r.ResolveWorktreeChoice(context.Background(), e.ID, wire.WorktreeChoiceProceed, ""); err != nil {
 		t.Fatalf("resolve: %v", err)
 	}
 	defer r.Kill(e.ID, true)
@@ -409,7 +462,7 @@ func TestParkedMapConcurrentResolves(t *testing.T) {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			errs <- r.ResolveWorktreeChoice(context.Background(), e.ID, wire.WorktreeChoiceProceed)
+			errs <- r.ResolveWorktreeChoice(context.Background(), e.ID, wire.WorktreeChoiceProceed, "")
 		}()
 	}
 	wg.Wait()
@@ -437,6 +490,31 @@ func TestParkedMapConcurrentResolves(t *testing.T) {
 	}
 }
 
+// An answer composed against a superseded question must not be applied
+// under the new one's meaning: a session can park again with a
+// different Kind, where "proceed" means something else entirely.
+func TestStaleParkIDIsIgnored(t *testing.T) {
+	r, e, _ := parkedProject(t)
+	t.Cleanup(func() { _ = r.Kill(e.ID, true) })
+
+	if err := r.ResolveWorktreeChoice(context.Background(), e.ID,
+		wire.WorktreeChoiceProceed, "a-park-that-is-no-longer-current"); err != nil {
+		t.Fatalf("a stale answer is ignored, not an error; got %v", err)
+	}
+	info := r.Get(e.ID).Info()
+	if info.PendingWorktreeChoice == nil {
+		t.Fatal("the question must still stand after a stale answer")
+	}
+	// Answering the CURRENT park works.
+	if err := r.ResolveWorktreeChoice(context.Background(), e.ID,
+		wire.WorktreeChoiceProceed, info.PendingWorktreeChoice.ParkID); err != nil {
+		t.Fatalf("answering the current park: %v", err)
+	}
+	if r.Get(e.ID).WorktreePath == "" {
+		t.Error("the matching answer must be applied")
+	}
+}
+
 // An unknown choice must not touch any state. It used to clear the
 // question and then "restore" it from the same entry it had just
 // nil-ed, stranding the session blocked with nothing to answer and
@@ -445,7 +523,7 @@ func TestResolveRejectsUnknownChoiceWithoutTouchingState(t *testing.T) {
 	r, e, _ := parkedProject(t)
 	t.Cleanup(func() { _ = r.Kill(e.ID, true) })
 
-	if err := r.ResolveWorktreeChoice(context.Background(), e.ID, "banana"); err == nil {
+	if err := r.ResolveWorktreeChoice(context.Background(), e.ID, "banana", ""); err == nil {
 		t.Fatal("an unknown choice must be rejected")
 	}
 	info := r.Get(e.ID).Info()
@@ -456,7 +534,7 @@ func TestResolveRejectsUnknownChoiceWithoutTouchingState(t *testing.T) {
 		t.Errorf("Phase = %q, want %q", info.Phase, wire.PhaseBlocked)
 	}
 	// Still answerable for real.
-	if err := r.ResolveWorktreeChoice(context.Background(), e.ID, wire.WorktreeChoiceProceed); err != nil {
+	if err := r.ResolveWorktreeChoice(context.Background(), e.ID, wire.WorktreeChoiceProceed, ""); err != nil {
 		t.Fatalf("a valid choice after a rejected one must still work; got %v", err)
 	}
 	if r.Get(e.ID).WorktreePath == "" {
@@ -494,6 +572,11 @@ func parkedOnAddFailure(t *testing.T) (*Registry, *Entry, string) {
 	if err := os.Chmod(wtDir, 0o500); err != nil {
 		t.Fatal(err)
 	}
+	// Root ignores the mode bits, so the add would succeed and the
+	// test would assert nothing. Skip rather than pass vacuously.
+	if os.Geteuid() == 0 {
+		t.Skip("running as root: an unwritable directory does not block the add")
+	}
 	t.Cleanup(func() { _ = os.Chmod(wtDir, 0o755) })
 	e, err := r.Create(context.Background(), wire.CreateSpec{
 		ProjectID: p.ID, Shell: "/bin/bash", UseWorktree: true,
@@ -526,7 +609,7 @@ func TestCreateParksOnWorktreeAddFailure(t *testing.T) {
 func TestResolveAddFailureProceedStartsPlainSession(t *testing.T) {
 	r, e, repo := parkedOnAddFailure(t)
 
-	if err := r.ResolveWorktreeChoice(context.Background(), e.ID, wire.WorktreeChoiceProceed); err != nil {
+	if err := r.ResolveWorktreeChoice(context.Background(), e.ID, wire.WorktreeChoiceProceed, ""); err != nil {
 		t.Fatalf("resolve(proceed): %v", err)
 	}
 	defer r.Kill(e.ID, true)
@@ -553,7 +636,7 @@ func TestResolveAddFailureRetrySucceedsOnceUnblocked(t *testing.T) {
 	if err := os.Chmod(filepath.Join(repo, ".worktrees"), 0o755); err != nil {
 		t.Fatal(err)
 	}
-	if err := r.ResolveWorktreeChoice(context.Background(), e.ID, wire.WorktreeChoiceRetry); err != nil {
+	if err := r.ResolveWorktreeChoice(context.Background(), e.ID, wire.WorktreeChoiceRetry, ""); err != nil {
 		t.Fatalf("resolve(retry): %v", err)
 	}
 	defer r.Kill(e.ID, true)
@@ -603,7 +686,7 @@ func TestCreateParksWhenWorktreeCannotBePlanned(t *testing.T) {
 func TestResolveAddFailureCancelLeavesNothing(t *testing.T) {
 	r, e, _ := parkedOnAddFailure(t)
 
-	if err := r.ResolveWorktreeChoice(context.Background(), e.ID, wire.WorktreeChoiceCancel); err != nil {
+	if err := r.ResolveWorktreeChoice(context.Background(), e.ID, wire.WorktreeChoiceCancel, ""); err != nil {
 		t.Fatalf("resolve(cancel): %v", err)
 	}
 	if r.Get(e.ID) != nil {

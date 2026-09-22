@@ -980,9 +980,19 @@ const (
 // "could not resolve hostname" versus "connection timed out" changes
 // that answer.
 type PendingWorktreeChoice struct {
+	// ParkID identifies THIS park. A session can park again (a retry
+	// that fails differently), and an answer composed against the old
+	// question must not be applied to the new one — "proceed" means
+	// different things for a fetch failure and an add failure. The
+	// daemon ignores a resolve whose ParkID does not match.
+	ParkID string `json:"park_id,omitempty"`
 	// Kind is WorktreeChoiceFetchFailed or WorktreeChoiceCreateFailed.
 	Kind string `json:"kind"`
-	// Message is git's stderr, trimmed.
+	// Message is git's stderr, trimmed, credential-scrubbed and capped
+	// at MaxWorktreeChoiceMessage. It is remote-influenced text held
+	// for an indefinite park and re-serialised into every SessionInfo
+	// broadcast, so it is bounded at the source like Title and
+	// LastSummary are.
 	Message string `json:"message"`
 	// Branch is the branch that was being created.
 	Branch string `json:"branch,omitempty"`
@@ -997,6 +1007,11 @@ type PendingWorktreeChoice struct {
 	CachedTipAgeSecs int64 `json:"cached_tip_age_secs,omitempty"`
 }
 
+// MaxWorktreeChoiceMessage caps PendingWorktreeChoice.Message. Long
+// enough for git's multi-line auth and DNS failures, which is what the
+// user reads to judge whether a stale base is acceptable.
+const MaxWorktreeChoiceMessage = 2000
+
 // ResolveWorktreeChoiceReq answers a PendingWorktreeChoice.
 //
 // Resolving a session that is not parked is a no-op, not an error: two
@@ -1007,6 +1022,12 @@ type ResolveWorktreeChoiceReq struct {
 	// Choice is WorktreeChoiceCancel, WorktreeChoiceRetry or
 	// WorktreeChoiceProceed.
 	Choice string `json:"choice"`
+	// ParkID echoes PendingWorktreeChoice.ParkID. Empty means "answer
+	// whatever is parked", which is what a client too old to send it
+	// does; a non-empty value that does not match the current park is
+	// ignored, so an answer to a superseded question cannot be applied
+	// under its new meaning.
+	ParkID string `json:"park_id,omitempty"`
 }
 
 // RemoveIdeaReq is the REMOVE_IDEA payload.

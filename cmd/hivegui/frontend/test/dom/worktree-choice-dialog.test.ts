@@ -52,13 +52,15 @@ vi.mock('../../src/bridge.js', () => {
 });
 
 let wireDaemonEvents: typeof import('../../src/app/events.js').wireDaemonEvents;
+let events: typeof import('../../src/app/events.js');
 let choice: typeof import('../../src/app/modals/choice-dialog.js');
 let store: typeof import('../../src/store/store.js');
 
 beforeAll(async () => {
   document.body.innerHTML =
     '<div id="terms"></div><ul id="projects"></ul><div id="status"><span id="status-text"></span><span id="status-hint"></span></div>';
-  ({ wireDaemonEvents } = await import('../../src/app/events.js'));
+  events = await import('../../src/app/events.js');
+  ({ wireDaemonEvents } = events);
   choice = await import('../../src/app/modals/choice-dialog.js');
   store = await import('../../src/store/store.js');
 
@@ -87,6 +89,7 @@ function parkedSession(id: string, over: Record<string, unknown> = {}) {
     alive: false,
     phase: 'blocked',
     pending_worktree_choice: {
+      park_id: 'park-1',
       kind: 'fetch_failed',
       message: 'ssh: Could not resolve hostname gh.example.invalid',
       branch: 'stale-brook',
@@ -164,6 +167,7 @@ describe('parked worktree choice', () => {
     expect(bridge.ResolveWorktreeChoice).toHaveBeenCalledWith(
       's-send',
       'retry',
+      'park-1',
     );
   });
 
@@ -232,7 +236,11 @@ describe('parked worktree choice', () => {
     // Answer it; the queued one then takes its turn.
     choice.resolveChoiceDialog('retry');
     await new Promise((r) => setTimeout(r, 0));
-    expect(bridge.ResolveWorktreeChoice).toHaveBeenCalledWith('s-one', 'retry');
+    expect(bridge.ResolveWorktreeChoice).toHaveBeenCalledWith(
+      's-one',
+      'retry',
+      'park-1',
+    );
     await new Promise((r) => setTimeout(r, 0));
     const second = await pendingDialog();
     expect(second).toBeTruthy();
@@ -241,6 +249,7 @@ describe('parked worktree choice', () => {
     expect(bridge.ResolveWorktreeChoice).toHaveBeenCalledWith(
       's-two',
       'cancel',
+      'park-1',
     );
   });
 
@@ -260,6 +269,7 @@ describe('parked worktree choice', () => {
     expect(bridge.ResolveWorktreeChoice).toHaveBeenCalledWith(
       's-snapshot',
       'proceed',
+      'park-1',
     );
   });
 
@@ -323,7 +333,15 @@ describe('parked worktree choice', () => {
 
     // Nothing was decided.
     expect(bridge.ResolveWorktreeChoice).not.toHaveBeenCalled();
-    // And the question comes back, because it is still unanswered.
+    // And it does NOT re-raise itself: the choice dialog owns the
+    // keyboard app-wide, so re-asking in the same turn would make
+    // Escape inert and leave the GUI unreachable until every parked
+    // session is answered. The session stays parked and its tile
+    // carries the way back.
+    expect(store.appStore.getState().choiceDialog).toBeNull();
+
+    // The tile's "Answer…" button re-raises it.
+    events.raiseWorktreeChoice('s-dismiss');
     const again = await pendingDialog();
     expect(again).toBeTruthy();
     expect(JSON.stringify(again)).toContain('Could not resolve hostname');

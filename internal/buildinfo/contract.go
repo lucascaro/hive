@@ -25,8 +25,9 @@ package buildinfo
 // not just a number going up:
 //
 //	16 — Worktree setup failures are put to the user (spec 451).
-//	    SessionInfo gained pending_worktree_choice and the `blocked`
-//	    phase; RESOLVE_WORKTREE_CHOICE (0x31) answers it. The daemon
+//	    SessionInfo gained pending_worktree_choice (carrying a park_id)
+//	    and the `blocked` phase; RESOLVE_WORKTREE_CHOICE (0x31), which
+//	    echoes that park_id, answers it. The daemon
 //	    no longer branches from a stale cached ref, or drops the
 //	    worktree and starts in the project directory, on its own — it
 //	    parks the create and waits. That makes the pair inseparable in

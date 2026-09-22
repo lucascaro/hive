@@ -166,11 +166,21 @@ func TestSessionModeIsNotCountedAsAControlClient(t *testing.T) {
 		}
 	}()
 
-	// Give it longer than the control case needed to reach 1.
-	time.Sleep(300 * time.Millisecond)
+	// The assertion is "it was served and still not counted", so wait
+	// for proof it was served: serve() registers every connection in
+	// d.clients regardless of mode. Asserting the count alone would
+	// pass just as well if the HELLO had never been read.
+	waitFor(t, 2*time.Second, func() bool {
+		d.mu.Lock()
+		defer d.mu.Unlock()
+		return len(d.clients) > 0
+	})
 	d.mu.Lock()
-	got := d.controlClients
+	served, got := len(d.clients), d.controlClients
 	d.mu.Unlock()
+	if served == 0 {
+		t.Fatal("the session-mode connection was never served, so the count below proves nothing")
+	}
 	if got != 0 {
 		t.Errorf("ModeSession must not count as a client that can answer a dialog; got %d", got)
 	}

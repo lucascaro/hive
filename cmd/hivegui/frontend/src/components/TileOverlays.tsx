@@ -18,6 +18,7 @@ import { useEffect, useRef, type ReactNode } from 'react';
 
 import { anyModalOpen } from '../store/store.js';
 import type { TileChromeState } from '../store/store.js';
+import { Button } from './Button.js';
 import { Icon, StateIcon } from './Icon.js';
 import { Kbd } from './Kbd.js';
 
@@ -28,11 +29,14 @@ export function TileOverlays({
   onClose,
   onRestart,
   onDismiss,
+  onAnswer,
 }: {
   chrome: TileChromeState;
   onClose: () => void;
   onRestart: () => void;
   onDismiss: () => void;
+  /** Re-raise the question a parked session is waiting on. */
+  onAnswer?: () => void;
 }): ReactNode {
   return (
     <>
@@ -43,7 +47,11 @@ export function TileOverlays({
         onRestart={onRestart}
         onDismiss={onDismiss}
       />
-      <PhaseOverlay visible={chrome.phaseVisible} panel={chrome.phasePanel} />
+      <PhaseOverlay
+        visible={chrome.phaseVisible}
+        panel={chrome.phasePanel}
+        onAnswer={onAnswer}
+      />
     </>
   );
 }
@@ -143,10 +151,17 @@ function DeadOverlay({
 function PhaseOverlay({
   visible,
   panel,
+  onAnswer,
 }: {
   visible: boolean;
   panel: TileChromeState['phasePanel'];
+  onAnswer?: () => void;
 }): ReactNode {
+  // A blocked panel is a stop, not progress: no spinner, no per-step
+  // activity icon, and a way back to the question — the dialog can be
+  // taken off screen by anything that opens another modal, and without
+  // this the session would be answerable only by killing it.
+  const blocked = panel?.blocked === true;
   return (
     <div
       className="phase-overlay"
@@ -155,7 +170,7 @@ function PhaseOverlay({
       hidden={!visible}
     >
       <div className="phase-card">
-        <div className="phase-spinner" aria-hidden="true" />
+        {blocked ? null : <div className="phase-spinner" aria-hidden="true" />}
         <div className="phase-status">{panel?.status ?? ''}</div>
         <ul className="phase-steps">
           {(panel?.steps ?? []).map((step) => (
@@ -168,11 +183,16 @@ function PhaseOverlay({
                   family. 'todo' gets no mark — the indent in
                   phase-step::before holds the column. */}
               {step.state === 'done' ? <Icon name="check" size={12} /> : null}
-              {step.state === 'active' ? <StateIcon state="starting" /> : null}
+              {step.state === 'active' && !blocked ? (
+                <StateIcon state="starting" />
+              ) : null}
               <span>{step.label}</span>
             </li>
           ))}
         </ul>
+        {blocked && onAnswer ? (
+          <Button label="Answer…" kind="primary" onClick={onAnswer} />
+        ) : null}
       </div>
     </div>
   );

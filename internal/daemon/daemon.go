@@ -1649,7 +1649,7 @@ func (d *Daemon) handleControlFrame(ctx context.Context, ops controlOps, ft wire
 		// that is not parked is a no-op inside the registry, so two
 		// GUI windows racing to answer produce one action and no error.
 		d.runOp(func() {
-			if err := d.reg.ResolveWorktreeChoice(ctx, req.SessionID, req.Choice); err != nil &&
+			if err := d.reg.ResolveWorktreeChoice(ctx, req.SessionID, req.Choice, req.ParkID); err != nil &&
 				!errors.Is(err, registry.ErrNotFound) {
 				ops.sendError("resolve_worktree_choice_failed", err.Error())
 			}

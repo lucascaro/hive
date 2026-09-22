@@ -108,6 +108,11 @@ export interface SessionInfo {
 /** A worktree-setup failure awaiting a user decision. Mirrors
  *  wire.PendingWorktreeChoice — snake_case on the wire. */
 export interface PendingWorktreeChoice {
+  /** Identifies this park; echoed back so an answer to a superseded
+   *  question is not applied under the new one's meaning. */
+  park_id?: string;
+  /** camelCase tolerated at the boundary, like every other reader. */
+  parkId?: string;
   /** 'fetch_failed' | 'create_failed' */
   kind: string;
   /** git's own stderr, trimmed. */

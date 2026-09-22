@@ -96,8 +96,11 @@ function ChoiceDialogBody({
       size="sm"
       title={spec.title}
       showCloseButton={false}
-      // The FIRST choice is the safe one: Escape and a backdrop click
-      // resolve to it, so a stray key can never destroy anything.
+      // Escape and a backdrop click resolve to the FIRST choice, so a
+      // stray key can never destroy anything — unless the spec set
+      // dismissValue, for a question whose first choice is itself
+      // destructive (see ChoiceSpec). safeValue already accounts for
+      // both, so this stays a single path.
       onClose={() => resolveChoiceDialog(safeValue)}
       actions={spec.choices.map((c) => (
         <Button
