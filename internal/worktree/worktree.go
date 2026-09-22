@@ -114,8 +114,12 @@ func PrepareBase(ctx context.Context, repoDir string) (string, error) {
 			BaseRef:   base,
 			CachedTip: tip,
 			TipAge:    age,
-			Stderr:    strings.TrimSpace(string(fetchOut)),
-			Err:       fetchErr,
+			// git echoes the remote back, and an HTTPS remote can carry a
+			// token in its userinfo. This text reaches a GUI dialog and
+			// hived.log, so scrub it on the way out — same helper the
+			// worktree inventory already uses for the same reason.
+			Stderr: scrubURLCredentials(strings.TrimSpace(string(fetchOut))),
+			Err:    fetchErr,
 		}
 	}
 

@@ -53,7 +53,10 @@ import { setStatus, flashStatus, reportFailure, setBootState } from './dom.js';
 import { orderedSessions } from './selectors.js';
 import { handleWorktreesPayload } from './modals/worktrees.js';
 import { refreshIdeas } from './modals/idea-inbox.js';
-import { openChoiceDialog } from './modals/choice-dialog.js';
+import {
+  openChoiceDialog,
+  dismissChoiceDialog,
+} from './modals/choice-dialog.js';
 import { KillProject } from '../bridge.js';
 import type { WorktreesPayload } from '../lib/worktrees.js';
 import { PHASE, phaseOf, isReady, isClosing } from '../lib/phase-steps.js';
@@ -292,10 +295,27 @@ function fireBellNotification(info: SessionInfo) {
   });
 }
 
-// Sessions whose worktree dialog is already open (or already
-// answered). A parked session attracts repeated `updated` events, and
-// without this each one would stack another identical dialog.
+// Sessions whose worktree dialog is open or queued. A parked session
+// attracts repeated `updated` events, and without this each one would
+// ask again for a question already on screen.
 const askingWorktreeChoice = new Set<string>();
+
+// Parked questions are asked ONE AT A TIME, through this chain.
+//
+// openChoiceDialog() dismisses whatever is already open, resolving it
+// to its FIRST choice (choice-dialog.ts). For this dialog the first
+// choice is Cancel — so a second parked session raising its own dialog
+// would answer the first one with "cancel", discarding that worktree
+// and deleting that session without the user ever seeing the question.
+// That is the common case, not a corner: when the remote is
+// unreachable, every session launched in that batch parks.
+let worktreeChoiceChain: Promise<void> = Promise.resolve();
+
+// The session whose worktree dialog is on screen right now, or null.
+// Tracked separately from askingWorktreeChoice (which also holds
+// QUEUED ids) so that dismissing on removal closes this dialog and
+// never an unrelated one that happens to be open.
+let openWorktreeChoiceId: string | null = null;
 
 /** "3 days old" / "unknown age" for the cached-ref button. */
 function ageWords(secs: number | undefined): string {
@@ -314,7 +334,7 @@ function ageWords(secs: number | undefined): string {
 // Nothing is blocked on the daemon side while this is open, so the
 // dialog can stay up as long as the user needs. Escape resolves to the
 // first choice, which is why Cancel is first (choice-dialog.ts).
-async function maybeAskWorktreeChoice(info: SessionInfo) {
+function maybeAskWorktreeChoice(info: SessionInfo) {
   const q = info.pending_worktree_choice ?? info.pendingWorktreeChoice;
   if (!q) {
     // Answered (by this client or another window) — allow a future
@@ -324,24 +344,53 @@ async function maybeAskWorktreeChoice(info: SessionInfo) {
   }
   if (askingWorktreeChoice.has(info.id)) return;
   askingWorktreeChoice.add(info.id);
+  // Queue behind any question already being asked, and re-read the
+  // session when this one's turn comes: it may have been killed, or
+  // answered from another window, while it waited.
+  worktreeChoiceChain = worktreeChoiceChain.then(() =>
+    askWorktreeChoice(info.id),
+  );
+}
+
+async function askWorktreeChoice(id: string) {
+  const info = appData().sessions.find((s) => s.id === id);
+  const q = info
+    ? (info.pending_worktree_choice ?? info.pendingWorktreeChoice)
+    : undefined;
+  if (!info || !q) {
+    askingWorktreeChoice.delete(id);
+    return;
+  }
 
   const fetchFailed = q.kind === 'fetch_failed';
   const branch = q.branch ?? 'this worktree';
-  const proceedLabel = fetchFailed
-    ? `Use cached ${q.cached_ref || 'origin/main'} (${ageWords(q.cached_tip_age_secs)})`
-    : 'Use project directory';
+  // No cached_ref means origin/HEAD never resolved, so proceeding
+  // branches from local HEAD. Say THAT. Defaulting the label to
+  // 'origin/main' told the user one base while the daemon used
+  // another, which is the silent-wrong-base outcome this feature
+  // exists to delete.
+  const proceedLabel = !fetchFailed
+    ? 'Use project directory'
+    : q.cached_ref
+      ? `Use cached ${q.cached_ref} (${ageWords(q.cached_tip_age_secs)})`
+      : 'Use local HEAD (origin never resolved)';
+  openWorktreeChoiceId = id;
   const answer = await openChoiceDialog({
     title: fetchFailed
       ? 'Could not reach origin'
       : 'Could not create the worktree',
     detail: info.name ?? 'Session',
     bullets: [q.message],
-    note: fetchFailed
-      ? `The new branch ${branch} would be based on the last fetched ` +
-        'state of origin, which may be behind. Retry once the remote is ' +
-        'reachable, or use the cached state deliberately.'
-      : `The session can still start in the project directory, without ` +
-        `the worktree ${branch}. Nothing is created until you choose.`,
+    note: !fetchFailed
+      ? `The session can still start in the project directory, without ` +
+        `the worktree ${branch}. Nothing is created until you choose.`
+      : q.cached_ref
+        ? `The new branch ${branch} would be based on the last fetched ` +
+          'state of origin, which may be behind. Retry once the remote is ' +
+          'reachable, or use the cached state deliberately.'
+        : `Nothing was ever fetched from origin here, so ${branch} would ` +
+          'come off this checkout\u2019s local HEAD rather than upstream. ' +
+          'Retry once the remote is reachable.',
     choices: [
       { label: 'Cancel', value: 'cancel' },
       { label: 'Retry', value: 'retry' },
@@ -349,6 +398,7 @@ async function maybeAskWorktreeChoice(info: SessionInfo) {
     ],
   });
 
+  openWorktreeChoiceId = null;
   try {
     await ResolveWorktreeChoice(info.id, answer);
   } catch (err) {
@@ -644,6 +694,13 @@ export function wireDaemonEvents(injected: EventsDeps) {
       syncAttentionClass(s, !sawFirstSessionList);
       processAliveTransition(s);
       termsMap().get(s.id)?.setPhase(phaseOf(s));
+      // A session parked on a worktree decision waits indefinitely, so
+      // it is routinely still parked when this window arrives — after a
+      // GUI reload, a control reconnect, or in a second window that
+      // never saw the original `added` event. The snapshot is the only
+      // place those learn about it; without this the session is
+      // unanswerable and can only be killed.
+      maybeAskWorktreeChoice(s);
     }
     sawFirstSessionList = true;
     // Drop any ids whose sessions no longer exist (e.g. after a daemon
@@ -752,6 +809,14 @@ export function wireDaemonEvents(injected: EventsDeps) {
       }
     }
     if (ev.kind === 'removed') {
+      // A parked session can be killed from another window (or by this
+      // one) while its dialog is up. Take the question down with it,
+      // rather than leaving a modal asking about a session that is
+      // gone — answering it would be a no-op the user cannot see.
+      const wasAsking = askingWorktreeChoice.delete(ev.session.id);
+      if (wasAsking && openWorktreeChoiceId === ev.session.id) {
+        dismissChoiceDialog();
+      }
       // Offers undo, but only for a close this client issued.
       onSessionRemoved(ev.session.id);
       forgetSession(ev.session.id);

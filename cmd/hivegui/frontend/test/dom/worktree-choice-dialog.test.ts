@@ -114,7 +114,16 @@ function dialogSeq(): number | null {
 }
 
 describe('parked worktree choice', () => {
-  beforeEach(() => {
+  beforeEach(async () => {
+    // Questions are asked one at a time through a module-level queue,
+    // so a dialog left unanswered by the previous test would block
+    // every later one. Answer it (which drains the chain), let the
+    // chain settle, then clear.
+    while (store.appStore.getState().choiceDialog) {
+      choice.dismissChoiceDialog();
+      await new Promise((r) => setTimeout(r, 0));
+    }
+    await new Promise((r) => setTimeout(r, 0));
     vi.mocked(bridge.ResolveWorktreeChoice).mockClear();
     store.setChoiceDialog(null);
   });
@@ -191,6 +200,106 @@ describe('parked worktree choice', () => {
     await new Promise((r) => setTimeout(r, 0));
     // Same entry, not a re-opened one: a re-open bumps seq.
     expect(dialogSeq()).toBe(firstSeq);
+  });
+
+  it('never lets a second parked session answer the first', async () => {
+    // The regression this file exists for. openChoiceDialog dismisses
+    // whatever is open, resolving it to choices[0] — Cancel. When the
+    // remote is unreachable EVERY session in a batch parks, so without
+    // serialisation the second dialog silently cancels the first
+    // session's create: worktree discarded, session deleted, question
+    // never seen.
+    emit(
+      'session:event',
+      JSON.stringify({ kind: 'added', session: parkedSession('s-one') }),
+    );
+    const first = await pendingDialog();
+    expect(first?.detail).toBeDefined();
+    const firstSeqSeen = dialogSeq();
+
+    emit(
+      'session:event',
+      JSON.stringify({ kind: 'added', session: parkedSession('s-two') }),
+    );
+    await new Promise((r) => setTimeout(r, 0));
+
+    // Nothing was answered on the user's behalf.
+    expect(bridge.ResolveWorktreeChoice).not.toHaveBeenCalled();
+    // And the first question is still the one on screen.
+    expect(dialogSeq()).toBe(firstSeqSeen);
+
+    // Answer it; the queued one then takes its turn.
+    choice.resolveChoiceDialog('retry');
+    await new Promise((r) => setTimeout(r, 0));
+    expect(bridge.ResolveWorktreeChoice).toHaveBeenCalledWith('s-one', 'retry');
+    await new Promise((r) => setTimeout(r, 0));
+    const second = await pendingDialog();
+    expect(second).toBeTruthy();
+    choice.resolveChoiceDialog('cancel');
+    await new Promise((r) => setTimeout(r, 0));
+    expect(bridge.ResolveWorktreeChoice).toHaveBeenCalledWith(
+      's-two',
+      'cancel',
+    );
+  });
+
+  it('raises the dialog from a session:list snapshot', async () => {
+    // A parked session waits indefinitely, so it is routinely still
+    // parked when a reloaded GUI, a reconnect, or a second window
+    // arrives. Those only ever see the snapshot; without this the
+    // session is unanswerable and can only be killed.
+    emit(
+      'session:list',
+      JSON.stringify({ sessions: [parkedSession('s-snapshot')] }),
+    );
+    const spec = await pendingDialog();
+    expect(spec).toBeTruthy();
+    choice.resolveChoiceDialog('proceed');
+    await new Promise((r) => setTimeout(r, 0));
+    expect(bridge.ResolveWorktreeChoice).toHaveBeenCalledWith(
+      's-snapshot',
+      'proceed',
+    );
+  });
+
+  it('says local HEAD when origin never resolved', async () => {
+    // No cached_ref means origin/HEAD was never resolved, so the
+    // daemon branches from local HEAD. Labelling that button
+    // "origin/main" would tell the user one base while they got
+    // another — the silent-wrong-base outcome this feature deletes.
+    emit(
+      'session:event',
+      JSON.stringify({
+        kind: 'added',
+        session: parkedSession('s-nohead', {
+          cached_ref: undefined,
+          cached_tip: undefined,
+          cached_tip_age_secs: undefined,
+        }),
+      }),
+    );
+    const spec = await pendingDialog();
+    const proceed = spec?.choices.find((c) => c.value === 'proceed');
+    expect(proceed?.label).toContain('local HEAD');
+    expect(proceed?.label).not.toContain('origin/main');
+  });
+
+  it('takes the dialog down when its session is removed', async () => {
+    emit(
+      'session:event',
+      JSON.stringify({ kind: 'added', session: parkedSession('s-killed') }),
+    );
+    await pendingDialog();
+    emit(
+      'session:event',
+      JSON.stringify({
+        kind: 'removed',
+        session: { id: 's-killed', alive: false },
+      }),
+    );
+    await new Promise((r) => setTimeout(r, 0));
+    // No modal left asking about a session that is gone.
+    expect(store.appStore.getState().choiceDialog).toBeNull();
   });
 
   it('ignores a session with nothing pending', async () => {

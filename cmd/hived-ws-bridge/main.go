@@ -413,14 +413,14 @@ func (s *session) dispatch(req rpcReq) {
 	case "ResolvePrompt":
 		var p wire.ResolvePromptReq
 		if err := json.Unmarshal(req.Params, &p); err != nil {
-			s.respond(req.ID, err.Error(), nil)
+			s.respond(req.ID, nil, err)
 			return
 		}
 		s.respond(req.ID, "", s.controlWriteJSON(wire.FrameResolvePrompt, p))
 	case "ResolveWorktreeChoice":
 		var p wire.ResolveWorktreeChoiceReq
 		if err := json.Unmarshal(req.Params, &p); err != nil {
-			s.respond(req.ID, err.Error(), nil)
+			s.respond(req.ID, nil, err)
 			return
 		}
 		s.respond(req.ID, "", s.controlWriteJSON(wire.FrameResolveWorktreeChoice, p))

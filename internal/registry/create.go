@@ -50,6 +50,13 @@ type createPlan struct {
 	wtPath   string
 	wtBranch string
 
+	// wtPlanErr records why a REQUESTED worktree could not even be
+	// planned (branch/path resolution failed inside a real git repo).
+	// Empty when none was requested, or when planning succeeded.
+	// Carried so materializeWorktree can park on it instead of quietly
+	// handing back a plain session in the project directory.
+	wtPlanErr string
+
 	name string
 	// nameFromBranch records whether name was derived from wtBranch. If
 	// `git worktree add` later fails we rename to a random label so the
@@ -470,12 +477,18 @@ func (r *Registry) planWorktreeAndName(spec wire.CreateSpec, p *createPlan) {
 		p.wtPath, p.wtBranch = p.adoptedPath, p.adoptedBranch
 	}
 	if spec.UseWorktree && p.cwd != "" && worktree.IsGitRepo(p.cwd) {
-		if root, err := worktree.Root(p.cwd); err == nil {
-			if b, path, rerr := worktree.ResolveBranchAndPath(root, spec.Branch); rerr == nil {
-				p.wtBranch, p.wtPath = b, path
-			} else {
-				log.Printf("registry: worktree.ResolveBranchAndPath: %v", rerr)
-			}
+		// A worktree was asked for in a real git repo, so failing to
+		// plan one is a failure to report, not a silent downgrade to a
+		// plain session — same rule as the fetch and the add (#451).
+		root, err := worktree.Root(p.cwd)
+		if err != nil {
+			p.wtPlanErr = err.Error()
+			log.Printf("registry: worktree.Root: %v", err)
+		} else if b, path, rerr := worktree.ResolveBranchAndPath(root, spec.Branch); rerr == nil {
+			p.wtBranch, p.wtPath = b, path
+		} else {
+			p.wtPlanErr = rerr.Error()
+			log.Printf("registry: worktree.ResolveBranchAndPath: %v", rerr)
 		}
 	}
 
@@ -806,6 +819,15 @@ func deliveryFor(spec wire.CreateSpec) promptDelivery {
 // worktree failure would block users on marginal repos (shallow
 // clones, sandbox restrictions, slow filesystems). Does not take r.mu.
 func (r *Registry) materializeWorktree(ctx context.Context, e *Entry, spec wire.CreateSpec, p *createPlan) (bool, error) {
+	// A worktree was requested but could not even be planned (branch /
+	// path resolution failed). Park rather than start a plain session
+	// the user never agreed to.
+	if p.wtBranch == "" && p.wtPlanErr != "" && p.adoptedPath == "" {
+		return r.parkWorktreeChoice(e, spec, *p, &wire.PendingWorktreeChoice{
+			Kind:    wire.WorktreeChoiceCreateFailed,
+			Message: p.wtPlanErr,
+		}, "")
+	}
 	// Skip the create when we're adopting an existing worktree from a
 	// sibling session — the directory is already on disk and `git
 	// worktree add` would fail.
@@ -890,6 +912,11 @@ type parkedCreate struct {
 	plan  createPlan
 	// kind is the failure being asked about (wire.WorktreeChoice*).
 	kind string
+	// question is this park's own copy of what the user was asked.
+	// Held here rather than read back off the entry: the entry's copy
+	// is cleared the moment a resolve starts, so restoring from it
+	// would restore nil.
+	question *wire.PendingWorktreeChoice
 	// base is the ref "proceed" should branch from for a fetch failure:
 	// the cached upstream tip. Empty for a create failure, where
 	// proceeding means no worktree at all.
@@ -909,8 +936,11 @@ func (r *Registry) parkWorktreeChoice(e *Entry, spec wire.CreateSpec, p createPl
 		return false, fmt.Errorf("worktree setup failed and no client is connected to ask: %s", q.Message)
 	}
 
+	qCopy := *q
 	r.parkedMu.Lock()
-	r.parked[p.id] = &parkedCreate{entry: e, spec: spec, plan: p, kind: q.Kind, base: base}
+	r.parked[p.id] = &parkedCreate{
+		entry: e, spec: spec, plan: p, kind: q.Kind, base: base, question: &qCopy,
+	}
 	r.parkedMu.Unlock()
 
 	r.mu.Lock()
@@ -945,6 +975,16 @@ func (r *Registry) parkWorktreeChoice(e *Entry, spec wire.CreateSpec, p createPl
 // race to answer the same dialog, and the loser must not see an error
 // for a decision that was made correctly once.
 func (r *Registry) ResolveWorktreeChoice(ctx context.Context, id, choice string) error {
+	// Validate before mutating anything. An unknown value used to be
+	// handled by clearing the question and then putting it back, which
+	// could not work: the restore read the entry the clear had just
+	// nil-ed, leaving the session blocked with nothing to answer.
+	switch choice {
+	case wire.WorktreeChoiceCancel, wire.WorktreeChoiceRetry, wire.WorktreeChoiceProceed:
+	default:
+		return fmt.Errorf("unknown worktree choice %q", choice)
+	}
+
 	r.parkedMu.Lock()
 	pc, ok := r.parked[id]
 	if ok {
@@ -1000,16 +1040,11 @@ func (r *Registry) ResolveWorktreeChoice(ctx context.Context, id, choice string)
 		log.Printf("registry: create %s proceeding without a worktree by user choice", id)
 		plan.wtPath, plan.wtBranch = "", ""
 		return r.finishCreateTail(ctx, pc.entry, pc.spec, plan)
-
-	default:
-		// Unknown choice: re-park rather than guess. The entry keeps
-		// its state, so the client can ask again.
-		r.parkedMu.Lock()
-		r.parked[id] = pc
-		r.parkedMu.Unlock()
-		r.restorePendingChoice(id, pc)
-		return fmt.Errorf("unknown worktree choice %q", choice)
 	}
+
+	// Unreachable: the switch above validated choice before anything
+	// was touched.
+	return nil
 }
 
 // clearPendingChoice drops a parked entry's question and its persisted
@@ -1025,21 +1060,6 @@ func (r *Registry) clearPendingChoice(id string) {
 	e.awaitingChoice = false
 	e.Phase = wire.PhaseStarting
 	r.persistEntryLoggedLocked(e, "resolve worktree choice")
-	r.broadcastLocked(wire.SessionEventUpdated, e.Info())
-}
-
-// restorePendingChoice puts a question back after a resolve that could
-// not be honoured (an unknown choice value).
-func (r *Registry) restorePendingChoice(id string, pc *parkedCreate) {
-	r.mu.Lock()
-	defer r.mu.Unlock()
-	e, ok := r.entries[id]
-	if !ok {
-		return
-	}
-	e.pendingChoice = pc.entry.pendingChoiceCopy()
-	e.awaitingChoice = true
-	e.Phase = wire.PhaseBlocked
 	r.broadcastLocked(wire.SessionEventUpdated, e.Info())
 }
 

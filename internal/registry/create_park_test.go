@@ -2,6 +2,7 @@ package registry
 
 import (
 	"context"
+	"errors"
 	"os"
 	"path/filepath"
 	"strings"
@@ -9,6 +10,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/lucascaro/hive/internal/session"
 	"github.com/lucascaro/hive/internal/wire"
 )
 
@@ -324,7 +326,29 @@ func TestParkedEntryMarkedDeadOnRevive(t *testing.T) {
 		t.Fatal("the entry should still exist after a restart, so the user can see what happened")
 	}
 	if got.Phase == wire.PhaseReviving {
-		t.Error("a parked entry must not be revived into a plain session")
+		t.Error("a parked entry must not be marked for revive")
+	}
+
+	// The phase alone is NOT enough, and this is the assertion that
+	// matters: MarkPendingRevive leaves the entry in PhaseReady (what
+	// clients render as dead), and ReviveWithPhase's first claim
+	// accepts PhaseReady. Without the explicit decline, the boot pass
+	// that runs right after would fork a plain session in the project
+	// directory — reinstating the exact fallback this feature removes.
+	revived, rerr := r2.ReviveWithPhase(e.ID, session.Options{
+		Shell: "/bin/bash", Cols: 80, Rows: 24,
+	})
+	if revived {
+		t.Error("the boot revive pass must not bring back a session that never completed worktree setup")
+	}
+	if !errors.Is(rerr, ErrNeverSpawn) {
+		t.Errorf("want ErrNeverSpawn so the caller skips it without retrying; got %v", rerr)
+	}
+	if after := r2.Get(e.ID); after != nil && after.Alive() {
+		t.Error("no PTY may be forked for a parked-then-interrupted entry")
+	}
+	if after := r2.Get(e.ID); after != nil && !strings.Contains(after.LastError, "interrupted") {
+		t.Errorf("the revive attempt must not clobber the explanation; got %q", after.LastError)
 	}
 	if !strings.Contains(got.LastError, "interrupted") {
 		t.Errorf("LastError should explain the interrupted worktree setup; got %q", got.LastError)
@@ -337,7 +361,11 @@ func TestParkedEntryMarkedDeadOnRevive(t *testing.T) {
 		t.Fatalf("third open: %v", err)
 	}
 	t.Cleanup(func() { _ = r3.Close() })
-	if e3 := r3.Get(e.ID); e3 != nil && e3.awaitingChoice {
+	e3 := r3.Get(e.ID)
+	if e3 == nil {
+		t.Fatal("the entry must survive the second restart; a vanished entry would pass the marker check vacuously")
+	}
+	if e3.awaitingChoice {
 		t.Error("the marker must be cleared after the first boot handles it")
 	}
 }
@@ -368,20 +396,217 @@ func TestResolveClearsAwaitingMarker(t *testing.T) {
 	}
 }
 
-// Guard against the parked map being mutated from two goroutines
-// without its own lock — the failure mode would be a torn map under
-// the race detector rather than a wrong answer.
+// Exactly one of several racing resolves may act. The parked map is
+// the arbiter, so this also exercises it from several goroutines —
+// run the package with -race to get the torn-map failure too.
 func TestParkedMapConcurrentResolves(t *testing.T) {
-	r, e, _ := parkedProject(t)
+	r, e, repo := parkedProject(t)
 	t.Cleanup(func() { _ = r.Kill(e.ID, true) })
 
 	var wg sync.WaitGroup
+	errs := make(chan error, 4)
 	for i := 0; i < 4; i++ {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			_ = r.ResolveWorktreeChoice(context.Background(), e.ID, wire.WorktreeChoiceProceed)
+			errs <- r.ResolveWorktreeChoice(context.Background(), e.ID, wire.WorktreeChoiceProceed)
 		}()
 	}
 	wg.Wait()
+	close(errs)
+	for err := range errs {
+		if err != nil {
+			t.Errorf("a losing resolve must be a no-op, not an error; got %v", err)
+		}
+	}
+
+	// One winner: the session exists, with exactly one worktree.
+	got := r.Get(e.ID)
+	if got == nil || got.WorktreePath == "" {
+		t.Fatal("one resolve must have created the session")
+	}
+	entries, _ := filepath.Glob(filepath.Join(repo, ".worktrees", "*"))
+	if len(entries) != 1 {
+		t.Errorf("want exactly one worktree from four racing resolves; got %v", entries)
+	}
+	r.parkedMu.Lock()
+	leftover := len(r.parked)
+	r.parkedMu.Unlock()
+	if leftover != 0 {
+		t.Errorf("parked map must be empty after the resolves; got %d", leftover)
+	}
+}
+
+// An unknown choice must not touch any state. It used to clear the
+// question and then "restore" it from the same entry it had just
+// nil-ed, stranding the session blocked with nothing to answer and
+// only a kill to get out of.
+func TestResolveRejectsUnknownChoiceWithoutTouchingState(t *testing.T) {
+	r, e, _ := parkedProject(t)
+	t.Cleanup(func() { _ = r.Kill(e.ID, true) })
+
+	if err := r.ResolveWorktreeChoice(context.Background(), e.ID, "banana"); err == nil {
+		t.Fatal("an unknown choice must be rejected")
+	}
+	info := r.Get(e.ID).Info()
+	if info.PendingWorktreeChoice == nil {
+		t.Fatal("the question must survive an unknown choice, or the session is unanswerable")
+	}
+	if info.Phase != wire.PhaseBlocked {
+		t.Errorf("Phase = %q, want %q", info.Phase, wire.PhaseBlocked)
+	}
+	// Still answerable for real.
+	if err := r.ResolveWorktreeChoice(context.Background(), e.ID, wire.WorktreeChoiceProceed); err != nil {
+		t.Fatalf("a valid choice after a rejected one must still work; got %v", err)
+	}
+	if r.Get(e.ID).WorktreePath == "" {
+		t.Error("the session must start once answered")
+	}
+}
+
+// --- create_failed: the OTHER silent fallback -------------------------
+//
+// These cover the `git worktree add` failure, which used to drop the
+// worktree and start a plain session in the project directory without
+// saying anything.
+
+// parkedOnAddFailure parks a create at the ADD step rather than the
+// fetch: the repo's origin is reachable, but the branch's worktree
+// path is occupied by a file, so `git worktree add` cannot create it.
+func parkedOnAddFailure(t *testing.T) (*Registry, *Entry, string) {
+	t.Helper()
+	skipNonPosix(t)
+	repo := initGitRepo(t)
+	r := freshRegistry(t)
+	p, err := r.CreateProject(wire.CreateProjectReq{Name: "addfail", Cwd: repo})
+	if err != nil {
+		t.Fatalf("CreateProject: %v", err)
+	}
+	// Make .worktrees exist but be unwritable, so branch/path
+	// resolution still succeeds (the path is free) and the `git
+	// worktree add` that follows fails on permissions. A regular file
+	// here would instead fail path resolution, which is a different
+	// code path with its own handling.
+	wtDir := filepath.Join(repo, ".worktrees")
+	if err := os.MkdirAll(wtDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chmod(wtDir, 0o500); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.Chmod(wtDir, 0o755) })
+	e, err := r.Create(context.Background(), wire.CreateSpec{
+		ProjectID: p.ID, Shell: "/bin/bash", UseWorktree: true,
+	})
+	if err != nil {
+		t.Fatalf("Create should park on the add failure, not fail: %v", err)
+	}
+	return r, e, repo
+}
+
+func TestCreateParksOnWorktreeAddFailure(t *testing.T) {
+	r, e, _ := parkedOnAddFailure(t)
+	t.Cleanup(func() { _ = r.Kill(e.ID, true) })
+
+	info := r.Get(e.ID).Info()
+	if info.PendingWorktreeChoice == nil {
+		t.Fatal("a failed `git worktree add` must park, not silently start a plain session")
+	}
+	if got := info.PendingWorktreeChoice.Kind; got != wire.WorktreeChoiceCreateFailed {
+		t.Errorf("Kind = %q, want %q", got, wire.WorktreeChoiceCreateFailed)
+	}
+	if info.Phase != wire.PhaseBlocked {
+		t.Errorf("Phase = %q, want %q", info.Phase, wire.PhaseBlocked)
+	}
+	if e.Alive() {
+		t.Error("nothing may spawn until the user answers")
+	}
+}
+
+func TestResolveAddFailureProceedStartsPlainSession(t *testing.T) {
+	r, e, repo := parkedOnAddFailure(t)
+
+	if err := r.ResolveWorktreeChoice(context.Background(), e.ID, wire.WorktreeChoiceProceed); err != nil {
+		t.Fatalf("resolve(proceed): %v", err)
+	}
+	defer r.Kill(e.ID, true)
+
+	got := r.Get(e.ID)
+	if got == nil {
+		t.Fatal("proceeding must start the session")
+	}
+	if got.WorktreePath != "" || got.WorktreeBranch != "" {
+		t.Errorf("proceeding after an add failure means NO worktree; got path=%q branch=%q",
+			got.WorktreePath, got.WorktreeBranch)
+	}
+	// This is the old silent behaviour — now reachable only by saying so.
+	if got.Info().PendingWorktreeChoice != nil {
+		t.Error("the question must be cleared once answered")
+	}
+	_ = repo
+}
+
+func TestResolveAddFailureRetrySucceedsOnceUnblocked(t *testing.T) {
+	r, e, repo := parkedOnAddFailure(t)
+
+	// Clear the obstruction, then retry: the add now succeeds.
+	if err := os.Chmod(filepath.Join(repo, ".worktrees"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := r.ResolveWorktreeChoice(context.Background(), e.ID, wire.WorktreeChoiceRetry); err != nil {
+		t.Fatalf("resolve(retry): %v", err)
+	}
+	defer r.Kill(e.ID, true)
+
+	got := r.Get(e.ID)
+	if got == nil || got.WorktreePath == "" {
+		t.Fatal("a retry after the obstruction is cleared must produce the worktree")
+	}
+}
+
+// The third silent path, found while writing the add-failure fixture:
+// a REQUESTED worktree whose branch/path could not be resolved at all
+// used to log and hand back a plain session in the project directory.
+func TestCreateParksWhenWorktreeCannotBePlanned(t *testing.T) {
+	skipNonPosix(t)
+	repo := initGitRepo(t)
+	r := freshRegistry(t)
+	p, err := r.CreateProject(wire.CreateProjectReq{Name: "planfail", Cwd: repo})
+	if err != nil {
+		t.Fatalf("CreateProject: %v", err)
+	}
+	// A regular file where .worktrees must be a directory: every
+	// candidate path under it is unusable, so resolution itself fails.
+	if err := os.WriteFile(filepath.Join(repo, ".worktrees"), []byte("not a dir\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	e, err := r.Create(context.Background(), wire.CreateSpec{
+		ProjectID: p.ID, Shell: "/bin/bash", UseWorktree: true,
+	})
+	if err != nil {
+		t.Fatalf("Create should park, not fail: %v", err)
+	}
+	t.Cleanup(func() { _ = r.Kill(e.ID, true) })
+
+	info := r.Get(e.ID).Info()
+	if info.PendingWorktreeChoice == nil {
+		t.Fatal("a worktree that cannot be planned must park, not silently become a plain session")
+	}
+	if got := info.PendingWorktreeChoice.Kind; got != wire.WorktreeChoiceCreateFailed {
+		t.Errorf("Kind = %q, want %q", got, wire.WorktreeChoiceCreateFailed)
+	}
+	if e.Alive() {
+		t.Error("nothing may spawn until the user answers")
+	}
+}
+
+func TestResolveAddFailureCancelLeavesNothing(t *testing.T) {
+	r, e, _ := parkedOnAddFailure(t)
+
+	if err := r.ResolveWorktreeChoice(context.Background(), e.ID, wire.WorktreeChoiceCancel); err != nil {
+		t.Fatalf("resolve(cancel): %v", err)
+	}
+	if r.Get(e.ID) != nil {
+		t.Error("cancel must leave no session behind")
+	}
 }

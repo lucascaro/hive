@@ -26,6 +26,13 @@ import (
 // ErrNotFound is returned when a session ID isn't known.
 var ErrNotFound = errors.New("registry: session not found")
 
+// ErrNeverSpawn is returned by ReviveWithPhase for an entry that must
+// not be brought back by the boot revive pass — today, one that was
+// parked on a worktree-setup decision when the daemon exited. It is an
+// expected outcome, not a failure: the caller logs it once and moves
+// on rather than retrying.
+var ErrNeverSpawn = errors.New("registry: session never spawned and cannot be revived")
+
 // startSession is the package-level seam used to spawn the underlying
 // PTY. Tests swap this to capture the resolved session.Options
 // without forking real agent binaries (e.g. to inspect agent argv);
@@ -112,6 +119,16 @@ type Entry struct {
 	// on, or nil. In-memory, like Phase — see awaitingChoice for the
 	// one bit that does survive a restart.
 	pendingChoice *wire.PendingWorktreeChoice
+
+	// neverSpawn marks an entry the boot revive must NOT fork a PTY
+	// for. Set by MarkPendingRevive for an entry that was parked on a
+	// worktree decision when the last daemon exited: it is dead by
+	// definition (its resume state died with that daemon), and reviving
+	// it would start a plain session in the project directory — the
+	// silent fallback #451 removes. In-memory and boot-scoped; an
+	// explicit user restart is a different, deliberate act and is not
+	// blocked by it.
+	neverSpawn bool
 
 	// awaitingChoice marks an entry that was persisted by beginCreate
 	// but never spawned, because its worktree setup is parked on a user
@@ -779,7 +796,15 @@ func (r *Registry) MarkPendingRevive() {
 		if e.awaitingChoice {
 			e.awaitingChoice = false
 			e.LastError = "worktree setup was interrupted by a daemon restart before this session started; create it again"
+			// PhaseReady + alive:false is what every client renders as
+			// a dead session, which is what this is. But PhaseReady is
+			// also exactly what ReviveWithPhase claims, so the phase
+			// alone cannot keep the revive pass off it — hence the
+			// explicit flag. (An earlier revision set only the phase,
+			// and the boot revive forked a plain session over the top
+			// of it, reinstating the bug this feature removes.)
 			e.Phase = wire.PhaseReady
+			e.neverSpawn = true
 			r.persistEntryLoggedLocked(e, "boot (parked worktree choice)")
 			continue
 		}
@@ -1154,6 +1179,17 @@ func (r *Registry) ReviveWithPhase(id string, opts session.Options) (bool, error
 	// nothing else ever sets it, so accepting it here claims exactly
 	// the entries this daemon restored from disk — and never an
 	// in-flight create, which sits in PhaseSpawning with no session.
+	// An entry that was parked on a worktree decision at the last
+	// shutdown is dead, not restorable: the {spec, plan} it needed died
+	// with that daemon. Checked BEFORE the phase claim, because it
+	// sits in PhaseReady — which the claim below accepts.
+	r.mu.Lock()
+	e, known := r.entries[id]
+	never := known && e.neverSpawn
+	r.mu.Unlock()
+	if never {
+		return false, ErrNeverSpawn
+	}
 	if !r.setPhaseIf(id, wire.PhaseReady, wire.PhaseSpawning) &&
 		!r.setPhaseIf(id, wire.PhaseReviving, wire.PhaseSpawning) {
 		return false, nil

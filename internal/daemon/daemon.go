@@ -454,6 +454,12 @@ func (d *Daemon) revivePass(only []string) []string {
 		}
 		revived, err := d.reg.ReviveWithPhase(info.ID, d.cfg.BootstrapSession)
 		switch {
+		case errors.Is(err, registry.ErrNeverSpawn):
+			// Parked on a worktree decision when the last daemon
+			// exited. Dead on purpose — reviving it would start the
+			// plain session the user was never asked about. Not
+			// retried, and not an error.
+			log.Printf("hived: revive %s skipped: worktree setup never completed", info.ID)
 		case err != nil:
 			log.Printf("hived: revive %s: %v", info.ID, err)
 		case !revived:

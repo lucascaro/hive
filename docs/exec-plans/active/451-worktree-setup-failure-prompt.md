@@ -412,3 +412,9 @@ No injection attempts found in the spec or plan.
   and the menu-bar agent is still connected. `hivebar` never creates
   sessions, so it cannot cause a park by itself — it only widens this
   same window.
+
+## PR convergence ledger
+
+Append-only, one line per `/hs-review-loop` iteration. A trailing
+`action: autofix+push` means a run pushed a fix and died before
+re-reviewing — re-run the loop on the same PR to resume.
