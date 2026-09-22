@@ -226,6 +226,7 @@ Manual check against the real app, per `docs/verifying-the-gui-by-hand.md`: run 
 - **2026-09-22 iter 3** — verdict: REQUEST_CHANGES (COMMENT coerced: 8 IMPORTANT, 0 BLOCKING); mergeable: MERGEABLE; findings_hash: 85e965c960cbffdc4a0d05ce7b8814c58e88fe1a4bad81190805d311933e9847; threads_open: 0; action: autofix+push; head_sha: 5a62db61.
 - **2026-09-22 iter 3** — verdict: REQUEST_CHANGES; mergeable: MERGEABLE; findings_hash: 85e965c960cbffdc4a0d05ce7b8814c58e88fe1a4bad81190805d311933e9847; threads_open: 0; action: autofix+push; head_sha: eb365477.
 - **2026-09-22 iter 4** — verdict: REQUEST_CHANGES; mergeable: MERGEABLE; findings_hash: 9c8f3b0fc46f55920ddb9a9207d866fb23bc73902c6fb07db17183c7cefe6bf7; threads_open: 0; action: autofix+push; head_sha: d4a90108.
+- **2026-09-22 iter 5** — verdict: APPROVE; mergeable: MERGEABLE; findings_hash: empty; threads_open: 0; action: stop; head_sha: b8b1d463.
 
 ## Open questions / risks
 

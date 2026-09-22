@@ -5,7 +5,7 @@ type: enhancement
 complexity: L
 priority: P2
 pr: 450
-stage: REVIEW
+stage: GATE
 ---
 
 # Cmd-click file paths in a session to open them
