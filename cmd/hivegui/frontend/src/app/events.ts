@@ -340,6 +340,11 @@ function maybeAskWorktreeChoice(info: SessionInfo) {
     // Answered (by this client or another window) — allow a future
     // failure on the same id to ask again.
     askingWorktreeChoice.delete(info.id);
+    // A second window may still be showing the question that was just
+    // answered elsewhere. Take it down rather than leave a stale modal
+    // whose buttons are now no-ops. dismissValue makes this a
+    // non-answer, so nothing is decided on the user's behalf.
+    if (openWorktreeChoiceId === info.id) dismissChoiceDialog();
     return;
   }
   if (askingWorktreeChoice.has(info.id)) return;
@@ -347,9 +352,14 @@ function maybeAskWorktreeChoice(info: SessionInfo) {
   // Queue behind any question already being asked, and re-read the
   // session when this one's turn comes: it may have been killed, or
   // answered from another window, while it waited.
-  worktreeChoiceChain = worktreeChoiceChain.then(() =>
-    askWorktreeChoice(info.id),
-  );
+  worktreeChoiceChain = worktreeChoiceChain
+    .then(() => askWorktreeChoice(info.id))
+    // One rejection must not poison the chain for the window's
+    // lifetime: every later parked session would then never be asked.
+    .catch((err) => {
+      askingWorktreeChoice.delete(info.id);
+      reportFailure('worktree choice')(err);
+    });
 }
 
 async function askWorktreeChoice(id: string) {
@@ -396,9 +406,25 @@ async function askWorktreeChoice(id: string) {
       { label: 'Retry', value: 'retry' },
       { label: proceedLabel, value: 'proceed' },
     ],
+    // Cancel discards the worktree and deletes the session, so it must
+    // never be given on the user's behalf. Unrelated code dismisses
+    // whatever dialog is open on paths that have nothing to do with
+    // this question — every worktree:list repaint, closing the
+    // worktree browser or the idea inbox, any other dialog opening —
+    // and the session waits here indefinitely, so that window is wide.
+    // A dismissal is "not answered": we re-ask.
+    dismissValue: '',
   });
 
   openWorktreeChoiceId = null;
+  if (answer === '') {
+    // Dismissed by something unrelated (or by Escape), not answered.
+    // Leave the session parked and ask again at the back of the queue,
+    // so whatever took the modal gets to finish first.
+    askingWorktreeChoice.delete(id);
+    maybeAskWorktreeChoice(info);
+    return;
+  }
   try {
     await ResolveWorktreeChoice(info.id, answer);
   } catch (err) {

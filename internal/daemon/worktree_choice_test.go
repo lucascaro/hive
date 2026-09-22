@@ -3,6 +3,7 @@ package daemon
 import (
 	"context"
 	"encoding/json"
+	"net"
 	"testing"
 	"time"
 
@@ -79,48 +80,98 @@ func TestResolveWorktreeChoiceUnknownChoiceReportsError(t *testing.T) {
 }
 
 // The control-client count is what decides park-vs-hard-fail when
-// worktree setup fails: with nothing attached that could answer a
-// dialog, the registry must refuse rather than choose for the user.
-func TestControlClientCountGatesParking(t *testing.T) {
+// worktree setup fails: with nothing attached that could show a dialog,
+// the registry must refuse rather than choose for the user. Driven
+// through the real serve() dispatch — poking the field would only
+// assert this test's own arithmetic.
+func TestControlClientCountTracksRealConnections(t *testing.T) {
 	d := newFrameTestDaemon(t)
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
 
-	// The predicate the registry actually consults, wired in New.
-	d.mu.Lock()
-	initial := d.controlClients
-	d.mu.Unlock()
-	if initial != 0 {
-		t.Fatalf("a fresh daemon has no control clients; got %d", initial)
-	}
-
-	// Stand in for a connected GUI. serveControl does exactly this
-	// around its ModeControl branch.
-	d.mu.Lock()
-	d.controlClients++
-	d.mu.Unlock()
-
-	done := make(chan bool, 1)
-	go func() {
+	count := func() int {
 		d.mu.Lock()
-		n := d.controlClients
-		d.mu.Unlock()
-		done <- n > 0
-	}()
-	select {
-	case ok := <-done:
-		if !ok {
-			t.Error("a connected control client must be counted")
-		}
-	case <-time.After(5 * time.Second):
-		t.Fatal("timed out reading the control-client count")
+		defer d.mu.Unlock()
+		return d.controlClients
+	}
+	// serve() registers the conn in d.clients, so the map must exist.
+	d.mu.Lock()
+	if d.clients == nil {
+		d.clients = make(map[net.Conn]struct{})
+	}
+	d.mu.Unlock()
+
+	if got := count(); got != 0 {
+		t.Fatalf("a fresh daemon has no control clients; got %d", got)
 	}
 
+	server, client := net.Pipe()
+	go d.serve(ctx, server)
+	if err := wire.WriteJSON(client, wire.FrameHello, wire.Hello{
+		Mode: wire.ModeControl, Version: wire.PROTOCOL_VERSION,
+	}); err != nil {
+		t.Fatalf("write HELLO: %v", err)
+	}
+	// Drain whatever the daemon writes back (WELCOME, snapshots) so the
+	// unbuffered pipe cannot park the server goroutine before it counts.
+	go func() {
+		buf := make([]byte, 4096)
+		for {
+			if _, err := client.Read(buf); err != nil {
+				return
+			}
+		}
+	}()
+
+	waitFor(t, 2*time.Second, func() bool { return count() == 1 })
+	if count() != 1 {
+		t.Fatalf("a connected ModeControl client must be counted; got %d", count())
+	}
+
+	_ = client.Close()
+	waitFor(t, 2*time.Second, func() bool { return count() == 0 })
+	if count() != 0 {
+		t.Fatalf("the count must return to zero on disconnect; got %d", count())
+	}
+}
+
+// A ModeSession connection is an agent's own events socket. It cannot
+// render a dialog, so counting it would let the registry park a
+// question nothing can answer.
+func TestSessionModeIsNotCountedAsAControlClient(t *testing.T) {
+	d := newFrameTestDaemon(t)
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
 	d.mu.Lock()
-	d.controlClients--
+	if d.clients == nil {
+		d.clients = make(map[net.Conn]struct{})
+	}
 	d.mu.Unlock()
+
+	server, client := net.Pipe()
+	defer client.Close()
+	go d.serve(ctx, server)
+	if err := wire.WriteJSON(client, wire.FrameHello, wire.Hello{
+		Mode: wire.ModeSession, Version: wire.PROTOCOL_VERSION,
+	}); err != nil {
+		t.Fatalf("write HELLO: %v", err)
+	}
+	go func() {
+		buf := make([]byte, 4096)
+		for {
+			if _, err := client.Read(buf); err != nil {
+				return
+			}
+		}
+	}()
+
+	// Give it longer than the control case needed to reach 1.
+	time.Sleep(300 * time.Millisecond)
 	d.mu.Lock()
-	n := d.controlClients
+	got := d.controlClients
 	d.mu.Unlock()
-	if n != 0 {
-		t.Errorf("count must return to zero on disconnect; got %d", n)
+	if got != 0 {
+		t.Errorf("ModeSession must not count as a client that can answer a dialog; got %d", got)
 	}
 }

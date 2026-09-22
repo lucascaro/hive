@@ -421,3 +421,6 @@ re-reviewing — re-run the loop on the same PR to resume.
 
 - **2026-09-22 iter 1** — verdict: REQUEST_CHANGES; mergeable: MERGEABLE; findings_hash: 9e11ed0627cfee33036bedaf1752491d0e4e432ce3aabd9d648ea71bac5fe55d; threads_open: 0; action: escalated:risky-fix-needs-human-decision; head_sha: aedcb08f.
 - **2026-09-22 iter 1 (author fix)** — all 12 findings addressed by the author rather than autofix (every one needed a design decision); 2 BLOCKING confirmed against the tree before fixing; head_sha: fe8b03a4.
+- **2026-09-22 iter 2** — verdict: REQUEST_CHANGES; mergeable: MERGEABLE; findings_hash: 4b30a0dab7c7c1c708185dfafc07da615cc68a714b859109edc4a587d398f6dc; threads_open: 0; action: escalated:risky-fix-needs-human-decision; head_sha: 11a1f3f0.
+- **2026-09-22 iter 2 (author fix)** — round-1 fix #2 was incomplete (serialised only this feature's own dialogs; any other dismissChoiceDialog caller still answered 'cancel') and #12 was partial (scrubbed at one source, not the sink). Both closed, plus 7 more findings. Dismissal semantics decided: ChoiceSpec gains `dismissValue`, default unchanged for all existing callers.
+

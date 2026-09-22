@@ -929,6 +929,13 @@ type parkedCreate struct {
 // create fails, because proceeding silently is the behaviour this
 // whole feature exists to delete.
 func (r *Registry) parkWorktreeChoice(e *Entry, spec wire.CreateSpec, p createPlan, q *wire.PendingWorktreeChoice, base string) (bool, error) {
+	// Scrub at the sink, not at each source. git echoes the remote back
+	// in its errors and an HTTPS remote can carry a token in its
+	// userinfo; this message goes to a GUI dialog and to hived.log.
+	// Every park path funnels through here, so one call covers the
+	// fetch, the add, and the plan-time failures — and any added later.
+	q.Message = worktree.ScrubURLCredentials(q.Message)
+
 	if !r.canAskUser() {
 		log.Printf("registry: worktree setup failed for %s and no control client is connected to ask: %s", p.id, q.Message)
 		r.discardWorktree(p)
@@ -1013,6 +1020,17 @@ func (r *Registry) ResolveWorktreeChoice(ctx context.Context, id, choice string)
 		// network, and a retry that skipped the fetch would branch
 		// from the same stale ref it just warned about.
 		plan := pc.plan
+		// A half-made worktree directory from the failed attempt would
+		// make `git worktree add` fail forever ("already exists"), so
+		// Retry would be permanently useless. cancel and kill already
+		// discard; this path has to as well.
+		r.discardWorktree(plan)
+		// A failure at PLAN time left no branch to retry with, so
+		// re-plan rather than replaying the cached error string.
+		if plan.wtBranch == "" && plan.wtPlanErr != "" {
+			plan.wtPlanErr = ""
+			r.planWorktreeAndName(pc.spec, &plan)
+		}
 		parked, err := r.materializeWorktree(ctx, pc.entry, pc.spec, &plan)
 		if err != nil || parked {
 			return err
@@ -1029,6 +1047,9 @@ func (r *Registry) ResolveWorktreeChoice(ctx context.Context, id, choice string)
 				r.removeEntry(id)
 				return err
 			}
+			// Same reason as Retry: a leftover directory from the
+			// failed attempt would fail the add.
+			r.discardWorktree(plan)
 			parked, aerr := r.addWorktree(ctx, pc.entry, pc.spec, &plan, root, pc.base)
 			if aerr != nil || parked {
 				return aerr

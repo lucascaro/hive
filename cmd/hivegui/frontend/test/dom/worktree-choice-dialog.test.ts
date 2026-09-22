@@ -117,10 +117,11 @@ describe('parked worktree choice', () => {
   beforeEach(async () => {
     // Questions are asked one at a time through a module-level queue,
     // so a dialog left unanswered by the previous test would block
-    // every later one. Answer it (which drains the chain), let the
-    // chain settle, then clear.
-    while (store.appStore.getState().choiceDialog) {
-      choice.dismissChoiceDialog();
+    // every later one. Answer it with a REAL choice: a dismissal is
+    // deliberately not an answer any more, so dismissing here would
+    // re-ask forever instead of draining.
+    for (let i = 0; i < 20 && store.appStore.getState().choiceDialog; i++) {
+      choice.resolveChoiceDialog('cancel');
       await new Promise((r) => setTimeout(r, 0));
     }
     await new Promise((r) => setTimeout(r, 0));
@@ -298,8 +299,55 @@ describe('parked worktree choice', () => {
       }),
     );
     await new Promise((r) => setTimeout(r, 0));
-    // No modal left asking about a session that is gone.
+    // No modal left asking about a session that is gone, and no answer
+    // sent on its behalf — the session no longer exists to receive one.
     expect(store.appStore.getState().choiceDialog).toBeNull();
+    expect(bridge.ResolveWorktreeChoice).not.toHaveBeenCalled();
+  });
+
+  it('never answers the parked question on an unrelated dismissal', async () => {
+    // The round-2 blocker. dismissChoiceDialog() is called by code with
+    // nothing to do with this question — every worktree:list repaint,
+    // closing the worktree browser or the idea inbox, Escape. Resolving
+    // to choices[0] there would answer 'cancel': worktree discarded,
+    // session deleted, question never seen. The session waits
+    // indefinitely by design, so that window is wide open.
+    emit(
+      'session:event',
+      JSON.stringify({ kind: 'added', session: parkedSession('s-dismiss') }),
+    );
+    await pendingDialog();
+
+    choice.dismissChoiceDialog();
+    await new Promise((r) => setTimeout(r, 0));
+
+    // Nothing was decided.
+    expect(bridge.ResolveWorktreeChoice).not.toHaveBeenCalled();
+    // And the question comes back, because it is still unanswered.
+    const again = await pendingDialog();
+    expect(again).toBeTruthy();
+    expect(JSON.stringify(again)).toContain('Could not resolve hostname');
+  });
+
+  it('takes a stale dialog down when another window answers it', async () => {
+    emit(
+      'session:event',
+      JSON.stringify({ kind: 'added', session: parkedSession('s-elsewhere') }),
+    );
+    await pendingDialog();
+    // The daemon broadcasts the session with the question cleared once
+    // any window answers it. A second window must not keep showing a
+    // modal whose buttons are now no-ops.
+    emit(
+      'session:event',
+      JSON.stringify({
+        kind: 'updated',
+        session: { id: 's-elsewhere', alive: true, phase: '' },
+      }),
+    );
+    await new Promise((r) => setTimeout(r, 0));
+    expect(store.appStore.getState().choiceDialog).toBeNull();
+    expect(bridge.ResolveWorktreeChoice).not.toHaveBeenCalled();
   });
 
   it('ignores a session with nothing pending', async () => {
