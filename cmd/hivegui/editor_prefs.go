@@ -50,7 +50,10 @@ const (
 
 var (
 	errNoEditorConfigured = errors.New("no editor configured")
-	errEditorNotFound     = errors.New("editor not found on PATH")
+	// errRevealInstead asks OpenFile to show the file in the file
+	// manager rather than hand it to the configured editor.
+	errRevealInstead  = errors.New("reveal instead of opening in the editor")
+	errEditorNotFound = errors.New("editor not found on PATH")
 )
 
 func editorSettingsPath() string {
@@ -299,16 +302,31 @@ func editorArgv(s EditorSettings, file string, line, col int) ([]string, error) 
 	}
 }
 
-// runEditor launches the configured editor on file. isDir is true when
-// the click was on a directory, which editors open as a workspace.
+// runEditor launches the configured editor on file. meta describes the
+// resolved target; goos selects the launchable-file table.
 //
-// It returns errNoEditorConfigured when there is nothing to run, and
-// OpenFile then falls back to the OS default handler.
-func runEditor(file string, line, col int, isDir bool) error {
+// It returns errNoEditorConfigured when there is nothing to run (and
+// OpenFile falls back to the OS default handler), or errRevealInstead
+// when the target must not be handed over — see the kind-app guard
+// below.
+func runEditor(file string, line, col int, meta fileMeta, goos string) error {
 	s, err := loadEditorSettings()
 	if err != nil {
 		return err
 	}
+	// The "application" kind runs `open -a <App> <file>`, which hands
+	// the file to an arbitrary application — and some applications run
+	// what they are handed (Terminal.app and a .command file is the
+	// obvious pair). So ⇧⌘-click gets the same guard as ⌘-click here,
+	// and a launchable file is revealed rather than opened.
+	//
+	// Only this kind. A CLI editor or a custom command *displays* a
+	// file, so refusing to open deploy.sh in VS Code would break the
+	// ordinary case for no gain.
+	if s.Kind == editorApp && !meta.isDir && isLaunchable(goos, file, meta) {
+		return errRevealInstead
+	}
+	isDir := meta.isDir
 	if isDir {
 		// A directory has no line to jump to.
 		line, col = 0, 0

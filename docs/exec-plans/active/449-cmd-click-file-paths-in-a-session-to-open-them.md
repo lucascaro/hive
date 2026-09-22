@@ -221,6 +221,7 @@ Manual check against the real app, per `docs/verifying-the-gui-by-hand.md`: run 
 ## PR convergence ledger
 
 - **2026-09-22 iter 1** — verdict: REQUEST_CHANGES; mergeable: MERGEABLE; findings_hash: a744ef39db81dcde839309394d696d9f7b7c1252e72959ddf99d87130b6ff7a5; threads_open: 0; action: escalated:risky-fix-needs-human-decision; head_sha: d4000269.
+- **2026-09-22 iter 2** — verdict: REQUEST_CHANGES; mergeable: MERGEABLE; findings_hash: fec55bb3824f8fb4a78d3b18c37aa6dd8ac2ed3d9eee1ea60b3aaeecb8a65871; threads_open: 4; action: escalated:risky-fix-needs-human-decision; head_sha: 125b09ec.
 
 ## Open questions / risks
 

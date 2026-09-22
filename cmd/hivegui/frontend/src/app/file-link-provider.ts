@@ -157,10 +157,14 @@ export function createFileLinkProvider(
   // Bounded and short-lived on purpose: a file created or deleted after
   // the answer was cached should start (or stop) underlining without a
   // restart, so entries expire quickly and the map stays small.
-  const memo = new Map<string, { at: number; resolved: string[] }>();
+  // The in-flight promise is cached, not just the settled answer: the
+  // pointer crossing a row asks again within milliseconds, well before
+  // the first bridge call returns, and caching only results would fire
+  // a duplicate round-trip every time.
+  const memo = new Map<string, { at: number; resolved: Promise<string[]> }>();
   const MEMO_TTL_MS = 3000;
   const MEMO_MAX = 64;
-  const resolveCached = async (
+  const resolveCached = (
     baseDir: string,
     paths: string[],
   ): Promise<string[]> => {
@@ -168,7 +172,10 @@ export function createFileLinkProvider(
     const hit = memo.get(key);
     const now = Date.now();
     if (hit && now - hit.at < MEMO_TTL_MS) return hit.resolved;
-    const resolved = await ResolveFilePaths(baseDir, paths);
+    const resolved = ResolveFilePaths(baseDir, paths);
+    // A rejected lookup must not be cached, or one transient bridge
+    // failure suppresses every link on that line for the whole TTL.
+    resolved.catch(() => memo.delete(key));
     if (memo.size >= MEMO_MAX) {
       // Oldest insertion first: Map preserves insertion order.
       const oldest = memo.keys().next().value;

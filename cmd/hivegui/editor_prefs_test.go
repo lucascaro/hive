@@ -1,6 +1,7 @@
 package main
 
 import (
+	"errors"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -219,5 +220,48 @@ func TestLoadEditorSettingsStripsBOM(t *testing.T) {
 	}
 	if got.Kind != editorZed {
 		t.Fatalf("kind = %q, want zed", got.Kind)
+	}
+}
+
+// TestRunEditorAppKindRefusesLaunchable is the ⇧⌘-click half of the
+// launchable-file guard: `open -a <App> <file>` hands the file to an
+// application, and some applications run what they are handed.
+func TestRunEditorAppKindRefusesLaunchable(t *testing.T) {
+	dir := t.TempDir()
+	t.Setenv("HIVE_STATE_DIR", dir)
+	app := &App{}
+	if err := app.SaveEditorSettings(EditorSettings{Kind: editorApp, App: "Terminal"}); err != nil {
+		if runtime.GOOS != "darwin" {
+			t.Skip("the app kind is macOS-only")
+		}
+		t.Fatal(err)
+	}
+
+	// A .command file: Terminal.app executes it.
+	err := runEditor("/x/run.command", 0, 0, fileMeta{}, "darwin")
+	if !errors.Is(err, errRevealInstead) {
+		t.Fatalf("err = %v, want errRevealInstead for a launchable file", err)
+	}
+
+	// An ordinary file still opens in the application.
+	err = runEditor("/x/notes.md", 0, 0, fileMeta{}, "darwin")
+	if errors.Is(err, errRevealInstead) {
+		t.Fatal("an ordinary file must still open in the configured app")
+	}
+}
+
+// A CLI editor displays a file rather than running it, so the guard
+// above must not fire for it — refusing to open deploy.sh in VS Code
+// would break the ordinary case.
+func TestRunEditorCLIKindDoesNotRefuseScripts(t *testing.T) {
+	dir := t.TempDir()
+	t.Setenv("HIVE_STATE_DIR", dir)
+	app := &App{}
+	if err := app.SaveEditorSettings(EditorSettings{Kind: editorVSCode}); err != nil {
+		t.Fatal(err)
+	}
+	err := runEditor("/x/deploy.sh", 0, 0, fileMeta{execBit: true}, "darwin")
+	if errors.Is(err, errRevealInstead) {
+		t.Fatal("a CLI editor must still open an executable script")
 	}
 }

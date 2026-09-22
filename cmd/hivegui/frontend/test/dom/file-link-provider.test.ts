@@ -214,6 +214,37 @@ describe('createFileLinkProvider', () => {
     expect(ResolveFilePaths).toHaveBeenCalledTimes(1);
   });
 
+  // The pointer crossing a row re-asks within milliseconds, before the
+  // first call has resolved: caching only settled answers would fire a
+  // duplicate round-trip every time.
+  it('shares one in-flight resolution between overlapping hovers', async () => {
+    let release: (v: string[]) => void = () => {};
+    ResolveFilePaths.mockImplementationOnce(
+      () => new Promise<string[]>((r) => (release = r)),
+    );
+    const term = fakeTerm([['see src/foo.ts', false]], 80);
+    const provider = createFileLinkProvider(term, () => '/base');
+    const ask = () =>
+      new Promise((r) => provider.provideLinks(1, (l) => r(l as never)));
+    const a = ask();
+    const b = ask();
+    release(['/base/src/foo.ts']);
+    await Promise.all([a, b]);
+    expect(ResolveFilePaths).toHaveBeenCalledTimes(1);
+  });
+
+  it('does not cache a failed lookup', async () => {
+    ResolveFilePaths.mockRejectedValueOnce(new Error('bridge down') as never);
+    ResolveFilePaths.mockImplementationOnce(async () => ['/base/src/foo.ts']);
+    const term = fakeTerm([['see src/foo.ts', false]], 80);
+    const provider = createFileLinkProvider(term, () => '/base');
+    const ask = () =>
+      new Promise((r) => provider.provideLinks(1, (l) => r(l as never)));
+    expect(await ask()).toBeUndefined();
+    const links = (await ask()) as { text: string }[] | undefined;
+    expect(links?.map((l) => l.text)).toEqual(['src/foo.ts']);
+  });
+
   it('passes the parsed line and col when activated', async () => {
     ResolveFilePaths.mockImplementationOnce(async () => ['/base/src/foo.ts']);
     const term = fakeTerm([['src/foo.ts:12:5', false]], 80);

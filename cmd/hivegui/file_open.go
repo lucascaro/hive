@@ -77,9 +77,9 @@ func (a *App) OpenFile(baseDir, path string, line, col int, editor bool) error {
 	// Resolve symlinks before the guard: a symlink named notes.md
 	// pointing at a .command file is the .command file. A broken
 	// symlink keeps the unresolved path and is handled below.
-	target := abs
-	if resolved, err := filepath.EvalSymlinks(abs); err == nil {
-		target = resolved
+	target, err := safeEvalSymlinks(abs)
+	if err != nil {
+		return err
 	}
 	goos := gooseFn()
 	meta, err := statMetaFn(target)
@@ -88,16 +88,31 @@ func (a *App) OpenFile(baseDir, path string, line, col int, editor bool) error {
 	}
 
 	if editor {
-		switch err := runEditorFn(target, line, col, meta.isDir); {
+		switch err := runEditorFn(target, line, col, meta, goos); {
 		case err == nil:
 			return nil
 		case errors.Is(err, errNoEditorConfigured):
 			// Fall through to the OS default. Spec criterion 5.
+		case errors.Is(err, errRevealInstead):
+			// The configured editor is an application, and this file is
+			// one the OS would run. Show it instead of handing it over.
+			return revealFn(target)
 		default:
 			return err
 		}
 	}
 
+	// TOCTOU: the file could be swapped between statMeta above and the
+	// open below, so the guard could be passed by one file and the open
+	// performed on another.
+	//
+	// ponytail: accepted, not fixed. Closing it means opening by handle
+	// and checking the handle, per OS, which is a large amount of code
+	// for no new protection: winning this race needs write access to the
+	// session's own worktree, and anyone who has that can simply place
+	// the malicious file there and let the guard see it. Revisit if Hive
+	// ever opens paths from a directory the user does not control.
+	//
 	// The name the OS would act on is checked as well as the resolved
 	// target: on Windows the handler fires on the name passed to
 	// ShellExecute, and `evil.exe.` must not slip through because its
@@ -129,6 +144,48 @@ func isNetworkOrDevicePath(p string) bool {
 	// //host/share (UNC), //?/... and //./... (Win32 device namespace,
 	// which reaches \\.\pipe\ and friends).
 	return strings.HasPrefix(slashed, "//")
+}
+
+// maxSymlinkHops bounds safeEvalSymlinks. Deep chains are not a real
+// pattern for a path printed in a terminal, and the bound is also the
+// loop breaker.
+const maxSymlinkHops = 16
+
+// safeEvalSymlinks is filepath.EvalSymlinks with the network check
+// applied to each link target *before* it is followed.
+//
+// filepath.EvalSymlinks alone is a hole in the guard resolvePath sets
+// up: the candidate can be a perfectly local name whose symlink target
+// is `\\host\share\x`, and resolution itself dials that host — the same
+// NTLM leak isNetworkOrDevicePath exists to prevent, reached through
+// the link rather than the printed text.
+//
+// A path that is not a symlink is returned unchanged, and a broken
+// symlink keeps the unresolved path, as EvalSymlinks-with-error did.
+func safeEvalSymlinks(path string) (string, error) {
+	cur := path
+	for range maxSymlinkHops {
+		fi, err := os.Lstat(cur)
+		if err != nil || fi.Mode()&os.ModeSymlink == 0 {
+			return cur, nil // not a link (or unreadable): this is the answer
+		}
+		next, err := os.Readlink(cur)
+		if err != nil {
+			return cur, nil
+		}
+		if isNetworkOrDevicePath(next) {
+			return "", fmt.Errorf("refusing symlink to a network or device path: %s", next)
+		}
+		if !filepath.IsAbs(next) {
+			next = filepath.Join(filepath.Dir(cur), next)
+		}
+		next = filepath.Clean(next)
+		if isNetworkOrDevicePath(next) {
+			return "", fmt.Errorf("refusing symlink to a network or device path: %s", next)
+		}
+		cur = next
+	}
+	return "", fmt.Errorf("too many symlink hops from %s", path)
 }
 
 // resolvePath turns a candidate from terminal text into an absolute

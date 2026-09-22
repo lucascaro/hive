@@ -92,7 +92,7 @@ func (r *openRecorder) install(t *testing.T, goos string) {
 	origOpen, origReveal, origEditor, origGoos := openDefaultFn, revealFn, runEditorFn, gooseFn
 	openDefaultFn = func(p string) error { r.opened = p; return nil }
 	revealFn = func(p string) error { r.revealed = p; return nil }
-	runEditorFn = func(p string, line, col int, _ bool) error {
+	runEditorFn = func(p string, line, col int, _ fileMeta, _ string) error {
 		if r.editErr != nil {
 			return r.editErr
 		}
@@ -166,6 +166,29 @@ func TestOpenFileDispatch(t *testing.T) {
 		}
 		if r.revealed == "" {
 			t.Fatal("want reveal")
+		}
+	})
+
+	// The guard resolvePath applies to the printed candidate has to
+	// survive symlink resolution: EvalSymlinks itself would dial the
+	// host named by the link target.
+	t.Run("a symlink to a UNC path is refused before resolution", func(t *testing.T) {
+		if runtime.GOOS == "windows" {
+			t.Skip("symlinks need privilege on Windows")
+		}
+		base := t.TempDir()
+		link := filepath.Join(base, "notes.md")
+		if err := os.Symlink(`\\evil.example.com\share\a.txt`, link); err != nil {
+			t.Fatal(err)
+		}
+		var r openRecorder
+		r.install(t, "windows")
+		err := app.OpenFile(base, "notes.md", 0, 0, false)
+		if err == nil || !strings.Contains(err.Error(), "network or device path") {
+			t.Fatalf("err = %v — want the symlink target refused", err)
+		}
+		if r.opened != "" || r.revealed != "" {
+			t.Fatalf("acted on a network symlink: %+v", r)
 		}
 	})
 
