@@ -302,13 +302,14 @@ const askingWorktreeChoice = new Set<string>();
 
 // Parked questions are asked ONE AT A TIME, through this chain.
 //
-// openChoiceDialog() dismisses whatever is already open, resolving it
-// to its FIRST choice (choice-dialog.ts). For this dialog the first
-// choice is Cancel — so a second parked session raising its own dialog
-// would answer the first one with "cancel", discarding that worktree
-// and deleting that session without the user ever seeing the question.
-// That is the common case, not a corner: when the remote is
-// unreachable, every session launched in that batch parks.
+// openChoiceDialog() dismisses whatever is already open
+// (choice-dialog.ts). This dialog sets dismissValue: '' so that is a
+// non-answer rather than a destructive one — but a second parked
+// session raising its own question would still take the first one off
+// the screen unseen, and the first would then sit deferred with only
+// its tile to say so. That is the common case, not a corner: when the
+// remote is unreachable, every session launched in that batch parks.
+// Queue them instead, so each is actually asked.
 let worktreeChoiceChain: Promise<void> = Promise.resolve();
 
 // The session whose worktree dialog is on screen right now, or null.
@@ -332,8 +333,10 @@ function ageWords(secs: number | undefined): string {
 // waiting on: its worktree setup failed, and the daemon will not guess.
 //
 // Nothing is blocked on the daemon side while this is open, so the
-// dialog can stay up as long as the user needs. Escape resolves to the
-// first choice, which is why Cancel is first (choice-dialog.ts).
+// dialog can stay up as long as the user needs. Escape and the scrim
+// resolve to dismissValue — '' here, meaning "not answered" — so
+// neither can decide anything on the user's behalf; the question is
+// deferred and the tile carries the way back to it.
 function maybeAskWorktreeChoice(info: SessionInfo) {
   const q = info.pending_worktree_choice ?? info.pendingWorktreeChoice;
   if (!q) {

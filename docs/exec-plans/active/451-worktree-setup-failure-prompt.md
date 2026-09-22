@@ -196,9 +196,18 @@ Conventions this feature touches:
 - `cmd/hived-ws-bridge/main.go` and `internal/wire/testclient` — same,
   in lock-step per the wire hard rule.
 - `frontend/src/app/events.ts` — on a session event carrying the
-  pending choice, raise `openChoiceDialog` with Cancel first, then
-  Retry, then the fallback labelled with the cached tip's age; send the
-  answer. Read with `snake_case ?? camelCase`.
+  pending choice, raise `openChoiceDialog` and send the answer. Read
+  with `snake_case ?? camelCase`.
+
+  **Superseded during review:** this section originally specified
+  "Cancel first", because `choices[0]` was what Escape and the scrim
+  resolved to. Round 2 added `ChoiceSpec.dismissValue` so this dialog
+  answers `''` (not answered) on a dismissal, which decoupled ordering
+  from dismissal; round 4 then reordered to **Retry, proceed, Cancel**
+  (Cancel marked `danger`), because `choices[0]` is also what takes
+  FOCUS, and this dialog raises itself unprompted — a stray Enter on
+  Cancel would have deleted a session. The shipped order is the one in
+  `events.ts`.
 - `frontend/src/lib/phase-steps.ts` — label for the parked phase.
 
 ### Files to change
@@ -276,9 +285,13 @@ Conventions this feature touches:
 `cmd/hivegui/frontend/test/dom/`:
 
 - `worktree-choice-dialog.test.ts` — a session event carrying the
-  pending choice raises the dialog with Cancel first; choosing a value
-  calls `ResolveWorktreeChoice` with it; the cached-tip button label
-  contains the age.
+  pending choice raises the dialog; choosing a value calls
+  `ResolveWorktreeChoice` with it; the cached-tip button label contains
+  the age. As shipped it also pins the button order (Retry, proceed,
+  Cancel — see the superseded note under Approach §4), the `danger`
+  flag on Cancel, `dismissValue === ''`, the queue that stops one
+  parked session answering another, the `session:list` path, and
+  dismissal on removal.
 
 ### Verification
 
