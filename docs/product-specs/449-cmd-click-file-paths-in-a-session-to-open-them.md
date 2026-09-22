@@ -53,3 +53,8 @@ Agents and shells constantly print file paths (`src/app/foo.ts:42`, `/tmp/out.lo
 - Open question: the exact per-platform executable/launcher denylist (e.g. `.terminal`, `.workflow`, `.desktop`, `.ps1`) is to be enumerated at plan stage.
 - `OpenURL` in `cmd/hivegui/app_calls.go` deliberately refuses `file://` because terminal content is attacker-influenced; this feature must preserve that security intent.
 - Prior art in-repo: `WebLinksAddon` and the OSC 8 `linkHandler` in `cmd/hivegui/frontend/src/app/session-term.ts`; `OpenTerminalAt` in `cmd/hivegui/os_terminal.go` shows the per-OS `open`/launch pattern.
+
+## Follow-ups
+
+- **Resolve relative paths against the shell's live cwd.** A path printed after a `cd` does not resolve today, so it is simply not underlined. The shape: OSC 7 as the primary source (macOS `/etc/zshrc` already emits it), the pty child's cwd from the OS as the fallback (`/proc/<pid>/cwd`, `proc_pidinfo`), today's worktree path last. The real design question is *when* cwd is sampled — a click can land long after the line was printed, so correctness likely means remembering cwd per line rather than per session. Needs its own spec; deliberately out of scope here.
+- **`ls somedir` output will still not work**, and should not be attempted: those lines print bare names (`foo.txt`), not `somedir/foo.txt`, so the visible text does not name a resolvable path. Only the command above it does, and guessing from scrollback would open the wrong file silently. `ls -R` and `ls somedir/*` print usable paths and work once live cwd lands.
