@@ -51,8 +51,8 @@ type createPlan struct {
 	wtBranch string
 	// wtCreated records that THIS plan's `git worktree add` actually
 	// created wtPath: set when nothing occupied that path before the
-	// add, whether the add then succeeded or left debris behind. Only
-	// then may discardWorktree delete it.
+	// add AND something is there after it. Only then may
+	// discardWorktree delete it.
 	//
 	// A planned-but-not-created path is not owned: a parked create
 	// holds one for as long as the user takes to answer, and
@@ -61,6 +61,17 @@ type createPlan struct {
 	// for real. Deleting on the strength of the plan alone would then
 	// destroy that other session's worktree, uncommitted work and all.
 	wtCreated bool
+	// wtBranchCreated records that THIS plan's add created the branch.
+	//
+	// `git worktree add -b <branch>` creates the branch even when the
+	// add then FAILS — verified against git 2.55. Left behind, that
+	// branch is pinned at whatever base the failed attempt used, and
+	// the next Retry sees BranchExists and takes the existing-branch
+	// fast path: no fetch, no dialog, and a session silently on the
+	// stale tip. That is the outcome this whole feature exists to
+	// prevent, reached through the button the user pressed to avoid
+	// it. So a discard has to delete the branch too.
+	wtBranchCreated bool
 
 	// wtPlanErr records why a REQUESTED worktree could not even be
 	// planned (branch/path resolution failed inside a real git repo).
@@ -337,7 +348,19 @@ func (r *Registry) linkIdeaToSession(ideaID, sessionID string) {
 //   - no live entry may be living there. Mirrors the sibling check the
 //     kill path already makes before it cleans up a worktree.
 func (r *Registry) discardWorktree(p createPlan) {
-	if p.wtPath == "" || p.adoptedPath != "" || !p.wtCreated {
+	if p.wtPath == "" || p.adoptedPath != "" {
+		return
+	}
+	if !p.wtCreated {
+		// No directory of ours to remove — but the add may still have
+		// created the branch before failing, and that branch is ours.
+		if p.wtBranchCreated {
+			if root, err := worktree.Root(p.projectCwd); err == nil {
+				r.gitMu.Lock()
+				r.discardBranchLocked(root, p)
+				r.gitMu.Unlock()
+			}
+		}
 		return
 	}
 	r.mu.Lock()
@@ -357,6 +380,28 @@ func (r *Registry) discardWorktree(p createPlan) {
 	defer r.gitMu.Unlock()
 	if err := worktree.Cleanup(root, p.wtPath); err != nil {
 		log.Printf("registry: discarding worktree %s after mid-create kill: %v", p.wtPath, err)
+	}
+	r.discardBranchLocked(root, p)
+}
+
+// discardBranchLocked deletes the branch this plan's own add created.
+// Caller holds gitMu.
+//
+// worktree.Cleanup removes the directory and prunes git's admin state
+// but never touches branches, and `git worktree add -b` creates the
+// branch even when the add fails. A branch left behind is pinned at
+// the base the failed attempt used, and the next Retry would take the
+// existing-branch fast path onto it — no fetch, no dialog, a session
+// silently on the stale tip.
+func (r *Registry) discardBranchLocked(root string, p createPlan) {
+	if !p.wtBranchCreated || p.wtBranch == "" {
+		return
+	}
+	// Force: the branch may hold the commits of a worktree that was
+	// just removed, and it is one this create made and nobody has
+	// used. A plain -d refuses exactly that case.
+	if err := worktree.DeleteBranch(root, p.wtBranch, true); err != nil {
+		log.Printf("registry: discarding branch %s: %v", p.wtBranch, err)
 	}
 }
 
@@ -943,18 +988,32 @@ func (r *Registry) addWorktree(ctx context.Context, e *Entry, spec wire.CreateSp
 	// what keeps the ownership guard honest — that directory may
 	// belong to another session.
 	// Inside gitMu with the add itself: gitMu serializes every worktree
-	// subprocess, so stat-then-add as one critical section closes the
+	// subprocess, so probe-then-add as one critical section closes the
 	// window where a concurrent create could add at this path between
-	// our stat and our add — we would otherwise see "free", fail the
+	// our probe and our add — we would otherwise see "free", fail the
 	// add, claim ownership of their directory, and delete it on cancel.
 	r.gitMu.Lock()
 	_, statErr := os.Stat(p.wtPath)
 	existedBefore := statErr == nil
+	branchExistedBefore := worktree.BranchExists(root, p.wtBranch)
 	cerr := worktree.CreateWorktreeAt(ctx, root, p.wtBranch, p.wtPath, base)
-	r.gitMu.Unlock()
+	// Claim only what is actually there afterwards. A pre-add stat
+	// alone would claim a delete-right over a still-empty path for the
+	// whole of an indefinite park (an add that fails on "invalid
+	// reference" creates nothing), which is round 4's data-loss hazard
+	// narrowed rather than closed.
 	if !existedBefore {
-		p.wtCreated = true
+		if _, postErr := os.Stat(p.wtPath); postErr == nil {
+			p.wtCreated = true
+		}
 	}
+	// `git worktree add -b` creates the branch even when the add
+	// fails, so this has to be judged after the attempt, not from its
+	// exit status.
+	if !branchExistedBefore && worktree.BranchExists(root, p.wtBranch) {
+		p.wtBranchCreated = true
+	}
+	r.gitMu.Unlock()
 	if cerr != nil {
 		return r.parkWorktreeChoice(e, spec, *p, &wire.PendingWorktreeChoice{
 			Kind:    wire.WorktreeChoiceCreateFailed,

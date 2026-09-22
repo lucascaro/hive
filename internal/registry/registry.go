@@ -769,6 +769,17 @@ func (r *Registry) noteTitleChange(id string) {
 	r.broadcastLocked(wire.SessionEventTitle, e.Info())
 }
 
+// killDropParkedAgain re-sweeps the parked map after a kill has
+// removed the entry, closing the race where a park lands between the
+// kill's first sweep and its delete. Idempotent: the common case finds
+// nothing.
+func (r *Registry) killDropParkedAgain(id string) {
+	if plan, parked := r.dropParked(id); parked {
+		log.Printf("registry: kill %s: a worktree park landed mid-kill; discarding it", id)
+		r.discardWorktree(plan)
+	}
+}
+
 // MarkPendingRevive puts every entry that has no live session into
 // PhaseReviving. The daemon calls this on the boot path BEFORE it
 // binds its socket, so the first snapshot any client can see already
@@ -1495,6 +1506,13 @@ func (r *Registry) kill(id string, force, removeWorktree bool) error {
 		// parked before its add ever ran has nothing on disk to remove.
 		r.discardWorktree(plan)
 	}
+	// Dropped again at the end of this function, after the entry is
+	// gone: parkWorktreeChoice inserts into r.parked BEFORE it takes
+	// r.mu, so a park that started before this kill can land in the
+	// map after the drop above. Without the second sweep that entry's
+	// resume state — and any worktree its add made — would leak until
+	// the daemon restarts. See killDropParkedAgain below.
+	defer r.killDropParkedAgain(id)
 
 	r.mu.Lock()
 	e, ok := r.entries[id]

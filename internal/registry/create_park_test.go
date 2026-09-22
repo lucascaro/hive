@@ -577,30 +577,22 @@ func TestCancelDoesNotDeleteAnotherSessionsWorktree(t *testing.T) {
 	}
 }
 
-// The guard must not fail in the other direction. A `git worktree add`
-// that fails after creating the directory (its 30s deadline SIGKILLs
-// git, so git's own junk-cleanup never runs) still leaves debris —
-// and that debris IS ours, because nothing occupied the path before we
-// tried. Claiming ownership only on success would make Cancel leave a
-// worktree behind, against the spec, and Retry fail forever.
-func TestCancelCleansUpDebrisFromAFailedAdd(t *testing.T) {
+// `git worktree add -b <branch>` creates the branch EVEN WHEN THE ADD
+// FAILS (verified against git 2.55). worktree.Cleanup removes
+// directories and prunes admin state but never touches branches, so
+// without an explicit delete that branch survives — pinned at whatever
+// base the failed attempt used.
+func TestCancelRemovesTheBranchAFailedAddCreated(t *testing.T) {
 	r, e, repo := parkedOnAddFailure(t)
 
 	q := r.Get(e.ID).Info().PendingWorktreeChoice
-	if q == nil {
-		t.Fatal("fixture: the session must be parked on the add failure")
+	if q == nil || q.Branch == "" {
+		t.Fatal("fixture: the session must be parked with a branch named")
 	}
-	// Simulate the half-made directory a killed `git worktree add`
-	// leaves behind at the planned path.
-	wtDir := filepath.Join(repo, ".worktrees")
-	if err := os.Chmod(wtDir, 0o755); err != nil {
-		t.Fatal(err)
+	// The failed add really did leave the branch behind.
+	if !strings.Contains(gitOutput(t, repo, "branch", "--list"), q.Branch) {
+		t.Skipf("this git does not create the branch on a failed add; nothing to clean up")
 	}
-	debris := filepath.Join(wtDir, q.Branch)
-	if err := os.MkdirAll(debris, 0o755); err != nil {
-		t.Fatal(err)
-	}
-	mustWriteFile(t, filepath.Join(debris, "junk"), "half-made\n")
 
 	if err := r.ResolveWorktreeChoice(context.Background(), e.ID,
 		wire.WorktreeChoiceCancel, ""); err != nil {
@@ -609,10 +601,101 @@ func TestCancelCleansUpDebrisFromAFailedAdd(t *testing.T) {
 	if r.Get(e.ID) != nil {
 		t.Error("cancel must leave no session")
 	}
-	// "Picking Cancel leaves no session and no worktree" — the spec's
-	// success criterion, which an unowned-debris guard would break.
-	if _, err := os.Stat(debris); err == nil {
-		t.Error("cancel left the failed add's directory behind; Retry would then fail forever")
+	// "Picking Cancel leaves no session and no worktree" — a branch
+	// pinned at a stale base is the part of that worktree that
+	// outlives the directory.
+	if branches := gitOutput(t, repo, "branch", "--list"); strings.Contains(branches, q.Branch) {
+		t.Errorf("cancel left branch %q behind; got %q", q.Branch, branches)
+	}
+}
+
+// The defect that branch made reachable, and the one that matters
+// most: Retry must re-fetch, NOT check out the branch the failed add
+// left behind. That branch is pinned at the stale base, so taking the
+// existing-branch fast path onto it starts the session on stale code
+// with no fetch and no dialog — through the very button the user
+// pressed to avoid exactly that.
+func TestRetryAfterFailedAddDoesNotReuseTheStaleBranch(t *testing.T) {
+	skipNonPosix(t)
+
+	// A clone whose origin is reachable, so the fetch works and only
+	// the ADD fails.
+	upstream := t.TempDir()
+	runGit(t, upstream, "init", "-q", "--bare", "-b", "main")
+	seed := t.TempDir()
+	runGit(t, seed, "init", "-q", "-b", "main")
+	runGit(t, seed, "-c", "user.email=t@t", "-c", "user.name=t",
+		"commit", "--allow-empty", "-q", "-m", "seed")
+	runGit(t, seed, "remote", "add", "origin", upstream)
+	runGit(t, seed, "push", "-q", "origin", "main")
+
+	parent := t.TempDir()
+	repo := filepath.Join(parent, "repo")
+	runGit(t, parent, "clone", "-q", upstream, repo)
+	runGit(t, repo, "config", "user.email", "t@t")
+	runGit(t, repo, "config", "user.name", "t")
+	staleTip := gitOutput(t, repo, "rev-parse", "HEAD")
+
+	// Block the add (and only the add).
+	wtDir := filepath.Join(repo, ".worktrees")
+	if err := os.MkdirAll(wtDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chmod(wtDir, 0o500); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.Chmod(wtDir, 0o755) })
+	if os.Geteuid() == 0 {
+		t.Skip("running as root: an unwritable directory does not block the add")
+	}
+
+	r := freshRegistry(t)
+	p, err := r.CreateProject(wire.CreateProjectReq{Name: "addfail", Cwd: repo})
+	if err != nil {
+		t.Fatalf("CreateProject: %v", err)
+	}
+	e, err := r.Create(context.Background(), wire.CreateSpec{
+		ProjectID: p.ID, Shell: "/bin/bash", UseWorktree: true,
+	})
+	if err != nil {
+		t.Fatalf("Create should park on the add failure: %v", err)
+	}
+	if r.Get(e.ID).Info().PendingWorktreeChoice == nil {
+		t.Fatal("fixture: the session did not park")
+	}
+
+	// Upstream moves on — this is the commit a re-fetch must find.
+	work := t.TempDir()
+	runGit(t, parent, "clone", "-q", upstream, filepath.Join(work, "wt"))
+	wt := filepath.Join(work, "wt")
+	runGit(t, wt, "config", "user.email", "t@t")
+	runGit(t, wt, "config", "user.name", "t")
+	runGit(t, wt, "commit", "--allow-empty", "-q", "-m", "fresh")
+	runGit(t, wt, "push", "-q", "origin", "main")
+	freshTip := gitOutput(t, wt, "rev-parse", "HEAD")
+	if freshTip == staleTip {
+		t.Fatal("fixture: upstream did not advance")
+	}
+
+	// Unblock and retry — the user fixing what broke, then pressing
+	// the button whose whole promise is a fresh fetch.
+	if err := os.Chmod(wtDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := r.ResolveWorktreeChoice(context.Background(), e.ID,
+		wire.WorktreeChoiceRetry, ""); err != nil {
+		t.Fatalf("retry: %v", err)
+	}
+	defer r.Kill(e.ID, true)
+
+	got := r.Get(e.ID)
+	if got == nil || got.WorktreePath == "" {
+		t.Fatal("the retry must produce a worktree")
+	}
+	if head := gitOutput(t, got.WorktreePath, "rev-parse", "HEAD"); head != freshTip {
+		t.Errorf("retry checked out %s, want the FRESH tip %s (stale was %s) — "+
+			"it reused the branch the failed add left behind instead of re-fetching",
+			head, freshTip, staleTip)
 	}
 }
 
