@@ -942,10 +942,14 @@ func (r *Registry) addWorktree(ctx context.Context, e *Entry, spec wire.CreateSp
 	// A path that existed BEFORE our add is never claimed, which is
 	// what keeps the ownership guard honest — that directory may
 	// belong to another session.
+	// Inside gitMu with the add itself: gitMu serializes every worktree
+	// subprocess, so stat-then-add as one critical section closes the
+	// window where a concurrent create could add at this path between
+	// our stat and our add — we would otherwise see "free", fail the
+	// add, claim ownership of their directory, and delete it on cancel.
+	r.gitMu.Lock()
 	_, statErr := os.Stat(p.wtPath)
 	existedBefore := statErr == nil
-
-	r.gitMu.Lock()
 	cerr := worktree.CreateWorktreeAt(ctx, root, p.wtBranch, p.wtPath, base)
 	r.gitMu.Unlock()
 	if !existedBefore {

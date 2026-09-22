@@ -139,11 +139,12 @@ func TestExistingBranchCheckoutNeverParksOnUnreachableOrigin(t *testing.T) {
 		t.Error("a checkout must never be parked on a fetch it does not depend on")
 	}
 	// The fetch has a 10s budget and this path must not pay it. The
-	// bar is deliberately close to that budget rather than to the
-	// milliseconds a checkout really takes: the assertion is "it did
-	// not wait for the fetch", and a tighter bound would flake on a
-	// loaded CI box without catching anything more.
-	if elapsed := time.Since(start); elapsed >= 10*time.Second {
+	// bar sits just under that budget rather than at the milliseconds a
+	// checkout really takes: the assertion is "it did not wait for the
+	// fetch", and a tighter bound would flake on a loaded CI box. At
+	// exactly 10s a fetch finishing just inside its budget would slip
+	// through, so 9s keeps both the margin and the catch.
+	if elapsed := time.Since(start); elapsed > 9*time.Second {
 		t.Errorf("checkout waited %v — it paid for a fetch it should have skipped", elapsed)
 	}
 }

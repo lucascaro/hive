@@ -5,7 +5,7 @@ type: bug
 complexity: M
 priority: P1
 pr: 452
-stage: REVIEW
+stage: GATE
 ---
 
 # Ask the user when worktree setup fails instead of silently using a stale ref
