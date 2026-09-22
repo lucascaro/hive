@@ -433,4 +433,5 @@ re-reviewing — re-run the loop on the same PR to resume.
 - **2026-09-22 iter 6 (author fix)** — took the one IMPORTANT rather than ship a known race: the `os.Stat` now sits inside `gitMu` with the add, closing the window where a losing concurrent create could claim and then delete the winner's fresh worktree. Latency bound tightened from `>= 10s` (exactly the fetch budget) to `> 9s`.
 
 **Converged.** 47 findings across six rounds, five of them BLOCKING; three of those five were regressions this PR's own fixes introduced, which is why the loop ran past its budget.
+- **2026-09-22 iter 6 (loop stop)** — verdict: COMMENT; mergeable: MERGEABLE; findings_hash: empty; threads_open: 0; action: stop; head_sha: cb9fa1d0. The loop's terminal record. Head advanced past the reviewed `ccafd807` by iteration 6's own recommended one-line hardening (the `os.Stat` moved inside `gitMu`) and a test-bound tightening; no finding from any round remains open.
 
