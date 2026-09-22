@@ -366,6 +366,21 @@ export async function IsGitRepo() {
 export async function OpenURL() {
   return '';
 }
+// File opening is a GUI-owned local action with no daemon verb behind
+// it; the real e2e harness must never launch anything, so these are
+// inert stubs that still satisfy the import.
+export async function ResolveFilePaths(_base: string, candidates: string[]) {
+  return candidates.map(() => '');
+}
+export async function OpenFile() {
+  return undefined;
+}
+export async function GetEditorSettings() {
+  return { kind: '', command: '', app: '' };
+}
+export async function SaveEditorSettings() {
+  return undefined;
+}
 export async function OpenTerminalAt() {
   return '';
 }

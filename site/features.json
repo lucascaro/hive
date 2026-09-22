@@ -1,5 +1,11 @@
 [
   {
+    "title": "Click a file path to open it",
+    "blurb": "⌘-click a file path in a session to open it in the OS default app, or ⇧⌘-click to open it in your editor at the clicked line. Paths are only underlined when the file really exists, and anything the OS would run is revealed in the file manager instead of launched.",
+    "status": "shipped",
+    "since": "Unreleased"
+  },
+  {
     "title": "Restart an ended session",
     "blurb": "When a session's process exits, the card over it now offers Restart next to Close and Dismiss, so you can bring it back in place with one click or the r key.",
     "status": "shipped",

@@ -110,6 +110,7 @@ Decided in [mocks/sidebar-redesign.html](mocks/sidebar-redesign.html) (G3c).
 
 - 32px, `--text-md`, leading `icon` (12px) for agent kind, trailing shortcut in `--font-mono --text-xs --fg-subtle`. Selected → `--sel` + accent bar, same as session row.
 - The launcher's agent list is `orderAgents()` (`src/lib/agent-order.ts`): hidden agents dropped, pinned agents first in the user's order, the rest by launch count. Settings → Agents edits both (`LauncherAgents.tsx`, stored as `hive.agentPrefs`); pinned rows there are drag-reorderable, with ⌥↑/⌥↓ as the keyboard path.
+- Settings → Appearance → Editor (`EditorSettings.tsx`) picks what ⇧⌘-click on a file path opens: a preset (VS Code, Cursor, Zed, Sublime), a custom argv template with `{file}`/`{line}`/`{col}`, or a macOS application. It is stored Go-side in `editor.json`, not localStorage, because it is the command Hive executes — the bridge call carries only a path and a position. A file that will not parse disables the section instead of being overwritten on save, as with `agent-settings.json`.
 
 ## Grid tile header
 

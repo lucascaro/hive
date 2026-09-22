@@ -160,6 +160,15 @@ export function shortcutGroups({ isMac }: { isMac: boolean }): ShortcutGroup[] {
         { keys: m('B'), label: 'Next session needing attention (bell)' },
         { keys: m('B', { shift: true }), label: 'Jump back to where you were' },
         { keys: 'Double-click', label: 'Rename (sidebar row or tile title)' },
+        {
+          keys: `${isMac ? '⌘' : 'Ctrl+'}click`,
+          label:
+            'Open the file path under the cursor (programs are revealed, not run)',
+        },
+        {
+          keys: `${isMac ? '⇧⌘' : 'Ctrl+Shift+'}click`,
+          label: 'Open that file in your editor (Settings › Appearance)',
+        },
       ],
     },
     {

@@ -3,6 +3,7 @@
 // Moved verbatim from main.js: the SessionTerm class plus the font
 // helpers and ensureTerm factory that manage its instances.
 
+import type { ILinkProvider } from '@xterm/xterm';
 import { Terminal } from '@xterm/xterm';
 import { FitAddon } from '@xterm/addon-fit';
 import { WebglAddon } from '@xterm/addon-webgl';
@@ -32,6 +33,13 @@ import {
   ClipboardGetText,
   OpenURL,
 } from '../bridge.js';
+import {
+  createFileLinkProvider,
+  isHiveFileLink,
+  openFileLink,
+} from './file-link-provider.js';
+import { isFileUri, parseFileUri } from '../lib/file-links.js';
+import { resolveSessionCwd } from './selectors.js';
 import type { SessionInfo } from './state.js';
 import {
   addDismissedDead,
@@ -45,7 +53,7 @@ import {
 import { allTerms, getTerm, setTerm } from '../store/terms.js';
 import { flashStatus, reportFailure } from './dom.js';
 import { mustEl } from './el.js';
-import { isMac } from '../lib/platform.js';
+import { cmdOrCtrl, isMac } from '../lib/platform.js';
 import {
   PHASE,
   phaseOf,
@@ -264,6 +272,21 @@ export class SessionTerm {
   _pointerDown = false;
   _onWindowMouseUp: (() => void) | null = null;
 
+  // The directory a relative path in this session's output resolves
+  // against: the worktree, falling back to the project cwd. Read per
+  // click rather than captured, so a session that learns its worktree
+  // path after the terminal was built still resolves correctly. The
+  // shell's live cwd is deliberately not tracked (no OSC 7) — a path
+  // printed after a `cd` simply fails the existence check and gets no
+  // underline.
+  _baseDir(): string {
+    return resolveSessionCwd(this.info) ?? '';
+  }
+
+  // The file-path link provider (spec 449), or null when registration
+  // failed on an xterm without the API.
+  fileLinks: ILinkProvider | null = null;
+
   // Link / click-to-position hit-testing.
   _pendingLink: TermLink | null = null;
   _pendingLinkX = 0;
@@ -337,8 +360,22 @@ export class SessionTerm {
       // Route OSC 8 hyperlinks (used by Claude CLI and others) through
       // the OS default browser via the Wails backend.
       linkHandler: {
-        activate: (_e, uri) => {
-          if (uri) OpenURL(uri).catch(reportFailure('open link'));
+        // Without this, xterm drops every OSC 8 link whose scheme is
+        // not http(s) (OscLinkProvider), including the file:// links
+        // this feature exists to follow. Non-file schemes still go to
+        // OpenURL, whose Go-side allowlist is what actually refuses
+        // anything but http, https and mailto.
+        allowNonHttpProtocols: true,
+        activate: (e, uri) => {
+          if (!uri) return;
+          if (isFileUri(uri)) {
+            // A file link needs the modifier, exactly like a detected
+            // path — and the path goes to OpenFile, never to OpenURL.
+            const path = parseFileUri(uri);
+            if (path) openFileLink(e, this._baseDir(), path);
+            return;
+          }
+          OpenURL(uri).catch(reportFailure('open link'));
         },
       },
     });
@@ -408,6 +445,19 @@ export class SessionTerm {
       // Non-fatal; sessions still work without clickable links.
     }
 
+    // Detect file paths in output and route activation through Go,
+    // which re-resolves the path and decides open-vs-reveal. Only
+    // paths that exist on disk are underlined.
+    try {
+      // Kept on the instance as well as registered: the e2e suite asks
+      // it for a line's links directly, which is what xterm does on
+      // hover, without reaching into xterm's private provider registry.
+      this.fileLinks = createFileLinkProvider(this.term, () => this._baseDir());
+      this.term.registerLinkProvider(this.fileLinks);
+    } catch (_err) {
+      // Non-fatal; URLs still work without file links.
+    }
+
     // When the running program enables mouse reporting (e.g. Claude,
     // vim), xterm sends mousedown/mouseup to the PTY and cancels the
     // event before the Linkifier can process it. Work around this by
@@ -422,6 +472,15 @@ export class SessionTerm {
         (e) => {
           const link = (this.term as Terminal & LinkifierPeek)._core?.linkifier
             ?.currentLink;
+          // A file link only activates with the platform modifier, so
+          // without it we must NOT swallow the click: it still belongs
+          // to selection and click-to-position. URL links are
+          // unchanged — they follow on a plain click as they always
+          // have.
+          if (isHiveFileLink(link?.link) && !cmdOrCtrl(e)) {
+            this._pendingLink = null;
+            return;
+          }
           if (link?.link) {
             this._pendingLink = link.link;
             this._pendingLinkX = e.clientX;
