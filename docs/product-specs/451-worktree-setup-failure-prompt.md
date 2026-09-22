@@ -5,7 +5,8 @@ type: bug
 complexity: M
 priority: P1
 pr: 452
-stage: GATE
+shipped: 2026-09-22
+stage: DONE
 ---
 
 # Ask the user when worktree setup fails instead of silently using a stale ref
@@ -14,7 +15,7 @@ stage: GATE
 - **Type:** bug
 - **Complexity:** M
 - **Priority:** P1
-- **Exec plan:** [docs/exec-plans/active/451-worktree-setup-failure-prompt.md](../exec-plans/active/451-worktree-setup-failure-prompt.md)
+- **Exec plan:** [docs/exec-plans/completed/451-worktree-setup-failure-prompt.md](../exec-plans/completed/451-worktree-setup-failure-prompt.md)
 
 ## Problem
 

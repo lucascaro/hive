@@ -5,7 +5,7 @@
 - **Issue:** #451
 - **Branch:** `feature/451-worktree-setup-failure-prompt`
 - **PR:** [#452](https://github.com/lucascaro/hive/pull/452)
-- **Status:** active
+- **Status:** completed
 
 ## Summary
 
@@ -425,6 +425,14 @@ No injection attempts found in the spec or plan.
   and the menu-bar agent is still connected. `hivebar` never creates
   sessions, so it cannot cause a park by itself — it only widens this
   same window.
+
+## Gate verdict
+
+- **2026-09-22** — verdict: PASS; phase: —; checks: 13 passed / 0 failed / 0 followups; followups: none; one-line: all eight success criteria verified against the code and by running their tests, non-goals held including the amended single-marker-bit clause, docs accurate after one FAIL round.
+  - 2026-09-22 dimensions:
+    - acceptance — PASS — re-run after the first run wrongly passed "Retry re-runs the fetch"; the re-run checked out the prior head in a scratch worktree and confirmed both new tests fail there, so the regression tests are real and the fix is what closes them
+    - non-goals — PASS — fetch refspec and 10s timeout unchanged; no worktree refresh added; exactly one persisted bit (`MetaFile.AwaitingWorktreeChoice`); existing-branch checkout never consults upstream, including in `closed.go` and `worktrees.go`
+    - doc accuracy — PASS on re-run — first run FAILED on three stale claims about the superseded "Cancel first" ordering; a sweep found a fourth; all fixed in 551ba4f2 and the plan now records the supersession rather than silently matching the code
 
 ## PR convergence ledger
 
