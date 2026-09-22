@@ -214,4 +214,84 @@ test.describe('spec 449 file links', () => {
     await clickLink(page, row, { ctrl: true });
     await expect(page.locator('#status-text')).toContainText('open file');
   });
+
+  test('the mouse-protocol workaround swallows a click only when it activates something', async ({
+    page,
+  }) => {
+    // session-term.ts intercepts mousedown on .xterm-screen so a link
+    // click survives a program that has mouse reporting on. A plain
+    // click on a *file* link activates nothing, so it must NOT be
+    // swallowed — it still belongs to selection and click-to-position.
+    // URL links are unchanged: they follow on a plain click.
+    const fileLink = { text: 'src/foo.ts', hiveFile: true };
+    const urlLink = { text: 'https://example.com/x' };
+
+    expect(await mousedownReachedScreen(page, fileLink, false)).toBe(true);
+    expect(await mousedownReachedScreen(page, fileLink, true)).toBe(false);
+    expect(await mousedownReachedScreen(page, urlLink, false)).toBe(false);
+  });
 });
+
+/**
+ * Dispatch a mousedown on the session's .xterm-screen with `target`
+ * staged as the link under the cursor, and report whether the event
+ * survived the mouse-protocol workaround's capture listener.
+ *
+ * A sentinel capture listener registered after that one runs only when
+ * it did not call stopImmediatePropagation — which is exactly the
+ * "don't swallow it" contract under test.
+ */
+async function mousedownReachedScreen(
+  page: Page,
+  target: { text?: string; hiveFile?: boolean },
+  ctrl: boolean,
+): Promise<boolean> {
+  return page.evaluate(
+    ({ t, c }) => {
+      const app = window.__hive_state;
+      const st = app?.terms.get(app.activeId ?? '') as SessionTerm | undefined;
+      if (!st) throw new Error('no tile for the active session');
+      const core = (
+        st.term as unknown as {
+          _core?: {
+            linkifier?: {
+              currentLink?: unknown;
+              _currentLink?: unknown;
+            } | null;
+          };
+        }
+      )._core;
+      if (!core?.linkifier) throw new Error('no linkifier');
+      const screen =
+        st.term.element?.querySelector<HTMLElement>('.xterm-screen');
+      if (!screen) throw new Error('no .xterm-screen');
+
+      // `currentLink` is a getter with no setter, so stage the link by
+      // writing the backing field the getter reads.
+      const prev = core.linkifier._currentLink;
+      core.linkifier._currentLink = { link: t };
+      if (core.linkifier.currentLink === undefined) {
+        throw new Error('staging currentLink failed — xterm internals moved');
+      }
+      let reached = false;
+      const sentinel = () => {
+        reached = true;
+      };
+      screen.addEventListener('mousedown', sentinel, { capture: true });
+      try {
+        screen.dispatchEvent(
+          new MouseEvent('mousedown', {
+            bubbles: true,
+            cancelable: true,
+            ctrlKey: c,
+          }),
+        );
+      } finally {
+        screen.removeEventListener('mousedown', sentinel, { capture: true });
+        core.linkifier._currentLink = prev;
+      }
+      return reached;
+    },
+    { t: target, c: ctrl },
+  );
+}
