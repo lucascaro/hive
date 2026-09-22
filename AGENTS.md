@@ -409,7 +409,10 @@ This repository uses Graphify to maintain a structural map of its logic and asse
   installs the `go` directive verbatim, so CI runs exactly that patch release.
   A local run on a newer toolchain can be green while CI is red (this is how
   three reachable stdlib advisories reached a required gate). Use
-  `GOTOOLCHAIN=$(sed -n 's/^go //p' go.mod)` when checking anything CI gates.
+  `GOTOOLCHAIN=go$(sed -n 's/^go //p' go.mod)` when checking anything CI
+  gates. The `go` prefix is required: the bare version (`GOTOOLCHAIN=1.27.1`)
+  is rejected with `go: invalid GOTOOLCHAIN`, so the command silently does
+  nothing useful without it.
 - **Static analysis is per-GOOS.** `staticcheck` analyses one platform at a
   time, so a symbol used only from `*_darwin.go` reads as dead on Linux
   (U1000) and a macOS-only run says nothing about the CI leg — which is

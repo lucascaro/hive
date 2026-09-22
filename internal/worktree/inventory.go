@@ -724,6 +724,15 @@ func scrubURLCredentials(s string) string {
 	return credentialsInURL.ReplaceAllString(s, "//***@")
 }
 
+// ScrubURLCredentials strips the userinfo half of any URL in s.
+//
+// Exported because git's output reaches the user through more than one
+// package: the registry puts it in the worktree-setup question a parked
+// session shows (internal/registry, spec 451), and an HTTPS remote can
+// carry a token in its userinfo. Scrubbing at every sink beats
+// remembering to scrub at every source.
+func ScrubURLCredentials(s string) string { return scrubURLCredentials(s) }
+
 // DeleteBranch removes a local branch. Without force this is `-d`,
 // which git itself refuses for a branch holding unmerged commits.
 func DeleteBranch(repoRoot, branch string, force bool) error {

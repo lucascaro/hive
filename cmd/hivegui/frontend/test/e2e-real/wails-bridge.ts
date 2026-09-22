@@ -224,6 +224,18 @@ export async function UpdateIdea(
 export async function ResolvePrompt(sessionID: string, paste: boolean) {
   return call('ResolvePrompt', { session_id: sessionID, paste: !!paste });
 }
+// Answering a session parked on a worktree-setup failure.
+export async function ResolveWorktreeChoice(
+  sessionID: string,
+  choice: string,
+  parkID = '',
+) {
+  return call('ResolveWorktreeChoice', {
+    session_id: sessionID,
+    choice: choice,
+    park_id: parkID,
+  });
+}
 export async function RemoveIdea(id: string) {
   return call('RemoveIdea', { id });
 }

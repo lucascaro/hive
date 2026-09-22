@@ -1,5 +1,11 @@
 [
   {
+    "title": "Worktree problems ask instead of guessing",
+    "blurb": "If Hive can't reach origin when creating a worktree session, it now asks what to do — retry, use the cached state, or cancel — instead of quietly starting you on stale code.",
+    "status": "shipped",
+    "since": "Unreleased"
+  },
+  {
     "title": "Click a file path to open it",
     "blurb": "⌘-click a file path in a session to open it in the OS default app, or ⇧⌘-click to open it in your editor at the clicked line. Paths are only underlined when the file really exists, and anything the OS would run is revealed in the file manager instead of launched.",
     "status": "shipped",

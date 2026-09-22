@@ -49,10 +49,14 @@ function ChoiceDialogBody({
   root: HTMLElement;
   spec: ChoiceSpec;
 }): ReactNode {
-  // A spec with no choices is a caller bug, but it must not become a
-  // dialog nothing can close: dismissChoiceDialog() falls back to the
-  // same literal, so Escape still settles the promise.
-  const safeValue = spec.choices[0]?.value ?? 'cancel';
+  // What the scrim / close affordance answers with. A spec with no
+  // choices is a caller bug, but it must not become a dialog nothing
+  // can close: dismissChoiceDialog() falls back to the same literal,
+  // so Escape still settles the promise. `dismissValue` lets a caller
+  // whose first choice is destructive opt out of answering on a
+  // dismissal (see ChoiceSpec) — kept in step with dismissChoiceDialog
+  // so the scrim and Escape cannot disagree.
+  const safeValue = spec.dismissValue ?? spec.choices[0]?.value ?? 'cancel';
 
   // Whatever had focus when the question was asked. Restored on
   // unmount, but only if it is still on the page: the button that
@@ -92,8 +96,11 @@ function ChoiceDialogBody({
       size="sm"
       title={spec.title}
       showCloseButton={false}
-      // The FIRST choice is the safe one: Escape and a backdrop click
-      // resolve to it, so a stray key can never destroy anything.
+      // Escape and a backdrop click resolve to the FIRST choice, so a
+      // stray key can never destroy anything — unless the spec set
+      // dismissValue, for a question whose first choice is itself
+      // destructive (see ChoiceSpec). safeValue already accounts for
+      // both, so this stays a single path.
       onClose={() => resolveChoiceDialog(safeValue)}
       actions={spec.choices.map((c) => (
         <Button

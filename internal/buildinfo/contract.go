@@ -24,6 +24,19 @@ package buildinfo
 // History (newest first), so a bump is a decision with a record and
 // not just a number going up:
 //
+//	16 — Worktree setup failures are put to the user (spec 451).
+//	    SessionInfo gained pending_worktree_choice (carrying a park_id)
+//	    and the `blocked` phase; RESOLVE_WORKTREE_CHOICE (0x31), which
+//	    echoes that park_id, answers it. The daemon
+//	    no longer branches from a stale cached ref, or drops the
+//	    worktree and starts in the project directory, on its own — it
+//	    parks the create and waits. That makes the pair inseparable in
+//	    both directions: an older GUI talking to this daemon shows a
+//	    session stuck in an unknown phase with no dialog and no way to
+//	    answer it (the create never completes), and a newer GUI talking
+//	    to an older daemon waits for a question that daemon will never
+//	    ask while it quietly does the thing the user was supposed to
+//	    approve. Neither is an empty answer; both are wrong ones.
 //	15 — Transcript search (spec 431). SEARCH_TRANSCRIPT /
 //	    TRANSCRIPT_MATCHES and GET_TRANSCRIPT_LINES / TRANSCRIPT_LINES:
 //	    the daemon reads an agent's on-disk JSONL transcript and answers
@@ -151,7 +164,7 @@ package buildinfo
 //	    before this cannot see or clear the flag.
 //	1 — first contract; everything up to and including the
 //	    CLIENT_COMMAND relay.
-const DaemonContract = 15
+const DaemonContract = 16
 
 // Identity is this binary's full build identity. `hived --version
 // --json` prints it, and Welcome carries the same three values, so a

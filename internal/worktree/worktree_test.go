@@ -3,6 +3,7 @@ package worktree
 import (
 	"bytes"
 	"context"
+	"errors"
 	"log"
 	"os"
 	"os/exec"
@@ -234,9 +235,12 @@ func TestCreateWorktree_UnreachableRemoteWarnsAndFallsBack(t *testing.T) {
 		t.Errorf("expected worktree warning in logs when remote is unreachable; got: %q", logs)
 	}
 	// Must mention either the fetch failure or the missing origin/HEAD so
-	// the operator can diagnose stale-upstream risk.
-	if !strings.Contains(logs, "fetch origin failed") && !strings.Contains(logs, "origin/HEAD not set") {
-		t.Errorf("expected log to mention fetch failure or missing origin/HEAD; got: %q", logs)
+	// the operator can diagnose stale-upstream risk. CreateWorktree is
+	// the non-interactive entry point: it still proceeds, but says so.
+	// The interactive path (internal/registry) parks on the same failure
+	// and asks the user instead — see PrepareBase.
+	if !strings.Contains(logs, "git fetch origin") && !strings.Contains(logs, "origin/HEAD not set") {
+		t.Errorf("expected log to mention the fetch failure or missing origin/HEAD; got: %q", logs)
 	}
 }
 
@@ -282,10 +286,10 @@ func TestCreateWorktree_ExistingBranchCheckedOutElsewhereReportsContext(t *testi
 	}
 }
 
-func TestCreateWorktree_AllAttemptsFailJoinsErrors(t *testing.T) {
+func TestCreateWorktree_FailureReportsTheBaseItUsed(t *testing.T) {
 	repo, _, _ := initRepoWithUpstream(t)
-	// ".." is invalid in ref names, so both the with-base and no-base
-	// attempts fail. The joined error must carry context from each.
+	// ".." is invalid in ref names, so the add fails. The error must
+	// name the base ref it was attempted against.
 	bad := "bad..name"
 	err := CreateWorktree(context.Background(), repo, bad, filepath.Join(repo, ".worktrees", "bad-name"))
 	if err == nil {
@@ -295,8 +299,11 @@ func TestCreateWorktree_AllAttemptsFailJoinsErrors(t *testing.T) {
 	if !strings.Contains(msg, `(base "origin/main")`) {
 		t.Errorf("error should report the upstream-base attempt; got: %v", err)
 	}
-	if !strings.Contains(msg, "(no base)") {
-		t.Errorf("error should report the no-base retry attempt; got: %v", err)
+	// There must be NO retry from local HEAD. That retry silently
+	// produced worktrees on a base the user never chose (#451), so its
+	// absence is the behaviour under test, not an omission.
+	if strings.Contains(msg, "(no base)") {
+		t.Errorf("no-base retry must not run: it branches from local HEAD without asking; got: %v", err)
 	}
 }
 
@@ -667,5 +674,95 @@ func TestHasUncommittedSeesRealWorkAtLinkedPaths(t *testing.T) {
 	mustWrite(t, filepath.Join(linked, "mine.md"), "my real work")
 	if dirty, err := HasUncommitted(wt); err != nil || !dirty {
 		t.Errorf("real content replacing a linked entry reads clean: %v, %v", dirty, err)
+	}
+}
+
+// --- #451: PrepareBase / CreateWorktreeAt ------------------------------
+//
+// The split exists so a caller can ask the user what to do about a
+// failed fetch instead of silently branching from a stale ref. These
+// tests pin the two halves of that contract.
+
+func TestPrepareBaseReturnsFetchErrorWithCachedTip(t *testing.T) {
+	repo, staleSHA, _ := initRepoWithUpstream(t)
+	// Break the remote AFTER the clone, so origin/main is populated and
+	// cached — exactly the state a laptop is in when it goes off VPN.
+	mustGit(t, repo, "remote", "set-url", "origin", filepath.Join(t.TempDir(), "gone.git"))
+
+	base, err := PrepareBase(context.Background(), repo)
+	if err == nil {
+		t.Fatal("PrepareBase with an unreachable remote must report the failure, not swallow it")
+	}
+	if base != "" {
+		t.Errorf("base must be empty on failure so no caller can use it by accident; got %q", base)
+	}
+	var fe *FetchError
+	if !errors.As(err, &fe) {
+		t.Fatalf("want *FetchError so the caller can offer the cached ref as a choice; got %T: %v", err, err)
+	}
+	if fe.BaseRef != "origin/main" {
+		t.Errorf("FetchError.BaseRef = %q, want origin/main", fe.BaseRef)
+	}
+	if fe.CachedTip != staleSHA {
+		t.Errorf("FetchError.CachedTip = %q, want the cached origin/main tip %q", fe.CachedTip, staleSHA)
+	}
+	if fe.TipAge <= 0 {
+		t.Errorf("FetchError.TipAge = %v, want a positive age (it is what the dialog shows)", fe.TipAge)
+	}
+	if fe.Stderr == "" {
+		t.Error("FetchError.Stderr must carry git's own words: the user judges staleness from them")
+	}
+}
+
+func TestPrepareBaseNoOriginIsNotAnError(t *testing.T) {
+	skipNoGit(t)
+	repo := initRepo(t) // no remote at all
+
+	base, err := PrepareBase(context.Background(), repo)
+	if err != nil {
+		t.Fatalf("a repo with no origin has no upstream to be stale against; want no error, got %v", err)
+	}
+	if base != "" {
+		t.Errorf("base = %q, want empty (branch from local HEAD)", base)
+	}
+}
+
+func TestCreateWorktreeAtUsesSuppliedBase(t *testing.T) {
+	repo, staleSHA, freshSHA := initRepoWithUpstream(t)
+	if staleSHA == freshSHA {
+		t.Fatal("fixture bug: upstream was not advanced")
+	}
+	// Fetch so origin/main is fresh locally, then branch explicitly
+	// from the STALE sha to prove the supplied base is what is used.
+	mustGit(t, repo, "fetch", "-q", "origin")
+
+	wtPath := WorktreePath(repo, "pinned")
+	if err := CreateWorktreeAt(context.Background(), repo, "pinned", wtPath, staleSHA); err != nil {
+		t.Fatalf("CreateWorktreeAt: %v", err)
+	}
+	defer Cleanup(repo, wtPath)
+
+	if got := revParse(t, wtPath, "HEAD"); got != staleSHA {
+		t.Errorf("worktree HEAD = %s, want the supplied base %s", got, staleSHA)
+	}
+}
+
+func TestCreateWorktreeAtDoesNotFallBackToHead(t *testing.T) {
+	repo, _, _ := initRepoWithUpstream(t)
+	mustGit(t, repo, "fetch", "-q", "origin")
+
+	// A base ref that does not exist: the add fails. The old code
+	// retried without a base, quietly producing a worktree on local
+	// HEAD; that fallback is what #451 removed.
+	wtPath := filepath.Join(repo, ".worktrees", "should-not-exist")
+	err := CreateWorktreeAt(context.Background(), repo, "feature-x", wtPath, "origin/nope")
+	if err == nil {
+		t.Fatal("CreateWorktreeAt with a bogus base must fail, not fall back to local HEAD")
+	}
+	if _, statErr := os.Stat(wtPath); statErr == nil {
+		t.Error("no worktree may exist after a failed add: a silent fallback is the bug under test")
+	}
+	if branchExists(context.Background(), repo, "feature-x") {
+		t.Error("no branch may be created from local HEAD when the requested base is unusable")
 	}
 }

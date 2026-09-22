@@ -183,6 +183,17 @@ const (
 	FrameTranscriptMatches  FrameType = 0x2e // S → C, JSON, control
 	FrameGetTranscriptLines FrameType = 0x2f // C → S, JSON, control
 	FrameTranscriptLines    FrameType = 0x30 // S → C, JSON, control
+
+	// FrameResolveWorktreeChoice answers the question a parked session
+	// is asking: its worktree setup failed, and only the user can say
+	// whether to retry, proceed from the cached upstream ref, or give
+	// up. See SessionInfo.PendingWorktreeChoice.
+	//
+	// Like RESOLVE_PROMPT this is client-initiated: the daemon parks
+	// the question as session state and holds nothing open while it
+	// waits, so the wait can be indefinite without pinning a goroutine
+	// or the registry's git lock.
+	FrameResolveWorktreeChoice FrameType = 0x31 // C → S, JSON, control
 )
 
 func (t FrameType) String() string {
@@ -267,6 +278,8 @@ func (t FrameType) String() string {
 		return "REMOVE_IDEA"
 	case FrameResolvePrompt:
 		return "RESOLVE_PROMPT"
+	case FrameResolveWorktreeChoice:
+		return "RESOLVE_WORKTREE_CHOICE"
 	case FrameIdeaEvent:
 		return "IDEA_EVENT"
 	case FrameSetWorktreeLabel:

@@ -57,6 +57,14 @@ leaving you to guess.
 
 ### Fixed
 - **Show the real reason a self-update fails, with the full build log one click away.** A git failure (for example, an unaccepted Xcode license) was reported as "checkout has no upstream branch to track", and a failed build quoted Wails' sponsorship link instead of the error. The update banner now shows git's own message and the last meaningful build line, plus a **View log** button that opens the complete build output in a scrollable modal. Hive launched from Spotlight or Finder now also runs the same `git` as your terminal.
+New worktree sessions no longer start on stale code without telling you. When
+Hive cannot reach `origin` before creating the branch — off VPN, or a fetch
+that times out on a large remote — it now asks what to do instead of quietly
+branching from the last state it fetched. The session waits, visible in the
+sidebar, with git's own error and how old the cached state is, and you can
+retry, use the cached state deliberately, or cancel. The same prompt covers a
+`git worktree add` that fails, which previously dropped the worktree and
+started the session in the project directory without saying so.
 
 ## [2.9.0] — 2026-09-17
 

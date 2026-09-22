@@ -30,6 +30,14 @@ type MetaFile struct {
 	// file. Empty ⇔ not pinned / not yet captured / agent does not
 	// support per-id resume.
 	AgentSessionID string `json:"agent_session_id,omitempty"`
+	// AwaitingWorktreeChoice marks an entry that was registered but
+	// never spawned because its worktree setup is parked on a user
+	// decision (see Entry.awaitingChoice). The resume state itself is
+	// in-memory, so this bit exists only to stop boot from reviving
+	// such an entry as an ordinary session. Absent in records written
+	// by older daemons, which decodes to false — the pre-451 behaviour,
+	// and correct for every entry they wrote.
+	AwaitingWorktreeChoice bool `json:"awaiting_worktree_choice,omitempty"`
 }
 
 // IndexFile is what we write to sessions/index.json.

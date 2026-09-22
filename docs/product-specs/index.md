@@ -26,6 +26,7 @@ The *what* and *why* of work this project plans to do. Each spec describes user 
 
 | Issue | Title | PR | Shipped | Spec |
 |-------|-------|----|---------|------|
+| #451 | Ask the user when worktree setup fails instead of silently using a stale ref | #452 | 2026-09-22 | [451-worktree-setup-failure-prompt](451-worktree-setup-failure-prompt.md) |
 | #439 | Upgrade xterm.js to 6.0 and fix the addon-search version mismatch | #441 | 2026-09-20 | [439-upgrade-xterm-js-to-6-0-and-fix-addon-search](439-upgrade-xterm-js-to-6-0-and-fix-addon-search.md) |
 | #442 | Add a Help button and Help modal to the sidebar header | #443 | 2026-09-20 | [442-add-a-help-button-and-help-modal](442-add-a-help-button-and-help-modal.md) |
 | #444 | Launcher: ideas default to a worktree, plain new session never remembers it | #445 | 2026-09-20 | [444-launcher-worktree-defaults](444-launcher-worktree-defaults.md) |
