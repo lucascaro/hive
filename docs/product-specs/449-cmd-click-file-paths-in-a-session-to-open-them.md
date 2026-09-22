@@ -5,13 +5,14 @@ type: enhancement
 complexity: L
 priority: P2
 pr: 450
-stage: GATE
+shipped: 2026-09-22
+stage: DONE
 ---
 
 # Cmd-click file paths in a session to open them
 
 - **Issue:** #449
-- **Exec plan:** [docs/exec-plans/active/449-cmd-click-file-paths-in-a-session-to-open-them.md](../exec-plans/active/449-cmd-click-file-paths-in-a-session-to-open-them.md) (or completed/)
+- **Exec plan:** [docs/exec-plans/completed/449-cmd-click-file-paths-in-a-session-to-open-them.md](../exec-plans/completed/449-cmd-click-file-paths-in-a-session-to-open-them.md)
 
 ## Problem
 

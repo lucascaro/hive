@@ -2,7 +2,7 @@
 
 - **Spec:** [docs/product-specs/449-cmd-click-file-paths-in-a-session-to-open-them.md](../../product-specs/449-cmd-click-file-paths-in-a-session-to-open-them.md)
 - **Issue:** #449
-- **Status:** active
+- **Status:** completed
 - **PR:** #450
 - **Branch:** feature/449-cmd-click-file-paths
 
@@ -217,6 +217,14 @@ cd cmd/hivegui/frontend && npx biome ci . && npm run typecheck && cd - && script
 ```
 
 Manual check against the real app, per `docs/verifying-the-gui-by-hand.md`: run `wails dev` and use Playwright on localhost:34115. Hover `README.md` in a shell session and confirm the underline. ⌘-click a `+x` script and confirm Finder reveals it rather than running it. The editor launch itself is covered by the stubbed Go test; don't launch real apps in automation.
+
+## Gate verdict
+
+- **2026-09-22** — verdict: PASS; phase: —; checks: 18 passed / 0 failed / 0 followups; followups: none; one-line: all 10 success criteria demonstrated by passing tests, no non-goal bled in, docs match — with the stated caveat that the Linux/Windows launch actions are unexercised on any platform.
+  - 2026-09-22 dimensions:
+    - acceptance — PASS — each of the 10 criteria cited to implementation + test, and the named tests were run (`go test -run 'ResolvePath|OpenFile|IsLaunchable|Editor|SplitArgv|AllowedURL'`, 44 vitest tests, 5 Playwright file-link specs). Criteria 6 and 8 carry a caveat: `isLaunchable` is table-tested for darwin/linux/windows from any host, which is what criterion 6 asks for, but the side-effecting `reveal`/`openDefault`/`statMeta` on Linux and Windows are pinned to "must not run" in the TestMain floor and have never executed anywhere. Disclosed in the changeset rather than claimed.
+    - non-goals — PASS — OSC 7, `$EDITOR`/`$VISUAL`, open-with pickers, in-app preview and non-terminal clickable paths all absent from the diff (present only as prose or as comments disclaiming them). Scope confined to `cmd/hivegui/**`, docs, changeset, README, `site/features.json`, plus the `x/sys` indirect→direct promotion at the same pinned version and its one-line comment fix in `internal/qos/qos_windows.go`.
+    - doc accuracy — PASS — changeset frontmatter valid and its Windows/Linux disclosure verified accurate against the TestMain floor; `CHANGELOG.md` untouched; README and the help overlay agree on "⌘-click"; `site/features.json` valid with `since: Unreleased`; `components.md` matches `EditorSettings.tsx`; the plan's stale "no cache (YAGNI)" line was corrected. Note: the Keybindings Policy's keymap and command-palette surfaces were left alone because this is a mouse chord with no rebindable keystroke — a defensible reading, flagged rather than silently skipped.
 
 ## PR convergence ledger
 
