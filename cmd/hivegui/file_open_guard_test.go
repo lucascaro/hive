@@ -53,6 +53,7 @@ func TestIsLaunchable(t *testing.T) {
 		{"windows scriptlet", "windows", `C:\x\payload.wsc`, fileMeta{}, true},
 		{"windows autohotkey", "windows", `C:\x\payload.ahk`, fileMeta{}, true},
 		{"windows mounted image", "windows", `C:\x\payload.iso`, fileMeta{}, true},
+		{"windows theme pack", "windows", `C:\x\payload.themepack`, fileMeta{}, true},
 		{"windows shortcut", "windows", `C:\x\evil.lnk`, fileMeta{}, true},
 		{"windows powershell", "windows", `C:\x\evil.ps1`, fileMeta{}, true},
 		{"windows url file", "windows", `C:\x\evil.url`, fileMeta{}, true},

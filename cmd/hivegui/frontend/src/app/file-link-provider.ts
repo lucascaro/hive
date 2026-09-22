@@ -231,6 +231,13 @@ export function createFileLinkProvider(
               hiveFile: true,
               text: c.path,
               range,
+              // Underline on hover, but keep the I-beam: the hand
+              // cursor promises a plain click does something, and for
+              // a file link a plain click deliberately does nothing
+              // (it stays selection and click-to-position). xterm
+              // defaults both decorations to true when the field is
+              // absent, so this has to be stated.
+              decorations: { underline: true, pointerCursor: false },
               activate: (e) => {
                 openFileLink(e, baseDir, c.path, c.line, c.col);
               },

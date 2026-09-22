@@ -224,12 +224,14 @@ Manual check against the real app, per `docs/verifying-the-gui-by-hand.md`: run 
 - **2026-09-22 iter 2** — verdict: REQUEST_CHANGES; mergeable: MERGEABLE; findings_hash: fec55bb3824f8fb4a78d3b18c37aa6dd8ac2ed3d9eee1ea60b3aaeecb8a65871; threads_open: 4; action: escalated:risky-fix-needs-human-decision; head_sha: 125b09ec.
 - **2026-09-22 iter 2b** — operator-approved fixes applied (app-kind editor guard, safeEvalSymlinks, in-flight cache, TOCTOU accepted with a ponytail comment); 4 CodeRabbit threads replied to and resolved; macOS e2e flake (activity-grid spec 428, untouched by this diff) passed on rerun; action: autofix+push; head_sha: 5a62db61.
 - **2026-09-22 iter 3** — verdict: REQUEST_CHANGES (COMMENT coerced: 8 IMPORTANT, 0 BLOCKING); mergeable: MERGEABLE; findings_hash: 85e965c960cbffdc4a0d05ce7b8814c58e88fe1a4bad81190805d311933e9847; threads_open: 0; action: autofix+push; head_sha: 5a62db61.
+- **2026-09-22 iter 3** — verdict: REQUEST_CHANGES; mergeable: MERGEABLE; findings_hash: 85e965c960cbffdc4a0d05ce7b8814c58e88fe1a4bad81190805d311933e9847; threads_open: 0; action: autofix+push; head_sha: eb365477.
+- **2026-09-22 iter 4** — verdict: REQUEST_CHANGES; mergeable: MERGEABLE; findings_hash: 9c8f3b0fc46f55920ddb9a9207d866fb23bc73902c6fb07db17183c7cefe6bf7; threads_open: 0; action: autofix+push; head_sha: d4a90108.
 
 ## Open questions / risks
 
 - **Private xterm API (verified)**: `Linkifier.currentLink` is `{link, state}`, and `link` is the provider's own `ILink` object (`Linkifier.ts:204-262`). So the `hiveFile` flag survives. For OSC 8, `text` is the URI (`OscLinkProvider.ts:56`), so the guard checks `text.startsWith('file:')`.
 - **`allowNonHttpProtocols: true`** now lets `mailto:`, `vscode:` and other schemes through as OSC 8 links. Every non-`file:` URI still goes to `OpenURL`, whose Go allowlist refuses anything except http, https and mailto, so the security boundary is unchanged. `TestAllowedURL` stays the guard.
-- **Hover cost**: each hovered line costs one bridge call and a few `stat`s. There is no cache (YAGNI). If a slow network mount lags, add a short time-to-live cache.
+- **Hover cost**: each hovered line costs one bridge call and a few `stat`s. Review added a bounded memo (3s TTL, 64 entries, keyed by base dir plus candidate list) that also shares the in-flight promise, since the pointer re-asks for a row within milliseconds.
 - **False positives**: bare `name.ext` tokens are only underlined if they exist, so false positives are cheap.
 - **Stale base dir**: relative paths use the launch or worktree dir, not the live cwd. This is a non-goal, and the existence check hides wrong guesses.
 - **VS Code without a CLI**: many mac users never install the `code` shell command. The preset then errors with "`code` not found on PATH — install the shell command from VS Code, or choose 'App'". This is a clear error rather than a silent fallback.

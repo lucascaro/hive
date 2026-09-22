@@ -91,6 +91,10 @@ var windowsExts = map[string]bool{
 	".chm": true, ".xll": true, ".xlam": true, ".ppam": true,
 	".ahk": true, ".wsc": true, ".sct": true, ".ws": true,
 	".search-ms": true, ".msix": true, ".appx": true,
+	// Applying a theme fetches every resource it names, so a remote
+	// path inside one is an outbound auth attempt — the same
+	// credential-leak class as .scf above.
+	".theme": true, ".themepack": true, ".deskthemepack": true,
 	// Explorer mounts these, which is how a payload gets a drive letter.
 	".iso": true, ".img": true, ".vhd": true, ".vhdx": true,
 }
