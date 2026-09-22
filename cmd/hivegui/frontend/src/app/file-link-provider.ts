@@ -115,8 +115,13 @@ function readLogicalLine(
       // characters of its own and must not shift the mapping.
       if (width === 0) continue;
       const chars = cell.getChars() || ' ';
-      for (const ch of chars) {
-        text += ch;
+      // One entry per UTF-16 code unit, not per code point: the offsets
+      // findPathCandidates returns come from String.matchAll and index
+      // `text` in UTF-16 units. An astral-plane glyph (😀) is one code
+      // point but two units, so iterating code points here would leave
+      // cells shorter than text and shift every later link's range.
+      for (let k = 0; k < chars.length; k++) {
+        text += chars[k];
         // xterm's buffer ranges are 1-based in both axes.
         cells.push({ x: x + 1, y: y + 1 });
       }

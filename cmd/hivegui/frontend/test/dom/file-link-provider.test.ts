@@ -177,6 +177,21 @@ describe('createFileLinkProvider', () => {
     });
   });
 
+  // An astral-plane emoji is ONE code point but TWO UTF-16 units, and
+  // the candidate offsets come from matchAll, which counts units. A
+  // cells[] built by iterating code points is shorter than the text it
+  // indexes, so every link to the right of one lands a column early.
+  it('maps offsets through an astral-plane emoji', async () => {
+    ResolveFilePaths.mockImplementationOnce(async () => ['/base/a/b.ts']);
+    const term = fakeTerm([['\u{1F600} a/b.ts', false]], 40, ['\u{1F600}']);
+    const links = await provide(term, 1);
+    // emoji(1-2) ' '(3) then a/b.ts occupies columns 4-9.
+    expect(links?.[0].range).toEqual({
+      start: { x: 4, y: 1 },
+      end: { x: 9, y: 1 },
+    });
+  });
+
   it('gives up on an absurdly long unwrapped line rather than walking it', async () => {
     const huge: [string, boolean][] = [];
     for (let i = 0; i < 300; i++) huge.push(['x'.repeat(200), i > 0]);
