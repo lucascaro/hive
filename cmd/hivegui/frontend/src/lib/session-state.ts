@@ -12,7 +12,7 @@
 // badly" signal the daemon sends, and it is what the dead-session
 // overlay already reads (app/events.ts, app/session-term.ts). icons.md
 // resolves the same way for the same reason.
-import { phaseOf, isReady } from './phase-steps.js';
+import { phaseOf, isReady, isBlocked } from './phase-steps.js';
 
 export type SessionState =
   | 'starting'
@@ -121,6 +121,12 @@ export function stateTooltip(s: StateCarrier, state?: SessionState): string {
 }
 
 export function sessionState(s: StateCarrier): SessionState {
+  // Parked on a worktree-setup decision. Not `starting`: nothing is in
+  // flight and nothing will advance until the user answers, which is
+  // precisely what `attention` ("Waiting for you") already means. The
+  // session is deliberately visible in this state rather than hidden
+  // behind a spinner.
+  if (isBlocked(phaseOf(s))) return 'attention';
   // A session mid-create has no PTY yet; `alive: false` there means
   // "not born", not "died" (same reasoning as sidebar.ts's dead class).
   if (!isReady(phaseOf(s))) return 'starting';

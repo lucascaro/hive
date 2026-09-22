@@ -85,7 +85,8 @@ import {
   gridWouldTile,
 } from './view.js';
 import { manualUpdateCheck, reloadGui, restartHive } from './banners.js';
-import { clearAttention } from './events.js';
+import { clearAttention, raiseWorktreeChoice } from './events.js';
+import { PHASE, phaseOf } from '../lib/phase-steps.js';
 import { goBack, goForward } from '../lib/nav-history.js';
 import { readProjectId } from '../lib/wire.js';
 import { clusterReorderOps } from '../lib/worktree-groups.js';
@@ -365,6 +366,30 @@ window.addEventListener(
         e.stopPropagation();
       }
       return; // the build log owns the keyboard while open
+    }
+
+    // Parked on a worktree decision: Enter re-raises the question for
+    // the focused tile. The tile's "Answer…" button is otherwise
+    // mouse-only — Escape dismisses without answering by design, and
+    // xterm's textarea swallows Tab, so without this a keyboard-only
+    // user could not get back to a question their session is stuck on.
+    // Routed before the dead-overlay block: a session can be blocked
+    // OR dead, never both (a parked session has no process to die).
+    const blockedId = appData().activeId;
+    if (
+      blockedId &&
+      e.key === 'Enter' &&
+      !e.metaKey &&
+      !e.ctrlKey &&
+      !e.altKey
+    ) {
+      const s = appData().sessions.find((x) => x.id === blockedId);
+      if (s && phaseOf(s) === PHASE.blocked) {
+        e.preventDefault();
+        e.stopPropagation();
+        raiseWorktreeChoice(blockedId);
+        return;
+      }
     }
 
     // Dead-session overlay: route Enter/Escape/r to the active session's

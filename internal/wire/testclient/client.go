@@ -199,6 +199,13 @@ func (c *Client) ResolvePrompt(req wire.ResolvePromptReq) error {
 	return c.cli.WriteJSON(wire.FrameResolvePrompt, req)
 }
 
+// ResolveWorktreeChoice sends RESOLVE_WORKTREE_CHOICE, answering a
+// session parked on a worktree-setup failure. Resolving a session that
+// is not parked is a no-op, so a test may send this freely.
+func (c *Client) ResolveWorktreeChoice(req wire.ResolveWorktreeChoiceReq) error {
+	return c.cli.WriteJSON(wire.FrameResolveWorktreeChoice, req)
+}
+
 // ListIdeas sends LIST_IDEAS. Use AwaitIdeas to consume the response.
 func (c *Client) ListIdeas(projectID string) error {
 	return c.cli.WriteJSON(wire.FrameListIdeas, wire.ListIdeasReq{ProjectID: projectID})

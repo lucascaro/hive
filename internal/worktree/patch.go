@@ -18,7 +18,12 @@ var ErrPatchTooLarge = errors.New("worktree: recovery patch exceeds cap")
 
 // BranchExists reports whether refs/heads/<branch> exists in repoDir.
 // Exported wrapper over the internal probe so the registry can decide
-// whether a deleted worktree is recreatable from its branch.
+// whether a deleted worktree is recreatable from its branch — and, in
+// create, whether this is a CHECKOUT of an existing branch rather than
+// a new one. That second caller has to ask before fetching: a checkout
+// never consults upstream, so it must not pay the fetch's latency, and
+// must never be parked on a fetch failure it does not depend on
+// (spec 451's non-goals).
 func BranchExists(repoDir, branch string) bool {
 	if repoDir == "" || branch == "" {
 		return false

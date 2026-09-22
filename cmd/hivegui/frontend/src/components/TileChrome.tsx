@@ -36,6 +36,7 @@ import { beginInlineRename } from '../app/inline-rename.js';
 import { setFocusedTile, refocusActiveTerm } from '../app/focus.js';
 import { minimizeSession } from '../app/view.js';
 import { openWorktrees } from '../app/modals/worktrees.js';
+import { raiseWorktreeChoice } from '../app/events.js';
 import { sessionState, stateTooltip } from '../lib/session-state.js';
 import { displayTitle } from '../lib/term-title.js';
 import { appStore, useAppStore, type TileChromeState } from '../store/store.js';
@@ -76,6 +77,7 @@ function TileChrome({ id }: { id: string }): ReactNode {
               onClose={() => term._closeDead()}
               onRestart={() => term._restartDead()}
               onDismiss={() => term._dismissDead()}
+              onAnswer={() => raiseWorktreeChoice(id)}
             />,
             term.overlays,
           )

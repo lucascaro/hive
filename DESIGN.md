@@ -105,8 +105,20 @@ Architectural invariants. Each one should ideally be enforceable by `gc-sweep` o
   load-bearing, since the other reading silently destroys commits.
   `git worktree list` is the source of truth for what exists; the registry
   stores no worktree records of its own.
+- **Worktree setup never degrades silently.** When the pre-branch
+  `git fetch origin` fails, or `git worktree add` itself fails, the daemon does
+  NOT branch from the cached `origin/HEAD` and does NOT fall back to a plain
+  session in the project directory. It parks the create — `SessionInfo`
+  carries `pending_worktree_choice`, the phase is `blocked`, and
+  `RESOLVE_WORKTREE_CHOICE` answers it — and waits indefinitely for the user to
+  retry, accept the degraded outcome, or cancel. Where no control client is
+  connected to be asked, the create fails outright rather than choosing. The
+  parked state is resumable data (`{spec, plan}` in the registry), never a
+  blocked goroutine and never held across `gitMu`: an unbounded wait must not
+  stall any other create or kill.
 - **Control-frame handlers that shell out to git run off the read loop.**
-  `CREATE_SESSION`, `KILL_SESSION`, `RESTART_SESSION`, `KILL_PROJECT`, and the
+  `CREATE_SESSION`, `KILL_SESSION`, `RESTART_SESSION`, `KILL_PROJECT`,
+  `RESOLVE_WORKTREE_CHOICE`, and the
   worktree frames (`LIST_WORKTREES`, `REMOVE_WORKTREE`, `CREATE_WORKTREE`,
   `RENAME_WORKTREE`, `DELETE_BRANCH`) are
   dispatched to goroutines owned by the daemon (drained in `Close`), so a slow

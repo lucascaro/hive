@@ -12,6 +12,7 @@ import {
   ConnectControl,
   LogFrontend,
   SetSessionAttention,
+  ResolveWorktreeChoice,
 } from '../bridge.js';
 import {
   noteLocalClose,
@@ -52,7 +53,10 @@ import { setStatus, flashStatus, reportFailure, setBootState } from './dom.js';
 import { orderedSessions } from './selectors.js';
 import { handleWorktreesPayload } from './modals/worktrees.js';
 import { refreshIdeas } from './modals/idea-inbox.js';
-import { openChoiceDialog } from './modals/choice-dialog.js';
+import {
+  openChoiceDialog,
+  dismissChoiceDialog,
+} from './modals/choice-dialog.js';
 import { KillProject } from '../bridge.js';
 import type { WorktreesPayload } from '../lib/worktrees.js';
 import { PHASE, phaseOf, isReady, isClosing } from '../lib/phase-steps.js';
@@ -289,6 +293,179 @@ function fireBellNotification(info: SessionInfo) {
     // Best-effort; the visual sidebar pulse covers the user even if
     // the OS notification fails (no notify-send installed, etc.).
   });
+}
+
+// Sessions whose worktree dialog is open or queued. A parked session
+// attracts repeated `updated` events, and without this each one would
+// ask again for a question already on screen.
+const askingWorktreeChoice = new Set<string>();
+
+// Parked questions are asked ONE AT A TIME, through this chain.
+//
+// openChoiceDialog() dismisses whatever is already open
+// (choice-dialog.ts). This dialog sets dismissValue: '' so that is a
+// non-answer rather than a destructive one — but a second parked
+// session raising its own question would still take the first one off
+// the screen unseen, and the first would then sit deferred with only
+// its tile to say so. That is the common case, not a corner: when the
+// remote is unreachable, every session launched in that batch parks.
+// Queue them instead, so each is actually asked.
+let worktreeChoiceChain: Promise<void> = Promise.resolve();
+
+// The session whose worktree dialog is on screen right now, or null.
+// Tracked separately from askingWorktreeChoice (which also holds
+// QUEUED ids) so that dismissing on removal closes this dialog and
+// never an unrelated one that happens to be open.
+let openWorktreeChoiceId: string | null = null;
+
+/** "3 days old" / "unknown age" for the cached-ref button. */
+function ageWords(secs: number | undefined): string {
+  if (!secs || secs <= 0) return 'unknown age';
+  const days = Math.floor(secs / 86400);
+  if (days >= 1) return `${days} day${days === 1 ? '' : 's'} old`;
+  const hours = Math.floor(secs / 3600);
+  if (hours >= 1) return `${hours} hour${hours === 1 ? '' : 's'} old`;
+  const mins = Math.max(1, Math.floor(secs / 60));
+  return `${mins} minute${mins === 1 ? '' : 's'} old`;
+}
+
+// maybeAskWorktreeChoice raises the decision a parked session is
+// waiting on: its worktree setup failed, and the daemon will not guess.
+//
+// Nothing is blocked on the daemon side while this is open, so the
+// dialog can stay up as long as the user needs. Escape and the scrim
+// resolve to dismissValue — '' here, meaning "not answered" — so
+// neither can decide anything on the user's behalf; the question is
+// deferred and the tile carries the way back to it.
+function maybeAskWorktreeChoice(info: SessionInfo) {
+  const q = info.pending_worktree_choice ?? info.pendingWorktreeChoice;
+  if (!q) {
+    // Answered (by this client or another window) — allow a future
+    // failure on the same id to ask again.
+    askingWorktreeChoice.delete(info.id);
+    // A second window may still be showing the question that was just
+    // answered elsewhere. Take it down rather than leave a stale modal
+    // whose buttons are now no-ops. dismissValue makes this a
+    // non-answer, so nothing is decided on the user's behalf.
+    if (openWorktreeChoiceId === info.id) dismissChoiceDialog();
+    return;
+  }
+  if (askingWorktreeChoice.has(info.id)) return;
+  askingWorktreeChoice.add(info.id);
+  // Queue behind any question already being asked, and re-read the
+  // session when this one's turn comes: it may have been killed, or
+  // answered from another window, while it waited.
+  worktreeChoiceChain = worktreeChoiceChain
+    .then(() => askWorktreeChoice(info.id))
+    // One rejection must not poison the chain for the window's
+    // lifetime: every later parked session would then never be asked.
+    .catch((err) => {
+      askingWorktreeChoice.delete(info.id);
+      reportFailure('worktree choice')(err);
+    });
+}
+
+/**
+ * Re-raise the question a parked session is waiting on. The tile's
+ * "Answer…" button calls this: a dismissal deliberately does not
+ * answer and does not re-ask, so this is the way back in.
+ */
+export function raiseWorktreeChoice(id: string) {
+  const info = appData().sessions.find((s) => s.id === id);
+  if (info) maybeAskWorktreeChoice(info);
+}
+
+async function askWorktreeChoice(id: string) {
+  const info = appData().sessions.find((s) => s.id === id);
+  const q = info
+    ? (info.pending_worktree_choice ?? info.pendingWorktreeChoice)
+    : undefined;
+  if (!info || !q) {
+    askingWorktreeChoice.delete(id);
+    return;
+  }
+
+  const fetchFailed = q.kind === 'fetch_failed';
+  const branch = q.branch ?? 'this worktree';
+  // No cached_ref means origin/HEAD never resolved, so proceeding
+  // branches from local HEAD. Say THAT. Defaulting the label to
+  // 'origin/main' told the user one base while the daemon used
+  // another, which is the silent-wrong-base outcome this feature
+  // exists to delete.
+  // snake_case ?? camelCase at the boundary, like every other reader.
+  const cachedRef = q.cached_ref ?? q.cachedRef;
+  const cachedAge = q.cached_tip_age_secs ?? q.cachedTipAgeSecs;
+  const proceedLabel = !fetchFailed
+    ? 'Use project directory'
+    : cachedRef
+      ? `Use cached ${cachedRef} (${ageWords(cachedAge)})`
+      : 'Use local HEAD (origin never resolved)';
+  openWorktreeChoiceId = id;
+  const answer = await openChoiceDialog({
+    title: fetchFailed
+      ? 'Could not reach origin'
+      : 'Could not create the worktree',
+    detail: info.name ?? 'Session',
+    bullets: [q.message],
+    note: !fetchFailed
+      ? `The session can still start in the project directory, without ` +
+        `the worktree ${branch}. Nothing is created until you choose.`
+      : cachedRef
+        ? `The new branch ${branch} would be based on the last fetched ` +
+          'state of origin, which may be behind. Retry once the remote is ' +
+          'reachable, or use the cached state deliberately.'
+        : `Nothing was ever fetched from origin here, so ${branch} would ` +
+          'come off this checkout\u2019s local HEAD rather than upstream. ' +
+          'Retry once the remote is reachable.',
+    // Retry leads, because the FIRST choice is the one that takes
+    // focus — and this dialog raises itself, unprompted, possibly
+    // while the user is typing. A stray Enter must not destroy a
+    // session, and Retry is the one answer that neither destroys work
+    // nor commits to a degraded base. Cancel sits last, marked
+    // danger, because it discards the worktree and deletes the
+    // session with no undo.
+    //
+    // Ordering is free to serve focus because dismissValue below
+    // decouples it from dismissal: before that, choices[0] was also
+    // what Escape and the scrim resolved to, which is why Cancel
+    // used to lead.
+    choices: [
+      { label: 'Retry', value: 'retry' },
+      { label: proceedLabel, value: 'proceed' },
+      { label: 'Cancel', value: 'cancel', danger: true },
+    ],
+    // A dismissal must not answer at all. Unrelated code dismisses
+    // whatever dialog is open on paths with nothing to do with this
+    // question — every worktree:list repaint, closing the worktree
+    // browser or the idea inbox, any other dialog opening — and the
+    // session waits here indefinitely, so that window is wide.
+    dismissValue: '',
+  });
+
+  openWorktreeChoiceId = null;
+  if (answer === '') {
+    // Dismissed, not answered — by Escape, or by unrelated code that
+    // dismisses whatever is open. Do NOT re-raise here: the choice
+    // dialog owns the keyboard app-wide, so re-asking in the same turn
+    // makes Escape inert and leaves the whole GUI unreachable until
+    // every parked session is answered. Step aside instead. The
+    // session stays parked and says so on its tile, which carries the
+    // way back: an "Answer…" button (TileOverlays) and Enter on the
+    // focused tile (keyboard.ts). A later session:list snapshot — a
+    // reconnect, or a new window — raises it again too, but nothing
+    // generates one on its own, so the affordance is the real path.
+    askingWorktreeChoice.delete(id);
+    return;
+  }
+  try {
+    await ResolveWorktreeChoice(info.id, answer, q.park_id ?? q.parkId ?? '');
+  } catch (err) {
+    reportFailure('resolve worktree choice')(err);
+  } finally {
+    // A retry that fails again parks the session afresh, and the next
+    // event must be able to raise the dialog again.
+    askingWorktreeChoice.delete(info.id);
+  }
 }
 
 // onSessionDeath fires once when a session transitions Alive→dead.
@@ -575,6 +752,13 @@ export function wireDaemonEvents(injected: EventsDeps) {
       syncAttentionClass(s, !sawFirstSessionList);
       processAliveTransition(s);
       termsMap().get(s.id)?.setPhase(phaseOf(s));
+      // A session parked on a worktree decision waits indefinitely, so
+      // it is routinely still parked when this window arrives — after a
+      // GUI reload, a control reconnect, or in a second window that
+      // never saw the original `added` event. The snapshot is the only
+      // place those learn about it; without this the session is
+      // unanswerable and can only be killed.
+      maybeAskWorktreeChoice(s);
     }
     sawFirstSessionList = true;
     // Drop any ids whose sessions no longer exist (e.g. after a daemon
@@ -617,6 +801,16 @@ export function wireDaemonEvents(injected: EventsDeps) {
     const i = appData().sessions.findIndex((s) => s.id === ev.session.id);
     if (ev.kind === 'added' || ev.kind === 'updated') {
       processAliveTransition(ev.session);
+    }
+    if (ev.kind === 'added' || ev.kind === 'updated') {
+      // A session parked on a worktree-setup failure. Raised as soon as
+      // it lands, like the dead-session card: the whole point of #451 is
+      // that these stop being silent. Must sit BEFORE the `added` branch
+      // below, which returns early — a parked session arrives as `added`
+      // first, and hooking in after it would never see one.
+      // maybeAskWorktreeChoice dedupes, so the repeated `updated` events
+      // a parked session attracts do not stack dialogs.
+      maybeAskWorktreeChoice(ev.session);
     }
     if (ev.kind === 'added') {
       addSession(ev.session);
@@ -673,6 +867,14 @@ export function wireDaemonEvents(injected: EventsDeps) {
       }
     }
     if (ev.kind === 'removed') {
+      // A parked session can be killed from another window (or by this
+      // one) while its dialog is up. Take the question down with it,
+      // rather than leaving a modal asking about a session that is
+      // gone — answering it would be a no-op the user cannot see.
+      const wasAsking = askingWorktreeChoice.delete(ev.session.id);
+      if (wasAsking && openWorktreeChoiceId === ev.session.id) {
+        dismissChoiceDialog();
+      }
       // Offers undo, but only for a close this client issued.
       onSessionRemoved(ev.session.id);
       forgetSession(ev.session.id);

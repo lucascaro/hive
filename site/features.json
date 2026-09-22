@@ -1,5 +1,11 @@
 [
   {
+    "title": "Worktree problems ask instead of guessing",
+    "blurb": "If Hive can't reach origin when creating a worktree session, it now asks what to do — retry, use the cached state, or cancel — instead of quietly starting you on stale code.",
+    "status": "shipped",
+    "since": "Unreleased"
+  },
+  {
     "title": "Restart an ended session",
     "blurb": "When a session's process exits, the card over it now offers Restart next to Close and Dismiss, so you can bring it back in place with one click or the r key.",
     "status": "shipped",

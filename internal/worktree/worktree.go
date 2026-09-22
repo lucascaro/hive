@@ -18,6 +18,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"time"
 
@@ -53,15 +54,166 @@ func WorktreePath(gitRoot, branch string) string {
 	return filepath.Join(gitRoot, ".worktrees", sanitizeBranch(branch))
 }
 
-// CreateWorktree runs `git worktree add` for the given branch. If the
-// branch doesn't exist yet, it is created from the detected upstream
-// default ref (typically `origin/main`) so worktrees start on the
-// latest upstream tip even when the local default branch is stale.
-// When no upstream is configured or the remote is unreachable, falls
-// back to creating the branch from local HEAD. Bounded by a 30-second
-// timeout so a slow / hung filesystem can't lock up session creation
-// forever, and by ctx so daemon shutdown cancels in-flight git work.
+// FetchError reports that the pre-branch `git fetch origin` failed, so
+// the cached `origin/HEAD` this repo already has may be behind the real
+// remote. It carries what a caller needs to ask the user an informed
+// question: git's own stderr, the ref that would be used anyway, and
+// how old that ref's tip is.
+//
+// It exists because branching from a stale ref silently is the bug
+// this type was introduced to kill — see
+// docs/product-specs/451-worktree-setup-failure-prompt.md. Callers that
+// genuinely cannot ask (no client attached) must fail, not fall back.
+type FetchError struct {
+	// BaseRef is the cached upstream ref (e.g. "origin/main"), or ""
+	// when origin/HEAD could not be resolved at all.
+	BaseRef string
+	// CachedTip is the commit BaseRef points at, or "" when unresolved.
+	CachedTip string
+	// TipAge is how long ago CachedTip was committed. Zero when unknown.
+	TipAge time.Duration
+	// Stderr is git's own message, already trimmed.
+	Stderr string
+	Err    error
+}
+
+func (e *FetchError) Error() string {
+	return fmt.Sprintf("git fetch origin: %s: %v", e.Stderr, e.Err)
+}
+
+func (e *FetchError) Unwrap() error { return e.Err }
+
+// PrepareBase resolves the ref a new branch should be created from,
+// refreshing `origin` first so it reflects the latest remote state.
+//
+// Returns ("", nil) when the repo has no `origin` remote: there is no
+// upstream to be stale against, so branching from HEAD is correct and
+// there is nothing to ask the user about.
+//
+// Returns a *FetchError when the fetch failed. The cached ref is still
+// reported in the error, so a caller that asks the user can offer it as
+// an explicit choice — but PrepareBase never makes that choice itself.
+func PrepareBase(ctx context.Context, repoDir string) (string, error) {
+	// Confirm `origin` exists before spending time on a fetch.
+	checkCtx, checkCancel := context.WithTimeout(ctx, 3*time.Second)
+	defer checkCancel()
+	if err := proc.CommandContext(checkCtx, "git", "-C", repoDir, "remote", "get-url", "origin").Run(); err != nil {
+		return "", nil
+	}
+
+	fetchCtx, fetchCancel := context.WithTimeout(ctx, 10*time.Second)
+	defer fetchCancel()
+	fetchOut, fetchErr := proc.CommandContext(fetchCtx, "git", "-C", repoDir, "fetch", "--quiet", "origin").CombinedOutput()
+	if fetchErr != nil {
+		// Resolve the cached ref anyway: it is what the user will be
+		// offered as the explicit fallback, and the age is what makes
+		// that offer meaningful.
+		base := resolveOriginHead(ctx, repoDir)
+		tip, age := tipAndAge(ctx, repoDir, base)
+		return "", &FetchError{
+			BaseRef:   base,
+			CachedTip: tip,
+			TipAge:    age,
+			// git echoes the remote back, and an HTTPS remote can carry a
+			// token in its userinfo. This text reaches a GUI dialog and
+			// hived.log, so scrub it on the way out — same helper the
+			// worktree inventory already uses for the same reason.
+			Stderr: scrubURLCredentials(strings.TrimSpace(string(fetchOut))),
+			Err:    fetchErr,
+		}
+	}
+
+	base := resolveOriginHead(ctx, repoDir)
+	if base == "" {
+		log.Printf("worktree: origin/HEAD not set in %s; new branch will come from local HEAD", repoDir)
+	}
+	return base, nil
+}
+
+// resolveOriginHead resolves origin/HEAD -> origin/<default-branch>,
+// or "" when it is not set.
+func resolveOriginHead(ctx context.Context, repoDir string) string {
+	resolveCtx, cancel := context.WithTimeout(ctx, 3*time.Second)
+	defer cancel()
+	out, err := proc.CommandContext(resolveCtx, "git", "-C", repoDir,
+		"symbolic-ref", "--short", "refs/remotes/origin/HEAD").Output()
+	if err != nil {
+		return ""
+	}
+	return strings.TrimSpace(string(out))
+}
+
+// tipAndAge returns the commit ref points at and how long ago it was
+// committed. Both are best-effort: a repo with no such ref reports
+// ("", 0), which callers render as "unknown".
+func tipAndAge(ctx context.Context, repoDir, ref string) (string, time.Duration) {
+	if ref == "" {
+		return "", 0
+	}
+	out, err := git(ctx, readTimeout, repoDir, "log", "-1", "--format=%H %ct", ref)
+	if err != nil {
+		return "", 0
+	}
+	fields := strings.Fields(strings.TrimSpace(string(out)))
+	if len(fields) != 2 {
+		return "", 0
+	}
+	secs, err := strconv.ParseInt(fields[1], 10, 64)
+	if err != nil {
+		return fields[0], 0
+	}
+	age := time.Since(time.Unix(secs, 0))
+	if age < 0 {
+		age = 0
+	}
+	return fields[0], age
+}
+
+// CreateWorktree resolves the base ref itself and then creates the
+// worktree. It is the non-interactive entry point: callers that want
+// to ask the user what to do about a failed fetch call PrepareBase and
+// CreateWorktreeAt separately (see internal/registry).
+//
+// Note it does NOT fall back to local HEAD when an add against a
+// resolved base ref fails — that fallback silently produced
+// wrong-base worktrees. The error propagates instead.
 func CreateWorktree(ctx context.Context, repoDir, branch, worktreePath string) error {
+	// Checking out a branch that already exists never consults
+	// upstream, so it must not pay the fetch's latency. Probed HERE,
+	// in the shared function, rather than in one caller: the registry's
+	// create path had this restored on its own, while reopening a
+	// closed session (closed.go) and the worktree browser
+	// (worktrees.go) still paid a 10s fetch they then ignored — the
+	// browser one while holding gitMu, blocking every other create and
+	// kill. Fixing the shared function covers all three.
+	if branchExists(ctx, repoDir, branch) {
+		return CreateWorktreeAt(ctx, repoDir, branch, worktreePath, "")
+	}
+
+	base, err := PrepareBase(ctx, repoDir)
+	if err != nil {
+		var fe *FetchError
+		if errors.As(err, &fe) {
+			// Non-interactive caller: keep today's behaviour of using
+			// the cached ref, but say so loudly.
+			log.Printf("worktree: %v; branching from cached %s", fe, fe.BaseRef)
+			base = fe.BaseRef
+		} else {
+			return err
+		}
+	}
+	return CreateWorktreeAt(ctx, repoDir, branch, worktreePath, base)
+}
+
+// CreateWorktreeAt runs `git worktree add` for the given branch,
+// creating it from base when the branch does not exist yet. An empty
+// base means "from local HEAD", which is correct only when the repo has
+// no upstream — never as a silent fallback for a failed fetch.
+//
+// Bounded by a 30-second timeout so a slow / hung filesystem can't lock
+// up session creation forever, and by ctx so daemon shutdown cancels
+// in-flight git work.
+func CreateWorktreeAt(ctx context.Context, repoDir, branch, worktreePath, base string) error {
 	if err := os.MkdirAll(filepath.Dir(worktreePath), 0o755); err != nil {
 		return fmt.Errorf("create worktree parent dir: %w", err)
 	}
@@ -69,9 +221,8 @@ func CreateWorktree(ctx context.Context, repoDir, branch, worktreePath string) e
 	// Existing branch? Probe the ref directly — exit-code based, so it
 	// works regardless of git's message locale. (The substring check
 	// below stays only as a TOCTOU safety net for a branch created
-	// between this probe and the add.) Probed before upstreamBaseRef:
-	// checking out an existing branch never branches from upstream, so
-	// it must not pay the fetch's network latency.
+	// between this probe and the add.) Checking out an existing branch
+	// never consults upstream, so base is irrelevant here.
 	if branchExists(ctx, repoDir, branch) {
 		out, err := gitWorktreeAdd(ctx, repoDir, worktreePath, branch)
 		if err != nil {
@@ -81,29 +232,24 @@ func CreateWorktree(ctx context.Context, repoDir, branch, worktreePath string) e
 		return nil
 	}
 
-	// Best-effort: refresh `origin` so the upstream tip we branch from
-	// reflects the latest remote state. Failures are logged via the
-	// returned base ref staying empty (callers fall back to HEAD).
-	upstream := upstreamBaseRef(ctx, repoDir)
-
 	var attempts []error
 
-	// Attempt 1: new branch from the upstream tip (or HEAD when no
-	// upstream resolved).
 	args := []string{"-b", branch, worktreePath}
-	if upstream != "" {
-		args = append(args, upstream)
+	if base != "" {
+		args = append(args, base)
 	}
 	out, err := gitWorktreeAdd(ctx, repoDir, args...)
 	if err == nil {
 		return nil
 	}
 	attempts = append(attempts, fmt.Errorf("new branch %s (base %q): %s: %w",
-		branch, upstream, strings.TrimSpace(string(out)), err))
+		branch, base, strings.TrimSpace(string(out)), err))
 
 	// The branch appeared between the probe above and the add (TOCTOU):
-	// fall back to checking it out. gitWorktreeAdd pins LC_ALL=C, so
-	// these substrings are stable across user locales.
+	// fall back to checking it out. That is the same branch, not a
+	// different base, so it is not a silent-fallback hazard.
+	// gitWorktreeAdd pins LC_ALL=C, so these substrings are stable
+	// across user locales.
 	if strings.Contains(string(out), "already exists") || strings.Contains(string(out), "fatal: A branch named") {
 		out2, err2 := gitWorktreeAdd(ctx, repoDir, worktreePath, branch)
 		if err2 == nil {
@@ -111,21 +257,8 @@ func CreateWorktree(ctx context.Context, repoDir, branch, worktreePath string) e
 		}
 		attempts = append(attempts, fmt.Errorf("existing branch %s: %s: %w",
 			branch, strings.TrimSpace(string(out2)), err2))
-		return fmt.Errorf("git worktree add: %w", errors.Join(attempts...))
 	}
 
-	// If we asked for an upstream base ref and it failed for some other
-	// reason (e.g. ref disappeared between fetch and add), retry without
-	// the explicit base ref so HEAD is used. This keeps creation robust
-	// in offline / shallow / sandboxed environments.
-	if upstream != "" {
-		out3, err3 := gitWorktreeAdd(ctx, repoDir, "-b", branch, worktreePath)
-		if err3 == nil {
-			return nil
-		}
-		attempts = append(attempts, fmt.Errorf("new branch %s (no base): %s: %w",
-			branch, strings.TrimSpace(string(out3)), err3))
-	}
 	return fmt.Errorf("git worktree add: %w", errors.Join(attempts...))
 }
 
@@ -151,40 +284,6 @@ func branchExists(ctx context.Context, repoDir, branch string) bool {
 	defer cancel()
 	return proc.CommandContext(ctx, "git", "-C", repoDir,
 		"rev-parse", "--verify", "--quiet", "refs/heads/"+branch).Run() == nil
-}
-
-// upstreamBaseRef returns the short name of the upstream default ref
-// (e.g. `origin/main`) when one is configured, or "" otherwise. Before
-// resolving, it best-effort fetches `origin` so the returned ref points
-// at the latest remote tip. Bounded by short timeouts; never blocks
-// worktree creation for long.
-func upstreamBaseRef(ctx context.Context, repoDir string) string {
-	// Confirm `origin` exists before spending time on a fetch.
-	checkCtx, checkCancel := context.WithTimeout(ctx, 3*time.Second)
-	defer checkCancel()
-	if err := proc.CommandContext(checkCtx, "git", "-C", repoDir, "remote", "get-url", "origin").Run(); err != nil {
-		return ""
-	}
-
-	// Best-effort fetch (10s). Network or auth failures fall through:
-	// we'll still resolve whatever `origin/HEAD` already points at locally.
-	// Warn so a stale cached origin/HEAD doesn't silently base new
-	// worktrees on outdated upstream — the very failure mode #192 fixed.
-	fetchCtx, fetchCancel := context.WithTimeout(ctx, 10*time.Second)
-	defer fetchCancel()
-	if fetchOut, fetchErr := proc.CommandContext(fetchCtx, "git", "-C", repoDir, "fetch", "--quiet", "origin").CombinedOutput(); fetchErr != nil {
-		log.Printf("worktree: fetch origin failed (%v); new worktree may be based on stale origin/HEAD: %s", fetchErr, strings.TrimSpace(string(fetchOut)))
-	}
-
-	// Resolve origin/HEAD -> origin/<default-branch>.
-	resolveCtx, resolveCancel := context.WithTimeout(ctx, 3*time.Second)
-	defer resolveCancel()
-	out, err := proc.CommandContext(resolveCtx, "git", "-C", repoDir, "symbolic-ref", "--short", "refs/remotes/origin/HEAD").Output()
-	if err != nil {
-		log.Printf("worktree: origin/HEAD not set in %s; falling back to local HEAD for new worktree", repoDir)
-		return ""
-	}
-	return strings.TrimSpace(string(out))
 }
 
 // Cleanup is the v2 idempotent removal helper used by registry.Kill

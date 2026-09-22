@@ -43,6 +43,18 @@ export interface ChoiceSpec {
   // The FIRST choice is treated as the safe one: it takes focus, and
   // it is what Escape and a scrim click resolve to.
   choices: Choice[];
+  // What a dismissal resolves to, when the first choice is the wrong
+  // answer to give on the user's behalf. Defaults to choices[0].value.
+  //
+  // dismissChoiceDialog() is called by unrelated code on paths that
+  // have nothing to do with the question — every worktree:list repaint,
+  // closing the worktree browser or the idea inbox, any other dialog
+  // opening. For a question whose safe-looking first choice is
+  // destructive (the parked-worktree prompt's Cancel discards a
+  // worktree and deletes the session) that turns an unrelated click
+  // into a silent, irreversible answer. Such a caller passes '' here
+  // and treats it as "not answered — ask again".
+  dismissValue?: string;
 }
 
 // The open question's resolver. Module-scope because the promise
@@ -73,8 +85,11 @@ export function dismissChoiceDialog(): boolean {
   const entry = appStore.getState().choiceDialog;
   if (!entry) return false;
   // The FIRST choice is the safe one, so a stray key can never destroy
-  // anything.
-  resolveChoiceDialog(entry.spec.choices[0]?.value ?? 'cancel');
+  // anything — unless the caller said otherwise, because for its
+  // question the first choice is not safe to give unprompted.
+  resolveChoiceDialog(
+    entry.spec.dismissValue ?? entry.spec.choices[0]?.value ?? 'cancel',
+  );
   return true;
 }
 
