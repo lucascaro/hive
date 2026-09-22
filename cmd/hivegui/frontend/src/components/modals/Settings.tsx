@@ -947,7 +947,7 @@ function SettingsDialog({ root }: { root: HTMLElement }): ReactNode {
         <EditorSettings
           draft={editorDraft}
           onChange={setEditorDraft}
-          disabled={editorFailed}
+          disabled={editorFailed || !editorLoaded}
         />
         <p
           id="settings-overrides-error"

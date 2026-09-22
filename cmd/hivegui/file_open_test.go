@@ -20,6 +20,7 @@ func TestResolvePath(t *testing.T) {
 	}
 	home := t.TempDir()
 	t.Setenv("HOME", home)
+	t.Setenv("USERPROFILE", home) // os.UserHomeDir on Windows
 	homeFile := filepath.Join(home, "notes.md")
 	if err := os.WriteFile(homeFile, []byte("x"), 0o644); err != nil {
 		t.Fatal(err)
