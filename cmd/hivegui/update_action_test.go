@@ -56,6 +56,20 @@ func TestMain(m *testing.M) {
 	restartDaemonFn = func(*App) error {
 		return fmt.Errorf("RestartDaemon must not run in tests")
 	}
+	// Spec 449's launch seams belong to the same floor: left live, a
+	// test that reaches App.OpenFile or runEditor without installing
+	// its own stub really runs `open`/`xdg-open`/ShellExecute or
+	// spawns the developer's editor. Tests that need them to do
+	// something install a recording stub and restore it in t.Cleanup.
+	openDefaultFn = func(string) error {
+		return fmt.Errorf("openDefault must not run in tests")
+	}
+	revealFn = func(string) error {
+		return fmt.Errorf("reveal must not run in tests")
+	}
+	startEditorFn = func(string, []string) error {
+		return fmt.Errorf("startEditor must not run in tests")
+	}
 	// os.Exit skips deferred cleanup, so run and capture first.
 	code := m.Run()
 	os.RemoveAll(sandbox)

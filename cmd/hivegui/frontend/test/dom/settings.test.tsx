@@ -49,6 +49,15 @@ const listAgents = vi.fn(
 // The updates section shares the modal but not this file's subject.
 // Stubbed to the quiet defaults so the agent assertions below stay
 // about agents; test/dom/settings-updates.test.ts drives it for real.
+// The Appearance tab's editor section shares the modal but not this
+// file's subject; test/dom/settings-editor.test.tsx drives it.
+const editorBridge = {
+  GetEditorSettings: vi.fn(() =>
+    Promise.resolve({ kind: '', command: '', app: '' }),
+  ),
+  SaveEditorSettings: vi.fn(() => Promise.resolve()),
+};
+
 const updateBridge = {
   GetUpdateSettings: vi.fn(() =>
     Promise.resolve({ channel: 'release', source_repo: '' }),
@@ -95,6 +104,7 @@ vi.mock('../../src/bridge.js', () => ({
   SetMenuBarLoginItem: (...a: Parameters<typeof setMenuBarLoginItem>) =>
     setMenuBarLoginItem(...a),
   ...updateBridge,
+  ...editorBridge,
 }));
 
 // settings.ts calls applyXtermTheme() when the theme changes; importing

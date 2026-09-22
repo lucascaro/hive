@@ -6,6 +6,7 @@
 # is exactly how a compiled hivebar reached main in a1a6ea5.
 /hive
 /hivegui
+/hivegui.exe
 /hived
 /hivebar
 /cmd/hivegui/hivegui

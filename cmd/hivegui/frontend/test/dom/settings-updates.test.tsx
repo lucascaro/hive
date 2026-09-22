@@ -51,6 +51,11 @@ const bridge = vi.hoisted(() => ({
   ),
   SaveAgentSettings: vi.fn(() => Promise.resolve()),
   ListAgents: vi.fn(() => Promise.resolve([])),
+  // Appearance-tab editor section; driven for real in settings-editor.
+  GetEditorSettings: vi.fn(() =>
+    Promise.resolve({ kind: '', command: '', app: '' }),
+  ),
+  SaveEditorSettings: vi.fn(() => Promise.resolve()),
 }));
 
 vi.mock('../../src/bridge.js', () => bridge);

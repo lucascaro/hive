@@ -995,8 +995,60 @@ export async function CloseWindow() {
 export async function IsGitRepo(_dir: string) {
   return false;
 }
-export async function OpenURL(_url: string) {
+// URLs the GUI asked the OS to open. A spec asserts that a file link
+// never lands here (and an http link never lands in openFileCalls).
+const openedUrls: string[] = [];
+export async function OpenURL(url: string) {
   maybeFail('OpenURL');
+  openedUrls.push(url);
+  return '';
+}
+// Files the mock pretends exist, as paths relative to the base dir or
+// absolute. A spec sets them with __hive.setMockFiles(); anything else
+// resolves empty and so gets no underline, which is the real rule.
+let mockFiles: string[] = [];
+export function __setMockFiles(files: string[]) {
+  mockFiles = files;
+}
+export const openFileCalls: {
+  baseDir: string;
+  path: string;
+  line: number;
+  col: number;
+  editor: boolean;
+}[] = [];
+export async function ResolveFilePaths(baseDir: string, candidates: string[]) {
+  maybeFail('ResolveFilePaths');
+  return candidates.map((c) =>
+    mockFiles.includes(c) ? `${baseDir}/${c}`.replace(/\/+/g, '/') : '',
+  );
+}
+export async function OpenFile(
+  baseDir: string,
+  path: string,
+  line: number,
+  col: number,
+  editor: boolean,
+) {
+  maybeFail('OpenFile');
+  openFileCalls.push({ baseDir, path, line, col, editor });
+  return '';
+}
+const editorSettings = { kind: '', command: '', app: '' };
+export async function GetEditorSettings() {
+  maybeFail('GetEditorSettings');
+  return { ...editorSettings };
+}
+export async function SaveEditorSettings(s: {
+  kind: string;
+  command: string;
+  app: string;
+}) {
+  maybeFail('SaveEditorSettings');
+  if (s.kind === 'command' && !s.command.includes('{file}')) {
+    throw new Error('the command must contain {file}');
+  }
+  Object.assign(editorSettings, s);
   return '';
 }
 export async function OpenTerminalAt(_dir: string) {
@@ -1604,6 +1656,22 @@ if (typeof window !== 'undefined') {
     },
     phaseHold(ms = 250) {
       phaseHoldMs = ms;
+    },
+    // Spec 449. setMockFiles decides which candidates ResolveFilePaths
+    // says exist, which is what the hover underline follows;
+    // openFileCalls is what ⌘-click actually asked Go to do.
+    setMockFiles(files: string[]) {
+      __setMockFiles(files);
+    },
+    openFileCalls() {
+      return [...openFileCalls];
+    },
+    openedUrls() {
+      return [...openedUrls];
+    },
+    resetOpenUrl() {
+      openedUrls.length = 0;
+      openFileCalls.length = 0;
     },
     // xterm caches its palette, so a theme change that reaches the CSS
     // is not proof it reached the terminals. This reads what the live

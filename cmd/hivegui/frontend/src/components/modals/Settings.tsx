@@ -48,7 +48,10 @@ import {
   SourceRepoStatusFor,
   StartUpdate,
   UpdateStatus,
+  GetEditorSettings,
+  SaveEditorSettings,
 } from '../../bridge.js';
+import { type EditorDraft, EditorSettings } from './EditorSettings.js';
 import { isMac } from '../../lib/platform.js';
 import {
   CHANNEL_LATEST,
@@ -160,6 +163,16 @@ function SettingsDialog({ root }: { root: HTMLElement }): ReactNode {
   const [claudeTaskTools, setClaudeTaskTools] = useState(true);
   const [piTodoTool, setPiTodoTool] = useState(true);
   const [agentSettingsFailed, setAgentSettingsFailed] = useState(false);
+  // editor.json, loaded and saved like agent-settings.json: a file
+  // that will not parse disables the section rather than being
+  // silently overwritten on the next save.
+  const [editorDraft, setEditorDraft] = useState<EditorDraft>({
+    kind: '',
+    command: '',
+    app: '',
+  });
+  const [editorFailed, setEditorFailed] = useState(false);
+  const [editorLoaded, setEditorLoaded] = useState(false);
   // Save must never write agent settings it has not read: the checkbox's
   // initial `true` is a display default, not the user's value, and saving
   // it before the read lands would overwrite a saved `false`. The box
@@ -344,6 +357,25 @@ function SettingsDialog({ root }: { root: HTMLElement }): ReactNode {
         setAgentSettingsFailed(true);
         showError(
           `Could not read agent-settings.json — fix or move the file, then reopen Settings. (${String(err?.message || err)})`,
+        );
+      });
+
+    GetEditorSettings()
+      .then((s) => {
+        if (!live) return;
+        setEditorDraft({
+          kind: (s?.kind ?? '') as EditorDraft['kind'],
+          command: s?.command ?? '',
+          app: s?.app ?? '',
+        });
+        setEditorFailed(false);
+        setEditorLoaded(true);
+      })
+      .catch((err) => {
+        if (!live) return;
+        setEditorFailed(true);
+        showError(
+          `Could not read editor.json — fix or move the file, then reopen Settings. (${String(err?.message || err)})`,
         );
       });
 
@@ -621,6 +653,11 @@ function SettingsDialog({ root }: { root: HTMLElement }): ReactNode {
           channel,
           source_repo: sourceRepo,
         } as main.UpdateSettings),
+      )
+      .then(() =>
+        !editorLoaded || editorFailed
+          ? undefined
+          : SaveEditorSettings(editorDraft as main.EditorSettings),
       )
       .then(() => {
         if (catalog && !catalogFailed) saveAgentPrefs(launcherPrefs);
@@ -916,6 +953,11 @@ function SettingsDialog({ root }: { root: HTMLElement }): ReactNode {
         >
           {overridesError}
         </p>
+        <EditorSettings
+          draft={editorDraft}
+          onChange={setEditorDraft}
+          disabled={editorFailed || !editorLoaded}
+        />
       </Panel>
 
       {showMenuBar ? (

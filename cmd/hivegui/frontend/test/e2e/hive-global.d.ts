@@ -56,6 +56,18 @@ interface HiveTestApi {
   setSessionPlan?(id: string, done: number, total: number, tool?: string): void;
   setSessionSubagents?(id: string, running: number): void;
   ringBell?(id: string): void;
+  // File links (spec 449): which paths the mock pretends exist, and
+  // what ⌘-click asked Go to open.
+  setMockFiles?(files: string[]): void;
+  openFileCalls?(): {
+    baseDir: string;
+    path: string;
+    line: number;
+    col: number;
+    editor: boolean;
+  }[];
+  openedUrls?(): string[];
+  resetOpenUrl?(): void;
   // Activity (spec 416): seed the GET_ACTIVITY answer, emit a raw
   // ACTIVITY frame, and read which sessions were requested.
   setActivity?(
