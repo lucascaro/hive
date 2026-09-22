@@ -2,7 +2,11 @@ package registry
 
 import (
 	"context"
+	"errors"
+	"fmt"
 	"log"
+	"os"
+	"path/filepath"
 	"runtime"
 	"slices"
 	"strings"
@@ -112,8 +116,27 @@ func (r *Registry) beginCreate(spec wire.CreateSpec) (*Entry, createPlan, error)
 // (see internal/daemon), so a slow git can no longer stall every other
 // client request.
 func (r *Registry) finishCreate(ctx context.Context, e *Entry, spec wire.CreateSpec, p createPlan) error {
+	parked, err := r.materializeWorktree(ctx, e, spec, &p)
+	if err != nil {
+		// Nothing can answer the question, so there is no session to
+		// have. materializeWorktree has already removed the entry.
+		return err
+	}
+	if parked {
+		// The user is being asked what to do. finishCreateTail runs
+		// from ResolveWorktreeChoice instead, whenever they answer —
+		// this goroutine returns holding nothing.
+		return nil
+	}
+	return r.finishCreateTail(ctx, e, spec, p)
+}
+
+// finishCreateTail is everything after worktree setup: the rename
+// fallback, the PTY fork, and the attach. Split out of finishCreate so
+// a create parked on a user decision can be resumed from
+// ResolveWorktreeChoice without duplicating it.
+func (r *Registry) finishCreateTail(ctx context.Context, e *Entry, spec wire.CreateSpec, p createPlan) error {
 	cmd := r.resolveAgentCmd(spec, p.id)
-	r.materializeWorktree(ctx, &p)
 	if p.nameFromBranch && p.wtBranch == "" {
 		r.renameAfterWorktreeFailure(e, spec)
 	}
@@ -782,35 +805,281 @@ func deliveryFor(spec wire.CreateSpec) promptDelivery {
 // session falls back to the plain project cwd. Aborting create on
 // worktree failure would block users on marginal repos (shallow
 // clones, sandbox restrictions, slow filesystems). Does not take r.mu.
-func (r *Registry) materializeWorktree(ctx context.Context, p *createPlan) {
+func (r *Registry) materializeWorktree(ctx context.Context, e *Entry, spec wire.CreateSpec, p *createPlan) (bool, error) {
 	// Skip the create when we're adopting an existing worktree from a
 	// sibling session — the directory is already on disk and `git
 	// worktree add` would fail.
 	if p.wtBranch == "" || p.adoptedPath != "" {
-		return
+		return false, nil
 	}
 	root, err := worktree.Root(p.cwd)
 	if err != nil {
-		p.wtPath, p.wtBranch = "", ""
-		return
+		// Near-unreachable: planWorktreeAndName already gated on
+		// IsGitRepo. Parked rather than swallowed so the "no silent
+		// fallback to the project directory" rule holds on every path.
+		return r.parkWorktreeChoice(e, spec, *p, &wire.PendingWorktreeChoice{
+			Kind:    wire.WorktreeChoiceCreateFailed,
+			Message: err.Error(),
+			Branch:  p.wtBranch,
+		}, "")
 	}
-	// gitMu serializes the worktree subprocesses across concurrent
-	// creates/kills. Taken before setPhase so the phase the client
-	// sees is "we are actually working", not "we are queued" — and
-	// never while holding r.mu (see Registry.gitMu).
+
+	// Step 1: the fetch. gitMu is held for the subprocess only — never
+	// across the park below, or one user staring at a dialog would
+	// block every other create and kill.
 	r.gitMu.Lock()
-	defer r.gitMu.Unlock()
 	r.setPhase(p.id, wire.PhaseFetching)
-	if cerr := worktree.CreateWorktree(ctx, root, p.wtBranch, p.wtPath); cerr != nil {
-		log.Printf("registry: worktree create failed (falling back to plain session): %v", cerr)
-		p.wtPath, p.wtBranch = "", ""
-		return
+	base, ferr := worktree.PrepareBase(ctx, root)
+	r.gitMu.Unlock()
+
+	if ferr != nil {
+		var fe *worktree.FetchError
+		if !errors.As(ferr, &fe) {
+			return r.parkWorktreeChoice(e, spec, *p, &wire.PendingWorktreeChoice{
+				Kind:    wire.WorktreeChoiceCreateFailed,
+				Message: ferr.Error(),
+				Branch:  p.wtBranch,
+			}, "")
+		}
+		// The cached ref is offered as an explicit choice, never taken
+		// on the user's behalf — branching from a stale ref silently is
+		// the bug (#451).
+		return r.parkWorktreeChoice(e, spec, *p, &wire.PendingWorktreeChoice{
+			Kind:             wire.WorktreeChoiceFetchFailed,
+			Message:          fe.Stderr,
+			Branch:           p.wtBranch,
+			CachedRef:        fe.BaseRef,
+			CachedTip:        fe.CachedTip,
+			CachedTipAgeSecs: int64(fe.TipAge.Seconds()),
+		}, fe.BaseRef)
+	}
+
+	return r.addWorktree(ctx, e, spec, p, root, base)
+}
+
+// addWorktree is step 2: the `git worktree add` itself, with the base
+// ref already decided (by PrepareBase, or by the user answering a
+// parked fetch failure). Parks on failure rather than falling back to
+// a plain session in the project directory.
+func (r *Registry) addWorktree(ctx context.Context, e *Entry, spec wire.CreateSpec, p *createPlan, root, base string) (bool, error) {
+	r.gitMu.Lock()
+	cerr := worktree.CreateWorktreeAt(ctx, root, p.wtBranch, p.wtPath, base)
+	r.gitMu.Unlock()
+	if cerr != nil {
+		return r.parkWorktreeChoice(e, spec, *p, &wire.PendingWorktreeChoice{
+			Kind:    wire.WorktreeChoiceCreateFailed,
+			Message: cerr.Error(),
+			Branch:  p.wtBranch,
+		}, base)
 	}
 	p.cwd = p.wtPath
 	r.setPhase(p.id, wire.PhaseWorktree)
 	worktree.EnsureGitignore(root)
 	worktree.LinkAgentConfig(root, p.wtPath)
-	log.Printf("registry: created worktree %s on branch %s", p.wtPath, p.wtBranch)
+	log.Printf("registry: created worktree %s on branch %s (base %q)", p.wtPath, p.wtBranch, base)
+	return false, nil
+}
+
+// parkedCreate is the state a create needs to resume after the user
+// answers a worktree-setup question. Everything in it is plain data:
+// that is what lets the create goroutine return instead of blocking,
+// so an indefinite wait costs nothing (#451).
+type parkedCreate struct {
+	entry *Entry
+	spec  wire.CreateSpec
+	plan  createPlan
+	// kind is the failure being asked about (wire.WorktreeChoice*).
+	kind string
+	// base is the ref "proceed" should branch from for a fetch failure:
+	// the cached upstream tip. Empty for a create failure, where
+	// proceeding means no worktree at all.
+	base string
+}
+
+// parkWorktreeChoice suspends a create on a user decision. It returns
+// (true, nil) when the question was parked, and (false, err) when
+// nothing can answer it — in which case the entry is removed and the
+// create fails, because proceeding silently is the behaviour this
+// whole feature exists to delete.
+func (r *Registry) parkWorktreeChoice(e *Entry, spec wire.CreateSpec, p createPlan, q *wire.PendingWorktreeChoice, base string) (bool, error) {
+	if !r.canAskUser() {
+		log.Printf("registry: worktree setup failed for %s and no control client is connected to ask: %s", p.id, q.Message)
+		r.discardWorktree(p)
+		r.removeEntry(p.id)
+		return false, fmt.Errorf("worktree setup failed and no client is connected to ask: %s", q.Message)
+	}
+
+	r.parkedMu.Lock()
+	r.parked[p.id] = &parkedCreate{entry: e, spec: spec, plan: p, kind: q.Kind, base: base}
+	r.parkedMu.Unlock()
+
+	r.mu.Lock()
+	if _, ok := r.entries[p.id]; !ok {
+		// Killed while the git work ran. Undo the park and let the
+		// caller unwind exactly as the spawn-failure path does.
+		r.mu.Unlock()
+		r.parkedMu.Lock()
+		delete(r.parked, p.id)
+		r.parkedMu.Unlock()
+		r.discardWorktree(p)
+		return false, ErrNotFound
+	}
+	e.pendingChoice = q
+	e.Phase = wire.PhaseBlocked
+	// The one bit that outlives this daemon: without it, boot cannot
+	// tell this entry from an ordinary worktree-less session.
+	e.awaitingChoice = true
+	r.persistEntryLoggedLocked(e, "create (parked on worktree choice)")
+	info := e.Info()
+	r.broadcastLocked(wire.SessionEventUpdated, info)
+	r.mu.Unlock()
+
+	log.Printf("registry: create %s parked on %s: %s", p.id, q.Kind, q.Message)
+	return true, nil
+}
+
+// ResolveWorktreeChoice answers a parked worktree-setup question and
+// resumes (or abandons) the create.
+//
+// Resolving a session that is not parked is a no-op: two clients can
+// race to answer the same dialog, and the loser must not see an error
+// for a decision that was made correctly once.
+func (r *Registry) ResolveWorktreeChoice(ctx context.Context, id, choice string) error {
+	r.parkedMu.Lock()
+	pc, ok := r.parked[id]
+	if ok {
+		delete(r.parked, id)
+	}
+	r.parkedMu.Unlock()
+	if !ok {
+		return nil
+	}
+
+	// Clear the question first: whatever happens next, it has been
+	// answered, and a stale copy would re-raise the dialog on any
+	// client that reconnects.
+	r.clearPendingChoice(id)
+
+	switch choice {
+	case wire.WorktreeChoiceCancel:
+		log.Printf("registry: create %s cancelled at the worktree prompt", id)
+		r.discardWorktree(pc.plan)
+		r.removeEntry(id)
+		return nil
+
+	case wire.WorktreeChoiceRetry:
+		// Re-run the whole worktree step, including the fetch: the
+		// user's reason for retrying is usually that they fixed the
+		// network, and a retry that skipped the fetch would branch
+		// from the same stale ref it just warned about.
+		plan := pc.plan
+		parked, err := r.materializeWorktree(ctx, pc.entry, pc.spec, &plan)
+		if err != nil || parked {
+			return err
+		}
+		return r.finishCreateTail(ctx, pc.entry, pc.spec, plan)
+
+	case wire.WorktreeChoiceProceed:
+		plan := pc.plan
+		if pc.kind == wire.WorktreeChoiceFetchFailed {
+			// Explicitly accept the cached ref.
+			root, err := worktree.Root(plan.cwd)
+			if err != nil {
+				r.discardWorktree(plan)
+				r.removeEntry(id)
+				return err
+			}
+			parked, aerr := r.addWorktree(ctx, pc.entry, pc.spec, &plan, root, pc.base)
+			if aerr != nil || parked {
+				return aerr
+			}
+			return r.finishCreateTail(ctx, pc.entry, pc.spec, plan)
+		}
+		// create_failed: proceed means a plain session in the project
+		// directory, which is what used to happen silently.
+		log.Printf("registry: create %s proceeding without a worktree by user choice", id)
+		plan.wtPath, plan.wtBranch = "", ""
+		return r.finishCreateTail(ctx, pc.entry, pc.spec, plan)
+
+	default:
+		// Unknown choice: re-park rather than guess. The entry keeps
+		// its state, so the client can ask again.
+		r.parkedMu.Lock()
+		r.parked[id] = pc
+		r.parkedMu.Unlock()
+		r.restorePendingChoice(id, pc)
+		return fmt.Errorf("unknown worktree choice %q", choice)
+	}
+}
+
+// clearPendingChoice drops a parked entry's question and its persisted
+// marker, and announces the change.
+func (r *Registry) clearPendingChoice(id string) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	e, ok := r.entries[id]
+	if !ok {
+		return
+	}
+	e.pendingChoice = nil
+	e.awaitingChoice = false
+	e.Phase = wire.PhaseStarting
+	r.persistEntryLoggedLocked(e, "resolve worktree choice")
+	r.broadcastLocked(wire.SessionEventUpdated, e.Info())
+}
+
+// restorePendingChoice puts a question back after a resolve that could
+// not be honoured (an unknown choice value).
+func (r *Registry) restorePendingChoice(id string, pc *parkedCreate) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	e, ok := r.entries[id]
+	if !ok {
+		return
+	}
+	e.pendingChoice = pc.entry.pendingChoiceCopy()
+	e.awaitingChoice = true
+	e.Phase = wire.PhaseBlocked
+	r.broadcastLocked(wire.SessionEventUpdated, e.Info())
+}
+
+// removeEntry deletes an entry that never became a session and tells
+// clients it is gone. Used by the cancel and no-client paths, where
+// beginCreate has already announced an entry that will now never exist.
+func (r *Registry) removeEntry(id string) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	e, ok := r.entries[id]
+	if !ok {
+		return
+	}
+	delete(r.entries, id)
+	for i, oid := range r.order {
+		if oid == id {
+			r.order = append(r.order[:i], r.order[i+1:]...)
+			break
+		}
+	}
+	r.reindexLocked()
+	r.persistIndexLoggedLocked("remove parked entry")
+	_ = os.RemoveAll(filepath.Join(SessionsDir(r.stateDir), id))
+	r.broadcastLocked(wire.SessionEventRemoved, e.Info())
+}
+
+// dropParked removes any parked create for id and returns its plan, so
+// a kill can discard a worktree the entry does not yet know about.
+// Kill is the one path that can delete a parked entry from under the
+// dialog, and without this the resume state would leak and a
+// partly-made worktree would be orphaned.
+func (r *Registry) dropParked(id string) (createPlan, bool) {
+	r.parkedMu.Lock()
+	defer r.parkedMu.Unlock()
+	pc, ok := r.parked[id]
+	if !ok {
+		return createPlan{}, false
+	}
+	delete(r.parked, id)
+	return pc.plan, true
 }
 
 // renameAfterWorktreeFailure relabels an entry whose name was derived

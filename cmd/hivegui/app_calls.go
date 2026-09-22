@@ -747,6 +747,23 @@ func (a *App) ResolvePrompt(sessionID string, paste bool) error {
 	})
 }
 
+// ResolveWorktreeChoice answers a session parked on a worktree-setup
+// failure: retry the step, proceed with the degraded outcome (the
+// cached upstream ref, or no worktree at all), or cancel the create.
+//
+// The session is waiting indefinitely until this arrives — nothing on
+// the daemon side is blocked while it does, which is what lets the
+// dialog stay up for as long as the user needs.
+func (a *App) ResolveWorktreeChoice(sessionID string, choice string) error {
+	cs, err := a.requireControl()
+	if err != nil {
+		return err
+	}
+	return cs.WriteJSON(wire.FrameResolveWorktreeChoice, wire.ResolveWorktreeChoiceReq{
+		SessionID: sessionID, Choice: choice,
+	})
+}
+
 // RemoveIdea deletes one idea outright. The GUI confirms first.
 func (a *App) RemoveIdea(id string) error {
 	cs, err := a.requireControl()

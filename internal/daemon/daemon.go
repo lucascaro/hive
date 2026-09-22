@@ -70,6 +70,13 @@ type Daemon struct {
 	mu      sync.Mutex
 	clients map[net.Conn]struct{}
 
+	// controlClients counts live ModeControl connections — the ones
+	// that can show a user a dialog. The registry consults it through
+	// SetHasControlClient before parking a create on a worktree-setup
+	// question, and fails the create outright when it is zero rather
+	// than falling back to a stale base ref nobody agreed to (#451).
+	controlClients int
+
 	// commands relays client-to-client verbs (see commands.go). Not
 	// state, so it is not in the registry.
 	commands *commandHub
@@ -315,6 +322,16 @@ func New(cfg Config) (*Daemon, error) {
 		shutdown:         make(chan struct{}),
 		stop:             make(chan struct{}),
 	}
+
+	// The registry cannot see connections, so it asks the daemon
+	// whether anyone could answer a worktree-setup dialog before
+	// parking a create on one. Wired here rather than in Open because
+	// only the daemon owns the count.
+	reg.SetHasControlClient(func() bool {
+		d.mu.Lock()
+		defer d.mu.Unlock()
+		return d.controlClients > 0
+	})
 
 	// The two slow boot chores run in the background, off the caller's
 	// path: reviving persisted sessions forks one PTY each, and the
@@ -644,6 +661,22 @@ func (d *Daemon) serve(ctx context.Context, conn net.Conn) {
 
 	switch hello.Mode {
 	case wire.ModeControl, wire.ModeSession:
+		// Count only ModeControl: this is what the registry asks
+		// before parking a session on a worktree-setup dialog, and a
+		// ModeSession connection is an agent's own events socket,
+		// which cannot render one. (hivebar is ModeControl and also
+		// cannot — it never creates sessions, so it can only widen the
+		// window where a park has no answerer, never open it.)
+		if hello.Mode == wire.ModeControl {
+			d.mu.Lock()
+			d.controlClients++
+			d.mu.Unlock()
+			defer func() {
+				d.mu.Lock()
+				d.controlClients--
+				d.mu.Unlock()
+			}()
+		}
 		d.serveControl(ctx, conn, hello)
 	case wire.ModeAttach:
 		d.serveAttach(conn, hello.SessionID)
@@ -1596,6 +1629,25 @@ func (d *Daemon) handleControlFrame(ctx context.Context, ops controlOps, ft wire
 			// that no longer exists.
 			ops.sendError(resolvePromptErrorCode(err), err.Error())
 		}
+	case wire.FrameResolveWorktreeChoice:
+		req, ok := decodeReq[wire.ResolveWorktreeChoiceReq](payload, ops.sendError)
+		if !ok {
+			return false
+		}
+		// Resuming re-runs git and forks the PTY, so it goes off the
+		// read loop like CREATE_SESSION itself — a slow retry fetch
+		// must not stall every other client request.
+		//
+		// ErrNotFound is swallowed: the session was killed while the
+		// dialog was open, which is a benign race. Resolving a session
+		// that is not parked is a no-op inside the registry, so two
+		// GUI windows racing to answer produce one action and no error.
+		d.runOp(func() {
+			if err := d.reg.ResolveWorktreeChoice(ctx, req.SessionID, req.Choice); err != nil &&
+				!errors.Is(err, registry.ErrNotFound) {
+				ops.sendError("resolve_worktree_choice_failed", err.Error())
+			}
+		})
 	case wire.FrameClientCommand:
 		cmd, ok := decodeReq[wire.ClientCommand](payload, ops.sendError)
 		if !ok {

@@ -108,6 +108,20 @@ type Entry struct {
 	// is wire.PhaseReady.
 	Phase string
 
+	// pendingChoice is the worktree-setup failure this entry is parked
+	// on, or nil. In-memory, like Phase — see awaitingChoice for the
+	// one bit that does survive a restart.
+	pendingChoice *wire.PendingWorktreeChoice
+
+	// awaitingChoice marks an entry that was persisted by beginCreate
+	// but never spawned, because its worktree setup is parked on a user
+	// decision. It IS persisted, unlike Phase and pendingChoice: on the
+	// next boot it is the only thing distinguishing such an entry from
+	// an ordinary worktree-less session, and reviving one as a plain
+	// session is precisely the silent fallback #451 removed. Boot marks
+	// these dead instead; the resume state itself is never persisted.
+	awaitingChoice bool
+
 	// screenDigest is the hash of the visible screen as of the last
 	// tick. The heuristic tier calls a session "working" when this
 	// changes and "idle" when it stops changing — not when bytes
@@ -244,19 +258,34 @@ func (e *Entry) Info() wire.SessionInfo {
 		WorktreeBranch: e.WorktreeBranch,
 		LastError:      e.LastError,
 		PendingPrompt:  e.pendingPrompt,
-		Phase:          e.Phase,
-		Title:          e.title(),
-		NeedsAttention: needsAttention(st.State),
-		State:          st.State,
-		StateSource:    st.Source,
-		LastPrompt:     st.LastPrompt,
-		LastSummary:    st.LastSummary,
-		PlanDone:       st.PlanDone,
-		PlanTotal:      st.PlanTotal,
-		CurrentTool:    st.CurrentTool,
+		// Copied, not shared: Info snapshots escape r.mu and a caller
+		// must not be able to mutate the entry's own pending choice.
+		PendingWorktreeChoice: e.pendingChoiceCopy(),
+		Phase:                 e.Phase,
+		Title:                 e.title(),
+		NeedsAttention:        needsAttention(st.State),
+		State:                 st.State,
+		StateSource:           st.Source,
+		LastPrompt:            st.LastPrompt,
+		LastSummary:           st.LastSummary,
+		PlanDone:              st.PlanDone,
+		PlanTotal:             st.PlanTotal,
+		CurrentTool:           st.CurrentTool,
 
 		SubagentsRunning: st.SubagentsRunning,
 	}
+}
+
+// pendingChoiceCopy returns a copy of the entry's parked
+// worktree-setup question, or nil. Copied because Info() snapshots
+// outlive r.mu: handing out the pointer would let a client-side
+// reader race the resolve that clears it.
+func (e *Entry) pendingChoiceCopy() *wire.PendingWorktreeChoice {
+	if e.pendingChoice == nil {
+		return nil
+	}
+	c := *e.pendingChoice
+	return &c
 }
 
 // title returns the window title of the live session, truncated to the
@@ -308,6 +337,25 @@ type Registry struct {
 	// resolved, in which case agent.SpawnInfo carries it through
 	// unresolved and the Claude adapter skips wiring hooks.
 	hivedPath string
+
+	// parked holds the resume state of creates waiting on a user
+	// decision about worktree setup, keyed by session id. Guarded by
+	// its own mutex, never r.mu or r.gitMu: the whole point of parking
+	// as state is that an indefinite wait holds no lock anyone else
+	// needs. See create.go's parkWorktreeChoice / ResolveWorktreeChoice.
+	parkedMu sync.Mutex
+	parked   map[string]*parkedCreate
+
+	// hasControlClient reports whether any client that could answer a
+	// worktree-setup dialog is connected. Set by the daemon, which is
+	// the only layer that knows about connections; it counts
+	// wire.ModeControl only, because a ModeSession connection is an
+	// agent's own events socket and cannot render a dialog.
+	//
+	// nil means "assume a client", which is what a bare Registry in a
+	// unit test wants: park, so the parking behaviour is testable
+	// without wiring a daemon. Production always sets it.
+	hasControlClient func() bool
 
 	projects     map[string]*Project
 	projectOrder []string
@@ -721,6 +769,20 @@ func (r *Registry) MarkPendingRevive() {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	for _, e := range r.entries {
+		// An entry parked on a worktree decision was registered but
+		// never spawned, and the {spec, plan} needed to resume it died
+		// with the old daemon. Reviving it would start a plain session
+		// in the project directory — the silent fallback #451 exists to
+		// remove — so it comes back dead, saying why. The marker is
+		// cleared and re-persisted so this happens once, not on every
+		// subsequent boot.
+		if e.awaitingChoice {
+			e.awaitingChoice = false
+			e.LastError = "worktree setup was interrupted by a daemon restart before this session started; create it again"
+			e.Phase = wire.PhaseReady
+			r.persistEntryLoggedLocked(e, "boot (parked worktree choice)")
+			continue
+		}
 		if e.sess == nil && e.Phase == wire.PhaseReady {
 			e.Phase = wire.PhaseReviving
 		}
@@ -759,6 +821,29 @@ func (r *Registry) SetSocketPath(p string) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	r.socketPath = p
+}
+
+// SetHasControlClient installs the predicate the registry uses to
+// decide whether a worktree-setup failure can be put to the user.
+// Called once by the daemon, which is the only layer that sees
+// connections. Without it the registry assumes a client is present
+// (see Registry.hasControlClient).
+func (r *Registry) SetHasControlClient(fn func() bool) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.hasControlClient = fn
+}
+
+// canAskUser reports whether a client capable of answering a parked
+// worktree question is connected.
+func (r *Registry) canAskUser() bool {
+	r.mu.Lock()
+	fn := r.hasControlClient
+	r.mu.Unlock()
+	if fn == nil {
+		return true
+	}
+	return fn()
 }
 
 // SetHivedPath records the resolved absolute path of the running
@@ -831,6 +916,7 @@ func Open(stateDir string) (*Registry, error) {
 	}
 	r := &Registry{
 		entries:           make(map[string]*Entry),
+		parked:            make(map[string]*parkedCreate),
 		stateDir:          stateDir,
 		projects:          make(map[string]*Project),
 		ideas:             make(map[string]*IdeaFile),
@@ -996,6 +1082,7 @@ func (r *Registry) load() error {
 			WorktreePath:   meta.WorktreePath,
 			WorktreeBranch: meta.WorktreeBranch,
 			AgentSessionID: meta.AgentSessionID,
+			awaitingChoice: meta.AwaitingWorktreeChoice,
 		}
 		r.order = append(r.order, meta.ID)
 		seen[meta.ID] = true
@@ -1360,12 +1447,26 @@ func (r *Registry) KillAndRemoveWorktree(id string, force bool) error {
 }
 
 func (r *Registry) kill(id string, force, removeWorktree bool) error {
+	// A session parked on a worktree-setup question can be killed from
+	// under the dialog. Its worktree (if the add half-succeeded) is not
+	// on the entry yet, so the cleanup below cannot see it, and its
+	// resume state would otherwise leak. Handle both before the entry
+	// goes away — same rule the mid-create races follow in create.go.
+	if plan, parked := r.dropParked(id); parked {
+		log.Printf("registry: kill %s: session was parked on a worktree choice; discarding it", id)
+		r.discardWorktree(plan)
+	}
+
 	r.mu.Lock()
 	e, ok := r.entries[id]
 	if !ok {
 		r.mu.Unlock()
 		return ErrNotFound
 	}
+	// Whatever happens below, the question is moot — and it must not
+	// survive on a snapshot a client could still act on.
+	e.pendingChoice = nil
+	e.awaitingChoice = false
 
 	// Capture worktree state and resolved repo root BEFORE we remove
 	// the entry from the map. Kill happens outside the lock; we'd
@@ -1702,6 +1803,10 @@ func (r *Registry) persistEntryLocked(e *Entry) error {
 		WorktreePath:   e.WorktreePath,
 		WorktreeBranch: e.WorktreeBranch,
 		AgentSessionID: e.AgentSessionID,
+		// See Entry.awaitingChoice: the one create-time bit that has to
+		// survive a restart, so boot can tell a parked entry from an
+		// ordinary session instead of reviving it into a plain one.
+		AwaitingWorktreeChoice: e.awaitingChoice,
 	})
 }
 

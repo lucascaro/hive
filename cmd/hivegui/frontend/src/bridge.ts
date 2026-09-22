@@ -43,6 +43,7 @@ export {
   UpdateIdea,
   RemoveIdea,
   ResolvePrompt,
+  ResolveWorktreeChoice,
   ListWorktrees,
   RemoveWorktree,
   CreateWorktree,

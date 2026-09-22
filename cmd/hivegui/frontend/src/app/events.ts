@@ -12,6 +12,7 @@ import {
   ConnectControl,
   LogFrontend,
   SetSessionAttention,
+  ResolveWorktreeChoice,
 } from '../bridge.js';
 import {
   noteLocalClose,
@@ -289,6 +290,74 @@ function fireBellNotification(info: SessionInfo) {
     // Best-effort; the visual sidebar pulse covers the user even if
     // the OS notification fails (no notify-send installed, etc.).
   });
+}
+
+// Sessions whose worktree dialog is already open (or already
+// answered). A parked session attracts repeated `updated` events, and
+// without this each one would stack another identical dialog.
+const askingWorktreeChoice = new Set<string>();
+
+/** "3 days old" / "unknown age" for the cached-ref button. */
+function ageWords(secs: number | undefined): string {
+  if (!secs || secs <= 0) return 'unknown age';
+  const days = Math.floor(secs / 86400);
+  if (days >= 1) return `${days} day${days === 1 ? '' : 's'} old`;
+  const hours = Math.floor(secs / 3600);
+  if (hours >= 1) return `${hours} hour${hours === 1 ? '' : 's'} old`;
+  const mins = Math.max(1, Math.floor(secs / 60));
+  return `${mins} minute${mins === 1 ? '' : 's'} old`;
+}
+
+// maybeAskWorktreeChoice raises the decision a parked session is
+// waiting on: its worktree setup failed, and the daemon will not guess.
+//
+// Nothing is blocked on the daemon side while this is open, so the
+// dialog can stay up as long as the user needs. Escape resolves to the
+// first choice, which is why Cancel is first (choice-dialog.ts).
+async function maybeAskWorktreeChoice(info: SessionInfo) {
+  const q = info.pending_worktree_choice ?? info.pendingWorktreeChoice;
+  if (!q) {
+    // Answered (by this client or another window) — allow a future
+    // failure on the same id to ask again.
+    askingWorktreeChoice.delete(info.id);
+    return;
+  }
+  if (askingWorktreeChoice.has(info.id)) return;
+  askingWorktreeChoice.add(info.id);
+
+  const fetchFailed = q.kind === 'fetch_failed';
+  const branch = q.branch ?? 'this worktree';
+  const proceedLabel = fetchFailed
+    ? `Use cached ${q.cached_ref || 'origin/main'} (${ageWords(q.cached_tip_age_secs)})`
+    : 'Use project directory';
+  const answer = await openChoiceDialog({
+    title: fetchFailed
+      ? 'Could not reach origin'
+      : 'Could not create the worktree',
+    detail: info.name ?? 'Session',
+    bullets: [q.message],
+    note: fetchFailed
+      ? `The new branch ${branch} would be based on the last fetched ` +
+        'state of origin, which may be behind. Retry once the remote is ' +
+        'reachable, or use the cached state deliberately.'
+      : `The session can still start in the project directory, without ` +
+        `the worktree ${branch}. Nothing is created until you choose.`,
+    choices: [
+      { label: 'Cancel', value: 'cancel' },
+      { label: 'Retry', value: 'retry' },
+      { label: proceedLabel, value: 'proceed' },
+    ],
+  });
+
+  try {
+    await ResolveWorktreeChoice(info.id, answer);
+  } catch (err) {
+    reportFailure('resolve worktree choice')(err);
+  } finally {
+    // A retry that fails again parks the session afresh, and the next
+    // event must be able to raise the dialog again.
+    askingWorktreeChoice.delete(info.id);
+  }
 }
 
 // onSessionDeath fires once when a session transitions Alive→dead.
@@ -617,6 +686,16 @@ export function wireDaemonEvents(injected: EventsDeps) {
     const i = appData().sessions.findIndex((s) => s.id === ev.session.id);
     if (ev.kind === 'added' || ev.kind === 'updated') {
       processAliveTransition(ev.session);
+    }
+    if (ev.kind === 'added' || ev.kind === 'updated') {
+      // A session parked on a worktree-setup failure. Raised as soon as
+      // it lands, like the dead-session card: the whole point of #451 is
+      // that these stop being silent. Must sit BEFORE the `added` branch
+      // below, which returns early — a parked session arrives as `added`
+      // first, and hooking in after it would never see one.
+      // maybeAskWorktreeChoice dedupes, so the repeated `updated` events
+      // a parked session attracts do not stack dialogs.
+      maybeAskWorktreeChoice(ev.session);
     }
     if (ev.kind === 'added') {
       addSession(ev.session);

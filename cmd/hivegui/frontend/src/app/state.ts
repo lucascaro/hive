@@ -97,6 +97,26 @@ export interface SessionInfo {
   pending_prompt?: string;
   /** camelCase tolerated at the boundary, like every other reader. */
   pendingPrompt?: string;
+  /** Worktree setup failed and this session is parked until the user
+   *  says what to do. The dialog renders from this; the session waits
+   *  indefinitely. See internal/wire PendingWorktreeChoice. */
+  pending_worktree_choice?: PendingWorktreeChoice;
+  /** camelCase tolerated at the boundary, like every other reader. */
+  pendingWorktreeChoice?: PendingWorktreeChoice;
+}
+
+/** A worktree-setup failure awaiting a user decision. Mirrors
+ *  wire.PendingWorktreeChoice — snake_case on the wire. */
+export interface PendingWorktreeChoice {
+  /** 'fetch_failed' | 'create_failed' */
+  kind: string;
+  /** git's own stderr, trimmed. */
+  message: string;
+  branch?: string;
+  cached_ref?: string;
+  cached_tip?: string;
+  /** 0 ⇒ unknown, which renders as "unknown age", not "brand new". */
+  cached_tip_age_secs?: number;
 }
 
 /** Reads the daemon's attention flag off a session, defaulting to false

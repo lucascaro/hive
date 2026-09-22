@@ -34,6 +34,7 @@ export const PHASE = {
   closing: 'closing',
   restarting: 'restarting',
   reviving: 'reviving',
+  blocked: 'blocked',
 } as const;
 
 export type Phase = (typeof PHASE)[keyof typeof PHASE];
@@ -62,6 +63,18 @@ export function isStarting(phase: string): boolean {
     phase === PHASE.restarting ||
     phase === PHASE.reviving
   );
+}
+
+/**
+ * Parked on a user decision: worktree setup failed and the daemon is
+ * waiting for an answer (see SessionInfo.pending_worktree_choice).
+ *
+ * Deliberately NOT isStarting: nothing is in flight, and rendering it
+ * as progress would show a spinner that never resolves — the session
+ * is waiting on the user, not on work.
+ */
+export function isBlocked(phase: string): boolean {
+  return phase === PHASE.blocked;
 }
 
 /** Going away: the kill path. Errors from a session here are noise. */
@@ -116,6 +129,14 @@ export function phasePanel({
     return {
       status: `Starting ${agentLabel}…`,
       steps: [{ label: `Starting ${agentLabel}`, state: 'active' }],
+    };
+  }
+  // Parked on a worktree-setup decision. A checklist would imply
+  // progress; this is a stop, and the dialog carries the detail.
+  if (phase === 'blocked') {
+    return {
+      status: 'Waiting for your answer…',
+      steps: [{ label: 'Worktree setup needs a decision', state: 'active' }],
     };
   }
   if (phase === 'restarting') {

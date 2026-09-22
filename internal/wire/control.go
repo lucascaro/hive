@@ -170,6 +170,17 @@ type SessionInfo struct {
 	// itself, because only the user can see whether the agent is at a
 	// prompt box or still on a startup gate that would swallow it.
 	PendingPrompt string `json:"pending_prompt,omitempty"`
+	// PendingWorktreeChoice is a worktree-setup failure waiting for the
+	// user to decide what to do about it. Non-nil only between the
+	// failure and the answering RESOLVE_WORKTREE_CHOICE. The session
+	// exists but has not spawned: it is parked, deliberately visible,
+	// and waits indefinitely.
+	//
+	// Parked as state rather than as a blocked call because the wait is
+	// unbounded — see docs/exec-plans/completed/451-*.md. Cleared on
+	// resolve and on kill, so a reconnecting client never re-raises a
+	// decision the user already made.
+	PendingWorktreeChoice *PendingWorktreeChoice `json:"pending_worktree_choice,omitempty"`
 	// Phase is the session's lifecycle phase. Empty means ready (the
 	// steady state), which keeps the field omitempty on the wire and
 	// makes every entry loaded from disk ready by default. See the
@@ -332,6 +343,12 @@ const (
 	PhaseClosing    = "closing"    // kill: PTY teardown + worktree removal
 	PhaseRestarting = "restarting" // restart: PTY recycled in place
 	PhaseReviving   = "reviving"   // daemon boot: restored session waiting its turn to respawn
+	// PhaseBlocked: worktree setup failed and the session is parked on
+	// a user decision (see PendingWorktreeChoice). Distinct from the
+	// other create phases because it is not progress — nothing advances
+	// until the user answers, and the UI must say so rather than show a
+	// spinner forever.
+	PhaseBlocked = "blocked"
 )
 
 // ListSessionsReq is the LIST_SESSIONS payload (currently empty).
@@ -930,6 +947,66 @@ type UpdateIdeaReq struct {
 type ResolvePromptReq struct {
 	SessionID string `json:"session_id"`
 	Paste     bool   `json:"paste"`
+}
+
+// Kinds of worktree setup failure a session can be parked on.
+const (
+	// WorktreeChoiceFetchFailed: `git fetch origin` failed, so the
+	// cached upstream ref may be behind the real remote.
+	WorktreeChoiceFetchFailed = "fetch_failed"
+	// WorktreeChoiceCreateFailed: `git worktree add` itself failed.
+	WorktreeChoiceCreateFailed = "create_failed"
+)
+
+// Answers to a PendingWorktreeChoice.
+const (
+	// WorktreeChoiceCancel abandons the create: no session, no worktree.
+	WorktreeChoiceCancel = "cancel"
+	// WorktreeChoiceRetry re-runs the step that failed.
+	WorktreeChoiceRetry = "retry"
+	// WorktreeChoiceProceed accepts the degraded outcome the failure
+	// implies — branching from the cached ref for fetch_failed, or a
+	// plain session in the project directory for create_failed. It is
+	// what used to happen silently, and now only happens when the user
+	// says so.
+	WorktreeChoiceProceed = "proceed"
+)
+
+// PendingWorktreeChoice describes a worktree setup failure the user
+// must resolve before the session can start.
+//
+// It carries git's own words rather than a paraphrase: the user is
+// being asked to judge whether a stale base is acceptable, and
+// "could not resolve hostname" versus "connection timed out" changes
+// that answer.
+type PendingWorktreeChoice struct {
+	// Kind is WorktreeChoiceFetchFailed or WorktreeChoiceCreateFailed.
+	Kind string `json:"kind"`
+	// Message is git's stderr, trimmed.
+	Message string `json:"message"`
+	// Branch is the branch that was being created.
+	Branch string `json:"branch,omitempty"`
+	// CachedRef is the upstream ref that would be used if the user
+	// proceeds (e.g. "origin/main"). Empty when none resolved.
+	CachedRef string `json:"cached_ref,omitempty"`
+	// CachedTip is the commit CachedRef points at. Empty when unknown.
+	CachedTip string `json:"cached_tip,omitempty"`
+	// CachedTipAgeSecs is how old that commit is, in seconds. Zero
+	// means unknown, which clients render as "unknown age" rather than
+	// "brand new".
+	CachedTipAgeSecs int64 `json:"cached_tip_age_secs,omitempty"`
+}
+
+// ResolveWorktreeChoiceReq answers a PendingWorktreeChoice.
+//
+// Resolving a session that is not parked is a no-op, not an error: two
+// GUI windows can race to answer the same dialog, and the loser must
+// not see a failure for a decision that was made correctly once.
+type ResolveWorktreeChoiceReq struct {
+	SessionID string `json:"session_id"`
+	// Choice is WorktreeChoiceCancel, WorktreeChoiceRetry or
+	// WorktreeChoiceProceed.
+	Choice string `json:"choice"`
 }
 
 // RemoveIdeaReq is the REMOVE_IDEA payload.
