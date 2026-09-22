@@ -411,18 +411,28 @@ async function askWorktreeChoice(id: string) {
         : `Nothing was ever fetched from origin here, so ${branch} would ` +
           'come off this checkout\u2019s local HEAD rather than upstream. ' +
           'Retry once the remote is reachable.',
+    // Retry leads, because the FIRST choice is the one that takes
+    // focus — and this dialog raises itself, unprompted, possibly
+    // while the user is typing. A stray Enter must not destroy a
+    // session, and Retry is the one answer that neither destroys work
+    // nor commits to a degraded base. Cancel sits last, marked
+    // danger, because it discards the worktree and deletes the
+    // session with no undo.
+    //
+    // Ordering is free to serve focus because dismissValue below
+    // decouples it from dismissal: before that, choices[0] was also
+    // what Escape and the scrim resolved to, which is why Cancel
+    // used to lead.
     choices: [
-      { label: 'Cancel', value: 'cancel' },
       { label: 'Retry', value: 'retry' },
       { label: proceedLabel, value: 'proceed' },
+      { label: 'Cancel', value: 'cancel', danger: true },
     ],
-    // Cancel discards the worktree and deletes the session, so it must
-    // never be given on the user's behalf. Unrelated code dismisses
-    // whatever dialog is open on paths that have nothing to do with
-    // this question — every worktree:list repaint, closing the
-    // worktree browser or the idea inbox, any other dialog opening —
-    // and the session waits here indefinitely, so that window is wide.
-    // A dismissal is "not answered": we re-ask.
+    // A dismissal must not answer at all. Unrelated code dismisses
+    // whatever dialog is open on paths with nothing to do with this
+    // question — every worktree:list repaint, closing the worktree
+    // browser or the idea inbox, any other dialog opening — and the
+    // session waits here indefinitely, so that window is wide.
     dismissValue: '',
   });
 

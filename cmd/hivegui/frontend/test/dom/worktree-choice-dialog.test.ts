@@ -142,14 +142,19 @@ describe('parked worktree choice', () => {
     // git's own words, not a paraphrase: the user judges staleness
     // from them.
     expect(JSON.stringify(spec)).toContain('Could not resolve hostname');
-    // Cancel must be FIRST: Escape and the scrim resolve to choice[0],
-    // and the safe outcome is to create nothing.
-    expect(spec.choices[0].value).toBe('cancel');
+    // Retry must be FIRST: the first choice takes focus, this dialog
+    // raises itself unprompted, and a stray Enter must not destroy a
+    // session. Cancel is last and marked danger — it discards the
+    // worktree and deletes the session with no undo.
+    expect(spec.choices[0].value).toBe('retry');
     expect(spec.choices.map((c) => c.value)).toEqual([
-      'cancel',
       'retry',
       'proceed',
+      'cancel',
     ]);
+    expect(spec.choices.find((c) => c.value === 'cancel')?.danger).toBe(true);
+    // Dismissal must not resolve to any of them.
+    expect(spec.dismissValue).toBe('');
     // The age is what makes "use the cached ref" an informed choice.
     const proceed = spec.choices.find((c) => c.value === 'proceed');
     expect(proceed?.label).toContain('origin/main');

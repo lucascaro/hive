@@ -515,6 +515,63 @@ func TestStaleParkIDIsIgnored(t *testing.T) {
 	}
 }
 
+// The data-loss case parking opened up. A parked create holds a
+// PLANNED path indefinitely; ResolveBranchAndPath only avoids paths
+// that exist on disk, so a later session can resolve to the same path
+// and create it for real. Answering the stale question must not then
+// delete that live session's worktree.
+func TestCancelDoesNotDeleteAnotherSessionsWorktree(t *testing.T) {
+	r, parked, repo := parkedProject(t)
+
+	q := r.Get(parked.ID).Info().PendingWorktreeChoice
+	if q == nil || q.Branch == "" {
+		t.Fatal("fixture: the parked question must name a branch")
+	}
+	claimed := q.Branch
+
+	// A second session materializes that exact path for real. Point
+	// origin somewhere reachable so this one does not park too.
+	good := t.TempDir()
+	runGit(t, good, "init", "-q", "--bare", "-b", "main")
+	runGit(t, repo, "remote", "set-url", "origin", good)
+	runGit(t, repo, "push", "-q", "origin", "main")
+
+	projects := r.ListProjects()
+	if len(projects) == 0 {
+		t.Fatal("fixture: no project")
+	}
+	live, err := r.Create(context.Background(), wire.CreateSpec{
+		ProjectID:   projects[0].ID,
+		Shell:       "/bin/bash",
+		UseWorktree: true,
+		Branch:      claimed,
+	})
+	if err != nil {
+		t.Fatalf("second create: %v", err)
+	}
+	defer r.Kill(live.ID, true)
+	livePath := r.Get(live.ID).WorktreePath
+	if livePath == "" {
+		t.Fatal("the second session must have a real worktree")
+	}
+	// Something the user would lose.
+	mustWriteFile(t, filepath.Join(livePath, "work.txt"), "uncommitted work\n")
+
+	// Now answer the FIRST session's stale question with the
+	// destructive choice.
+	if err := r.ResolveWorktreeChoice(context.Background(), parked.ID,
+		wire.WorktreeChoiceCancel, ""); err != nil {
+		t.Fatalf("cancel: %v", err)
+	}
+
+	if _, err := os.Stat(filepath.Join(livePath, "work.txt")); err != nil {
+		t.Fatalf("cancelling a parked create destroyed a LIVE session's worktree: %v", err)
+	}
+	if r.Get(live.ID) == nil {
+		t.Error("the live session must survive")
+	}
+}
+
 // An unknown choice must not touch any state. It used to clear the
 // question and then "restore" it from the same entry it had just
 // nil-ed, stranding the session blocked with nothing to answer and

@@ -49,6 +49,16 @@ type createPlan struct {
 	// later fails.
 	wtPath   string
 	wtBranch string
+	// wtCreated records that THIS plan's `git worktree add` actually
+	// created wtPath. Only then may discardWorktree delete it.
+	//
+	// A planned-but-not-created path is not owned: a parked create
+	// holds one for as long as the user takes to answer, and
+	// ResolveBranchAndPath only avoids paths that exist ON DISK, so a
+	// later session can resolve to the same path and materialize it
+	// for real. Deleting on the strength of the plan alone would then
+	// destroy that other session's worktree, uncommitted work and all.
+	wtCreated bool
 
 	// wtPlanErr records why a REQUESTED worktree could not even be
 	// planned (branch/path resolution failed inside a real git repo).
@@ -308,13 +318,32 @@ func (r *Registry) linkIdeaToSession(ideaID, sessionID string) {
 	}
 }
 
-// discardWorktree removes a worktree that finishCreate materialized
-// for an entry that no longer exists. Never runs for an adopted
-// worktree — that directory belongs to a sibling session.
+// discardWorktree removes a worktree that THIS plan materialized, for
+// an entry that no longer exists. Never runs for an adopted worktree —
+// that directory belongs to a sibling session.
+//
+// Two ownership checks, because this is `git worktree remove --force`
+// plus os.RemoveAll and a wrong call destroys uncommitted work:
+//
+//   - wtCreated: the plan must have actually created the path. Parking
+//     made this reachable — a parked create holds a planned path
+//     indefinitely while a later session can legitimately resolve to
+//     the same path and create it for real.
+//   - no live entry may be living there. Mirrors the sibling check the
+//     kill path already makes before it cleans up a worktree.
 func (r *Registry) discardWorktree(p createPlan) {
-	if p.wtPath == "" || p.adoptedPath != "" {
+	if p.wtPath == "" || p.adoptedPath != "" || !p.wtCreated {
 		return
 	}
+	r.mu.Lock()
+	for _, other := range r.entries {
+		if other.WorktreePath == p.wtPath {
+			r.mu.Unlock()
+			log.Printf("registry: not discarding worktree %s: session %s lives there", p.wtPath, other.ID)
+			return
+		}
+	}
+	r.mu.Unlock()
 	root, err := worktree.Root(p.wtPath)
 	if err != nil {
 		return
@@ -905,6 +934,7 @@ func (r *Registry) addWorktree(ctx context.Context, e *Entry, spec wire.CreateSp
 			Branch:  p.wtBranch,
 		}, base)
 	}
+	p.wtCreated = true
 	p.cwd = p.wtPath
 	r.setPhase(p.id, wire.PhaseWorktree)
 	worktree.EnsureGitignore(root)
