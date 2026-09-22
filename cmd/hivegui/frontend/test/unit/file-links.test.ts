@@ -83,6 +83,24 @@ describe('parseFileUri', () => {
     expect(parseFileUri('file://evil.example.com/etc/passwd')).toBeNull();
   });
 
+  // `file:////host/share` parses with an EMPTY hostname — the host
+  // check passes and the path is a UNC path, which dials the host and
+  // on Windows hands over the user's NTLM hash.
+  it('rejects an extra leading slash smuggling a UNC path', () => {
+    expect(parseFileUri('file:////evil.example.com/share/a.txt')).toBeNull();
+    expect(parseFileUri('file://///evil/share/a')).toBeNull();
+  });
+
+  // Without stripping the leading slash this is '/C:/src/main.go',
+  // which is neither absolute nor relative, and every OSC 8 file link
+  // on Windows fails to open.
+  it('strips the leading slash from a drive-letter path', () => {
+    expect(parseFileUri('file:///C:/src/main.go')).toBe('C:/src/main.go');
+    expect(parseFileUri('file:///c:/src/main.go')).toBe('c:/src/main.go');
+    // A lone colon in a normal path is not a drive letter.
+    expect(parseFileUri('file:///tmp/a:b.md')).toBe('/tmp/a:b.md');
+  });
+
   it('rejects other schemes and garbage', () => {
     expect(parseFileUri('https://example.com/x')).toBeNull();
     expect(parseFileUri('not a uri')).toBeNull();

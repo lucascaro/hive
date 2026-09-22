@@ -29,17 +29,53 @@ import {
 } from '../../src/app/file-link-provider.js';
 
 // A terminal stub with just the buffer surface the provider reads.
-// Lines are given as (text, isWrapped) so a wrapped logical line can
-// be exercised without a real xterm.
-function fakeTerm(lines: [string, boolean][], cols: number) {
+// Lines are given as (text, isWrapped). Characters are one cell wide
+// unless listed in `wide`, which models a CJK glyph or emoji: it owns
+// two columns, and the second reports width 0.
+function fakeTerm(
+  lines: [string, boolean][],
+  cols: number,
+  wide: string[] = [],
+) {
+  const cellsFor = (text: string) => {
+    const out: { chars: string; width: number }[] = [];
+    for (const ch of text) {
+      out.push({ chars: ch, width: wide.includes(ch) ? 2 : 1 });
+      if (wide.includes(ch)) out.push({ chars: '', width: 0 });
+    }
+    while (out.length < cols) out.push({ chars: ' ', width: 1 });
+    return out;
+  };
   return {
     cols,
     buffer: {
       active: {
+        getNullCell: () => ({
+          chars: '',
+          width: 1,
+          getChars() {
+            return this.chars;
+          },
+          getWidth() {
+            return this.width;
+          },
+        }),
         getLine: (y: number) => {
           const l = lines[y];
           if (!l) return undefined;
-          return { isWrapped: l[1], translateToString: () => l[0] };
+          const cells = cellsFor(l[0]);
+          return {
+            isWrapped: l[1],
+            length: cells.length,
+            translateToString: () => l[0],
+            getCell: (x: number, cell: { chars: string; width: number }) => {
+              const c = cells[x];
+              if (!c) return undefined;
+              cell.chars = c.chars;
+              cell.width = c.width;
+              return cell;
+            },
+          };
         },
       },
     },
@@ -125,6 +161,42 @@ describe('createFileLinkProvider', () => {
       start: { x: 4, y: 1 },
       end: { x: 7, y: 2 },
     });
+  });
+
+  // A CJK glyph or emoji owns two columns, so deriving x from the
+  // string offset puts the underline on the wrong cells — by one column
+  // per wide glyph to its left.
+  it('maps offsets through wide glyphs', async () => {
+    ResolveFilePaths.mockImplementationOnce(async () => ['/base/a/b.ts']);
+    const term = fakeTerm([['日本 a/b.ts', false]], 40, ['日', '本']);
+    const links = await provide(term, 1);
+    // '日'(1-2) '本'(3-4) ' '(5) then a/b.ts starts at column 6.
+    expect(links?.[0].range).toEqual({
+      start: { x: 6, y: 1 },
+      end: { x: 11, y: 1 },
+    });
+  });
+
+  it('gives up on an absurdly long unwrapped line rather than walking it', async () => {
+    const huge: [string, boolean][] = [];
+    for (let i = 0; i < 300; i++) huge.push(['x'.repeat(200), i > 0]);
+    const term = fakeTerm(huge, 200);
+    expect(await provide(term, 300)).toBeUndefined();
+    expect(ResolveFilePaths).not.toHaveBeenCalled();
+  });
+
+  // Moving along a row re-asks for the same line; each miss is an IPC
+  // round-trip plus a stat per candidate.
+  it('memoises the resolution per line', async () => {
+    ResolveFilePaths.mockImplementation(async () => ['/base/src/foo.ts']);
+    const term = fakeTerm([['see src/foo.ts', false]], 80);
+    const provider = createFileLinkProvider(term, () => '/base');
+    const ask = () =>
+      new Promise((r) => provider.provideLinks(1, (l) => r(l as never)));
+    await ask();
+    await ask();
+    await ask();
+    expect(ResolveFilePaths).toHaveBeenCalledTimes(1);
   });
 
   it('passes the parsed line and col when activated', async () => {

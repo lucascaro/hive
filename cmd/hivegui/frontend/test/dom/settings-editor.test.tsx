@@ -175,6 +175,36 @@ describe('settings: editor', () => {
     expect(bridge.SaveCustomAgents).toHaveBeenCalled();
   });
 
+  // Go validates the template and can reject the save; the modal must
+  // stay open on the error rather than closing as if it had saved.
+  it('surfaces a rejected save and keeps the modal open', async () => {
+    bridge.SaveEditorSettings.mockRejectedValueOnce(
+      new Error('the command must contain {file}'),
+    );
+    open();
+    await settle();
+    fireEvent.change(el('settings-editor-kind'), {
+      target: { value: 'command' },
+    });
+    fireEvent.change(el('settings-editor-command'), {
+      target: { value: 'nvim-qt' },
+    });
+    fireEvent.click(el('settings-save'));
+    await settle();
+    expect(el('settings').classList.contains('hidden')).toBe(false);
+    expect(document.body.textContent).toContain('must contain {file}');
+  });
+
+  it('disables the section until the file has loaded', async () => {
+    open();
+    // Deliberately no settle(): this is the window between opening the
+    // modal and editor.json coming back, where an edit would be
+    // silently reverted by the load.
+    expect(el<HTMLSelectElement>('settings-editor-kind').disabled).toBe(true);
+    await settle();
+    expect(el<HTMLSelectElement>('settings-editor-kind').disabled).toBe(false);
+  });
+
   it('disables the section when the file failed to load', async () => {
     bridge.GetEditorSettings.mockRejectedValue(new Error('parse editor.json'));
     open();

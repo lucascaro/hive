@@ -165,6 +165,12 @@ func validateEditorSettings(s EditorSettings) error {
 		if !strings.Contains(s.Command, "{file}") {
 			return errors.New("the command must contain {file}")
 		}
+		// argv[0] is the binary. A placeholder there would mean the
+		// clicked path *is* the program — isLaunchable never sees it,
+		// so a .command file could be executed by naming it.
+		if strings.Contains(argv[0], "{") {
+			return errors.New("the program to run cannot contain a placeholder")
+		}
 		base := strings.ToLower(filepath.Base(argv[0]))
 		if shellArgv0[base] {
 			return fmt.Errorf("%s is a shell, not an editor — give the editor's own command", argv[0])

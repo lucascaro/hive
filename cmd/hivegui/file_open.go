@@ -108,6 +108,29 @@ func (a *App) OpenFile(baseDir, path string, line, col int, editor bool) error {
 	return openDefaultFn(target)
 }
 
+// isNetworkOrDevicePath reports whether p names something other than a
+// file on this machine's own disks.
+//
+// This is the one guard that has to fire before the stat, not before
+// the open: resolvePath is called from ResolveFilePaths, which runs on
+// *hover* to decide the underline. On Windows a UNC path like
+// `\\evil.example.com\share\a.txt` makes Lstat dial that host and
+// authenticate, handing over the user's NTLM hash — so a session that
+// merely prints such a path would leak credentials with no click at
+// all. The path came out of a terminal, so that text is not ours to
+// trust.
+//
+// Checked on every platform rather than under a GOOS test: the rule is
+// about what the *name* means, the test is free, and a guard that only
+// exists on the platform it was written for is the hole this feature
+// has already grown once.
+func isNetworkOrDevicePath(p string) bool {
+	slashed := strings.ReplaceAll(p, `\`, "/")
+	// //host/share (UNC), //?/... and //./... (Win32 device namespace,
+	// which reaches \\.\pipe\ and friends).
+	return strings.HasPrefix(slashed, "//")
+}
+
 // resolvePath turns a candidate from terminal text into an absolute
 // path that exists, or an error. It expands a leading ~, resolves a
 // relative path against baseDir, and cleans the result — so no
@@ -126,6 +149,9 @@ func resolvePath(baseDir, path string) (string, error) {
 		}
 		p = filepath.Join(home, strings.TrimPrefix(p[1:], string(filepath.Separator)))
 	}
+	if isNetworkOrDevicePath(p) {
+		return "", fmt.Errorf("refusing network or device path: %s", p)
+	}
 	if !filepath.IsAbs(p) {
 		if baseDir == "" {
 			return "", fmt.Errorf("relative path %q with no base directory", path)
@@ -133,6 +159,15 @@ func resolvePath(baseDir, path string) (string, error) {
 		p = filepath.Join(baseDir, p)
 	}
 	p = filepath.Clean(p)
+	// Re-check after the join. On Windows a UNC baseDir survives Join and
+	// Clean, so a plain relative candidate could still land on the
+	// network; on unix Join collapses the leading slashes and this is a
+	// no-op. The candidate itself was already checked above — that is the
+	// attacker-controlled half, since baseDir is the session's own
+	// worktree or project directory.
+	if isNetworkOrDevicePath(p) {
+		return "", fmt.Errorf("refusing network or device path: %s", p)
+	}
 	if _, err := os.Lstat(p); err != nil {
 		return "", fmt.Errorf("no such file: %s", p)
 	}

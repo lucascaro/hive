@@ -117,11 +117,23 @@ export function parseFileUri(uri: string): string | null {
   }
   if (parsed.protocol !== 'file:') return null;
   if (parsed.hostname && parsed.hostname !== 'localhost') return null;
+  let path: string;
   try {
-    return decodeURIComponent(parsed.pathname) || null;
+    path = decodeURIComponent(parsed.pathname);
   } catch {
     return null;
   }
+  // `file:////host/share/x` parses with an EMPTY hostname and a
+  // pathname of `//host/share/x` — so the host check above passes and
+  // the result is a UNC path. Opening one dials out to that host, which
+  // on Windows hands over the user's NTLM hash before anything is even
+  // read. An extra leading slash is never a local path; refuse it.
+  if (path.startsWith('//')) return null;
+  // A Windows drive path arrives as `/C:/src/main.go`. Left alone it is
+  // neither absolute nor relative and every OSC 8 file link on Windows
+  // fails to open.
+  if (/^\/[A-Za-z]:[\\/]/.test(path)) path = path.slice(1);
+  return path || null;
 }
 
 /** True when an OSC 8 link's URI targets a local file. */

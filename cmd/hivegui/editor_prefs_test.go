@@ -144,6 +144,11 @@ func TestValidateEditorSettings(t *testing.T) {
 		{Kind: editorCommand, Command: `cmd /c start {file}`},     // a shell on Windows
 		{Kind: editorCommand, Command: `powershell -c {file}`},    // ditto
 		{Kind: editorCommand, Command: `open -a Terminal {file}`}, // launcher, not an editor
+		// A placeholder in argv[0] would make the clicked path the
+		// program: isLaunchable never sees it, so a .command file could
+		// be executed by naming it.
+		{Kind: editorCommand, Command: `{file}`},
+		{Kind: editorCommand, Command: `{file} --open {file}`},
 		{Kind: "nano-ish"}, // unknown kind
 	}
 	for _, s := range bad {

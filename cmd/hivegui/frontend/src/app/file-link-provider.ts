@@ -63,11 +63,25 @@ export function openFileLink(
 // string offsets back to (x, y) cells.
 interface LogicalLine {
   text: string;
-  /** Buffer row of the first row of the logical line, 0-based. */
-  firstRow: number;
-  /** Cells per row; the width used to translate offsets. */
-  width: number;
+  /**
+   * Cell position of each character of `text`, same length as `text`.
+   *
+   * A cell is not a character: a CJK glyph or an emoji occupies two
+   * columns, a combining mark adds a character to the same cell, and a
+   * wrapped row restarts at column 1. Deriving (x, y) from the string
+   * offset arithmetically — offset % cols — is therefore right only for
+   * pure-ASCII lines, and lands the underline on the wrong cells for
+   * everything else.
+   */
+  cells: { x: number; y: number }[];
 }
+
+// Bounds on one reassembly. A logical line is walked cell by cell, so
+// an agent printing a megabyte without a newline would otherwise be
+// walked in full on every hovered row. Past these the line is not
+// plausibly a path any more; give up rather than burn the frame.
+const MAX_WRAP_ROWS = 64;
+const MAX_LOGICAL_CHARS = 8192;
 
 function readLogicalLine(
   term: Terminal,
@@ -75,33 +89,50 @@ function readLogicalLine(
 ): LogicalLine | null {
   const buf = term.buffer.active;
   // xterm hands provideLinks a 1-based line number.
-  let first = bufferLineNumber - 1;
   const lineAt = (y: number): IBufferLine | undefined => buf.getLine(y);
-  if (!lineAt(first)) return null;
-  while (first > 0 && lineAt(first)?.isWrapped) first--;
-  let last = bufferLineNumber - 1;
-  while (lineAt(last + 1)?.isWrapped) last++;
+  const hovered = bufferLineNumber - 1;
+  if (!lineAt(hovered)) return null;
+
+  let first = hovered;
+  let walked = 0;
+  while (first > 0 && lineAt(first)?.isWrapped && walked++ < MAX_WRAP_ROWS) {
+    first--;
+  }
+  let last = hovered;
+  walked = 0;
+  while (lineAt(last + 1)?.isWrapped && walked++ < MAX_WRAP_ROWS) last++;
 
   let text = '';
+  const cells: { x: number; y: number }[] = [];
+  const cell = buf.getNullCell();
   for (let y = first; y <= last; y++) {
-    text += lineAt(y)?.translateToString(false) ?? '';
+    const line = lineAt(y);
+    if (!line) break;
+    for (let x = 0; x < line.length; x++) {
+      if (!line.getCell(x, cell)) continue;
+      const width = cell.getWidth();
+      // Width 0 is the trailing half of a wide glyph: it holds no
+      // characters of its own and must not shift the mapping.
+      if (width === 0) continue;
+      const chars = cell.getChars() || ' ';
+      for (const ch of chars) {
+        text += ch;
+        // xterm's buffer ranges are 1-based in both axes.
+        cells.push({ x: x + 1, y: y + 1 });
+      }
+    }
+    if (text.length > MAX_LOGICAL_CHARS) return null;
   }
-  return { text, firstRow: first, width: term.cols };
+  return { text, cells };
 }
 
 function rangeFor(logical: LogicalLine, start: number, end: number) {
-  const { firstRow, width } = logical;
-  return {
-    start: {
-      x: (start % width) + 1,
-      y: firstRow + Math.floor(start / width) + 1,
-    },
-    // end is inclusive in xterm's model, hence end - 1.
-    end: {
-      x: ((end - 1) % width) + 1,
-      y: firstRow + Math.floor((end - 1) / width) + 1,
-    },
-  };
+  const { cells } = logical;
+  const first = cells[start];
+  // end is exclusive in the candidate, inclusive in xterm's range.
+  const lastCell = cells[Math.min(end, cells.length) - 1];
+  if (!first || !lastCell) return null;
+  return { start: first, end: lastCell };
 }
 
 /**
@@ -113,6 +144,35 @@ export function createFileLinkProvider(
   term: Terminal,
   getBaseDir: () => string,
 ): ILinkProvider {
+  // Moving the pointer along one row asks for that row's links over and
+  // over, and each miss costs an IPC round-trip plus one stat per
+  // candidate. Memoise the *answer* per (baseDir, candidate list) so a
+  // hover that crosses the same line repeatedly is free.
+  //
+  // Bounded and short-lived on purpose: a file created or deleted after
+  // the answer was cached should start (or stop) underlining without a
+  // restart, so entries expire quickly and the map stays small.
+  const memo = new Map<string, { at: number; resolved: string[] }>();
+  const MEMO_TTL_MS = 3000;
+  const MEMO_MAX = 64;
+  const resolveCached = async (
+    baseDir: string,
+    paths: string[],
+  ): Promise<string[]> => {
+    const key = `${baseDir}\u0000${paths.join('\u0000')}`;
+    const hit = memo.get(key);
+    const now = Date.now();
+    if (hit && now - hit.at < MEMO_TTL_MS) return hit.resolved;
+    const resolved = await ResolveFilePaths(baseDir, paths);
+    if (memo.size >= MEMO_MAX) {
+      // Oldest insertion first: Map preserves insertion order.
+      const oldest = memo.keys().next().value;
+      if (oldest !== undefined) memo.delete(oldest);
+    }
+    memo.set(key, { at: now, resolved });
+    return resolved;
+  };
+
   return {
     provideLinks(bufferLineNumber, callback) {
       const baseDir = getBaseDir();
@@ -129,7 +189,7 @@ export function createFileLinkProvider(
       // One batched existence check per hovered line. Anything Go
       // cannot resolve comes back empty and gets no underline —
       // that check is the whole underline rule (spec criterion 1).
-      ResolveFilePaths(
+      resolveCached(
         baseDir,
         candidates.map((c) => c.path),
       )
@@ -137,10 +197,12 @@ export function createFileLinkProvider(
           const links: HiveFileLink[] = [];
           candidates.forEach((c, i) => {
             if (!resolved[i]) return;
+            const range = rangeFor(logical, c.start, c.end);
+            if (!range) return;
             links.push({
               hiveFile: true,
               text: c.path,
-              range: rangeFor(logical, c.start, c.end),
+              range,
               activate: (e) => {
                 openFileLink(e, baseDir, c.path, c.line, c.col);
               },

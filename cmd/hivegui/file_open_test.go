@@ -27,21 +27,32 @@ func TestResolvePath(t *testing.T) {
 	}
 
 	cases := []struct {
-		name    string
-		base    string
-		in      string
-		want    string
-		wantErr bool
+		name string
+		base string
+		in   string
+		want string
+		// wantErr alone would pass vacuously for the network paths: they
+		// do not exist locally either, so a missing guard still errors —
+		// after the Lstat that is the whole problem. wantRefused demands
+		// the refusal come from isNetworkOrDevicePath.
+		wantErr     bool
+		wantRefused bool
 	}{
-		{"relative", base, "src/foo.ts", file, false},
-		{"dot relative", base, "./src/foo.ts", file, false},
-		{"parent traversal", filepath.Join(base, "src"), "../src/foo.ts", file, false},
-		{"absolute ignores base", t.TempDir(), file, file, false},
-		{"tilde", base, "~/notes.md", homeFile, false},
-		{"surrounding space", base, "  src/foo.ts  ", file, false},
-		{"missing file", base, "src/nope.ts", "", true},
-		{"empty", base, "", "", true},
-		{"relative with no base", "", "src/foo.ts", "", true},
+		{"relative", base, "src/foo.ts", file, false, false},
+		{"dot relative", base, "./src/foo.ts", file, false, false},
+		{"parent traversal", filepath.Join(base, "src"), "../src/foo.ts", file, false, false},
+		{"absolute ignores base", t.TempDir(), file, file, false, false},
+		{"tilde", base, "~/notes.md", homeFile, false, false},
+		{"surrounding space", base, "  src/foo.ts  ", file, false, false},
+		{"missing file", base, "src/nope.ts", "", true, false},
+		{"empty", base, "", "", true, false},
+		{"relative with no base", "", "src/foo.ts", "", true, false},
+		// A UNC path is stat'd on *hover*, and on Windows that dials the
+		// host and authenticates — the user's NTLM hash leaves the
+		// machine with no click at all.
+		{"unc path", base, `\\evil.example.com\share\a.txt`, "", true, true},
+		{"unc path with forward slashes", base, "//evil.example.com/share/a.txt", "", true, true},
+		{"win32 device namespace", base, `\\?\C:\x`, "", true, true},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -49,6 +60,9 @@ func TestResolvePath(t *testing.T) {
 			if tc.wantErr {
 				if err == nil {
 					t.Fatalf("resolvePath(%q, %q) = %q, want error", tc.base, tc.in, got)
+				}
+				if tc.wantRefused && !strings.Contains(err.Error(), "network or device path") {
+					t.Fatalf("resolvePath(%q, %q) errored with %v — want the guard's refusal, not a failed stat", tc.base, tc.in, err)
 				}
 				return
 			}
@@ -138,7 +152,7 @@ func TestOpenFileDispatch(t *testing.T) {
 
 	t.Run("executable is revealed never opened", func(t *testing.T) {
 		if runtime.GOOS == "windows" {
-			t.Skip("no exec bit on Windows; see the .exe case below")
+			t.Skip("no exec bit on Windows; the .exe extension is covered by TestIsLaunchable")
 		}
 		base := t.TempDir()
 		writeModeFile(t, base, "deploy.sh", 0o755)
@@ -152,6 +166,18 @@ func TestOpenFileDispatch(t *testing.T) {
 		}
 		if r.revealed == "" {
 			t.Fatal("want reveal")
+		}
+	})
+
+	t.Run("a UNC path never reaches the filesystem", func(t *testing.T) {
+		var r openRecorder
+		r.install(t, "windows")
+		err := app.OpenFile(t.TempDir(), `\\evil.example.com\share\a.txt`, 0, 0, false)
+		if err == nil || !strings.Contains(err.Error(), "network or device path") {
+			t.Fatalf("err = %v — want the guard's refusal before any stat", err)
+		}
+		if r.opened != "" || r.revealed != "" {
+			t.Fatalf("touched the network path: %+v", r)
 		}
 	})
 

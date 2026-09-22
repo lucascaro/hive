@@ -944,11 +944,6 @@ function SettingsDialog({ root }: { root: HTMLElement }): ReactNode {
             onChange={(e) => setOverrides(e.target.value)}
           />
         </label>
-        <EditorSettings
-          draft={editorDraft}
-          onChange={setEditorDraft}
-          disabled={editorFailed || !editorLoaded}
-        />
         <p
           id="settings-overrides-error"
           role="alert"
@@ -958,6 +953,11 @@ function SettingsDialog({ root }: { root: HTMLElement }): ReactNode {
         >
           {overridesError}
         </p>
+        <EditorSettings
+          draft={editorDraft}
+          onChange={setEditorDraft}
+          disabled={editorFailed || !editorLoaded}
+        />
       </Panel>
 
       {showMenuBar ? (

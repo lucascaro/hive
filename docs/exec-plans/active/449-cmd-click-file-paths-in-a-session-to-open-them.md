@@ -218,6 +218,10 @@ cd cmd/hivegui/frontend && npx biome ci . && npm run typecheck && cd - && script
 
 Manual check against the real app, per `docs/verifying-the-gui-by-hand.md`: run `wails dev` and use Playwright on localhost:34115. Hover `README.md` in a shell session and confirm the underline. ⌘-click a `+x` script and confirm Finder reveals it rather than running it. The editor launch itself is covered by the stubbed Go test; don't launch real apps in automation.
 
+## PR convergence ledger
+
+- **2026-09-22 iter 1** — verdict: REQUEST_CHANGES; mergeable: MERGEABLE; findings_hash: a744ef39db81dcde839309394d696d9f7b7c1252e72959ddf99d87130b6ff7a5; threads_open: 0; action: escalated:risky-fix-needs-human-decision; head_sha: d4000269.
+
 ## Open questions / risks
 
 - **Private xterm API (verified)**: `Linkifier.currentLink` is `{link, state}`, and `link` is the provider's own `ILink` object (`Linkifier.ts:204-262`). So the `hiveFile` flag survives. For OSC 8, `text` is the URI (`OscLinkProvider.ts:56`), so the guard checks `text.startsWith('file:')`.
