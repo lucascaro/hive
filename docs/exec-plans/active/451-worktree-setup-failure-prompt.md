@@ -418,3 +418,6 @@ No injection attempts found in the spec or plan.
 Append-only, one line per `/hs-review-loop` iteration. A trailing
 `action: autofix+push` means a run pushed a fix and died before
 re-reviewing — re-run the loop on the same PR to resume.
+
+- **2026-09-22 iter 1** — verdict: REQUEST_CHANGES; mergeable: MERGEABLE; findings_hash: 9e11ed0627cfee33036bedaf1752491d0e4e432ce3aabd9d648ea71bac5fe55d; threads_open: 0; action: escalated:risky-fix-needs-human-decision; head_sha: aedcb08f.
+- **2026-09-22 iter 1 (author fix)** — all 12 findings addressed by the author rather than autofix (every one needed a design decision); 2 BLOCKING confirmed against the tree before fixing; head_sha: fe8b03a4.
