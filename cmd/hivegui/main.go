@@ -55,7 +55,26 @@ func setupLogFile() {
 	if err != nil {
 		return
 	}
-	log.SetOutput(io.MultiWriter(os.Stderr, f))
+	log.SetOutput(newLogTee(os.Stderr, f))
+}
+
+// logTee writes every record to the log file and, best-effort, to
+// stderr. It is not io.MultiWriter because that stops at the first
+// writer that fails — and a Windows GUI-subsystem process (Start menu,
+// Explorer, a shortcut) has no usable stderr at all, so every write to
+// it fails and the file, the copy that matters, never received a line.
+type logTee struct {
+	stderr io.Writer
+	file   io.Writer
+}
+
+func newLogTee(stderr, file io.Writer) io.Writer {
+	return logTee{stderr: stderr, file: file}
+}
+
+func (t logTee) Write(p []byte) (int, error) {
+	_, _ = t.stderr.Write(p)
+	return t.file.Write(p)
 }
 
 func main() {

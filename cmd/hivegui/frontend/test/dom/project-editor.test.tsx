@@ -4,7 +4,8 @@
 // (src/components/modals/ProjectEditor.tsx, opened through the
 // openProjectEditor/closeProjectEditor pair in
 // src/app/modals/project-editor.ts): the new-vs-edit seed, the two
-// silently-ignored bridge failures (LaunchDir, PickDirectory), the
+// silently-ignored LaunchDir failure, the PickDirectory failure that
+// is reported in the status bar (it used to be swallowed too), the
 // trim-and-save contract, and the one thing that regressed easily in
 // the port — LaunchDir's cosmetic cwd default raced a keystroke in the
 // legacy version (it unconditionally overwrote whatever the user had
@@ -12,7 +13,7 @@
 // down so a careless edit can't bring the race back.
 import { describe, it, expect, vi, beforeAll, beforeEach } from 'vitest';
 import { act, fireEvent, render } from '@testing-library/react';
-import { resetStore } from '../../src/store/store.js';
+import { appStore, resetStore } from '../../src/store/store.js';
 import type { ProjectInfo } from '../../src/app/state.js';
 
 const createProject = vi.fn(
@@ -202,13 +203,22 @@ describe('Browse…', () => {
     expect(cwdInput().value).toBe('/repo/hive');
   });
 
-  it('leaves the cwd alone on a rejection', async () => {
+  // A rejection is a picker that never opened (Wails refuses a default
+  // directory its os.Lstat check cannot see, e.g. a Windows junction).
+  // Leaving the field alone is right; leaving the user with a button
+  // that appears to do nothing is not.
+  it('reports a rejection in the status bar and leaves the cwd alone', async () => {
     open({ id: 'p1', name: 'Hive', cwd: '/repo/hive', color: '#123456' });
     await flush();
-    pickDirectory.mockRejectedValueOnce(new Error('cancelled'));
+    pickDirectory.mockRejectedValueOnce(
+      new Error("default directory '/repo/hive' does not exist"),
+    );
     expect(() => click(el('project-editor-browse'))).not.toThrow();
     await flush();
     expect(cwdInput().value).toBe('/repo/hive');
+    const status = appStore.getState().status;
+    expect(status.isError).toBe(true);
+    expect(status.text).toContain('does not exist');
   });
 });
 
