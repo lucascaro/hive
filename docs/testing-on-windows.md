@@ -30,12 +30,16 @@ guest's (`ipconfig` in the guest).
 it or paste it into an issue or PR.
 
 **3. Install Windows-MCP in the guest.** Copy
-`scripts/windows-vm/setup-windows-mcp.ps1` into the guest (see *Moving files*)
-and run it in an **elevated** PowerShell:
+`scripts/windows-vm/setup-windows-mcp.ps1` and the token file into the guest
+(see *Moving files*) and run the script in an **elevated** PowerShell:
 
 ```powershell
-powershell -NoExit -ExecutionPolicy Bypass -File setup-windows-mcp.ps1 -HostIp <host-ip> -Token <token>
+powershell -NoExit -ExecutionPolicy Bypass -File setup-windows-mcp.ps1 -HostIp <host-ip> -TokenFile <token-file>
 ```
+
+The token is read from a file, not passed as an argument, because the setup
+log and the process list both record command lines. The script deletes the
+token file once it has read it.
 
 It installs `uv`, runs `windows-mcp>=0.7.5` as a logon task in the
 interactive session, and adds a firewall rule that admits only `<host-ip>`.
@@ -71,7 +75,8 @@ Pick one:
   a dedicated directory that contains only what the guest needs:
   `python3 -m http.server <port> --bind <host-ip> --directory <dir>`. Pull it
   in the guest with `Invoke-WebRequest … -OutFile …`. Stop it when you're
-  done. Never bind to `0.0.0.0` or serve the repo root.
+  done. Never bind to `0.0.0.0` or serve the repo root. Serve a *copy* of
+  the token file and delete it as soon as the guest has it.
 - **The hypervisor's shared folder** (UTM: SPICE WebDAV from the guest
   tools).
 - **SMB** from macOS File Sharing, limited to one folder.
@@ -107,6 +112,9 @@ Pick one:
 - Windows-MCP gives whoever holds the token full control of the guest
   desktop. Use a disposable test VM with no personal accounts signed in.
 - Keep the token, guest address and any host-specific notes out of the repo.
+- In the guest, the token lives in `%LOCALAPPDATA%\windows-mcp\run.ps1`
+  (readable by your user only) and in the running server's command line,
+  which other accounts on the guest can list. Keep the guest single-user.
 - Keep the three layers of restriction: private VM network, the firewall rule
   scoped to the host, and the server's token plus IP allowlist. Never expose
   the port through port forwarding or a bridged network.

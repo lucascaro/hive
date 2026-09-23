@@ -3,16 +3,23 @@
 # See docs/testing-on-windows.md. Run in an elevated PowerShell in the guest:
 #
 #   powershell -NoExit -ExecutionPolicy Bypass -File setup-windows-mcp.ps1 `
-#     -HostIp <host address on the VM network> -Token <random secret>
+#     -HostIp <host address on the VM network> -TokenFile <file holding the secret>
+#
+# The token comes from a file, never the command line: the setup transcript
+# and the process list both record command lines. The file is deleted once read.
 #
 # Test VMs only. Anyone who reaches the port with the token controls the
 # guest's desktop as the logged-in user.
 param(
-  [Parameter(Mandatory)][string]$HostIp,
-  [Parameter(Mandatory)][ValidatePattern('^.{32,}$')][string]$Token,
+  [Parameter(Mandatory)][ipaddress]$HostIp,
+  [Parameter(Mandatory)][ValidateScript({ Test-Path $_ -PathType Leaf })][string]$TokenFile,
   [int]$Port = 8000
 )
 $ErrorActionPreference = 'Stop'
+# Alphanumeric only: it is pasted into run.ps1 inside single quotes.
+$Token = (Get-Content -Raw $TokenFile).Trim()
+if ($Token -notmatch '^[A-Za-z0-9]{32,}$') { throw 'token must be 32+ letters or digits' }
+Remove-Item $TokenFile
 Start-Transcript "$env:TEMP\windows-mcp-setup.log" -Force | Out-Null
 
 if (-not (Get-Command uv -ErrorAction SilentlyContinue)) {
