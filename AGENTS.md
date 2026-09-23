@@ -155,6 +155,8 @@ custom agents at runtime via the GUI Settings screen (persisted to
   publishes the real frontend, driven by the real daemon, at
   `http://localhost:34115`, and a throwaway Playwright script can read the DOM
   there. Do that before reporting a checklist row as unrunnable.
+- **Windows rows** — [docs/testing-on-windows.md](docs/testing-on-windows.md)
+  drives a real Windows build in a local VM through Windows-MCP.
 
 ---
 
