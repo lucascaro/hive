@@ -29,5 +29,10 @@
              when it is not the foreground app is not a menu bar. -->
         <key>NSAppSleepDisabled</key>
         <true/>
+        <!-- The menu bar's Restart Daemon spawns hived as our child, which
+             makes this bundle the responsible app for every session's
+             Local Network access. Same string as the GUI's. -->
+        <key>NSLocalNetworkUsageDescription</key>
+        <string>Hive runs your shells and coding agents. Allow this so commands in a session can reach devices, VMs and dev servers on your local network.</string>
     </dict>
 </plist>
