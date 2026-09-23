@@ -397,22 +397,67 @@ func (a *App) StateDirID() string {
 // selected path, or "" if the user cancelled. defaultDir, if
 // non-empty, sets the dialog's starting location.
 func (a *App) PickDirectory(defaultDir string) (string, error) {
-	// macOS NSOpenPanel silently fails when DefaultDirectory points
-	// at a missing path, so fall back to launchDir if the saved cwd
-	// no longer exists.
-	if defaultDir != "" {
-		if st, err := os.Stat(defaultDir); err != nil || !st.IsDir() {
-			defaultDir = ""
+	open := func(dir string) (string, error) {
+		return wruntime.OpenDirectoryDialog(a.ctx, wruntime.OpenDialogOptions{
+			Title:                "Choose project directory",
+			DefaultDirectory:     dir,
+			CanCreateDirectories: true,
+		})
+	}
+	return pickDirectoryWith(open, pickDirectoryDefault(defaultDir, a.launchDir))
+}
+
+// pickDirectoryDefault chooses the folder the picker opens on: the
+// caller's directory if it exists, else launchDir if that does, else
+// none. macOS NSOpenPanel silently fails when DefaultDirectory points
+// at a missing path, which is why a saved cwd that no longer exists
+// falls through rather than being passed along.
+//
+// Each candidate is resolved through resolveDir first. Wails validates
+// DefaultDirectory with os.Lstat, so a symlink — or, on Windows, a
+// junction such as C:\Users\me\git -> D:\git — is refused as "does not
+// exist" even though os.Stat (and the user) see a directory. That
+// refusal is what made New Project's Browse… do nothing for a Hive
+// launched from inside a junction. The resolved path is what the dialog
+// opens on either way.
+func pickDirectoryDefault(defaultDir, launchDir string) string {
+	for _, dir := range []string{defaultDir, launchDir} {
+		if dir == "" {
+			continue
+		}
+		resolved, err := resolveDir(dir)
+		if err != nil {
+			// Unresolvable is as good as missing: handing the raw path
+			// over would only move the refusal into the runtime.
+			continue
+		}
+		if st, err := os.Stat(resolved); err == nil && st.IsDir() {
+			return resolved
 		}
 	}
-	if defaultDir == "" {
-		defaultDir = a.launchDir
+	return ""
+}
+
+// pickDirectoryWith runs the dialog and, if the runtime refuses the
+// default directory it was given, runs it once more with none: a picker
+// that opens on the wrong folder beats one that never opens. Any other
+// error, and a cancel ("" with no error), is returned as-is.
+func pickDirectoryWith(open func(dir string) (string, error), dir string) (string, error) {
+	res, err := open(dir)
+	if err != nil && dir != "" && isDefaultDirRefusal(err) {
+		return open("")
 	}
-	return wruntime.OpenDirectoryDialog(a.ctx, wruntime.OpenDialogOptions{
-		Title:                "Choose project directory",
-		DefaultDirectory:     defaultDir,
-		CanCreateDirectories: true,
-	})
+	return res, err
+}
+
+// isDefaultDirRefusal matches the error Wails' runtime returns from its
+// own pre-check ("default directory '…' does not exist"), which is the
+// only failure that happens before the dialog is shown. Anything else
+// that mentions a missing path came from the dialog itself and is not
+// worth a second showing.
+func isDefaultDirRefusal(err error) bool {
+	msg := err.Error()
+	return strings.HasPrefix(msg, "default directory ") && strings.HasSuffix(msg, "does not exist")
 }
 
 // Confirm shows a native yes/no dialog and reports the user's choice.

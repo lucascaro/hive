@@ -101,14 +101,16 @@ function ProjectEditorDialog({
     // wholesale, key={entry.seq}, on every reopen).
   }, []);
 
+  // A cancel resolves to "" and is ignored; a rejection means the
+  // picker never opened (Wails refuses a default directory it cannot
+  // see, e.g. a Windows junction) and used to be swallowed here, which
+  // read as a Browse… button that does nothing.
   function pickCwd() {
     PickDirectory(cwd)
       .then((picked) => {
         if (picked) setCwd(picked);
       })
-      .catch(() => {
-        // Silently ignore (user cancelled, or platform refused).
-      });
+      .catch(reportFailure('choose directory'));
   }
 
   // The listener above is attached once per open; this keeps it calling
