@@ -41,6 +41,8 @@ $Uvx = (Get-Command uvx).Source
 & '$Uvx' --python 3.13 --from 'windows-mcp>=0.7.5' windows-mcp serve --transport streamable-http --host 0.0.0.0 --port $Port --auth-key '$Token' --ip-allowlist '$HostIp' *>> '$Dir\server.log'
 "@ | Set-Content "$Dir\run.ps1"
 icacls "$Dir\run.ps1" /inheritance:r /grant:r "${env:USERNAME}:F" | Out-Null
+# Native command: Stop does not catch it, and run.ps1 holds the token.
+if ($LASTEXITCODE) { throw "icacls failed ($LASTEXITCODE); run.ps1 is not locked down" }
 
 $Action  = New-ScheduledTaskAction -Execute 'powershell.exe' -Argument "-NoProfile -WindowStyle Hidden -ExecutionPolicy Bypass -File `"$Dir\run.ps1`""
 $Trigger = New-ScheduledTaskTrigger -AtLogOn -User $env:USERNAME
