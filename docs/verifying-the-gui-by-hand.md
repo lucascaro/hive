@@ -117,3 +117,5 @@ the opt-in probes: `HIVE_PROBE_CLAUDE=1` / `HIVE_PROBE_PI=1 go test
 - **`hivebar`** — an `NSStatusItem`; its menu cannot be opened or read
   without real screen control. Still a human row.
 - **Native window chrome** — window size, traffic lights, dock behaviour.
+- **Windows-only behaviour** — ConPTY, Explorer, the Ctrl keymap. Drive a
+  real Windows build in a VM instead: [testing-on-windows.md](testing-on-windows.md).

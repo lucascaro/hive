@@ -30,6 +30,12 @@
              even when it isn't the foreground app, so we opt out regardless. -->
         <key>NSAppSleepDisabled</key>
         <true/>
+        <!-- macOS attributes every PTY child (shells, agents, their tools)
+             to this bundle for Local Network privacy. Without a usage string
+             the prompt gives no reason, and a denial silently turns every
+             LAN connect() from a session into EHOSTUNREACH. -->
+        <key>NSLocalNetworkUsageDescription</key>
+        <string>Hive runs your shells and coding agents. Allow this so commands in a session can reach devices, VMs and dev servers on your local network.</string>
         <key>NSHumanReadableCopyright</key>
         <string>{{.Info.Copyright}}</string>
         {{if .Info.FileAssociations}}
