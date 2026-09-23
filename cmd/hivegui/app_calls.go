@@ -425,11 +425,14 @@ func pickDirectoryDefault(defaultDir, launchDir string) string {
 		if dir == "" {
 			continue
 		}
-		if resolved, err := resolveDir(dir); err == nil {
-			dir = resolved
+		resolved, err := resolveDir(dir)
+		if err != nil {
+			// Unresolvable is as good as missing: handing the raw path
+			// over would only move the refusal into the runtime.
+			continue
 		}
-		if st, err := os.Stat(dir); err == nil && st.IsDir() {
-			return dir
+		if st, err := os.Stat(resolved); err == nil && st.IsDir() {
+			return resolved
 		}
 	}
 	return ""
@@ -449,9 +452,12 @@ func pickDirectoryWith(open func(dir string) (string, error), dir string) (strin
 
 // isDefaultDirRefusal matches the error Wails' runtime returns from its
 // own pre-check ("default directory '…' does not exist"), which is the
-// only failure that happens before the dialog is shown.
+// only failure that happens before the dialog is shown. Anything else
+// that mentions a missing path came from the dialog itself and is not
+// worth a second showing.
 func isDefaultDirRefusal(err error) bool {
-	return strings.Contains(err.Error(), "does not exist")
+	msg := err.Error()
+	return strings.HasPrefix(msg, "default directory ") && strings.HasSuffix(msg, "does not exist")
 }
 
 // Confirm shows a native yes/no dialog and reports the user's choice.

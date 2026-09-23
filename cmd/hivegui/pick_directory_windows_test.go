@@ -3,10 +3,12 @@
 package main
 
 import (
-	"os/exec"
+	"os"
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/lucascaro/hive/internal/proc"
 )
 
 // A junction (mklink /J) needs no privilege, unlike a symlink, which is
@@ -16,16 +18,17 @@ import (
 func TestPickDirectoryDefaultResolvesAJunction(t *testing.T) {
 	base := t.TempDir()
 	real := filepath.Join(base, "real")
-	if err := exec.Command("cmd", "/c", "mkdir", real).Run(); err != nil {
+	if err := os.Mkdir(real, 0o700); err != nil {
 		t.Fatal(err)
 	}
 	junction := filepath.Join(base, "junction")
-	out, err := exec.Command("cmd", "/c", "mklink", "/J", junction, real).CombinedOutput()
+	// mklink is a cmd built-in; proc.Command keeps it consoleless.
+	out, err := proc.Command("cmd", "/c", "mklink", "/J", junction, real).CombinedOutput()
 	if err != nil {
 		t.Skipf("cannot create a junction here: %v: %s", err, strings.TrimSpace(string(out)))
 	}
 	got := pickDirectoryDefault(junction, "")
-	want, err := filepath.EvalSymlinks(real)
+	want, err := resolveDir(real)
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -7,16 +7,29 @@ import (
 	"testing"
 )
 
+// resolvedTempDir is t.TempDir() as the picker will report it: macOS
+// hands out /var/... which resolves to /private/var/..., and a Windows
+// runner's %TEMP% can be an 8.3 short name (RUNNER~1) that expands.
+func resolvedTempDir(t *testing.T) string {
+	t.Helper()
+	dir := t.TempDir()
+	resolved, err := resolveDir(dir)
+	if err != nil {
+		t.Fatalf("resolveDir(%q): %v", dir, err)
+	}
+	return resolved
+}
+
 func TestPickDirectoryDefaultPrefersTheCallersDir(t *testing.T) {
-	caller := t.TempDir()
-	launch := t.TempDir()
+	caller := resolvedTempDir(t)
+	launch := resolvedTempDir(t)
 	if got := pickDirectoryDefault(caller, launch); got != caller {
 		t.Fatalf("got %q, want the caller's dir %q", got, caller)
 	}
 }
 
 func TestPickDirectoryDefaultFallsBackToLaunchDirWhenTheCallersIsMissing(t *testing.T) {
-	launch := t.TempDir()
+	launch := resolvedTempDir(t)
 	missing := filepath.Join(launch, "gone")
 	if got := pickDirectoryDefault(missing, launch); got != launch {
 		t.Fatalf("got %q, want the launch dir %q", got, launch)
@@ -58,7 +71,7 @@ func TestPickDirectoryDefaultResolvesASymlinkedDir(t *testing.T) {
 		t.Skipf("symlinks unavailable here: %v", err)
 	}
 	got := pickDirectoryDefault(link, "")
-	want, err := filepath.EvalSymlinks(real)
+	want, err := resolveDir(real)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -100,7 +113,7 @@ func TestPickDirectoryWithRetriesWithoutADefaultWhenTheRuntimeRefusesIt(t *testi
 }
 
 func TestPickDirectoryWithDoesNotRetryOtherErrors(t *testing.T) {
-	boom := errors.New("dialog exploded")
+	boom := errors.New("selected directory does not exist")
 	o := &recordingOpener{answers: []func() (string, error){
 		func() (string, error) { return "", boom },
 	}}
