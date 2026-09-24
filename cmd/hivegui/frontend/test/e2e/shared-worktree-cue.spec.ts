@@ -2,13 +2,13 @@ import { expect, type Page, test } from '@playwright/test';
 
 const MOD = process.platform === 'darwin' ? 'Meta' : 'Control';
 
-// The shared-worktree cue, in a real browser (spec 384).
+// The shared-worktree cue, in a real browser (spec 384, restyled in 455).
 //
 // jsdom is CSS-blind: the dom tests can only assert that `data-wt-shared`
-// and the count are in the markup. Whether the bar is actually PAINTED —
-// 3px of the session's colour, at the right edge, not clipped by the grid
-// and not covered by the colour swatch that shares that end of the row —
-// is a question only a real engine answers, and getting it wrong is
+// and the count are in the markup. Whether the cue is actually PAINTED —
+// the group's rail in the session colour, and each member's own colour
+// bar at its right edge, not clipped and not covered by the resizer — is
+// a question only a real engine answers, and getting it wrong is
 // invisible to every other layer of this suite.
 
 async function boot(page: Page) {
@@ -48,10 +48,12 @@ async function seedSharedPair(page: Page) {
   );
 }
 
-// The group panel's ::after bar — its geometry and fill, plus whether a
-// hit test at the row's right edge still lands inside the panel. The bar
-// belongs to the PANEL now, not to each row: members share a colour, so a
-// bar per row would be three marks for one fact.
+// A member's own colour bar (its right-edge swatch, also its colour
+// picker) and the group's rail, plus whether a hit test at the row's
+// right edge still lands inside the group — i.e. not on the resizer. Each
+// row's bar is read from the ROW: the group has no bar of its own since
+// spec 455, and reading a removed pseudo-element would compare two
+// transparent values and pass whatever the colours were.
 function barOf(page: Page, nth: number) {
   return page.evaluate((n) => {
     const rows = document.querySelectorAll<HTMLElement>(
@@ -60,13 +62,17 @@ function barOf(page: Page, nth: number) {
     const li = rows[n];
     const panel = li.closest<HTMLElement>('.hv-worktree-group');
     if (!panel) throw new Error('member is not inside a group panel');
-    const cs = getComputedStyle(panel, '::after');
+    const bar = li.querySelector<HTMLElement>('.hv-session-row__colour');
+    if (!bar) throw new Error('member has no colour bar');
+    const rail = panel.querySelector<HTMLElement>('.hv-worktree-group__rows');
+    if (!rail) throw new Error('group has no rail');
     const r = li.getBoundingClientRect();
     const hit = document.elementFromPoint(r.right - 1, r.top + r.height / 2);
     return {
-      width: cs.width,
-      background: cs.backgroundColor,
-      content: cs.content,
+      width: getComputedStyle(bar).width,
+      background: getComputedStyle(bar).backgroundColor,
+      railWidth: getComputedStyle(rail).borderLeftWidth,
+      railColor: getComputedStyle(rail).borderLeftColor,
       sessionColor: getComputedStyle(panel)
         .getPropertyValue('--session-color')
         .trim(),
@@ -77,20 +83,22 @@ function barOf(page: Page, nth: number) {
 }
 
 test.describe('shared worktree cue', () => {
-  test('paints a 3px bar in the session colour at the right edge', async ({
+  test('paints the rail and each member bar in the session colour', async ({
     page,
   }) => {
     await boot(page);
     await seedSharedPair(page);
+    await page.mouse.move(600, 5); // bars at their resting width
 
     const first = await barOf(page, 0);
-    expect(first.content).not.toBe('none'); // the ::after exists at all
     expect(first.width).toBe('3px');
     // Painted, not transparent, and not falling through to the fallback.
     expect(first.background).not.toBe('rgba(0, 0, 0, 0)');
     expect(first.sessionColor).not.toBe('');
-    // The right edge is still inside the panel's own box — i.e. the bar
-    // is not in an area clipped away by an ancestor's overflow.
+    expect(first.railWidth).toBe('1px');
+    expect(first.railColor).toBe(first.background);
+    // The right edge is still inside the panel's own box — not clipped
+    // away by an ancestor's overflow, and not under the resizer.
     expect(first.hitInsidePanel).toBe(true);
   });
 
@@ -117,8 +125,10 @@ test.describe('shared worktree cue', () => {
   test('gives both members of a group the same colour', async ({ page }) => {
     await boot(page);
     await seedSharedPair(page);
+    await page.mouse.move(600, 5);
     const [a, b] = [await barOf(page, 0), await barOf(page, 1)];
     expect(a.sid).not.toBe(b.sid);
+    expect(a.background).not.toBe('rgba(0, 0, 0, 0)');
     expect(a.background).toBe(b.background);
   });
 

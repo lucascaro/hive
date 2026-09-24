@@ -139,10 +139,8 @@
 
 /* Attention: a pulsing ground, so a session that wants you is visible
    from the corner of the eye without reading any row. Selection owns the
-   row's STATIC background and the left edge; attention uses neither —
-   pulsing is a channel of its own (patterns.md › Selection vs
-   attention). Declared before selection so a selected row still reads as
-   selected while it pulses. */
+   row's STATIC background; attention never sets it — pulsing is a
+   channel of its own (patterns.md › Selection vs attention). */
 /* opacity, not background-color: background-color is not
    compositor-animatable, and this animation never ends on a list that is
    always mounted. The tint itself is static; only the overlay's alpha
@@ -153,9 +151,9 @@
 }
 /* An overlay, not the row's own background: an animation's value beats a
    normal declaration, so pulsing `background-color` on the row itself
-   would win over [data-selected]'s --sel and a selected row would stop
-   reading as selected for as long as it wanted attention. The overlay
-   composites ON TOP of whichever ground the row has. */
+   would win over [data-selected]'s accent fill and a selected row would
+   stop reading as selected for as long as it wanted attention. The
+   overlay composites ON TOP of whichever ground the row has. */
 .hv-session-row[data-state='attention']::after,
 .hv-session-row[data-state='failed']::after {
   content: '';
@@ -166,9 +164,10 @@
   opacity: 0;
   animation: hv-attn-tint var(--motion-pulse) ease-in-out infinite;
 }
-/* With motion off the tint has to be static, and then BOTH grounds are on
-   screen at once — so this alpha stays below --sel, or a selected row
-   stops reading as selected. test/e2e/theme.spec.ts asserts the ordering. */
+/* With motion off the tint has to be static, and then an attention row
+   and the selected row are both tinted at once — so this alpha stays
+   quieter than the selection, or the selected row stops standing out.
+   test/e2e/theme.spec.ts asserts the ordering. */
 @media (prefers-reduced-motion: reduce) {
   .hv-session-row[data-state='attention']::after,
   .hv-session-row[data-state='failed']::after {
@@ -178,27 +177,24 @@
   }
 }
 
-/* Selection: --sel ground + a 2px accent bar at the left edge. Attention
-   never uses either channel (patterns.md › Selection vs attention). */
-.hv-session-row[data-selected] {
-  background: var(--sel);
-  color: var(--fg);
+/* Selection: an --accent fill with --on-accent ink (spec 455). The --sel
+   ground it replaces sat a few percent off --surface and next to --hover
+   (which is --sel at 60%), so the selected row was hard to find. The
+   fill is plain --accent, not a mix: --on-accent on --accent is the pair
+   ui-contrast.mjs gates, and a mix toward --surface fails AA on the light
+   presets. Everything the row draws on the fill switches to --on-accent
+   in the block at the END of this file — it has to come after the
+   state, density and hover rules it overrides. */
+.hv-session-row[data-selected],
+.hv-session-row[data-selected]:hover {
+  background: var(--accent);
+  color: var(--on-accent);
   font-weight: 500;
 }
-.hv-session-row[data-selected]::before {
-  content: '';
-  position: absolute;
-  left: 0;
-  top: 0;
-  bottom: 0;
-  width: 2px;
-  background: var(--accent);
-}
 
-/* The shared-worktree bar that used to live here is now the group
-   panel's (sidebar.css › .hv-worktree-group::after): members share a
-   colour, and one bar per row was three marks for one fact. The row
-   keeps data-wt-shared for the branch glyph's count and label. */
+/* A worktree group's colour is its rail (sidebar.css ›
+   .hv-worktree-group__rows); each member keeps its own colour bar. The
+   row keeps data-wt-shared for the branch glyph's count and label. */
 
 .hv-session-row__worktree-slot {
   display: inline-flex;
@@ -472,4 +468,87 @@
   .hv-session-row__sub {
   color: var(--fg-subtle);
   text-decoration: line-through;
+}
+
+/* ---------- selected row, on the accent fill ----------
+   Last in the file on purpose: these tie on specificity with the state
+   colours above (the attention/exited name rules) and must win by
+   source order, and the compact rules they override carry :root and a
+   density attribute, so those overrides repeat both plus the state. */
+.hv-session-row[data-selected] .hv-session-row__name,
+.hv-session-row[data-selected] .hv-session-row__sub,
+.hv-session-row[data-selected] .hv-session-row__meta,
+.hv-session-row[data-selected] .hv-session-row__idea,
+.hv-session-row[data-selected] .hv-session-row__worktree-count,
+.hv-session-row[data-selected] .hv-session-row__agent,
+.hv-session-row[data-selected] .hv-kbd,
+.hv-session-row[data-selected] .hv-icon:not(.hv-state-icon) {
+  color: var(--on-accent);
+}
+.hv-session-row[data-selected] .hv-icon-btn {
+  color: var(--on-accent);
+}
+.hv-session-row[data-selected] .hv-icon-btn:hover {
+  background: color-mix(in srgb, var(--on-accent) 14%, transparent);
+}
+/* The state icon keeps its own colours — they are the state, and
+   "needs you" must never share a colour with "fine" — but those colours
+   are 1-2:1 against the fill, and a status icon may never go silent
+   (AGENTS.md). So on the selected row it sits on a --surface disc: the
+   ground every state colour is contrast-gated on (ui-contrast.mjs).
+   `outline`, not a box-shadow ring: the attention icon animates
+   box-shadow for its pulse, and an animation beats a declaration. */
+.hv-session-row[data-selected] .hv-state-icon {
+  background: var(--surface);
+  border-radius: 50%;
+  outline: 2px solid var(--surface);
+}
+/* The plan pie follows the ink for the same reason — including a stale
+   pie, whose --fg-subtle is declared !important above. */
+.hv-session-row[data-selected] .hv-session-row__plan {
+  --hv-plan-color: var(--on-accent);
+}
+.hv-session-row[data-selected] .hv-session-row__plan--stale {
+  --hv-plan-color: color-mix(in srgb, var(--on-accent) 55%, transparent) !important;
+}
+.hv-session-row[data-selected] .hv-session-row__subagents {
+  background: var(--on-accent);
+  color: var(--accent);
+}
+/* Attention on a selected row. On eight presets --accent and
+   --state-attention are the same hue or close to it, so an attention
+   tint on the fill says nothing — and any tint over the fill lowers the
+   ink's contrast (an 18% ink tint takes Solarized from 5.04:1 to 3.79:1).
+   So the pulse keeps its channel — motion — but moves off the ground: a
+   2px inset border in the ink, pulsing on the same opacity keyframes.
+   The fill, and with it every text contrast, never changes. Under
+   reduced motion the border simply stays on. */
+.hv-session-row[data-selected][data-state='attention']::after,
+.hv-session-row[data-selected][data-state='failed']::after {
+  background-color: transparent;
+  box-shadow: inset 0 0 0 2px var(--on-accent);
+}
+@media (prefers-reduced-motion: reduce) {
+  .hv-session-row[data-selected][data-state='attention']::after,
+  .hv-session-row[data-selected][data-state='failed']::after {
+    background-color: transparent;
+  }
+}
+.hv-session-row[data-selected] button:focus-visible,
+.hv-session-row[data-selected] .hv-session-row__colour:has(input:focus-visible) {
+  outline-color: var(--on-accent);
+}
+:root[data-density='compact']
+  .hv-session-row[data-selected][data-state='attention']
+  .hv-session-row__sub,
+:root[data-density='compact']
+  .hv-session-row[data-selected][data-state='failed']
+  .hv-session-row__sub,
+:root[data-density='compact']
+  .hv-session-row[data-selected][data-state='exited']
+  .hv-session-row__sub,
+:root[data-density='compact']
+  .hv-session-row[data-selected][data-state='error']
+  .hv-session-row__sub {
+  color: var(--on-accent);
 }

@@ -1,6 +1,7 @@
 /* docs/design-docs/ui/components.md > launcherItem / command palette
    rows. 32px, --text-md, leading swatch, trailing kbd hint; selected
-   uses the same --sel + accent bar as the session row. */
+   uses --sel + an accent bar — the session row's look before spec 455,
+   which it deliberately keeps (the sidebar row is now an accent fill). */
 .launcher-item,
 .palette-item {
   position: relative;

@@ -48,12 +48,20 @@ body.resizing-sidebar #app { transition: none; }
 }
 
 
+/* A grid item sharing #sidebar's cell (placed above), pushed just past
+   the column's right edge: justify-self end + a negative right margin
+   equal to its width. So the 5px strip covers the sidebar's border and
+   the terminal's first pixels, and nothing the sidebar draws — the
+   session list runs to the edge with no gutter, and the colour bar there
+   (also the colour picker) is never under it. It used to be absolute
+   inside #sidebar at right: 0, which is what the list's 8px right
+   padding existed to clear (spec 455). Stretches the full row span by
+   default; `position: relative` is what lets its z-index apply. */
 #sidebar-resizer {
-  position: absolute;
-  top: 0;
-  right: 0;
-  bottom: 0;
+  position: relative;
+  justify-self: end;
   width: 5px;
+  margin-right: -5px;
   cursor: col-resize;
   z-index: 20;
   background: transparent;
