@@ -516,7 +516,9 @@ test.describe('project header', () => {
 
 test.describe('separators', () => {
   // p1: main, group feat/a, group feat/b — so p1 ENDS in a group — then p2.
-  async function seed(page: Page) {
+  // `alone`: p1 is the only project and holds only the two groups, so a
+  // group OPENS it and a group ends the LAST project.
+  async function seed(page: Page, alone = false) {
     await boot(page);
     // A group needs two sessions sharing one worktree.
     for (const branch of ['feat/a', 'feat/b']) {
@@ -536,6 +538,11 @@ test.describe('separators', () => {
       );
     }
     await expect(page.locator('.hv-worktree-group')).toHaveCount(2);
+    if (alone) {
+      await page.evaluate(() => window.__hive.killSession?.('s1', true));
+      await expect(page.locator('#projects .hv-session-row')).toHaveCount(4);
+      return;
+    }
     await page.evaluate(async () => {
       const p = {
         id: 'p2',
@@ -562,7 +569,9 @@ test.describe('separators', () => {
       const cards = [
         ...document.querySelectorAll('#projects > li.hv-project-card'),
       ];
+      const header = document.querySelector('.hv-project-card__header');
       return {
+        headerBottom: header ? r(header).bottom : Number.NaN,
         groups: groups.map((g) => {
           const cs = getComputedStyle(g);
           return {
@@ -603,5 +612,16 @@ test.describe('separators', () => {
     expect(p1.bottom).toBeCloseTo(lastGroup.bottom, 1);
     expect(p2.marginTop).toBe('0px');
     expect(p2.top).toBeCloseTo(p1.bottom, 1);
+  });
+
+  test('a group opening a project drops its top hairline; one ending the last project keeps its bottom', async ({
+    page,
+  }) => {
+    await seed(page, true);
+    const g = await geom(page);
+    const [first, last] = g.groups;
+    expect(first.borderTop).toBe('0px');
+    expect(first.top).toBeCloseTo(g.headerBottom, 1);
+    expect(last.borderBottom).toBe('1px');
   });
 });
