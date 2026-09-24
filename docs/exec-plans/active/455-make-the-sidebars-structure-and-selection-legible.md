@@ -3,6 +3,8 @@
 - **Spec:** [docs/product-specs/455-make-the-sidebars-structure-and-selection-legible.md](../../product-specs/455-make-the-sidebars-structure-and-selection-legible.md)
 - **Issue:** #455
 - **Status:** active
+- **PR:** #456
+- **Branch:** feature/455-sidebar-legibility
 
 ## Summary
 
@@ -206,7 +208,10 @@ scripts/ui-lint.sh --strict && scripts/ui-lint.sh --contrast --verbose
 
 Plus a manual visual check against the tuner in `wails dev` (http://localhost:34115) on hive-dark, hive-light and dracula, at normal and compact density.
 
-### Open questions / risks
+#
+- **2026-09-24** — Implemented. PR #456 opened. All frontend layers and lint gates are green.
+
+## Open questions / risks
 
 - **Hue collision.** On hive-dark and similar presets, a selected attention row's orange name gives way to `--on-accent`, so attention there is carried by the pulse plus the diamond icon. That is the operator's choice.
 - **Moving the resizer out of `<aside>`.** If React ever re-renders `#sidebar` from a template, the handle could be lost. It is static markup in `index.html`, and `main.tsx` binds it once at boot. The e2e drag test catches a regression.

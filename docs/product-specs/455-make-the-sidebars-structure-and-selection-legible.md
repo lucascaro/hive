@@ -4,7 +4,8 @@ title: Make the sidebar's structure and selection legible
 type: enhancement
 complexity: M
 priority: P2
-stage: IMPLEMENT
+pr: 456
+stage: REVIEW
 ---
 
 # Make the sidebar's structure and selection legible
