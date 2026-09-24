@@ -234,10 +234,9 @@ test.describe('selected row', () => {
     });
   }
 
-  test('a selected row that wants attention pulses in the ink', async ({
-    page,
-  }) => {
-    await boot(page);
+  // The pulse is a border, never a tint over the fill: any tint lowers
+  // the ink's contrast (an 18% ink tint took Solarized to 3.79:1).
+  async function attentionBorder(page: Page) {
     const sid = await selectedSid(page);
     await page.evaluate(
       (id) => window.__hive.setSessionState?.(id, 'waiting_input'),
@@ -245,55 +244,55 @@ test.describe('selected row', () => {
     );
     const row = selected(page);
     await expect(row).toHaveAttribute('data-state', 'attention');
-    const ink = parse(await token(page, '--on-accent'));
-    const after = await row.evaluate((el) => {
-      const cs = getComputedStyle(el, '::after');
-      return { anim: cs.animationName, bg: cs.backgroundColor };
-    });
-    expect(after.anim).toBe('hv-attn-tint');
-    const tint = parse(after.bg);
-    // The ink's channels, not --state-attention's: on hive-dark the two
-    // hues are 4° apart and an attention tint on the fill says nothing.
-    expect(Math.abs(tint.r - ink.r)).toBeLessThan(2);
-    expect(Math.abs(tint.g - ink.g)).toBeLessThan(2);
-    expect(Math.abs(tint.b - ink.b)).toBeLessThan(2);
-    expect(tint.a).toBeGreaterThan(0);
-
-    // The icon itself stays the attention colour, on its disc: "needs
-    // you" keeps its own colour on the selected row too.
-    await expect(row.locator('.hv-state-icon')).toHaveCSS(
-      'color',
-      await token(page, '--state-attention'),
-    );
-    await expect(row.locator('.hv-state-icon')).toHaveCSS(
-      'background-color',
-      await token(page, '--surface', 'background-color'),
-    );
-  });
-
-  test('with motion off the selected attention tint is static and painted', async ({
-    page,
-  }) => {
-    await page.emulateMedia({ reducedMotion: 'reduce' });
-    await boot(page);
-    const sid = await selectedSid(page);
-    await page.evaluate(
-      (id) => window.__hive.setSessionState?.(id, 'waiting_input'),
-      sid,
-    );
-    const row = selected(page);
-    await expect(row).toHaveAttribute('data-state', 'attention');
-    const after = await row.evaluate((el) => {
+    return row.evaluate((el) => {
       const cs = getComputedStyle(el, '::after');
       return {
         anim: cs.animationName,
         opacity: cs.opacity,
         bg: cs.backgroundColor,
+        shadow: cs.boxShadow,
       };
     });
+  }
+
+  for (const { id } of FIRST_PARTY) {
+    test(`${id}: a selected row that wants attention pulses a border in the ink, leaving the fill alone`, async ({
+      page,
+    }) => {
+      await boot(page, id);
+      const after = await attentionBorder(page);
+      expect(after.anim).toBe('hv-attn-tint');
+      expect(parse(after.bg).a).toBe(0);
+      expect(after.shadow).toContain(await token(page, '--on-accent'));
+      expect(after.shadow).toMatch(/inset/);
+      expect(after.shadow).toMatch(/\b2px\b/);
+      // The ground the text actually sits on is still the plain fill, so
+      // the AA check in the fill test holds while the row pulses.
+      const row = selected(page);
+      const [bg, ink] = await row.evaluate((el) => {
+        const cs = getComputedStyle(el);
+        return [cs.backgroundColor, cs.color];
+      });
+      expect(contrast(ink, bg)).toBeGreaterThanOrEqual(4.5);
+      // The icon itself stays the attention colour, on its disc: "needs
+      // you" keeps its own colour on the selected row too.
+      await expect(row.locator('.hv-state-icon')).toHaveCSS(
+        'color',
+        await token(page, '--state-attention'),
+      );
+    });
+  }
+
+  test('with motion off the selected attention border is static and painted', async ({
+    page,
+  }) => {
+    await page.emulateMedia({ reducedMotion: 'reduce' });
+    await boot(page);
+    const after = await attentionBorder(page);
     expect(after.anim).toBe('none');
     expect(after.opacity).toBe('1');
-    expect(parse(after.bg).a).toBeGreaterThan(0);
+    expect(parse(after.bg).a).toBe(0);
+    expect(after.shadow).toContain(await token(page, '--on-accent'));
   });
 
   test('the plan pie stays visible on the fill, stale or live', async ({

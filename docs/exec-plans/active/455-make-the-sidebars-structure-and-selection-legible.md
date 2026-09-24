@@ -214,6 +214,7 @@ Plus a manual visual check against the tuner in `wails dev` (http://localhost:34
 ## PR convergence ledger
 
 - **2026-09-24 iter 1** — verdict: REQUEST_CHANGES; mergeable: MERGEABLE; findings_hash: 3f20e7737587c7fb3e4dd52835687ef7d57b770b4ebe4f3ab9306c65c352c492; threads_open: 1; action: escalated:risky-fix-needs-human-decision; head_sha: 7e7d1d8.
+- **2026-09-24 iter 2** — verdict: REQUEST_CHANGES; mergeable: MERGEABLE; findings_hash: 544a58fb5894c83ace6523f5d23f480bc5c40b17593157dd2ab6a5437e13c4c8; threads_open: 1; action: escalated:risky-fix-needs-human-decision; head_sha: f00d160.
 
 ## Open questions / risks
 
@@ -249,6 +250,8 @@ Plus a manual visual check against the tuner in `wails dev` (http://localhost:34
 - **2026-09-24** — On the selected row the state icon keeps its state colours on a `--surface` disc, and does not switch to `--on-accent` ink. Why: `state-glyphs.spec.ts` enforces that "needs you" never shares a colour with "fine", and inking the icon made them identical. The operator chose the disc when this came up during implementation.
 
 - **2026-09-24** — The tuner mock page was dropped from the PR. Why: CodeQL flagged its localStorage→innerHTML path. The operator chose to remove it rather than sanitize it or dismiss the alert.
+
+- **2026-09-24** — A selected row that needs attention now pulses a 2px inset `--on-accent` border instead of an ink tint. Why: review iteration 2 and CodeRabbit found the 18%/12% tint dropped text under AA (Solarized 3.79:1 / 4.18:1). The operator chose "pulse a border only".
 
 ## Progress
 
