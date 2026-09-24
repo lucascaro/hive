@@ -2,7 +2,7 @@
 
 - **Spec:** [docs/product-specs/455-make-the-sidebars-structure-and-selection-legible.md](../../product-specs/455-make-the-sidebars-structure-and-selection-legible.md)
 - **Issue:** #455
-- **Status:** active
+- **Status:** completed
 - **PR:** #456
 - **Branch:** feature/455-sidebar-legibility
 
@@ -216,6 +216,14 @@ Plus a manual visual check against the tuner in `wails dev` (http://localhost:34
 - **2026-09-24 iter 1** — verdict: REQUEST_CHANGES; mergeable: MERGEABLE; findings_hash: 3f20e7737587c7fb3e4dd52835687ef7d57b770b4ebe4f3ab9306c65c352c492; threads_open: 1; action: escalated:risky-fix-needs-human-decision; head_sha: 7e7d1d8.
 - **2026-09-24 iter 2** — verdict: REQUEST_CHANGES; mergeable: MERGEABLE; findings_hash: 544a58fb5894c83ace6523f5d23f480bc5c40b17593157dd2ab6a5437e13c4c8; threads_open: 1; action: escalated:risky-fix-needs-human-decision; head_sha: f00d160.
 - **2026-09-24 iter 3** — verdict: APPROVE; mergeable: MERGEABLE; findings_hash: empty; threads_open: 0; action: stop; head_sha: de63ca8.
+
+## Gate verdict
+
+- **2026-09-24** — verdict: PASS; phase: —; checks: 13 passed / 0 failed / 0 followups; followups: none; one-line: all 7 success criteria met with per-preset e2e evidence, no non-goal bleed, and the docs match the shipped CSS.
+  - 2026-09-24 dimensions:
+    - acceptance — PASS — SC1–SC7 verified. 68 specs green (sidebar-legibility, sidebar-group-flatten, shared-worktree-cue); ui-lint 0 violations; ui-contrast 0 failures. The resizer drag test (ux-polish) was covered by the full local e2e run (460) and CI.
+    - non-goals — PASS — only CSS, markup, docs and tests changed; the solarized `--on-accent` change is justified; launcher and palette changes are comment-only.
+    - doc accuracy — PASS — changeset valid (`type: changed`, so `regression_of` does not apply). components, patterns, tokens and themes docs match the CSS. No dangling tuner reference. CHANGELOG and index untouched.
 
 ## Open questions / risks
 

@@ -5,13 +5,14 @@ type: enhancement
 complexity: M
 priority: P2
 pr: 456
-stage: GATE
+shipped: 2026-09-24
+stage: DONE
 ---
 
 # Make the sidebar's structure and selection legible
 
 - **Issue:** #455
-- **Exec plan:** —
+- **Exec plan:** [docs/exec-plans/completed/455-make-the-sidebars-structure-and-selection-legible.md](../exec-plans/completed/455-make-the-sidebars-structure-and-selection-legible.md)
 
 ## Problem
 
