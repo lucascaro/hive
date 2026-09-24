@@ -8,7 +8,7 @@
 
 ## Summary
 
-A CSS-only restyle of the GUI sidebar that makes four things easier to see. Worktree groups become an indented rail. The selected row gets an accent fill that still shows attention. The session list loses its side gutters, and the resize handle moves so the colour picker stays clickable. Project headers get a top rule in the project colour. The design was chosen in a two-round interactive tuner (`docs/design-docs/ui/mocks/sidebar-legibility-tuner.html`).
+A CSS-only restyle of the GUI sidebar that makes four things easier to see. Worktree groups become an indented rail. The selected row gets an accent fill that still shows attention. The session list loses its side gutters, and the resize handle moves so the colour picker stays clickable. Project headers get a top rule in the project colour. The design was chosen in a two-round interactive tuner; the chosen values are in the spec's Notes. The tuner page itself was dropped from the PR after CodeQL flagged it (decision log).
 
 ## Research
 
@@ -211,6 +211,10 @@ Plus a manual visual check against the tuner in `wails dev` (http://localhost:34
 #
 - **2026-09-24** — Implemented. PR #456 opened. All frontend layers and lint gates are green.
 
+## PR convergence ledger
+
+- **2026-09-24 iter 1** — verdict: REQUEST_CHANGES; mergeable: MERGEABLE; findings_hash: 3f20e7737587c7fb3e4dd52835687ef7d57b770b4ebe4f3ab9306c65c352c492; threads_open: 1; action: escalated:risky-fix-needs-human-decision; head_sha: 7e7d1d8.
+
 ## Open questions / risks
 
 - **Hue collision.** On hive-dark and similar presets, a selected attention row's orange name gives way to `--on-accent`, so attention there is carried by the pulse plus the diamond icon. That is the operator's choice.
@@ -243,6 +247,8 @@ Plus a manual visual check against the tuner in `wails dev` (http://localhost:34
 - **2026-09-24** — The launcher and palette items keep the old selection look (comment fix only). Why: out of scope; they are not the sidebar.
 
 - **2026-09-24** — On the selected row the state icon keeps its state colours on a `--surface` disc, and does not switch to `--on-accent` ink. Why: `state-glyphs.spec.ts` enforces that "needs you" never shares a colour with "fine", and inking the icon made them identical. The operator chose the disc when this came up during implementation.
+
+- **2026-09-24** — The tuner mock page was dropped from the PR. Why: CodeQL flagged its localStorage→innerHTML path. The operator chose to remove it rather than sanitize it or dismiss the alert.
 
 ## Progress
 
