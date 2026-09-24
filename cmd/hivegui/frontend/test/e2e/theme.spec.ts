@@ -943,10 +943,12 @@ test.describe('Settings > Appearance', () => {
 
 // Attention pulses the row's ground; selection owns the static one
 // (patterns.md › Selection vs attention). With motion disabled the pulse
-// becomes a static tint and BOTH grounds are on screen at once, so the
-// tint's alpha has to stay below --sel — otherwise a selected row that
-// wants attention stops reading as selected. Asserted rather than
+// becomes a static tint on an UNSELECTED row while the selected row shows
+// its fill, so the tint has to stay quieter than the selection — or the
+// tinted row competes with the selected one. Asserted rather than
 // commented, because the failure is a judgement call no unit test sees.
+// Attention on the SELECTED row (the ink pulse over the accent fill) is
+// covered in sidebar-legibility.spec.ts.
 test('the attention tint stays quieter than the selection ground', async ({
   page,
 }) => {

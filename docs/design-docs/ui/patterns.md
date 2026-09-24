@@ -6,18 +6,18 @@ Behaviour that spans components. When a component doc and this file disagree, th
 
 Two independent facts, two independent channels:
 
-- **Selected** = the session you are looking at. `--sel` background + 2px `--accent` bar. Exactly one session row is selected in single view; in grid view the focused tile's row is selected.
+- **Selected** = the session you are looking at. An `--accent` fill with `--on-accent` ink for everything on the row (spec 455; it was `--sel` + a 2px accent bar, which sat too close to the ground and to hover to find at a glance). Exactly one session row is selected in single view; in grid view the focused tile's row is selected.
 - **Attention** = a session wants you. `state-attention` icon (diamond, pulsing) + name in `--state-attention` + a background tint that **pulses**. Many rows may have it.
 
-They never share a colour (`--accent` ≠ `--state-attention` in every non-monochrome preset) and never share a position (bar at left edge vs icon in the state column).
+They do not rely on colour to stay apart: `--accent` and `--state-attention` are the same hue or close to it on several presets (`hive-dark`, `classic`, `native-light`, `alucard`, …). Selection is a static FILL; attention is MOTION (the pulse) plus the diamond icon's shape.
 
-Selection owns the row's *static* background and the left edge. Attention never uses the left edge and never paints a static background — but it may pulse one, which is a channel selection does not use. Under `prefers-reduced-motion` the pulse becomes static, so the two grounds are on screen at once and their alphas must stay ordered: attention's 9% sits below `--sel`, or a selected row stops reading as selected. That ordering is asserted in the theme tests, not left to a comment.
+Selection owns the row's *static* background. Attention never paints a static background — but it may pulse one, which is a channel selection does not use. On an unselected row the pulse is `--state-attention` at 12%. On the SELECTED row an attention tint would vanish into the fill wherever the two hues meet, so the pulse there is `--on-accent` at 18% — the fill rhythmically shifts toward the ink — and the state icon keeps its diamond and its attention colour on a `--surface` disc. Under `prefers-reduced-motion` the pulses become static tints (9% attention, 12% ink); an unselected attention row's tint must stay quieter than the selection, which the theme tests assert, and the selected row's cue is asserted in `sidebar-legibility.spec.ts`.
 
-A third fact, added by spec 384, takes the one edge left over:
+A third fact, added by spec 384:
 
-- **Shared worktree** = this session and at least one other are editing the same files. A 3px `--session-color` bar on the **right** edge of the group's panel + the branch and a count in the panel's header. Many rows may have it, in several distinct groups.
+- **Shared worktree** = this session and at least one other are editing the same files. The members indent behind a 1px `--session-color` rail on the **left** (spec 455; it was a bar on the panel's right edge), under a header that names the branch and a count in the group's colour. Many rows may have it, in several distinct groups.
 
-The right edge is not a stylistic choice: the left is selection's, and one indicator per position is the rule above. Colour alone never carries it either — the count and the branch name say it in words, which is what makes the cue survive a monochrome preset and a colourblind reader.
+The left edge became free when selection moved from a left bar to a fill. Colour alone never carries the group either — the indent is positional, and the count and the branch name say it in words, which is what makes the cue survive a monochrome preset and a colourblind reader.
 
 ## One order
 

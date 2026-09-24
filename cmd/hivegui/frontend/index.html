@@ -111,13 +111,17 @@
     <footer id="sidebar-hints" class="hints">
       <span id="ver-gui"></span><span id="ver-daemon" hidden></span>
     </footer>
-    <div id="sidebar-resizer"
-         role="separator"
-         aria-orientation="vertical"
-         aria-label="Resize sidebar"
-         tabindex="0"
-         title="Drag to resize (← / → to adjust, ⇧ for larger steps)"></div>
   </aside>
+  <!-- Outside #sidebar on purpose (spec 455): it sits just past the
+       sidebar's right edge (layout.css), where it covers nothing the
+       sidebar draws. Before #launcher so the launcher wins the z-index
+       tie (launcher.css). -->
+  <div id="sidebar-resizer"
+       role="separator"
+       aria-orientation="vertical"
+       aria-label="Resize sidebar"
+       tabindex="0"
+       title="Drag to resize (← / → to adjust, ⇧ for larger steps)"></div>
   <div id="launcher" class="hidden" role="menu"></div>
   <!-- The settings dialog's root. Empty: components/modals/Settings.tsx
        renders the panel into it. The attributes are the ones ui/dialog.ts

@@ -1,0 +1,477 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Sidebar Tuner</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap">
+<style>
+/* ---------- page chrome (not the product) ---------- */
+:root { --p-bg:#16161a; --p-panel:#1d1d22; --p-fg:#e8e6e1; --p-muted:#9a978f; --p-rule:#2c2c33; --p-accent:#f0a04b; }
+* { box-sizing:border-box; }
+body { margin:0; background:var(--p-bg); color:var(--p-fg); font:13px/1.5 "IBM Plex Sans",system-ui,sans-serif; }
+.app { display:grid; grid-template-columns:400px 1fr; height:100vh; }
+.ctl { overflow-y:auto; border-right:1px solid var(--p-rule); background:var(--p-panel); padding:14px 16px 120px; }
+.ctl h1 { font-size:16px; margin:0 0 2px; }
+.ctl .lede { color:var(--p-muted); margin:0 0 10px; font-size:12px; }
+fieldset { border:1px solid var(--p-rule); border-radius:8px; margin:0 0 14px; padding:10px 12px 12px; }
+legend { font-weight:600; padding:0 6px; font-size:13px; }
+legend .n { font:500 11px "JetBrains Mono",monospace; color:var(--p-accent); margin-right:6px; }
+.why { color:var(--p-muted); font-size:11.5px; margin:0 0 8px; }
+.opt { display:flex; gap:8px; align-items:flex-start; padding:4px 6px; border-radius:6px; cursor:pointer; }
+.opt:hover { background:#26262c; }
+.opt input { margin-top:3px; }
+.opt b { font-weight:500; }
+.opt small { display:block; color:var(--p-muted); font-size:11px; line-height:1.35; }
+.opt .cur { font:10px "JetBrains Mono",monospace; color:var(--p-muted); border:1px solid var(--p-rule); border-radius:3px; padding:0 3px; margin-left:4px; }
+.row2 { display:grid; grid-template-columns:130px 1fr 38px; align-items:center; gap:8px; margin:6px 0 0; font-size:12px; color:var(--p-muted); }
+.row2 output { font:11px "JetBrains Mono",monospace; text-align:right; color:var(--p-fg); }
+.tog { display:flex; gap:8px; align-items:flex-start; margin:6px 0 0; font-size:12px; cursor:pointer; }
+.tog small { display:block; color:var(--p-muted); font-size:11px; }
+select { background:#26262c; color:var(--p-fg); border:1px solid var(--p-rule); border-radius:4px; padding:2px 4px; font:inherit; font-size:12px; }
+textarea { width:100%; min-height:44px; margin-top:8px; background:#141418; color:var(--p-fg); border:1px solid var(--p-rule); border-radius:6px; padding:6px 8px; font:12px/1.4 "IBM Plex Sans",sans-serif; resize:vertical; }
+.bar { position:fixed; bottom:0; left:0; width:400px; z-index:5; padding:10px 16px; background:var(--p-panel); border-top:1px solid var(--p-rule); display:flex; gap:8px; align-items:center; }
+.bar button { font:inherit; font-weight:600; border-radius:6px; padding:7px 12px; cursor:pointer; border:1px solid var(--p-rule); background:#26262c; color:var(--p-fg); }
+.bar button.primary { background:var(--p-accent); color:#1a1206; border-color:var(--p-accent); }
+.bar .msg { color:var(--p-muted); font-size:11.5px; }
+.stage { overflow:auto; padding:18px 22px; }
+.stage-top { display:flex; gap:16px; align-items:center; flex-wrap:wrap; margin-bottom:14px; color:var(--p-muted); font-size:12px; }
+.stage-top label { display:flex; gap:6px; align-items:center; }
+.cmp { display:flex; gap:28px; align-items:flex-start; flex-wrap:wrap; }
+.cmp h2 { font-size:12px; font-weight:600; margin:0 0 6px; color:var(--p-muted); text-transform:uppercase; letter-spacing:.06em; }
+.cmp h2.p { color:var(--p-accent); }
+.hint { color:var(--p-muted); font-size:11.5px; margin-top:10px; max-width:80ch; }
+
+/* ---------- product tokens, scoped to each mock ---------- */
+.mock { --session-color:#a5a8b8; }
+.mock[data-theme="hive-dark"] { --bg:#0f1014; --surface:#13141a; --surface-raised:#0f1015; --border:#22242e; --fg:#e6e7ee; --fg-muted:#a5a8b8; --fg-subtle:#5f6273; --accent:#ffb454; --on-accent:#15120a; --sel:#1c1e28; --state-running:#5fd7a5; --state-attention:#ff9f43; --state-error:#ff6b6b; --state-info:#7fb3d5; --term-bg:#0b0c10; }
+.mock[data-theme="hive-light"] { --bg:#f4f4f7; --surface:#ffffff; --surface-raised:#f8f8fb; --border:#e2e3ea; --fg:#1a1b22; --fg-muted:#4f5262; --fg-subtle:#8a8d9c; --accent:#c47a12; --on-accent:#1a1b22; --sel:#eceef5; --state-running:#17865a; --state-attention:#b35a0c; --state-error:#b8322f; --state-info:#2f6f9b; --term-bg:#fbfbfd; }
+.mock[data-theme="dracula"] { --bg:#21222c; --surface:#282a36; --surface-raised:#2f3140; --border:#44475a; --fg:#f8f8f2; --fg-muted:#c8cee0; --fg-subtle:#6272a4; --accent:#bd93f9; --on-accent:#21222c; --sel:#44475a; --state-running:#50fa7b; --state-attention:#ffb86c; --state-error:#ff5555; --state-info:#8be9fd; --term-bg:#1e1f29; }
+.mock { --hover: color-mix(in srgb, var(--sel) var(--hover-mix, 60%), transparent); display:flex; font-family:"IBM Plex Sans",system-ui,sans-serif; border:1px solid var(--p-rule); border-radius:6px; overflow:hidden; height:640px; }
+
+/* ---------- sidebar ---------- */
+.sb { position:relative; width:var(--sb-w,260px); flex:none; background:var(--surface); border-right:1px solid var(--border); display:flex; flex-direction:column; user-select:none; overflow:hidden; }
+.sb header { display:flex; align-items:center; gap:6px; padding:8px 10px; border-bottom:1px solid var(--border); }
+.sb .brand { margin-right:auto; font-weight:600; font-size:13px; letter-spacing:.04em; color:var(--accent); }
+.sb .brand span { color:var(--fg-subtle); font:400 11px "JetBrains Mono",monospace; margin-left:2px; }
+.sb .ib { width:18px; height:18px; border-radius:4px; background:var(--sel); opacity:.7; }
+.list { list-style:none; margin:0; padding:4px var(--list-pr,8px) 4px var(--list-pl,0); flex:1; overflow-y:auto; overflow-x:hidden; }
+.term { flex:1; background:var(--term-bg); min-width:36px; font:11px/1.5 "JetBrains Mono",monospace; color:var(--fg-subtle); padding:8px; }
+.resizer { position:absolute; top:0; bottom:0; right:0; width:5px; z-index:20; }
+.sb[data-resizer="straddle"] { overflow:visible; }
+.sb[data-resizer="straddle"] .resizer { right:-4px; width:7px; }
+.mock[data-showhit] .resizer { background:repeating-linear-gradient(45deg, rgba(255,80,80,.55) 0 3px, rgba(255,80,80,.2) 3px 6px); }
+
+/* project label */
+.proj { list-style:none; margin:var(--proj-gap,8px) 0 12px; }
+.proj:first-child { margin-top:4px; }
+.ph { position:sticky; top:0; z-index:3; display:flex; align-items:center; gap:8px; height:var(--ph-h,26px); padding:0 12px; background:var(--surface); border-bottom:1px solid var(--border); color:var(--fg-muted); font-size:11px; font-weight:600; letter-spacing:.04em; text-transform:uppercase; cursor:pointer; }
+.ph:hover { background:var(--hover); }
+.proj[data-active] .ph { color:var(--accent); }
+.sw { width:var(--sw,8px); height:var(--sw,8px); border-radius:2px; flex:none; background:var(--project-color); }
+.pn { flex:1; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.cnt { color:var(--fg-subtle); font:400 11px "JetBrains Mono",monospace; }
+.chev { color:var(--fg-subtle); font-size:9px; width:10px; display:inline-block; transition:transform .12s; }
+[data-collapsed] > .ph .chev, [data-collapsed] > .gh .chev { transform:rotate(-90deg); }
+.proj[data-collapsed] > .rows, .grp[data-collapsed] > .rows { display:none; }
+.rows { list-style:none; margin:0; padding:0; }
+
+/* worktree group */
+.grp { position:relative; list-style:none; margin:var(--g-gap,4px) 0; }
+.gh { position:sticky; top:var(--ph-h,26px); z-index:2; display:grid; grid-template-columns:14px minmax(0,1fr) auto; align-items:center; column-gap:8px; padding:4px 12px; cursor:pointer; font-size:12px; }
+.gt { display:inline-flex; align-items:baseline; gap:8px; min-width:0; overflow:hidden; white-space:nowrap; }
+.gl { color:var(--fg); overflow:hidden; text-overflow:ellipsis; }
+.gb { color:var(--fg-muted); overflow:hidden; text-overflow:ellipsis; min-width:7ch; }
+.gl + .gb { color:var(--fg-subtle); font-size:11px; }
+.gi { display:none; color:var(--fg-subtle); margin-right:2px; }
+.sb[data-glyph] .gi { display:inline; }
+.galert { color:var(--state-attention); font:11px "JetBrains Mono",monospace; margin-right:6px; }
+.grp.pseudo .gl { color:var(--fg-subtle); font-style:italic; }
+
+/* ---------- session row ---------- */
+.row { position:relative; display:grid; grid-template-columns:14px minmax(0,1fr) auto; align-items:center; row-gap:1px; min-height:40px; padding:0 12px; color:var(--fg-muted); font-size:13px; cursor:pointer; }
+.row > * + * { margin-left:8px; }
+.st { grid-column:1; grid-row:1; width:8px; height:8px; border-radius:50%; justify-self:center; }
+.nm { grid-column:2; grid-row:1; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.meta { grid-column:3; grid-row:1; display:flex; gap:4px; align-items:center; color:var(--fg-subtle); font-size:11px; }
+.sub { grid-column:2 / -1; grid-row:2; font-size:12px; color:var(--fg-subtle); line-height:1.4; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.ag { font:11px "JetBrains Mono",monospace; color:var(--fg); background:color-mix(in srgb, var(--agent-color, transparent) 18%, transparent); border-radius:4px; padding:0 4px; }
+.row:hover { background:var(--hover); color:var(--fg); }
+.row[data-state="running"] .st, .row[data-state="working"] .st { background:var(--state-running); }
+.row[data-state="working"] .st { box-shadow:0 0 0 2px color-mix(in srgb, var(--state-running) 35%, transparent); }
+.row[data-state="attention"] .st { background:var(--state-attention); }
+.row[data-state="idle"] .st { box-shadow:inset 0 0 0 1.5px var(--state-info); }
+.row[data-state="exited"] .st { box-shadow:inset 0 0 0 1.5px var(--fg-subtle); }
+.row[data-state="attention"] .nm { color:var(--state-attention); font-weight:500; }
+.row[data-state="exited"] .nm { color:var(--fg-subtle); text-decoration:line-through; }
+@keyframes attn { 0%,100% { opacity:0; } 50% { opacity:1; } }
+.row[data-state="attention"]::after { content:''; position:absolute; inset:0; pointer-events:none; background:color-mix(in srgb, var(--state-attention) 12%, transparent); opacity:0; animation:attn 1.6s ease-in-out infinite; }
+.sb[data-density="compact"] .row { min-height:28px; font-size:12px; }
+.sb[data-density="compact"] .sub { display:none; }
+.sb[data-density="tight"] .row { min-height:34px; font-size:12px; }
+.sb[data-density="tight"] .sub { font-size:11px; line-height:1.3; }
+
+/* colour bar */
+.cb { position:absolute; z-index:1; top:1px; bottom:1px; width:var(--cb-w,3px); border-radius:4px; background:var(--session-color); transition:width .12s; }
+.sb[data-edge="current"] .cb, .sb[data-edge="flush-right"] .cb { right:0; }
+.sb[data-edge="flush-left"] .cb { left:0; }
+.row:hover .cb { width:12px; }
+.sb[data-edge="swatch"] .cb { position:static; grid-column:3; grid-row:1; width:8px; height:8px; border-radius:2px; margin-left:6px; justify-self:end; }
+.sb[data-edge="swatch"] .row { grid-template-columns:14px minmax(0,1fr) auto auto; }
+.sb[data-edge="swatch"] .meta { grid-column:3; }
+.sb[data-edge="swatch"] .cb { grid-column:4; }
+.sb[data-edge="swatch"] .row:hover .cb { width:8px; }
+/* in a group: one bar for the group */
+.grp:not(.pseudo)::after { content:''; position:absolute; top:0; bottom:0; width:3px; background:var(--session-color); z-index:1; }
+.sb[data-edge="current"] .grp::after, .sb[data-edge="flush-right"] .grp::after { right:0; }
+.sb[data-edge="flush-left"] .grp::after { left:0; }
+.sb[data-edge="swatch"] .grp::after { display:none; }
+.sb:not([data-edge="swatch"]) .grp .cb { background:transparent; }
+.sb:not([data-edge="swatch"]) .grp .row:hover .cb { background:var(--session-color); }
+
+/* ---------- group separation modes ---------- */
+.sb[data-hair] .grp { border-top:1px solid var(--border); border-bottom:1px solid var(--border); }
+.gh { border-bottom:1px solid var(--border); }
+.sb[data-group="current"] .grp, .sb[data-group="current"] .gh { background:var(--surface-raised); }
+.sb[data-group="tint"] .grp { background:color-mix(in srgb, var(--fg) var(--g-tint,5%), var(--surface)); }
+.sb[data-group="tint"] .gh { background:color-mix(in srgb, var(--fg) calc(var(--g-tint,5%) * 1.8), var(--surface)); }
+.sb[data-group="colour"] .grp:not(.pseudo) { background:color-mix(in srgb, var(--session-color) var(--g-tint,5%), var(--surface)); }
+.sb[data-group="colour"] .grp:not(.pseudo) .gh { background:color-mix(in srgb, var(--session-color) calc(var(--g-tint,5%) * 3), var(--surface)); }
+.sb[data-group="rail"] .gh { background:var(--surface); border-bottom:0; }
+.sb[data-group="rail"] .grp:not(.pseudo) > .rows { margin-left:var(--rail-indent,14px); border-left:var(--rail-w,2px) solid var(--rail-c, var(--session-color)); }
+.sb[data-group="rail"] .grp:not(.pseudo)::after { display:none; }
+.sb[data-group="rail"] .grp:not(.pseudo) .cb { background:var(--session-color); }
+.sb[data-group="rail"] .grp:not(.pseudo) .row { padding-left:8px; }
+.grp.pseudo, .grp.pseudo .gh { background:var(--surface) !important; }
+.grp.pseudo > .rows { margin-left:0 !important; border-left:0 !important; }
+
+/* ---------- selection modes ---------- */
+.row.sel { color:var(--fg); font-weight:500; }
+.row.sel::before { content:''; position:absolute; top:0; bottom:0; left:0; width:var(--sel-bar,2px); background:var(--accent); z-index:2; }
+.sb[data-edge="flush-left"] .row.sel::before { left:auto; right:0; }
+.sb[data-sel="current"] .row.sel { background:var(--sel); }
+.sb[data-sel="tint"] .row.sel { background:color-mix(in srgb, var(--accent) var(--sel-tint,14%), var(--surface)); }
+.sb[data-sel="ring"] .row.sel { background:var(--sel); box-shadow:inset 0 0 0 1px var(--accent); }
+.sb[data-sel="bold"] .row.sel { background:color-mix(in srgb, var(--accent) var(--sel-tint,14%), var(--surface)); }
+.sb[data-sel="bold"] .row.sel .nm { color:var(--accent); font-weight:600; }
+.sb[data-sel="filled"] .row.sel { background:color-mix(in srgb, var(--accent) var(--fill,88%), var(--surface)); color:var(--on-accent); }
+.sb[data-sel="filled"] .row.sel .sub, .sb[data-sel="filled"] .row.sel .meta, .sb[data-sel="filled"] .row.sel .nm { color:var(--on-accent); }
+.sb[data-sel="filled"] .row.sel .ag { color:var(--on-accent); background:color-mix(in srgb, var(--on-accent) 14%, transparent); }
+.sb[data-dim] .row:not(.sel) { opacity:.72; }
+.sb[data-dim] .row:not(.sel):hover { opacity:1; }
+/* ancestor marker */
+.anc { display:none; width:6px; height:6px; border-radius:50%; background:var(--accent); flex:none; }
+.gh .anc { margin-left:6px; }
+.sb[data-anc="always"] .has-sel > .ph .anc, .sb[data-anc="always"] .has-sel > .gh .anc,
+.sb[data-anc="collapsed"] .has-sel[data-collapsed] > .ph .anc, .sb[data-anc="collapsed"] .has-sel[data-collapsed] > .gh .anc { display:inline-block; }
+
+/* ---------- round 2 ---------- */
+.sb[data-railbar="off"][data-group="rail"] .grp:not(.pseudo) .cb { display:none; }
+.gh .gdot { grid-column:1; grid-row:1; } .gh .chev { grid-column:1; grid-row:1; } .gh .gt { grid-column:2; }
+.gdot { display:none; width:7px; height:7px; border-radius:50%; background:var(--session-color); justify-self:center; }
+.sb[data-railhead="dot"] .grp:not(.pseudo) .gdot { display:block; }
+.sb[data-railhead="dot"] .grp:not(.pseudo) .gh .chev { display:none; }
+.sb[data-railhead="colour"] .grp:not(.pseudo) .gb, .sb[data-railhead="colour"] .grp:not(.pseudo) .gl { color:color-mix(in srgb, var(--session-color) 70%, var(--fg)); }
+.sb[data-filltext="fg"][data-sel="filled"] .row.sel, .sb[data-filltext="fg"][data-sel="filled"] .row.sel .nm { color:var(--fg); }
+.sb[data-filltext="fg"][data-sel="filled"] .row.sel .sub, .sb[data-filltext="fg"][data-sel="filled"] .row.sel .meta { color:var(--fg-muted); }
+.sb[data-filltext="fg"][data-sel="filled"] .row.sel .ag { color:var(--fg); }
+.sb[data-selattn="ring"] .row.sel[data-state="attention"] { box-shadow:inset 0 0 0 2px var(--state-attention); }
+.sb[data-selattn="bar"] .row.sel[data-state="attention"]::before { background:var(--state-attention); width:4px; }
+.sb[data-selattn="name"] .row.sel[data-state="attention"] .nm { text-decoration:underline 2px var(--state-attention); text-underline-offset:3px; }
+.sb[data-ph="strong"] .ph { color:var(--fg); font-size:12px; font-weight:700; }
+.sb[data-ph="band"] .ph { background:color-mix(in srgb, var(--project-color) 16%, var(--surface)); color:var(--fg); }
+.sb[data-ph="rule"] .ph { border-top:2px solid var(--project-color); color:var(--fg); }
+.sb[data-ph="sunken"] .ph { background:var(--bg); color:var(--fg); border-top:1px solid var(--border); }
+.sb[data-ph="caps-off"] .ph { text-transform:none; letter-spacing:0; font-size:13px; color:var(--fg); font-weight:600; }
+.sb[data-phfg] .ph { color:var(--fg); }
+.sb .proj[data-active] .ph { color:var(--accent); }
+</style>
+</head>
+<body>
+<div class="app">
+  <aside class="ctl" id="ctl">
+    <h1>Sidebar tuner · round 2</h1>
+    <p class="lede">Three mocks: production · your round-1 picks (frozen) · round 2 (starts from round 1). "current" tag = production value. Click rows to move selection; click project/group headers to collapse. Values mirror <code>session-row.css</code>, <code>sidebar.css</code>, <code>project-card.css</code>.</p>
+    <div id="sections"></div>
+    <fieldset><legend><span class="n">G</span>General notes</legend>
+      <textarea id="notes-general" placeholder="Anything else — what feels off, what to try next…"></textarea>
+    </fieldset>
+    <div class="bar">
+      <button class="primary" id="copy">Copy feedback</button>
+      <button id="reset">Reset</button>
+      <span class="msg" id="msg"></span>
+    </div>
+  </aside>
+  <main class="stage">
+    <div class="stage-top">
+      <label>Theme <select id="theme"><option>hive-dark</option><option>hive-light</option><option>dracula</option></select></label>
+      <label>Density <select id="density"><option>normal</option><option>tight</option><option>compact</option></select></label>
+      <label>Width <input type="range" id="width" min="220" max="380" value="260"> <output id="width-o">260</output></label>
+      <label><input type="checkbox" id="showhit"> show resizer hit area</label>
+    </div>
+    <div class="cmp">
+      <div><h2>Current</h2><div class="mock" id="mock-cur"></div></div>
+      <div><h2>Round 1 pick</h2><div class="mock" id="mock-r1"></div></div>
+      <div><h2 class="p">Round 2 proposal</h2><div class="mock" id="mock-new"></div></div>
+    </div>
+    <p class="hint">Resizer hit area (red stripes): today it's 5px pinned inside the sidebar's right edge at z-index 20. That is <em>why</em> the list has an 8px right gutter — without it the colour bar (also the colour picker) sits under the resizer. Any "flush right" option has to pay for that somewhere; the options say where.</p>
+  </main>
+</div>
+<script>
+const SECTIONS = [
+  { id:'group', n:'1', title:'Worktree group vs. ungrouped sessions',
+    why:'Round 1 picked the indented rail. Tune it: rail weight, indent, colour, how the header says "worktree", and whether members still carry their own colour bars (the rail already states the colour).',
+    radio:{ key:'group', opts:[
+      ['current','Current','Raised ground + hairlines.'],
+      ['tint','Neutral tint band','Lift the group ground toward --fg.'],
+      ['colour','Session-colour band','Tint body + header with the group colour.'],
+      ['rail','Indented rail','Members indent behind a rail in the group colour.'],
+    ]},
+    ranges:[ ['rail-w','Rail width',1,4,2,'px'], ['rail-indent','Rail indent',0,24,14,'px'], ['g-gap','Gap around group',0,16,4,'px'], ['g-tint','Tint (band modes)',1,14,5,'%'] ],
+    toggles:[
+      ['hair','Hairlines above/below group',true,''],
+      ['glyph','Branch glyph ⎇ on group header',false,''],
+      ['pseudo','Label ungrouped runs as "checkout"',false,''],
+      ['ungroupedFirst','Ungrouped sessions first, groups after',false,''],
+    ],
+    selects:[
+      { key:'railc', label:'Rail colour', opts:[['session','group colour'],['border','--border'],['subtle','--fg-subtle']], help:'' },
+      { key:'railbar', label:'Member colour bars', opts:[['on','keep per-row bars'],['off','hide (rail carries it)']], help:'With the rail, each member row still shows its right-edge bar — the same fact twice.' },
+      { key:'railhead', label:'Group header', opts:[['plain','plain (current)'],['dot','colour dot instead of chevron'],['colour','branch text in group colour']], help:'Ties the header to its rail.' },
+    ]},
+  { id:'sel', n:'2', title:'Selected session',
+    why:'Round 1 picked Filled. Known cost: on an accent ground the attention orange name and exited strikethrough colours are overridden — select fix/scroll or "Planning junction fix" (attention) and "go test" (exited) to see it. Hover still uses --sel, now far from the selected look.',
+    radio:{ key:'sel', opts:[
+      ['current','Current','--sel ground + 2px bar.'],
+      ['tint','Accent tint','Accent mixed into surface.'],
+      ['ring','Ring','--sel + 1px inset accent outline.'],
+      ['bold','Accent tint + accent name',''],
+      ['filled','Filled','Accent ground.'],
+    ]},
+    ranges:[ ['fill','Fill strength (filled)',30,100,88,'%'], ['sel-bar','Accent bar width',0,5,2,'px'], ['sel-tint','Accent tint (tint modes)',6,32,14,'%'], ['hover-mix','Hover strength',15,60,60,'%'] ],
+    toggles:[ ['dim','Dim unselected rows (72%)',false,''] ],
+    selects:[
+      { key:'filltext', label:'Filled text colour', opts:[['on-accent','--on-accent (dark)'],['fg','--fg (theme text)']], help:'--fg works at lower fill strengths; on-accent at high.' },
+      { key:'selattn', label:'Attention when selected', opts:[['none','nothing extra'],['ring','2px attention ring'],['bar','attention-coloured left bar'],['name','attention underline on name']], help:'Keeps "needs you" visible on a selected row.' },
+      { key:'anc', label:'Ancestor marker', opts:[['off','off'],['collapsed','on collapsed headers'],['always','always']], help:'Accent dot on the header containing the selection.' },
+    ]},
+  { id:'edge', n:'3', title:'Right gutter / colour bar',
+    why:'Round 1: flush, bar right, resizer inside. Conflict: the 5px resizer now covers the whole 3px resting bar — the picker is only reachable after hover widens it to 12px, and the first 5px of that still grabs col-resize. Tick "show resizer hit area". Widening the resting bar or straddling the resizer are the two fixes.',
+    radio:{ key:'edge', opts:[
+      ['current','Current','8px right gutter.'],
+      ['flush-right','Flush, bar stays right',''],
+      ['flush-left','Flush, bar moves left','Selection bar moves right.'],
+      ['swatch','Flush, swatch in row','No edge bar.'],
+    ]},
+    ranges:[ ['cb-w','Colour bar resting width',2,6,3,'px'] ],
+    selects:[ { key:'resizer', label:'Resizer position', opts:[['inside','inside sidebar (current)'],['straddle','straddle border']], help:'Straddle = 7px centred on the border, half over the terminal.' } ] },
+  { id:'proj', n:'4', title:'Project headers',
+    why:'Your note: headers disappear between sessions. Today: 11px uppercase --fg-muted on --surface, same ground as the rows, 26px tall.',
+    radio:{ key:'ph', opts:[
+      ['current','Current','Muted uppercase label.'],
+      ['strong','Strong label','--fg, 12px, bold.'],
+      ['caps-off','Title case, 13px','Reads as a heading, not a caption.'],
+      ['band','Project-colour band','Ground tinted with the project colour.'],
+      ['rule','Colour top rule','2px project-colour line above.'],
+      ['sunken','Sunken band','--bg ground (darker than rows).'],
+    ]},
+    ranges:[ ['ph-h','Header height',22,36,26,'px'], ['sw','Swatch size',6,12,8,'px'], ['proj-gap','Space between projects',4,24,8,'px'] ],
+    toggles:[ ['phfg','Label in --fg (not muted)',false,'Applies to any style.'] ] },
+];
+const DEFAULTS = { group:'current', 'g-tint':5, 'g-gap':4, hair:true, glyph:false, pseudo:false, ungroupedFirst:false,
+  'rail-w':2, 'rail-indent':14, railc:'session', railbar:'on', railhead:'plain',
+  sel:'current', fill:88, filltext:'on-accent', selattn:'none', 'sel-bar':2, 'sel-tint':14, 'hover-mix':60, dim:false, anc:'off',
+  edge:'current', resizer:'inside', 'cb-w':3,
+  ph:'current', 'ph-h':26, sw:8, phfg:false, 'proj-gap':8 };
+const ROUND1 = Object.assign({}, DEFAULTS, {"group":"rail","g-gap":3,"sel":"filled","edge":"flush-right","proj-gap":15});
+const UNIT = {}; SECTIONS.forEach(sec => (sec.ranges || []).forEach(r => UNIT[r[0]] = r[5]));
+const VIEW_DEFAULTS = { theme:'hive-dark', density:'normal', width:260, showhit:false };
+const DATA = [
+  { id:'p1', name:'hive', color:'#ffb454', items:[
+    { t:'row', id:'s1', name:'hive-main', title:'Reviewing PR #454', ag:'cl', agc:'#f59e0b', st:'running', color:'#7fb3d5' },
+    { t:'row', id:'s2', name:'shell', title:'~/checkout/hive — fish', ag:'sh', st:'idle', color:'#a5a8b8' },
+    { t:'grp', id:'g1', branch:'feat/sidebar-tuner', label:'sidebar polish', color:'#c792ea', rows:[
+      { id:'s3', title:'Implementing spec 455', ag:'cl', agc:'#f59e0b', st:'working' },
+      { id:'s4', title:'npm run test:e2e', ag:'sh', st:'running' } ] },
+    { t:'row', id:'s5', name:'fix/scroll', title:'Waiting for input', ag:'cx', agc:'#10a37f', st:'attention', color:'#5fd7a5', wt:true },
+    { t:'grp', id:'g2', branch:'feat/windows-junction', label:'', color:'#ff6b6b', rows:[
+      { id:'s6', title:'Planning junction fix', ag:'cl', agc:'#f59e0b', st:'attention' },
+      { id:'s7', title:'go test ./...', ag:'sh', st:'exited' },
+      { id:'s8', title:'Idle', ag:'gm', agc:'#4285f4', st:'idle' } ] },
+    { t:'row', id:'s11', name:'docs-garden', title:'Scanning docs/', ag:'cl', agc:'#f59e0b', st:'running', color:'#ffb454' },
+  ]},
+  { id:'p2', name:'site', color:'#5fd7a5', items:[
+    { t:'row', id:'s9', name:'site-dev', title:'npm run dev', ag:'sh', st:'running', color:'#ffb454' },
+    { t:'row', id:'s10', name:'copy-edit', title:'Idle', ag:'cl', agc:'#f59e0b', st:'idle', color:'#7fb3d5' } ]},
+];
+
+const load = k => { try { return JSON.parse(localStorage.getItem(k)); } catch { return null; } };
+const save = (k, v) => { try { localStorage.setItem(k, JSON.stringify(v)); } catch {} };
+let S = Object.assign({}, ROUND1, load('tuner2.s'));
+let V = Object.assign({}, VIEW_DEFAULTS, load('tuner2.v'));
+let NOTES = Object.assign({}, load('tuner2.notes'));
+let selected = 's4';
+const collapsed = new Set();
+const esc = s => String(s).replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+
+// ---------- controls ----------
+function buildControls() {
+  const root = document.getElementById('sections');
+  root.innerHTML = SECTIONS.map(sec => {
+    let h = `<fieldset><legend><span class="n">${sec.n}</span>${esc(sec.title)}</legend><p class="why">${esc(sec.why)}</p>`;
+    if (sec.radio) h += sec.radio.opts.map(([v, label, help]) =>
+      `<label class="opt"><input type="radio" name="${sec.radio.key}" value="${v}"><span><b>${esc(label)}</b>${v === DEFAULTS[sec.radio.key] ? '<span class="cur">current</span>' : ''}<small>${esc(help)}</small></span></label>`).join('');
+    (sec.ranges || []).forEach(([k, label, min, max, def, unit]) => {
+      h += `<div class="row2"><span>${esc(label)}</span><input type="range" data-k="${k}" min="${min}" max="${max}" step="1"><output id="o-${k}"></output></div>`;
+    });
+    (sec.toggles || []).forEach(([k, label, def, help]) => {
+      h += `<label class="tog"><input type="checkbox" data-k="${k}"><span>${esc(label)}${help ? `<small>${esc(help)}</small>` : ''}</span></label>`;
+    });
+    (sec.selects || []).forEach(sl => {
+      h += `<div class="row2" style="grid-template-columns:130px 1fr"><span>${esc(sl.label)}</span><select data-k="${sl.key}">${sl.opts.map(([v, l]) => `<option value="${v}">${esc(l)}${v === DEFAULTS[sl.key] ? ' ·current' : ''}</option>`).join('')}</select></div>${sl.help ? `<p class="why" style="margin-top:4px">${esc(sl.help)}</p>` : ''}`;
+    });
+    h += `<textarea data-note="${sec.id}" placeholder="Notes on ${esc(sec.title.toLowerCase())}…"></textarea></fieldset>`;
+    return h;
+  }).join('');
+  root.addEventListener('input', e => {
+    const t = e.target;
+    if (t.dataset.note) { NOTES[t.dataset.note] = t.value; save('tuner2.notes', NOTES); return; }
+    if (t.type === 'radio') S[t.name] = t.value;
+    else if (t.type === 'checkbox') S[t.dataset.k] = t.checked;
+    else if (t.type === 'range') S[t.dataset.k] = +t.value;
+    else if (t.tagName === 'SELECT') S[t.dataset.k] = t.value;
+    save('tuner2.s', S); syncControls(); render();
+  });
+  document.getElementById('notes-general').addEventListener('input', e => { NOTES.general = e.target.value; save('tuner2.notes', NOTES); });
+}
+function syncControls() {
+  document.querySelectorAll('#sections input[type=radio]').forEach(i => i.checked = S[i.name] === i.value);
+  document.querySelectorAll('#sections [data-k]').forEach(i => {
+    const v = S[i.dataset.k];
+    if (i.type === 'checkbox') i.checked = !!v; else i.value = v;
+    const o = document.getElementById('o-' + i.dataset.k);
+    if (o) o.textContent = v + (UNIT[i.dataset.k] || '');
+  });
+  document.querySelectorAll('#sections textarea[data-note]').forEach(t => t.value = NOTES[t.dataset.note] || '');
+  document.getElementById('notes-general').value = NOTES.general || '';
+  document.getElementById('theme').value = V.theme;
+  document.getElementById('density').value = V.density;
+  document.getElementById('width').value = V.width;
+  document.getElementById('width-o').textContent = V.width;
+  document.getElementById('showhit').checked = V.showhit;
+}
+['theme', 'density', 'width', 'showhit'].forEach(id => document.getElementById(id).addEventListener('input', e => {
+  V[id] = e.target.type === 'checkbox' ? e.target.checked : e.target.type === 'range' ? +e.target.value : e.target.value;
+  save('tuner2.v', V); syncControls(); render();
+}));
+
+// ---------- mock ----------
+function rowHTML(r, inGroup) {
+  const title = inGroup ? r.title : r.name;
+  const sub = inGroup ? '' : `<span class="sub">${esc(r.title)}</span>`;
+  const wt = r.wt ? '<span title="worktree">⎇</span>' : '';
+  return `<li class="row${r.id === selected ? ' sel' : ''}" data-id="${r.id}" data-state="${r.st}" style="--agent-color:${r.agc || 'transparent'}${r.color ? `;--session-color:${r.color}` : ''}">
+    <span class="st"></span><span class="nm">${esc(title)}</span>
+    <span class="meta">${wt}<span class="ag">${r.ag}</span></span>${sub}<span class="cb"></span></li>`;
+}
+function groupHTML(g, pseudo) {
+  const has = g.rows.some(r => r.id === selected);
+  const attn = g.rows.filter(r => r.st === 'attention').length;
+  const isC = collapsed.has(g.id);
+  const title = pseudo ? '<span class="gl">checkout</span>'
+    : (g.label ? `<span class="gl">${esc(g.label)}</span>` : '') + `<span class="gb"><span class="gi">⎇</span>${esc(g.branch)}</span>`;
+  return `<li class="grp${pseudo ? ' pseudo' : ''}${has ? ' has-sel' : ''}" data-gid="${g.id}" ${isC ? 'data-collapsed' : ''} style="--session-color:${g.color || 'transparent'}">
+    <div class="gh" data-toggle="${g.id}"><span class="chev">▼</span><span class="gdot"></span><span class="gt">${title}</span><span style="display:flex;align-items:center">${isC && attn ? `<span class="galert">●${attn}</span>` : ''}<span class="cnt">${g.rows.length}</span><span class="anc"></span></span></div>
+    <ul class="rows">${g.rows.map(r => rowHTML(r, !pseudo)).join('')}</ul></li>`;
+}
+function projectBody(p, st) {
+  let items = p.items;
+  if (st.ungroupedFirst) items = [...items.filter(i => i.t === 'row'), ...items.filter(i => i.t === 'grp')];
+  let out = '', run = [];
+  const flush = () => {
+    if (!run.length) return;
+    out += st.pseudo ? groupHTML({ id: p.id + ':co:' + run[0].id, rows: run }, true) : run.map(r => rowHTML(r, false)).join('');
+    run = [];
+  };
+  items.forEach(i => { if (i.t === 'row') run.push(i); else { flush(); out += groupHTML(i, false); } });
+  flush();
+  return out;
+}
+function sidebarHTML(st) {
+  return `<div class="sb" data-group="${st.group}" data-sel="${st.sel}" data-edge="${st.edge}" data-resizer="${st.resizer}" data-anc="${st.anc}" data-density="${V.density}" data-railbar="${st.railbar}" data-railhead="${st.railhead}" data-filltext="${st.filltext}" data-selattn="${st.selattn}" data-ph="${st.ph}" ${st.phfg ? 'data-phfg' : ''}
+    ${st.hair ? 'data-hair' : ''} ${st.glyph ? 'data-glyph' : ''} ${st.dim ? 'data-dim' : ''}
+    style="--sb-w:${V.width}px;--g-tint:${st['g-tint']}%;--g-gap:${st['g-gap']}px;--sel-bar:${st['sel-bar']}px;--sel-tint:${st['sel-tint']}%;--hover-mix:${st['hover-mix']}%;--proj-gap:${st['proj-gap']}px;--list-pr:${st.edge === 'current' ? 8 : 0}px;--rail-w:${st['rail-w']}px;--rail-indent:${st['rail-indent']}px;--fill:${st.fill}%;--cb-w:${st['cb-w']}px;--ph-h:${st['ph-h']}px;--sw:${st.sw}px;${st.railc === 'border' ? '--rail-c:var(--border);' : st.railc === 'subtle' ? '--rail-c:var(--fg-subtle);' : ''}">
+    <header><span class="brand">HIVE<span>11</span></span><span class="ib"></span><span class="ib"></span><span class="ib"></span></header>
+    <ul class="list">${DATA.map(p => {
+      const has = JSON.stringify(p).includes(`"${selected}"`);
+      const isC = collapsed.has(p.id);
+      const n = p.items.reduce((a, i) => a + (i.t === 'grp' ? i.rows.length : 1), 0);
+      return `<li class="proj${has ? ' has-sel' : ''}" ${has ? 'data-active' : ''} ${isC ? 'data-collapsed' : ''} style="--project-color:${p.color}">
+        <div class="ph" data-toggle="${p.id}"><span class="chev">▼</span><span class="sw"></span><span class="pn">${esc(p.name)}</span><span class="anc"></span><span class="cnt">${n}</span></div>
+        <ul class="rows">${projectBody(p, st)}</ul></li>`;
+    }).join('')}</ul><div class="resizer"></div></div>
+    <div class="term">$ claude<br>› working…</div>`;
+}
+function render() {
+  for (const [id, st] of [['mock-cur', DEFAULTS], ['mock-r1', ROUND1], ['mock-new', S]]) {
+    const m = document.getElementById(id);
+    const scroll = m.querySelector('.list')?.scrollTop || 0;
+    m.dataset.theme = V.theme;
+    if (V.showhit) m.setAttribute('data-showhit', ''); else m.removeAttribute('data-showhit');
+    m.innerHTML = sidebarHTML(st);
+    m.querySelector('.list').scrollTop = scroll;
+  }
+}
+document.querySelector('.cmp').addEventListener('click', e => {
+  const tog = e.target.closest('[data-toggle]');
+  if (tog) { const k = tog.dataset.toggle; collapsed.has(k) ? collapsed.delete(k) : collapsed.add(k); render(); return; }
+  const row = e.target.closest('.row');
+  if (row) { selected = row.dataset.id; render(); }
+});
+
+// ---------- feedback ----------
+function label(key, v) {
+  for (const sec of SECTIONS) {
+    const o = sec.radio?.key === key && sec.radio.opts.find(x => x[0] === v);
+    if (o) return o[1];
+    for (const sl of sec.selects || []) { const x = sl.key === key && sl.opts.find(y => y[0] === v); if (x) return x[1]; }
+  }
+  return String(v);
+}
+const diff = (k, fmt) => S[k] === ROUND1[k] ? ' (= round 1)' : ` (round 1: ${fmt(ROUND1[k])})`;
+function feedback() {
+  const L = ['## Sidebar tuner feedback — round 2', '', `Viewed on: theme=${V.theme}, density=${V.density}, width=${V.width}px`, ''];
+  for (const sec of SECTIONS) {
+    L.push(`### ${sec.n}. ${sec.title}`);
+    if (sec.radio) { const k = sec.radio.key; L.push(`- Choice: **${label(k, S[k])}** (\`${S[k]}\`)${diff(k, v => label(k, v))}`); }
+    (sec.ranges || []).forEach(([k, lab, , , , unit]) => L.push(`- ${lab}: ${S[k]}${unit}${diff(k, v => v + unit)}`));
+    (sec.toggles || []).forEach(([k, lab]) => L.push(`- ${lab}: ${S[k] ? 'ON' : 'off'}${diff(k, v => v ? 'ON' : 'off')}`));
+    (sec.selects || []).forEach(sl => L.push(`- ${sl.label}: ${label(sl.key, S[sl.key])}${diff(sl.key, v => label(sl.key, v))}`));
+    if ((NOTES[sec.id] || '').trim()) L.push(`- Notes: ${NOTES[sec.id].trim()}`);
+    L.push('');
+  }
+  if ((NOTES.general || '').trim()) L.push('### General notes', NOTES.general.trim(), '');
+  L.push('Raw state: `' + JSON.stringify(S) + '`');
+  return L.join('\n');
+}
+document.getElementById('copy').addEventListener('click', async () => {
+  const text = feedback(), msg = document.getElementById('msg');
+  try { await navigator.clipboard.writeText(text); msg.textContent = 'Copied — paste into the session.'; }
+  catch {
+    const ta = Object.assign(document.createElement('textarea'), { value: text });
+    document.body.appendChild(ta); ta.select();
+    const ok = document.execCommand('copy'); ta.remove();
+    msg.textContent = ok ? 'Copied — paste into the session.' : 'Copy blocked — select the text in the console log.';
+    if (!ok) console.log(text);
+  }
+});
+document.getElementById('reset').addEventListener('click', () => {
+  S = Object.assign({}, ROUND1); V = Object.assign({}, VIEW_DEFAULTS); NOTES = {};
+  save('tuner2.s', S); save('tuner2.v', V); save('tuner2.notes', NOTES);
+  syncControls(); render();
+});
+
+buildControls(); syncControls(); render();
+</script>
+</body>
+</html>

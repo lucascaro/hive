@@ -1,14 +1,15 @@
 import { test, expect, type Locator, type Page } from '@playwright/test';
 import { seedScrollableGroup } from './fixtures/seed-worktree-group.js';
 
-// The worktree group is a full-bleed band, not an inset card (issue #392).
+// The worktree group is square and runs to the list's right edge; since
+// spec 455 its members indent on the LEFT behind a rail in the group's
+// colour (it was a full-bleed band, #392, and before that an inset card).
 // None of this is visible to jsdom — test/dom has no CSS — so geometry is
 // the only place the change can be verified at all.
 //
-// Every assertion below fails against the pre-#392 CSS: the panel's 8px
-// side margin and 1px border pushed a member row 9px right of an ungrouped
-// row and took 9px off its right edge, and the panel, its header and its
-// colour bar all carried --radius-md.
+// The right-edge and radius assertions fail against the pre-#392 card:
+// its 8px side margin took 9px off a member row's right edge, and the
+// panel and header carried --radius-md.
 
 async function boot(page: Page) {
   await page.goto('/');
@@ -38,14 +39,16 @@ const UNGROUPED = '.hv-project-card__rows > li.hv-session-row';
 const GROUPED = '.hv-worktree-group__rows > li.hv-session-row';
 
 test.describe('worktree group band', () => {
-  test('a grouped row starts at the same x as an ungrouped one', async ({
-    page,
-  }) => {
+  // The indent is the point (spec 455): a member reads as part of its
+  // group by position. Bounded above too — the rail must not eat the
+  // title the #392 flattening won back.
+  test('a grouped row is indented behind the rail', async ({ page }) => {
     await boot(page);
     await seedScrollableGroup(page);
     const grouped = await box(page, `${GROUPED} .hv-session-row__state`);
     const loose = await box(page, `${UNGROUPED} .hv-session-row__state`);
-    expect(Math.abs(grouped.x - loose.x)).toBeLessThanOrEqual(1);
+    expect(grouped.x - loose.x).toBeGreaterThanOrEqual(8);
+    expect(grouped.x - loose.x).toBeLessThanOrEqual(14);
   });
 
   test('a grouped row gives up no width on the right', async ({ page }) => {
@@ -69,15 +72,25 @@ test.describe('worktree group band', () => {
     const radii = await page.evaluate(() => {
       const panel = document.querySelector('.hv-worktree-group');
       const header = document.querySelector('.hv-worktree-group__header');
-      if (!panel || !header) throw new Error('no worktree group on screen');
+      const rail = document.querySelector('.hv-worktree-group__rows');
+      if (!panel || !header || !rail) {
+        throw new Error('no worktree group on screen');
+      }
       return {
         panel: getComputedStyle(panel).borderRadius,
         header: getComputedStyle(header).borderRadius,
-        // The shared colour bar, which the card treatment also rounded.
-        bar: getComputedStyle(panel, '::after').borderRadius,
+        // The rail — a real element's border, so a missing rail cannot
+        // read as a square one.
+        rail: getComputedStyle(rail).borderRadius,
+        railWidth: getComputedStyle(rail).borderLeftWidth,
       };
     });
-    expect(radii).toEqual({ panel: '0px', header: '0px', bar: '0px' });
+    expect(radii).toEqual({
+      panel: '0px',
+      header: '0px',
+      rail: '0px',
+      railWidth: '1px',
+    });
   });
 
   test('the sticky group header paints its own ground', async ({ page }) => {

@@ -468,7 +468,10 @@
   --contrast-exempt: 1;
   --bg: #002b36; --surface: #073642; --surface-raised: #0c4552; --border: #586e75;
   --fg: #93a1a1; --fg-muted: #839496; --fg-subtle: #586e75;
-  --accent: #268bd2; --on-accent: #002b36; --sel: #0f4a58;
+  /* --on-accent darkened from upstream (base03 #002b36 is 4.08:1 on this
+     blue; base3 #fdf6e3 is 3.41:1): the selected sidebar row is an
+     --accent fill read in --on-accent, so it has to clear AA (spec 455). */
+  --accent: #268bd2; --on-accent: #00161c; --sel: #0f4a58;
   --hover: color-mix(in srgb, var(--sel) 60%, transparent);
   --btn: #073642; --btn-border: #586e75;
   --state-running: #859900; --state-attention: #b58900; --state-error: #dc322f;
@@ -497,7 +500,10 @@
   --contrast-exempt: 1;
   --bg: #fdf6e3; --surface: #eee8d5; --surface-raised: #fdf6e3; --border: #ddd6c1;
   --fg: #586e75; --fg-muted: #657b83; --fg-subtle: #93a1a1;
-  --accent: #268bd2; --on-accent: #fdf6e3; --sel: #e3ddca;
+  /* --on-accent darkened from upstream (base03 #002b36 is 4.08:1 on this
+     blue; base3 #fdf6e3 is 3.41:1): the selected sidebar row is an
+     --accent fill read in --on-accent, so it has to clear AA (spec 455). */
+  --accent: #268bd2; --on-accent: #00161c; --sel: #e3ddca;
   --hover: color-mix(in srgb, var(--sel) 60%, transparent);
   --btn: #fdf6e3; --btn-border: #c9c2ae;
   --state-running: #859900; --state-attention: #b58900; --state-error: #dc322f;

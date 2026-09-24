@@ -8,14 +8,14 @@ Semantic roles, defined once in `src/theme/tokens.css` (defaults = `hive-dark`) 
 |---|---|---|
 | `--bg` | App ground, terminal area chrome | `#0f1014` |
 | `--surface` | Sidebar, bars, tray, dialog bodies | `#13141a` |
-| `--surface-raised` | Project card body, launcher, popovers | `#0f1015` |
+| `--surface-raised` | Worktree-browser row cards, launcher, popovers | `#0f1015` |
 | `--border` | Every 1px rule | `#22242e` |
 | `--fg` | Primary text | `#e6e7ee` |
 | `--fg-muted` | Secondary text (subtitles, labels) | `#a5a8b8` |
 | `--fg-subtle` | Tertiary (hints, version, disabled) | `#5f6273` |
-| `--accent` | Brand mark, selection bar, primary button, focus ring | `#ffb454` |
-| `--on-accent` | Text on `--accent` | `#15120a` |
-| `--sel` | Selected row background | `#1c1e28` |
+| `--accent` | Brand mark, selected sidebar row fill, primary button, focus ring | `#ffb454` |
+| `--on-accent` | Text and icons on `--accent`, including everything on the selected sidebar row | `#15120a` |
+| `--sel` | Selected item background in the launcher, palette, tabs and find (NOT the sidebar row since spec 455); base of `--hover` | `#1c1e28` |
 | `--hover` | Hover background for rows/buttons | `color-mix(in srgb, var(--sel) 60%, transparent)` |
 | `--btn` | Default button/chip fill | `#1a1c25` |
 | `--btn-border` | Default button/chip border | `#2b2e3b` |
