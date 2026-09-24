@@ -8,10 +8,9 @@
 .hv-project-card {
   position: relative;
   list-style: none;
-  /* 4px above, 12px below: with the colour rule now marking each
-     project's start, the old 8px lead-in was air the rule makes
-     redundant (spec 455). */
-  margin: var(--space-1) 0 var(--space-3);
+  /* No gap between projects: the header's colour rule is the separator
+     (sidebar.css drops a closing group's hairline beneath it). */
+  margin: 0;
 }
 
 .hv-project-card__header {
@@ -140,8 +139,7 @@
 }
 /* No padding of its own: padding survives a 0fr track (min-height: 0
    removes the content's automatic minimum, not the box's own padding), so
-   a collapsed card would keep a 4px sliver. The gap between projects is
-   the card's margin instead. */
+   a collapsed card would keep a 4px sliver. */
 .hv-project-card__rows {
   list-style: none;
   margin: 0;

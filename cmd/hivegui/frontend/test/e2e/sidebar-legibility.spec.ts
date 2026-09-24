@@ -8,7 +8,9 @@ import { PRESETS } from '../../src/theme/theme';
 //   - worktree members sit behind a rail in the group's colour;
 //   - the session list has no side gutters, and the resizer sits outside
 //     the sidebar so the colour bar at the list's edge is reachable;
-//   - a project header carries a 2px rule in the project's colour.
+//   - a project header carries a 2px rule in the project's colour;
+//   - hairlines and rules are the only separators: no margin around a
+//     group or before a project, and no doubled line where two meet.
 // Colours are compared against tokens RESOLVED BY THE BROWSER (a probe
 // painted with var(--x)), never against hand-copied hex.
 
@@ -509,5 +511,97 @@ test.describe('project header', () => {
     expect(got.shadow).toMatch(/\b0px 2px 0px\b/);
     // 26px content box + the 1px bottom hairline, as before.
     expect(got.height).toBeCloseTo(27, 0);
+  });
+});
+
+test.describe('separators', () => {
+  // p1: main, group feat/a, group feat/b — so p1 ENDS in a group — then p2.
+  async function seed(page: Page) {
+    await boot(page);
+    // A group needs two sessions sharing one worktree.
+    for (const branch of ['feat/a', 'feat/b']) {
+      await page.evaluate(
+        (b) => window.__hive.createSessionWithWorktree?.(`w-${b}`, b),
+        branch,
+      );
+      const wt = await page.waitForFunction(
+        (b) =>
+          window.__hive.state?.sessions.find((s) => s.worktree_branch === b)
+            ?.worktree_path,
+        branch,
+      );
+      await page.evaluate(
+        ([b, p]) => window.__hive.createSessionInWorktree?.(`w2-${b}`, p),
+        [branch, (await wt.jsonValue()) as string],
+      );
+    }
+    await expect(page.locator('.hv-worktree-group')).toHaveCount(2);
+    await page.evaluate(async () => {
+      const p = {
+        id: 'p2',
+        name: 'other',
+        color: '#f80',
+        cwd: '',
+        order: 1,
+        created: new Date().toISOString(),
+      };
+      window.__hive.state?.projects.push(p);
+      window.__hive.emit(
+        'project:event',
+        JSON.stringify({ kind: 'added', project: p }),
+      );
+      await window.__hive.addSession?.('t1', undefined, 'p2');
+    });
+    await expect(page.locator('#projects > li.hv-project-card')).toHaveCount(2);
+  }
+
+  const geom = (page: Page) =>
+    page.evaluate(() => {
+      const r = (el: Element) => el.getBoundingClientRect();
+      const groups = [...document.querySelectorAll('.hv-worktree-group')];
+      const cards = [
+        ...document.querySelectorAll('#projects > li.hv-project-card'),
+      ];
+      return {
+        groups: groups.map((g) => {
+          const cs = getComputedStyle(g);
+          return {
+            top: r(g).top,
+            bottom: r(g).bottom,
+            margin: [cs.marginTop, cs.marginBottom],
+            borderTop: cs.borderTopWidth,
+            borderBottom: cs.borderBottomWidth,
+          };
+        }),
+        cards: cards.map((c) => ({
+          top: r(c).top,
+          bottom: r(c).bottom,
+          marginTop: getComputedStyle(c).marginTop,
+        })),
+      };
+    });
+
+  test('a worktree group has no margin; neighbouring groups share one hairline', async ({
+    page,
+  }) => {
+    await seed(page);
+    const g = await geom(page);
+    for (const grp of g.groups) expect(grp.margin).toEqual(['0px', '0px']);
+    const [a, b] = g.groups;
+    expect(b.top).toBeCloseTo(a.bottom, 1);
+    expect(b.borderTop).toBe('0px');
+  });
+
+  test("a group ending a project gives its hairline up to the next project's rule", async ({
+    page,
+  }) => {
+    await seed(page);
+    const g = await geom(page);
+    const [p1, p2] = g.cards;
+    const lastGroup = g.groups[1];
+    expect(lastGroup.borderBottom).toBe('0px');
+    expect(p1.bottom).toBeCloseTo(lastGroup.bottom, 1);
+    expect(p2.marginTop).toBe('0px');
+    expect(p2.top).toBeCloseTo(p1.bottom, 1);
   });
 });

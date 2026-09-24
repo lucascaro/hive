@@ -82,10 +82,22 @@
 .hv-worktree-group {
   position: relative;
   list-style: none;
-  margin: var(--space-1) 0;
+  /* No margin: the hairlines are the separator. */
+  margin: 0;
   border-top: 1px solid var(--border);
   border-bottom: 1px solid var(--border);
 }
+/* One hairline between neighbours, never two: the project header's
+   bottom border already edges a group that opens the project, and a
+   group's bottom edge already edges the group after it. */
+.hv-project-card__rows > .hv-worktree-group:first-child,
+.hv-worktree-group + .hv-worktree-group { border-top: 0; }
+/* A group that ends a project sits directly on the next project's
+   colour rule, which is the separator there. The last project keeps it:
+   nothing follows to edge the group. */
+.hv-project-card:not(:last-child)
+  .hv-project-card__rows
+  > .hv-worktree-group:last-child { border-bottom: 0; }
 /* NOT `overflow: hidden`. Clipping would make the panel the nearest
    scroll container, and the sticky header below would then stick to a
    box that never scrolls — doing nothing at all, invisibly. */
