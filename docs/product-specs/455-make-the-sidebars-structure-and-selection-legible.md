@@ -5,7 +5,7 @@ type: enhancement
 complexity: M
 priority: P2
 pr: 456
-stage: REVIEW
+stage: GATE
 ---
 
 # Make the sidebar's structure and selection legible
