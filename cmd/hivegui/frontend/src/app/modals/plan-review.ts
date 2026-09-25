@@ -60,6 +60,8 @@ let fetching: { sessionId: string; reviewId: string } | null = null;
 export function syncPlanReview(info: SessionInfo) {
   const reviewId = pendingPlanReviewId(info);
   const open = modalEntry('plan-review');
+  const prev = pending.get(info.id);
+  if (prev && prev !== reviewId) deferred.delete(prev);
   if (!reviewId) {
     pending.delete(info.id);
   } else {
@@ -75,6 +77,8 @@ export function syncPlanReview(info: SessionInfo) {
 
 /** A session went away: forget its review. */
 export function dropPlanReview(sessionId: string) {
+  const prev = pending.get(sessionId);
+  if (prev) deferred.delete(prev);
   pending.delete(sessionId);
   const open = modalEntry('plan-review');
   if (open?.sessionId === sessionId) dismiss(false);

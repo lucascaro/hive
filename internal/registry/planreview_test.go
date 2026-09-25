@@ -103,6 +103,28 @@ func TestKillCancelsPlanReview(t *testing.T) {
 	}
 }
 
+// Restart clears e.sess itself, so watchSessionExit no-ops for the old
+// PTY; the review must still be cancelled with the agent it belonged to.
+func TestRestartCancelsPlanReview(t *testing.T) {
+	skipNonPosix(t)
+	r := freshRegistry(t)
+	e := createShell(t, r)
+	_, ch, err := r.ParkPlanReview(e.ID, wire.PlanReviewSourceClaude, "# plan")
+	if err != nil {
+		t.Fatalf("park: %v", err)
+	}
+	if err := r.Restart(e.ID); err != nil {
+		t.Fatalf("restart: %v", err)
+	}
+	t.Cleanup(func() { _ = r.Kill(e.ID, true) })
+	if d := decisionOf(t, ch); d.Status != wire.PlanReviewCancelled {
+		t.Errorf("decision = %q, want cancelled", d.Status)
+	}
+	if pendingReviewOf(r, e.ID) != nil {
+		t.Error("a restarted session still shows the old agent's review")
+	}
+}
+
 func TestSessionExitCancelsPlanReview(t *testing.T) {
 	skipNonPosix(t)
 	r := freshRegistry(t)

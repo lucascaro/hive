@@ -1385,6 +1385,12 @@ func (r *Registry) Restart(id string) error {
 		r.mu.Lock()
 		if e2, ok := r.entries[id]; ok && e2.sess == sess {
 			e2.sess = nil
+			// watchSessionExit will no-op, so cancel the old agent's
+			// review here; Revive's broadcast withdraws it in every GUI.
+			if e2.planReview != nil {
+				e2.planReview.finish(wire.PlanReviewDecision{Status: wire.PlanReviewCancelled})
+				e2.planReview = nil
+			}
 		}
 		r.mu.Unlock()
 	}
