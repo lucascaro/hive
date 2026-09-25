@@ -56,6 +56,14 @@ interface HiveTestApi {
   setSessionPlan?(id: string, done: number, total: number, tool?: string): void;
   setSessionSubagents?(id: string, running: number): void;
   ringBell?(id: string): void;
+  // Plan review (#457).
+  requestPlanReview?(id: string, plan: string, source?: string): string;
+  withdrawPlanReview?(id: string): void;
+  planReviewAnswers?(): Record<string, unknown>[];
+  setExternalPlanReviewers?(
+    rs: { kind: string; id: string; active: boolean }[],
+  ): void;
+  agentSettings?(): Record<string, unknown>;
   // File links (spec 449): which paths the mock pretends exist, and
   // what ⌘-click asked Go to open.
   setMockFiles?(files: string[]): void;

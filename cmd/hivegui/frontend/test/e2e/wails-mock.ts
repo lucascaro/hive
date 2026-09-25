@@ -925,6 +925,65 @@ export async function ResolvePrompt(sessionID: string, paste: boolean) {
   return '';
 }
 
+// Plan review (#457). The mock holds each session's pending review and
+// records every answer, so a spec can assert exactly what the agent
+// would have been sent.
+const planReviews = new Map<
+  string,
+  { review_id: string; source: string; plan: string }
+>();
+const planReviewAnswers: Record<string, unknown>[] = [];
+let externalPlanReviewers: { kind: string; id: string; active: boolean }[] = [];
+let planReviewSeq = 0;
+
+function setPendingPlanReview(id: string, pending: boolean) {
+  const s = state.sessions.find((x) => x.id === id);
+  if (!s) return;
+  const r = planReviews.get(id);
+  if (pending && r) {
+    s.pending_plan_review = {
+      review_id: r.review_id,
+      source: r.source,
+      created_at: new Date().toISOString(),
+    };
+  } else {
+    delete s.pending_plan_review;
+  }
+  emit('session:event', JSON.stringify({ kind: 'updated', session: s }));
+}
+
+export async function GetPlanReview(sessionID: string, reviewID: string) {
+  maybeFail('GetPlanReview');
+  const r = planReviews.get(sessionID);
+  if (!r || r.review_id !== reviewID) {
+    emit(
+      'control:error',
+      JSON.stringify({ code: 'plan_review_stale', session_id: sessionID }),
+    );
+    return;
+  }
+  emit('planreview:plan', JSON.stringify({ session_id: sessionID, ...r }));
+}
+
+export async function ResolvePlanReview(ans: {
+  session_id: string;
+  review_id: string;
+  decision: string;
+  comments?: { quote: string; text: string }[];
+  feedback?: string;
+}) {
+  maybeFail('ResolvePlanReview');
+  const r = planReviews.get(ans.session_id);
+  if (!r || r.review_id !== ans.review_id) return;
+  planReviewAnswers.push({ ...ans });
+  planReviews.delete(ans.session_id);
+  setPendingPlanReview(ans.session_id, false);
+}
+
+export async function GetExternalPlanReviewers() {
+  return externalPlanReviewers.map((r) => ({ ...r }));
+}
+
 // Answering a session parked on a worktree-setup failure. The mock
 // models the outcomes rather than the git: cancel removes the session,
 // anything else clears the question and lets it start.
@@ -1325,16 +1384,25 @@ export async function ApplyUpdateAndRestart() {
 }
 // agent-settings.json. Stateful rather than a fixed reply so a test can
 // save a value and see the modal read it back on reopen.
-const agentSettings = { claude_task_tools: true, pi_todo_tool: true };
+const agentSettings = {
+  claude_task_tools: true,
+  pi_todo_tool: true,
+  plan_review: false,
+  plan_reviewer: 'external',
+};
 export async function GetAgentSettings() {
   return { ...agentSettings };
 }
 export async function SaveAgentSettings(s: {
   claude_task_tools: boolean;
   pi_todo_tool: boolean;
+  plan_review?: boolean;
+  plan_reviewer?: string;
 }) {
   agentSettings.claude_task_tools = s.claude_task_tools;
   agentSettings.pi_todo_tool = s.pi_todo_tool;
+  agentSettings.plan_review = !!s.plan_review;
+  agentSettings.plan_reviewer = s.plan_reviewer ?? 'external';
 }
 
 export async function GetUpdateSettings() {
@@ -1550,6 +1618,30 @@ if (typeof window !== 'undefined') {
     },
     // Ideas the daemon already knew about when this window connected —
     // the boot LIST_IDEAS is what delivers them, so seed before it.
+    // Plan review (#457): an agent asks for a review; the GUI must raise
+    // it. Returns the review id. withdrawPlanReview is the agent giving
+    // up (the user answered in the terminal).
+    requestPlanReview(id: string, plan: string, source = 'claude') {
+      const review_id = `r${++planReviewSeq}`;
+      planReviews.set(id, { review_id, source, plan });
+      setPendingPlanReview(id, true);
+      return review_id;
+    },
+    withdrawPlanReview(id: string) {
+      planReviews.delete(id);
+      setPendingPlanReview(id, false);
+    },
+    planReviewAnswers() {
+      return planReviewAnswers.map((a) => ({ ...a }));
+    },
+    setExternalPlanReviewers(
+      rs: { kind: string; id: string; active: boolean }[],
+    ) {
+      externalPlanReviewers = rs;
+    },
+    agentSettings() {
+      return { ...agentSettings };
+    },
     setBuildLog(text: string) {
       buildLog = text;
     },

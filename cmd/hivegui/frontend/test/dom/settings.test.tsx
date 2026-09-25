@@ -31,6 +31,9 @@ const getAgentSettings = vi.fn(
 const saveAgentSettings = vi.fn(
   (_s: main.AgentSettings): Promise<void> => Promise.resolve(),
 );
+const getExternalPlanReviewers = vi.fn(
+  (): Promise<main.ExternalPlanReviewer[]> => Promise.resolve([]),
+);
 // The full agent catalog, which the launcher-visibility list is built
 // from. Three agents, the same shape the Go side returns.
 const CATALOG = [
@@ -99,6 +102,7 @@ vi.mock('../../src/bridge.js', () => ({
     getAgentSettings(...a),
   SaveAgentSettings: (...a: Parameters<typeof saveAgentSettings>) =>
     saveAgentSettings(...a),
+  GetExternalPlanReviewers: () => getExternalPlanReviewers(),
   ListAgents: (...a: Parameters<typeof listAgents>) => listAgents(...a),
   MenuBarLoginItemStatus: () => Promise.resolve(menuBarStatus),
   SetMenuBarLoginItem: (...a: Parameters<typeof setMenuBarLoginItem>) =>
@@ -163,6 +167,7 @@ beforeEach(() => {
     pi_todo_tool: true,
   } as main.AgentSettings);
   saveAgentSettings.mockReset().mockResolvedValue(undefined);
+  getExternalPlanReviewers.mockReset().mockResolvedValue([]);
   listAgents.mockReset().mockResolvedValue(CATALOG);
   localStorage.removeItem('hive.agentPrefs');
   refocusActiveTerm.mockReset();
@@ -258,6 +263,8 @@ describe('settings: Claude plan progress toggle', () => {
     expect(saveAgentSettings).toHaveBeenCalledWith({
       claude_task_tools: false,
       pi_todo_tool: true,
+      plan_review: false,
+      plan_reviewer: 'external',
     });
     expect(el('settings').classList.contains('hidden')).toBe(true);
   });
@@ -342,6 +349,8 @@ describe('settings: Pi plan progress toggle', () => {
     expect(saveAgentSettings).toHaveBeenCalledWith({
       claude_task_tools: false,
       pi_todo_tool: false,
+      plan_review: false,
+      plan_reviewer: 'external',
     });
   });
 
@@ -365,6 +374,72 @@ describe('settings: Pi plan progress toggle', () => {
     expect(box().getAttribute('aria-describedby')).toBe(
       'settings-pi-todo-tool-hint',
     );
+  });
+});
+
+describe('settings: plan review (#457)', () => {
+  const box = () => el<HTMLInputElement>('settings-plan-review');
+  const reviewer = () => el<HTMLSelectElement>('settings-plan-reviewer');
+
+  it('is off by default, and the reviewer choice waits for it', async () => {
+    open();
+    await flush();
+    expect(box().checked).toBe(false);
+    expect(reviewer().value).toBe('external');
+    expect(reviewer().disabled).toBe(true);
+  });
+
+  it('saves both plan review settings with the rest of the file', async () => {
+    open();
+    await flush();
+    fireEvent.click(box());
+    fireEvent.change(reviewer(), { target: { value: 'hive' } });
+    click(el('settings-save'));
+    await flush();
+    expect(saveAgentSettings).toHaveBeenCalledWith({
+      claude_task_tools: true,
+      pi_todo_tool: true,
+      plan_review: true,
+      plan_reviewer: 'hive',
+    });
+  });
+
+  it('loads saved values', async () => {
+    getAgentSettings.mockResolvedValue({
+      claude_task_tools: true,
+      pi_todo_tool: true,
+      plan_review: true,
+      plan_reviewer: 'hive',
+    } as main.AgentSettings);
+    open();
+    await flush();
+    expect(box().checked).toBe(true);
+    expect(reviewer().value).toBe('hive');
+    expect(reviewer().disabled).toBe(false);
+  });
+
+  it('warns that a settings-file reviewer cannot be switched off, only when Hive is chosen', async () => {
+    getExternalPlanReviewers.mockResolvedValue([
+      { kind: 'settings', id: '/home/u/.claude/settings.json', active: true },
+      { kind: 'plugin', id: 'plannotator@plannotator', active: true },
+    ] as main.ExternalPlanReviewer[]);
+    getAgentSettings.mockResolvedValue({
+      claude_task_tools: true,
+      pi_todo_tool: true,
+      plan_review: true,
+      plan_reviewer: 'external',
+    } as main.AgentSettings);
+    open();
+    await flush();
+    expect(
+      document.getElementById('settings-plan-reviewer-warning'),
+    ).toBeNull();
+    fireEvent.change(reviewer(), { target: { value: 'hive' } });
+    await flush();
+    const warn = el('settings-plan-reviewer-warning').textContent ?? '';
+    expect(warn).toContain('/home/u/.claude/settings.json');
+    // A plugin CAN be switched off, so it is not warned about.
+    expect(warn).not.toContain('plannotator');
   });
 });
 

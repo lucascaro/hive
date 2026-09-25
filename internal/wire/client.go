@@ -135,6 +135,8 @@ var controlEvents = map[FrameType]string{
 
 	FrameTranscriptMatches: "transcript:matches",
 	FrameTranscriptLines:   "transcript:lines",
+
+	FramePlanReview: "planreview:plan",
 }
 
 var attachEvents = map[FrameType]string{

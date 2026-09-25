@@ -24,6 +24,15 @@ package buildinfo
 // History (newest first), so a bump is a decision with a record and
 // not just a number going up:
 //
+//	17 — Plan review (spec 457). A new events-socket mode, plan_review,
+//	    where an agent's hook or extension holds a request open for the
+//	    user's approve or deny; SessionInfo.pending_plan_review; and
+//	    GET_PLAN_REVIEW / PLAN_REVIEW / RESOLVE_PLAN_REVIEW (0x34-0x36)
+//	    for the GUI. The pair is inseparable: an older GUI connected to
+//	    this daemon counts as a client that can answer, so an agent
+//	    would park a review nobody can see, and an older daemon answers
+//	    a new hook's plan_review HELLO with mode_not_allowed.
+//	    hivebar no longer counts as a client that can answer at all.
 //	16 — Worktree setup failures are put to the user (spec 451).
 //	    SessionInfo gained pending_worktree_choice (carrying a park_id)
 //	    and the `blocked` phase; RESOLVE_WORKTREE_CHOICE (0x31), which
@@ -164,7 +173,7 @@ package buildinfo
 //	    before this cannot see or clear the flag.
 //	1 — first contract; everything up to and including the
 //	    CLIENT_COMMAND relay.
-const DaemonContract = 16
+const DaemonContract = 17
 
 // Identity is this binary's full build identity. `hived --version
 // --json` prints it, and Welcome carries the same three values, so a

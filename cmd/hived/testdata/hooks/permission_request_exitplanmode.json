@@ -1,0 +1,14 @@
+{
+  "session_id": "00000000-0000-4000-8000-000000000457",
+  "transcript_path": "/home/u/.claude/projects/-work-proj/00000000-0000-4000-8000-000000000457.jsonl",
+  "cwd": "/work/proj",
+  "scratchpad_dir": "/tmp/claude/scratchpad",
+  "prompt_id": "00000000-0000-4000-8000-000000000001",
+  "permission_mode": "plan",
+  "hook_event_name": "PermissionRequest",
+  "tool_name": "ExitPlanMode",
+  "tool_input": {
+    "plan": "# Context\n\nUser wants trivial file `bye.txt` with content `bye` created in project root.\n\n- Create `bye.txt` at repo root with content: `bye`\n- Verify: `cat bye.txt` shows `bye`\n",
+    "planFilePath": "/home/u/.claude/plans/plan-example.md"
+  }
+}

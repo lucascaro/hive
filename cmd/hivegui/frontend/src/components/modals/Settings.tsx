@@ -36,6 +36,7 @@ import {
 import {
   EventsOn,
   GetAgentSettings,
+  GetExternalPlanReviewers,
   GetUpdateSettings,
   ListAgents,
   ListCustomAgents,
@@ -162,6 +163,15 @@ function SettingsDialog({ root }: { root: HTMLElement }): ReactNode {
   // slow read never flashes the box unchecked first.
   const [claudeTaskTools, setClaudeTaskTools] = useState(true);
   const [piTodoTool, setPiTodoTool] = useState(true);
+  // Plan review (#457): off by default, and "external" defers to another
+  // installed reviewer such as plannotator.
+  const [planReview, setPlanReview] = useState(false);
+  const [planReviewer, setPlanReviewer] = useState('external');
+  // Other ExitPlanMode reviewers the user has set up. A settings.json
+  // hook cannot be switched off by Hive, so choosing Hive warns about it.
+  const [externalReviewers, setExternalReviewers] = useState<
+    main.ExternalPlanReviewer[]
+  >([]);
   const [agentSettingsFailed, setAgentSettingsFailed] = useState(false);
   // editor.json, loaded and saved like agent-settings.json: a file
   // that will not parse disables the section rather than being
@@ -341,11 +351,21 @@ function SettingsDialog({ root }: { root: HTMLElement }): ReactNode {
         if (live) setCatalogFailed(true);
       });
 
+    GetExternalPlanReviewers()
+      .then((rs) => {
+        if (live) setExternalReviewers(rs ?? []);
+      })
+      // Detection is advice for the warning below, never a reason to
+      // fail the Settings screen.
+      .catch(() => {});
+
     GetAgentSettings()
       .then((s) => {
         if (!live) return;
         setClaudeTaskTools(s?.claude_task_tools ?? true);
         setPiTodoTool(s?.pi_todo_tool ?? true);
+        setPlanReview(s?.plan_review ?? false);
+        setPlanReviewer(s?.plan_reviewer === 'hive' ? 'hive' : 'external');
         setAgentSettingsFailed(false);
         setAgentSettingsLoaded(true);
       })
@@ -646,6 +666,8 @@ function SettingsDialog({ root }: { root: HTMLElement }): ReactNode {
           : SaveAgentSettings({
               claude_task_tools: claudeTaskTools,
               pi_todo_tool: piTodoTool,
+              plan_review: planReview,
+              plan_reviewer: planReviewer,
             } as main.AgentSettings),
       )
       .then(() =>
@@ -857,6 +879,69 @@ function SettingsDialog({ root }: { root: HTMLElement }): ReactNode {
             onChange={setLauncherPrefs}
           />
         )}
+        {/* Below the agent list, not above it: the list is what people
+            open Settings to edit, and it must be on screen at open
+            (test/e2e/settings.spec.ts). */}
+        <h4>Plan review</h4>
+        <label className="settings-check">
+          <input
+            id="settings-plan-review"
+            type="checkbox"
+            checked={planReview}
+            disabled={!agentSettingsLoaded || agentSettingsFailed}
+            aria-describedby="settings-plan-review-hint"
+            onChange={(e) => setPlanReview(e.target.checked)}
+          />
+          <span>Review agent plans in Hive before they run</span>
+        </label>
+        <p id="settings-plan-review-hint" className="settings-hint">
+          When Claude leaves plan mode, or Pi calls the{' '}
+          <code>hive_submit_plan</code> tool Hive gives it, the agent waits
+          while you read the plan here, comment on passages, and approve it or
+          ask for changes. With no Hive window open, the agent falls back to its
+          own approval prompt. Turning this off applies at once; turning it on
+          reaches Pi in newly started sessions.
+        </p>
+        <label className="hv-field">
+          <span className="hv-field__label">
+            When another plan reviewer is installed
+          </span>
+          <select
+            id="settings-plan-reviewer"
+            className="hv-input"
+            value={planReviewer}
+            disabled={
+              !agentSettingsLoaded || agentSettingsFailed || !planReview
+            }
+            aria-describedby="settings-plan-reviewer-hint"
+            onChange={(e) => setPlanReviewer(e.target.value)}
+          >
+            <option value="external">
+              Let that tool review Claude's plans
+            </option>
+            <option value="hive">Review Claude's plans in Hive instead</option>
+          </select>
+        </label>
+        <p id="settings-plan-reviewer-hint" className="settings-hint">
+          Choosing Hive disables a reviewer plugin, such as plannotator, for the
+          whole of each Claude session Hive starts — its commands too — and
+          applies to newly started sessions only.
+        </p>
+        {planReview && planReviewer === 'hive'
+          ? externalReviewers
+              .filter((r) => r.kind === 'settings')
+              .map((r) => (
+                <p
+                  key={r.id}
+                  className="settings-hint settings-warning"
+                  id="settings-plan-reviewer-warning"
+                >
+                  {r.id} also reviews Claude's plans, and Hive cannot switch a
+                  hook in a settings file off: both will prompt. Remove it
+                  there, or let that tool review.
+                </p>
+              ))
+          : null}
       </Panel>
 
       <Panel tab="appearance" active={activeTab}>

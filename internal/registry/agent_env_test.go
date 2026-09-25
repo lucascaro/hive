@@ -51,13 +51,13 @@ func TestAgentEnvFollowsTheHookGate(t *testing.T) {
 		{"a bare shell never", wire.CreateSpec{}, false},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			env := r.resolveAgentEnv(tc.spec)
+			env := r.resolveAgentEnv(tc.spec, r.spawnInfo())
 			if got := slices.Contains(env, optIn); got != tc.want {
 				t.Errorf("env = %v; contains %s = %v, want %v", env, optIn, got, tc.want)
 			}
 			// And the gate is shared: the opt-in is present exactly when
 			// the hooks are.
-			cmd := r.resolveAgentCmd(tc.spec, "sid-1")
+			cmd := r.resolveAgentCmd(tc.spec, "sid-1", r.spawnInfo())
 			if hooked := slices.Contains(cmd, "--settings"); hooked != slices.Contains(env, optIn) {
 				t.Errorf("hooks=%v but opt-in=%v; argv = %v env = %v",
 					hooked, !hooked, cmd, env)

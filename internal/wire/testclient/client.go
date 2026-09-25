@@ -206,6 +206,18 @@ func (c *Client) ResolveWorktreeChoice(req wire.ResolveWorktreeChoiceReq) error 
 	return c.cli.WriteJSON(wire.FrameResolveWorktreeChoice, req)
 }
 
+// GetPlanReview asks for the plan text of a session's pending review.
+// The answer is PLAN_REVIEW, or an ERROR with ErrCodePlanReviewStale.
+func (c *Client) GetPlanReview(sessionID, reviewID string) error {
+	return c.cli.WriteJSON(wire.FrameGetPlanReview, wire.GetPlanReviewReq{SessionID: sessionID, ReviewID: reviewID})
+}
+
+// ResolvePlanReview sends RESOLVE_PLAN_REVIEW: the user's approve or
+// deny. A stale review id is a silent no-op.
+func (c *Client) ResolvePlanReview(req wire.ResolvePlanReviewReq) error {
+	return c.cli.WriteJSON(wire.FrameResolvePlanReview, req)
+}
+
 // ListIdeas sends LIST_IDEAS. Use AwaitIdeas to consume the response.
 func (c *Client) ListIdeas(projectID string) error {
 	return c.cli.WriteJSON(wire.FrameListIdeas, wire.ListIdeasReq{ProjectID: projectID})

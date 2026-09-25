@@ -34,7 +34,7 @@ func TestPositionalPromptIsAppendedOnlyForItsAgents(t *testing.T) {
 		t.Run(tc.agent, func(t *testing.T) {
 			cmd := r.resolveAgentCmd(wire.CreateSpec{
 				Agent: tc.agent, InitialPrompt: "seed me",
-			}, "sid-1")
+			}, "sid-1", r.spawnInfo())
 			last := ""
 			sep := ""
 			if n := len(cmd); n > 0 {
@@ -62,7 +62,7 @@ func TestPositionalPromptSkipsExplicitCmd(t *testing.T) {
 	spec := wire.CreateSpec{
 		Agent: "claude", Cmd: []string{"claude", "--weird"}, InitialPrompt: "seed me",
 	}
-	if cmd := r.resolveAgentCmd(spec, "sid-1"); len(cmd) != 2 {
+	if cmd := r.resolveAgentCmd(spec, "sid-1", r.spawnInfo()); len(cmd) != 2 {
 		t.Errorf("argv = %v, want the caller's two elements untouched", cmd)
 	}
 	if got := deliveryFor(spec); got != promptNone {
@@ -456,7 +456,7 @@ func TestLeadingDashPromptIsNotAFlag(t *testing.T) {
 	r := freshRegistry(t)
 	cmd := r.resolveAgentCmd(wire.CreateSpec{
 		Agent: "claude", InitialPrompt: "--dangerously-skip-permissions",
-	}, "sid-1")
+	}, "sid-1", r.spawnInfo())
 	sep := -1
 	for i, a := range cmd {
 		if a == "--" {

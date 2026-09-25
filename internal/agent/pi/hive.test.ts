@@ -843,3 +843,218 @@ test("heartbeat stops on a non-quit session_shutdown", unixOnly, async () => {
   // then nothing until the harness's own quit.
   assert.ok(conns.length <= 4, `connections: ${conns.length}`);
 });
+
+// --- plan review (#457) ---
+
+type ReviewScript = (req: Record<string, any>, reply: (d: Record<string, any>) => void, conn: net.Socket) => void;
+
+// reviewServer is a fake daemon: event connections are collected like
+// collectConnections does, and each plan_review connection is handed to
+// script with its decoded request.
+async function reviewServer(script: ReviewScript) {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "hive-pr-"));
+  const sock = path.join(dir, "h.sock");
+  const events: Array<Record<string, any>> = [];
+  const requests: Array<Record<string, any>> = [];
+  let clientClosed = 0;
+  const server = net.createServer((conn) => {
+    let buf = Buffer.alloc(0);
+    let mode = "";
+    conn.on("data", (c) => {
+      buf = Buffer.concat([buf, c]);
+      while (buf.length >= 5) {
+        const type = buf.readUInt8(0);
+        const len = buf.readUInt32BE(1);
+        if (buf.length < 5 + len) break;
+        const body = JSON.parse(buf.subarray(5, 5 + len).toString("utf8"));
+        buf = buf.subarray(5 + len);
+        if (type === 0x01) mode = body.mode;
+        else if (type === 0x22) events.push(body);
+        else if (type === 0x32 && mode === "plan_review") {
+          requests.push(body);
+          script(body, (d) => conn.write(frameOf(0x33, d)), conn);
+        }
+      }
+    });
+    conn.on("close", () => {
+      if (mode === "plan_review") clientClosed++;
+    });
+    conn.on("error", () => {});
+  });
+  await new Promise<void>((r) => server.listen(sock, r));
+  return {
+    sock,
+    events,
+    requests,
+    closed: () => clientClosed,
+    stop: () => {
+      server.close();
+      fs.rmSync(dir, { recursive: true, force: true });
+    },
+  };
+}
+
+function frameOf(type: number, payload: unknown): Buffer {
+  const body = Buffer.from(JSON.stringify(payload), "utf8");
+  const head = Buffer.alloc(5);
+  head.writeUInt8(type, 0);
+  head.writeUInt32BE(body.length, 1);
+  return Buffer.concat([head, body]);
+}
+
+// planTool loads the extension with plan review on and returns its
+// hive_submit_plan tool plus the registered handlers.
+function planTool(sock: string, env: Record<string, string | undefined> = {}) {
+  let pi: ReturnType<typeof handlerPi> | undefined;
+  withEnv({ HIVE_SESSION_ID: "s1", HIVE_SOCKET: sock, HIVE_PI_PLAN_REVIEW: "1", ...env }, () => {
+    pi = handlerPi();
+    mod.default(pi as never);
+  });
+  return { tool: pi!.tools.find((t) => t.name === mod.PLAN_TOOL_NAME), pi: pi! };
+}
+
+const textOf = (r: any) => r.content.map((c: any) => c.text).join("");
+const settle = (ms = 150) => new Promise((r) => setTimeout(r, ms));
+
+test("hive_submit_plan is not registered without HIVE_PI_PLAN_REVIEW=1", () => {
+  for (const v of [undefined, "0", "true"]) {
+    withEnv({ HIVE_SESSION_ID: "s1", HIVE_SOCKET: "/tmp/x.sock", HIVE_PI_PLAN_REVIEW: v }, () => {
+      const pi = fakePi();
+      mod.default(pi as never);
+      assert.equal(pi.tools.find((t) => t.name === mod.PLAN_TOOL_NAME), undefined, `registered with ${v}`);
+    });
+  }
+});
+
+test("hive_submit_plan is registered with a snippet and guidelines that name it", () => {
+  const { tool } = planTool("/tmp/x.sock");
+  assert.ok(tool, "not registered");
+  assert.equal(tool.parameters.type, "object");
+  assert.deepEqual(tool.parameters.required, ["plan"]);
+  assert.ok(tool.promptSnippet);
+  assert.ok(tool.promptGuidelines.length > 0);
+  // Pi appends guidelines flat, with no tool prefix: each must name it.
+  for (const g of tool.promptGuidelines) assert.ok(g.includes(mod.PLAN_TOOL_NAME), g);
+});
+
+test("approve: the request carries the plan and the tool reports approval", unixOnly, async () => {
+  const srv = await reviewServer((_req, reply) => setTimeout(() => reply({ status: "approve" }), 50));
+  try {
+    const { tool } = planTool(srv.sock);
+    const res = await tool.execute("c1", { plan: "# Plan\n- one" }, undefined, undefined, {});
+    assert.match(textOf(res), /approved/);
+    assert.equal(srv.requests.length, 1);
+    assert.equal(srv.requests[0].session_id, "s1");
+    assert.equal(srv.requests[0].source, "pi");
+    assert.equal(srv.requests[0].plan, "# Plan\n- one");
+    await settle();
+    assert.deepEqual(
+      srv.events.map((e) => e.kind),
+      ["waiting_permission", "permission_resolved"],
+      "the wait must be reported, and resolved",
+    );
+    assert.ok(srv.events[0].seq, "waiting_permission must be keyed so the heartbeat replays it");
+  } finally {
+    srv.stop();
+  }
+});
+
+test("deny: the tool returns the daemon's message verbatim", unixOnly, async () => {
+  const msg = 'The user reviewed your plan in Hive and did not approve it yet.\n1. On "one":\n   > no';
+  const srv = await reviewServer((_req, reply) => reply({ status: "deny", message: msg }));
+  try {
+    const { tool } = planTool(srv.sock);
+    const res = await tool.execute("c1", { plan: "# Plan" }, undefined, undefined, {});
+    assert.equal(textOf(res), msg);
+  } finally {
+    srv.stop();
+  }
+});
+
+test("an abort signal closes the review connection", unixOnly, async () => {
+  const srv = await reviewServer(() => {}); // never answers
+  try {
+    const { tool } = planTool(srv.sock);
+    const ac = new AbortController();
+    const run = tool.execute("c1", { plan: "# Plan" }, ac.signal, undefined, {});
+    await settle(100);
+    ac.abort();
+    await assert.rejects(run, /cancelled/);
+    await settle();
+    assert.equal(srv.closed(), 1, "the daemon must see the connection close");
+  } finally {
+    srv.stop();
+  }
+});
+
+test("no_client falls back to Pi's own confirm, immediately or mid-review", unixOnly, async () => {
+  for (const delay of [0, 100]) {
+    const srv = await reviewServer((_req, reply) => setTimeout(() => reply({ status: "no_client" }), delay));
+    try {
+      const { tool } = planTool(srv.sock);
+      const asked: string[] = [];
+      const ctx = { hasUI: true, ui: { confirm: async (title: string) => (asked.push(title), false) } };
+      const res = await tool.execute("c1", { plan: "# Plan" }, undefined, undefined, ctx);
+      assert.equal(asked.length, 1, `delay ${delay}: confirm not asked`);
+      assert.match(textOf(res), /did not approve/);
+      const headless = await tool.execute("c2", { plan: "# Plan" }, undefined, undefined, { hasUI: false });
+      assert.match(textOf(headless), /No reviewer/);
+    } finally {
+      srv.stop();
+    }
+  }
+});
+
+test("disabled mid-session: the tool says so instead of blocking", unixOnly, async () => {
+  const srv = await reviewServer((_req, reply) => reply({ status: "disabled" }));
+  try {
+    const { tool } = planTool(srv.sock);
+    assert.match(textOf(await tool.execute("c1", { plan: "# P" }, undefined, undefined, {})), /off in Hive/);
+  } finally {
+    srv.stop();
+  }
+});
+
+test("session_shutdown destroys an in-flight review", unixOnly, async () => {
+  const srv = await reviewServer(() => {});
+  try {
+    const { tool, pi } = planTool(srv.sock);
+    const run = tool.execute("c1", { plan: "# Plan" }, undefined, undefined, {});
+    await settle(100);
+    pi.handlers.get("session_shutdown")!({ reason: "new" }, {});
+    await assert.rejects(run, /cancelled/);
+    await settle();
+    assert.equal(srv.closed(), 1);
+  } finally {
+    srv.stop();
+  }
+});
+
+test("an empty or oversize plan is refused without dialing", unixOnly, async () => {
+  const srv = await reviewServer((_req, reply) => reply({ status: "approve" }));
+  try {
+    const { tool } = planTool(srv.sock);
+    await assert.rejects(tool.execute("c1", { plan: "  " }, undefined, undefined, {}), /needs the plan/);
+    const big = "x".repeat(mod.MAX_PLAN_REVIEW_LEN + 1);
+    await assert.rejects(tool.execute("c2", { plan: big }, undefined, undefined, {}), /longer than/);
+    await settle();
+    assert.equal(srv.requests.length, 0);
+  } finally {
+    srv.stop();
+  }
+});
+
+test("with review on, every run's system prompt tells Pi to submit a plan first", () => {
+  const { pi } = planTool("/tmp/x.sock");
+  const out: any = pi.handlers.get("before_agent_start")!({ systemPrompt: "BASE" }, {});
+  assert.ok(out.systemPrompt.startsWith("BASE"), "must append, not replace");
+  assert.ok(out.systemPrompt.includes(mod.PLAN_TOOL_NAME));
+});
+
+test("with review off, the system prompt is left alone", () => {
+  withEnv({ HIVE_SESSION_ID: "s1", HIVE_SOCKET: "/tmp/x.sock", HIVE_PI_PLAN_REVIEW: "0" }, () => {
+    const pi = handlerPi();
+    mod.default(pi as never);
+    assert.equal(pi.handlers.get("before_agent_start"), undefined);
+  });
+});

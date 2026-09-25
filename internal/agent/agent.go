@@ -123,6 +123,22 @@ type SpawnInfo struct {
 	HivedPath string
 	// StateDir is registry.StateDir() for this daemon.
 	StateDir string
+	// Settings is agent-settings.json read ONCE for this spawn. SpawnArgs
+	// and SpawnEnv both consult it, and reading the file separately in
+	// each let them disagree when the user saved Settings in between: a
+	// Claude session could get its reviewer plugin disabled while being
+	// told to defer to it (#457). nil means "read the file", for callers
+	// that build a SpawnInfo by hand.
+	Settings *Settings
+}
+
+// settings returns the spawn's settings snapshot, or reads the file
+// when there is none.
+func (sp SpawnInfo) settings() Settings {
+	if sp.Settings != nil {
+		return *sp.Settings
+	}
+	return spawnSettings()
 }
 
 // Available reports whether the agent's binary is on PATH right now.

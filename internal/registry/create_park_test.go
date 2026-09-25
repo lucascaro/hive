@@ -114,7 +114,7 @@ func TestExistingBranchCheckoutNeverParksOnUnreachableOrigin(t *testing.T) {
 	r := freshRegistry(t)
 	// Nothing could answer a dialog, so a park here would FAIL the
 	// create outright — which is exactly the user-visible regression.
-	r.SetHasControlClient(func() bool { return false })
+	r.SetAnswerers(0)
 	p, err := r.CreateProject(wire.CreateProjectReq{Name: "stale", Cwd: repo})
 	if err != nil {
 		t.Fatalf("CreateProject: %v", err)
@@ -254,7 +254,7 @@ func TestCreateFailsWithNoControlClient(t *testing.T) {
 	// create, or the GUI having quit. Falling back to the cached ref
 	// here is exactly the silent behaviour #451 removes, so the create
 	// must fail instead.
-	r.SetHasControlClient(func() bool { return false })
+	r.SetAnswerers(0)
 
 	p, err := r.CreateProject(wire.CreateProjectReq{Name: "stale", Cwd: repo})
 	if err != nil {

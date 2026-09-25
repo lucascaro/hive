@@ -70,11 +70,12 @@ type Daemon struct {
 	mu      sync.Mutex
 	clients map[net.Conn]struct{}
 
-	// controlClients counts live ModeControl connections — the ones
-	// that can show a user a dialog. The registry consults it through
-	// SetHasControlClient before parking a create on a worktree-setup
-	// question, and fails the create outright when it is zero rather
-	// than falling back to a stale base ref nobody agreed to (#451).
+	// controlClients counts live ModeControl connections that can
+	// show the user a dialog (hivebar cannot, see canAnswer). Mirrored
+	// into the registry by addAnswerer on every change: the registry
+	// fails a worktree-setup park outright when it is zero rather than
+	// falling back to a stale base ref nobody agreed to (#451), and a
+	// plan review falls back to the agent's own terminal prompt (#457).
 	controlClients int
 
 	// commands relays client-to-client verbs (see commands.go). Not
@@ -323,15 +324,11 @@ func New(cfg Config) (*Daemon, error) {
 		stop:             make(chan struct{}),
 	}
 
-	// The registry cannot see connections, so it asks the daemon
-	// whether anyone could answer a worktree-setup dialog before
-	// parking a create on one. Wired here rather than in Open because
-	// only the daemon owns the count.
-	reg.SetHasControlClient(func() bool {
-		d.mu.Lock()
-		defer d.mu.Unlock()
-		return d.controlClients > 0
-	})
+	// The registry cannot see connections, so the daemon tells it how
+	// many clients could answer a question put to the user. Zero until
+	// the first GUI connects: a worktree-setup failure or a plan review
+	// with nobody to ask fails fast instead of parking.
+	reg.SetAnswerers(0)
 
 	// The two slow boot chores run in the background, off the caller's
 	// path: reviving persisted sessions forks one PTY each, and the
@@ -667,21 +664,15 @@ func (d *Daemon) serve(ctx context.Context, conn net.Conn) {
 
 	switch hello.Mode {
 	case wire.ModeControl, wire.ModeSession:
-		// Count only ModeControl: this is what the registry asks
-		// before parking a session on a worktree-setup dialog, and a
-		// ModeSession connection is an agent's own events socket,
-		// which cannot render one. (hivebar is ModeControl and also
-		// cannot — it never creates sessions, so it can only widen the
-		// window where a park has no answerer, never open it.)
-		if hello.Mode == wire.ModeControl {
-			d.mu.Lock()
-			d.controlClients++
-			d.mu.Unlock()
-			defer func() {
-				d.mu.Lock()
-				d.controlClients--
-				d.mu.Unlock()
-			}()
+		// Count only ModeControl clients that can render a question:
+		// this is what the registry asks before parking a session on a
+		// worktree-setup dialog or a plan review. A ModeSession
+		// connection is an agent's own events socket, and hivebar has
+		// no dialog for either — counting it would let a review park
+		// with nothing able to answer it (#457).
+		if hello.Mode == wire.ModeControl && canAnswer(hello) {
+			d.addAnswerer(1)
+			defer d.addAnswerer(-1)
 		}
 		d.serveControl(ctx, conn, hello)
 	case wire.ModeAttach:
@@ -762,6 +753,8 @@ func (d *Daemon) serveEventsOnly(ctx context.Context, conn net.Conn) {
 	switch hello.Mode {
 	case wire.ModeEvent:
 		d.serveEvent(conn)
+	case wire.ModePlanReview:
+		d.servePlanReview(ctx, conn)
 	case wire.ModeSession:
 		// Long-lived relative to ModeEvent, but not unbounded: this is
 		// the one connection kind a subprocess of an agent can open, so
@@ -785,7 +778,7 @@ func (d *Daemon) serveEventsOnly(ctx context.Context, conn net.Conn) {
 	default:
 		_ = wire.WriteJSON(conn, wire.FrameError, wire.Error{
 			Code:    wire.ErrCodeModeNotAllowed,
-			Message: fmt.Sprintf("mode %q is not served on the events socket; want event or session", hello.Mode),
+			Message: fmt.Sprintf("mode %q is not served on the events socket; want event, session or plan_review", hello.Mode),
 		})
 	}
 }
@@ -1635,6 +1628,35 @@ func (d *Daemon) handleControlFrame(ctx context.Context, ops controlOps, ft wire
 			// that no longer exists.
 			ops.sendError(resolvePromptErrorCode(err), err.Error())
 		}
+	case wire.FrameGetPlanReview:
+		// Control-mode only, like GET_ACTIVITY: an agent must not read
+		// another session's plan through its events socket.
+		req, ok := decodeReq[wire.GetPlanReviewReq](payload, ops.sendError)
+		if !ok {
+			return false
+		}
+		source, plan, found := d.reg.PlanReviewText(req.SessionID, req.ReviewID)
+		if !found {
+			_ = ops.writeJSON(wire.FrameError, wire.Error{
+				Code: wire.ErrCodePlanReviewStale, Message: "that plan review is no longer pending", SessionID: req.SessionID,
+			})
+			return false
+		}
+		_ = ops.writeJSON(wire.FramePlanReview, wire.PlanReviewMsg{
+			SessionID: req.SessionID, ReviewID: req.ReviewID, Source: source, Plan: plan,
+		})
+	case wire.FrameResolvePlanReview:
+		req, ok := decodeReq[wire.ResolvePlanReviewReq](payload, ops.sendError)
+		if !ok {
+			return false
+		}
+		if err := req.Validate(); err != nil {
+			ops.sendError("bad_request", err.Error())
+			return false
+		}
+		// A stale or already-decided review is a silent no-op: two
+		// windows racing to answer produce exactly one decision.
+		d.reg.ResolvePlanReview(req)
 	case wire.FrameResolveWorktreeChoice:
 		req, ok := decodeReq[wire.ResolveWorktreeChoiceReq](payload, ops.sendError)
 		if !ok {

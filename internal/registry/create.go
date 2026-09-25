@@ -166,7 +166,9 @@ func (r *Registry) finishCreate(ctx context.Context, e *Entry, spec wire.CreateS
 // a create parked on a user decision can be resumed from
 // ResolveWorktreeChoice without duplicating it.
 func (r *Registry) finishCreateTail(ctx context.Context, e *Entry, spec wire.CreateSpec, p createPlan) error {
-	cmd := r.resolveAgentCmd(spec, p.id)
+	// One spawn snapshot for argv and env, so they agree (#457).
+	sp := r.spawnInfo()
+	cmd := r.resolveAgentCmd(spec, p.id, sp)
 	if p.nameFromBranch && p.wtBranch == "" {
 		r.renameAfterWorktreeFailure(e, spec)
 	}
@@ -178,7 +180,7 @@ func (r *Registry) finishCreateTail(ctx context.Context, e *Entry, spec wire.Cre
 		Cwd:   p.cwd,
 		Cols:  spec.Cols,
 		Rows:  spec.Rows,
-		Env:   append(r.hiveEnv(p.id), r.resolveAgentEnv(spec)...),
+		Env:   append(r.hiveEnv(p.id), r.resolveAgentEnv(spec, sp)...),
 	})
 	if err != nil {
 		log.Printf("registry: session.Start failed for %s (agent=%q cmd=%v): %v",
@@ -678,15 +680,15 @@ func agentDef(spec wire.CreateSpec) (agent.Def, bool) {
 
 // resolveAgentEnv is the agent adapter's extra environment for a
 // create, gated exactly like resolveAgentCmd's SpawnArgs.
-func (r *Registry) resolveAgentEnv(spec wire.CreateSpec) []string {
+func (r *Registry) resolveAgentEnv(spec wire.CreateSpec, sp agent.SpawnInfo) []string {
 	def, ok := agentDef(spec)
 	if !ok || def.SpawnEnv == nil {
 		return nil
 	}
-	return def.SpawnEnv(r.spawnInfo())
+	return def.SpawnEnv(sp)
 }
 
-func (r *Registry) resolveAgentCmd(spec wire.CreateSpec, id string) []string {
+func (r *Registry) resolveAgentCmd(spec wire.CreateSpec, id string, sp agent.SpawnInfo) []string {
 	def, ok := agentDef(spec)
 	if !ok {
 		return spec.Cmd
@@ -705,7 +707,7 @@ func (r *Registry) resolveAgentCmd(spec wire.CreateSpec, id string) []string {
 		cmd = append(append([]string(nil), cmd...), def.SessionIDFlag, id)
 	}
 	if def.SpawnArgs != nil {
-		if extra := def.SpawnArgs(r.spawnInfo()); len(extra) > 0 {
+		if extra := def.SpawnArgs(sp); len(extra) > 0 {
 			cmd = append(append([]string(nil), cmd...), extra...)
 		}
 	}

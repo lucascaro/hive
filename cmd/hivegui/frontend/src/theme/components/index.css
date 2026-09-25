@@ -39,6 +39,8 @@
 @import './help.css';
 @import './build-log.css';
 
+@import './plan-review.css';
+
 /* Late: see drag.css. */
 @import './drag.css';
 

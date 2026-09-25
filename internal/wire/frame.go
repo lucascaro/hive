@@ -194,6 +194,21 @@ const (
 	// waits, so the wait can be indefinite without pinning a goroutine
 	// or the registry's git lock.
 	FrameResolveWorktreeChoice FrameType = 0x31 // C → S, JSON, control
+
+	// Plan review — an agent's plan held for the user to approve or
+	// deny before the agent implements it. PLAN_REVIEW_REQUEST and
+	// PLAN_REVIEW_DECISION are the only frames on a ModePlanReview
+	// connection: the requester (`hived hook` for Claude, the Pi
+	// extension) sends one request and waits, possibly for days, for
+	// the one decision. The GUI side is ordinary control mode: the
+	// pending review rides SessionInfo.PendingPlanReview (small), the
+	// plan text is fetched with GET_PLAN_REVIEW, and the user's answer
+	// is RESOLVE_PLAN_REVIEW. See docs/design-docs/control-plane.md.
+	FramePlanReviewRequest  FrameType = 0x32 // C → S, JSON, plan_review
+	FramePlanReviewDecision FrameType = 0x33 // S → C, JSON, plan_review
+	FrameGetPlanReview      FrameType = 0x34 // C → S, JSON, control
+	FramePlanReview         FrameType = 0x35 // S → C, JSON, control
+	FrameResolvePlanReview  FrameType = 0x36 // C → S, JSON, control
 )
 
 func (t FrameType) String() string {
@@ -280,6 +295,16 @@ func (t FrameType) String() string {
 		return "RESOLVE_PROMPT"
 	case FrameResolveWorktreeChoice:
 		return "RESOLVE_WORKTREE_CHOICE"
+	case FramePlanReviewRequest:
+		return "PLAN_REVIEW_REQUEST"
+	case FramePlanReviewDecision:
+		return "PLAN_REVIEW_DECISION"
+	case FrameGetPlanReview:
+		return "GET_PLAN_REVIEW"
+	case FramePlanReview:
+		return "PLAN_REVIEW"
+	case FrameResolvePlanReview:
+		return "RESOLVE_PLAN_REVIEW"
 	case FrameIdeaEvent:
 		return "IDEA_EVENT"
 	case FrameSetWorktreeLabel:
