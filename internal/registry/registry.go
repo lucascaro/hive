@@ -926,9 +926,13 @@ func (r *Registry) HiveEnvForTest(id string) []string { return r.hiveEnv(id) }
 // spawnInfo builds the agent.SpawnInfo a Def.SpawnArgs call needs.
 // Takes r.mu.
 func (r *Registry) spawnInfo() agent.SpawnInfo {
+	// One read of agent-settings.json per spawn, shared by SpawnArgs and
+	// SpawnEnv so they cannot disagree (#457). Read before r.mu: it is
+	// file I/O.
+	st := agent.SpawnSettings()
 	r.mu.Lock()
 	defer r.mu.Unlock()
-	return agent.SpawnInfo{HivedPath: r.hivedPath, StateDir: r.stateDir}
+	return agent.SpawnInfo{HivedPath: r.hivedPath, StateDir: r.stateDir, Settings: &st}
 }
 
 // applyAgentSpawn appends everything the agent adapter adds at spawn —

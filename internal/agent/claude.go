@@ -305,7 +305,7 @@ func claudeSpawnArgs(sp SpawnInfo) []string {
 		{Type: "command", Command: cmd, Timeout: PlanReviewHookTimeout},
 	}}}
 	settings := claudeSettings{Hooks: hooks}
-	if claudeSpawnReviewer(spawnSettings()) == PlanReviewerHive {
+	if claudeSpawnReviewer(sp.settings()) == PlanReviewerHive {
 		settings.EnabledPlugins = pluginReviewersToDisable()
 	}
 	blob, err := json.Marshal(settings)

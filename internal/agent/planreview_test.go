@@ -218,3 +218,36 @@ func TestClaudeSpawnArgsDisablesExternalPluginReviewer(t *testing.T) {
 		}
 	}
 }
+
+// Args and env must come from ONE settings read: a save between the two
+// used to let Claude's reviewer plugin be disabled while the session was
+// told to defer to it, leaving its plans unreviewed.
+func TestSpawnArgsAndEnvShareOneSettingsSnapshot(t *testing.T) {
+	withClaudeVersion(t, "2.1.273")
+	withEnv(t, "", false)
+	home := t.TempDir()
+	installPlugin(t, home, "plannotator@plannotator", exitPlanReviewerHooks)
+	prev := userHomeDir
+	userHomeDir = func() (string, error) { return home, nil }
+	t.Cleanup(func() { userHomeDir = prev })
+
+	settingsDir(t, `{"plan_review": true, "plan_reviewer": "hive"}`)
+	snap := SpawnSettings()
+	sp := hooked
+	sp.Settings = &snap
+
+	args := claudeSpawnArgs(sp)
+	// The user switches back to the external reviewer mid-spawn.
+	if err := SaveSettings(Settings{ClaudeTaskTools: true, PiTodoTool: true, PlanReview: true, PlanReviewer: PlanReviewerExternal}); err != nil {
+		t.Fatal(err)
+	}
+	env := claudeSpawnEnv(sp)
+
+	var s claudeSettings
+	if err := json.Unmarshal([]byte(args[1]), &s); err != nil {
+		t.Fatal(err)
+	}
+	if v, _ := envValue(env, PlanReviewerEnv); v != PlanReviewerHive || s.EnabledPlugins["plannotator@plannotator"] {
+		t.Errorf("args disabled plugins %v but env says %s=%q: one spawn, two settings", s.EnabledPlugins, PlanReviewerEnv, v)
+	}
+}

@@ -464,6 +464,7 @@ scripts/test.sh
   - Plan review controls sit below the agent list in Settings → Agents; `settings.spec` pins the list on screen at open.
   - The e2e-real spec loads `hive.ts` at runtime, because the frontend tsconfig has no node types.
 - **2026-09-24** — A stale `GET_PLAN_REVIEW` must drop that session's pending review before moving on. Without that, the queue re-fetched the same stale review forever, and reviews queued behind it were never raised (found by `plan-review-events.test.ts`).
+- **2026-09-24** — Review round 3 found that one spawn read agent-settings.json twice: once in `SpawnArgs`, which disables the plugin, and once in `SpawnEnv`, which sets `HIVE_PLAN_REVIEWER`. A save between the two reads left a session with its reviewer plugin disabled and still told to defer to it. The operator chose the fix: snapshot the settings once in `SpawnInfo.Settings` (`Registry.spawnInfo`), and pass one `SpawnInfo` through the create path's `resolveAgentCmd` and `resolveAgentEnv`. Regression test: `TestSpawnArgsAndEnvShareOneSettingsSnapshot`.
 
 ## Progress
 
@@ -479,3 +480,4 @@ _(none)_
 
 - **2026-09-24 iter 1** — verdict: COMMENT; mergeable: MERGEABLE; findings_hash: 2b58e2d24b812027b4afd4b2a60bc6793af50522a561b88681a642d7a50265a2; threads_open: 2; action: autofix+push; head_sha: 745b04bb.
 - **2026-09-24 iter 2** — verdict: REQUEST_CHANGES; mergeable: MERGEABLE; findings_hash: 51192c2ab605075cc88747a06aa3e61bedf5b430a483566d2664bfbad3fce725; threads_open: 0; action: autofix+push; head_sha: 567eefee.
+- **2026-09-24 iter 3** — verdict: COMMENT; mergeable: MERGEABLE; findings_hash: b6658eb646a61f76e9f93e0340731c1f5c1fe74749de2bd665a409010449d0bf; threads_open: 0; action: escalated:risky fix needs human decision; head_sha: be1d0733.

@@ -160,6 +160,10 @@ func SaveSettings(s Settings) error {
 
 var settingsWarnOnce sync.Once
 
+// SpawnSettings is spawnSettings for the registry, which snapshots it
+// into SpawnInfo.Settings once per spawn.
+func SpawnSettings() Settings { return spawnSettings() }
+
 // spawnSettings is LoadSettings for the spawn path, where the answer
 // must never be an error: a malformed file degrades to the defaults
 // and is logged once, rather than failing a session launch over a
@@ -193,7 +197,7 @@ func claudeSpawnEnv(sp SpawnInfo) []string {
 	if !claudeHooksAvailable(sp) {
 		return nil
 	}
-	st := spawnSettings()
+	st := sp.settings()
 	// Hive's own variable, so it is explicit both ways and always set:
 	// an inherited value must never decide who reviews this session.
 	env := []string{PlanReviewerEnv + "=" + claudeSpawnReviewer(st)}
@@ -222,7 +226,7 @@ func piSpawnEnv(sp SpawnInfo) []string {
 	// The heartbeat is only safe against a daemon that understands the
 	// ordering key; this daemon does, and it is the one spawning pi.
 	heartbeat := PiHeartbeatEnv + "=1"
-	st := spawnSettings()
+	st := sp.settings()
 	return []string{
 		PiTodoToolEnv + "=" + boolEnv(st.PiTodoTool),
 		PiPlanReviewEnv + "=" + boolEnv(st.PlanReview),
