@@ -478,3 +478,4 @@ _(none)_
 ## PR convergence ledger
 
 - **2026-09-24 iter 1** — verdict: COMMENT; mergeable: MERGEABLE; findings_hash: 2b58e2d24b812027b4afd4b2a60bc6793af50522a561b88681a642d7a50265a2; threads_open: 2; action: autofix+push; head_sha: 745b04bb.
+- **2026-09-24 iter 2** — verdict: REQUEST_CHANGES; mergeable: MERGEABLE; findings_hash: 51192c2ab605075cc88747a06aa3e61bedf5b430a483566d2664bfbad3fce725; threads_open: 0; action: autofix+push; head_sha: 567eefee.
