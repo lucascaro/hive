@@ -481,3 +481,4 @@ _(none)_
 - **2026-09-24 iter 1** — verdict: COMMENT; mergeable: MERGEABLE; findings_hash: 2b58e2d24b812027b4afd4b2a60bc6793af50522a561b88681a642d7a50265a2; threads_open: 2; action: autofix+push; head_sha: 745b04bb.
 - **2026-09-24 iter 2** — verdict: REQUEST_CHANGES; mergeable: MERGEABLE; findings_hash: 51192c2ab605075cc88747a06aa3e61bedf5b430a483566d2664bfbad3fce725; threads_open: 0; action: autofix+push; head_sha: 567eefee.
 - **2026-09-24 iter 3** — verdict: COMMENT; mergeable: MERGEABLE; findings_hash: b6658eb646a61f76e9f93e0340731c1f5c1fe74749de2bd665a409010449d0bf; threads_open: 0; action: escalated:risky fix needs human decision; head_sha: be1d0733.
+- **2026-09-24 iter 4** — verdict: APPROVE; mergeable: MERGEABLE; findings_hash: empty; threads_open: 0; action: stop; head_sha: 2564ad78.

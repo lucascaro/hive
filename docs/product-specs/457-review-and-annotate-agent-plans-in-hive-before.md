@@ -5,7 +5,7 @@ type: enhancement
 complexity: L
 priority: P2
 pr: 459
-stage: REVIEW
+stage: GATE
 ---
 
 # Review and annotate agent plans in Hive before implementation
