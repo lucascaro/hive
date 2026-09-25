@@ -1,0 +1,113 @@
+/* Plan review (#457): the review modal and the bar that re-opens it.
+   Tokens only (scripts/ui-lint.sh --strict), so every theme preset
+   restyles it. */
+
+.plan-review-lede {
+  margin: 0 0 var(--space-3);
+  font-size: var(--text-sm);
+  color: var(--fg-muted);
+}
+
+/* The plan: the one scrolling region, so the actions stay in reach of a
+   long plan. */
+/* Capped so the comment tools and the feedback box stay close to the
+   plan; the dialog body (dialog.css) scrolls for the rest. */
+.plan-review-plan {
+  max-height: 38vh;
+  overflow-y: auto;
+  padding: var(--space-3);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+  color: var(--fg);
+  font-size: var(--text-sm);
+  line-height: 1.55;
+  user-select: text;
+}
+.plan-review-plan:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.plan-review-plan > :first-child { margin-top: 0; }
+.plan-review-plan .hv-md-heading { margin: var(--space-3) 0 var(--space-2); color: var(--fg); }
+.plan-review-plan p { margin: 0 0 var(--space-2); }
+.plan-review-plan ul,
+.plan-review-plan ol { margin: 0 0 var(--space-2); padding-left: var(--space-5); }
+.plan-review-plan li > ul,
+.plan-review-plan li > ol { margin-bottom: 0; }
+.plan-review-plan code {
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+  padding: 0 var(--space-1);
+  border-radius: var(--radius-sm);
+  background: var(--surface-raised);
+}
+.plan-review-plan .hv-md-code {
+  margin: 0 0 var(--space-2);
+  padding: var(--space-2);
+  overflow-x: auto;
+  border-radius: var(--radius-sm);
+  background: var(--surface-raised);
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+}
+.plan-review-plan .hv-md-code code { padding: 0; background: none; }
+.plan-review-plan blockquote {
+  margin: 0 0 var(--space-2);
+  padding-left: var(--space-3);
+  border-left: 2px solid var(--border);
+  color: var(--fg-muted);
+}
+.plan-review-plan .hv-md-table { border-collapse: collapse; margin: 0 0 var(--space-2); }
+.plan-review-plan .hv-md-table th,
+.plan-review-plan .hv-md-table td { padding: var(--space-1) var(--space-2); border: 1px solid var(--border); }
+.plan-review-plan .hv-md-link { text-decoration: underline dotted; }
+.plan-review-plan hr { border: 0; border-top: 1px solid var(--border); }
+
+.plan-review-tools {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  margin-top: var(--space-3);
+}
+.plan-review-row { display: flex; gap: var(--space-2); }
+/* A button, not a field: keep it its own width in the column. */
+.plan-review-tools > .hv-button { align-self: flex-start; }
+.plan-review-composer { display: flex; flex-direction: column; gap: var(--space-2); }
+.plan-review-quote {
+  margin: 0;
+  padding-left: var(--space-2);
+  border-left: 2px solid var(--accent);
+  color: var(--fg-muted);
+  font-size: var(--text-xs);
+  white-space: pre-wrap;
+  max-height: 6em;
+  overflow-y: auto;
+}
+.plan-review-comments {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  margin: 0;
+  padding-left: var(--space-5);
+  font-size: var(--text-sm);
+}
+.plan-review-comment p { margin: var(--space-1) 0; white-space: pre-wrap; }
+
+/* The bar: pinned to the bottom like the opening-prompt bar, and it
+   sits BELOW that bar when both show (fixed height for the offset). */
+.hv-plan-review-bar {
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: 25px; /* clears #status, like .hv-pending-prompt */
+  height: 40px;
+  box-sizing: border-box;
+  z-index: 15;
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  padding: 0 var(--space-3);
+  border-top: 1px solid var(--border);
+  background: var(--surface-raised);
+  font-size: var(--text-sm);
+}
+.hv-plan-review-bar__label { flex: 1; min-width: 0; color: var(--state-attention); }
+.hv-plan-review-bar ~ .hv-pending-prompt { bottom: calc(25px + 40px); }

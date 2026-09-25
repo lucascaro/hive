@@ -71,6 +71,7 @@ import {
 } from './modals/help-overlay.js';
 import { closeHelp, handOffToShortcuts } from './modals/help.js';
 import { closeWhatsNew } from './modals/whats-new.js';
+import { deferPlanReview } from './modals/plan-review.js';
 import { closeBuildLog } from './modals/build-log.js';
 import { activityKey, isHelpOverlayKey, navHistoryKey } from '../lib/keymap.js';
 import {
@@ -355,6 +356,18 @@ window.addEventListener(
         e.stopPropagation();
       }
       return; // the What's New modal owns the keyboard while open
+    }
+    if (isModalOpen('plan-review')) {
+      // An agent is blocked on this. Escape defers — it never answers —
+      // and the modal owns the keyboard like every other dialog.
+      if (e.key === 'Escape') {
+        e.preventDefault();
+        e.stopPropagation();
+        deferPlanReview();
+      } else if (trapFocus(pageEl('plan-review'), e)) {
+        e.stopPropagation();
+      }
+      return;
     }
     if (isModalOpen('build-log')) {
       // Same gate as What's New, for the same reasons.
@@ -1093,7 +1106,8 @@ function ideaKeysBlocked(): boolean {
     isModalOpen('help') ||
     isModalOpen('help-modal') ||
     isModalOpen('whats-new') ||
-    isModalOpen('build-log')
+    isModalOpen('build-log') ||
+    isModalOpen('plan-review')
   );
 }
 

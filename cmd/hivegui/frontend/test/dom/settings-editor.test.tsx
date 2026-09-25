@@ -14,6 +14,7 @@ const bridge = vi.hoisted(() => ({
   SaveCustomAgents: vi.fn(() => Promise.resolve()),
   MenuBarLoginItemStatus: vi.fn(() => Promise.resolve('unsupported')),
   SetMenuBarLoginItem: vi.fn(() => Promise.resolve()),
+  GetExternalPlanReviewers: vi.fn(() => Promise.resolve([])),
   GetAgentSettings: vi.fn(() =>
     Promise.resolve({ claude_task_tools: true, pi_todo_tool: true }),
   ),

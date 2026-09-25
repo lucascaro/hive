@@ -417,6 +417,25 @@ func (s *session) dispatch(req rpcReq) {
 			return
 		}
 		s.respond(req.ID, "", s.controlWriteJSON(wire.FrameResolvePrompt, p))
+	case "GetPlanReview":
+		var p wire.GetPlanReviewReq
+		if err := parseParams(req.Params, &p); err != nil {
+			s.respond(req.ID, nil, err)
+			return
+		}
+		s.respond(req.ID, "", s.controlWriteJSON(wire.FrameGetPlanReview, p))
+	case "ResolvePlanReview":
+		var p wire.ResolvePlanReviewReq
+		if err := parseParams(req.Params, &p); err != nil {
+			s.respond(req.ID, nil, err)
+			return
+		}
+		s.respond(req.ID, "", s.controlWriteJSON(wire.FrameResolvePlanReview, p))
+	case "GetExternalPlanReviewers":
+		// Deliberately not agent.ExternalPlanReviewers: the e2e harness
+		// must never read the real user's ~/.claude. None is the answer
+		// a fresh install gives.
+		s.respond(req.ID, []any{}, nil)
 	case "ResolveWorktreeChoice":
 		var p wire.ResolveWorktreeChoiceReq
 		if err := json.Unmarshal(req.Params, &p); err != nil {

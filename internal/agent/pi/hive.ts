@@ -17,20 +17,28 @@
 //
 // A report is one connection: HELLO{mode:"event"} then one or more
 // AGENT_EVENTs (a successful hive_todo call is a tool_end AND a plan),
-// then close. The daemon replies to neither, so nothing here ever reads
-// from the socket.
+// then close. The daemon replies to neither.
+//
+// The one exception is a plan review (#457, requestPlanReview): HELLO
+// {mode:"plan_review"}, one PLAN_REVIEW_REQUEST, then the connection is
+// held until the daemon writes its one PLAN_REVIEW_DECISION — the only
+// read this file does.
 //
 // Privacy rule (docs/design-docs/agent-activity.md): a tool's raw
 // arguments and result never cross the socket. Only the tool name, a
 // derived label (deriveTarget) and the plan items do. eventBody builds
 // every frame from an explicit field list for exactly that reason —
-// nothing here spreads a Pi event into a payload.
+// nothing here spreads a Pi event into a payload. The one named
+// exception is hive_submit_plan's plan: the model hands it over for the
+// user to read, which is the whole point of the tool.
 import { randomUUID } from "node:crypto";
 import net from "node:net";
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 
 const FRAME_HELLO = 0x01;
 const FRAME_AGENT_EVENT = 0x22;
+const FRAME_PLAN_REVIEW_REQUEST = 0x32;
+const FRAME_PLAN_REVIEW_DECISION = 0x33;
 const PROTOCOL_VERSION = 1;
 
 // Caps mirroring internal/wire (control.go). The daemon truncates again
@@ -64,6 +72,14 @@ export const TODO_TOOL_ENV = "HIVE_PI_TODO_TOOL";
 // older daemon would re-apply every beat and re-raise a wait the user
 // had already cleared.
 export const HEARTBEAT_ENV = "HIVE_PI_HEARTBEAT";
+
+// The plan-review tool (#457). Registered only when hived sets
+// PLAN_REVIEW_ENV to "1" (plan review was on when this session spawned);
+// the daemon re-checks the setting on every review, so switching it off
+// mid-session answers "disabled" rather than blocking.
+export const PLAN_TOOL_NAME = "hive_submit_plan";
+export const PLAN_REVIEW_ENV = "HIVE_PI_PLAN_REVIEW";
+export const MAX_PLAN_REVIEW_LEN = 128 * 1024; // wire.MaxPlanReviewLen
 
 // How often the latest state-bearing report is re-sent (spec 423). Well
 // under agentstate.HookStaleAfter (30 s), so a live Pi never goes
@@ -242,6 +258,109 @@ export function createSender(sock: string, sid: string, timeoutMs = 2000) {
   };
 }
 
+export type PlanReviewDecision = { status: string; message?: string };
+
+// requestPlanReview asks the user to review plan in Hive and resolves
+// with the daemon's one decision. Closing the connection withdraws the
+// review in every GUI, so an abort (Esc, session shutdown) is simply a
+// destroy. It never rejects: a refused dial resolves "unreachable" and a
+// connection that ends without a decision resolves "cancelled".
+//
+// Exported for the e2e-real suite, which drives the daemon with this
+// same encoder rather than a hand-written copy.
+export function requestPlanReview(
+  sock: string,
+  sid: string,
+  plan: string,
+  cwd: string,
+  signal?: AbortSignal,
+): Promise<PlanReviewDecision> {
+  return new Promise((resolve) => {
+    let settled = false;
+    let conn: net.Socket | undefined;
+    const done = (d: PlanReviewDecision) => {
+      if (settled) return;
+      settled = true;
+      conn?.destroy();
+      resolve(d);
+    };
+    if (signal?.aborted) return done({ status: "aborted" });
+    signal?.addEventListener("abort", () => done({ status: "aborted" }), { once: true });
+    let buf = Buffer.alloc(0);
+    try {
+      conn = net.createConnection(sock);
+    } catch {
+      return done({ status: "unreachable" });
+    }
+    let connected = false;
+    conn.on("connect", () => {
+      connected = true;
+      conn?.write(
+        Buffer.concat([
+          frame(FRAME_HELLO, { version: PROTOCOL_VERSION, client: "hive-pi-ext", mode: "plan_review" }),
+          frame(FRAME_PLAN_REVIEW_REQUEST, { session_id: sid, source: "pi", plan, cwd }),
+        ]),
+      );
+    });
+    conn.on("data", (chunk: Buffer) => {
+      buf = Buffer.concat([buf, chunk]);
+      if (buf.length < 5) return;
+      const len = buf.readUInt32BE(1);
+      if (buf.length < 5 + len) return;
+      if (buf[0] !== FRAME_PLAN_REVIEW_DECISION) return done({ status: "invalid" });
+      try {
+        const d = JSON.parse(buf.subarray(5, 5 + len).toString("utf8"));
+        done({ status: str(d?.status), message: str(d?.message) });
+      } catch {
+        done({ status: "invalid" });
+      }
+    });
+    conn.on("error", () => done({ status: connected ? "cancelled" : "unreachable" }));
+    conn.on("close", () => done({ status: connected ? "cancelled" : "unreachable" }));
+  });
+}
+
+// planReviewResult turns a decision into what hive_submit_plan tells the
+// model. confirm is the terminal fallback when no GUI can answer: Pi's
+// own confirm dialog when it has a UI, otherwise undefined.
+export async function planReviewResult(
+  d: PlanReviewDecision,
+  plan: string,
+  confirm?: (title: string, body: string) => Promise<boolean>,
+): Promise<string> {
+  switch (d.status) {
+    case "approve":
+      return "The user approved your plan in Hive. Implement it now.";
+    case "deny":
+      return d.message || "The user did not approve your plan. Ask them what to change.";
+    case "disabled":
+      return "Plan review is off in Hive. Continue without review.";
+    case "no_client":
+    case "unreachable":
+      if (!confirm) return "No reviewer is available. Continue with the plan.";
+      return (await confirm("Approve this plan?", truncateBytes(plan, 4000)))
+        ? "The user approved your plan. Implement it now."
+        : "The user did not approve your plan. Ask them what to change, then call " + PLAN_TOOL_NAME + " again.";
+    case "aborted":
+      throw new Error("Plan review cancelled.");
+    default:
+      throw new Error("Plan review ended before the user answered (" + (d.status || "no decision") + ").");
+  }
+}
+
+// The plan tool's parameters, plain JSON Schema for the same reason as
+// TODO_PARAMETERS below.
+const PLAN_PARAMETERS = {
+  type: "object",
+  properties: {
+    plan: {
+      type: "string",
+      description: "The whole plan as markdown: what you will change, in which files, and how you will verify it.",
+    },
+  },
+  required: ["plan"],
+};
+
 // planFromTodos turns hive_todo's todos (its parameters, or the details
 // its result carries) into plan items, or undefined when the shape is
 // not a todo list. An unrecognised status reads as pending, as the
@@ -314,6 +433,10 @@ export default function (pi: ExtensionAPI) {
   if (!sid || !sock) return; // not under Hive: inert
 
   const todoTool = process.env[TODO_TOOL_ENV] !== "0";
+  const planTool = process.env[PLAN_REVIEW_ENV] === "1";
+  // The review in flight, if any. Aborted by the tool's own signal (Esc)
+  // and by session_shutdown, so a review never outlives its instance.
+  let reviewAbort: AbortController | undefined;
   const rawSender = createSender(sock, sid);
 
   // The ordering key (spec 423). Pi runs this factory again for /new,
@@ -373,6 +496,63 @@ export default function (pi: ExtensionAPI) {
         };
       },
     } as any);
+  }
+
+  if (planTool) {
+    pi.registerTool({
+      name: PLAN_TOOL_NAME,
+      label: "Submit plan",
+      description:
+        "Submit your implementation plan to the user for review in Hive before you change any files. " +
+        "Blocks until the user approves it or asks for changes, and returns their answer.",
+      promptSnippet: "Submit a plan for the user to review in Hive before implementing it",
+      promptGuidelines: [
+        `Before editing files for any change with more than one step, write a plan and call ${PLAN_TOOL_NAME} with it as markdown; do not start editing until ${PLAN_TOOL_NAME} returns approval.`,
+        `When ${PLAN_TOOL_NAME} returns the user's comments, revise the plan to address every comment and call ${PLAN_TOOL_NAME} again.`,
+      ],
+      parameters: PLAN_PARAMETERS as any,
+      async execute(_toolCallId: string, params: any, signal?: AbortSignal, onUpdate?: any, ctx?: any) {
+        const plan = typeof params?.plan === "string" ? params.plan : "";
+        if (plan.trim() === "") throw new Error(`${PLAN_TOOL_NAME} needs the plan as markdown in "plan".`);
+        if (Buffer.byteLength(plan, "utf8") > MAX_PLAN_REVIEW_LEN) {
+          throw new Error(`The plan is longer than ${MAX_PLAN_REVIEW_LEN} bytes; shorten it and call ${PLAN_TOOL_NAME} again.`);
+        }
+        reviewAbort?.abort();
+        const abort = new AbortController();
+        reviewAbort = abort;
+        signal?.addEventListener("abort", () => abort.abort(), { once: true });
+        onUpdate?.({ content: [{ type: "text", text: "Waiting for the user to review the plan in Hive…" }] });
+        // A tool blocking in execute raises no ui_prompt_*, so say what
+        // the session is waiting on. Keyed, so the heartbeat replays it
+        // for as long as the review lasts.
+        post("waiting_permission");
+        let decision: PlanReviewDecision;
+        try {
+          decision = await requestPlanReview(sock, sid, plan, process.cwd(), abort.signal);
+        } finally {
+          if (reviewAbort === abort) reviewAbort = undefined;
+          post("permission_resolved");
+        }
+        const confirm =
+          ctx?.hasUI && typeof ctx?.ui?.confirm === "function"
+            ? (title: string, body: string) => ctx.ui.confirm(title, body)
+            : undefined;
+        return { content: [{ type: "text", text: await planReviewResult(decision, plan, confirm) }] };
+      },
+    } as any);
+  }
+
+  // The guidelines alone were not enough: in the live probe a real Pi
+  // wrote the files without ever calling the tool. A system-prompt line
+  // at the head of every run states the rule where the model weighs it.
+  if (planTool) {
+    pi.on("before_agent_start", (event: any) => ({
+      systemPrompt:
+        (event?.systemPrompt ?? "") +
+        `\n\nThe user reviews plans in Hive. Before you create or edit any file, call ${PLAN_TOOL_NAME} ` +
+        `with your plan as markdown and wait for its answer. Do not create or edit files until ${PLAN_TOOL_NAME} ` +
+        "returns approval. Trivial one-line answers that change no files need no plan.",
+    }));
   }
 
   pi.on("session_start", (_event, ctx: any) => {
@@ -508,6 +688,7 @@ export default function (pi: ExtensionAPI) {
     // Every shutdown ends this instance, quit or not: the runtime that
     // replaces it runs this factory again and starts its own heartbeat.
     if (beat) clearInterval(beat);
+    reviewAbort?.abort();
     turnInFlight = false;
     if (event?.reason === "quit") post("session_end");
     else post("idle");

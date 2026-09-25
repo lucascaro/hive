@@ -35,6 +35,15 @@ const (
 	// mode_not_allowed, because everything downstream of a session
 	// inherits this environment.
 	ModeSession Mode = "session"
+	// ModePlanReview is a long-held connection from an agent's hook or
+	// extension tier asking the user to review a plan. It reaches the
+	// daemon over the events socket only. The requester sends one
+	// PLAN_REVIEW_REQUEST and the daemon answers with exactly one
+	// PLAN_REVIEW_DECISION, then closes. There is no Welcome. Closing
+	// the connection early withdraws the request: that is how Claude
+	// killing its hook (the user answered in the terminal) or Pi's Esc
+	// closes the review in every GUI.
+	ModePlanReview Mode = "plan_review"
 )
 
 // CreateSpec is the payload for ModeCreate's create field, and also
@@ -181,6 +190,16 @@ type SessionInfo struct {
 	// resolve and on kill, so a reconnecting client never re-raises a
 	// decision the user already made.
 	PendingWorktreeChoice *PendingWorktreeChoice `json:"pending_worktree_choice,omitempty"`
+	// PendingPlanReview is an agent plan waiting for the user to
+	// approve or deny it. Non-nil only while a requester is connected
+	// and waiting. Deliberately small: the plan text is fetched with
+	// GET_PLAN_REVIEW, because SessionInfo rides every broadcast and a
+	// plan can be 128 KiB.
+	//
+	// Unlike PendingWorktreeChoice this is not a phase: the session is
+	// alive and its PTY is live, and the agent's own terminal dialog
+	// is on screen at the same time.
+	PendingPlanReview *PendingPlanReview `json:"pending_plan_review,omitempty"`
 	// Phase is the session's lifecycle phase. Empty means ready (the
 	// steady state), which keeps the field omitempty on the wire and
 	// makes every entry loaded from disk ready by default. See the
@@ -1028,6 +1047,169 @@ type ResolveWorktreeChoiceReq struct {
 	// ignored, so an answer to a superseded question cannot be applied
 	// under its new meaning.
 	ParkID string `json:"park_id,omitempty"`
+}
+
+// Plan review sources: which agent tier asked.
+const (
+	PlanReviewSourceClaude = "claude"
+	PlanReviewSourcePi     = "pi"
+)
+
+// Plan review statuses, carried by PLAN_REVIEW_DECISION.
+const (
+	// PlanReviewApprove and PlanReviewDeny are the user's answers.
+	// They are also the only values RESOLVE_PLAN_REVIEW accepts.
+	PlanReviewApprove = "approve"
+	PlanReviewDeny    = "deny"
+	// PlanReviewDisabled: plan review is off in Hive's settings.
+	PlanReviewDisabled = "disabled"
+	// PlanReviewExternal: another reviewer (plannotator, …) owns
+	// ExitPlanMode for this session, so Hive stays out of the way.
+	PlanReviewExternal = "external"
+	// PlanReviewNoClient: nothing that can answer is connected — no
+	// GUI ever attached, or the last one left mid-review. The
+	// requester falls back to its own terminal approval.
+	PlanReviewNoClient = "no_client"
+	// PlanReviewCancelled: the review was withdrawn — a newer request
+	// for the same session replaced it, the session ended, or the
+	// daemon is stopping.
+	PlanReviewCancelled = "cancelled"
+	// PlanReviewInvalid: the request itself was refused (empty or
+	// oversize plan, unknown or dead session).
+	PlanReviewInvalid = "invalid"
+)
+
+// Plan review caps. The plan and every comment are user- or
+// agent-authored text held for a wait that can last days, so each is
+// bounded at the boundary. MaxPlanReviewLen stays well under
+// MaxPayload even after JSON escaping doubles it.
+const (
+	MaxPlanReviewLen         = 128 << 10
+	MaxPlanReviewComments    = 200
+	MaxPlanReviewQuoteLen    = 4 << 10
+	MaxPlanReviewCommentLen  = 4 << 10
+	MaxPlanReviewFeedbackLen = 16 << 10
+)
+
+// PendingPlanReview is SessionInfo's view of a waiting plan review.
+type PendingPlanReview struct {
+	// ReviewID identifies THIS review. A newer request replaces an
+	// older one for the same session, and an answer composed against
+	// the old plan must not approve the new one.
+	ReviewID string `json:"review_id"`
+	// Source is PlanReviewSourceClaude or PlanReviewSourcePi.
+	Source string `json:"source"`
+	// CreatedAt is RFC 3339.
+	CreatedAt string `json:"created_at"`
+}
+
+// PlanReviewRequest is the PLAN_REVIEW_REQUEST payload.
+type PlanReviewRequest struct {
+	SessionID string `json:"session_id"`
+	Source    string `json:"source"`
+	// Plan is the markdown to review, at most MaxPlanReviewLen bytes.
+	Plan string `json:"plan"`
+	// Cwd is the agent's working directory. The daemon reads the
+	// project's Claude settings from it to detect an external reviewer.
+	Cwd string `json:"cwd,omitempty"`
+	// Reviewer is the session's spawn-time reviewer choice (Claude only):
+	// "hive" when Hive disabled plugin reviewers for this session, so the
+	// daemon reviews even though a reviewer is installed. Anything else
+	// defers to an installed reviewer. Fixed at spawn because that is the
+	// only time a plugin can be disabled; a live setting change must not
+	// make a running session prompt twice.
+	Reviewer string `json:"reviewer,omitempty"`
+}
+
+// Validate reports whether r is well-formed. It does not check that
+// the session exists; the daemon does.
+func (r PlanReviewRequest) Validate() error {
+	switch {
+	case r.SessionID == "":
+		return errors.New("plan review: session_id required")
+	case r.Source != PlanReviewSourceClaude && r.Source != PlanReviewSourcePi:
+		return fmt.Errorf("plan review: unknown source %q", r.Source)
+	case r.Plan == "":
+		return errors.New("plan review: empty plan")
+	case len(r.Plan) > MaxPlanReviewLen:
+		return fmt.Errorf("plan review: plan is %d bytes, max %d", len(r.Plan), MaxPlanReviewLen)
+	}
+	return nil
+}
+
+// PlanComment is one user comment anchored to a passage of the plan.
+type PlanComment struct {
+	// Quote is the passage the comment is about, verbatim.
+	Quote string `json:"quote"`
+	// Text is what the user said about it.
+	Text string `json:"text"`
+}
+
+// PlanReviewDecision is the PLAN_REVIEW_DECISION payload.
+type PlanReviewDecision struct {
+	// Status is one of the PlanReview* status constants.
+	Status string `json:"status"`
+	// Message is the feedback to hand the agent verbatim on a deny,
+	// built by the daemon so the wording has one owner.
+	Message string `json:"message,omitempty"`
+	// Comments and Feedback are the raw deny inputs, for requesters
+	// that render them themselves.
+	Comments []PlanComment `json:"comments,omitempty"`
+	Feedback string        `json:"feedback,omitempty"`
+}
+
+// GetPlanReviewReq is the GET_PLAN_REVIEW payload.
+type GetPlanReviewReq struct {
+	SessionID string `json:"session_id"`
+	ReviewID  string `json:"review_id"`
+}
+
+// PlanReviewMsg is the PLAN_REVIEW payload: the plan text of one
+// pending review. A stale or unknown review is answered with an Error
+// whose Code is ErrCodePlanReviewStale instead.
+type PlanReviewMsg struct {
+	SessionID string `json:"session_id"`
+	ReviewID  string `json:"review_id"`
+	Source    string `json:"source"`
+	Plan      string `json:"plan"`
+}
+
+// ErrCodePlanReviewStale is the Error code for a GET_PLAN_REVIEW whose
+// review is no longer pending.
+const ErrCodePlanReviewStale = "plan_review_stale"
+
+// ResolvePlanReviewReq answers a PendingPlanReview.
+//
+// Resolving a review that is no longer pending — or whose ReviewID
+// does not match — is a silent no-op, like RESOLVE_WORKTREE_CHOICE:
+// two windows racing to answer produce exactly one decision.
+type ResolvePlanReviewReq struct {
+	SessionID string `json:"session_id"`
+	ReviewID  string `json:"review_id"`
+	// Decision is PlanReviewApprove or PlanReviewDeny.
+	Decision string        `json:"decision"`
+	Comments []PlanComment `json:"comments,omitempty"`
+	Feedback string        `json:"feedback,omitempty"`
+}
+
+// Validate reports whether r is well-formed and within the caps.
+func (r ResolvePlanReviewReq) Validate() error {
+	switch {
+	case r.SessionID == "" || r.ReviewID == "":
+		return errors.New("plan review: session_id and review_id required")
+	case r.Decision != PlanReviewApprove && r.Decision != PlanReviewDeny:
+		return fmt.Errorf("plan review: unknown decision %q", r.Decision)
+	case len(r.Comments) > MaxPlanReviewComments:
+		return fmt.Errorf("plan review: %d comments, max %d", len(r.Comments), MaxPlanReviewComments)
+	case len(r.Feedback) > MaxPlanReviewFeedbackLen:
+		return errors.New("plan review: feedback too long")
+	}
+	for _, c := range r.Comments {
+		if len(c.Quote) > MaxPlanReviewQuoteLen || len(c.Text) > MaxPlanReviewCommentLen {
+			return errors.New("plan review: comment too long")
+		}
+	}
+	return nil
 }
 
 // RemoveIdeaReq is the REMOVE_IDEA payload.

@@ -94,6 +94,50 @@ longer inherits session creation. It is defence in depth rather than a
 boundary — the control socket is owned by the same user and a process
 running as them can dial it directly. See `SECURITY.md`.
 
+## Plan review: the `plan_review` hello mode (spec 457)
+
+The one place the control plane waits on the user for an agent. When
+plan review is on in Settings, Claude's `ExitPlanMode` and Pi's
+`hive_submit_plan` tool hold the agent until the user approves or
+denies the plan in the GUI.
+
+- **Requester side.** On the events socket, a `plan_review` connection
+  sends `HELLO{mode:"plan_review"}`, then one `PLAN_REVIEW_REQUEST`
+  (0x32), and the daemon later writes one `PLAN_REVIEW_DECISION` (0x33).
+  The connection stays open for the whole wait, up to 4 days (Claude's
+  hook timeout, `agent.PlanReviewHookTimeout`). Closing it early
+  withdraws the review. That is how Claude killing its hook, because
+  the user answered its own dialog, closes the review in every GUI.
+- **Gates, in order, before anything parks:**
+  1. The setting is read live (`agent-settings.json`), so off means
+     `disabled`.
+  2. For Claude, another `ExitPlanMode` reviewer found in the user,
+     project, local or managed settings, or in an enabled plugin, means
+     `external`. The exception is a session spawned with Hive as the
+     reviewer, which carries `HIVE_PLAN_REVIEWER=hive`.
+  3. No client that can answer means `no_client`.
+  In each of these cases the requester falls back to the agent's own
+  approval: Claude's dialog, or Pi's `ctx.ui.confirm`.
+- **Park.** The review is session data like a parked worktree choice.
+  `SessionInfo.pending_plan_review` carries only `{review_id, source,
+  created_at}`. The GUI fetches the plan with `GET_PLAN_REVIEW` (0x34 →
+  `PLAN_REVIEW` 0x35, or `plan_review_stale`) and answers with
+  `RESOLVE_PLAN_REVIEW` (0x36). An answer whose `review_id` no longer
+  matches is ignored silently.
+- **Answerers.** The GUI, the ws-bridge and the test client can answer.
+  hivebar cannot. The count lives in the registry under the lock a
+  review parks with (`Registry.SetAnswerers`), so "nobody can answer"
+  and "park" cannot interleave. It dropping to zero decides every
+  pending review `no_client`.
+- **One review per session.** A newer request replaces the older, which
+  is decided `cancelled`, so an answer composed against the old plan can
+  never approve the new one. Session exit, kill and daemon stop cancel
+  too.
+- **The deny wording has one owner:** `agent.FormatPlanFeedback`. On
+  Claude Code 2.1.282 an unattributed "Reviewer comments: …" was read by
+  the model as a prompt injection and ignored. Attributing it to the
+  user, then quoting each passage with its comment, got it applied.
+
 ## Correlation with the agent's own identity
 
 Hive already pins Claude with `--session-id <hive-entry-id>`
@@ -119,6 +163,8 @@ classification.
 |---------|---------|-----------|-----------|----------|
 | `--session-id <uuid>` | today | public CLI flag, documented | `agent/claude.go` | none needed; already shipped |
 | `--settings '<json>'` + `hooks` events (`Stop`, `UserPromptSubmit`, `Notification`, `PermissionRequest`, `PostToolUse`, `SessionStart/End`, `StopFailure`) | 336 | public, documented, versioned in the changelog; event *names* have been stable, payload fields grow additively | `agent/claude.go` (builder), `cmd/hived/hook.go` (parser) | session stays on the **heuristic** tier |
+| `PermissionRequest` hook decision on stdout (`behavior: allow` + `updatedInput` echo, or `deny` + `message`) and the hook `timeout` field | 457 | public, documented; `updatedInput` became mandatory for an `ExitPlanMode` allow in 2.1.199 | `cmd/hived/hook.go` `planReviewOutput` | no stdout: Claude shows its own dialog |
+| `--settings` `enabledPlugins: {id: false}` overriding a user-level `true` | 457 | public settings key; the override was verified by hand on 2.1.282 | `agent/claude.go` `pluginReviewersToDisable` | the plugin reviewer prompts too; Settings warns |
 | positional initial prompt (`claude "…"`) | 337 | public, documented | `agent/claude.go` `PromptArgs` | typed-on-idle path |
 | `~/.claude/sessions/<pid>.json` (`sessionId`, `messagingSocketPath`, `pid`) | 338 | **internal**; documented only as "registers itself in files on disk" | `agent/claude_inbox.go` | typed-on-idle path |
 | inbox socket message line | 338 | **internal**; only the auth line and the 30 s timeout are documented | `agent/claude_inbox.go` + one version-pinned fixture | typed-on-idle path |

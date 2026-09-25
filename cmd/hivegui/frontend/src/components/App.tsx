@@ -32,6 +32,8 @@
 import { ActivityPanelHost } from './activity/ActivityPanelHost.js';
 import { createPortal } from 'react-dom';
 import { PendingPrompt } from './PendingPrompt.js';
+import { PlanReviewBar } from './PlanReviewBar.js';
+import { PlanReview } from './modals/PlanReview.js';
 import type { ReactNode } from 'react';
 import { mustEl } from '../app/el.js';
 import { confirmAndDeleteProject } from '../app/keyboard.js';
@@ -113,6 +115,7 @@ export function App(): ReactNode {
   const commandPalette = mustEl('command-palette');
   const whatsNew = mustEl('whats-new');
   const buildLog = mustEl('build-log');
+  const planReview = mustEl('plan-review');
 
   return (
     <>
@@ -143,6 +146,9 @@ export function App(): ReactNode {
           full-width notice slot above the grid, which is exactly what
           this is. App's other children are portals, so a bare element
           here would have no layout host at all. */}
+      {/* Before PendingPrompt: plan-review.css stacks that bar above
+          this one with a sibling selector. */}
+      {createPortal(<PlanReviewBar />, mustEl('banners'))}
       {createPortal(<PendingPrompt />, mustEl('banners'))}
       {createPortal(<StatusBar root={status} />, status)}
       {createPortal(<BootState root={bootState} />, bootState)}
@@ -172,6 +178,7 @@ export function App(): ReactNode {
       {createPortal(<CommandPalette root={commandPalette} />, commandPalette)}
       {createPortal(<WhatsNew root={whatsNew} />, whatsNew)}
       {createPortal(<BuildLog root={buildLog} />, buildLog)}
+      {createPortal(<PlanReview root={planReview} />, planReview)}
     </>
   );
 }

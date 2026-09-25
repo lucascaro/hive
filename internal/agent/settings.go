@@ -49,20 +49,40 @@ type Settings struct {
 	// ClaudeTaskTools; off saves the tool's context and keeps Hive from
 	// adding anything to the user's agent.
 	PiTodoTool bool `json:"pi_todo_tool"`
+	// PlanReview holds an agent's plan for the user to approve or deny
+	// in Hive before it implements it: Claude's ExitPlanMode, and a
+	// hive_submit_plan tool for Pi. Off by default. Read live by the
+	// daemon on every review, so switching it off takes effect at once.
+	PlanReview bool `json:"plan_review"`
+	// PlanReviewer decides who reviews a Claude plan when another
+	// reviewer (plannotator, …) is also installed: PlanReviewerExternal
+	// (the default) leaves it to that tool, PlanReviewerHive disables
+	// a plugin reviewer for the Claude sessions Hive starts. Fixed per
+	// session at spawn, because that is the only time Hive can disable
+	// a plugin.
+	PlanReviewer string `json:"plan_reviewer"`
 }
+
+// PlanReviewer values.
+const (
+	PlanReviewerExternal = "external"
+	PlanReviewerHive     = "hive"
+)
 
 // settingsFile is the on-disk shape. Fields are pointers so a key
 // missing from a hand-edited or older file reads as "use the default"
 // rather than as false — a file written before a setting existed must
 // not silently switch that setting off.
 type settingsFile struct {
-	ClaudeTaskTools *bool `json:"claude_task_tools,omitempty"`
-	PiTodoTool      *bool `json:"pi_todo_tool,omitempty"`
+	ClaudeTaskTools *bool   `json:"claude_task_tools,omitempty"`
+	PiTodoTool      *bool   `json:"pi_todo_tool,omitempty"`
+	PlanReview      *bool   `json:"plan_review,omitempty"`
+	PlanReviewer    *string `json:"plan_reviewer,omitempty"`
 }
 
 // DefaultSettings is what a fresh install, or a missing key, means.
 func DefaultSettings() Settings {
-	return Settings{ClaudeTaskTools: true, PiTodoTool: true}
+	return Settings{ClaudeTaskTools: true, PiTodoTool: true, PlanReviewer: PlanReviewerExternal}
 }
 
 func (f settingsFile) resolve() Settings {
@@ -72,6 +92,14 @@ func (f settingsFile) resolve() Settings {
 	}
 	if f.PiTodoTool != nil {
 		s.PiTodoTool = *f.PiTodoTool
+	}
+	if f.PlanReview != nil {
+		s.PlanReview = *f.PlanReview
+	}
+	// Anything but an explicit "hive" is the safe default: deferring to
+	// an installed reviewer never disables a tool the user set up.
+	if f.PlanReviewer != nil && *f.PlanReviewer == PlanReviewerHive {
+		s.PlanReviewer = PlanReviewerHive
 	}
 	return s
 }
@@ -116,7 +144,14 @@ func SaveSettings(s Settings) error {
 	if err != nil {
 		return err
 	}
-	blob, err := json.MarshalIndent(settingsFile{ClaudeTaskTools: &s.ClaudeTaskTools, PiTodoTool: &s.PiTodoTool}, "", "  ")
+	reviewer := PlanReviewerExternal
+	if s.PlanReviewer == PlanReviewerHive {
+		reviewer = PlanReviewerHive
+	}
+	blob, err := json.MarshalIndent(settingsFile{
+		ClaudeTaskTools: &s.ClaudeTaskTools, PiTodoTool: &s.PiTodoTool,
+		PlanReview: &s.PlanReview, PlanReviewer: &reviewer,
+	}, "", "  ")
 	if err != nil {
 		return err
 	}
@@ -158,13 +193,17 @@ func claudeSpawnEnv(sp SpawnInfo) []string {
 	if !claudeHooksAvailable(sp) {
 		return nil
 	}
+	st := spawnSettings()
+	// Hive's own variable, so it is explicit both ways and always set:
+	// an inherited value must never decide who reviews this session.
+	env := []string{PlanReviewerEnv + "=" + claudeSpawnReviewer(st)}
 	if _, set := lookupEnv(ClaudeTaskToolsEnv); set {
-		return nil
+		return env
 	}
-	if !spawnSettings().ClaudeTaskTools {
-		return nil
+	if !st.ClaudeTaskTools {
+		return env
 	}
-	return []string{ClaudeTaskToolsEnv + "=1"}
+	return append(env, ClaudeTaskToolsEnv+"=1")
 }
 
 // piSpawnEnv is the Pi adapter's environment: whether the extension
@@ -183,10 +222,19 @@ func piSpawnEnv(sp SpawnInfo) []string {
 	// The heartbeat is only safe against a daemon that understands the
 	// ordering key; this daemon does, and it is the one spawning pi.
 	heartbeat := PiHeartbeatEnv + "=1"
-	if spawnSettings().PiTodoTool {
-		return []string{PiTodoToolEnv + "=1", heartbeat}
+	st := spawnSettings()
+	return []string{
+		PiTodoToolEnv + "=" + boolEnv(st.PiTodoTool),
+		PiPlanReviewEnv + "=" + boolEnv(st.PlanReview),
+		heartbeat,
 	}
-	return []string{PiTodoToolEnv + "=0", heartbeat}
+}
+
+func boolEnv(b bool) string {
+	if b {
+		return "1"
+	}
+	return "0"
 }
 
 // PiHeartbeatEnv enables the Pi extension's state heartbeat (spec 423).
@@ -194,6 +242,19 @@ func piSpawnEnv(sp SpawnInfo) []string {
 // seq: an older daemon would re-apply every heartbeat through the
 // timestamp guard and re-raise a wait the user had cleared.
 const PiHeartbeatEnv = "HIVE_PI_HEARTBEAT"
+
+// PiPlanReviewEnv tells Hive's Pi extension whether to register its
+// hive_submit_plan tool: "1" when plan review was on at spawn. The
+// daemon still checks the setting live on every review, so switching it
+// off mid-session works; switching it on reaches new Pi sessions.
+const PiPlanReviewEnv = "HIVE_PI_PLAN_REVIEW"
+
+// PlanReviewerEnv carries a Claude session's spawn-time reviewer choice
+// to its hook (the hook inherits Claude's environment). "hive" means
+// Hive disabled any plugin reviewer for this session, so the daemon
+// reviews even though a reviewer is installed; anything else means an
+// installed reviewer keeps ExitPlanMode.
+const PlanReviewerEnv = "HIVE_PLAN_REVIEWER"
 
 // lookupEnv is os.LookupEnv, swappable so tests can model a user who
 // set the variable without mutating the real process environment

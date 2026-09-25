@@ -120,6 +120,30 @@ describe('blocked tile keyboard route', () => {
     expect(raiseWorktreeChoice).toHaveBeenCalledWith('s-blocked');
   });
 
+  // #457: a session waiting on a plan review is alive, and Claude's own
+  // approval prompt is on its terminal at the same time. Enter must
+  // reach that prompt, never be taken by the GUI.
+  it('Enter is not intercepted while a plan review is pending', () => {
+    store.setSessions([
+      {
+        id: 's-plan',
+        name: 'planner',
+        alive: true,
+        phase: '',
+        pending_plan_review: { review_id: 'r1', source: 'claude' },
+      },
+    ]);
+    store.setActiveId('s-plan');
+    const ev = new KeyboardEvent('keydown', {
+      key: 'Enter',
+      bubbles: true,
+      cancelable: true,
+    });
+    window.dispatchEvent(ev);
+    expect(ev.defaultPrevented).toBe(false);
+    expect(raiseWorktreeChoice).not.toHaveBeenCalled();
+  });
+
   it('Enter does nothing for an ordinary session', () => {
     store.setSessions([
       { id: 's-ready', name: 'ready', alive: true, phase: '' },

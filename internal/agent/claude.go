@@ -238,6 +238,8 @@ var claudeHookEvents = []string{
 type claudeHookEntry struct {
 	Type    string `json:"type"`
 	Command string `json:"command"`
+	// Timeout is in seconds; 0 leaves Claude's default (600).
+	Timeout int `json:"timeout,omitempty"`
 }
 
 type claudeHookGroup struct {
@@ -246,7 +248,23 @@ type claudeHookGroup struct {
 
 type claudeSettings struct {
 	Hooks map[string][]claudeHookGroup `json:"hooks"`
+	// EnabledPlugins switches off, for this session only, plugins that
+	// would otherwise review ExitPlanMode alongside Hive. Set only when
+	// the user chose Hive as the plan reviewer. Verified on Claude Code
+	// 2.1.282: a --settings value overrides the user-level true.
+	EnabledPlugins map[string]bool `json:"enabledPlugins,omitempty"`
 }
+
+// PlanReviewHookTimeout is the ceiling on how long Claude waits for
+// Hive's PermissionRequest hook: 4 days, matching plannotator. The hook
+// returns in milliseconds for every PermissionRequest except a plan
+// under review, and a review ends sooner on any answer, on the GUI
+// leaving, or on the user answering Claude's own dialog.
+const PlanReviewHookTimeout = 345600
+
+// userHomeDir is os.UserHomeDir, swappable so tests can point plugin
+// detection at a fake tree.
+var userHomeDir = os.UserHomeDir
 
 var claudeHivedPathWarnOnce sync.Once
 
@@ -271,19 +289,63 @@ func claudeSpawnArgs(sp SpawnInfo) []string {
 	if !claudeHooksAvailable(sp) {
 		return nil
 	}
-	group := []claudeHookGroup{{Hooks: []claudeHookEntry{
-		{Type: "command", Command: claudeHookCommand(sp.HivedPath)},
-	}}}
+	cmd := claudeHookCommand(sp.HivedPath)
+	group := []claudeHookGroup{{Hooks: []claudeHookEntry{{Type: "command", Command: cmd}}}}
 	hooks := make(map[string][]claudeHookGroup, len(claudeHookEvents))
 	for _, ev := range claudeHookEvents {
 		hooks[ev] = group
 	}
-	blob, err := json.Marshal(claudeSettings{Hooks: hooks})
+	// PermissionRequest gets its own group so only it carries the long
+	// timeout a plan review needs. Still matcher-less and still one
+	// entry: a second, ExitPlanMode-matched group would run the hook
+	// twice for a plan (a duplicate state event), or collide in
+	// Claude's dedup-by-command with a timeout nobody chose. Set
+	// whatever the setting says, because the daemon reads it live.
+	hooks["PermissionRequest"] = []claudeHookGroup{{Hooks: []claudeHookEntry{
+		{Type: "command", Command: cmd, Timeout: PlanReviewHookTimeout},
+	}}}
+	settings := claudeSettings{Hooks: hooks}
+	if claudeSpawnReviewer(spawnSettings()) == PlanReviewerHive {
+		settings.EnabledPlugins = pluginReviewersToDisable()
+	}
+	blob, err := json.Marshal(settings)
 	if err != nil {
 		log.Printf("agent: marshal claude hooks settings: %v", err)
 		return nil
 	}
 	return []string{"--settings", string(blob)}
+}
+
+// claudeSpawnReviewer is who reviews this session's plans, fixed at
+// spawn: Hive only when plan review is on and the user chose Hive.
+func claudeSpawnReviewer(st Settings) string {
+	if st.PlanReview && st.PlanReviewer == PlanReviewerHive {
+		return PlanReviewerHive
+	}
+	return PlanReviewerExternal
+}
+
+// pluginReviewersToDisable maps every installed plugin that reviews
+// ExitPlanMode to false. Enabled or not: disabling a plugin that is
+// already off is harmless, and it spares reading project settings
+// Hive has no cwd for here. A reviewer hook in a settings.json cannot
+// be removed this way; the Settings screen warns about those.
+func pluginReviewersToDisable() map[string]bool {
+	home, err := userHomeDir()
+	if err != nil {
+		return nil
+	}
+	var off map[string]bool
+	for _, r := range ExternalPlanReviewers(ReviewerPaths{Home: home}) {
+		if r.Kind != ReviewerPlugin {
+			continue
+		}
+		if off == nil {
+			off = map[string]bool{}
+		}
+		off[r.ID] = false
+	}
+	return off
 }
 
 // claudeHooksAvailable is the single gate for everything Hive adds to

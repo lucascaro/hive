@@ -103,6 +103,27 @@ export interface SessionInfo {
   pending_worktree_choice?: PendingWorktreeChoice;
   /** camelCase tolerated at the boundary, like every other reader. */
   pendingWorktreeChoice?: PendingWorktreeChoice;
+  /** An agent plan waiting for the user to approve or deny it (#457).
+   *  The session is alive and its terminal live; only the plan text is
+   *  fetched separately, with GetPlanReview. */
+  pending_plan_review?: PendingPlanReview;
+  /** camelCase tolerated at the boundary, like every other reader. */
+  pendingPlanReview?: PendingPlanReview;
+}
+
+/** Mirrors wire.PendingPlanReview — snake_case on the wire. */
+export interface PendingPlanReview {
+  review_id?: string;
+  reviewId?: string;
+  /** "claude" or "pi". */
+  source?: string;
+  created_at?: string;
+}
+
+/** The pending review's id, reading either spelling, or '' for none. */
+export function pendingPlanReviewId(s: SessionInfo | undefined): string {
+  const p = s?.pending_plan_review ?? s?.pendingPlanReview;
+  return p?.review_id ?? p?.reviewId ?? '';
 }
 
 /** A worktree-setup failure awaiting a user decision. Mirrors

@@ -5,8 +5,9 @@
 //
 // This file is deliberately paranoid about never surfacing anything to
 // Claude: no stdout output (Claude parses hook stdout for some event
-// types) except the one deliberate SessionStart nudge in
-// sessionStartOutput, and it always exits 0 — a user running `claude` outside Hive
+// types) except two deliberate ones — the SessionStart nudge in
+// sessionStartOutput, and a plan review's decision in
+// planReviewOutput — and it always exits 0 — a user running `claude` outside Hive
 // with a copied --settings file, or the daemon being down, must look
 // exactly like no hook ran at all.
 package main
@@ -73,6 +74,121 @@ func runHook(stdin io.Reader) {
 	if err := sendHookEvents(sock, evs); err != nil {
 		hookDebugf("send: %v", err)
 	}
+
+	// After the state report, so the session already reads "waiting
+	// for permission" while the review blocks.
+	if out := planReviewOutput(raw, sock, sessionID); out != nil {
+		_, _ = os.Stdout.Write(out)
+	}
+}
+
+// planReviewReadSlack is how long past Claude's own hook timeout the
+// hook keeps waiting for a decision. Claude kills the hook at its
+// timeout anyway; this only bounds a hook whose parent has gone.
+const planReviewReadSlack = 60 * time.Second
+
+// planReviewOutput holds an ExitPlanMode for review in Hive (#457) and
+// returns the PermissionRequest decision to print, or nil to print
+// nothing — which Claude reads as "no decision" and falls through to
+// its own dialog. That fallthrough is the answer for every case that is
+// not a user's approve or deny: another event, review off, another
+// reviewer installed, no GUI, a cancelled review, a daemon that is down,
+// any error at all. It is the second of this file's two deliberate
+// stdout writes.
+func planReviewOutput(raw []byte, sock, sessionID string) []byte {
+	var p struct {
+		Event     string          `json:"hook_event_name"`
+		Tool      string          `json:"tool_name"`
+		Cwd       string          `json:"cwd"`
+		ToolInput json.RawMessage `json:"tool_input"`
+	}
+	if json.Unmarshal(raw, &p) != nil || p.Event != "PermissionRequest" || p.Tool != "ExitPlanMode" {
+		return nil
+	}
+	var input struct {
+		Plan string `json:"plan"`
+	}
+	if json.Unmarshal(p.ToolInput, &input) != nil || input.Plan == "" || len(input.Plan) > wire.MaxPlanReviewLen {
+		return nil
+	}
+	dec, err := requestPlanReview(sock, wire.PlanReviewRequest{
+		SessionID: sessionID,
+		Source:    wire.PlanReviewSourceClaude,
+		Plan:      input.Plan,
+		Cwd:       p.Cwd,
+		Reviewer:  os.Getenv(agent.PlanReviewerEnv),
+	})
+	if err != nil {
+		hookDebugf("plan review: %v", err)
+		return nil
+	}
+	var decision map[string]any
+	switch dec.Status {
+	case wire.PlanReviewApprove:
+		// updatedInput must echo tool_input: verified on Claude Code
+		// 2.1.282, and plannotator notes 2.1.199+ silently drops an
+		// allow without it and shows its own dialog instead. Echoed
+		// as raw bytes so nothing in it is re-encoded.
+		decision = map[string]any{"behavior": "allow", "updatedInput": p.ToolInput}
+	case wire.PlanReviewDeny:
+		decision = map[string]any{"behavior": "deny", "message": dec.Message}
+	default:
+		hookDebugf("plan review: %s; falling through to Claude's dialog", dec.Status)
+		return nil
+	}
+	// The plan is answered: clear waiting_permission now rather than
+	// waiting on whichever hook Claude fires next after a deny.
+	if err := sendHookEvents(sock, []wire.AgentEvent{{
+		SessionID: sessionID, Kind: wire.AgentEventPermissionResolved,
+		Source: wire.StateSourceHook, At: time.Now().UTC().Format(time.RFC3339Nano),
+	}}); err != nil {
+		hookDebugf("plan review: resolve event: %v", err)
+	}
+	out, err := json.Marshal(map[string]any{"hookSpecificOutput": map[string]any{
+		"hookEventName": "PermissionRequest",
+		"decision":      decision,
+	}})
+	if err != nil {
+		return nil
+	}
+	return out
+}
+
+// requestPlanReview holds a ModePlanReview connection until the daemon
+// decides. Closing it early (Claude killing this process because the
+// user answered its own dialog) is what withdraws the review.
+func requestPlanReview(sock string, req wire.PlanReviewRequest) (wire.PlanReviewDecision, error) {
+	var dec wire.PlanReviewDecision
+	if err := daemon.CheckSocketDir(sock); err != nil {
+		return dec, err
+	}
+	conn, err := net.DialTimeout("unix", sock, hookDialTimeout)
+	if err != nil {
+		return dec, err
+	}
+	defer conn.Close()
+	if err := conn.SetWriteDeadline(time.Now().Add(hookWriteDeadline)); err != nil {
+		return dec, err
+	}
+	if err := wire.WriteJSON(conn, wire.FrameHello, wire.Hello{
+		Version: wire.PROTOCOL_VERSION, Client: "hived-hook", Mode: wire.ModePlanReview,
+	}); err != nil {
+		return dec, err
+	}
+	if err := wire.WriteJSON(conn, wire.FramePlanReviewRequest, req); err != nil {
+		return dec, err
+	}
+	if err := conn.SetReadDeadline(time.Now().Add(time.Duration(agent.PlanReviewHookTimeout)*time.Second + planReviewReadSlack)); err != nil {
+		return dec, err
+	}
+	ft, err := wire.ReadJSON(conn, &dec)
+	if err != nil {
+		return dec, err
+	}
+	if ft != wire.FramePlanReviewDecision {
+		return dec, fmt.Errorf("unexpected %s", ft)
+	}
+	return dec, nil
 }
 
 // taskToolsNudge is added to a Claude session's context at start so it

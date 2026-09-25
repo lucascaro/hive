@@ -236,6 +236,17 @@ export async function ResolveWorktreeChoice(
     park_id: parkID,
   });
 }
+// Plan review (#457): the GUI half, forwarded to the real daemon.
+export async function GetPlanReview(sessionID: string, reviewID: string) {
+  return call('GetPlanReview', { session_id: sessionID, review_id: reviewID });
+}
+export async function ResolvePlanReview(ans: Record<string, unknown>) {
+  return call('ResolvePlanReview', ans);
+}
+// Never the real ~/.claude: the ws-bridge answers none.
+export async function GetExternalPlanReviewers() {
+  return [];
+}
 export async function RemoveIdea(id: string) {
   return call('RemoveIdea', { id });
 }
@@ -340,7 +351,12 @@ export async function SaveCustomAgents() {
 // nothing for the ws-bridge to forward; the defaults are what a fresh
 // install reads.
 export async function GetAgentSettings() {
-  return { claude_task_tools: true, pi_todo_tool: true };
+  return {
+    claude_task_tools: true,
+    pi_todo_tool: true,
+    plan_review: false,
+    plan_reviewer: 'external',
+  };
 }
 export async function SaveAgentSettings() {
   return undefined;

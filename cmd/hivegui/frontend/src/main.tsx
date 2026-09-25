@@ -82,6 +82,7 @@ import { getTerm } from './store/terms.js';
 import { openFindInSession } from './app/find-session.js';
 import { SearchTranscript, GetTranscriptLines } from './bridge.js';
 import { openWhatsNew, initWhatsNew } from './app/modals/whats-new.js';
+import { initPlanReview } from './app/modals/plan-review.js';
 import { openHelp, initHelp } from './app/modals/help.js';
 import { initBuildLog } from './app/modals/build-log.js';
 import { wireDaemonEvents, reconnectControl } from './app/events.js';
@@ -330,6 +331,7 @@ initFindBox({
 initQuickIdea({ setFocusedTile, refocusActiveTerm });
 initIdeaInbox({ setFocusedTile, refocusActiveTerm });
 initWhatsNew({ setFocusedTile, focusActiveTerm });
+initPlanReview({ setFocusedTile, focusActiveTerm });
 initHelp({ setFocusedTile, focusActiveTerm });
 initBuildLog({ setFocusedTile, focusActiveTerm });
 // ---------- boot the app ----------

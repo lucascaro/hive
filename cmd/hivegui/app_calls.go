@@ -119,6 +119,14 @@ type AgentSettings struct {
 	// PiTodoTool has Hive's Pi extension add its hive_todo tool to newly
 	// started Pi sessions, which is where a Pi session's plan comes from.
 	PiTodoTool bool `json:"pi_todo_tool"`
+	// PlanReview holds agent plans for review in Hive. Unlike the two
+	// above it is read live by the daemon, so switching it off applies
+	// to running sessions too; switching it on reaches running Claude
+	// sessions and newly started Pi sessions.
+	PlanReview bool `json:"plan_review"`
+	// PlanReviewer is "external" or "hive": who reviews a Claude plan
+	// when another reviewer is installed. Newly started sessions only.
+	PlanReviewer string `json:"plan_reviewer"`
 }
 
 // GetAgentSettings reads agent-settings.json. A malformed file is an
@@ -126,7 +134,10 @@ type AgentSettings struct {
 // save over the file the user was trying to fix.
 func (a *App) GetAgentSettings() (AgentSettings, error) {
 	s, err := agent.LoadSettings()
-	return AgentSettings{ClaudeTaskTools: s.ClaudeTaskTools, PiTodoTool: s.PiTodoTool}, err
+	return AgentSettings{
+		ClaudeTaskTools: s.ClaudeTaskTools, PiTodoTool: s.PiTodoTool,
+		PlanReview: s.PlanReview, PlanReviewer: s.PlanReviewer,
+	}, err
 }
 
 // SaveAgentSettings writes agent-settings.json. hived reads it when it
@@ -134,7 +145,35 @@ func (a *App) GetAgentSettings() (AgentSettings, error) {
 // newly started sessions only: a running process keeps the environment
 // it was started with.
 func (a *App) SaveAgentSettings(s AgentSettings) error {
-	return agent.SaveSettings(agent.Settings{ClaudeTaskTools: s.ClaudeTaskTools, PiTodoTool: s.PiTodoTool})
+	return agent.SaveSettings(agent.Settings{
+		ClaudeTaskTools: s.ClaudeTaskTools, PiTodoTool: s.PiTodoTool,
+		PlanReview: s.PlanReview, PlanReviewer: s.PlanReviewer,
+	})
+}
+
+// ExternalPlanReviewer mirrors agent.ExternalReviewer for the bound
+// method below.
+type ExternalPlanReviewer struct {
+	Kind   string `json:"kind"`
+	ID     string `json:"id"`
+	Active bool   `json:"active"`
+}
+
+// GetExternalPlanReviewers lists the other ExitPlanMode reviewers the
+// user has set up, so the Settings screen can say what choosing Hive as
+// the reviewer will and will not switch off. User and managed settings
+// plus plugins only: the Settings screen has no project directory, and
+// a project-level reviewer is detected per session by the daemon.
+func (a *App) GetExternalPlanReviewers() []ExternalPlanReviewer {
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return []ExternalPlanReviewer{}
+	}
+	out := []ExternalPlanReviewer{}
+	for _, r := range agent.ExternalPlanReviewers(agent.ReviewerPaths{Home: home, Managed: agent.ManagedSettingsPath()}) {
+		out = append(out, ExternalPlanReviewer{Kind: r.Kind, ID: r.ID, Active: r.Active})
+	}
+	return out
 }
 
 // CreateSessionOpts is the request CreateSession takes. A struct, not
@@ -811,6 +850,43 @@ func (a *App) ResolveWorktreeChoice(sessionID string, choice string, parkID stri
 	return cs.WriteJSON(wire.FrameResolveWorktreeChoice, wire.ResolveWorktreeChoiceReq{
 		SessionID: sessionID, Choice: choice, ParkID: parkID,
 	})
+}
+
+// GetPlanReview asks the daemon for the plan text of a session's
+// pending review. The answer arrives as the "planreview:plan" event, or
+// a "control:error" with code plan_review_stale.
+func (a *App) GetPlanReview(sessionID, reviewID string) error {
+	cs, err := a.requireControl()
+	if err != nil {
+		return err
+	}
+	return cs.WriteJSON(wire.FrameGetPlanReview, wire.GetPlanReviewReq{SessionID: sessionID, ReviewID: reviewID})
+}
+
+// PlanReviewAnswer is the user's answer to a plan review.
+type PlanReviewAnswer struct {
+	SessionID string             `json:"session_id"`
+	ReviewID  string             `json:"review_id"`
+	Decision  string             `json:"decision"` // "approve" | "deny"
+	Comments  []wire.PlanComment `json:"comments"`
+	Feedback  string             `json:"feedback"`
+}
+
+// ResolvePlanReview sends the user's approve or deny. The agent has been
+// waiting on it; an answer for a review that already ended is ignored.
+func (a *App) ResolvePlanReview(ans PlanReviewAnswer) error {
+	cs, err := a.requireControl()
+	if err != nil {
+		return err
+	}
+	req := wire.ResolvePlanReviewReq{
+		SessionID: ans.SessionID, ReviewID: ans.ReviewID, Decision: ans.Decision,
+		Comments: ans.Comments, Feedback: ans.Feedback,
+	}
+	if err := req.Validate(); err != nil {
+		return err
+	}
+	return cs.WriteJSON(wire.FrameResolvePlanReview, req)
 }
 
 // RemoveIdea deletes one idea outright. The GUI confirms first.

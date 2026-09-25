@@ -3,6 +3,7 @@ package agent
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -66,8 +67,9 @@ func TestSettingsRoundTrip(t *testing.T) {
 	// Each field independently, so a save that wrote one field over the
 	// other fails here.
 	for _, want := range []Settings{
-		{ClaudeTaskTools: false, PiTodoTool: true},
-		{ClaudeTaskTools: true, PiTodoTool: false},
+		{ClaudeTaskTools: false, PiTodoTool: true, PlanReviewer: PlanReviewerExternal},
+		{ClaudeTaskTools: true, PiTodoTool: false, PlanReviewer: PlanReviewerExternal},
+		{ClaudeTaskTools: true, PiTodoTool: true, PlanReview: true, PlanReviewer: PlanReviewerHive},
 	} {
 		if err := SaveSettings(want); err != nil {
 			t.Fatalf("save: %v", err)
@@ -141,13 +143,23 @@ func TestSpawnSettingsMalformedDegrades(t *testing.T) {
 	}
 }
 
+// envValue returns key's value in env, and whether it is there.
+func envValue(env []string, key string) (string, bool) {
+	for _, kv := range env {
+		if v, ok := strings.CutPrefix(kv, key+"="); ok {
+			return v, true
+		}
+	}
+	return "", false
+}
+
 func TestClaudeSpawnEnvOnByDefault(t *testing.T) {
 	withClaudeVersion(t, "2.1.273")
 	settingsDir(t, "")
 	withEnv(t, "", false)
 	got := claudeSpawnEnv(hooked)
-	if len(got) != 1 || got[0] != ClaudeTaskToolsEnv+"=1" {
-		t.Errorf("env = %v, want [%s=1]", got, ClaudeTaskToolsEnv)
+	if v, ok := envValue(got, ClaudeTaskToolsEnv); !ok || v != "1" {
+		t.Errorf("env = %v, want %s=1", got, ClaudeTaskToolsEnv)
 	}
 }
 
@@ -155,8 +167,8 @@ func TestClaudeSpawnEnvOffBySetting(t *testing.T) {
 	withClaudeVersion(t, "2.1.273")
 	settingsDir(t, `{"claude_task_tools": false}`)
 	withEnv(t, "", false)
-	if got := claudeSpawnEnv(hooked); len(got) != 0 {
-		t.Errorf("env = %v with the setting off, want none", got)
+	if got := claudeSpawnEnv(hooked); hasEnvKey(got, ClaudeTaskToolsEnv) {
+		t.Errorf("env = %v with the setting off, want no %s", got, ClaudeTaskToolsEnv)
 	}
 }
 
@@ -170,7 +182,7 @@ func TestClaudeSpawnEnvNeverOverridesTheUser(t *testing.T) {
 			withClaudeVersion(t, "2.1.273")
 			settingsDir(t, "")
 			withEnv(t, userValue, true)
-			if got := claudeSpawnEnv(hooked); len(got) != 0 {
+			if got := claudeSpawnEnv(hooked); hasEnvKey(got, ClaudeTaskToolsEnv) {
 				t.Errorf("env = %v; the user's own %s=%q must be left alone", got, ClaudeTaskToolsEnv, userValue)
 			}
 		})
@@ -194,14 +206,14 @@ func TestSpawnEnvReadsSettingsAtSpawn(t *testing.T) {
 	withClaudeVersion(t, "2.1.273")
 	settingsDir(t, "")
 	withEnv(t, "", false)
-	if len(claudeSpawnEnv(hooked)) != 1 {
+	if !hasEnvKey(claudeSpawnEnv(hooked), ClaudeTaskToolsEnv) {
 		t.Fatal("setup: expected the opt-in with defaults")
 	}
 	if err := SaveSettings(Settings{ClaudeTaskTools: false}); err != nil {
 		t.Fatalf("save: %v", err)
 	}
-	if got := claudeSpawnEnv(hooked); len(got) != 0 {
-		t.Errorf("env = %v after switching the setting off, want none", got)
+	if got := claudeSpawnEnv(hooked); hasEnvKey(got, ClaudeTaskToolsEnv) {
+		t.Errorf("env = %v after switching the setting off, want no opt-in", got)
 	}
 }
 
@@ -271,13 +283,13 @@ func piExtensionDir(t *testing.T) SpawnInfo {
 func TestPiSpawnEnvExplicitBothWays(t *testing.T) {
 	settingsDir(t, "")
 	sp := piExtensionDir(t)
-	if got := piSpawnEnv(sp); len(got) != 2 || got[0] != PiTodoToolEnv+"=1" {
+	if got := piSpawnEnv(sp); len(got) != 3 || got[0] != PiTodoToolEnv+"=1" {
 		t.Errorf("default env = %v, want [%s=1 ...]", got, PiTodoToolEnv)
 	}
 	if err := SaveSettings(Settings{ClaudeTaskTools: true, PiTodoTool: false}); err != nil {
 		t.Fatalf("save: %v", err)
 	}
-	if got := piSpawnEnv(sp); len(got) != 2 || got[0] != PiTodoToolEnv+"=0" {
+	if got := piSpawnEnv(sp); len(got) != 3 || got[0] != PiTodoToolEnv+"=0" {
 		t.Errorf("env with the setting off = %v, want [%s=0 ...]", got, PiTodoToolEnv)
 	}
 }
@@ -289,7 +301,7 @@ func TestPiSpawnEnvExplicitBothWays(t *testing.T) {
 func TestPiSpawnEnvIgnoresInheritedValue(t *testing.T) {
 	settingsDir(t, "")
 	t.Setenv(PiTodoToolEnv, "0")
-	if got := piSpawnEnv(piExtensionDir(t)); len(got) != 2 || got[0] != PiTodoToolEnv+"=1" {
+	if got := piSpawnEnv(piExtensionDir(t)); len(got) != 3 || got[0] != PiTodoToolEnv+"=1" {
 		t.Errorf("env = %v with an inherited =0 and the setting on, want [%s=1]", got, PiTodoToolEnv)
 	}
 }
@@ -330,5 +342,72 @@ func TestCustomPiAgentInheritsSpawnEnv(t *testing.T) {
 	d, ok := findDef(customDefs(), "pix")
 	if !ok || d.SpawnEnv == nil || d.SpawnArgs == nil {
 		t.Errorf("pi-based custom agent: SpawnArgs=%v SpawnEnv=%v, want both", d.SpawnArgs != nil, d.SpawnEnv != nil)
+	}
+}
+
+func hasEnvKey(env []string, key string) bool {
+	_, ok := envValue(env, key)
+	return ok
+}
+
+func TestSettingsPlanReviewDefaults(t *testing.T) {
+	settingsDir(t, `{"claude_task_tools": true}`)
+	s, err := LoadSettings()
+	if err != nil {
+		t.Fatalf("load: %v", err)
+	}
+	if s.PlanReview || s.PlanReviewer != PlanReviewerExternal {
+		t.Errorf("missing keys read as review=%v reviewer=%q, want off/external", s.PlanReview, s.PlanReviewer)
+	}
+	// Anything but "hive" defers to an installed reviewer.
+	settingsDir(t, `{"plan_review": true, "plan_reviewer": "bogus"}`)
+	if s, _ := LoadSettings(); !s.PlanReview || s.PlanReviewer != PlanReviewerExternal {
+		t.Errorf("unknown reviewer read as %+v, want review on, reviewer external", s)
+	}
+}
+
+func TestSettingsPlanReviewRoundTrip(t *testing.T) {
+	settingsDir(t, "")
+	want := Settings{ClaudeTaskTools: true, PiTodoTool: true, PlanReview: true, PlanReviewer: PlanReviewerHive}
+	if err := SaveSettings(want); err != nil {
+		t.Fatalf("save: %v", err)
+	}
+	if got, _ := LoadSettings(); got != want {
+		t.Errorf("loaded %+v, want %+v", got, want)
+	}
+}
+
+func TestPiSpawnEnvPlanReview(t *testing.T) {
+	settingsDir(t, "")
+	sp := piExtensionDir(t)
+	if v, _ := envValue(piSpawnEnv(sp), PiPlanReviewEnv); v != "0" {
+		t.Errorf("%s = %q by default, want 0", PiPlanReviewEnv, v)
+	}
+	t.Setenv(PiPlanReviewEnv, "1") // inherited: must not win
+	if err := SaveSettings(Settings{PiTodoTool: true, PlanReview: true}); err != nil {
+		t.Fatalf("save: %v", err)
+	}
+	if v, _ := envValue(piSpawnEnv(sp), PiPlanReviewEnv); v != "1" {
+		t.Errorf("%s = %q with review on, want 1", PiPlanReviewEnv, v)
+	}
+}
+
+// The reviewer is fixed per session at spawn and carried to the hook
+// in the environment; Hive only when review is on AND Hive is chosen.
+func TestClaudeSpawnEnvPlanReviewer(t *testing.T) {
+	withClaudeVersion(t, "2.1.273")
+	withEnv(t, "", false)
+	for _, tc := range []struct {
+		file, want string
+	}{
+		{``, PlanReviewerExternal},
+		{`{"plan_review": false, "plan_reviewer": "hive"}`, PlanReviewerExternal},
+		{`{"plan_review": true}`, PlanReviewerExternal},
+		{`{"plan_review": true, "plan_reviewer": "hive"}`, PlanReviewerHive},
+	} {
+		settingsDir(t, tc.file)
+		if v, _ := envValue(claudeSpawnEnv(hooked), PlanReviewerEnv); v != tc.want {
+			t.Errorf("settings %q: %s = %q, want %q", tc.file, PlanReviewerEnv, v, tc.want)
+		}
 	}
 }

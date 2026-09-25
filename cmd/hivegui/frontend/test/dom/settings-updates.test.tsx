@@ -46,6 +46,7 @@ const bridge = vi.hoisted(() => ({
   CheckForUpdate: vi.fn(() => Promise.resolve(null)),
   OpenURL: vi.fn(() => Promise.resolve()),
   // Agents-tab bindings the modal loads on open; not this file's subject.
+  GetExternalPlanReviewers: vi.fn(() => Promise.resolve([])),
   GetAgentSettings: vi.fn(() =>
     Promise.resolve({ claude_task_tools: true, pi_todo_tool: true }),
   ),

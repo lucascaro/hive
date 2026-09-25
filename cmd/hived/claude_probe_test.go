@@ -16,6 +16,7 @@ import (
 	"time"
 
 	"github.com/lucascaro/hive/internal/agent"
+	"github.com/lucascaro/hive/internal/daemon"
 	"github.com/lucascaro/hive/internal/session"
 	"github.com/lucascaro/hive/internal/wire"
 )
@@ -392,6 +393,15 @@ type probeWait func(within time.Duration, cond func(wire.SessionInfo) bool, what
 // drive Claude through a prompt and watch what the daemon derives.
 func startClaudeProbe(t *testing.T) (*session.Session, probeWait) {
 	t.Helper()
+	sess, wait, _, _ := startClaudeProbeDaemon(t)
+	return sess, wait
+}
+
+// startClaudeProbeDaemon is startClaudeProbe that also returns the
+// daemon and the terminal capture, for probes that have to answer the
+// session over the wire or read its screen.
+func startClaudeProbeDaemon(t *testing.T) (*session.Session, probeWait, *daemon.Daemon, *captureSink) {
+	t.Helper()
 	// Strip the nesting markers, as the probes above do — and, here, it
 	// matters twice: a CLAUDE_CODE_ENABLE_TODO_TOOLS inherited from the
 	// Claude session running this test would count as the user's own
@@ -471,7 +481,7 @@ func startClaudeProbe(t *testing.T) (*session.Session, probeWait) {
 	}
 	wait(30*time.Second, func(i wire.SessionInfo) bool { return i.StateSource == wire.StateSourceHook }, "hook tier")
 	time.Sleep(2 * time.Second)
-	return sess, wait
+	return sess, wait, d, sink
 }
 
 func TestClaudeProbeTaskToolsOptIn(t *testing.T) {

@@ -156,7 +156,8 @@ export type ModalId =
   | 'help'
   | 'help-modal'
   | 'whats-new'
-  | 'build-log';
+  | 'build-log'
+  | 'plan-review';
 
 // `seq` is the opening's generation, minted by openModal. A component
 // keys its per-open state off it (`key={entry.seq}`), which is what makes
@@ -185,7 +186,18 @@ export type ModalEntry =
   | { id: 'whats-new'; seq: number }
   // The failed build's output, fetched once on open: it is a snapshot
   // of an attempt that is over, so there is nothing to keep in sync.
-  | { id: 'build-log'; seq: number; log: string };
+  | { id: 'build-log'; seq: number; log: string }
+  // An agent's plan waiting on the user (#457). The plan text is carried
+  // because it was fetched once for this review; reviewId is what the
+  // answer echoes so a superseded plan can never be approved.
+  | {
+      id: 'plan-review';
+      seq: number;
+      sessionId: string;
+      reviewId: string;
+      source: string;
+      plan: string;
+    };
 
 // The open question, plus the generation that lets a second ask remount
 // the body. The spec is the caller's — see app/modals/choice-dialog.ts,

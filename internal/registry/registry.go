@@ -120,6 +120,10 @@ type Entry struct {
 	// one bit that does survive a restart.
 	pendingChoice *wire.PendingWorktreeChoice
 
+	// planReview is the agent plan waiting on the user, or nil. Guarded
+	// by r.mu; see planreview.go.
+	planReview *planReview
+
 	// neverSpawn marks an entry the boot revive must NOT fork a PTY
 	// for. Set by MarkPendingRevive for an entry that was parked on a
 	// worktree decision when the last daemon exited: it is dead by
@@ -278,6 +282,7 @@ func (e *Entry) Info() wire.SessionInfo {
 		// Copied, not shared: Info snapshots escape r.mu and a caller
 		// must not be able to mutate the entry's own pending choice.
 		PendingWorktreeChoice: e.pendingChoiceCopy(),
+		PendingPlanReview:     e.planReview.info(),
 		Phase:                 e.Phase,
 		Title:                 e.title(),
 		NeedsAttention:        needsAttention(st.State),
@@ -363,16 +368,18 @@ type Registry struct {
 	parkedMu sync.Mutex
 	parked   map[string]*parkedCreate
 
-	// hasControlClient reports whether any client that could answer a
-	// worktree-setup dialog is connected. Set by the daemon, which is
-	// the only layer that knows about connections; it counts
-	// wire.ModeControl only, because a ModeSession connection is an
-	// agent's own events socket and cannot render a dialog.
+	// answerers is how many connected clients could answer a question
+	// put to the user — a worktree-setup dialog or a plan review. Set
+	// by the daemon, which is the only layer that knows about
+	// connections (see SetAnswerers). Guarded by r.mu, the same lock a
+	// plan review parks under, so "nobody can answer" and "park" can
+	// never interleave.
 	//
-	// nil means "assume a client", which is what a bare Registry in a
-	// unit test wants: park, so the parking behaviour is testable
-	// without wiring a daemon. Production always sets it.
-	hasControlClient func() bool
+	// answerersSet false means "assume a client", which is what a bare
+	// Registry in a unit test wants: park, so the parking behaviour is
+	// testable without wiring a daemon. Production always sets it.
+	answerers    int
+	answerersSet bool
 
 	projects     map[string]*Project
 	projectOrder []string
@@ -859,27 +866,35 @@ func (r *Registry) SetSocketPath(p string) {
 	r.socketPath = p
 }
 
-// SetHasControlClient installs the predicate the registry uses to
-// decide whether a worktree-setup failure can be put to the user.
-// Called once by the daemon, which is the only layer that sees
-// connections. Without it the registry assumes a client is present
-// (see Registry.hasControlClient).
-func (r *Registry) SetHasControlClient(fn func() bool) {
+// SetAnswerers records how many connected clients can answer a
+// question put to the user. Called by the daemon on every change.
+// Dropping to zero withdraws every pending plan review with
+// wire.PlanReviewNoClient, so the agent falls back to its own terminal
+// approval instead of waiting days for a GUI that left.
+func (r *Registry) SetAnswerers(n int) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
-	r.hasControlClient = fn
+	r.answerers, r.answerersSet = n, true
+	if n > 0 {
+		return
+	}
+	for _, e := range r.entries {
+		if e.planReview != nil {
+			r.finishPlanReviewLocked(e, wire.PlanReviewDecision{Status: wire.PlanReviewNoClient})
+		}
+	}
 }
 
 // canAskUser reports whether a client capable of answering a parked
-// worktree question is connected.
+// question is connected.
 func (r *Registry) canAskUser() bool {
 	r.mu.Lock()
-	fn := r.hasControlClient
-	r.mu.Unlock()
-	if fn == nil {
-		return true
-	}
-	return fn()
+	defer r.mu.Unlock()
+	return r.canAskUserLocked()
+}
+
+func (r *Registry) canAskUserLocked() bool {
+	return !r.answerersSet || r.answerers > 0
 }
 
 // SetHivedPath records the resolved absolute path of the running
@@ -1462,6 +1477,12 @@ func (r *Registry) watchSessionExit(id string, sess *session.Session) {
 		log.Printf("registry: session %s exited before its opening prompt was placed; dropping it", id)
 		e.pendingPrompt = ""
 	}
+	// A plan nobody can act on any more. Cleared before Info() so the
+	// same broadcast withdraws the review in every GUI.
+	if e.planReview != nil {
+		e.planReview.finish(wire.PlanReviewDecision{Status: wire.PlanReviewCancelled})
+		e.planReview = nil
+	}
 	info := e.Info()
 	r.mu.Unlock()
 	r.broadcast(wire.SessionEventUpdated, info)
@@ -1604,6 +1625,10 @@ func (r *Registry) kill(id string, force, removeWorktree bool) error {
 	// one small atomic write, and the entry it describes must not
 	// change between reading it and writing it.
 	r.writeTombstoneLocked(e, tomb)
+	if e.planReview != nil {
+		e.planReview.finish(wire.PlanReviewDecision{Status: wire.PlanReviewCancelled})
+		e.planReview = nil
+	}
 	delete(r.entries, id)
 	for i, sid := range r.order {
 		if sid == id {

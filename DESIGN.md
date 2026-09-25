@@ -116,6 +116,14 @@ Architectural invariants. Each one should ideally be enforceable by `gc-sweep` o
   parked state is resumable data (`{spec, plan}` in the registry), never a
   blocked goroutine and never held across `gitMu`: an unbounded wait must not
   stall any other create or kill.
+- **Plan review parks as data, with the requester's connection held.** An
+  agent's plan (Claude's `ExitPlanMode`, Pi's `hive_submit_plan`) waiting
+  on the user is `SessionInfo.pending_plan_review`. It is not a phase: the
+  session is alive and its own approval prompt is on the terminal too. The
+  requester holds a `plan_review` connection on the events socket, and its
+  closing withdraws the review. With no client that can answer (hivebar
+  does not count), the request fails fast, so the agent never waits on a
+  dialog nobody can see. See `docs/design-docs/control-plane.md`.
 - **Control-frame handlers that shell out to git run off the read loop.**
   `CREATE_SESSION`, `KILL_SESSION`, `RESTART_SESSION`, `KILL_PROJECT`,
   `RESOLVE_WORKTREE_CHOICE`, and the
