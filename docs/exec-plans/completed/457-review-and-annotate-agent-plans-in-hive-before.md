@@ -4,7 +4,7 @@
 - **Issue:** #457
 - **PR:** #459
 - **Branch:** feature/457-review-and-annotate-agent-plans-in-hive-before
-- **Status:** active
+- **Status:** completed
 
 ## Summary
 
@@ -475,6 +475,14 @@ scripts/test.sh
 ## Open questions
 
 _(none)_
+
+## Gate verdict
+
+- **2026-09-24** — verdict: PASS; phase: —; checks: 7 criteria + 5 non-goals + 8 doc checks passed / 0 failed / 0 followups; followups: none; one-line: every success criterion is covered by passing tests. Criterion 5 was validated as narrowed with operator sign-off. Criterion 4's live evidence records that the operator's local Pi model can skip the tool; this was accepted as a model-dependent signal, not a code defect.
+  - 2026-09-24 dimensions:
+    - acceptance — PASS — Go, node, vitest and Playwright tests map to criteria 1–7; the live probes are recorded in the decision log (Claude 3/3).
+    - non-goals — PASS — no diff review, share links, Ask AI, plan history or other agents; plannotator is only read, and there are no writes to ~/.claude.
+    - doc accuracy — PASS — changeset (added/minor), README, control-plane.md, DESIGN.md, contract history and Settings copy all match the code; CHANGELOG and index untouched.
 
 ## PR convergence ledger
 

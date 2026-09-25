@@ -5,7 +5,8 @@ type: enhancement
 complexity: L
 priority: P2
 pr: 459
-stage: GATE
+shipped: 2026-09-24
+stage: DONE
 ---
 
 # Review and annotate agent plans in Hive before implementation
