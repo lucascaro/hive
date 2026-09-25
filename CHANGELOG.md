@@ -62,6 +62,7 @@ Claude sessions started by Hive now fill the plan pie much more often. Claude
 had the task tools but rarely used them, so Hive had no progress to show. When
 the Claude task tools setting is on, Hive now tells each session at startup to
 track multi-step work in its task list.
+The sidebar drops the gaps around worktree groups and between projects. Hairlines and each project's colour rule are now the only separators, and where two lines meet they draw as one.
 A background update check no longer pops the update banner. When a new version
 is available, the sidebar's ⤓ "Check for updates" button shows a dot instead;
 click it to see the version and install it. Updates you start still show their
