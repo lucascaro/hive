@@ -129,9 +129,8 @@ test.describe('sticky sidebar headers', () => {
       );
     }
     // Sticky pins to the scrollport's PADDING box, and #projects carries
-    // 4px of it — so "pinned" is 4, not 0. The first entry is the
-    // unscrolled position, where the label sits at its natural offset.
-    expect(tops[0]).toBeGreaterThan(4);
-    for (const t of tops.slice(1)) expect(t).toBeLessThanOrEqual(5);
+    // 4px of it — so "pinned" is 4, not 0. Projects have no top margin,
+    // so the unscrolled label already sits at that pinned offset.
+    for (const t of tops) expect(t).toBeCloseTo(4, 0);
   });
 });
