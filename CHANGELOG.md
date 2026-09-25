@@ -28,6 +28,8 @@ runners, but the code that actually hands a file to the OS there —
 ShellExecute, `explorer /select,`, `xdg-open`, the file-manager reveal —
 has not yet been exercised in a running app. macOS has been verified by
 hand.
+- **Review agent plans in Hive before they run.** Turn on "Review agent plans in Hive" under Settings → Agents, and Claude leaving plan mode, or Pi calling the `hive_submit_plan` tool Hive gives it, waits for you. Hive shows the plan as formatted markdown. You select passages to comment on, then approve or request changes, and the agent gets each comment with the passage it is about. Esc keeps the agent waiting, and a bar brings the review back. With no Hive window open, the agent falls back to its own approval prompt.
+- If plannotator or another plan reviewer is installed, it keeps reviewing Claude's plans unless you choose Hive, which disables that plugin for the Claude sessions Hive starts.
 The "Session ended" card now has a **Restart** button, so an exited session can be brought back in place without going through the session's menu. Press `r` on the card to restart, `Enter` to close, `Esc` to dismiss — each button now shows its key.
 Find text in a session with ⌘F (Ctrl+Shift+F on Windows and Linux). On a regular
 shell it searches the terminal's scrollback and highlights matches in place. On a

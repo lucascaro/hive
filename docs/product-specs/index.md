@@ -27,6 +27,7 @@ The *what* and *why* of work this project plans to do. Each spec describes user 
 | Issue | Title | PR | Shipped | Spec |
 |-------|-------|----|---------|------|
 | #455 | Make the sidebar's structure and selection legible | #456 | 2026-09-24 | [455-make-the-sidebars-structure-and-selection-legible](455-make-the-sidebars-structure-and-selection-legible.md) |
+| #457 | Review and annotate agent plans in Hive before implementation | #459 | 2026-09-24 | [457-review-and-annotate-agent-plans-in-hive-before](457-review-and-annotate-agent-plans-in-hive-before.md) |
 | #449 | Cmd-click file paths in a session to open them | #450 | 2026-09-22 | [449-cmd-click-file-paths-in-a-session-to-open-them](449-cmd-click-file-paths-in-a-session-to-open-them.md) |
 | #451 | Ask the user when worktree setup fails instead of silently using a stale ref | #452 | 2026-09-22 | [451-worktree-setup-failure-prompt](451-worktree-setup-failure-prompt.md) |
 | #439 | Upgrade xterm.js to 6.0 and fix the addon-search version mismatch | #441 | 2026-09-20 | [439-upgrade-xterm-js-to-6-0-and-fix-addon-search](439-upgrade-xterm-js-to-6-0-and-fix-addon-search.md) |
