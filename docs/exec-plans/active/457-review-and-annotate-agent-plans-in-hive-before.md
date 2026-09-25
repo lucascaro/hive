@@ -2,6 +2,8 @@
 
 - **Spec:** [docs/product-specs/457-review-and-annotate-agent-plans-in-hive-before.md](../../product-specs/457-review-and-annotate-agent-plans-in-hive-before.md)
 - **Issue:** #457
+- **PR:** #459
+- **Branch:** feature/457-review-and-annotate-agent-plans-in-hive-before
 - **Status:** active
 
 ## Summary

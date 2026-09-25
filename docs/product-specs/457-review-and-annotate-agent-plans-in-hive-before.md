@@ -4,7 +4,8 @@ title: Review and annotate agent plans in Hive before implementation
 type: enhancement
 complexity: L
 priority: P2
-stage: IMPLEMENT
+pr: 459
+stage: REVIEW
 ---
 
 # Review and annotate agent plans in Hive before implementation
