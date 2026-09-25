@@ -39,6 +39,23 @@ const MAX_COMMENT = 4096;
 const MAX_FEEDBACK = 16384;
 const MAX_COMMENTS = 200;
 
+const utf8 = new TextEncoder();
+
+/** `s` cut to at most `max` UTF-8 bytes on a code-point boundary. The
+ *  daemon measures its caps in bytes and rejects the whole answer when
+ *  one is exceeded, so `maxLength` (UTF-16 units) is not enough. */
+export function capBytes(s: string, max: number): string {
+  if (utf8.encode(s).length <= max) return s;
+  let out = '';
+  let n = 0;
+  for (const ch of s) {
+    n += utf8.encode(ch).length;
+    if (n > max) break;
+    out += ch;
+  }
+  return out;
+}
+
 const SOURCE_NAME: Record<string, string> = { claude: 'Claude', pi: 'Pi' };
 
 export function PlanReview({ root }: { root: HTMLElement | null }): ReactNode {
@@ -66,7 +83,7 @@ function selectionIn(el: HTMLElement | null): string {
   if (!el || !sel || sel.isCollapsed || sel.rangeCount === 0) return '';
   const range = sel.getRangeAt(0);
   if (!el.contains(range.commonAncestorContainer)) return '';
-  return sel.toString().trim().slice(0, MAX_QUOTE);
+  return capBytes(sel.toString().trim(), MAX_QUOTE);
 }
 
 function PlanReviewBody({
@@ -181,12 +198,16 @@ function PlanReviewBody({
               id="plan-review-comment"
               className="hv-input"
               aria-label="Your comment on the selected passage"
-              maxLength={MAX_COMMENT}
               rows={3}
               // biome-ignore lint/a11y/noAutofocus: the user just asked to write this comment
               autoFocus
               value={draft.text}
-              onChange={(e) => setDraft({ ...draft, text: e.target.value })}
+              onChange={(e) =>
+                setDraft({
+                  ...draft,
+                  text: capBytes(e.target.value, MAX_COMMENT),
+                })
+              }
               onKeyDown={(e) => {
                 if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) {
                   e.preventDefault();
@@ -240,10 +261,11 @@ function PlanReviewBody({
           <textarea
             id="plan-review-feedback"
             className="hv-input"
-            maxLength={MAX_FEEDBACK}
             rows={2}
             value={feedback}
-            onChange={(e) => setFeedback(e.target.value)}
+            onChange={(e) =>
+              setFeedback(capBytes(e.target.value, MAX_FEEDBACK))
+            }
           />
         </label>
       </div>

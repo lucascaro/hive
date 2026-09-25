@@ -202,3 +202,19 @@ describe('plan review bar', () => {
     expect(bridge.GetPlanReview).toHaveBeenCalledWith('s1', 'r1');
   });
 });
+
+describe('capBytes', () => {
+  it('caps in UTF-8 bytes on a code-point boundary, matching the wire', async () => {
+    const { capBytes } = await import(
+      '../../src/components/modals/PlanReview.js'
+    );
+    const bytes = (s: string) => new TextEncoder().encode(s).length;
+    expect(capBytes('abc', 4096)).toBe('abc');
+    const cjk = capBytes('界'.repeat(4096), 4096);
+    expect(bytes(cjk)).toBeLessThanOrEqual(4096);
+    expect(cjk).toBe('界'.repeat(1365));
+    // A surrogate pair is never split.
+    expect(capBytes('a😀', 4)).toBe('a');
+    expect(capBytes('a😀', 5)).toBe('a😀');
+  });
+});

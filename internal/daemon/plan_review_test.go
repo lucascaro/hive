@@ -264,6 +264,31 @@ func TestPlanReviewCancelledOnDaemonStop(t *testing.T) {
 	}
 }
 
+func TestPlanReviewCancelledOnTimeout(t *testing.T) {
+	skipOnWindows(t)
+	planReviewSettings(t, reviewOn)
+	prev := planReviewMaxWait
+	planReviewMaxWait = 100 * time.Millisecond
+	t.Cleanup(func() { planReviewMaxWait = prev })
+	d := startTestDaemon(t)
+	id := bootstrapSessionID(t, d)
+	answerer(t, d, "hivegui/0.2")
+	waitFor(t, 2*time.Second, func() bool { return answererCount(d) == 1 })
+
+	c := requestPlanReview(t, d, claudeReq(id))
+	defer c.Close()
+	_ = c.SetReadDeadline(time.Now().Add(3 * time.Second))
+	var dec wire.PlanReviewDecision
+	ft, err := wire.ReadJSON(c, &dec)
+	if err != nil {
+		t.Fatalf("read decision: %v", err)
+	}
+	if ft != wire.FramePlanReviewDecision || dec.Status != wire.PlanReviewCancelled {
+		t.Fatalf("on timeout got %s %+v, want cancelled", ft, dec)
+	}
+	waitFor(t, 2*time.Second, func() bool { return pendingReview(d, id) == nil })
+}
+
 func isTimeout(err error) bool {
 	ne, ok := err.(net.Error)
 	return ok && ne.Timeout()
