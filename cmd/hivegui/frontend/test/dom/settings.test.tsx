@@ -598,6 +598,10 @@ describe('settings: Laya state detection (spec 458)', () => {
     );
     click(el('settings-laya-test'));
     fireEvent.change(model(), { target: { value: 'third-model' } });
+    await flush();
+    // Review finding (PR #464): the stale probe still holds the server,
+    // so a second one must not start until it settles.
+    expect(el<HTMLButtonElement>('settings-laya-test').disabled).toBe(true);
     answerOld('');
     await flush();
     expect(document.getElementById('settings-laya-test-result')).toBeNull();

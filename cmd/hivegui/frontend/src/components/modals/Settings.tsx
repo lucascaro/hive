@@ -1021,7 +1021,6 @@ function SettingsDialog({ root }: { root: HTMLElement }): ReactNode {
               setLayaUrl(e.target.value);
               layaTestSeq.current++;
               setLayaTest(null);
-              setLayaTesting(false);
             }}
           />
         </label>
@@ -1049,11 +1048,12 @@ function SettingsDialog({ root }: { root: HTMLElement }): ReactNode {
             disabled={!agentSettingsLoaded || agentSettingsFailed}
             onChange={(e) => {
               // A test result is about a URL and a model; either edit
-              // makes it, and any test still in flight, stale.
+              // makes it, and any test still in flight, stale. The stale
+              // probe keeps the button disabled until it settles, so two
+              // probes never queue on a single-worker server.
               setLayaModel(e.target.value);
               layaTestSeq.current++;
               setLayaTest(null);
-              setLayaTesting(false);
             }}
           />
         </label>
@@ -1066,9 +1066,8 @@ function SettingsDialog({ root }: { root: HTMLElement }): ReactNode {
             setLayaTesting(true);
             const seq = ++layaTestSeq.current;
             const settle = (reason: string) => {
-              if (seq !== layaTestSeq.current) return;
-              setLayaTest(reason);
               setLayaTesting(false);
+              if (seq === layaTestSeq.current) setLayaTest(reason);
             };
             TestLayaConnection(layaUrl.trim(), layaModel.trim()).then(
               settle,
