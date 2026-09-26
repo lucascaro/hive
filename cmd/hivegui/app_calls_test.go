@@ -187,6 +187,10 @@ func TestRPCsRequireAControlConnection(t *testing.T) {
 		"DeleteBranch":           func() error { return a.DeleteBranch("p", "b", false, false) },
 		"RestoreSession":         func() error { return a.RestoreSession("s") },
 		"ListClosedSessions":     func() error { return a.ListClosedSessions() },
+		"ListPlugins":            func() error { return a.ListPlugins() },
+		"InstallPlugin":          func() error { return a.InstallPlugin("/tmp/p", "n1") },
+		"SetPluginEnabled":       func() error { return a.SetPluginEnabled("p", true) },
+		"RemovePlugin":           func() error { return a.RemovePlugin("p") },
 	}
 	for name, call := range calls {
 		t.Run(name, func(t *testing.T) {
@@ -356,6 +360,42 @@ func TestAddIdeaCall(t *testing.T) {
 	}
 	if err := <-done; err != nil {
 		t.Fatalf("AddIdea: %v", err)
+	}
+}
+
+// TestPluginCalls pins the four plugin bindings' frames and payloads.
+// The nonce matters most: it is how the window that asked tells its
+// own install apart from another window's, so it must reach the wire
+// exactly as the frontend chose it.
+func TestPluginCalls(t *testing.T) {
+	cases := []struct {
+		name string
+		call func(a *App) error
+		ft   wire.FrameType
+		want string
+	}{
+		{"ListPlugins", func(a *App) error { return a.ListPlugins() }, wire.FrameListPlugins, `{}`},
+		{"InstallPlugin", func(a *App) error { return a.InstallPlugin("/src/p", "n-42") }, wire.FrameInstallPlugin, `{"source":"/src/p","nonce":"n-42"}`},
+		{"SetPluginEnabled", func(a *App) error { return a.SetPluginEnabled("webhook", true) }, wire.FrameSetPluginEnabled, `{"id":"webhook","enabled":true}`},
+		{"SetPluginDisabled", func(a *App) error { return a.SetPluginEnabled("webhook", false) }, wire.FrameSetPluginEnabled, `{"id":"webhook","enabled":false}`},
+		{"RemovePlugin", func(a *App) error { return a.RemovePlugin("webhook") }, wire.FrameRemovePlugin, `{"id":"webhook"}`},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			a, next := appWithControl(t)
+			done := make(chan error, 1)
+			go func() { done <- tc.call(a) }()
+			ft, payload := next(t)
+			if ft != tc.ft {
+				t.Fatalf("frame = %s, want %s", ft, tc.ft)
+			}
+			if string(payload) != tc.want {
+				t.Errorf("payload = %s, want %s", payload, tc.want)
+			}
+			if err := <-done; err != nil {
+				t.Fatalf("%s: %v", tc.name, err)
+			}
+		})
 	}
 }
 

@@ -250,6 +250,18 @@ export async function GetExternalPlanReviewers() {
 export async function RemoveIdea(id: string) {
   return call('RemoveIdea', { id });
 }
+export async function ListPlugins() {
+  return call('ListPlugins');
+}
+export async function InstallPlugin(source: string, nonce: string) {
+  return call('InstallPlugin', { source, nonce });
+}
+export async function SetPluginEnabled(id: string, enabled: boolean) {
+  return call('SetPluginEnabled', { id, enabled });
+}
+export async function RemovePlugin(id: string) {
+  return call('RemovePlugin', { id });
+}
 export async function ListWorktrees(projectID: string) {
   return call('ListWorktrees', { project_id: projectID || '' });
 }

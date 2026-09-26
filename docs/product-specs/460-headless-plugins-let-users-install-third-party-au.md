@@ -4,8 +4,8 @@ title: "Headless plugins: let users install third-party automations that react t
 type: enhancement
 complexity: L
 priority: P2
-pr: 463
-stage: GATE
+pr: 465
+stage: REVIEW
 ---
 
 # Headless plugins: let users install third-party automations that react to and drive Hive sessions
