@@ -68,7 +68,8 @@ paste a folder path or git URL and press Install, and Hive shows what the
 plugin is, where it came from and the exact command it will run, with a
 full-privileges warning. Accepting enables it; cancelling removes it
 again. Turning a plugin on from the tab's toggle shows the same trust
-prompt; turning it off and removing it act at once. None of these needs a
+prompt; turning it off acts at once, and removing it asks you to confirm
+first. None of these needs a
 daemon restart. It sends the same `INSTALL_PLUGIN` /
 `SET_PLUGIN_ENABLED` / `REMOVE_PLUGIN` requests described below, so any
 other wire client can do the same.
