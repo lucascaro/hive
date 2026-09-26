@@ -1,7 +1,7 @@
 # Laya state classifier
 
 Spec: [458](../product-specs/458-classify-session-state-with-a-local-laya-model-whe.md).
-Plan: [exec plan](../exec-plans/active/458-classify-session-state-with-a-local-laya-model-whe.md).
+Plan: [exec plan](../exec-plans/completed/458-classify-session-state-with-a-local-laya-model-whe.md).
 
 Hive knows what a session is doing exactly when the agent says so through
 hooks (Claude) or its extension (Pi). Everything else (Aider, Codex, a

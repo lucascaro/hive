@@ -4,7 +4,8 @@ type: enhancement
 complexity: L
 priority: P2
 pr: 464
-stage: GATE
+shipped: 2026-09-26
+stage: DONE
 ---
 
 # Classify session state with a local Laya model when hooks can't tell
@@ -13,7 +14,7 @@ stage: GATE
 - **Type:** enhancement
 - **Complexity:** L
 - **Priority:** P2
-- **Exec plan:** [docs/exec-plans/active/458-classify-session-state-with-a-local-laya-model-whe.md](../exec-plans/active/458-classify-session-state-with-a-local-laya-model-whe.md)
+- **Exec plan:** [docs/exec-plans/completed/458-classify-session-state-with-a-local-laya-model-whe.md](../exec-plans/completed/458-classify-session-state-with-a-local-laya-model-whe.md)
 
 ## Problem
 

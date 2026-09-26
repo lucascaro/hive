@@ -2,7 +2,7 @@
 
 - **Spec:** [docs/product-specs/458-classify-session-state-with-a-local-laya-model-whe.md](../../product-specs/458-classify-session-state-with-a-local-laya-model-whe.md)
 - **Issue:** — (local-only)
-- **Status:** active
+- **Status:** completed
 - **PR:** #464
 - **Branch:** feature/458-laya-state-classifier
 
@@ -335,3 +335,8 @@ _None blocking — see the plan's Open questions / risks for accepted risks._
     - acceptance — PASS — all 7 criteria evidenced. Real e2e classified in 2.1 s; the harness reports 37.5% overall and 87.5% waiting recall (the bar is a follow-up per amendment). Cross-platform is code evidence only: stdlib HTTP, no MLX; CI builds and tests on all 3 OSes, not live against PyTorch.
     - non-goals — PASS — none of the 8 non-goals implemented.
     - doc accuracy — FAIL — DESIGN.md:17 "Imported by internal/daemon/ alone … the daemon's only outbound HTTP" is stale; cmd/hivegui/app_calls.go also imports internal/laya.
+- **2026-09-26** — verdict: PASS; phase: —; checks: 23 passed / 0 failed / 0 followups; followups: none; one-line: re-run after the DESIGN.md importer fix (9fed3d22). Acceptance and non-goals carried over, since that commit changed only docs.
+  - 2026-09-26 dimensions:
+    - acceptance — PASS — as in the previous entry. Cross-platform is code evidence only; the live run was macOS against laya-serve.
+    - non-goals — PASS — as in the previous entry.
+    - doc accuracy — PASS — DESIGN.md now lists the daemon, the GUI and laya-scrub as importers; the changeset, features.json, README, design doc, corpus README and Settings hints were all re-verified.
