@@ -471,3 +471,4 @@ drives the real `pty:disconnect` handler captured from the mocked `EventsOn`):
 
 ## PR convergence ledger
 
+- **2026-09-25 iter 1** — verdict: COMMENT; mergeable: MERGEABLE; findings_hash: aee505ab0a4972a40b9a640370c4e88d5404a4b785a665c0c5f5b9ccee21fcc9; threads_open: 3; action: escalated:risky-fix-needs-human-decision; head_sha: 3dec9dd1.
