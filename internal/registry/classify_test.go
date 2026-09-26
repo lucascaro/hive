@@ -59,6 +59,7 @@ func (f *fakeLaya) set(answer agentstate.State, err error) {
 func classifierRig(t *testing.T, answer agentstate.State) (*Registry, *Entry, *session.Session, *fakeLaya) {
 	t.Helper()
 	skipOnWindows(t)
+	t.Setenv(classifyCaptureDirEnv, "")
 	r := freshRegistry(t)
 	manualClock(t, r)
 	r.stopClassifier()
@@ -387,8 +388,8 @@ func TestCloseCancelsInflightClassify(t *testing.T) {
 
 func TestClassifierCapturesScreens(t *testing.T) {
 	dir := filepath.Join(t.TempDir(), "captures")
-	t.Setenv(classifyCaptureDirEnv, dir)
 	r, e, sess, _ := classifierRig(t, wire.StateWaitingInput)
+	t.Setenv(classifyCaptureDirEnv, dir)
 	base := time.Now()
 	settle(t, r, e, sess, "Save changes? (y/n)", base)
 	cycle(r, base.Add(time.Second))
@@ -411,8 +412,8 @@ func TestClassifierCapturesScreens(t *testing.T) {
 
 func TestClassifierCapturesFailedAttempts(t *testing.T) {
 	dir := filepath.Join(t.TempDir(), "captures")
-	t.Setenv(classifyCaptureDirEnv, dir)
 	r, e, sess, f := classifierRig(t, "")
+	t.Setenv(classifyCaptureDirEnv, dir)
 	f.set("", errors.New("no route to Laya"))
 	base := time.Now()
 	settle(t, r, e, sess, "Pick one:", base)
@@ -427,8 +428,8 @@ func TestClassifierCapturesFailedAttempts(t *testing.T) {
 // is asked about as soon as it is switched back on.
 func TestClassifierOffIsNotAFailure(t *testing.T) {
 	dir := filepath.Join(t.TempDir(), "captures")
-	t.Setenv(classifyCaptureDirEnv, dir)
 	r, e, sess, f := classifierRig(t, "")
+	t.Setenv(classifyCaptureDirEnv, dir)
 	f.set("", ErrClassifierOff)
 	base := time.Now()
 	settle(t, r, e, sess, "Proceed?", base)
