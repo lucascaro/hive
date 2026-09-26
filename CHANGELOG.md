@@ -84,6 +84,12 @@ sidebar, with git's own error and how old the cached state is, and you can
 retry, use the cached state deliberately, or cancel. The same prompt covers a
 `git worktree add` that fails, which previously dropped the worktree and
 started the session in the project directory without saying so.
+A window or client that stops reading from the daemon can no longer freeze a
+running agent, stall other windows watching the same session, or hang quitting
+and restarting the daemon. The daemon now hangs up on a client that falls
+behind, and that client reconnects with a fresh view instead of quietly
+missing updates. A terminal whose connection is dropped this way reattaches on
+its own, without you having to switch sessions and back.
 - **New Project's Browse… button works again for a Hive launched from a junction on Windows.** Wails checks the picker's starting folder with `Lstat`, so a junction such as `C:\Users\me\git` → `D:\git` was refused as "does not exist" and the folder dialog never opened — silently, because the project editor dropped the error. The starting folder is now resolved to its real path first, the dialog is retried with no starting folder if the runtime still refuses it, and a picker that fails to open is reported in the status bar. Separately, a Hive started from the Start menu or a shortcut on Windows now writes `hivegui.log`: the logger stopped at the first failed write to the (absent) console before reaching the file.
 - **macOS now explains why Hive asks for Local Network access.** Commands run in a session (agents, `curl`, SSH, MCP servers) reach your LAN, VMs and dev servers under Hive's permission; the prompt previously gave no reason, making it easy to deny and silently break those connections. If you denied it, re-enable Hive under System Settings → Privacy & Security → Local Network.
 

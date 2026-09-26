@@ -26,6 +26,7 @@ The *what* and *why* of work this project plans to do. Each spec describes user 
 
 | Issue | Title | PR | Shipped | Spec |
 |-------|-------|----|---------|------|
+| #461 | Stuck wire client can stall a session or hang daemon shutdown | #462 | 2026-09-25 | [461-stuck-wire-client-can-stall-a-session-or-hang](461-stuck-wire-client-can-stall-a-session-or-hang.md) |
 | #455 | Make the sidebar's structure and selection legible | #456 | 2026-09-24 | [455-make-the-sidebars-structure-and-selection-legible](455-make-the-sidebars-structure-and-selection-legible.md) |
 | #457 | Review and annotate agent plans in Hive before implementation | #459 | 2026-09-24 | [457-review-and-annotate-agent-plans-in-hive-before](457-review-and-annotate-agent-plans-in-hive-before.md) |
 | #449 | Cmd-click file paths in a session to open them | #450 | 2026-09-22 | [449-cmd-click-file-paths-in-a-session-to-open-them](449-cmd-click-file-paths-in-a-session-to-open-them.md) |
