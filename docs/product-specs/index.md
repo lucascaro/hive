@@ -27,6 +27,7 @@ The *what* and *why* of work this project plans to do. Each spec describes user 
 
 | Issue | Title | PR | Shipped | Spec |
 |-------|-------|----|---------|------|
+| — | Classify session state with a local Laya model when hooks can't tell | #464 | 2026-09-26 | [458-classify-session-state-with-a-local-laya-model-whe](458-classify-session-state-with-a-local-laya-model-whe.md) |
 | #461 | Stuck wire client can stall a session or hang daemon shutdown | #462 | 2026-09-25 | [461-stuck-wire-client-can-stall-a-session-or-hang](461-stuck-wire-client-can-stall-a-session-or-hang.md) |
 | #455 | Make the sidebar's structure and selection legible | #456 | 2026-09-24 | [455-make-the-sidebars-structure-and-selection-legible](455-make-the-sidebars-structure-and-selection-legible.md) |
 | #457 | Review and annotate agent plans in Hive before implementation | #459 | 2026-09-24 | [457-review-and-annotate-agent-plans-in-hive-before](457-review-and-annotate-agent-plans-in-hive-before.md) |
