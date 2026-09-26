@@ -32,6 +32,7 @@ import (
 	"unicode/utf8"
 
 	"github.com/lucascaro/hive/internal/buildinfo"
+	"github.com/lucascaro/hive/internal/plugin"
 	"github.com/lucascaro/hive/internal/registry"
 	"github.com/lucascaro/hive/internal/session"
 	"github.com/lucascaro/hive/internal/transcript"
@@ -149,6 +150,16 @@ type Daemon struct {
 	// report). Once opsClosed is set, runOp refuses new work.
 	opsMu     sync.Mutex
 	opsClosed bool
+
+	// plugins supervises user-installed plugin processes (see
+	// internal/plugin). nil when plugins.json could not be read: the
+	// daemon still runs, and the plugin verbs answer plugins_unavailable.
+	plugins *plugin.Manager
+	// runCtx is the context connections accepted on plugin sockets are
+	// served under: it lives as long as the daemon and ends at shutdown.
+	// Created in New, so no accept goroutine can race its write.
+	runCtx    context.Context
+	runCancel context.CancelFunc
 }
 
 // runOp runs one session lifecycle operation off the control read
@@ -233,6 +244,13 @@ func New(cfg Config) (*Daemon, error) {
 	// control socket above is the one every client probes — so a
 	// leftover here is always stale by the time we get past that check.
 	_ = os.Remove(evsock)
+	// Same for per-run plugin sockets a killed daemon left behind: their
+	// random names are never reused, so they are always stale here.
+	if stale, _ := filepath.Glob(sock + pluginSockInfix + "*"); len(stale) > 0 {
+		for _, p := range stale {
+			_ = os.Remove(p)
+		}
+	}
 	reg, err := registry.Open(cfg.StateDir)
 	if err != nil {
 		closeStateLock(lock)
@@ -349,6 +367,17 @@ func New(cfg Config) (*Daemon, error) {
 	// with nobody to ask fails fast instead of parking.
 	reg.SetAnswerers(0)
 
+	d.runCtx, d.runCancel = d.stopCtx(context.Background())
+	// Plugins load now (a file read) and start in Run, once clients can
+	// connect: a plugin that dials before the listener accepts would
+	// count its refused connect as a crash.
+	mgr, err := plugin.New(plugin.Config{StateDir: stateDir, Listen: d.listenPlugin})
+	if err != nil {
+		log.Printf("hived: plugins disabled: %v", err)
+	} else {
+		d.plugins = mgr
+	}
+
 	// The two slow boot chores run in the background, off the caller's
 	// path: reviving persisted sessions forks one PTY each, and the
 	// orphan-worktree reclaim shells out to git. Started here rather
@@ -417,6 +446,9 @@ func (d *Daemon) Run(ctx context.Context) error {
 			go d.serveEventsOnly(ctx, conn)
 		}
 	}()
+	if d.plugins != nil {
+		d.plugins.Start()
+	}
 	for {
 		conn, err := d.ln.Accept()
 		if err != nil {
@@ -552,6 +584,12 @@ func (d *Daemon) Close() error {
 	// starting new work instead of forking shells for a daemon that
 	// is going away.
 	d.stopOps()
+	// Plugins stop before anything else is torn down, and for good:
+	// Stop is terminal, so no enable or install that is still in flight
+	// can spawn a process nobody will kill.
+	if d.plugins != nil {
+		d.plugins.Stop()
+	}
 	// Hang up on every client BEFORE waiting on ops. An op replying to a
 	// client that stopped reading is blocked in a write on that client's
 	// conn; closing the conn is what unblocks it, so waiting first would
@@ -586,6 +624,9 @@ func (d *Daemon) Close() error {
 	// Last: while this is held, a replacement daemon cannot open the
 	// registry, and the GUI's Restart spawns one the moment the socket
 	// goes quiet.
+	if d.runCancel != nil {
+		d.runCancel()
+	}
 	closeStateLock(d.lock)
 	return nil
 }
@@ -652,7 +693,11 @@ func (d *Daemon) removeOwnSocket() {
 // serve dispatches on the HELLO mode. ctx is the daemon's Run context
 // (not a per-connection one): registry work it reaches — the post-spawn
 // agent-session-id capture in particular — outlives this connection.
-func (d *Daemon) serve(ctx context.Context, conn net.Conn) {
+func (d *Daemon) serve(ctx context.Context, conn net.Conn) { d.serveConn(ctx, conn, nil) }
+
+// serveConn is serve for a connection that may have arrived on a
+// plugin's socket (tag non-nil). See pluginTag.
+func (d *Daemon) serveConn(ctx context.Context, conn net.Conn, tag *pluginTag) {
 	d.mu.Lock()
 	if d.clients == nil {
 		d.mu.Unlock()
@@ -692,6 +737,13 @@ func (d *Daemon) serve(ctx context.Context, conn net.Conn) {
 		return
 	}
 
+	if tag != nil && !pluginModeAllowed(hello.Mode) {
+		_ = writeBounded(conn, writeTimeout(), wire.FrameError, wire.Error{
+			Code:    wire.ErrCodeModeNotAllowed,
+			Message: fmt.Sprintf("mode %q is not served on a plugin socket; want control, attach or create", hello.Mode),
+		})
+		return
+	}
 	switch hello.Mode {
 	case wire.ModeControl, wire.ModeSession:
 		// Count only ModeControl clients that can render a question:
@@ -700,14 +752,20 @@ func (d *Daemon) serve(ctx context.Context, conn net.Conn) {
 		// connection is an agent's own events socket, and hivebar has
 		// no dialog for either — counting it would let a review park
 		// with nothing able to answer it (#457).
-		if hello.Mode == wire.ModeControl && canAnswer(hello) {
+		// A plugin is headless by definition, whatever it calls itself.
+		if hello.Mode == wire.ModeControl && tag == nil && canAnswer(hello) {
 			d.addAnswerer(1)
 			defer d.addAnswerer(-1)
 		}
-		d.serveControl(ctx, conn, hello)
+		d.serveControl(ctx, conn, hello, tag)
 	case wire.ModeAttach:
-		d.serveAttach(conn, hello.SessionID)
+		d.serveAttach(conn, hello.SessionID, tag)
 	case wire.ModeCreate:
+		// A create HELLO spawns a session exactly as CREATE_SESSION
+		// does, so a plugin pays the same for it.
+		if tag.wait(plugin.CostCreateMode) != nil {
+			return
+		}
 		spec := wire.CreateSpec{}
 		if hello.Create != nil {
 			spec = *hello.Create
@@ -717,7 +775,7 @@ func (d *Daemon) serve(ctx context.Context, conn net.Conn) {
 			_ = writeBounded(conn, writeTimeout(), wire.FrameError, wire.Error{Code: "create_failed", Message: err.Error()})
 			return
 		}
-		d.serveAttach(conn, e.ID)
+		d.serveAttach(conn, e.ID, tag)
 	case wire.ModeEvent:
 		d.serveEvent(conn)
 	default:
@@ -813,7 +871,7 @@ func (d *Daemon) serveEventsOnly(ctx context.Context, conn net.Conn) {
 			delete(d.clients, conn)
 			d.mu.Unlock()
 		}()
-		d.serveControl(ctx, conn, hello)
+		d.serveControl(ctx, conn, hello, nil)
 	default:
 		_ = writeBounded(conn, writeTimeout(), wire.FrameError, wire.Error{
 			Code:    wire.ErrCodeModeNotAllowed,
@@ -956,7 +1014,7 @@ func capBytes(s string, n int) string {
 }
 
 // serveControl handles a session-management connection.
-func (d *Daemon) serveControl(ctx context.Context, conn net.Conn, hello wire.Hello) {
+func (d *Daemon) serveControl(ctx context.Context, conn net.Conn, hello wire.Hello, tag *pluginTag) {
 	// A ModeSession connection comes from a program running inside a
 	// session, over the events socket. It gets the idea verbs and
 	// nothing else — see wire.ModeSession.
@@ -990,6 +1048,14 @@ func (d *Daemon) serveControl(ctx context.Context, conn net.Conn, hello wire.Hel
 	defer aUnsub()
 	cmdListener, cmdUnsub := d.commands.Subscribe()
 	defer cmdUnsub()
+	// A nil channel blocks forever in the select below, which is what
+	// "plugin support did not load" should look like to the fan-out.
+	var plListener chan wire.PluginEvent
+	if d.plugins != nil && !restricted {
+		var plUnsub func()
+		plListener, plUnsub = d.plugins.Subscribe()
+		defer plUnsub()
+	}
 
 	// Captured once, so a test shrinking the var cannot race this
 	// connection's writers.
@@ -1105,6 +1171,13 @@ func (d *Daemon) serveControl(ctx context.Context, conn net.Conn, hello wire.Hel
 				if err := writeJSON(wire.FrameClientBroadcast, cmd); err != nil {
 					return
 				}
+			case ev, ok := <-plListener:
+				if !ok {
+					return
+				}
+				if err := writeJSON(wire.FramePluginEvent, ev); err != nil {
+					return
+				}
 			case <-stop:
 				return
 			}
@@ -1189,6 +1262,11 @@ func (d *Daemon) serveControl(ctx context.Context, conn net.Conn, hello wire.Hel
 			if !errors.Is(err, io.EOF) {
 				log.Printf("hived: control read: %v", err)
 			}
+			return
+		}
+		// Throttle before dispatch, never under connMu: a plugin over
+		// budget is slowed on its own socket and blocks nobody else.
+		if tag.wait(plugin.FrameCost(ft)) != nil {
 			return
 		}
 		if d.handleControlFrame(ctx, ops, ft, payload) {
@@ -1748,6 +1826,8 @@ func (d *Daemon) handleControlFrame(ctx context.Context, ops controlOps, ft wire
 			return false
 		}
 		d.commands.Publish(cmd)
+	case wire.FrameListPlugins, wire.FrameInstallPlugin, wire.FrameSetPluginEnabled, wire.FrameRemovePlugin:
+		d.handlePluginFrame(ctx, ops, ft, payload)
 	default:
 		log.Printf("hived: unexpected control frame: %s", ft)
 	}
@@ -1755,7 +1835,7 @@ func (d *Daemon) handleControlFrame(ctx context.Context, ops controlOps, ft wire
 }
 
 // serveAttach handles a session-attached connection.
-func (d *Daemon) serveAttach(conn net.Conn, sessionID string) {
+func (d *Daemon) serveAttach(conn net.Conn, sessionID string, tag *pluginTag) {
 	entry := d.reg.Get(sessionID)
 	if entry == nil {
 		_ = writeBounded(conn, writeTimeout(), wire.FrameError, wire.Error{
@@ -1831,6 +1911,9 @@ func (d *Daemon) serveAttach(conn net.Conn, sessionID string) {
 			if !errors.Is(err, io.EOF) {
 				log.Printf("hived: attach read: %v", err)
 			}
+			return
+		}
+		if tag.wait(plugin.FrameCost(ft)) != nil {
 			return
 		}
 		switch ft {

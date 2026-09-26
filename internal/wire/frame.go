@@ -209,7 +209,60 @@ const (
 	FrameGetPlanReview      FrameType = 0x34 // C → S, JSON, control
 	FramePlanReview         FrameType = 0x35 // S → C, JSON, control
 	FrameResolvePlanReview  FrameType = 0x36 // C → S, JSON, control
+
+	// Plugins — user-installed programs hived supervises (see
+	// internal/plugin and docs/plugins.md). LIST_PLUGINS is answered with
+	// PLUGINS; every install, enable/disable, status change and removal
+	// fans out as PLUGIN_EVENT on every control connection, so each GUI
+	// window (each its own process) and every plugin see the same list.
+	// INSTALL_PLUGIN carries a client nonce the daemon echoes on the
+	// PLUGIN_EVENT (or ERROR) it produces, so only the window that asked
+	// for an install prompts for consent.
+	FrameListPlugins      FrameType = 0x37 // C → S, JSON, control
+	FramePlugins          FrameType = 0x38 // S → C, JSON, control
+	FrameInstallPlugin    FrameType = 0x39 // C → S, JSON, control
+	FrameSetPluginEnabled FrameType = 0x3a // C → S, JSON, control
+	FrameRemovePlugin     FrameType = 0x3b // C → S, JSON, control
+	FramePluginEvent      FrameType = 0x3c // S → C, JSON, control
 )
+
+// ControlRequestFrames lists every frame a control-mode client may send.
+// It is the parity contract for plugins: a plugin is a control client,
+// so this is exactly what it can do (docs/plugins.md tabulates it and a
+// test keeps the two in step). TestEveryFrameClassified fails when a new
+// FrameType constant is in none of these lists.
+var ControlRequestFrames = []FrameType{
+	FrameListSessions, FrameCreateSession, FrameKillSession, FrameUpdateSession,
+	FrameRestartSession, FrameRestoreSession, FrameListClosed,
+	FrameListProjects, FrameCreateProject, FrameKillProject, FrameUpdateProject,
+	FrameListWorktrees, FrameRemoveWorktree, FrameCreateWorktree,
+	FrameRenameWorktree, FrameDeleteBranch, FrameSetWorktreeLabel,
+	FrameListIdeas, FrameAddIdea, FrameUpdateIdea, FrameRemoveIdea,
+	FrameResolvePrompt, FrameResolveWorktreeChoice,
+	FrameGetActivity, FrameSearchTranscript, FrameGetTranscriptLines,
+	FrameGetPlanReview, FrameResolvePlanReview,
+	FrameClientCommand, FrameShutdown,
+	FrameListPlugins, FrameInstallPlugin, FrameSetPluginEnabled, FrameRemovePlugin,
+}
+
+// ControlEventFrames lists every frame the daemon sends on a control
+// connection, as a reply or as a broadcast.
+var ControlEventFrames = []FrameType{
+	FrameWelcome, FrameError,
+	FrameSessions, FrameSessionEvent, FrameProjects, FrameProjectEvent,
+	FrameWorktrees, FrameClosed, FrameSessionRestored, FrameClientBroadcast,
+	FrameIdeas, FrameIdeaEvent, FrameActivity,
+	FrameTranscriptMatches, FrameTranscriptLines, FramePlanReview,
+	FramePlugins, FramePluginEvent,
+}
+
+// NonControlFrames are the frames that never travel on a control
+// connection: the handshake, attach-mode traffic, and the event /
+// plan_review modes spoken by agents inside sessions.
+var NonControlFrames = []FrameType{
+	FrameHello, FrameData, FrameResize, FrameEvent, FrameRequestReplay,
+	FrameAgentEvent, FramePlanReviewRequest, FramePlanReviewDecision,
+}
 
 func (t FrameType) String() string {
 	switch t {
@@ -321,6 +374,18 @@ func (t FrameType) String() string {
 		return "GET_TRANSCRIPT_LINES"
 	case FrameTranscriptLines:
 		return "TRANSCRIPT_LINES"
+	case FrameListPlugins:
+		return "LIST_PLUGINS"
+	case FramePlugins:
+		return "PLUGINS"
+	case FrameInstallPlugin:
+		return "INSTALL_PLUGIN"
+	case FrameSetPluginEnabled:
+		return "SET_PLUGIN_ENABLED"
+	case FrameRemovePlugin:
+		return "REMOVE_PLUGIN"
+	case FramePluginEvent:
+		return "PLUGIN_EVENT"
 	default:
 		return fmt.Sprintf("UNKNOWN(0x%02x)", byte(t))
 	}

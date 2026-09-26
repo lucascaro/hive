@@ -138,6 +138,20 @@ denies the plan in the GUI.
   the model as a prompt injection and ignored. Attributing it to the
   user, then quoting each passage with its comment, got it applied.
 
+## Plugins are control clients (spec 460)
+
+The control plane's answer is not only for Hive's own windows. A
+headless plugin ([docs/plugins.md](../plugins.md)) is a program `hived`
+supervises that connects over the same wire protocol, in control mode,
+and so receives the same SESSION_EVENT / state / activity stream and
+may issue the same verbs a GUI does. What distinguishes it is the
+socket it dialed: each plugin run gets its own `<sock>.plugin-<hex>`
+listener, and every connection on it is tagged by the daemon — never
+by its HELLO — so a plugin is never counted as a client that can answer
+a worktree question or a plan review, and it spends from a per-plugin
+rate budget. That keeps "who can answer the user" (above) honest when
+the only thing connected is automation.
+
 ## Correlation with the agent's own identity
 
 Hive already pins Claude with `--session-id <hive-entry-id>`
