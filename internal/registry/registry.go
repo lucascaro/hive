@@ -493,6 +493,9 @@ func (r *Registry) setPhase(id, phase string) {
 // registry→session call.
 func (r *Registry) attachSessionHooks(e *Entry, sess *session.Session) {
 	e.state = agentstate.New(time.Now())
+	// A new process is a new screen history: nothing Laya was asked
+	// about the old one applies (spec 458).
+	e.laya = layaEntry{}
 	id := e.ID
 	sess.SetTitleHook(func(string) { r.noteTitleChange(id) })
 	sess.SetBellHook(func() { r.noteBell(id) })

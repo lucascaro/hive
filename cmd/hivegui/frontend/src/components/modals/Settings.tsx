@@ -139,12 +139,12 @@ export function isRemoteUrl(raw: string): boolean {
   } catch {
     return false;
   }
-  return !(
-    host === 'localhost' ||
-    host === '::1' ||
-    host === '[::1]' ||
-    /^127\./.test(host)
-  );
+  // An address, not a prefix: "127.0.0.1.example.com" is a hostname
+  // that resolves anywhere. URL normalises IPv4 forms (127.1, 0x7f.1)
+  // to dotted quads and brackets IPv6.
+  if (host === 'localhost' || host === '[::1]') return false;
+  const quad = host.match(/^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$/);
+  return !(quad && quad[1] === '127');
 }
 
 export function Settings({ root }: { root: HTMLElement | null }): ReactNode {
@@ -1062,7 +1062,7 @@ function SettingsDialog({ root }: { root: HTMLElement }): ReactNode {
               layaTest ? 'settings-hint settings-warning' : 'settings-hint'
             }
           >
-            {layaTest ? `Not reachable: ${layaTest}` : 'Connected.'}
+            {layaTest ? `Connection test failed: ${layaTest}` : 'Connected.'}
           </p>
         )}
       </Panel>

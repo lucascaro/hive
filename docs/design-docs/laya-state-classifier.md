@@ -27,11 +27,16 @@ All of these must hold, checked in `registry.classifyDueLocked`:
   live one, and the screen has not changed for `ClassifyQuietAfter`
   (1 s). A streaming reply changes the digest every tick and is never
   sent.
-- **Not already asked.** The digest differs from the last attempt's,
-  whatever that attempt returned. The one exception is a Laya `working`
-  on an unchanged screen, which is re-asked after `LayaRecheckAfter`
-  (30 s). The recheck clock is stamped on every attempt, so a static
-  screen costs one call per window.
+- **Not already answered.** The screen differs from the last one Laya
+  answered, or an agent event has arrived since that answer (the answer
+  predates the agent speaking, so once the agent is stale again the
+  screen is re-asked). A failed call does not count as an answer; the
+  backoff below paces those retries.
+- The one exception is a Laya `working` on an unchanged screen, which is
+  re-asked after `LayaRecheckAfter` (30 s). The recheck clock is stamped
+  on every attempt, so a static screen costs one call per window.
+- Selection reads only what the sampler already recorded. A screen is
+  rendered, and its live digest checked, only for a session that is due.
 
 ## Trust rules
 
@@ -58,19 +63,29 @@ All of these must hold, checked in `registry.classifyDueLocked`:
   heuristic tier's `working` (the screen moved).
 - On a Pi that is heartbeating, the tier is still trusted, so `Output`
   only stamps the time and the digest gate asks Laya again.
+- A bell on a Laya-sourced session takes the tier back from Laya: to the
+  extension when one is keyed on the session (as its last word, so a
+  heartbeat keeps the wait), otherwise to the heuristic tier. A bell is
+  the program asking, not a guess.
+- Events that move no state (ping, plan, plan item, subagent activity)
+  do not relabel a Laya state as the agent's.
 - Laya-produced waits and errors raise `needs_attention` and desktop
   notifications. Missing a blocked agent costs more than a false alert.
 
 ## The call
 
 - It is made with `r.mu` **released**: snapshot under the lock, ask, then
-  re-take the lock and re-check that the entry is the same, still alive,
-  and showing the same screen.
+  re-take the lock and re-check that the entry is the same, still running
+  the same process (a restart attaches a new one, and resets the attempt
+  record), and showing the same screen. The screen is checked live,
+  because the sampler's digest can be a tick behind.
 - Anything else that happened meanwhile (an agent event, a bell, the
   user answering) is caught by `Classify`'s own `Classifiable` check.
 - On any error the state is left as the heuristic tier had it, and the
   loop backs off: 2 s, doubling up to 60 s, reset on success. A dead
-  server costs one call per window, not one per session per cycle.
+  server costs one call per window, not one per session per cycle. A
+  screen that sat still through an outage is asked about once the server
+  answers again.
 - `Close` cancels the loop's context and waits for it before closing
   listeners, so an in-flight call can never broadcast into a closing
   registry.
@@ -106,7 +121,9 @@ the connection test, and it is unauthenticated on every server above.
 ## Privacy
 
 - Screen text goes only to the configured URL, which defaults to
-  localhost. Settings warns when the URL leaves the machine.
+  localhost. Settings warns when the host is not a loopback address.
+- Screens pass the same secret scrubber as the corpus
+  (`laya.Scrub`) before they are sent.
 - The API key comes from the daemon's `HIVE_LAYA_API_KEY` and is never
   written to disk by Hive.
 - Corpus captures (`HIVE_LAYA_CAPTURE_DIR`) are written as 0600 files in

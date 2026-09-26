@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/lucascaro/hive/internal/agentstate"
+	"github.com/lucascaro/hive/internal/session"
 	"github.com/lucascaro/hive/internal/wire"
 )
 
@@ -55,10 +56,9 @@ const classifyCaptureDirEnv = "HIVE_LAYA_CAPTURE_DIR"
 
 // layaEntry is one session's classifier bookkeeping. Guarded by r.mu.
 type layaEntry struct {
-	// tried is false until the first attempt; digest is the screen that
-	// attempt saw, success or failure. A screen is asked about once —
-	// a failed one waits for the screen to change rather than being
-	// retried every cycle.
+	// tried is false until Laya first answers; digest is the screen it
+	// answered about. A failed call records neither, so the screen is
+	// asked about again once backoff allows.
 	tried  bool
 	digest uint64
 	// checkedAt is the last attempt, whatever it returned. It is what
@@ -121,7 +121,11 @@ func (r *Registry) classifyStates(ctx context.Context) {
 }
 
 type classifyCandidate struct {
-	e      *Entry
+	e *Entry
+	// sess is the process the screen came from. A restart or revive
+	// attaches a new one to the same entry; an answer about the old
+	// screen must not land on it.
+	sess   *session.Session
 	agent  string
 	digest uint64
 	text   string
@@ -183,8 +187,14 @@ func (r *Registry) classifyCycle(ctx context.Context, now time.Time) {
 		}
 
 		r.mu.Lock()
-		c.e.laya = layaEntry{tried: true, digest: c.digest, checkedAt: now}
 		if err != nil {
+			// Not recorded as tried: backoff already paces the retries,
+			// and a screen that sat still while the server was briefly
+			// down is exactly the one still worth asking about. Stamped
+			// as checked, so the working recheck does not fire early.
+			if c.e.sess == c.sess {
+				c.e.laya.checkedAt = now
+			}
 			r.classifier.backoff = min(max(2*r.classifier.backoff, classifyBackoffMin), classifyBackoffMax)
 			r.classifier.backoffUntil = now.Add(r.classifier.backoff)
 			r.mu.Unlock()
@@ -195,6 +205,9 @@ func (r *Registry) classifyCycle(ctx context.Context, now time.Time) {
 		}
 		r.classifier.backoff = 0
 		r.classifier.backoffUntil = time.Time{}
+		if c.e.sess == c.sess {
+			c.e.laya = layaEntry{tried: true, digest: c.digest, checkedAt: now}
+		}
 		r.applyClassificationLocked(c, st, now)
 		r.mu.Unlock()
 	}
@@ -207,17 +220,17 @@ func classifyDueLocked(e *Entry, now time.Time) (classifyCandidate, bool) {
 	if !m.Classifiable(now) {
 		return classifyCandidate{}, false
 	}
-	// Only a settled screen: the sampler records every digest change,
-	// so a digest the sampler has not seen yet is a screen still moving.
-	d := e.sess.ScreenDigest()
-	if d != e.screenDigest {
-		return classifyCandidate{}, false
-	}
+	// Selection runs on what the sampler already recorded — no screen is
+	// rendered under the lock for a session that is not due.
+	d := e.screenDigest
 	quiet := m.QuietFor(now)
 	snap := m.Snapshot()
 	var due bool
 	switch {
-	case !e.laya.tried || d != e.laya.digest:
+	// A new screen, never asked about, or asked about before an agent
+	// event that has since gone stale: the earlier answer predates the
+	// agent speaking, so the screen is due again.
+	case !e.laya.tried || d != e.laya.digest || m.LastEventAt().After(e.laya.checkedAt):
 		due = quiet >= agentstate.ClassifyQuietAfter
 	case snap.Source == wire.StateSourceLaya && snap.State == wire.StateWorking:
 		due = now.Sub(e.laya.checkedAt) >= agentstate.LayaRecheckAfter
@@ -225,17 +238,24 @@ func classifyDueLocked(e *Entry, now time.Time) (classifyCandidate, bool) {
 	if !due {
 		return classifyCandidate{}, false
 	}
-	return classifyCandidate{e: e, agent: e.Agent, digest: d, text: e.sess.ScreenText(), quiet: quiet}, true
+	// Only a settled screen: a live digest the sampler has not seen yet
+	// is a screen still moving.
+	if e.sess.ScreenDigest() != d {
+		return classifyCandidate{}, false
+	}
+	return classifyCandidate{e: e, sess: e.sess, agent: e.Agent, digest: d, text: e.sess.ScreenText(), quiet: quiet}, true
 }
 
 // applyClassificationLocked folds one answer in, provided the session is
-// still the one that was asked about: same entry, still alive, screen
-// unchanged. Anything else that happened meanwhile — an agent event, a
+// still the one that was asked about: same entry, same process, and the
+// same screen — checked live, not against the sampler's last digest,
+// which can be up to a tick behind. Anything else that happened meanwhile — an agent event, a
 // bell, the user answering a wait — is caught by Classify's own
 // Classifiable check.
 func (r *Registry) applyClassificationLocked(c classifyCandidate, st agentstate.State, now time.Time) {
 	e := c.e
-	if r.entries[e.ID] != e || e.sess == nil || e.state == nil || e.screenDigest != c.digest {
+	if r.entries[e.ID] != e || e.sess == nil || e.sess != c.sess || e.state == nil ||
+		e.sess.ScreenDigest() != c.digest {
 		return
 	}
 	prev := e.state.Snapshot()

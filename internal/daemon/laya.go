@@ -65,6 +65,9 @@ func layaClassifier() registry.Classifier {
 			BaseURL: s.LayaEndpoint(),
 			Model:   s.LayaModel,
 			APIKey:  os.Getenv(layaAPIKeyEnv),
-		}, screen)
+			// Defence in depth: the server is one the user chose, but a
+			// screen can show anything a program printed. Redacting the
+			// shapes of secrets costs the classifier nothing it needs.
+		}, laya.Scrub(screen))
 	}
 }

@@ -511,11 +511,21 @@ describe('settings: Laya state detection (spec 458)', () => {
       'http://127.0.0.1:8000',
       'http://localhost:8000',
       'http://[::1]:8000',
+      'http://127.1:8000',
       '',
     ]) {
       fireEvent.change(url(), { target: { value: local } });
       await flush();
       expect(warning(), local).toBeNull();
+    }
+    // Review finding (PR #464): a hostname starting "127." is not local.
+    for (const remote of [
+      'http://127.0.0.1.example.com:8000',
+      'http://localhost.evil.test:8000',
+    ]) {
+      fireEvent.change(url(), { target: { value: remote } });
+      await flush();
+      expect(warning(), remote).not.toBeNull();
     }
     fireEvent.change(url(), { target: { value: 'http://10.0.0.5:8000' } });
     await flush();
@@ -531,7 +541,7 @@ describe('settings: Laya state detection (spec 458)', () => {
     await flush();
     expect(testLayaConnection).toHaveBeenCalledWith('http://127.0.0.1:9');
     expect(el('settings-laya-test-result').textContent).toBe(
-      'Not reachable: connection refused',
+      'Connection test failed: connection refused',
     );
     click(el('settings-laya-test'));
     await flush();

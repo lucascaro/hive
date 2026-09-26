@@ -329,9 +329,23 @@ func (m *Machine) Output(now time.Time) bool {
 // The tier is left alone: a bell says nothing about who owns the
 // session, and demoting a hooked session over one would hand its next
 // redraw to the heuristic tier.
+//
+// Except from Laya: a bell is the program itself asking, not a guess,
+// so its wait must not stay labelled as one Laya may revise or Output
+// may clear. It goes to the extension tier when one is keyed on this
+// session — as its last say, which is exactly what extState records, so
+// a heartbeat restores the wait instead of the stale report — and to
+// the heuristic tier otherwise.
 func (m *Machine) Bell(now time.Time) bool {
 	if m.state != wire.StateIdle && m.state != wire.StateWorking {
 		return false
+	}
+	if m.source == wire.StateSourceLaya {
+		if m.extInstance != "" {
+			m.source = wire.StateSourceExtension
+		} else {
+			m.source = wire.StateSourceHeuristic
+		}
 	}
 	m.state = wire.StateWaitingInput
 	m.noteExtState()
@@ -524,7 +538,12 @@ func (m *Machine) Apply(ev Event) bool {
 	// clock below is refreshed too); acceptance waits for the exit check.
 	m.reportedAt = now
 
-	m.source = ev.Source
+	// An event that moves no state says nothing about the state Laya
+	// classified, so it must not relabel Laya's guess as the agent's
+	// report: that would make a Laya wait sticky, and unrevisable.
+	if m.source != wire.StateSourceLaya || !stateless(ev) {
+		m.source = ev.Source
+	}
 	if sub {
 		// Liveness only, never backwards: a subagent still reporting
 		// keeps the hook tier trusted after the parent's turn ended.
@@ -703,6 +722,22 @@ func (m *Machine) Classify(s State, now time.Time) bool {
 	m.source = wire.StateSourceLaya
 	return true
 }
+
+// stateless reports whether ev is one Apply never moves State for.
+func stateless(ev Event) bool {
+	if ev.AgentID != "" {
+		return true
+	}
+	switch ev.Kind {
+	case KindPing, KindPlan, KindPlanItem:
+		return true
+	}
+	return false
+}
+
+// LastEventAt is the daemon-clock time of the last state-bearing agent
+// event (zero when none). See lastEventAt.
+func (m *Machine) LastEventAt() time.Time { return m.lastEventAt }
 
 // QuietFor is how long the screen has gone unchanged, as last reported
 // through Output.

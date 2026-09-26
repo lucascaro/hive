@@ -241,16 +241,28 @@ func TestClassifierErrorKeepsHeuristic(t *testing.T) {
 	}
 }
 
-func TestClassifierSameScreenNotRetriedAfterError(t *testing.T) {
+// Review finding (PR #464): a screen that sat still while the server was
+// briefly down must still be classified once it is back — retried only
+// at backoff edges, never every cycle.
+func TestClassifierRetriesStaticScreenAfterBackoff(t *testing.T) {
 	r, e, sess, f := classifierRig(t, "")
-	f.set("", errors.New("boom"))
+	f.set("", errors.New("down"))
 	base := time.Now()
-	settle(t, r, e, sess, "static", base)
+	settle(t, r, e, sess, "Continue? [y/N]", base)
 	for at := time.Second; at <= 5*time.Minute; at += classifyInterval {
 		cycle(r, base.Add(at))
 	}
-	if got := f.count(); got != 1 {
-		t.Errorf("calls = %d for one failed static screen, want 1", got)
+	// Backoff 2s doubling to 60s over 5 minutes: 1s, 3s, 7s, 15s, 31s,
+	// 63s, then every 60s — about 10 calls, against 600 cycles.
+	if got := f.count(); got < 5 || got > 12 {
+		t.Fatalf("calls = %d for a failing static screen over 5m, want ~10 (backoff edges only)", got)
+	}
+	f.set(wire.StateWaitingInput, nil)
+	for at := 5*time.Minute + classifyInterval; at <= 7*time.Minute; at += classifyInterval {
+		cycle(r, base.Add(at))
+	}
+	if st, src := stateOf(r, e); st != wire.StateWaitingInput || src != wire.StateSourceLaya {
+		t.Errorf("state = %q/%q once the server recovered, want the static screen classified", st, src)
 	}
 }
 
@@ -462,6 +474,84 @@ func TestLayaWaitDoesNotHideNextScreen(t *testing.T) {
 	cycle(r, base.Add(3*time.Second))
 	if st, src := stateOf(r, e); st != wire.StateWaitingPermission || src != wire.StateSourceLaya {
 		t.Errorf("state = %q/%q, want the new screen classified: waiting_permission/laya", st, src)
+	}
+}
+
+// Review finding (PR #464): the apply check compared the sampler's
+// digest, which lags the screen by up to a tick. A screen changed
+// mid-call but not yet sampled must still drop the answer.
+func TestClassifierDropsResultIfScreenChangedUnsampled(t *testing.T) {
+	r, e, sess, f := classifierRig(t, wire.StateWaitingInput)
+	f.block = make(chan struct{})
+	base := time.Now()
+	settle(t, r, e, sess, "Proceed?", base)
+	done := make(chan struct{})
+	go func() { cycle(r, base.Add(time.Second)); close(done) }()
+	waitCalls(t, f, 1)
+	paint(t, e, sess, " moved on") // no sample: e.screenDigest is stale
+	close(f.block)
+	<-done
+	if _, src := stateOf(r, e); src == wire.StateSourceLaya {
+		t.Error("an answer about a screen that changed mid-call was applied")
+	}
+}
+
+// Review finding (PR #464): a restart attaches a new process to the same
+// entry. An answer in flight for the old one must not land on it, and
+// the old attempt record must not suppress asking about the new screen.
+func TestClassifierRestartMidCall(t *testing.T) {
+	r, e, sess, f := classifierRig(t, wire.StateWaitingInput)
+	f.block = make(chan struct{})
+	base := time.Now()
+	settle(t, r, e, sess, "Proceed?", base)
+	done := make(chan struct{})
+	go func() { cycle(r, base.Add(time.Second)); close(done) }()
+	waitCalls(t, f, 1)
+	other, otherSess := liveSession(t, r, wire.CreateSpec{Name: "other"})
+	_ = other
+	r.mu.Lock()
+	r.attachSessionHooks(e, otherSess)
+	e.sess = otherSess
+	r.mu.Unlock()
+	close(f.block)
+	<-done
+	if _, src := stateOf(r, e); src == wire.StateSourceLaya {
+		t.Error("an answer for the old process landed on the restarted session")
+	}
+	r.mu.Lock()
+	tried := e.laya.tried
+	r.mu.Unlock()
+	if tried {
+		t.Error("the old process's attempt was recorded on the new one")
+	}
+}
+
+// Review finding (PR #464): Laya classified a screen, then a hook
+// reported and fell silent on the same screen. The screen must be asked
+// about again once the hook is stale — the earlier answer predates it.
+func TestClassifierReasksAfterHookSpokeAndWentSilent(t *testing.T) {
+	r, e, sess, f := classifierRig(t, wire.StateIdle)
+	base := time.Now()
+	settle(t, r, e, sess, "Which option? 1/2", base)
+	cycle(r, base.Add(time.Second))
+	if f.count() != 1 {
+		t.Fatal("precondition: first classification")
+	}
+	r.mu.Lock()
+	r.entries[e.ID].machine().Apply(agentstate.Event{Kind: agentstate.KindPrompt,
+		Source: wire.StateSourceHook, At: base.Add(2 * time.Second), Now: base.Add(2 * time.Second)})
+	r.mu.Unlock()
+	f.set(wire.StateWaitingInput, nil)
+	cycle(r, base.Add(10*time.Second))
+	if f.count() != 1 {
+		t.Fatal("asked while the hook was still fresh")
+	}
+	cycle(r, base.Add(2*time.Second+agentstate.HookStaleAfter+time.Second))
+	if f.count() != 2 {
+		t.Fatalf("calls = %d, want the unchanged screen re-asked once the hook went stale", f.count())
+	}
+	if st, src := stateOf(r, e); st != wire.StateWaitingInput || src != wire.StateSourceLaya {
+		t.Errorf("state = %q/%q, want waiting_input/laya", st, src)
 	}
 }
 

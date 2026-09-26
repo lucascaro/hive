@@ -320,3 +320,7 @@ Deferred: making `trusted()` return false for laya. It conflicts with fix 2 abov
 ## Open questions
 
 _None blocking — see the plan's Open questions / risks for accepted risks._
+
+## PR convergence ledger
+
+- **2026-09-26 iter 1** — verdict: COMMENT; mergeable: MERGEABLE; findings_hash: 12ba512e2cdcde9f7b214e5fff166ea4c15d93f31707eb9d4e1ab488809bf6fb; threads_open: 8; action: escalated:risky-fix-needs-decision; head_sha: d31cd770.

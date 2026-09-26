@@ -1,6 +1,8 @@
 package main
 
 import (
+	"encoding/json"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -9,16 +11,39 @@ import (
 
 func TestLayaConnectionOK(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Path != "/health" {
-			t.Errorf("path = %q, want /health", r.URL.Path)
-		}
-		if r.Header.Get("Authorization") != "" {
-			t.Error("the connection test sent credentials")
+		switch r.URL.Path {
+		case "/health":
+		case "/v1/systemone":
+			var body struct {
+				State string `json:"state"`
+			}
+			_ = json.NewDecoder(r.Body).Decode(&body)
+			if body.State != "$" {
+				t.Errorf("probe sent state %q, want the placeholder", body.State)
+			}
+			fmt.Fprint(w, `{"answers":{"session_state":{"choice":"s2"}}}`)
+		default:
+			t.Errorf("unexpected path %q", r.URL.Path)
 		}
 	}))
 	defer srv.Close()
 	if got := (&App{}).TestLayaConnection(srv.URL + "/"); got != "" {
-		t.Errorf("TestLayaConnection = %q, want empty for a healthy server", got)
+		t.Errorf("TestLayaConnection = %q, want empty for a working Laya server", got)
+	}
+}
+
+// Review finding (PR #464): any 200 on /health read as connected, even
+// from a server that cannot classify.
+func TestLayaConnectionHealthyButNotLaya(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/health" {
+			http.NotFound(w, r)
+		}
+	}))
+	defer srv.Close()
+	got := (&App{}).TestLayaConnection(srv.URL)
+	if !strings.Contains(got, "could not classify") || !strings.Contains(got, "404") {
+		t.Errorf("TestLayaConnection = %q, want it to say the server cannot classify (404)", got)
 	}
 }
 

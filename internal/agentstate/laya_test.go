@@ -264,3 +264,69 @@ func TestLayaRevisesItsOwnWait(t *testing.T) {
 		t.Errorf("snapshot = %+v, want laya working", got)
 	}
 }
+
+// Review finding (PR #464): a bell on a Laya-sourced session is the
+// program asking, not a guess — it must not be revisable or cleared by
+// the next redraw.
+func TestBellTakesTierBackFromLaya(t *testing.T) {
+	m := New(t0)
+	m.Classify(wire.StateIdle, t0)
+	m.Bell(t0.Add(time.Second))
+	if got := m.Snapshot(); got.State != wire.StateWaitingInput || got.Source != wire.StateSourceHeuristic {
+		t.Fatalf("snapshot = %+v, want waiting_input on the heuristic tier", got)
+	}
+	if m.Output(t0.Add(2 * time.Second)) {
+		t.Error("output cleared a bell's wait")
+	}
+	if m.Classify(wire.StateWorking, t0.Add(3*time.Second)) {
+		t.Error("Laya revised a bell's wait")
+	}
+}
+
+// On a heartbeating Pi, the bell becomes the extension's last say, so
+// the next heartbeat keeps the wait rather than restoring the stale
+// report Laya had corrected.
+func TestBellOnLayaPiSurvivesHeartbeat(t *testing.T) {
+	m, ev, now := piStuckWorking(t)
+	m.Classify(wire.StateIdle, now)
+	m.Bell(now.Add(time.Second))
+	hb := ev
+	hb.Now = now.Add(2 * time.Second)
+	deliver(m, hb)
+	if got := m.Snapshot(); got.State != wire.StateWaitingInput || got.Source != wire.StateSourceExtension {
+		t.Errorf("snapshot = %+v, want the bell's wait kept on the extension tier", got)
+	}
+}
+
+// Review finding (PR #464): a ping after a classification relabelled
+// Laya's guess as the agent's report, pinning a Laya wait.
+func TestStatelessEventsKeepLayaLabel(t *testing.T) {
+	for name, ev := range map[string]Event{
+		"ping":     {Kind: KindPing, Source: wire.StateSourceHook},
+		"plan":     {Kind: KindPlan, Source: wire.StateSourceHook},
+		"subagent": {Kind: KindToolStart, Source: wire.StateSourceHook, AgentID: "sub-1", CallID: "c1", Tool: "Bash"},
+	} {
+		m := New(t0)
+		m.Classify(wire.StateWaitingInput, t0)
+		ev.At, ev.Now = t0.Add(time.Second), t0.Add(time.Second)
+		m.Apply(ev)
+		if got := m.Snapshot(); got.Source != wire.StateSourceLaya {
+			t.Errorf("%s: source = %q, want laya kept", name, got.Source)
+		}
+		// Still Laya's to revise once no tier is speaking — at once for a
+		// ping (no state-bearing event), after HookStaleAfter for real
+		// activity like a plan or a subagent.
+		if !m.Classify(wire.StateWorking, t0.Add(HookStaleAfter+2*time.Second)) {
+			t.Errorf("%s: the Laya wait became unrevisable", name)
+		}
+	}
+}
+
+func TestStateBearingEventTakesOverFromLaya(t *testing.T) {
+	m := New(t0)
+	m.Classify(wire.StateWaitingInput, t0)
+	m.Apply(hookEvent(KindPrompt, t0.Add(time.Second), "go"))
+	if got := m.Snapshot(); got.Source != wire.StateSourceHook || got.State != wire.StateWorking {
+		t.Errorf("snapshot = %+v, want the hook's working", got)
+	}
+}

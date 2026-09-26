@@ -594,7 +594,7 @@ test('Laya state detection: toggle, URL warning, connection test', async ({
   await url.fill('http://down.local:8000');
   await page.locator('#settings-laya-test').click();
   await expect(page.locator('#settings-laya-test-result')).toHaveText(
-    'Not reachable: connection refused',
+    'Connection test failed: connection refused',
   );
   await url.fill('http://127.0.0.1:8000');
   await expect(page.locator('#settings-laya-remote-warning')).toHaveCount(0);

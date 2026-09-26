@@ -2,12 +2,14 @@ package daemon
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/lucascaro/hive/internal/agent"
@@ -61,5 +63,29 @@ func TestLayaClassifierBrokenSettingsIsOff(t *testing.T) {
 	}
 	if _, err := layaClassifier()(context.Background(), "x"); !errors.Is(err, registry.ErrClassifierOff) {
 		t.Errorf("err = %v, want ErrClassifierOff for an unparseable file", err)
+	}
+}
+
+// Review finding (PR #464): live screens went to the server unscrubbed.
+func TestLayaClassifierScrubsScreen(t *testing.T) {
+	var sent string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var body struct {
+			State string `json:"state"`
+		}
+		_ = json.NewDecoder(r.Body).Decode(&body)
+		sent = body.State
+		fmt.Fprint(w, `{"answers":{"session_state":{"choice":"s2"}}}`)
+	}))
+	defer srv.Close()
+	s := agent.DefaultSettings()
+	s.LayaEnabled, s.LayaURL = true, srv.URL
+	layaSettings(t, s)
+	const secret = "sk-ant-api03-abcdefghijklmnopqrstuv"
+	if _, err := layaClassifier()(context.Background(), "$ export KEY="+secret+"\n$ "); err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(sent, secret) || !strings.Contains(sent, "<redacted") {
+		t.Errorf("state sent = %q, want the key redacted", sent)
 	}
 }

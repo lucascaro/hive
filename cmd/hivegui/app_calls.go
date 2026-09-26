@@ -22,6 +22,7 @@ import (
 	wruntime "github.com/wailsapp/wails/v2/pkg/runtime"
 
 	"github.com/lucascaro/hive/internal/agent"
+	"github.com/lucascaro/hive/internal/laya"
 	"github.com/lucascaro/hive/internal/registry"
 	"github.com/lucascaro/hive/internal/wire"
 	"github.com/lucascaro/hive/internal/worktree"
@@ -167,10 +168,16 @@ func (a *App) SaveAgentSettings(s AgentSettings) error {
 // hold the button for long.
 const layaHealthTimeout = 2 * time.Second
 
-// TestLayaConnection GETs <endpoint>/health and returns "" when the
-// server answers 200, or a one-line reason otherwise. An empty endpoint tests the
-// default endpoint. It sends no screen text and no API key: /health is
-// unauthenticated on both Laya's own server and oMLX.
+// layaProbeTimeout bounds the test classification, which on a cold
+// server includes loading the checkpoint.
+const layaProbeTimeout = 20 * time.Second
+
+// TestLayaConnection checks that endpoint can actually classify, and
+// returns "" when it can or a one-line reason otherwise. /health alone
+// is not proof: any service answers 200 there, so it then asks one
+// real /v1/systemone question — about a one-character placeholder
+// screen, never a session's text. An empty endpoint tests the default.
+// The key, if any, is HIVE_LAYA_API_KEY, as for the daemon.
 func (a *App) TestLayaConnection(endpoint string) string {
 	base := agent.Settings{LayaURL: endpoint}.LayaEndpoint()
 	ctx, cancel := context.WithTimeout(context.Background(), layaHealthTimeout)
@@ -183,9 +190,18 @@ func (a *App) TestLayaConnection(endpoint string) string {
 	if err != nil {
 		return err.Error()
 	}
-	defer resp.Body.Close()
+	resp.Body.Close()
 	if resp.StatusCode != http.StatusOK {
 		return fmt.Sprintf("%s/health answered %s", base, resp.Status)
+	}
+	// A cold server loads its checkpoint on the first question, so this
+	// one gets longer than the health check.
+	qctx, qcancel := context.WithTimeout(context.Background(), layaProbeTimeout)
+	defer qcancel()
+	if _, err := laya.Classify(qctx, http.DefaultClient, laya.Request{
+		BaseURL: base, APIKey: os.Getenv("HIVE_LAYA_API_KEY"),
+	}, "$"); err != nil {
+		return "reachable, but it could not classify: " + err.Error()
 	}
 	return ""
 }
