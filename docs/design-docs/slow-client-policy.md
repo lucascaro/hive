@@ -35,8 +35,12 @@ rare bug.
     `Session.mu`, so the atomic-replay ordering holds.
   - The queue is capped at `attachBacklogLimit` (8 MiB) plus whatever replay
     is still queued. A replay can be as large as the scrollback ring and is
-    always accepted; its allowance shrinks as it drains. Live output past the
-    cap disconnects the client.
+    always accepted when no other replay is queued; its allowance shrinks as
+    it drains.
+  - A replay requested while another is still queued gets no allowance of its
+    own and counts against the backlog, so `REQUEST_REPLAY` in a loop without
+    reading hangs the client up instead of queuing a ring per request.
+  - Live output past the cap also disconnects the client.
   - `Close()` is graceful and drains the queue, so the last output before a
     PTY exits still arrives. `stop()` hangs up immediately.
     `defer sink.stop()` in `serveAttach` means the writer never outlives the
@@ -89,8 +93,17 @@ healthy comes near either one.
   - The timer and the alive event share `reattach()`. Whichever runs second
     finds the tile attached or attaching and stops.
   - `ensureAttached` shares one in-flight dial and reports its outcome
-    (`attached` / `deferred` / `failed`). Only `failed` re-arms the timer;
-    `deferred` belongs to the setPhase or resize re-entry.
+    (`attached` / `deferred` / `failed`). `reattach()` joins a dial already
+    in flight rather than skipping it, and re-arms the timer on any `failed`,
+    whichever path started the dial. `deferred` belongs to the setPhase or
+    resize re-entry.
+  - A non-quiet caller (the user clicking the tile) that joins a quiet
+    backoff dial paints that dial's failure itself.
+  - The Go bridge starts reading an attach before `OpenSession` resolves, so
+    a hang-up right after WELCOME can deliver `pty:disconnect` while the dial
+    is still pending. Every disconnect bumps `_attachEpoch`, and a dial that
+    resolves into a changed epoch reports `failed` instead of marking the
+    tile attached on a dead connection.
   - `needsReattach` is cleared on a successful dial. A failed dial therefore
     leaves the flag set for the next attempt, and an `updated` event
     arriving mid-attach can't wipe the terminal.
