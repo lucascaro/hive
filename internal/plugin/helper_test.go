@@ -40,7 +40,6 @@ func TestHelperPlugin(t *testing.T) {
 	if mode == "child" {
 		pidFile = "child.pid"
 	}
-	_ = os.WriteFile(filepath.Join(data, pidFile), []byte(strconv.Itoa(os.Getpid())), 0o600)
 	env, _ := json.Marshal(map[string]string{
 		"HIVE_SOCKET":          os.Getenv("HIVE_SOCKET"),
 		"HIVE_PLUGIN_ID":       os.Getenv("HIVE_PLUGIN_ID"),
@@ -52,6 +51,9 @@ func TestHelperPlugin(t *testing.T) {
 	if mode != "child" {
 		_ = os.WriteFile(filepath.Join(data, "env.json"), env, 0o600)
 	}
+	// The pid file is the readiness signal readPid waits on, so it goes
+	// last: a test that sees it can read env.json whole.
+	_ = os.WriteFile(filepath.Join(data, pidFile), []byte(strconv.Itoa(os.Getpid())), 0o600)
 	fmt.Println("helper plugin up:", mode)
 	switch mode {
 	case "crash":
