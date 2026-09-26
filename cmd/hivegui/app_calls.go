@@ -182,13 +182,14 @@ const layaProbeTimeout = 20 * time.Second
 // The key, if any, is HIVE_LAYA_API_KEY, as for the daemon.
 func (a *App) TestLayaConnection(endpoint, model string) string {
 	base := agent.Settings{LayaURL: endpoint}.LayaEndpoint()
+	client := laya.NewClient()
 	ctx, cancel := context.WithTimeout(context.Background(), layaHealthTimeout)
 	defer cancel()
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, strings.TrimRight(base, "/")+"/health", nil)
 	if err != nil {
 		return err.Error()
 	}
-	resp, err := http.DefaultClient.Do(req)
+	resp, err := client.Do(req)
 	if err != nil {
 		return err.Error()
 	}
@@ -200,7 +201,7 @@ func (a *App) TestLayaConnection(endpoint, model string) string {
 	// one gets longer than the health check.
 	qctx, qcancel := context.WithTimeout(context.Background(), layaProbeTimeout)
 	defer qcancel()
-	if _, err := laya.Classify(qctx, http.DefaultClient, laya.Request{
+	if _, err := laya.Classify(qctx, client, laya.Request{
 		BaseURL: base, Model: strings.TrimSpace(model), APIKey: os.Getenv("HIVE_LAYA_API_KEY"),
 	}, "$"); err != nil {
 		return "reachable, but it could not classify: " + err.Error()

@@ -164,3 +164,25 @@ func TestTailKeepsBottom(t *testing.T) {
 		t.Errorf("Tail of an over-long line = %q, want its end", got)
 	}
 }
+
+// Review finding (PR #464): Go's default client re-sends a POST body on
+// a 307/308, to any host. Screen text must reach only the configured URL.
+func TestClassifyDoesNotFollowRedirects(t *testing.T) {
+	var leaked bool
+	elsewhere := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		leaked = true
+		fmt.Fprint(w, `{"answers":{"session_state":{"choice":"s2"}}}`)
+	}))
+	defer elsewhere.Close()
+	configured := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		http.Redirect(w, r, elsewhere.URL+r.URL.Path, http.StatusTemporaryRedirect)
+	}))
+	defer configured.Close()
+	_, err := Classify(context.Background(), NewClient(), Request{BaseURL: configured.URL}, "secret screen")
+	if leaked {
+		t.Fatal("the screen was re-sent to the redirect target")
+	}
+	if err == nil || !strings.Contains(err.Error(), "307") {
+		t.Errorf("err = %v, want the redirect reported as a 307 failure", err)
+	}
+}

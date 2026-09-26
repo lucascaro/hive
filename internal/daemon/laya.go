@@ -2,7 +2,6 @@ package daemon
 
 import (
 	"context"
-	"net/http"
 	"os"
 	"sync"
 	"time"
@@ -33,7 +32,7 @@ const (
 // Laya client, and the per-call deadline. The registry decides when to
 // call it and never learns about HTTP or keys.
 func layaClassifier() registry.Classifier {
-	client := &http.Client{}
+	client := laya.NewClient()
 	var (
 		mu     sync.Mutex
 		cached agent.Settings

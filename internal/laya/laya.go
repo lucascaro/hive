@@ -49,6 +49,17 @@ var options = []struct {
 	{"s5", "the last step failed: an error message, a stack trace, an API or network error, or a failure summary at the end", wire.StateError},
 }
 
+// NewClient is the HTTP client every Laya call must use. It never
+// follows a redirect: Go's default client re-sends a POST body on a 307
+// or 308, to any host, so a redirect would carry screen text somewhere
+// other than the URL the user configured. A redirect is reported as the
+// non-200 it is.
+func NewClient() *http.Client {
+	return &http.Client{CheckRedirect: func(*http.Request, []*http.Request) error {
+		return http.ErrUseLastResponse
+	}}
+}
+
 // Request is one classification call's settings.
 type Request struct {
 	// BaseURL is the server root; /v1/systemone is appended.

@@ -28,9 +28,10 @@ All of these must hold, checked in `registry.classifyDueLocked`:
   (1 s). A streaming reply changes the digest every tick and is never
   sent.
 - **Not already answered.** The screen differs from the last one Laya
-  answered, or an agent event has arrived since that answer (the answer
-  predates the agent speaking, so once the agent is stale again the
-  screen is re-asked). A failed call does not count as an answer; the
+  answered, or a state-bearing agent event has arrived since that answer
+  (ping, `Replay`, plan, plan item and subagent activity do not count;
+  the answer predates the agent speaking, so once the agent is stale
+  again the screen is re-asked). A failed call does not count as an answer; the
   backoff below paces those retries.
 - The one exception is a Laya `working` on an unchanged screen, which is
   re-asked after `LayaRecheckAfter` (30 s). The recheck clock is stamped
@@ -123,7 +124,14 @@ the connection test, and it is unauthenticated on every server above.
 - Screen text goes only to the configured URL, which defaults to
   localhost. Settings warns when the host is not a loopback address.
 - Screens pass the same secret scrubber as the corpus
-  (`laya.Scrub`) before they are sent.
+  (`laya.Scrub`) before they are sent. Scrubbing is defence in depth,
+  not the guarantee.
+- The guarantee that text reaches only the configured URL comes from
+  `laya.NewClient`, which never follows a redirect. Go's default client
+  would re-send the POST body on a 307 or 308 to any host. A redirect
+  fails the call instead.
+- HTTP and HTTPS are both accepted. A local server is plain HTTP, and
+  a remote URL gets the Settings warning.
 - The API key comes from the daemon's `HIVE_LAYA_API_KEY` and is never
   written to disk by Hive.
 - Corpus captures (`HIVE_LAYA_CAPTURE_DIR`) are written as 0600 files in
