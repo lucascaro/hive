@@ -206,6 +206,33 @@ describe('Settings → Plugins', () => {
     );
   });
 
+  it('an enable that fails after install is not reported as an install failure', async () => {
+    bridge.SetPluginEnabled.mockRejectedValueOnce(new Error('not connected'));
+    const { container, onError } = mount();
+    await installFrom(container, '/src/webhook');
+    expect(onError).toHaveBeenLastCalledWith(
+      'could not enable Webhook: not connected',
+    );
+  });
+
+  it('a remove that fails after a declined install names the remove', async () => {
+    bridge.Confirm.mockResolvedValue(false);
+    bridge.RemovePlugin.mockRejectedValueOnce(new Error('not connected'));
+    const { container, onError } = mount();
+    await installFrom(container, '/src/webhook');
+    expect(onError).toHaveBeenLastCalledWith(
+      'could not remove Webhook: not connected',
+    );
+  });
+
+  it('the list row flattens invisible characters in the source', () => {
+    setPlugins([plugin({ source: 'https://evil.example/‮git.moc' })]);
+    const { container } = mount();
+    const src = container.querySelector('.settings-plugin-source')!;
+    expect(src.textContent).toBe('https://evil.example/ git.moc');
+    expect(src.getAttribute('title')).toBe('https://evil.example/ git.moc');
+  });
+
   it('added event not initiated by this window shows no Confirm', async () => {
     const { container } = mount();
     act(() => {

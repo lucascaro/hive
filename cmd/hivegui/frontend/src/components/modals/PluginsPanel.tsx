@@ -126,19 +126,24 @@ export function PluginsPanel({
     if (!src || busy) return;
     setBusy(true);
     onError('');
+    // Names the step that failed: once installPlugin resolves the plugin
+    // is installed (and listed), so a later failure is not an install one.
+    let failed = 'plugin install failed';
     try {
       const p = await installPlugin(src);
       // Past this point the plugin is installed and disabled. The prompt
       // is a native dialog, so it still makes sense if Settings closed
       // while the install ran; only the React state needs the guard.
       if (await Confirm(trustTitle(p), trustMessage(p, CANCEL_REMOVES))) {
+        failed = `could not enable ${oneLine(p.name)}`;
         await SetPluginEnabled(p.id, true);
       } else {
+        failed = `could not remove ${oneLine(p.name)}`;
         await RemovePlugin(p.id);
       }
       if (mounted.current) setSource('');
     } catch (e) {
-      if (mounted.current) onError(`plugin install failed: ${errText(e)}`);
+      if (mounted.current) onError(`${failed}: ${errText(e)}`);
     } finally {
       if (mounted.current) setBusy(false);
     }
@@ -163,11 +168,12 @@ export function PluginsPanel({
     ) {
       return;
     }
-    SetPluginEnabled(p.id, enabled).catch((e: unknown) =>
-      onError(
-        `could not ${enabled ? 'enable' : 'disable'} ${p.name}: ${errText(e)}`,
-      ),
-    );
+    SetPluginEnabled(p.id, enabled).catch((e: unknown) => {
+      if (mounted.current)
+        onError(
+          `could not ${enabled ? 'enable' : 'disable'} ${p.name}: ${errText(e)}`,
+        );
+    });
   }
 
   async function remove(p: PluginInfo) {
@@ -177,9 +183,9 @@ export function PluginsPanel({
         'folder (settings and log) is kept.',
     );
     if (!ok) return;
-    RemovePlugin(p.id).catch((e: unknown) =>
-      onError(`could not remove ${p.name}: ${errText(e)}`),
-    );
+    RemovePlugin(p.id).catch((e: unknown) => {
+      if (mounted.current) onError(`could not remove ${p.name}: ${errText(e)}`);
+    });
   }
 
   return (
@@ -244,8 +250,11 @@ export function PluginsPanel({
                   <span className="settings-plugin-name">{p.name}</span>
                   <span className="settings-plugin-version">{p.version}</span>
                 </div>
-                <div className="settings-plugin-source" title={p.source}>
-                  {p.source}
+                <div
+                  className="settings-plugin-source"
+                  title={oneLine(p.source)}
+                >
+                  {oneLine(p.source)}
                 </div>
                 <div className="settings-plugin-status">{statusText(p)}</div>
               </div>
