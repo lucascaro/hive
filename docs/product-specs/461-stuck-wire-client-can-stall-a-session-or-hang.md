@@ -5,7 +5,8 @@ type: bug
 complexity: M
 priority: P1
 pr: 462
-stage: GATE
+shipped: 2026-09-25
+stage: DONE
 ---
 
 # Stuck wire client can stall a session or hang daemon shutdown
@@ -14,7 +15,7 @@ stage: GATE
 - **Type:** bug
 - **Complexity:** M
 - **Priority:** P1
-- **Exec plan:** [docs/exec-plans/active/461-stuck-wire-client-can-stall-a-session-or-hang.md](../exec-plans/active/461-stuck-wire-client-can-stall-a-session-or-hang.md)
+- **Exec plan:** [docs/exec-plans/completed/461-stuck-wire-client-can-stall-a-session-or-hang.md](../exec-plans/completed/461-stuck-wire-client-can-stall-a-session-or-hang.md)
 
 ## Problem
 

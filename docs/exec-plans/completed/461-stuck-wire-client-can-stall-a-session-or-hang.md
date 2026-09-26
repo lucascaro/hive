@@ -2,7 +2,7 @@
 
 - **Spec:** [docs/product-specs/461-stuck-wire-client-can-stall-a-session-or-hang.md](../../product-specs/461-stuck-wire-client-can-stall-a-session-or-hang.md)
 - **Issue:** #461
-- **Status:** active
+- **Status:** completed
 - **PR:** #462
 - **Branch:** feature/461-stuck-wire-client
 
@@ -481,3 +481,11 @@ drives the real `pty:disconnect` handler captured from the mocked `EventsOn`):
 - **2026-09-25 iter 1** — verdict: COMMENT; mergeable: MERGEABLE; findings_hash: aee505ab0a4972a40b9a640370c4e88d5404a4b785a665c0c5f5b9ccee21fcc9; threads_open: 3; action: escalated:risky-fix-needs-human-decision; head_sha: 3dec9dd1.
 - **2026-09-25 iter 2** — verdict: COMMENT; mergeable: MERGEABLE; findings_hash: b21bf5e8d7a949eb01c12111d4009f4553db0b6a8c131c9d4cb53bf8c8bede28; threads_open: 0; action: autofix+push; head_sha: 6eb70e21.
 - **2026-09-25 iter 3** — verdict: APPROVE; mergeable: MERGEABLE; findings_hash: empty; threads_open: 0; action: stop; head_sha: 60b266b5.
+
+## Gate verdict
+
+- **2026-09-25** — verdict: PASS; phase: —; checks: 19 passed / 0 failed / 0 followups; followups: none; one-line: all six success criteria demonstrated by passing tests, four non-goals respected, docs and changeset accurate.
+  - 2026-09-25 dimensions:
+    - acceptance — PASS — 4 stall/Close/dropped-subscription tests pass under -race; 12 reattach DOM tests pass; no diff under internal/wire or internal/buildinfo
+    - non-goals — PASS — registry/commands changes are wording only; no throttling, no plugin work; new attach tests skip on Windows
+    - doc accuracy — PASS — changeset valid (regression_of: declared-absent); DESIGN.md rule and slow-client-policy.md match the code; no stale comments; generated files untouched; README and features.json correctly unchanged
