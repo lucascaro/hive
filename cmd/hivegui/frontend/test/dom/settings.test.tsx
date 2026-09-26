@@ -32,7 +32,7 @@ const saveAgentSettings = vi.fn(
   (_s: main.AgentSettings): Promise<void> => Promise.resolve(),
 );
 const testLayaConnection = vi.fn(
-  (_url: string): Promise<string> => Promise.resolve(''),
+  (_url: string, _model: string): Promise<string> => Promise.resolve(''),
 );
 const getExternalPlanReviewers = vi.fn(
   (): Promise<main.ExternalPlanReviewer[]> => Promise.resolve([]),
@@ -549,6 +549,37 @@ describe('settings: Laya state detection (spec 458)', () => {
     expect(document.getElementById('settings-laya-test-result')).toBeNull();
   });
 
+  // Review finding (PR #464): the test named no model, so it could pass
+  // while every real call, which asks the Settings model, failed.
+  it('tests the model selected in Settings', async () => {
+    open();
+    await flush();
+    fireEvent.change(model(), { target: { value: ' laya-terminal-ft ' } });
+    click(el('settings-laya-test'));
+    await flush();
+    expect(testLayaConnection).toHaveBeenCalledWith('', 'laya-terminal-ft');
+  });
+
+  // Review finding (PR #464): up to 20s with no sign anything happened.
+  it('shows the test in progress and blocks a second one', async () => {
+    open();
+    await flush();
+    let answer: (r: string) => void = () => {};
+    testLayaConnection.mockImplementationOnce(
+      () => new Promise<string>((res) => (answer = res)),
+    );
+    const button = el<HTMLButtonElement>('settings-laya-test');
+    click(button);
+    await flush();
+    expect(button.disabled).toBe(true);
+    expect(button.textContent).toBe('Testing…');
+    answer('');
+    await flush();
+    expect(button.disabled).toBe(false);
+    expect(button.textContent).toBe('Test connection');
+    expect(el('settings-laya-test-result').textContent).toBe('Connected.');
+  });
+
   it('shows the connection test result inline', async () => {
     open();
     await flush();
@@ -556,7 +587,7 @@ describe('settings: Laya state detection (spec 458)', () => {
     testLayaConnection.mockResolvedValueOnce('connection refused');
     click(el('settings-laya-test'));
     await flush();
-    expect(testLayaConnection).toHaveBeenCalledWith('http://127.0.0.1:9');
+    expect(testLayaConnection).toHaveBeenCalledWith('http://127.0.0.1:9', '');
     expect(el('settings-laya-test-result').textContent).toBe(
       'Connection test failed: connection refused',
     );

@@ -176,9 +176,11 @@ const layaProbeTimeout = 20 * time.Second
 // returns "" when it can or a one-line reason otherwise. /health alone
 // is not proof: any service answers 200 there, so it then asks one
 // real /v1/systemone question — about a one-character placeholder
-// screen, never a session's text. An empty endpoint tests the default.
+// screen, never a session's text — of model, the checkpoint the daemon
+// will ask (empty: the server's default). An empty endpoint tests the
+// default URL.
 // The key, if any, is HIVE_LAYA_API_KEY, as for the daemon.
-func (a *App) TestLayaConnection(endpoint string) string {
+func (a *App) TestLayaConnection(endpoint, model string) string {
 	base := agent.Settings{LayaURL: endpoint}.LayaEndpoint()
 	ctx, cancel := context.WithTimeout(context.Background(), layaHealthTimeout)
 	defer cancel()
@@ -199,7 +201,7 @@ func (a *App) TestLayaConnection(endpoint string) string {
 	qctx, qcancel := context.WithTimeout(context.Background(), layaProbeTimeout)
 	defer qcancel()
 	if _, err := laya.Classify(qctx, http.DefaultClient, laya.Request{
-		BaseURL: base, APIKey: os.Getenv("HIVE_LAYA_API_KEY"),
+		BaseURL: base, Model: strings.TrimSpace(model), APIKey: os.Getenv("HIVE_LAYA_API_KEY"),
 	}, "$"); err != nil {
 		return "reachable, but it could not classify: " + err.Error()
 	}

@@ -165,6 +165,7 @@ func (r *Registry) classifyCycle(ctx context.Context, now time.Time) {
 		if ctx.Err() != nil {
 			return
 		}
+		c.text = c.sess.ScreenText()
 		st, err := fn(ctx, c.text)
 		if ctx.Err() != nil {
 			// Close is waiting on us; do not re-take the lock to apply
@@ -243,7 +244,9 @@ func classifyDueLocked(e *Entry, now time.Time) (classifyCandidate, bool) {
 	if e.sess.ScreenDigest() != d {
 		return classifyCandidate{}, false
 	}
-	return classifyCandidate{e: e, sess: e.sess, agent: e.Agent, digest: d, text: e.sess.ScreenText(), quiet: quiet}, true
+	// The text is rendered after r.mu is released (classifyCycle): the
+	// session guards its own screen, so nothing here needs the registry.
+	return classifyCandidate{e: e, sess: e.sess, agent: e.Agent, digest: d, quiet: quiet}, true
 }
 
 // applyClassificationLocked folds one answer in, provided the session is

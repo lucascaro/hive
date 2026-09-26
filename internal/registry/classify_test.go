@@ -555,6 +555,24 @@ func TestClassifierReasksAfterHookSpokeAndWentSilent(t *testing.T) {
 	}
 }
 
+// Review finding (PR #464): selection rendered the screen under r.mu.
+// The candidate carries no text; the cycle renders it after unlocking.
+func TestClassifierSelectionDoesNotRender(t *testing.T) {
+	r, e, sess, f := classifierRig(t, wire.StateWaitingInput)
+	base := time.Now()
+	settle(t, r, e, sess, "Proceed?", base)
+	r.mu.Lock()
+	c, ok := classifyDueLocked(r.entries[e.ID], base.Add(time.Second))
+	r.mu.Unlock()
+	if !ok || c.text != "" {
+		t.Fatalf("due=%v text=%q, want due with no text rendered under the lock", ok, c.text)
+	}
+	cycle(r, base.Add(time.Second))
+	if f.count() != 1 || !strings.Contains(f.calls[0], "Proceed?") {
+		t.Errorf("calls = %v, want the screen text rendered for the call", f.calls)
+	}
+}
+
 func waitCalls(t *testing.T, f *fakeLaya, n int) {
 	t.Helper()
 	deadline := time.Now().Add(10 * time.Second)

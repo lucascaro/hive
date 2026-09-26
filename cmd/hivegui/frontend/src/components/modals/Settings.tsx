@@ -201,6 +201,9 @@ function SettingsDialog({ root }: { root: HTMLElement }): ReactNode {
   // Only the latest test may report: a slow answer for a URL the user
   // has since edited, or re-tested, is about the wrong server.
   const layaTestSeq = useRef(0);
+  // A test can take up to 20s on a cold server; say so, and don't
+  // stack a second request on top of it.
+  const [layaTesting, setLayaTesting] = useState(false);
   // Other ExitPlanMode reviewers the user has set up. A settings.json
   // hook cannot be switched off by Hive, so choosing Hive warns about it.
   const [externalReviewers, setExternalReviewers] = useState<
@@ -1018,6 +1021,7 @@ function SettingsDialog({ root }: { root: HTMLElement }): ReactNode {
               setLayaUrl(e.target.value);
               layaTestSeq.current++;
               setLayaTest(null);
+              setLayaTesting(false);
             }}
           />
         </label>
@@ -1048,19 +1052,20 @@ function SettingsDialog({ root }: { root: HTMLElement }): ReactNode {
         </label>
         <Button
           id="settings-laya-test"
-          label="Test connection"
-          disabled={!agentSettingsLoaded || agentSettingsFailed}
+          label={layaTesting ? 'Testing…' : 'Test connection'}
+          disabled={!agentSettingsLoaded || agentSettingsFailed || layaTesting}
           onClick={() => {
             setLayaTest(null);
+            setLayaTesting(true);
             const seq = ++layaTestSeq.current;
-            TestLayaConnection(layaUrl.trim()).then(
-              (reason) => {
-                if (seq === layaTestSeq.current) setLayaTest(reason);
-              },
-              (err) => {
-                if (seq === layaTestSeq.current)
-                  setLayaTest(String(err?.message || err));
-              },
+            const settle = (reason: string) => {
+              if (seq !== layaTestSeq.current) return;
+              setLayaTest(reason);
+              setLayaTesting(false);
+            };
+            TestLayaConnection(layaUrl.trim(), layaModel.trim()).then(
+              settle,
+              (err) => settle(String(err?.message || err)),
             );
           }}
         />

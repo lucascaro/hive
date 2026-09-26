@@ -1415,7 +1415,7 @@ export async function SaveAgentSettings(s: {
 }
 // Healthy unless the URL says otherwise, so a test can drive both
 // outcomes of Settings' "Test connection".
-export async function TestLayaConnection(endpoint: string) {
+export async function TestLayaConnection(endpoint: string, _model: string) {
   return endpoint.includes('down') ? 'connection refused' : '';
 }
 
