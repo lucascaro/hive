@@ -3,6 +3,8 @@
 - **Spec:** [docs/product-specs/458-classify-session-state-with-a-local-laya-model-whe.md](../../product-specs/458-classify-session-state-with-a-local-laya-model-whe.md)
 - **Issue:** — (local-only)
 - **Status:** active
+- **PR:** #464
+- **Branch:** feature/458-laya-state-classifier
 
 ## Summary
 
@@ -312,6 +314,7 @@ Deferred: making `trusted()` return false for laya. It conflicts with fix 2 abov
 
 - **2026-09-25** — Research complete.
 - **2026-09-25** — Plan approved (chat fallback after the HTML page timed out).
+- **2026-09-26** — PR #464 opened.
 - **2026-09-26** — Implementation complete except the corpus (needs operator captures). Go, unit, DOM and one e2e test green; `TestCorpusCoverage` red by design until captures land.
 
 ## Open questions
