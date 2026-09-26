@@ -21,16 +21,21 @@ func TestManifest_Validate(t *testing.T) {
 		t.Fatalf("valid manifest: %v", err)
 	}
 	cases := map[string]func(*Manifest){
-		"bad id":                 func(m *Manifest) { m.ID = "Web_Hook" },
-		"leading dash":           func(m *Manifest) { m.ID = "-x" },
-		"no name":                func(m *Manifest) { m.Name = " " },
-		"ui entry":               func(m *Manifest) { m.UI = json.RawMessage(`{"entry":"ui.js"}`) },
-		"no main":                func(m *Manifest) { m.Main = nil },
-		"empty command":          func(m *Manifest) { m.Main = &Entry{Command: []string{""}} },
-		"newline in name":        func(m *Manifest) { m.Name = "Webhook\nRuns: true" },
-		"control in version":     func(m *Manifest) { m.Version = "0.1\x1b[2J" },
-		"bidi in description":    func(m *Manifest) { m.Description = "safe \u202egnp.exe" },
-		"line separator in name": func(m *Manifest) { m.Name = "Web\u2028hook" },
+		"bad id":                  func(m *Manifest) { m.ID = "Web_Hook" },
+		"leading dash":            func(m *Manifest) { m.ID = "-x" },
+		"no name":                 func(m *Manifest) { m.Name = " " },
+		"ui entry":                func(m *Manifest) { m.UI = json.RawMessage(`{"entry":"ui.js"}`) },
+		"no main":                 func(m *Manifest) { m.Main = nil },
+		"empty command":           func(m *Manifest) { m.Main = &Entry{Command: []string{""}} },
+		"newline in name":         func(m *Manifest) { m.Name = "Webhook\nRuns: true" },
+		"control in version":      func(m *Manifest) { m.Version = "0.1\x1b[2J" },
+		"bidi in description":     func(m *Manifest) { m.Description = "safe \u202egnp.exe" },
+		"line separator in name":  func(m *Manifest) { m.Name = "Web\u2028hook" },
+		"zero-width in name":      func(m *Manifest) { m.Name = "Web\u200bhook" },
+		"BOM in name":             func(m *Manifest) { m.Name = "\ufeffWebhook" },
+		"NEL in version":          func(m *Manifest) { m.Version = "0.1\u0085" },
+		"bidi isolate in command": func(m *Manifest) { m.Main = &Entry{Command: []string{"node", "a\u2067b"}} },
+		"newline in command":      func(m *Manifest) { m.Main = &Entry{Command: []string{"node\nrm"}} },
 	}
 	for name, edit := range cases {
 		m := good

@@ -31,23 +31,33 @@ function errText(e: unknown): string {
 }
 
 // Every manifest string in the trust prompt is the plugin author's text.
-// A newline in a name could print a fake "From:" or "Runs:" line, and a
-// bidi override could reorder the real ones, so each is flattened to one
-// line of visible text before it goes in. The daemon refuses control
-// characters in the manifest too (internal/plugin/manifest.go); this is
-// the display side of the same rule, and covers the source and command,
-// which the manifest check does not own.
-const UNSAFE_TEXT = /[\p{Cc}\u2028\u2029\u202a-\u202e\u2066-\u2069]+/gu;
+// A newline in a name could print a fake "From:" or "Runs:" line, a bidi
+// override or isolate could reorder the real ones, and a zero-width
+// character could make one name look like another's. So: controls (Cc,
+// including U+0085), invisible formatting (Cf) and line/paragraph
+// separators. hived refuses these in the manifest (internal/plugin/
+// manifest.go hasUnsafeText, same categories); this is the display side
+// of the rule, and also covers the source, which the manifest does not own.
+const UNSAFE_TEXT = /[\p{Cc}\p{Cf}\p{Zl}\p{Zp}]+/gu;
+const UNSAFE_CHAR = /[\p{Cc}\p{Cf}\p{Zl}\p{Zp}]/gu;
 
 function oneLine(s: string | undefined): string {
   return (s ?? '').replace(UNSAFE_TEXT, ' ').trim();
 }
 
-// Shell-style: a plain word stays bare, anything else is JSON-quoted, so
-// the user can see where one argument ends and the next begins — and a
-// quoted argument's escapes keep control characters visible, not live.
+// Shell-style: a plain word stays bare, anything else is quoted, so the
+// user can see where one argument ends and the next begins. Inside the
+// quotes every unsafe character is shown as a \uXXXX escape — JSON
+// escaping alone leaves bidi and zero-width characters live.
 function quoteArg(a: string): string {
-  return /^[A-Za-z0-9_@%+=:,./~-]+$/.test(a) ? a : JSON.stringify(a);
+  if (/^[A-Za-z0-9_@%+=:,./~-]+$/.test(a)) return a;
+  const body = a
+    .replace(/["\\]/g, '\\$&')
+    .replace(
+      UNSAFE_CHAR,
+      (c) => `\\u${(c.codePointAt(0) ?? 0).toString(16).padStart(4, '0')}`,
+    );
+  return `"${body}"`;
 }
 
 /** The body of the trust prompt: what it is, where it came from, and

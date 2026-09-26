@@ -72,14 +72,15 @@ func LoadManifest(dir string) (Manifest, error) {
 	return m, m.Validate()
 }
 
-// hasUnsafeText reports control characters, line/paragraph separators and
-// bidi overrides. These fields are shown to the user in the install trust
-// prompt, where a newline could forge a "Runs:" line and an override could
-// reorder the real one.
+// hasUnsafeText reports control characters (Cc, which includes U+0085),
+// invisible formatting characters (Cf: bidi overrides and isolates,
+// zero-width spaces and joiners, U+FEFF) and line/paragraph separators.
+// These fields are shown to the user in the install trust prompt, where a
+// newline could forge a "Runs:" line, an override could reorder the real
+// one, and a zero-width character could make a name look like another's.
 func hasUnsafeText(s string) bool {
 	return strings.ContainsFunc(s, func(r rune) bool {
-		return unicode.IsControl(r) || r == '\u2028' || r == '\u2029' ||
-			(r >= '\u202a' && r <= '\u202e') || (r >= '\u2066' && r <= '\u2069')
+		return unicode.In(r, unicode.Cc, unicode.Cf, unicode.Zl, unicode.Zp)
 	})
 }
 
@@ -94,7 +95,7 @@ func (m Manifest) Validate() error {
 	}
 	for field, v := range map[string]string{"name": m.Name, "version": m.Version, "description": m.Description} {
 		if hasUnsafeText(v) {
-			return fmt.Errorf("plugin: %s contains control or bidi-override characters", field)
+			return fmt.Errorf("plugin: %s contains control or invisible formatting characters", field)
 		}
 	}
 	if len(m.UI) > 0 {
@@ -102,6 +103,11 @@ func (m Manifest) Validate() error {
 	}
 	if m.Main == nil || len(m.Main.Command) == 0 || strings.TrimSpace(m.Main.Command[0]) == "" {
 		return errors.New(`plugin: "main.command" is required`)
+	}
+	for _, arg := range m.Main.Command {
+		if hasUnsafeText(arg) {
+			return errors.New(`plugin: "main.command" contains control or invisible formatting characters`)
+		}
 	}
 	if m.APIVersion != APIVersion {
 		return fmt.Errorf("%w: plugin targets %q, this Hive provides %q", ErrAPIVersion, m.APIVersion, APIVersion)
