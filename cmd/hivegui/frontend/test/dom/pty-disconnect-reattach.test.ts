@@ -286,4 +286,72 @@ describe('pty:disconnect on a live tile', () => {
     expect(OpenSession).not.toHaveBeenCalled();
     expect(st._reattachTimer).toBe(0);
   });
+  it('keeps a tile detached when the daemon hangs up mid-dial', async () => {
+    // The Go bridge starts reading before OpenSession resolves, so an
+    // immediate hang-up (e.g. a session that closed out) can emit
+    // pty:disconnect while the dial is still pending.
+    const st = liveTile('b1');
+    let resolveOpen: () => void = () => {};
+    OpenSession.mockImplementationOnce(
+      () => new Promise((r) => (resolveOpen = () => r({}))),
+    );
+    emit('pty:disconnect', 'b1');
+    await vi.advanceTimersByTimeAsync(500);
+    expect(st._attaching).toBe(true);
+    emit('pty:disconnect', 'b1');
+    resolveOpen();
+    await flush();
+    expect(st.attached).toBe(false);
+    expect(st.needsReattach).toBe(true);
+
+    await vi.advanceTimersByTimeAsync(1000);
+    await flush();
+    expect(OpenSession).toHaveBeenCalledTimes(2);
+    expect(st.attached).toBe(true);
+  });
+
+  it('paints the failure for a visible caller that joins a quiet dial', async () => {
+    const st = liveTile('b2');
+    const write = vi.spyOn(st.term, 'write');
+    let rejectOpen: (e: Error) => void = () => {};
+    OpenSession.mockImplementationOnce(
+      () => new Promise((_r, j) => (rejectOpen = j)),
+    );
+    emit('pty:disconnect', 'b2');
+    await vi.advanceTimersByTimeAsync(500); // the quiet backoff dial
+    const joined = st.ensureAttached(); // the user clicks the tile
+    rejectOpen(new Error('dial failed'));
+    await joined;
+    await flush();
+    const painted = write.mock.calls.filter((c) =>
+      String(c[0]).includes('attach failed'),
+    );
+    expect(painted).toHaveLength(1);
+  });
+
+  it('re-arms the retry when an attach the timer joined fails', async () => {
+    const st = liveTile('b3');
+    let rejectOpen: (e: Error) => void = () => {};
+    OpenSession.mockImplementationOnce(
+      () => new Promise((_r, j) => (rejectOpen = j)),
+    );
+    emit('pty:disconnect', 'b3');
+    // The alive event starts the dial before the timer fires.
+    emit(
+      'session:event',
+      JSON.stringify({
+        kind: 'updated',
+        session: { id: 'b3', name: 'b3', alive: true },
+      }),
+    );
+    await vi.advanceTimersByTimeAsync(500); // timer joins the in-flight dial
+    rejectOpen(new Error('dial failed'));
+    await flush();
+    expect(st.attached).toBe(false);
+
+    await vi.advanceTimersByTimeAsync(5_000);
+    await flush();
+    expect(OpenSession).toHaveBeenCalledTimes(2);
+    expect(st.attached).toBe(true);
+  });
 });

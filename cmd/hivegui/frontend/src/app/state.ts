@@ -285,6 +285,7 @@ export interface TermTile extends ReplayFlags {
   _attaching?: boolean;
   _reattachTimer?: number;
   _reattachAttempts?: number;
+  _attachEpoch?: number;
   rebaselineReplayCols(reason: string): void;
   // The single resize entry point. applyFontSize (session-term.ts) calls it
   // explicitly because a font-size change doesn't resize the body box, so

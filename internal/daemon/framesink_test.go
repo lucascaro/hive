@@ -286,3 +286,50 @@ func TestFrameSinkStopWakesIdleWriter(t *testing.T) {
 	f.stop()
 	waitDone(t, f, 5*time.Second)
 }
+
+// Only one replay at a time gets the allowance. A client that requests
+// replay after replay without reading must not queue a full ring per
+// request: the second counts against the backlog and hangs it up.
+func TestFrameSinkSecondQueuedReplayCountsAgainstBacklog(t *testing.T) {
+	f, client := newPipeSink(t, time.Hour, 1<<10)
+	replay := bytes.Repeat([]byte("r"), 64<<10)
+	if err := f.writeReplay(replay, 16<<10); err != nil {
+		t.Fatalf("first replay: %v", err)
+	}
+	if err := f.writeReplay(replay, 16<<10); !errors.Is(err, errSinkBacklog) {
+		t.Fatalf("second queued replay err = %v, want errSinkBacklog", err)
+	}
+	waitDone(t, f, 5*time.Second)
+	readErrWithin(t, client, 5*time.Second)
+}
+
+// A reading client may replay as often as it likes: once a replay has
+// drained, the next one gets the allowance again.
+func TestFrameSinkReplayAfterDrainIsAccepted(t *testing.T) {
+	f, client := newPipeSink(t, time.Hour, 1<<10)
+	replay := bytes.Repeat([]byte("r"), 64<<10)
+	for round := 0; round < 3; round++ {
+		if err := f.writeReplay(replay, 16<<10); err != nil {
+			t.Fatalf("round %d: %v", round, err)
+		}
+		for {
+			ft, p := readFrame(t, client)
+			if ft == wire.FrameEvent && bytes.Contains(p, []byte(wire.EventScrollbackReplayDone)) {
+				break
+			}
+		}
+		deadline := time.Now().Add(5 * time.Second)
+		for {
+			f.mu.Lock()
+			owed := f.replayOwed
+			f.mu.Unlock()
+			if owed == 0 {
+				break
+			}
+			if time.Now().After(deadline) {
+				t.Fatalf("round %d: replayOwed = %d after drain", round, owed)
+			}
+			time.Sleep(5 * time.Millisecond)
+		}
+	}
+}

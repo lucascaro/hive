@@ -546,31 +546,38 @@ function tileVisible(st: TermTile, id: string): boolean {
 // here, so a failed dial leaves it up for the next attempt. A hidden
 // tile is only reset: switchTo and the next layout pass attach it when
 // it is shown.
+//
+// Every failed attempt re-arms the backoff, whichever path made it: an
+// attach already in flight (setPhase, a resize, the alive event) is
+// joined rather than skipped, so its failure is seen here too.
 async function reattach(
   st: TermTile,
   id: string,
   quiet: boolean,
 ): Promise<AttachOutcome | 'skipped'> {
-  if (!st.needsReattach || st.attached || st._attaching) return 'skipped';
+  if (!st.needsReattach || st.attached) return 'skipped';
   if (isClosing(st.phase) || appData().aliveById.get(id) === false)
     return 'skipped';
-  try {
-    st.term?.reset();
-  } catch {}
-  abandonReplays(st); // the wipe abandons any in-flight restream
-  if (!tileVisible(st, id)) {
-    st.needsReattach = false;
-    return 'skipped';
+  if (!st._attaching) {
+    try {
+      st.term?.reset();
+    } catch {}
+    abandonReplays(st); // the wipe abandons any in-flight restream
+    if (!tileVisible(st, id)) {
+      st.needsReattach = false;
+      return 'skipped';
+    }
   }
   const out = (await st.ensureAttached({ quiet })) ?? 'deferred';
   if (out === 'attached' && appData().activeId === id) deps.focusActiveTerm();
+  if (out === 'failed' && st.needsReattach) scheduleReattach(st, id);
   return out;
 }
 
 // scheduleReattach arms one backoff attempt. Only a 'failed' dial
-// re-arms: 'deferred' means another path (setPhase, the resize
-// observer) owns finishing the attach, and 'skipped' means nothing is
-// left to do.
+// re-arms (from reattach): 'deferred' means another path (setPhase,
+// the resize observer) owns finishing the attach, and 'skipped' means
+// nothing is left to do.
 function scheduleReattach(st: TermTile, id: string) {
   if (st._reattachTimer) return;
   const attempts = st._reattachAttempts ?? 0;
@@ -579,8 +586,7 @@ function scheduleReattach(st: TermTile, id: string) {
   st._reattachTimer = window.setTimeout(async () => {
     st._reattachTimer = 0;
     if (termsMap().get(id) !== st) return; // closed or replaced meanwhile
-    const out = await reattach(st, id, true);
-    if (out === 'failed' && st.needsReattach) scheduleReattach(st, id);
+    await reattach(st, id, true);
   }, delay);
 }
 
@@ -1108,6 +1114,9 @@ export function wireDaemonEvents(injected: EventsDeps) {
     const st = termsMap().get(id);
     if (st) {
       st.attached = false;
+      // A dial still pending for this tile is on the conn that just
+      // closed; see SessionTerm._attachEpoch.
+      st._attachEpoch = (st._attachEpoch ?? 0) + 1;
       if (isClosing(st.phase)) {
         // The daemon killed this PTY on its way to removing the
         // session. Marking it for reattach would send us dialing a

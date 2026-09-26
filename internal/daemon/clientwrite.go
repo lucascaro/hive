@@ -182,23 +182,34 @@ func (f *frameSink) writeReplay(replay []byte, chunk int) error {
 	return f.enqueue(items, n, true)
 }
 
-// enqueue appends items atomically. A replay is always accepted and
-// widens the limit by its own size; live output past the limit
-// disconnects the client.
+// enqueue appends items atomically. Live output past the limit
+// disconnects the client. A replay is always accepted when none is
+// outstanding, and widens the limit by its own size until it drains. A
+// replay requested while another is still queued gets no allowance of
+// its own: it counts against the backlog like live output. Without that,
+// a client could send REQUEST_REPLAY in a loop without reading and have
+// each one queue a full ring's worth of bytes. A healthy client drains
+// a replay in milliseconds and never has two queued.
 func (f *frameSink) enqueue(items []sinkItem, n int, replay bool) error {
 	f.mu.Lock()
 	if f.stopped || f.closing {
 		f.mu.Unlock()
 		return errSinkClosed
 	}
-	if !replay && f.queued+n > f.limit+f.replayOwed {
+	grant := replay && f.replayOwed == 0
+	if !grant && f.queued+n > f.limit+f.replayOwed {
 		f.mu.Unlock()
 		f.stop()
 		return errSinkBacklog
 	}
+	if replay && !grant {
+		for i := range items {
+			items[i].replay = false
+		}
+	}
 	f.queue = append(f.queue, items...)
 	f.queued += n
-	if replay {
+	if grant {
 		f.replayOwed += n
 	}
 	f.mu.Unlock()

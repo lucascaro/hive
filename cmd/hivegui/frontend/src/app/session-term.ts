@@ -241,6 +241,16 @@ export class SessionTerm {
   // The attach in flight, if any. A second ensureAttached while one is
   // dialing shares its outcome instead of opening a second connection.
   _attachInFlight: Promise<AttachOutcome> | null = null;
+  // Whether the in-flight dial paints its own failure, and the error it
+  // failed with: a caller that joins a quiet (backoff) dial and wants
+  // the error shown paints it itself.
+  _attachInFlightQuiet = false;
+  _lastAttachError: unknown = null;
+  // Bumped by every pty:disconnect. The Go bridge starts reading the
+  // attach conn before OpenSession resolves, so a hang-up right after
+  // WELCOME can land while the dial is still pending; a dial that
+  // resolves into a changed epoch is on a conn that is already gone.
+  _attachEpoch = 0;
   // Backoff state for reattaching after the daemon dropped our attach
   // connection (events.ts scheduleReattach). Reset on replay done.
   _reattachTimer = 0;
@@ -1368,7 +1378,14 @@ export class SessionTerm {
         this.term.scrollToBottom();
       return 'attached';
     }
-    if (this._attachInFlight) return this._attachInFlight;
+    if (this._attachInFlight) {
+      const inFlightQuiet = this._attachInFlightQuiet;
+      const out = await this._attachInFlight;
+      if (out === 'failed' && inFlightQuiet && !opts.quiet) {
+        this._paintAttachError();
+      }
+      return out;
+    }
     // Don't attach while the daemon is still creating or tearing down
     // this session: it would refuse (`session_starting`/`no_such_session`)
     // and the failure used to be painted as red text into the very pane
@@ -1395,6 +1412,7 @@ export class SessionTerm {
       this._pendingAttach = true;
       return 'deferred';
     }
+    this._attachInFlightQuiet = !!opts.quiet;
     this._attachInFlight = this._open(opts);
     try {
       return await this._attachInFlight;
@@ -1403,7 +1421,18 @@ export class SessionTerm {
     }
   }
 
+  // Only a genuine failure on a ready session is worth painting: one
+  // that started closing (or restarting) mid-dial is expected to refuse.
+  _paintAttachError() {
+    if (!isReady(this.phase) || this._lastAttachError === null) return;
+    this.term.write(
+      `\r\n\x1b[31m[attach failed: ${this._lastAttachError}]\x1b[0m\r\n`,
+    );
+  }
+
   async _open(opts: { quiet?: boolean }): Promise<AttachOutcome> {
+    const epoch = this._attachEpoch;
+    this._lastAttachError = null;
     const _fitStart = nowMs();
     this.fit.fit();
     const _fitMs = nowMs() - _fitStart;
@@ -1419,6 +1448,11 @@ export class SessionTerm {
       feLog(
         `ensureAttached id=${this.info.id} fit=${Math.round(_fitMs)}ms open=${Math.round(nowMs() - _openStart)}ms`,
       );
+      // The conn this dial opened was hung up on before the dial
+      // resolved: pty:disconnect already fired for it. Marking the tile
+      // attached now would strand it on a dead conn, with needsReattach
+      // cleared and the retry skipping it.
+      if (this._attachEpoch !== epoch) return 'failed';
       this.attached = true;
       // A dropped attach is recovered once the dial succeeds. Cleared
       // here, not when the reattach starts: a failed dial must leave the
@@ -1432,13 +1466,10 @@ export class SessionTerm {
       this.rebaselineReplayCols('first-attach');
       return 'attached';
     } catch (err) {
-      // A session that started closing (or restarting) while the dial
-      // was in flight is *expected* to refuse. Only a genuine failure
-      // on a ready session is worth painting into the pane, and not on
-      // every backoff retry.
-      if (isReady(this.phase) && !opts.quiet) {
-        this.term.write(`\r\n\x1b[31m[attach failed: ${err}]\x1b[0m\r\n`);
-      }
+      // Not on every backoff retry, though: a quiet dial leaves the
+      // error for a joining caller that wants it shown.
+      this._lastAttachError = err;
+      if (!opts.quiet) this._paintAttachError();
       return 'failed';
     }
   }
