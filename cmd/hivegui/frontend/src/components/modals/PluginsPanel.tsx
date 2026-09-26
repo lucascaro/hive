@@ -17,29 +17,58 @@ import {
   RemovePlugin,
   SetPluginEnabled,
 } from '../../bridge.js';
-import { installPlugin } from '../../app/plugins.js';
+import { installPlugin, markPluginsWanted } from '../../app/plugins.js';
 import type { PluginInfo } from '../../app/state.js';
 import { useAppStore } from '../../store/store.js';
 import { Button } from '../Button.js';
 import { IconButton } from '../IconButton.js';
 
+const CANCEL_REMOVES = 'Cancel removes it again.';
+const CANCEL_KEEPS_OFF = 'Cancel leaves it off.';
+
 function errText(e: unknown): string {
   return e instanceof Error ? e.message : String(e);
 }
 
+// Every manifest string in the trust prompt is the plugin author's text.
+// A newline in a name could print a fake "From:" or "Runs:" line, and a
+// bidi override could reorder the real ones, so each is flattened to one
+// line of visible text before it goes in. The daemon refuses control
+// characters in the manifest too (internal/plugin/manifest.go); this is
+// the display side of the same rule, and covers the source and command,
+// which the manifest check does not own.
+const UNSAFE_TEXT = /[\p{Cc}\u2028\u2029\u202a-\u202e\u2066-\u2069]+/gu;
+
+function oneLine(s: string | undefined): string {
+  return (s ?? '').replace(UNSAFE_TEXT, ' ').trim();
+}
+
+// Shell-style: a plain word stays bare, anything else is JSON-quoted, so
+// the user can see where one argument ends and the next begins — and a
+// quoted argument's escapes keep control characters visible, not live.
+function quoteArg(a: string): string {
+  return /^[A-Za-z0-9_@%+=:,./~-]+$/.test(a) ? a : JSON.stringify(a);
+}
+
 /** The body of the trust prompt: what it is, where it came from, and
- * exactly what will run with the user's privileges. */
-export function trustMessage(p: PluginInfo): string {
-  const from = p.commit ? `${p.source} @ ${p.commit.slice(0, 12)}` : p.source;
+ * exactly what will run with the user's privileges. `onCancel` says
+ * what Cancel does, which differs between installing and enabling. */
+export function trustMessage(p: PluginInfo, onCancel: string): string {
+  const src = oneLine(p.source);
+  const from = p.commit ? `${src} @ ${oneLine(p.commit).slice(0, 12)}` : src;
   return (
-    `${p.name} ${p.version}\n` +
+    `${oneLine(p.name)} ${oneLine(p.version)}\n` +
     `From: ${from}\n` +
-    `Runs: ${(p.command || []).join(' ')}\n\n` +
+    `Runs: ${(p.command || []).map(quoteArg).join(' ')}\n\n` +
     'Plugins run with your full user privileges: they can read and change ' +
     'your files, run programs, use the network and drive your sessions. ' +
     'Only enable plugins you trust.\n\n' +
-    'Enable it now? Cancel removes it again.'
+    `Enable it now? ${onCancel}`
   );
+}
+
+function trustTitle(p: PluginInfo): string {
+  return `Enable plugin “${oneLine(p.name)}”?`;
 }
 
 function statusText(p: PluginInfo): string {
@@ -70,10 +99,13 @@ export function PluginsPanel({
   // Asked for when the tab is first shown in this Settings dialog, not
   // at dialog mount. SettingsDialog remounts on every open, so each open
   // re-lists once; the fan-out keeps the store current in between.
+  // A control reconnect re-lists too (app/events.ts), once the tab has
+  // asked at least once — see markPluginsWanted.
   const listed = useRef(false);
   useEffect(() => {
     if (!active || listed.current) return;
     listed.current = true;
+    markPluginsWanted();
     ListPlugins().catch((e: unknown) =>
       onError(`could not list plugins: ${errText(e)}`),
     );
@@ -89,7 +121,7 @@ export function PluginsPanel({
       // Past this point the plugin is installed and disabled. The prompt
       // is a native dialog, so it still makes sense if Settings closed
       // while the install ran; only the React state needs the guard.
-      if (await Confirm(`Enable plugin “${p.name}”?`, trustMessage(p))) {
+      if (await Confirm(trustTitle(p), trustMessage(p, CANCEL_REMOVES))) {
         await SetPluginEnabled(p.id, true);
       } else {
         await RemovePlugin(p.id);
@@ -110,7 +142,17 @@ export function PluginsPanel({
       .catch((e: unknown) => onError(`could not pick a folder: ${errText(e)}`));
   }
 
-  function toggle(p: PluginInfo, enabled: boolean) {
+  // Enabling always asks, not only at install: a plugin can reach this
+  // list disabled without this window ever prompting — installed from
+  // another window or client, or an install that outlived its wait here.
+  // Consent belongs to "start running", wherever that is asked for.
+  async function toggle(p: PluginInfo, enabled: boolean) {
+    if (
+      enabled &&
+      !(await Confirm(trustTitle(p), trustMessage(p, CANCEL_KEEPS_OFF)))
+    ) {
+      return;
+    }
     SetPluginEnabled(p.id, enabled).catch((e: unknown) =>
       onError(
         `could not ${enabled ? 'enable' : 'disable'} ${p.name}: ${errText(e)}`,
@@ -203,7 +245,7 @@ export function PluginsPanel({
                   className="settings-plugin-enabled"
                   checked={p.enabled}
                   aria-label={`Enable ${p.name}`}
-                  onChange={(e) => toggle(p, e.target.checked)}
+                  onChange={(e) => void toggle(p, e.target.checked)}
                 />
                 <span>Enabled</span>
               </label>

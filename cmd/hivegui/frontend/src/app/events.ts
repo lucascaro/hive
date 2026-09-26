@@ -28,7 +28,11 @@ import type {
   ProjectInfo,
   TermTile,
 } from './state.js';
-import { claimPluginEvent, claimPluginInstallError } from './plugins.js';
+import {
+  claimPluginEvent,
+  claimPluginInstallError,
+  relistPluginsIfWanted,
+} from './plugins.js';
 import { readNeedsAttention } from './state.js';
 import {
   addIdea,
@@ -191,6 +195,7 @@ export async function reconnectControl(
         // A reconnect is a fresh control connection, so it needs the
         // same one-shot idea fetch boot does — see main.tsx.
         refreshIdeas();
+        relistPluginsIfWanted();
         try {
           LogFrontend('control reconnected');
         } catch {

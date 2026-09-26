@@ -51,7 +51,7 @@ root:
 | Field | Required | Meaning |
 |-------|----------|---------|
 | `id` | yes | Lowercase letters, digits and hyphens, up to 63 characters. Unique among installed plugins. |
-| `name` | yes | Shown to the user. |
+| `name` | yes | Shown to the user, including in the install prompt. `name`, `version` and `description` may not contain control characters, line separators or bidi overrides. |
 | `version` | no | Your plugin's own version. |
 | `api_version` | yes | The plugin API you target. Must be `0.1` for this Hive. |
 | `description` | no | One sentence, shown to the user. |

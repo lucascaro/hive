@@ -6,13 +6,15 @@
 // the trust prompt. Every other window just renders the new, disabled
 // row from the fan-out (events.ts).
 
-import { InstallPlugin } from '../bridge.js';
+import { InstallPlugin, ListPlugins } from '../bridge.js';
 import type { PluginEvent, PluginInfo } from './state.js';
 
-// A git clone is bounded daemon-side at 120s; this only has to outlast
-// a local copy or a small repo, and a timed-out promise leaves the
-// install to finish and appear through the fan-out anyway.
-export const INSTALL_TIMEOUT_MS = 60_000;
+// Outlasts the daemon's own 120s bound on a git clone
+// (internal/plugin/install.go), so a slow clone that does finish is
+// still answered here and prompted for. Past it the install may still
+// land, through the fan-out, as a disabled row — and enabling that row
+// asks for consent itself (PluginsPanel toggle), so nothing is skipped.
+export const INSTALL_TIMEOUT_MS = 130_000;
 
 interface Pending {
   resolve: (p: PluginInfo) => void;
@@ -35,7 +37,12 @@ export function installPlugin(source: string): Promise<PluginInfo> {
   return new Promise<PluginInfo>((resolve, reject) => {
     const timer = setTimeout(() => {
       pending.delete(nonce);
-      reject(new Error('install timed out'));
+      reject(
+        new Error(
+          'no answer from Hive yet — if the install finishes it appears ' +
+            'below, turned off; turning it on asks first',
+        ),
+      );
     }, INSTALL_TIMEOUT_MS);
     pending.set(nonce, { resolve, reject, timer });
     InstallPlugin(source, nonce).catch((e: unknown) => {
@@ -73,4 +80,22 @@ export function claimPluginInstallError(e: {
   if (!p || !settle(e.nonce)) return false;
   p.reject(new Error(e.message || 'install failed'));
   return true;
+}
+
+// Whether this window has asked for the plugin list at all. Plugins are
+// listed on demand (the Settings tab), not at boot, so a control
+// reconnect re-lists only when something is showing them — the fan-out
+// that kept the store current was lost with the old connection.
+let wanted = false;
+
+export function markPluginsWanted(): void {
+  wanted = true;
+}
+
+/** Called after a control reconnect. */
+export function relistPluginsIfWanted(): void {
+  if (!wanted) return;
+  ListPlugins().catch(() => {
+    /* the tab re-lists on its next open */
+  });
 }

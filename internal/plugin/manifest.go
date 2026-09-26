@@ -19,6 +19,7 @@ import (
 	"path/filepath"
 	"regexp"
 	"strings"
+	"unicode"
 )
 
 // APIVersion is the plugin API this build implements. Until 1.0 the API
@@ -71,6 +72,17 @@ func LoadManifest(dir string) (Manifest, error) {
 	return m, m.Validate()
 }
 
+// hasUnsafeText reports control characters, line/paragraph separators and
+// bidi overrides. These fields are shown to the user in the install trust
+// prompt, where a newline could forge a "Runs:" line and an override could
+// reorder the real one.
+func hasUnsafeText(s string) bool {
+	return strings.ContainsFunc(s, func(r rune) bool {
+		return unicode.IsControl(r) || r == '\u2028' || r == '\u2029' ||
+			(r >= '\u202a' && r <= '\u202e') || (r >= '\u2066' && r <= '\u2069')
+	})
+}
+
 // Validate checks the manifest's shape. The API-version check comes last
 // so a manifest with a structural problem reports that instead.
 func (m Manifest) Validate() error {
@@ -79,6 +91,11 @@ func (m Manifest) Validate() error {
 	}
 	if strings.TrimSpace(m.Name) == "" {
 		return errors.New("plugin: name is required")
+	}
+	for field, v := range map[string]string{"name": m.Name, "version": m.Version, "description": m.Description} {
+		if hasUnsafeText(v) {
+			return fmt.Errorf("plugin: %s contains control or bidi-override characters", field)
+		}
 	}
 	if len(m.UI) > 0 {
 		return errors.New(`plugin: "ui" entry points are not supported by this version of Hive`)
