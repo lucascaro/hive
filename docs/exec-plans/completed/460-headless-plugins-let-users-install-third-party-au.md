@@ -2,7 +2,7 @@
 
 - **Spec:** [docs/product-specs/460-headless-plugins-let-users-install-third-party-au.md](../../product-specs/460-headless-plugins-let-users-install-third-party-au.md)
 - **Issue:** #460
-- **Status:** active
+- **Status:** completed
 - **Phase:** 2 of 2
 - **Depends on:** #461
 - **PR:** #465
@@ -371,3 +371,9 @@ _(none — resolved in the Decision log)_
     - acceptance — PASS — 8 plugin e2e tests + daemon/plugin/wire suites ran green; criterion 4 DEFERRED (phase > 1); criterion 6 per recorded measure-idle numbers (+230 KiB RSS from code size, 0% CPU both) and TestManager_ZeroPluginsSpawnsNothing
     - non-goals — PASS — no frontend diff; `ui` entry refused; rate budget is a guard rail, not capability gating; clone-once-and-pin, no update path; features.json entry `planned`
     - doc accuracy — PASS — docs/plugins.md claims verified against code (env, thresholds, log cap, schemes, budget, paths, modes); TestPluginDocListsEveryControlFrame and whats-new test green; changeset valid (type: added)
+- **2026-09-26** — verdict: PASS; phase: 2/2; checks: 3 passed / 0 failed / 0 followups; followups: none; one-line: criteria 3 (install trust confirm; nothing runs until consent, toggle-on prompts too) and 4 (Settings → Plugins tab; enable/disable/remove live without a daemon restart) proven by dom, mock e2e and real-daemon e2e tests; phase-1 plugin suites still green.
+  - 2026-09-26 dimensions:
+    - acceptance — PASS — 99 dom tests, mock e2e settings-plugins (2), real-hived e2e plugins (install→running→disabled→removed, one daemon), TestPluginCalls/TestRPCsRequire, internal/plugin + internal/daemon Plugin suites
+    - non-goals — PASS — only a Settings management tab; no plugin UI extension points, sandboxing, marketplace, networking or stability promise; manifest character check is trust-prompt input validation, not capability gating
+    - doc accuracy — PASS — README, docs/plugins.md (installing flow, manifest character rule incl. main.command), changeset, features.json (shipped/Unreleased; whats-new test green), TestPluginDoc; generated files untouched; no keybinding change
+
