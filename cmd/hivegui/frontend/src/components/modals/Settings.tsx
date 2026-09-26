@@ -719,6 +719,13 @@ function SettingsDialog({ root }: { root: HTMLElement }): ReactNode {
       ) {
         return;
       }
+      // The Plugins tab has no draft to save: its controls act at once,
+      // and Enter in its source field installs. This listener sits on
+      // #settings and so runs before React's own handler (delegated at
+      // the app root) could preventDefault — hence a check by place, not
+      // by defaultPrevented. Without it Enter would also save and close
+      // the dialog mid-install.
+      if (target?.closest('#settings-panel-plugins')) return;
       e.preventDefault();
       saveSettings();
     }
