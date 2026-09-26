@@ -580,6 +580,30 @@ describe('settings: Laya state detection (spec 458)', () => {
     expect(el('settings-laya-test-result').textContent).toBe('Connected.');
   });
 
+  // Review finding (PR #464): the result belongs to a URL and a model;
+  // editing the model must drop it, including an answer still in flight.
+  it('drops a connection test result when the model changes', async () => {
+    open();
+    await flush();
+    click(el('settings-laya-test'));
+    await flush();
+    expect(el('settings-laya-test-result').textContent).toBe('Connected.');
+    fireEvent.change(model(), { target: { value: 'other-model' } });
+    await flush();
+    expect(document.getElementById('settings-laya-test-result')).toBeNull();
+
+    let answerOld: (r: string) => void = () => {};
+    testLayaConnection.mockImplementationOnce(
+      () => new Promise<string>((res) => (answerOld = res)),
+    );
+    click(el('settings-laya-test'));
+    fireEvent.change(model(), { target: { value: 'third-model' } });
+    answerOld('');
+    await flush();
+    expect(document.getElementById('settings-laya-test-result')).toBeNull();
+    expect(el<HTMLButtonElement>('settings-laya-test').disabled).toBe(false);
+  });
+
   it('shows the connection test result inline', async () => {
     open();
     await flush();

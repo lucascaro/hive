@@ -1047,7 +1047,14 @@ function SettingsDialog({ root }: { root: HTMLElement }): ReactNode {
             placeholder="server default"
             value={layaModel}
             disabled={!agentSettingsLoaded || agentSettingsFailed}
-            onChange={(e) => setLayaModel(e.target.value)}
+            onChange={(e) => {
+              // A test result is about a URL and a model; either edit
+              // makes it, and any test still in flight, stale.
+              setLayaModel(e.target.value);
+              layaTestSeq.current++;
+              setLayaTest(null);
+              setLayaTesting(false);
+            }}
           />
         </label>
         <Button

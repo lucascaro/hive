@@ -3,7 +3,6 @@ package laya
 import (
 	"context"
 	"fmt"
-	"net/http"
 	"os"
 	"path/filepath"
 	"strings"
@@ -115,7 +114,9 @@ func TestCorpusAccuracy(t *testing.T) {
 		t.Skip("HIVE_LAYA_URL not set; no Laya server to score")
 	}
 	req := Request{BaseURL: url, Model: os.Getenv("HIVE_LAYA_MODEL"), APIKey: os.Getenv("HIVE_LAYA_API_KEY")}
-	client := &http.Client{}
+	// The same no-redirect client as production: this sends screen text
+	// and any HIVE_LAYA_API_KEY to the URL under test, and nowhere else.
+	client := NewClient()
 	confusion := map[string]map[string]int{}
 	var total, right, waits, waitsRight int
 	for _, s := range loadCorpus(t) {
