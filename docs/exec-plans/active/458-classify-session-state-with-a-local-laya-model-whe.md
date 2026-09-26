@@ -315,6 +315,7 @@ Deferred: making `trusted()` return false for laya. It conflicts with fix 2 abov
 - **2026-09-25** — Research complete.
 - **2026-09-25** — Plan approved (chat fallback after the HTML page timed out).
 - **2026-09-26** — PR #464 opened.
+- **2026-09-26** — Gate FAIL; doc accuracy: DESIGN.md internal/laya import claim stale.
 - **2026-09-26** — Implementation complete except the corpus (needs operator captures). Go, unit, DOM and one e2e test green; `TestCorpusCoverage` red by design until captures land.
 
 ## Open questions
@@ -326,3 +327,11 @@ _None blocking — see the plan's Open questions / risks for accepted risks._
 - **2026-09-26 iter 1** — verdict: COMMENT; mergeable: MERGEABLE; findings_hash: 12ba512e2cdcde9f7b214e5fff166ea4c15d93f31707eb9d4e1ab488809bf6fb; threads_open: 8; action: escalated:risky-fix-needs-decision; head_sha: d31cd770.
 - **2026-09-26 iter 2** — verdict: COMMENT; mergeable: MERGEABLE; findings_hash: 3c9509c3ff6d830e2e4fb58fab063827e09392070404d69678e9f4c1f128cb84; threads_open: 1; action: escalated:risky-fix-needs-decision; head_sha: 3b8baf87.
 - **2026-09-26 iter 3** — verdict: APPROVE; mergeable: MERGEABLE; findings_hash: empty; threads_open: 0; action: stop; head_sha: 2b203193.
+
+## Gate verdict
+
+- **2026-09-26** — verdict: FAIL; phase: —; checks: 22 passed / 1 failed / 0 followups; followups: none; one-line: DESIGN.md says internal/laya is daemon-only, but the GUI's Test connection now imports it and makes its own calls.
+  - 2026-09-26 dimensions:
+    - acceptance — PASS — all 7 criteria evidenced. Real e2e classified in 2.1 s; the harness reports 37.5% overall and 87.5% waiting recall (the bar is a follow-up per amendment). Cross-platform is code evidence only: stdlib HTTP, no MLX; CI builds and tests on all 3 OSes, not live against PyTorch.
+    - non-goals — PASS — none of the 8 non-goals implemented.
+    - doc accuracy — FAIL — DESIGN.md:17 "Imported by internal/daemon/ alone … the daemon's only outbound HTTP" is stale; cmd/hivegui/app_calls.go also imports internal/laya.
