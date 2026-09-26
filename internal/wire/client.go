@@ -137,6 +137,9 @@ var controlEvents = map[FrameType]string{
 	FrameTranscriptLines:   "transcript:lines",
 
 	FramePlanReview: "planreview:plan",
+
+	FramePlugins:     "plugin:list",
+	FramePluginEvent: "plugin:event",
 }
 
 var attachEvents = map[FrameType]string{

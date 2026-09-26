@@ -162,7 +162,7 @@ func TestStalledControlClientIsDisconnected(t *testing.T) {
 	defer cancel()
 	done := make(chan struct{})
 	go func() {
-		d.serveControl(ctx, server, wire.Hello{Mode: wire.ModeControl})
+		d.serveControl(ctx, server, wire.Hello{Mode: wire.ModeControl}, nil)
 		close(done)
 	}()
 	_ = client.SetReadDeadline(time.Now().Add(5 * time.Second))
@@ -192,7 +192,7 @@ func TestDroppedSubscriptionClosesControlConn(t *testing.T) {
 	defer client.Close()
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
-	go d.serveControl(ctx, server, wire.Hello{Mode: wire.ModeControl})
+	go d.serveControl(ctx, server, wire.Hello{Mode: wire.ModeControl}, nil)
 	_ = client.SetReadDeadline(time.Now().Add(5 * time.Second))
 	if ft, _, err := wire.ReadFrame(client); err != nil || ft != wire.FrameWelcome {
 		t.Fatalf("read WELCOME: %s %v", ft, err)

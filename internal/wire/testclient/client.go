@@ -49,6 +49,7 @@ type Client struct {
 	sessions chan wire.SessionEvent
 	projects chan wire.ProjectEvent
 	ideas    chan wire.IdeaEvent
+	plugins  chan wire.PluginEvent
 	snaps    chan frameMsg
 	errs     chan error
 
@@ -76,6 +77,7 @@ func Dial(ctx context.Context, sockPath string) (*Client, error) {
 		sessions: make(chan wire.SessionEvent, 32),
 		projects: make(chan wire.ProjectEvent, 32),
 		ideas:    make(chan wire.IdeaEvent, 32),
+		plugins:  make(chan wire.PluginEvent, 32),
 		snaps:    make(chan frameMsg, 8),
 		errs:     make(chan error, 1),
 		closed:   make(chan struct{}),
@@ -119,6 +121,11 @@ func (c *Client) ListSessions() error {
 // KillSession sends KILL_SESSION.
 func (c *Client) KillSession(req wire.KillSessionReq) error {
 	return c.cli.WriteJSON(wire.FrameKillSession, req)
+}
+
+// UpdateSession sends UPDATE_SESSION.
+func (c *Client) UpdateSession(req wire.UpdateSessionReq) error {
+	return c.cli.WriteJSON(wire.FrameUpdateSession, req)
 }
 
 // RestoreSession sends RESTORE_SESSION. An empty id asks the daemon
@@ -284,6 +291,53 @@ func (c *Client) AwaitIdeaEvent(kind string, timeout time.Duration) (wire.IdeaEv
 			return wire.IdeaEvent{}, err
 		case <-time.After(remaining):
 			return wire.IdeaEvent{}, errors.New("testclient: timeout waiting for IDEA_EVENT")
+		}
+	}
+}
+
+// --- Plugins ---
+
+// ListPlugins sends LIST_PLUGINS. Use AwaitPlugins to consume the reply.
+func (c *Client) ListPlugins() error {
+	return c.cli.WriteJSON(wire.FrameListPlugins, struct{}{})
+}
+
+// InstallPlugin sends INSTALL_PLUGIN. The result arrives as a
+// PLUGIN_EVENT (added) carrying nonce, or an ERROR carrying it.
+func (c *Client) InstallPlugin(source, nonce string) error {
+	return c.cli.WriteJSON(wire.FrameInstallPlugin, wire.InstallPluginReq{Source: source, Nonce: nonce})
+}
+
+// SetPluginEnabled sends SET_PLUGIN_ENABLED.
+func (c *Client) SetPluginEnabled(id string, enabled bool) error {
+	return c.cli.WriteJSON(wire.FrameSetPluginEnabled, wire.SetPluginEnabledReq{ID: id, Enabled: enabled})
+}
+
+// RemovePlugin sends REMOVE_PLUGIN.
+func (c *Client) RemovePlugin(id string) error {
+	return c.cli.WriteJSON(wire.FrameRemovePlugin, wire.RemovePluginReq{ID: id})
+}
+
+// AwaitPlugins consumes the next PLUGINS snapshot.
+func (c *Client) AwaitPlugins(timeout time.Duration) (wire.PluginsResp, error) {
+	var resp wire.PluginsResp
+	err := c.awaitSnapshot(wire.FramePlugins, "PLUGINS", timeout, &resp)
+	return resp, err
+}
+
+// AwaitPluginEvent consumes PLUGIN_EVENTs until pred matches.
+func (c *Client) AwaitPluginEvent(pred func(wire.PluginEvent) bool, timeout time.Duration) (wire.PluginEvent, error) {
+	deadline := time.After(timeout)
+	for {
+		select {
+		case ev := <-c.plugins:
+			if pred(ev) {
+				return ev, nil
+			}
+		case err := <-c.errs:
+			return wire.PluginEvent{}, err
+		case <-deadline:
+			return wire.PluginEvent{}, errors.New("testclient: timeout waiting for PLUGIN_EVENT")
 		}
 	}
 }
@@ -621,6 +675,14 @@ func (c *Client) readLoop() {
 			var ev wire.IdeaEvent
 			if err := json.Unmarshal(payload, &ev); err == nil {
 				c.sendIdeaEvent(ev)
+			}
+		case wire.FramePluginEvent:
+			var ev wire.PluginEvent
+			if err := json.Unmarshal(payload, &ev); err == nil {
+				select {
+				case c.plugins <- ev:
+				case <-c.closed:
+				}
 			}
 		default:
 			c.sendSnapshot(frameMsg{t: ft, payload: payload})

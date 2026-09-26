@@ -347,6 +347,22 @@ These reach the shell or agent CLI rather than the app.
 | ⌥← / ⌥→ | Move by word (macOS; Ctrl+← / Ctrl+→ on Windows and Linux) |
 | ⇧⏎ | Insert a newline in the agent's input instead of submitting |
 
+## Plugins
+
+Hive can run **headless plugins**: small programs, in any language, that
+watch what your sessions are doing and act on it — post to a webhook
+when an agent is waiting on you, bridge to a chat app, restart a crashed
+agent. A plugin talks to the daemon over the same wire protocol as the
+app, installs from a local folder or a git URL, and always installs
+disabled. Plugins run with your full user privileges, so only enable
+ones you trust.
+
+- Writing one: [docs/plugins.md](docs/plugins.md)
+- The reference plugin: [plugins/webhook/](plugins/webhook/)
+
+Managing plugins from Settings arrives with the Plugins tab; until then
+they are managed over the wire protocol.
+
 ## Contributing
 
 See `AGENTS.md` for repo-wide rules, `DESIGN.md` for the architecture

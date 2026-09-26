@@ -1275,6 +1275,10 @@ type Error struct {
 	// confirm-and-retry branch can serve both worktree_dirty (session
 	// scoped) and project_has_ideas (project scoped).
 	ProjectID string `json:"project_id,omitempty"`
+	// Nonce echoes InstallPluginReq.Nonce on a failed install, so the
+	// client that asked can tell its own failure apart from another
+	// window's.
+	Nonce string `json:"nonce,omitempty"`
 }
 
 // Well-known error codes.
@@ -1332,6 +1336,12 @@ const (
 	// destroy ideas that are still open. Overridable by force
 	// (KillProjectReq.DeleteIdeas) after the user confirms.
 	ErrCodeProjectHasIdeas = "project_has_ideas"
+	// ErrCodePluginInstallFailed: INSTALL_PLUGIN could not fetch,
+	// validate or store the plugin. Carries the request's Nonce.
+	ErrCodePluginInstallFailed = "plugin_install_failed"
+	// ErrCodePluginNotFound: SET_PLUGIN_ENABLED / REMOVE_PLUGIN named an
+	// id that is not installed.
+	ErrCodePluginNotFound = "plugin_not_found"
 )
 
 // ErrProtocolMismatch wraps a handshake refused for speaking a
@@ -1557,4 +1567,87 @@ func ReadJSON(r io.Reader, v any) (FrameType, error) {
 		}
 	}
 	return t, nil
+}
+
+// ---------- plugins ----------
+
+// Plugin status values carried by PluginInfo.Status.
+const (
+	// PluginStopped: installed and disabled, or enabled but not yet
+	// started. Never running.
+	PluginStopped = "stopped"
+	// PluginRunning: the plugin's process is alive.
+	PluginRunning = "running"
+	// PluginCrashed: the process exited and a restart is scheduled.
+	PluginCrashed = "crashed"
+	// PluginFailed: the process crashed too often in a short window and
+	// was left stopped. Re-enabling it starts it afresh.
+	PluginFailed = "failed"
+	// PluginRefused: the plugin cannot run as installed — an
+	// incompatible api_version, or a command that is not on PATH.
+	// StatusDetail says which.
+	PluginRefused = "refused"
+)
+
+// PluginInfo is one installed plugin as the daemon reports it.
+type PluginInfo struct {
+	ID          string `json:"id"`
+	Name        string `json:"name"`
+	Version     string `json:"version"`
+	APIVersion  string `json:"api_version"`
+	Description string `json:"description,omitempty"`
+	// Source is what the user installed from: a local directory or a
+	// git URL. Commit is the pinned commit for a git install.
+	Source string `json:"source"`
+	Commit string `json:"commit,omitempty"`
+	// Command is the manifest's main command, shown in the consent
+	// prompt so the user sees what will run.
+	Command      []string `json:"command"`
+	Enabled      bool     `json:"enabled"`
+	Status       string   `json:"status"`
+	StatusDetail string   `json:"status_detail,omitempty"`
+	// Restarts counts crash restarts since the plugin was last enabled.
+	Restarts int `json:"restarts"`
+}
+
+// PluginsResp is the PLUGINS payload, the answer to LIST_PLUGINS.
+type PluginsResp struct {
+	Plugins []PluginInfo `json:"plugins"`
+}
+
+// InstallPluginReq is the INSTALL_PLUGIN payload. Source is a local
+// directory path or a git URL. A plugin always installs disabled —
+// nothing runs until SET_PLUGIN_ENABLED — so a client shows the user
+// what they are about to trust before enabling it. Nonce is echoed on
+// the resulting PluginEvent or Error.
+type InstallPluginReq struct {
+	Source string `json:"source"`
+	Nonce  string `json:"nonce,omitempty"`
+}
+
+// SetPluginEnabledReq is the SET_PLUGIN_ENABLED payload.
+type SetPluginEnabledReq struct {
+	ID      string `json:"id"`
+	Enabled bool   `json:"enabled"`
+}
+
+// RemovePluginReq is the REMOVE_PLUGIN payload.
+type RemovePluginReq struct {
+	ID string `json:"id"`
+}
+
+// PluginEventKind enumerates the kinds carried by PLUGIN_EVENT.
+const (
+	PluginEventAdded   = "added"
+	PluginEventUpdated = "updated"
+	PluginEventRemoved = "removed"
+)
+
+// PluginEvent is the PLUGIN_EVENT payload, broadcast to every control
+// connection on any change to a plugin, including status changes.
+type PluginEvent struct {
+	Kind   string     `json:"kind"`
+	Plugin PluginInfo `json:"plugin"`
+	// Nonce is set only on the "added" event an INSTALL_PLUGIN produced.
+	Nonce string `json:"nonce,omitempty"`
 }

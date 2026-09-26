@@ -403,6 +403,29 @@ func (s *session) dispatch(req rpcReq) {
 			return
 		}
 		s.respond(req.ID, "", s.controlWriteJSON(wire.FrameAddIdea, p))
+	case "ListPlugins":
+		s.respond(req.ID, "", s.controlWriteJSON(wire.FrameListPlugins, struct{}{}))
+	case "InstallPlugin":
+		var p wire.InstallPluginReq
+		if err := parseParams(req.Params, &p); err != nil {
+			s.respond(req.ID, nil, err)
+			return
+		}
+		s.respond(req.ID, "", s.controlWriteJSON(wire.FrameInstallPlugin, p))
+	case "SetPluginEnabled":
+		var p wire.SetPluginEnabledReq
+		if err := parseParams(req.Params, &p); err != nil {
+			s.respond(req.ID, nil, err)
+			return
+		}
+		s.respond(req.ID, "", s.controlWriteJSON(wire.FrameSetPluginEnabled, p))
+	case "RemovePlugin":
+		var p wire.RemovePluginReq
+		if err := parseParams(req.Params, &p); err != nil {
+			s.respond(req.ID, nil, err)
+			return
+		}
+		s.respond(req.ID, "", s.controlWriteJSON(wire.FrameRemovePlugin, p))
 	case "UpdateIdea":
 		var p wire.UpdateIdeaReq
 		if err := parseParams(req.Params, &p); err != nil {
