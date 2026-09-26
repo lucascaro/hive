@@ -4,7 +4,8 @@ title: Stuck wire client can stall a session or hang daemon shutdown
 type: bug
 complexity: M
 priority: P1
-stage: IMPLEMENT
+pr: 462
+stage: REVIEW
 ---
 
 # Stuck wire client can stall a session or hang daemon shutdown

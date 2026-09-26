@@ -2,6 +2,7 @@
 type: fixed
 bump: patch
 issue: 461
+pr: 462
 ---
 
 A window or client that stops reading from the daemon can no longer freeze a

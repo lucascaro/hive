@@ -3,6 +3,8 @@
 - **Spec:** [docs/product-specs/461-stuck-wire-client-can-stall-a-session-or-hang.md](../../product-specs/461-stuck-wire-client-can-stall-a-session-or-hang.md)
 - **Issue:** #461
 - **Status:** active
+- **PR:** #462
+- **Branch:** feature/461-stuck-wire-client
 
 ## Summary
 
