@@ -374,3 +374,23 @@ func TestManager_RemoveSaveFailureKeepsPlugin(t *testing.T) {
 		t.Fatalf("install dir deleted after a failed remove: %v", err)
 	}
 }
+
+// A SetEnabled whose plugins.json write fails restores the flag it
+// found, even when the call asked for the value it already had.
+func TestManager_SetEnabledSaveFailureRestoresFlag(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("POSIX permission bits")
+	}
+	m, _ := newTestManager(t)
+	install(t, m, writePlugin(t, "same", "run", nil))
+	if err := os.Chmod(m.stateDir, 0o500); err != nil {
+		t.Fatal(err)
+	}
+	defer os.Chmod(m.stateDir, 0o700)
+	if _, err := m.SetEnabled("same", false); err == nil {
+		t.Fatal("SetEnabled succeeded with an unwritable state dir")
+	}
+	if p, _ := find(m, "same"); p.Enabled {
+		t.Fatal("failed redundant disable left the plugin marked enabled")
+	}
+}

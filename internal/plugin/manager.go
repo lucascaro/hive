@@ -365,9 +365,10 @@ func (m *Manager) SetEnabled(id string, enabled bool) (wire.PluginInfo, error) {
 	defer e.op.Unlock()
 
 	m.mu.Lock()
+	prev := e.rec.Enabled
 	e.rec.Enabled = enabled
 	if err := m.saveLocked(); err != nil {
-		e.rec.Enabled = !enabled
+		e.rec.Enabled = prev
 		m.mu.Unlock()
 		return wire.PluginInfo{}, err
 	}
