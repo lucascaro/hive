@@ -466,6 +466,13 @@ drives the real `pty:disconnect` handler captured from the mocked `EventsOn`):
   fails its own test when undone (sink, Close order, fan-out close, control
   deadline, session guard), and 4 of 9 reattach dom tests fail without the
   backoff scheduling.
+- **2026-09-25** — Review loop converged at iter 3 (APPROVE, 0 threads).
+  Iter 1 escalated two design points (repeat-replay cap, quiet-flag join).
+  The operator chose the recommended option for both, and both were
+  implemented alongside two bot-found GUI races: a disconnect arriving
+  mid-dial, and an alive-path failure that never re-armed the retry. After
+  the APPROVE, a test-only commit added the one remaining MINOR:
+  `TestFrameSinkSecondQueuedReplayUnderCapGetsNoAllowance`, revert-checked.
 
 ## Open questions
 
@@ -473,3 +480,4 @@ drives the real `pty:disconnect` handler captured from the mocked `EventsOn`):
 
 - **2026-09-25 iter 1** — verdict: COMMENT; mergeable: MERGEABLE; findings_hash: aee505ab0a4972a40b9a640370c4e88d5404a4b785a665c0c5f5b9ccee21fcc9; threads_open: 3; action: escalated:risky-fix-needs-human-decision; head_sha: 3dec9dd1.
 - **2026-09-25 iter 2** — verdict: COMMENT; mergeable: MERGEABLE; findings_hash: b21bf5e8d7a949eb01c12111d4009f4553db0b6a8c131c9d4cb53bf8c8bede28; threads_open: 0; action: autofix+push; head_sha: 6eb70e21.
+- **2026-09-25 iter 3** — verdict: APPROVE; mergeable: MERGEABLE; findings_hash: empty; threads_open: 0; action: stop; head_sha: 60b266b5.

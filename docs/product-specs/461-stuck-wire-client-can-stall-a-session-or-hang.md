@@ -5,7 +5,7 @@ type: bug
 complexity: M
 priority: P1
 pr: 462
-stage: REVIEW
+stage: GATE
 ---
 
 # Stuck wire client can stall a session or hang daemon shutdown

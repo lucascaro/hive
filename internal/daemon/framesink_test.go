@@ -333,3 +333,26 @@ func TestFrameSinkReplayAfterDrainIsAccepted(t *testing.T) {
 		}
 	}
 }
+
+// A second replay queued while the first is outstanding is still
+// accepted when it fits the backlog — it just earns no allowance of its
+// own, so it cannot widen the cap the way the first one did.
+func TestFrameSinkSecondQueuedReplayUnderCapGetsNoAllowance(t *testing.T) {
+	f, _ := newPipeSink(t, time.Hour, 32<<10)
+	first := bytes.Repeat([]byte("r"), 64<<10)
+	if err := f.writeReplay(first, 16<<10); err != nil {
+		t.Fatalf("first replay: %v", err)
+	}
+	f.mu.Lock()
+	owedAfterFirst := f.replayOwed
+	f.mu.Unlock()
+	if err := f.writeReplay([]byte("small"), 16<<10); err != nil {
+		t.Fatalf("second replay under the cap: %v", err)
+	}
+	f.mu.Lock()
+	owed := f.replayOwed
+	f.mu.Unlock()
+	if owed != owedAfterFirst {
+		t.Fatalf("replayOwed = %d after a second replay, want %d (no extra allowance)", owed, owedAfterFirst)
+	}
+}
