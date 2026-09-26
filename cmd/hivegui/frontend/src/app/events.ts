@@ -22,10 +22,13 @@ import {
 import type {
   AttachOutcome,
   IdeaInfo,
+  PluginEvent,
+  PluginInfo,
   SessionInfo,
   ProjectInfo,
   TermTile,
 } from './state.js';
+import { claimPluginEvent, claimPluginInstallError } from './plugins.js';
 import { readNeedsAttention } from './state.js';
 import {
   addIdea,
@@ -41,6 +44,9 @@ import {
   applyProjectList,
   removeIdea,
   setIdeas,
+  setPlugins,
+  upsertPlugin,
+  dropPlugin,
   setSessionPhase,
   setSessions,
   updateIdea,
@@ -154,6 +160,8 @@ interface ControlError {
   // Set on project_has_ideas, so the confirm knows which project to
   // re-issue the delete for without guessing from the focused one.
   project_id?: string;
+  // Echoes an INSTALL_PLUGIN nonce on plugin_install_failed.
+  nonce?: string;
 }
 
 interface PtyError {
@@ -702,6 +710,32 @@ export function wireDaemonEvents(injected: EventsDeps) {
     else if (ev.kind === 'updated') updateIdea(ev.idea);
   });
 
+  // Plugins (#460). The list arrives when the Plugins tab asks; the
+  // fan-out keeps every window's copy current from then on, and an
+  // "added" carrying this window's nonce also settles its install.
+  EventsOn('plugin:list', (jsonStr: string) => {
+    try {
+      setPlugins(
+        (JSON.parse(jsonStr) as { plugins?: PluginInfo[] }).plugins || [],
+      );
+    } catch {
+      flashStatus('bad plugin payload', true);
+    }
+  });
+
+  EventsOn('plugin:event', (jsonStr: string) => {
+    let ev: PluginEvent;
+    try {
+      ev = JSON.parse(jsonStr) as PluginEvent;
+    } catch {
+      flashStatus('bad plugin event', true);
+      return;
+    }
+    if (ev.kind === 'removed') dropPlugin(ev.plugin.id);
+    else upsertPlugin(ev.plugin);
+    claimPluginEvent(ev);
+  });
+
   // Agent activity (spec 416): every session's tool calls and plan, plus
   // the GET_ACTIVITY answers. A malformed frame costs one delta, not the
   // feed — and it is too frequent to flash a status line for.
@@ -1197,6 +1231,8 @@ export function wireDaemonEvents(injected: EventsDeps) {
     }
     // The review ended between the session event and the fetch: nothing
     // to show, and nothing worth a status line.
+    // This window's own install failure: the Plugins tab shows it.
+    if (claimPluginInstallError(e)) return;
     if (e.code === 'plan_review_stale') {
       onPlanReviewStale(e.session_id);
       return;

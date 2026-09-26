@@ -63,11 +63,14 @@ the SDK below.
 
 ## Installing
 
-> The Hive app's **Settings → Plugins** tab — install, enable, disable,
-> remove — arrives in the next phase of this feature (spec 460). Until
-> then plugins are managed over the wire protocol with the
-> `INSTALL_PLUGIN` / `SET_PLUGIN_ENABLED` / `REMOVE_PLUGIN` requests
-> below, which is what that tab will send.
+Users manage plugins in the Hive app under **Settings → Plugins**:
+paste a folder path or git URL and press Install, and Hive shows what the
+plugin is, where it came from and the exact command it will run, with a
+full-privileges warning. Accepting enables it; cancelling removes it
+again. The tab's enable toggle and remove button act at once, with no
+daemon restart. It sends the same `INSTALL_PLUGIN` /
+`SET_PLUGIN_ENABLED` / `REMOVE_PLUGIN` requests described below, so any
+other wire client can do the same.
 
 A plugin is installed from either:
 

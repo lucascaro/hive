@@ -345,8 +345,9 @@ ones you trust.
 - Writing one: [docs/plugins.md](docs/plugins.md)
 - The reference plugin: [plugins/webhook/](plugins/webhook/)
 
-Managing plugins from Settings arrives with the Plugins tab; until then
-they are managed over the wire protocol.
+Manage them under **Settings → Plugins**: install from a folder or git
+URL, then enable, disable or remove each one without restarting Hive.
+Installing shows what the plugin will run and asks before enabling it.
 
 ## Contributing
 

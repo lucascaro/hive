@@ -3,10 +3,10 @@
 - **Spec:** [docs/product-specs/460-headless-plugins-let-users-install-third-party-au.md](../../product-specs/460-headless-plugins-let-users-install-third-party-au.md)
 - **Issue:** #460
 - **Status:** active
-- **Phase:** 1 of 2
+- **Phase:** 2 of 2
 - **Depends on:** #461
-- **PR:** #463
-- **Branch:** feature/460-headless-plugins
+- **PR:**
+- **Branch:**
 
 ## Summary
 
@@ -336,11 +336,15 @@ Frontend:
 - **2026-09-26** — ws-bridge exposes the four plugin ops as raw forwards; the nonce-awaiting `InstallPlugin` binding and all GUI bindings move to phase 2 with the tab that uses them. Why: nothing in phase 1 calls them, and an unused Wails binding is dead code.
 - **2026-09-26** — Daemon `runCtx` is a daemon-lifetime context created in `New` (cancelled at shutdown), not Run's ctx. Why: plugin accept goroutines read it; set in Run it raced them.
 - **2026-09-26** — The SDK pauses the socket across the handshake → pump handoff. Why: removing a 'data' listener does not pause a flowing Node stream, so the snapshot frames right after WELCOME could be dropped.
+- **2026-09-26** — Phase 2: the install nonce is generated and matched in the frontend (`src/app/plugins.ts`), not awaited inside the Go `InstallPlugin` binding as the plan said. Why: `plugin:event` and `control:error` already reach the frontend through the shared `controlEvents` table, so the Go binding stays a one-frame forward like every other op, and the Wails GUI and the ws-bridge (e2e-real) share one correlation path instead of two. The initiating window's `plugin_install_failed` is claimed there and kept off the generic error status line.
+- **2026-09-26** — Phase 2: the plugin list lives in the app store, fed by global `plugin:list` / `plugin:event` handlers in `events.ts`; the Plugins tab sends `ListPlugins` once, on its first activation, rather than on every Settings open. The tab is its own component (`PluginsPanel.tsx`) rather than more of the 1,245-line `Settings.tsx`. Re-enabling an already-installed plugin from the toggle does not re-prompt: consent is the install step, and a disable/enable cycle is how the docs tell authors to restart a plugin.
 
 ## Progress
 
 - **2026-09-25** — Spec triaged (enhancement / L / P2); research started.
 - **2026-09-25** — Research done; bug #461 filed; plan approved. Stage → IMPLEMENT (blocked on #461 for the hang e2e test).
+- **2026-09-26** — Phase 1 merged (#463). Reset for phase 2: stage → IMPLEMENT, Phase 2 of 2, PR/Branch cleared.
+- **2026-09-26** — Phase 2 implemented on `feature/460-headless-plugins-phase2`: Wails bindings, Settings → Plugins tab, install trust confirm, store + events wiring, harnesses, dom + e2e tests, docs/changeset/features.json flipped to shipped.
 
 ## Open questions
 

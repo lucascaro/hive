@@ -152,7 +152,8 @@
   },
   {
     "title": "Plugins",
-    "blurb": "Install community automations that react to your sessions — a webhook when an agent needs you, a chat bridge, and more.",
-    "status": "planned"
+    "blurb": "Install automations that react to your sessions — a webhook when an agent needs you, a chat bridge, and more — from Settings → Plugins.",
+    "status": "shipped",
+    "since": "Unreleased"
   }
 ]

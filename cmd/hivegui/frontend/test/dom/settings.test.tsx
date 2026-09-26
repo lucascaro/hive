@@ -1031,6 +1031,7 @@ describe('settings menu-bar tab', () => {
     expect(tabIds()).toEqual([
       'settings-tab-agents',
       'settings-tab-appearance',
+      'settings-tab-plugins',
       'settings-tab-updates',
     ]);
     expect(document.getElementById('settings-panel-menubar')).toBeNull();
@@ -1045,7 +1046,7 @@ describe('settings menu-bar tab', () => {
     expect(document.getElementById('settings-panel-menubar')).toBeNull();
   });
 
-  it('appears between Appearance and Updates and owns the toggle', async () => {
+  it('appears between Appearance and Plugins and owns the toggle', async () => {
     menuBarStatus = 'not-registered';
     onMac = true;
     open();
@@ -1054,6 +1055,7 @@ describe('settings menu-bar tab', () => {
       'settings-tab-agents',
       'settings-tab-appearance',
       'settings-tab-menubar',
+      'settings-tab-plugins',
       'settings-tab-updates',
     ]);
 

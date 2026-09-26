@@ -162,6 +162,33 @@ export function readNeedsAttention(s: SessionInfo): boolean {
  * raw JSON on the control connection, where the daemon's struct tags
  * are the only spelling that exists. `external_ref` is deliberately
  * absent — the daemon persists it but does not put it on the wire. */
+/** One installed plugin, as PLUGINS / PLUGIN_EVENT carry it
+ * (internal/wire/control.go PluginInfo). */
+export interface PluginInfo {
+  id: string;
+  name: string;
+  version: string;
+  api_version: string;
+  description?: string;
+  /** What the user installed from: a local directory or a git URL. */
+  source: string;
+  /** The pinned commit of a git install. */
+  commit?: string;
+  /** The manifest's main command — what will run once enabled. */
+  command: string[];
+  enabled: boolean;
+  status: 'stopped' | 'running' | 'crashed' | 'failed' | 'refused' | string;
+  status_detail?: string;
+  restarts: number;
+}
+
+export interface PluginEvent {
+  kind: 'added' | 'updated' | 'removed';
+  plugin: PluginInfo;
+  /** Set only on the 'added' event an install this window asked for. */
+  nonce?: string;
+}
+
 export interface IdeaInfo {
   id: string;
   project_id: string;
