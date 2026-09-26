@@ -340,3 +340,4 @@ _None blocking — see the plan's Open questions / risks for accepted risks._
     - acceptance — PASS — as in the previous entry. Cross-platform is code evidence only; the live run was macOS against laya-serve.
     - non-goals — PASS — as in the previous entry.
     - doc accuracy — PASS — DESIGN.md now lists the daemon, the GUI and laya-scrub as importers; the changeset, features.json, README, design doc, corpus README and Settings hints were all re-verified.
+- **2026-09-26 iter 4** — verdict: REQUEST_CHANGES; mergeable: CONFLICTING; findings_hash: b8c1850f03dd7d4ded147fdad5ee306915945fd9a58161b9e1b8b5de25c99ecf; threads_open: 0; action: escalated:contract-conflict-with-main; head_sha: cba5a244.
