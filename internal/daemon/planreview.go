@@ -54,7 +54,7 @@ func (d *Daemon) servePlanReview(ctx context.Context, conn net.Conn) {
 	ft, err := wire.ReadJSON(conn, &req)
 	if err != nil || ft != wire.FramePlanReviewRequest {
 		log.Printf("hived: plan review: bad request (%s): %v", ft, err)
-		_ = wire.WriteJSON(conn, wire.FramePlanReviewDecision, wire.PlanReviewDecision{Status: wire.PlanReviewInvalid})
+		_ = writeBounded(conn, writeTimeout(), wire.FramePlanReviewDecision, wire.PlanReviewDecision{Status: wire.PlanReviewInvalid})
 		return
 	}
 	dec := d.decidePlanReview(ctx, conn, req)
