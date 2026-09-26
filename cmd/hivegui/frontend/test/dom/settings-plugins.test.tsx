@@ -195,6 +195,16 @@ describe('Settings → Plugins', () => {
     );
   });
 
+  it('a prompt that fails after install is not called an install failure', async () => {
+    bridge.Confirm.mockRejectedValueOnce(new Error('no window'));
+    const { container, onError } = mount();
+    await installFrom(container, '/src/webhook');
+    expect(bridge.SetPluginEnabled).not.toHaveBeenCalled();
+    expect(onError).toHaveBeenLastCalledWith(
+      'Webhook is installed but turned off: no window',
+    );
+  });
+
   it('a failed install surfaces the error and never prompts', async () => {
     installAnswer = { err: 'no hive-plugin.json' };
     const { container, onError } = mount();

@@ -131,6 +131,9 @@ export function PluginsPanel({
     let failed = 'plugin install failed';
     try {
       const p = await installPlugin(src);
+      // Installed and still off from here on; if even the prompt fails,
+      // say that rather than blaming the install.
+      failed = `${oneLine(p.name)} is installed but turned off`;
       // Past this point the plugin is installed and disabled. The prompt
       // is a native dialog, so it still makes sense if Settings closed
       // while the install ran; only the React state needs the guard.
