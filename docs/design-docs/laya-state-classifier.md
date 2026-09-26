@@ -80,6 +80,10 @@ All of these must hold, checked in `registry.classifyDueLocked`:
   the same process (a restart attaches a new one, and resets the attempt
   record), and showing the same screen. The screen is checked live,
   because the sampler's digest can be a tick behind.
+- The text sent and the digest checked on apply come from one
+  `ScreenSnapshot`, taken after the lock is released. If the screen has
+  moved since selection, the call is skipped. Rendered separately, a
+  screen that went A→B→A during the call would get B's answer as A's.
 - Anything else that happened meanwhile (an agent event, a bell, the
   user answering) is caught by `Classify`'s own `Classifiable` check.
 - On any error the state is left as the heuristic tier had it, and the

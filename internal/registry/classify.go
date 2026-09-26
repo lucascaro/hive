@@ -162,56 +162,77 @@ func (r *Registry) classifyCycle(ctx context.Context, now time.Time) {
 
 	captureDir := os.Getenv(classifyCaptureDirEnv)
 	for _, c := range due {
-		if ctx.Err() != nil {
+		if !r.classifyOne(ctx, fn, c, now, captureDir) {
 			return
 		}
-		c.text = c.sess.ScreenText()
-		st, err := fn(ctx, c.text)
-		if ctx.Err() != nil {
-			// Close is waiting on us; do not re-take the lock to apply
-			// an answer to a registry that is going away.
-			return
-		}
-		if errors.Is(err, ErrClassifierOff) {
-			return
-		}
-
-		if captureDir != "" {
-			// Every attempt, failed ones included: the corpus is labelled
-			// by hand, and the screens a server could not answer are
-			// exactly the ones worth having.
-			label := st
-			if err != nil {
-				label = "unclassified"
-			}
-			captureScreen(captureDir, c, label, now)
-		}
-
-		r.mu.Lock()
-		if err != nil {
-			// Not recorded as tried: backoff already paces the retries,
-			// and a screen that sat still while the server was briefly
-			// down is exactly the one still worth asking about. Stamped
-			// as checked, so the working recheck does not fire early.
-			if c.e.sess == c.sess {
-				c.e.laya.checkedAt = now
-			}
-			r.classifier.backoff = min(max(2*r.classifier.backoff, classifyBackoffMin), classifyBackoffMax)
-			r.classifier.backoffUntil = now.Add(r.classifier.backoff)
-			r.mu.Unlock()
-			if debugState {
-				log.Printf("state: %s laya classify failed (backoff %s): %v", c.e.ID, r.classifier.backoff, err)
-			}
-			return
-		}
-		r.classifier.backoff = 0
-		r.classifier.backoffUntil = time.Time{}
-		if c.e.sess == c.sess {
-			c.e.laya = layaEntry{tried: true, digest: c.digest, checkedAt: now}
-		}
-		r.applyClassificationLocked(c, st, now)
-		r.mu.Unlock()
 	}
+
+}
+
+// classifyOne asks about one candidate and applies the answer. It
+// reports whether the cycle may go on to the next candidate: false when
+// the registry is closing, classification was switched off, or the call
+// failed (the backoff then covers every candidate).
+func (r *Registry) classifyOne(ctx context.Context, fn Classifier, c classifyCandidate, now time.Time, captureDir string) bool {
+	if ctx.Err() != nil {
+		return false
+	}
+	// The text and the digest it is checked against come from one
+	// snapshot. Rendered separately, the screen could change between the
+	// render and the post-call check and change back, and the answer
+	// about the in-between screen would pass as one about this one.
+	text, d := c.sess.ScreenSnapshot()
+	if d != c.digest {
+		// Moved since selection: not settled after all. The sampler
+		// sees it, and a later cycle asks about the screen it settles on.
+		return true
+	}
+	c.text = text
+	st, err := fn(ctx, c.text)
+	if ctx.Err() != nil {
+		// Close is waiting on us; do not re-take the lock to apply an
+		// answer to a registry that is going away.
+		return false
+	}
+	if errors.Is(err, ErrClassifierOff) {
+		return false
+	}
+
+	if captureDir != "" {
+		// Every attempt, failed ones included: the corpus is labelled by
+		// hand, and the screens a server could not answer are exactly
+		// the ones worth having.
+		label := st
+		if err != nil {
+			label = "unclassified"
+		}
+		captureScreen(captureDir, c, label, now)
+	}
+
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if err != nil {
+		// Not recorded as tried: backoff already paces the retries, and a
+		// screen that sat still while the server was briefly down is
+		// exactly the one still worth asking about. Stamped as checked,
+		// so the working recheck does not fire early.
+		if c.e.sess == c.sess {
+			c.e.laya.checkedAt = now
+		}
+		r.classifier.backoff = min(max(2*r.classifier.backoff, classifyBackoffMin), classifyBackoffMax)
+		r.classifier.backoffUntil = now.Add(r.classifier.backoff)
+		if debugState {
+			log.Printf("state: %s laya classify failed (backoff %s): %v", c.e.ID, r.classifier.backoff, err)
+		}
+		return false
+	}
+	r.classifier.backoff = 0
+	r.classifier.backoffUntil = time.Time{}
+	if c.e.sess == c.sess {
+		c.e.laya = layaEntry{tried: true, digest: c.digest, checkedAt: now}
+	}
+	r.applyClassificationLocked(c, st, now)
+	return true
 }
 
 // classifyDueLocked reports whether e should be classified now, and

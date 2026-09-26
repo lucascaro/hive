@@ -573,6 +573,50 @@ func TestClassifierSelectionDoesNotRender(t *testing.T) {
 	}
 }
 
+// selectOnly runs the locked half of a cycle for e: the candidate
+// classifyCycle would ask about, as of now.
+func selectOnly(t *testing.T, r *Registry, e *Entry, now time.Time) classifyCandidate {
+	t.Helper()
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	c, ok := classifyDueLocked(r.entries[e.ID], now)
+	if !ok {
+		t.Fatal("precondition: session not due")
+	}
+	return c
+}
+
+// Review finding (PR #464): with the text rendered after unlocking,
+// separately from the digest checked on apply, a screen that went A→B
+// before the render and back to A before the answer would get B's
+// answer. The text now comes from one snapshot with its digest.
+func TestClassifierNeverSendsAnotherScreensText(t *testing.T) {
+	r, e, sess, f := classifierRig(t, wire.StateWaitingInput)
+	base := time.Now()
+	settle(t, r, e, sess, "screen A", base)
+	c := selectOnly(t, r, e, base.Add(time.Second))
+	paint(t, e, sess, "\r\nscreen B") // moved after selection, before the render
+	if !r.classifyOne(context.Background(), f.classify, c, base.Add(time.Second), "") {
+		t.Fatal("a moved screen stopped the cycle")
+	}
+	if f.count() != 0 {
+		t.Errorf("Laya was asked about %q for the screen selected as A", f.calls[0])
+	}
+}
+
+// The benign version: the screen that is rendered is the screen that was
+// selected, so the call goes ahead with its text.
+func TestClassifierSendsTheSelectedScreen(t *testing.T) {
+	r, e, sess, f := classifierRig(t, wire.StateWaitingInput)
+	base := time.Now()
+	settle(t, r, e, sess, "screen A", base)
+	c := selectOnly(t, r, e, base.Add(time.Second))
+	r.classifyOne(context.Background(), f.classify, c, base.Add(time.Second), "")
+	if f.count() != 1 || !strings.Contains(f.calls[0], "screen A") {
+		t.Errorf("calls = %q, want one call with the selected screen", f.calls)
+	}
+}
+
 func waitCalls(t *testing.T, f *fakeLaya, n int) {
 	t.Helper()
 	deadline := time.Now().Add(10 * time.Second)

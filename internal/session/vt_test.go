@@ -799,3 +799,14 @@ func TestScreenTextEmptyScreen(t *testing.T) {
 		t.Errorf("ScreenText of a blank screen = %q, want empty", got)
 	}
 }
+
+func TestScreenSnapshotMatchesTextAndDigest(t *testing.T) {
+	v := NewVT(20, 4)
+	if _, err := v.Write([]byte("hello\r\nworld")); err != nil {
+		t.Fatal(err)
+	}
+	text, d := v.ScreenSnapshot()
+	if text != v.ScreenText() || d != v.ScreenDigest() {
+		t.Errorf("ScreenSnapshot = (%q, %d), want (%q, %d)", text, d, v.ScreenText(), v.ScreenDigest())
+	}
+}

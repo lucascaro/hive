@@ -672,3 +672,6 @@ func (s *Session) ScreenDigest() uint64 { return s.vt.ScreenDigest() }
 
 // ScreenText is VT.ScreenText for this session's screen.
 func (s *Session) ScreenText() string { return s.vt.ScreenText() }
+
+// ScreenSnapshot is VT.ScreenSnapshot for this session's screen.
+func (s *Session) ScreenSnapshot() (string, uint64) { return s.vt.ScreenSnapshot() }

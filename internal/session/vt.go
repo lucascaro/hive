@@ -1014,6 +1014,20 @@ func writeColor(buf *bytes.Buffer, c vt10x.Color, isFG bool) {
 func (v *VT) ScreenText() string {
 	v.mu.Lock()
 	defer v.mu.Unlock()
+	return v.screenTextLocked()
+}
+
+// ScreenSnapshot is ScreenText and ScreenDigest of the same screen,
+// taken under one lock: a caller that must know which screen a text
+// belongs to cannot get that from two separate calls, between which the
+// screen can change.
+func (v *VT) ScreenSnapshot() (string, uint64) {
+	v.mu.Lock()
+	defer v.mu.Unlock()
+	return v.screenTextLocked(), v.screenDigestLocked()
+}
+
+func (v *VT) screenTextLocked() string {
 	cols, rows := v.term.Size()
 	lines := make([]string, 0, rows)
 	row := make([]rune, cols)
@@ -1052,6 +1066,10 @@ func (v *VT) ScreenText() string {
 func (v *VT) ScreenDigest() uint64 {
 	v.mu.Lock()
 	defer v.mu.Unlock()
+	return v.screenDigestLocked()
+}
+
+func (v *VT) screenDigestLocked() uint64 {
 	cols, rows := v.term.Size()
 	// FNV-1a, inlined: this runs once per session per tick, and the
 	// allocation-free loop is the whole reason it is affordable there.
