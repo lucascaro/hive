@@ -24,6 +24,10 @@ type Sink interface {
 	Write(p []byte) (int, error)
 }
 
+// ErrSessionClosed is returned by SubscribeWithAtomicReplay once the
+// session's PTY has ended and its sinks have been closed.
+var ErrSessionClosed = errors.New("session: pty closed")
+
 // Session owns a PTY and the process running on it. It does not own any
 // wire-level state — that lives in the daemon package, which calls
 // Subscribe to receive bytes. Reattach repaints come from the VT mirror.
@@ -34,8 +38,13 @@ type Session struct {
 	cmd  *pty.Cmd
 	ptmx pty.Pty
 
-	mu        sync.Mutex
-	sinks     map[Sink]struct{}
+	mu    sync.Mutex
+	sinks map[Sink]struct{}
+	// fannedOut is set under mu by fanoutClose: the PTY is done and every
+	// sink has been closed. SubscribeWithAtomicReplay refuses once it is
+	// set, so a late attach cannot register a sink nothing will ever close.
+	// done is no substitute: readLoop closes it only after fanoutClose.
+	fannedOut bool
 	done      chan struct{}
 	vtErrOnce sync.Once
 
@@ -434,6 +443,7 @@ func (s *Session) fanoutClose() {
 		s.titleTimer.Stop()
 		s.titleTimer = nil
 	}
+	s.fannedOut = true
 	for sink := range s.sinks {
 		if c, ok := sink.(io.Closer); ok {
 			_ = c.Close()
@@ -452,16 +462,21 @@ func (s *Session) fanoutClose() {
 // writeFn is expected to write a Begin event, the replay bytes, and a
 // Done event to its underlying transport, ideally under the sink's
 // own write mutex so any concurrent non-fanout writer is also
-// serialized. While writeFn runs, deliver() is blocked on s.mu — the
-// PTY reader continues filling the kernel buffer, but no other write
-// reaches the wire. Keep writeFn quick: long replays mean longer
-// session pauses (PTY backpressure picks up at the kernel buffer
-// level, ~64 KiB on macOS, before the agent stalls).
+// serialized. While writeFn runs, deliver() is blocked on s.mu, so
+// writeFn must not do socket I/O: it should only hand the bytes to a
+// queue (the daemon's frameSink enqueues and a writer goroutine drains).
+// A writeFn that blocked on a slow peer would stall the PTY drain and,
+// through it, the agent.
 //
 // On writeFn error the sink is not registered and unsubscribe is nil.
+// A session whose PTY has already ended returns ErrSessionClosed
+// without calling writeFn.
 func (s *Session) SubscribeWithAtomicReplay(sink Sink, writeFn func(replay []byte) error) (unsubscribe func(), err error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	if s.fannedOut {
+		return nil, ErrSessionClosed
+	}
 	// Initial attach uses InitialReplayBytes, not the raw ring: both screen
 	// types get a compact snapshot (alt-screen: one screen, no scrollback;
 	// normal: one screen + historyRows of history, sized to match xterm's

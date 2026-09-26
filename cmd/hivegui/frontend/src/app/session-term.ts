@@ -40,7 +40,7 @@ import {
 } from './file-link-provider.js';
 import { isFileUri, parseFileUri } from '../lib/file-links.js';
 import { resolveSessionCwd } from './selectors.js';
-import type { SessionInfo } from './state.js';
+import type { AttachOutcome, SessionInfo } from './state.js';
 import {
   addDismissedDead,
   addTileChrome,
@@ -238,6 +238,23 @@ export class SessionTerm {
 
   // Attach / geometry.
   _pendingAttach = false;
+  // The attach in flight, if any. A second ensureAttached while one is
+  // dialing shares its outcome instead of opening a second connection.
+  _attachInFlight: Promise<AttachOutcome> | null = null;
+  // Whether the in-flight dial paints its own failure, and the error it
+  // failed with: a caller that joins a quiet (backoff) dial and wants
+  // the error shown paints it itself.
+  _attachInFlightQuiet = false;
+  _lastAttachError: unknown = null;
+  // Bumped by every pty:disconnect. The Go bridge starts reading the
+  // attach conn before OpenSession resolves, so a hang-up right after
+  // WELCOME can land while the dial is still pending; a dial that
+  // resolves into a changed epoch is on a conn that is already gone.
+  _attachEpoch = 0;
+  // Backoff state for reattaching after the daemon dropped our attach
+  // connection (events.ts scheduleReattach). Reset on replay done.
+  _reattachTimer = 0;
+  _reattachAttempts = 0;
   _revealRaf = 0;
   // Optional (not `= 0`) because the code branches on `=== undefined` to
   // mean "no baseline measured yet".
@@ -1340,7 +1357,11 @@ export class SessionTerm {
     applyRebaseline(this);
   }
 
-  async ensureAttached() {
+  get _attaching(): boolean {
+    return this._attachInFlight !== null;
+  }
+
+  async ensureAttached(opts: { quiet?: boolean } = {}): Promise<AttachOutcome> {
     // A deliberate attach/focus means "show me the latest": re-latch
     // follow-intent and drop any stale restore-into-history intent from a
     // prior resize. BEFORE the attached-guard so re-focusing an ALREADY-live
@@ -1355,7 +1376,15 @@ export class SessionTerm {
       // bottom, so snap synchronously for instant feedback on focus.
       if (typeof this.term?.scrollToBottom === 'function')
         this.term.scrollToBottom();
-      return;
+      return 'attached';
+    }
+    if (this._attachInFlight) {
+      const inFlightQuiet = this._attachInFlightQuiet;
+      const out = await this._attachInFlight;
+      if (out === 'failed' && inFlightQuiet && !opts.quiet) {
+        this._paintAttachError();
+      }
+      return out;
     }
     // Don't attach while the daemon is still creating or tearing down
     // this session: it would refuse (`session_starting`/`no_such_session`)
@@ -1365,7 +1394,7 @@ export class SessionTerm {
     // so this one guard covers them all. setPhase re-enters on ready.
     if (!isReady(this.phase)) {
       this._pendingAttach = true;
-      return;
+      return 'deferred';
     }
     // Don't attempt to attach to a session known to be dead — the daemon
     // will refuse. Show the dead overlay with the error reason instead.
@@ -1374,15 +1403,36 @@ export class SessionTerm {
         true,
         this.info.last_error || 'The process failed to start.',
       );
-      return;
+      return 'deferred';
     }
     // If the host is still display:none, the body has no box yet and
     // fit.fit() would measure 0x0. Defer until ResizeObserver fires
     // with a real size — _onBodyResize will re-enter ensureAttached.
     if (this.body.clientWidth === 0 || this.body.clientHeight === 0) {
       this._pendingAttach = true;
-      return;
+      return 'deferred';
     }
+    this._attachInFlightQuiet = !!opts.quiet;
+    this._attachInFlight = this._open(opts);
+    try {
+      return await this._attachInFlight;
+    } finally {
+      this._attachInFlight = null;
+    }
+  }
+
+  // Only a genuine failure on a ready session is worth painting: one
+  // that started closing (or restarting) mid-dial is expected to refuse.
+  _paintAttachError() {
+    if (!isReady(this.phase) || this._lastAttachError === null) return;
+    this.term.write(
+      `\r\n\x1b[31m[attach failed: ${this._lastAttachError}]\x1b[0m\r\n`,
+    );
+  }
+
+  async _open(opts: { quiet?: boolean }): Promise<AttachOutcome> {
+    const epoch = this._attachEpoch;
+    this._lastAttachError = null;
     const _fitStart = nowMs();
     this.fit.fit();
     const _fitMs = nowMs() - _fitStart;
@@ -1398,20 +1448,29 @@ export class SessionTerm {
       feLog(
         `ensureAttached id=${this.info.id} fit=${Math.round(_fitMs)}ms open=${Math.round(nowMs() - _openStart)}ms`,
       );
+      // The conn this dial opened was hung up on before the dial
+      // resolved: pty:disconnect already fired for it. Marking the tile
+      // attached now would strand it on a dead conn, with needsReattach
+      // cleared and the retry skipping it.
+      if (this._attachEpoch !== epoch) return 'failed';
       this.attached = true;
+      // A dropped attach is recovered once the dial succeeds. Cleared
+      // here, not when the reattach starts: a failed dial must leave the
+      // flag up so the backoff (or the next alive event) tries again.
+      this.needsReattach = false;
       // Anchor the replay baseline to the actual fitted cols for this
       // tile. Without this, a later _onBodyResize would initialize the
       // baseline from a stale xterm default (80) while term.cols is the
       // real grid-cell width — the next resize crosses the threshold
       // and fires a spurious scrollback replay on first grid entry.
       this.rebaselineReplayCols('first-attach');
+      return 'attached';
     } catch (err) {
-      // A session that started closing (or restarting) while the dial
-      // was in flight is *expected* to refuse. Only a genuine failure
-      // on a ready session is worth painting into the pane.
-      if (isReady(this.phase)) {
-        this.term.write(`\r\n\x1b[31m[attach failed: ${err}]\x1b[0m\r\n`);
-      }
+      // Not on every backoff retry, though: a quiet dial leaves the
+      // error for a joining caller that wants it shown.
+      this._lastAttachError = err;
+      if (!opts.quiet) this._paintAttachError();
+      return 'failed';
     }
   }
 
@@ -1573,6 +1632,7 @@ export class SessionTerm {
     if (this._revealRaf) cancelAnimationFrame(this._revealRaf);
     if (this._phaseRevealTimer) clearTimeout(this._phaseRevealTimer);
     if (this._endSearchTimer) clearTimeout(this._endSearchTimer);
+    if (this._reattachTimer) clearTimeout(this._reattachTimer);
     this.ro.disconnect();
     if (this._dprWatcher) {
       try {

@@ -135,7 +135,7 @@ func TestBroadcastDropsAndWarnsOnSlowListener(t *testing.T) {
 	}
 
 	// The dropped channel holds cap(slow) buffered events and must then
-	// be closed — that is the signal a client uses to resubscribe.
+	// be closed — that is the signal on which the daemon hangs up on the client, which then reconnects and re-snapshots.
 	closed := false
 	deadline := time.After(2 * time.Second)
 	for !closed {

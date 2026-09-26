@@ -220,6 +220,10 @@ export interface SearchHit {
   capped: boolean;
 }
 
+/** What one ensureAttached call achieved. 'deferred' means another path
+ * owns finishing it (phase not ready, no box yet, dead session). */
+export type AttachOutcome = 'attached' | 'deferred' | 'failed';
+
 export interface TermTile extends ReplayFlags {
   host: HTMLElement;
   // The chrome mount points. components/TileChrome.tsx portals the
@@ -272,7 +276,16 @@ export interface TermTile extends ReplayFlags {
   _dismissDead(): void;
   show(): void;
   hide(): void;
-  ensureAttached(): void;
+  // Resolves to the attach outcome; the reattach backoff in events.ts
+  // retries only on 'failed'. `quiet` skips painting the failure into
+  // the pane, for timer-driven retries that would otherwise repeat it.
+  ensureAttached(opts?: { quiet?: boolean }): Promise<AttachOutcome> | void;
+  // Reattach bookkeeping for a daemon-dropped attach (events.ts
+  // scheduleReattach). Optional for the DOM-test stubs.
+  _attaching?: boolean;
+  _reattachTimer?: number;
+  _reattachAttempts?: number;
+  _attachEpoch?: number;
   rebaselineReplayCols(reason: string): void;
   // The single resize entry point. applyFontSize (session-term.ts) calls it
   // explicitly because a font-size change doesn't resize the body box, so

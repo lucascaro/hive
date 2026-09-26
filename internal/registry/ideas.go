@@ -301,7 +301,7 @@ func (r *Registry) broadcastIdea(kind string, info wire.IdeaInfo) {
 		case ch <- ev:
 		default:
 			// Same contract as broadcastLocked: drops must be loud.
-			log.Printf("registry: dropping slow idea-event listener (buffer %d full, %d listeners); client is desynced until it resubscribes",
+			log.Printf("registry: dropping slow idea-event listener (buffer %d full, %d listeners); closing the channel, so the daemon hangs up on that client and it reconnects",
 				cap(ch), len(r.ideaListeners))
 			delete(r.ideaListeners, ch)
 			close(ch)
