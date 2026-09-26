@@ -352,3 +352,11 @@ _(none — resolved in the Decision log)_
 - **2026-09-26 iter 2** — verdict: COMMENT; mergeable: MERGEABLE; findings_hash: 6d94b5f3dc09dc569972afc5f9a4ace77000a2be9bbc23e27a541d5bb771806d; threads_open: 1; action: autofix+push; head_sha: 362f0b00.
 - **2026-09-26 iter 3** — verdict: APPROVE; mergeable: MERGEABLE; findings_hash: empty; threads_open: 0; action: stop; head_sha: 71e5af96. One MINOR (plugins_unavailable fallback untested) fixed after convergence; iter 4 re-reviews that head.
 - **2026-09-26 iter 4** — verdict: APPROVE; mergeable: MERGEABLE; findings_hash: empty; threads_open: 0; action: stop; head_sha: b3c8847b. Remaining MINOR (plugins.json written under Manager.mu) kept deliberately: it is what keeps disk and memory in step, on rare operations.
+
+## Gate verdict
+
+- **2026-09-26** — verdict: PASS; phase: 1/2; checks: 7 passed / 0 failed / 0 followups / 1 deferred; followups: none; one-line: criteria 1, 2, 3 (daemon half), 5, 6, 7 and 8 proven by running tests (unit, daemon, isolated e2e); criterion 4 and the GUI half of 3 deferred to phase 2.
+  - 2026-09-26 dimensions:
+    - acceptance — PASS — 8 plugin e2e tests + daemon/plugin/wire suites ran green; criterion 4 DEFERRED (phase > 1); criterion 6 per recorded measure-idle numbers (+230 KiB RSS from code size, 0% CPU both) and TestManager_ZeroPluginsSpawnsNothing
+    - non-goals — PASS — no frontend diff; `ui` entry refused; rate budget is a guard rail, not capability gating; clone-once-and-pin, no update path; features.json entry `planned`
+    - doc accuracy — PASS — docs/plugins.md claims verified against code (env, thresholds, log cap, schemes, budget, paths, modes); TestPluginDocListsEveryControlFrame and whats-new test green; changeset valid (type: added)
