@@ -250,6 +250,32 @@ func TestCloseDoesNotHangOnStuckClientReply(t *testing.T) {
 	}
 }
 
+// Once Close has drained d.ops, runOp must refuse new work: an ops.Add
+// after Close's ops.Wait is WaitGroup misuse, and the op would outlive
+// the daemon.
+func TestRunOpAfterCloseIsDropped(t *testing.T) {
+	skipOnWindows(t)
+	tmp := shortTempDir(t)
+	d, err := New(Config{
+		SocketPath: filepath.Join(tmp, "s"),
+		StateDir:   filepath.Join(tmp, "state"),
+	})
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+	if err := d.Close(); err != nil {
+		t.Fatalf("Close: %v", err)
+	}
+	ran := make(chan struct{})
+	d.runOp(func() { close(ran) })
+	d.ops.Wait() // must not block on the dropped op
+	select {
+	case <-ran:
+		t.Fatal("runOp ran fn after Close")
+	case <-time.After(100 * time.Millisecond):
+	}
+}
+
 // Handshake writes get their deadline immediately before the write, not
 // at accept: ModeCreate creates the session (a synchronous `git
 // worktree add` in real use) before its WELCOME, and a deadline armed
