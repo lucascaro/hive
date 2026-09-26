@@ -431,3 +431,18 @@ func TestListenPlugin_RefusesOverlongPath(t *testing.T) {
 		t.Fatalf("listenPlugin on an overlong path = %v, want a refusal naming HIVE_SOCKET", err)
 	}
 }
+
+// With plugins.json unreadable the daemon still runs, and every plugin
+// verb answers plugins_unavailable instead of dereferencing a nil
+// Manager.
+func TestPluginVerbs_UnavailableWhenManagerFailedToLoad(t *testing.T) {
+	d := &Daemon{stop: make(chan struct{})}
+	for _, ft := range []wire.FrameType{wire.FrameListPlugins, wire.FrameInstallPlugin, wire.FrameSetPluginEnabled, wire.FrameRemovePlugin} {
+		var code string
+		ops := controlOps{sendError: func(c, _ string) { code = c }}
+		d.handlePluginFrame(context.Background(), ops, ft, []byte(`{}`))
+		if code != "plugins_unavailable" {
+			t.Errorf("%s with no Manager answered %q, want plugins_unavailable", ft, code)
+		}
+	}
+}

@@ -350,3 +350,4 @@ _(none — resolved in the Decision log)_
 
 - **2026-09-26 iter 1** — verdict: REQUEST_CHANGES; mergeable: MERGEABLE; findings_hash: 5391ccbe8d270fccfac0edfc0d252c2fff000c75c84661a5c7ddef15e2ca5ee7; threads_open: 6; action: escalated:risky-fix-needs-human-decision; head_sha: 82e90864. Orchestrator judged the two escalated races to be defects in this PR's own new code (inside the approved plan), not unapproved behaviour changes, and fixed them in the main thread together with the 6 Greptile threads before iter 2.
 - **2026-09-26 iter 2** — verdict: COMMENT; mergeable: MERGEABLE; findings_hash: 6d94b5f3dc09dc569972afc5f9a4ace77000a2be9bbc23e27a541d5bb771806d; threads_open: 1; action: autofix+push; head_sha: 362f0b00.
+- **2026-09-26 iter 3** — verdict: APPROVE; mergeable: MERGEABLE; findings_hash: empty; threads_open: 0; action: stop; head_sha: 71e5af96. One MINOR (plugins_unavailable fallback untested) fixed after convergence; iter 4 re-reviews that head.
