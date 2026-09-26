@@ -669,3 +669,6 @@ func defaultShell() string {
 // See VT.ScreenDigest: it is the signal behind "working" vs "idle",
 // because bytes arriving and work happening are different things.
 func (s *Session) ScreenDigest() uint64 { return s.vt.ScreenDigest() }
+
+// ScreenSnapshot is VT.ScreenSnapshot for this session's screen.
+func (s *Session) ScreenSnapshot() (string, uint64) { return s.vt.ScreenSnapshot() }

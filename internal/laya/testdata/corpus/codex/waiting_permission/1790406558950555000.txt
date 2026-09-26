@@ -1,0 +1,30 @@
+Fix the add function in calc.py, add subtract and multiply with docstrings, write test_calc.py with
+    OK
+    + Show details
+
+• The test suite passes: all 3 arithmetic tests are green. I’m now fetching https://example.com wit
+  curl to extract its page title.
+
+• Failed (exit 6) curl -L --fail --silent --show-error https://example.com
+  └ curl: (6) Could not resolve host: example.com
+
+• The sandbox could not resolve example.com, so I’m retrying the same read-only curl request with
+  network access enabled.
+
+• Running curl -L --fail --silent --show-error https://example.com
+
+
+  Would you like to run the following command?
+
+  Environment: local
+
+  Reason: May I access https://example.com over the network with curl to read its page title?
+
+  $ curl -L --fail --silent --show-error https://example.com
+
+
+› 1. Yes, proceed (y)
+  2. Yes, and don't ask again for commands that start with `curl` (p)
+  3. No, and tell Codex what to do differently (esc)
+
+  Press enter to confirm or esc to cancel

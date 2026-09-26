@@ -8,6 +8,7 @@ package session
 import (
 	"bytes"
 	"fmt"
+	"strings"
 	"sync"
 
 	"github.com/hinshun/vt10x"
@@ -1004,6 +1005,48 @@ func writeColor(buf *bytes.Buffer, c vt10x.Color, isFG bool) {
 	}
 }
 
+// ScreenText returns the visible screen as plain text: one line per
+// row, trailing blanks trimmed, trailing empty rows dropped. It is what
+// the Laya classifier reads (spec 458), so it carries no attributes —
+// a classifier cannot see colour, and escape bytes would only spend its
+// small context. vt10x stores one rune per cell with no wide-character
+// continuation cells, so there is nothing to collapse.
+func (v *VT) ScreenText() string {
+	v.mu.Lock()
+	defer v.mu.Unlock()
+	return v.screenTextLocked()
+}
+
+// ScreenSnapshot is ScreenText and ScreenDigest of the same screen,
+// taken under one lock: a caller that must know which screen a text
+// belongs to cannot get that from two separate calls, between which the
+// screen can change.
+func (v *VT) ScreenSnapshot() (string, uint64) {
+	v.mu.Lock()
+	defer v.mu.Unlock()
+	return v.screenTextLocked(), v.screenDigestLocked()
+}
+
+func (v *VT) screenTextLocked() string {
+	cols, rows := v.term.Size()
+	lines := make([]string, 0, rows)
+	row := make([]rune, cols)
+	for y := 0; y < rows; y++ {
+		for x := 0; x < cols; x++ {
+			ch := v.term.Cell(x, y).Char
+			if ch == 0 {
+				ch = ' '
+			}
+			row[x] = ch
+		}
+		lines = append(lines, strings.TrimRight(string(row), " "))
+	}
+	for len(lines) > 0 && lines[len(lines)-1] == "" {
+		lines = lines[:len(lines)-1]
+	}
+	return strings.Join(lines, "\n")
+}
+
 // ScreenDigest returns a hash of the visible screen: every cell's rune
 // and its attributes, plus the geometry. Two calls returning the same
 // value mean the user would see the same thing.
@@ -1023,6 +1066,10 @@ func writeColor(buf *bytes.Buffer, c vt10x.Color, isFG bool) {
 func (v *VT) ScreenDigest() uint64 {
 	v.mu.Lock()
 	defer v.mu.Unlock()
+	return v.screenDigestLocked()
+}
+
+func (v *VT) screenDigestLocked() uint64 {
 	cols, rows := v.term.Size()
 	// FNV-1a, inlined: this runs once per session per tick, and the
 	// allocation-free loop is the whole reason it is affordable there.

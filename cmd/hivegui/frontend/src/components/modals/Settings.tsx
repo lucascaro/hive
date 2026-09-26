@@ -44,6 +44,7 @@ import {
   PickDirectory,
   SetMenuBarLoginItem,
   SaveAgentSettings,
+  TestLayaConnection,
   SaveCustomAgents,
   SaveUpdateSettings,
   SourceRepoStatusFor,
@@ -124,6 +125,28 @@ const OVERRIDES_DEBOUNCE_MS = 150;
 // keystroke is both wasteful and unordered.
 const SOURCE_REPO_DEBOUNCE_MS = 250;
 
+// Mirrors agent.DefaultLayaURL (internal/agent/settings.go).
+const LAYA_DEFAULT_URL = 'http://127.0.0.1:8000';
+
+// Whether a Laya URL points off this machine. Unparseable text is not
+// flagged: it will fail the connection test, which says why.
+export function isRemoteUrl(raw: string): boolean {
+  const s = raw.trim();
+  if (!s) return false;
+  let host: string;
+  try {
+    host = new URL(s).hostname;
+  } catch {
+    return false;
+  }
+  // An address, not a prefix: "127.0.0.1.example.com" is a hostname
+  // that resolves anywhere. URL normalises IPv4 forms (127.1, 0x7f.1)
+  // to dotted quads and brackets IPv6.
+  if (host === 'localhost' || host === '[::1]') return false;
+  const quad = host.match(/^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$/);
+  return !(quad && quad[1] === '127');
+}
+
 export function Settings({ root }: { root: HTMLElement | null }): ReactNode {
   const entry = useAppStore((s) => s.modals.find((m) => m.id === 'settings'));
 
@@ -167,6 +190,20 @@ function SettingsDialog({ root }: { root: HTMLElement }): ReactNode {
   // installed reviewer such as plannotator.
   const [planReview, setPlanReview] = useState(false);
   const [planReviewer, setPlanReviewer] = useState('external');
+  // Laya state detection (spec 458): off by default, because turning it
+  // on sends screen text to layaUrl. An empty URL means the Go default.
+  const [layaEnabled, setLayaEnabled] = useState(false);
+  const [layaUrl, setLayaUrl] = useState('');
+  const [layaModel, setLayaModel] = useState('');
+  // The last "Test connection" result: null untested, '' healthy, else
+  // the reason it failed.
+  const [layaTest, setLayaTest] = useState<string | null>(null);
+  // Only the latest test may report: a slow answer for a URL the user
+  // has since edited, or re-tested, is about the wrong server.
+  const layaTestSeq = useRef(0);
+  // A test can take up to 20s on a cold server; say so, and don't
+  // stack a second request on top of it.
+  const [layaTesting, setLayaTesting] = useState(false);
   // Other ExitPlanMode reviewers the user has set up. A settings.json
   // hook cannot be switched off by Hive, so choosing Hive warns about it.
   const [externalReviewers, setExternalReviewers] = useState<
@@ -366,6 +403,9 @@ function SettingsDialog({ root }: { root: HTMLElement }): ReactNode {
         setPiTodoTool(s?.pi_todo_tool ?? true);
         setPlanReview(s?.plan_review ?? false);
         setPlanReviewer(s?.plan_reviewer === 'hive' ? 'hive' : 'external');
+        setLayaEnabled(s?.laya_enabled ?? false);
+        setLayaUrl(s?.laya_url ?? '');
+        setLayaModel(s?.laya_model ?? '');
         setAgentSettingsFailed(false);
         setAgentSettingsLoaded(true);
       })
@@ -668,6 +708,9 @@ function SettingsDialog({ root }: { root: HTMLElement }): ReactNode {
               pi_todo_tool: piTodoTool,
               plan_review: planReview,
               plan_reviewer: planReviewer,
+              laya_enabled: layaEnabled,
+              laya_url: layaUrl.trim(),
+              laya_model: layaModel.trim(),
             } as main.AgentSettings),
       )
       .then(() =>
@@ -942,6 +985,107 @@ function SettingsDialog({ root }: { root: HTMLElement }): ReactNode {
                 </p>
               ))
           : null}
+        <h4>Agent state detection</h4>
+        <label className="settings-check">
+          <input
+            id="settings-laya-enabled"
+            type="checkbox"
+            checked={layaEnabled}
+            disabled={!agentSettingsLoaded || agentSettingsFailed}
+            aria-describedby="settings-laya-hint"
+            onChange={(e) => setLayaEnabled(e.target.checked)}
+          />
+          <span>Ask a local Laya model what quiet sessions are doing</span>
+        </label>
+        <p id="settings-laya-hint" className="settings-hint">
+          For sessions without agent hooks — and hooked ones that have gone
+          quiet — Hive sends the visible screen to your Laya server to tell
+          working, idle, waiting and failed apart. You run the server; set{' '}
+          <code>HIVE_LAYA_API_KEY</code> in Hive's environment if it needs a
+          key. Applies at once.
+        </p>
+        <label className="hv-field">
+          <span className="hv-field__label">Server URL</span>
+          <input
+            id="settings-laya-url"
+            type="text"
+            className="hv-input"
+            autoComplete="off"
+            autoCorrect="off"
+            autoCapitalize="off"
+            spellCheck={false}
+            placeholder={LAYA_DEFAULT_URL}
+            value={layaUrl}
+            disabled={!agentSettingsLoaded || agentSettingsFailed}
+            onChange={(e) => {
+              setLayaUrl(e.target.value);
+              layaTestSeq.current++;
+              setLayaTest(null);
+            }}
+          />
+        </label>
+        {isRemoteUrl(layaUrl) ? (
+          <p
+            id="settings-laya-remote-warning"
+            className="settings-hint settings-warning"
+          >
+            This is not your machine: session screens, which can include
+            anything a program printed, will be sent to that host.
+          </p>
+        ) : null}
+        <label className="hv-field">
+          <span className="hv-field__label">Model (optional)</span>
+          <input
+            id="settings-laya-model"
+            type="text"
+            className="hv-input"
+            autoComplete="off"
+            autoCorrect="off"
+            autoCapitalize="off"
+            spellCheck={false}
+            placeholder="server default"
+            value={layaModel}
+            disabled={!agentSettingsLoaded || agentSettingsFailed}
+            onChange={(e) => {
+              // A test result is about a URL and a model; either edit
+              // makes it, and any test still in flight, stale. The stale
+              // probe keeps the button disabled until it settles, so two
+              // probes never queue on a single-worker server.
+              setLayaModel(e.target.value);
+              layaTestSeq.current++;
+              setLayaTest(null);
+            }}
+          />
+        </label>
+        <Button
+          id="settings-laya-test"
+          label={layaTesting ? 'Testing…' : 'Test connection'}
+          disabled={!agentSettingsLoaded || agentSettingsFailed || layaTesting}
+          onClick={() => {
+            setLayaTest(null);
+            setLayaTesting(true);
+            const seq = ++layaTestSeq.current;
+            const settle = (reason: string) => {
+              setLayaTesting(false);
+              if (seq === layaTestSeq.current) setLayaTest(reason);
+            };
+            TestLayaConnection(layaUrl.trim(), layaModel.trim()).then(
+              settle,
+              (err) => settle(String(err?.message || err)),
+            );
+          }}
+        />
+        {layaTest === null ? null : (
+          <p
+            id="settings-laya-test-result"
+            role="status"
+            className={
+              layaTest ? 'settings-hint settings-warning' : 'settings-hint'
+            }
+          >
+            {layaTest ? `Connection test failed: ${layaTest}` : 'Connected.'}
+          </p>
+        )}
       </Panel>
 
       <Panel tab="appearance" active={activeTab}>

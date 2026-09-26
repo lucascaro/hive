@@ -361,6 +361,9 @@ export async function GetAgentSettings() {
 export async function SaveAgentSettings() {
   return undefined;
 }
+export async function TestLayaConnection() {
+  return '';
+}
 export async function CreateProject() {
   return '';
 }
