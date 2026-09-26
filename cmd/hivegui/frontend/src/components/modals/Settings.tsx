@@ -198,6 +198,9 @@ function SettingsDialog({ root }: { root: HTMLElement }): ReactNode {
   // The last "Test connection" result: null untested, '' healthy, else
   // the reason it failed.
   const [layaTest, setLayaTest] = useState<string | null>(null);
+  // Only the latest test may report: a slow answer for a URL the user
+  // has since edited, or re-tested, is about the wrong server.
+  const layaTestSeq = useRef(0);
   // Other ExitPlanMode reviewers the user has set up. A settings.json
   // hook cannot be switched off by Hive, so choosing Hive warns about it.
   const [externalReviewers, setExternalReviewers] = useState<
@@ -1013,6 +1016,7 @@ function SettingsDialog({ root }: { root: HTMLElement }): ReactNode {
             disabled={!agentSettingsLoaded || agentSettingsFailed}
             onChange={(e) => {
               setLayaUrl(e.target.value);
+              layaTestSeq.current++;
               setLayaTest(null);
             }}
           />
@@ -1048,9 +1052,15 @@ function SettingsDialog({ root }: { root: HTMLElement }): ReactNode {
           disabled={!agentSettingsLoaded || agentSettingsFailed}
           onClick={() => {
             setLayaTest(null);
+            const seq = ++layaTestSeq.current;
             TestLayaConnection(layaUrl.trim()).then(
-              (reason) => setLayaTest(reason),
-              (err) => setLayaTest(String(err?.message || err)),
+              (reason) => {
+                if (seq === layaTestSeq.current) setLayaTest(reason);
+              },
+              (err) => {
+                if (seq === layaTestSeq.current)
+                  setLayaTest(String(err?.message || err));
+              },
             );
           }}
         />

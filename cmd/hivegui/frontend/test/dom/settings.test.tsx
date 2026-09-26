@@ -532,6 +532,23 @@ describe('settings: Laya state detection (spec 458)', () => {
     expect(warning()?.textContent ?? '').toMatch(/sent to that host/);
   });
 
+  // Review finding (PR #464): a slow answer for an edited URL must not
+  // be shown against the new one.
+  it('drops a connection test answer for a URL since edited', async () => {
+    open();
+    await flush();
+    let answerOld: (r: string) => void = () => {};
+    testLayaConnection.mockImplementationOnce(
+      () => new Promise<string>((res) => (answerOld = res)),
+    );
+    fireEvent.change(url(), { target: { value: 'http://127.0.0.1:9' } });
+    click(el('settings-laya-test'));
+    fireEvent.change(url(), { target: { value: 'http://127.0.0.1:8000' } });
+    answerOld('');
+    await flush();
+    expect(document.getElementById('settings-laya-test-result')).toBeNull();
+  });
+
   it('shows the connection test result inline', async () => {
     open();
     await flush();
