@@ -5,8 +5,8 @@
 - **Status:** active
 - **Phase:** 1 of 2
 - **Depends on:** #461
-- **PR:** —
-- **Branch:** —
+- **PR:** #463
+- **Branch:** feature/460-headless-plugins
 
 ## Summary
 
