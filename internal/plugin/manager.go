@@ -365,6 +365,15 @@ func (m *Manager) SetEnabled(id string, enabled bool) (wire.PluginInfo, error) {
 	defer e.op.Unlock()
 
 	m.mu.Lock()
+	// Re-check under the same hold that may start a runner: lockOp
+	// released m.mu, and Stop can have run to completion since. Stop
+	// sets stopped under m.mu, so from here either it already did (and
+	// nothing starts) or it has not (and it will signal the runner this
+	// call starts, because that runner is in e.run by then).
+	if m.stopped {
+		m.mu.Unlock()
+		return wire.PluginInfo{}, ErrManagerStopped
+	}
 	prev := e.rec.Enabled
 	e.rec.Enabled = enabled
 	if err := m.saveLocked(); err != nil {

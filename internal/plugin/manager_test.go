@@ -394,3 +394,22 @@ func TestManager_SetEnabledSaveFailureRestoresFlag(t *testing.T) {
 		t.Fatal("failed redundant disable left the plugin marked enabled")
 	}
 }
+
+// An enable racing Stop must never leave a runner behind once Stop has
+// returned: that would be a plugin process outliving daemon shutdown.
+func TestManager_EnableRacingStopNoRunnerAfterStop(t *testing.T) {
+	for i := range 50 {
+		m, fl := newTestManager(t)
+		m.Start()
+		install(t, m, writePlugin(t, "late", "run", nil))
+		done := make(chan struct{})
+		go func() { _, _ = m.SetEnabled("late", true); close(done) }()
+		m.Stop()
+		<-done
+		time.Sleep(20 * time.Millisecond)
+		if n := m.RunnerCount(); n != 0 {
+			paths, _ := fl.snapshot()
+			t.Fatalf("iteration %d: %d runner(s) after Stop returned (sockets %v)", i, n, paths)
+		}
+	}
+}
