@@ -5,7 +5,7 @@ type: enhancement
 complexity: L
 priority: P2
 pr: 465
-stage: REVIEW
+stage: GATE
 ---
 
 # Headless plugins: let users install third-party automations that react to and drive Hive sessions
