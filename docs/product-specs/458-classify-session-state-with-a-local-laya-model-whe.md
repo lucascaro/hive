@@ -4,7 +4,7 @@ type: enhancement
 complexity: L
 priority: P2
 pr: 464
-stage: REVIEW
+stage: GATE
 ---
 
 # Classify session state with a local Laya model when hooks can't tell
