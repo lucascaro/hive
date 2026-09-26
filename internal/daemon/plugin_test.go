@@ -421,3 +421,13 @@ func TestDaemonClose_CancelsInflightGitInstall(t *testing.T) {
 		t.Fatalf("Close took %s with a clone in flight", dur)
 	}
 }
+
+// A control socket path near the OS limit leaves no room for a plugin
+// socket's suffix; that must be a clear refusal, not bind's EINVAL.
+func TestListenPlugin_RefusesOverlongPath(t *testing.T) {
+	d := &Daemon{sock: "/" + strings.Repeat("x", maxSockPath()-12), stop: make(chan struct{})}
+	_, _, err := d.listenPlugin("long")
+	if err == nil || !strings.Contains(err.Error(), "HIVE_SOCKET") {
+		t.Fatalf("listenPlugin on an overlong path = %v, want a refusal naming HIVE_SOCKET", err)
+	}
+}

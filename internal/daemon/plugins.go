@@ -5,9 +5,11 @@ import (
 	"crypto/rand"
 	"encoding/hex"
 	"errors"
+	"fmt"
 	"log"
 	"net"
 	"os"
+	"runtime"
 
 	"github.com/lucascaro/hive/internal/plugin"
 	"github.com/lucascaro/hive/internal/wire"
@@ -53,6 +55,12 @@ func (d *Daemon) listenPlugin(id string) (string, func(), error) {
 		return "", nil, err
 	}
 	path := d.sock + pluginSockInfix + hex.EncodeToString(b[:])
+	// The control socket's path was sized for its own ".events" sibling,
+	// and a plugin socket's suffix is longer. Refuse up front with the
+	// reason, rather than surfacing bind's "invalid argument".
+	if limit := maxSockPath(); len(path) >= limit {
+		return "", nil, fmt.Errorf("plugin socket path %s is %d bytes; the OS limit is %d — set HIVE_SOCKET to a shorter path", path, len(path), limit-1)
+	}
 	_ = os.Remove(path)
 	ln, err := net.Listen("unix", path)
 	if err != nil {
@@ -83,6 +91,17 @@ func (d *Daemon) listenPlugin(id string) (string, func(), error) {
 // Distinct enough that the boot sweep of stale ones can never match a
 // sibling file such as the daemon's <sock>.pid.
 const pluginSockInfix = ".plugin-"
+
+// maxSockPath is sizeof(sun_path): the longest AF_UNIX path, including
+// its terminating NUL, the platform accepts.
+func maxSockPath() int {
+	switch runtime.GOOS {
+	case "darwin", "freebsd", "openbsd", "netbsd":
+		return 104
+	default: // linux, windows
+		return 108
+	}
+}
 
 // pluginModeAllowed is what a plugin socket serves: the modes an
 // out-of-process client uses. The in-session modes (event, session,

@@ -345,3 +345,7 @@ Frontend:
 ## Open questions
 
 _(none — resolved in the Decision log)_
+
+## PR convergence ledger
+
+- **2026-09-26 iter 1** — verdict: REQUEST_CHANGES; mergeable: MERGEABLE; findings_hash: 5391ccbe8d270fccfac0edfc0d252c2fff000c75c84661a5c7ddef15e2ca5ee7; threads_open: 6; action: escalated:risky-fix-needs-human-decision; head_sha: 82e90864. Orchestrator judged the two escalated races to be defects in this PR's own new code (inside the approved plan), not unapproved behaviour changes, and fixed them in the main thread together with the 6 Greptile threads before iter 2.

@@ -77,12 +77,28 @@ type entry struct {
 	detail   string
 	restarts int
 	run      *runner // non-nil while a supervising goroutine exists
+	// op serializes SetEnabled and Remove on this plugin. Both drop m.mu
+	// while they wait for a runner to stop, and without op a second call
+	// could slip into that window: an enable that starts a runner Remove
+	// is about to orphan, or an enable that sees the stopping runner,
+	// starts nothing, and leaves the plugin enabled but stopped. Held
+	// outside m.mu (op before mu, never the other way round).
+	op sync.Mutex
+	// removed is set, under m.mu, once Remove has taken the entry out of
+	// the map; an operation that looked the entry up before then sees it
+	// and gives up.
+	removed bool
 }
 
 type runner struct {
 	stop chan struct{}
 	done chan struct{}
+	once sync.Once
 }
+
+// signal asks the supervisor to stop. Idempotent: Stop, SetEnabled and
+// Remove can all reach the same runner during shutdown.
+func (r *runner) signal() { r.once.Do(func() { close(r.stop) }) }
 
 // New loads the installed set from cfg.StateDir. It starts nothing:
 // Start does that once the daemon is accepting connections.
@@ -150,7 +166,7 @@ func (m *Manager) Stop() {
 	m.stopped = true
 	for _, e := range m.plugins {
 		if e.run != nil {
-			close(e.run.stop)
+			e.run.signal()
 		}
 	}
 	for ch := range m.listeners {
@@ -342,16 +358,13 @@ func (m *Manager) Install(ctx context.Context, source, nonce string) (wire.Plugi
 // a plugin that is already enabled but failed or refused starts it
 // afresh, with its restart count reset.
 func (m *Manager) SetEnabled(id string, enabled bool) (wire.PluginInfo, error) {
+	e, err := m.lockOp(id)
+	if err != nil {
+		return wire.PluginInfo{}, err
+	}
+	defer e.op.Unlock()
+
 	m.mu.Lock()
-	if m.stopped {
-		m.mu.Unlock()
-		return wire.PluginInfo{}, ErrManagerStopped
-	}
-	e, ok := m.plugins[id]
-	if !ok {
-		m.mu.Unlock()
-		return wire.PluginInfo{}, ErrNotFound
-	}
 	e.rec.Enabled = enabled
 	if err := m.saveLocked(); err != nil {
 		e.rec.Enabled = !enabled
@@ -380,34 +393,73 @@ func (m *Manager) SetEnabled(id string, enabled bool) (wire.PluginInfo, error) {
 	return m.infoLocked(e), nil
 }
 
+// lockOp looks id up and takes its op lock, then re-checks that the
+// manager is still running and the plugin still installed — either can
+// change while a caller waits for op. The caller unlocks e.op.
+func (m *Manager) lockOp(id string) (*entry, error) {
+	m.mu.Lock()
+	e, ok := m.plugins[id]
+	m.mu.Unlock()
+	if !ok {
+		return nil, ErrNotFound
+	}
+	e.op.Lock()
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	switch {
+	case m.stopped:
+		e.op.Unlock()
+		return nil, ErrManagerStopped
+	case e.removed:
+		e.op.Unlock()
+		return nil, ErrNotFound
+	}
+	return e, nil
+}
+
 // Remove stops the plugin and deletes its installed copy. Its data dir
 // (config, log) is kept, so a reinstall picks its configuration back up.
 func (m *Manager) Remove(id string) error {
-	m.mu.Lock()
-	e, ok := m.plugins[id]
-	if !ok {
-		m.mu.Unlock()
-		return ErrNotFound
+	// After Stop this is refused like every other mutation: the daemon
+	// is going away, and the plugin simply stays installed.
+	e, err := m.lockOp(id)
+	if err != nil {
+		return err
 	}
+	defer e.op.Unlock()
+
+	m.mu.Lock()
 	r := e.run
 	m.mu.Unlock()
 	m.stopRunner(r)
 
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	if m.plugins[id] != e {
-		return ErrNotFound // a concurrent Remove won
+	if e.removed {
+		return ErrNotFound
 	}
-	delete(m.plugins, id)
+	// Persist first: if plugins.json cannot be written the plugin stays
+	// installed — in memory and on disk alike — rather than vanishing
+	// from the list only to come back on the next daemon start.
+	idx := -1
 	for i, oid := range m.order {
 		if oid == id {
-			m.order = append(m.order[:i], m.order[i+1:]...)
+			idx = i
 			break
 		}
 	}
+	m.order = append(m.order[:idx], m.order[idx+1:]...)
+	delete(m.plugins, id)
 	if err := m.saveLocked(); err != nil {
+		m.plugins[id] = e
+		m.order = append(m.order[:idx], append([]string{id}, m.order[idx:]...)...)
+		if e.manErr == nil {
+			e.status, e.detail = wire.PluginStopped, ""
+		}
+		m.emitLocked(wire.PluginEventUpdated, e, "")
 		return err
 	}
+	e.removed = true
 	if err := os.RemoveAll(m.installPath(id)); err != nil {
 		log.Printf("plugin %s: remove install dir: %v", id, err)
 	}
@@ -428,11 +480,7 @@ func (m *Manager) stopRunner(r *runner) {
 	if r == nil {
 		return
 	}
-	select {
-	case <-r.stop:
-	default:
-		close(r.stop)
-	}
+	r.signal()
 	<-r.done
 }
 

@@ -285,3 +285,92 @@ func TestManager_EventsFanOut(t *testing.T) {
 		}
 	}
 }
+
+// Remove racing an enable must never leave a runner Stop cannot reach:
+// if it did, Stop would wait on it forever (daemon shutdown hangs) and
+// the plugin process would leak.
+func TestManager_RemoveRacingEnableLeavesNoOrphan(t *testing.T) {
+	for i := range 20 {
+		m, _ := newTestManager(t)
+		m.Start()
+		install(t, m, writePlugin(t, "race", "run", nil))
+		if _, err := m.SetEnabled("race", true); err != nil {
+			t.Fatal(err)
+		}
+		done := make(chan struct{}, 2)
+		go func() { _ = m.Remove("race"); done <- struct{}{} }()
+		go func() { _, _ = m.SetEnabled("race", true); done <- struct{}{} }()
+		<-done
+		<-done
+		stopped := make(chan struct{})
+		go func() { m.Stop(); close(stopped) }()
+		select {
+		case <-stopped:
+		case <-time.After(10 * time.Second):
+			t.Fatalf("iteration %d: Stop hung on an orphaned runner", i)
+		}
+	}
+}
+
+// Concurrent disable and enable must end consistent: an enabled plugin
+// is running, a disabled one is not.
+func TestManager_DisableRacingEnableEndsConsistent(t *testing.T) {
+	m, _ := newTestManager(t)
+	m.Start()
+	install(t, m, writePlugin(t, "flip", "run", nil))
+	for i := range 20 {
+		if _, err := m.SetEnabled("flip", true); err != nil {
+			t.Fatal(err)
+		}
+		done := make(chan struct{}, 2)
+		go func() { _, _ = m.SetEnabled("flip", false); done <- struct{}{} }()
+		go func() { _, _ = m.SetEnabled("flip", true); done <- struct{}{} }()
+		<-done
+		<-done
+		p, _ := find(m, "flip")
+		if p.Enabled != (m.RunnerCount() == 1) {
+			t.Fatalf("iteration %d: enabled=%v but %d runner(s)", i, p.Enabled, m.RunnerCount())
+		}
+	}
+}
+
+// Disabling a plugin while the daemon shuts down must not close the
+// runner's stop channel twice (a panic, not a clean shutdown).
+func TestManager_DisableRacingStopNoPanic(t *testing.T) {
+	for range 20 {
+		m, _ := newTestManager(t)
+		m.Start()
+		install(t, m, writePlugin(t, "down", "run", nil))
+		if _, err := m.SetEnabled("down", true); err != nil {
+			t.Fatal(err)
+		}
+		waitStatus(t, m, "down", wire.PluginRunning)
+		done := make(chan struct{})
+		go func() { _, _ = m.SetEnabled("down", false); close(done) }()
+		m.Stop()
+		<-done
+	}
+}
+
+// A remove whose plugins.json write fails leaves the plugin installed —
+// in the list and on disk — rather than vanishing until the next start.
+func TestManager_RemoveSaveFailureKeepsPlugin(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("POSIX permission bits")
+	}
+	m, _ := newTestManager(t)
+	install(t, m, writePlugin(t, "stay", "run", nil))
+	if err := os.Chmod(m.stateDir, 0o500); err != nil {
+		t.Fatal(err)
+	}
+	defer os.Chmod(m.stateDir, 0o700)
+	if err := m.Remove("stay"); err == nil {
+		t.Fatal("Remove succeeded with an unwritable state dir")
+	}
+	if _, ok := find(m, "stay"); !ok {
+		t.Fatal("plugin vanished from the list after a failed remove")
+	}
+	if _, err := os.Stat(m.installPath("stay")); err != nil {
+		t.Fatalf("install dir deleted after a failed remove: %v", err)
+	}
+}

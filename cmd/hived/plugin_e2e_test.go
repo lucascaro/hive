@@ -447,3 +447,48 @@ func TestE2E_DaemonKill_NoDuplicatePluginAfterRestart(t *testing.T) {
 		t.Fatalf("plugin sockets after restart = %v, want exactly the live one", stale)
 	}
 }
+
+// The SDK's attach() must deliver the scrollback replay that can arrive
+// in the same read as WELCOME — the caller adds its 'data' listener
+// only after attach() returns.
+func TestE2E_SDKAttach_ReceivesReplay(t *testing.T) {
+	requireNode(t)
+	d := spawnDaemon(t)
+	sid := firstSession(t, d)
+	a := dialAttach(t, d, sid)
+	if err := a.WriteStdin([]byte("echo replay-$((40+2))-marker\n")); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := a.WaitForData([]byte("replay-42-marker"), 5*time.Second); err != nil {
+		t.Fatal(err)
+	}
+	_ = a.Close()
+
+	script := `import { connect } from './hive-plugin.mjs';
+import { writeFileSync } from 'node:fs';
+import { join } from 'node:path';
+const hive = await connect();
+hive.on('SESSIONS', async (resp) => {
+  const term = await hive.attach(resp.sessions[0].id);
+  let seen = '';
+  term.on('data', (b) => {
+    seen += b.toString();
+    if (seen.includes('replay-42-marker')) writeFileSync(join(process.env.HIVE_PLUGIN_DATA_DIR, 'got'), 'yes');
+  });
+});
+`
+	c := dialControl(t, d)
+	installEnable(t, c, writeFixturePlugin(t, "replayer", script), "replayer")
+	got := filepath.Join(d.stateDir, "plugin-data", "replayer", "got")
+	deadline := time.Now().Add(15 * time.Second)
+	for {
+		if _, err := os.Stat(got); err == nil {
+			return
+		}
+		if time.Now().After(deadline) {
+			b, _ := os.ReadFile(filepath.Join(d.stateDir, "plugin-data", "replayer", "plugin.log"))
+			t.Fatalf("plugin never saw the replayed marker; log:\n%s", b)
+		}
+		time.Sleep(50 * time.Millisecond)
+	}
+}

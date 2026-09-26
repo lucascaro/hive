@@ -392,15 +392,20 @@ async function openAttach(path, sessionId) {
   const sock = await dial(path);
   const { reader, rest } = await handshake(sock, { mode: 'attach', session_id: sessionId });
   const a = new Attachment(sock);
-  pump(
-    sock,
-    reader,
-    rest,
-    (type, body) => {
-      if (type === Frame.DATA) a.emit('data', body);
-      else a.emit(frameName.get(type) ?? 'frame', JSON.parse(body.toString('utf8') || '{}'));
-    },
-    () => a.emit('close'),
+  // Deferred like connect(): the replay can arrive in the same read as
+  // WELCOME, and the caller needs a turn to add its 'data' listener.
+  // The socket stays paused (see handshake) until pump resumes it.
+  setImmediate(() =>
+    pump(
+      sock,
+      reader,
+      rest,
+      (type, body) => {
+        if (type === Frame.DATA) a.emit('data', body);
+        else a.emit(frameName.get(type) ?? 'frame', JSON.parse(body.toString('utf8') || '{}'));
+      },
+      () => a.emit('close'),
+    ),
   );
   return a;
 }

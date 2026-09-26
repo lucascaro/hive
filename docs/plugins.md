@@ -25,8 +25,12 @@ running agents with access to your code and credentials. Install
 plugins you would be comfortable running yourself.
 
 Because of that, Hive installs every plugin **disabled**. Nothing a
-plugin contains runs until you enable it, and a client asks you first,
-showing the plugin's name, source and the command it will run.
+plugin contains runs until you enable it, and the Hive app asks you
+first, showing the plugin's name, source and the command it will run.
+That prompt is the app's; the protocol itself does not ask anyone. Any
+wire client — including an enabled plugin, which has full trust — can
+install, enable and remove plugins directly, just as it could run any
+program you can.
 
 ## Layout
 
@@ -107,6 +111,11 @@ would, after a daemon restart, run twice. The SDK does this for you.
 | `HIVE_PLUGIN_API` | The plugin API version Hive implements. |
 | `HIVE_PLUGIN_DIR` | The installed copy. Treat it as read-only; it is replaced on reinstall. |
 | `HIVE_PLUGIN_DATA_DIR` | Your data directory. Put configuration and state here. It survives removing and reinstalling the plugin. |
+
+Everything else in the environment is inherited from the daemon —
+including `PATH` and anything secret you exported in the shell that
+started Hive — except Hive's own `HIVE_SESSION_ID` and `HIVE_PLUGIN_*`
+variables.
 
 The working directory is `HIVE_PLUGIN_DIR`. Everything the plugin
 writes to stdout and stderr goes to `plugin.log` in its data directory
@@ -218,7 +227,10 @@ or empty for idle) and `needs_attention` (the terminal rang its bell).
 
 ## Limits
 
-A plugin is automation, and two things follow from that:
+A plugin is automation, and two things follow from that. Both are
+guard rails against a *buggy* plugin — a runaway loop, a stuck reader —
+not a security boundary: a plugin runs as you, so a hostile one could
+simply connect to Hive's main socket as the app does. See **Trust**.
 
 - **It never counts as someone who can answer a question.** When a
   worktree fails to set up or an agent asks for its plan to be
