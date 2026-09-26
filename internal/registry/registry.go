@@ -161,6 +161,10 @@ type Entry struct {
 	// is persisted, and TestMetaFileUnchangedByState holds that line.
 	state *agentstate.Machine
 
+	// laya is this session's Laya classifier bookkeeping (spec 458). See
+	// classify.go.
+	laya layaEntry
+
 	// captureCancel cancels the post-spawn AgentSessionID capture
 	// goroutine when the session exits before capture completes.
 	// nil when no capture is in flight.
@@ -437,6 +441,10 @@ type Registry struct {
 	tickOnce sync.Once
 	// tickDone closes when the state ticker has returned.
 	tickDone chan struct{}
+
+	// classifier is the Laya classifier loop's state (spec 458). See
+	// classify.go.
+	classifier classifierState
 }
 
 // Phase reports the entry's current lifecycle phase (wire.Phase*), or
@@ -635,7 +643,10 @@ func sourceName(s string) string {
 // when the new state is one the user has to act on.
 //
 // Attention is only ever raised for a session whose state came from the
-// agent itself. The heuristic tier deliberately does not participate:
+// agent itself, or from the Laya classifier (spec 458) — which reads the
+// screen for exactly the question "is this waiting on the user", and
+// which the user opted into. The heuristic tier deliberately does not
+// participate:
 // "no bytes for two seconds" is true of every `ls` in every shell, and
 // turning that into the flag that drives desktop notifications would
 // make the flag worthless within a minute of use. On that tier the bell
@@ -986,6 +997,7 @@ func Open(stateDir string) (*Registry, error) {
 		return nil, fmt.Errorf("registry: load: %w", err)
 	}
 	go r.tickStates()
+	r.startClassifier()
 	return r, nil
 }
 
@@ -1809,6 +1821,10 @@ func (r *Registry) Close() error {
 	if r.tickStop != nil {
 		r.tickOnce.Do(func() { close(r.tickStop) })
 	}
+	// Before r.mu: an in-flight classification re-takes the lock to
+	// apply its result, and it must never broadcast into listeners
+	// Close is about to close.
+	r.stopClassifier()
 	r.mu.Lock()
 	for ch := range r.listeners {
 		close(ch)

@@ -41,6 +41,25 @@ export const DAEMON_STATE = {
   error: 'error',
 } as const;
 
+// Where a state came from (internal/wire/control.go StateSource*).
+// Only the tiers the frontend treats differently are named: every
+// agent-reported tier reads the same (see sourceWords).
+export const STATE_SOURCE = {
+  heuristic: '',
+  laya: 'laya',
+} as const;
+
+/**
+ * Whether `source` is Hive inferring the state rather than the agent
+ * reporting it: the heuristic tier, or a Laya classification of the
+ * screen (spec 458). Neither carries a plan or a report deadline, so
+ * every "is the agent's own reporting live" check keys off this one
+ * helper.
+ */
+export function isInferredSource(source: string | undefined): boolean {
+  return !source || source === 'heuristic' || source === STATE_SOURCE.laya;
+}
+
 export interface StateCarrier {
   alive?: boolean;
   phase?: string;
@@ -87,7 +106,10 @@ export const STATE_WORDS: Record<SessionState, string> = {
 // heuristic tier is spelled "" on the wire, so any tier a future daemon
 // adds reads as reported — which is what it would be. A lookup table
 // would silently relabel it as a guess.
+// Laya is the exception: it is Hive's own reading of the screen, so it
+// must not borrow "reported by the agent".
 function sourceWords(source: string | undefined): string {
+  if (source === STATE_SOURCE.laya) return 'classified from the screen by Laya';
   return source ? 'reported by the agent' : 'guessed from terminal output';
 }
 

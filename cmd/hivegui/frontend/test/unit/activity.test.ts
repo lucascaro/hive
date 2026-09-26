@@ -246,6 +246,9 @@ describe('isStale', () => {
   it('is fresh while working before stale_at', () => {
     expect(isStale('working', 'hook', t(90), now)).toBe(false);
   });
+  it('is stale on a Laya classification, which reports no activity', () => {
+    expect(isStale('waiting_input', 'laya', '', now)).toBe(true);
+  });
 });
 
 describe('groupTimeline', () => {

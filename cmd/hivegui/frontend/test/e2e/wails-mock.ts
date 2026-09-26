@@ -1389,6 +1389,9 @@ const agentSettings = {
   pi_todo_tool: true,
   plan_review: false,
   plan_reviewer: 'external',
+  laya_enabled: false,
+  laya_url: '',
+  laya_model: '',
 };
 export async function GetAgentSettings() {
   return { ...agentSettings };
@@ -1398,11 +1401,22 @@ export async function SaveAgentSettings(s: {
   pi_todo_tool: boolean;
   plan_review?: boolean;
   plan_reviewer?: string;
+  laya_enabled?: boolean;
+  laya_url?: string;
+  laya_model?: string;
 }) {
   agentSettings.claude_task_tools = s.claude_task_tools;
   agentSettings.pi_todo_tool = s.pi_todo_tool;
   agentSettings.plan_review = !!s.plan_review;
   agentSettings.plan_reviewer = s.plan_reviewer ?? 'external';
+  agentSettings.laya_enabled = !!s.laya_enabled;
+  agentSettings.laya_url = s.laya_url ?? '';
+  agentSettings.laya_model = s.laya_model ?? '';
+}
+// Healthy unless the URL says otherwise, so a test can drive both
+// outcomes of Settings' "Test connection".
+export async function TestLayaConnection(endpoint: string) {
+  return endpoint.includes('down') ? 'connection refused' : '';
 }
 
 export async function GetUpdateSettings() {

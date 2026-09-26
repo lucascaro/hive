@@ -58,6 +58,23 @@ const (
 	HookStaleAfter = 30 * time.Second
 )
 
+// Tunables for the Laya tier (spec 458).
+const (
+	// ClassifyQuietAfter is how long a changed screen must hold still
+	// before it is worth classifying. Shorter than QuietAfter so a
+	// classification usually lands in the same breath as the heuristic
+	// idle, and long enough that a streaming reply is never sent.
+	ClassifyQuietAfter = time.Second
+
+	// LayaRecheckAfter bounds a Laya "working" on a screen that has
+	// stopped changing. Tick does not time a Laya state out — that would
+	// flip it idle and back on the next classification — so the
+	// classifier asks again after this long instead. Only working is
+	// rechecked: idle stays idle until output, and the waits stand
+	// until the user acts.
+	LayaRecheckAfter = 30 * time.Second
+)
+
 // Event kinds accepted by Apply. They are the agent-reported vocabulary,
 // shared with wire.AgentEvent (phase 2 carries them over the socket);
 // the heuristic tier never produces one.
@@ -193,6 +210,14 @@ type Machine struct {
 	// hookSeenAt is the reporter's stamp and orders events, and a
 	// deadline shown to a client must be on the clock the daemon owns.
 	reportedAt time.Time
+	// lastEventAt is the DAEMON's clock at the last accepted
+	// state-bearing agent event: anything but a ping, a heartbeat Replay
+	// or a late activity-only report. It is what "the agent's hooks are
+	// still firing" means for the Laya tier. hookSeenAt cannot answer
+	// that: the Pi extension's heartbeat refreshes it every few seconds
+	// by re-sending an old report, so a Pi that missed a turn_end would
+	// otherwise look live forever. Zero ⇔ no such event yet.
+	lastEventAt time.Time
 	// accepted records that the most recent Apply got past the ordering
 	// guard. Consumed by TakeAccepted, like LastToolDelta's hasDelta, so
 	// the registry never broadcasts a dropped event.
@@ -271,7 +296,12 @@ func (m *Machine) Output(now time.Time) bool {
 	// one tick. The ways out are ClearWaiting (driven by the client that
 	// sees the user look), a later agent event, and Exit; output is not
 	// one of them.
-	if wantsUser(m.state) {
+	//
+	// A Laya wait is the exception: it is Hive's guess from the screen,
+	// not the program asking, and a guess about a screen that has since
+	// changed is about the past. Left standing, a misread would pulse
+	// until the user looked and hide every screen after it (spec 458).
+	if wantsUser(m.state) && m.source != wire.StateSourceLaya {
 		m.lastOutputAt = now
 		return false
 	}
@@ -388,7 +418,11 @@ func (m *Machine) Replay(ev Event) (handled, changed bool) {
 		return true, false
 	}
 	m.accepted = true
-	if m.source == wire.StateSourceExtension {
+	// A Laya classification replaced this session's stale extension
+	// state; the heartbeat is repeating the report Laya corrected, so it
+	// proves liveness and nothing else. The next real event takes the
+	// session back through Apply.
+	if m.source == wire.StateSourceExtension || m.source == wire.StateSourceLaya {
 		return true, false
 	}
 	before := m.Snapshot()
@@ -402,7 +436,10 @@ func (m *Machine) Replay(ev Event) (handled, changed bool) {
 // times out — a trusted tier reports its own turn_end, and inventing
 // one for it would race the real thing.
 func (m *Machine) Tick(now time.Time) bool {
-	if m.state != wire.StateWorking || m.trusted(now) {
+	// A Laya working is bounded by LayaRecheckAfter, not by silence:
+	// timing it out here would flip it idle until the next
+	// classification put it back.
+	if m.state != wire.StateWorking || m.source == wire.StateSourceLaya || m.trusted(now) {
 		return false
 	}
 	if now.Sub(m.lastOutputAt) < QuietAfter {
@@ -528,6 +565,9 @@ func (m *Machine) Apply(ev Event) bool {
 		return false
 	}
 	m.accepted = true
+	if ev.Kind != KindPing {
+		m.lastEventAt = now
+	}
 
 	if sub {
 		m.applySubagent(ev, now)
@@ -611,10 +651,63 @@ func (m *Machine) Apply(ev Event) bool {
 // quiet as a dead one; clients apply the deadline to working sessions
 // only.
 func (m *Machine) StaleAt() (time.Time, bool) {
-	if m.source == wire.StateSourceHeuristic || m.reportedAt.IsZero() {
+	// Laya reports nothing, so it has no report deadline — its own
+	// staleness is LayaRecheckAfter, applied by the classifier.
+	if m.source == wire.StateSourceHeuristic || m.source == wire.StateSourceLaya || m.reportedAt.IsZero() {
 		return time.Time{}, false
 	}
 	return m.reportedAt.Add(HookStaleAfter), true
+}
+
+// Classifiable reports whether a Laya classification may replace the
+// current state: the session is alive, not waiting on the user (an
+// agent's or a bell's wait stands until the user acts, as it does
+// against Output; only Laya's own guess may be revised), and no tier is currently speaking for it — either none is
+// trusted, or the one that is has sent nothing but heartbeats and pings
+// for HookStaleAfter. See lastEventAt for why liveness is not enough.
+func (m *Machine) Classifiable(now time.Time) bool {
+	if m.state == wire.StateExited {
+		return false
+	}
+	// Laya may revise its own wait — on a heartbeating Pi, Output
+	// cannot clear it (the tier is still trusted), so a changed screen
+	// is re-asked instead. Every other wait is the user's to answer.
+	if wantsUser(m.state) && m.source != wire.StateSourceLaya {
+		return false
+	}
+	if !m.trusted(now) {
+		return true
+	}
+	return m.lastEventAt.IsZero() || now.Sub(m.lastEventAt) > HookStaleAfter
+}
+
+// Classify applies a Laya classification of the visible screen. It
+// changes nothing unless the session is Classifiable and s is one of the
+// five states a screen can show; it never touches the tier clocks
+// (hookSeenAt, orderAt, reportedAt, lastEventAt), so a stale tier stays
+// stale and its next real event takes the session back through Apply.
+func (m *Machine) Classify(s State, now time.Time) bool {
+	switch s {
+	case wire.StateWorking, wire.StateIdle, wire.StateWaitingInput,
+		wire.StateWaitingPermission, wire.StateError:
+	default:
+		return false
+	}
+	if !m.Classifiable(now) {
+		return false
+	}
+	if m.state == s && m.source == wire.StateSourceLaya {
+		return false
+	}
+	m.state = s
+	m.source = wire.StateSourceLaya
+	return true
+}
+
+// QuietFor is how long the screen has gone unchanged, as last reported
+// through Output.
+func (m *Machine) QuietFor(now time.Time) time.Duration {
+	return now.Sub(m.lastOutputAt)
 }
 
 // TakeAccepted reports whether the most recent Apply accepted its event,

@@ -6,6 +6,8 @@
 // ActivityMsg). Daemon-owned and snake_case only, like SessionInfo's
 // state fields.
 
+import { isInferredSource } from './session-state.js';
+
 export interface ToolEvent {
   tool: string;
   target?: string;
@@ -161,7 +163,7 @@ export function isStale(
   staleAt: string,
   now: number,
 ): boolean {
-  if (!source || source === 'heuristic') return true;
+  if (isInferredSource(source)) return true;
   return state === 'working' && !!staleAt && now > instant(staleAt);
 }
 

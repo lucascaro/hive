@@ -1,0 +1,6 @@
+Traceback (most recent call last):
+  File "<string>", line 1, in <module>
+ModuleNotFoundError: No module named 'nope'
+
+work on  main [!?] via 🐍 3.6.8
+➜

@@ -6,14 +6,18 @@
 package main
 
 import (
+	"context"
 	"crypto/sha256"
 	"encoding/hex"
 	"errors"
+	"fmt"
 	"log"
+	"net/http"
 	"net/url"
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 
 	wruntime "github.com/wailsapp/wails/v2/pkg/runtime"
 
@@ -127,6 +131,11 @@ type AgentSettings struct {
 	// PlanReviewer is "external" or "hive": who reviews a Claude plan
 	// when another reviewer is installed. Newly started sessions only.
 	PlanReviewer string `json:"plan_reviewer"`
+	// LayaEnabled / LayaURL / LayaModel configure the optional Laya
+	// state classifier (spec 458). Read live by the daemon.
+	LayaEnabled bool   `json:"laya_enabled"`
+	LayaURL     string `json:"laya_url"`
+	LayaModel   string `json:"laya_model"`
 }
 
 // GetAgentSettings reads agent-settings.json. A malformed file is an
@@ -137,6 +146,7 @@ func (a *App) GetAgentSettings() (AgentSettings, error) {
 	return AgentSettings{
 		ClaudeTaskTools: s.ClaudeTaskTools, PiTodoTool: s.PiTodoTool,
 		PlanReview: s.PlanReview, PlanReviewer: s.PlanReviewer,
+		LayaEnabled: s.LayaEnabled, LayaURL: s.LayaURL, LayaModel: s.LayaModel,
 	}, err
 }
 
@@ -148,7 +158,36 @@ func (a *App) SaveAgentSettings(s AgentSettings) error {
 	return agent.SaveSettings(agent.Settings{
 		ClaudeTaskTools: s.ClaudeTaskTools, PiTodoTool: s.PiTodoTool,
 		PlanReview: s.PlanReview, PlanReviewer: s.PlanReviewer,
+		LayaEnabled: s.LayaEnabled, LayaURL: s.LayaURL, LayaModel: s.LayaModel,
 	})
+}
+
+// layaHealthTimeout bounds the Settings screen's connection test. A
+// local server answers /health in milliseconds; a hung one should not
+// hold the button for long.
+const layaHealthTimeout = 2 * time.Second
+
+// TestLayaConnection GETs <endpoint>/health and returns "" when the
+// server answers 200, or a one-line reason otherwise. An empty endpoint tests the
+// default endpoint. It sends no screen text and no API key: /health is
+// unauthenticated on both Laya's own server and oMLX.
+func (a *App) TestLayaConnection(endpoint string) string {
+	base := agent.Settings{LayaURL: endpoint}.LayaEndpoint()
+	ctx, cancel := context.WithTimeout(context.Background(), layaHealthTimeout)
+	defer cancel()
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, strings.TrimRight(base, "/")+"/health", nil)
+	if err != nil {
+		return err.Error()
+	}
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		return err.Error()
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		return fmt.Sprintf("%s/health answered %s", base, resp.Status)
+	}
+	return ""
 }
 
 // ExternalPlanReviewer mirrors agent.ExternalReviewer for the bound

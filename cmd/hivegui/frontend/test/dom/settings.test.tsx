@@ -31,6 +31,9 @@ const getAgentSettings = vi.fn(
 const saveAgentSettings = vi.fn(
   (_s: main.AgentSettings): Promise<void> => Promise.resolve(),
 );
+const testLayaConnection = vi.fn(
+  (_url: string): Promise<string> => Promise.resolve(''),
+);
 const getExternalPlanReviewers = vi.fn(
   (): Promise<main.ExternalPlanReviewer[]> => Promise.resolve([]),
 );
@@ -103,6 +106,8 @@ vi.mock('../../src/bridge.js', () => ({
   SaveAgentSettings: (...a: Parameters<typeof saveAgentSettings>) =>
     saveAgentSettings(...a),
   GetExternalPlanReviewers: () => getExternalPlanReviewers(),
+  TestLayaConnection: (...a: Parameters<typeof testLayaConnection>) =>
+    testLayaConnection(...a),
   ListAgents: (...a: Parameters<typeof listAgents>) => listAgents(...a),
   MenuBarLoginItemStatus: () => Promise.resolve(menuBarStatus),
   SetMenuBarLoginItem: (...a: Parameters<typeof setMenuBarLoginItem>) =>
@@ -265,6 +270,9 @@ describe('settings: Claude plan progress toggle', () => {
       pi_todo_tool: true,
       plan_review: false,
       plan_reviewer: 'external',
+      laya_enabled: false,
+      laya_url: '',
+      laya_model: '',
     });
     expect(el('settings').classList.contains('hidden')).toBe(true);
   });
@@ -351,6 +359,9 @@ describe('settings: Pi plan progress toggle', () => {
       pi_todo_tool: false,
       plan_review: false,
       plan_reviewer: 'external',
+      laya_enabled: false,
+      laya_url: '',
+      laya_model: '',
     });
   });
 
@@ -401,6 +412,9 @@ describe('settings: plan review (#457)', () => {
       pi_todo_tool: true,
       plan_review: true,
       plan_reviewer: 'hive',
+      laya_enabled: false,
+      laya_url: '',
+      laya_model: '',
     });
   });
 
@@ -440,6 +454,88 @@ describe('settings: plan review (#457)', () => {
     expect(warn).toContain('/home/u/.claude/settings.json');
     // A plugin CAN be switched off, so it is not warned about.
     expect(warn).not.toContain('plannotator');
+  });
+});
+
+describe('settings: Laya state detection (spec 458)', () => {
+  const box = () => el<HTMLInputElement>('settings-laya-enabled');
+  const url = () => el<HTMLInputElement>('settings-laya-url');
+  const model = () => el<HTMLInputElement>('settings-laya-model');
+
+  it('is off by default, with the default URL as a placeholder', async () => {
+    open();
+    await flush();
+    expect(box().checked).toBe(false);
+    expect(url().value).toBe('');
+    expect(url().placeholder).toBe('http://127.0.0.1:8000');
+  });
+
+  it('saves enabled, url and model, trimmed', async () => {
+    open();
+    await flush();
+    fireEvent.click(box());
+    fireEvent.change(url(), { target: { value: ' http://127.0.0.1:9000 ' } });
+    fireEvent.change(model(), { target: { value: ' laya-terminal ' } });
+    click(el('settings-save'));
+    await flush();
+    expect(saveAgentSettings).toHaveBeenCalledWith(
+      expect.objectContaining({
+        laya_enabled: true,
+        laya_url: 'http://127.0.0.1:9000',
+        laya_model: 'laya-terminal',
+      }),
+    );
+  });
+
+  it('loads saved values', async () => {
+    getAgentSettings.mockResolvedValue({
+      claude_task_tools: true,
+      pi_todo_tool: true,
+      laya_enabled: true,
+      laya_url: 'http://localhost:8000',
+      laya_model: 'ft',
+    } as main.AgentSettings);
+    open();
+    await flush();
+    expect(box().checked).toBe(true);
+    expect(url().value).toBe('http://localhost:8000');
+    expect(model().value).toBe('ft');
+  });
+
+  it('warns only when the URL leaves this machine', async () => {
+    open();
+    await flush();
+    const warning = () =>
+      document.getElementById('settings-laya-remote-warning');
+    for (const local of [
+      'http://127.0.0.1:8000',
+      'http://localhost:8000',
+      'http://[::1]:8000',
+      '',
+    ]) {
+      fireEvent.change(url(), { target: { value: local } });
+      await flush();
+      expect(warning(), local).toBeNull();
+    }
+    fireEvent.change(url(), { target: { value: 'http://10.0.0.5:8000' } });
+    await flush();
+    expect(warning()?.textContent ?? '').toMatch(/sent to that host/);
+  });
+
+  it('shows the connection test result inline', async () => {
+    open();
+    await flush();
+    fireEvent.change(url(), { target: { value: 'http://127.0.0.1:9' } });
+    testLayaConnection.mockResolvedValueOnce('connection refused');
+    click(el('settings-laya-test'));
+    await flush();
+    expect(testLayaConnection).toHaveBeenCalledWith('http://127.0.0.1:9');
+    expect(el('settings-laya-test-result').textContent).toBe(
+      'Not reachable: connection refused',
+    );
+    click(el('settings-laya-test'));
+    await flush();
+    expect(el('settings-laya-test-result').textContent).toBe('Connected.');
   });
 });
 

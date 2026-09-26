@@ -67,3 +67,18 @@ func TestStateConstantsMatchFrontend(t *testing.T) {
 		}
 	}
 }
+
+// TestStateSourceLayaMatchesFrontend: the tooltip's provenance line
+// falls back on a truthiness test, so a source the frontend does not
+// name reads "reported by the agent". Laya is a classification, not a
+// report — the frontend must name it.
+func TestStateSourceLayaMatchesFrontend(t *testing.T) {
+	const rel = "../../cmd/hivegui/frontend/src/lib/session-state.ts"
+	src, err := os.ReadFile(filepath.Clean(rel))
+	if err != nil {
+		t.Skipf("frontend source not available (%v)", err)
+	}
+	if !strings.Contains(string(src), "'"+StateSourceLaya+"'") {
+		t.Errorf("source %q is not in %s — its tooltip would claim the agent reported the state", StateSourceLaya, rel)
+	}
+}

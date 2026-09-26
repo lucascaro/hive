@@ -241,6 +241,8 @@ func New(cfg Config) (*Daemon, error) {
 	// Children report on the events socket, never the control one.
 	reg.SetSocketPath(evsock)
 	reg.SetHivedPath(resolveHivedPath())
+	// Spec 458. Off unless the user switched it on; read live.
+	reg.SetClassifier(layaClassifier())
 
 	// Ensure a default project exists, then migrate any orphan
 	// sessions to it. This is idempotent: existing installs (Phase

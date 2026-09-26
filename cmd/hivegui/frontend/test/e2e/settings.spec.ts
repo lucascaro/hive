@@ -564,3 +564,50 @@ test('pinned agents lead the launcher in the order they were dragged', async ({
   await expect(page.locator('#launcher .launcher-item')).toHaveCount(3);
   expect(await launcherNames(page)).toEqual(['Codex', 'Claude', 'Shell']);
 });
+
+// Spec 458: the Laya section is reachable and usable in the real
+// layout — scrolled into the Agents tab, not clipped or covered — and
+// its connection test reports inline.
+test('Laya state detection: toggle, URL warning, connection test', async ({
+  page,
+}) => {
+  await boot(page);
+  await page.keyboard.press(`${mod}+,`);
+  const box = page.locator('#settings-laya-enabled');
+  await box.scrollIntoViewIfNeeded();
+  await expect(box).toBeVisible();
+  // The hit-test the jsdom suite cannot do: the checkbox is the element
+  // under its own centre, so nothing overlays it.
+  const hit = await box.evaluate((el) => {
+    const r = el.getBoundingClientRect();
+    return (
+      document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2) ===
+      el
+    );
+  });
+  expect(hit).toBe(true);
+  await box.check();
+
+  const url = page.locator('#settings-laya-url');
+  await url.fill('http://10.0.0.5:8000');
+  await expect(page.locator('#settings-laya-remote-warning')).toBeVisible();
+  await url.fill('http://down.local:8000');
+  await page.locator('#settings-laya-test').click();
+  await expect(page.locator('#settings-laya-test-result')).toHaveText(
+    'Not reachable: connection refused',
+  );
+  await url.fill('http://127.0.0.1:8000');
+  await expect(page.locator('#settings-laya-remote-warning')).toHaveCount(0);
+  await page.locator('#settings-laya-test').click();
+  await expect(page.locator('#settings-laya-test-result')).toHaveText(
+    'Connected.',
+  );
+
+  await page.locator('#settings-save').click();
+  await expect(page.locator('#settings')).toBeHidden();
+  await page.keyboard.press(`${mod}+,`);
+  await expect(page.locator('#settings-laya-enabled')).toBeChecked();
+  await expect(page.locator('#settings-laya-url')).toHaveValue(
+    'http://127.0.0.1:8000',
+  );
+});
