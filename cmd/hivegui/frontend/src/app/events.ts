@@ -19,7 +19,13 @@ import {
   onSessionRemoved,
   onSessionRestored,
 } from './undo-close.js';
-import type { IdeaInfo, SessionInfo, ProjectInfo } from './state.js';
+import type {
+  AttachOutcome,
+  IdeaInfo,
+  SessionInfo,
+  ProjectInfo,
+  TermTile,
+} from './state.js';
 import { readNeedsAttention } from './state.js';
 import {
   addIdea,
@@ -519,6 +525,65 @@ function neighbourOf(id: string): string | null {
   return nb?.id ?? null;
 }
 
+// Backoff for reattaching a tile whose attach connection dropped.
+// Doubles per consecutive failed or dropped attach, capped, and resets
+// once a replay completes (see the pty:event handler).
+export const REATTACH_BASE_MS = 500;
+export const REATTACH_MAX_MS = 5000;
+
+function tileVisible(st: TermTile, id: string): boolean {
+  return (
+    (appData().view === 'single' && appData().activeId === id) ||
+    (appData().view !== 'single' && st.host.classList.contains('in-grid'))
+  );
+}
+
+// reattach re-opens a dropped attach on a tile that is still wanted.
+// Shared by the alive=true session event (Restart Session) and the
+// backoff timer (a daemon hang-up, #461), so the two can race safely:
+// whichever runs second finds the tile attached or attaching and stops.
+// needsReattach is cleared by ensureAttached on a successful dial, not
+// here, so a failed dial leaves it up for the next attempt. A hidden
+// tile is only reset: switchTo and the next layout pass attach it when
+// it is shown.
+async function reattach(
+  st: TermTile,
+  id: string,
+  quiet: boolean,
+): Promise<AttachOutcome | 'skipped'> {
+  if (!st.needsReattach || st.attached || st._attaching) return 'skipped';
+  if (isClosing(st.phase) || appData().aliveById.get(id) === false)
+    return 'skipped';
+  try {
+    st.term?.reset();
+  } catch {}
+  abandonReplays(st); // the wipe abandons any in-flight restream
+  if (!tileVisible(st, id)) {
+    st.needsReattach = false;
+    return 'skipped';
+  }
+  const out = (await st.ensureAttached({ quiet })) ?? 'deferred';
+  if (out === 'attached' && appData().activeId === id) deps.focusActiveTerm();
+  return out;
+}
+
+// scheduleReattach arms one backoff attempt. Only a 'failed' dial
+// re-arms: 'deferred' means another path (setPhase, the resize
+// observer) owns finishing the attach, and 'skipped' means nothing is
+// left to do.
+function scheduleReattach(st: TermTile, id: string) {
+  if (st._reattachTimer) return;
+  const attempts = st._reattachAttempts ?? 0;
+  const delay = Math.min(REATTACH_BASE_MS * 2 ** attempts, REATTACH_MAX_MS);
+  st._reattachAttempts = attempts + 1;
+  st._reattachTimer = window.setTimeout(async () => {
+    st._reattachTimer = 0;
+    if (termsMap().get(id) !== st) return; // closed or replaced meanwhile
+    const out = await reattach(st, id, true);
+    if (out === 'failed' && st.needsReattach) scheduleReattach(st, id);
+  }, delay);
+}
+
 export function wireDaemonEvents(injected: EventsDeps) {
   deps = injected;
 
@@ -955,22 +1020,7 @@ export function wireDaemonEvents(injected: EventsDeps) {
         // resumed stream starts flowing without a manual switch.
         // Hidden terms are left dirty; switchTo and the next layout
         // pass will ensureAttached when they next become visible.
-        if (st.needsReattach && ev.session.alive) {
-          st.needsReattach = false;
-          try {
-            st.term?.reset();
-          } catch {}
-          abandonReplays(st); // the wipe abandons any in-flight restream
-          const visible =
-            (appData().view === 'single' &&
-              appData().activeId === ev.session.id) ||
-            (appData().view !== 'single' &&
-              st.host.classList.contains('in-grid'));
-          if (visible) {
-            st.ensureAttached();
-            if (appData().activeId === ev.session.id) deps.focusActiveTerm();
-          }
-        }
+        if (ev.session.alive) void reattach(st, ev.session.id, false);
       }
       if (appData().activeId === ev.session.id) deps.updateAppTitle();
     }
@@ -1043,7 +1093,12 @@ export function wireDaemonEvents(injected: EventsDeps) {
       );
       // Replay done = the daemon has finished painting the settled
       // screen, which is the cue to drop the loading panel.
-      if (ev.kind === 'scrollback_replay_done') st.revealAfterReplay();
+      if (ev.kind === 'scrollback_replay_done') {
+        st.revealAfterReplay();
+        // A full replay landed: this attach is healthy, so the next
+        // drop starts its backoff from the beginning again.
+        st._reattachAttempts = 0;
+      }
     } catch {
       /* ignore */
     }
@@ -1066,8 +1121,13 @@ export function wireDaemonEvents(injected: EventsDeps) {
       abandonReplays(st);
       // Mark the term as needing reattach. Restart Session closes the
       // daemon-side PTY (which lands here) and respawns; the subsequent
-      // session:event(updated, alive=true) is where we re-OpenSession.
+      // session:event(updated, alive=true) re-opens it. The daemon also
+      // hangs up on a client that stops reading (#461), and then no
+      // updated event follows, so a backoff timer retries as well.
+      // Whichever fires first attaches; the other finds the tile
+      // attached (or attaching) and does nothing.
       st.needsReattach = true;
+      scheduleReattach(st, id);
     }
   });
 

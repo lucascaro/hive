@@ -11,6 +11,7 @@ Index entries are short. Detailed rationale belongs in the per-doc files.
 - [The control plane](control-plane.md) — daemon-owned session state across agent CLIs: the three knowledge tiers, the `event` wire mode, what is deliberately out of scope
 - [Agent orchestration](agent-orchestration.md) — the per-session grant that lets an agent message, watch and spawn siblings; phased and evidence-gated
 - [Agent activity](agent-activity.md) — what an agent is doing *inside* a turn: plan and tool events from the hook/extension tiers, the source-side privacy rule, one renderer in three placements
+- [Slow-client policy](slow-client-policy.md) — the daemon never blocks on a client: bounded attach queue, write deadlines, hang up on a dropped subscription, GUI auto-reattach
 
 ## Core beliefs
 

@@ -683,7 +683,7 @@ func (r *Registry) broadcastProject(kind string, info wire.ProjectInfo) {
 		case ch <- ev:
 		default:
 			// Same contract as broadcastLocked: drops must be loud.
-			log.Printf("registry: dropping slow project-event listener (buffer %d full, %d listeners); client is desynced until it resubscribes",
+			log.Printf("registry: dropping slow project-event listener (buffer %d full, %d listeners); closing the channel, so the daemon hangs up on that client and it reconnects",
 				cap(ch), len(r.projectListeners))
 			delete(r.projectListeners, ch)
 			close(ch)

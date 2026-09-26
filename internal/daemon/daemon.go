@@ -54,6 +54,10 @@ type Daemon struct {
 	reg  *registry.Registry
 	ln   net.Listener
 
+	// createFn, when set, replaces reg.Create for ModeCreate. Tests use
+	// it to make a create slow; production leaves it nil.
+	createFn func(context.Context, wire.CreateSpec) (*registry.Entry, error)
+
 	// evsock/lnEvents are the events-only listener handed to spawned
 	// sessions as HIVE_SOCKET. Separate socket rather than a flag on
 	// the control one: the capability an agent child inherits has to
@@ -139,14 +143,29 @@ type Daemon struct {
 	// restart behind a slow git and fail to be a barrier for the
 	// second caller.
 	ops sync.WaitGroup
+	// opsMu orders every ops.Add against Close's ops.Wait. A control
+	// read loop can still be dispatching a request while Close runs,
+	// and a WaitGroup Add racing a Wait is a misuse (and a -race
+	// report). Once opsClosed is set, runOp refuses new work.
+	opsMu     sync.Mutex
+	opsClosed bool
 }
 
 // runOp runs one session lifecycle operation off the control read
 // loop. Create/Kill/Restart shell out to git, which used to block
 // every other client request for the duration (golden principle 5:
 // the goroutine has an explicit owner — d.ops, drained by Close).
+//
+// Once Close has started draining, runOp drops fn: the daemon is going
+// away and the client that asked has already been hung up on.
 func (d *Daemon) runOp(fn func()) {
+	d.opsMu.Lock()
+	if d.opsClosed {
+		d.opsMu.Unlock()
+		return
+	}
 	d.ops.Add(1)
+	d.opsMu.Unlock()
 	go func() {
 		defer d.ops.Done()
 		fn()
@@ -533,13 +552,24 @@ func (d *Daemon) Close() error {
 	// starting new work instead of forking shells for a daemon that
 	// is going away.
 	d.stopOps()
-	d.ops.Wait()
+	// Hang up on every client BEFORE waiting on ops. An op replying to a
+	// client that stopped reading is blocked in a write on that client's
+	// conn; closing the conn is what unblocks it, so waiting first would
+	// hang shutdown on that one client. The ops still finish their work;
+	// they only lose a reply no one could receive. A nil d.clients also
+	// makes serve and serveEventsOnly refuse any client that dials in
+	// during the drain, while the listeners stay open until after it
+	// (see the state-lock note at the bottom).
 	d.mu.Lock()
 	for c := range d.clients {
 		_ = c.Close()
 	}
 	d.clients = nil
 	d.mu.Unlock()
+	d.opsMu.Lock()
+	d.opsClosed = true
+	d.opsMu.Unlock()
+	d.ops.Wait()
 	if d.commands != nil {
 		d.commands.Close()
 	}
@@ -655,7 +685,7 @@ func (d *Daemon) serve(ctx context.Context, conn net.Conn) {
 		return
 	}
 	if hello.Version != wire.PROTOCOL_VERSION {
-		_ = wire.WriteJSON(conn, wire.FrameError, wire.Error{
+		_ = writeBounded(conn, writeTimeout(), wire.FrameError, wire.Error{
 			Code:    wire.ErrCodeProtocolVersionMismatch,
 			Message: fmt.Sprintf("server speaks v%d; client speaks v%d", wire.PROTOCOL_VERSION, hello.Version),
 		})
@@ -682,20 +712,29 @@ func (d *Daemon) serve(ctx context.Context, conn net.Conn) {
 		if hello.Create != nil {
 			spec = *hello.Create
 		}
-		e, err := d.reg.Create(ctx, spec)
+		e, err := d.createSession(ctx, spec)
 		if err != nil {
-			_ = wire.WriteJSON(conn, wire.FrameError, wire.Error{Code: "create_failed", Message: err.Error()})
+			_ = writeBounded(conn, writeTimeout(), wire.FrameError, wire.Error{Code: "create_failed", Message: err.Error()})
 			return
 		}
 		d.serveAttach(conn, e.ID)
 	case wire.ModeEvent:
 		d.serveEvent(conn)
 	default:
-		_ = wire.WriteJSON(conn, wire.FrameError, wire.Error{
+		_ = writeBounded(conn, writeTimeout(), wire.FrameError, wire.Error{
 			Code:    "unknown_mode",
 			Message: fmt.Sprintf("mode %q; want control|attach|create|event|session", hello.Mode),
 		})
 	}
+}
+
+// createSession is ModeCreate's create step: reg.Create unless a test
+// installed createFn.
+func (d *Daemon) createSession(ctx context.Context, spec wire.CreateSpec) (*registry.Entry, error) {
+	if d.createFn != nil {
+		return d.createFn(ctx, spec)
+	}
+	return d.reg.Create(ctx, spec)
 }
 
 // eventReadDeadline bounds each read on a ModeEvent connection, and is
@@ -744,7 +783,7 @@ func (d *Daemon) serveEventsOnly(ctx context.Context, conn net.Conn) {
 		return
 	}
 	if hello.Version != wire.PROTOCOL_VERSION {
-		_ = wire.WriteJSON(conn, wire.FrameError, wire.Error{
+		_ = writeBounded(conn, writeTimeout(), wire.FrameError, wire.Error{
 			Code:    wire.ErrCodeProtocolVersionMismatch,
 			Message: fmt.Sprintf("server speaks v%d; client speaks v%d", wire.PROTOCOL_VERSION, hello.Version),
 		})
@@ -776,7 +815,7 @@ func (d *Daemon) serveEventsOnly(ctx context.Context, conn net.Conn) {
 		}()
 		d.serveControl(ctx, conn, hello)
 	default:
-		_ = wire.WriteJSON(conn, wire.FrameError, wire.Error{
+		_ = writeBounded(conn, writeTimeout(), wire.FrameError, wire.Error{
 			Code:    wire.ErrCodeModeNotAllowed,
 			Message: fmt.Sprintf("mode %q is not served on the events socket; want event, session or plan_review", hello.Mode),
 		})
@@ -952,7 +991,10 @@ func (d *Daemon) serveControl(ctx context.Context, conn net.Conn, hello wire.Hel
 	cmdListener, cmdUnsub := d.commands.Subscribe()
 	defer cmdUnsub()
 
-	if err := wire.WriteJSON(conn, wire.FrameWelcome, wire.Welcome{
+	// Captured once, so a test shrinking the var cannot race this
+	// connection's writers.
+	connTimeout := writeTimeout()
+	if err := writeBounded(conn, connTimeout, wire.FrameWelcome, wire.Welcome{
 		Version:        wire.PROTOCOL_VERSION,
 		BuildID:        buildinfo.BuildID(),
 		Release:        buildinfo.Version(),
@@ -964,16 +1006,29 @@ func (d *Daemon) serveControl(ctx context.Context, conn net.Conn, hello wire.Hel
 
 	// Per-conn write mutex so the snapshot/event goroutines don't
 	// interleave bytes with each other or with the response writes
-	// from the request loop below.
+	// from the request loop below. Every write is deadline-bounded and
+	// a failed one closes the conn, so a client that stops reading
+	// holds connMu for at most connTimeout, and every writer queued
+	// behind it then fails fast instead of pinning a runOp (and, through
+	// d.ops, Daemon.Close).
 	var connMu sync.Mutex
 	writeJSON := func(t wire.FrameType, v any) error {
 		connMu.Lock()
 		defer connMu.Unlock()
-		return wire.WriteJSON(conn, t, v)
+		return writeBounded(conn, connTimeout, t, v)
 	}
 
 	stop := make(chan struct{})
 	go func() {
+		// However the fan-out ends, the conn ends with it. The common
+		// case is a subscription the registry dropped because this
+		// client fell behind (its channel closes): leaving the conn up
+		// would keep answering requests while delivering no events, a
+		// client silently desynced forever. Hanging up sends it through
+		// the reconnect path every client already has, which starts with
+		// a fresh snapshot. On the normal path (stop) the conn is being
+		// torn down anyway, and a second Close is harmless.
+		defer conn.Close()
 		// Initial snapshot — projects first so the client can resolve
 		// session.project_id without a roundtrip. A restricted client
 		// gets neither the project list nor anybody else's sessions:
@@ -1703,7 +1758,7 @@ func (d *Daemon) handleControlFrame(ctx context.Context, ops controlOps, ft wire
 func (d *Daemon) serveAttach(conn net.Conn, sessionID string) {
 	entry := d.reg.Get(sessionID)
 	if entry == nil {
-		_ = wire.WriteJSON(conn, wire.FrameError, wire.Error{
+		_ = writeBounded(conn, writeTimeout(), wire.FrameError, wire.Error{
 			Code:    "no_such_session",
 			Message: sessionID,
 		})
@@ -1715,14 +1770,14 @@ func (d *Daemon) serveAttach(conn net.Conn, sessionID string) {
 		// is a normal race, not a failure: the client should wait for
 		// the event that moves the session to wire.PhaseReady.
 		if d.reg.Phase(sessionID) != wire.PhaseReady {
-			_ = wire.WriteJSON(conn, wire.FrameError, wire.Error{
+			_ = writeBounded(conn, writeTimeout(), wire.FrameError, wire.Error{
 				Code:      wire.ErrCodeSessionStarting,
 				Message:   "session is still starting",
 				SessionID: sessionID,
 			})
 			return
 		}
-		_ = wire.WriteJSON(conn, wire.FrameError, wire.Error{
+		_ = writeBounded(conn, writeTimeout(), wire.FrameError, wire.Error{
 			Code:    "session_dead",
 			Message: "session has no live PTY (daemon-restart resume not implemented yet)",
 		})
@@ -1741,7 +1796,7 @@ func (d *Daemon) serveAttach(conn net.Conn, sessionID string) {
 	if rows == 0 {
 		rows = 24
 	}
-	if err := wire.WriteJSON(conn, wire.FrameWelcome, wire.Welcome{
+	if err := writeBounded(conn, writeTimeout(), wire.FrameWelcome, wire.Welcome{
 		Version:        wire.PROTOCOL_VERSION,
 		BuildID:        buildinfo.BuildID(),
 		Release:        buildinfo.Version(),
@@ -1754,14 +1809,14 @@ func (d *Daemon) serveAttach(conn net.Conn, sessionID string) {
 		return
 	}
 
-	sink := &frameSink{conn: conn}
+	sink := newFrameSink(conn)
+	defer sink.stop()
 	// SubscribeWithAtomicReplay holds s.mu across both the snapshot
 	// capture and the writeReplay call, so deliver cannot fanout to
 	// any sink (including this one before it's registered) while the
-	// Begin/replay/Done sequence is being written. The sink is
+	// Begin/replay/Done sequence is being queued. The sink is
 	// registered for live fanout only after writeReplay returns
-	// successfully, so live bytes start arriving on the wire strictly
-	// after Done.
+	// successfully, so live bytes are queued strictly after Done.
 	unsub, err := sess.SubscribeWithAtomicReplay(sink, func(replay []byte) error {
 		return sink.writeReplay(replay, 16<<10)
 	})
@@ -1793,9 +1848,9 @@ func (d *Daemon) serveAttach(conn net.Conn, sessionID string) {
 			// Client (typically the GUI after a width-changing resize)
 			// asks us to re-stream the scrollback. The sink is already
 			// registered for live fanout, so EmitAtomicReplay's hold of
-			// s.mu blocks deliver entirely until the Begin/replay/Done
-			// sequence is on the wire. After release, queued live data
-			// resumes in order.
+			// s.mu keeps deliver out until the whole Begin/replay/Done
+			// sequence is queued. Live data queued after it follows in
+			// order.
 			if err := sess.EmitAtomicReplay(func(replay []byte) error {
 				return sink.writeReplay(replay, 16<<10)
 			}); err != nil {
@@ -1806,57 +1861,6 @@ func (d *Daemon) serveAttach(conn net.Conn, sessionID string) {
 		}
 	}
 }
-
-// frameSink wraps a net.Conn so it can be a session.Sink.
-type frameSink struct {
-	conn net.Conn
-	mu   sync.Mutex
-}
-
-func (f *frameSink) Write(p []byte) (int, error) {
-	f.mu.Lock()
-	defer f.mu.Unlock()
-	if err := wire.WriteFrame(f.conn, wire.FrameData, p); err != nil {
-		return 0, err
-	}
-	return len(p), nil
-}
-
-// writeReplay streams Begin → chunked replay bytes → Done to the
-// client under f.mu, so any concurrent non-fanout writes to this sink
-// serialize behind us. The caller is expected to run this via the
-// session's atomic-replay helpers (SubscribeWithAtomicReplay /
-// EmitAtomicReplay) so that s.mu also serializes us against deliver
-// — without that outer serialization, a live fanout that started
-// before we acquired f.mu would write its byte to the wire BEFORE
-// the Begin event, get rendered by xterm in `live` phase, then get
-// wiped by term.reset() when Begin arrives. That is the exact
-// "live text overwriting scrollback" symptom the replay protocol
-// exists to eliminate.
-//
-// chunk is the max payload size per FrameData; pass 16<<10 to match
-// existing snapshot chunking.
-func (f *frameSink) writeReplay(replay []byte, chunk int) error {
-	f.mu.Lock()
-	defer f.mu.Unlock()
-	if err := wire.WriteJSON(f.conn, wire.FrameEvent, wire.Event{
-		Kind: wire.EventScrollbackReplayBegin,
-	}); err != nil {
-		return err
-	}
-	for len(replay) > 0 {
-		n := min(chunk, len(replay))
-		if err := wire.WriteFrame(f.conn, wire.FrameData, replay[:n]); err != nil {
-			return err
-		}
-		replay = replay[n:]
-	}
-	return wire.WriteJSON(f.conn, wire.FrameEvent, wire.Event{
-		Kind: wire.EventScrollbackReplayDone,
-	})
-}
-
-func (f *frameSink) Close() error { return f.conn.Close() }
 
 // bootstrapWanted reports whether opts has any non-default field set.
 // Can't use struct equality because session.Options has a slice field.

@@ -2,6 +2,7 @@ package session
 
 import (
 	"bytes"
+	"errors"
 	"runtime"
 	"strings"
 	"sync"
@@ -254,5 +255,44 @@ func TestSessionDoneClosesWhenChildExits(t *testing.T) {
 	}
 	if !strings.Contains(sink.String(), "hive_exit_probe") {
 		t.Fatalf("child output lost during exit teardown; got %q", sink.String())
+	}
+}
+
+// A sink registered after fanoutClose would never be closed: nothing
+// fans out again. The window is real, because readLoop closes done only
+// after fanoutClose returns, so the guard must key on fanoutClose itself.
+// Calling fanoutClose directly (with done still open) pins that: a
+// done-based guard lets this subscription through.
+func TestSubscribeAfterFanoutCloseFails(t *testing.T) {
+	skipOnWindows(t)
+	sess, err := Start(Options{Shell: "/bin/sh", Cols: 80, Rows: 24})
+	if err != nil {
+		t.Fatalf("Start: %v", err)
+	}
+	defer sess.Close()
+
+	sess.fanoutClose()
+	select {
+	case <-sess.Done():
+		t.Fatal("precondition: done must still be open to exercise the gap")
+	default:
+	}
+
+	called := false
+	unsub, err := sess.SubscribeWithAtomicReplay(&bufSinkMu{}, func([]byte) error {
+		called = true
+		return nil
+	})
+	if !errors.Is(err, ErrSessionClosed) {
+		t.Fatalf("err = %v, want ErrSessionClosed", err)
+	}
+	if unsub != nil || called {
+		t.Fatalf("unsub=%v writeFn called=%v; want neither", unsub != nil, called)
+	}
+	sess.mu.Lock()
+	n := len(sess.sinks)
+	sess.mu.Unlock()
+	if n != 0 {
+		t.Fatalf("sinks = %d, want 0", n)
 	}
 }

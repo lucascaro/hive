@@ -75,7 +75,7 @@ func (h *commandHub) Publish(cmd wire.ClientCommand) {
 		select {
 		case ch <- cmd:
 		default:
-			log.Printf("daemon: dropping slow client-command listener (buffer %d full, %d listeners); that client will not see %q",
+			log.Printf("daemon: dropping slow client-command listener (buffer %d full, %d listeners); closing the channel, so the daemon hangs up on that client (it missed %q) and it reconnects",
 				cap(ch), len(h.listeners), cmd.Cmd)
 			delete(h.listeners, ch)
 			close(ch)

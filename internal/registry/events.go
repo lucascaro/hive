@@ -68,9 +68,10 @@ func (r *Registry) broadcastLocked(kind string, info wire.SessionInfo) {
 		case ch <- ev:
 		default:
 			// Listener can't keep up. Dropping it silently would leave
-			// the client permanently desynced with no trace — warn so
+			// the client permanently desynced with no trace. The channel close
+			// makes the daemon hang up on it (it reconnects); warn so
 			// "the GUI went stale" can be correlated with this moment.
-			log.Printf("registry: dropping slow session-event listener (buffer %d full, %d listeners); client is desynced until it resubscribes",
+			log.Printf("registry: dropping slow session-event listener (buffer %d full, %d listeners); closing the channel, so the daemon hangs up on that client and it reconnects",
 				cap(ch), len(r.listeners))
 			delete(r.listeners, ch)
 			close(ch)
@@ -149,7 +150,7 @@ func (r *Registry) broadcastActivityLocked(e *Entry, kind string) {
 		default:
 			// Same policy as session events: a consumer that cannot
 			// keep up is dropped loudly rather than silently desynced.
-			log.Printf("registry: dropping slow activity listener (buffer %d full, %d listeners); client is desynced until it resubscribes",
+			log.Printf("registry: dropping slow activity listener (buffer %d full, %d listeners); closing the channel, so the daemon hangs up on that client and it reconnects",
 				cap(ch), len(r.activityListeners))
 			delete(r.activityListeners, ch)
 			close(ch)

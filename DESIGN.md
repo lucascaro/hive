@@ -83,6 +83,15 @@ Architectural invariants. Each one should ideally be enforceable by `gc-sweep` o
   Bump `PROTOCOL_VERSION` only for a genuine break (a frame whose meaning
   changed, a field an old peer would misread), and bump `DaemonContract`
   alongside it.
+- **The daemon never blocks on a client.** Every write to a client conn is
+  bounded — a per-write deadline (`writeBounded`) or, for attach output, a
+  bounded per-connection queue drained by its own writer goroutine
+  (`frameSink`) — and no conn write ever happens under `Session.mu`. A
+  client that stops reading, falls past the backlog, or loses an event
+  subscription is hung up on; clients reconnect and re-snapshot. Waiting
+  on a slow client freezes a live agent or hangs shutdown; keeping a
+  desynced one connected shows stale state with no signal. See
+  [docs/design-docs/slow-client-policy.md](docs/design-docs/slow-client-policy.md).
 - **Wire JSON is `snake_case` on the wire, `CamelCase` in Go.** Every field in `internal/wire/` carries an explicit `json:"snake_case"` tag. JS readers in `hivegui/frontend/` use `snake_case ?? camelCase` at the boundary.
 - **The GUI never opens a PTY.** All PTY operations go through the wire protocol. Grep guard: no `os/exec`, `creack/pty`, or `internal/session` imports in `cmd/hivegui/` or `hivegui/`.
 - **The registry is the only writer of persisted *session* state.** No file writes under `registry.StateDir()` from `internal/daemon/`, `internal/session/`, or anywhere else. Atomic writes only — never partial truncates. The GUI owns four files in that same directory that are *not* session state and never cross the wire: `agents.json` (custom agents, also read by hived), `agent-settings.json` (agent behaviour settings, also read by hived at spawn), `window.json` (window geometry), and `update.json` (update channel + source-repo override). (Ideas are registry-owned state, not GUI-owned, so they do not change that count.) `hived` owns one more: `pi/hive.ts`, the Pi reporter extension it writes at startup from an embedded copy (`internal/agent/pi.go`) and passes to Pi sessions as `-e <path>`. All five follow the same temp + rename discipline. Anything the daemon must agree about goes through the wire protocol and the registry instead.
