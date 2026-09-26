@@ -131,7 +131,8 @@ export interface AppData {
   // bucket for anyway.
   ideas: IdeaInfo[];
   // Every installed plugin, sorted by id. Empty until the Plugins tab
-  // first asks (ListPlugins); PLUGIN_EVENT keeps it current after that.
+  // asks (ListPlugins, once per Settings open); PLUGIN_EVENT keeps it
+  // current in between.
   plugins: PluginInfo[];
   // agent id -> the agent's own colour (internal/agent/agent.go Def.Color,
   // and custom.go for user-defined agents). Filled once at boot from

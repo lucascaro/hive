@@ -67,8 +67,9 @@ export function PluginsPanel({
     [],
   );
 
-  // Asked for on first view rather than on every Settings open: the
-  // fan-out keeps the store current once it has a list at all.
+  // Asked for when the tab is first shown in this Settings dialog, not
+  // at dialog mount. SettingsDialog remounts on every open, so each open
+  // re-lists once; the fan-out keeps the store current in between.
   const listed = useRef(false);
   useEffect(() => {
     if (!active || listed.current) return;

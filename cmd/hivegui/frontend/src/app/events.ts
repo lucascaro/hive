@@ -1229,10 +1229,10 @@ export function wireDaemonEvents(injected: EventsDeps) {
       flashStatus('hived error', true);
       return;
     }
-    // The review ended between the session event and the fetch: nothing
-    // to show, and nothing worth a status line.
     // This window's own install failure: the Plugins tab shows it.
     if (claimPluginInstallError(e)) return;
+    // The review ended between the session event and the fetch: nothing
+    // to show, and nothing worth a status line.
     if (e.code === 'plan_review_stale') {
       onPlanReviewStale(e.session_id);
       return;
