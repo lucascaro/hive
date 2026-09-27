@@ -239,11 +239,13 @@ simply connect to Hive's main socket as the app does. See **Trust**.
 - **It has a rate budget.** Cheap reads cost 1, changes that are
   broadcast to every client cost 10, and anything that starts or
   destroys something (creating, restarting or killing a session,
-  worktree changes, installing a plugin) or relaunches the app's
-  windows (`CLIENT_COMMAND`) costs 100, against 1000 per second with a
-  burst of 300. Past it, Hive stops reading the plugin's
+  worktree changes, installing a plugin) costs 100, against 1000 per
+  second with a burst of 2000. Past it, Hive stops reading the plugin's
   requests until the budget refills — nothing is dropped, requests just
-  slow down.
+  slow down. Requests that are broadcast also wait, for up to two
+  seconds, while any connected app window is behind on the updates
+  already sent to it, so a plugin cannot flood a window off its
+  connection.
 
 A connection that stops reading what Hive sends it is disconnected,
 the same as any client.

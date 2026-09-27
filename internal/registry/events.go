@@ -20,13 +20,6 @@ type IdeaListener chan wire.IdeaEvent
 // ActivityListener is a channel that receives ActivityMsg deltas.
 type ActivityListener chan wire.ActivityMsg
 
-// ListenerBuffer is how many events a session, idea or project listener
-// holds before the registry drops it as slow (and the daemon hangs up on
-// that client). Exported so the plugin rate budget can be checked
-// against it: a plugin's burst must fit (internal/daemon
-// TestPluginBurstFitsListenerBuffers).
-const ListenerBuffer = 64
-
 // Subscribe returns a channel that receives every SessionEvent. The
 // returned cleanup function unsubscribes and closes the channel.
 // Slow consumers are dropped — listeners must drain promptly.
@@ -35,7 +28,7 @@ func (r *Registry) Subscribe() (Listener, func()) {
 	// session while holding r.mu (see reindexLocked), so a listener
 	// that's merely a beat behind on a many-session registry could
 	// overflow a small buffer and get dropped.
-	ch := make(Listener, ListenerBuffer)
+	ch := make(Listener, 64)
 	r.mu.Lock()
 	if r.listeners == nil {
 		// Close() ran first — it nils the map after closing every
@@ -193,4 +186,35 @@ func (r *Registry) ActivitySnapshot(id string) (wire.ActivityMsg, error) {
 		Full:      true,
 		StaleAt:   staleAtString(e.machine()),
 	}, nil
+}
+
+// Pressure is how full the fullest listener is, from 0 (every buffer
+// empty) to 1 (one is full and about to be dropped). The daemon holds
+// back a plugin's broadcasting requests while it is high, so a plugin's
+// burst paces itself to the slowest reader instead of overflowing it
+// (#467). Covers every listener kind the registry owns.
+func (r *Registry) Pressure() float64 {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	p := 0.0
+	for ch := range r.listeners {
+		p = max(p, fill(len(ch), cap(ch)))
+	}
+	for ch := range r.projectListeners {
+		p = max(p, fill(len(ch), cap(ch)))
+	}
+	for ch := range r.ideaListeners {
+		p = max(p, fill(len(ch), cap(ch)))
+	}
+	for ch := range r.activityListeners {
+		p = max(p, fill(len(ch), cap(ch)))
+	}
+	return p
+}
+
+func fill(n, c int) float64 {
+	if c == 0 {
+		return 0
+	}
+	return float64(n) / float64(c)
 }

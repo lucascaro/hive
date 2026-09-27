@@ -272,7 +272,7 @@ func (r *Registry) removeProjectIdeasLocked(projectID string) []wire.IdeaInfo {
 func (r *Registry) SubscribeIdeas() (IdeaListener, func()) {
 	// 64 for the same reason as Subscribe: a project delete
 	// broadcasts one event per idea it destroys.
-	ch := make(IdeaListener, ListenerBuffer)
+	ch := make(IdeaListener, 64)
 	r.mu.Lock()
 	if r.ideaListeners == nil {
 		// Post-Close subscribe; see the matching guard in Subscribe.

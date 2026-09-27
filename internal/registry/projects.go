@@ -654,7 +654,7 @@ func (r *Registry) reindexProjectsLocked() {
 func (r *Registry) SubscribeProjects() (ProjectListener, func()) {
 	// 64 for the same reason as Subscribe: order changes broadcast one
 	// event per project under lock.
-	ch := make(ProjectListener, ListenerBuffer)
+	ch := make(ProjectListener, 64)
 	r.mu.Lock()
 	if r.projectListeners == nil {
 		// Post-Close subscribe; see the matching guard in Subscribe.

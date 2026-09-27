@@ -11,6 +11,7 @@ import (
 	"runtime"
 	"strconv"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -253,35 +254,48 @@ func TestPluginSocket_CreateModeCharged(t *testing.T) {
 }
 
 func TestPluginSocket_FloodFanoutOtherClientStillGetsEvents(t *testing.T) {
+	floodFanout(t, 1)
+}
+
+// Several plugins' bursts land in the same GUI listener (#467): the
+// backpressure is on the listeners, not per plugin, so it holds for
+// any number of senders.
+func TestPluginSocket_SeveralPluginsFloodOtherClientStillGetsEvents(t *testing.T) {
+	floodFanout(t, 3)
+}
+
+func floodFanout(t *testing.T, plugins int) {
 	skipOnWindows(t)
 	d := startTestDaemon(t)
 	projectID := d.Registry().ListProjects()[0].ID
 	sid := firstSessionID(t, d)
 	gui := pluginTestControl(t, d, "hivegui/x")
-	pc, _ := pluginConn(t, d, "flood", "p")
 
 	stopFlood := make(chan struct{})
 	defer close(stopFlood)
-	go func() { // drain whatever the plugin is sent
-		buf := make([]byte, 64<<10)
-		for {
-			if _, err := pc.Read(buf); err != nil {
-				return
+	for n := range plugins {
+		pc, _ := pluginConn(t, d, "flood"+strconv.Itoa(n), "p")
+		go func() { // drain whatever the plugin is sent
+			buf := make([]byte, 64<<10)
+			for {
+				if _, err := pc.Read(buf); err != nil {
+					return
+				}
 			}
-		}
-	}()
-	go func() {
-		for i := 0; ; i++ {
-			select {
-			case <-stopFlood:
-				return
-			default:
+		}()
+		go func() {
+			for i := 0; ; i++ {
+				select {
+				case <-stopFlood:
+					return
+				default:
+				}
+				if wire.WriteJSON(pc, wire.FrameAddIdea, wire.AddIdeaReq{ProjectID: projectID, Text: "flood " + strconv.Itoa(i)}) != nil {
+					return
+				}
 			}
-			if wire.WriteJSON(pc, wire.FrameAddIdea, wire.AddIdeaReq{ProjectID: projectID, Text: "flood " + strconv.Itoa(i)}) != nil {
-				return
-			}
-		}
-	}()
+		}()
+	}
 	// The GUI reads continuously, as a real one does; a client that stops
 	// reading is (correctly) hung up on, which is not what this measures.
 	seen := make(chan time.Time, 1)
@@ -447,26 +461,88 @@ func TestPluginVerbs_UnavailableWhenManagerFailedToLoad(t *testing.T) {
 	}
 }
 
-// TestPluginBurstFitsListenerBuffers pins the rule the plugin rate budget
-// rests on (#467): every broadcast a plugin's burst can buy lands at once
-// in each control client's listener, and a listener that fills is dropped
-// and its client hung up on. So the burst, spent on the cheapest frame of
-// each broadcasting kind, must fit in half of the buffer it lands in —
-// leaving room for the client's own events while it drains. Cost-1 frames
-// are reads (LIST_*, GET_*, SEARCH_*) and broadcast nothing.
-func TestPluginBurstFitsListenerBuffers(t *testing.T) {
-	for _, ft := range wire.ControlRequestFrames {
-		cost := plugin.FrameCost(ft)
-		if cost <= 1 {
-			continue
+func testTag(pressure func() float64) (*pluginTag, context.CancelFunc) {
+	ctx, cancel := context.WithCancel(context.Background())
+	return &pluginTag{id: "t", lim: plugin.NewLimiter(), ctx: ctx, pressure: pressure}, cancel
+}
+
+// A broadcasting request waits while a client's listener is half full,
+// and goes ahead as soon as it drains (#467).
+func TestPluginWait_HoldsWhileListenersAreFull(t *testing.T) {
+	var full atomic.Bool
+	full.Store(true)
+	tag, cancel := testTag(func() float64 {
+		if full.Load() {
+			return 0.9
 		}
-		buf := registry.ListenerBuffer
-		if ft == wire.FrameClientCommand {
-			buf = commandListenerBuffer
+		return 0
+	})
+	defer cancel()
+	done := make(chan error, 1)
+	go func() { done <- tag.wait(plugin.FrameCost(wire.FrameAddIdea)) }()
+	select {
+	case <-done:
+		t.Fatal("a broadcast went ahead while a listener was 90% full")
+	case <-time.After(100 * time.Millisecond):
+	}
+	full.Store(false)
+	select {
+	case err := <-done:
+		if err != nil {
+			t.Fatalf("wait = %v", err)
 		}
-		if n := plugin.Burst / cost; n > float64(buf)/2 {
-			t.Errorf("%s: a burst of %.0f buys %.0f broadcasts at cost %.0f; its listeners hold %d, so at most %d fit",
-				ft, plugin.Burst, n, cost, buf, buf/2)
+	case <-time.After(time.Second):
+		t.Fatal("wait did not resume once the listener drained")
+	}
+}
+
+// Reads and attach input broadcast nothing, so a full listener never
+// holds them.
+func TestPluginWait_ReadsNeverWait(t *testing.T) {
+	tag, cancel := testTag(func() float64 { return 1 })
+	defer cancel()
+	start := time.Now()
+	for _, ft := range []wire.FrameType{wire.FrameListSessions, wire.FrameData} {
+		if err := tag.wait(plugin.FrameCost(ft)); err != nil {
+			t.Fatal(err)
 		}
+	}
+	if d := time.Since(start); d > 50*time.Millisecond {
+		t.Fatalf("reads waited %s on a full listener", d)
+	}
+}
+
+// A client that has stopped reading keeps its listener full. The plugin
+// must not stall forever behind it: after backpressureMax it goes ahead,
+// and that client is dropped by the ordinary slow-listener rule.
+func TestPluginWait_GivesUpOnAStuckReader(t *testing.T) {
+	old := backpressureMax
+	backpressureMax = 150 * time.Millisecond
+	t.Cleanup(func() { backpressureMax = old })
+	tag, cancel := testTag(func() float64 { return 1 })
+	defer cancel()
+	start := time.Now()
+	if err := tag.wait(plugin.FrameCost(wire.FrameAddIdea)); err != nil {
+		t.Fatal(err)
+	}
+	if d := time.Since(start); d < 150*time.Millisecond || d > time.Second {
+		t.Fatalf("wait returned after %s, want ≈150ms", d)
+	}
+}
+
+// Shutdown releases a plugin held by backpressure.
+func TestPluginWait_CancelReleases(t *testing.T) {
+	tag, cancel := testTag(func() float64 { return 1 })
+	done := make(chan error, 1)
+	go func() { done <- tag.wait(plugin.FrameCost(wire.FrameAddIdea)) }()
+	time.Sleep(20 * time.Millisecond)
+	cancel()
+	select {
+	case err := <-done:
+		if !errors.Is(err, context.Canceled) {
+			t.Fatalf("wait = %v, want context.Canceled", err)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("cancel did not release a plugin held by backpressure")
 	}
 }

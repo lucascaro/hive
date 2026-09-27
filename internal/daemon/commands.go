@@ -31,10 +31,6 @@ func newCommandHub() *commandHub {
 	return &commandHub{listeners: make(map[chan wire.ClientCommand]struct{})}
 }
 
-// commandListenerBuffer is each client's CLIENT_COMMAND queue; see
-// Subscribe for why it is small.
-const commandListenerBuffer = 8
-
 // Subscribe returns a channel receiving every relayed command, and a
 // cleanup that unsubscribes and closes it.
 //
@@ -48,7 +44,7 @@ func (h *commandHub) Subscribe() (chan wire.ClientCommand, func()) {
 	// event-stream traffic, so a listener that is even briefly awake
 	// cannot fall behind. The buffer exists so Publish never blocks on
 	// a conn whose write goroutine is mid-frame.
-	ch := make(chan wire.ClientCommand, commandListenerBuffer)
+	ch := make(chan wire.ClientCommand, 8)
 	h.mu.Lock()
 	if h.closed {
 		h.mu.Unlock()
@@ -112,4 +108,18 @@ func (h *commandHub) Close() {
 func updatesPersistedFields(req wire.UpdateSessionReq) bool {
 	return req.Name != nil || req.Color != nil ||
 		req.Order != nil || req.ProjectID != nil
+}
+
+// pressure is how full the fullest command listener is, 0 to 1; see
+// registry.Pressure.
+func (h *commandHub) pressure() float64 {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	p := 0.0
+	for ch := range h.listeners {
+		if c := cap(ch); c > 0 {
+			p = max(p, float64(len(ch))/float64(c))
+		}
+	}
+	return p
 }
