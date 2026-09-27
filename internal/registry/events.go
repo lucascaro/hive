@@ -20,6 +20,13 @@ type IdeaListener chan wire.IdeaEvent
 // ActivityListener is a channel that receives ActivityMsg deltas.
 type ActivityListener chan wire.ActivityMsg
 
+// ListenerBuffer is how many events a session, idea or project listener
+// holds before the registry drops it as slow (and the daemon hangs up on
+// that client). Exported so the plugin rate budget can be checked
+// against it: a plugin's burst must fit (internal/daemon
+// TestPluginBurstFitsListenerBuffers).
+const ListenerBuffer = 64
+
 // Subscribe returns a channel that receives every SessionEvent. The
 // returned cleanup function unsubscribes and closes the channel.
 // Slow consumers are dropped — listeners must drain promptly.
@@ -28,7 +35,7 @@ func (r *Registry) Subscribe() (Listener, func()) {
 	// session while holding r.mu (see reindexLocked), so a listener
 	// that's merely a beat behind on a many-session registry could
 	// overflow a small buffer and get dropped.
-	ch := make(Listener, 64)
+	ch := make(Listener, ListenerBuffer)
 	r.mu.Lock()
 	if r.listeners == nil {
 		// Close() ran first — it nils the map after closing every

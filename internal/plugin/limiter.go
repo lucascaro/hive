@@ -10,12 +10,21 @@ import (
 
 // Limiter budget: a plugin may spend RatePerSec tokens a second, with a
 // burst of Burst. Cheap reads cost 1, fan-out mutations 10, and work
-// that spawns processes or destroys state 100 — so a runaway plugin is
-// held to roughly 10 session spawns or 100 broadcasts a second while a
-// well-behaved one never notices. Vars so tests can shrink them.
+// that spawns processes, destroys state or relaunches windows 100 — so a
+// runaway plugin is held to roughly 10 session spawns or 100 broadcasts
+// a second while a well-behaved one never notices. Vars so tests can
+// shrink them.
+//
+// Burst is sized to the daemon's fan-out, not to the plugin: every
+// broadcast the burst can buy lands at once in each control client's
+// registry listener, which holds 64 before the daemon gives up on that
+// client and hangs up on it. A burst of 2000 bought 200 broadcasts, and a
+// GUI briefly off-CPU was dropped (#467). 300 buys 30 — half a buffer —
+// and TestPluginBurstFitsListenerBuffers (internal/daemon) holds the
+// line if either side moves.
 var (
 	RatePerSec = 1000.0
-	Burst      = 2000.0
+	Burst      = 300.0
 )
 
 const (
@@ -34,13 +43,16 @@ func FrameCost(ft wire.FrameType) float64 {
 	case wire.FrameCreateSession, wire.FrameRestartSession, wire.FrameRestoreSession,
 		wire.FrameKillSession, wire.FrameKillProject,
 		wire.FrameCreateWorktree, wire.FrameRemoveWorktree, wire.FrameDeleteBranch,
-		wire.FrameInstallPlugin, wire.FrameShutdown:
+		wire.FrameInstallPlugin, wire.FrameShutdown,
+		// Relaunches every window, and each client's command listener
+		// holds only 8 (daemon/commands.go).
+		wire.FrameClientCommand:
 		return costExpense
 	case wire.FrameUpdateSession, wire.FrameCreateProject, wire.FrameUpdateProject,
 		wire.FrameRenameWorktree, wire.FrameSetWorktreeLabel,
 		wire.FrameAddIdea, wire.FrameUpdateIdea, wire.FrameRemoveIdea,
 		wire.FrameResolvePrompt, wire.FrameResolveWorktreeChoice, wire.FrameResolvePlanReview,
-		wire.FrameClientCommand, wire.FrameSetPluginEnabled, wire.FrameRemovePlugin:
+		wire.FrameSetPluginEnabled, wire.FrameRemovePlugin:
 		return costFanout
 	default:
 		return costCheap

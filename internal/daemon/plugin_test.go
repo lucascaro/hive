@@ -446,3 +446,27 @@ func TestPluginVerbs_UnavailableWhenManagerFailedToLoad(t *testing.T) {
 		}
 	}
 }
+
+// TestPluginBurstFitsListenerBuffers pins the rule the plugin rate budget
+// rests on (#467): every broadcast a plugin's burst can buy lands at once
+// in each control client's listener, and a listener that fills is dropped
+// and its client hung up on. So the burst, spent on the cheapest frame of
+// each broadcasting kind, must fit in half of the buffer it lands in —
+// leaving room for the client's own events while it drains. Cost-1 frames
+// are reads (LIST_*, GET_*, SEARCH_*) and broadcast nothing.
+func TestPluginBurstFitsListenerBuffers(t *testing.T) {
+	for _, ft := range wire.ControlRequestFrames {
+		cost := plugin.FrameCost(ft)
+		if cost <= 1 {
+			continue
+		}
+		buf := registry.ListenerBuffer
+		if ft == wire.FrameClientCommand {
+			buf = commandListenerBuffer
+		}
+		if n := plugin.Burst / cost; n > float64(buf)/2 {
+			t.Errorf("%s: a burst of %.0f buys %.0f broadcasts at cost %.0f; its listeners hold %d, so at most %d fit",
+				ft, plugin.Burst, n, cost, buf, buf/2)
+		}
+	}
+}
