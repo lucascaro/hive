@@ -4,8 +4,8 @@
 - **Issue:** #471
 - **Status:** active
 - **Phase:** 1 of 2
-- **PR:**
-- **Branch:**
+- **PR:** #472
+- **Branch:** feature/471-gui-plugin-surfaces
 
 ## Summary
 
@@ -388,6 +388,8 @@ verdict: approve, confidence 8. No must-fix items. Nice-to-haves applied: direct
   - GUI frontend (`scripts/measure-gui-idle.sh --seconds 20`): branch boot 349/218/215 ms, busy 0.37/0.36/0.37 ms/s, heap 14.2 MiB; `origin/main` boot 286/226/231 ms, busy 0.37 ms/s, heap 14.0–14.2 MiB.
   - Daemon (`scripts/measure-idle.sh --seconds 30`): branch RSS mean 14678 KiB, CPU 0.00%; `origin/main` RSS mean 14484 KiB, CPU 0.00%.
 - **2026-09-28** — Plan approved (chat, after the HTML review page timed out). Stage → IMPLEMENT, Phase 1 of 2.
+
+- **2026-09-28** — Phase 1 PR #472 opened.
 
 ## Open questions
 
