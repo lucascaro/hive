@@ -8,7 +8,6 @@ The *what* and *why* of work this project plans to do. Each spec describes user 
 
 | Priority | Issue | Title | Stage | Spec |
 |----------|-------|-------|-------|------|
-| P1 | #379 | Session exit is never detected on Linux | TRIAGE | [379-session-exit-undetected-on-linux](379-session-exit-undetected-on-linux.md) |
 | P1 | — | Sidebar and grid repaints silently drop keyboard focus | REVIEW | [257-mock-e2e-worktree-glyph-loses-focus](257-mock-e2e-worktree-glyph-loses-focus.md) |
 | P2 | — | A red CI check name should say which stage failed | TRIAGE | [256-ci-check-names-identify-the-failing-stage](256-ci-check-names-identify-the-failing-stage.md) |
 | P2 | — | Session messaging: hand a session a message, get told when it idles | PLAN | [338-session-messaging](338-session-messaging.md) |
@@ -26,6 +25,7 @@ The *what* and *why* of work this project plans to do. Each spec describes user 
 
 | Issue | Title | PR | Shipped | Spec |
 |-------|-------|----|---------|------|
+| #379 | Session exit is never detected on Linux | #469 | 2026-09-27 | [379-session-exit-undetected-on-linux](379-session-exit-undetected-on-linux.md) |
 | — | Classify session state with a local Laya model when hooks can't tell | #464 | 2026-09-26 | [458-classify-session-state-with-a-local-laya-model-whe](458-classify-session-state-with-a-local-laya-model-whe.md) |
 | #460 | Headless plugins: let users install third-party automations that react to and drive Hive sessions | #465 | 2026-09-26 | [460-headless-plugins-let-users-install-third-party-au](460-headless-plugins-let-users-install-third-party-au.md) |
 | #461 | Stuck wire client can stall a session or hang daemon shutdown | #462 | 2026-09-25 | [461-stuck-wire-client-can-stall-a-session-or-hang](461-stuck-wire-client-can-stall-a-session-or-hang.md) |
