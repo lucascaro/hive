@@ -3,6 +3,8 @@
 - **Spec:** [docs/product-specs/379-session-exit-undetected-on-linux.md](../../product-specs/379-session-exit-undetected-on-linux.md)
 - **Issue:** #379
 - **Status:** active
+- **PR:** #469
+- **Branch:** feature/379-session-exit-undetected-on-linux
 
 ## Summary
 
@@ -129,3 +131,4 @@ plus spec note, `daemon-contract-override` label).
 - **2026-09-27** — Research: bug already fixed by #402; registry regression test drafted and mutation-verified on Linux.
 
 ## Open questions
+- **2026-09-27** — PR #469 opened.

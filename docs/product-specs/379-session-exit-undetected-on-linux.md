@@ -1,11 +1,11 @@
 ---
 issue: 379
-pr: null
+pr: 469
 title: "Session exit is never detected on Linux"
 type: bug
 complexity: S
 priority: P1
-stage: IMPLEMENT
+stage: REVIEW
 ---
 
 # Session exit is never detected on Linux
