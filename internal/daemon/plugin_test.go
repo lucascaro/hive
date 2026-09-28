@@ -623,3 +623,49 @@ func TestPluginWait_SerializesBroadcasts(t *testing.T) {
 		t.Fatal("shutdown did not release a plugin waiting for the broadcast slot")
 	}
 }
+
+// The backpressure limit counts time queued for the broadcast slot: a
+// plugin stuck behind another's full wait goes ahead as soon as it gets
+// the slot, rather than starting a second backpressureMax of its own.
+func TestPluginWait_DeadlineIncludesSlotQueue(t *testing.T) {
+	old := backpressureMax
+	backpressureMax = 200 * time.Millisecond
+	t.Cleanup(func() { backpressureMax = old })
+	gate := make(chan struct{}, 1)
+	mk := func() (*pluginTag, context.CancelFunc) {
+		tag, cancel := testTag(func() float64 { return 1 })
+		tag.gate = gate
+		return tag, cancel
+	}
+	first, cancel1 := mk()
+	defer cancel1()
+	second, cancel2 := mk()
+	defer cancel2()
+	cost := plugin.FrameCost(wire.FrameAddIdea)
+
+	start := time.Now()
+	done := make(chan error, 2)
+	go func() {
+		release, err := first.wait(cost)
+		if err == nil {
+			release()
+		}
+		done <- err
+	}()
+	time.Sleep(20 * time.Millisecond) // first holds the slot
+	go func() {
+		release, err := second.wait(cost)
+		if err == nil {
+			release()
+		}
+		done <- err
+	}()
+	for range 2 {
+		if err := <-done; err != nil {
+			t.Fatal(err)
+		}
+	}
+	if d := time.Since(start); d > 350*time.Millisecond {
+		t.Fatalf("two queued waits took %s, want ≈200ms (one shared limit, not two)", d)
+	}
+}

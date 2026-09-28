@@ -83,6 +83,9 @@ func (t *pluginTag) wait(cost float64) (release func(), err error) {
 	if cost <= 1 || t.pressure == nil {
 		return noop, nil
 	}
+	// The deadline covers time queued behind another plugin's pressure
+	// wait too, so no request waits on readers past backpressureMax.
+	deadline := time.Now().Add(backpressureMax)
 	release = noop
 	if t.gate != nil {
 		select {
@@ -92,7 +95,6 @@ func (t *pluginTag) wait(cost float64) (release func(), err error) {
 		}
 		release = func() { <-t.gate }
 	}
-	deadline := time.Now().Add(backpressureMax)
 	for t.pressure() >= backpressureHigh && time.Now().Before(deadline) {
 		select {
 		case <-t.ctx.Done():
