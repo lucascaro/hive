@@ -8,7 +8,6 @@ The *what* and *why* of work this project plans to do. Each spec describes user 
 
 | Priority | Issue | Title | Stage | Spec |
 |----------|-------|-------|-------|------|
-| P1 | — | Sidebar and grid repaints silently drop keyboard focus | REVIEW | [257-mock-e2e-worktree-glyph-loses-focus](257-mock-e2e-worktree-glyph-loses-focus.md) |
 | P2 | — | A red CI check name should say which stage failed | TRIAGE | [256-ci-check-names-identify-the-failing-stage](256-ci-check-names-identify-the-failing-stage.md) |
 | P2 | — | Session messaging: hand a session a message, get told when it idles | PLAN | [338-session-messaging](338-session-messaging.md) |
 | P2 | — | Orchestrator grant: a session you name can message its siblings | PLAN | [389-orchestrator-grant-and-session-msg](389-orchestrator-grant-and-session-msg.md) |
@@ -68,6 +67,7 @@ The *what* and *why* of work this project plans to do. Each spec describes user 
 | — | Incremental React 19 rewrite of the hivegui frontend | #324 | 2026-09-03 | [react-ui-rewrite](react-ui-rewrite.md) |
 | — | Add 12 IDE-inspired theme presets | #316 | 2026-09-02 | [305-add-ide-inspired-theme-presets](305-add-ide-inspired-theme-presets.md) |
 | — | Fix sidebar drag-and-drop ordering and drop placeholder | #315 | 2026-09-02 | [305-fix-sidebar-drag-and-drop-ordering-and-placeholder](305-fix-sidebar-drag-and-drop-ordering-and-placeholder.md) |
+| — | Sidebar and grid repaints silently drop keyboard focus | #308 | 2026-09-01 | [257-mock-e2e-worktree-glyph-loses-focus](257-mock-e2e-worktree-glyph-loses-focus.md) |
 | — | Worktrees, overlays and the launcher ignore the chosen theme | #313 | 2026-09-01 | [258-worktrees-and-overlays-ignore-the-theme](258-worktrees-and-overlays-ignore-the-theme.md) |
 | — | The e2e-real Playwright suite fails on main and blocks every PR | #307 | 2026-08-31 | [245-flaky-e2e-real-suite-blocks-every-pr](245-flaky-e2e-real-suite-blocks-every-pr.md) |
 | — | Minimized project chips fill the tray with a right-aligned restore | #300 | 2026-08-31 | [255-minimized-project-chips-fill-the-tray](255-minimized-project-chips-fill-the-tray.md) |
