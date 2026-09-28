@@ -400,3 +400,11 @@ verdict: approve, confidence 8. No must-fix items. Nice-to-haves applied: direct
 
 - **2026-09-28 iter 1** — verdict: APPROVE; mergeable: MERGEABLE; findings_hash: empty; threads_open: 0; action: stop; head_sha: e8ce955.
 - **2026-09-28 iter 2** — verdict: APPROVE; mergeable: MERGEABLE; findings_hash: empty; threads_open: 0; action: stop; head_sha: 0dbb3d8.
+
+## Gate verdict
+
+- **2026-09-28** — verdict: PASS; phase: 1/2; checks: 5 passed / 0 failed / 0 followups / 3 deferred; followups: none; one-line: GUI plugin surfaces, session-notes example, containment, idle cost and docs all meet criteria 4–8; criteria 1–3 (plan-review migration) are phase 2.
+  - 2026-09-28 dimensions:
+    - acceptance — PASS — criteria 4–8 pass (54 DOM/unit tests, 6 plugin e2e specs, Go plugin/wire/bridge tests, idle numbers in the PR body with the Chromium-proxy caveat); 1–3 DEFERRED (phase > 1)
+    - non-goals — PASS — no sandboxing, no plan-review features, no agent-hook/Pi injection, no cosmetic plugins, no marketplace, no extra surfaces; core plan review untouched
+    - doc accuracy — PASS — docs/plugins.md constants and API match the code; README, DESIGN.md, ui README, changeset (type: added) and features.json all updated; CHANGELOG/index untouched
