@@ -167,5 +167,11 @@
     "blurb": "Plugins can add a session view, palette commands with shortcuts, sidebar badges and a Settings section — try the session-notes example.",
     "status": "shipped",
     "since": "Unreleased"
+  },
+  {
+    "title": "Plan review",
+    "blurb": "Read, comment on and approve a Claude or Pi plan in Hive before the agent runs it: enable the bundled Plan review plugin under Settings → Plugins.",
+    "status": "shipped",
+    "since": "Unreleased"
   }
 ]

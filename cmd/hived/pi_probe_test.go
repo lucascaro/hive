@@ -66,7 +66,9 @@ type piProbeWait func(within time.Duration, cond func(wire.SessionInfo) bool, wh
 // startPiProbe launches a REAL pi through a test daemon and waits until
 // its extension has reported in (the session_start ping). Callers have
 // already checked HIVE_PROBE_PI and that pi is on PATH.
-func startPiProbe(t *testing.T) (*daemon.Daemon, string, *session.Session, piProbeWait) {
+// beforeSpawn runs once the daemon is up and before the Pi session
+// starts: spawn-time settings (plan review) must be in place by then.
+func startPiProbe(t *testing.T, beforeSpawn ...func(*daemon.Daemon)) (*daemon.Daemon, string, *session.Session, piProbeWait) {
 	t.Helper()
 	// Preflight: the daemon launches agents through a login shell, so
 	// the node that matters is the one THAT shell resolves. A login
@@ -90,6 +92,9 @@ func startPiProbe(t *testing.T) (*daemon.Daemon, string, *session.Session, piPro
 	}
 
 	d, _ := startPiTestDaemon(t)
+	for _, f := range beforeSpawn {
+		f(d)
+	}
 	cwd := t.TempDir()
 
 	e, err := d.Registry().Create(context.Background(), wire.CreateSpec{

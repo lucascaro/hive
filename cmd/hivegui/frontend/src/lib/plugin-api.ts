@@ -50,7 +50,9 @@ export interface ModalHintSpec {
 export interface PluginContributions {
   sessionView?: {
     modal?: {
-      title: string;
+      /** A string, or one computed from the session and the props
+       * openSessionView was given. */
+      title: string | ((session: unknown, props: unknown) => string);
       hints?: ModalHintSpec[];
       component: unknown;
     };
@@ -181,11 +183,16 @@ export function checkContributions(c: unknown): PluginContributions {
         part !== undefined &&
         (typeof part !== 'object' ||
           part === null ||
-          typeof part.title !== 'string' ||
+          !(
+            typeof part.title === 'string' ||
+            (s === 'modal' && typeof part.title === 'function')
+          ) ||
           !part.component)
       ) {
         throw new Error(
-          `sessionView.${s} needs a string title and a component`,
+          s === 'modal'
+            ? 'sessionView.modal needs a title (a string or a function) and a component'
+            : 'sessionView.panel needs a string title and a component',
         );
       }
     }

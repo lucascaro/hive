@@ -40,6 +40,9 @@ type App struct {
 	// after the swap it is the staged GUI driving the running daemon.
 	// Guarded by mu.
 	daemonContract int
+	// clientUI is the last SetClientUI value, re-sent on reconnect. Nil
+	// until the frontend first announces.
+	clientUI []string
 
 	// activeSocket is the socket this GUI talks to, resolved once on
 	// the first dial and reused by the restart path. Normally it is

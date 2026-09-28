@@ -158,12 +158,21 @@ function PluginViewModal({ root }: { root: HTMLElement }): ReactNode {
 
   if (!open || entry?.id !== 'plugin-view' || !modal || !session) return null;
   const Body = modal.component as AnyComponent;
+  let title = typeof modal.title === 'string' ? modal.title : '';
+  if (typeof modal.title === 'function') {
+    try {
+      title = String(modal.title(session, entry.props) ?? '');
+    } catch (e) {
+      queueMicrotask(() => failPlugin(entry.pluginId, e));
+      return null;
+    }
+  }
   return createPortal(
     <ModalShell
       key={entry.seq}
       id="plugin-view"
       root={root}
-      title={modal.title}
+      title={title}
       size="lg"
       onClose={() => closeSessionView('dismissed')}
       hints={modal.hints ?? [{ keys: '[esc]', label: 'close' }]}

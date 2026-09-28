@@ -82,7 +82,6 @@ import { getTerm } from './store/terms.js';
 import { openFindInSession } from './app/find-session.js';
 import { SearchTranscript, GetTranscriptLines } from './bridge.js';
 import { openWhatsNew, initWhatsNew } from './app/modals/whats-new.js';
-import { initPlanReview } from './app/modals/plan-review.js';
 import { initPluginHost } from './app/plugin-host.js';
 import { markPluginsWanted, relistPluginsIfWanted } from './app/plugins.js';
 import { Button } from './components/Button.js';
@@ -336,13 +335,13 @@ initFindBox({
 initQuickIdea({ setFocusedTile, refocusActiveTerm });
 initIdeaInbox({ setFocusedTile, refocusActiveTerm });
 initWhatsNew({ setFocusedTile, focusActiveTerm });
-initPlanReview({ setFocusedTile, focusActiveTerm });
 // UI plugins (spec 471). The host acts only on enabled plugins with a
 // "ui" entry, so this costs one store subscription when there are none.
 initPluginHost({
   components: { Button, Kbd, Markdown },
   switchTo,
   refocusActiveTerm,
+  setFocusedTile,
 });
 initHelp({ setFocusedTile, focusActiveTerm });
 initBuildLog({ setFocusedTile, focusActiveTerm });

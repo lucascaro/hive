@@ -39,6 +39,7 @@ const bridge = vi.hoisted(() => {
     PluginAssetBase: vi.fn(() => Promise.resolve('')),
     ListPlugins: vi.fn(() => Promise.resolve()),
     SetPluginConfig: vi.fn((_id: string, _c: unknown) => Promise.resolve()),
+    SetClientUI: vi.fn((_ids: string[]) => Promise.resolve()),
   };
 });
 vi.mock('../../src/bridge.js', () => bridge);
@@ -119,6 +120,7 @@ beforeEach(() => {
     bridge.EventsOn,
     bridge.PluginAssetBase,
     bridge.SetPluginConfig,
+    bridge.SetClientUI,
     importer,
   ]) {
     f.mockClear();
@@ -147,6 +149,9 @@ describe('plugin host: loading', () => {
     expect(bridge.PluginAssetBase).not.toHaveBeenCalled();
     expect(document.head.querySelector('link[data-plugin]')).toBeNull();
     expect(appStore.getState().pluginUI).toEqual({});
+    // Nothing to announce either: the daemon hears from a window only
+    // once it runs a plugin UI.
+    expect(bridge.SetClientUI).not.toHaveBeenCalled();
   });
 
   it('activates an enabled UI plugin with a frozen hive object', async () => {

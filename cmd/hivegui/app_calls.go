@@ -125,14 +125,6 @@ type AgentSettings struct {
 	// PiTodoTool has Hive's Pi extension add its hive_todo tool to newly
 	// started Pi sessions, which is where a Pi session's plan comes from.
 	PiTodoTool bool `json:"pi_todo_tool"`
-	// PlanReview holds agent plans for review in Hive. Unlike the two
-	// above it is read live by the daemon, so switching it off applies
-	// to running sessions too; switching it on reaches running Claude
-	// sessions and newly started Pi sessions.
-	PlanReview bool `json:"plan_review"`
-	// PlanReviewer is "external" or "hive": who reviews a Claude plan
-	// when another reviewer is installed. Newly started sessions only.
-	PlanReviewer string `json:"plan_reviewer"`
 	// LayaEnabled / LayaURL / LayaModel configure the optional Laya
 	// state classifier (spec 458). Read live by the daemon.
 	LayaEnabled bool   `json:"laya_enabled"`
@@ -147,7 +139,6 @@ func (a *App) GetAgentSettings() (AgentSettings, error) {
 	s, err := agent.LoadSettings()
 	return AgentSettings{
 		ClaudeTaskTools: s.ClaudeTaskTools, PiTodoTool: s.PiTodoTool,
-		PlanReview: s.PlanReview, PlanReviewer: s.PlanReviewer,
 		LayaEnabled: s.LayaEnabled, LayaURL: s.LayaURL, LayaModel: s.LayaModel,
 	}, err
 }
@@ -159,7 +150,6 @@ func (a *App) GetAgentSettings() (AgentSettings, error) {
 func (a *App) SaveAgentSettings(s AgentSettings) error {
 	return agent.SaveSettings(agent.Settings{
 		ClaudeTaskTools: s.ClaudeTaskTools, PiTodoTool: s.PiTodoTool,
-		PlanReview: s.PlanReview, PlanReviewer: s.PlanReviewer,
 		LayaEnabled: s.LayaEnabled, LayaURL: s.LayaURL, LayaModel: s.LayaModel,
 	})
 }
@@ -1008,6 +998,24 @@ func (a *App) SetPluginConfig(id string, config map[string]any) error {
 		return err
 	}
 	return cs.WriteJSON(wire.FrameSetPluginConfig, wire.SetPluginConfigReq{ID: id, Config: raw})
+}
+
+// SetClientUI tells the daemon which plugin UIs this window runs, so it
+// parks a plan review only while one can show it. The last value is
+// kept and re-sent on every control reconnect (ConnectControl): a
+// redialed connection starts out announcing nothing.
+func (a *App) SetClientUI(ids []string) error {
+	if ids == nil {
+		ids = []string{}
+	}
+	a.mu.Lock()
+	a.clientUI = ids
+	a.mu.Unlock()
+	cs, err := a.requireControl()
+	if err != nil {
+		return err
+	}
+	return cs.WriteJSON(wire.FrameSetClientUI, wire.SetClientUIReq{PluginUIs: ids})
 }
 
 // PluginAssetBase is the origin UI plugin files are imported from. In

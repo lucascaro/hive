@@ -3,9 +3,9 @@
 - **Spec:** [docs/product-specs/471-gui-plugin-surfaces-proven-by-moving-plan-review-i.md](../../product-specs/471-gui-plugin-surfaces-proven-by-moving-plan-review-i.md)
 - **Issue:** #471
 - **Status:** active
-- **Phase:** 1 of 2
-- **PR:** #472
-- **Branch:** feature/471-gui-plugin-surfaces
+- **Phase:** 2 of 2
+- **PR:** —
+- **Branch:** —
 
 ## Summary
 
@@ -379,6 +379,13 @@ verdict: approve, confidence 8. No must-fix items. Nice-to-haves applied: direct
 - **2026-09-28** — Phase 1 `hive.actions` is `switchTo` only. The plan-review actions (`getPlanReview`, `resolvePlanReview`, `externalPlanReviewers`) land in Phase 2 with their only consumer. Why: YAGNI.
 - **2026-09-28** — `settings.set` updates the local store immediately and is settled by the daemon's echo (`pluginConfigOverlay`); a failed write drops the local value and re-lists. Why: e2e-real showed a controlled checkbox snapping back for a round trip.
 - **2026-09-28** — Criterion 6 is measured in headless Chromium against the mock bridge (`scripts/measure-gui-idle.sh`: boot, main-thread busy ms/s, JS heap) rather than by launching the built app. Why: the GUI change is frontend-only (the Go side adds a request-only asset handler and two bindings); the script compares both sides the same way and needs no app build or window. It is a proxy for WKWebView/WebView2, and the PR says so.
+- **2026-09-28** — Phase 2: the builtin set is `plugin.Config.Builtin` (an `fs.FS`), passed by the daemon from the repo's `plugins` package, rather than `New` always materializing it. Why: every Manager unit test would otherwise get plan-review installed; the daemon still materializes it on every start.
+- **2026-09-28** — Phase 2: enabling a bundled plugin skips the trust prompt, and its row shows "Ships with Hive" with no Remove. Why: it is part of the app the user already runs; the prompt's "only enable plugins you trust" is about third-party code.
+- **2026-09-28** — Phase 2: the host API gains `subscribeSessions(cb)`, `actions.{getPlanReview, resolvePlanReview, externalPlanReviewers}` and a modal `title` that may be `(session, props) => string`. Why: the plugin's review queue runs outside React and needs session changes; the actions are the generic wrappers the spec asks for; the dialog title names the session, as #457's did. All documented in docs/plugins.md.
+- **2026-09-28** — Phase 2: the old #457 core UI never reached a release (its changeset is still pending under `[Unreleased]`), so the spec's "accepted regression" affects no released user. The 457 changeset is edited to say where plan review is turned on now, rather than adding a regression note.
+- **2026-09-28** — Phase 2: the review's Approve / Request changes buttons sit at the end of the plugin's body rather than the dialog footer. Why: the host draws the frame and plugins own the body (docs/plugins.md); a footer slot would be a new host surface for one plugin.
+- **2026-09-28** — Phase 2: the sidebar badge reads "Review", not "Plan". Why: "Plan" already means plan progress on the same row.
+- **2026-09-28** — Phase 2: `vitest.config.js` allows reading the repo's `plugins/` so the DOM suite loads the real `plugins/plan-review/ui.mjs` through the host.
 
 ## Progress
 
@@ -390,6 +397,8 @@ verdict: approve, confidence 8. No must-fix items. Nice-to-haves applied: direct
 - **2026-09-28** — Plan approved (chat, after the HTML review page timed out). Stage → IMPLEMENT, Phase 1 of 2.
 
 - **2026-09-28** — Phase 1 PR #472 opened.
+
+- **2026-09-28** — Phase 2 implemented on `feature/471-plan-review-plugin`: bundled plan-review plugin, SET_CLIENT_UI answerer rule, core plan-review UI deleted.
 
 ## Open questions
 

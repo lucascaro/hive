@@ -104,8 +104,8 @@ export interface SessionInfo {
   /** camelCase tolerated at the boundary, like every other reader. */
   pendingWorktreeChoice?: PendingWorktreeChoice;
   /** An agent plan waiting for the user to approve or deny it (#457).
-   *  The session is alive and its terminal live; only the plan text is
-   *  fetched separately, with GetPlanReview. */
+   *  The session is alive and its terminal live. Shown by the bundled
+   *  plan-review plugin, which fetches the plan text itself. */
   pending_plan_review?: PendingPlanReview;
   /** camelCase tolerated at the boundary, like every other reader. */
   pendingPlanReview?: PendingPlanReview;
@@ -118,12 +118,6 @@ export interface PendingPlanReview {
   /** "claude" or "pi". */
   source?: string;
   created_at?: string;
-}
-
-/** The pending review's id, reading either spelling, or '' for none. */
-export function pendingPlanReviewId(s: SessionInfo | undefined): string {
-  const p = s?.pending_plan_review ?? s?.pendingPlanReview;
-  return p?.review_id ?? p?.reviewId ?? '';
 }
 
 /** A worktree-setup failure awaiting a user decision. Mirrors
@@ -184,6 +178,8 @@ export interface PluginInfo {
   ui?: { entry: string; style?: string };
   /** A UI plugin's stored settings (its ui-config.json). */
   config?: Record<string, unknown>;
+  /** Ships inside Hive: enabled and disabled, never removed. */
+  builtin?: boolean;
 }
 
 export interface PluginEvent {

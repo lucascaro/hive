@@ -200,21 +200,25 @@ func TestClaudeSpawnArgsDisablesExternalPluginReviewer(t *testing.T) {
 	t.Cleanup(func() { userHomeDir = prev })
 
 	for _, tc := range []struct {
-		file string
-		want map[string]bool
+		review   bool
+		reviewer string
+		want     map[string]bool
 	}{
-		{``, nil},
-		{`{"plan_review": true}`, nil},
-		{`{"plan_review": false, "plan_reviewer": "hive"}`, nil},
-		{`{"plan_review": true, "plan_reviewer": "hive"}`, map[string]bool{"plannotator@plannotator": false}},
+		{false, PlanReviewerExternal, nil},
+		{true, PlanReviewerExternal, nil},
+		{false, PlanReviewerHive, nil},
+		{true, PlanReviewerHive, map[string]bool{"plannotator@plannotator": false}},
 	} {
-		settingsDir(t, tc.file)
+		st := DefaultSettings()
+		st.PlanReview, st.PlanReviewer = tc.review, tc.reviewer
+		sp := hooked
+		sp.Settings = &st
 		var s claudeSettings
-		if err := json.Unmarshal([]byte(claudeSpawnArgs(hooked)[1]), &s); err != nil {
+		if err := json.Unmarshal([]byte(claudeSpawnArgs(sp)[1]), &s); err != nil {
 			t.Fatal(err)
 		}
 		if !reflect.DeepEqual(s.EnabledPlugins, tc.want) {
-			t.Errorf("settings %q: enabledPlugins = %v, want %v", tc.file, s.EnabledPlugins, tc.want)
+			t.Errorf("review=%v reviewer=%q: enabledPlugins = %v, want %v", tc.review, tc.reviewer, s.EnabledPlugins, tc.want)
 		}
 	}
 }
@@ -231,14 +235,16 @@ func TestSpawnArgsAndEnvShareOneSettingsSnapshot(t *testing.T) {
 	userHomeDir = func() (string, error) { return home, nil }
 	t.Cleanup(func() { userHomeDir = prev })
 
-	settingsDir(t, `{"plan_review": true, "plan_reviewer": "hive"}`)
+	settingsDir(t, "")
 	snap := SpawnSettings()
+	snap.PlanReview, snap.PlanReviewer = true, PlanReviewerHive
 	sp := hooked
 	sp.Settings = &snap
 
 	args := claudeSpawnArgs(sp)
-	// The user switches back to the external reviewer mid-spawn.
-	if err := SaveSettings(Settings{ClaudeTaskTools: true, PiTodoTool: true, PlanReview: true, PlanReviewer: PlanReviewerExternal}); err != nil {
+	// agent-settings.json changes mid-spawn; the snapshot must still
+	// decide both halves.
+	if err := SaveSettings(Settings{ClaudeTaskTools: false, PiTodoTool: true}); err != nil {
 		t.Fatal(err)
 	}
 	env := claudeSpawnEnv(sp)

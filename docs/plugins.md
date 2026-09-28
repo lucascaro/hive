@@ -106,6 +106,19 @@ A plugin is installed from either:
 
 Installing an id that is already installed is refused; remove it first.
 
+### Bundled plugins
+
+Some plugins ship inside Hive. Today that is **Plan review**
+([plugins/plan-review](../plugins/plan-review)), which shows an agent's
+plan in the app before it runs. `hived` writes a bundled plugin into its
+state dir on every start, so it always matches the Hive you run, and
+lists it with `"source": "builtin"` and `"builtin": true`. It starts
+disabled like any other plugin. It can be enabled and disabled (the app
+does not ask for trust first: it is part of Hive), but not removed, and
+installing another plugin under its id is refused. A bundled plugin is
+written against this document only; it uses nothing a third-party
+plugin cannot.
+
 ## Lifecycle
 
 | Status | Meaning |
@@ -221,6 +234,7 @@ and reply payloads are the Go structs of the same name in
 | `INSTALL_PLUGIN` | `InstallPluginReq` | `PLUGIN_EVENT` (added) |
 | `SET_PLUGIN_ENABLED` | `SetPluginEnabledReq` | `PLUGIN_EVENT` |
 | `SET_PLUGIN_CONFIG` | `SetPluginConfigReq` | `PLUGIN_EVENT` (updated) |
+| `SET_CLIENT_UI` | `SetClientUIReq` | nothing. The Hive app's own announcement of which plugin UIs it runs; ignored from a plugin |
 | `REMOVE_PLUGIN` | `RemovePluginReq` | `PLUGIN_EVENT` (removed) |
 
 And everything the daemon sends on a control connection:
@@ -260,7 +274,10 @@ simply connect to Hive's main socket as the app does. See **Trust**.
 - **It never counts as someone who can answer a question.** When a
   worktree fails to set up or an agent asks for its plan to be
   reviewed, Hive only waits if a person could see the question. A
-  connected plugin does not count, whatever it calls itself.
+  connected plugin does not count, whatever it calls itself. For a plan
+  review, only an app window running the bundled plan-review plugin's
+  UI counts: the app announces that with `SET_CLIENT_UI`, which Hive
+  ignores from a plugin.
 - **It has a rate budget.** Cheap reads cost 1, changes that are
   broadcast to every client cost 10, and anything that starts or
   destroys something (creating, restarting or killing a session,
@@ -343,9 +360,13 @@ Every field is optional. `activate` may be `async`.
 | `React` | The app's React (19). Build components with it — `hive.React.createElement`, hooks — and never bundle your own copy: two Reacts on one page break hooks. |
 | `components` | App components you may render: `Button` (`{ label, kind?: 'primary', onClick, id? }`), `Kbd` (a key hint), `Markdown` (`{ source }`: renders markdown safely — no raw HTML). |
 | `useSessions()` / `getSessions()` | Every session, as the app sees it (the wire `SessionInfo`). The `use` form is a hook that re-renders on change. |
+| `subscribeSessions(callback)` | Calls `callback(sessions)` on every change to the session list, for code outside a component. Returns an unsubscribe function; it also ends when the plugin unloads. |
 | `useActiveSessionId()` / `getActiveSessionId()` | The focused session's id, or `null`. |
 | `on(event, callback)` | Subscribes to an app event and returns an unsubscribe function. Events are the app's own names for daemon broadcasts — `session:event`, `project:event`, `idea:event`, `plugin:event` and the rest — with the payload already parsed. Subscriptions end when the plugin unloads. |
 | `actions.switchTo(sessionId)` | Focuses a session. |
+| `actions.getPlanReview(sessionId, reviewId)` | Asks for the plan text of a session's pending plan review (its `pending_plan_review.review_id`). The answer arrives as a `planreview:plan` event, or a `control:error` event with code `plan_review_stale` when that review is already over. |
+| `actions.resolvePlanReview({ session_id, review_id, decision, comments?, feedback? })` | Answers a pending plan review: `decision` is `approve` or `deny`, `comments` is `[{ quote, text }]`. Resolves once sent. The daemon parks a review only while some window runs the bundled plan-review plugin's UI; see **Limits**. |
+| `actions.externalPlanReviewers()` | Resolves to the other tools set up to review Claude's plans: `[{ kind: 'settings' \| 'plugin', id, active }]`. |
 | `settings.get()` / `settings.use()` / `settings.set(object)` | Your plugin's settings, a JSON object of up to 64 KiB. `set` replaces the whole object; it is shown at once and saved in the background. See below. |
 | `openSessionView(sessionId, props?)` | Opens your modal for a session. Resolves `'closed'` when your component calls `close()`, or `'dismissed'` when the user pressed Escape, the view was replaced, or the plugin unloaded. |
 | `closeSessionView()` | Closes your modal if it is open. |
@@ -357,7 +378,9 @@ give your plugin a `main` process too and use the wire protocol.
 ### What a plugin contributes
 
 - **`sessionView.modal`** — `{ title, component, hints? }`. A dialog for
-  one session, opened with `openSessionView`. `component` gets
+  one session, opened with `openSessionView`. `title` is a string, or
+  `(session, props) => string` for one that names the session.
+  `component` gets
   `{ session, props, close }`. Hive draws the dialog frame, the title
   and the Escape handling; `hints` lists key hints shown in its footer
   (default `[esc] close`). Put your own buttons in the body.

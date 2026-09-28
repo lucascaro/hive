@@ -1615,6 +1615,9 @@ type PluginInfo struct {
 	// SET_PLUGIN_CONFIG. Only plugins with a UI have one; a headless
 	// plugin's own config.json is never read or sent.
 	Config json.RawMessage `json:"config,omitempty"`
+	// Builtin marks a plugin that ships inside Hive. It can be enabled
+	// and disabled but not removed.
+	Builtin bool `json:"builtin,omitempty"`
 }
 
 // PluginUI is the app-side entry of a plugin's manifest.
@@ -1653,6 +1656,13 @@ type SetPluginConfigReq struct {
 
 // MaxPluginConfig caps a UI plugin's stored settings.
 const MaxPluginConfig = 64 << 10
+
+// SetClientUIReq is the SET_CLIENT_UI payload: the ids of the plugins
+// whose UI is running in this client. Each send replaces the last; an
+// empty list means none.
+type SetClientUIReq struct {
+	PluginUIs []string `json:"plugin_uis"`
+}
 
 // RemovePluginReq is the REMOVE_PLUGIN payload.
 type RemovePluginReq struct {

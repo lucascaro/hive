@@ -373,17 +373,28 @@ type Registry struct {
 	parked   map[string]*parkedCreate
 
 	// answerers is how many connected clients could answer a question
-	// put to the user — a worktree-setup dialog or a plan review. Set
-	// by the daemon, which is the only layer that knows about
-	// connections (see SetAnswerers). Guarded by r.mu, the same lock a
-	// plan review parks under, so "nobody can answer" and "park" can
-	// never interleave.
+	// put to the user, such as a worktree-setup dialog. Set by the
+	// daemon, which is the only layer that knows about connections (see
+	// SetAnswerers). Guarded by r.mu.
 	//
 	// answerersSet false means "assume a client", which is what a bare
 	// Registry in a unit test wants: park, so the parking behaviour is
 	// testable without wiring a daemon. Production always sets it.
 	answerers    int
 	answerersSet bool
+
+	// reviewAnswerers is how many of those clients run the plan-review
+	// plugin's UI, the only thing that can show a plan review. A GUI
+	// with the plugin disabled or failed can answer a worktree choice
+	// but not a review. Same lock and same "unset means assume a
+	// client" rule as answerers. See SetReviewAnswerers.
+	reviewAnswerers    int
+	reviewAnswerersSet bool
+
+	// planReviewSource reports, at spawn, whether plan review is on and
+	// who reviews a Claude plan. Set once by the daemon (the plugin
+	// manager owns both answers); nil means off. Called without r.mu.
+	planReviewSource func() (on bool, reviewer string)
 
 	projects     map[string]*Project
 	projectOrder []string
@@ -881,14 +892,23 @@ func (r *Registry) SetSocketPath(p string) {
 }
 
 // SetAnswerers records how many connected clients can answer a
-// question put to the user. Called by the daemon on every change.
-// Dropping to zero withdraws every pending plan review with
-// wire.PlanReviewNoClient, so the agent falls back to its own terminal
-// approval instead of waiting days for a GUI that left.
+// question put to the user (a worktree-setup dialog). Called by the
+// daemon on every change.
 func (r *Registry) SetAnswerers(n int) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	r.answerers, r.answerersSet = n, true
+}
+
+// SetReviewAnswerers records how many connected clients can show a plan
+// review: those running the plan-review plugin's UI. Called by the
+// daemon on every change. Dropping to zero withdraws every pending
+// review with wire.PlanReviewNoClient, so the agent falls back to its
+// own terminal approval instead of waiting days for a UI that left.
+func (r *Registry) SetReviewAnswerers(n int) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.reviewAnswerers, r.reviewAnswerersSet = n, true
 	if n > 0 {
 		return
 	}
@@ -897,6 +917,18 @@ func (r *Registry) SetAnswerers(n int) {
 			r.finishPlanReviewLocked(e, wire.PlanReviewDecision{Status: wire.PlanReviewNoClient})
 		}
 	}
+}
+
+func (r *Registry) canReviewLocked() bool {
+	return !r.reviewAnswerersSet || r.reviewAnswerers > 0
+}
+
+// SetPlanReviewSource installs the spawn-time answer to "is plan review
+// on, and who reviews Claude's plans". The daemon calls it once.
+func (r *Registry) SetPlanReviewSource(f func() (on bool, reviewer string)) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.planReviewSource = f
 }
 
 // canAskUser reports whether a client capable of answering a parked
@@ -944,6 +976,19 @@ func (r *Registry) spawnInfo() agent.SpawnInfo {
 	// SpawnEnv so they cannot disagree (#457). Read before r.mu: it is
 	// file I/O.
 	st := agent.SpawnSettings()
+	r.mu.Lock()
+	source := r.planReviewSource
+	r.mu.Unlock()
+	// Outside r.mu: the source asks the plugin manager, which must never
+	// wait on the registry's lock.
+	st.PlanReview, st.PlanReviewer = false, agent.PlanReviewerExternal
+	if source != nil {
+		on, reviewer := source()
+		st.PlanReview = on
+		if reviewer == agent.PlanReviewerHive {
+			st.PlanReviewer = agent.PlanReviewerHive
+		}
+	}
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	return agent.SpawnInfo{HivedPath: r.hivedPath, StateDir: r.stateDir, Settings: &st}

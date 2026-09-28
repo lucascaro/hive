@@ -1,6 +1,7 @@
 package daemon
 
 import (
+	"encoding/json"
 	"net"
 	"os"
 	"path/filepath"
@@ -15,17 +16,12 @@ import (
 // #457: the daemon half of plan review — the gates, the park, and every
 // way a held request ends.
 
-// planReviewSettings points agent settings at a temp dir holding body,
-// and external-reviewer detection at an empty fake home.
-func planReviewSettings(t *testing.T, body string) (home string) {
+// planReviewEnv points external-reviewer detection at an empty fake
+// home, and agent settings at an empty dir (plan review no longer reads
+// them; this proves a stray file changes nothing).
+func planReviewEnv(t *testing.T) (home string) {
 	t.Helper()
-	dir := t.TempDir()
-	if body != "" {
-		if err := os.WriteFile(filepath.Join(dir, agent.SettingsFileName), []byte(body), 0o644); err != nil {
-			t.Fatal(err)
-		}
-	}
-	agent.SetCustomDir(dir)
+	agent.SetCustomDir(t.TempDir())
 	t.Cleanup(func() { agent.SetCustomDir("") })
 	home = t.TempDir()
 	prevHome, prevManaged := planReviewHome, planReviewManaged
@@ -35,7 +31,42 @@ func planReviewSettings(t *testing.T, body string) (home string) {
 	return home
 }
 
-const reviewOn = `{"plan_review": true}`
+// enableReview turns plan review on the way a user does: by enabling
+// the bundled plan-review plugin, optionally with a reviewer choice in
+// its settings.
+func enableReview(t *testing.T, d *Daemon, reviewer string) {
+	t.Helper()
+	if reviewer != "" {
+		if _, err := d.plugins.SetConfig(planReviewPluginID, json.RawMessage(`{"reviewer":"`+reviewer+`"}`)); err != nil {
+			t.Fatalf("set reviewer: %v", err)
+		}
+	}
+	if _, err := d.plugins.SetEnabled(planReviewPluginID, true); err != nil {
+		t.Fatalf("enable plan-review: %v", err)
+	}
+	waitFor(t, 2*time.Second, func() bool { on, _ := d.planReviewState(); return on })
+}
+
+// announce sends SET_CLIENT_UI on c.
+func announce(t *testing.T, c net.Conn, ids ...string) {
+	t.Helper()
+	if ids == nil {
+		ids = []string{}
+	}
+	if err := wire.WriteJSON(c, wire.FrameSetClientUI, wire.SetClientUIReq{PluginUIs: ids}); err != nil {
+		t.Fatalf("SET_CLIENT_UI: %v", err)
+	}
+}
+
+// reviewUI opens a GUI control connection that runs the plan-review
+// plugin's UI, and waits until the daemon counts it.
+func reviewUI(t *testing.T, d *Daemon) net.Conn {
+	t.Helper()
+	gui := answerer(t, d, "hivegui/0.2")
+	announce(t, gui, planReviewPluginID)
+	waitFor(t, 2*time.Second, func() bool { return reviewerCount(d) == 1 })
+	return gui
+}
 
 // requestPlanReview dials the events socket and sends one request.
 func requestPlanReview(t *testing.T, d *Daemon, req wire.PlanReviewRequest) net.Conn {
@@ -101,13 +132,19 @@ func answererCount(d *Daemon) int {
 	return d.controlClients
 }
 
+func reviewerCount(d *Daemon) int {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	return d.reviewClients
+}
+
 func claudeReq(id string) wire.PlanReviewRequest {
 	return wire.PlanReviewRequest{SessionID: id, Source: wire.PlanReviewSourceClaude, Plan: "# Plan\n\n- step one\n"}
 }
 
 func TestPlanReviewDisabledByDefault(t *testing.T) {
 	skipOnWindows(t)
-	planReviewSettings(t, "")
+	planReviewEnv(t)
 	d := startTestDaemon(t)
 	id := bootstrapSessionID(t, d)
 	answerer(t, d, "hivegui/0.2")
@@ -123,8 +160,9 @@ func TestPlanReviewDisabledByDefault(t *testing.T) {
 
 func TestPlanReviewFailsFastWithoutClient(t *testing.T) {
 	skipOnWindows(t)
-	planReviewSettings(t, reviewOn)
+	planReviewEnv(t)
 	d := startTestDaemon(t)
+	enableReview(t, d, "")
 	id := bootstrapSessionID(t, d)
 	c := requestPlanReview(t, d, claudeReq(id))
 	defer c.Close()
@@ -139,8 +177,9 @@ func TestPlanReviewFailsFastWithoutClient(t *testing.T) {
 
 func TestPlanReviewHivebarIsNotAnAnswerer(t *testing.T) {
 	skipOnWindows(t)
-	planReviewSettings(t, reviewOn)
+	planReviewEnv(t)
 	d := startTestDaemon(t)
+	enableReview(t, d, "")
 	id := bootstrapSessionID(t, d)
 	bar := answerer(t, d, "hivebar/0.1")
 	defer bar.Close()
@@ -161,12 +200,12 @@ func TestPlanReviewHivebarIsNotAnAnswerer(t *testing.T) {
 
 func TestPlanReviewRoundTripApproveDeny(t *testing.T) {
 	skipOnWindows(t)
-	planReviewSettings(t, reviewOn)
+	planReviewEnv(t)
 	d := startTestDaemon(t)
+	enableReview(t, d, "")
 	id := bootstrapSessionID(t, d)
-	gui := answerer(t, d, "hivegui/0.2")
+	gui := reviewUI(t, d)
 	defer gui.Close()
-	waitFor(t, 2*time.Second, func() bool { return answererCount(d) == 1 })
 
 	// Deny with a comment: the requester gets the formatted message.
 	c := requestPlanReview(t, d, claudeReq(id))
@@ -208,12 +247,12 @@ func TestPlanReviewRoundTripApproveDeny(t *testing.T) {
 
 func TestPlanReviewCancelsOnRequesterDisconnect(t *testing.T) {
 	skipOnWindows(t)
-	planReviewSettings(t, reviewOn)
+	planReviewEnv(t)
 	d := startTestDaemon(t)
+	enableReview(t, d, "")
 	id := bootstrapSessionID(t, d)
-	gui := answerer(t, d, "hivegui/0.2")
+	gui := reviewUI(t, d)
 	defer gui.Close()
-	waitFor(t, 2*time.Second, func() bool { return answererCount(d) == 1 })
 
 	c := requestPlanReview(t, d, claudeReq(id))
 	waitPending(t, d, id)
@@ -223,11 +262,11 @@ func TestPlanReviewCancelsOnRequesterDisconnect(t *testing.T) {
 
 func TestPlanReviewCancelsWhenLastAnswererLeaves(t *testing.T) {
 	skipOnWindows(t)
-	planReviewSettings(t, reviewOn)
+	planReviewEnv(t)
 	d := startTestDaemon(t)
+	enableReview(t, d, "")
 	id := bootstrapSessionID(t, d)
-	gui := answerer(t, d, "hivegui/0.2")
-	waitFor(t, 2*time.Second, func() bool { return answererCount(d) == 1 })
+	gui := reviewUI(t, d)
 
 	c := requestPlanReview(t, d, claudeReq(id))
 	defer c.Close()
@@ -243,11 +282,11 @@ func TestPlanReviewCancelsWhenLastAnswererLeaves(t *testing.T) {
 
 func TestPlanReviewCancelledOnDaemonStop(t *testing.T) {
 	skipOnWindows(t)
-	planReviewSettings(t, reviewOn)
+	planReviewEnv(t)
 	d := startTestDaemon(t)
+	enableReview(t, d, "")
 	id := bootstrapSessionID(t, d)
-	answerer(t, d, "hivegui/0.2")
-	waitFor(t, 2*time.Second, func() bool { return answererCount(d) == 1 })
+	reviewUI(t, d)
 
 	c := requestPlanReview(t, d, claudeReq(id))
 	defer c.Close()
@@ -266,14 +305,14 @@ func TestPlanReviewCancelledOnDaemonStop(t *testing.T) {
 
 func TestPlanReviewCancelledOnTimeout(t *testing.T) {
 	skipOnWindows(t)
-	planReviewSettings(t, reviewOn)
+	planReviewEnv(t)
 	prev := planReviewMaxWait
 	planReviewMaxWait = 100 * time.Millisecond
 	t.Cleanup(func() { planReviewMaxWait = prev })
 	d := startTestDaemon(t)
+	enableReview(t, d, "")
 	id := bootstrapSessionID(t, d)
-	answerer(t, d, "hivegui/0.2")
-	waitFor(t, 2*time.Second, func() bool { return answererCount(d) == 1 })
+	reviewUI(t, d)
 
 	c := requestPlanReview(t, d, claudeReq(id))
 	defer c.Close()
@@ -307,12 +346,12 @@ func writeReviewerHook(t *testing.T, home string) {
 
 func TestPlanReviewExternalReviewerWins(t *testing.T) {
 	skipOnWindows(t)
-	home := planReviewSettings(t, reviewOn)
+	home := planReviewEnv(t)
 	writeReviewerHook(t, home)
 	d := startTestDaemon(t)
+	enableReview(t, d, "")
 	id := bootstrapSessionID(t, d)
-	answerer(t, d, "hivegui/0.2")
-	waitFor(t, 2*time.Second, func() bool { return answererCount(d) == 1 })
+	reviewUI(t, d)
 
 	c := requestPlanReview(t, d, claudeReq(id))
 	defer c.Close()
@@ -331,12 +370,12 @@ func TestPlanReviewExternalReviewerWins(t *testing.T) {
 // because its plugin is still live and would prompt too.
 func TestPlanReviewReviewerIsSpawnTime(t *testing.T) {
 	skipOnWindows(t)
-	home := planReviewSettings(t, `{"plan_review": true, "plan_reviewer": "hive"}`)
+	home := planReviewEnv(t)
 	writeReviewerHook(t, home)
 	d := startTestDaemon(t)
+	enableReview(t, d, agent.PlanReviewerHive)
 	id := bootstrapSessionID(t, d)
-	answerer(t, d, "hivegui/0.2")
-	waitFor(t, 2*time.Second, func() bool { return answererCount(d) == 1 })
+	reviewUI(t, d)
 
 	spawnedExternal := claudeReq(id)
 	spawnedExternal.Reviewer = agent.PlanReviewerExternal
@@ -355,10 +394,11 @@ func TestPlanReviewReviewerIsSpawnTime(t *testing.T) {
 
 func TestPlanReviewOversizeRefused(t *testing.T) {
 	skipOnWindows(t)
-	planReviewSettings(t, reviewOn)
+	planReviewEnv(t)
 	d := startTestDaemon(t)
+	enableReview(t, d, "")
 	id := bootstrapSessionID(t, d)
-	answerer(t, d, "hivegui/0.2")
+	reviewUI(t, d)
 	req := claudeReq(id)
 	req.Plan = strings.Repeat("x", wire.MaxPlanReviewLen+1)
 	c := requestPlanReview(t, d, req)
@@ -404,5 +444,107 @@ func TestGetPlanReviewStale(t *testing.T) {
 	}
 	if e.Code != wire.ErrCodePlanReviewStale || e.SessionID != id {
 		t.Errorf("error = %+v, want %s for %s", e, wire.ErrCodePlanReviewStale, id)
+	}
+}
+
+// A connected GUI is not enough (spec 471): only one running the
+// plan-review plugin's UI can show a review. A GUI that never announces
+// it — plugin UI failed, or an older GUI — gets the terminal fallback.
+func TestPlanReviewNoClientWhenGUIHasNoPluginUI(t *testing.T) {
+	skipOnWindows(t)
+	planReviewEnv(t)
+	d := startTestDaemon(t)
+	enableReview(t, d, "")
+	id := bootstrapSessionID(t, d)
+	gui := answerer(t, d, "hivegui/0.2")
+	defer gui.Close()
+	waitFor(t, 2*time.Second, func() bool { return answererCount(d) == 1 })
+	c := requestPlanReview(t, d, claudeReq(id))
+	defer c.Close()
+	if dec := readDecision(t, c, 2*time.Second); dec.Status != wire.PlanReviewNoClient {
+		t.Errorf("GUI without the review UI: status %q, want no_client", dec.Status)
+	}
+}
+
+// Announcing parks; announcing something else withdraws what is pending,
+// exactly like the GUI leaving.
+func TestPlanReviewWithdrawnOnUnannounce(t *testing.T) {
+	skipOnWindows(t)
+	planReviewEnv(t)
+	d := startTestDaemon(t)
+	enableReview(t, d, "")
+	id := bootstrapSessionID(t, d)
+	gui := reviewUI(t, d)
+	defer gui.Close()
+
+	c := requestPlanReview(t, d, claudeReq(id))
+	defer c.Close()
+	waitPending(t, d, id)
+	announce(t, gui, "session-notes")
+	if dec := readDecision(t, c, 3*time.Second); dec.Status != wire.PlanReviewNoClient {
+		t.Errorf("review UI went away: status %q, want no_client", dec.Status)
+	}
+	waitFor(t, 2*time.Second, func() bool { return reviewerCount(d) == 0 })
+	// Announcing twice counts once.
+	announce(t, gui, planReviewPluginID)
+	announce(t, gui, planReviewPluginID)
+	waitFor(t, 2*time.Second, func() bool { return reviewerCount(d) == 1 })
+	time.Sleep(50 * time.Millisecond)
+	if n := reviewerCount(d); n != 1 {
+		t.Errorf("a repeated announcement counted %d times", n)
+	}
+	_ = gui.Close()
+	waitFor(t, 2*time.Second, func() bool { return reviewerCount(d) == 0 })
+}
+
+// hivebar and plugin sockets show no UI: their SET_CLIENT_UI is read and
+// dropped, with no error and the connection left open.
+func TestPlanReviewAnnounceIgnoredFromHivebarAndPlugins(t *testing.T) {
+	skipOnWindows(t)
+	planReviewEnv(t)
+	d := startTestDaemon(t)
+	bar := pluginTestControl(t, d, "hivebar/0.1")
+	plug, _ := pluginConn(t, d, "py", "hivegui/pretending")
+	for name, c := range map[string]net.Conn{"hivebar": bar, "plugin": plug} {
+		announce(t, c, planReviewPluginID)
+		// Still served, and no ERROR came back first.
+		if err := wire.WriteJSON(c, wire.FrameListSessions, struct{}{}); err != nil {
+			t.Fatal(err)
+		}
+		_ = c.SetReadDeadline(time.Now().Add(5 * time.Second))
+		for {
+			ft, payload, err := wire.ReadFrame(c)
+			if err != nil {
+				t.Fatalf("%s: read: %v", name, err)
+			}
+			if ft == wire.FrameError {
+				t.Fatalf("%s: SET_CLIENT_UI answered with an error: %s", name, payload)
+			}
+			if ft == wire.FrameSessions {
+				break
+			}
+		}
+		if n := reviewerCount(d); n != 0 {
+			t.Errorf("%s counted as a review UI: %d", name, n)
+		}
+	}
+}
+
+// Disabling the plugin switches review off for the next plan, live.
+func TestPlanReviewDisabledWhenPluginDisabledMidSession(t *testing.T) {
+	skipOnWindows(t)
+	planReviewEnv(t)
+	d := startTestDaemon(t)
+	enableReview(t, d, "")
+	id := bootstrapSessionID(t, d)
+	gui := reviewUI(t, d)
+	defer gui.Close()
+	if _, err := d.plugins.SetEnabled(planReviewPluginID, false); err != nil {
+		t.Fatal(err)
+	}
+	c := requestPlanReview(t, d, claudeReq(id))
+	defer c.Close()
+	if dec := readDecision(t, c, 2*time.Second); dec.Status != wire.PlanReviewDisabled {
+		t.Errorf("plugin disabled: status %q, want disabled", dec.Status)
 	}
 }

@@ -97,9 +97,12 @@ running as them can dial it directly. See `SECURITY.md`.
 ## Plan review: the `plan_review` hello mode (spec 457)
 
 The one place the control plane waits on the user for an agent. When
-plan review is on in Settings, Claude's `ExitPlanMode` and Pi's
-`hive_submit_plan` tool hold the agent until the user approves or
-denies the plan in the GUI.
+plan review is on, Claude's `ExitPlanMode` and Pi's `hive_submit_plan`
+tool hold the agent until the user approves or denies the plan in the
+GUI. Since spec 471 the GUI side is the bundled plan-review plugin
+(`plugins/plan-review`): plan review is on while that plugin is enabled,
+and only a window running its UI can answer. The agent side below is
+unchanged and stays in core.
 
 - **Requester side.** On the events socket, a `plan_review` connection
   sends `HELLO{mode:"plan_review"}`, then one `PLAN_REVIEW_REQUEST`
@@ -109,8 +112,11 @@ denies the plan in the GUI.
   withdraws the review. That is how Claude killing its hook, because
   the user answered its own dialog, closes the review in every GUI.
 - **Gates, in order, before anything parks:**
-  1. The setting is read live (`agent-settings.json`), so off means
-     `disabled`.
+  1. The plan-review plugin must be enabled and running, read live
+     from the plugin manager, so disabling it means `disabled`. Its
+     `reviewer` setting (`plugin-data/plan-review/ui-config.json`) is
+     what a Claude session is spawned with, like the Pi tool switch
+     (`Registry.SetPlanReviewSource`).
   2. For Claude, another `ExitPlanMode` reviewer found in the user,
      project, local or managed settings, or in an enabled plugin, means
      `external`. The exception is a session spawned with Hive as the
@@ -124,11 +130,18 @@ denies the plan in the GUI.
   `PLAN_REVIEW` 0x35, or `plan_review_stale`) and answers with
   `RESOLVE_PLAN_REVIEW` (0x36). An answer whose `review_id` no longer
   matches is ignored silently.
-- **Answerers.** The GUI, the ws-bridge and the test client can answer.
-  hivebar cannot. The count lives in the registry under the lock a
-  review parks with (`Registry.SetAnswerers`), so "nobody can answer"
-  and "park" cannot interleave. It dropping to zero decides every
-  pending review `no_client`.
+- **Answerers.** A control client counts only while its latest
+  `SET_CLIENT_UI` (0x3e) names `plan-review`: the app sends it whenever
+  the set of plugin UIs running in the window changes, and re-sends it
+  after every reconnect. A window whose plugin UI failed, or that never
+  loaded it, answers nothing, so a review never parks for a dialog
+  nobody can see. The announcement is ignored from hivebar and plugin
+  sockets, and the plugin id is fixed, so no other plugin can take the
+  role. The count lives in the registry under the lock a review parks
+  with (`Registry.SetReviewAnswerers`), so "nobody can answer" and
+  "park" cannot interleave. It dropping to zero decides every pending
+  review `no_client`. A worktree question keeps the general count
+  (`SetAnswerers`): any GUI can answer that.
 - **One review per session.** A newer request replaces the older, which
   is decided `cancelled`, so an answer composed against the old plan can
   never approve the new one. Session exit, kill and daemon stop cancel
@@ -148,8 +161,9 @@ may issue the same verbs a GUI does. What distinguishes it is the
 socket it dialed: each plugin run gets its own `<sock>.plugin-<hex>`
 listener, and every connection on it is tagged by the daemon — never
 by its HELLO — so a plugin is never counted as a client that can answer
-a worktree question or a plan review, and it spends from a per-plugin
-rate budget. That keeps "who can answer the user" (above) honest when
+a worktree question or a plan review (a plan review needs an app
+window running the plan-review plugin's UI, see above), and it spends
+from a per-plugin rate budget. That keeps "who can answer the user" (above) honest when
 the only thing connected is automation.
 
 ## Correlation with the agent's own identity

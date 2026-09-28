@@ -27,8 +27,12 @@ import * as React from 'react';
 import { flushSync } from 'react-dom';
 import {
   EventsOn,
+  GetExternalPlanReviewers,
+  GetPlanReview,
   ListPlugins,
   PluginAssetBase,
+  ResolvePlanReview,
+  SetClientUI,
   SetPluginConfig,
 } from '../bridge.js';
 import { releaseFocus } from '../lib/focus-trap.js';
@@ -70,6 +74,9 @@ export interface PluginHostDeps {
   components: Record<string, unknown>;
   switchTo: (id: string) => void;
   refocusActiveTerm: () => void;
+  /** Takes a terminal's visual focus while a plugin view is up, like
+   * every other dialog. */
+  setFocusedTile?: (id: string | null) => void;
   /** Tests inject this; the app uses a real dynamic import. */
   importer?: (url: string) => Promise<unknown>;
 }
@@ -335,6 +342,7 @@ function openSessionView(
   viewResolve?.('dismissed');
   viewResolve = null;
   openModal({ id: 'plugin-view', pluginId: id, sessionId, props });
+  deps?.setFocusedTile?.(null);
   return new Promise<ViewResult>((resolve) => {
     viewResolve = resolve;
   });
@@ -400,8 +408,50 @@ function makeApi(id: string, gen: number) {
         off();
       };
     },
+    // Runs cb(sessions) on every change to the session list, for code
+    // outside a component (a component uses useSessions). A throw fails
+    // the plugin, like any other callback.
+    subscribeSessions(cb: (sessions: SessionInfo[]) => void): () => void {
+      if (typeof cb !== 'function') {
+        throw new Error('hive.subscribeSessions(callback)');
+      }
+      const l = current(id, gen);
+      if (!l) return () => {};
+      let prev = appData().sessions;
+      const off = appStore.subscribe((st) => {
+        if (st.sessions === prev || !live()) return;
+        prev = st.sessions;
+        try {
+          cb(prev);
+        } catch (e) {
+          failPlugin(id, e);
+        }
+      });
+      l.offs.push(off);
+      return () => {
+        const i = l.offs.indexOf(off);
+        if (i >= 0) l.offs.splice(i, 1);
+        off();
+      };
+    },
     actions: Object.freeze({
       switchTo: (sessionId: string) => deps?.switchTo(sessionId),
+      // Plan review (#457), the daemon's generic verbs. The text arrives
+      // on the "planreview:plan" event, or a "control:error" with code
+      // plan_review_stale when the review is already over.
+      getPlanReview: (sessionId: string, reviewId: string) =>
+        GetPlanReview(sessionId, reviewId),
+      resolvePlanReview: (answer: {
+        session_id: string;
+        review_id: string;
+        decision: 'approve' | 'deny';
+        comments?: { quote: string; text: string }[];
+        feedback?: string;
+      }) =>
+        ResolvePlanReview(
+          answer as unknown as Parameters<typeof ResolvePlanReview>[0],
+        ),
+      externalPlanReviewers: () => GetExternalPlanReviewers(),
     }),
     settings: Object.freeze({
       get: () => configOf(appData().plugins, appData().pluginConfigOverlay, id),
@@ -481,6 +531,26 @@ export function dispatchPluginChord(e: KeyboardEvent): boolean {
   return true;
 }
 
+// ---------- announcing running UIs ----------
+
+// The daemon parks a plan review only for a window running the
+// plan-review plugin's UI (SET_CLIENT_UI), so it hears every change to
+// the set of active plugin UIs. Null until the first announcement: a
+// window with no UI plugin never sends one.
+let announced: string | null = null;
+
+function announce(ui: Readonly<Record<string, { status: string }>>): void {
+  const ids = Object.keys(ui)
+    .filter((id) => ui[id].status === 'active')
+    .sort();
+  const key = ids.join('\u0000');
+  if (key === announced || (announced === null && ids.length === 0)) return;
+  announced = key;
+  SetClientUI(ids).catch((e: unknown) =>
+    console.warn('announcing plugin UIs failed', e),
+  );
+}
+
 // ---------- lifecycle ----------
 
 let unsubscribe: (() => void) | null = null;
@@ -490,8 +560,13 @@ export function initPluginHost(d: PluginHostDeps): void {
   if (d.importer) importer = d.importer;
   unsubscribe?.();
   let prev = appData().plugins;
+  let prevUI = appData().pluginUI;
   reconcile(prev);
   unsubscribe = appStore.subscribe((s) => {
+    if (s.pluginUI !== prevUI) {
+      prevUI = s.pluginUI;
+      announce(prevUI);
+    }
     if (s.plugins === prev) return;
     prev = s.plugins;
     reconcile(prev);
@@ -506,6 +581,7 @@ export function resetPluginHostForTest(): void {
   for (const id of [...loaded.keys()]) unload(id);
   configQueue.clear();
   viewResolve = null;
+  announced = null;
   assetBase = null;
   coreLabels = null;
   importer = (url) => import(/* @vite-ignore */ url);

@@ -435,3 +435,12 @@ func TestBridge_SetPluginConfigForwarded(t *testing.T) {
 		t.Errorf("SetPluginConfig: error = %q, want %q", resp.Error, "no control connection")
 	}
 }
+
+// SetClientUI reaches the control connection like any other verb.
+func TestBridge_SetClientUIForwarded(t *testing.T) {
+	ws := dialTestBridge(t)
+	resp := roundTrip(t, ws, 1, "SetClientUI", `{"plugin_uis":["plan-review"]}`)
+	if !strings.Contains(resp.Error, "no control connection") {
+		t.Errorf("SetClientUI: error = %q, want %q", resp.Error, "no control connection")
+	}
+}

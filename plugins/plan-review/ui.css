@@ -1,7 +1,8 @@
-/* Plan review (#457): the review modal and the bar that re-opens it.
-   Tokens only (scripts/ui-lint.sh --strict), so every theme preset
-   restyles it. */
+/* Plan review: the bundled plugin's styles. Classes are prefixed with
+   the plugin id and use Hive's theme tokens only, per docs/plugins.md,
+   so every theme preset restyles the review. */
 
+.plan-review { display: flex; flex-direction: column; }
 .plan-review-lede {
   margin: 0 0 var(--space-3);
   font-size: var(--text-sm);
@@ -91,23 +92,11 @@
 }
 .plan-review-comment p { margin: var(--space-1) 0; white-space: pre-wrap; }
 
-/* The bar: pinned to the bottom like the opening-prompt bar, and it
-   sits BELOW that bar when both show (fixed height for the offset). */
-.hv-plan-review-bar {
-  position: fixed;
-  left: 0;
-  right: 0;
-  bottom: 25px; /* clears #status, like .hv-pending-prompt */
-  height: 40px;
-  box-sizing: border-box;
-  z-index: 15;
+.plan-review-actions {
   display: flex;
-  align-items: center;
-  gap: var(--space-3);
-  padding: 0 var(--space-3);
-  border-top: 1px solid var(--border);
-  background: var(--surface-raised);
-  font-size: var(--text-sm);
+  justify-content: flex-end;
+  gap: var(--space-2);
+  margin-top: var(--space-3);
 }
-.hv-plan-review-bar__label { flex: 1; min-width: 0; color: var(--state-attention); }
-.hv-plan-review-bar ~ .hv-pending-prompt { bottom: calc(25px + 40px); }
+.plan-review-error { margin: var(--space-2) 0 0; color: var(--state-error); font-size: var(--text-sm); }
+.plan-review-settings { display: flex; flex-direction: column; gap: var(--space-2); }

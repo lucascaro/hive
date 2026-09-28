@@ -178,9 +178,12 @@ export function PluginsPanel({
   // list disabled without this window ever prompting — installed from
   // another window or client, or an install that outlived its wait here.
   // Consent belongs to "start running", wherever that is asked for.
+  // A plugin that ships inside Hive is not asked about: it is part of
+  // the app the user already runs, like any other setting.
   async function toggle(p: PluginInfo, enabled: boolean) {
     if (
       enabled &&
+      !p.builtin &&
       !(await Confirm(trustTitle(p), trustMessage(p, CANCEL_KEEPS_OFF)))
     ) {
       return;
@@ -278,9 +281,9 @@ export function PluginsPanel({
                   </div>
                   <div
                     className="settings-plugin-source"
-                    title={oneLine(p.source)}
+                    title={p.builtin ? undefined : oneLine(p.source)}
                   >
-                    {oneLine(p.source)}
+                    {p.builtin ? 'Ships with Hive' : oneLine(p.source)}
                   </div>
                   <div className="settings-plugin-status">{statusText(p)}</div>
                   {uiError ? (
@@ -306,12 +309,15 @@ export function PluginsPanel({
                   />
                   <span>Enabled</span>
                 </label>
-                <IconButton
-                  icon="x"
-                  label={`Remove ${p.name}`}
-                  className="settings-plugin-remove"
-                  onClick={() => void remove(p)}
-                />
+                {/* A bundled plugin can be disabled, not removed. */}
+                {p.builtin ? null : (
+                  <IconButton
+                    icon="x"
+                    label={`Remove ${p.name}`}
+                    className="settings-plugin-remove"
+                    onClick={() => void remove(p)}
+                  />
+                )}
                 {p.enabled ? <PluginSettingsSection id={p.id} /> : null}
               </li>
             );

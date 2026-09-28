@@ -271,6 +271,9 @@ export async function SetPluginConfig(
 ) {
   return call('SetPluginConfig', { id, config });
 }
+export async function SetClientUI(ids: string[]) {
+  return call('SetClientUI', { plugin_uis: ids ?? [] });
+}
 // hived-ws-bridge serves the isolated state dir's plugin files at
 // /plugins/<id>/ over plain HTTP, beside its WebSocket.
 export async function PluginAssetBase() {

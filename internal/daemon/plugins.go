@@ -6,6 +6,7 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"io/fs"
 	"log"
 	"net"
 	"os"
@@ -14,6 +15,7 @@ import (
 
 	"github.com/lucascaro/hive/internal/plugin"
 	"github.com/lucascaro/hive/internal/wire"
+	"github.com/lucascaro/hive/plugins"
 )
 
 // pluginTag marks a connection accepted on a plugin's own socket. The
@@ -265,3 +267,7 @@ func (d *Daemon) fanoutPressure() float64 {
 	}
 	return p
 }
+
+// builtinPlugins is what every daemon materializes into its state dir.
+// A var so tests that count installed plugins can start from none.
+var builtinPlugins fs.FS = plugins.Builtin

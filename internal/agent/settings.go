@@ -52,16 +52,19 @@ type Settings struct {
 	PiTodoTool bool `json:"pi_todo_tool"`
 	// PlanReview holds an agent's plan for the user to approve or deny
 	// in Hive before it implements it: Claude's ExitPlanMode, and a
-	// hive_submit_plan tool for Pi. Off by default. Read live by the
-	// daemon on every review, so switching it off takes effect at once.
-	PlanReview bool `json:"plan_review"`
+	// hive_submit_plan tool for Pi. Not stored here: it is on while the
+	// bundled plan-review plugin is enabled, and the registry fills it
+	// in at spawn (Registry.SetPlanReviewSource). A plan_review key left
+	// in an older agent-settings.json is ignored.
+	PlanReview bool `json:"-"`
 	// PlanReviewer decides who reviews a Claude plan when another
 	// reviewer (plannotator, …) is also installed: PlanReviewerExternal
 	// (the default) leaves it to that tool, PlanReviewerHive disables
-	// a plugin reviewer for the Claude sessions Hive starts. Fixed per
-	// session at spawn, because that is the only time Hive can disable
-	// a plugin.
-	PlanReviewer string `json:"plan_reviewer"`
+	// a Claude Code plugin reviewer for the Claude sessions Hive
+	// starts. Fixed per session at spawn, because that is the only time
+	// Hive can disable a Claude Code plugin. Comes from the plan-review
+	// plugin's settings, like PlanReview.
+	PlanReviewer string `json:"-"`
 	// LayaEnabled has the daemon ask a user-run Laya decision model what
 	// a session without a live agent tier is doing, from its visible
 	// screen (spec 458). Off by default: it sends screen text to
@@ -89,7 +92,9 @@ func (s Settings) LayaEndpoint() string {
 	return DefaultLayaURL
 }
 
-// PlanReviewer values.
+// PlanReviewer values. Anything but an explicit PlanReviewerHive means
+// PlanReviewerExternal: deferring to an installed reviewer never
+// disables a tool the user set up.
 const (
 	PlanReviewerExternal = "external"
 	PlanReviewerHive     = "hive"
@@ -102,8 +107,6 @@ const (
 type settingsFile struct {
 	ClaudeTaskTools *bool   `json:"claude_task_tools,omitempty"`
 	PiTodoTool      *bool   `json:"pi_todo_tool,omitempty"`
-	PlanReview      *bool   `json:"plan_review,omitempty"`
-	PlanReviewer    *string `json:"plan_reviewer,omitempty"`
 	LayaEnabled     *bool   `json:"laya_enabled,omitempty"`
 	LayaURL         *string `json:"laya_url,omitempty"`
 	LayaModel       *string `json:"laya_model,omitempty"`
@@ -121,14 +124,6 @@ func (f settingsFile) resolve() Settings {
 	}
 	if f.PiTodoTool != nil {
 		s.PiTodoTool = *f.PiTodoTool
-	}
-	if f.PlanReview != nil {
-		s.PlanReview = *f.PlanReview
-	}
-	// Anything but an explicit "hive" is the safe default: deferring to
-	// an installed reviewer never disables a tool the user set up.
-	if f.PlanReviewer != nil && *f.PlanReviewer == PlanReviewerHive {
-		s.PlanReviewer = PlanReviewerHive
 	}
 	if f.LayaEnabled != nil {
 		s.LayaEnabled = *f.LayaEnabled
@@ -182,13 +177,8 @@ func SaveSettings(s Settings) error {
 	if err != nil {
 		return err
 	}
-	reviewer := PlanReviewerExternal
-	if s.PlanReviewer == PlanReviewerHive {
-		reviewer = PlanReviewerHive
-	}
 	blob, err := json.MarshalIndent(settingsFile{
 		ClaudeTaskTools: &s.ClaudeTaskTools, PiTodoTool: &s.PiTodoTool,
-		PlanReview: &s.PlanReview, PlanReviewer: &reviewer,
 		LayaEnabled: &s.LayaEnabled, LayaURL: &s.LayaURL, LayaModel: &s.LayaModel,
 	}, "", "  ")
 	if err != nil {

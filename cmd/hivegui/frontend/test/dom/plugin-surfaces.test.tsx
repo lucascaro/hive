@@ -68,6 +68,7 @@ vi.mock('../../src/bridge.js', () => {
     WindowSetTitle: vi.fn(),
     PluginAssetBase: vi.fn(() => Promise.resolve('')),
     SetPluginConfig: fn(),
+    SetClientUI: fn(),
   };
 });
 

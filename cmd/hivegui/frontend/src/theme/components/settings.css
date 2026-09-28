@@ -135,8 +135,8 @@
      user-editable agents.json — see .launcher-item .agent-dot. */
   background-color: var(--agent-color, var(--fg-subtle));
 }
-/* A choice that will not do all the user expects (plan review: a hook in
-   a settings file that Hive cannot switch off). */
+/* A choice that will not do all the user expects: a failed connection
+   test here, and plugin settings sections use it too. */
 .settings-warning { color: var(--state-attention); }
 
 /* Settings → Plugins (PluginsPanel.tsx). One row per installed plugin:

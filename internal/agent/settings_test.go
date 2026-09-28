@@ -69,7 +69,7 @@ func TestSettingsRoundTrip(t *testing.T) {
 	for _, want := range []Settings{
 		{ClaudeTaskTools: false, PiTodoTool: true, PlanReviewer: PlanReviewerExternal},
 		{ClaudeTaskTools: true, PiTodoTool: false, PlanReviewer: PlanReviewerExternal},
-		{ClaudeTaskTools: true, PiTodoTool: true, PlanReview: true, PlanReviewer: PlanReviewerHive},
+		{ClaudeTaskTools: true, PiTodoTool: true, PlanReviewer: PlanReviewerExternal, LayaEnabled: true},
 	} {
 		if err := SaveSettings(want); err != nil {
 			t.Fatalf("save: %v", err)
@@ -350,30 +350,27 @@ func hasEnvKey(env []string, key string) bool {
 	return ok
 }
 
-func TestSettingsPlanReviewDefaults(t *testing.T) {
-	settingsDir(t, `{"claude_task_tools": true}`)
+// Plan review is the plan-review plugin's now (spec 471): the keys an
+// older agent-settings.json carries are ignored on read and never
+// written back.
+func TestLegacyPlanReviewKeyIgnored(t *testing.T) {
+	dir := settingsDir(t, `{"plan_review": true, "plan_reviewer": "hive"}`)
 	s, err := LoadSettings()
 	if err != nil {
 		t.Fatalf("load: %v", err)
 	}
 	if s.PlanReview || s.PlanReviewer != PlanReviewerExternal {
-		t.Errorf("missing keys read as review=%v reviewer=%q, want off/external", s.PlanReview, s.PlanReviewer)
+		t.Errorf("legacy keys read as review=%v reviewer=%q, want off/external", s.PlanReview, s.PlanReviewer)
 	}
-	// Anything but "hive" defers to an installed reviewer.
-	settingsDir(t, `{"plan_review": true, "plan_reviewer": "bogus"}`)
-	if s, _ := LoadSettings(); !s.PlanReview || s.PlanReviewer != PlanReviewerExternal {
-		t.Errorf("unknown reviewer read as %+v, want review on, reviewer external", s)
+	if err := SaveSettings(Settings{ClaudeTaskTools: true, PiTodoTool: true, PlanReview: true, PlanReviewer: PlanReviewerHive}); err != nil {
+		t.Fatal(err)
 	}
-}
-
-func TestSettingsPlanReviewRoundTrip(t *testing.T) {
-	settingsDir(t, "")
-	want := Settings{ClaudeTaskTools: true, PiTodoTool: true, PlanReview: true, PlanReviewer: PlanReviewerHive}
-	if err := SaveSettings(want); err != nil {
-		t.Fatalf("save: %v", err)
+	raw, err := os.ReadFile(filepath.Join(dir, SettingsFileName))
+	if err != nil {
+		t.Fatal(err)
 	}
-	if got, _ := LoadSettings(); got != want {
-		t.Errorf("loaded %+v, want %+v", got, want)
+	if strings.Contains(string(raw), "plan_review") {
+		t.Errorf("saved file still carries plan review keys:\n%s", raw)
 	}
 }
 
@@ -384,9 +381,9 @@ func TestPiSpawnEnvPlanReview(t *testing.T) {
 		t.Errorf("%s = %q by default, want 0", PiPlanReviewEnv, v)
 	}
 	t.Setenv(PiPlanReviewEnv, "1") // inherited: must not win
-	if err := SaveSettings(Settings{PiTodoTool: true, PlanReview: true}); err != nil {
-		t.Fatalf("save: %v", err)
-	}
+	st := DefaultSettings()
+	st.PlanReview = true
+	sp.Settings = &st
 	if v, _ := envValue(piSpawnEnv(sp), PiPlanReviewEnv); v != "1" {
 		t.Errorf("%s = %q with review on, want 1", PiPlanReviewEnv, v)
 	}
@@ -398,16 +395,20 @@ func TestClaudeSpawnEnvPlanReviewer(t *testing.T) {
 	withClaudeVersion(t, "2.1.273")
 	withEnv(t, "", false)
 	for _, tc := range []struct {
-		file, want string
+		review         bool
+		reviewer, want string
 	}{
-		{``, PlanReviewerExternal},
-		{`{"plan_review": false, "plan_reviewer": "hive"}`, PlanReviewerExternal},
-		{`{"plan_review": true}`, PlanReviewerExternal},
-		{`{"plan_review": true, "plan_reviewer": "hive"}`, PlanReviewerHive},
+		{false, PlanReviewerExternal, PlanReviewerExternal},
+		{false, PlanReviewerHive, PlanReviewerExternal},
+		{true, PlanReviewerExternal, PlanReviewerExternal},
+		{true, PlanReviewerHive, PlanReviewerHive},
 	} {
-		settingsDir(t, tc.file)
-		if v, _ := envValue(claudeSpawnEnv(hooked), PlanReviewerEnv); v != tc.want {
-			t.Errorf("settings %q: %s = %q, want %q", tc.file, PlanReviewerEnv, v, tc.want)
+		st := DefaultSettings()
+		st.PlanReview, st.PlanReviewer = tc.review, tc.reviewer
+		sp := hooked
+		sp.Settings = &st
+		if v, _ := envValue(claudeSpawnEnv(sp), PlanReviewerEnv); v != tc.want {
+			t.Errorf("review=%v reviewer=%q: %s = %q, want %q", tc.review, tc.reviewer, PlanReviewerEnv, v, tc.want)
 		}
 	}
 }

@@ -19,9 +19,14 @@ async function openPluginsTab(page: Page) {
   await expect(page.locator('#settings-panel-plugins')).toBeVisible();
 }
 
+// Every install lists the bundled plan-review plugin (spec 471), so the
+// list is never empty; these count the plugins a test adds beside it.
+const added = (page: Page) =>
+  page.locator('.settings-plugin-row:not([data-plugin-id="plan-review"])');
+
 test('install, enable, disable and remove a plugin', async ({ page }) => {
   await openPluginsTab(page);
-  await expect(page.locator('#settings-plugins-empty')).toBeVisible();
+  await expect(added(page)).toHaveCount(0);
 
   await page.locator('#settings-plugin-source').fill('/plugins/webhook');
   await page.locator('#settings-plugin-install').click();
@@ -39,7 +44,7 @@ test('install, enable, disable and remove a plugin', async ({ page }) => {
 
   await row.locator('.settings-plugin-remove').click();
   await expect(row).toHaveCount(0);
-  await expect(page.locator('#settings-plugins-empty')).toBeVisible();
+  await expect(added(page)).toHaveCount(0);
 });
 
 test('a failed install shows its error and adds nothing', async ({ page }) => {
@@ -49,7 +54,7 @@ test('a failed install shows its error and adds nothing', async ({ page }) => {
   await expect(page.locator('#settings-error')).toContainText(
     'plugin install failed: no hive-plugin.json',
   );
-  await expect(page.locator('.settings-plugin-row')).toHaveCount(0);
+  await expect(added(page)).toHaveCount(0);
   // The generic control-error status line stands aside for it.
   await expect(page.locator('#status-text')).not.toContainText(
     'plugin_install_failed',

@@ -227,6 +227,11 @@ const (
 	// SET_PLUGIN_CONFIG stores a UI plugin's settings (its ui-config.json)
 	// and fans out as PLUGIN_EVENT (updated) carrying the new config.
 	FrameSetPluginConfig FrameType = 0x3d // C → S, JSON, control
+	// SET_CLIENT_UI tells the daemon which plugin UIs this GUI has
+	// running. The daemon parks a plan review only while some GUI runs
+	// the plan-review plugin's UI. Read and dropped from plugin sockets
+	// and hivebar, which show no UI.
+	FrameSetClientUI FrameType = 0x3e // C → S, JSON, control
 )
 
 // ControlRequestFrames lists every frame a control-mode client may send.
@@ -246,7 +251,7 @@ var ControlRequestFrames = []FrameType{
 	FrameGetPlanReview, FrameResolvePlanReview,
 	FrameClientCommand, FrameShutdown,
 	FrameListPlugins, FrameInstallPlugin, FrameSetPluginEnabled, FrameRemovePlugin,
-	FrameSetPluginConfig,
+	FrameSetPluginConfig, FrameSetClientUI,
 }
 
 // ControlEventFrames lists every frame the daemon sends on a control
@@ -392,6 +397,8 @@ func (t FrameType) String() string {
 		return "PLUGIN_EVENT"
 	case FrameSetPluginConfig:
 		return "SET_PLUGIN_CONFIG"
+	case FrameSetClientUI:
+		return "SET_CLIENT_UI"
 	default:
 		return fmt.Sprintf("UNKNOWN(0x%02x)", byte(t))
 	}

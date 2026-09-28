@@ -4,7 +4,7 @@
    asks for .<id>- prefixed classes and these tokens). */
 
 /* Session banner: the same 40px strip as the pending-prompt bar, and
-   like the plan-review bar it pushes that bar up when both show. */
+   it pushes that bar up when both show. */
 .hv-plugin-banner {
   position: fixed;
   left: 0;

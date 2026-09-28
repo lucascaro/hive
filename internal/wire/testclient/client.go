@@ -318,6 +318,14 @@ func (c *Client) SetPluginConfig(id string, config json.RawMessage) error {
 	return c.cli.WriteJSON(wire.FrameSetPluginConfig, wire.SetPluginConfigReq{ID: id, Config: config})
 }
 
+// SetClientUI sends SET_CLIENT_UI: the plugin UIs this client runs.
+func (c *Client) SetClientUI(ids []string) error {
+	if ids == nil {
+		ids = []string{}
+	}
+	return c.cli.WriteJSON(wire.FrameSetClientUI, wire.SetClientUIReq{PluginUIs: ids})
+}
+
 // RemovePlugin sends REMOVE_PLUGIN.
 func (c *Client) RemovePlugin(id string) error {
 	return c.cli.WriteJSON(wire.FrameRemovePlugin, wire.RemovePluginReq{ID: id})

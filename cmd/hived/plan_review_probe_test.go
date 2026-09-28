@@ -48,6 +48,11 @@ func startProbeReviewer(t *testing.T, d *daemon.Daemon, id string, decide func(p
 	}); err != nil {
 		t.Fatal(err)
 	}
+	// Stand in for a GUI running the plan-review plugin's UI: reviews
+	// park only for one of those (spec 471).
+	if err := wire.WriteJSON(conn, wire.FrameSetClientUI, wire.SetClientUIReq{PluginUIs: []string{"plan-review"}}); err != nil {
+		t.Fatal(err)
+	}
 	go func() {
 		for {
 			if _, _, err := wire.ReadFrame(conn); err != nil {
@@ -108,10 +113,8 @@ func TestClaudeProbePlanReview(t *testing.T) {
 		t.Skip("claude not on PATH")
 	}
 	sess, wait, d, sink := startClaudeProbeDaemon(t)
-	// Read live by the daemon, so writing it after spawn is enough.
-	if err := agent.SaveSettings(agent.Settings{ClaudeTaskTools: false, PiTodoTool: true, PlanReview: true}); err != nil {
-		t.Fatal(err)
-	}
+	// Read live by the daemon, so enabling it after spawn is enough.
+	enablePlanReviewPlugin(t, d)
 	id := d.Registry().List()[len(d.Registry().List())-1].ID
 	r := startProbeReviewer(t, d, id, denyThenApprove)
 
@@ -149,10 +152,12 @@ func TestPiProbePlanReview(t *testing.T) {
 	}
 	agent.SetCustomDir(t.TempDir())
 	t.Cleanup(func() { agent.SetCustomDir("") })
-	if err := agent.SaveSettings(agent.Settings{ClaudeTaskTools: true, PiTodoTool: false, PlanReview: true}); err != nil {
+	if err := agent.SaveSettings(agent.Settings{ClaudeTaskTools: true, PiTodoTool: false}); err != nil {
 		t.Fatal(err)
 	}
-	d, id, sess, wait := startPiProbe(t)
+	// Before the spawn: Pi registers hive_submit_plan only when review
+	// was on when it started.
+	d, id, sess, wait := startPiProbe(t, func(d *daemon.Daemon) { enablePlanReviewPlugin(t, d) })
 	r := startProbeReviewer(t, d, id, denyThenApprove)
 
 	// No mention of the tool: the extension's guidelines are what must
