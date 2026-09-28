@@ -3,14 +3,15 @@
 .hv-session-row {
   position: relative;
   display: grid;
-  /* state | name | idea | worktree | meta+actions on grid row 1;
+  /* state | name | plugin badges | idea | worktree | meta+actions on
+     grid row 1;
      the window title on grid row 2, spanning to the right edge. Every
      child is placed explicitly (below) because meta and actions SHARE
      the fifth cell — see the hover swap — and because an unplaced child
      auto-flows to a new line and wraps the row. Column gaps come from
      the children's own margins rather than `gap`, so a row with no
      worktree and no idea contributes no empty-column gaps. */
-  grid-template-columns: 14px minmax(0, 1fr) auto auto auto;
+  grid-template-columns: 14px minmax(0, 1fr) auto auto auto auto;
   align-items: center;
   row-gap: 1px;
   min-height: 40px;
@@ -27,8 +28,9 @@
 .hv-session-row > * + * { margin-left: var(--space-2); }
 .hv-session-row__state { grid-column: 1; grid-row: 1; }
 .hv-session-row__name { grid-column: 2; grid-row: 1; }
-.hv-session-row__idea { grid-column: 3; grid-row: 1; }
-.hv-session-row__worktree-slot { grid-column: 4; grid-row: 1; }
+.hv-plugin-badges { grid-column: 3; grid-row: 1; }
+.hv-session-row__idea { grid-column: 4; grid-row: 1; }
+.hv-session-row__worktree-slot { grid-column: 5; grid-row: 1; }
 /* The whole point of the redesign's line 2: the window title runs from
    the name's column to the row's right edge, under the meta column
    rather than stopping before it. */
@@ -244,7 +246,7 @@
 .hv-session-row__actions {
   /* Both live in the same cell so the swap below can be opacity rather
      than `display` — see the hover-swap comment. */
-  grid-column: 5;
+  grid-column: 6;
   /* meta belongs to line 1, beside the name. The action buttons are
      24px — taller than either line — so they span BOTH rows instead of
      setting line 1's height and pushing the row past 40px; spanning
@@ -416,7 +418,7 @@
 }
 :root[data-density='compact']
   .hv-session-row:has(.hv-session-row__plan) {
-  grid-template-columns: 24px minmax(0, 1fr) auto auto auto;
+  grid-template-columns: 24px minmax(0, 1fr) auto auto auto auto;
 }
 :root[data-density='compact'] .hv-session-row__state {
   justify-self: start;

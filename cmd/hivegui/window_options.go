@@ -3,6 +3,8 @@ package main
 import (
 	"runtime"
 
+	"github.com/lucascaro/hive/internal/plugin/pluginassets"
+	"github.com/lucascaro/hive/internal/registry"
 	"github.com/wailsapp/wails/v2/pkg/options"
 	"github.com/wailsapp/wails/v2/pkg/options/assetserver"
 	"github.com/wailsapp/wails/v2/pkg/options/windows"
@@ -18,12 +20,18 @@ func appOptions(a *App, width, height int) *options.App {
 		Width:            width,
 		Height:           height,
 		BackgroundColour: &options.RGBA{R: 0, G: 0, B: 0, A: 1},
-		AssetServer:      &assetserver.Options{Assets: assets},
-		Menu:             buildAppMenu(a),
-		OnStartup:        a.startup,
-		OnShutdown:       a.shutdown,
-		OnBeforeClose:    a.beforeClose,
-		Bind:             []interface{}{a},
+		// Handler serves what Assets does not have: an installed plugin's
+		// UI files under /plugins/<id>/, read-only from the state dir, so
+		// the frontend can import() a plugin's module (docs/plugins.md).
+		AssetServer: &assetserver.Options{
+			Assets:  assets,
+			Handler: pluginassets.Handler(registry.StateDir()),
+		},
+		Menu:          buildAppMenu(a),
+		OnStartup:     a.startup,
+		OnShutdown:    a.shutdown,
+		OnBeforeClose: a.beforeClose,
+		Bind:          []interface{}{a},
 
 		// Nothing in Hive handles a dropped file, and without this a file
 		// dropped on the window is navigated to, replacing the whole app

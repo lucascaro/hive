@@ -1841,7 +1841,8 @@ func (d *Daemon) handleControlFrame(ctx context.Context, ops controlOps, ft wire
 			return false
 		}
 		d.commands.Publish(cmd)
-	case wire.FrameListPlugins, wire.FrameInstallPlugin, wire.FrameSetPluginEnabled, wire.FrameRemovePlugin:
+	case wire.FrameListPlugins, wire.FrameInstallPlugin, wire.FrameSetPluginEnabled, wire.FrameRemovePlugin,
+		wire.FrameSetPluginConfig:
 		d.handlePluginFrame(ctx, ops, ft, payload)
 	default:
 		log.Printf("hived: unexpected control frame: %s", ft)

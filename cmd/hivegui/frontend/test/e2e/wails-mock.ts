@@ -1607,8 +1607,26 @@ type MockPlugin = {
   enabled: boolean;
   status: string;
   restarts: number;
+  ui?: { entry: string; style?: string };
+  config?: Record<string, unknown>;
 };
 const mockPlugins: MockPlugin[] = [];
+// The dev server serves UI plugin files at /plugins/<id>/ in mock mode
+// (vite.config.js), on the page's own origin like the app does.
+export async function PluginAssetBase() {
+  return '';
+}
+export async function SetPluginConfig(
+  id: string,
+  config: Record<string, unknown>,
+) {
+  maybeFail('SetPluginConfig');
+  const p = mockPlugins.find((x) => x.id === id);
+  if (!p || !p.ui) return '';
+  p.config = JSON.parse(JSON.stringify(config));
+  emit('plugin:event', JSON.stringify({ kind: 'updated', plugin: p }));
+  return '';
+}
 export async function ListPlugins() {
   maybeFail('ListPlugins');
   emit('plugin:list', JSON.stringify({ plugins: mockPlugins }));
@@ -1636,16 +1654,32 @@ export async function InstallPlugin(source: string, nonce: string) {
     );
     return '';
   }
+  // A plugin the dev server can serve (a fixture or one of the repo's
+  // plugins/) installs from its real manifest, as the daemon would.
+  let man: {
+    name?: string;
+    version?: string;
+    api_version?: string;
+    main?: { command: string[] };
+    ui?: { entry: string; style?: string };
+  } | null = null;
+  try {
+    const r = await fetch(`/plugins/${id}/hive-plugin.json`);
+    if (r.ok) man = await r.json();
+  } catch {
+    /* not servable: a synthetic headless plugin, as before */
+  }
   const plugin: MockPlugin = {
     id,
-    name: id[0].toUpperCase() + id.slice(1),
-    version: '0.1.0',
-    api_version: '0.1',
+    name: man?.name ?? id[0].toUpperCase() + id.slice(1),
+    version: man?.version ?? '0.1.0',
+    api_version: man?.api_version ?? '0.2',
     source,
-    command: ['node', 'main.mjs'],
+    command: man ? (man.main?.command ?? []) : ['node', 'main.mjs'],
     enabled: false,
     status: 'stopped',
     restarts: 0,
+    ...(man?.ui ? { ui: man.ui } : {}),
   };
   mockPlugins.push(plugin);
   emit('plugin:event', JSON.stringify({ kind: 'added', plugin, nonce }));

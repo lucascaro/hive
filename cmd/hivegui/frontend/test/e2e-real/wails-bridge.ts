@@ -38,6 +38,12 @@ function getWsUrl() {
   return window.__WS_BRIDGE_URL || `ws://${location.hostname}:5176/`;
 }
 
+// The bridge's HTTP origin: same host and port as its WebSocket.
+function bridgeHTTPOrigin(): string {
+  const ws = getWsUrl();
+  return ws ? new URL(ws).origin.replace(/^ws/, 'http') : '';
+}
+
 function ensureWS() {
   if (wsReady) return wsReady;
   wsReady = new Promise<WebSocket>((resolve, reject) => {
@@ -258,6 +264,17 @@ export async function InstallPlugin(source: string, nonce: string) {
 }
 export async function SetPluginEnabled(id: string, enabled: boolean) {
   return call('SetPluginEnabled', { id, enabled });
+}
+export async function SetPluginConfig(
+  id: string,
+  config: Record<string, unknown>,
+) {
+  return call('SetPluginConfig', { id, config });
+}
+// hived-ws-bridge serves the isolated state dir's plugin files at
+// /plugins/<id>/ over plain HTTP, beside its WebSocket.
+export async function PluginAssetBase() {
+  return bridgeHTTPOrigin();
 }
 export async function RemovePlugin(id: string) {
   return call('RemovePlugin', { id });

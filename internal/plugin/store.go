@@ -6,17 +6,21 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+
+	"github.com/lucascaro/hive/internal/plugin/pluginassets"
 )
 
 // On-disk layout, all under the daemon's state dir:
 //
 //	plugins.json            the installed set (this file)
 //	plugins/<id>/           the installed copy; replaced on reinstall
-//	plugin-data/<id>/       the plugin's own data: config.json, plugin.log;
+//	plugin-data/<id>/       the plugin's own data: config.json (the plugin's,
+//	                        never read by Hive), ui-config.json (the UI's
+//	                        settings, written only by SetConfig), plugin.log;
 //	                        survives remove and reinstall
 const (
 	storeFile  = "plugins.json"
-	installDir = "plugins"
+	installDir = pluginassets.InstallDir
 	dataDir    = "plugin-data"
 )
 

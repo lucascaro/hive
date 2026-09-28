@@ -1608,6 +1608,19 @@ type PluginInfo struct {
 	StatusDetail string   `json:"status_detail,omitempty"`
 	// Restarts counts crash restarts since the plugin was last enabled.
 	Restarts int `json:"restarts"`
+	// UI is the manifest's app-side entry, when the plugin has one: the
+	// Hive app imports Entry (and links Style) from /plugins/<id>/.
+	UI *PluginUI `json:"ui,omitempty"`
+	// Config is a UI plugin's settings, as last stored with
+	// SET_PLUGIN_CONFIG. Only plugins with a UI have one; a headless
+	// plugin's own config.json is never read or sent.
+	Config json.RawMessage `json:"config,omitempty"`
+}
+
+// PluginUI is the app-side entry of a plugin's manifest.
+type PluginUI struct {
+	Entry string `json:"entry"`
+	Style string `json:"style,omitempty"`
 }
 
 // PluginsResp is the PLUGINS payload, the answer to LIST_PLUGINS.
@@ -1630,6 +1643,16 @@ type SetPluginEnabledReq struct {
 	ID      string `json:"id"`
 	Enabled bool   `json:"enabled"`
 }
+
+// SetPluginConfigReq is the SET_PLUGIN_CONFIG payload. Config must be a
+// JSON object of at most MaxPluginConfig bytes.
+type SetPluginConfigReq struct {
+	ID     string          `json:"id"`
+	Config json.RawMessage `json:"config"`
+}
+
+// MaxPluginConfig caps a UI plugin's stored settings.
+const MaxPluginConfig = 64 << 10
 
 // RemovePluginReq is the REMOVE_PLUGIN payload.
 type RemovePluginReq struct {

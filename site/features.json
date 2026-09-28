@@ -161,5 +161,11 @@
     "blurb": "Install automations that react to your sessions — a webhook when an agent needs you, a chat bridge, and more — from Settings → Plugins.",
     "status": "shipped",
     "since": "Unreleased"
+  },
+  {
+    "title": "Plugins in the app",
+    "blurb": "Plugins can add a session view, palette commands with shortcuts, sidebar badges and a Settings section — try the session-notes example.",
+    "status": "shipped",
+    "since": "Unreleased"
   }
 ]

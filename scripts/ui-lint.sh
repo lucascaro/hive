@@ -62,7 +62,9 @@ targets=("$@")
 custom=1
 if [[ ${#targets[@]} -eq 0 ]]; then
   custom=0
-  targets=("$FE/src" "$FE/index.html")
+  # The repo's own plugins too (spec 471): their CSS lands in the app, so
+  # it follows the same token rules. Third-party plugins are unlinted.
+  targets=("$FE/src" "$FE/index.html" plugins)
 fi
 # Glyph rule defaults to src/app + src/components + src/theme + index.html
 # when no explicit targets are given, but honours explicit targets like the

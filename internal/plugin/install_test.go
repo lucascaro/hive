@@ -2,7 +2,6 @@ package plugin
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"os"
 	"os/exec"
@@ -24,8 +23,7 @@ func TestManifest_Validate(t *testing.T) {
 		"bad id":                  func(m *Manifest) { m.ID = "Web_Hook" },
 		"leading dash":            func(m *Manifest) { m.ID = "-x" },
 		"no name":                 func(m *Manifest) { m.Name = " " },
-		"ui entry":                func(m *Manifest) { m.UI = json.RawMessage(`{"entry":"ui.js"}`) },
-		"no main":                 func(m *Manifest) { m.Main = nil },
+		"no main and no ui":       func(m *Manifest) { m.Main = nil },
 		"empty command":           func(m *Manifest) { m.Main = &Entry{Command: []string{""}} },
 		"newline in name":         func(m *Manifest) { m.Name = "Webhook\nRuns: true" },
 		"control in version":      func(m *Manifest) { m.Version = "0.1\x1b[2J" },

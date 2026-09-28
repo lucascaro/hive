@@ -189,7 +189,7 @@ func (d *Daemon) stopCtx(parent context.Context) (context.Context, context.Cance
 	return ctx, cancel
 }
 
-// handlePluginFrame serves the four plugin-management verbs. Install,
+// handlePluginFrame serves the plugin-management verbs. Install,
 // enable/disable and remove can block (a clone, a plugin's grace period
 // on stop), so they run as ops off the read loop; their result reaches
 // every client as a PLUGIN_EVENT from the Manager.
@@ -223,6 +223,16 @@ func (d *Daemon) handlePluginFrame(ctx context.Context, ops controlOps, ft wire.
 		d.runOp(func() {
 			if _, err := d.plugins.SetEnabled(req.ID, req.Enabled); err != nil {
 				ops.sendError(pluginErrorCode(err, "set_plugin_enabled_failed"), err.Error())
+			}
+		})
+	case wire.FrameSetPluginConfig:
+		req, ok := decodeReq[wire.SetPluginConfigReq](payload, ops.sendError)
+		if !ok {
+			return
+		}
+		d.runOp(func() {
+			if _, err := d.plugins.SetConfig(req.ID, req.Config); err != nil {
+				ops.sendError(pluginErrorCode(err, "set_plugin_config_failed"), err.Error())
 			}
 		})
 	case wire.FrameRemovePlugin:

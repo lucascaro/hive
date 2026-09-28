@@ -33,6 +33,7 @@ import (
 	"time"
 
 	"github.com/gorilla/websocket"
+	"github.com/lucascaro/hive/internal/plugin/pluginassets"
 	"github.com/lucascaro/hive/internal/wire"
 )
 
@@ -56,14 +57,27 @@ func main() {
 	// before any client connects.
 	fmt.Printf("ws://%s/\n", ln.Addr().String())
 
-	mux := http.NewServeMux()
-	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
-		serveWS(w, r, sockPath)
-	})
-	srv := &http.Server{Handler: mux, ReadHeaderTimeout: 5 * time.Second}
+	srv := &http.Server{Handler: newMux(sockPath, os.Getenv("HIVE_STATE_DIR")), ReadHeaderTimeout: 5 * time.Second}
 	if err := srv.Serve(ln); err != nil && !errors.Is(err, http.ErrServerClosed) {
 		log.Fatalf("serve: %v", err)
 	}
+}
+
+// newMux serves the WebSocket bridge at / and, under /plugins/, the
+// isolated state dir's installed plugin UI files — what the Wails asset
+// server's Handler does inside the app. The browser page runs on the Vite
+// origin, so plugin assets carry a CORS header for its module import().
+func newMux(sockPath, stateDir string) *http.ServeMux {
+	mux := http.NewServeMux()
+	assets := pluginassets.Handler(stateDir)
+	mux.HandleFunc(pluginassets.Prefix, func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Access-Control-Allow-Origin", "*")
+		assets.ServeHTTP(w, r)
+	})
+	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
+		serveWS(w, r, sockPath)
+	})
+	return mux
 }
 
 func requireIsolation() error {
@@ -419,6 +433,13 @@ func (s *session) dispatch(req rpcReq) {
 			return
 		}
 		s.respond(req.ID, "", s.controlWriteJSON(wire.FrameSetPluginEnabled, p))
+	case "SetPluginConfig":
+		var p wire.SetPluginConfigReq
+		if err := parseParams(req.Params, &p); err != nil {
+			s.respond(req.ID, nil, err)
+			return
+		}
+		s.respond(req.ID, "", s.controlWriteJSON(wire.FrameSetPluginConfig, p))
 	case "RemovePlugin":
 		var p wire.RemovePluginReq
 		if err := parseParams(req.Params, &p); err != nil {

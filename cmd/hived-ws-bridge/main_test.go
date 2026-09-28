@@ -7,6 +7,7 @@ import (
 	"net"
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"path/filepath"
 	"strings"
 	"sync"
@@ -387,5 +388,50 @@ func TestShutdownTerminatesWhileStdinWriteIsBlocked(t *testing.T) {
 	case <-done:
 	case <-time.After(10 * time.Second):
 		t.Fatal("shutdown did not return with the stdin writer blocked — teardown deadlock")
+	}
+}
+
+// The bridge serves the isolated state dir's plugin UI files, with CORS,
+// so the browser page (on the Vite origin) can import() a plugin module.
+func TestBridge_ServesPluginAssetsWithCORS(t *testing.T) {
+	state := t.TempDir()
+	dir := filepath.Join(state, "plugins", "notes")
+	if err := os.MkdirAll(dir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "ui.mjs"), []byte("export default 1"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	srv := httptest.NewServer(newMux(filepath.Join(t.TempDir(), "none.sock"), state))
+	t.Cleanup(srv.Close)
+	resp, err := http.Get(srv.URL + "/plugins/notes/ui.mjs")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("code %d", resp.StatusCode)
+	}
+	if got := resp.Header.Get("Access-Control-Allow-Origin"); got != "*" {
+		t.Errorf("Access-Control-Allow-Origin = %q", got)
+	}
+	if ct := resp.Header.Get("Content-Type"); !strings.HasPrefix(ct, "text/javascript") {
+		t.Errorf("Content-Type = %q", ct)
+	}
+	if resp, err := http.Get(srv.URL + "/plugins/notes/../../plugins.json"); err == nil {
+		if resp.StatusCode == http.StatusOK {
+			t.Error("traversal served a file")
+		}
+		resp.Body.Close()
+	}
+}
+
+// SetPluginConfig reaches the control connection (an execution error with
+// no daemon), rather than falling into the unknown-method success path.
+func TestBridge_SetPluginConfigForwarded(t *testing.T) {
+	ws := dialTestBridge(t)
+	resp := roundTrip(t, ws, 1, "SetPluginConfig", `{"id":"notes","config":{"a":1}}`)
+	if !strings.Contains(resp.Error, "no control connection") {
+		t.Errorf("SetPluginConfig: error = %q, want %q", resp.Error, "no control connection")
 	}
 }

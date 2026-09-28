@@ -153,6 +153,7 @@
 }
 .settings-plugin-row {
   display: flex;
+  flex-wrap: wrap; /* a UI plugin's settings section takes its own line */
   align-items: center;
   gap: var(--space-3);
   padding: var(--space-2) 0;

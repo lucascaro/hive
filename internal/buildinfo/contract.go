@@ -24,6 +24,12 @@ package buildinfo
 // History (newest first), so a bump is a decision with a record and
 // not just a number going up:
 //
+//	20 — GUI plugin surfaces (spec 471, phase 1). Plugin API 0.2:
+//	    manifests may declare a "ui" entry, PluginInfo gains ui and
+//	    config, and SET_PLUGIN_CONFIG stores a UI plugin's settings. A
+//	    GUI built before this cannot load UI plugins or save their
+//	    settings; one built after it cannot tell an older daemon's
+//	    refused 0.1 plugins from UI-less ones.
 //	19 — Laya state classification (spec 458). A new state_source,
 //	    "laya", for states the daemon inferred by asking a user-run Laya
 //	    model about a session's screen. A GUI built before this renders
@@ -185,7 +191,7 @@ package buildinfo
 //	    before this cannot see or clear the flag.
 //	1 — first contract; everything up to and including the
 //	    CLIENT_COMMAND relay.
-const DaemonContract = 19
+const DaemonContract = 20
 
 // Identity is this binary's full build identity. `hived --version
 // --json` prints it, and Welcome carries the same three values, so a

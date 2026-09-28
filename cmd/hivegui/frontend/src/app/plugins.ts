@@ -82,9 +82,9 @@ export function claimPluginInstallError(e: {
   return true;
 }
 
-// Whether this window has asked for the plugin list at all. Plugins are
-// listed on demand (the Settings tab), not at boot, so a control
-// reconnect re-lists only when something is showing them — the fan-out
+// Whether this window has asked for the plugin list at all. Boot asks
+// (the UI plugin host needs it, spec 471), so in the app this is always
+// set once connected; a control reconnect re-lists because the fan-out
 // that kept the store current was lost with the old connection.
 let wanted = false;
 

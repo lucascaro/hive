@@ -10,6 +10,7 @@ import type { ReactNode } from 'react';
 import { closeHelpOverlay } from '../../app/modals/help-overlay.js';
 import { isMac } from '../../lib/platform.js';
 import { shortcutGroups } from '../../lib/shortcuts.js';
+import { pluginCommands } from '../../app/plugin-host.js';
 import { useAppStore } from '../../store/store.js';
 import { Kbd } from '../Kbd.js';
 import { ModalShell } from './ModalShell.js';
@@ -32,7 +33,20 @@ export function HelpOverlay({ root }: { root: HTMLElement | null }): ReactNode {
 }
 
 function HelpOverlayBody({ root }: { root: HTMLElement }): ReactNode {
-  const groups = useMemo(() => shortcutGroups({ isMac }), []);
+  // Plugin chords join as their own group, read once per opening like
+  // the rest: an overlay that re-sorted under the reader would be worse.
+  const groups = useMemo(() => {
+    const bound = pluginCommands().filter((r) => r.bound);
+    const core = shortcutGroups({ isMac });
+    if (bound.length === 0) return core;
+    return [
+      ...core,
+      {
+        title: 'Plugins',
+        items: bound.map((r) => ({ keys: r.shortcut, label: r.command.title })),
+      },
+    ];
+  }, []);
 
   // Same modal-focus discipline as Settings: pull focus onto the dialog
   // so keystrokes don't leak behind the backdrop.

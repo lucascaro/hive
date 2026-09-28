@@ -1,0 +1,8 @@
+{
+  "id": "session-notes",
+  "name": "Session notes",
+  "version": "0.1.0",
+  "api_version": "0.2",
+  "description": "Pin a short note to a session: shown on its sidebar row, above its terminal, and in a notes panel.",
+  "ui": { "entry": "ui.mjs", "style": "ui.css" }
+}

@@ -324,6 +324,9 @@ build.sh           # macOS universal build
 | ⇧⌘K / ⌘/ | Command palette / keyboard-shortcuts overlay |
 
 Full list in the app: **⌘/**. (Ctrl replaces ⌘ on Windows and Linux.)
+Plugins can add their own shortcuts; they are listed under **Plugins**
+in that overlay and beside their commands in the palette, and can never
+take one of the shortcuts above.
 
 ### When a session ends
 
@@ -357,8 +360,16 @@ app, installs from a local folder or a git URL, and always installs
 disabled. Plugins run with your full user privileges, so only enable
 ones you trust.
 
+Plugins can also add to the app itself: a view for a session (a dialog,
+a panel beside the terminal, a bar above it), commands in the command
+palette with their own shortcuts, a badge on sidebar rows, and a
+section in Settings. A plugin that breaks is stopped on its own and the
+rest of the app carries on.
+
 - Writing one: [docs/plugins.md](docs/plugins.md)
-- The reference plugin: [plugins/webhook/](plugins/webhook/)
+- The reference plugins: [plugins/webhook/](plugins/webhook/) (in the
+  background) and [plugins/session-notes/](plugins/session-notes/) (in
+  the app: pin a note to a session)
 
 Manage them under **Settings → Plugins**: install from a folder or git
 URL, then enable, disable or remove each one without restarting Hive.

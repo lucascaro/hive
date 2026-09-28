@@ -20,6 +20,7 @@ import {
 import { installPlugin, markPluginsWanted } from '../../app/plugins.js';
 import type { PluginInfo } from '../../app/state.js';
 import { useAppStore } from '../../store/store.js';
+import { PluginSettingsSection } from '../PluginSurfaces.js';
 import { Button } from '../Button.js';
 import { IconButton } from '../IconButton.js';
 
@@ -69,12 +70,24 @@ export function trustMessage(p: PluginInfo, onCancel: string): string {
   return (
     `${oneLine(p.name)} ${oneLine(p.version)}\n` +
     `From: ${from}\n` +
-    `Runs: ${(p.command || []).map(quoteArg).join(' ')}\n\n` +
+    runsLine(p) +
     'Plugins run with your full user privileges: they can read and change ' +
     'your files, run programs, use the network and drive your sessions. ' +
     'Only enable plugins you trust.\n\n' +
     `Enable it now? ${onCancel}`
   );
+}
+
+// What will run once enabled: the command, the in-app module, or both.
+// A UI-only plugin has no command, but its module runs inside Hive with
+// the same trust, so the prompt must say so rather than show an empty
+// "Runs:" line.
+function runsLine(p: PluginInfo): string {
+  const lines: string[] = [];
+  if (p.command?.length)
+    lines.push(`Runs: ${p.command.map(quoteArg).join(' ')}`);
+  if (p.ui) lines.push(`Runs inside the Hive app: ${quoteArg(p.ui.entry)}`);
+  return `${lines.join('\n')}\n\n`;
 }
 
 function trustTitle(p: PluginInfo): string {
@@ -96,6 +109,7 @@ export function PluginsPanel({
   onError: (msg: string) => void;
 }): ReactNode {
   const plugins = useAppStore((s) => s.plugins);
+  const pluginUI = useAppStore((s) => s.pluginUI);
   const [source, setSource] = useState('');
   const [busy, setBusy] = useState(false);
   const mounted = useRef(true);
@@ -240,45 +254,68 @@ export function PluginsPanel({
         </p>
       ) : (
         <ul id="settings-plugins-list" className="settings-plugin-list">
-          {plugins.map((p) => (
-            <li
-              key={p.id}
-              className="settings-plugin-row"
-              data-plugin-id={p.id}
-              data-status={p.enabled ? p.status : 'disabled'}
-            >
-              <span className="settings-plugin-dot" aria-hidden="true" />
-              <div className="settings-plugin-info">
-                <div className="settings-plugin-title">
-                  <span className="settings-plugin-name">{p.name}</span>
-                  <span className="settings-plugin-version">{p.version}</span>
+          {plugins.map((p) => {
+            // The in-app half failing is this plugin failing, whatever
+            // its process (if any) is doing.
+            const uiError =
+              p.enabled && pluginUI[p.id]?.status === 'failed'
+                ? pluginUI[p.id]?.error || 'failed'
+                : '';
+            return (
+              <li
+                key={p.id}
+                className="settings-plugin-row"
+                data-plugin-id={p.id}
+                data-status={
+                  uiError ? 'failed' : p.enabled ? p.status : 'disabled'
+                }
+              >
+                <span className="settings-plugin-dot" aria-hidden="true" />
+                <div className="settings-plugin-info">
+                  <div className="settings-plugin-title">
+                    <span className="settings-plugin-name">{p.name}</span>
+                    <span className="settings-plugin-version">{p.version}</span>
+                  </div>
+                  <div
+                    className="settings-plugin-source"
+                    title={oneLine(p.source)}
+                  >
+                    {oneLine(p.source)}
+                  </div>
+                  <div className="settings-plugin-status">{statusText(p)}</div>
+                  {uiError ? (
+                    <div className="settings-plugin-error" role="alert">
+                      Stopped in the app: {uiError}
+                    </div>
+                  ) : null}
                 </div>
-                <div
-                  className="settings-plugin-source"
-                  title={oneLine(p.source)}
-                >
-                  {oneLine(p.source)}
-                </div>
-                <div className="settings-plugin-status">{statusText(p)}</div>
-              </div>
-              <label className="settings-check">
-                <input
-                  type="checkbox"
-                  className="settings-plugin-enabled"
-                  checked={p.enabled}
-                  aria-label={`Enable ${p.name}`}
-                  onChange={(e) => void toggle(p, e.target.checked)}
+                {uiError ? (
+                  <Button
+                    label="Disable"
+                    className="settings-plugin-disable"
+                    onClick={() => void toggle(p, false)}
+                  />
+                ) : null}
+                <label className="settings-check">
+                  <input
+                    type="checkbox"
+                    className="settings-plugin-enabled"
+                    checked={p.enabled}
+                    aria-label={`Enable ${p.name}`}
+                    onChange={(e) => void toggle(p, e.target.checked)}
+                  />
+                  <span>Enabled</span>
+                </label>
+                <IconButton
+                  icon="x"
+                  label={`Remove ${p.name}`}
+                  className="settings-plugin-remove"
+                  onClick={() => void remove(p)}
                 />
-                <span>Enabled</span>
-              </label>
-              <IconButton
-                icon="x"
-                label={`Remove ${p.name}`}
-                className="settings-plugin-remove"
-                onClick={() => void remove(p)}
-              />
-            </li>
-          ))}
+                {p.enabled ? <PluginSettingsSection id={p.id} /> : null}
+              </li>
+            );
+          })}
         </ul>
       )}
     </>

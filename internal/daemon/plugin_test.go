@@ -451,7 +451,7 @@ func TestListenPlugin_RefusesOverlongPath(t *testing.T) {
 // Manager.
 func TestPluginVerbs_UnavailableWhenManagerFailedToLoad(t *testing.T) {
 	d := &Daemon{stop: make(chan struct{})}
-	for _, ft := range []wire.FrameType{wire.FrameListPlugins, wire.FrameInstallPlugin, wire.FrameSetPluginEnabled, wire.FrameRemovePlugin} {
+	for _, ft := range []wire.FrameType{wire.FrameListPlugins, wire.FrameInstallPlugin, wire.FrameSetPluginEnabled, wire.FrameRemovePlugin, wire.FrameSetPluginConfig} {
 		var code string
 		ops := controlOps{sendError: func(c, _ string) { code = c }}
 		d.handlePluginFrame(context.Background(), ops, ft, []byte(`{}`))
@@ -667,5 +667,53 @@ func TestPluginWait_DeadlineIncludesSlotQueue(t *testing.T) {
 	}
 	if d := time.Since(start); d > 350*time.Millisecond {
 		t.Fatalf("two queued waits took %s, want ≈200ms (one shared limit, not two)", d)
+	}
+}
+
+// writeUIPlugin writes a UI-only plugin dir: no process, just an entry.
+func writeUIPlugin(t *testing.T, id string) string {
+	t.Helper()
+	dir := t.TempDir()
+	man := plugin.Manifest{ID: id, Name: "UI " + id, APIVersion: plugin.APIVersion,
+		UI: &plugin.UIEntry{Entry: "ui.mjs"}}
+	b, _ := json.Marshal(man)
+	if err := os.WriteFile(filepath.Join(dir, plugin.ManifestFile), b, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	return dir
+}
+
+// SET_PLUGIN_CONFIG from one window reaches every control client, so all
+// windows render the same plugin settings.
+func TestSetPluginConfig_BroadcastsToAllControlClients(t *testing.T) {
+	skipOnWindows(t)
+	d := startTestDaemon(t)
+	a := pluginTestControl(t, d, "hivegui/a")
+	b := pluginTestControl(t, d, "hivegui/b")
+	_ = wire.WriteJSON(a, wire.FrameInstallPlugin, wire.InstallPluginReq{Source: writeUIPlugin(t, "notes")})
+	ev := awaitPluginEvent(t, b, func(ev wire.PluginEvent) bool { return ev.Kind == wire.PluginEventAdded })
+	if ev.Plugin.UI == nil || ev.Plugin.UI.Entry != "ui.mjs" {
+		t.Fatalf("added event carries no ui entry: %+v", ev.Plugin)
+	}
+	_ = wire.WriteJSON(a, wire.FrameSetPluginConfig, wire.SetPluginConfigReq{ID: "notes", Config: json.RawMessage(`{"badge":true}`)})
+	for name, c := range map[string]net.Conn{"a": a, "b": b} {
+		ev := awaitPluginEvent(t, c, func(ev wire.PluginEvent) bool { return ev.Plugin.Config != nil })
+		if string(ev.Plugin.Config) != `{"badge":true}` {
+			t.Fatalf("client %s: config %s", name, ev.Plugin.Config)
+		}
+	}
+	// A bad config is an ERROR to the sender, never a broadcast.
+	_ = wire.WriteJSON(a, wire.FrameSetPluginConfig, wire.SetPluginConfigReq{ID: "notes", Config: json.RawMessage(`[1]`)})
+	var e wire.Error
+	_ = json.Unmarshal(readControlFrame(t, a, wire.FrameError, 5*time.Second), &e)
+	if e.Code != "set_plugin_config_failed" {
+		t.Fatalf("bad config error code %q", e.Code)
+	}
+}
+
+// A plugin pays the fan-out cost for SET_PLUGIN_CONFIG: it broadcasts.
+func TestSetPluginConfig_FromPluginSocketCharged(t *testing.T) {
+	if got := plugin.FrameCost(wire.FrameSetPluginConfig); got != plugin.FrameCost(wire.FrameSetPluginEnabled) {
+		t.Fatalf("SET_PLUGIN_CONFIG cost %v, want the fan-out cost %v", got, plugin.FrameCost(wire.FrameSetPluginEnabled))
 	}
 }

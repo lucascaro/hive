@@ -154,6 +154,9 @@
   <!-- An agent's plan waiting on the user (#457). -->
   <div id="plan-review" class="hv-dialog hidden" role="dialog" aria-modal="true"
        aria-labelledby="plan-review-title"></div>
+  <!-- A UI plugin's session view (spec 471). -->
+  <div id="plugin-view" class="hv-dialog hidden" role="dialog" aria-modal="true"
+       aria-labelledby="plugin-view-title"></div>
   <!-- The sidebar's Help button. #help-overlay above is the ⌘/ shortcut
        list; this is the wider Help surface that hands off to it. -->
   <div id="help-modal" class="hv-dialog hidden" role="dialog" aria-modal="true"
@@ -179,6 +182,9 @@
        single view. Empty: components/activity/ActivityPanelHost.tsx
        portals the panel into it and un-hides it. -->
   <aside id="activity-panel" aria-label="Agent activity" hidden></aside>
+  <!-- A UI plugin's side panel (spec 471): the same third column,
+       exclusive with the inspector. components/PluginSurfaces.tsx. -->
+  <aside id="plugin-panel" aria-label="Plugin panel" hidden></aside>
   <!-- The single React root's container. It stays empty: components/App.tsx
        renders every region as a portal into the element that region already
        owns, so nothing is ever painted here. `hidden` is display:none, so

@@ -180,6 +180,10 @@ export interface PluginInfo {
   status: 'stopped' | 'running' | 'crashed' | 'failed' | 'refused' | string;
   status_detail?: string;
   restarts: number;
+  /** The manifest's app-side entry (spec 471), when the plugin has one. */
+  ui?: { entry: string; style?: string };
+  /** A UI plugin's stored settings (its ui-config.json). */
+  config?: Record<string, unknown>;
 }
 
 export interface PluginEvent {

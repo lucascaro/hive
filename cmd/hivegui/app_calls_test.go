@@ -191,6 +191,7 @@ func TestRPCsRequireAControlConnection(t *testing.T) {
 		"InstallPlugin":          func() error { return a.InstallPlugin("/tmp/p", "n1") },
 		"SetPluginEnabled":       func() error { return a.SetPluginEnabled("p", true) },
 		"RemovePlugin":           func() error { return a.RemovePlugin("p") },
+		"SetPluginConfig":        func() error { return a.SetPluginConfig("p", map[string]any{}) },
 	}
 	for name, call := range calls {
 		t.Run(name, func(t *testing.T) {
@@ -379,6 +380,7 @@ func TestPluginCalls(t *testing.T) {
 		{"SetPluginEnabled", func(a *App) error { return a.SetPluginEnabled("webhook", true) }, wire.FrameSetPluginEnabled, `{"id":"webhook","enabled":true}`},
 		{"SetPluginDisabled", func(a *App) error { return a.SetPluginEnabled("webhook", false) }, wire.FrameSetPluginEnabled, `{"id":"webhook","enabled":false}`},
 		{"RemovePlugin", func(a *App) error { return a.RemovePlugin("webhook") }, wire.FrameRemovePlugin, `{"id":"webhook"}`},
+		{"SetPluginConfig", func(a *App) error { return a.SetPluginConfig("notes", map[string]any{"badge": true}) }, wire.FrameSetPluginConfig, `{"id":"notes","config":{"badge":true}}`},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {

@@ -72,6 +72,7 @@ import {
 import { closeHelp, handOffToShortcuts } from './modals/help.js';
 import { closeWhatsNew } from './modals/whats-new.js';
 import { deferPlanReview } from './modals/plan-review.js';
+import { closeSessionView, dispatchPluginChord } from './plugin-host.js';
 import { closeBuildLog } from './modals/build-log.js';
 import { activityKey, isHelpOverlayKey, navHistoryKey } from '../lib/keymap.js';
 import {
@@ -369,6 +370,19 @@ window.addEventListener(
       }
       return;
     }
+    if (isModalOpen('plugin-view')) {
+      // A UI plugin's session view (spec 471) owns the keyboard like
+      // every other dialog. Escape dismisses it; the plugin's own
+      // controls answer anything else.
+      if (e.key === 'Escape') {
+        e.preventDefault();
+        e.stopPropagation();
+        closeSessionView('dismissed');
+      } else if (trapFocus(pageEl('plugin-view'), e)) {
+        e.stopPropagation();
+      }
+      return;
+    }
     if (isModalOpen('build-log')) {
       // Same gate as What's New, for the same reasons.
       if (e.key === 'Escape') {
@@ -634,6 +648,10 @@ window.addEventListener(
     } else if (e.key === ']') {
       swallow();
       shiftActiveProject(+1);
+    } else if (dispatchPluginChord(e)) {
+      // Last on purpose: every core binding above has already had the
+      // key, so a plugin can never take one (spec 471).
+      swallow();
     }
   },
   true,
@@ -1107,7 +1125,8 @@ function ideaKeysBlocked(): boolean {
     isModalOpen('help-modal') ||
     isModalOpen('whats-new') ||
     isModalOpen('build-log') ||
-    isModalOpen('plan-review')
+    isModalOpen('plan-review') ||
+    isModalOpen('plugin-view')
   );
 }
 

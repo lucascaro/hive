@@ -1,4 +1,5 @@
 import { defineConfig } from 'vite';
+import fs from 'node:fs';
 import path from 'node:path';
 
 // Wails bridge substitution for tests:
@@ -19,8 +20,55 @@ const substitute = useReal
     ? path.resolve(__dirname, 'test/e2e/wails-mock.ts')
     : null;
 
+// Mock mode only: serve UI plugin files at /plugins/<id>/…, which is
+// what the app's asset server Handler does from the state dir (spec
+// 471). Test fixtures (test/fixtures/plugins) first, then the repo's own
+// plugins/. Read-only, and a path must stay inside its plugin dir.
+const pluginRoots = [
+  path.resolve(__dirname, 'test/fixtures/plugins'),
+  path.resolve(__dirname, '../../../plugins'),
+];
+const pluginTypes = {
+  '.js': 'text/javascript',
+  '.mjs': 'text/javascript',
+  '.css': 'text/css',
+  '.json': 'application/json',
+};
+function mockPluginAssets() {
+  return {
+    name: 'hive-mock-plugin-assets',
+    configureServer(server) {
+      server.middlewares.use('/plugins/', (req, res, next) => {
+        const rel = decodeURIComponent((req.url || '').split('?')[0]).replace(
+          /^\/+/,
+          '',
+        );
+        const [id, ...rest] = rel.split('/');
+        if (!/^[a-z0-9][a-z0-9-]{0,62}$/.test(id) || rest.length === 0)
+          return next();
+        for (const root of pluginRoots) {
+          const dir = path.join(root, id);
+          const file = path.resolve(dir, rest.join('/'));
+          if (!file.startsWith(dir + path.sep)) return next();
+          if (fs.existsSync(file) && fs.statSync(file).isFile()) {
+            res.setHeader(
+              'Content-Type',
+              pluginTypes[path.extname(file)] || 'application/octet-stream',
+            );
+            res.setHeader('Cache-Control', 'no-store');
+            fs.createReadStream(file).pipe(res);
+            return;
+          }
+        }
+        next();
+      });
+    },
+  };
+}
+
 export default defineConfig({
   plugins: [
+    ...(useMock ? [mockPluginAssets()] : []),
     {
       name: 'hive-wails-substitute',
       enforce: 'pre',
