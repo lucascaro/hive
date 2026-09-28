@@ -1,11 +1,12 @@
 ---
 issue: 379
-pr: null
+pr: 469
+shipped: 2026-09-27
 title: "Session exit is never detected on Linux"
 type: bug
 complexity: S
 priority: P1
-stage: TRIAGE
+stage: DONE
 ---
 
 # Session exit is never detected on Linux
@@ -73,6 +74,18 @@ Every existing test that ends a session calls `Kill`, which closes the
 PTY from our side — that *does* make the read fail, so the exit path
 runs and the tests pass. Nothing covers a child exiting by itself,
 which is the ordinary way a user ends an agent session.
+
+## Resolution
+
+Fixed on `main` by #402 before this spec was worked, as a side effect of
+the Windows child-exit fix: `Session.reapChild` calls `cmd.Wait()`, gives
+`readLoop` a 250 ms drain grace, then closes the PTY, which fails the
+master read and closes `done`. `readLoop` remains the only closer of
+`done`. Measured on `golang:1.27.1` (Linux): with the reaper removed, a
+self-exiting session is never seen; with it, it is seen in ~0.26 s. The
+work under this spec adds the registry-level regression test
+(`TestSessionExitingOnItsOwnIsSeen`) that was missing, and stops
+`readLoop` logging the Linux exit's EIO as a PTY read error.
 
 ## Desired behavior
 

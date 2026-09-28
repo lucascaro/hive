@@ -11,6 +11,7 @@ import (
 	"runtime"
 	"strings"
 	"sync"
+	"syscall"
 	"time"
 
 	"github.com/aymanbagabas/go-pty"
@@ -301,9 +302,10 @@ func (s *Session) readLoop() {
 			// event seen from the other side: reapChild (or Close)
 			// closed the PTY under us, which is now the ordinary way a
 			// Windows session ends, since conhost's output pipe never
-			// reports EOF on its own. Neither is worth a log line per
-			// session exit; anything else still is.
-			if !errors.Is(err, io.EOF) && !errors.Is(err, os.ErrClosed) {
+			// reports EOF on its own. EIO is how a Linux master reports
+			// the same close once the slave side is gone. None of them is
+			// worth a log line per session exit; anything else still is.
+			if !errors.Is(err, io.EOF) && !errors.Is(err, os.ErrClosed) && !errors.Is(err, syscall.EIO) {
 				log.Printf("session %s: pty read: %v", s.ID, err)
 			}
 			s.fanoutClose()
