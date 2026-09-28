@@ -2,7 +2,7 @@
 
 - **Spec:** [docs/product-specs/379-session-exit-undetected-on-linux.md](../../product-specs/379-session-exit-undetected-on-linux.md)
 - **Issue:** #379
-- **Status:** active
+- **Status:** completed
 - **PR:** #469
 - **Branch:** feature/379-session-exit-undetected-on-linux
 
@@ -138,3 +138,11 @@ plus spec note, `daemon-contract-override` label).
 
 - **2026-09-27 iter 1** — verdict: APPROVE; mergeable: MERGEABLE; findings_hash: empty; threads_open: 0; action: stop; head_sha: 0abf6e9.
 - **2026-09-27 iter 2** — verdict: APPROVE; mergeable: MERGEABLE; findings_hash: empty; threads_open: 0; action: stop; head_sha: 9bf88f0.
+
+## Gate verdict
+
+- **2026-09-27** — verdict: PASS; phase: —; checks: 3 passed / 0 failed / 0 followups; followups: none; one-line: registry self-exit test passes on Linux and is mutation-proven; done single-closer by construction; Windows session-layer test passes on CI.
+  - 2026-09-27 dimensions:
+    - acceptance — PASS — Linux docker 3x pass; reaper removed → 10s timeout; readLoop sole closer of done; Windows internal/session ok on main CI
+    - non-goals — PASS — 3 files (1 _test.go, 2 docs); no internal/session, wire or client change
+    - doc accuracy — PASS — all file:line refs verified; check-changeset exempt; no stale Linux-exit claims

@@ -1,11 +1,12 @@
 ---
 issue: 379
 pr: 469
+shipped: 2026-09-27
 title: "Session exit is never detected on Linux"
 type: bug
 complexity: S
 priority: P1
-stage: GATE
+stage: DONE
 ---
 
 # Session exit is never detected on Linux
