@@ -129,6 +129,11 @@ plus spec note, `daemon-contract-override` label).
 ## Progress
 
 - **2026-09-27** — Research: bug already fixed by #402; registry regression test drafted and mutation-verified on Linux.
+- **2026-09-27** — PR #469 opened.
+- **2026-09-27** — Review nits applied: test uses `r.Create` directly (no liveSession sess==nil window for an instant-exit child).
 
 ## Open questions
-- **2026-09-27** — PR #469 opened.
+
+## PR convergence ledger
+
+- **2026-09-27 iter 1** — verdict: APPROVE; mergeable: MERGEABLE; findings_hash: empty; threads_open: 0; action: stop; head_sha: 0abf6e9.

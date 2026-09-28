@@ -1,6 +1,7 @@
 package registry
 
 import (
+	"context"
 	"testing"
 
 	"github.com/lucascaro/hive/internal/wire"
@@ -12,10 +13,18 @@ import (
 // fails the PTY read directly and so could not see #379: on Linux the
 // master read never fails after the child exits, and only the session
 // package's reaper turns the exit into Done(). No Close, no Kill here.
+//
+// r.Create, not liveSession: `true` may already be reaped by the time
+// liveSession looks, and it treats that as a failure.
 func TestSessionExitingOnItsOwnIsSeen(t *testing.T) {
 	skipOnWindows(t)
 	r := freshRegistry(t)
-	e, _ := liveSession(t, r, wire.CreateSpec{Name: "self-exit", Shell: "/bin/sh", Cmd: []string{"true"}})
+	e, err := r.Create(context.Background(), wire.CreateSpec{
+		Name: "self-exit", Shell: "/bin/sh", Cmd: []string{"true"}, Cols: 80, Rows: 24,
+	})
+	if err != nil {
+		t.Fatalf("Create: %v", err)
+	}
 
 	waitFor(t, "the self-exited session to be seen", func() bool {
 		r.mu.Lock()
