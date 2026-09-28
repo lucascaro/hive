@@ -137,3 +137,4 @@ plus spec note, `daemon-contract-override` label).
 ## PR convergence ledger
 
 - **2026-09-27 iter 1** — verdict: APPROVE; mergeable: MERGEABLE; findings_hash: empty; threads_open: 0; action: stop; head_sha: 0abf6e9.
+- **2026-09-27 iter 2** — verdict: APPROVE; mergeable: MERGEABLE; findings_hash: empty; threads_open: 0; action: stop; head_sha: 9bf88f0.

@@ -5,7 +5,7 @@ title: "Session exit is never detected on Linux"
 type: bug
 complexity: S
 priority: P1
-stage: REVIEW
+stage: GATE
 ---
 
 # Session exit is never detected on Linux
