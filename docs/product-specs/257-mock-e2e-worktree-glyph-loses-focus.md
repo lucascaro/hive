@@ -1,10 +1,12 @@
 ---
 issue: null
+pr: 308
+shipped: 2026-09-01
 title: "Sidebar and grid repaints silently drop keyboard focus"
 type: bug
 complexity: S
 priority: P1
-stage: REVIEW
+stage: DONE
 ---
 
 # Sidebar and grid repaints silently drop keyboard focus
@@ -138,6 +140,34 @@ handlers now capture only the id and look the session up at call time.
 
 Worth remembering for any future move away from rebuild-everything rendering:
 the rebuild is load-bearing in more places than the DOM.
+
+## Resolution
+
+Closed 2026-09-28 on CI evidence. The CI sign-off this spec waited for came
+later, and not from #308 alone.
+
+- **Shipped in PR #308** (merged 2026-09-01), whose title names spec 245. That
+  is why no PR appears under this spec's number. #308 carried the whole fix
+  described above: `lib/preserve-focus.ts`, the `updateSidebarRows` patch
+  path, the grid reorder guard, `test/dom/sidebar-focus.test.ts`,
+  `test/dom/grid-reorder-focus.test.ts` and
+  `.changesets/257-sidebar-grid-focus-loss.md`.
+- **CI did not confirm #308.** `worktrees.spec.ts:247` (the glyph test) still
+  failed first-attempt on `main` four times after it merged: runs
+  33464254304 (#308's own merge `97dfe7af`, Linux), 33530793047 (`9e337edd`,
+  macOS), 33596125909 (`53bf6e2a`, macOS) and 33845429310 (`c1bc2930`,
+  Linux). 245's caution was right to apply here too.
+- **The sidebar half was then superseded** by the React sidebar (#317,
+  2026-09-02) and the single React root (#324, 2026-09-03). React updates
+  rows in place instead of rebuilding them, so `updateSidebarRows` no longer
+  exists. The grid half of #308 is still live: `preserveFocus` in
+  `app/grid-layout.ts`. The regression cover survives as
+  `test/dom/sidebar-focus.test.tsx` and `test/dom/grid-reorder-focus.test.ts`.
+- **CI sign-off:** since 2026-09-04, 103 `main` CI runs have finished (89
+  success, 14 failure), and none of those failures is the glyph test or
+  `focus-invariants.spec.ts` F2. No commit in that window targets this bug,
+  so the most likely cause of the stop is the React migration, together with
+  #308's grid fix.
 
 ## Desired behavior
 
