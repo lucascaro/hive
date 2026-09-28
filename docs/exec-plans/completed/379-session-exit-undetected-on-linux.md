@@ -12,6 +12,8 @@ The bug the spec describes is already fixed on `main`, as a side effect of
 PR #402 (the Windows child-exit fix). What is missing is the registry-level
 regression test the spec's first success criterion asks for: a session whose
 child exits on its own, observed through the registry, running on Linux.
+Added after the first gate at operator request: `readLoop` stops logging the
+Linux exit's EIO as a PTY read error.
 
 ## Research
 
@@ -76,7 +78,8 @@ child exits on its own, observed through the registry, running on Linux.
 
 ## Approach
 
-No production code change: `reapChild` (#402) already closes the PTY after
+No production code change for the exit fix itself (the one production edit,
+the EIO log filter, is a later addition; see the Decision log): `reapChild` (#402) already closes the PTY after
 the child exits, which ends `readLoop` and closes `Done()` on Linux. The work
 is the regression guard the spec asks for, at the registry layer where the
 user-visible consequences (`alive`, `exited`) live. Chosen over a new
@@ -140,6 +143,7 @@ plus spec note, `daemon-contract-override` label).
 - **2026-09-27 iter 1** — verdict: APPROVE; mergeable: MERGEABLE; findings_hash: empty; threads_open: 0; action: stop; head_sha: 0abf6e9.
 - **2026-09-27 iter 2** — verdict: APPROVE; mergeable: MERGEABLE; findings_hash: empty; threads_open: 0; action: stop; head_sha: 9bf88f0.
 - **2026-09-27 iter 3** — verdict: COMMENT; mergeable: MERGEABLE; findings_hash: 7947e8ff8cddda41a698bf8a47143d6f655ee1a96bce366a85ecbe722d66abbb; threads_open: 1; action: escalated:risky-fix-needs-human-decision; head_sha: 14037ec.
+- **2026-09-27 iter 4** — verdict: APPROVE; mergeable: MERGEABLE; findings_hash: empty; threads_open: 0; action: stop; head_sha: d935f3d.
 
 ## Gate verdict
 
