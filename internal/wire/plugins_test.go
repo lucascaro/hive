@@ -117,7 +117,7 @@ func resolveFrame(goName string, byValue map[string]FrameType) (FrameType, bool)
 
 func TestPluginPayloadsSnakeCase(t *testing.T) {
 	b, err := json.Marshal(PluginEvent{Kind: PluginEventAdded, Nonce: "n1", Plugin: PluginInfo{
-		ID: "webhook", APIVersion: "0.1", StatusDetail: "x", Command: []string{"node"},
+		ID: "webhook", APIVersion: "0.2", StatusDetail: "x", Command: []string{"node"},
 	}})
 	if err != nil {
 		t.Fatal(err)

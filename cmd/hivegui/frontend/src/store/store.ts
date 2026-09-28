@@ -50,6 +50,7 @@ import type {
 import { termsMap } from './terms.js';
 import type { WorktreesPayload } from '../lib/worktrees.js';
 import type { ChoiceSpec } from '../app/modals/choice-dialog.js';
+import type { PluginUIState } from '../lib/plugin-api.js';
 
 // Sidebar width bounds. 220 is the design system's sidebar floor
 // (docs/design-docs/ui/tokens.md › Spacing); a stored width below it is
@@ -130,10 +131,22 @@ export interface AppData {
   // fans out single-idea events that a map would have to find the right
   // bucket for anyway.
   ideas: IdeaInfo[];
-  // Every installed plugin, sorted by id. Empty until the Plugins tab
-  // asks (ListPlugins, once per Settings open); PLUGIN_EVENT keeps it
-  // current in between.
+  // Every installed plugin, sorted by id. Listed once per control
+  // connection (boot and reconnect, main.tsx / events.ts); PLUGIN_EVENT
+  // keeps it current in between.
   plugins: PluginInfo[];
+  // Each UI plugin this window has loaded (app/plugin-host.ts), by id:
+  // loading, active with the contributions its activate() returned, or
+  // failed with the reason. Absent for every plugin the host has not
+  // tried — which, with no UI plugin enabled, is all of them.
+  pluginUI: Readonly<Record<string, PluginUIState>>;
+  // The plugin whose side panel is open beside the terminal, or null.
+  // Shares the inspector's column, so opening one closes the other.
+  pluginPanel: string | null;
+  // A UI plugin's settings as it last wrote them, until the daemon's
+  // PLUGIN_EVENT echoes that value back. What hive.settings reads, so a
+  // controlled checkbox does not snap back for a round trip.
+  pluginConfigOverlay: Readonly<Record<string, Record<string, unknown>>>;
   // agent id -> the agent's own colour (internal/agent/agent.go Def.Color,
   // and custom.go for user-defined agents). Filled once at boot from
   // ListAgents(); empty until then, and an agent missing from it renders
@@ -162,7 +175,8 @@ export type ModalId =
   | 'help-modal'
   | 'whats-new'
   | 'build-log'
-  | 'plan-review';
+  | 'plan-review'
+  | 'plugin-view';
 
 // `seq` is the opening's generation, minted by openModal. A component
 // keys its per-open state off it (`key={entry.seq}`), which is what makes
@@ -195,6 +209,14 @@ export type ModalEntry =
   // An agent's plan waiting on the user (#457). The plan text is carried
   // because it was fetched once for this review; reviewId is what the
   // answer echoes so a superseded plan can never be approved.
+  // A UI plugin's session view (app/plugin-host.ts openSessionView).
+  | {
+      id: 'plugin-view';
+      seq: number;
+      pluginId: string;
+      sessionId: string;
+      props: unknown;
+    }
   | {
       id: 'plan-review';
       seq: number;
@@ -486,6 +508,9 @@ function initialData(): AppData {
     sidebarWidth: loadSavedSidebarWidth(),
     activityPanel: readStorage(ACTIVITY_PANEL_STORAGE_KEY) === '1',
     activityGrid: false,
+    pluginUI: {},
+    pluginPanel: null,
+    pluginConfigOverlay: {},
     // index.html paints "connecting…" into #status-text before any
     // script runs; StatusBar must not blank it on mount.
     status: { text: 'connecting…', isError: false },
@@ -1027,7 +1052,35 @@ export function setSidebarWidth(w: number): void {
 
 export function setActivityPanel(open: boolean): void {
   writeStorage(ACTIVITY_PANEL_STORAGE_KEY, open ? '1' : '0');
-  set({ activityPanel: open });
+  // One column beside the terminal: the inspector displaces a plugin's
+  // panel, and setPluginPanel does the reverse.
+  set(
+    open
+      ? { activityPanel: true, pluginPanel: null }
+      : { activityPanel: false },
+  );
+}
+
+export function setPluginPanel(id: string | null): void {
+  if (id !== null && get().activityPanel) setActivityPanel(false);
+  set({ pluginPanel: id });
+}
+
+export function setPluginConfigOverlay(
+  id: string,
+  v: Record<string, unknown> | null,
+): void {
+  const next = { ...get().pluginConfigOverlay };
+  if (v) next[id] = v;
+  else delete next[id];
+  set({ pluginConfigOverlay: next });
+}
+
+export function setPluginUI(id: string, st: PluginUIState | null): void {
+  const next = { ...get().pluginUI };
+  if (st) next[id] = st;
+  else delete next[id];
+  set({ pluginUI: next });
 }
 
 export function setActivityGrid(on: boolean): void {

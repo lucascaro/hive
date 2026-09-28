@@ -1,0 +1,7 @@
+{
+  "id": "ui-throws",
+  "name": "Fixture ui-throws",
+  "version": "0.0.1",
+  "api_version": "0.2",
+  "ui": { "entry": "ui.mjs" }
+}

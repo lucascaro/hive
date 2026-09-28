@@ -40,7 +40,8 @@ func FrameCost(ft wire.FrameType) float64 {
 		wire.FrameRenameWorktree, wire.FrameSetWorktreeLabel,
 		wire.FrameAddIdea, wire.FrameUpdateIdea, wire.FrameRemoveIdea,
 		wire.FrameResolvePrompt, wire.FrameResolveWorktreeChoice, wire.FrameResolvePlanReview,
-		wire.FrameClientCommand, wire.FrameSetPluginEnabled, wire.FrameRemovePlugin:
+		wire.FrameClientCommand, wire.FrameSetPluginEnabled, wire.FrameRemovePlugin,
+		wire.FrameSetPluginConfig:
 		return costFanout
 	default:
 		return costCheap

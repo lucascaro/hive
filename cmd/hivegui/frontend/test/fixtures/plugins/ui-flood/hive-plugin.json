@@ -1,0 +1,7 @@
+{
+  "id": "ui-flood",
+  "name": "Fixture ui-flood",
+  "version": "0.0.1",
+  "api_version": "0.2",
+  "ui": { "entry": "ui.mjs" }
+}

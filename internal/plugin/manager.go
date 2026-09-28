@@ -1,7 +1,9 @@
 package plugin
 
 import (
+	"bytes"
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"log"
@@ -76,7 +78,10 @@ type entry struct {
 	status   string
 	detail   string
 	restarts int
-	run      *runner // non-nil while a supervising goroutine exists
+	// config is a UI plugin's ui-config.json, cached so infoLocked never
+	// reads the disk under m.mu. Nil for headless plugins.
+	config json.RawMessage
+	run    *runner // non-nil while a supervising goroutine exists
 	// op serializes SetEnabled and Remove on this plugin. Both drop m.mu
 	// while they wait for a runner to stop, and without op a second call
 	// could slip into that window: an enable that starts a runner Remove
@@ -122,6 +127,7 @@ func New(cfg Config) (*Manager, error) {
 		if e.manErr != nil {
 			e.status, e.detail = wire.PluginRefused, e.manErr.Error()
 		}
+		e.config = m.loadUIConfig(e)
 		m.plugins[r.ID] = e
 		m.order = append(m.order, r.ID)
 	}
@@ -219,6 +225,10 @@ func (m *Manager) infoLocked(e *entry) wire.PluginInfo {
 	}
 	if e.man.Main != nil {
 		info.Command = e.man.Main.Command
+	}
+	if e.man.UI != nil {
+		info.UI = &wire.PluginUI{Entry: e.man.UI.Entry, Style: e.man.UI.Style}
+		info.Config = e.config
 	}
 	if info.Name == "" {
 		info.Name = e.rec.ID
@@ -342,6 +352,7 @@ func (m *Manager) Install(ctx context.Context, source, nonce string) (wire.Plugi
 	if manErr != nil {
 		e.status, e.detail = wire.PluginRefused, manErr.Error()
 	}
+	e.config = m.loadUIConfig(e)
 	m.plugins[man.ID] = e
 	m.order = append(m.order, man.ID)
 	if err := m.saveLocked(); err != nil {
@@ -495,6 +506,12 @@ func (m *Manager) stopRunner(r *runner) {
 }
 
 func (m *Manager) startLocked(e *entry) {
+	// A UI-only plugin has no process: the Hive app runs its module, so
+	// enabling it is the whole of "running".
+	if e.man.Main == nil && e.manErr == nil {
+		e.status, e.detail = wire.PluginRunning, ""
+		return
+	}
 	r := &runner{stop: make(chan struct{}), done: make(chan struct{})}
 	e.run = r
 	m.runners.Add(1)
@@ -593,6 +610,9 @@ func (m *Manager) spawn(e *entry) (*exec.Cmd, func(), error) {
 	if err != nil {
 		return nil, nil, err
 	}
+	if man.Main == nil {
+		return nil, nil, errors.New(`plugin has no "main" command to run`)
+	}
 	argv := man.Main.Command
 	bin, err := resolveCommand(dir, argv[0])
 	if err != nil {
@@ -663,6 +683,76 @@ func pluginEnv(base []string, add ...string) []string {
 		out = append(out, kv)
 	}
 	return append(out, add...)
+}
+
+// uiConfigFile is a UI plugin's settings, written only by SetConfig. It
+// is deliberately not config.json: headless plugins own that file (the
+// webhook's URL lives there, often with a token in it), and Hive never
+// reads, sends or overwrites it.
+const uiConfigFile = "ui-config.json"
+
+// ErrNoUI is returned by SetConfig for a plugin without a "ui" entry.
+var ErrNoUI = errors.New("plugin: has no ui entry, so it has no app settings")
+
+// loadUIConfig reads e's ui-config.json. A missing, oversize or invalid
+// file reads as no config: it was not written by SetConfig, and the
+// plugin's UI starts from its defaults rather than failing the list.
+func (m *Manager) loadUIConfig(e *entry) json.RawMessage {
+	if e.man.UI == nil {
+		return nil
+	}
+	b, err := os.ReadFile(filepath.Join(m.DataPath(e.rec.ID), uiConfigFile))
+	if err != nil {
+		return nil
+	}
+	if err := checkUIConfig(b); err != nil {
+		log.Printf("plugin %s: ignoring %s: %v", e.rec.ID, uiConfigFile, err)
+		return nil
+	}
+	return b
+}
+
+func checkUIConfig(b []byte) error {
+	if len(b) > wire.MaxPluginConfig {
+		return fmt.Errorf("config is %d bytes, the limit is %d", len(b), wire.MaxPluginConfig)
+	}
+	var obj map[string]json.RawMessage
+	if err := json.Unmarshal(b, &obj); err != nil || obj == nil {
+		return errors.New("config must be a JSON object")
+	}
+	return nil
+}
+
+// SetConfig stores a UI plugin's settings in its data dir and fans the
+// new value out to every client, so each open window stays in step.
+func (m *Manager) SetConfig(id string, raw json.RawMessage) (wire.PluginInfo, error) {
+	if err := checkUIConfig(raw); err != nil {
+		return wire.PluginInfo{}, fmt.Errorf("plugin: %w", err)
+	}
+	var buf bytes.Buffer
+	if err := json.Compact(&buf, raw); err != nil {
+		return wire.PluginInfo{}, err
+	}
+	e, err := m.lockOp(id)
+	if err != nil {
+		return wire.PluginInfo{}, err
+	}
+	defer e.op.Unlock()
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if e.man.UI == nil {
+		return wire.PluginInfo{}, ErrNoUI
+	}
+	data := m.DataPath(id)
+	if err := os.MkdirAll(data, 0o700); err != nil {
+		return wire.PluginInfo{}, err
+	}
+	if err := writeFileAtomic(data, uiConfigFile, buf.Bytes()); err != nil {
+		return wire.PluginInfo{}, err
+	}
+	e.config = buf.Bytes()
+	m.emitLocked(wire.PluginEventUpdated, e, "")
+	return m.infoLocked(e), nil
 }
 
 // Pressure is how full the fullest PLUGIN_EVENT listener is, 0 to 1; see

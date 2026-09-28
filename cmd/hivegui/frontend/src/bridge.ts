@@ -47,6 +47,8 @@ export {
   InstallPlugin,
   SetPluginEnabled,
   RemovePlugin,
+  SetPluginConfig,
+  PluginAssetBase,
   ResolvePrompt,
   ResolveWorktreeChoice,
   GetPlanReview,

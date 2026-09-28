@@ -18,6 +18,7 @@ import {
 import {
   dropPlugin,
   resetStore,
+  setPluginUI,
   setPlugins,
   upsertPlugin,
 } from '../../src/store/store.js';
@@ -31,7 +32,7 @@ function plugin(over: Partial<PluginInfo> = {}): PluginInfo {
     id: 'webhook',
     name: 'Webhook',
     version: '0.1.0',
-    api_version: '0.1',
+    api_version: '0.2',
     source: '/src/webhook',
     command: ['node', 'main.mjs'],
     enabled: false,
@@ -418,5 +419,71 @@ describe('installPlugin correlation', () => {
     } finally {
       vi.useRealTimers();
     }
+  });
+});
+
+describe('UI plugins in Settings (spec 471)', () => {
+  const uiOnly = () =>
+    plugin({
+      id: 'notes',
+      name: 'Notes',
+      command: [],
+      ui: { entry: 'ui.mjs' },
+      enabled: true,
+      status: 'running',
+    });
+
+  it('the trust prompt says a UI plugin runs inside the app', () => {
+    const msg = trustMessage(uiOnly(), 'Cancel leaves it off.');
+    expect(msg).toContain('Runs inside the Hive app: ui.mjs');
+    expect(msg).not.toMatch(/^Runs: $/m);
+    const both = trustMessage(
+      plugin({ ui: { entry: 'ui.mjs' } }),
+      'Cancel leaves it off.',
+    );
+    expect(both).toContain('Runs: node main.mjs');
+    expect(both).toContain('Runs inside the Hive app: ui.mjs');
+  });
+
+  it('shows a plugin whose app side failed, with Disable', () => {
+    setPlugins([uiOnly()]);
+    setPluginUI('notes', { status: 'failed', error: 'render boom' });
+    const { container } = mount();
+    const row = container.querySelector('[data-plugin-id="notes"]');
+    expect(row?.getAttribute('data-status')).toBe('failed');
+    expect(row?.querySelector('.settings-plugin-error')?.textContent).toContain(
+      'render boom',
+    );
+    fireEvent.click(row?.querySelector('.settings-plugin-disable') as Element);
+    expect(bridge.SetPluginEnabled).toHaveBeenCalledWith('notes', false);
+    expect(bridge.Confirm).not.toHaveBeenCalled();
+  });
+
+  it("renders an active plugin's settings section and contains its throw", () => {
+    vi.spyOn(console, 'error').mockImplementation(() => {});
+    vi.spyOn(console, 'warn').mockImplementation(() => {});
+    setPlugins([uiOnly(), plugin({ id: 'other', name: 'Other' })]);
+    setPluginUI('notes', {
+      status: 'active',
+      contrib: { settings: () => <span id="notes-opt">Show badge</span> },
+    });
+    const { container } = mount();
+    expect(container.querySelector('#notes-opt')?.textContent).toBe(
+      'Show badge',
+    );
+    act(() =>
+      setPluginUI('notes', {
+        status: 'active',
+        contrib: {
+          settings: () => {
+            throw new Error('section boom');
+          },
+        },
+      }),
+    );
+    // The rest of the tab is still there.
+    expect(container.querySelector('#settings-plugin-source')).not.toBeNull();
+    expect(container.querySelector('[data-plugin-id="other"]')).not.toBeNull();
+    vi.restoreAllMocks();
   });
 });

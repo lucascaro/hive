@@ -14,6 +14,12 @@
 //      in app/keyboard.ts)
 //   5. the user-facing shortcut table in README.md
 //
+// UI plugins add chords at runtime (spec 471, app/plugin-host.ts). They
+// are not in this file: the host appends them to the palette and to a
+// "Plugins" group in the overlay, and refuses any whose label appears
+// here — so a new core binding is automatically protected from plugins
+// once it is listed below.
+//
 // Pure module: no DOM, unit-testable.
 
 export interface Shortcut {

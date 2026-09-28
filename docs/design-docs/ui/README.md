@@ -38,12 +38,13 @@ As of v2.4.0 `style.css` was 2159 lines with one custom property, 51 distinct he
 | Iconography | geometric dots / SVG line set / mono glyphs | **SVG line set** for everything; **geometric shapes** for states | [state-icons.html](mocks/state-icons.html) |
 | Enforcement | docs / docs+lint / docs+lint+components | **Docs + lint + component layer** | — |
 | Settings layout (2026-09-03) | one scroll with Updates pinned / tabbed sections / left rail | **Tabbed sections** — `Tabs` primitive, panels all mounted with the inactive ones `display: none` | — (no mock; one sane layout) |
+| Plugin surfaces (2026-09-28, spec 471) | plugin-owned markup everywhere / descriptors everywhere / mixed | **Mixed.** Badges and the session banner are *descriptors* the app renders (`hv-plugin-badge`, `hv-plugin-banner`), so the sidebar and the bar keep one look whatever is installed. The modal, panel and Settings section are plugin components inside app chrome (`ModalShell`, `hv-plugin-panel`), because their bodies are the plugin's whole point. Plugin CSS must use these tokens; `ui-lint.sh` checks the repo's own plugins | — |
 
 ## How to change the UI from now on
 
 1. Read `components.md` for the primitive you're touching. If none fits, add one — don't hand-roll markup in a feature component. Primitives are React components under `src/components/` (`Button`, `Banner`, `Chip`, `Icon`, `IconButton`, `Kbd`, `SessionRow`, `ProjectCard`); the imperative `src/ui/*` versions were deleted with the React rewrite and its tile-chrome follow-up.
 2. Use tokens. If a token is missing, add it to `tokens.md` *and* `tokens.css` in the same PR, with a role name (not a colour name).
 3. Need an icon? Add it to the sprite per `icons.md`. Never paste a Unicode symbol.
-4. Run `scripts/ui-lint.sh` locally; CI runs it too.
+4. Run `scripts/ui-lint.sh` locally; CI runs it too. It also covers the CSS of the plugins in `plugins/`, which is loaded into the app.
 5. For anything with a visual choice, put a mock in `mocks/` and record the decision in this README's table.
 6. The `hv-*` class names and data attributes are the contract between the components, the CSS and the Playwright specs. Renaming one is an API change: it breaks selectors in `test/e2e/` that were deliberately written without `data-testid`. See [FRONTEND.md](../../../FRONTEND.md).

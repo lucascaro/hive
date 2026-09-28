@@ -224,6 +224,9 @@ const (
 	FrameSetPluginEnabled FrameType = 0x3a // C → S, JSON, control
 	FrameRemovePlugin     FrameType = 0x3b // C → S, JSON, control
 	FramePluginEvent      FrameType = 0x3c // S → C, JSON, control
+	// SET_PLUGIN_CONFIG stores a UI plugin's settings (its ui-config.json)
+	// and fans out as PLUGIN_EVENT (updated) carrying the new config.
+	FrameSetPluginConfig FrameType = 0x3d // C → S, JSON, control
 )
 
 // ControlRequestFrames lists every frame a control-mode client may send.
@@ -243,6 +246,7 @@ var ControlRequestFrames = []FrameType{
 	FrameGetPlanReview, FrameResolvePlanReview,
 	FrameClientCommand, FrameShutdown,
 	FrameListPlugins, FrameInstallPlugin, FrameSetPluginEnabled, FrameRemovePlugin,
+	FrameSetPluginConfig,
 }
 
 // ControlEventFrames lists every frame the daemon sends on a control
@@ -386,6 +390,8 @@ func (t FrameType) String() string {
 		return "REMOVE_PLUGIN"
 	case FramePluginEvent:
 		return "PLUGIN_EVENT"
+	case FrameSetPluginConfig:
+		return "SET_PLUGIN_CONFIG"
 	default:
 		return fmt.Sprintf("UNKNOWN(0x%02x)", byte(t))
 	}

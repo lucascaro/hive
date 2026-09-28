@@ -11,7 +11,7 @@
 import { describe, it, expect, vi, beforeAll, beforeEach } from 'vitest';
 import type { Mock } from 'vitest';
 import { act, fireEvent, render } from '@testing-library/react';
-import { resetStore } from '../../src/store/store.js';
+import { resetStore, setPluginUI, setPlugins } from '../../src/store/store.js';
 // Type-only: erased, so the generated module is never resolved at runtime.
 import type { main } from '../../wailsjs/go/models';
 
@@ -976,6 +976,49 @@ describe('enter confirms', () => {
       expect.any(String),
     );
     expect(document.getElementById('settings')!.classList).not.toContain(
+      'hidden',
+    );
+  });
+
+  // A UI plugin's settings section (spec 471) lives in the Plugins
+  // panel, so the same exclusion covers it: a plugin input with its own
+  // Enter action gets it, and Settings neither saves nor closes.
+  it("leaves Enter in a plugin's settings section to the plugin", async () => {
+    const onEnter = vi.fn();
+    setPlugins([
+      {
+        id: 'notes',
+        name: 'Notes',
+        version: '1.0.0',
+        api_version: '0.2',
+        source: '/src/notes',
+        command: [],
+        enabled: true,
+        status: 'running',
+        restarts: 0,
+        ui: { entry: 'ui.mjs' },
+      },
+    ]);
+    setPluginUI('notes', {
+      status: 'active',
+      contrib: {
+        settings: () => (
+          <input
+            id="notes-setting"
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') onEnter();
+            }}
+          />
+        ),
+      },
+    });
+    open();
+    await flush();
+    fireEvent.keyDown(el('notes-setting'), { key: 'Enter' });
+    await flush();
+    expect(onEnter).toHaveBeenCalledOnce();
+    expect(saveCustomAgents).not.toHaveBeenCalled();
+    expect(document.getElementById('settings')?.classList).not.toContain(
       'hidden',
     );
   });

@@ -1,0 +1,7 @@
+{
+  "id": "ui-hang-activate",
+  "name": "Fixture ui-hang-activate",
+  "version": "0.0.1",
+  "api_version": "0.2",
+  "ui": { "entry": "ui.mjs" }
+}

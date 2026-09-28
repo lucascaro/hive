@@ -32,6 +32,7 @@
 import { ActivityPanelHost } from './activity/ActivityPanelHost.js';
 import { createPortal } from 'react-dom';
 import { PendingPrompt } from './PendingPrompt.js';
+import { PluginBanner, PluginSurfaces } from './PluginSurfaces.js';
 import { PlanReviewBar } from './PlanReviewBar.js';
 import { PlanReview } from './modals/PlanReview.js';
 import type { ReactNode } from 'react';
@@ -149,6 +150,9 @@ export function App(): ReactNode {
       {/* Before PendingPrompt: plan-review.css stacks that bar above
           this one with a sibling selector. */}
       {createPortal(<PlanReviewBar />, mustEl('banners'))}
+      {/* A UI plugin's session banner (spec 471), stacked like the
+          plan-review bar above the pending prompt. */}
+      {createPortal(<PluginBanner />, mustEl('banners'))}
       {createPortal(<PendingPrompt />, mustEl('banners'))}
       {createPortal(<StatusBar root={status} />, status)}
       {createPortal(<BootState root={bootState} />, bootState)}
@@ -179,6 +183,9 @@ export function App(): ReactNode {
       {createPortal(<WhatsNew root={whatsNew} />, whatsNew)}
       {createPortal(<BuildLog root={buildLog} />, buildLog)}
       {createPortal(<PlanReview root={planReview} />, planReview)}
+      {/* UI plugins' session view (modal + side panel), spec 471. Each
+          portals itself into its own host. */}
+      <PluginSurfaces />
     </>
   );
 }

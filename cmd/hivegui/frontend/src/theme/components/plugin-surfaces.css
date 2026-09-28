@@ -1,0 +1,83 @@
+/* What UI plugins contribute (spec 471, components/PluginSurfaces.tsx).
+   The chrome is the app's; only the bodies inside it are the plugin's,
+   and they are styled by the plugin's own stylesheet (docs/plugins.md
+   asks for .<id>- prefixed classes and these tokens). */
+
+/* Session banner: the same 40px strip as the pending-prompt bar, and
+   like the plan-review bar it pushes that bar up when both show. */
+.hv-plugin-banner {
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: 25px; /* clears #status, like .hv-pending-prompt */
+  height: 40px;
+  box-sizing: border-box;
+  z-index: 15;
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  padding: 0 var(--space-3);
+  border-top: 1px solid var(--border);
+  background: var(--surface-raised);
+  font-size: var(--text-sm);
+}
+.hv-plugin-banner__label {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--state-attention);
+}
+.hv-plugin-banner ~ .hv-pending-prompt { bottom: calc(25px + 40px); }
+
+/* Sidebar badges: small, muted, never wider than a short word. */
+.hv-plugin-badges { display: inline-flex; gap: var(--space-1); }
+.hv-plugin-badge {
+  padding: 0 var(--space-1);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  font-size: var(--text-xs);
+  line-height: 16px;
+  color: var(--fg-muted);
+  white-space: nowrap;
+}
+.hv-plugin-badge[data-tone='info'] { color: var(--state-info); border-color: var(--state-info); }
+.hv-plugin-badge[data-tone='warn'] { color: var(--state-attention); border-color: var(--state-attention); }
+
+/* Side panel: the inspector's column (layout.css), the inspector's look. */
+.hv-plugin-panel {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-height: 0;
+  border-left: 1px solid var(--border);
+  background: var(--surface);
+}
+.hv-plugin-panel__header {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-2) var(--space-3);
+  border-bottom: 1px solid var(--border);
+}
+.hv-plugin-panel__title {
+  flex: 1;
+  margin: 0;
+  font-size: var(--text-sm);
+  font-weight: 600;
+  color: var(--fg);
+}
+.hv-plugin-panel__body {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  padding: var(--space-3);
+}
+
+/* Settings → Plugins: a plugin's own section, under its row. */
+.settings-plugin-section {
+  flex-basis: 100%;
+  padding: 0 0 0 var(--space-5);
+}
+.settings-plugin-error { color: var(--state-error); font-size: var(--text-sm); }

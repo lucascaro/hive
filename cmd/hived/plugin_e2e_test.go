@@ -205,7 +205,7 @@ func TestE2E_WebhookPlugin_InstallFromGitURL(t *testing.T) {
 func writeFixturePlugin(t *testing.T, id, script string) string {
 	t.Helper()
 	dir := t.TempDir()
-	man := map[string]any{"id": id, "name": id, "version": "0.0.1", "api_version": "0.1",
+	man := map[string]any{"id": id, "name": id, "version": "0.0.1", "api_version": "0.2",
 		"main": map[string]any{"command": []string{"node", "main.mjs"}}}
 	b, _ := json.Marshal(man)
 	_ = os.WriteFile(filepath.Join(dir, "hive-plugin.json"), b, 0o600)
@@ -491,4 +491,33 @@ hive.on('SESSIONS', async (resp) => {
 		}
 		time.Sleep(50 * time.Millisecond)
 	}
+}
+
+// A UI-only plugin installs and enables against a real hived without a
+// process of its own, and its app settings persist in ui-config.json.
+func TestE2E_UIOnlyPlugin_InstallEnable(t *testing.T) {
+	d := spawnDaemon(t)
+	c := dialControl(t, d)
+	dir := t.TempDir()
+	man := map[string]any{"id": "notes", "name": "Notes", "api_version": "0.2", "ui": map[string]any{"entry": "ui.mjs"}}
+	b, _ := json.Marshal(man)
+	_ = os.WriteFile(filepath.Join(dir, "hive-plugin.json"), b, 0o600)
+	_ = os.WriteFile(filepath.Join(dir, "ui.mjs"), []byte("export default () => ({})\n"), 0o600)
+	installEnable(t, c, dir, "notes")
+	ev := awaitPlugin(t, c, func(ev wire.PluginEvent) bool { return ev.Plugin.ID == "notes" && ev.Plugin.Status == wire.PluginRunning })
+	if ev.Plugin.UI == nil || ev.Plugin.UI.Entry != "ui.mjs" || len(ev.Plugin.Command) != 0 {
+		t.Fatalf("running ui-only plugin = %+v", ev.Plugin)
+	}
+	if _, err := os.Stat(filepath.Join(d.stateDir, "plugin-data", "notes", "plugin.log")); !os.IsNotExist(err) {
+		t.Fatalf("ui-only plugin started a process (plugin.log: %v)", err)
+	}
+	if err := c.SetPluginConfig("notes", json.RawMessage(`{"badge":false}`)); err != nil {
+		t.Fatal(err)
+	}
+	awaitPlugin(t, c, func(ev wire.PluginEvent) bool { return string(ev.Plugin.Config) == `{"badge":false}` })
+	got, err := os.ReadFile(filepath.Join(d.stateDir, "plugin-data", "notes", "ui-config.json"))
+	if err != nil || string(got) != `{"badge":false}` {
+		t.Fatalf("ui-config.json = %q, %v", got, err)
+	}
+	assertHealthy(t, d)
 }

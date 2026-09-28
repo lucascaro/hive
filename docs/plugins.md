@@ -1,17 +1,27 @@
 # Writing a Hive plugin
 
-A Hive plugin is a program that Hive runs for you in the background. It
-sees what every session is doing — which agent started working, which
-one is waiting on you, which one exited — and can act: rename a session,
-type into it, start or stop one, file an idea. Plugins are how features
-that are too specific for Hive itself get built: a webhook when an agent
-needs you, a bridge to a chat app, a rule that restarts a crashed agent.
+A Hive plugin extends Hive in one of two ways, or both:
 
-This page is the contract. The reference plugin,
-[`plugins/webhook/`](../plugins/webhook/), is written against it and
-nothing else.
+- **In the background.** A program Hive runs for you. It sees what every
+  session is doing — which agent started working, which one is waiting
+  on you, which one exited — and can act: rename a session, type into
+  it, start or stop one, file an idea. A webhook when an agent needs
+  you, a bridge to a chat app, a rule that restarts a crashed agent.
+- **In the app.** A JavaScript module the Hive app loads, which adds
+  to the app itself: a view for a session, commands in the command
+  palette, a badge on sidebar rows, and a section in Settings. See
+  **[App surfaces](#app-surfaces)**.
 
-> **Plugin API 0.1 — experimental.** Until the plugin API reaches 1.0 it
+Plugins are how features that are too specific for Hive itself get
+built.
+
+This page is the contract. The two reference plugins are written
+against it and nothing else: [`plugins/webhook/`](../plugins/webhook/)
+runs in the background, and
+[`plugins/session-notes/`](../plugins/session-notes/) lives in the
+app.
+
+> **Plugin API 0.2 — experimental.** Until the plugin API reaches 1.0 it
 > is best-effort: any Hive release may change it, and a plugin is only
 > loaded by a Hive that implements exactly the `api_version` it names.
 > From 1.0 on, compatibility follows semantic versioning.
@@ -24,9 +34,14 @@ programs, and — through Hive — type into any session, including ones
 running agents with access to your code and credentials. Install
 plugins you would be comfortable running yourself.
 
+An app plugin is no different: its module runs inside the Hive app,
+with the app's full access — every session's screen, every action the
+app can take — and it can change what the app shows you.
+
 Because of that, Hive installs every plugin **disabled**. Nothing a
 plugin contains runs until you enable it, and the Hive app asks you
-first, showing the plugin's name, source and the command it will run.
+first, showing the plugin's name, source and the command it will run
+(or the module it will load into the app).
 That prompt is the app's; the protocol itself does not ask anyone. Any
 wire client — including an enabled plugin, which has full trust — can
 install, enable and remove plugins directly, just as it could run any
@@ -42,7 +57,7 @@ root:
   "id": "webhook",
   "name": "Webhook",
   "version": "0.1.0",
-  "api_version": "0.1",
+  "api_version": "0.2",
   "description": "POSTs a JSON message to a URL whenever a session starts waiting on you.",
   "main": { "command": ["node", "main.mjs"] }
 }
@@ -53,10 +68,14 @@ root:
 | `id` | yes | Lowercase letters, digits and hyphens, up to 63 characters. Unique among installed plugins. |
 | `name` | yes | Shown to the user, including in the install prompt. `name`, `version`, `description` and the `main.command` arguments may not contain control characters, invisible formatting characters (bidi overrides and isolates, zero-width characters) or line separators. |
 | `version` | no | Your plugin's own version. |
-| `api_version` | yes | The plugin API you target. Must be `0.1` for this Hive. |
+| `api_version` | yes | The plugin API you target. Must be `0.2` for this Hive. |
 | `description` | no | One sentence, shown to the user. |
-| `main.command` | yes | The program and arguments Hive runs, in the plugin directory. A first element starting with `./` is relative to the plugin; anything else is looked up on Hive's `PATH`. |
-| `ui` | — | Reserved for GUI entry points. A manifest that declares one is refused by this version of Hive. |
+| `main.command` | one of `main`, `ui` | The program and arguments Hive runs, in the plugin directory. A first element starting with `./` is relative to the plugin; anything else is looked up on Hive's `PATH`. |
+| `ui.entry` | one of `main`, `ui` | The ES module the app loads (`.js` or `.mjs`), relative to the plugin directory. See [App surfaces](#app-surfaces). |
+| `ui.style` | no | A stylesheet (`.css`) the app links while the plugin is loaded. |
+
+A plugin needs `main`, `ui`, or both. `ui` paths must stay inside the
+plugin directory: no `..`, no leading `/`, no URL.
 
 Any language works. The reference plugin uses Node (18 or newer) and
 the SDK below.
@@ -92,7 +111,7 @@ Installing an id that is already installed is refused; remove it first.
 | Status | Meaning |
 |--------|---------|
 | `stopped` | Installed and disabled (or enabled but not started yet). Never running. |
-| `running` | The process is alive. |
+| `running` | The process is alive. A plugin with only a `ui` has no process: it is `running` whenever it is enabled. |
 | `crashed` | The process exited; Hive restarts it after a backoff that doubles from 1s up to 30s. |
 | `failed` | It exited more than 5 times within 60s. Hive stops restarting it until you enable it again. |
 | `refused` | It cannot run as installed: its `api_version` is not this Hive's, or its command is not on `PATH`. `status_detail` says which. |
@@ -201,6 +220,7 @@ and reply payloads are the Go structs of the same name in
 | `LIST_PLUGINS` | empty | `PLUGINS` |
 | `INSTALL_PLUGIN` | `InstallPluginReq` | `PLUGIN_EVENT` (added) |
 | `SET_PLUGIN_ENABLED` | `SetPluginEnabledReq` | `PLUGIN_EVENT` |
+| `SET_PLUGIN_CONFIG` | `SetPluginConfigReq` | `PLUGIN_EVENT` (updated) |
 | `REMOVE_PLUGIN` | `RemovePluginReq` | `PLUGIN_EVENT` (removed) |
 
 And everything the daemon sends on a control connection:
@@ -286,6 +306,126 @@ term.on('data', (buf) => process.stdout.write(buf));
 `send(name, payload)` sends any request in the table above. Under Hive
 it exits the process when the connection closes, as required above.
 Typed shapes for the main payloads are in the file's JSDoc.
+
+## App surfaces
+
+A plugin with a `ui` entry adds to the Hive app. Its module is loaded
+into the app when the plugin is enabled and unloaded when it is
+disabled or removed; a reinstall loads the new copy. The module's
+default export is an `activate` function. Hive calls it once, with a
+`hive` object, and it returns what the plugin contributes:
+
+```js
+export default function activate(hive) {
+  const h = hive.React.createElement;
+  return {
+    commands: [{ id: 'hello', title: 'Say hello', keys: { key: 'L', shift: true }, run: () => {} }],
+    badge: (session) => (session.name === 'main' ? { text: 'Main' } : null),
+    sessionView: {
+      modal: { title: 'Hello', component: ({ session, close }) => h('p', null, `Hi ${session.name}`) },
+      panel: { title: 'Hello', component: ({ session }) => h('p', null, session.name) },
+      banner: (session) => null,
+    },
+    settings: () => h('p', null, 'Nothing to set'),
+    deactivate() {},
+  };
+}
+```
+
+Every field is optional. `activate` may be `async`.
+
+### The `hive` object
+
+| Member | What it is |
+|--------|------------|
+| `apiVersion` | `"0.2"`. |
+| `pluginId` | Your plugin's id. |
+| `React` | The app's React (19). Build components with it — `hive.React.createElement`, hooks — and never bundle your own copy: two Reacts on one page break hooks. |
+| `components` | App components you may render: `Button` (`{ label, kind?: 'primary', onClick, id? }`), `Kbd` (a key hint), `Markdown` (`{ source }`: renders markdown safely — no raw HTML). |
+| `useSessions()` / `getSessions()` | Every session, as the app sees it (the wire `SessionInfo`). The `use` form is a hook that re-renders on change. |
+| `useActiveSessionId()` / `getActiveSessionId()` | The focused session's id, or `null`. |
+| `on(event, callback)` | Subscribes to an app event and returns an unsubscribe function. Events are the app's own names for daemon broadcasts — `session:event`, `project:event`, `idea:event`, `plugin:event` and the rest — with the payload already parsed. Subscriptions end when the plugin unloads. |
+| `actions.switchTo(sessionId)` | Focuses a session. |
+| `settings.get()` / `settings.use()` / `settings.set(object)` | Your plugin's settings, a JSON object of up to 64 KiB. `set` replaces the whole object; it is shown at once and saved in the background. See below. |
+| `openSessionView(sessionId, props?)` | Opens your modal for a session. Resolves `'closed'` when your component calls `close()`, or `'dismissed'` when the user pressed Escape, the view was replaced, or the plugin unloaded. |
+| `closeSessionView()` | Closes your modal if it is open. |
+| `togglePanel()` | Opens or closes your panel beside the terminal. It shares the activity inspector's column: opening one closes the other. |
+
+For anything else — creating sessions, sending input, filing ideas —
+give your plugin a `main` process too and use the wire protocol.
+
+### What a plugin contributes
+
+- **`sessionView.modal`** — `{ title, component, hints? }`. A dialog for
+  one session, opened with `openSessionView`. `component` gets
+  `{ session, props, close }`. Hive draws the dialog frame, the title
+  and the Escape handling; `hints` lists key hints shown in its footer
+  (default `[esc] close`). Put your own buttons in the body.
+- **`sessionView.panel`** — `{ title, component }`. A panel beside the
+  terminal for the focused session, toggled with `togglePanel`.
+  `component` gets `{ session }`.
+- **`sessionView.banner`** — `(session) => { text, action? } | null`.
+  A one-line bar above the status bar while that session is focused;
+  `action` is `{ label, run }`. One plugin banner shows at a time.
+- **`commands`** — `[{ id, title, keys?, run }]`. Listed in the command
+  palette. `keys` is `{ key, shift? }`: the platform modifier (⌘ on
+  macOS, Ctrl elsewhere), optionally Shift, and one letter or digit.
+  Hive shows the chord in the palette and in the ⌘/ shortcuts overlay.
+  **Hive's own shortcuts always win:** a chord Hive already uses is
+  refused (the command stays, without a key), and if two plugins want
+  the same chord the plugin whose id sorts first keeps it.
+- **`badge`** — `(session) => { text, title?, tone? } | null`. A short
+  marker on the session's sidebar row. `tone` is `'neutral'`, `'info'`
+  or `'warn'`. Keep `text` to a word; it is cut at 12 characters.
+- **`settings`** — a component rendered under your plugin's row in
+  **Settings → Plugins**. Enter inside it is yours: Settings does not
+  treat it as save-and-close.
+- **`deactivate()`** — called when the plugin unloads. Clear timers
+  here.
+
+`badge` and `banner` are recomputed when sessions or your settings
+change. Keep them cheap: they run while the sidebar renders.
+
+### Settings
+
+A plugin's settings live in `ui-config.json` in its data directory, so
+they survive removing and reinstalling the plugin. They are sent to
+every app window, which is how two windows stay in step: a change in
+one reaches the other. Only UI plugins have them — Hive never reads,
+sends or overwrites a plugin's own `config.json`, which is where
+background plugins keep things like tokens. `settings.set` shows the
+new value at once; if Hive cannot save it, the value goes back to the
+saved one. Writes are coalesced: calling `set` in a loop saves the
+latest value, not every one.
+
+### Styling
+
+Your stylesheet is loaded into the app page, so it is global. Prefix
+every class with your plugin id (`.session-notes-…`) and use Hive's
+theme tokens — `var(--fg)`, `var(--fg-muted)`, `var(--surface)`,
+`var(--surface-raised)`, `var(--border)`, `var(--space-1)` to
+`var(--space-6)`, `var(--text-xs)` to `var(--text-lg)`,
+`var(--radius-sm)`, `var(--state-info)`, `var(--state-attention)`,
+`var(--state-error)` — so your plugin follows the theme the user
+picked. Do not hard-code colours or pixel font sizes.
+
+### When a plugin breaks
+
+The app contains a plugin that misbehaves. If its module does not load
+within 10 seconds, `activate` does not finish within 5, a component it
+rendered throws or stays suspended for 5 seconds, or one of its
+callbacks throws, Hive unloads it from the app and shows **Stopped in
+the app** with the reason in its row in **Settings → Plugins**, next to
+a **Disable** button. The rest of the app carries on. It stays stopped
+until it is disabled and enabled again, or reinstalled. Your module
+runs on the app's main thread, so a synchronous endless loop freezes
+the app like any other page script would — don't block.
+
+### Testing an app plugin
+
+Install it by directory into an isolated Hive (`scripts/dev-iso.sh`)
+and open the app against it. Hive serves your files from the installed
+copy, so edit the original, then reinstall to pick the change up.
 
 ## Testing a plugin
 

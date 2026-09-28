@@ -26,6 +26,7 @@ import {
 import { displayTitle } from '../lib/term-title.js';
 import { useAppStore } from '../store/store.js';
 import type { SessionInfo } from '../app/state.js';
+import { PluginBadges } from './PluginSurfaces.js';
 
 // planOf reads the compact summary the daemon puts on SessionInfo. The
 // row renders from these fields alone and never reads the activity
@@ -297,6 +298,7 @@ export function SessionRow(p: SessionRowProps) {
           in two places. Beside the worktree slot rather than in `meta`
           for the same reason that one is: `meta` is display:none the
           moment the pointer enters the row. */}
+      <PluginBadges session={s} />
       {p.ideaText ? (
         <span
           className="hv-session-row__idea"

@@ -313,6 +313,11 @@ func (c *Client) SetPluginEnabled(id string, enabled bool) error {
 	return c.cli.WriteJSON(wire.FrameSetPluginEnabled, wire.SetPluginEnabledReq{ID: id, Enabled: enabled})
 }
 
+// SetPluginConfig sends SET_PLUGIN_CONFIG.
+func (c *Client) SetPluginConfig(id string, config json.RawMessage) error {
+	return c.cli.WriteJSON(wire.FrameSetPluginConfig, wire.SetPluginConfigReq{ID: id, Config: config})
+}
+
 // RemovePlugin sends REMOVE_PLUGIN.
 func (c *Client) RemovePlugin(id string) error {
 	return c.cli.WriteJSON(wire.FrameRemovePlugin, wire.RemovePluginReq{ID: id})

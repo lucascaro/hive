@@ -8,6 +8,7 @@
 
 import { flushSync } from 'react-dom';
 import { closeModal, isModalOpen, openModal } from '../../store/store.js';
+import { pluginCommands, runPluginCommand } from '../plugin-host.js';
 
 // One row of the command table main.tsx builds and hands over.
 export interface PaletteCommand {
@@ -30,7 +31,17 @@ let commandTable: PaletteCommand[] = [];
 // export of the array itself: initCommandPalette runs after the module
 // graph is evaluated, so a bound reference would be the empty seed.
 export function paletteCommands(): PaletteCommand[] {
-  return commandTable;
+  const plugins = pluginCommands();
+  if (plugins.length === 0) return commandTable;
+  return [
+    ...commandTable,
+    ...plugins.map((r) => ({
+      id: `plugin:${r.pluginId}:${r.command.id}`,
+      name: r.command.title,
+      shortcut: r.shortcut,
+      run: () => runPluginCommand(r),
+    })),
+  ];
 }
 
 export function openCommandPalette() {

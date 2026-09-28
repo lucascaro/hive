@@ -9,6 +9,7 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"log"
@@ -994,6 +995,26 @@ func (a *App) SetPluginEnabled(id string, enabled bool) error {
 	}
 	return cs.WriteJSON(wire.FrameSetPluginEnabled, wire.SetPluginEnabledReq{ID: id, Enabled: enabled})
 }
+
+// SetPluginConfig stores a UI plugin's settings; every window gets the
+// new value as a PLUGIN_EVENT (updated). config is a JSON object.
+func (a *App) SetPluginConfig(id string, config map[string]any) error {
+	cs, err := a.requireControl()
+	if err != nil {
+		return err
+	}
+	raw, err := json.Marshal(config)
+	if err != nil {
+		return err
+	}
+	return cs.WriteJSON(wire.FrameSetPluginConfig, wire.SetPluginConfigReq{ID: id, Config: raw})
+}
+
+// PluginAssetBase is the origin UI plugin files are imported from. In
+// the app it is "": the asset server's Handler serves /plugins/<id>/ on
+// the page's own origin (window_options.go). The browser test harnesses
+// replace this binding to point at their own server.
+func (a *App) PluginAssetBase() string { return "" }
 
 // RemovePlugin stops a plugin and deletes its install; its data dir is
 // kept.
