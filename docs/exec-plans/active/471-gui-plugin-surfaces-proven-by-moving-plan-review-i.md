@@ -4,8 +4,8 @@
 - **Issue:** #471
 - **Status:** active
 - **Phase:** 2 of 2
-- **PR:** —
-- **Branch:** —
+- **PR:** #473
+- **Branch:** feature/471-plan-review-plugin
 
 ## Summary
 
@@ -399,6 +399,7 @@ verdict: approve, confidence 8. No must-fix items. Nice-to-haves applied: direct
 - **2026-09-28** — Phase 1 PR #472 opened.
 
 - **2026-09-28** — Phase 2 implemented on `feature/471-plan-review-plugin`: bundled plan-review plugin, SET_CLIENT_UI answerer rule, core plan-review UI deleted.
+- **2026-09-28** — Phase 2 PR #473 opened.
 
 ## Open questions
 
