@@ -84,7 +84,8 @@ master read and closes `done`. `readLoop` remains the only closer of
 `done`. Measured on `golang:1.27.1` (Linux): with the reaper removed, a
 self-exiting session is never seen; with it, it is seen in ~0.26 s. The
 work under this spec adds the registry-level regression test
-(`TestSessionExitingOnItsOwnIsSeen`) that was missing.
+(`TestSessionExitingOnItsOwnIsSeen`) that was missing, and stops
+`readLoop` logging the Linux exit's EIO as a PTY read error.
 
 ## Desired behavior
 

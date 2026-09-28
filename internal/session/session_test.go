@@ -3,6 +3,8 @@ package session
 import (
 	"bytes"
 	"errors"
+	"log"
+	"os"
 	"runtime"
 	"strings"
 	"sync"
@@ -255,6 +257,35 @@ func TestSessionDoneClosesWhenChildExits(t *testing.T) {
 	}
 	if !strings.Contains(sink.String(), "hive_exit_probe") {
 		t.Fatalf("child output lost during exit teardown; got %q", sink.String())
+	}
+}
+
+// A child exiting is the ordinary end of a session, so it must not log
+// a "pty read" error. On Linux the reaper's PTY close surfaces in
+// readLoop as EIO (the master's "slave side hung up"), not EOF or
+// os.ErrClosed, and used to cost one error line per session exit. On
+// macOS the read ends with EOF, so this only bites on the Linux leg.
+func TestChildExitLogsNoPtyReadError(t *testing.T) {
+	opts := Options{Cmd: []string{"true"}, Cols: 80, Rows: 24}
+	if runtime.GOOS != "windows" {
+		opts.Shell = "/bin/bash"
+	}
+	logs := &bufSinkMu{}
+	log.SetOutput(logs)
+	t.Cleanup(func() { log.SetOutput(os.Stderr) })
+
+	sess, err := Start(opts)
+	if err != nil {
+		t.Fatalf("Start: %v", err)
+	}
+	t.Cleanup(func() { _ = sess.Close() })
+	select {
+	case <-sess.Done():
+	case <-time.After(10 * time.Second):
+		t.Fatal("Done() never closed after the child exited")
+	}
+	if got := logs.String(); strings.Contains(got, "pty read") {
+		t.Fatalf("child exit logged a pty read error:\n%s", got)
 	}
 }
 
