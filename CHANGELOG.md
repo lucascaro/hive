@@ -62,6 +62,7 @@ of work. ⌘T and the other plain New Session buttons no longer remember the
 checkbox from your last launch — they always start with it off, and ⇧⌘T is
 still the one-key way to launch in a worktree.
 The sidebar is easier to scan. The selected session is now filled with the accent colour, and still pulses when it needs you. Worktree groups indent behind a thin rail in the group's colour, so they stand apart from other sessions. Project headers carry a line in the project's colour. The session list runs edge to edge: the resize handle now sits just outside the sidebar, so each row's colour bar stays clickable.
+Plugins: a plugin's broadcast requests now wait (up to two seconds) while any Hive window is behind on the updates already sent to it, so a burst of changes from one or several plugins can no longer make the daemon disconnect a window.
 Claude sessions started by Hive now fill the plan pie much more often. Claude
 had the task tools but rarely used them, so Hive had no progress to show. When
 the Claude task tools setting is on, Hive now tells each session at startup to
