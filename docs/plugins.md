@@ -245,7 +245,9 @@ simply connect to Hive's main socket as the app does. See **Trust**.
   slow down. Requests that are broadcast also wait, for up to two
   seconds, while any connected app window is behind on the updates
   already sent to it, so a plugin cannot flood a window off its
-  connection.
+  connection. Plugins take turns to broadcast, so a plugin whose own
+  requests are slow to finish can briefly delay other plugins'
+  broadcasts; it never delays the app's windows or your sessions.
 
 A connection that stops reading what Hive sends it is disconnected,
 the same as any client.
