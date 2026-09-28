@@ -1062,7 +1062,13 @@ export function setActivityPanel(open: boolean): void {
 }
 
 export function setPluginPanel(id: string | null): void {
-  if (id !== null && get().activityPanel) setActivityPanel(false);
+  if (id !== null && get().activityPanel) {
+    // One commit for the swap: closing the inspector and opening the
+    // panel land in the same render.
+    writeStorage(ACTIVITY_PANEL_STORAGE_KEY, '0');
+    set({ activityPanel: false, pluginPanel: id });
+    return;
+  }
   set({ pluginPanel: id });
 }
 

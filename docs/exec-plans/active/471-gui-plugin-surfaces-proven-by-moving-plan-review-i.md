@@ -395,3 +395,7 @@ verdict: approve, confidence 8. No must-fix items. Nice-to-haves applied: direct
 
 - How and where plugin UI code runs inside the Wails webview.
 - Revising the control-plane rule that plugins never answer plan reviews.
+
+## PR convergence ledger
+
+- **2026-09-28 iter 1** — verdict: APPROVE; mergeable: MERGEABLE; findings_hash: empty; threads_open: 0; action: stop; head_sha: e8ce955.
