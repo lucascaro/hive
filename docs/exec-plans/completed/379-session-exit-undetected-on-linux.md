@@ -125,7 +125,7 @@ plus spec note, `daemon-contract-override` label).
 
 - **2026-09-27** — No code change; test + spec note only. Why: #402 already fixed it; Linux mutation check proves the reaper is the fix.
 - **2026-09-27** — Leave the Linux `pty read: ... input/output error` log line alone. Why: operator chose test-only scope.
-- **2026-09-27** — Reversed after gate PASS at operator request: `readLoop` now treats `syscall.EIO` like EOF/`os.ErrClosed` (no log line). Log-only, so `daemon-contract-override` still holds; not user-visible, so `no-changeset`. Test: `TestChildExitLogsNoPtyReadError` (red on Linux before the change).
+- **2026-09-27** — Reversed after gate PASS at operator request: `readLoop` now treats `syscall.EIO` like EOF/`os.ErrClosed` (no log line). Log-only, so `daemon-contract-override` still holds; visible in the daemon log, so it ships `.changesets/379-linux-exit-eio-log.md`. Test: `TestChildExitLogsNoPtyReadError` (red on Linux before the change).
 
 ## Progress
 

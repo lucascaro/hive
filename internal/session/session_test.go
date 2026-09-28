@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"errors"
 	"log"
-	"os"
 	"runtime"
 	"strings"
 	"sync"
@@ -271,8 +270,9 @@ func TestChildExitLogsNoPtyReadError(t *testing.T) {
 		opts.Shell = "/bin/bash"
 	}
 	logs := &bufSinkMu{}
+	prev := log.Writer()
 	log.SetOutput(logs)
-	t.Cleanup(func() { log.SetOutput(os.Stderr) })
+	t.Cleanup(func() { log.SetOutput(prev) })
 
 	sess, err := Start(opts)
 	if err != nil {
