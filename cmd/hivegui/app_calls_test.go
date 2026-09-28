@@ -192,6 +192,7 @@ func TestRPCsRequireAControlConnection(t *testing.T) {
 		"SetPluginEnabled":       func() error { return a.SetPluginEnabled("p", true) },
 		"RemovePlugin":           func() error { return a.RemovePlugin("p") },
 		"SetPluginConfig":        func() error { return a.SetPluginConfig("p", map[string]any{}) },
+		"SetClientUI":            func() error { return a.SetClientUI([]string{"plan-review"}) },
 	}
 	for name, call := range calls {
 		t.Run(name, func(t *testing.T) {
@@ -381,6 +382,8 @@ func TestPluginCalls(t *testing.T) {
 		{"SetPluginDisabled", func(a *App) error { return a.SetPluginEnabled("webhook", false) }, wire.FrameSetPluginEnabled, `{"id":"webhook","enabled":false}`},
 		{"RemovePlugin", func(a *App) error { return a.RemovePlugin("webhook") }, wire.FrameRemovePlugin, `{"id":"webhook"}`},
 		{"SetPluginConfig", func(a *App) error { return a.SetPluginConfig("notes", map[string]any{"badge": true}) }, wire.FrameSetPluginConfig, `{"id":"notes","config":{"badge":true}}`},
+		{"SetClientUI", func(a *App) error { return a.SetClientUI([]string{"plan-review"}) }, wire.FrameSetClientUI, `{"plugin_uis":["plan-review"]}`},
+		{"SetClientUINone", func(a *App) error { return a.SetClientUI(nil) }, wire.FrameSetClientUI, `{"plugin_uis":[]}`},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -487,5 +490,47 @@ func TestConfirmAccepted(t *testing.T) {
 					tc.res, got, tc.want, tc.why)
 			}
 		})
+	}
+}
+
+// TestSetClientUI_ResentAfterReconnectIncludingEmpty: a redialed
+// control connection announces nothing until told, so the last value
+// is repeated on it — including an empty list, which is how a window
+// whose plan-review UI went away stops a review parking for it. Only a
+// window that never announced sends nothing.
+func TestSetClientUI_ResentAfterReconnectIncludingEmpty(t *testing.T) {
+	pipe := func(t *testing.T) (*wire.Client, net.Conn) {
+		client, server := net.Pipe()
+		t.Cleanup(func() { _ = client.Close(); _ = server.Close() })
+		return wire.NewClient(client), server
+	}
+	read := func(t *testing.T, server net.Conn) (wire.FrameType, string, bool) {
+		t.Helper()
+		_ = server.SetReadDeadline(time.Now().Add(300 * time.Millisecond))
+		ft, payload, err := wire.ReadFrame(server)
+		if err != nil {
+			return 0, "", false
+		}
+		return ft, string(payload), true
+	}
+
+	a := &App{}
+	cs, server := pipe(t)
+	go a.reannounceUI(cs)
+	if _, _, got := read(t, server); got {
+		t.Fatal("a window that never announced re-announced something")
+	}
+
+	for _, ids := range [][]string{{"plan-review"}, {}} {
+		a.mu.Lock()
+		a.clientUI = ids
+		a.mu.Unlock()
+		cs, server := pipe(t)
+		go a.reannounceUI(cs)
+		ft, payload, ok := read(t, server)
+		want, _ := json.Marshal(wire.SetClientUIReq{PluginUIs: ids})
+		if !ok || ft != wire.FrameSetClientUI || payload != string(want) {
+			t.Errorf("after announcing %v, reconnect sent %s %q, want SET_CLIENT_UI %s", ids, ft, payload, want)
+		}
 	}
 }

@@ -67,8 +67,8 @@ func (r *Registry) finishPlanReviewLocked(e *Entry, d wire.PlanReviewDecision) {
 // returns the review's id and the channel its one decision arrives on.
 //
 // The answerer check and the park happen under one r.mu hold, the same
-// lock SetAnswerers takes to withdraw reviews when the last client
-// leaves. A park can therefore never land in the gap after that
+// lock SetReviewAnswerers takes to withdraw reviews when the last
+// review UI leaves. A park can therefore never land in the gap after that
 // withdrawal and wait days for nobody.
 //
 // A newer request for the same session replaces the older one, which
@@ -84,7 +84,7 @@ func (r *Registry) ParkPlanReview(id, source, plan string) (string, <-chan wire.
 	if !e.Alive() {
 		return "", nil, ErrSessionNotAlive
 	}
-	if !r.canAskUserLocked() {
+	if !r.canReviewLocked() {
 		return "", nil, ErrNoAnswerer
 	}
 	if e.planReview != nil {

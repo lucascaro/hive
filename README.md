@@ -35,19 +35,21 @@ What works:
   to install, and inert when you run `pi` outside Hive. Pi has no task
   list of its own, so the extension adds a `hive_todo` tool that feeds
   the same plan pie — on by default, off under Settings → Agents
-- Plan review. Turn on "Review agent plans in Hive" under Settings →
-  Agents (it is off by default). When Claude leaves plan mode, or Pi calls
+- Plan review. Enable the **Plan review** plugin under Settings →
+  Plugins. It ships with Hive, so there is nothing to install, and it is
+  off by default. When Claude leaves plan mode, or Pi calls
   the `hive_submit_plan` tool Hive gives it, the agent waits while Hive
   shows the plan as formatted markdown. You can select passages to comment
   on, then approve the plan or request changes. Your comments go back to
   the agent, each quoted with the passage it is about, and the agent
   revises. If you press Esc, the agent keeps waiting and a bar brings the
-  review back.
+  review back. A waiting session shows a **Review** badge in the sidebar.
   - With no Hive window open, the agent uses its own terminal approval
     instead.
   - If another plan reviewer such as plannotator is installed, it keeps
-    reviewing Claude's plans unless you choose Hive in Settings. Choosing
-    Hive disables that plugin for the Claude sessions Hive starts.
+    reviewing Claude's plans unless you choose Hive in the plugin's
+    settings. Choosing Hive disables that plugin for the Claude sessions
+    Hive starts.
 - Laya state detection (optional, off by default). Sessions without agent
   hooks — Aider, Codex, a shell, custom agents — only get a guess at what
   they are doing. Point Settings → Agents → Agent state detection at a

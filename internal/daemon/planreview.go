@@ -2,11 +2,14 @@ package daemon
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"log"
 	"net"
 	"os"
+	"slices"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/lucascaro/hive/internal/agent"
@@ -32,6 +35,63 @@ func (d *Daemon) addAnswerer(delta int) {
 	defer d.mu.Unlock()
 	d.controlClients += delta
 	d.reg.SetAnswerers(d.controlClients)
+}
+
+// planReviewPluginID is the bundled plugin whose UI shows plan reviews
+// (plugins/plan-review). Hard-coded on purpose: another plugin cannot
+// take over the answerer role by announcing itself.
+const planReviewPluginID = "plan-review"
+
+// addReviewAnswerer adjusts the count of clients running the
+// plan-review plugin's UI, the only clients a review can park for, and
+// mirrors it into the registry. Same lock discipline as addAnswerer.
+func (d *Daemon) addReviewAnswerer(delta int) {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	d.reviewClients += delta
+	d.reg.SetReviewAnswerers(d.reviewClients)
+}
+
+// reviewAnnouncer returns the SET_CLIENT_UI handler for one control
+// connection, and a cleanup for when it closes. The connection counts
+// as a review answerer while its latest announcement names the
+// plan-review plugin.
+func (d *Daemon) reviewAnnouncer() (announce func([]string), done func()) {
+	var mu sync.Mutex
+	counted := false
+	set := func(want bool) {
+		mu.Lock()
+		defer mu.Unlock()
+		if want == counted {
+			return
+		}
+		counted = want
+		if want {
+			d.addReviewAnswerer(1)
+		} else {
+			d.addReviewAnswerer(-1)
+		}
+	}
+	return func(ids []string) { set(slices.Contains(ids, planReviewPluginID)) },
+		func() { set(false) }
+}
+
+// planReviewState is the registry's spawn-time source and the live gate
+// below: plan review is on while the plan-review plugin is enabled and
+// running, and its settings say who reviews Claude's plans.
+func (d *Daemon) planReviewState() (on bool, reviewer string) {
+	if d.plugins == nil {
+		return false, agent.PlanReviewerExternal
+	}
+	running, raw := d.plugins.Running(planReviewPluginID)
+	reviewer = agent.PlanReviewerExternal
+	var cfg struct {
+		Reviewer string `json:"reviewer"`
+	}
+	if json.Unmarshal(raw, &cfg) == nil && cfg.Reviewer == agent.PlanReviewerHive {
+		reviewer = agent.PlanReviewerHive
+	}
+	return running, reviewer
 }
 
 // planReviewMaxWait is the daemon's own ceiling on one review, matching
@@ -69,11 +129,8 @@ func (d *Daemon) decidePlanReview(ctx context.Context, conn net.Conn, req wire.P
 		log.Printf("hived: plan review: %v", err)
 		return wire.PlanReviewDecision{Status: wire.PlanReviewInvalid}
 	}
-	// Read live, so switching review off takes effect on the next plan.
-	// A settings file that will not parse means off: an unreadable
-	// preference must never start blocking agents.
-	st, err := agent.LoadSettings()
-	if err != nil || !st.PlanReview {
+	// Read live, so disabling the plugin takes effect on the next plan.
+	if on, _ := d.planReviewState(); !on {
 		return wire.PlanReviewDecision{Status: wire.PlanReviewDisabled}
 	}
 	if req.Source == wire.PlanReviewSourceClaude && req.Reviewer != agent.PlanReviewerHive && d.externalReviewer(req.Cwd) {

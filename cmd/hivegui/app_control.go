@@ -87,6 +87,7 @@ func (a *App) ConnectControl() error {
 	a.control = cs
 	a.daemonContract = w.DaemonContract
 	a.mu.Unlock()
+	a.reannounceUI(cs)
 	go a.controlReadLoop(cs)
 	a.emitDaemonVersionStatus(w.BuildID, w.Release, w.DaemonContract)
 	return nil
@@ -458,3 +459,20 @@ func (a *App) controlReadLoop(cs *wire.Client) {
 }
 
 // AgentInfo is the JSON shape the frontend uses to render the launcher.
+
+// reannounceUI repeats the last SetClientUI on a new control
+// connection: the daemon forgot this window's plugin UIs with the old
+// one, and a plan review parks only for a window that runs the
+// plan-review plugin's UI. An empty list is sent too; only "never
+// announced" (nil) is skipped.
+func (a *App) reannounceUI(cs *wire.Client) {
+	a.mu.Lock()
+	ids := a.clientUI
+	a.mu.Unlock()
+	if ids == nil {
+		return
+	}
+	if err := cs.WriteJSON(wire.FrameSetClientUI, wire.SetClientUIReq{PluginUIs: ids}); err != nil {
+		log.Printf("hivegui: re-announce plugin UIs: %v", err)
+	}
+}

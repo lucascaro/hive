@@ -68,13 +68,6 @@ import { appStore } from '../store/store.js';
 import { setStatus, flashStatus, reportFailure, setBootState } from './dom.js';
 import { orderedSessions } from './selectors.js';
 import { handleWorktreesPayload } from './modals/worktrees.js';
-import {
-  dropPlanReview,
-  onPlanReviewStale,
-  onPlanReviewText,
-  prunePlanReviews,
-  syncPlanReview,
-} from './modals/plan-review.js';
 import { refreshIdeas } from './modals/idea-inbox.js';
 import {
   openChoiceDialog,
@@ -744,15 +737,6 @@ export function wireDaemonEvents(injected: EventsDeps) {
   // Agent activity (spec 416): every session's tool calls and plan, plus
   // the GET_ACTIVITY answers. A malformed frame costs one delta, not the
   // feed — and it is too frequent to flash a status line for.
-  // A plan review's text (#457), the answer to GetPlanReview.
-  EventsOn('planreview:plan', (jsonStr: string) => {
-    try {
-      onPlanReviewText(JSON.parse(jsonStr));
-    } catch {
-      onPlanReviewStale();
-    }
-  });
-
   EventsOn('activity:event', (jsonStr: string) => {
     try {
       applyActivityFrame(JSON.parse(jsonStr) as ActivityMsg);
@@ -885,9 +869,6 @@ export function wireDaemonEvents(injected: EventsDeps) {
       // place those learn about it; without this the session is
       // unanswerable and can only be killed.
       maybeAskWorktreeChoice(s);
-      // Same reasoning: an agent can wait on a plan for days, so a
-      // snapshot is where a new window learns it is waiting.
-      syncPlanReview(s);
     }
     sawFirstSessionList = true;
     // Drop any ids whose sessions no longer exist (e.g. after a daemon
@@ -897,7 +878,6 @@ export function wireDaemonEvents(injected: EventsDeps) {
     // without a per-session `removed` event.
     pruneToLiveSessions();
     const liveIds = new Set(appData().sessions.map((s) => s.id));
-    prunePlanReviews(liveIds);
     // attentionEdge lives here rather than in the store, so
     // pruneToLiveSessions cannot reach it — prune it alongside. A left
     // -over id suppresses the next false→true notification for a
@@ -941,9 +921,7 @@ export function wireDaemonEvents(injected: EventsDeps) {
       // maybeAskWorktreeChoice dedupes, so the repeated `updated` events
       // a parked session attracts do not stack dialogs.
       maybeAskWorktreeChoice(ev.session);
-      syncPlanReview(ev.session);
     }
-    if (ev.kind === 'removed') dropPlanReview(ev.session.id);
     if (ev.kind === 'added') {
       addSession(ev.session);
       deps.switchTo(ev.session.id);
@@ -1236,12 +1214,10 @@ export function wireDaemonEvents(injected: EventsDeps) {
     }
     // This window's own install failure: the Plugins tab shows it.
     if (claimPluginInstallError(e)) return;
-    // The review ended between the session event and the fetch: nothing
-    // to show, and nothing worth a status line.
-    if (e.code === 'plan_review_stale') {
-      onPlanReviewStale(e.session_id);
-      return;
-    }
+    // A plan review ended between the session event and the fetch. The
+    // plan-review plugin hears this error too and moves on; it is not
+    // worth a status line.
+    if (e.code === 'plan_review_stale') return;
     // Worktree-dirty kill: confirm with the user. The daemon already
     // refused to kill, so we can safely retry with force=true if the
     // user accepts.

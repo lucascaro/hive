@@ -4,14 +4,15 @@ title: GUI plugin surfaces, proven by moving plan review into a bundled plugin
 type: enhancement
 complexity: L
 priority: P2
-pr: 472
-stage: GATE
+pr: 473
+shipped: 2026-09-28
+stage: DONE
 ---
 
 # GUI plugin surfaces, proven by moving plan review into a bundled plugin
 
 - **Issue:** #471
-- **Exec plan:** [docs/exec-plans/active/471-gui-plugin-surfaces-proven-by-moving-plan-review-i.md](../exec-plans/active/471-gui-plugin-surfaces-proven-by-moving-plan-review-i.md) (or completed/)
+- **Exec plan:** [docs/exec-plans/completed/471-gui-plugin-surfaces-proven-by-moving-plan-review-i.md](../exec-plans/completed/471-gui-plugin-surfaces-proven-by-moving-plan-review-i.md)
 
 ## Problem
 

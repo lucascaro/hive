@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io/fs"
 	"log"
 	"os"
 	"os/exec"
@@ -54,6 +55,10 @@ type Config struct {
 	StateDir string
 	// Listen opens a per-run plugin socket. Required.
 	Listen ListenFunc
+	// Builtin holds the plugins that ship inside Hive, one top-level
+	// directory per id. New materializes them into StateDir on every
+	// start. Nil means none.
+	Builtin fs.FS
 }
 
 // Manager owns the installed plugin set and one supervising goroutine
@@ -61,6 +66,7 @@ type Config struct {
 type Manager struct {
 	stateDir string
 	listen   ListenFunc
+	builtin  map[string]bool // ids that ship inside Hive; read-only after New
 
 	mu        sync.Mutex
 	started   bool
@@ -111,15 +117,26 @@ func New(cfg Config) (*Manager, error) {
 	if cfg.Listen == nil {
 		return nil, errors.New("plugin: Config.Listen is required")
 	}
+	if err := ensureBuiltins(cfg.StateDir, cfg.Builtin); err != nil {
+		return nil, err
+	}
+	builtins, err := builtinIDs(cfg.Builtin)
+	if err != nil {
+		return nil, err
+	}
 	recs, err := loadStore(cfg.StateDir)
 	if err != nil {
 		return nil, err
 	}
 	m := &Manager{
+		builtin:   map[string]bool{},
 		stateDir:  cfg.StateDir,
 		listen:    cfg.Listen,
 		plugins:   map[string]*entry{},
 		listeners: map[chan wire.PluginEvent]struct{}{},
+	}
+	for _, id := range builtins {
+		m.builtin[id] = true
 	}
 	for _, r := range recs {
 		e := &entry{rec: r, status: wire.PluginStopped}
@@ -222,6 +239,7 @@ func (m *Manager) infoLocked(e *entry) wire.PluginInfo {
 		StatusDetail: e.detail,
 		Restarts:     e.restarts,
 		Command:      []string{},
+		Builtin:      m.builtin[e.rec.ID],
 	}
 	if e.man.Main != nil {
 		info.Command = e.man.Main.Command
@@ -335,6 +353,9 @@ func (m *Manager) Install(ctx context.Context, source, nonce string) (wire.Plugi
 	if m.stopped {
 		return wire.PluginInfo{}, ErrManagerStopped
 	}
+	if m.builtin[man.ID] {
+		return wire.PluginInfo{}, fmt.Errorf("%w: %q", ErrBuiltin, man.ID)
+	}
 	if _, dup := m.plugins[man.ID]; dup {
 		return wire.PluginInfo{}, fmt.Errorf("plugin: %q is %w", man.ID, errDuplicate)
 	}
@@ -441,6 +462,9 @@ func (m *Manager) lockOp(id string) (*entry, error) {
 // Remove stops the plugin and deletes its installed copy. Its data dir
 // (config, log) is kept, so a reinstall picks its configuration back up.
 func (m *Manager) Remove(id string) error {
+	if m.builtin[id] {
+		return ErrBuiltin
+	}
 	// After Stop this is refused like every other mutation: the daemon
 	// is going away, and the plugin simply stays installed.
 	e, err := m.lockOp(id)
@@ -767,4 +791,16 @@ func (m *Manager) Pressure() float64 {
 		}
 	}
 	return p
+}
+
+// Running reports whether plugin id is enabled and running, and its UI
+// settings. A plugin that is refused or failed is not running.
+func (m *Manager) Running(id string) (bool, json.RawMessage) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	e, ok := m.plugins[id]
+	if !ok {
+		return false, nil
+	}
+	return e.rec.Enabled && e.status == wire.PluginRunning, e.config
 }

@@ -48,6 +48,7 @@ export {
   SetPluginEnabled,
   RemovePlugin,
   SetPluginConfig,
+  SetClientUI,
   PluginAssetBase,
   ResolvePrompt,
   ResolveWorktreeChoice,

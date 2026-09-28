@@ -57,7 +57,7 @@ interface HiveTestApi {
   setSessionSubagents?(id: string, running: number): void;
   ringBell?(id: string): void;
   // Plan review (#457).
-  requestPlanReview?(id: string, plan: string, source?: string): string;
+  requestPlanReview?(id: string, plan: string, source?: string): string | null;
   withdrawPlanReview?(id: string): void;
   planReviewAnswers?(): Record<string, unknown>[];
   setExternalPlanReviewers?(

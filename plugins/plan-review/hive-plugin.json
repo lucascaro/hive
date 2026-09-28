@@ -1,0 +1,8 @@
+{
+  "id": "plan-review",
+  "name": "Plan review",
+  "version": "1.0.0",
+  "api_version": "0.2",
+  "description": "Review an agent's plan in Hive before it runs: read it, comment on passages, then approve it or ask for changes. Claude's ExitPlanMode and Pi's hive_submit_plan tool wait for your answer.",
+  "ui": { "entry": "ui.mjs", "style": "ui.css" }
+}

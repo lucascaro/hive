@@ -109,7 +109,13 @@ func TestPluginOps_BroadcastToAllControlClients(t *testing.T) {
 	_ = wire.WriteJSON(b, wire.FrameListPlugins, struct{}{})
 	var list wire.PluginsResp
 	_ = json.Unmarshal(readControlFrame(t, b, wire.FramePlugins, 5*time.Second), &list)
-	if len(list.Plugins) != 1 || !list.Plugins[0].Enabled {
+	var sleepy *wire.PluginInfo
+	for i := range list.Plugins {
+		if list.Plugins[i].ID == "sleepy" {
+			sleepy = &list.Plugins[i]
+		}
+	}
+	if sleepy == nil || !sleepy.Enabled {
 		t.Fatalf("LIST_PLUGINS = %+v", list)
 	}
 

@@ -1,8 +1,11 @@
 import { test, expect, type Page } from '@playwright/test';
+import { closeSettings, openPluginsTab } from './plugin-helpers.js';
 
-// E2E for plan review (#457) against the mock bridge: an agent asks for a
-// review, the GUI raises it through the real event and keyboard
-// pipeline, and the user's answer is exactly what the agent would get.
+// E2E for plan review (#457) against the mock bridge, as the bundled
+// plan-review plugin (spec 471): the user enables it in Settings →
+// Plugins, an agent asks for a review, the plugin raises it through the
+// real event and keyboard pipeline, and the user's answer is exactly
+// what the agent would get.
 
 const PLAN = [
   '# Add a greeting',
@@ -11,7 +14,10 @@ const PLAN = [
   '2. Verify with `cat hello.txt`',
 ].join('\n');
 
-async function boot(page: Page): Promise<string> {
+const row = (page: Page) =>
+  page.locator('.settings-plugin-row[data-plugin-id="plan-review"]');
+
+async function firstSession(page: Page): Promise<string> {
   await page.goto('/');
   await page.waitForFunction(
     () => document.querySelectorAll('#projects li').length > 0,
@@ -19,7 +25,30 @@ async function boot(page: Page): Promise<string> {
   return page.evaluate(() => window.__hive.state?.sessions[0].id ?? '');
 }
 
-const modal = (page: Page) => page.locator('#plan-review');
+/** Boots and enables the bundled plugin the way a user does. Returns
+ * once the window has announced the review UI, so a review parks. */
+async function boot(page: Page): Promise<string> {
+  const id = await firstSession(page);
+  await openPluginsTab(page);
+  await row(page).locator('.settings-plugin-enabled').check();
+  await closeSettings(page);
+  await expect
+    .poll(() =>
+      page.evaluate((sid) => {
+        const r = window.__hive.requestPlanReview?.(sid, '# warm-up');
+        if (r) window.__hive.withdrawPlanReview?.(sid);
+        return r ?? null;
+      }, id),
+    )
+    .not.toBeNull();
+  // The warm-up raised a view; its withdrawal takes it down again.
+  await expect(modal(page)).toBeHidden();
+  return id;
+}
+
+const modal = (page: Page) => page.locator('#plugin-view');
+const banner = (page: Page) =>
+  page.locator('.hv-plugin-banner[data-plugin-id="plan-review"]');
 const request = (page: Page, id: string, plan = PLAN) =>
   page.evaluate(([sid, p]) => window.__hive.requestPlanReview?.(sid, p) ?? '', [
     id,
@@ -96,8 +125,10 @@ test('Escape defers without answering; the bar brings it back', async ({
   await page.keyboard.press('Escape');
   await expect(modal(page)).toBeHidden();
   expect(await answers(page)).toEqual([]);
-  await expect(page.locator('#plan-review-bar')).toBeVisible();
-  await page.locator('#plan-review-bar-open').click();
+  await expect(banner(page)).toContainText(
+    'is waiting for you to review its plan',
+  );
+  await banner(page).locator('.hv-plugin-banner__action').click();
   await expect(modal(page)).toBeVisible();
 });
 
@@ -107,7 +138,7 @@ test('a review answered elsewhere closes the modal', async ({ page }) => {
   await expect(modal(page)).toBeVisible();
   await page.evaluate((sid) => window.__hive.withdrawPlanReview?.(sid), id);
   await expect(modal(page)).toBeHidden();
-  await expect(page.locator('#plan-review-bar')).toHaveCount(0);
+  await expect(banner(page)).toHaveCount(0);
 });
 
 test('the plan follows the theme', async ({ page }) => {
@@ -131,4 +162,22 @@ test('the plan follows the theme', async ({ page }) => {
     root.dataset.theme = root.dataset.theme === 'light' ? 'dark' : 'light';
   });
   await expect.poll(bg).not.toBe(before);
+});
+
+// Criterion 3: installed on every machine, disabled, and not removable.
+// Disabled, nothing is raised: the agent falls back to its terminal.
+test('ships installed and disabled, and reviews nothing until enabled', async ({
+  page,
+}) => {
+  const id = await firstSession(page);
+  await openPluginsTab(page);
+  await expect(row(page)).toBeVisible();
+  await expect(row(page).locator('.settings-plugin-enabled')).not.toBeChecked();
+  await expect(row(page).locator('.settings-plugin-remove')).toHaveCount(0);
+  await expect(row(page).locator('.settings-plugin-source')).toHaveText(
+    'Ships with Hive',
+  );
+  await closeSettings(page);
+  expect(await request(page, id)).toBe('');
+  await expect(modal(page)).toBeHidden();
 });

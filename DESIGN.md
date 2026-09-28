@@ -96,7 +96,7 @@ Architectural invariants. Each one should ideally be enforceable by `gc-sweep` o
   [docs/design-docs/slow-client-policy.md](docs/design-docs/slow-client-policy.md).
 - **Wire JSON is `snake_case` on the wire, `CamelCase` in Go.** Every field in `internal/wire/` carries an explicit `json:"snake_case"` tag. JS readers in `hivegui/frontend/` use `snake_case ?? camelCase` at the boundary.
 - **The GUI never opens a PTY.** All PTY operations go through the wire protocol. Grep guard: no `os/exec`, `creack/pty`, or `internal/session` imports in `cmd/hivegui/` or `hivegui/`.
-- **The registry is the only writer of persisted *session* state.** No file writes under `registry.StateDir()` from `internal/daemon/`, `internal/session/`, or anywhere else. Atomic writes only — never partial truncates. The GUI owns four files in that same directory that are *not* session state and never cross the wire: `agents.json` (custom agents, also read by hived), `agent-settings.json` (agent behaviour settings, also read by hived at spawn), `window.json` (window geometry), and `update.json` (update channel + source-repo override). (Ideas are registry-owned state, not GUI-owned, so they do not change that count.) `hived` owns one more: `pi/hive.ts`, the Pi reporter extension it writes at startup from an embedded copy (`internal/agent/pi.go`) and passes to Pi sessions as `-e <path>`. `hived` (`internal/plugin/`) also owns the plugin set: `plugins.json`, the installed copies under `plugins/<id>/`, and each plugin's `plugin-data/<id>/` (its config and log, and a UI plugin's `ui-config.json`, written only by `SET_PLUGIN_CONFIG`) — not session state either, and written only through the plugin Manager. The GUI and `hived-ws-bridge` read `plugins/<id>/` to serve UI plugin files, and never write it. All of them follow the same temp + rename discipline. Anything the daemon must agree about goes through the wire protocol and the registry instead.
+- **The registry is the only writer of persisted *session* state.** No file writes under `registry.StateDir()` from `internal/daemon/`, `internal/session/`, or anywhere else. Atomic writes only — never partial truncates. The GUI owns four files in that same directory that are *not* session state and never cross the wire: `agents.json` (custom agents, also read by hived), `agent-settings.json` (agent behaviour settings, also read by hived at spawn), `window.json` (window geometry), and `update.json` (update channel + source-repo override). (Ideas are registry-owned state, not GUI-owned, so they do not change that count.) `hived` owns one more: `pi/hive.ts`, the Pi reporter extension it writes at startup from an embedded copy (`internal/agent/pi.go`) and passes to Pi sessions as `-e <path>`. `hived` (`internal/plugin/`) also owns the plugin set: `plugins.json`, the installed copies under `plugins/<id>/` (including the bundled plugins it writes there on every start from the repo's `plugins/` package, the same way as `pi/hive.ts`), and each plugin's `plugin-data/<id>/` (its config and log, and a UI plugin's `ui-config.json`, written only by `SET_PLUGIN_CONFIG`) — not session state either, and written only through the plugin Manager. The GUI and `hived-ws-bridge` read `plugins/<id>/` to serve UI plugin files, and never write it. All of them follow the same temp + rename discipline. Anything the daemon must agree about goes through the wire protocol and the registry instead.
 - **`SESSION_EVENT(added)` means "the entry exists", not "you may attach".**
   A session carries a lifecycle phase (`wire.Phase*`, in-memory on the daemon,
   never persisted); it is attachable only when `alive == true` **and** the
@@ -132,9 +132,12 @@ Architectural invariants. Each one should ideally be enforceable by `gc-sweep` o
   on the user is `SessionInfo.pending_plan_review`. It is not a phase: the
   session is alive and its own approval prompt is on the terminal too. The
   requester holds a `plan_review` connection on the events socket, and its
-  closing withdraws the review. With no client that can answer (hivebar
-  does not count), the request fails fast, so the agent never waits on a
-  dialog nobody can see. See `docs/design-docs/control-plane.md`.
+  closing withdraws the review. The review's UI is the bundled
+  plan-review plugin, not core: review is on while that plugin is
+  enabled, and a review parks only for a window whose `SET_CLIENT_UI`
+  says it runs that plugin's UI. With none (hivebar and plugins never
+  count), the request fails fast, so the agent never waits on a dialog
+  nobody can see. See `docs/design-docs/control-plane.md`.
 - **Control-frame handlers that shell out to git run off the read loop.**
   `CREATE_SESSION`, `KILL_SESSION`, `RESTART_SESSION`, `KILL_PROJECT`,
   `RESOLVE_WORKTREE_CHOICE`, and the

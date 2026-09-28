@@ -5,6 +5,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/lucascaro/hive/internal/agent"
 	"github.com/lucascaro/hive/internal/wire"
 )
 
@@ -145,30 +146,62 @@ func TestSessionExitCancelsPlanReview(t *testing.T) {
 	}
 }
 
-// The answerer check and the park share r.mu with SetAnswerers, so a
-// park can neither land while nobody can answer nor outlive the last
-// answerer leaving. The second half is the race #457's second opinion
-// named: a park landing after the withdrawal would wait days.
+// The answerer check and the park share r.mu with SetReviewAnswerers,
+// so a park can neither land while nobody can show it nor outlive the
+// last review UI leaving. The second half is the race #457's second
+// opinion named: a park landing after the withdrawal would wait days.
 func TestParkPlanReviewAtomicWithAnswerers(t *testing.T) {
 	skipNonPosix(t)
 	r := freshRegistry(t)
 	e := createShell(t, r)
 
-	r.SetAnswerers(0)
+	r.SetReviewAnswerers(0)
 	if _, _, err := r.ParkPlanReview(e.ID, wire.PlanReviewSourceClaude, "# plan"); err != ErrNoAnswerer {
-		t.Fatalf("park with no answerer: %v, want ErrNoAnswerer", err)
+		t.Fatalf("park with no review UI: %v, want ErrNoAnswerer", err)
 	}
+	r.SetReviewAnswerers(1)
+	_, ch, err := r.ParkPlanReview(e.ID, wire.PlanReviewSourceClaude, "# plan")
+	if err != nil {
+		t.Fatalf("park: %v", err)
+	}
+	r.SetReviewAnswerers(0)
+	if d := decisionOf(t, ch); d.Status != wire.PlanReviewNoClient {
+		t.Errorf("last review UI left: decision %q, want no_client", d.Status)
+	}
+	if pendingReviewOf(r, e.ID) != nil {
+		t.Error("review still pending with no review UI")
+	}
+}
+
+// A connected GUI without the plan-review plugin's UI can answer a
+// worktree choice but not a review (spec 471): the two counts are
+// separate, and the general one neither parks nor withdraws reviews.
+func TestWorktreeChoiceUsesGeneralAnswerers(t *testing.T) {
+	skipNonPosix(t)
+	r := freshRegistry(t)
+	e := createShell(t, r)
+
 	r.SetAnswerers(1)
+	r.SetReviewAnswerers(0)
+	if !r.canAskUser() {
+		t.Error("a connected GUI must be able to answer a worktree choice")
+	}
+	if _, _, err := r.ParkPlanReview(e.ID, wire.PlanReviewSourceClaude, "# plan"); err != ErrNoAnswerer {
+		t.Fatalf("park with a GUI but no review UI: %v, want ErrNoAnswerer", err)
+	}
+	r.SetReviewAnswerers(1)
 	_, ch, err := r.ParkPlanReview(e.ID, wire.PlanReviewSourceClaude, "# plan")
 	if err != nil {
 		t.Fatalf("park: %v", err)
 	}
 	r.SetAnswerers(0)
-	if d := decisionOf(t, ch); d.Status != wire.PlanReviewNoClient {
-		t.Errorf("last answerer left: decision %q, want no_client", d.Status)
+	select {
+	case d := <-ch:
+		t.Errorf("the general count withdrew a review: %q", d.Status)
+	default:
 	}
-	if pendingReviewOf(r, e.ID) != nil {
-		t.Error("review still pending with no answerer")
+	if r.canAskUser() {
+		t.Error("no GUI connected, yet a worktree choice would park")
 	}
 }
 
@@ -207,5 +240,51 @@ func TestPlanReviewInfoIsSmall(t *testing.T) {
 	}
 	if got := len(info.PendingPlanReview.ReviewID) + len(info.PendingPlanReview.Source) + len(info.PendingPlanReview.CreatedAt); got > 200 {
 		t.Errorf("pending review is %d bytes on SessionInfo", got)
+	}
+}
+
+// Whether review is on, and who reviews Claude's plans, come from the
+// plan-review plugin through the daemon's source, not from
+// agent-settings.json (spec 471). No source means off.
+func TestSpawnInfoReviewerFromPluginConfig(t *testing.T) {
+	r := freshRegistry(t)
+	if st := r.spawnInfo().Settings; st.PlanReview || st.PlanReviewer != agent.PlanReviewerExternal {
+		t.Errorf("no source: review=%v reviewer=%q, want off/external", st.PlanReview, st.PlanReviewer)
+	}
+	for _, tc := range []struct {
+		on           bool
+		reviewer     string
+		wantReviewer string
+	}{
+		{true, agent.PlanReviewerHive, agent.PlanReviewerHive},
+		{true, "bogus", agent.PlanReviewerExternal},
+		{false, agent.PlanReviewerHive, agent.PlanReviewerHive},
+	} {
+		r.SetPlanReviewSource(func() (bool, string) { return tc.on, tc.reviewer })
+		st := r.spawnInfo().Settings
+		if st.PlanReview != tc.on || st.PlanReviewer != tc.wantReviewer {
+			t.Errorf("source (%v, %q): review=%v reviewer=%q, want %v/%q",
+				tc.on, tc.reviewer, st.PlanReview, st.PlanReviewer, tc.on, tc.wantReviewer)
+		}
+	}
+}
+
+// The source asks the plugin manager, which may be busy; it must run
+// without r.mu, or a source that touches the registry would deadlock.
+func TestSpawnInfoSourceCalledOutsideLock(t *testing.T) {
+	r := freshRegistry(t)
+	r.SetPlanReviewSource(func() (bool, string) {
+		_ = r.List() // takes r.mu
+		return true, agent.PlanReviewerExternal
+	})
+	done := make(chan struct{})
+	go func() {
+		_ = r.spawnInfo()
+		close(done)
+	}()
+	select {
+	case <-done:
+	case <-time.After(5 * time.Second):
+		t.Fatal("spawnInfo deadlocked calling the plan review source")
 	}
 }

@@ -88,6 +88,7 @@ export const Frame = Object.freeze({
   REMOVE_PLUGIN: 0x3b,
   PLUGIN_EVENT: 0x3c,
   SET_PLUGIN_CONFIG: 0x3d,
+  SET_CLIENT_UI: 0x3e,
 });
 
 const frameName = new Map(Object.entries(Frame).map(([k, v]) => [v, k]));
@@ -196,6 +197,7 @@ const MAX_PAYLOAD = 1 << 20;
  * @property {number} restarts
  * @property {{entry: string, style?: string}} [ui]
  * @property {object} [config]
+ * @property {boolean} [builtin]
  */
 
 /**

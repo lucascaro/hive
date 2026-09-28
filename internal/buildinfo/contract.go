@@ -24,6 +24,13 @@ package buildinfo
 // History (newest first), so a bump is a decision with a record and
 // not just a number going up:
 //
+//	21 — Plan review moves into the bundled plan-review plugin (spec
+//	    471, phase 2). The daemon parks a review only for a client whose
+//	    SET_CLIENT_UI names that plugin, and reads "is review on" from
+//	    the plugin, not agent-settings.json. A GUI built before this never
+//	    announces, so every review would fall back to the terminal; one
+//	    built after it would get reviews parked with no UI from an older
+//	    daemon.
 //	20 — GUI plugin surfaces (spec 471, phase 1). Plugin API 0.2:
 //	    manifests may declare a "ui" entry, PluginInfo gains ui and
 //	    config, and SET_PLUGIN_CONFIG stores a UI plugin's settings. A
@@ -191,7 +198,7 @@ package buildinfo
 //	    before this cannot see or clear the flag.
 //	1 — first contract; everything up to and including the
 //	    CLIENT_COMMAND relay.
-const DaemonContract = 20
+const DaemonContract = 21
 
 // Identity is this binary's full build identity. `hived --version
 // --json` prints it, and Welcome carries the same three values, so a

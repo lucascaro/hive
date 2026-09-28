@@ -2,10 +2,10 @@
 
 - **Spec:** [docs/product-specs/471-gui-plugin-surfaces-proven-by-moving-plan-review-i.md](../../product-specs/471-gui-plugin-surfaces-proven-by-moving-plan-review-i.md)
 - **Issue:** #471
-- **Status:** active
-- **Phase:** 1 of 2
-- **PR:** #472
-- **Branch:** feature/471-gui-plugin-surfaces
+- **Status:** completed
+- **Phase:** 2 of 2
+- **PR:** #473
+- **Branch:** feature/471-plan-review-plugin
 
 ## Summary
 
@@ -379,6 +379,13 @@ verdict: approve, confidence 8. No must-fix items. Nice-to-haves applied: direct
 - **2026-09-28** — Phase 1 `hive.actions` is `switchTo` only. The plan-review actions (`getPlanReview`, `resolvePlanReview`, `externalPlanReviewers`) land in Phase 2 with their only consumer. Why: YAGNI.
 - **2026-09-28** — `settings.set` updates the local store immediately and is settled by the daemon's echo (`pluginConfigOverlay`); a failed write drops the local value and re-lists. Why: e2e-real showed a controlled checkbox snapping back for a round trip.
 - **2026-09-28** — Criterion 6 is measured in headless Chromium against the mock bridge (`scripts/measure-gui-idle.sh`: boot, main-thread busy ms/s, JS heap) rather than by launching the built app. Why: the GUI change is frontend-only (the Go side adds a request-only asset handler and two bindings); the script compares both sides the same way and needs no app build or window. It is a proxy for WKWebView/WebView2, and the PR says so.
+- **2026-09-28** — Phase 2: the builtin set is `plugin.Config.Builtin` (an `fs.FS`), passed by the daemon from the repo's `plugins` package, rather than `New` always materializing it. Why: every Manager unit test would otherwise get plan-review installed; the daemon still materializes it on every start.
+- **2026-09-28** — Phase 2: enabling a bundled plugin skips the trust prompt, and its row shows "Ships with Hive" with no Remove. Why: it is part of the app the user already runs; the prompt's "only enable plugins you trust" is about third-party code.
+- **2026-09-28** — Phase 2: the host API gains `subscribeSessions(cb)`, `actions.{getPlanReview, resolvePlanReview, externalPlanReviewers}` and a modal `title` that may be `(session, props) => string`. Why: the plugin's review queue runs outside React and needs session changes; the actions are the generic wrappers the spec asks for; the dialog title names the session, as #457's did. All documented in docs/plugins.md.
+- **2026-09-28** — Phase 2: the old #457 core UI never reached a release (its changeset is still pending under `[Unreleased]`), so the spec's "accepted regression" affects no released user. The 457 changeset is edited to say where plan review is turned on now, rather than adding a regression note.
+- **2026-09-28** — Phase 2: the review's Approve / Request changes buttons sit at the end of the plugin's body rather than the dialog footer. Why: the host draws the frame and plugins own the body (docs/plugins.md); a footer slot would be a new host surface for one plugin.
+- **2026-09-28** — Phase 2: the sidebar badge reads "Review", not "Plan". Why: "Plan" already means plan progress on the same row.
+- **2026-09-28** — Phase 2: `vitest.config.js` allows reading the repo's `plugins/` so the DOM suite loads the real `plugins/plan-review/ui.mjs` through the host.
 
 ## Progress
 
@@ -391,6 +398,9 @@ verdict: approve, confidence 8. No must-fix items. Nice-to-haves applied: direct
 
 - **2026-09-28** — Phase 1 PR #472 opened.
 
+- **2026-09-28** — Phase 2 implemented on `feature/471-plan-review-plugin`: bundled plan-review plugin, SET_CLIENT_UI answerer rule, core plan-review UI deleted.
+- **2026-09-28** — Phase 2 PR #473 opened.
+
 ## Open questions
 
 - How and where plugin UI code runs inside the Wails webview.
@@ -400,6 +410,7 @@ verdict: approve, confidence 8. No must-fix items. Nice-to-haves applied: direct
 
 - **2026-09-28 iter 1** — verdict: APPROVE; mergeable: MERGEABLE; findings_hash: empty; threads_open: 0; action: stop; head_sha: e8ce955.
 - **2026-09-28 iter 2** — verdict: APPROVE; mergeable: MERGEABLE; findings_hash: empty; threads_open: 0; action: stop; head_sha: 0dbb3d8.
+- **2026-09-28 iter 1** — verdict: APPROVE; mergeable: MERGEABLE; findings_hash: empty; threads_open: 0; action: stop; head_sha: 60cb84c.
 
 ## Gate verdict
 
@@ -408,3 +419,8 @@ verdict: approve, confidence 8. No must-fix items. Nice-to-haves applied: direct
     - acceptance — PASS — criteria 4–8 pass (54 DOM/unit tests, 6 plugin e2e specs, Go plugin/wire/bridge tests, idle numbers in the PR body with the Chromium-proxy caveat); 1–3 DEFERRED (phase > 1)
     - non-goals — PASS — no sandboxing, no plan-review features, no agent-hook/Pi injection, no cosmetic plugins, no marketplace, no extra surfaces; core plan review untouched
     - doc accuracy — PASS — docs/plugins.md constants and API match the code; README, DESIGN.md, ui README, changeset (type: added) and features.json all updated; CHANGELOG/index untouched
+- **2026-09-28** — verdict: PASS; phase: 2/2; checks: 3 passed / 0 failed / 0 followups; followups: none; one-line: plan review now ships as the bundled plan-review plugin (installed, disabled, not removable), the core plan-review UI is gone, reviews park only for a window running the plugin's UI, and criteria 4–8 still hold.
+  - 2026-09-28 dimensions:
+    - acceptance — PASS — criteria 1–3 met: #457's behaviour runs through the plugin (19 DOM, 6 mock e2e, 4 real-daemon e2e, hook round trip and daemon/registry tests; the real Claude/Pi probes are opt-in and were not run here), no core plan-review UI (guard test plus deleted files), and a go:embedded builtin that is listed installed and disabled (builtin tests, real-daemon e2e). Criteria 4–8 re-run green.
+    - non-goals — PASS — no sandboxing, setting migration, new plan-review features, agent-hook injection, cosmetic plugins, marketplace or new surface types; host API additions sit on the existing four surfaces
+    - doc accuracy — PASS — README, DESIGN.md, docs/plugins.md, control-plane.md, plugin README, 457 spec note, changesets (457 edited, 471 added), features.json, contract history and SDK tables updated; CHANGELOG and index untouched; no type: fixed changeset

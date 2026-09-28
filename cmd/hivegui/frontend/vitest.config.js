@@ -1,4 +1,8 @@
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { defineConfig } from 'vitest/config';
+
+const here = path.dirname(fileURLToPath(import.meta.url));
 
 // Split unit vs DOM suites by directory:
 //   test/unit/   → pure modules, node env, fast
@@ -19,6 +23,12 @@ import { defineConfig } from 'vitest/config';
 // converted test that stops matching its glob vanishes *silently* — the
 // suite just gets smaller. Do not narrow these back to `.js`.
 export default defineConfig({
+  // The bundled plugins' UI modules (repo plugins/) are tested through
+  // the real plugin host (test/dom/plan-review-plugin.test.tsx), and
+  // they live above this root.
+  server: {
+    fs: { allow: [here, path.resolve(here, '../../../plugins')] },
+  },
   test: {
     globals: false,
     reporters: 'default',

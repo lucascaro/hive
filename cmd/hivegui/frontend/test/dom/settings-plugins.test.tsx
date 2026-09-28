@@ -329,6 +329,31 @@ describe('Settings → Plugins', () => {
     expect(msg.split('\n')[0]).toBe('Web hook 0.1.0');
   });
 
+  // Spec 471: the plan-review plugin ships inside Hive. It is listed
+  // like any plugin but can only be switched on and off: no Remove, and
+  // no third-party trust prompt for a part of the app itself.
+  it('a bundled plugin has no Remove and enables without a trust prompt', async () => {
+    setPlugins([
+      plugin({
+        id: 'plan-review',
+        name: 'Plan review',
+        source: 'builtin',
+        command: [],
+        builtin: true,
+        ui: { entry: 'ui.mjs' },
+      }),
+    ]);
+    const { container } = mount();
+    expect(container.querySelector('.settings-plugin-remove')).toBeNull();
+    expect(
+      container.querySelector('.settings-plugin-source')?.textContent,
+    ).toBe('Ships with Hive');
+    fireEvent.click(container.querySelector('.settings-plugin-enabled')!);
+    await settle();
+    expect(bridge.Confirm).not.toHaveBeenCalled();
+    expect(bridge.SetPluginEnabled).toHaveBeenCalledWith('plan-review', true);
+  });
+
   it('remove goes through Confirm', async () => {
     setPlugins([plugin()]);
     const { container } = mount();

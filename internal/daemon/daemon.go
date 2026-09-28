@@ -82,6 +82,11 @@ type Daemon struct {
 	// falling back to a stale base ref nobody agreed to (#451), and a
 	// plan review falls back to the agent's own terminal prompt (#457).
 	controlClients int
+	// reviewClients counts the control connections whose latest
+	// SET_CLIENT_UI names the plan-review plugin: the only clients that
+	// can show a plan review. Mirrored into the registry by
+	// addReviewAnswerer.
+	reviewClients int
 
 	// commands relays client-to-client verbs (see commands.go). Not
 	// state, so it is not in the registry.
@@ -372,17 +377,19 @@ func New(cfg Config) (*Daemon, error) {
 	// the first GUI connects: a worktree-setup failure or a plan review
 	// with nobody to ask fails fast instead of parking.
 	reg.SetAnswerers(0)
+	reg.SetReviewAnswerers(0)
 
 	d.runCtx, d.runCancel = d.stopCtx(context.Background())
 	// Plugins load now (a file read) and start in Run, once clients can
 	// connect: a plugin that dials before the listener accepts would
 	// count its refused connect as a crash.
-	mgr, err := plugin.New(plugin.Config{StateDir: stateDir, Listen: d.listenPlugin})
+	mgr, err := plugin.New(plugin.Config{StateDir: stateDir, Listen: d.listenPlugin, Builtin: builtinPlugins})
 	if err != nil {
 		log.Printf("hived: plugins disabled: %v", err)
 	} else {
 		d.plugins = mgr
 	}
+	reg.SetPlanReviewSource(d.planReviewState)
 
 	// The two slow boot chores run in the background, off the caller's
 	// path: reviving persisted sessions forks one PTY each, and the
@@ -581,6 +588,9 @@ func (d *Daemon) EventSocketPath() string { return d.evsock }
 // Registry exposes the registry for tests; production code should
 // not bypass the wire protocol.
 func (d *Daemon) Registry() *registry.Registry { return d.reg }
+
+// Plugins is the plugin manager, or nil when plugins failed to load.
+func (d *Daemon) Plugins() *plugin.Manager { return d.plugins }
 
 // Close terminates every session, closes listeners, removes the socket.
 func (d *Daemon) Close() error {
@@ -1250,7 +1260,17 @@ func (d *Daemon) serveControl(ctx context.Context, conn net.Conn, hello wire.Hel
 		}
 		sendWorktrees(projectID, "list_worktrees_failed")
 	}
+	// Only a client that can show UI may announce plugin UIs: a plugin
+	// socket, hivebar and a session's own events socket are read and
+	// ignored.
+	var announceUI func([]string)
+	if hello.Mode == wire.ModeControl && tag == nil && canAnswer(hello) {
+		var done func()
+		announceUI, done = d.reviewAnnouncer()
+		defer done()
+	}
 	ops := controlOps{
+		announceUI:     announceUI,
 		restricted:     restricted,
 		ownSessionID:   hello.SessionID,
 		ownProjectID:   ownProjectID,
@@ -1347,6 +1367,9 @@ type controlOps struct {
 	sendError      func(code, msg string)
 	sendWorktrees  func(projectID, failCode string)
 	finishMutation func(projectID string, err error, failCode string)
+	// announceUI records this client's SET_CLIENT_UI. Nil for clients
+	// that show no UI, whose announcements are dropped.
+	announceUI func(pluginIDs []string)
 }
 
 // decodeReq parses one request payload, answering `bad_payload` on the
@@ -1844,6 +1867,11 @@ func (d *Daemon) handleControlFrame(ctx context.Context, ops controlOps, ft wire
 	case wire.FrameListPlugins, wire.FrameInstallPlugin, wire.FrameSetPluginEnabled, wire.FrameRemovePlugin,
 		wire.FrameSetPluginConfig:
 		d.handlePluginFrame(ctx, ops, ft, payload)
+	case wire.FrameSetClientUI:
+		req, ok := decodeReq[wire.SetClientUIReq](payload, ops.sendError)
+		if ok && ops.announceUI != nil {
+			ops.announceUI(req.PluginUIs)
+		}
 	default:
 		log.Printf("hived: unexpected control frame: %s", ft)
 	}

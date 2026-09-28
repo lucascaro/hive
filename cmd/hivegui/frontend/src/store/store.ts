@@ -175,7 +175,6 @@ export type ModalId =
   | 'help-modal'
   | 'whats-new'
   | 'build-log'
-  | 'plan-review'
   | 'plugin-view';
 
 // `seq` is the opening's generation, minted by openModal. A component
@@ -206,9 +205,6 @@ export type ModalEntry =
   // The failed build's output, fetched once on open: it is a snapshot
   // of an attempt that is over, so there is nothing to keep in sync.
   | { id: 'build-log'; seq: number; log: string }
-  // An agent's plan waiting on the user (#457). The plan text is carried
-  // because it was fetched once for this review; reviewId is what the
-  // answer echoes so a superseded plan can never be approved.
   // A UI plugin's session view (app/plugin-host.ts openSessionView).
   | {
       id: 'plugin-view';
@@ -216,14 +212,6 @@ export type ModalEntry =
       pluginId: string;
       sessionId: string;
       props: unknown;
-    }
-  | {
-      id: 'plan-review';
-      seq: number;
-      sessionId: string;
-      reviewId: string;
-      source: string;
-      plan: string;
     };
 
 // The open question, plus the generation that lets a second ask remount

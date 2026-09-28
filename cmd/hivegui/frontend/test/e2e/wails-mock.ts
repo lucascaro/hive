@@ -936,6 +936,18 @@ const planReviewAnswers: Record<string, unknown>[] = [];
 let externalPlanReviewers: { kind: string; id: string; active: boolean }[] = [];
 let planReviewSeq = 0;
 
+// The daemon parks a review only while a window runs the plan-review
+// plugin's UI, and withdraws every pending one when none does.
+function reviewUIRunning(): boolean {
+  return !!clientUI?.includes('plan-review');
+}
+function withdrawAllPlanReviews() {
+  for (const id of [...planReviews.keys()]) {
+    planReviews.delete(id);
+    setPendingPlanReview(id, false);
+  }
+}
+
 function setPendingPlanReview(id: string, pending: boolean) {
   const s = state.sessions.find((x) => x.id === id);
   if (!s) return;
@@ -1609,11 +1621,38 @@ type MockPlugin = {
   restarts: number;
   ui?: { entry: string; style?: string };
   config?: Record<string, unknown>;
+  builtin?: boolean;
 };
-const mockPlugins: MockPlugin[] = [];
+// hived materializes the bundled plan-review plugin on every start,
+// installed and disabled (spec 471), so every window sees it.
+const mockPlugins: MockPlugin[] = [
+  {
+    id: 'plan-review',
+    name: 'Plan review',
+    version: '1.0.0',
+    api_version: '0.2',
+    source: 'builtin',
+    command: [],
+    enabled: false,
+    status: 'stopped',
+    restarts: 0,
+    ui: { entry: 'ui.mjs', style: 'ui.css' },
+    builtin: true,
+  },
+];
 // The dev server serves UI plugin files at /plugins/<id>/ in mock mode
 // (vite.config.js), on the page's own origin like the app does.
 export async function PluginAssetBase() {
+  return '';
+}
+// The plugin UIs this window announced (SET_CLIENT_UI). A plan review
+// raised through window.__hive.requestPlanReview parks only while it
+// names plan-review, as it does against the real daemon.
+let clientUI: string[] | null = null;
+export async function SetClientUI(ids: string[]) {
+  maybeFail('SetClientUI');
+  clientUI = [...(ids ?? [])];
+  if (!clientUI.includes('plan-review')) withdrawAllPlanReviews();
   return '';
 }
 export async function SetPluginConfig(
@@ -1698,6 +1737,9 @@ export async function RemovePlugin(id: string) {
   maybeFail('RemovePlugin');
   const i = mockPlugins.findIndex((x) => x.id === id);
   if (i < 0) return '';
+  if (mockPlugins[i].builtin) {
+    throw new Error('plugin: ships with Hive; disable it instead');
+  }
   const [gone] = mockPlugins.splice(i, 1);
   emit('plugin:event', JSON.stringify({ kind: 'removed', plugin: gone }));
   return '';
@@ -1747,7 +1789,10 @@ if (typeof window !== 'undefined') {
     // Plan review (#457): an agent asks for a review; the GUI must raise
     // it. Returns the review id. withdrawPlanReview is the agent giving
     // up (the user answered in the terminal).
+    // Null when no review UI is running: the agent falls back to its
+    // own terminal prompt (no_client).
     requestPlanReview(id: string, plan: string, source = 'claude') {
+      if (!reviewUIRunning()) return null;
       const review_id = `r${++planReviewSeq}`;
       planReviews.set(id, { review_id, source, plan });
       setPendingPlanReview(id, true);

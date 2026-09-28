@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/lucascaro/hive/internal/agent"
+	"github.com/lucascaro/hive/internal/daemon"
 	"github.com/lucascaro/hive/internal/wire"
 )
 
@@ -222,17 +223,13 @@ func TestPlanReviewOutputFallsThrough(t *testing.T) {
 // session shows a pending review, a control client answers through
 // GET/RESOLVE, and the hook prints Claude's decision.
 func TestHookPlanReviewRoundTrip(t *testing.T) {
-	settings := t.TempDir()
-	if err := os.WriteFile(filepath.Join(settings, agent.SettingsFileName), []byte(`{"plan_review": true}`), 0o644); err != nil {
-		t.Fatal(err)
-	}
-	agent.SetCustomDir(settings)
+	agent.SetCustomDir(t.TempDir())
 	t.Cleanup(func() { agent.SetCustomDir("") })
 	t.Setenv("HOME", t.TempDir()) // no external reviewer
 	d := startHookTestDaemon(t)
 	id := d.Registry().List()[0].ID
-	gui, _ := dialControlAndSubscribe(t, d)
-	defer gui.Close()
+	enablePlanReviewPlugin(t, d)
+	gui := planReviewGUI(t, d)
 
 	raw := readFixture(t, "permission_request_exitplanmode.json")
 	run := func() <-chan []byte {
@@ -304,4 +301,67 @@ func TestHookPlanReviewRoundTrip(t *testing.T) {
 	if out := await(ch); out != nil {
 		t.Errorf("GUI left mid-review but the hook printed %s", out)
 	}
+}
+
+// enablePlanReviewPlugin switches plan review on the way a user does:
+// by enabling the bundled plan-review plugin (spec 471).
+func enablePlanReviewPlugin(t *testing.T, d *daemon.Daemon) {
+	t.Helper()
+	if _, err := d.Plugins().SetEnabled("plan-review", true); err != nil {
+		t.Fatalf("enable plan-review: %v", err)
+	}
+	deadline := time.Now().Add(3 * time.Second)
+	for {
+		if on, _ := d.Plugins().Running("plan-review"); on {
+			return
+		}
+		if time.Now().After(deadline) {
+			t.Fatal("plan-review plugin never started")
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+}
+
+// planReviewGUI is a control client that runs the plan-review plugin's
+// UI, the only kind a review parks for. It returns once the daemon has
+// processed the announcement: frames on one connection are handled in
+// order, so the SESSIONS reply to a later LIST_SESSIONS proves it.
+func planReviewGUI(t *testing.T, d *daemon.Daemon) net.Conn {
+	t.Helper()
+	c, err := net.Dial("unix", d.SocketPath())
+	if err != nil {
+		t.Fatalf("dial: %v", err)
+	}
+	t.Cleanup(func() { _ = c.Close() })
+	if err := wire.WriteJSON(c, wire.FrameHello, wire.Hello{
+		Version: wire.PROTOCOL_VERSION, Client: "hivegui/test", Mode: wire.ModeControl,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if err := wire.WriteJSON(c, wire.FrameSetClientUI, wire.SetClientUIReq{PluginUIs: []string{"plan-review"}}); err != nil {
+		t.Fatal(err)
+	}
+	if err := wire.WriteJSON(c, wire.FrameListSessions, struct{}{}); err != nil {
+		t.Fatal(err)
+	}
+	_ = c.SetReadDeadline(time.Now().Add(5 * time.Second))
+	sessions := 0
+	for sessions < 2 { // the connect snapshot, then the reply
+		ft, _, err := wire.ReadFrame(c)
+		if err != nil {
+			t.Fatalf("read: %v", err)
+		}
+		if ft == wire.FrameSessions {
+			sessions++
+		}
+	}
+	_ = c.SetReadDeadline(time.Time{})
+	go func() {
+		for {
+			if _, _, err := wire.ReadFrame(c); err != nil {
+				return
+			}
+		}
+	}()
+	return c
 }

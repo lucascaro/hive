@@ -186,6 +186,8 @@ type session struct {
 	mu       sync.Mutex
 	control  *wire.Client
 	attaches map[string]*wire.Client // session id → attach conn
+	// clientUI is the page's last SetClientUI, re-sent on reconnect.
+	clientUI *wire.SetClientUIReq
 }
 
 // route sends one decoded request to the right execution lane. It is a
@@ -440,6 +442,19 @@ func (s *session) dispatch(req rpcReq) {
 			return
 		}
 		s.respond(req.ID, "", s.controlWriteJSON(wire.FrameSetPluginConfig, p))
+	case "SetClientUI":
+		var p wire.SetClientUIReq
+		if err := parseParams(req.Params, &p); err != nil {
+			s.respond(req.ID, nil, err)
+			return
+		}
+		if p.PluginUIs == nil {
+			p.PluginUIs = []string{}
+		}
+		s.mu.Lock()
+		s.clientUI = &p
+		s.mu.Unlock()
+		s.respond(req.ID, "", s.controlWriteJSON(wire.FrameSetClientUI, p))
 	case "RemovePlugin":
 		var p wire.RemovePluginReq
 		if err := parseParams(req.Params, &p); err != nil {
@@ -610,7 +625,15 @@ func (s *session) connectControl() error {
 	}
 	s.mu.Lock()
 	s.control = cli
+	announced := s.clientUI
 	s.mu.Unlock()
+	// A redialed connection announces nothing until told; repeat the
+	// page's last SET_CLIENT_UI, as the app does (app_control.go).
+	if announced != nil {
+		if err := cli.WriteJSON(wire.FrameSetClientUI, *announced); err != nil {
+			log.Printf("ws-bridge: re-announce plugin UIs: %v", err)
+		}
+	}
 	go s.controlReadLoop(cli)
 	return nil
 }
