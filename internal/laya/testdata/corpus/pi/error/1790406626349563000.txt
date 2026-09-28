@@ -1,0 +1,30 @@
+[Skill conflicts]
+  "graphify" collision:
+    ✓ user ~/.claude/skills/graphify/SKILL.md
+    ✗ ~/.pi/agent/skills/graphify/SKILL.md (skipped)
+
+
+ Read calc.py and add a divide function that raises ValueError on division by zero.
+
+
+ Error: Connection error.
+
+ Error: Connection error.
+
+ Error: Connection error.
+
+ Error: Connection error.
+
+ Error: Retry failed after 3 attempts: Connection error.
+
+
+
+
+
+
+ Router: off  Model: omlx/Qwen3.6-35B-A3B-8bit  $0.0000 / $1.00
+───────────────────────────────────────────────────────────────────────────────────────────────────
+
+───────────────────────────────────────────────────────────────────────────────────────────────────
+/private/tmp/hive-laya-cap/work3 (main)
+5.8%/262k (auto)                                                         (omlx) Qwen3.6-35B-A3B-8bi

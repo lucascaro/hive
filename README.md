@@ -48,6 +48,21 @@ What works:
   - If another plan reviewer such as plannotator is installed, it keeps
     reviewing Claude's plans unless you choose Hive in Settings. Choosing
     Hive disables that plugin for the Claude sessions Hive starts.
+- Laya state detection (optional, off by default). Sessions without agent
+  hooks — Aider, Codex, a shell, custom agents — only get a guess at what
+  they are doing. Point Settings → Agents → Agent state detection at a
+  [Laya](https://laya-ai.com/) server you run locally — anything that
+  speaks Laya's `/v1/systemone` API, such as upstream
+  `pip install "laya[serve]" && laya-serve` — and Hive asks it
+  what a settled screen shows: working, idle, waiting for you, waiting
+  for permission, or failed. Hooked sessions keep their hooks; Laya
+  only steps in once an agent has gone 30 seconds without a new report.
+  The state tooltip says "classified from the screen by Laya".
+  - Screen text is sent only to the URL you set; Settings warns when it
+    is not this machine. Put a server API key in Hive's environment as
+    `HIVE_LAYA_API_KEY` — it is never written to disk.
+  - Accuracy depends on the model; see
+    `internal/laya/testdata/corpus/README.md` to score yours.
 - Agent activity — what a Claude or Pi session is doing, without reading
   its scrollback. ⌘J opens an inspector beside the terminal: the plan's
   steps with the tool calls each one ran (`Bash · npm test`, never the

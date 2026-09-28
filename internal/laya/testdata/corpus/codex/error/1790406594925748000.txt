@@ -1,0 +1,30 @@
+╭────────────────────────────────────────────────────────╮
+│ >_ OpenAI Codex (v0.157.1)                             │
+│                                                        │
+│ model:     no-such-model-xyz medium   /model to change │
+│ directory: /private/tmp/hive-laya-cap/work3            │
+╰────────────────────────────────────────────────────────╯
+
+
+› say hi
+
+
+■ {"type":"error","status":400,"error":{"type":"invalid_request_error","message":"The 'no-such-
+model-xyz' model is not supported when using Codex with a ChatGPT account."}}
+
+
+
+
+
+
+
+
+
+
+
+    Tip: NEW: Network proxy can now be enabled from /experimental. Restart Codex after enabling it.
+
+› Ask Codex to do anything
+
+  no-such-model-xyz medium · /private/tmp/hive-laya-cap/work3 · Say hi
+  ← for agents · ? for shortcuts                                          ⚠ 2 warnings · f2 to view

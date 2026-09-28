@@ -16,6 +16,7 @@ import {
   useSessionActivity,
   useNow,
 } from '../../store/activity.js';
+import { isInferredSource } from '../../lib/session-state.js';
 import { useAppStore } from '../../store/store.js';
 
 export interface ActivityView {
@@ -35,7 +36,7 @@ export function useActivityView(sessionId: string): ActivityView | null {
   const { data, load } = useSessionActivity(sessionId, !!info);
   const now = useNow();
   if (!info) return null;
-  const heuristic = !info.state_source || info.state_source === 'heuristic';
+  const heuristic = isInferredSource(info.state_source);
   // "No activity data" is a claim about the agent, so it waits for the
   // snapshot: while loading, or after a failed load, nothing is known.
   const empty =

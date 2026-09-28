@@ -10,6 +10,7 @@ import (
 	"net"
 	"os"
 	"runtime"
+	"time"
 
 	"github.com/lucascaro/hive/internal/plugin"
 	"github.com/lucascaro/hive/internal/wire"
@@ -29,17 +30,80 @@ type pluginTag struct {
 	// ctx ends when the daemon starts shutting down or this plugin run
 	// ends, releasing any connection sleeping in wait.
 	ctx context.Context
+	// pressure reports how full the fullest client event listener is
+	// (Daemon.fanoutPressure). nil in tests that exercise the budget alone.
+	pressure func() float64
+	// gate is a one-slot semaphore shared by every plugin connection in
+	// the daemon (Daemon.pluginFanout). A broadcasting request holds it
+	// from its pressure check until its dispatch returns, so the check
+	// and the broadcast it admits are one step: without it, several
+	// connections could each see "under half full" before any of them
+	// published, and together overflow a small buffer (#467 review).
+	gate chan struct{}
 }
+
+// Backpressure on a plugin's broadcasts (#467). Every broadcast lands in
+// every client's event listener, and a listener that fills is dropped
+// and its client hung up on. A plugin paced only by its token budget can
+// out-run a GUI that is briefly off-CPU; one whose broadcasting requests
+// wait while any listener is half full cannot, whatever the frame fans
+// out to, however many plugins are sending, and whichever buffer is the
+// small one. The wait is bounded: a client that has stopped reading
+// keeps its listener full, and after backpressureMax the plugin goes
+// ahead and that client is dropped by the ordinary slow-listener rule
+// (#461) rather than stalling every plugin forever.
+const (
+	backpressureHigh = 0.5
+	// ponytail: polls, because the listeners have no drain signal to wait
+	// on; 5ms is ~200 checks/s per throttled plugin, only while throttled.
+	backpressurePoll = 5 * time.Millisecond
+)
+
+// backpressureMax is a var so tests can shorten it.
+var backpressureMax = 2 * time.Second
 
 // wait spends cost from the plugin's budget, sleeping when it is spent.
 // It gives up — and the caller drops the connection — when the daemon
 // shuts down or the run ends, so a throttled plugin never pins Close.
 // A nil tag (an ordinary client) never waits.
-func (t *pluginTag) wait(cost float64) error {
+//
+// The returned release must be called once the request has been
+// dispatched; until then this plugin connection holds the daemon-wide
+// broadcast slot. It is never nil when err is nil.
+func (t *pluginTag) wait(cost float64) (release func(), err error) {
+	noop := func() {}
 	if t == nil {
-		return nil
+		return noop, nil
 	}
-	return t.lim.Wait(t.ctx, cost)
+	if err := t.lim.Wait(t.ctx, cost); err != nil {
+		return nil, err
+	}
+	// Cost-1 frames are reads (LIST_*, GET_*, SEARCH_*) and attach
+	// input; they broadcast nothing, so they never wait on readers.
+	if cost <= 1 || t.pressure == nil {
+		return noop, nil
+	}
+	// The deadline covers time queued behind another plugin's pressure
+	// wait too, so no request waits on readers past backpressureMax.
+	deadline := time.Now().Add(backpressureMax)
+	release = noop
+	if t.gate != nil {
+		select {
+		case t.gate <- struct{}{}:
+		case <-t.ctx.Done():
+			return nil, t.ctx.Err()
+		}
+		release = func() { <-t.gate }
+	}
+	for t.pressure() >= backpressureHigh && time.Now().Before(deadline) {
+		select {
+		case <-t.ctx.Done():
+			release()
+			return nil, t.ctx.Err()
+		case <-time.After(backpressurePoll):
+		}
+	}
+	return release, nil
 }
 
 // listenPlugin opens a fresh socket for one run of plugin id, next to
@@ -67,7 +131,7 @@ func (d *Daemon) listenPlugin(id string) (string, func(), error) {
 		return "", nil, err
 	}
 	ctx, cancel := d.stopCtx(context.Background())
-	tag := &pluginTag{id: id, lim: plugin.NewLimiter(), ctx: ctx}
+	tag := &pluginTag{id: id, lim: plugin.NewLimiter(), ctx: ctx, pressure: d.fanoutPressure, gate: d.pluginFanout}
 	go func() {
 		for {
 			conn, err := ln.Accept()
@@ -179,4 +243,15 @@ func pluginErrorCode(err error, generic string) string {
 		return wire.ErrCodePluginNotFound
 	}
 	return generic
+}
+
+// fanoutPressure is how full the fullest client event listener is,
+// across every kind the daemon fans out: registry session, project,
+// idea and activity events, PLUGIN_EVENT, and client commands.
+func (d *Daemon) fanoutPressure() float64 {
+	p := max(d.reg.Pressure(), d.commands.pressure())
+	if d.plugins != nil {
+		p = max(p, d.plugins.Pressure())
+	}
+	return p
 }

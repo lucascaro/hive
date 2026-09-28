@@ -1,0 +1,12 @@
+total 24
+drwxr-xr-x   4 user       wheel  128 Sep 26 00:01 __pycache__
+drwxr-xr-x   8 user       wheel  256 Sep 26 00:01 .
+drwx------  12 user       wheel  384 Sep 26 00:03 ..
+drwxr-xr-x  12 user       wheel  384 Sep 26 00:05 .git
+-rw-r--r--   1 user       wheel  200 Sep 26 00:01 calc.py
+-rw-r--r--   1 user       wheel   32 Sep 25 23:59 calc.py.bak
+-rw-r--r--   1 user       wheel    0 Sep 25 23:59 important.db
+-rw-r--r--   1 user       wheel  342 Sep 26 00:01 test_calc.py
+
+work on  main [!?] via 🐍 3.6.8
+➜

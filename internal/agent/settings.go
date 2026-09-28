@@ -8,6 +8,7 @@ import (
 	"log"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
 )
 
@@ -61,6 +62,31 @@ type Settings struct {
 	// session at spawn, because that is the only time Hive can disable
 	// a plugin.
 	PlanReviewer string `json:"plan_reviewer"`
+	// LayaEnabled has the daemon ask a user-run Laya decision model what
+	// a session without a live agent tier is doing, from its visible
+	// screen (spec 458). Off by default: it sends screen text to
+	// LayaURL. Read live by the daemon, so toggling it takes effect on
+	// the next classification.
+	LayaEnabled bool `json:"laya_enabled"`
+	// LayaURL is the Laya server's base URL; empty means DefaultLayaURL
+	// (read it through LayaEndpoint). The API key, when the server wants
+	// one, comes from the daemon's HIVE_LAYA_API_KEY and is never stored
+	// here.
+	LayaURL string `json:"laya_url"`
+	// LayaModel names the checkpoint to ask; empty lets the server pick.
+	// This is where a fine-tuned checkpoint plugs in.
+	LayaModel string `json:"laya_model"`
+}
+
+// DefaultLayaURL is a Laya server on this machine's default port.
+const DefaultLayaURL = "http://127.0.0.1:8000"
+
+// LayaEndpoint is LayaURL with the default applied.
+func (s Settings) LayaEndpoint() string {
+	if u := strings.TrimSpace(s.LayaURL); u != "" {
+		return u
+	}
+	return DefaultLayaURL
 }
 
 // PlanReviewer values.
@@ -78,6 +104,9 @@ type settingsFile struct {
 	PiTodoTool      *bool   `json:"pi_todo_tool,omitempty"`
 	PlanReview      *bool   `json:"plan_review,omitempty"`
 	PlanReviewer    *string `json:"plan_reviewer,omitempty"`
+	LayaEnabled     *bool   `json:"laya_enabled,omitempty"`
+	LayaURL         *string `json:"laya_url,omitempty"`
+	LayaModel       *string `json:"laya_model,omitempty"`
 }
 
 // DefaultSettings is what a fresh install, or a missing key, means.
@@ -100,6 +129,15 @@ func (f settingsFile) resolve() Settings {
 	// an installed reviewer never disables a tool the user set up.
 	if f.PlanReviewer != nil && *f.PlanReviewer == PlanReviewerHive {
 		s.PlanReviewer = PlanReviewerHive
+	}
+	if f.LayaEnabled != nil {
+		s.LayaEnabled = *f.LayaEnabled
+	}
+	if f.LayaURL != nil {
+		s.LayaURL = strings.TrimSpace(*f.LayaURL)
+	}
+	if f.LayaModel != nil {
+		s.LayaModel = strings.TrimSpace(*f.LayaModel)
 	}
 	return s
 }
@@ -151,6 +189,7 @@ func SaveSettings(s Settings) error {
 	blob, err := json.MarshalIndent(settingsFile{
 		ClaudeTaskTools: &s.ClaudeTaskTools, PiTodoTool: &s.PiTodoTool,
 		PlanReview: &s.PlanReview, PlanReviewer: &reviewer,
+		LayaEnabled: &s.LayaEnabled, LayaURL: &s.LayaURL, LayaModel: &s.LayaModel,
 	}, "", "  ")
 	if err != nil {
 		return err

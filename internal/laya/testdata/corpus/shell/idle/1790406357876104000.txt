@@ -1,0 +1,18 @@
+ddfcf0d (HEAD -> main) init
+On branch main
+Changes not staged for commit:
+  (use "git add <file>..." to update what will be committed)
+  (use "git restore <file>..." to discard changes in working directory)
+        modified:   calc.py
+
+Untracked files:
+  (use "git add <file>..." to include in what will be committed)
+        __pycache__/
+        calc.py.bak
+        important.db
+        test_calc.py
+
+no changes added to commit (use "git add" and/or "git commit -a")
+
+work on  main [!?] via 🐍 3.6.8
+➜

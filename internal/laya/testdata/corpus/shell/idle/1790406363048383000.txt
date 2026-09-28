@@ -1,0 +1,4 @@
+error: pathspec 'no-such-branch' did not match any file(s) known to git
+
+work on  main [!?] via 🐍 3.6.8
+➜

@@ -338,6 +338,13 @@ const (
 	// StateSourceExtension is reported by an in-process agent
 	// extension (the Hive-shipped Pi extension).
 	StateSourceExtension = "extension"
+	// StateSourceLaya is the daemon's own classification of the visible
+	// screen by a user-run Laya decision model (spec 458). It sits
+	// outside the trust order: it only ever fills in for a tier that is
+	// absent or has reported nothing new for HookStaleAfter, and any
+	// real agent event takes the session straight back. Daemon-only —
+	// the event socket rejects it from reporters.
+	StateSourceLaya = "laya"
 )
 
 // Session lifecycle phases, carried by SessionInfo.Phase. The daemon

@@ -35,6 +35,7 @@ export {
   SaveCustomAgents,
   GetAgentSettings,
   SaveAgentSettings,
+  TestLayaConnection,
   CreateProject,
   KillProject,
   UpdateProject,

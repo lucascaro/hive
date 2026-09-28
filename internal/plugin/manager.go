@@ -664,3 +664,17 @@ func pluginEnv(base []string, add ...string) []string {
 	}
 	return append(out, add...)
 }
+
+// Pressure is how full the fullest PLUGIN_EVENT listener is, 0 to 1; see
+// registry.Pressure.
+func (m *Manager) Pressure() float64 {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	p := 0.0
+	for ch := range m.listeners {
+		if c := cap(ch); c > 0 {
+			p = max(p, float64(len(ch))/float64(c))
+		}
+	}
+	return p
+}

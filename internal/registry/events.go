@@ -187,3 +187,34 @@ func (r *Registry) ActivitySnapshot(id string) (wire.ActivityMsg, error) {
 		StaleAt:   staleAtString(e.machine()),
 	}, nil
 }
+
+// Pressure is how full the fullest listener is, from 0 (every buffer
+// empty) to 1 (one is full and about to be dropped). The daemon holds
+// back a plugin's broadcasting requests while it is high, so a plugin's
+// burst paces itself to the slowest reader instead of overflowing it
+// (#467). Covers every listener kind the registry owns.
+func (r *Registry) Pressure() float64 {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	p := 0.0
+	for ch := range r.listeners {
+		p = max(p, fill(len(ch), cap(ch)))
+	}
+	for ch := range r.projectListeners {
+		p = max(p, fill(len(ch), cap(ch)))
+	}
+	for ch := range r.ideaListeners {
+		p = max(p, fill(len(ch), cap(ch)))
+	}
+	for ch := range r.activityListeners {
+		p = max(p, fill(len(ch), cap(ch)))
+	}
+	return p
+}
+
+func fill(n, c int) float64 {
+	if c == 0 {
+		return 0
+	}
+	return float64(n) / float64(c)
+}

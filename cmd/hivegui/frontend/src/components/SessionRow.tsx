@@ -18,7 +18,11 @@ import { Icon, StateIcon } from './Icon.js';
 import { IconButton } from './IconButton.js';
 import { Kbd } from './Kbd.js';
 import { isClosing, phaseOf } from '../lib/phase-steps.js';
-import { type SessionState, stateTooltip } from '../lib/session-state.js';
+import {
+  isInferredSource,
+  type SessionState,
+  stateTooltip,
+} from '../lib/session-state.js';
 import { displayTitle } from '../lib/term-title.js';
 import { useAppStore } from '../store/store.js';
 import type { SessionInfo } from '../app/state.js';
@@ -48,7 +52,7 @@ function planOf(s: SessionInfo): {
     done,
     total,
     pct: Math.round((done / total) * 100),
-    stale: (s.state_source ?? 'heuristic') === 'heuristic',
+    stale: isInferredSource(s.state_source),
   };
 }
 
@@ -141,9 +145,7 @@ export function SessionRow(p: SessionRowProps) {
   const plan = planOf(s);
   const subs = subagentsOf(s);
   // Same not-live rule as planOf, for a badge with no plan under it.
-  const stale = plan
-    ? plan.stale
-    : (s.state_source ?? 'heuristic') === 'heuristic';
+  const stale = plan ? plan.stale : isInferredSource(s.state_source);
   const code = agentCode(s.agent);
   // The agent's own colour, from the catalog ListAgents() returned at
   // boot. Undefined before that reply lands and for a custom agent that

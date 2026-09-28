@@ -133,6 +133,12 @@
     "since": "Unreleased"
   },
   {
+    "title": "Laya state detection",
+    "blurb": "Optionally ask a Laya model you run locally what a hook-less session's screen shows, so Aider, Codex and shell sessions say when they are waiting for you.",
+    "status": "shipped",
+    "since": "Unreleased"
+  },
+  {
     "title": "Scrollback across daemon restart",
     "blurb": "Today scrollback lives with the daemon process.",
     "status": "planned"

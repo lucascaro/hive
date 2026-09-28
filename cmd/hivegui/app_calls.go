@@ -6,18 +6,23 @@
 package main
 
 import (
+	"context"
 	"crypto/sha256"
 	"encoding/hex"
 	"errors"
+	"fmt"
 	"log"
+	"net/http"
 	"net/url"
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 
 	wruntime "github.com/wailsapp/wails/v2/pkg/runtime"
 
 	"github.com/lucascaro/hive/internal/agent"
+	"github.com/lucascaro/hive/internal/laya"
 	"github.com/lucascaro/hive/internal/registry"
 	"github.com/lucascaro/hive/internal/wire"
 	"github.com/lucascaro/hive/internal/worktree"
@@ -127,6 +132,11 @@ type AgentSettings struct {
 	// PlanReviewer is "external" or "hive": who reviews a Claude plan
 	// when another reviewer is installed. Newly started sessions only.
 	PlanReviewer string `json:"plan_reviewer"`
+	// LayaEnabled / LayaURL / LayaModel configure the optional Laya
+	// state classifier (spec 458). Read live by the daemon.
+	LayaEnabled bool   `json:"laya_enabled"`
+	LayaURL     string `json:"laya_url"`
+	LayaModel   string `json:"laya_model"`
 }
 
 // GetAgentSettings reads agent-settings.json. A malformed file is an
@@ -137,6 +147,7 @@ func (a *App) GetAgentSettings() (AgentSettings, error) {
 	return AgentSettings{
 		ClaudeTaskTools: s.ClaudeTaskTools, PiTodoTool: s.PiTodoTool,
 		PlanReview: s.PlanReview, PlanReviewer: s.PlanReviewer,
+		LayaEnabled: s.LayaEnabled, LayaURL: s.LayaURL, LayaModel: s.LayaModel,
 	}, err
 }
 
@@ -148,7 +159,54 @@ func (a *App) SaveAgentSettings(s AgentSettings) error {
 	return agent.SaveSettings(agent.Settings{
 		ClaudeTaskTools: s.ClaudeTaskTools, PiTodoTool: s.PiTodoTool,
 		PlanReview: s.PlanReview, PlanReviewer: s.PlanReviewer,
+		LayaEnabled: s.LayaEnabled, LayaURL: s.LayaURL, LayaModel: s.LayaModel,
 	})
+}
+
+// layaHealthTimeout bounds the Settings screen's connection test. A
+// local server answers /health in milliseconds; a hung one should not
+// hold the button for long.
+const layaHealthTimeout = 2 * time.Second
+
+// layaProbeTimeout bounds the test classification, which on a cold
+// server includes loading the checkpoint.
+const layaProbeTimeout = 20 * time.Second
+
+// TestLayaConnection checks that endpoint can actually classify, and
+// returns "" when it can or a one-line reason otherwise. /health alone
+// is not proof: any service answers 200 there, so it then asks one
+// real /v1/systemone question — about a one-character placeholder
+// screen, never a session's text — of model, the checkpoint the daemon
+// will ask (empty: the server's default). An empty endpoint tests the
+// default URL.
+// The key, if any, is HIVE_LAYA_API_KEY, as for the daemon.
+func (a *App) TestLayaConnection(endpoint, model string) string {
+	base := agent.Settings{LayaURL: endpoint}.LayaEndpoint()
+	client := laya.NewClient()
+	ctx, cancel := context.WithTimeout(context.Background(), layaHealthTimeout)
+	defer cancel()
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, strings.TrimRight(base, "/")+"/health", nil)
+	if err != nil {
+		return err.Error()
+	}
+	resp, err := client.Do(req)
+	if err != nil {
+		return err.Error()
+	}
+	resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		return fmt.Sprintf("%s/health answered %s", base, resp.Status)
+	}
+	// A cold server loads its checkpoint on the first question, so this
+	// one gets longer than the health check.
+	qctx, qcancel := context.WithTimeout(context.Background(), layaProbeTimeout)
+	defer qcancel()
+	if _, err := laya.Classify(qctx, client, laya.Request{
+		BaseURL: base, Model: strings.TrimSpace(model), APIKey: os.Getenv("HIVE_LAYA_API_KEY"),
+	}, "$"); err != nil {
+		return "reachable, but it could not classify: " + err.Error()
+	}
+	return ""
 }
 
 // ExternalPlanReviewer mirrors agent.ExternalReviewer for the bound

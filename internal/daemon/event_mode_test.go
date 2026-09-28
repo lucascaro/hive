@@ -185,3 +185,24 @@ func TestEventFrameRefusesMalformedKey(t *testing.T) {
 		})
 	}
 }
+
+// Spec 458: "laya" is the daemon's own classification. A reporter
+// claiming it would get a state the trust rules treat as Laya's — one
+// no hook clock backs — so the event socket refuses it like any other
+// unknown source.
+func TestEventModeRejectsLayaSource(t *testing.T) {
+	skipOnWindows(t)
+	d := startTestDaemon(t)
+	id := bootstrapSessionID(t, d)
+	c := dialEvent(t, d)
+	defer c.Close()
+	if err := wire.WriteJSON(c, wire.FrameAgentEvent, wire.AgentEvent{
+		SessionID: id, Kind: wire.AgentEventWaitingInput, Source: wire.StateSourceLaya,
+	}); err != nil {
+		t.Fatalf("write: %v", err)
+	}
+	assertConnClosed(t, c)
+	if info := findSession(d, id); info.State != wire.StateIdle || info.StateSource != wire.StateSourceHeuristic {
+		t.Errorf("state = %q/%q, want idle/heuristic (unchanged)", info.State, info.StateSource)
+	}
+}

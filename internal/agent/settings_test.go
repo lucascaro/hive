@@ -411,3 +411,41 @@ func TestClaudeSpawnEnvPlanReviewer(t *testing.T) {
 		}
 	}
 }
+
+func TestLayaSettingsDefaults(t *testing.T) {
+	settingsDir(t, `{"claude_task_tools": true}`)
+	s, err := LoadSettings()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if s.LayaEnabled {
+		t.Error("Laya on by default — it sends screen text off-process, so it must be opt-in")
+	}
+	if s.LayaEndpoint() != DefaultLayaURL || s.LayaModel != "" {
+		t.Errorf("endpoint=%q model=%q, want %q and empty", s.LayaEndpoint(), s.LayaModel, DefaultLayaURL)
+	}
+}
+
+func TestLayaSettingsRoundTrip(t *testing.T) {
+	settingsDir(t, "")
+	want := DefaultSettings()
+	want.LayaEnabled, want.LayaURL, want.LayaModel = true, "http://127.0.0.1:9000", "laya-terminal-ft"
+	if err := SaveSettings(want); err != nil {
+		t.Fatal(err)
+	}
+	got, err := LoadSettings()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got != want {
+		t.Errorf("round trip = %+v, want %+v", got, want)
+	}
+}
+
+func TestLayaSettingsBlankURLIsDefault(t *testing.T) {
+	settingsDir(t, `{"laya_url": "  "}`)
+	s, _ := LoadSettings()
+	if s.LayaEndpoint() != DefaultLayaURL {
+		t.Errorf("blank url resolved to %q, want the default", s.LayaEndpoint())
+	}
+}

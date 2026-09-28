@@ -469,3 +469,28 @@ func TestUpdateIdeaRejectsUnknownProject(t *testing.T) {
 		t.Errorf("project = %q after a refused re-project, want %q", got, p.ID)
 	}
 }
+
+// Pressure reports the fullest listener, across every kind, so the
+// daemon can hold back a plugin's broadcasts before one overflows (#467).
+func TestPressure_TracksFullestListener(t *testing.T) {
+	r, _ := ideaRegistry(t)
+	ideas, stopIdeas := r.SubscribeIdeas()
+	defer stopIdeas()
+	_, stopSessions := r.Subscribe()
+	defer stopSessions()
+	if p := r.Pressure(); p != 0 {
+		t.Fatalf("idle Pressure = %v, want 0", p)
+	}
+	for range cap(ideas) / 2 {
+		ideas <- wire.IdeaEvent{}
+	}
+	if p := r.Pressure(); p != 0.5 {
+		t.Fatalf("Pressure with a half-full idea listener = %v, want 0.5", p)
+	}
+	for range cap(ideas) / 2 {
+		<-ideas
+	}
+	if p := r.Pressure(); p != 0 {
+		t.Fatalf("Pressure after draining = %v, want 0", p)
+	}
+}

@@ -1,0 +1,30 @@
+╭───────────────────────────────────────────────────╮
+│ >_ OpenAI Codex (v0.157.1)                        │
+│                                                   │
+│ model:     GPT-5.6-Luna medium   /model to change │
+│ directory: /private/tmp/hive-laya-cap/work3       │
+╰───────────────────────────────────────────────────╯
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+                                                Tip: Use /hooks to view and manage lifecycle hooks.
+
+› Ask Codex to do anything
+
+  GPT-5.6-Luna medium · /private/tmp/hive-laya-cap/work3
+  ← for agents · ? for shortcuts                                           ⚠ 1 warning · f2 to view

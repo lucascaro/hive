@@ -24,6 +24,11 @@ package buildinfo
 // History (newest first), so a bump is a decision with a record and
 // not just a number going up:
 //
+//	19 — Laya state classification (spec 458). A new state_source,
+//	    "laya", for states the daemon inferred by asking a user-run Laya
+//	    model about a session's screen. A GUI built before this renders
+//	    it "reported by the agent" and treats it as a live agent tier
+//	    (plan staleness, activity), so the pair must move together.
 //	18 — Headless plugins (spec 460). LIST_PLUGINS / PLUGINS /
 //	    INSTALL_PLUGIN / SET_PLUGIN_ENABLED / REMOVE_PLUGIN /
 //	    PLUGIN_EVENT (0x37-0x3c), the nonce on wire.Error, and the
@@ -180,7 +185,7 @@ package buildinfo
 //	    before this cannot see or clear the flag.
 //	1 — first contract; everything up to and including the
 //	    CLIENT_COMMAND relay.
-const DaemonContract = 18
+const DaemonContract = 19
 
 // Identity is this binary's full build identity. `hived --version
 // --json` prints it, and Welcome carries the same three values, so a

@@ -109,3 +109,17 @@ func updatesPersistedFields(req wire.UpdateSessionReq) bool {
 	return req.Name != nil || req.Color != nil ||
 		req.Order != nil || req.ProjectID != nil
 }
+
+// pressure is how full the fullest command listener is, 0 to 1; see
+// registry.Pressure.
+func (h *commandHub) pressure() float64 {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	p := 0.0
+	for ch := range h.listeners {
+		if c := cap(ch); c > 0 {
+			p = max(p, float64(len(ch))/float64(c))
+		}
+	}
+	return p
+}

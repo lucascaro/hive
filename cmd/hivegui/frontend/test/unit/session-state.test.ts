@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import {
   attentionSummary,
+  isInferredSource,
   sessionState,
   stateTooltip,
 } from '../../src/lib/session-state.js';
@@ -203,5 +204,25 @@ describe('attentionSummary', () => {
         { alive: false, phase: '', last_error: 'boom' },
       ]),
     ).toEqual({ count: 2, state: 'failed' });
+  });
+});
+
+describe('Laya source (spec 458)', () => {
+  it('names Laya in the tooltip rather than crediting the agent', () => {
+    expect(
+      stateTooltip({
+        alive: true,
+        state: 'waiting_input',
+        state_source: 'laya',
+      }),
+    ).toBe('Waiting for you\nclassified from the screen by Laya');
+  });
+  it('treats laya like the heuristic tier: inferred, not reported', () => {
+    expect(isInferredSource('laya')).toBe(true);
+    expect(isInferredSource('')).toBe(true);
+    expect(isInferredSource(undefined)).toBe(true);
+    expect(isInferredSource('heuristic')).toBe(true);
+    expect(isInferredSource('hook')).toBe(false);
+    expect(isInferredSource('extension')).toBe(false);
   });
 });

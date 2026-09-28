@@ -773,3 +773,40 @@ func TestVT_InsideUnterminatedEscape(t *testing.T) {
 		}
 	}
 }
+
+func TestScreenTextPlainRows(t *testing.T) {
+	v := NewVT(20, 4)
+	if _, err := v.Write([]byte("hello\r\n\x1b[1;31mworld\x1b[m  ")); err != nil {
+		t.Fatalf("write: %v", err)
+	}
+	if got, want := v.ScreenText(), "hello\nworld"; got != want {
+		t.Errorf("ScreenText = %q, want %q", got, want)
+	}
+}
+
+func TestScreenTextKeepsInnerBlankRows(t *testing.T) {
+	v := NewVT(10, 5)
+	if _, err := v.Write([]byte("a\r\n\r\nb")); err != nil {
+		t.Fatalf("write: %v", err)
+	}
+	if got, want := v.ScreenText(), "a\n\nb"; got != want {
+		t.Errorf("ScreenText = %q, want %q", got, want)
+	}
+}
+
+func TestScreenTextEmptyScreen(t *testing.T) {
+	if got := NewVT(10, 3).ScreenText(); got != "" {
+		t.Errorf("ScreenText of a blank screen = %q, want empty", got)
+	}
+}
+
+func TestScreenSnapshotMatchesTextAndDigest(t *testing.T) {
+	v := NewVT(20, 4)
+	if _, err := v.Write([]byte("hello\r\nworld")); err != nil {
+		t.Fatal(err)
+	}
+	text, d := v.ScreenSnapshot()
+	if text != v.ScreenText() || d != v.ScreenDigest() {
+		t.Errorf("ScreenSnapshot = (%q, %d), want (%q, %d)", text, d, v.ScreenText(), v.ScreenDigest())
+	}
+}
