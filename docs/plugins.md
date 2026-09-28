@@ -51,7 +51,7 @@ root:
 | Field | Required | Meaning |
 |-------|----------|---------|
 | `id` | yes | Lowercase letters, digits and hyphens, up to 63 characters. Unique among installed plugins. |
-| `name` | yes | Shown to the user. |
+| `name` | yes | Shown to the user, including in the install prompt. `name`, `version`, `description` and the `main.command` arguments may not contain control characters, invisible formatting characters (bidi overrides and isolates, zero-width characters) or line separators. |
 | `version` | no | Your plugin's own version. |
 | `api_version` | yes | The plugin API you target. Must be `0.1` for this Hive. |
 | `description` | no | One sentence, shown to the user. |
@@ -63,11 +63,16 @@ the SDK below.
 
 ## Installing
 
-> The Hive app's **Settings → Plugins** tab — install, enable, disable,
-> remove — arrives in the next phase of this feature (spec 460). Until
-> then plugins are managed over the wire protocol with the
-> `INSTALL_PLUGIN` / `SET_PLUGIN_ENABLED` / `REMOVE_PLUGIN` requests
-> below, which is what that tab will send.
+Users manage plugins in the Hive app under **Settings → Plugins**:
+paste a folder path or git URL and press Install, and Hive shows what the
+plugin is, where it came from and the exact command it will run, with a
+full-privileges warning. Accepting enables it; cancelling removes it
+again. Turning a plugin on from the tab's toggle shows the same trust
+prompt; turning it off acts at once, and removing it asks you to confirm
+first. None of these needs a
+daemon restart. It sends the same `INSTALL_PLUGIN` /
+`SET_PLUGIN_ENABLED` / `REMOVE_PLUGIN` requests described below, so any
+other wire client can do the same.
 
 A plugin is installed from either:
 

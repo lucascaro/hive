@@ -1591,6 +1591,84 @@ export async function SetWorktreeLabel(
   return '';
 }
 
+// --- plugins ---
+//
+// The daemon owns these (internal/plugin); the mock answers each op with
+// the event the real one sends: PLUGINS for a list, PLUGIN_EVENT for
+// every change, and an install's nonce echoed on its "added" event — or
+// on a plugin_install_failed error when the source names "fail".
+type MockPlugin = {
+  id: string;
+  name: string;
+  version: string;
+  api_version: string;
+  source: string;
+  command: string[];
+  enabled: boolean;
+  status: string;
+  restarts: number;
+};
+const mockPlugins: MockPlugin[] = [];
+export async function ListPlugins() {
+  maybeFail('ListPlugins');
+  emit('plugin:list', JSON.stringify({ plugins: mockPlugins }));
+  return '';
+}
+export async function InstallPlugin(source: string, nonce: string) {
+  maybeFail('InstallPlugin');
+  const id =
+    source
+      .split('/')
+      .filter(Boolean)
+      .pop()
+      ?.replace(/[^a-z0-9-]/gi, '')
+      .toLowerCase() || 'plugin';
+  if (/fail/.test(source) || mockPlugins.some((p) => p.id === id)) {
+    emit(
+      'control:error',
+      JSON.stringify({
+        code: 'plugin_install_failed',
+        message: /fail/.test(source)
+          ? 'no hive-plugin.json'
+          : `${id} is already installed; remove it first`,
+        nonce,
+      }),
+    );
+    return '';
+  }
+  const plugin: MockPlugin = {
+    id,
+    name: id[0].toUpperCase() + id.slice(1),
+    version: '0.1.0',
+    api_version: '0.1',
+    source,
+    command: ['node', 'main.mjs'],
+    enabled: false,
+    status: 'stopped',
+    restarts: 0,
+  };
+  mockPlugins.push(plugin);
+  emit('plugin:event', JSON.stringify({ kind: 'added', plugin, nonce }));
+  return '';
+}
+export async function SetPluginEnabled(id: string, enabled: boolean) {
+  maybeFail('SetPluginEnabled');
+  const p = mockPlugins.find((x) => x.id === id);
+  if (!p) return '';
+  p.enabled = enabled;
+  p.status = enabled ? 'running' : 'stopped';
+  emit('plugin:event', JSON.stringify({ kind: 'updated', plugin: p }));
+  return '';
+}
+export async function RemovePlugin(id: string) {
+  maybeFail('RemovePlugin');
+  const i = mockPlugins.findIndex((x) => x.id === id);
+  if (i < 0) return '';
+  const [gone] = mockPlugins.splice(i, 1);
+  emit('plugin:event', JSON.stringify({ kind: 'removed', plugin: gone }));
+  return '';
+}
+
 // Test hook: lets Playwright inject events / inspect state.
 if (typeof window !== 'undefined') {
   window.__hive = {

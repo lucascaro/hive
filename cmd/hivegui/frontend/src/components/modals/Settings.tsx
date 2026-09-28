@@ -1,6 +1,6 @@
-// ---------- settings (custom agents + appearance + updates) ----------
+// ---------- settings (agents, appearance, menu bar, plugins, updates) ----------
 //
-// The body is three tabbed panels. All three stay mounted and the
+// The body is tabbed panels. All of them stay mounted and the
 // inactive ones are hidden: that is what keeps the agent draft, the
 // theme state, the update:progress subscription and the source-repo
 // debounce alive across a switch, and `display: none` takes their
@@ -92,6 +92,7 @@ import {
   saveAgentPrefs,
 } from '../../lib/agent-order.js';
 import { LauncherAgents } from './LauncherAgents.js';
+import { PluginsPanel } from './PluginsPanel.js';
 import { useAppStore } from '../../store/store.js';
 import { Button } from '../Button.js';
 import { Tabs } from '../Tabs.js';
@@ -102,7 +103,7 @@ import type { main } from '../../../wailsjs/go/models';
 
 const DEFAULT_COLOR = '#64748b';
 
-type TabId = 'agents' | 'appearance' | 'menubar' | 'updates';
+type TabId = 'agents' | 'appearance' | 'menubar' | 'plugins' | 'updates';
 // Menu bar is macOS-only and needs a login item the build can actually
 // register, so its tab is absent — not disabled — everywhere else, which
 // is what the section it replaced did with the same guard.
@@ -111,6 +112,7 @@ function tabsFor(showMenuBar: boolean): { id: TabId; label: string }[] {
     { id: 'agents', label: 'Agents' },
     { id: 'appearance', label: 'Appearance' },
     ...(showMenuBar ? [{ id: 'menubar' as TabId, label: 'Menu bar' }] : []),
+    { id: 'plugins', label: 'Plugins' },
     { id: 'updates', label: 'Updates' },
   ];
 }
@@ -590,7 +592,7 @@ function SettingsDialog({ root }: { root: HTMLElement }): ReactNode {
   const updateBtn = updateButtonState(updateInfo);
 
   // MenuBarLoginItemStatus resolves after mount, so the strip gains its
-  // fourth tab once the answer arrives — and toggleMenuBarLoginItem
+  // Menu bar tab once the answer arrives — and toggleMenuBarLoginItem
   // re-reads the status after every toggle, so the tab can leave the
   // strip too. "unsupported" is Go's default: branch (loginitem_darwin.go),
   // not just macOS 12 and earlier, so an unexpected status code is enough
@@ -760,6 +762,13 @@ function SettingsDialog({ root }: { root: HTMLElement }): ReactNode {
       ) {
         return;
       }
+      // The Plugins tab has no draft to save: its controls act at once,
+      // and Enter in its source field installs. This listener sits on
+      // #settings and so runs before React's own handler (delegated at
+      // the app root) could preventDefault — hence a check by place, not
+      // by defaultPrevented. Without it Enter would also save and close
+      // the dialog mid-install.
+      if (target?.closest('#settings-panel-plugins')) return;
       e.preventDefault();
       saveSettings();
     }
@@ -1220,6 +1229,10 @@ function SettingsDialog({ root }: { root: HTMLElement }): ReactNode {
           </p>
         </Panel>
       ) : null}
+
+      <Panel tab="plugins" active={activeTab}>
+        <PluginsPanel active={activeTab === 'plugins'} onError={showError} />
+      </Panel>
 
       <Panel tab="updates" active={activeTab}>
         <p className="settings-hint">

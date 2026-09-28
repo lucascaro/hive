@@ -956,6 +956,55 @@ func (a *App) RemoveIdea(id string) error {
 	return cs.WriteJSON(wire.FrameRemoveIdea, wire.RemoveIdeaReq{ID: id})
 }
 
+// ---------- plugins ----------
+//
+// The same request-out, event-back shape as ideas: PLUGINS answers
+// ListPlugins and PLUGIN_EVENT fans every change out to every window,
+// both as "plugin:list" / "plugin:event". InstallPlugin carries a
+// frontend-chosen nonce that the daemon echoes on the resulting "added"
+// event or plugin_install_failed error, so only the window that asked
+// shows the trust prompt (src/app/plugins.ts). Nothing here awaits:
+// the frontend owns the correlation, which keeps these bindings and
+// the ws-bridge's raw forwards one shape.
+
+// ListPlugins asks for every installed plugin.
+func (a *App) ListPlugins() error {
+	cs, err := a.requireControl()
+	if err != nil {
+		return err
+	}
+	return cs.WriteJSON(wire.FrameListPlugins, struct{}{})
+}
+
+// InstallPlugin installs from a local directory or git URL. The plugin
+// always lands disabled; enabling it is a separate, consented step.
+func (a *App) InstallPlugin(source, nonce string) error {
+	cs, err := a.requireControl()
+	if err != nil {
+		return err
+	}
+	return cs.WriteJSON(wire.FrameInstallPlugin, wire.InstallPluginReq{Source: source, Nonce: nonce})
+}
+
+// SetPluginEnabled starts or stops a plugin without restarting hived.
+func (a *App) SetPluginEnabled(id string, enabled bool) error {
+	cs, err := a.requireControl()
+	if err != nil {
+		return err
+	}
+	return cs.WriteJSON(wire.FrameSetPluginEnabled, wire.SetPluginEnabledReq{ID: id, Enabled: enabled})
+}
+
+// RemovePlugin stops a plugin and deletes its install; its data dir is
+// kept.
+func (a *App) RemovePlugin(id string) error {
+	cs, err := a.requireControl()
+	if err != nil {
+		return err
+	}
+	return cs.WriteJSON(wire.FrameRemovePlugin, wire.RemovePluginReq{ID: id})
+}
+
 func (a *App) requireControl() (*wire.Client, error) {
 	a.mu.Lock()
 	cs := a.control

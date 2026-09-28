@@ -19,6 +19,7 @@ import (
 	"path/filepath"
 	"regexp"
 	"strings"
+	"unicode"
 )
 
 // APIVersion is the plugin API this build implements. Until 1.0 the API
@@ -71,6 +72,18 @@ func LoadManifest(dir string) (Manifest, error) {
 	return m, m.Validate()
 }
 
+// hasUnsafeText reports control characters (Cc, which includes U+0085),
+// invisible formatting characters (Cf: bidi overrides and isolates,
+// zero-width spaces and joiners, U+FEFF) and line/paragraph separators.
+// These fields are shown to the user in the install trust prompt, where a
+// newline could forge a "Runs:" line, an override could reorder the real
+// one, and a zero-width character could make a name look like another's.
+func hasUnsafeText(s string) bool {
+	return strings.ContainsFunc(s, func(r rune) bool {
+		return unicode.In(r, unicode.Cc, unicode.Cf, unicode.Zl, unicode.Zp)
+	})
+}
+
 // Validate checks the manifest's shape. The API-version check comes last
 // so a manifest with a structural problem reports that instead.
 func (m Manifest) Validate() error {
@@ -80,11 +93,21 @@ func (m Manifest) Validate() error {
 	if strings.TrimSpace(m.Name) == "" {
 		return errors.New("plugin: name is required")
 	}
+	for field, v := range map[string]string{"name": m.Name, "version": m.Version, "description": m.Description} {
+		if hasUnsafeText(v) {
+			return fmt.Errorf("plugin: %s contains control or invisible formatting characters", field)
+		}
+	}
 	if len(m.UI) > 0 {
 		return errors.New(`plugin: "ui" entry points are not supported by this version of Hive`)
 	}
 	if m.Main == nil || len(m.Main.Command) == 0 || strings.TrimSpace(m.Main.Command[0]) == "" {
 		return errors.New(`plugin: "main.command" is required`)
+	}
+	for _, arg := range m.Main.Command {
+		if hasUnsafeText(arg) {
+			return errors.New(`plugin: "main.command" contains control or invisible formatting characters`)
+		}
 	}
 	if m.APIVersion != APIVersion {
 		return fmt.Errorf("%w: plugin targets %q, this Hive provides %q", ErrAPIVersion, m.APIVersion, APIVersion)

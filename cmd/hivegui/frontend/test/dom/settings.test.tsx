@@ -64,6 +64,15 @@ const editorBridge = {
   SaveEditorSettings: vi.fn(() => Promise.resolve()),
 };
 
+// The Plugins tab shares the modal; test/dom/settings-plugins.test.tsx
+// drives it. Stubbed here for the Enter-to-save exclusion below.
+const pluginBridge = {
+  ListPlugins: vi.fn(() => Promise.resolve()),
+  InstallPlugin: vi.fn((_source: string, _nonce: string) => Promise.resolve()),
+  SetPluginEnabled: vi.fn(() => Promise.resolve()),
+  RemovePlugin: vi.fn(() => Promise.resolve()),
+};
+
 const updateBridge = {
   GetUpdateSettings: vi.fn(() =>
     Promise.resolve({ channel: 'release', source_repo: '' }),
@@ -114,6 +123,7 @@ vi.mock('../../src/bridge.js', () => ({
     setMenuBarLoginItem(...a),
   ...updateBridge,
   ...editorBridge,
+  ...pluginBridge,
 }));
 
 // settings.ts calls applyXtermTheme() when the theme changes; importing
@@ -951,6 +961,25 @@ describe('enter confirms', () => {
     expect(saveCustomAgents).not.toHaveBeenCalled();
   });
 
+  // The Plugins tab has no draft: Enter in its source field installs,
+  // and must not also save and close the dialog mid-install.
+  it('leaves Enter in the plugin source field to the install', async () => {
+    open();
+    await flush();
+    const input = el('settings-plugin-source') as HTMLInputElement;
+    fireEvent.change(input, { target: { value: '/src/webhook' } });
+    fireEvent.keyDown(input, { key: 'Enter' });
+    await flush();
+    expect(saveCustomAgents).not.toHaveBeenCalled();
+    expect(pluginBridge.InstallPlugin).toHaveBeenCalledWith(
+      '/src/webhook',
+      expect.any(String),
+    );
+    expect(document.getElementById('settings')!.classList).not.toContain(
+      'hidden',
+    );
+  });
+
   // Enter on a focused button is that button's own activation. Without
   // the exclusion, Enter on Cancel would close the dialog and save the
   // draft it was meant to discard.
@@ -1213,6 +1242,7 @@ describe('settings menu-bar tab', () => {
     expect(tabIds()).toEqual([
       'settings-tab-agents',
       'settings-tab-appearance',
+      'settings-tab-plugins',
       'settings-tab-updates',
     ]);
     expect(document.getElementById('settings-panel-menubar')).toBeNull();
@@ -1227,7 +1257,7 @@ describe('settings menu-bar tab', () => {
     expect(document.getElementById('settings-panel-menubar')).toBeNull();
   });
 
-  it('appears between Appearance and Updates and owns the toggle', async () => {
+  it('appears between Appearance and Plugins and owns the toggle', async () => {
     menuBarStatus = 'not-registered';
     onMac = true;
     open();
@@ -1236,6 +1266,7 @@ describe('settings menu-bar tab', () => {
       'settings-tab-agents',
       'settings-tab-appearance',
       'settings-tab-menubar',
+      'settings-tab-plugins',
       'settings-tab-updates',
     ]);
 

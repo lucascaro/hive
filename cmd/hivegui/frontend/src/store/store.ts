@@ -42,6 +42,7 @@ import type { ModeHint } from '../lib/status.js';
 import type {
   AppState,
   IdeaInfo,
+  PluginInfo,
   ProjectInfo,
   SessionInfo,
   TermTile,
@@ -129,6 +130,10 @@ export interface AppData {
   // fans out single-idea events that a map would have to find the right
   // bucket for anyway.
   ideas: IdeaInfo[];
+  // Every installed plugin, sorted by id. Empty until the Plugins tab
+  // asks (ListPlugins, once per Settings open); PLUGIN_EVENT keeps it
+  // current in between.
+  plugins: PluginInfo[];
   // agent id -> the agent's own colour (internal/agent/agent.go Def.Color,
   // and custom.go for user-defined agents). Filled once at boot from
   // ListAgents(); empty until then, and an agent missing from it renders
@@ -501,6 +506,7 @@ function initialData(): AppData {
     modals: [],
     worktreesPayload: null,
     ideas: [],
+    plugins: [],
     agentColors: new Map(),
     choiceDialog: null,
   };
@@ -1268,6 +1274,29 @@ export function removeIdea(id: string): void {
   const cur = get().ideas;
   if (!cur.some((i) => i.id === id)) return;
   set({ ideas: cur.filter((i) => i.id !== id) });
+}
+
+// ---------- plugins ----------
+
+function byPluginId(list: PluginInfo[]): PluginInfo[] {
+  return [...list].sort((a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0));
+}
+
+export function setPlugins(plugins: PluginInfo[]): void {
+  set({ plugins: byPluginId(plugins || []) });
+}
+
+// added and updated are one operation: an update for a plugin this
+// window never listed is how a window that opened late learns of it.
+export function upsertPlugin(p: PluginInfo): void {
+  const rest = get().plugins.filter((x) => x.id !== p.id);
+  set({ plugins: byPluginId([...rest, p]) });
+}
+
+export function dropPlugin(id: string): void {
+  const cur = get().plugins;
+  if (!cur.some((p) => p.id === id)) return;
+  set({ plugins: cur.filter((p) => p.id !== id) });
 }
 
 // openIdeasOf is the sidebar badge's count and the inbox's list: an

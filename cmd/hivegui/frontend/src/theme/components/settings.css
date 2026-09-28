@@ -138,3 +138,62 @@
 /* A choice that will not do all the user expects (plan review: a hook in
    a settings file that Hive cannot switch off). */
 .settings-warning { color: var(--state-attention); }
+
+/* Settings → Plugins (PluginsPanel.tsx). One row per installed plugin:
+   status dot, name/source/status stacked, then the enable toggle and the
+   remove button. The dot follows data-status, the same state tokens a
+   session row uses, so "running" and "failed" read the same everywhere. */
+.settings-plugin-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+.settings-plugin-row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  padding: var(--space-2) 0;
+  border-bottom: 1px solid var(--border);
+}
+.settings-plugin-dot {
+  flex-shrink: 0;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background-color: var(--fg-subtle);
+}
+.settings-plugin-row[data-status='running'] .settings-plugin-dot { background-color: var(--state-running); }
+.settings-plugin-row[data-status='crashed'] .settings-plugin-dot { background-color: var(--state-attention); }
+.settings-plugin-row[data-status='failed'] .settings-plugin-dot,
+.settings-plugin-row[data-status='refused'] .settings-plugin-dot { background-color: var(--state-error); }
+.settings-plugin-info {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+.settings-plugin-title {
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-2);
+  color: var(--fg);
+  font-size: var(--text-md);
+}
+.settings-plugin-version,
+.settings-plugin-status {
+  color: var(--fg-muted);
+  font-size: var(--text-sm);
+}
+.settings-plugin-source {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--fg-muted);
+  font-family: var(--font-mono);
+  font-size: var(--text-sm);
+}
+.settings-plugin-row .settings-check { margin: 0; }
+.settings-plugin-row .settings-plugin-remove { color: var(--fg-muted); }
+.settings-plugin-row .settings-plugin-remove:hover { color: var(--state-error); }
+#settings-plugin-source { font-family: var(--font-mono); font-size: var(--text-sm); }

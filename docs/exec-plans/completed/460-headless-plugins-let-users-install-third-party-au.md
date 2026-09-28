@@ -2,11 +2,11 @@
 
 - **Spec:** [docs/product-specs/460-headless-plugins-let-users-install-third-party-au.md](../../product-specs/460-headless-plugins-let-users-install-third-party-au.md)
 - **Issue:** #460
-- **Status:** active
-- **Phase:** 1 of 2
+- **Status:** completed
+- **Phase:** 2 of 2
 - **Depends on:** #461
-- **PR:** #463
-- **Branch:** feature/460-headless-plugins
+- **PR:** #465
+- **Branch:** feature/460-headless-plugins-phase2
 
 ## Summary
 
@@ -336,11 +336,16 @@ Frontend:
 - **2026-09-26** — ws-bridge exposes the four plugin ops as raw forwards; the nonce-awaiting `InstallPlugin` binding and all GUI bindings move to phase 2 with the tab that uses them. Why: nothing in phase 1 calls them, and an unused Wails binding is dead code.
 - **2026-09-26** — Daemon `runCtx` is a daemon-lifetime context created in `New` (cancelled at shutdown), not Run's ctx. Why: plugin accept goroutines read it; set in Run it raced them.
 - **2026-09-26** — The SDK pauses the socket across the handshake → pump handoff. Why: removing a 'data' listener does not pause a flowing Node stream, so the snapshot frames right after WELCOME could be dropped.
+- **2026-09-26** — Phase 2: the install nonce is generated and matched in the frontend (`src/app/plugins.ts`), not awaited inside the Go `InstallPlugin` binding as the plan said. Why: `plugin:event` and `control:error` already reach the frontend through the shared `controlEvents` table, so the Go binding stays a one-frame forward like every other op, and the Wails GUI and the ws-bridge (e2e-real) share one correlation path instead of two. The initiating window's `plugin_install_failed` is claimed there and kept off the generic error status line.
+- **2026-09-26** — Phase 2: the plugin list lives in the app store, fed by global `plugin:list` / `plugin:event` handlers in `events.ts`; the Plugins tab sends `ListPlugins` once, on its first activation, rather than on every Settings open. The tab is its own component (`PluginsPanel.tsx`) rather than more of the 1,245-line `Settings.tsx`. Re-enabling an already-installed plugin from the toggle does not re-prompt: consent is the install step, and a disable/enable cycle is how the docs tell authors to restart a plugin.
+- **2026-09-26** — Reversed the toggle part of the entry above: enabling from the toggle now shows the trust prompt too ("Cancel leaves it off"). Why: review found the no-reprompt toggle let a plugin that never got consent in this window — installed by another window or wire client, or an install that outlived the GUI's wait — start running with one click, which breaks criterion 3. Also from review: the prompt flattens control/bidi characters and JSON-quotes non-plain command args, and `hived` refuses such characters in manifest name/version/description; the GUI install wait is 130s (past the daemon's 120s clone bound); a control reconnect re-lists plugins once the tab has asked.
 
 ## Progress
 
 - **2026-09-25** — Spec triaged (enhancement / L / P2); research started.
 - **2026-09-25** — Research done; bug #461 filed; plan approved. Stage → IMPLEMENT (blocked on #461 for the hang e2e test).
+- **2026-09-26** — Phase 1 merged (#463). Reset for phase 2: stage → IMPLEMENT, Phase 2 of 2, PR/Branch cleared.
+- **2026-09-26** — Phase 2 implemented on `feature/460-headless-plugins-phase2`: Wails bindings, Settings → Plugins tab, install trust confirm, store + events wiring, harnesses, dom + e2e tests, docs/changeset/features.json flipped to shipped.
 
 ## Open questions
 
@@ -352,6 +357,12 @@ _(none — resolved in the Decision log)_
 - **2026-09-26 iter 2** — verdict: COMMENT; mergeable: MERGEABLE; findings_hash: 6d94b5f3dc09dc569972afc5f9a4ace77000a2be9bbc23e27a541d5bb771806d; threads_open: 1; action: autofix+push; head_sha: 362f0b00.
 - **2026-09-26 iter 3** — verdict: APPROVE; mergeable: MERGEABLE; findings_hash: empty; threads_open: 0; action: stop; head_sha: 71e5af96. One MINOR (plugins_unavailable fallback untested) fixed after convergence; iter 4 re-reviews that head.
 - **2026-09-26 iter 4** — verdict: APPROVE; mergeable: MERGEABLE; findings_hash: empty; threads_open: 0; action: stop; head_sha: b3c8847b. Remaining MINOR (plugins.json written under Manager.mu) kept deliberately: it is what keeps disk and memory in step, on rare operations.
+- **2026-09-26 phase-2 iter 1** — verdict: COMMENT; mergeable: MERGEABLE; findings_hash: 19b44004a179da55bdd1aa5d8dbd9971c0f4b1e6286262ec3d71989a1fa8658e; threads_open: 4; action: escalated:risky-fix-needs-human-decision; head_sha: bdeb5cb0. As in phase 1, the orchestrator judged the three RISKY items and the 4 Greptile threads to be defects in this PR's own new code (trust-prompt spoofing, enable toggle bypassing consent, stale list after reconnect, GUI timeout shorter than the clone limit) and fixed them in the main thread before iter 2.
+- **2026-09-26 phase-2 iter 2** — verdict: REQUEST_CHANGES; mergeable: MERGEABLE; findings_hash: f21d2f3c7acce74b80110ee8300d04f6c8755426e2db2fc84f29a1769d4fbc61; threads_open: 0; action: escalated:risky-fix-needs-human-decision; head_sha: 3825b304. Both RISKY items were gaps in this PR's own sanitizer (bidi chars survive JSON.stringify in command args; zero-width Cf chars unflagged; main.command unvalidated); fixed in the main thread by switching both sides to Unicode categories Cc/Cf/Zl/Zp before iter 3.
+- **2026-09-26 phase-2 iter 3** — verdict: REQUEST_CHANGES; mergeable: MERGEABLE; findings_hash: 0e55921688294f3a908c99f91730661e473a376baf2d03acf393ca21d2b5af25; threads_open: 2; action: autofix+push; head_sha: 746a332b. Autofix fixed both IMPORTANT (list-row source unsanitized; post-install enable/remove failure mislabelled) plus an unmount guard. Two late Greptile threads were answered with rationale by the orchestrator (phase 1 unreleased, refused-not-crash on stricter manifests; display-only flattening of source paths) and resolved.
+- **2026-09-26 phase-2 iter 4** — verdict: APPROVE; mergeable: MERGEABLE; findings_hash: empty; threads_open: 0; action: stop; head_sha: 6da0a41d. Two MINORs (a Confirm rejection after install labelled as an install failure; no test for malformed plugin:list/plugin:event) fixed after convergence; iter 5 re-reviews that head.
+- **2026-09-26 phase-2 iter 5** — verdict: (interrupted — the session ended mid-iteration); mergeable: MERGEABLE; findings_hash: n/a; threads_open: 1; action: autofix+push; head_sha: 7791757d. Autofix pushed one doc fix (removal asks to confirm). A late CodeRabbit thread found Enter in the plugin source field also triggered Settings' Enter-to-save (the native listener on #settings runs before React's handler); the orchestrator fixed it with a test and resolved the thread. The head after that fix has not been re-reviewed.
+- **2026-09-26 phase-2 iter 6** — verdict: APPROVE; mergeable: MERGEABLE; findings_hash: empty; threads_open: 0; action: stop; head_sha: 07f72280. Run past the 5-iteration default with operator approval, to review the Enter-handler fix. Two MINORs left as-is (empty state shows before the first ListPlugins answer; the Remove confirm uses the raw name, which hived's manifest check already makes safe). One Linux flake in internal/registry (untouched here) passed on rerun.
 
 ## Gate verdict
 
@@ -360,3 +371,9 @@ _(none — resolved in the Decision log)_
     - acceptance — PASS — 8 plugin e2e tests + daemon/plugin/wire suites ran green; criterion 4 DEFERRED (phase > 1); criterion 6 per recorded measure-idle numbers (+230 KiB RSS from code size, 0% CPU both) and TestManager_ZeroPluginsSpawnsNothing
     - non-goals — PASS — no frontend diff; `ui` entry refused; rate budget is a guard rail, not capability gating; clone-once-and-pin, no update path; features.json entry `planned`
     - doc accuracy — PASS — docs/plugins.md claims verified against code (env, thresholds, log cap, schemes, budget, paths, modes); TestPluginDocListsEveryControlFrame and whats-new test green; changeset valid (type: added)
+- **2026-09-26** — verdict: PASS; phase: 2/2; checks: 3 passed / 0 failed / 0 followups; followups: none; one-line: criteria 3 (install trust confirm; nothing runs until consent, toggle-on prompts too) and 4 (Settings → Plugins tab; enable/disable/remove live without a daemon restart) proven by dom, mock e2e and real-daemon e2e tests; phase-1 plugin suites still green.
+  - 2026-09-26 dimensions:
+    - acceptance — PASS — 99 dom tests, mock e2e settings-plugins (2), real-hived e2e plugins (install→running→disabled→removed, one daemon), TestPluginCalls/TestRPCsRequire, internal/plugin + internal/daemon Plugin suites
+    - non-goals — PASS — only a Settings management tab; no plugin UI extension points, sandboxing, marketplace, networking or stability promise; manifest character check is trust-prompt input validation, not capability gating
+    - doc accuracy — PASS — README, docs/plugins.md (installing flow, manifest character rule incl. main.command), changeset, features.json (shipped/Unreleased; whats-new test green), TestPluginDoc; generated files untouched; no keybinding change
+

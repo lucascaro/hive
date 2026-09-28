@@ -4,14 +4,15 @@ title: "Headless plugins: let users install third-party automations that react t
 type: enhancement
 complexity: L
 priority: P2
-pr: 463
-stage: GATE
+pr: 465
+shipped: 2026-09-26
+stage: DONE
 ---
 
 # Headless plugins: let users install third-party automations that react to and drive Hive sessions
 
 - **Issue:** #460
-- **Exec plan:** [docs/exec-plans/active/460-headless-plugins-let-users-install-third-party-au.md](../exec-plans/active/460-headless-plugins-let-users-install-third-party-au.md)
+- **Exec plan:** [docs/exec-plans/completed/460-headless-plugins-let-users-install-third-party-au.md](../exec-plans/completed/460-headless-plugins-let-users-install-third-party-au.md)
 
 ## Problem
 
