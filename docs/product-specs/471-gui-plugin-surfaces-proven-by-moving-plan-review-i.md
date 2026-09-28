@@ -4,7 +4,8 @@ title: GUI plugin surfaces, proven by moving plan review into a bundled plugin
 type: enhancement
 complexity: L
 priority: P2
-stage: IMPLEMENT
+pr: 472
+stage: REVIEW
 ---
 
 # GUI plugin surfaces, proven by moving plan review into a bundled plugin
