@@ -33,6 +33,13 @@ type pluginTag struct {
 	// pressure reports how full the fullest client event listener is
 	// (Daemon.fanoutPressure). nil in tests that exercise the budget alone.
 	pressure func() float64
+	// gate is a one-slot semaphore shared by every plugin connection in
+	// the daemon (Daemon.pluginFanout). A broadcasting request holds it
+	// from its pressure check until its dispatch returns, so the check
+	// and the broadcast it admits are one step: without it, several
+	// connections could each see "under half full" before any of them
+	// published, and together overflow a small buffer (#467 review).
+	gate chan struct{}
 }
 
 // Backpressure on a plugin's broadcasts (#467). Every broadcast lands in
@@ -59,27 +66,42 @@ var backpressureMax = 2 * time.Second
 // It gives up — and the caller drops the connection — when the daemon
 // shuts down or the run ends, so a throttled plugin never pins Close.
 // A nil tag (an ordinary client) never waits.
-func (t *pluginTag) wait(cost float64) error {
+//
+// The returned release must be called once the request has been
+// dispatched; until then this plugin connection holds the daemon-wide
+// broadcast slot. It is never nil when err is nil.
+func (t *pluginTag) wait(cost float64) (release func(), err error) {
+	noop := func() {}
 	if t == nil {
-		return nil
+		return noop, nil
 	}
 	if err := t.lim.Wait(t.ctx, cost); err != nil {
-		return err
+		return nil, err
 	}
 	// Cost-1 frames are reads (LIST_*, GET_*, SEARCH_*) and attach
 	// input; they broadcast nothing, so they never wait on readers.
 	if cost <= 1 || t.pressure == nil {
-		return nil
+		return noop, nil
+	}
+	release = noop
+	if t.gate != nil {
+		select {
+		case t.gate <- struct{}{}:
+		case <-t.ctx.Done():
+			return nil, t.ctx.Err()
+		}
+		release = func() { <-t.gate }
 	}
 	deadline := time.Now().Add(backpressureMax)
 	for t.pressure() >= backpressureHigh && time.Now().Before(deadline) {
 		select {
 		case <-t.ctx.Done():
-			return t.ctx.Err()
+			release()
+			return nil, t.ctx.Err()
 		case <-time.After(backpressurePoll):
 		}
 	}
-	return nil
+	return release, nil
 }
 
 // listenPlugin opens a fresh socket for one run of plugin id, next to
@@ -107,7 +129,7 @@ func (d *Daemon) listenPlugin(id string) (string, func(), error) {
 		return "", nil, err
 	}
 	ctx, cancel := d.stopCtx(context.Background())
-	tag := &pluginTag{id: id, lim: plugin.NewLimiter(), ctx: ctx, pressure: d.fanoutPressure}
+	tag := &pluginTag{id: id, lim: plugin.NewLimiter(), ctx: ctx, pressure: d.fanoutPressure, gate: d.pluginFanout}
 	go func() {
 		for {
 			conn, err := ln.Accept()

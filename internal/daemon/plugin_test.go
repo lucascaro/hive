@@ -479,7 +479,13 @@ func TestPluginWait_HoldsWhileListenersAreFull(t *testing.T) {
 	})
 	defer cancel()
 	done := make(chan error, 1)
-	go func() { done <- tag.wait(plugin.FrameCost(wire.FrameAddIdea)) }()
+	go func() {
+		release, err := tag.wait(plugin.FrameCost(wire.FrameAddIdea))
+		if release != nil {
+			release()
+		}
+		done <- err
+	}()
 	select {
 	case <-done:
 		t.Fatal("a broadcast went ahead while a listener was 90% full")
@@ -503,7 +509,7 @@ func TestPluginWait_ReadsNeverWait(t *testing.T) {
 	defer cancel()
 	start := time.Now()
 	for _, ft := range []wire.FrameType{wire.FrameListSessions, wire.FrameData} {
-		if err := tag.wait(plugin.FrameCost(ft)); err != nil {
+		if _, err := tag.wait(plugin.FrameCost(ft)); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -522,9 +528,11 @@ func TestPluginWait_GivesUpOnAStuckReader(t *testing.T) {
 	tag, cancel := testTag(func() float64 { return 1 })
 	defer cancel()
 	start := time.Now()
-	if err := tag.wait(plugin.FrameCost(wire.FrameAddIdea)); err != nil {
+	release, err := tag.wait(plugin.FrameCost(wire.FrameAddIdea))
+	if err != nil {
 		t.Fatal(err)
 	}
+	release()
 	if d := time.Since(start); d < 150*time.Millisecond || d > time.Second {
 		t.Fatalf("wait returned after %s, want ≈150ms", d)
 	}
@@ -534,7 +542,10 @@ func TestPluginWait_GivesUpOnAStuckReader(t *testing.T) {
 func TestPluginWait_CancelReleases(t *testing.T) {
 	tag, cancel := testTag(func() float64 { return 1 })
 	done := make(chan error, 1)
-	go func() { done <- tag.wait(plugin.FrameCost(wire.FrameAddIdea)) }()
+	go func() {
+		_, err := tag.wait(plugin.FrameCost(wire.FrameAddIdea))
+		done <- err
+	}()
 	time.Sleep(20 * time.Millisecond)
 	cancel()
 	select {
@@ -544,5 +555,71 @@ func TestPluginWait_CancelReleases(t *testing.T) {
 		}
 	case <-time.After(time.Second):
 		t.Fatal("cancel did not release a plugin held by backpressure")
+	}
+}
+
+// The pressure check and the broadcast it admits are one step: a second
+// plugin connection cannot pass its check until the first has dispatched
+// (released), or several could each see "under half full" and together
+// overflow a small buffer. Shutdown still releases one waiting for the
+// slot.
+func TestPluginWait_SerializesBroadcasts(t *testing.T) {
+	gate := make(chan struct{}, 1)
+	mk := func() (*pluginTag, context.CancelFunc) {
+		tag, cancel := testTag(func() float64 { return 0 })
+		tag.gate = gate
+		return tag, cancel
+	}
+	first, cancel1 := mk()
+	defer cancel1()
+	second, cancel2 := mk()
+	cost := plugin.FrameCost(wire.FrameAddIdea)
+
+	release1, err := first.wait(cost)
+	if err != nil {
+		t.Fatal(err)
+	}
+	done := make(chan func(), 1)
+	go func() {
+		release2, err := second.wait(cost)
+		if err != nil {
+			done <- nil
+			return
+		}
+		done <- release2
+	}()
+	select {
+	case <-done:
+		t.Fatal("a second broadcast passed its check while the first was still dispatching")
+	case <-time.After(100 * time.Millisecond):
+	}
+	release1()
+	select {
+	case release2 := <-done:
+		if release2 == nil {
+			t.Fatal("second wait failed")
+		}
+		release2()
+	case <-time.After(time.Second):
+		t.Fatal("the second broadcast was not admitted after the first released")
+	}
+
+	// A plugin queued for the slot is released by shutdown.
+	release1, _ = first.wait(cost)
+	defer release1()
+	errc := make(chan error, 1)
+	go func() {
+		_, err := second.wait(cost)
+		errc <- err
+	}()
+	time.Sleep(20 * time.Millisecond)
+	cancel2()
+	select {
+	case err := <-errc:
+		if !errors.Is(err, context.Canceled) {
+			t.Fatalf("wait = %v, want context.Canceled", err)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("shutdown did not release a plugin waiting for the broadcast slot")
 	}
 }

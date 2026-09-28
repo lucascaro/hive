@@ -155,6 +155,9 @@ type Daemon struct {
 	// internal/plugin). nil when plugins.json could not be read: the
 	// daemon still runs, and the plugin verbs answer plugins_unavailable.
 	plugins *plugin.Manager
+	// pluginFanout is the one broadcast slot every plugin connection
+	// shares (pluginTag.gate).
+	pluginFanout chan struct{}
 	// runCtx is the context connections accepted on plugin sockets are
 	// served under: it lives as long as the daemon and ends at shutdown.
 	// Created in New, so no accept goroutine can race its write.
@@ -359,6 +362,7 @@ func New(cfg Config) (*Daemon, error) {
 		orphanCandidates: orphanCandidates,
 		clients:          make(map[net.Conn]struct{}),
 		commands:         newCommandHub(),
+		pluginFanout:     make(chan struct{}, 1),
 		shutdown:         make(chan struct{}),
 		stop:             make(chan struct{}),
 	}
@@ -764,10 +768,14 @@ func (d *Daemon) serveConn(ctx context.Context, conn net.Conn, tag *pluginTag) {
 		d.serveAttach(conn, hello.SessionID, tag)
 	case wire.ModeCreate:
 		// A create HELLO spawns a session exactly as CREATE_SESSION
-		// does, so a plugin pays the same for it.
-		if tag.wait(plugin.CostCreateMode) != nil {
+		// does, so a plugin pays the same for it. The broadcast slot is
+		// released at once: a create announces one session, and holding
+		// the slot across a worktree setup would stall every plugin.
+		release, err := tag.wait(plugin.CostCreateMode)
+		if err != nil {
 			return
 		}
+		release()
 		spec := wire.CreateSpec{}
 		if hello.Create != nil {
 			spec = *hello.Create
@@ -1268,10 +1276,15 @@ func (d *Daemon) serveControl(ctx context.Context, conn net.Conn, hello wire.Hel
 		}
 		// Throttle before dispatch, never under connMu: a plugin over
 		// budget is slowed on its own socket and blocks nobody else.
-		if tag.wait(plugin.FrameCost(ft)) != nil {
+		// release is held across the dispatch so the broadcast it
+		// makes is the one the pressure check admitted (plugins.go).
+		release, err := tag.wait(plugin.FrameCost(ft))
+		if err != nil {
 			return
 		}
-		if d.handleControlFrame(ctx, ops, ft, payload) {
+		stop := d.handleControlFrame(ctx, ops, ft, payload)
+		release()
+		if stop {
 			return
 		}
 	}
@@ -1915,9 +1928,12 @@ func (d *Daemon) serveAttach(conn net.Conn, sessionID string, tag *pluginTag) {
 			}
 			return
 		}
-		if tag.wait(plugin.FrameCost(ft)) != nil {
+		// Attach frames cost 1 and broadcast nothing: release is a no-op.
+		release, err := tag.wait(plugin.FrameCost(ft))
+		if err != nil {
 			return
 		}
+		release()
 		switch ft {
 		case wire.FrameData:
 			if _, werr := sess.Write(payload); werr != nil {
