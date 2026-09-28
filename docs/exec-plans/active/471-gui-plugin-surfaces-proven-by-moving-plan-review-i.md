@@ -399,3 +399,4 @@ verdict: approve, confidence 8. No must-fix items. Nice-to-haves applied: direct
 ## PR convergence ledger
 
 - **2026-09-28 iter 1** — verdict: APPROVE; mergeable: MERGEABLE; findings_hash: empty; threads_open: 0; action: stop; head_sha: e8ce955.
+- **2026-09-28 iter 2** — verdict: APPROVE; mergeable: MERGEABLE; findings_hash: empty; threads_open: 0; action: stop; head_sha: 0dbb3d8.
