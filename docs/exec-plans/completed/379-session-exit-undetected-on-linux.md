@@ -139,6 +139,7 @@ plus spec note, `daemon-contract-override` label).
 
 - **2026-09-27 iter 1** — verdict: APPROVE; mergeable: MERGEABLE; findings_hash: empty; threads_open: 0; action: stop; head_sha: 0abf6e9.
 - **2026-09-27 iter 2** — verdict: APPROVE; mergeable: MERGEABLE; findings_hash: empty; threads_open: 0; action: stop; head_sha: 9bf88f0.
+- **2026-09-27 iter 3** — verdict: COMMENT; mergeable: MERGEABLE; findings_hash: 7947e8ff8cddda41a698bf8a47143d6f655ee1a96bce366a85ecbe722d66abbb; threads_open: 1; action: escalated:risky-fix-needs-human-decision; head_sha: 14037ec.
 
 ## Gate verdict
 
