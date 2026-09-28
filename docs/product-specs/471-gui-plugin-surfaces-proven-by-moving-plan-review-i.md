@@ -5,7 +5,7 @@ type: enhancement
 complexity: L
 priority: P2
 pr: 473
-stage: REVIEW
+stage: GATE
 ---
 
 # GUI plugin surfaces, proven by moving plan review into a bundled plugin
