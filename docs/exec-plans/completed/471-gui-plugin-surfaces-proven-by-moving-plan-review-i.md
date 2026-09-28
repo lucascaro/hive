@@ -2,7 +2,7 @@
 
 - **Spec:** [docs/product-specs/471-gui-plugin-surfaces-proven-by-moving-plan-review-i.md](../../product-specs/471-gui-plugin-surfaces-proven-by-moving-plan-review-i.md)
 - **Issue:** #471
-- **Status:** active
+- **Status:** completed
 - **Phase:** 2 of 2
 - **PR:** #473
 - **Branch:** feature/471-plan-review-plugin
@@ -419,3 +419,8 @@ verdict: approve, confidence 8. No must-fix items. Nice-to-haves applied: direct
     - acceptance — PASS — criteria 4–8 pass (54 DOM/unit tests, 6 plugin e2e specs, Go plugin/wire/bridge tests, idle numbers in the PR body with the Chromium-proxy caveat); 1–3 DEFERRED (phase > 1)
     - non-goals — PASS — no sandboxing, no plan-review features, no agent-hook/Pi injection, no cosmetic plugins, no marketplace, no extra surfaces; core plan review untouched
     - doc accuracy — PASS — docs/plugins.md constants and API match the code; README, DESIGN.md, ui README, changeset (type: added) and features.json all updated; CHANGELOG/index untouched
+- **2026-09-28** — verdict: PASS; phase: 2/2; checks: 3 passed / 0 failed / 0 followups; followups: none; one-line: plan review now ships as the bundled plan-review plugin (installed, disabled, not removable), the core plan-review UI is gone, reviews park only for a window running the plugin's UI, and criteria 4–8 still hold.
+  - 2026-09-28 dimensions:
+    - acceptance — PASS — criteria 1–3 met: #457's behaviour runs through the plugin (19 DOM, 6 mock e2e, 4 real-daemon e2e, hook round trip and daemon/registry tests; the real Claude/Pi probes are opt-in and were not run here), no core plan-review UI (guard test plus deleted files), and a go:embedded builtin that is listed installed and disabled (builtin tests, real-daemon e2e). Criteria 4–8 re-run green.
+    - non-goals — PASS — no sandboxing, setting migration, new plan-review features, agent-hook injection, cosmetic plugins, marketplace or new surface types; host API additions sit on the existing four surfaces
+    - doc accuracy — PASS — README, DESIGN.md, docs/plugins.md, control-plane.md, plugin README, 457 spec note, changesets (457 edited, 471 added), features.json, contract history and SDK tables updated; CHANGELOG and index untouched; no type: fixed changeset
