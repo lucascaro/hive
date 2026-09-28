@@ -152,3 +152,8 @@ plus spec note, `daemon-contract-override` label).
     - acceptance — PASS — Linux docker 3x pass; reaper removed → 10s timeout; readLoop sole closer of done; Windows internal/session ok on main CI
     - non-goals — PASS — 3 files (1 _test.go, 2 docs); no internal/session, wire or client change
     - doc accuracy — PASS — all file:line refs verified; check-changeset exempt; no stale Linux-exit claims
+- **2026-09-27** — verdict: PASS; phase: —; checks: 3 passed / 0 failed / 0 followups; followups: none; one-line: re-gate at 17ecfca after the operator-requested EIO log filter; supersedes the entry above, whose "no internal/session change" held only for 9bf88f0.
+  - 2026-09-27 dimensions:
+    - acceptance — PASS — criteria 1–3 unaffected; TestChildExitLogsNoPtyReadError red with the EIO clause reverted and green at HEAD on golang:1.27.1 (Linux); full session+registry pass
+    - non-goals — PASS — one added clause on the existing log guard; fanoutClose/return unchanged; no wire or client change
+    - doc accuracy — PASS — changeset valid (check-changeset OK); spec Resolution and plan match the code; daemon-contract-override justified (log-only)
