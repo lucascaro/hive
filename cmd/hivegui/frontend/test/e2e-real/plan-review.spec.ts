@@ -115,7 +115,7 @@ async function raise(
 
 // Criterion 3: on a fresh install the plugin is listed, installed and
 // disabled, with nothing to fetch and no Remove; and disabled, plan
-// review is off, so the agent is told to carry on without it.
+// review is off, so the agent is told to show the plan in chat and wait.
 test('fresh state: the bundled plugin is installed and disabled, and review is off', async ({
   page,
 }, testInfo) => {

@@ -935,6 +935,9 @@ test("hive_submit_plan is registered with a snippet and guidelines that name it"
   assert.ok(tool.promptGuidelines.length > 0);
   // Pi appends guidelines flat, with no tool prefix: each must name it.
   for (const g of tool.promptGuidelines) assert.ok(g.includes(mod.PLAN_TOOL_NAME), g);
+
+  // Approval given in chat, when the tool asks for it there, must count.
+  assert.match(tool.promptGuidelines[0], /get approval in the conversation/);
 });
 
 test("approve: the request carries the plan and the tool reports approval", unixOnly, async () => {
@@ -998,18 +1001,22 @@ test("no_client falls back to Pi's own confirm, immediately or mid-review", unix
       assert.equal(asked.length, 1, `delay ${delay}: confirm not asked`);
       assert.match(textOf(res), /did not approve/);
       const headless = await tool.execute("c2", { plan: "# Plan" }, undefined, undefined, { hasUI: false });
-      assert.match(textOf(headless), /No reviewer/);
+      assert.match(textOf(headless), /Show the user the whole plan/);
     } finally {
       srv.stop();
     }
   }
 });
 
-test("disabled mid-session: the tool says so instead of blocking", unixOnly, async () => {
+test("disabled mid-session: the plan goes to the user in chat, never skipped", unixOnly, async () => {
   const srv = await reviewServer((_req, reply) => reply({ status: "disabled" }));
   try {
     const { tool } = planTool(srv.sock);
-    assert.match(textOf(await tool.execute("c1", { plan: "# P" }, undefined, undefined, {})), /off in Hive/);
+    const text = textOf(await tool.execute("c1", { plan: "# P" }, undefined, undefined, {}));
+    assert.match(text, /Show the user the whole plan/);
+    assert.match(text, /Do not implement anything until they approve/);
+    assert.match(text, new RegExp("do not call " + mod.PLAN_TOOL_NAME + " again"));
+    assert.doesNotMatch(text, /Continue/);
   } finally {
     srv.stop();
   }
@@ -1049,6 +1056,8 @@ test("with review on, every run's system prompt tells Pi to submit a plan first"
   const out: any = pi.handlers.get("before_agent_start")!({ systemPrompt: "BASE" }, {});
   assert.ok(out.systemPrompt.startsWith("BASE"), "must append, not replace");
   assert.ok(out.systemPrompt.includes(mod.PLAN_TOOL_NAME));
+  // Approval given in chat, when the tool asks for it there, must count.
+  assert.match(out.systemPrompt, /get approval in the conversation/);
 });
 
 test("with review off, the system prompt is left alone", () => {

@@ -320,9 +320,18 @@ export function requestPlanReview(
   });
 }
 
+// SHOW_PLAN_IN_CHAT is the answer when Hive cannot review the plan and
+// Pi has no dialog to ask with: the user still sees the plan and
+// approves it, in the conversation, before anything is implemented.
+const SHOW_PLAN_IN_CHAT =
+  "Hive cannot review this plan. Show the user the whole plan in your reply, " +
+  "ask them to approve it, and stop. Do not implement anything until they approve. " +
+  "When they approve in the conversation, implement it; do not call " + PLAN_TOOL_NAME + " again for this plan.";
+
 // planReviewResult turns a decision into what hive_submit_plan tells the
 // model. confirm is the terminal fallback when no GUI can answer: Pi's
-// own confirm dialog when it has a UI, otherwise undefined.
+// own confirm dialog when it has a UI, otherwise undefined. No outcome
+// lets the model proceed without the user having approved the plan.
 export async function planReviewResult(
   d: PlanReviewDecision,
   plan: string,
@@ -334,10 +343,12 @@ export async function planReviewResult(
     case "deny":
       return d.message || "The user did not approve your plan. Ask them what to change.";
     case "disabled":
-      return "Plan review is off in Hive. Continue without review.";
+      // Switched off mid-session: the tool is still registered, so the
+      // plan goes to the user in the conversation instead.
+      return SHOW_PLAN_IN_CHAT;
     case "no_client":
     case "unreachable":
-      if (!confirm) return "No reviewer is available. Continue with the plan.";
+      if (!confirm) return SHOW_PLAN_IN_CHAT;
       return (await confirm("Approve this plan?", truncateBytes(plan, 4000)))
         ? "The user approved your plan. Implement it now."
         : "The user did not approve your plan. Ask them what to change, then call " + PLAN_TOOL_NAME + " again.";
@@ -504,10 +515,10 @@ export default function (pi: ExtensionAPI) {
       label: "Submit plan",
       description:
         "Submit your implementation plan to the user for review in Hive before you change any files. " +
-        "Blocks until the user approves it or asks for changes, and returns their answer.",
+        "Blocks until the user approves it or asks for changes, and returns their answer. If Hive cannot review it, the answer asks you to get approval in the conversation instead.",
       promptSnippet: "Submit a plan for the user to review in Hive before implementing it",
       promptGuidelines: [
-        `Before editing files for any change with more than one step, write a plan and call ${PLAN_TOOL_NAME} with it as markdown; do not start editing until ${PLAN_TOOL_NAME} returns approval.`,
+        `Before editing files for any change with more than one step, write a plan and call ${PLAN_TOOL_NAME} with it as markdown; do not start editing until ${PLAN_TOOL_NAME} returns approval, or it asks you to get approval in the conversation and the user gives it there.`,
         `When ${PLAN_TOOL_NAME} returns the user's comments, revise the plan to address every comment and call ${PLAN_TOOL_NAME} again.`,
       ],
       parameters: PLAN_PARAMETERS as any,
@@ -551,7 +562,8 @@ export default function (pi: ExtensionAPI) {
         (event?.systemPrompt ?? "") +
         `\n\nThe user reviews plans in Hive. Before you create or edit any file, call ${PLAN_TOOL_NAME} ` +
         `with your plan as markdown and wait for its answer. Do not create or edit files until ${PLAN_TOOL_NAME} ` +
-        "returns approval. Trivial one-line answers that change no files need no plan.",
+        "returns approval, or it asks you to get approval in the conversation and the user gives it there. " +
+        "Trivial one-line answers that change no files need no plan.",
     }));
   }
 
