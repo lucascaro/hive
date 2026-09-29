@@ -34,6 +34,7 @@ SPECS_DIR = REPO_ROOT / "docs" / "product-specs"
 TECH_DEBT_DIR = REPO_ROOT / ".tech-debt"
 CHANGELOG = REPO_ROOT / "CHANGELOG.md"
 FEATURES = REPO_ROOT / "site" / "features.json"
+PLUGIN_DOC = REPO_ROOT / "docs" / "plugins.md"
 SPECS_INDEX = SPECS_DIR / "index.md"
 TECH_DEBT_TRACKER = REPO_ROOT / "docs" / "exec-plans" / "tech-debt-tracker.md"
 
@@ -438,6 +439,27 @@ def regen_tech_debt() -> bool:
 # ---------- io --------------------------------------------------------------
 
 
+# The line docs/plugins.md's "API versions" section opens each version with.
+PLUGIN_API_UNRELEASED = "Hive: Unreleased."
+
+
+def stamp_plugin_api_release(version: str) -> bool:
+    """Stamp the plugin API changelog's "Hive: Unreleased." lines with `version`.
+
+    docs/plugins.md records which Hive release first shipped each plugin API
+    version. A PR that changes the API cannot know that release, for the same
+    reason a changeset carries no version, so it writes the placeholder and the
+    release stamps it here. Returns True if the file changed on disk.
+    """
+    if not PLUGIN_DOC.exists():
+        return False
+    text = PLUGIN_DOC.read_text(encoding="utf-8")
+    new_text = text.replace(PLUGIN_API_UNRELEASED, f"Hive: {version}.")
+    if new_text == text:
+        return False
+    return _write_if_changed(PLUGIN_DOC, new_text)
+
+
 def _write_if_changed(path: Path, new_text: str) -> bool:
     """Write `new_text` to `path` unless unchanged. Returns True if it differed.
 
@@ -465,6 +487,7 @@ def _write_if_changed(path: Path, new_text: str) -> bool:
 RELEASE_TARGETS = [
     "CHANGELOG.md",
     "site/features.json",
+    "docs/plugins.md",
     "docs/product-specs/index.md",
     "docs/exec-plans/tech-debt-tracker.md",
 ]
@@ -491,6 +514,7 @@ def main(argv: list[str]) -> int:
         # Only does anything under --release; a no-op otherwise, so --check
         # never reports drift for it.
         ("site/features.json", lambda: stamp_features_release(args.release) if args.release else False),
+        ("docs/plugins.md", lambda: stamp_plugin_api_release(args.release) if args.release else False),
         ("docs/product-specs/index.md", regen_specs_index),
         ("docs/exec-plans/tech-debt-tracker.md", regen_tech_debt),
     ]

@@ -137,6 +137,21 @@ def main() -> int:
         stamped = json.loads(features_path.read_text(encoding="utf-8"))
         check("--release stamps the feature list", stamped[0]["since"], "2.7.0")
 
+    # The plugin API changelog in docs/plugins.md carries the same placeholder.
+    with tempfile.TemporaryDirectory() as tmp:
+        doc = Path(tmp) / "plugins.md"
+        doc.write_text("### 0.3\n\nHive: Unreleased.\n\n### 0.2\n\nHive: 2.6.0.\n", encoding="utf-8")
+        regen.PLUGIN_DOC = doc
+        regen.FEATURES = Path(tmp) / "absent.json"
+        rc = regen.main(["--release", "2.7.0"])
+        check("--release exits 0 (plugin doc)", rc, 0)
+        check(
+            "--release stamps the plugin API changelog",
+            doc.read_text(encoding="utf-8"),
+            "### 0.3\n\nHive: 2.7.0.\n\n### 0.2\n\nHive: 2.6.0.\n",
+        )
+        check("a second stamp is a no-op", regen.stamp_plugin_api_release("2.8.0"), False)
+
     if failures:
         for f in failures:
             sys.stderr.write(f"regen-features-selftest: FAIL {f}\n")

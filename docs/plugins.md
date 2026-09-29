@@ -24,7 +24,8 @@ app.
 > **Plugin API 0.2 — experimental.** Until the plugin API reaches 1.0 it
 > is best-effort: any Hive release may change it, and a plugin is only
 > loaded by a Hive that implements exactly the `api_version` it names.
-> From 1.0 on, compatibility follows semantic versioning.
+> From 1.0 on, compatibility follows semantic versioning. What changed in
+> each version is under **[API versions](#api-versions)**.
 
 ## Trust
 
@@ -456,3 +457,49 @@ Run it against an isolated Hive, never your real one:
 `scripts/dev-iso.sh` starts a throwaway daemon with its own socket and
 state directory. Install your plugin there by directory, enable it, and
 watch `plugin.log` in its data directory.
+
+## API versions
+
+This page is the single source of truth for the plugin API: the
+manifest, the environment, the wire protocol as a plugin sees it, the
+SDK and the `hive` object. When the API changes, this page changes in
+the same pull request, and so does this section.
+
+**How the version moves.** A manifest's `api_version` must equal the
+version Hive implements, so changing the version refuses every
+installed plugin until its author updates it. The version therefore
+changes only when a plugin written for the previous one could break:
+a frame, field, `hive` member or manifest field removed or renamed, or
+one whose meaning changed. Additions — a new frame, a new field, a new
+`hive` member — leave it alone, so check for what you use rather than
+assuming a version implies it. From 1.0 on, an addition raises the
+minor version and a break raises the major one, and Hive loads any
+plugin whose major version matches.
+
+Each entry names the Hive release that first shipped it.
+
+### 0.2
+
+Hive: 2.7.0.
+
+- **App plugins.** A manifest may declare `ui` (`entry`, optional
+  `style`) instead of, or as well as, `main`. The app loads the module
+  and calls its default export with the `hive` object — see
+  [App surfaces](#app-surfaces).
+- New requests: `SET_PLUGIN_CONFIG` (a UI plugin's settings) and
+  `SET_CLIENT_UI` (the app's own; ignored from a plugin).
+- `PluginInfo` gains `ui`, `config` and `builtin`; `source` may be
+  `builtin` (see [Bundled plugins](#bundled-plugins)).
+- The `hive` object's `subscribeSessions`, `actions.getPlanReview`,
+  `actions.resolvePlanReview` and `actions.externalPlanReviewers`
+  arrived within 0.2, after its first surfaces.
+- **Breaking:** a manifest must say `"api_version": "0.2"`. A `0.1`
+  plugin is shown as `refused` until it does. Nothing else a `0.1`
+  plugin could use changed.
+
+### 0.1
+
+Never in a Hive release; it existed only between pull requests.
+
+- Background plugins: `main.command`, the plugin socket and
+  environment, every control request and event, and the Node SDK.
