@@ -935,6 +935,9 @@ test("hive_submit_plan is registered with a snippet and guidelines that name it"
   assert.ok(tool.promptGuidelines.length > 0);
   // Pi appends guidelines flat, with no tool prefix: each must name it.
   for (const g of tool.promptGuidelines) assert.ok(g.includes(mod.PLAN_TOOL_NAME), g);
+
+  // Approval given in chat, when the tool asks for it there, must count.
+  assert.match(tool.promptGuidelines[0], /get approval in the conversation/);
 });
 
 test("approve: the request carries the plan and the tool reports approval", unixOnly, async () => {

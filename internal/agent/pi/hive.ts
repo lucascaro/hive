@@ -515,10 +515,10 @@ export default function (pi: ExtensionAPI) {
       label: "Submit plan",
       description:
         "Submit your implementation plan to the user for review in Hive before you change any files. " +
-        "Blocks until the user approves it or asks for changes, and returns their answer.",
+        "Blocks until the user approves it or asks for changes, and returns their answer. If Hive cannot review it, the answer asks you to get approval in the conversation instead.",
       promptSnippet: "Submit a plan for the user to review in Hive before implementing it",
       promptGuidelines: [
-        `Before editing files for any change with more than one step, write a plan and call ${PLAN_TOOL_NAME} with it as markdown; do not start editing until ${PLAN_TOOL_NAME} returns approval.`,
+        `Before editing files for any change with more than one step, write a plan and call ${PLAN_TOOL_NAME} with it as markdown; do not start editing until ${PLAN_TOOL_NAME} returns approval, or it asks you to get approval in the conversation and the user gives it there.`,
         `When ${PLAN_TOOL_NAME} returns the user's comments, revise the plan to address every comment and call ${PLAN_TOOL_NAME} again.`,
       ],
       parameters: PLAN_PARAMETERS as any,
