@@ -12,9 +12,18 @@ import (
 	"github.com/lucascaro/hive/internal/wire"
 )
 
-// liveSession creates a session whose program is `cat` — it echoes
-// whatever is written to its PTY, so a test can put arbitrary text on
-// the screen — and returns the entry and the live session.
+// liveSession creates a session whose program is a silent `cat` — it
+// reads whatever is written to its PTY and discards it — and returns the
+// entry and the live session. What a test writes still reaches the
+// screen: the PTY's line discipline echoes it.
+//
+// Silent is the point. The echo happens inside the write, before the
+// child has even been scheduled, so a plain `cat` painted every line
+// twice: once from the echo, then again whenever cat got round to
+// copying it. paint returns on the first change, and under CI load the
+// second one landed seconds later, inside whatever still-screen window
+// the test was asserting (TestUnchangedScreenBroadcastsNothing). With
+// the echo as the only writer, the first change is the whole change.
 //
 // Shell, not Cmd, and the distinction matters twice. Cmd is run as
 // `<shell> -l -i -c <line>`, so it pays the user's full login shell
@@ -27,7 +36,10 @@ func liveSession(t *testing.T, r *Registry, spec wire.CreateSpec) (*Entry, *sess
 	t.Helper()
 	spec.Cols, spec.Rows = 80, 24
 	if len(spec.Cmd) == 0 && spec.Shell == "" {
-		spec.Shell = "/bin/cat"
+		spec.Shell = filepath.Join(t.TempDir(), "silent-cat")
+		if err := os.WriteFile(spec.Shell, []byte("#!/bin/sh\nexec cat >/dev/null\n"), 0o755); err != nil {
+			t.Fatalf("write silent-cat: %v", err)
+		}
 	}
 	e, err := r.Create(context.Background(), spec)
 	if err != nil {
@@ -43,8 +55,9 @@ func liveSession(t *testing.T, r *Registry, spec wire.CreateSpec) (*Entry, *sess
 	return ent, sess
 }
 
-// paint writes text and waits for it to reach the VT, so the next
-// sample sees a changed screen rather than racing the PTY.
+// paint writes text and waits for its echo to reach the VT, so the next
+// sample sees a changed screen rather than racing the PTY. That echo is
+// the only thing a liveSession draws, so nothing more follows it.
 func paint(t *testing.T, e *Entry, sess *session.Session, text string) {
 	t.Helper()
 	before := sess.ScreenDigest()
@@ -177,11 +190,13 @@ func TestUnchangedScreenBroadcastsNothing(t *testing.T) {
 	drain(ch)
 	for i := 0; i < 20; i++ {
 		sample(r, e, now.Add(agentstate.QuietAfter+time.Duration(i)*time.Second))
-	}
-	select {
-	case ev := <-ch:
-		t.Fatalf("a still screen broadcast %s", ev.Kind)
-	default:
+		select {
+		case ev := <-ch:
+			screen, _ := sess.ScreenSnapshot()
+			t.Fatalf("a still screen broadcast %s at sample %d: state=%q source=%q\nscreen:\n%s",
+				ev.Kind, i, ev.Session.State, ev.Session.StateSource, screen)
+		default:
+		}
 	}
 }
 
@@ -400,7 +415,9 @@ func TestUnobservedEntryReportsIdle(t *testing.T) {
 func TestBellReachesAttentionThroughTheRealPTY(t *testing.T) {
 	skipOnWindows(t)
 	r := freshRegistry(t)
-	e, sess := liveSession(t, r, wire.CreateSpec{Name: "bell"})
+	// A copying `cat`, not liveSession's silent one: the bell has to come
+	// back from the child, because the tty echoes it as "^G".
+	e, sess := liveSession(t, r, wire.CreateSpec{Name: "bell", Shell: "/bin/cat"})
 
 	listener, unsub := r.Subscribe()
 	defer unsub()
