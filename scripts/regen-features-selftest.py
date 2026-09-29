@@ -132,6 +132,8 @@ def main() -> int:
         regen.regen_changelog = lambda *_a, **_k: False
         regen.regen_specs_index = lambda: False
         regen.regen_tech_debt = lambda: False
+        # Never the real docs/plugins.md: --release would stamp it.
+        regen.PLUGIN_DOC = Path(tmp) / "absent.md"
         rc = regen.main(["--release", "2.7.0"])
         check("--release exits 0", rc, 0)
         stamped = json.loads(features_path.read_text(encoding="utf-8"))
