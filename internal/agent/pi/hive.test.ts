@@ -998,18 +998,21 @@ test("no_client falls back to Pi's own confirm, immediately or mid-review", unix
       assert.equal(asked.length, 1, `delay ${delay}: confirm not asked`);
       assert.match(textOf(res), /did not approve/);
       const headless = await tool.execute("c2", { plan: "# Plan" }, undefined, undefined, { hasUI: false });
-      assert.match(textOf(headless), /No reviewer/);
+      assert.match(textOf(headless), /Show the user the whole plan/);
     } finally {
       srv.stop();
     }
   }
 });
 
-test("disabled mid-session: the tool says so instead of blocking", unixOnly, async () => {
+test("disabled mid-session: the plan goes to the user in chat, never skipped", unixOnly, async () => {
   const srv = await reviewServer((_req, reply) => reply({ status: "disabled" }));
   try {
     const { tool } = planTool(srv.sock);
-    assert.match(textOf(await tool.execute("c1", { plan: "# P" }, undefined, undefined, {})), /off in Hive/);
+    const text = textOf(await tool.execute("c1", { plan: "# P" }, undefined, undefined, {}));
+    assert.match(text, /Show the user the whole plan/);
+    assert.match(text, /Do not implement anything until they approve/);
+    assert.doesNotMatch(text, /Continue/);
   } finally {
     srv.stop();
   }
