@@ -465,13 +465,13 @@ manifest, the environment, the wire protocol as a plugin sees it, the
 SDK and the `hive` object. When the API changes, this page changes in
 the same pull request, and so does this section.
 
-**How the version moves.** A manifest's `api_version` must equal the
-version Hive implements, so changing the version refuses every
+**How the version moves.** Until 1.0, a manifest's `api_version` must
+equal the version Hive implements exactly, so changing the version refuses every
 installed plugin until its author updates it. The version therefore
 changes only when a plugin written for the previous one could break:
 a frame, field, `hive` member or manifest field removed or renamed, or
 one whose meaning changed. Additions — a new frame, a new field, a new
-`hive` member — leave it alone, so check for what you use rather than
+`hive` member — leave it alone before 1.0, so check for what you use rather than
 assuming a version implies it. From 1.0 on, an addition raises the
 minor version and a break raises the major one, and Hive loads any
 plugin whose major version matches.
