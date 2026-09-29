@@ -325,7 +325,8 @@ export function requestPlanReview(
 // approves it, in the conversation, before anything is implemented.
 const SHOW_PLAN_IN_CHAT =
   "Hive cannot review this plan. Show the user the whole plan in your reply, " +
-  "ask them to approve it, and stop. Do not implement anything until they approve.";
+  "ask them to approve it, and stop. Do not implement anything until they approve. " +
+  "When they approve in the conversation, implement it; do not call " + PLAN_TOOL_NAME + " again for this plan.";
 
 // planReviewResult turns a decision into what hive_submit_plan tells the
 // model. confirm is the terminal fallback when no GUI can answer: Pi's
@@ -561,7 +562,8 @@ export default function (pi: ExtensionAPI) {
         (event?.systemPrompt ?? "") +
         `\n\nThe user reviews plans in Hive. Before you create or edit any file, call ${PLAN_TOOL_NAME} ` +
         `with your plan as markdown and wait for its answer. Do not create or edit files until ${PLAN_TOOL_NAME} ` +
-        "returns approval. Trivial one-line answers that change no files need no plan.",
+        "returns approval, or it asks you to get approval in the conversation and the user gives it there. " +
+        "Trivial one-line answers that change no files need no plan.",
     }));
   }
 

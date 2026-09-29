@@ -1012,6 +1012,7 @@ test("disabled mid-session: the plan goes to the user in chat, never skipped", u
     const text = textOf(await tool.execute("c1", { plan: "# P" }, undefined, undefined, {}));
     assert.match(text, /Show the user the whole plan/);
     assert.match(text, /Do not implement anything until they approve/);
+    assert.match(text, new RegExp("do not call " + mod.PLAN_TOOL_NAME + " again"));
     assert.doesNotMatch(text, /Continue/);
   } finally {
     srv.stop();
@@ -1052,6 +1053,8 @@ test("with review on, every run's system prompt tells Pi to submit a plan first"
   const out: any = pi.handlers.get("before_agent_start")!({ systemPrompt: "BASE" }, {});
   assert.ok(out.systemPrompt.startsWith("BASE"), "must append, not replace");
   assert.ok(out.systemPrompt.includes(mod.PLAN_TOOL_NAME));
+  // Approval given in chat, when the tool asks for it there, must count.
+  assert.match(out.systemPrompt, /get approval in the conversation/);
 });
 
 test("with review off, the system prompt is left alone", () => {
