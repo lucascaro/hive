@@ -123,7 +123,10 @@ unchanged and stays in core.
      reviewer, which carries `HIVE_PLAN_REVIEWER=hive`.
   3. No client that can answer means `no_client`.
   In each of these cases the requester falls back to the agent's own
-  approval: Claude's dialog, or Pi's `ctx.ui.confirm`.
+  approval: Claude's dialog, or Pi's `ctx.ui.confirm`. A Pi session
+  whose review is `disabled`, or that has no UI to confirm with, is
+  told to show the plan in the conversation and wait for the user's
+  approval there. No outcome skips approval.
 - **Park.** The review is session data like a parked worktree choice.
   `SessionInfo.pending_plan_review` carries only `{review_id, source,
   created_at}`. The GUI fetches the plan with `GET_PLAN_REVIEW` (0x34 →
