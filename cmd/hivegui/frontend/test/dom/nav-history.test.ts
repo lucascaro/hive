@@ -91,7 +91,7 @@ vi.mock('../../src/app/view.js', async () => {
 
 type View = typeof import('../../src/app/view.js');
 type Focus = typeof import('../../src/app/focus.js');
-type Keyboard = typeof import('../../src/app/keyboard.js');
+type Keyboard = typeof import('../../src/app/actions.js');
 
 let state: typeof import('../../src/store/store.js').hiveStateView;
 let setActive: Focus['setActive'];
@@ -125,12 +125,13 @@ beforeAll(async () => {
   const view = await import('../../src/app/view.js');
   switchTo = vi.mocked(view.switchTo);
   restoreSession = vi.mocked(view.restoreSession);
-  const kb = await import('../../src/app/keyboard.js');
+  await import('../../src/app/keyboard.js');
+  const kb = await import('../../src/app/actions.js');
   ({ navBack, navForward } = kb);
   // main.ts injects the focus pipeline into keyboard.ts so the modules
   // stay acyclic; this harness has to do the same or the suppression
   // that stops back/forward ping-ponging is never wired.
-  kb.initKeyboard({
+  kb.initActions({
     withoutNavHistory,
     bumpFontSize: () => {},
     resetFontSize: () => {},

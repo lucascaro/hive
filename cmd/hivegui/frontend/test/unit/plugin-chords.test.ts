@@ -2,10 +2,11 @@ import { describe, expect, it } from 'vitest';
 import {
   checkContributions,
   chordLabel,
-  chordMatches,
+  pluginChord,
   resolveCommands,
   type PluginCommand,
 } from '../../src/lib/plugin-api.js';
+import { chordMatches, parseChord } from '../../src/lib/chord.js';
 import { paletteShortcuts, shortcutGroups } from '../../src/lib/shortcuts.js';
 
 const run = () => {};
@@ -36,24 +37,48 @@ describe('chordLabel', () => {
   });
 });
 
-describe('chordMatches', () => {
+describe('pluginChord', () => {
+  // A plugin chord is dispatched only after core had the key, as ⌘/Ctrl
+  // plus the key; `matches` runs it through the same matcher as a core
+  // binding.
+  const matches = (
+    keys: { key: string; shift?: boolean },
+    e: { code: string; shiftKey: boolean; altKey: boolean },
+  ) => {
+    const s = pluginChord(keys);
+    return (
+      s !== null &&
+      chordMatches(parseChord(s, false), {
+        key: '',
+        metaKey: false,
+        ctrlKey: true,
+        ...e,
+      })
+    );
+  };
   it('matches on e.code and shift, never on alt', () => {
     const k = { key: 'o', shift: true };
+    expect(matches(k, { code: 'KeyO', shiftKey: true, altKey: false })).toBe(
+      true,
+    );
+    expect(matches(k, { code: 'KeyO', shiftKey: false, altKey: false })).toBe(
+      false,
+    );
+    expect(matches(k, { code: 'KeyO', shiftKey: true, altKey: true })).toBe(
+      false,
+    );
     expect(
-      chordMatches(k, { code: 'KeyO', shiftKey: true, altKey: false }),
+      matches({ key: '3' }, { code: 'Digit3', shiftKey: false, altKey: false }),
     ).toBe(true);
-    expect(
-      chordMatches(k, { code: 'KeyO', shiftKey: false, altKey: false }),
-    ).toBe(false);
-    expect(
-      chordMatches(k, { code: 'KeyO', shiftKey: true, altKey: true }),
-    ).toBe(false);
-    expect(
-      chordMatches(
-        { key: '3' },
-        { code: 'Digit3', shiftKey: false, altKey: false },
-      ),
-    ).toBe(true);
+  });
+  it('is the platform modifier plus the physical key', () => {
+    expect(pluginChord({ key: 'o', shift: true })).toBe('Mod+Shift+[KeyO]');
+    expect(pluginChord({ key: '3' })).toBe('Mod+[Digit3]');
+  });
+  it('refuses anything but one letter or digit', () => {
+    for (const key of ['', 'ab', '/', 'Enter', ' ']) {
+      expect(pluginChord({ key })).toBeNull();
+    }
   });
 });
 

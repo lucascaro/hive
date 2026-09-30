@@ -35,7 +35,7 @@ import { PendingPrompt } from './PendingPrompt.js';
 import { PluginBanner, PluginSurfaces } from './PluginSurfaces.js';
 import type { ReactNode } from 'react';
 import { mustEl } from '../app/el.js';
-import { confirmAndDeleteProject } from '../app/keyboard.js';
+import { confirmAndDeleteProject } from '../app/actions.js';
 import { refocusActiveTerm, setFocusedTile } from '../app/focus.js';
 import {
   minimizeProject,

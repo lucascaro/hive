@@ -13,7 +13,6 @@ import {
   visibleLineCount,
   unavailableMessage,
 } from '../../src/lib/find';
-import { findKey } from '../../src/lib/keymap';
 
 describe('findSourceFor', () => {
   it('routes the alternate buffer to the transcript', () => {
@@ -164,52 +163,6 @@ describe('unavailableMessage', () => {
 
   it('has a fallback for an unknown reason', () => {
     expect(unavailableMessage('something-new')).toBeTruthy();
-  });
-});
-
-describe('findKey', () => {
-  const ev = (o: Partial<Record<string, unknown>> = {}) => ({
-    key: 'f',
-    code: 'KeyF',
-    metaKey: false,
-    ctrlKey: false,
-    altKey: false,
-    shiftKey: false,
-    ...o,
-  });
-
-  it('fires on Ctrl+Shift+F off macOS', () => {
-    expect(findKey(ev({ ctrlKey: true, shiftKey: true }), false)).toBe(true);
-  });
-
-  // Plain Ctrl+F is 0x06 — readline's forward-char, live in every
-  // agent's input line.
-  it('never fires on plain Ctrl+F', () => {
-    expect(findKey(ev({ ctrlKey: true }), false)).toBe(false);
-    expect(findKey(ev({ ctrlKey: true }), true)).toBe(false);
-  });
-
-  // On macOS the native menu accelerator intercepts before the webview,
-  // so a keydown branch there would be dead code that only fires in
-  // tests.
-  it('does not fire on macOS, where the menu owns the chord', () => {
-    expect(findKey(ev({ metaKey: true }), true)).toBe(false);
-    expect(findKey(ev({ metaKey: true, shiftKey: true }), true)).toBe(false);
-  });
-
-  it('ignores other keys and stray modifiers', () => {
-    expect(
-      findKey(
-        ev({ key: 'g', code: 'KeyG', ctrlKey: true, shiftKey: true }),
-        false,
-      ),
-    ).toBe(false);
-    expect(
-      findKey(ev({ ctrlKey: true, shiftKey: true, altKey: true }), false),
-    ).toBe(false);
-    expect(
-      findKey(ev({ ctrlKey: true, shiftKey: true, metaKey: true }), false),
-    ).toBe(false);
   });
 });
 

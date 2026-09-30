@@ -94,7 +94,14 @@ beforeAll(async () => {
   ));
   ({ openCommandPalette, closeCommandPalette, initCommandPalette } =
     await import('../../src/app/modals/command-palette.js'));
-  initCommandPalette({ commands: COMMANDS, focusActiveTerm });
+  const { registerCommandSource } = await import(
+    '../../src/app/command-registry.js'
+  );
+  registerCommandSource(
+    () => COMMANDS.map(({ name, ...c }) => ({ ...c, title: name })),
+    'core',
+  );
+  initCommandPalette({ focusActiveTerm });
 });
 
 beforeEach(() => {

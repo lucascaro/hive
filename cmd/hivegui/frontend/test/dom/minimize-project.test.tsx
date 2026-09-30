@@ -63,8 +63,8 @@ let shiftActiveProject: typeof import('../../src/app/view.js').shiftActiveProjec
 let initView: typeof import('../../src/app/view.js').initView;
 let minimizeSession: typeof import('../../src/app/view.js').minimizeSession;
 let restoreProject: typeof import('../../src/app/view.js').restoreProject;
-let navSession: typeof import('../../src/app/keyboard.js').navSession;
-let reorderActive: typeof import('../../src/app/keyboard.js').reorderActive;
+let navSession: typeof import('../../src/app/actions.js').navSession;
+let reorderActive: typeof import('../../src/app/actions.js').reorderActive;
 
 const noop = () => {};
 
@@ -93,7 +93,8 @@ beforeAll(async () => {
   initView = view.initView;
   minimizeSession = view.minimizeSession;
   restoreProject = view.restoreProject;
-  ({ navSession, reorderActive } = await import('../../src/app/keyboard.js'));
+  await import('../../src/app/keyboard.js');
+  ({ navSession, reorderActive } = await import('../../src/app/actions.js'));
   ({ Sidebar } = await import('../../src/components/Sidebar.js'));
   sidebarProps = {
     switchTo: noop,

@@ -109,8 +109,9 @@ beforeAll(async () => {
   host = await import('../../src/app/plugin-host.js');
   surfaces = await import('../../src/components/PluginSurfaces.js');
   palette = await import('../../src/app/modals/command-palette.js');
-  const kb = await import('../../src/app/keyboard.js');
-  kb.initKeyboard({
+  await import('../../src/app/keyboard.js');
+  const kb = await import('../../src/app/actions.js');
+  kb.initActions({
     withoutNavHistory: (fn: () => void) => fn(),
     bumpFontSize: () => {},
     resetFontSize: () => {},
@@ -269,11 +270,11 @@ describe('commands', () => {
   });
 
   it('a plugin chord runs its command; a core chord never reaches a plugin', () => {
-    // Ctrl, not ⌘: the platform mock above changes the exported isMac,
-    // but cmdOrCtrl's default argument closes over jsdom's real one.
-    press('O', { ctrlKey: true, shiftKey: true, code: 'KeyO' });
+    // ⌘: the platform mock above makes this a mac, and the dispatcher
+    // matches chords against that same isMac.
+    press('O', { metaKey: true, shiftKey: true, code: 'KeyO' });
     expect(runs.toggle).toHaveBeenCalledOnce();
-    press('t', { ctrlKey: true, code: 'KeyT' });
+    press('t', { metaKey: true, code: 'KeyT' });
     expect(runs.steal).not.toHaveBeenCalled();
     expect(store.isModalOpen('launcher')).toBe(true);
   });

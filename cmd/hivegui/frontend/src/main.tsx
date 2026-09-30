@@ -33,61 +33,36 @@ import {
   ConnectControl,
   StateDirID,
   ListAgents,
-  OpenNewWindow,
-  CloseWindow,
-  OpenTerminalAt,
   LogFrontend,
 } from './bridge.js';
 import { classifyBeat, jsHeapMB } from './lib/freeze-heartbeat.js';
 import { isMac } from './lib/platform.js';
-import { paletteShortcuts } from './lib/shortcuts.js';
 import { modeHints } from './lib/status.js';
 import * as store from './store/store.js';
 import { termsMap } from './store/terms.js';
 
 // Live read of the store, for the heartbeat and the command table.
 const appData = () => store.appStore.getState();
-import {
-  setStatus,
-  reportFailure,
-  setBootState,
-  setModeHint,
-  termsHost,
-} from './app/dom.js';
-import { activeCwd } from './app/selectors.js';
+import { setStatus, setBootState, setModeHint, termsHost } from './app/dom.js';
 import { scrollTrace } from './app/trace.js';
-import {
-  openLauncher,
-  duplicateActiveSession,
-  restartActiveSession,
-  duplicateActiveSessionChooseTool,
-  initLauncher,
-} from './app/modals/launcher.js';
-import {
-  openProjectEditor,
-  initProjectEditor,
-} from './app/modals/project-editor.js';
+import { openLauncher, initLauncher } from './app/modals/launcher.js';
+import { initProjectEditor } from './app/modals/project-editor.js';
 import { initCommandPalette } from './app/modals/command-palette.js';
-import {
-  initSettings,
-  initThemeWatch,
-  openSettings,
-} from './app/modals/settings.js';
+import { initSettings, initThemeWatch } from './app/modals/settings.js';
 import { initWorktrees } from './app/modals/worktrees.js';
-import { initQuickIdea, openQuickIdea } from './app/modals/quick-idea.js';
+import { initQuickIdea } from './app/modals/quick-idea.js';
 import { initIdeaInbox, refreshIdeas } from './app/modals/idea-inbox.js';
-import { openHelpOverlay, initHelpOverlay } from './app/modals/help-overlay.js';
+import { initHelpOverlay } from './app/modals/help-overlay.js';
 import { initFindBox } from './app/find-box.js';
 import { getTerm } from './store/terms.js';
-import { openFindInSession } from './app/find-session.js';
 import { SearchTranscript, GetTranscriptLines } from './bridge.js';
-import { openWhatsNew, initWhatsNew } from './app/modals/whats-new.js';
+import { initWhatsNew } from './app/modals/whats-new.js';
 import { initPluginHost } from './app/plugin-host.js';
 import { markPluginsWanted, relistPluginsIfWanted } from './app/plugins.js';
 import { Button } from './components/Button.js';
 import { Kbd } from './components/Kbd.js';
 import { Markdown } from './components/Markdown.js';
-import { openHelp, initHelp } from './app/modals/help.js';
+import { initHelp } from './app/modals/help.js';
 import { initBuildLog } from './app/modals/build-log.js';
 import { wireDaemonEvents, reconnectControl } from './app/events.js';
 import { flushSync } from 'react-dom';
@@ -98,39 +73,15 @@ import {
   isDaemonRestarting,
   initBanners,
   manualUpdateCheck,
-  reloadGui,
-  restartHive,
 } from './app/banners.js';
-import {
-  closeActiveSession,
-  reopenLastClosedSession,
-} from './app/undo-close.js';
 import {
   switchTo,
   updateAppTitle,
-  shiftActiveProject,
   enforceViewFloor,
   initView,
 } from './app/view.js';
-import {
-  initKeyboard,
-  toggleSidebar,
-  toggleProjectGrid,
-  toggleAllGrid,
-  toggleActivity,
-  showActivityGrid,
-  focusActiveSession,
-  deleteActiveProject,
-  openWorktreesForActiveProject,
-  openIdeaInboxForActiveProject,
-  navSession,
-  reorderActive,
-  switchToNthSession,
-  jumpToAttention,
-  jumpBack,
-  navBack,
-  navForward,
-} from './app/keyboard.js';
+import { initActions } from './app/actions.js';
+import './app/keyboard.js';
 import { ensureTerm, bumpFontSize, resetFontSize } from './app/session-term.js';
 import {
   setActive,
@@ -140,168 +91,6 @@ import {
   withoutNavHistory,
 } from './app/focus.js';
 
-// ---------- command palette table ----------
-
-// Shortcut strings come from lib/shortcuts.ts so the palette and the
-// ⌘/ help overlay can't drift from each other.
-const PALETTE_KEYS = paletteShortcuts({ isMac });
-
-const paletteCommands = [
-  {
-    id: 'new-project',
-    name: 'New Project…',
-    run: () => openProjectEditor(null),
-  },
-  { id: 'new-session', name: 'New Session', run: () => openLauncher() },
-  {
-    id: 'new-session-worktree',
-    name: 'New Session in Worktree',
-    run: () => openLauncher(undefined, { forceWorktree: true }),
-  },
-  {
-    id: 'duplicate-session',
-    name: 'Duplicate Session',
-    run: duplicateActiveSession,
-  },
-  {
-    id: 'duplicate-session-choose-tool',
-    name: 'Duplicate Session (choose tool)…',
-    run: duplicateActiveSessionChooseTool,
-  },
-  { id: 'restart-session', name: 'Restart Session', run: restartActiveSession },
-  {
-    id: 'delete-project',
-    name: 'Delete Active Project…',
-    run: () => deleteActiveProject(),
-  },
-  {
-    id: 'worktrees',
-    name: 'Worktrees…',
-    run: () => openWorktreesForActiveProject(),
-  },
-  { id: 'whats-new', name: "What's New…", run: () => openWhatsNew() },
-  { id: 'help', name: 'Help…', run: () => openHelp() },
-  {
-    id: 'quick-idea',
-    name: 'Capture Idea…',
-    run: () => openQuickIdea(),
-  },
-  {
-    id: 'idea-inbox',
-    name: 'Ideas…',
-    run: () => openIdeaInboxForActiveProject(),
-  },
-  {
-    id: 'close-session',
-    name: 'Close Session',
-    run: () => {
-      if (appData().activeId) closeActiveSession();
-    },
-  },
-  {
-    id: 'reopen-closed-session',
-    name: 'Reopen Closed Session',
-    run: () => reopenLastClosedSession(),
-  },
-  {
-    id: 'new-window',
-    name: 'New Window',
-    run: () => OpenNewWindow().catch(reportFailure('new window')),
-  },
-  {
-    id: 'open-os-terminal',
-    name: 'Open OS Terminal Here',
-    run: () =>
-      OpenTerminalAt(activeCwd()).catch(reportFailure('open terminal')),
-  },
-  {
-    id: 'close-window',
-    name: 'Close Window',
-    run: () => CloseWindow().catch(reportFailure('close window')),
-  },
-  { id: 'toggle-sidebar', name: 'Toggle Sidebar', run: toggleSidebar },
-  {
-    id: 'toggle-project-grid',
-    name: 'Toggle Project Grid',
-    run: toggleProjectGrid,
-  },
-  {
-    id: 'toggle-all-grid',
-    name: 'Toggle All Sessions Grid',
-    run: toggleAllGrid,
-  },
-  {
-    id: 'toggle-activity',
-    name: 'Toggle Agent Activity',
-    run: toggleActivity,
-  },
-  {
-    id: 'activity-grid',
-    name: 'Agent Activity Grid',
-    run: showActivityGrid,
-  },
-  {
-    id: 'find-in-session',
-    name: 'Find in Session',
-    run: openFindInSession,
-  },
-  {
-    id: 'focus-active-session',
-    name: 'Focus Active Session',
-    run: focusActiveSession,
-  },
-  { id: 'zoom-in', name: 'Zoom In', run: () => bumpFontSize(+1) },
-  { id: 'zoom-out', name: 'Zoom Out', run: () => bumpFontSize(-1) },
-  { id: 'zoom-reset', name: 'Actual Size', run: () => resetFontSize() },
-  { id: 'next-session', name: 'Next Session', run: () => navSession(+1) },
-  { id: 'prev-session', name: 'Previous Session', run: () => navSession(-1) },
-  { id: 'nav-back', name: 'Go Back', run: navBack },
-  { id: 'nav-forward', name: 'Go Forward', run: navForward },
-  {
-    id: 'next-attention',
-    name: 'Next Session Needing Attention',
-    run: jumpToAttention,
-  },
-  { id: 'jump-back', name: 'Jump Back to Where You Were', run: jumpBack },
-  {
-    id: 'move-forward',
-    name: 'Move Session Forward',
-    run: () => reorderActive(+1),
-  },
-  {
-    id: 'move-backward',
-    name: 'Move Session Backward',
-    run: () => reorderActive(-1),
-  },
-  {
-    id: 'next-project',
-    name: 'Next Project',
-    run: () => shiftActiveProject(+1),
-  },
-  {
-    id: 'prev-project',
-    name: 'Previous Project',
-    run: () => shiftActiveProject(-1),
-  },
-  {
-    id: 'keyboard-shortcuts',
-    name: 'Keyboard Shortcuts',
-    run: () => openHelpOverlay(),
-  },
-  { id: 'settings', name: 'Settings…', run: () => openSettings() },
-  { id: 'reload-gui', name: 'Reload GUI', run: () => reloadGui() },
-  {
-    id: 'restart-hive',
-    name: 'Restart Daemon… (ends all sessions)',
-    run: () => restartHive(),
-  },
-  ...Array.from({ length: 9 }, (_, i) => ({
-    id: `switch-${i + 1}`,
-    name: `Switch to Session ${i + 1}`,
-    run: () => switchToNthSession(i + 1),
-  })),
-].map((c) => ({ ...c, shortcut: PALETTE_KEYS[c.id] ?? '' }));
-
 // ---------- wiring ----------
 
 // Cross-module callbacks are injected here so the modules stay
@@ -310,7 +99,7 @@ const paletteCommands = [
 // with the registry focusSnapshot reads.
 initLauncher({ setFocusedTile, refocusActiveTerm });
 initProjectEditor({ setFocusedTile, refocusActiveTerm });
-initCommandPalette({ commands: paletteCommands, focusActiveTerm });
+initCommandPalette({ focusActiveTerm });
 initSettings({ setFocusedTile, refocusActiveTerm });
 initWorktrees({
   setFocusedTile,
@@ -358,7 +147,7 @@ initView({ ensureTerm, setActive, focusActiveTerm, scrollTrace });
 // from switchTo() and setView(), and a boot with zero sessions calls
 // neither — leaving the first-run screen with no shortcuts at all.
 setModeHint(modeHints(appData().view, isMac));
-initKeyboard({
+initActions({
   bumpFontSize,
   resetFontSize,
   focusActiveTerm,

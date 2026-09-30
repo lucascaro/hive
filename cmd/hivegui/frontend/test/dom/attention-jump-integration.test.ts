@@ -53,8 +53,8 @@ vi.mock('../../src/bridge.js', () => {
 });
 
 let state: typeof import('../../src/store/store.js').hiveStateView;
-let jumpToAttention: typeof import('../../src/app/keyboard.js').jumpToAttention;
-let jumpBack: typeof import('../../src/app/keyboard.js').jumpBack;
+let jumpToAttention: typeof import('../../src/app/actions.js').jumpToAttention;
+let jumpBack: typeof import('../../src/app/actions.js').jumpBack;
 let initView: typeof import('../../src/app/view.js').initView;
 let setActive: typeof import('../../src/app/focus.js').setActive;
 
@@ -125,7 +125,7 @@ beforeAll(async () => {
   const focus = await import('../../src/app/focus.js');
   ({ initView } = view);
   ({ setActive } = focus);
-  ({ jumpToAttention, jumpBack } = await import('../../src/app/keyboard.js'));
+  ({ jumpToAttention, jumpBack } = await import('../../src/app/actions.js'));
 
   // Real view.ts + focus.ts, with view stubbed at its injection seam.
   // ensureTerm is declared to return a TermTile; beforeEach populates

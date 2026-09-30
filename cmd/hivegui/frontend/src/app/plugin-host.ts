@@ -39,7 +39,6 @@ import { releaseFocus } from '../lib/focus-trap.js';
 import { isMac } from '../lib/platform.js';
 import {
   checkContributions,
-  chordMatches,
   PLUGIN_API_VERSION,
   resolveCommands,
   type PluginContributions,
@@ -58,6 +57,7 @@ import {
   setPluginUI,
   useAppStore,
 } from '../store/store.js';
+import { registerCommandSource } from './command-registry.js';
 import type { PluginInfo, SessionInfo } from './state.js';
 
 export const IMPORT_TIMEOUT_MS = 10_000;
@@ -519,17 +519,21 @@ export function runPluginCommand(r: ResolvedCommand): void {
   }
 }
 
-/** keyboard.ts calls this last in its ⌘/Ctrl chain, so a core binding
- * always wins. True when a plugin command took the key. */
-export function dispatchPluginChord(e: KeyboardEvent): boolean {
-  if (Object.keys(appData().pluginUI).length === 0) return false;
-  const hit = pluginCommands().find(
-    (r) => r.bound && r.command.keys && chordMatches(r.command.keys, e),
-  );
-  if (!hit) return false;
-  runPluginCommand(hit);
-  return true;
-}
+// Plugin commands join the command bus as `plugin:<plugin>:<command>`:
+// the palette lists them after every core command, and their chords are
+// bound by the last scope in KEY_SCOPES (app/key-scopes.ts), so a core
+// binding always wins. Re-read on every lookup, so activating or failing
+// a plugin needs no re-registration.
+registerCommandSource(
+  () =>
+    pluginCommands().map((r) => ({
+      id: `plugin:${r.pluginId}:${r.command.id}`,
+      title: r.command.title,
+      shortcut: r.shortcut,
+      run: () => runPluginCommand(r),
+    })),
+  'plugins',
+);
 
 // ---------- announcing running UIs ----------
 
