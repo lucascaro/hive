@@ -46,7 +46,9 @@ function isFindChord(e: {
     const f = e.code === 'KeyF' || e.key === 'f' || e.key === 'F';
     return f && e.metaKey && !e.ctrlKey && !e.altKey;
   }
-  return matchBinding(scopeById('app'), e, false)?.command === 'find-in-session';
+  return (
+    matchBinding(scopeById('app'), e, false)?.command === 'find-in-session'
+  );
 }
 
 // The bar is rendered FIRST in both modes and styled identically, so it

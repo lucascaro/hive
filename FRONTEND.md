@@ -122,8 +122,14 @@ the e2e specs — treat them as an API.
 - Dialogs are `role="dialog" aria-modal="true"` with `aria-labelledby`, and trap
   focus via `src/lib/focus-trap.ts`; the choice dialog is `alertdialog`.
 - The keyboard handler is a single **capture-phase** window listener
-  (`src/app/keyboard.ts`) — it has to beat inline-rename's `stopPropagation`.
-  Modal precedence is decided there, from the store, not from DOM classes.
+  (`src/app/keyboard.ts`); it has to beat inline-rename's `stopPropagation`.
+  The listener decides nothing on its own. It walks `KEY_SCOPES` in
+  `src/app/key-scopes.ts`, which is the one ordered precedence list, with each
+  modal or mode's bindings stored as chord strings (`src/lib/chord.ts`). A
+  matched binding runs a command by id through the command bus
+  (`src/app/command-registry.ts`). The native menu and the command palette run
+  the same ids (`src/app/commands.ts`), and the actions themselves live in
+  `src/app/actions.ts`. Modal precedence reads the store, never DOM classes.
 - Live regions are the text slot alone, never the whole bar, or every navigation
   re-announces static hints.
 - Key hints appear at the point of use, in `[key]` / `(key)` form. See AGENTS.md

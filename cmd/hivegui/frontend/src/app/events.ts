@@ -1271,7 +1271,7 @@ export function wireDaemonEvents(injected: EventsDeps) {
     // while any is still open and this is the confirmation that
     // overrides it — the same refuse-then-force contract as
     // worktree_dirty above. killSessions is recomputed exactly as
-    // confirmAndDeleteProject (app/keyboard.ts) computes it, so the
+    // confirmAndDeleteProject (app/actions.ts) computes it, so the
     // retry carries the same answer the first attempt did.
     if (e.code === 'project_has_ideas' && e.project_id) {
       const proj = appData().projects.find((p) => p.id === e.project_id);

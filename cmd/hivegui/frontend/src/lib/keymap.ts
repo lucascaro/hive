@@ -25,7 +25,6 @@ export const NEWLINE_SEQ = '\x0a';
 // window handler for grid views ONLY (focus the active session), so in
 // single view it is still unclaimed and reaches xterm.
 // Structural, not `KeyboardEvent`: the unit tests build plain fakes.
-// `code` is optional — only navHistoryKey's layout fallback reads it.
 export interface KeyEventLike {
   key: string;
   code?: string;
