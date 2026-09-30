@@ -344,9 +344,20 @@ cd ../../.. && CI=1 scripts/test.sh unit dom e2e && (cd cmd/hivegui/frontend && 
 - **2026-09-30** — Precedence is one central ordered list, the bus covers keys, menu and palette, and bindings are chord strings with a platform map. Why: operator decisions. They also make this the substrate for #477.
 - **2026-09-30** — Matching is exact, with approved deltas A, B (including closing worktrees), D (including off-mac Meta+/) and E (palette unification). C (overlay Esc/Enter) and every other Shift-ignored binding stay loose, marked explicitly. Why: the operator chose each item from a delta table.
 - **2026-09-30** — Core commands are catalogued centrally rather than self-registered by feature modules. Why: `vi.mock` of a feature module would silently drop its registration. Plugins subscribe through the same registry.
+- **2026-09-30** — Command ids are kebab-case (`grid-left`, `arrow-shift-up`, `settings.close`), not the plan's dotted `grid.left`. Why: they match the palette's existing ids, which the menu and the palette already used.
+- **2026-09-30** — `plugin-surfaces.test.tsx` got a body edit beyond imports: its plugin-chord case pressed Ctrl while mocking `isMac: true`, and its own comment says it relied on `cmdOrCtrl` reading jsdom's real platform. The dispatcher now matches against one `isMac`, so the case presses ⌘. Why: the test was exploiting an inconsistency that this change removes on purpose.
+- **2026-09-30** — The old predicate cases (`keymap.test.ts`, `find.test.ts`) were ported as a named-case block inside `keymap-parity.test.ts`, not a separate file. Why: they read over the same resolver as the sweep.
+- **2026-09-30** — The registry's `run(): boolean | void` keeps `void` despite biome's noConfusingVoidType warning. Why: action functions return void, and `state.ts` has the same precedent.
 
 ## Progress
 
 - **2026-09-30** — Research complete.
+- **2026-09-30** — Plan v3 approved (HTML, round 2).
+- **2026-09-30** — Implemented. Verification results:
+  - `biome ci`, `typecheck`, `ui-lint` and the import-graph guard are green.
+  - `scripts/test.sh unit dom e2e` passes; e2e: 478.
+  - `e2e-real` passes: 33.
+  - Every mutation check fails as intended: scope swap, `Any+` drop, command typo, nav `other`, zoom `Shift?`.
+  - The isolated `wails dev` smoke run passes (⌘, ⇧Esc ⌘/ ⇧⌘K ⌘T).
 
 ## Open questions
