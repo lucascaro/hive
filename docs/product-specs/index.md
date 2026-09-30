@@ -8,6 +8,8 @@ The *what* and *why* of work this project plans to do. Each spec describes user 
 
 | Priority | Issue | Title | Stage | Spec |
 |----------|-------|-------|-------|------|
+| P2 | #477 | Make every app shortcut configurable, with collision resolution | RESEARCH | [477-make-every-app-shortcut-configurable-with-collisio](477-make-every-app-shortcut-configurable-with-collisio.md) |
+| P2 | #478 | Decompose keyboard.ts into per-scope keymap tables | RESEARCH | [478-decompose-keyboard-ts-into-per-scope-keymap-tables](478-decompose-keyboard-ts-into-per-scope-keymap-tables.md) |
 | P2 | — | A red CI check name should say which stage failed | TRIAGE | [256-ci-check-names-identify-the-failing-stage](256-ci-check-names-identify-the-failing-stage.md) |
 | P2 | — | Session messaging: hand a session a message, get told when it idles | PLAN | [338-session-messaging](338-session-messaging.md) |
 | P2 | — | Orchestrator grant: a session you name can message its siblings | PLAN | [389-orchestrator-grant-and-session-msg](389-orchestrator-grant-and-session-msg.md) |
@@ -18,7 +20,6 @@ The *what* and *why* of work this project plans to do. Each spec describes user 
 | P3 | — | Observe from a session: hived session list and hived wait | PLAN | [390-session-observe-list-and-wait](390-session-observe-list-and-wait.md) |
 | P3 | — | Agent-spawned sessions: a granted session can start a sibling | PLAN | [391-agent-spawned-sessions](391-agent-spawned-sessions.md) |
 | P3 | — | Migrate the frontend to CSS Modules | TRIAGE | [frontend-css-modules](frontend-css-modules.md) |
-| P3 | — | Decompose keyboard.ts into per-scope keymap tables | TRIAGE | [keyboard-keymap-tables](keyboard-keymap-tables.md) |
 
 ## Completed
 
