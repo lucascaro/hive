@@ -179,7 +179,7 @@ shell) message any other session with the same semantics the GUI has.
 - `cmd/hivegui/app_calls.go` — `SendToSession`, `SetNotifyWhenIdle` bindings.
 - Frontend: `bridge.ts`, `store/store.ts`, `app/keyboard.ts`,
   `components/SessionRow.tsx`, `Sidebar.tsx`, `StatusBar.tsx`.
-- `docs/product-specs/keyboard-keymap-tables.md`, `DESIGN.md` (the
+- `docs/product-specs/478-decompose-keyboard-ts-into-per-scope-keymap-tables.md`, `DESIGN.md` (the
   `.key` rule; the Pi inbox dir).
 
 ### New files

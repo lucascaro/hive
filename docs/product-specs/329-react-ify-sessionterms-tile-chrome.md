@@ -42,7 +42,7 @@ a portal boundary, keyed by session id.
 - React must not own the xterm lifecycle. That was considered and rejected in
   the rewrite's Decisions: it re-fights every documented timing fix.
 - `keyboard.ts` decomposition and the CSS Modules migration are separate filed
-  debt ([keyboard-keymap-tables](keyboard-keymap-tables.md),
+  debt ([478-decompose-keyboard-ts-into-per-scope-keymap-tables](478-decompose-keyboard-ts-into-per-scope-keymap-tables.md),
   [frontend-css-modules](frontend-css-modules.md)).
 
 ## Constraints

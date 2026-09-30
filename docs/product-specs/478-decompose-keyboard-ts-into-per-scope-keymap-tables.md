@@ -1,19 +1,19 @@
 ---
-issue: null
+issue: 478
 title: "Decompose keyboard.ts into per-scope keymap tables"
 type: enhancement
 complexity: M
-priority: P3
-stage: TRIAGE
+priority: P2
+stage: RESEARCH
 ---
 
 # Decompose keyboard.ts into per-scope keymap tables
 
-- **Issue:** —
+- **Issue:** #478
 - **Type:** enhancement
 - **Complexity:** M
-- **Priority:** P3
-- **Exec plan:** —
+- **Priority:** P2
+- **Exec plan:** [docs/exec-plans/active/478-decompose-keyboard-ts-into-per-scope-keymap-tables.md](../exec-plans/active/478-decompose-keyboard-ts-into-per-scope-keymap-tables.md)
 
 ## Problem
 
