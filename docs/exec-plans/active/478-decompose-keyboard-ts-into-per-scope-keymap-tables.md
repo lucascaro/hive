@@ -3,6 +3,8 @@
 - **Spec:** [docs/product-specs/478-decompose-keyboard-ts-into-per-scope-keymap-tables.md](../../product-specs/478-decompose-keyboard-ts-into-per-scope-keymap-tables.md)
 - **Issue:** #478
 - **Status:** active
+- **PR:** #480
+- **Branch:** feature/478-command-bus-keymap
 
 ## Summary
 

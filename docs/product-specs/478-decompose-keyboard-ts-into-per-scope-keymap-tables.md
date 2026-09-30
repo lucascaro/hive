@@ -4,7 +4,8 @@ title: "Decompose keyboard.ts into per-scope keymap tables"
 type: enhancement
 complexity: L
 priority: P2
-stage: IMPLEMENT
+pr: 480
+stage: REVIEW
 ---
 
 # Decompose keyboard.ts into per-scope keymap tables
