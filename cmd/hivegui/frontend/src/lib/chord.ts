@@ -99,5 +99,6 @@ export function chordMatches(c: Chord, e: KeyEventLike): boolean {
   }
   return c.code !== undefined
     ? e.code === c.code
-    : e.key.toLowerCase() === c.key;
+    : // A synthetic keydown (autofill) can arrive with no key at all.
+      typeof e.key === 'string' && e.key.toLowerCase() === c.key;
 }

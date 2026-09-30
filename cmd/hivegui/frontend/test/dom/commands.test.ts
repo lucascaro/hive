@@ -181,11 +181,14 @@ describe('the palette', () => {
       () => [{ id: 'late-core', title: 'Late Core', run: () => {} }],
       'core',
     );
-    const ids = palette.paletteCommands().map((c) => c.id);
-    expect(ids.indexOf('late-core')).toBeLessThan(ids.indexOf('plugin:x:y'));
-    expect(ids.at(-1)).toBe('plugin:x:y');
-    offPlugin();
-    offCore();
+    try {
+      const ids = palette.paletteCommands().map((c) => c.id);
+      expect(ids.indexOf('late-core')).toBeLessThan(ids.indexOf('plugin:x:y'));
+      expect(ids.at(-1)).toBe('plugin:x:y');
+    } finally {
+      offPlugin();
+      offCore();
+    }
     expect(registry.findCommand('plugin:x:y')).toBeUndefined();
   });
 });

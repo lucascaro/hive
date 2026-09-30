@@ -1,8 +1,9 @@
-// Pure key-decision helpers for the terminal's custom key handler.
+// Pure key-decision helpers for the terminal's custom key handler: the
+// byte sequences written to the PTY (session-term.ts). Unit-tested with
+// fake event objects in test/unit/keymap.test.ts.
 //
-// Extracted from main.js so the decision logic can be unit-tested with
-// fake event objects (see test/unit/keymap.test.ts), mirroring the
-// platform.ts idiom. main.tsx keeps only the imperative wiring.
+// App shortcuts are not here: their chords live in app/key-scopes.ts
+// (grammar in lib/chord.ts) and their actions in app/commands.ts.
 
 // Byte written to the PTY to insert a newline in the agent's input
 // without submitting. This is Ctrl+J (LF, 0x0a) — the one newline

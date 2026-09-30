@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 //
-// ⌘-arrow routing (src/app/keyboard.ts handleArrow).
+// ⌘-arrow routing (src/app/actions.ts handleArrow).
 //
 // Three things are pinned here, all of which shipped broken:
 //   • ⌘←/⌘→ (and ⇧⌘←/⇧⌘→) are start/end-of-line in the terminal, so in

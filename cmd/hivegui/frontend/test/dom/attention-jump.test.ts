@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 //
-// Return-slot semantics for ⌘B / ⇧⌘B (src/app/keyboard.ts).
+// Return-slot semantics for ⌘B / ⇧⌘B (src/app/actions.ts).
 //
 // ⇧⌘B means "back to the work I was doing before the FIRST ⌘B", so the
 // anchor is written only when the slot is empty and released on use.

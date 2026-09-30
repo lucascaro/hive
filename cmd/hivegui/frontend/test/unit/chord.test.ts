@@ -91,6 +91,11 @@ describe('parseChord', () => {
     expect(() => parseChord('Cmd+K', true)).toThrow(/bad token/);
     expect(() => parseChord('Mod+', true)).toThrow(/no key/);
   });
+
+  it('a keydown with no key (autofill) matches nothing instead of throwing', () => {
+    const e = ev({ key: undefined as unknown as string, metaKey: true });
+    expect(chordMatches(parseChord('Mod+K', true), e)).toBe(false);
+  });
 });
 
 describe('chordsFor', () => {
