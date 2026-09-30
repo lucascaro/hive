@@ -362,4 +362,8 @@ cd ../../.. && CI=1 scripts/test.sh unit dom e2e && (cd cmd/hivegui/frontend && 
   - Every mutation check fails as intended: scope swap, `Any+` drop, command typo, nav `other`, zoom `Shift?`.
   - The isolated `wails dev` smoke run passes (⌘, ⇧Esc ⌘/ ⇧⌘K ⌘T).
 
+## PR convergence ledger
+
+- **2026-09-30 iter 1** — verdict: COMMENT; mergeable: MERGEABLE; findings_hash: 0b948d6869166e46d0daacd83c6898b6854a56655c5a62784eb0a82d520d52d2; threads_open: 1; action: autofix+push; head_sha: 7ec85a85. The thread-count disagreement was a race: CodeRabbit opened a thread on the pushed commit after autofix ran, not an autofix miss. It is handled in iter 2.
+
 ## Open questions
