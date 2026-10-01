@@ -4,7 +4,8 @@ title: "E2E-test every keyboard shortcut and menu command from the binding data"
 type: enhancement
 complexity: M
 priority: P2
-stage: IMPLEMENT
+pr: 486
+stage: REVIEW
 ---
 
 # E2E-test every keyboard shortcut and menu command from the binding data

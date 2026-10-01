@@ -3,8 +3,8 @@
 - **Spec:** [docs/product-specs/481-e2e-test-every-keyboard-shortcut-and-menu-command.md](../../product-specs/481-e2e-test-every-keyboard-shortcut-and-menu-command.md)
 - **Issue:** #481
 - **Status:** active
-- **PR:** —
-- **Branch:** —
+- **PR:** #486
+- **Branch:** feature/481-e2e-every-shortcut
 
 ## Summary
 
