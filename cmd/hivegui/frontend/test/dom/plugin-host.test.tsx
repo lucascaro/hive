@@ -12,6 +12,7 @@ import {
   ACTIVATE_TIMEOUT_MS,
   IMPORT_TIMEOUT_MS,
   initPluginHost,
+  pluginCommands,
   RENDER_TIMEOUT_MS,
   resetPluginHostForTest,
   type HiveAPI,
@@ -19,6 +20,7 @@ import {
 import {
   appStore,
   resetStore,
+  setPluginUI,
   setPlugins,
   setSessions,
 } from '../../src/store/store.js';
@@ -399,5 +401,39 @@ describe('plugin host: containment', () => {
     await flush();
     expect(hive.settings.get()).toEqual({ on: false });
     expect(bridge.ListPlugins).toHaveBeenCalled();
+  });
+});
+
+describe('plugin host: pluginCommands', () => {
+  const cmd = (id: string) => ({ id, title: id, keys: { key: 'j' }, run() {} });
+  const active = (...ids: string[]) => ({
+    status: 'active',
+    contrib: { commands: ids.map(cmd) },
+  });
+
+  afterEach(() => {
+    resetPluginHostForTest();
+    resetStore();
+    vi.restoreAllMocks();
+  });
+
+  it('resolves once per state, so collision warnings do not repeat', () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const state = { a: active('one'), b: active('two') };
+    const first = pluginCommands(state);
+    expect(pluginCommands(state)).toBe(first);
+    expect(warn).toHaveBeenCalledTimes(1);
+    expect(first.map((r) => r.bound)).toEqual([true, false]);
+  });
+
+  it('follows pluginUI: activation and deactivation take effect at once', () => {
+    vi.spyOn(console, 'warn').mockImplementation(() => {});
+    expect(pluginCommands()).toEqual([]);
+    setPluginUI('a', active('one') as never);
+    expect(pluginCommands().map((r) => r.command.id)).toEqual(['one']);
+    setPluginUI('a', { status: 'failed' } as never);
+    expect(pluginCommands()).toEqual([]);
+    setPluginUI('a', null);
+    expect(pluginCommands()).toEqual([]);
   });
 });

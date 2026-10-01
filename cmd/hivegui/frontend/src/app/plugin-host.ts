@@ -493,13 +493,25 @@ function core(): Set<string> {
   return coreLabels;
 }
 
+type PluginCommandState = Readonly<
+  Record<string, { status: string; contrib?: PluginContributions }>
+>;
+
+// Keydown (the plugins scope) and every runCommand lookup read this, so
+// it is memoized on the state reference: setPluginUI replaces pluginUI
+// on every change, which invalidates it, and collision warnings fire
+// once per state rather than once per keystroke.
+let pluginCommandsMemo: {
+  state: PluginCommandState;
+  out: ResolvedCommand[];
+} | null = null;
+
 /** Every active plugin's commands, chords resolved against core and
  * against each other (plugins in id order, first one wins). */
 export function pluginCommands(
-  state: Readonly<
-    Record<string, { status: string; contrib?: PluginContributions }>
-  > = appData().pluginUI,
+  state: PluginCommandState = appData().pluginUI,
 ): ResolvedCommand[] {
+  if (pluginCommandsMemo?.state === state) return pluginCommandsMemo.out;
   const plugins = Object.keys(state)
     .sort()
     .flatMap((id) => {
@@ -507,7 +519,9 @@ export function pluginCommands(
       const cmds = st.status === 'active' ? st.contrib?.commands : undefined;
       return cmds?.length ? [{ id, commands: cmds }] : [];
     });
-  return resolveCommands(plugins, core(), isMac, (m) => console.warn(m));
+  const out = resolveCommands(plugins, core(), isMac, (m) => console.warn(m));
+  pluginCommandsMemo = { state, out };
+  return out;
 }
 
 /** Runs a plugin command, failing the plugin if it throws. */
@@ -588,5 +602,6 @@ export function resetPluginHostForTest(): void {
   announced = null;
   assetBase = null;
   coreLabels = null;
+  pluginCommandsMemo = null;
   importer = (url) => import(/* @vite-ignore */ url);
 }
