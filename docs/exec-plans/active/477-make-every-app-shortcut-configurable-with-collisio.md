@@ -3,8 +3,8 @@
 - **Spec:** [docs/product-specs/477-make-every-app-shortcut-configurable-with-collisio.md](../../product-specs/477-make-every-app-shortcut-configurable-with-collisio.md)
 - **Issue:** #477
 - **Status:** active
-- **PR:** —
-- **Branch:** —
+- **PR:** #487
+- **Branch:** feature/477-configurable-shortcuts
 - **Phase:** 1 of 3
 
 ## Summary
@@ -227,10 +227,14 @@ Would fail on a wrong implementation: the v0-fixture parity tests fail on any la
 - **2026-09-30** — Ship in 3 phased PRs: P1 engine + persistence + derived labels + menu rebuild (no UI, zero visible change); P2 Settings → Shortcuts tab (capture, conflicts, reserved lists, plugin conflicts, upgrade flagging); P3 import/export with preview. Why: operator decision; one ~30-file PR is too large for a converging review loop.
 - **2026-10-01** — Behaviour delta D1 approved: off macOS, ⇧Ctrl↑/↓ runs move-forward/backward (reorder) in every view, matching macOS; `arrow-shift-up/down` deleted. Why: operator approval at the plan stop; one command per shortcut is a precondition for rebinding. Recorded exception to criterion 11.
 - **2026-10-01** — Second-opinion round 2 must-fix items applied without a third reviewer round. Why: feature-loop caps the reviewer at two rounds.
+- **2026-10-01** — Resolver split: pure data + resolver in `lib/bindings.ts` (so pure `lib/shortcuts.ts`, `lib/status.ts`, `lib/empty-state.ts` can derive labels), store glue in `app/bindings.ts`; `keymap-sync.ts` takes the menu command ids from `main.tsx` rather than importing `commands.ts`. Why: keeps lib/ pure and the sync module testable without the action graph.
+- **2026-10-01** — Shifted characters overlap their unshifted key only when the chord leaves Shift unnamed. Why: `Ctrl+Shift+_` (nav-forward) must not be displaced by a user `Ctrl+[Minus]`.
 
 ## Progress
 
 - **2026-09-30** — Exec plan created; research started.
 - **2026-10-01** — Plan approved (chat fallback after the HTML page timed out). Phase 1 implementation starting.
+- **2026-10-01** — Rebased onto #486 (e2e sweep of every shortcut). The sweep passes unchanged. Three older tests needed edits (keymap-parity D1/D2 cells, plugin-chords helper signature, shortcuts.test `restart-session`); operator approved each before editing.
+- **2026-10-01** — Phase 1 implemented; PR #487 opened. All layers green.
 
 ## Open questions
