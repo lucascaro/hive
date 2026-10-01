@@ -57,7 +57,9 @@ import {
   useAppStore,
   type Keymap,
 } from '../store/store.js';
-import { appChords, keymapHalf, RESERVED_CHORDS } from './bindings.js';
+import { keymapHalf, RESERVED_CHORDS } from './bindings.js';
+import { effectiveFor } from '../lib/bindings.js';
+import { chordsFor } from '../lib/chord.js';
 import { registerCommandSource } from './command-registry.js';
 import type { PluginInfo, SessionInfo } from './state.js';
 
@@ -498,8 +500,8 @@ let pluginCommandsMemo: {
  * against each other (plugins in id order, first one wins). */
 export function pluginCommands(
   state: PluginCommandState = appData().pluginUI,
+  keymap: Keymap = appData().keymap,
 ): ResolvedCommand[] {
-  const keymap = appData().keymap;
   if (
     pluginCommandsMemo?.state === state &&
     pluginCommandsMemo.keymap === keymap
@@ -513,7 +515,9 @@ export function pluginCommands(
       return cmds?.length ? [{ id, commands: cmds }] : [];
     });
   const taken = [
-    ...appChords(isMac),
+    ...effectiveFor(keymap, isMac).bindings.flatMap((b) =>
+      chordsFor(b.keys, isMac),
+    ),
     ...RESERVED_CHORDS[isMac ? 'mac' : 'other'],
   ];
   const out = resolveCommands(

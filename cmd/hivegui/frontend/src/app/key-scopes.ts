@@ -146,6 +146,21 @@ const commandPalette = modal('command-palette', 'command-palette', [
   { keys: ESCAPE, command: 'command-palette.close' },
 ]);
 
+// Settings › Shortcuts' capture button (ShortcutsPanel.tsx) takes every
+// key while it has focus — even ⌘, and Escape, which would otherwise close
+// Settings — so the key the user presses is recorded, not run. It binds
+// nothing: exclusive and unmatched, the key goes on to the button's own
+// handler. Tab still walks the Settings form.
+const shortcutCapture: KeyScope = {
+  id: 'shortcut-capture',
+  active: () =>
+    isModalOpen('settings') &&
+    document.activeElement?.classList.contains('hv-shortcut-capture') === true,
+  owns: 'exclusive',
+  trap: 'settings',
+  bindings: () => [],
+};
+
 // A form: Tab walks its inputs inside the trap. The modal's own listener
 // also handles Escape; this is the fallback for focus still on the
 // terminal, plus the ⌘, toggle-to-close.
@@ -304,6 +319,7 @@ export const KEY_SCOPES: readonly KeyScope[] = [
   launcher,
   projectEditor,
   commandPalette,
+  shortcutCapture,
   settings,
   worktrees,
   quickIdea,

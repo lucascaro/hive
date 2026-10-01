@@ -161,3 +161,33 @@ describe('a hand-edited keymap.json', () => {
     expect(labelIn(km, 'new-session', true)).toBe('⌘Y');
   });
 });
+
+// An override that names one spelling of a default shortcut keeps that
+// shortcut's other layout spellings: editing ⌘J's command in Settings ›
+// Shortcuts must not lose 'Mod+[KeyJ]', which is what a non-Latin layout
+// matches on.
+describe('layout spellings of an overridden default', () => {
+  it('come with the spelling the keymap names', () => {
+    const km: Keymap = { mac: { 'toggle-activity': ['Mod+J', 'Mod+Y'] } };
+    const russianJ = key('о', { code: 'KeyJ', metaKey: true });
+    expect(runs(km, russianJ, true)).toBe('toggle-activity');
+    // Still one shortcut each: ⌘J is listed once, not once per spelling.
+    expect(shortcutsIn(km, 'toggle-activity', true)).toEqual([
+      'Mod+J',
+      'Mod+Y',
+    ]);
+  });
+  it('follow the key when it moves to another command', () => {
+    const km: Keymap = { mac: { 'quick-idea': ['Mod+J'] } };
+    expect(runs(km, key('о', { code: 'KeyJ', metaKey: true }), true)).toBe(
+      'quick-idea',
+    );
+    expect(effectiveFor(km, true).displaced).toEqual(['toggle-activity']);
+  });
+  it('do not displace a default the named chord leaves alone', () => {
+    // nav-back's 'Ctrl+_' spelling overlaps nav-forward's shifted keys as
+    // the defaults ship; naming nav-back's own key must not unbind it.
+    const km: Keymap = { mac: { 'nav-back': ['Ctrl+-'] } };
+    expect(effectiveFor(km, true).displaced).toEqual([]);
+  });
+});

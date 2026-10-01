@@ -272,8 +272,11 @@ function* events(): Generator<Ev> {
   }
 }
 
+// shortcut-capture (spec 477) postdates the frozen listener and binds
+// nothing; the coverage and order tests in key-scopes.test.ts and
+// every-shortcut.spec.ts hold it.
 const SWEPT = KEY_SCOPES.map((s) => s.id).filter(
-  (id) => id !== 'find-box' && id !== 'plugins',
+  (id) => id !== 'find-box' && id !== 'plugins' && id !== 'shortcut-capture',
 );
 
 // The approved deltas. Each returns true when this cell is one the spec

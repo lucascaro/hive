@@ -1139,6 +1139,18 @@ export async function GetKeymap() {
     (globalThis as { __hive_keymapSeed?: unknown }).__hive_keymapSeed ?? {}
   );
 }
+// Saving writes the seed, so a later GetKeymap (a reload, another
+// window's focus re-read) reads back what was saved, as from disk.
+export async function SaveKeymap(k: Record<string, unknown>) {
+  maybeFail('SaveKeymap');
+  const saved = JSON.parse(JSON.stringify({ ...k, version: 1 }));
+  (globalThis as { __hive_keymapSeed?: unknown }).__hive_keymapSeed = saved;
+  bridgeCalls.push({ method: 'SaveKeymap', args: [saved] });
+}
+export async function SuspendMenuAccelerators(on: boolean) {
+  maybeFail('SuspendMenuAccelerators');
+  bridgeCalls.push({ method: 'SuspendMenuAccelerators', args: [on] });
+}
 export async function SetMenuAccelerators(accel: Record<string, string>) {
   maybeFail('SetMenuAccelerators');
   bridgeCalls.push({ method: 'SetMenuAccelerators', args: [{ ...accel }] });

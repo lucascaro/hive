@@ -447,6 +447,12 @@ export async function SaveEditorSettings() {
 export async function GetKeymap() {
   return {};
 }
+export async function SaveKeymap() {
+  return undefined;
+}
+export async function SuspendMenuAccelerators() {
+  return undefined;
+}
 export async function SetMenuAccelerators() {
   return undefined;
 }

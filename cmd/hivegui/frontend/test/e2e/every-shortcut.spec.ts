@@ -42,7 +42,14 @@ const PLATFORMS: Platform[] = ['mac', 'other'];
 // Scopes with no bindings of their own: their modal's own listener
 // answers keys (launcher, project editor) or keys pass through to a
 // text box (find). The coverage test fails if one ever gains a binding.
-const UNBOUND_SCOPES = ['find-box', 'launcher', 'project-editor'];
+const UNBOUND_SCOPES = [
+  'find-box',
+  'launcher',
+  'project-editor',
+  // Settings › Shortcuts' capture button: binds nothing on purpose, so
+  // every key reaches the button (test/e2e/shortcuts-tab.spec.ts).
+  'shortcut-capture',
+];
 
 // Puts each scope on screen. A scope with bindings and no entry here
 // fails the coverage test, so a new scope cannot go untested.

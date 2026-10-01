@@ -22,6 +22,7 @@ export interface IconButtonProps {
   /** Overrides the label as the tooltip where the control needs to say
    *  more at rest than its accessible name does. */
   title?: string;
+  disabled?: boolean;
 }
 
 export function IconButton({
@@ -35,6 +36,7 @@ export function IconButton({
   action,
   hidden,
   title,
+  disabled,
 }: IconButtonProps) {
   // Accessibility is not a soft requirement here: the icon carries the
   // whole meaning, so an empty label is a bug, not a default.
@@ -47,6 +49,7 @@ export function IconButton({
       aria-label={label}
       title={title ?? label}
       hidden={hidden}
+      disabled={disabled}
       data-size={size === 24 ? undefined : String(size)}
       data-action={action}
       onClick={onClick}

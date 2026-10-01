@@ -8,6 +8,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 const bridge = vi.hoisted(() => ({
   GetKeymap: vi.fn(),
   SetMenuAccelerators: vi.fn((_a: Record<string, string>) => Promise.resolve()),
+  SuspendMenuAccelerators: vi.fn((_on: boolean) => Promise.resolve()),
 }));
 vi.mock('../../src/bridge.js', () => bridge);
 vi.mock('../../src/lib/platform.js', async (orig) => ({
@@ -21,6 +22,7 @@ import {
   loadKeymap,
   menuQueueSettledForTest,
   resetKeymapSyncForTest,
+  setShortcutCapture,
 } from '../../src/app/keymap-sync.js';
 
 const refreshModeHint = vi.fn();
@@ -30,6 +32,7 @@ beforeEach(() => {
   resetKeymapSyncForTest();
   bridge.GetKeymap.mockReset();
   bridge.SetMenuAccelerators.mockClear();
+  bridge.SuspendMenuAccelerators.mockClear();
   refreshModeHint.mockClear();
   document.body.innerHTML =
     '<button id="new-project-btn" title="New project"></button>';
@@ -184,5 +187,82 @@ describe('loadKeymap', () => {
     await loadKeymap();
     expect(appStore.getState().keymap).toBe(first);
     expect(refreshModeHint).toHaveBeenCalledTimes(1);
+  });
+});
+
+// Each window is its own process: one that saves a keymap cannot tell the
+// others, so every window re-reads keymap.json when it gains focus.
+describe('re-read on window focus', () => {
+  const focus = async () => {
+    window.dispatchEvent(new Event('focus'));
+    // loadKeymap awaits GetKeymap, then queues the menu.
+    await vi.waitFor(() => expect(bridge.GetKeymap).toHaveBeenCalled());
+    await new Promise((r) => setTimeout(r, 0));
+    await menuQueueSettledForTest();
+  };
+
+  it('rebuilds nothing when the file did not change', async () => {
+    bridge.GetKeymap.mockResolvedValue({ mac: { 'new-session': ['Mod+Y'] } });
+    await loadKeymap();
+    await menuQueueSettledForTest();
+    bridge.SetMenuAccelerators.mockClear();
+    const before = appStore.getState().keymap;
+    // Same meaning, other spelling: Go adds a version, keys may reorder.
+    bridge.GetKeymap.mockResolvedValue({
+      version: 1,
+      other: {},
+      mac: { 'new-session': ['Mod+Y'] },
+    });
+    await focus();
+    await focus();
+    expect(appStore.getState().keymap).toBe(before);
+    expect(bridge.SetMenuAccelerators).not.toHaveBeenCalled();
+  });
+
+  it('applies a keymap another window saved, once', async () => {
+    bridge.GetKeymap.mockResolvedValue({});
+    await loadKeymap();
+    await menuQueueSettledForTest();
+    bridge.SetMenuAccelerators.mockClear();
+    bridge.GetKeymap.mockResolvedValue({ mac: { 'new-session': ['Mod+Y'] } });
+    await focus();
+    await focus();
+    expect(bridge.SetMenuAccelerators).toHaveBeenCalledTimes(1);
+    expect(bridge.SetMenuAccelerators).toHaveBeenLastCalledWith({
+      'new-session': 'cmdorctrl+y',
+    });
+  });
+});
+
+describe('shortcut capture', () => {
+  it('suspends and restores the menu, once per change', async () => {
+    setShortcutCapture(true);
+    setShortcutCapture(true);
+    setShortcutCapture(false);
+    await menuQueueSettledForTest();
+    expect(bridge.SuspendMenuAccelerators.mock.calls).toEqual([
+      [true],
+      [false],
+    ]);
+  });
+
+  it('re-suspends after a menu update lands mid-capture', async () => {
+    // Go lifts the suspension on every SetMenuAccelerators.
+    setShortcutCapture(true);
+    setKeymap({ mac: { 'new-session': ['Mod+Y'] } });
+    await menuQueueSettledForTest();
+    const order = [
+      ...bridge.SuspendMenuAccelerators.mock.invocationCallOrder.map((n, i) => [
+        n,
+        `suspend:${bridge.SuspendMenuAccelerators.mock.calls[i][0]}`,
+      ]),
+      ...bridge.SetMenuAccelerators.mock.invocationCallOrder.map((n) => [
+        n,
+        'set',
+      ]),
+    ]
+      .sort((a, b) => (a[0] as number) - (b[0] as number))
+      .map((x) => x[1]);
+    expect(order).toEqual(['suspend:true', 'set', 'suspend:true']);
   });
 });

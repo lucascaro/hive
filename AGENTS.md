@@ -206,8 +206,8 @@ its scope in `src/app/key-scopes.ts`, where `KEY_SCOPES` is the one precedence
 list. Each binding names a command id from `src/app/commands.ts`, which the
 native menu and the command palette run too.
 
-Users can override any app chord in `keymap.json` (spec 477), so **no surface
-may hard-code a key**. Every label — help overlay, palette, status-bar hints,
+Users can override any app chord in `keymap.json` — edited in Settings →
+Shortcuts (spec 477) — so **no surface may hard-code a key**. Every label — help overlay, palette, status-bar hints,
 inline `[key]`/`(key)` hints, tooltips — is derived from the bindings under the
 user's keymap: `shortcutLabel(id)` / `useShortcutLabel(id)` in
 `src/app/bindings.ts`, or `labelIn(keymap, id, isMac)` in a pure `lib/` module.
@@ -229,6 +229,12 @@ A hint for a command with no key shows no key.
 3. **Help overlay** — give the command a row in its group in
    `src/lib/shortcuts.ts` (the keys are derived; only the wording and grouping
    are written there). The palette needs nothing beyond the command's `title`.
+   Settings → Shortcuts lists commands from the same groups, so the row also
+   makes the command rebindable there; a titled command with no row lands in
+   its "Other commands" group.
+   A key the terminal owns through a hand-written predicate (`session-term.ts`,
+   `lib/keymap.ts`) rather than a binding goes in `RESERVED_CHORDS`
+   (`src/lib/bindings.ts`), or Settings → Shortcuts would let a user take it.
 4. **README** — update the Keybinds table in `README.md` (defaults only).
 5. **Changelog** — add a `.changesets/<slug>.md` entry if the change affects
    default behaviour. Never edit `CHANGELOG.md` directly: it is generated,

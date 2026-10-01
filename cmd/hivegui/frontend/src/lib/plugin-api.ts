@@ -109,6 +109,10 @@ export interface ResolvedCommand {
   bound: boolean;
   /** The chords keys dispatch to it (lib/chord.ts strings). */
   chords: string[];
+  /** Chords it asked for but did not get: core, a reserved chord or an
+   * earlier plugin already held them. Settings › Shortcuts shows these
+   * as conflicts (spec 477). */
+  refused: string[];
 }
 
 /** Resolves every plugin's commands in plugin order. A command's chords
@@ -156,8 +160,10 @@ export function resolveCommands(
             ? [own]
             : [];
       const chords: string[] = [];
+      const refused: string[] = [];
       for (const chord of wanted) {
         if (claimed.some((c) => chordsOverlap(c, chord, isMac))) {
+          refused.push(chord);
           warn(
             `plugin ${p.id}: ${formatChord(chord, isMac)} is already taken; ${command.id} does not get it`,
           );
@@ -172,6 +178,7 @@ export function resolveCommands(
         shortcut: chords.map((c) => formatChord(c, isMac)).join(' / '),
         bound: chords.length > 0,
         chords,
+        refused,
       });
     }
   }

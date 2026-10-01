@@ -79,3 +79,37 @@ func TestGetKeymapUnreadableIsError(t *testing.T) {
 		t.Fatal("an unreadable keymap.json must be an error")
 	}
 }
+
+// SaveKeymap round-trips through GetKeymap: both halves, unbound ([])
+// commands kept as empty lists, plugin overrides untouched, version set.
+func TestSaveKeymapRoundTrips(t *testing.T) {
+	dir := t.TempDir()
+	t.Setenv("HIVE_STATE_DIR", dir)
+	a := &App{}
+	in := Keymap{
+		Mac:   map[string][]string{"new-session": {"Mod+Y"}, "worktrees": {}},
+		Other: map[string][]string{"plugin:absent:go": {"Ctrl+Alt+G"}},
+	}
+	if err := a.SaveKeymap(in); err != nil {
+		t.Fatalf("SaveKeymap: %v", err)
+	}
+	got, err := a.GetKeymap()
+	if err != nil {
+		t.Fatalf("GetKeymap: %v", err)
+	}
+	in.Version = 1
+	if !reflect.DeepEqual(got, in) {
+		t.Fatalf("got %+v, want %+v", got, in)
+	}
+	if got.Mac["worktrees"] == nil {
+		t.Fatal("an unbound command came back as nil, i.e. as its defaults")
+	}
+	// Atomic write: nothing but the file itself is left in the state dir.
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(entries) != 1 || entries[0].Name() != "keymap.json" {
+		t.Fatalf("state dir holds %v, want only keymap.json", entries)
+	}
+}

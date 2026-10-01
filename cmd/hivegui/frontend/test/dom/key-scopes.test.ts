@@ -184,6 +184,7 @@ describe('KEY_SCOPES', () => {
       'launcher',
       'project-editor',
       'command-palette',
+      'shortcut-capture',
       'settings',
       'worktrees',
       'quick-idea',
@@ -340,6 +341,31 @@ describe('overlay scopes', () => {
     const e = press('Escape', { shiftKey: true });
     expect(ran()).toEqual(['settings.close']);
     expect(e.defaultPrevented).toBe(true);
+  });
+});
+
+// Spec 477: Settings › Shortcuts' capture button must receive the key the
+// user presses, even ⌘, (which would close Settings) or ⌘T (which would
+// open the launcher), so the key is recorded instead of run.
+describe('shortcut capture', () => {
+  it('runs nothing while a capture button has focus', () => {
+    store.openModal({ id: 'settings' });
+    const btn = document.createElement('button');
+    btn.className = 'hv-shortcut-capture';
+    document.getElementById('settings')?.append(btn);
+    btn.focus();
+    try {
+      const comma = press(',', { metaKey: true }, true);
+      const t = press('t', { metaKey: true }, true);
+      const esc = press('Escape', {}, true);
+      expect(ran()).toEqual([]);
+      for (const e of [comma, t, esc]) expect(e.defaultPrevented).toBe(false);
+    } finally {
+      btn.remove();
+    }
+    // Focus elsewhere in Settings: its own chords work again.
+    press(',', { metaKey: true }, true);
+    expect(ran()).toEqual(['settings.close']);
   });
 });
 

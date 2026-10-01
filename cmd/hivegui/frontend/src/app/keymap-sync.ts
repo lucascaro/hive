@@ -10,8 +10,13 @@
 // a few milliseconds at boot and accepted: Go reading keymap.json itself
 // would mean a second copy of the chord grammar.
 
-import { GetKeymap, SetMenuAccelerators } from '../bridge.js';
+import {
+  GetKeymap,
+  SetMenuAccelerators,
+  SuspendMenuAccelerators,
+} from '../bridge.js';
 import { menuAcceleratorOverrides, type Keymap } from '../lib/bindings.js';
+import { canonicalKeymap, sameKeymap } from '../lib/keymap-edit.js';
 import { isMac } from '../lib/platform.js';
 import { appStore, setKeymap } from '../store/store.js';
 import { shortcutLabel, subscribeKeymap } from './bindings.js';
@@ -30,6 +35,9 @@ let menuIds: readonly string[] = [];
 // Sends go one at a time, in order: Go installs whatever arrives last, so
 // two in flight must not land newest-first.
 let queue: Promise<unknown> = Promise.resolve();
+// Whether a Settings › Shortcuts capture field has the menu's
+// accelerators suspended (setShortcutCapture).
+let capturing = false;
 
 function pushMenu(keymap: Keymap, ids: readonly string[], force = false): void {
   if (!isMac) return; // no native menu elsewhere (menu_other.go)
@@ -40,12 +48,32 @@ function pushMenu(keymap: Keymap, ids: readonly string[], force = false): void {
   sentMenu = json;
   queue = queue
     .then(() => SetMenuAccelerators(overrides))
+    // A new set lifts the suspension in Go (it is also a fresh page's
+    // first call), so put it back while a capture field still has focus.
+    .then(() => (capturing ? SuspendMenuAccelerators(true) : undefined))
     .catch((e: unknown) => {
       console.warn('updating the menu shortcuts failed', e);
       // Go never took it, so the next keymap change must send again. Only
       // if nothing newer was sent meanwhile: that one supersedes this.
       if (sentMenu === json) sentMenu = before;
     });
+}
+
+/**
+ * Strips (on) or restores (off) the native menu's accelerators while a
+ * Settings › Shortcuts capture field has focus: AppKit gives a menu its
+ * key equivalent before the webview sees the keydown, so ⌘T could not be
+ * captured otherwise. Queued behind menu updates, so the two never land
+ * out of order.
+ */
+export function setShortcutCapture(on: boolean): void {
+  if (!isMac || on === capturing) return;
+  capturing = on;
+  queue = queue
+    .then(() => SuspendMenuAccelerators(on))
+    .catch((e: unknown) =>
+      console.warn('suspending the menu shortcuts failed', e),
+    );
 }
 
 function titleNewProjectButton(): void {
@@ -63,14 +91,25 @@ export function initKeymapSync(deps: KeymapSyncDeps): void {
   unsubscribe?.();
   menuIds = deps.menuCommands;
   titleNewProjectButton();
-  unsubscribe = subscribeKeymap((keymap) => {
+  const stop = subscribeKeymap((keymap) => {
     pushMenu(keymap, deps.menuCommands);
     deps.refreshModeHint();
     titleNewProjectButton();
   });
+  // Every window is its own process with its own store: one that saved
+  // a keymap cannot tell the others, so each re-reads the file when it
+  // gains focus. loadKeymap writes the store only on a real change.
+  const onFocus = () => void loadKeymap();
+  window.addEventListener('focus', onFocus);
+  unsubscribe = () => {
+    stop();
+    window.removeEventListener('focus', onFocus);
+  };
 }
 
-/** Reads keymap.json into the store. A missing file is the empty keymap;
+/** Reads keymap.json into the store — at boot, and again whenever the
+ * window gains focus, since each window is its own process and another
+ * one may have saved a new keymap. A missing file is the empty keymap;
  * a failure leaves the defaults in place — the app must start. The store
  * is only written when the keymap actually differs, so a re-read of an
  * unchanged file rebuilds nothing.
@@ -83,8 +122,8 @@ export function initKeymapSync(deps: KeymapSyncDeps): void {
 export async function loadKeymap(): Promise<void> {
   try {
     const next = ((await GetKeymap()) ?? {}) as Keymap;
-    if (JSON.stringify(next) !== JSON.stringify(appStore.getState().keymap))
-      setKeymap(next);
+    if (!sameKeymap(next, appStore.getState().keymap))
+      setKeymap(canonicalKeymap(next));
   } catch (e) {
     console.warn('loading keymap.json failed; using the default shortcuts', e);
   }
@@ -97,6 +136,7 @@ export function resetKeymapSyncForTest(): void {
   unsubscribe = null;
   sentMenu = null;
   menuIds = [];
+  capturing = false;
   queue = Promise.resolve();
 }
 

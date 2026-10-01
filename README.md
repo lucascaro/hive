@@ -296,6 +296,8 @@ build.sh           # macOS universal build
 
 ## Keybinds
 
+These are the defaults. Rebind any of them, and any plugin command, under **Settings → Shortcuts**.
+
 | Key | Action |
 |---|---|
 | ⌘T / ⇧⌘T | New session (agent launcher) / in a git worktree |

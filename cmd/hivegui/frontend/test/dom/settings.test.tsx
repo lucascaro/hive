@@ -59,6 +59,10 @@ const editorBridge = {
     Promise.resolve({ kind: '', command: '', app: '' }),
   ),
   SaveEditorSettings: vi.fn(() => Promise.resolve()),
+  // Settings › Shortcuts (spec 477); test/dom/settings-shortcuts.test.tsx
+  // drives it.
+  GetKeymap: vi.fn(() => Promise.resolve({})),
+  SaveKeymap: vi.fn(() => Promise.resolve()),
 };
 
 // The Plugins tab shares the modal; test/dom/settings-plugins.test.tsx
@@ -1229,6 +1233,7 @@ describe('settings menu-bar tab', () => {
     expect(tabIds()).toEqual([
       'settings-tab-agents',
       'settings-tab-appearance',
+      'settings-tab-shortcuts',
       'settings-tab-plugins',
       'settings-tab-updates',
     ]);
@@ -1244,7 +1249,7 @@ describe('settings menu-bar tab', () => {
     expect(document.getElementById('settings-panel-menubar')).toBeNull();
   });
 
-  it('appears between Appearance and Plugins and owns the toggle', async () => {
+  it('appears between Shortcuts and Plugins and owns the toggle', async () => {
     menuBarStatus = 'not-registered';
     onMac = true;
     open();
@@ -1252,6 +1257,7 @@ describe('settings menu-bar tab', () => {
     expect(tabIds()).toEqual([
       'settings-tab-agents',
       'settings-tab-appearance',
+      'settings-tab-shortcuts',
       'settings-tab-menubar',
       'settings-tab-plugins',
       'settings-tab-updates',
