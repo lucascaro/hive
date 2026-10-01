@@ -5,7 +5,7 @@ type: enhancement
 complexity: M
 priority: P2
 pr: 486
-stage: REVIEW
+stage: GATE
 ---
 
 # E2E-test every keyboard shortcut and menu command from the binding data

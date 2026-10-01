@@ -289,4 +289,9 @@ Run in `cmd/hivegui/frontend` unless noted:
 
   A reserved chord remapped to an existing id survives the sweep by construction; `test/dom/keymap-parity.test.ts` kills it.
 
+## PR convergence ledger
+
+- **2026-10-01 iter 1** — verdict: COMMENT; mergeable: MERGEABLE; findings_hash: b601e00a34b378d9c6c0f25c1960a34ba3b2f616dd809f2d47cfad2c1312f5e5; threads_open: 0; action: autofix+push; head_sha: 5867600a.
+- **2026-10-01 iter 2** — verdict: APPROVE; mergeable: MERGEABLE; findings_hash: empty; threads_open: 0; action: stop; head_sha: 5867600a.
+
 ## Open questions
