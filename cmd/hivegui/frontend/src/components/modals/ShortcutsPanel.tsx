@@ -192,7 +192,8 @@ export function ShortcutsPanel({
 
   function capture(id: string, e: React.KeyboardEvent<HTMLButtonElement>) {
     const plain = !e.metaKey && !e.ctrlKey && !e.altKey && !e.shiftKey;
-    if (plain && e.key === 'Tab') return; // leaves the field; blur ends it
+    // Tab and Shift+Tab leave the field; blur ends the capture.
+    if (!e.metaKey && !e.ctrlKey && !e.altKey && e.key === 'Tab') return;
     e.preventDefault();
     e.stopPropagation();
     if (plain && e.key === 'Escape') {

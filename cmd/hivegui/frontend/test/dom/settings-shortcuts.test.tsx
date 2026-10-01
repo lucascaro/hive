@@ -343,6 +343,41 @@ describe('settings: shortcuts tab', () => {
     expect(bridge.SaveKeymap).not.toHaveBeenCalled();
   });
 
+  it('lets Tab and Shift+Tab leave the capture field', async () => {
+    await openTab();
+    act(() => btn('new-session', 'add-shortcut')?.click());
+    const field = row('new-session').querySelector<HTMLElement>(
+      '.hv-shortcut-capture',
+    ) as HTMLElement;
+    for (const shiftKey of [false, true]) {
+      let notCancelled = false;
+      act(() => {
+        notCancelled = fireEvent.keyDown(field, {
+          key: 'Tab',
+          code: 'Tab',
+          shiftKey,
+        });
+      });
+      // Not swallowed: the browser moves focus, and nothing is refused.
+      expect(notCancelled).toBe(true);
+      expect(row('new-session').querySelector('.hv-shortcut-note')).toBeNull();
+    }
+    expect(keysOf('new-session')).toEqual(['⌘T']);
+  });
+
+  it('a failed keymap save shows the error and keeps Settings open', async () => {
+    bridge.SaveKeymap.mockImplementationOnce(() =>
+      Promise.reject(new Error('disk full')),
+    );
+    await openTab();
+    await capture('new-session', 'y', 'KeyY', { metaKey: true });
+    await save();
+    expect(bridge.SaveKeymap).toHaveBeenCalled();
+    expect(el('settings-error').textContent).toContain('disk full');
+    expect(el('settings').classList.contains('hidden')).toBe(false);
+    expect(appStore.getState().keymap).toEqual({});
+  });
+
   it('search filters rows by name or key', async () => {
     await openTab();
     act(() => {
