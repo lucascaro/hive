@@ -6,8 +6,11 @@ import {
   resolveCommands,
   type PluginCommand,
 } from '../../src/lib/plugin-api.js';
-import { chordMatches, parseChord } from '../../src/lib/chord.js';
-import { paletteShortcuts, shortcutGroups } from '../../src/lib/shortcuts.js';
+import { chordMatches, chordsFor, parseChord } from '../../src/lib/chord.js';
+import {
+  DEFAULT_APP_BINDINGS,
+  RESERVED_CHORDS,
+} from '../../src/lib/bindings.js';
 
 const run = () => {};
 const cmd = (id: string, key?: string, shift = false): PluginCommand => ({
@@ -17,11 +20,13 @@ const cmd = (id: string, key?: string, shift = false): PluginCommand => ({
   keys: key ? { key, shift } : undefined,
 });
 
-function coreLabels(isMac: boolean): Set<string> {
-  const s = new Set<string>(Object.values(paletteShortcuts({ isMac })));
-  for (const g of shortcutGroups({ isMac }))
-    for (const i of g.items) s.add(i.keys);
-  return s;
+// What the host passes: core's chords plus the reserved ones (spec 477
+// compares chords; it used to compare display labels).
+function coreChords(isMac: boolean): string[] {
+  return [
+    ...DEFAULT_APP_BINDINGS.flatMap((b) => chordsFor(b.keys, isMac)),
+    ...RESERVED_CHORDS[isMac ? 'mac' : 'other'],
+  ];
 }
 
 describe('chordLabel', () => {
@@ -88,7 +93,7 @@ describe('resolveCommands', () => {
       const warnings: string[] = [];
       const out = resolveCommands(
         [{ id: 'a', commands: [cmd('steal-t', 't'), cmd('free', 'o', true)] }],
-        coreLabels(isMac),
+        coreChords(isMac),
         isMac,
         (m) => warnings.push(m),
       );
@@ -106,7 +111,7 @@ describe('resolveCommands', () => {
         { id: 'a', commands: [cmd('a1', 'o', true)] },
         { id: 'b', commands: [cmd('b1', 'o', true)] },
       ],
-      new Set(),
+      [],
       true,
     );
     expect(out.map((r) => [r.pluginId, r.bound, r.shortcut])).toEqual([
@@ -115,11 +120,7 @@ describe('resolveCommands', () => {
     ]);
   });
   it('keeps keyless commands in the palette', () => {
-    const out = resolveCommands(
-      [{ id: 'a', commands: [cmd('x')] }],
-      new Set(),
-      true,
-    );
+    const out = resolveCommands([{ id: 'a', commands: [cmd('x')] }], [], true);
     expect(out).toHaveLength(1);
     expect(out[0].bound).toBe(false);
   });

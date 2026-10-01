@@ -83,7 +83,8 @@ export interface SessionRowProps {
   state: SessionState;
   selected: boolean;
   minimized: boolean;
-  index: number | null;
+  /** The key hint shown as `[…]`: the switch digit, or null. */
+  index: number | string | null;
   onSelect: () => void;
   onMinimize: () => void;
   onRestore: () => void;

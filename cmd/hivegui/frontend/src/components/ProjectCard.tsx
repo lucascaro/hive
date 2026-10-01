@@ -11,8 +11,8 @@
 // the three things the imperative projectCard() returned.
 import type { CSSProperties, MouseEvent, ReactNode, Ref } from 'react';
 import type { DragRowProps } from '../lib/drag-row.js';
-import { isMac } from '../lib/platform.js';
-import { mod } from '../lib/shortcuts.js';
+import { withKey } from '../lib/chord-label.js';
+import { useShortcutLabel } from '../app/bindings.js';
 import { Icon } from './Icon.js';
 import { useCollapseTransition } from '../lib/use-collapse.js';
 import { IconButton } from './IconButton.js';
@@ -57,6 +57,8 @@ export function ProjectCard(p: ProjectCardProps) {
   const proj = p.project;
   const animating = useCollapseTransition(p.collapsed);
   const name = proj.name ?? 'project';
+  const ideasKey = useShortcutLabel('idea-inbox');
+  const worktreesKey = useShortcutLabel('worktrees');
   const style = proj.color
     ? ({ '--project-color': proj.color } as CSSProperties)
     : undefined;
@@ -131,7 +133,10 @@ export function ProjectCard(p: ProjectCardProps) {
             type="button"
             className="hv-project-card__ideas"
             data-action="ideas"
-            title={`${p.ideaCount} idea${p.ideaCount === 1 ? '' : 's'} in ${name} (${mod(isMac, 'I', { shift: true })})`}
+            title={withKey(
+              `${p.ideaCount} idea${p.ideaCount === 1 ? '' : 's'} in ${name}`,
+              ideasKey,
+            )}
             aria-label={`${p.ideaCount} idea${p.ideaCount === 1 ? '' : 's'} in ${name}`}
             onClick={(e) => {
               e.stopPropagation();
@@ -152,12 +157,11 @@ export function ProjectCard(p: ProjectCardProps) {
             }}
           />
           {/* The binding is shown inline, per AGENTS.md › Key
-              Discoverability — through mod(), because ⌘ is Ctrl on
-              Windows and Linux and a hardcoded glyph names a key those
-              users do not have. */}
+              Discoverability — the user's current key for it (spec
+              477), spelled for this platform. */}
           <IconButton
             icon="branch"
-            label={`Worktrees in ${name} (${mod(isMac, 'E')})`}
+            label={withKey(`Worktrees in ${name}`, worktreesKey)}
             action="worktrees"
             onClick={(e) => {
               e.stopPropagation();

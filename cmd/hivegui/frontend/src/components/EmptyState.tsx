@@ -36,6 +36,7 @@ export function EmptyState({ root }: { root: HTMLElement | null }): ReactNode {
   const gridProjectId = useAppStore((s) => s.gridProjectId);
   const minimized = useAppStore((s) => s.minimized);
   const minimizedProjects = useAppStore((s) => s.minimizedProjects);
+  const keymap = useAppStore((s) => s.keymap);
 
   // The union the model needs: it asks "is every session in scope
   // hidden?", which must count both a session minimized on its own and
@@ -56,6 +57,7 @@ export function EmptyState({ root }: { root: HTMLElement | null }): ReactNode {
     gridProjectId: gridProjectId ?? undefined,
     minimized: hidden,
     isMac,
+    keymap,
   });
 
   // #empty-state is the container outside React's tree; it keeps the id,

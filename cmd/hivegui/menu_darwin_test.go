@@ -3,7 +3,12 @@
 package main
 
 import (
+	"encoding/json"
+	"os"
+	"reflect"
+	"sync"
 	"testing"
+	"time"
 
 	"github.com/wailsapp/wails/v2/pkg/menu"
 	"github.com/wailsapp/wails/v2/pkg/menu/keys"
@@ -231,5 +236,126 @@ func TestReloadAndRestartMenuItems(t *testing.T) {
 	// the expensive one, which is the confusion this split removes.
 	if findItem(m.Items, "Restart Hive…") != nil {
 		t.Error(`"Restart Hive…" still present; it was renamed to name its cost`)
+	}
+}
+
+func readMenuFixture(t *testing.T) map[string]string {
+	t.Helper()
+	b, err := os.ReadFile("testdata/menu-default-accelerators.json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var want map[string]string
+	if err := json.Unmarshal(b, &want); err != nil {
+		t.Fatal(err)
+	}
+	return want
+}
+
+// TestMenuDefaultsMatchFixture ties the hard-coded menu defaults to the
+// frontend's binding data (spec 477): the frontend asserts its derived
+// defaults equal the same fixture (frontend/test/unit/bindings.test.ts).
+// The keymap override sends only items whose accelerator differs from
+// the default, so the two sides drifting would leave a rebound command's
+// old chord live in the menu. Every item must go through accel(): one
+// that skips it is missing from the recorded map.
+func TestMenuDefaultsMatchFixture(t *testing.T) {
+	got := map[string]string{}
+	buildAppMenuRecorded(&App{}, got)
+	if want := readMenuFixture(t); !reflect.DeepEqual(got, want) {
+		t.Fatalf("menu accelerators drifted from testdata/menu-default-accelerators.json\ngot  %v\nwant %v", got, want)
+	}
+}
+
+func TestFixtureAcceleratorsParse(t *testing.T) {
+	for id, s := range readMenuFixture(t) {
+		if s == "" {
+			continue
+		}
+		acc, err := keys.Parse(s)
+		if err != nil {
+			t.Errorf("%s: %q does not parse: %v", id, s, err)
+			continue
+		}
+		if back := accelString(acc); back != s {
+			t.Errorf("%s: %q round-trips as %q", id, s, back)
+		}
+	}
+}
+
+// TestMenuAcceleratorOverride: the user's keymap replaces an item's
+// accelerator, "" removes it, and a string that will not parse removes
+// it too — never the default, which would keep the old chord firing.
+func TestMenuAcceleratorOverride(t *testing.T) {
+	a := &App{menuAccel: map[string]string{
+		"new-session":   "cmdorctrl+y",
+		"worktrees":     "cmdorctrl+e", // no menu item: ignored
+		"close-session": "",
+		"settings":      "cmdorctrl+nope",
+	}}
+	got := map[string]string{}
+	m := buildAppMenuRecorded(a, got)
+	if acc := findItem(m.Items, "New Session").Accelerator; acc == nil || acc.Key != "y" {
+		t.Fatalf("New Session accelerator = %+v, want ⌘Y", acc)
+	}
+	if acc := findItem(m.Items, "Close Session").Accelerator; acc != nil {
+		t.Fatalf("Close Session accelerator = %+v, want none", acc)
+	}
+	if acc := findItem(m.Items, "Settings…").Accelerator; acc != nil {
+		t.Fatalf("Settings accelerator = %+v, want none for an unparseable override", acc)
+	}
+	want := readMenuFixture(t)
+	want["new-session"] = "cmdorctrl+y"
+	want["close-session"] = ""
+	want["settings"] = ""
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("other items must keep their defaults\ngot  %v\nwant %v", got, want)
+	}
+}
+
+// TestMenuRebuildsInstallInOrder: SetDebugTrace and SetMenuAccelerators
+// run on Wails' goroutines and both fire at boot. Whatever order they land
+// in, the menu installed LAST must be built from the final fields — a
+// stale build installed after a newer one would put the old shortcuts
+// back. Drives the real install path (via menuInstaller); run with -race.
+func TestMenuRebuildsInstallInOrder(t *testing.T) {
+	var mu sync.Mutex
+	var installed []*menu.Menu
+	a := &App{}
+	a.menuInstaller = func(m *menu.Menu) {
+		// Yield first, so a build that is not installed under the lock
+		// gets overtaken by a newer one.
+		time.Sleep(50 * time.Microsecond)
+		mu.Lock()
+		installed = append(installed, m)
+		mu.Unlock()
+	}
+	var wg sync.WaitGroup
+	for i := 0; i < 16; i++ {
+		wg.Add(2)
+		go func(i int) {
+			defer wg.Done()
+			a.SetMenuAccelerators(map[string]string{"new-session": "cmdorctrl+" + string(rune('a'+i))})
+		}(i)
+		go func(i int) {
+			defer wg.Done()
+			a.SetDebugTrace(i%2 == 0)
+		}(i)
+	}
+	wg.Wait()
+	if len(installed) != 32 {
+		t.Fatalf("installed %d menus, want 32", len(installed))
+	}
+	last := installed[len(installed)-1]
+	want := a.menuAccel["new-session"]
+	if got := accelString(findItem(last.Items, "New Session").Accelerator); got != want {
+		t.Fatalf("last installed menu has New Session = %q, want the final %q", got, want)
+	}
+	wantTrace := "Turn Debug Trace On (Reloads)"
+	if a.debugTrace {
+		wantTrace = "Turn Debug Trace Off (Reloads)"
+	}
+	if findItem(last.Items, wantTrace) == nil {
+		t.Fatalf("last installed menu does not reflect the final debugTrace=%v", a.debugTrace)
 	}
 }

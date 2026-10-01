@@ -102,3 +102,129 @@ export function chordMatches(c: Chord, e: KeyEventLike): boolean {
     : // A synthetic keydown (autofill) can arrive with no key at all.
       typeof e.key === 'string' && e.key.toLowerCase() === c.key;
 }
+
+// ---------- comparing chords (spec 477) ----------
+
+// e.code → the e.key it produces on a US layout.
+const CODE_KEYS: Record<string, string> = {
+  Minus: '-',
+  Equal: '=',
+  Backquote: '`',
+  BracketLeft: '[',
+  BracketRight: ']',
+  Backslash: '\\',
+  Semicolon: ';',
+  Quote: "'",
+  Comma: ',',
+  Period: '.',
+  Slash: '/',
+  Space: ' ',
+};
+
+// A shifted character → its unshifted key on a US layout.
+const SHIFTED: Record<string, string> = {
+  _: '-',
+  '+': '=',
+  '~': '`',
+  '{': '[',
+  '}': ']',
+  '|': '\\',
+  ':': ';',
+  '"': "'",
+  '<': ',',
+  '>': '.',
+  '?': '/',
+  '!': '1',
+  '@': '2',
+  '#': '3',
+  $: '4',
+  '%': '5',
+  '^': '6',
+  '&': '7',
+  '*': '8',
+  '(': '9',
+  ')': '0',
+};
+
+/** The unshifted key a chord names, and whether naming it implies Shift. */
+function baseKey(c: Chord): { key: string; shifted: boolean } {
+  if (c.code !== undefined) {
+    const m = /^(?:Key|Digit)(\w)$/.exec(c.code);
+    const key = m
+      ? m[1].toLowerCase()
+      : (CODE_KEYS[c.code] ?? c.code.toLowerCase());
+    return { key, shifted: false };
+  }
+  const k = c.key ?? '';
+  return k in SHIFTED
+    ? { key: SHIFTED[k], shifted: true }
+    : { key: k, shifted: false };
+}
+
+const compatible = (a: Want, b: Want) => a === 'any' || b === 'any' || a === b;
+
+/**
+ * Whether some key press could match both chords. Errs towards yes: a
+ * shifted character (`?`, `_`) is compared as its unshifted key with
+ * Shift unknown, and `[Code]` keys through a US layout. Two chords that
+ * overlap must never both be live, or one key would run two commands.
+ */
+export function chordsOverlap(a: string, b: string, isMac: boolean): boolean {
+  const ca = parseChord(a, isMac);
+  const cb = parseChord(b, isMac);
+  const ka = baseKey(ca);
+  const kb = baseKey(cb);
+  if (ka.key !== kb.key) return false;
+  // A shifted character with Shift unnamed may still need Shift on the
+  // user's layout, so Shift is unknown; one that names Shift keeps it.
+  const shiftA: Want = ka.shifted && ca.shift === false ? 'any' : ca.shift;
+  const shiftB: Want = kb.shifted && cb.shift === false ? 'any' : cb.shift;
+  return (
+    compatible(ca.meta, cb.meta) &&
+    compatible(ca.ctrl, cb.ctrl) &&
+    compatible(ca.alt, cb.alt) &&
+    compatible(shiftA, shiftB)
+  );
+}
+
+const MENU_KEYS: Record<string, string> = {
+  arrowup: 'up',
+  arrowdown: 'down',
+  arrowleft: 'left',
+  arrowright: 'right',
+  backspace: 'backspace',
+  delete: 'delete',
+  enter: 'return',
+  escape: 'escape',
+  tab: 'tab',
+  ' ': 'space',
+  '+': 'plus',
+};
+
+/**
+ * A macOS chord as a Wails menu accelerator (`cmdorctrl+shift+t`), or ''
+ * when it cannot be one: only ⌘ chords go in the native menu, everything
+ * else stays on the keydown path. Don't-care modifiers are dropped, since
+ * an accelerator is exact.
+ */
+export function toMenuAccelerator(s: string): string {
+  const c = parseChord(s, true);
+  if (c.meta !== true) return '';
+  let key: string;
+  if (c.code !== undefined) {
+    const m = /^(?:Key|Digit)(\w)$/.exec(c.code);
+    const k = m ? m[1].toLowerCase() : CODE_KEYS[c.code];
+    if (!k) return '';
+    key = k;
+  } else {
+    key = MENU_KEYS[c.key ?? ''] ?? c.key ?? '';
+    if (key.length !== 1 && !Object.values(MENU_KEYS).includes(key)) {
+      if (!/^f\d{1,2}$/.test(key)) return '';
+    }
+  }
+  const mods = ['cmdorctrl'];
+  if (c.ctrl === true) mods.push('ctrl');
+  if (c.alt === true) mods.push('optionoralt');
+  if (c.shift === true) mods.push('shift');
+  return [...mods, key].join('+');
+}

@@ -134,7 +134,9 @@ describe('paletteShortcuts', () => {
     expect(m['move-backward']).toBe('⇧⌘↑');
     expect(m['next-project']).toBe('⌘]');
     expect(m['prev-project']).toBe('⌘[');
-    expect(m['restart-session']).toBe('');
+    // Derived from the bindings since spec 477: a command with no key is
+    // absent (the palette shows '' for it via shortcutLabel).
+    expect(m['restart-session']).toBeUndefined();
     expect(m['switch-1']).toBe('⌘1');
     expect(m['switch-9']).toBe('⌘9');
     expect(m['keyboard-shortcuts']).toBe('⌘/');

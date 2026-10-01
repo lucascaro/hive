@@ -73,6 +73,8 @@ export {
   OpenFile,
   GetEditorSettings,
   SaveEditorSettings,
+  GetKeymap,
+  SetMenuAccelerators,
   Notify,
   Confirm,
   RestartDaemon,

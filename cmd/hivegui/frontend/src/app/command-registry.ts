@@ -15,8 +15,8 @@ export interface Command {
   /** Palette row name. Commands without one are reachable only from a
    * key or the menu (closing a modal, the dead-session overlay, …). */
   title?: string;
-  /** Palette label override. Core commands take theirs from
-   * lib/shortcuts.ts by id; plugins bring their own. */
+  /** Palette label override. Core commands derive theirs from their
+   * bindings (app/bindings.ts shortcutLabel); plugins bring their own. */
   shortcut?: string;
   /** false = declined: the key that triggered it is left unconsumed
    * (⌘⏎ in single view, ⌘9 past the last session). */

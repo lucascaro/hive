@@ -150,7 +150,7 @@ export function switchTo(id: string | null) {
   // fallBackToSingleIfActiveHidden above can drop us out of a grid, so
   // the hint is recomputed here too — a "focus / move" hint on a single
   // pane is exactly the lying hint AGENTS.md forbids.
-  setModeHint(modeHints(appData().view, isMac));
+  refreshModeHint();
   updateAppTitle();
   // setActive() called focusActiveTerm() before ensureTerm() existed
   // for a brand-new session — re-focus now that the SessionTerm is
@@ -466,5 +466,11 @@ export function setView(view: ViewMode, opts: { persist?: boolean } = {}) {
   // The left slot names the session; the mode moved to the right slot,
   // where it is spelled as the shortcut that leaves it.
   setStatus(active ? (active.name ?? '') : '');
-  setModeHint(modeHints(view, isMac));
+  refreshModeHint(view);
+}
+
+/** Recomputes the status bar's shortcut hints for a view (the current
+ * one by default) under the user's keymap. Also run on a keymap change. */
+export function refreshModeHint(view: ViewMode = appData().view): void {
+  setModeHint(modeHints(view, isMac, appData().keymap));
 }

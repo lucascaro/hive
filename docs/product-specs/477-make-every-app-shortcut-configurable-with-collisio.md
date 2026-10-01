@@ -4,7 +4,8 @@ title: Make every app shortcut configurable, with collision resolution
 type: enhancement
 complexity: L
 priority: P2
-stage: RESEARCH
+stage: GATE
+pr: 487
 ---
 
 # Make every app shortcut configurable, with collision resolution
@@ -13,7 +14,7 @@ stage: RESEARCH
 - **Type:** enhancement
 - **Complexity:** L
 - **Priority:** P2
-- **Exec plan:** —
+- **Exec plan:** [477-make-every-app-shortcut-configurable-with-collisio.md](../exec-plans/active/477-make-every-app-shortcut-configurable-with-collisio.md)
 
 ## Problem
 

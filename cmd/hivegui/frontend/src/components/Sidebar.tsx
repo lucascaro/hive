@@ -16,6 +16,8 @@
 // View/focus callbacks arrive as props from main.tsx, the composition
 // root, for the same reason initSidebar(deps) took them: importing
 // view.ts / keyboard.ts here would close an import cycle.
+import { isDefaultIn, labelIn, type Keymap } from '../lib/bindings.js';
+import { isMac } from '../lib/platform.js';
 import {
   memo,
   useLayoutEffect,
@@ -92,17 +94,22 @@ export interface SidebarProps {
   trayEl: HTMLElement | null;
 }
 
-// keyHints maps a session id to the digit ⌘n actually selects it with.
-// The switch-N command (app/commands.ts) resolves ⌘n against
-// orderedSessions()[n-1], so the hint
-// has to be read off the same list — a per-project counter would label
-// rows with keys that jump somewhere else entirely.
-function keyHints(): Map<string, number> {
-  const hints = new Map<string, number>();
+// keyHints maps a session id to the key hint shown on its row: the digit
+// ⌘n selects it with. The switch-N command (app/commands.ts) resolves it
+// against orderedSessions()[n-1], so the hint has to be read off the same
+// list — a per-project counter would label rows with keys that jump
+// somewhere else entirely. A switch-N the user rebound shows its new key
+// instead, and one with no key shows nothing (spec 477).
+function keyHints(keymap: Keymap): Map<string, string> {
+  const hints = new Map<string, string>();
   orderedSessions()
     .slice(0, 9)
     .forEach((s, i) => {
-      hints.set(s.id, i + 1);
+      const id = `switch-${i + 1}`;
+      const hint = isDefaultIn(keymap, id, isMac)
+        ? String(i + 1)
+        : labelIn(keymap, id, isMac);
+      if (hint) hints.set(s.id, hint);
     });
   return hints;
 }
@@ -199,7 +206,7 @@ function reorderDroppedSession(
 
 interface SessionItemProps {
   session: SessionInfo;
-  index: number | null;
+  index: string | null;
   selected: boolean;
   minimized: boolean;
   // The whole prop bag rather than three bound callbacks: main.tsx builds
@@ -316,7 +323,7 @@ interface ProjectItemProps {
   activePID: string;
   collapsed: boolean;
   props: SidebarProps;
-  hints: Map<string, number>;
+  hints: Map<string, string>;
   minimizedSessions: ReadonlySet<string>;
   activeId: string | null;
   /** Open ideas for this project — the header badge's count. */
@@ -544,7 +551,8 @@ export function Sidebar(props: SidebarProps) {
   // every store change, but only a different id re-renders the sidebar.
   const activePID = useAppStore(() => activeProjectId());
 
-  const hints = keyHints();
+  const keymap = useAppStore((s) => s.keymap);
+  const hints = keyHints(keymap);
   const visible = projects.filter((p) => !minimizedProjects.has(p.id));
   // Chips render in project order — the same order the rows would have if
   // nothing were minimized — so restoring one is visibly a no-op on

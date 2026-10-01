@@ -51,6 +51,9 @@ import { termsMap } from './terms.js';
 import type { WorktreesPayload } from '../lib/worktrees.js';
 import type { ChoiceSpec } from '../app/modals/choice-dialog.js';
 import type { PluginUIState } from '../lib/plugin-api.js';
+import { EMPTY_KEYMAP, type Keymap } from '../lib/bindings.js';
+
+export type { Keymap };
 
 // Sidebar width bounds. 220 is the design system's sidebar floor
 // (docs/design-docs/ui/tokens.md › Spacing); a stored width below it is
@@ -157,6 +160,11 @@ export interface AppData {
   // rather than through a component. `seq` remounts the body on a
   // re-ask the same way a modal entry's does.
   choiceDialog: ChoiceDialogEntry | null;
+  // The user's shortcut overrides (spec 477), as keymap.json holds them:
+  // per OS half, command id -> the chords that replace its defaults
+  // ([] = unbound). Empty until GetKeymap answers at boot, which means
+  // "every default". app/bindings.ts derives everything else from it.
+  keymap: Keymap;
 }
 
 // A modal is its id plus whatever that opening was parameterised with.
@@ -522,6 +530,7 @@ function initialData(): AppData {
     plugins: [],
     agentColors: new Map(),
     choiceDialog: null,
+    keymap: EMPTY_KEYMAP,
   };
 }
 
@@ -1075,6 +1084,10 @@ export function setPluginUI(id: string, st: PluginUIState | null): void {
   if (st) next[id] = st;
   else delete next[id];
   set({ pluginUI: next });
+}
+
+export function setKeymap(keymap: Keymap): void {
+  set({ keymap });
 }
 
 export function setActivityGrid(on: boolean): void {

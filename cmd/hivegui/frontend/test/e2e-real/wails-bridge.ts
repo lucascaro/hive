@@ -444,6 +444,12 @@ export async function GetEditorSettings() {
 export async function SaveEditorSettings() {
   return undefined;
 }
+export async function GetKeymap() {
+  return {};
+}
+export async function SetMenuAccelerators() {
+  return undefined;
+}
 export async function OpenTerminalAt() {
   return '';
 }
