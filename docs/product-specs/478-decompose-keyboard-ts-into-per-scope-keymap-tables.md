@@ -5,7 +5,7 @@ type: enhancement
 complexity: L
 priority: P2
 pr: 480
-stage: REVIEW
+stage: GATE
 ---
 
 # Decompose keyboard.ts into per-scope keymap tables
