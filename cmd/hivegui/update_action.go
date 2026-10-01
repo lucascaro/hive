@@ -183,6 +183,20 @@ func (a *App) StartUpdate() error {
 	go func() {
 		bundle, err := stageUpdateFn(info, func(msg string) { a.setStage(StageStaging, msg) })
 
+		// Ask the staged daemon what it is before promising the user
+		// anything. This is what lets the button say "Reload GUI —
+		// your sessions keep running" instead of the blanket restart
+		// warning every update used to carry. It runs while busy is
+		// still set, so a check landing during the probe reports
+		// staging rather than a ready state with no kind.
+		var kind string
+		if err == nil {
+			a.mu.Lock()
+			running := a.daemonContract
+			a.mu.Unlock()
+			kind = restartKindFor(bundle, running)
+		}
+
 		a.update.mu.Lock()
 		a.update.busy = false
 		if err != nil {
@@ -218,18 +232,6 @@ func (a *App) StartUpdate() error {
 		}
 		a.update.bundle = bundle
 		a.update.stagedFor = info.Latest
-		a.update.mu.Unlock()
-
-		// Ask the staged daemon what it is before promising the user
-		// anything. This is what lets the button say "Reload GUI —
-		// your sessions keep running" instead of the blanket restart
-		// warning every update used to carry.
-		a.mu.Lock()
-		running := a.daemonContract
-		a.mu.Unlock()
-		kind := restartKindFor(bundle, running)
-
-		a.update.mu.Lock()
 		a.update.restartKind = kind
 		a.update.last.RestartKind = kind
 		a.update.mu.Unlock()

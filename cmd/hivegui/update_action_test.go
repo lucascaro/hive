@@ -8,6 +8,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/lucascaro/hive/internal/buildinfo"
 	hdaemon "github.com/lucascaro/hive/internal/daemon"
 	"github.com/lucascaro/hive/internal/registry"
 )
@@ -442,5 +443,35 @@ func TestStartUpdateWhenStagedRepublishesReady(t *testing.T) {
 		}
 	default:
 		t.Fatal("second StartUpdate emitted no update:progress")
+	}
+}
+
+// The restart-kind probe runs a binary. A check landing while it runs
+// must still see staging, not a ready state with no RestartKind — that
+// would render a sessions-safe Reload as a session-ending Restart.
+func TestRememberCheckDuringRestartKindProbeReportsStaging(t *testing.T) {
+	a := &App{daemonContract: 21}
+	a.rememberCheck(UpdateInfo{Available: true, Latest: "9.9.9", Stage: StageAvailable})
+	probing, finish := make(chan struct{}), make(chan struct{})
+	prev := stagedIdentityFn
+	stagedIdentityFn = func(string) (buildinfo.Identity, error) {
+		close(probing)
+		<-finish
+		return buildinfo.Identity{DaemonContract: 21}, nil
+	}
+	t.Cleanup(func() { stagedIdentityFn = prev })
+	_, release := stubStaging(t, "/staged/hivegui.app", nil)
+	if err := a.StartUpdate(); err != nil {
+		t.Fatalf("StartUpdate: %v", err)
+	}
+	close(release)
+	<-probing
+	got := a.rememberCheck(UpdateInfo{Available: true, Latest: "9.9.9", Stage: StageAvailable})
+	close(finish)
+	if got.Stage != StageStaging {
+		t.Errorf("check during the probe returned Stage %q (RestartKind %q), want %q", got.Stage, got.RestartKind, StageStaging)
+	}
+	if ready := waitForStage(t, a, StageReady); ready.RestartKind != RestartGUI {
+		t.Errorf("RestartKind = %q, want %q", ready.RestartKind, RestartGUI)
 	}
 }
