@@ -6,7 +6,8 @@
 // precedence. The order encodes shipped bug fixes (a question about
 // deleting a worktree must beat the worktree browser underneath it, a
 // rename must beat the browser it is in, …), so move a scope only with a
-// test that shows why.
+// test that shows why. test/e2e/every-shortcut.spec.ts presses every chord
+// here in the running app; a new scope needs a fixture there.
 //
 // A binding names a command by id (app/commands.ts registers them); this
 // module never imports the commands themselves, which keeps it free of

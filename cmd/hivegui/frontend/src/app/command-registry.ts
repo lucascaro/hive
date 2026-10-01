@@ -53,13 +53,40 @@ export function findCommand(id: string): Command | undefined {
   return listCommands().find((c) => c.id === id);
 }
 
+/** One `runCommand` call, as the e2e command log records it. */
+export interface CommandLogEntry {
+  id: string;
+  /** What runCommand returned: false = declined or not registered. */
+  ran: boolean;
+}
+
+// E2E test affordance (spec 481): every runCommand call, in order, so
+// test/e2e/every-shortcut.spec.ts can assert that a chord or menu event
+// reached the command it names. Gated on the Vite mock/real env vars like
+// window.__hive_state (store/store.ts): Vite inlines them to literals, so
+// in a production build the block is dead code, the log stays undefined
+// and nothing is recorded or exposed. scripts/check-test-hooks-stripped.sh
+// checks the built bundle for it.
+let commandLog: CommandLogEntry[] | undefined;
+if (
+  typeof window !== 'undefined' &&
+  (import.meta.env.VITE_WAILS_MOCK === '1' ||
+    import.meta.env.VITE_WAILS_REAL === '1')
+) {
+  commandLog = [];
+  window.__hive_commandLog = commandLog;
+}
+
 /** Runs a command by id. Returns false when it declined or does not
  * exist, so a key bound to a missing command is left to the terminal. */
 export function runCommand(id: string): boolean {
   const cmd = findCommand(id);
   if (!cmd) {
     console.warn(`command "${id}" is not registered`);
+    commandLog?.push({ id, ran: false });
     return false;
   }
-  return cmd.run() !== false;
+  const ran = cmd.run() !== false;
+  commandLog?.push({ id, ran });
+  return ran;
 }

@@ -64,3 +64,55 @@ describe('sources', () => {
     expect(findCommand('kept')).toBeDefined();
   });
 });
+
+// Spec 481: the e2e command log. Only a build with the mock/real bridge
+// env var records — the gate is evaluated once, at module load, so each
+// case loads the module fresh under its own env.
+describe('the e2e command log', () => {
+  afterEach(() => {
+    vi.unstubAllEnvs();
+    vi.unstubAllGlobals();
+    vi.resetModules();
+  });
+
+  async function load(env: Record<string, string>) {
+    vi.resetModules();
+    for (const [k, v] of Object.entries(env)) vi.stubEnv(k, v);
+    const win: { __hive_commandLog?: unknown } = {};
+    vi.stubGlobal('window', win);
+    const m = await import('../../src/app/command-registry.js');
+    return { m, win };
+  }
+
+  it('records each run, decline and unknown id under the mock bridge', async () => {
+    const { m, win } = await load({ VITE_WAILS_MOCK: '1' });
+    const offA = m.registerCommandSource(
+      () => [
+        { id: 'ok', run: () => {} },
+        { id: 'no', run: () => false },
+      ],
+      'core',
+    );
+    vi.spyOn(console, 'warn').mockImplementation(() => {});
+    m.runCommand('ok');
+    m.runCommand('no');
+    m.runCommand('missing');
+    offA();
+    expect(win.__hive_commandLog).toEqual([
+      { id: 'ok', ran: true },
+      { id: 'no', ran: false },
+      { id: 'missing', ran: false },
+    ]);
+  });
+
+  it('does not exist without the e2e env var', async () => {
+    const { m, win } = await load({ VITE_WAILS_MOCK: '', VITE_WAILS_REAL: '' });
+    const off = m.registerCommandSource(
+      () => [{ id: 'ok', run: () => {} }],
+      'core',
+    );
+    expect(m.runCommand('ok')).toBe(true);
+    off();
+    expect(win.__hive_commandLog).toBeUndefined();
+  });
+});

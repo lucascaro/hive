@@ -75,6 +75,9 @@ interface HiveTestApi {
     editor: boolean;
   }[];
   openedUrls?(): string[];
+  // Spec 481: bridge calls with no in-page effect (OpenNewWindow,
+  // CloseWindow, OpenTerminalAt, RestartSession), optionally by method.
+  bridgeCalls?(method?: string): { method: string; args: unknown[] }[];
   resetOpenUrl?(): void;
   // Activity (spec 416): seed the GET_ACTIVITY answer, emit a raw
   // ACTIVITY frame, and read which sessions were requested.

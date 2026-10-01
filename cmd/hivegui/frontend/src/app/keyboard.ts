@@ -15,7 +15,12 @@ import { appStore } from '../store/store.js';
 import { runCommand } from './command-registry.js';
 import './commands.js';
 import { pageEl } from './el.js';
-import { KEY_SCOPES, matchBinding, type Binding } from './key-scopes.js';
+import {
+  KEY_SCOPES,
+  matchBinding,
+  type Binding,
+  type KeyScope,
+} from './key-scopes.js';
 import { scrollTrace } from './trace.js';
 
 // Live read of the store: this runs inside event handlers and must never
@@ -39,24 +44,44 @@ function runBinding(b: Binding, e: KeyboardEvent) {
   }
 }
 
-export function dispatchKey(e: KeyboardEvent, mac: boolean = isMac) {
+/** Who owns a key, without running anything: the binding it runs, an
+ * exclusive scope that swallows it unmatched (Tab still traps focus), a
+ * focused text input it is left to, or nobody (undefined). */
+export type KeyResolution =
+  | { kind: 'binding'; scope: KeyScope; binding: Binding }
+  | { kind: 'exclusive'; scope: KeyScope }
+  | { kind: 'text-input' }
+  | undefined;
+
+// The precedence walk, split from dispatchKey so the e2e sweep
+// (test/e2e/every-shortcut.spec.ts) can check a synthesized key resolves
+// to the binding it is testing by the same walk the real key takes.
+export function resolveKey(
+  e: KeyboardEvent,
+  mac: boolean = isMac,
+): KeyResolution {
   for (const scope of KEY_SCOPES) {
     if (!scope.active()) continue;
     if (scope.owns === 'text-input') {
       if (e.key === 'Escape' || e.key === 'Enter' || !cmdOrCtrl(e, mac)) {
-        return;
+        return { kind: 'text-input' };
       }
       continue;
     }
-    const b = matchBinding(scope, e, mac);
-    if (b) {
-      runBinding(b, e);
-      return;
-    }
-    if (scope.owns === 'exclusive') {
-      if (scope.trap && trapFocus(pageEl(scope.trap), e)) e.stopPropagation();
-      return;
-    }
+    const binding = matchBinding(scope, e, mac);
+    if (binding) return { kind: 'binding', scope, binding };
+    if (scope.owns === 'exclusive') return { kind: 'exclusive', scope };
+  }
+  return undefined;
+}
+
+export function dispatchKey(e: KeyboardEvent, mac: boolean = isMac) {
+  const r = resolveKey(e, mac);
+  if (r?.kind === 'binding') {
+    runBinding(r.binding, e);
+  } else if (r?.kind === 'exclusive') {
+    const { trap } = r.scope;
+    if (trap && trapFocus(pageEl(trap), e)) e.stopPropagation();
   }
 }
 

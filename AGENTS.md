@@ -149,6 +149,14 @@ custom agents at runtime via the GUI Settings screen (persisted to
   `docs/exec-plans/completed/210-real-e2e-tests.md`.
 - Go tests live beside source (`x_test.go` next to `x.go`); frontend tests live
   under `cmd/hivegui/frontend/test/`.
+- **Every shortcut and menu command is swept automatically** by
+  `test/e2e/every-shortcut.spec.ts`, which reads `KEY_SCOPES` and
+  `MENU_COMMANDS` from the running app. A new binding or menu item needs no
+  new test; a new key **scope** needs a fixture in that spec's `FIXTURES`
+  (the coverage test fails until it has one). It asserts through a
+  test-only command log (`window.__hive_commandLog`), gated like
+  `__hive_state`; `scripts/check-test-hooks-stripped.sh` proves neither
+  reaches the production bundle.
 - **Manual smoke rows, without a human** — see
   [docs/verifying-the-gui-by-hand.md](docs/verifying-the-gui-by-hand.md). A plan
   that says "build the app and look at it" does *not* need eyes: `wails dev`
