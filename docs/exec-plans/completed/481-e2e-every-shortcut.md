@@ -2,7 +2,7 @@
 
 - **Spec:** [docs/product-specs/481-e2e-test-every-keyboard-shortcut-and-menu-command.md](../../product-specs/481-e2e-test-every-keyboard-shortcut-and-menu-command.md)
 - **Issue:** #481
-- **Status:** active
+- **Status:** completed
 - **PR:** #486
 - **Branch:** feature/481-e2e-every-shortcut
 
@@ -269,6 +269,13 @@ Run in `cmd/hivegui/frontend` unless noted:
 - **2026-10-01** — `menu:worktrees` is allowlisted as `NOT_IN_MENU`. Why: it has been in `MENU_COMMANDS` since #277, but `menu_darwin.go` never emits it (⌘E reaches the webview as a keydown). Fixing it would add a menu item or drop a handler, and the spec's Non-goals forbid both; it is surfaced to the operator instead.
 - **2026-10-01** — Added a menu naming rule (`command === event − 'menu:'`, two explicit aliases). Why: a mutation check showed that a remapped menu entry (`menu:zoom-out → zoom-in`) passed the generated sweep.
 - **2026-10-01** — Plan said the spec would reuse `plugin-helpers.installPlugin`; the sweep has its own in `fixtures/key-sweep.ts`. Why: the shared one opens Settings with a host-platform key, which a forced-platform page does not bind.
+- **2026-10-01** — Cosmetic divergence from the plan's file lists:
+  - The fixture helpers are `prepare` / `boot` / `scopeChords` / `fireChord` / `fireMenu` rather than the names the plan sketched.
+  - `FIXTURES` lives in the spec, not in `fixtures/key-sweep.ts`, so the coverage test and the sweep read one table.
+  - The command-log unit tests extend `test/unit/command-registry.test.ts` instead of a new dom test, because that file already owns the registry.
+  - Review iteration 1 added `scripts/check-test-hooks-stripped-selftest.sh`, wired into `changesets.yml` beside the other gate selftests.
+
+  Why: recorded so the plan matches what shipped.
 
 ## Progress
 
@@ -293,5 +300,13 @@ Run in `cmd/hivegui/frontend` unless noted:
 
 - **2026-10-01 iter 1** — verdict: COMMENT; mergeable: MERGEABLE; findings_hash: b601e00a34b378d9c6c0f25c1960a34ba3b2f616dd809f2d47cfad2c1312f5e5; threads_open: 0; action: autofix+push; head_sha: 5867600a.
 - **2026-10-01 iter 2** — verdict: APPROVE; mergeable: MERGEABLE; findings_hash: empty; threads_open: 0; action: stop; head_sha: 5867600a.
+
+## Gate verdict
+
+- **2026-10-01** — verdict: PASS; phase: —; checks: 7 passed / 0 failed / 0 followups; followups: none; one-line: the generated sweep, command log and bundle check meet all four success criteria; no non-goal touched; docs accurate; CI green on Linux, macOS and Windows.
+  - 2026-10-01 dimensions:
+    - acceptance — PASS — The local sweep passed: 58 tests. A mutated binding id failed it on both platforms. The bundle check and its selftest pass, and so do the command-registry unit tests. The validator returned NEEDS_FOLLOWUP only because CI was still pending on the bookkeeping head; that CI later finished green on all three legs (head 95d4bdff). Every shortcut listed in the spec's Problem section has a spot check in `every-shortcut.spec.ts`.
+    - non-goals — PASS — `resolveKey` was traced branch by branch and is behaviour-identical. The `key-scopes.ts` change is comment-only, `commands.ts` is untouched, and no `e2e-real` or Go menu file changed.
+    - doc accuracy — PASS — The `no-changeset` label is justified. The `AGENTS.md` bullet, the code comments and the CI step comments are accurate, and no stale docs were found.
 
 ## Open questions

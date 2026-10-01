@@ -5,7 +5,8 @@ type: enhancement
 complexity: M
 priority: P2
 pr: 486
-stage: GATE
+shipped: 2026-10-01
+stage: DONE
 ---
 
 # E2E-test every keyboard shortcut and menu command from the binding data
@@ -14,7 +15,7 @@ stage: GATE
 - **Type:** enhancement
 - **Complexity:** M
 - **Priority:** P2
-- **Exec plan:** [docs/exec-plans/active/481-e2e-every-shortcut.md](../exec-plans/active/481-e2e-every-shortcut.md)
+- **Exec plan:** [docs/exec-plans/completed/481-e2e-every-shortcut.md](../exec-plans/completed/481-e2e-every-shortcut.md)
 
 ## Problem
 
