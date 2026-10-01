@@ -77,7 +77,7 @@ export function resolveChoiceDialog(value: string): void {
 }
 
 // dismissChoiceDialog closes an open dialog as if the safe choice was
-// picked, and reports whether there was one. keyboard.ts calls it so
+// picked, and reports whether there was one. Its key scope runs it so
 // Escape backs out of the question rather than reaching the bindings
 // underneath; the worktree browser calls it whenever the row being
 // asked about may not survive the next repaint.

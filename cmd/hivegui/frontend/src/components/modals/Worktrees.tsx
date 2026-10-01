@@ -259,7 +259,7 @@ function WorktreeRow({
   );
 
   // The rename is still the shared imperative helper, for two reasons a
-  // React-owned input would lose: keyboard.ts asks inlineRenameActive()
+  // React-owned input would lose: the key dispatcher asks inlineRenameActive()
   // FIRST, so Escape cancels the edit instead of closing the panel; and
   // the commit/cancel/blur rules stay identical to the sidebar's and the
   // tile titles'. It mounts into an EMPTY .worktree-main — React owns no
@@ -295,7 +295,7 @@ function WorktreeRow({
     // focused input does not fire blur, so a row that unmounts mid-edit
     // (the daemon dropped it, or the panel closed) would leave
     // inlineRenameActive() true — and that is the FIRST branch of
-    // keyboard.ts's ladder, which swallows every keystroke in the app
+    // KEY_SCOPES (app/key-scopes.ts), which swallows every keystroke in the app
     // until an Escape it no longer has an input to cancel.
     return () => {
       cancelInlineRenameFor(input);

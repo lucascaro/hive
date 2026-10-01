@@ -251,10 +251,10 @@ function fallBackToSingleIfActiveHidden() {
 // isSessionHidden answers the one question every "can I switch to this
 // with a tile to land on?" caller asks: the session is out of the grid
 // either because it was minimized itself, or because its project was.
-// keyboard.ts branches on this rather than on appData().minimized directly,
+// The actions (app/actions.ts) branch on this rather than on appData().minimized directly,
 // so the two mechanisms can never drift apart. It stays here rather than
 // moving to grid-layout.ts with the scope helpers: it reads nothing but
-// the store, and keyboard.ts is the heaviest caller.
+// the store, and app/actions.ts is the heaviest caller.
 export function isSessionHidden(id: string): boolean {
   if (appData().minimized.has(id)) return true;
   const s = appData().sessions.find((x) => x.id === id);

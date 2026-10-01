@@ -50,8 +50,8 @@ export interface InlineRenameOpts {
 // keyboard while it is open — Escape cancels the edit, it does not
 // close whatever is behind it — but keyboard.ts listens in the CAPTURE
 // phase, so it sees every key before the input does and stopPropagation
-// from the input cannot win the race. keyboard.ts therefore asks here
-// first. (Sidebar renames never hit this because nothing global claims
+// from the input cannot win the race. The inline-rename scope, first
+// in KEY_SCOPES (app/key-scopes.ts), therefore asks here first. (Sidebar renames never hit this because nothing global claims
 // bare Escape at that level; a rename inside a modal does.)
 let active: { input: HTMLInputElement; cancel: () => void } | null = null;
 

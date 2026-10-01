@@ -1,5 +1,5 @@
 // The ⌘F entry point: resolves "the focused session" and applies the
-// view gate, so keyboard.ts and the native menu share one path.
+// view gate, so the key binding and the native menu share one command.
 //
 // Separate from find-box.ts because that module is about one session's
 // box and is unit-testable with a plain deps object; this one reaches

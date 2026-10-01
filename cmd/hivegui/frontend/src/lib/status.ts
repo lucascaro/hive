@@ -96,7 +96,7 @@ export function modeHints(view: ViewMode, mac: boolean): ModeHint[] {
   if (view === 'grid-all' || view === 'grid-project') {
     return [
       // Each grid is toggled back to a single pane by the chord that
-      // opened it (keyboard.ts): ⌘G for the project grid, ⇧⌘G for the
+      // opened it (app/key-scopes.ts): ⌘G for the project grid, ⇧⌘G for the
       // all-sessions grid. Naming plain ⌘G in grid-all would advertise a
       // chord that switches grids instead of focusing.
       {
