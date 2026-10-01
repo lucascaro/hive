@@ -1,0 +1,598 @@
+{
+  "mac": {
+    "groups": [
+      {
+        "title": "Sessions",
+        "items": [
+          {
+            "keys": "⌘T",
+            "label": "New session"
+          },
+          {
+            "keys": "⇧⌘T",
+            "label": "New session in git worktree"
+          },
+          {
+            "keys": "⌘P",
+            "label": "Duplicate session"
+          },
+          {
+            "keys": "⇧⌘P",
+            "label": "Duplicate session (choose tool)"
+          },
+          {
+            "keys": "⌘W",
+            "label": "Close session"
+          },
+          {
+            "keys": "⌘Z",
+            "label": "Reopen closed session"
+          },
+          {
+            "keys": "⌘1–⌘9",
+            "label": "Switch to session 1–9"
+          },
+          {
+            "keys": "⌘↑↓",
+            "label": "Next / previous session (grid: move between tiles)"
+          },
+          {
+            "keys": "⌘←→",
+            "label": "Grid: move between tiles — in focused mode these reach the terminal (start / end of line)"
+          },
+          {
+            "keys": "⇧⌘↑↓",
+            "label": "Reorder session within its project (wraps)"
+          },
+          {
+            "keys": "⌃-",
+            "label": "Go back to the previously visited session"
+          },
+          {
+            "keys": "⌃⇧-",
+            "label": "Go forward again"
+          },
+          {
+            "keys": "⌘B",
+            "label": "Next session needing attention (bell)"
+          },
+          {
+            "keys": "⇧⌘B",
+            "label": "Jump back to where you were"
+          },
+          {
+            "keys": "Double-click",
+            "label": "Rename (sidebar row or tile title)"
+          },
+          {
+            "keys": "⌘-click",
+            "label": "Open the file path under the cursor (programs are revealed, not run)"
+          },
+          {
+            "keys": "⇧⌘-click",
+            "label": "Open that file in your editor (Settings › Appearance)"
+          }
+        ]
+      },
+      {
+        "title": "Projects",
+        "items": [
+          {
+            "keys": "⌘N",
+            "label": "New project"
+          },
+          {
+            "keys": "⇧⌘⌫",
+            "label": "Delete active project"
+          },
+          {
+            "keys": "⌘[ / ⌘]",
+            "label": "Previous / next project"
+          },
+          {
+            "keys": "⌘E",
+            "label": "Worktrees in the active project"
+          },
+          {
+            "keys": "⌘I",
+            "label": "Capture an idea"
+          },
+          {
+            "keys": "⇧⌘I",
+            "label": "Ideas in the active project"
+          }
+        ]
+      },
+      {
+        "title": "View",
+        "items": [
+          {
+            "keys": "⌘G",
+            "label": "Toggle project grid"
+          },
+          {
+            "keys": "⇧⌘G",
+            "label": "Toggle all-sessions grid"
+          },
+          {
+            "keys": "⌘↩",
+            "label": "Grid: focus the active session (single view)"
+          },
+          {
+            "keys": "⌘S",
+            "label": "Toggle sidebar"
+          },
+          {
+            "keys": "⌘J",
+            "label": "Agent activity: panel (single view) / activity grid (grid)"
+          },
+          {
+            "keys": "⇧⌘J",
+            "label": "Agent activity grid"
+          },
+          {
+            "keys": "⌘F",
+            "label": "Find in session (transcript on full-screen agents)"
+          },
+          {
+            "keys": "⌘= / ⌘- / ⌘0",
+            "label": "Zoom in / out / reset"
+          },
+          {
+            "keys": "⇧⌘K",
+            "label": "Command palette"
+          },
+          {
+            "keys": "⌘,",
+            "label": "Settings (custom agents)"
+          },
+          {
+            "keys": "⌘? or ⌘/",
+            "label": "Keyboard shortcuts (this panel)"
+          }
+        ]
+      },
+      {
+        "title": "Window",
+        "items": [
+          {
+            "keys": "⇧⌘N",
+            "label": "New window"
+          },
+          {
+            "keys": "⇧⌘W",
+            "label": "Close window"
+          },
+          {
+            "keys": "⌃`",
+            "label": "Open OS terminal at session directory"
+          }
+        ]
+      },
+      {
+        "title": "Inside a terminal",
+        "items": [
+          {
+            "keys": "⌃⇧C",
+            "label": "Copy selection (works under mouse-tracking TUIs)"
+          },
+          {
+            "keys": "⌃⇧V",
+            "label": "Paste"
+          },
+          {
+            "keys": "⌃⇧A",
+            "label": "Select all"
+          },
+          {
+            "keys": "⇧↩",
+            "label": "Insert newline in agent input (instead of submitting)"
+          },
+          {
+            "keys": "⌦",
+            "label": "Delete the character after the cursor"
+          },
+          {
+            "keys": "⌥⌫",
+            "label": "Delete the word before the cursor"
+          },
+          {
+            "keys": "⌥⌦",
+            "label": "Delete the word after the cursor"
+          },
+          {
+            "keys": "⌘⌫",
+            "label": "Delete to start of line"
+          },
+          {
+            "keys": "⌘⌦",
+            "label": "Delete to end of line"
+          },
+          {
+            "keys": "⌥←→",
+            "label": "Move by word"
+          }
+        ]
+      },
+      {
+        "title": "Ended session",
+        "items": [
+          {
+            "keys": "↩",
+            "label": "Close the session"
+          },
+          {
+            "keys": "R",
+            "label": "Restart it in place"
+          },
+          {
+            "keys": "Esc",
+            "label": "Dismiss the card, keep the tile"
+          }
+        ]
+      },
+      {
+        "title": "Launcher & dialogs",
+        "items": [
+          {
+            "keys": "1–9",
+            "label": "Pick agent by number"
+          },
+          {
+            "keys": "↑↓ / Tab",
+            "label": "Navigate items"
+          },
+          {
+            "keys": "↩",
+            "label": "Confirm"
+          },
+          {
+            "keys": "Esc",
+            "label": "Dismiss / cancel"
+          },
+          {
+            "keys": "←→",
+            "label": "Resize sidebar (when resizer focused; ⇧ = larger steps)"
+          }
+        ]
+      }
+    ],
+    "palette": {
+      "new-project": "⌘N",
+      "new-session": "⌘T",
+      "new-session-worktree": "⇧⌘T",
+      "duplicate-session": "⌘P",
+      "duplicate-session-choose-tool": "⇧⌘P",
+      "restart-session": "",
+      "delete-project": "⇧⌘⌫",
+      "worktrees": "⌘E",
+      "quick-idea": "⌘I",
+      "idea-inbox": "⇧⌘I",
+      "close-session": "⌘W",
+      "new-window": "⇧⌘N",
+      "open-os-terminal": "⌃`",
+      "close-window": "⇧⌘W",
+      "toggle-sidebar": "⌘S",
+      "toggle-project-grid": "⌘G",
+      "toggle-all-grid": "⇧⌘G",
+      "toggle-activity": "⌘J",
+      "activity-grid": "⇧⌘J",
+      "find-in-session": "⌘F",
+      "focus-active-session": "⌘↩",
+      "zoom-in": "⌘=",
+      "zoom-out": "⌘-",
+      "zoom-reset": "⌘0",
+      "next-session": "⌘↓",
+      "prev-session": "⌘↑",
+      "move-forward": "⇧⌘↓",
+      "move-backward": "⇧⌘↑",
+      "nav-back": "⌃-",
+      "nav-forward": "⌃⇧-",
+      "next-attention": "⌘B",
+      "jump-back": "⇧⌘B",
+      "next-project": "⌘]",
+      "prev-project": "⌘[",
+      "keyboard-shortcuts": "⌘/",
+      "settings": "⌘,",
+      "switch-1": "⌘1",
+      "switch-2": "⌘2",
+      "switch-3": "⌘3",
+      "switch-4": "⌘4",
+      "switch-5": "⌘5",
+      "switch-6": "⌘6",
+      "switch-7": "⌘7",
+      "switch-8": "⌘8",
+      "switch-9": "⌘9"
+    }
+  },
+  "other": {
+    "groups": [
+      {
+        "title": "Sessions",
+        "items": [
+          {
+            "keys": "Ctrl+T",
+            "label": "New session"
+          },
+          {
+            "keys": "Ctrl+Shift+T",
+            "label": "New session in git worktree"
+          },
+          {
+            "keys": "Ctrl+P",
+            "label": "Duplicate session"
+          },
+          {
+            "keys": "Ctrl+Shift+P",
+            "label": "Duplicate session (choose tool)"
+          },
+          {
+            "keys": "Ctrl+W",
+            "label": "Close session"
+          },
+          {
+            "keys": "Ctrl+Z",
+            "label": "Reopen closed session"
+          },
+          {
+            "keys": "Ctrl+1–Ctrl+9",
+            "label": "Switch to session 1–9"
+          },
+          {
+            "keys": "Ctrl+Up/Down",
+            "label": "Next / previous session (grid: move between tiles)"
+          },
+          {
+            "keys": "Ctrl+Left/Right",
+            "label": "Grid: move between tiles — in focused mode these reach the terminal (move by word)"
+          },
+          {
+            "keys": "Ctrl+Shift+Up/Down",
+            "label": "Reorder session within its project (wraps)"
+          },
+          {
+            "keys": "Ctrl+Alt+-",
+            "label": "Go back to the previously visited session"
+          },
+          {
+            "keys": "Ctrl+Alt+Shift+-",
+            "label": "Go forward again"
+          },
+          {
+            "keys": "Ctrl+B",
+            "label": "Next session needing attention (bell)"
+          },
+          {
+            "keys": "Ctrl+Shift+B",
+            "label": "Jump back to where you were"
+          },
+          {
+            "keys": "Double-click",
+            "label": "Rename (sidebar row or tile title)"
+          },
+          {
+            "keys": "Ctrl+click",
+            "label": "Open the file path under the cursor (programs are revealed, not run)"
+          },
+          {
+            "keys": "Ctrl+Shift+click",
+            "label": "Open that file in your editor (Settings › Appearance)"
+          }
+        ]
+      },
+      {
+        "title": "Projects",
+        "items": [
+          {
+            "keys": "Ctrl+N",
+            "label": "New project"
+          },
+          {
+            "keys": "Ctrl+Shift+Backspace",
+            "label": "Delete active project"
+          },
+          {
+            "keys": "Ctrl+[ / Ctrl+]",
+            "label": "Previous / next project"
+          },
+          {
+            "keys": "Ctrl+E",
+            "label": "Worktrees in the active project"
+          },
+          {
+            "keys": "Ctrl+I",
+            "label": "Capture an idea"
+          },
+          {
+            "keys": "Ctrl+Shift+I",
+            "label": "Ideas in the active project"
+          }
+        ]
+      },
+      {
+        "title": "View",
+        "items": [
+          {
+            "keys": "Ctrl+G",
+            "label": "Toggle project grid"
+          },
+          {
+            "keys": "Ctrl+Shift+G",
+            "label": "Toggle all-sessions grid"
+          },
+          {
+            "keys": "Ctrl+Enter",
+            "label": "Grid: focus the active session (single view)"
+          },
+          {
+            "keys": "Ctrl+S",
+            "label": "Toggle sidebar"
+          },
+          {
+            "keys": "Ctrl+Shift+J",
+            "label": "Agent activity: panel (single view) / activity grid (grid)"
+          },
+          {
+            "keys": "Ctrl+Alt+Shift+J",
+            "label": "Agent activity grid"
+          },
+          {
+            "keys": "Ctrl+Shift+F",
+            "label": "Find in session (transcript on full-screen agents)"
+          },
+          {
+            "keys": "Ctrl+= / Ctrl+- / Ctrl+0",
+            "label": "Zoom in / out / reset"
+          },
+          {
+            "keys": "Ctrl+Shift+K",
+            "label": "Command palette"
+          },
+          {
+            "keys": "Ctrl+,",
+            "label": "Settings (custom agents)"
+          },
+          {
+            "keys": "Ctrl+? or Ctrl+/",
+            "label": "Keyboard shortcuts (this panel)"
+          }
+        ]
+      },
+      {
+        "title": "Window",
+        "items": [
+          {
+            "keys": "Ctrl+Shift+N",
+            "label": "New window"
+          },
+          {
+            "keys": "Ctrl+Shift+W",
+            "label": "Close window"
+          },
+          {
+            "keys": "Ctrl+`",
+            "label": "Open OS terminal at session directory"
+          }
+        ]
+      },
+      {
+        "title": "Inside a terminal",
+        "items": [
+          {
+            "keys": "Ctrl+Shift+C",
+            "label": "Copy selection (works under mouse-tracking TUIs)"
+          },
+          {
+            "keys": "Ctrl+Shift+V",
+            "label": "Paste"
+          },
+          {
+            "keys": "Ctrl+Shift+A",
+            "label": "Select all"
+          },
+          {
+            "keys": "⇧Enter",
+            "label": "Insert newline in agent input (instead of submitting)"
+          },
+          {
+            "keys": "Del",
+            "label": "Delete the character after the cursor"
+          },
+          {
+            "keys": "Ctrl+Left/Right",
+            "label": "Move by word"
+          }
+        ]
+      },
+      {
+        "title": "Ended session",
+        "items": [
+          {
+            "keys": "Enter",
+            "label": "Close the session"
+          },
+          {
+            "keys": "R",
+            "label": "Restart it in place"
+          },
+          {
+            "keys": "Esc",
+            "label": "Dismiss the card, keep the tile"
+          }
+        ]
+      },
+      {
+        "title": "Launcher & dialogs",
+        "items": [
+          {
+            "keys": "1–9",
+            "label": "Pick agent by number"
+          },
+          {
+            "keys": "Up/Down / Tab",
+            "label": "Navigate items"
+          },
+          {
+            "keys": "Enter",
+            "label": "Confirm"
+          },
+          {
+            "keys": "Esc",
+            "label": "Dismiss / cancel"
+          },
+          {
+            "keys": "Left/Right",
+            "label": "Resize sidebar (when resizer focused; ⇧ = larger steps)"
+          }
+        ]
+      }
+    ],
+    "palette": {
+      "new-project": "Ctrl+N",
+      "new-session": "Ctrl+T",
+      "new-session-worktree": "Ctrl+Shift+T",
+      "duplicate-session": "Ctrl+P",
+      "duplicate-session-choose-tool": "Ctrl+Shift+P",
+      "restart-session": "",
+      "delete-project": "Ctrl+Shift+Backspace",
+      "worktrees": "Ctrl+E",
+      "quick-idea": "Ctrl+I",
+      "idea-inbox": "Ctrl+Shift+I",
+      "close-session": "Ctrl+W",
+      "new-window": "Ctrl+Shift+N",
+      "open-os-terminal": "Ctrl+`",
+      "close-window": "Ctrl+Shift+W",
+      "toggle-sidebar": "Ctrl+S",
+      "toggle-project-grid": "Ctrl+G",
+      "toggle-all-grid": "Ctrl+Shift+G",
+      "toggle-activity": "Ctrl+Shift+J",
+      "activity-grid": "Ctrl+Alt+Shift+J",
+      "find-in-session": "Ctrl+Shift+F",
+      "focus-active-session": "Ctrl+Enter",
+      "zoom-in": "Ctrl+=",
+      "zoom-out": "Ctrl+-",
+      "zoom-reset": "Ctrl+0",
+      "next-session": "Ctrl+Down",
+      "prev-session": "Ctrl+Up",
+      "move-forward": "Ctrl+Shift+Down",
+      "move-backward": "Ctrl+Shift+Up",
+      "nav-back": "Ctrl+Alt+-",
+      "nav-forward": "Ctrl+Alt+Shift+-",
+      "next-attention": "Ctrl+B",
+      "jump-back": "Ctrl+Shift+B",
+      "next-project": "Ctrl+]",
+      "prev-project": "Ctrl+[",
+      "keyboard-shortcuts": "Ctrl+/",
+      "settings": "Ctrl+,",
+      "switch-1": "Ctrl+1",
+      "switch-2": "Ctrl+2",
+      "switch-3": "Ctrl+3",
+      "switch-4": "Ctrl+4",
+      "switch-5": "Ctrl+5",
+      "switch-6": "Ctrl+6",
+      "switch-7": "Ctrl+7",
+      "switch-8": "Ctrl+8",
+      "switch-9": "Ctrl+9"
+    }
+  }
+}
