@@ -133,20 +133,30 @@ export function resolveCommands(
       if (command.keys && own === null) {
         warn(`plugin ${p.id}: command ${command.id} has an unbindable key`);
       }
-      // keymap.json can be hand-edited: an override that is not a list
-      // is ignored, like a core one (lib/bindings.ts).
+      // keymap.json can be hand-edited: an override that is not a list,
+      // or none of whose chords parse, is ignored and the plugin's own key
+      // stays — as for a core command (lib/bindings.ts). [] unbinds.
       const o = overrides[id];
-      const wanted = Array.isArray(o) ? [...o] : own ? [own] : [];
-      const chords: string[] = [];
-      for (const chord of wanted) {
+      const parses = (c: string) => {
         try {
-          parseChord(chord, isMac);
+          parseChord(c, isMac);
+          return true;
         } catch {
           warn(
-            `plugin ${p.id}: ignoring keymap chord "${chord}" for ${command.id}`,
+            `plugin ${p.id}: ignoring keymap chord "${c}" for ${command.id}`,
           );
-          continue;
+          return false;
         }
+      };
+      const usable = Array.isArray(o) ? o.filter(parses) : [];
+      const wanted =
+        Array.isArray(o) && (o.length === 0 || usable.length > 0)
+          ? usable
+          : own
+            ? [own]
+            : [];
+      const chords: string[] = [];
+      for (const chord of wanted) {
         if (claimed.some((c) => chordsOverlap(c, chord, isMac))) {
           warn(
             `plugin ${p.id}: ${formatChord(chord, isMac)} is already taken; ${command.id} does not get it`,

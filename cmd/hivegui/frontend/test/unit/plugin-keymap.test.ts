@@ -92,3 +92,14 @@ describe('a hand-edited keymap.json', () => {
     expect(out[0].chords).toEqual(['Mod+Shift+[KeyO]']);
   });
 });
+
+describe('a plugin override none of whose chords parse', () => {
+  it('keeps the plugin its own key', () => {
+    const out = resolve(
+      [cmd('o', 'o', true)],
+      { mac: { 'plugin:p:o': ['Hyper+O'] } },
+      true,
+    );
+    expect(out[0].chords).toEqual(['Mod+Shift+[KeyO]']);
+  });
+});

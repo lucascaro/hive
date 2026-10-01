@@ -123,9 +123,9 @@ func buildAppMenuRecorded(a *App, record map[string]string) *menu.Menu {
 	// an item to it. View is the next-best home.
 	//
 	// This menu item is the REAL entry point for ⌘F on macOS: the native
-	// accelerator intercepts the key before the webview, so the
-	// find-in-session binding in key-scopes.ts deliberately has no macOS
-	// chord. It opens the box, or with
+	// accelerator intercepts the key before the webview. (The macOS chord
+	// on find-in-session in frontend/src/lib/bindings.ts exists so this
+	// accelerator can be derived from it.) It opens the box, or with
 	// the box already open refocuses it and selects the query — the
 	// find-field convention. It never closes it; Escape does.
 	view.AddText("Find in Session…", accel("find-in-session", keys.CmdOrCtrl("f")), emit("menu:find-in-session"))
@@ -192,7 +192,7 @@ func buildAppMenuRecorded(a *App, record map[string]string) *menu.Menu {
 	// keys.Combo("/", CmdOrCtrlKey, ShiftKey): that would narrow the mask
 	// to require Shift and stop plain ⌘/ from matching here.
 	//
-	// The '?' help chord in app/key-scopes.ts is therefore unreachable on
+	// The '?' help chord in frontend/src/lib/bindings.ts is therefore unreachable on
 	// darwin (the menu consumes the chord first) and exists for
 	// Windows/Linux, where buildAppMenu returns nil and there is no menu
 	// to handle it.

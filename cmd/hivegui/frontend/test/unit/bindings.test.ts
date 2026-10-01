@@ -142,3 +142,22 @@ describe('native menu accelerators', () => {
     ).toEqual({});
   });
 });
+
+describe('a hand-edited keymap.json', () => {
+  it('an override none of whose chords parse is ignored: the defaults stay', () => {
+    const km: Keymap = { mac: { 'new-session': ['Hyper+T'] } };
+    expect(labelIn(km, 'new-session', true)).toBe('⌘T');
+    expect(isDefaultIn(km, 'new-session', true)).toBe(true);
+  });
+  it('a non-list override is ignored too', () => {
+    const km = { mac: { 'new-session': null } } as unknown as Keymap;
+    expect(labelIn(km, 'new-session', true)).toBe('⌘T');
+  });
+  it('[] still unbinds, and valid chords beside a bad one still apply', () => {
+    expect(labelIn({ mac: { 'new-session': [] } }, 'new-session', true)).toBe(
+      '',
+    );
+    const km: Keymap = { mac: { 'new-session': ['Hyper+T', 'Mod+Y'] } };
+    expect(labelIn(km, 'new-session', true)).toBe('⌘Y');
+  });
+});

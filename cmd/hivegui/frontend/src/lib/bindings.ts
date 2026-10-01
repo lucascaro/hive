@@ -196,6 +196,8 @@ export interface Effective {
   displaced: readonly string[];
   /** Override chords that do not parse, as `id: chord`; ignored. */
   invalid: readonly string[];
+  /** Commands whose shortcuts come from the keymap, not the defaults. */
+  overridden: readonly string[];
 }
 
 /** The overrides that apply on this platform. */
@@ -220,15 +222,24 @@ export function effectiveBindings(
   const userChords: string[] = [];
   const repeatOf = (id: string) =>
     defaults.find((b) => b.command === id)?.repeat;
+  // The commands whose override applies. One that is not a list, or whose
+  // chords all fail to parse, is ignored as a whole — the command keeps its
+  // defaults rather than silently losing every key. [] still unbinds.
+  const applied = new Set<string>();
   for (const [id, chords] of Object.entries(overrides)) {
     if (skip(id) || !Array.isArray(chords)) continue;
-    for (const chord of chords) {
+    const valid = chords.filter((chord) => {
       try {
         parseChord(chord, isMac);
+        return true;
       } catch {
         invalid.push(`${id}: ${chord}`);
-        continue;
+        return false;
       }
+    });
+    if (chords.length > 0 && valid.length === 0) continue;
+    applied.add(id);
+    for (const chord of valid) {
       const repeat = repeatOf(id);
       out.push(
         repeat === false
@@ -240,7 +251,7 @@ export function effectiveBindings(
   }
   const displaced = new Set<string>();
   for (const b of defaults) {
-    if (b.command === null || b.command in overrides) continue;
+    if (b.command === null || applied.has(b.command)) continue;
     const hit = chordsFor(b.keys, isMac).some((c) =>
       userChords.some((u) => chordsOverlap(c, u, isMac)),
     );
@@ -249,12 +260,17 @@ export function effectiveBindings(
   for (const b of defaults) {
     if (
       b.command !== null &&
-      (b.command in overrides || displaced.has(b.command))
+      (applied.has(b.command) || displaced.has(b.command))
     )
       continue;
     out.push(b);
   }
-  return { bindings: out, displaced: [...displaced], invalid };
+  return {
+    bindings: out,
+    displaced: [...displaced],
+    invalid,
+    overridden: [...applied],
+  };
 }
 
 // ---------- resolving a keymap ----------
@@ -313,10 +329,8 @@ export function isDefaultIn(
   id: string,
   isMac: boolean,
 ): boolean {
-  return (
-    !(id in keymapHalf(keymap, isMac)) &&
-    !effectiveFor(keymap, isMac).displaced.includes(id)
-  );
+  const eff = effectiveFor(keymap, isMac);
+  return !eff.overridden.includes(id) && !eff.displaced.includes(id);
 }
 
 /** What to show for a command's shortcut: '⇧⌘K', 'Ctrl+T / Ctrl+Y', or

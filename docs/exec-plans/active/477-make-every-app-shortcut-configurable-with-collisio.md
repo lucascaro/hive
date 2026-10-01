@@ -244,3 +244,4 @@ Would fail on a wrong implementation: the v0-fixture parity tests fail on any la
 - **2026-10-01 iter 1** — verdict: COMMENT; mergeable: MERGEABLE; findings_hash: 0276aff780a0b7807f05c749e0716c603c3d57f6d088c91ba0a8a7fbac1589dd; threads_open: 0; action: escalated:risky-fix-needs-human-decision; head_sha: d4429f7.
 - **2026-10-01 iter 2** — verdict: APPROVE; mergeable: MERGEABLE; findings_hash: empty; threads_open: 0; action: stop; head_sha: c3055c8.
 - **2026-10-01 iter 3** — verdict: APPROVE; mergeable: MERGEABLE; findings_hash: empty; threads_open: 0; action: stop; head_sha: 3775bc2.
+- **2026-10-01 iter 4** — verdict: APPROVE; mergeable: MERGEABLE; findings_hash: empty; threads_open: 0; action: stop; head_sha: b7a97a1.
