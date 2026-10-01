@@ -32,10 +32,14 @@ function pushMenu(keymap: Keymap, ids: readonly string[]): void {
   const overrides = menuAcceleratorOverrides(ids, keymap);
   const json = JSON.stringify(overrides);
   if (json === (sentMenu ?? '{}')) return;
+  const before = sentMenu;
   sentMenu = json;
-  SetMenuAccelerators(overrides).catch((e: unknown) =>
-    console.warn('updating the menu shortcuts failed', e),
-  );
+  SetMenuAccelerators(overrides).catch((e: unknown) => {
+    console.warn('updating the menu shortcuts failed', e);
+    // Go never took it, so the next keymap change must send again. Only
+    // if nothing newer was sent meanwhile: that one supersedes this.
+    if (sentMenu === json) sentMenu = before;
+  });
 }
 
 function titleNewProjectButton(): void {

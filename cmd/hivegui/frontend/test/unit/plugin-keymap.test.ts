@@ -84,3 +84,11 @@ describe('plugin chords under a keymap', () => {
     expect(out[0].shortcut).toBe('');
   });
 });
+
+describe('a hand-edited keymap.json', () => {
+  it('ignores a plugin override that is not a list', () => {
+    const bad = { mac: { 'plugin:p:o': null } } as unknown as Keymap;
+    const out = resolve([cmd('o', 'o', true)], bad, true);
+    expect(out[0].chords).toEqual(['Mod+Shift+[KeyO]']);
+  });
+});

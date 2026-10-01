@@ -8,6 +8,7 @@ import (
 	"reflect"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/wailsapp/wails/v2/pkg/menu"
 	"github.com/wailsapp/wails/v2/pkg/menu/keys"
@@ -253,7 +254,7 @@ func readMenuFixture(t *testing.T) map[string]string {
 
 // TestMenuDefaultsMatchFixture ties the hard-coded menu defaults to the
 // frontend's binding data (spec 477): the frontend asserts its derived
-// defaults equal the same fixture (test/unit/menu-accelerators.test.ts).
+// defaults equal the same fixture (frontend/test/unit/bindings.test.ts).
 // The keymap override sends only items whose accelerator differs from
 // the default, so the two sides drifting would leave a rebound command's
 // old chord live in the menu. Every item must go through accel(): one
@@ -312,20 +313,29 @@ func TestMenuAcceleratorOverride(t *testing.T) {
 	}
 }
 
-// TestMenuLockedConcurrent exercises the real build path (not the
-// no-context early return) from many goroutines, as Wails' bound calls
-// do. Run with -race.
-func TestMenuLockedConcurrent(t *testing.T) {
+// TestMenuRebuildsInstallInOrder: SetDebugTrace and SetMenuAccelerators
+// run on Wails' goroutines and both fire at boot. Whatever order they land
+// in, the menu installed LAST must be built from the final fields — a
+// stale build installed after a newer one would put the old shortcuts
+// back. Drives the real install path (via menuInstaller); run with -race.
+func TestMenuRebuildsInstallInOrder(t *testing.T) {
+	var mu sync.Mutex
+	var installed []*menu.Menu
 	a := &App{}
+	a.menuInstaller = func(m *menu.Menu) {
+		// Yield first, so a build that is not installed under the lock
+		// gets overtaken by a newer one.
+		time.Sleep(50 * time.Microsecond)
+		mu.Lock()
+		installed = append(installed, m)
+		mu.Unlock()
+	}
 	var wg sync.WaitGroup
-	for i := 0; i < 8; i++ {
+	for i := 0; i < 16; i++ {
 		wg.Add(2)
 		go func(i int) {
 			defer wg.Done()
-			a.SetMenuAccelerators(map[string]string{"new-session": "cmdorctrl+y"})
-			a.menuMu.Lock()
-			_ = a.menuLocked()
-			a.menuMu.Unlock()
+			a.SetMenuAccelerators(map[string]string{"new-session": "cmdorctrl+" + string(rune('a'+i))})
 		}(i)
 		go func(i int) {
 			defer wg.Done()
@@ -333,7 +343,19 @@ func TestMenuLockedConcurrent(t *testing.T) {
 		}(i)
 	}
 	wg.Wait()
-	if a.menuAccel["new-session"] != "cmdorctrl+y" {
-		t.Fatal("override lost")
+	if len(installed) != 32 {
+		t.Fatalf("installed %d menus, want 32", len(installed))
+	}
+	last := installed[len(installed)-1]
+	want := a.menuAccel["new-session"]
+	if got := accelString(findItem(last.Items, "New Session").Accelerator); got != want {
+		t.Fatalf("last installed menu has New Session = %q, want the final %q", got, want)
+	}
+	wantTrace := "Turn Debug Trace On (Reloads)"
+	if a.debugTrace {
+		wantTrace = "Turn Debug Trace Off (Reloads)"
+	}
+	if findItem(last.Items, wantTrace) == nil {
+		t.Fatalf("last installed menu does not reflect the final debugTrace=%v", a.debugTrace)
 	}
 }

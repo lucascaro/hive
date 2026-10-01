@@ -23,8 +23,8 @@ import (
 // macOS shows only one accelerator per item; a command's other chords,
 // and every non-⌘ chord, reach the webview as keydowns instead.
 //
-// The caller holds a.menuMu, or builds before Wails starts; this never
-// takes the lock.
+// The caller holds a.menuMu (App.rebuildMenu), or builds before Wails
+// starts; this never takes the lock.
 func buildAppMenu(a *App) *menu.Menu {
 	return buildAppMenuRecorded(a, nil)
 }

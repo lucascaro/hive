@@ -78,9 +78,9 @@ type App struct {
 	// menuMu guards the two fields the native menu is built from. Wails
 	// runs every bound call on its own goroutine (not the main thread), and
 	// SetDebugTrace and SetMenuAccelerators both fire at boot, so each one
-	// writes its field and rebuilds the menu under this lock. buildAppMenu
-	// itself never takes it: callers hold it (menuLocked), or build before
-	// Wails starts (window_options.go), or are tests.
+	// writes its field and rebuilds and installs the menu under this lock
+	// (rebuildMenu). buildAppMenu itself never takes it: callers hold it, or
+	// build before Wails starts (window_options.go), or are tests.
 	menuMu sync.Mutex
 
 	// debugTrace mirrors the frontend's `hive.debug` localStorage flag so
@@ -93,6 +93,9 @@ type App struct {
 	// map keeps the default buildAppMenu hard-codes. Written only by
 	// SetMenuAccelerators. Guarded by menuMu.
 	menuAccel map[string]string
+
+	// menuInstaller replaces the Wails install in tests. Nil in production.
+	menuInstaller func(*menu.Menu)
 }
 
 // SetDebugTrace records whether the frontend's scroll/replay tracer is
@@ -105,11 +108,7 @@ type App struct {
 // tracer is deliberately invisible when armed, so the menu is the only
 // indicator there is.
 func (a *App) SetDebugTrace(on bool) {
-	a.menuMu.Lock()
-	a.debugTrace = on
-	m := a.menuLocked()
-	a.menuMu.Unlock()
-	a.applyMenu(m)
+	a.rebuildMenu(func() { a.debugTrace = on })
 }
 
 // SetMenuAccelerators puts the user's shortcuts on the native menu (spec
@@ -123,23 +122,31 @@ func (a *App) SetMenuAccelerators(accel map[string]string) {
 	for k, v := range accel {
 		cp[k] = v
 	}
+	a.rebuildMenu(func() { a.menuAccel = cp })
+}
+
+// rebuildMenu applies a change to the menu's fields, then builds and
+// installs the menu, all under menuMu: two concurrent rebuilds must not
+// install in the opposite order to the one they built in, or a stale menu
+// wins. Holding the lock through the install cannot deadlock — Wails
+// installs with dispatch_async onto the main queue (WailsContext.h
+// ON_MAIN_THREAD), so it never waits on the main thread, and nothing on
+// the main thread takes menuMu.
+func (a *App) rebuildMenu(change func()) {
 	a.menuMu.Lock()
-	a.menuAccel = cp
-	m := a.menuLocked()
-	a.menuMu.Unlock()
-	a.applyMenu(m)
+	defer a.menuMu.Unlock()
+	change()
+	a.installMenu(buildAppMenu(a))
 }
 
-// menuLocked builds the menu from the current fields. The caller holds
-// menuMu. Nil when the platform has no native menu (menu_other.go).
-func (a *App) menuLocked() *menu.Menu {
-	return buildAppMenu(a)
-}
-
-// applyMenu installs a built menu. A no-op before startup (no Wails
-// context yet: the initial menu comes from window_options.go) and on
-// platforms without a menu.
-func (a *App) applyMenu(m *menu.Menu) {
+// installMenu hands a built menu to Wails. A no-op before startup (no
+// Wails context yet: the initial menu comes from window_options.go) and on
+// platforms without a menu. Tests replace it through menuInstaller.
+func (a *App) installMenu(m *menu.Menu) {
+	if a.menuInstaller != nil {
+		a.menuInstaller(m)
+		return
+	}
 	if a.ctx == nil || m == nil {
 		return
 	}

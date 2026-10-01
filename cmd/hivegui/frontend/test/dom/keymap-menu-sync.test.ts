@@ -73,6 +73,24 @@ describe('native menu', () => {
   });
 });
 
+describe('a menu update Go rejects', () => {
+  it('is sent again on the next change instead of being lost', async () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    bridge.SetMenuAccelerators.mockRejectedValueOnce(new Error('no menu'));
+    setKeymap({ mac: { 'new-session': ['Mod+Y'] } });
+    await Promise.resolve();
+    await Promise.resolve();
+    // Same items again: had the failure been recorded as sent, this would
+    // be skipped and the menu would keep the old shortcut.
+    setKeymap({ mac: { 'new-session': ['Mod+Y'] } });
+    expect(bridge.SetMenuAccelerators).toHaveBeenCalledTimes(2);
+    expect(bridge.SetMenuAccelerators).toHaveBeenLastCalledWith({
+      'new-session': 'cmdorctrl+y',
+    });
+    warn.mockRestore();
+  });
+});
+
 describe('other surfaces', () => {
   it('re-derives the status bar hints and the new-project title', () => {
     expect(title()).toBe('New project (⌘N)');

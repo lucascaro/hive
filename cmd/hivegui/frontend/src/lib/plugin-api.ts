@@ -133,7 +133,10 @@ export function resolveCommands(
       if (command.keys && own === null) {
         warn(`plugin ${p.id}: command ${command.id} has an unbindable key`);
       }
-      const wanted = id in overrides ? [...overrides[id]] : own ? [own] : [];
+      // keymap.json can be hand-edited: an override that is not a list
+      // is ignored, like a core one (lib/bindings.ts).
+      const o = overrides[id];
+      const wanted = Array.isArray(o) ? [...o] : own ? [own] : [];
       const chords: string[] = [];
       for (const chord of wanted) {
         try {
