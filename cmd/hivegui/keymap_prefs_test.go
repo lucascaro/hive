@@ -64,3 +64,18 @@ func TestGetKeymapStripsBOM(t *testing.T) {
 		t.Fatalf("got %v", got)
 	}
 }
+
+// A keymap.json that exists but cannot be read must be an error, not the
+// defaults: a save after a silent fallback would overwrite the user's file.
+func TestGetKeymapUnreadableIsError(t *testing.T) {
+	dir := t.TempDir()
+	t.Setenv("HIVE_STATE_DIR", dir)
+	// A directory where the file should be: ReadFile fails with an error
+	// that is not "does not exist", on every platform and as root too.
+	if err := os.Mkdir(filepath.Join(dir, "keymap.json"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := (&App{}).GetKeymap(); err == nil {
+		t.Fatal("an unreadable keymap.json must be an error")
+	}
+}

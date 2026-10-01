@@ -7,7 +7,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 const bridge = vi.hoisted(() => ({
   GetKeymap: vi.fn(),
-  SetMenuAccelerators: vi.fn(() => Promise.resolve()),
+  SetMenuAccelerators: vi.fn((_a: Record<string, string>) => Promise.resolve()),
 }));
 vi.mock('../../src/bridge.js', () => bridge);
 vi.mock('../../src/lib/platform.js', async (orig) => ({
@@ -19,6 +19,7 @@ import { resetStore, setKeymap, appStore } from '../../src/store/store.js';
 import {
   initKeymapSync,
   loadKeymap,
+  menuQueueSettledForTest,
   resetKeymapSyncForTest,
 } from '../../src/app/keymap-sync.js';
 
@@ -46,22 +47,26 @@ describe('native menu', () => {
     bridge.GetKeymap.mockResolvedValue({});
     await loadKeymap();
     setKeymap({ other: { 'new-session': ['Mod+Y'] } }); // not the mac half
+    await menuQueueSettledForTest();
     expect(bridge.SetMenuAccelerators).not.toHaveBeenCalled();
   });
   it('gets one call per change to the items, with only those items', async () => {
     bridge.GetKeymap.mockResolvedValue({ mac: { 'new-session': ['Mod+Y'] } });
     await loadKeymap();
+    await menuQueueSettledForTest();
     expect(bridge.SetMenuAccelerators).toHaveBeenCalledTimes(1);
     expect(bridge.SetMenuAccelerators).toHaveBeenLastCalledWith({
       'new-session': 'cmdorctrl+y',
     });
     // A new object with the same items: nothing to rebuild.
     setKeymap({ mac: { 'new-session': ['Mod+Y'] } });
+    await menuQueueSettledForTest();
     expect(bridge.SetMenuAccelerators).toHaveBeenCalledTimes(1);
   });
-  it('a reset after overrides restores every default with {}', () => {
+  it('a reset after overrides restores every default with {}', async () => {
     setKeymap({ mac: { 'new-session': ['Mod+Y'] } });
     setKeymap({});
+    await menuQueueSettledForTest();
     expect(bridge.SetMenuAccelerators).toHaveBeenCalledTimes(2);
     expect(bridge.SetMenuAccelerators).toHaveBeenLastCalledWith({});
   });
@@ -78,15 +83,61 @@ describe('a menu update Go rejects', () => {
     const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
     bridge.SetMenuAccelerators.mockRejectedValueOnce(new Error('no menu'));
     setKeymap({ mac: { 'new-session': ['Mod+Y'] } });
-    await Promise.resolve();
-    await Promise.resolve();
+    await menuQueueSettledForTest();
     // Same items again: had the failure been recorded as sent, this would
     // be skipped and the menu would keep the old shortcut.
     setKeymap({ mac: { 'new-session': ['Mod+Y'] } });
+    await menuQueueSettledForTest();
     expect(bridge.SetMenuAccelerators).toHaveBeenCalledTimes(2);
     expect(bridge.SetMenuAccelerators).toHaveBeenLastCalledWith({
       'new-session': 'cmdorctrl+y',
     });
+    warn.mockRestore();
+  });
+});
+
+describe('updates in flight', () => {
+  it('reach Go one at a time, in the order they were made', async () => {
+    const order: string[] = [];
+    let release: () => void = () => {};
+    bridge.SetMenuAccelerators.mockImplementationOnce(
+      (a: Record<string, string>) =>
+        new Promise<void>((r) => {
+          release = () => {
+            order.push(JSON.stringify(a));
+            r();
+          };
+        }),
+    );
+    bridge.SetMenuAccelerators.mockImplementationOnce(
+      (a: Record<string, string>) => {
+        order.push(JSON.stringify(a));
+        return Promise.resolve();
+      },
+    );
+    setKeymap({ mac: { 'new-session': ['Mod+Y'] } });
+    setKeymap({ mac: { 'new-session': ['Mod+U'] } });
+    await Promise.resolve();
+    // The second has not been sent while the first is still in flight.
+    expect(bridge.SetMenuAccelerators).toHaveBeenCalledTimes(1);
+    release();
+    await menuQueueSettledForTest();
+    expect(order).toEqual([
+      '{"new-session":"cmdorctrl+y"}',
+      '{"new-session":"cmdorctrl+u"}',
+    ]);
+  });
+  it('an older failure does not undo a newer send', async () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    bridge.SetMenuAccelerators.mockRejectedValueOnce(new Error('no menu'));
+    setKeymap({ mac: { 'new-session': ['Mod+Y'] } });
+    setKeymap({ mac: { 'new-session': ['Mod+U'] } });
+    await menuQueueSettledForTest();
+    // ⌘U went through after ⌘Y failed, so ⌘U is what Go has: the same
+    // keymap again sends nothing.
+    setKeymap({ mac: { 'new-session': ['Mod+U'] } });
+    await menuQueueSettledForTest();
+    expect(bridge.SetMenuAccelerators).toHaveBeenCalledTimes(2);
     warn.mockRestore();
   });
 });

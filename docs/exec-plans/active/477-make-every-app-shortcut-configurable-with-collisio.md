@@ -238,3 +238,8 @@ Would fail on a wrong implementation: the v0-fixture parity tests fail on any la
 - **2026-10-01** — Phase 1 implemented; PR #487 opened. All layers green.
 
 ## Open questions
+
+## PR convergence ledger
+
+- **2026-10-01 iter 1** — verdict: COMMENT; mergeable: MERGEABLE; findings_hash: 0276aff780a0b7807f05c749e0716c603c3d57f6d088c91ba0a8a7fbac1589dd; threads_open: 0; action: escalated:risky-fix-needs-human-decision; head_sha: d4429f7.
+- **2026-10-01 iter 2** — verdict: APPROVE; mergeable: MERGEABLE; findings_hash: empty; threads_open: 0; action: stop; head_sha: c3055c8.

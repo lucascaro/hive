@@ -26,6 +26,9 @@ export interface KeymapSyncDeps {
 // The last overrides sent to Go, as JSON. Null until the first send: with
 // no overrides there is nothing to tell a menu built from the defaults.
 let sentMenu: string | null = null;
+// Sends go one at a time, in order: Go installs whatever arrives last, so
+// two in flight must not land newest-first.
+let queue: Promise<unknown> = Promise.resolve();
 
 function pushMenu(keymap: Keymap, ids: readonly string[]): void {
   if (!isMac) return; // no native menu elsewhere (menu_other.go)
@@ -34,12 +37,14 @@ function pushMenu(keymap: Keymap, ids: readonly string[]): void {
   if (json === (sentMenu ?? '{}')) return;
   const before = sentMenu;
   sentMenu = json;
-  SetMenuAccelerators(overrides).catch((e: unknown) => {
-    console.warn('updating the menu shortcuts failed', e);
-    // Go never took it, so the next keymap change must send again. Only
-    // if nothing newer was sent meanwhile: that one supersedes this.
-    if (sentMenu === json) sentMenu = before;
-  });
+  queue = queue
+    .then(() => SetMenuAccelerators(overrides))
+    .catch((e: unknown) => {
+      console.warn('updating the menu shortcuts failed', e);
+      // Go never took it, so the next keymap change must send again. Only
+      // if nothing newer was sent meanwhile: that one supersedes this.
+      if (sentMenu === json) sentMenu = before;
+    });
 }
 
 function titleNewProjectButton(): void {
@@ -85,4 +90,10 @@ export function resetKeymapSyncForTest(): void {
   unsubscribe?.();
   unsubscribe = null;
   sentMenu = null;
+  queue = Promise.resolve();
+}
+
+/** Test-only: resolves once every queued menu update has settled. */
+export function menuQueueSettledForTest(): Promise<unknown> {
+  return queue;
 }
