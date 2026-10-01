@@ -365,5 +365,6 @@ cd ../../.. && CI=1 scripts/test.sh unit dom e2e && (cd cmd/hivegui/frontend && 
 ## PR convergence ledger
 
 - **2026-09-30 iter 1** — verdict: COMMENT; mergeable: MERGEABLE; findings_hash: 0b948d6869166e46d0daacd83c6898b6854a56655c5a62784eb0a82d520d52d2; threads_open: 1; action: autofix+push; head_sha: 7ec85a85. The thread-count disagreement was a race: CodeRabbit opened a thread on the pushed commit after autofix ran, not an autofix miss. It is handled in iter 2.
+- **2026-09-30 iter 2** — verdict: COMMENT; mergeable: MERGEABLE; findings_hash: 973f6037a32a2bb1912c16d98c71921bebe162fceaf2b04cdd34fc4031e12dcf; threads_open: 0; action: autofix+push; head_sha: ba7b914e.
 
 ## Open questions
