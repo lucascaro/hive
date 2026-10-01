@@ -43,12 +43,27 @@ afterEach(() => resetKeymapSyncForTest());
 const title = () => document.getElementById('new-project-btn')?.title;
 
 describe('native menu', () => {
-  it('is never told anything while the keymap changes no item', async () => {
+  it('is reset to the defaults once per page load, even with no keymap', async () => {
+    // Go outlives a webview reload: the menu may still hold an earlier
+    // page's overrides, so the first load always tells it.
     bridge.GetKeymap.mockResolvedValue({});
     await loadKeymap();
-    setKeymap({ other: { 'new-session': ['Mod+Y'] } }); // not the mac half
     await menuQueueSettledForTest();
-    expect(bridge.SetMenuAccelerators).not.toHaveBeenCalled();
+    expect(bridge.SetMenuAccelerators).toHaveBeenCalledTimes(1);
+    expect(bridge.SetMenuAccelerators).toHaveBeenLastCalledWith({});
+    // ...and only once: later changes that move no item send nothing.
+    setKeymap({ other: { 'new-session': ['Mod+Y'] } }); // not the mac half
+    await loadKeymap();
+    await menuQueueSettledForTest();
+    expect(bridge.SetMenuAccelerators).toHaveBeenCalledTimes(1);
+  });
+  it('is reset even when keymap.json cannot be read', async () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    bridge.GetKeymap.mockRejectedValue(new Error('parse keymap.json'));
+    await loadKeymap();
+    await menuQueueSettledForTest();
+    expect(bridge.SetMenuAccelerators).toHaveBeenLastCalledWith({});
+    warn.mockRestore();
   });
   it('gets one call per change to the items, with only those items', async () => {
     bridge.GetKeymap.mockResolvedValue({ mac: { 'new-session': ['Mod+Y'] } });

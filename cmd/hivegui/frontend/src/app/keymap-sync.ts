@@ -23,18 +23,19 @@ export interface KeymapSyncDeps {
   menuCommands: readonly string[];
 }
 
-// The last overrides sent to Go, as JSON. Null until the first send: with
-// no overrides there is nothing to tell a menu built from the defaults.
+// The last overrides sent to Go, as JSON. Null until the first send.
 let sentMenu: string | null = null;
+// The menu commands initKeymapSync was given.
+let menuIds: readonly string[] = [];
 // Sends go one at a time, in order: Go installs whatever arrives last, so
 // two in flight must not land newest-first.
 let queue: Promise<unknown> = Promise.resolve();
 
-function pushMenu(keymap: Keymap, ids: readonly string[]): void {
+function pushMenu(keymap: Keymap, ids: readonly string[], force = false): void {
   if (!isMac) return; // no native menu elsewhere (menu_other.go)
   const overrides = menuAcceleratorOverrides(ids, keymap);
   const json = JSON.stringify(overrides);
-  if (json === (sentMenu ?? '{}')) return;
+  if (!force && json === (sentMenu ?? '{}')) return;
   const before = sentMenu;
   sentMenu = json;
   queue = queue
@@ -60,6 +61,7 @@ let unsubscribe: (() => void) | null = null;
  * one to them. Call once at boot, before loadKeymap. */
 export function initKeymapSync(deps: KeymapSyncDeps): void {
   unsubscribe?.();
+  menuIds = deps.menuCommands;
   titleNewProjectButton();
   unsubscribe = subscribeKeymap((keymap) => {
     pushMenu(keymap, deps.menuCommands);
@@ -71,18 +73,22 @@ export function initKeymapSync(deps: KeymapSyncDeps): void {
 /** Reads keymap.json into the store. A missing file is the empty keymap;
  * a failure leaves the defaults in place — the app must start. The store
  * is only written when the keymap actually differs, so a re-read of an
- * unchanged file rebuilds nothing. */
+ * unchanged file rebuilds nothing.
+ *
+ * The first load of a page also tells Go the menu, whatever it read: Go
+ * outlives a webview reload (Debug › trace toggle), so the menu may still
+ * carry overrides an earlier page sent while this one starts from the
+ * defaults. One rebuild per page load buys a menu that always matches the
+ * keys. */
 export async function loadKeymap(): Promise<void> {
-  let next: Keymap;
   try {
-    next = ((await GetKeymap()) ?? {}) as Keymap;
+    const next = ((await GetKeymap()) ?? {}) as Keymap;
+    if (JSON.stringify(next) !== JSON.stringify(appStore.getState().keymap))
+      setKeymap(next);
   } catch (e) {
     console.warn('loading keymap.json failed; using the default shortcuts', e);
-    return;
   }
-  if (JSON.stringify(next) === JSON.stringify(appStore.getState().keymap))
-    return;
-  setKeymap(next);
+  if (sentMenu === null) pushMenu(appStore.getState().keymap, menuIds, true);
 }
 
 /** Test-only. */
@@ -90,6 +96,7 @@ export function resetKeymapSyncForTest(): void {
   unsubscribe?.();
   unsubscribe = null;
   sentMenu = null;
+  menuIds = [];
   queue = Promise.resolve();
 }
 
