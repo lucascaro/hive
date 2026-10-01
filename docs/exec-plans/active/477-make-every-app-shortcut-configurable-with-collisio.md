@@ -276,6 +276,7 @@ Would fail on a wrong implementation: the v0-fixture parity tests fail on any la
 - **2026-10-01 iter 3** — verdict: APPROVE; mergeable: MERGEABLE; findings_hash: empty; threads_open: 0; action: stop; head_sha: 3775bc2.
 - **2026-10-01 iter 4** — verdict: APPROVE; mergeable: MERGEABLE; findings_hash: empty; threads_open: 0; action: stop; head_sha: b7a97a1.
 - **2026-10-01 iter 5** — verdict: APPROVE; mergeable: MERGEABLE; findings_hash: empty; threads_open: 0; action: stop; head_sha: d24b2c0.
+- **2026-10-01 iter 6** — verdict: REQUEST_CHANGES; mergeable: MERGEABLE; findings_hash: 7dd95b51c1c6c61add98e00becbbf0ae3fdfa0dc0f7f88730742afcae0c6c183; threads_open: 0; action: escalated:risky-fix-needs-human-decision; head_sha: 5a8cd2d (phase 2, PR #488).
 
 ## Gate verdict
 
