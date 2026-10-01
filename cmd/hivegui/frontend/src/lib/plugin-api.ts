@@ -85,16 +85,17 @@ export function chordLabel(keys: PluginKeys, isMac: boolean): string | null {
   return mod(isMac, keys.key.toUpperCase(), { shift: !!keys.shift });
 }
 
-/** Whether a keydown (already known to carry ⌘ / Ctrl) is this chord.
- * Matches on e.code so a layout or Shift never changes the answer. */
-export function chordMatches(
-  keys: PluginKeys,
-  e: { code: string; shiftKey: boolean; altKey: boolean },
-): boolean {
-  if (!keys || !KEY_RE.test(keys.key) || e.altKey) return false;
-  if (!!keys.shift !== e.shiftKey) return false;
+/** The chord string (lib/chord.ts) a plugin's keys bind, or null when
+ * they are not bindable. Matched on e.code so a layout never changes the
+ * answer; exact on Shift and Alt, and `Mod` rejects the other platform
+ * modifier, like every core chord. */
+export function pluginChord(keys: PluginKeys): string | null {
+  if (!keys || typeof keys.key !== 'string' || !KEY_RE.test(keys.key)) {
+    return null;
+  }
   const k = keys.key.toUpperCase();
-  return e.code === (/[0-9]/.test(k) ? `Digit${k}` : `Key${k}`);
+  const code = /[0-9]/.test(k) ? `Digit${k}` : `Key${k}`;
+  return `Mod+${keys.shift ? 'Shift+' : ''}[${code}]`;
 }
 
 export interface ResolvedCommand {

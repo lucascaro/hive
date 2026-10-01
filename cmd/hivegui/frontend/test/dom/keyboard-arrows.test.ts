@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 //
-// ⌘-arrow routing (src/app/keyboard.ts handleArrow).
+// ⌘-arrow routing (src/app/actions.ts handleArrow).
 //
 // Three things are pinned here, all of which shipped broken:
 //   • ⌘←/⌘→ (and ⇧⌘←/⇧⌘→) are start/end-of-line in the terminal, so in
@@ -211,7 +211,7 @@ describe('cmd+Enter focuses the active session from grid', () => {
   // Reachable from the command palette, which lists every command in
   // every view — so the guard lives in the action, not just the binding.
   it('focusActiveSession is a no-op in single view', async () => {
-    const { focusActiveSession } = await import('../../src/app/keyboard.js');
+    const { focusActiveSession } = await import('../../src/app/actions.js');
     state.view = 'single';
     focusActiveSession();
     expect(setView).not.toHaveBeenCalled();

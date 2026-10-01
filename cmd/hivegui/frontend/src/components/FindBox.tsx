@@ -26,7 +26,7 @@ import {
 } from '../lib/find.js';
 import type { FindState } from '../store/store.js';
 import { Icon } from './Icon.js';
-import { findKey } from '../lib/keymap.js';
+import { matchBinding, scopeById } from '../app/key-scopes.js';
 import { isMac } from '../lib/platform.js';
 
 // The find chord pressed while the box already has focus selects the
@@ -46,7 +46,9 @@ function isFindChord(e: {
     const f = e.code === 'KeyF' || e.key === 'f' || e.key === 'F';
     return f && e.metaKey && !e.ctrlKey && !e.altKey;
   }
-  return findKey(e, false);
+  return (
+    matchBinding(scopeById('app'), e, false)?.command === 'find-in-session'
+  );
 }
 
 // The bar is rendered FIRST in both modes and styled identically, so it

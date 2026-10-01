@@ -110,7 +110,7 @@ function CommandPaletteBody({
   // closes over the current filtered list and activeIndex rather than a
   // stale one from mount.
   //
-  // Escape is NOT here. It belongs to keyboard.ts's ladder, which reads
+  // Escape is NOT here. It belongs to the palette's scope in KEY_SCOPES (app/key-scopes.ts), which reads
   // the store rather than the focus location: this listener sits on
   // #command-palette and only fires for keys typed inside it, so once
   // anything moves focus out of the search box the palette would have no

@@ -1,16 +1,18 @@
 // ---------- command palette: the non-React half ----------
 //
-// The palette renders from components/modals/CommandPalette.tsx
-// (Phase 4). What stays here is the open/close pair keyboard.ts imports,
-// and the command table itself: main.tsx builds it (the actions live
-// there) and hands it over at init, so it has to be reachable from
-// outside React.
+// The palette renders from components/modals/CommandPalette.tsx. What
+// stays here is the open/close pair the command bus runs, and the row
+// list: every registered command with a title (app/command-registry.ts),
+// core first and plugins after, so the palette runs exactly what the
+// matching key and menu item run.
 
 import { flushSync } from 'react-dom';
+import { isMac } from '../../lib/platform.js';
+import { paletteShortcuts } from '../../lib/shortcuts.js';
 import { closeModal, isModalOpen, openModal } from '../../store/store.js';
-import { pluginCommands, runPluginCommand } from '../plugin-host.js';
+import { listCommands, runCommand } from '../command-registry.js';
 
-// One row of the command table main.tsx builds and hands over.
+// One row the palette renders.
 export interface PaletteCommand {
   id: string;
   name: string;
@@ -25,23 +27,27 @@ export interface CommandPaletteDeps {
 let deps: CommandPaletteDeps = {
   focusActiveTerm: () => {},
 };
-let commandTable: PaletteCommand[] = [];
 
-// paletteCommands is what the component renders. A getter rather than an
-// export of the array itself: initCommandPalette runs after the module
-// graph is evaluated, so a bound reference would be the empty seed.
+// Core labels come from lib/shortcuts.ts by command id, so the palette
+// and the ⌘/ overlay cannot drift from each other; plugin commands bring
+// their own.
+const CORE_KEYS = paletteShortcuts({ isMac });
+
 export function paletteCommands(): PaletteCommand[] {
-  const plugins = pluginCommands();
-  if (plugins.length === 0) return commandTable;
-  return [
-    ...commandTable,
-    ...plugins.map((r) => ({
-      id: `plugin:${r.pluginId}:${r.command.id}`,
-      name: r.command.title,
-      shortcut: r.shortcut,
-      run: () => runPluginCommand(r),
-    })),
-  ];
+  return listCommands().flatMap((c) =>
+    c.title === undefined
+      ? []
+      : [
+          {
+            id: c.id,
+            name: c.title,
+            shortcut: c.shortcut ?? CORE_KEYS[c.id] ?? '',
+            run: () => {
+              runCommand(c.id);
+            },
+          },
+        ],
+  );
 }
 
 export function openCommandPalette() {
@@ -62,10 +68,6 @@ export function closeCommandPalette() {
   deps.focusActiveTerm();
 }
 
-export function initCommandPalette({
-  commands,
-  ...injected
-}: CommandPaletteDeps & { commands: PaletteCommand[] }) {
+export function initCommandPalette(injected: CommandPaletteDeps) {
   deps = injected;
-  commandTable = commands;
 }

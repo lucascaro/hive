@@ -1,8 +1,9 @@
-// Pure key-decision helpers for the terminal's custom key handler.
+// Pure key-decision helpers for the terminal's custom key handler: the
+// byte sequences written to the PTY (session-term.ts). Unit-tested with
+// fake event objects in test/unit/keymap.test.ts.
 //
-// Extracted from main.js so the decision logic can be unit-tested with
-// fake event objects (see test/unit/keymap.test.ts), mirroring the
-// platform.ts idiom. main.tsx keeps only the imperative wiring.
+// App shortcuts are not here: their chords live in app/key-scopes.ts
+// (grammar in lib/chord.ts) and their actions in app/commands.ts.
 
 // Byte written to the PTY to insert a newline in the agent's input
 // without submitting. This is Ctrl+J (LF, 0x0a) — the one newline
@@ -25,7 +26,6 @@ export const NEWLINE_SEQ = '\x0a';
 // window handler for grid views ONLY (focus the active session), so in
 // single view it is still unclaimed and reaches xterm.
 // Structural, not `KeyboardEvent`: the unit tests build plain fakes.
-// `code` is optional — only navHistoryKey's layout fallback reads it.
 export interface KeyEventLike {
   key: string;
   code?: string;
@@ -119,108 +119,4 @@ export function isShiftEnter(e: KeyEventLike): boolean {
   return (
     e.shiftKey && !e.metaKey && !e.ctrlKey && !e.altKey && e.key === 'Enter'
   );
-}
-
-// isHelpOverlayKey reports whether a keydown opens (or closes) the
-// keyboard-shortcuts panel. Both ⌘/ and ⌘? are accepted: "?" is Shift+/
-// on a US layout, so e.key is already "?" when shift is held and no
-// separate shiftKey check is needed — the same shape as the '=' / '+'
-// zoom pair in app/keyboard.ts.
-//
-// The '?' branch only ever fires on Windows/Linux. On macOS the Help
-// menu item's ⌘/ accelerator already matches both chords (AppKit matches
-// key equivalents on the unshifted character), so the menu consumes them
-// before the webview sees a keydown — see menu_darwin.go. Non-mac has no
-// native menu at all, which is where this predicate earns its keep.
-//
-// The Cmd/Ctrl modifier is required: a bare "?" is an ordinary character
-// that must reach the terminal, never the overlay. Callers that already
-// gate on cmdOrCtrl() still get the right answer, since this re-checks.
-export function isHelpOverlayKey(e: KeyEventLike): boolean {
-  if (!(e.metaKey || e.ctrlKey)) return false;
-  return e.key === '/' || e.key === '?';
-}
-
-// navHistoryKey reports whether a keydown is session back/forward
-// navigation. Returns 'back' | 'forward' | null.
-//
-//   macOS         Ctrl+-        / Ctrl+Shift+-
-//   Win / Linux   Ctrl+Alt+-    / Ctrl+Alt+Shift+-
-//
-// The split mirrors VS Code, and for the same reason: on Windows and
-// Linux the app's primary modifier is Ctrl (see lib/platform.ts
-// cmdOrCtrl), so Ctrl+- and Ctrl+= are ALREADY zoom out / in in
-// app/keyboard.ts. Requiring Alt there keeps zoom intact; the
-// !e.altKey branch on mac keeps ⌥⌃- free for the terminal.
-//
-// Callers must dispatch this BEFORE the cmdOrCtrl() gate in
-// app/keyboard.ts — on macOS that gate rejects plain Ctrl outright.
-//
-// Key matching accepts '-' and '_' (shifted '-' on a US layout, the
-// same shape as the '=' / '+' zoom pair) and falls back to the
-// physical e.code === 'Minus' for layouts where neither is produced.
-//
-// Known limitation on Windows/Linux: AltGr reports as ctrlKey+altKey,
-// so on a layout where AltGr+'-' composes a character this swallows it.
-// Deliberately NOT guarded with e.getModifierState('AltGraph') — that
-// flag is set inconsistently for a manually-held Ctrl+Alt across X11
-// setups, and breaking the binding outright on Linux is worse than the
-// narrow collision. If it is ever reported, the AltGraph check is the
-// fix. (VS Code carries the same tradeoff on the same chord.)
-export function navHistoryKey(
-  e: KeyEventLike,
-  isMac: boolean,
-): 'back' | 'forward' | null {
-  if (e.metaKey || !e.ctrlKey) return null;
-  if (isMac ? e.altKey : !e.altKey) return null;
-  if (!(e.key === '-' || e.key === '_' || e.code === 'Minus')) return null;
-  return e.shiftKey ? 'forward' : 'back';
-}
-
-// activityKey maps the agent-activity chords (spec 416):
-//
-//   macOS          ⌘J   'toggle'  panel in single view, activity grid in a grid
-//                  ⌘⇧J  'grid'    the activity grid from any view
-//   elsewhere      Ctrl+Shift+J / Ctrl+Alt+Shift+J
-//
-// Not plain Ctrl+J off macOS: that is byte 0x0a, the newline key Claude
-// Code documents for every terminal, and Hive's own Shift+Enter newline
-// (spec 217) depends on agents honouring it. Taking it would cost the
-// main agent its multiline input.
-//
-// Dispatched BEFORE the cmdOrCtrl() gate, like navHistoryKey.
-export function activityKey(
-  e: KeyEventLike,
-  isMac: boolean,
-): 'toggle' | 'grid' | null {
-  if (!(e.code === 'KeyJ' || e.key === 'j' || e.key === 'J')) return null;
-  if (isMac) {
-    if (!e.metaKey || e.ctrlKey || e.altKey) return null;
-    return e.shiftKey ? 'grid' : 'toggle';
-  }
-  if (!e.ctrlKey || e.metaKey || !e.shiftKey) return null;
-  return e.altKey ? 'grid' : 'toggle';
-}
-
-// findKey maps the in-session find chord (spec 431):
-//
-//   macOS          ⌘F  — but see below: it arrives as a menu event
-//   elsewhere      Ctrl+Shift+F
-//
-// Not plain Ctrl+F off macOS. xterm converts Ctrl+letter to a C0
-// control char, so Ctrl+F is 0x06 — readline's forward-char, live in
-// bash, zsh and every agent's input line. Taking it would break moving
-// the cursor right. Same reasoning as activityKey's Ctrl+Shift+J.
-//
-// On macOS this returns false for ⌘F on purpose. The native menu
-// accelerator intercepts the key before the webview (see the ⌘/ note in
-// app/keyboard.ts), so the real entry point there is the
-// `menu:find-in-session` event, and a keydown branch would be dead code
-// that only fires in tests.
-//
-// Dispatched BEFORE the cmdOrCtrl() gate, like activityKey.
-export function findKey(e: KeyEventLike, isMac: boolean): boolean {
-  if (!(e.code === 'KeyF' || e.key === 'f' || e.key === 'F')) return false;
-  if (isMac) return false;
-  return Boolean(e.ctrlKey && e.shiftKey && !e.metaKey && !e.altKey);
 }

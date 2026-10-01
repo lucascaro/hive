@@ -76,7 +76,7 @@ export function ProjectCard(p: ProjectCardProps) {
       {/* Click-to-select on the header background is a convenience, not
           the keyboard path: every control inside it is a real <button>,
           and selecting a project from the keyboard is ⌘[ / ⌘] (see
-          app/keyboard.ts). Adding a role or a key handler here would put
+          app/key-scopes.ts). Adding a role or a key handler here would put
           a second, undocumented way to do the same thing in the tab
           order. Carried over verbatim from src/ui/project-card.ts. */}
       {/* biome-ignore lint/a11y/noStaticElementInteractions: see above */}

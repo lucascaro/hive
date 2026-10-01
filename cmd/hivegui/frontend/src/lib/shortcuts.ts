@@ -2,16 +2,17 @@
 // (⌘/) renders shortcutGroups(); the command palette pulls its
 // shortcut column from paletteShortcuts() — both consume this module,
 // so the two surfaces cannot drift from each other. (They can still
-// drift from the actual handlers in main.tsx/menu.go, which is why
+// drift from the actual bindings in app/key-scopes.ts and menu_darwin.go, which is why
 // every binding change must touch this file too — see AGENTS.md.)
 //
 // The full drift surface for a GUI binding change is five files:
-//   1. the handler — app/keyboard.ts (+ lib/keymap.ts for a predicate)
+//   1. the binding — app/key-scopes.ts (chord data), naming a command in
+//      app/commands.ts
 //   2. this file — shortcutGroups() AND paletteShortcuts()
-//   3. the palette command table — main.tsx
+//   3. the command's palette title — app/commands.ts
 //   4. the native macOS menu — cmd/hivegui/menu_darwin.go (⌘ chords only;
 //      Ctrl-only chords are deliberately JS-side, see the Ctrl+` comment
-//      in app/keyboard.ts)
+//      in app/key-scopes.ts)
 //   5. the user-facing shortcut table in README.md
 //
 // UI plugins add chords at runtime (spec 471, app/plugin-host.ts). They
@@ -85,7 +86,7 @@ function ctrl(
 // Session back/forward is the one binding that is not simply
 // "cmd on mac, ctrl elsewhere" or "ctrl everywhere": it is Ctrl on
 // macOS but Ctrl+Alt on Windows/Linux, because plain Ctrl+- is
-// already zoom-out there. See lib/keymap.ts navHistoryKey.
+// already zoom-out there. See the nav-back binding in app/key-scopes.ts.
 function ctrlAlt(
   isMac: boolean,
   key: string,
@@ -99,7 +100,7 @@ function ctrlAlt(
 // Arrow-key sequences: mac glyphs read fine run together (↑↓←→);
 // word labels need separators so non-mac renders "Up/Down/Left/Right"
 // instead of the unreadable "UpDownLeftRight".
-// The agent-activity chords (lib/keymap.ts activityKey): ⌘J / ⇧⌘J on
+// The agent-activity chords (app/key-scopes.ts): ⌘J / ⇧⌘J on
 // macOS, but Ctrl+Shift+J / Ctrl+Alt+Shift+J elsewhere, because plain
 // Ctrl+J is the terminal's newline byte.
 function activityToggle(isMac: boolean): string {
@@ -111,7 +112,7 @@ function activityGrid(isMac: boolean): string {
     : ctrlAlt(false, 'J', { shift: true });
 }
 
-// The find chord (lib/keymap.ts findKey): ⌘F on macOS, but
+// The find chord (app/key-scopes.ts): ⌘F on macOS, but
 // Ctrl+Shift+F elsewhere, because plain Ctrl+F is 0x06 — readline's
 // forward-char, live in every shell and agent input line.
 function findInSession(isMac: boolean): string {

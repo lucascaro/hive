@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 //
-// Return-slot semantics for ⌘B / ⇧⌘B (src/app/keyboard.ts).
+// Return-slot semantics for ⌘B / ⇧⌘B (src/app/actions.ts).
 //
 // ⇧⌘B means "back to the work I was doing before the FIRST ⌘B", so the
 // anchor is written only when the slot is empty and released on use.
@@ -80,8 +80,8 @@ vi.mock('../../src/app/view.js', async () => {
 type View = typeof import('../../src/app/view.js');
 
 let state: typeof import('../../src/store/store.js').hiveStateView;
-let jumpToAttention: typeof import('../../src/app/keyboard.js').jumpToAttention;
-let jumpBack: typeof import('../../src/app/keyboard.js').jumpBack;
+let jumpToAttention: typeof import('../../src/app/actions.js').jumpToAttention;
+let jumpBack: typeof import('../../src/app/actions.js').jumpBack;
 // vi.mocked over a `Mock<…>` annotation: the module is vi.mock'd above,
 // so the mock signature is the real export's and can't drift from it.
 let switchTo: MockedFunction<View['switchTo']>;
@@ -102,7 +102,8 @@ beforeAll(async () => {
   const view = await import('../../src/app/view.js');
   switchTo = vi.mocked(view.switchTo);
   restoreSession = vi.mocked(view.restoreSession);
-  ({ jumpToAttention, jumpBack } = await import('../../src/app/keyboard.js'));
+  await import('../../src/app/keyboard.js');
+  ({ jumpToAttention, jumpBack } = await import('../../src/app/actions.js'));
 });
 
 // needs_attention lives on the session itself — there is no local set

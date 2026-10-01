@@ -192,15 +192,21 @@ Always apply these principles when adding or modifying UI elements in the GUI. V
 
 ## Keybindings Policy
 
-Key bindings live in the frontend keymap (`cmd/hivegui/frontend/src/lib/keymap.ts`
-and `src/app/keyboard.ts`). Every change must update all surfaces below —
+Key bindings are data in `cmd/hivegui/frontend/src/app/key-scopes.ts`: chord
+strings, grouped by the scope that owns them, with `KEY_SCOPES` as the one
+precedence list. Each binding names a command id from `src/app/commands.ts`,
+which the native menu and the command palette run too. Every change must update
+all surfaces below —
 omitting one creates drift that confuses users and other contributors.
 
 ### Required updates for any new or changed keybinding
 
-1. **Keymap** — add or update the binding in `src/lib/keymap.ts`. Use the
-   platform helpers in `src/lib/platform.ts` (⌘ on macOS, Ctrl elsewhere)
-   rather than hard-coding a modifier.
+1. **Binding + command.** Add or update the chord in the owning scope in
+   `src/app/key-scopes.ts`. Write `Mod` for ⌘ on macOS and Ctrl elsewhere, or
+   use a `{ mac, other }` pair; never hard-code a modifier. Chords match
+   exactly, so mark a modifier `?` only if the key must ignore it. The command
+   goes in `src/app/commands.ts`, with a `title` if it belongs in the palette,
+   and a `MENU_COMMANDS` entry if `menu_darwin.go` has an item for it.
 2. **Help overlay + command palette** — make sure the action appears with its
    binding in the `⌘/` keyboard-shortcuts overlay and the command palette.
 3. **README** — update the Keybinds table in `README.md`.

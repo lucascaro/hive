@@ -84,8 +84,9 @@ beforeAll(async () => {
   document.body.innerHTML =
     '<div id="terms"></div><ul id="projects"></ul><div id="status"><span id="status-text"></span><span id="status-hint"></span></div>';
   store = await import('../../src/store/store.js');
-  const kb = await import('../../src/app/keyboard.js');
-  kb.initKeyboard({
+  await import('../../src/app/keyboard.js');
+  const kb = await import('../../src/app/actions.js');
+  kb.initActions({
     withoutNavHistory: (fn: () => void) => fn(),
     bumpFontSize: () => {},
     resetFontSize: () => {},

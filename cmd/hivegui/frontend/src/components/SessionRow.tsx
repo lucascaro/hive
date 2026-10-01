@@ -190,7 +190,7 @@ export function SessionRow(p: SessionRowProps) {
 
   return (
     // Click-to-select on the row is a convenience, not the keyboard
-    // path: ⌘1–⌘9 and ⌘↑/⌘↓ select sessions (app/keyboard.ts) and every
+    // path: ⌘1–⌘9 and ⌘↑/⌘↓ select sessions (app/key-scopes.ts) and every
     // control in the row is a real <button>. Carried over verbatim from
     // src/ui/session-row.ts.
     // biome-ignore lint/a11y/useKeyWithClickEvents: see above

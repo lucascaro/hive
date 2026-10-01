@@ -39,7 +39,6 @@ import { releaseFocus } from '../lib/focus-trap.js';
 import { isMac } from '../lib/platform.js';
 import {
   checkContributions,
-  chordMatches,
   PLUGIN_API_VERSION,
   resolveCommands,
   type PluginContributions,
@@ -58,6 +57,7 @@ import {
   setPluginUI,
   useAppStore,
 } from '../store/store.js';
+import { registerCommandSource } from './command-registry.js';
 import type { PluginInfo, SessionInfo } from './state.js';
 
 export const IMPORT_TIMEOUT_MS = 10_000;
@@ -493,13 +493,25 @@ function core(): Set<string> {
   return coreLabels;
 }
 
+type PluginCommandState = Readonly<
+  Record<string, { status: string; contrib?: PluginContributions }>
+>;
+
+// Keydown (the plugins scope) and every runCommand lookup read this, so
+// it is memoized on the state reference: setPluginUI replaces pluginUI
+// on every change, which invalidates it, and collision warnings fire
+// once per state rather than once per keystroke.
+let pluginCommandsMemo: {
+  state: PluginCommandState;
+  out: ResolvedCommand[];
+} | null = null;
+
 /** Every active plugin's commands, chords resolved against core and
  * against each other (plugins in id order, first one wins). */
 export function pluginCommands(
-  state: Readonly<
-    Record<string, { status: string; contrib?: PluginContributions }>
-  > = appData().pluginUI,
+  state: PluginCommandState = appData().pluginUI,
 ): ResolvedCommand[] {
+  if (pluginCommandsMemo?.state === state) return pluginCommandsMemo.out;
   const plugins = Object.keys(state)
     .sort()
     .flatMap((id) => {
@@ -507,7 +519,9 @@ export function pluginCommands(
       const cmds = st.status === 'active' ? st.contrib?.commands : undefined;
       return cmds?.length ? [{ id, commands: cmds }] : [];
     });
-  return resolveCommands(plugins, core(), isMac, (m) => console.warn(m));
+  const out = resolveCommands(plugins, core(), isMac, (m) => console.warn(m));
+  pluginCommandsMemo = { state, out };
+  return out;
 }
 
 /** Runs a plugin command, failing the plugin if it throws. */
@@ -519,17 +533,21 @@ export function runPluginCommand(r: ResolvedCommand): void {
   }
 }
 
-/** keyboard.ts calls this last in its ⌘/Ctrl chain, so a core binding
- * always wins. True when a plugin command took the key. */
-export function dispatchPluginChord(e: KeyboardEvent): boolean {
-  if (Object.keys(appData().pluginUI).length === 0) return false;
-  const hit = pluginCommands().find(
-    (r) => r.bound && r.command.keys && chordMatches(r.command.keys, e),
-  );
-  if (!hit) return false;
-  runPluginCommand(hit);
-  return true;
-}
+// Plugin commands join the command bus as `plugin:<plugin>:<command>`:
+// the palette lists them after every core command, and their chords are
+// bound by the last scope in KEY_SCOPES (app/key-scopes.ts), so a core
+// binding always wins. Re-read on every lookup, so activating or failing
+// a plugin needs no re-registration.
+registerCommandSource(
+  () =>
+    pluginCommands().map((r) => ({
+      id: `plugin:${r.pluginId}:${r.command.id}`,
+      title: r.command.title,
+      shortcut: r.shortcut,
+      run: () => runPluginCommand(r),
+    })),
+  'plugins',
+);
 
 // ---------- announcing running UIs ----------
 
@@ -584,5 +602,6 @@ export function resetPluginHostForTest(): void {
   announced = null;
   assetBase = null;
   coreLabels = null;
+  pluginCommandsMemo = null;
   importer = (url) => import(/* @vite-ignore */ url);
 }

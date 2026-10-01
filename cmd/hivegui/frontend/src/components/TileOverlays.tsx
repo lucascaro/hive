@@ -57,7 +57,7 @@ export function TileOverlays({
 
 // Hidden until the underlying process exits (Alive true→false). Centered
 // card with primary "Close session" (Enter), then "Restart" (r) and
-// "Dismiss" (Escape) — keyboard.ts routes those three keys here off the
+// "Dismiss" (Escape) — the dead-overlay key scope (app/key-scopes.ts) routes those three keys here off the
 // tile's `deadOverlayShown`.
 function DeadOverlay({
   dead,

@@ -93,7 +93,8 @@ export interface SidebarProps {
 }
 
 // keyHints maps a session id to the digit ⌘n actually selects it with.
-// app/keyboard.ts resolves ⌘n against orderedSessions()[n-1], so the hint
+// The switch-N command (app/commands.ts) resolves ⌘n against
+// orderedSessions()[n-1], so the hint
 // has to be read off the same list — a per-project counter would label
 // rows with keys that jump somewhere else entirely.
 function keyHints(): Map<string, number> {
