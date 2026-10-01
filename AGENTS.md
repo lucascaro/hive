@@ -200,25 +200,37 @@ Always apply these principles when adding or modifying UI elements in the GUI. V
 
 ## Keybindings Policy
 
-Key bindings are data in `cmd/hivegui/frontend/src/app/key-scopes.ts`: chord
-strings, grouped by the scope that owns them, with `KEY_SCOPES` as the one
-precedence list. Each binding names a command id from `src/app/commands.ts`,
-which the native menu and the command palette run too. Every change must update
-all surfaces below —
-omitting one creates drift that confuses users and other contributors.
+Key bindings are data. The app's global chords are `DEFAULT_APP_BINDINGS` in
+`cmd/hivegui/frontend/src/lib/bindings.ts`; each modal's own chords live with
+its scope in `src/app/key-scopes.ts`, where `KEY_SCOPES` is the one precedence
+list. Each binding names a command id from `src/app/commands.ts`, which the
+native menu and the command palette run too.
+
+Users can override any app chord in `keymap.json` (spec 477), so **no surface
+may hard-code a key**. Every label — help overlay, palette, status-bar hints,
+inline `[key]`/`(key)` hints, tooltips — is derived from the bindings under the
+user's keymap: `shortcutLabel(id)` / `useShortcutLabel(id)` in
+`src/app/bindings.ts`, or `labelIn(keymap, id, isMac)` in a pure `lib/` module.
+A hint for a command with no key shows no key.
 
 ### Required updates for any new or changed keybinding
 
-1. **Binding + command.** Add or update the chord in the owning scope in
-   `src/app/key-scopes.ts`. Write `Mod` for ⌘ on macOS and Ctrl elsewhere, or
-   use a `{ mac, other }` pair; never hard-code a modifier. Chords match
-   exactly, so mark a modifier `?` only if the key must ignore it. The command
-   goes in `src/app/commands.ts`, with a `title` if it belongs in the palette,
-   and a `MENU_COMMANDS` entry if `menu_darwin.go` has an item for it.
-2. **Help overlay + command palette** — make sure the action appears with its
-   binding in the `⌘/` keyboard-shortcuts overlay and the command palette.
-3. **README** — update the Keybinds table in `README.md`.
-4. **Changelog** — add a `.changesets/<slug>.md` entry if the change affects
+1. **Binding + command.** Add or update the chord in `src/lib/bindings.ts`
+   (app chords) or the owning scope in `src/app/key-scopes.ts` (modal chords).
+   Write `Mod` for ⌘ on macOS and Ctrl elsewhere, or use a `{ mac, other }`
+   pair; never hard-code a modifier. Chords match exactly, so mark a modifier
+   `?` only if the key must ignore it. The command goes in
+   `src/app/commands.ts`, with a `title` if it belongs in the palette, and a
+   `MENU_COMMANDS` entry if `menu_darwin.go` has an item for it.
+2. **Native menu default** — if the command has a macOS menu item, its default
+   accelerator in `menu_darwin.go` must equal the binding's first ⌘ chord.
+   `cmd/hivegui/testdata/menu-default-accelerators.json` pins both sides (a Go
+   test and a TS test read it); update it with the change.
+3. **Help overlay** — give the command a row in its group in
+   `src/lib/shortcuts.ts` (the keys are derived; only the wording and grouping
+   are written there). The palette needs nothing beyond the command's `title`.
+4. **README** — update the Keybinds table in `README.md` (defaults only).
+5. **Changelog** — add a `.changesets/<slug>.md` entry if the change affects
    default behaviour. Never edit `CHANGELOG.md` directly: it is generated,
    and `block-generated-edits` fails any PR that touches it. See
    *Changelog — add a changeset, never edit `CHANGELOG.md`* below.

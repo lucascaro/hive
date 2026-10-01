@@ -93,42 +93,9 @@ function ctrl(
   return (shift ? 'Ctrl+Shift+' : 'Ctrl+') + k;
 }
 
-// Session back/forward is the one binding that is not simply
-// "cmd on mac, ctrl elsewhere" or "ctrl everywhere": it is Ctrl on
-// macOS but Ctrl+Alt on Windows/Linux, because plain Ctrl+- is
-// already zoom-out there. See the nav-back binding in app/key-scopes.ts.
-function ctrlAlt(
-  isMac: boolean,
-  key: string,
-  { shift = false }: ModOpts = {},
-): string {
-  const k = keyLabel(key, isMac);
-  if (isMac) return (shift ? '⌃⇧' : '⌃') + k;
-  return (shift ? 'Ctrl+Alt+Shift+' : 'Ctrl+Alt+') + k;
-}
-
 // Arrow-key sequences: mac glyphs read fine run together (↑↓←→);
 // word labels need separators so non-mac renders "Up/Down/Left/Right"
 // instead of the unreadable "UpDownLeftRight".
-// The agent-activity chords (app/key-scopes.ts): ⌘J / ⇧⌘J on
-// macOS, but Ctrl+Shift+J / Ctrl+Alt+Shift+J elsewhere, because plain
-// Ctrl+J is the terminal's newline byte.
-function activityToggle(isMac: boolean): string {
-  return mod(isMac, 'J', { shift: !isMac });
-}
-function activityGrid(isMac: boolean): string {
-  return isMac
-    ? mod(true, 'J', { shift: true })
-    : ctrlAlt(false, 'J', { shift: true });
-}
-
-// The find chord (app/key-scopes.ts): ⌘F on macOS, but
-// Ctrl+Shift+F elsewhere, because plain Ctrl+F is 0x06 — readline's
-// forward-char, live in every shell and agent input line.
-function findInSession(isMac: boolean): string {
-  return mod(isMac, 'F', { shift: !isMac });
-}
-
 function arrowSeq(isMac: boolean, ...keys: string[]): string {
   return keys.map((k) => keyLabel(k, isMac)).join(isMac ? '' : '/');
 }
@@ -180,7 +147,6 @@ export function shortcutGroups({
 function rawGroups(isMac: boolean): { title: string; items: Row[] }[] {
   const m = (key: string, opts?: ModOpts) => mod(isMac, key, opts);
   const c = (key: string, opts?: ModOpts) => ctrl(isMac, key, opts);
-  const ca = (key: string, opts?: ModOpts) => ctrlAlt(isMac, key, opts);
   const vArrows = arrowSeq(isMac, 'up', 'down');
   const hArrows = arrowSeq(isMac, 'left', 'right');
   const groups: { title: string; items: Row[] }[] = [

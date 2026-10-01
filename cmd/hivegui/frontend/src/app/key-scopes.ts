@@ -1,19 +1,21 @@
 // ---------- keyboard scopes: who owns a key ----------
 //
-// Every key binding in the app, grouped by the scope that owns it, and
-// KEY_SCOPES — the ONE ordered list that decides which scope sees a key
-// first (spec 478). app/keyboard.ts walks this list; nothing else decides
+// Every key scope in the app with the bindings it owns, and KEY_SCOPES —
+// the ONE ordered list that decides which scope sees a key first (spec
+// 478). app/keyboard.ts walks this list; nothing else decides
 // precedence. The order encodes shipped bug fixes (a question about
 // deleting a worktree must beat the worktree browser underneath it, a
 // rename must beat the browser it is in, …), so move a scope only with a
-// test that shows why. test/e2e/every-shortcut.spec.ts presses every chord
-// here in the running app; a new scope needs a fixture there.
+// test that shows why.
 //
 // A binding names a command by id (app/commands.ts registers them); this
 // module never imports the commands themselves, which keeps it free of
 // the action graph. Bindings are chord strings (lib/chord.ts): exact by
 // default, with `Shift?` / `Any+` wherever a key deliberately ignores a
-// modifier.
+// modifier. The app's global chords are data in lib/bindings.ts, read
+// through the user's keymap (spec 477) by app/bindings.ts; a modal's
+// chord that mirrors its opener (⌘E closes the worktree browser) follows
+// that keymap too.
 //
 // Modal precedence reads the store, never DOM classes.
 

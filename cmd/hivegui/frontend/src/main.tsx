@@ -36,7 +36,6 @@ import {
   LogFrontend,
 } from './bridge.js';
 import { classifyBeat, jsHeapMB } from './lib/freeze-heartbeat.js';
-import { isMac } from './lib/platform.js';
 import * as store from './store/store.js';
 import { termsMap } from './store/terms.js';
 
@@ -81,6 +80,7 @@ import {
   refreshModeHint,
 } from './app/view.js';
 import { initKeymapSync, loadKeymap } from './app/keymap-sync.js';
+import { MENU_COMMANDS } from './app/commands.js';
 import { initActions } from './app/actions.js';
 import './app/keyboard.js';
 import { ensureTerm, bumpFontSize, resetFontSize } from './app/session-term.js';
@@ -150,7 +150,12 @@ initView({ ensureTerm, setActive, focusActiveTerm, scrollTrace });
 refreshModeHint();
 // The user's shortcuts (spec 477): wire the non-React surfaces, then
 // read keymap.json. Not awaited — until it answers the defaults apply.
-initKeymapSync({ refreshModeHint: () => refreshModeHint() });
+initKeymapSync({
+  refreshModeHint: () => refreshModeHint(),
+  menuCommands: [
+    ...new Set([...Object.values(MENU_COMMANDS), 'new-window', 'close-window']),
+  ],
+});
 void loadKeymap();
 initActions({
   bumpFontSize,

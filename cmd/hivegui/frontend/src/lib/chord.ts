@@ -175,8 +175,10 @@ export function chordsOverlap(a: string, b: string, isMac: boolean): boolean {
   const ka = baseKey(ca);
   const kb = baseKey(cb);
   if (ka.key !== kb.key) return false;
-  const shiftA: Want = ka.shifted ? 'any' : ca.shift;
-  const shiftB: Want = kb.shifted ? 'any' : cb.shift;
+  // A shifted character with Shift unnamed may still need Shift on the
+  // user's layout, so Shift is unknown; one that names Shift keeps it.
+  const shiftA: Want = ka.shifted && ca.shift === false ? 'any' : ca.shift;
+  const shiftB: Want = kb.shifted && cb.shift === false ? 'any' : cb.shift;
   return (
     compatible(ca.meta, cb.meta) &&
     compatible(ca.ctrl, cb.ctrl) &&

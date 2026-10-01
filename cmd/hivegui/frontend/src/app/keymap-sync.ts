@@ -15,25 +15,21 @@ import { menuAcceleratorOverrides, type Keymap } from '../lib/bindings.js';
 import { isMac } from '../lib/platform.js';
 import { appStore, setKeymap } from '../store/store.js';
 import { shortcutLabel, subscribeKeymap } from './bindings.js';
-import { MENU_COMMANDS } from './commands.js';
-
-/** The commands with a native menu item: every menu event's command,
- * plus the two items Go handles itself. */
-export const NATIVE_MENU_COMMANDS: readonly string[] = [
-  ...new Set([...Object.values(MENU_COMMANDS), 'new-window', 'close-window']),
-];
 
 export interface KeymapSyncDeps {
   refreshModeHint: () => void;
+  /** The commands with a native menu item, by id (main.tsx derives them
+   * from MENU_COMMANDS, plus the two items Go handles itself). */
+  menuCommands: readonly string[];
 }
 
 // The last overrides sent to Go, as JSON. Null until the first send: with
 // no overrides there is nothing to tell a menu built from the defaults.
 let sentMenu: string | null = null;
 
-function pushMenu(keymap: Keymap): void {
+function pushMenu(keymap: Keymap, ids: readonly string[]): void {
   if (!isMac) return; // no native menu elsewhere (menu_other.go)
-  const overrides = menuAcceleratorOverrides(NATIVE_MENU_COMMANDS, keymap);
+  const overrides = menuAcceleratorOverrides(ids, keymap);
   const json = JSON.stringify(overrides);
   if (json === (sentMenu ?? '{}')) return;
   sentMenu = json;
@@ -57,7 +53,7 @@ export function initKeymapSync(deps: KeymapSyncDeps): void {
   unsubscribe?.();
   titleNewProjectButton();
   unsubscribe = subscribeKeymap((keymap) => {
-    pushMenu(keymap);
+    pushMenu(keymap, deps.menuCommands);
     deps.refreshModeHint();
     titleNewProjectButton();
   });
