@@ -612,10 +612,16 @@ function closedList() {
       closed_at: t.closedAt,
     }));
 }
+// Calls whose only effect is outside the webview (an OS window, a
+// terminal) or that the spec-481 sweep must see reached Go. Read with
+// __hive.bridgeCalls(method?).
+const bridgeCalls: { method: string; args: unknown[] }[] = [];
+
 // Respawn in place, as the registry does: same entry, alive again.
 // The GUI clears the dead-session card on that alive false→true edge.
 export async function RestartSession(id: string) {
   maybeFail('RestartSession');
+  bridgeCalls.push({ method: 'RestartSession', args: [id] });
   const s = state.sessions.find((x) => x.id === id);
   if (s && s.alive === false) {
     s.alive = true;
@@ -1057,10 +1063,12 @@ export async function PickDirectory() {
 }
 export async function OpenNewWindow() {
   maybeFail('OpenNewWindow');
+  bridgeCalls.push({ method: 'OpenNewWindow', args: [] });
   return '';
 }
 export async function CloseWindow() {
   maybeFail('CloseWindow');
+  bridgeCalls.push({ method: 'CloseWindow', args: [] });
   return '';
 }
 export async function IsGitRepo(_dir: string) {
@@ -1122,8 +1130,9 @@ export async function SaveEditorSettings(s: {
   Object.assign(editorSettings, s);
   return '';
 }
-export async function OpenTerminalAt(_dir: string) {
+export async function OpenTerminalAt(dir: string) {
   maybeFail('OpenTerminalAt');
+  bridgeCalls.push({ method: 'OpenTerminalAt', args: [dir] });
   return '';
 }
 export async function Notify(_title: string, _body: string) {
@@ -1928,6 +1937,9 @@ if (typeof window !== 'undefined') {
     },
     openFileCalls() {
       return [...openFileCalls];
+    },
+    bridgeCalls(method?: string) {
+      return bridgeCalls.filter((c) => !method || c.method === method);
     },
     openedUrls() {
       return [...openedUrls];

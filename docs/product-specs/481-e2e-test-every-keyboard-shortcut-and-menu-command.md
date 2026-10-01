@@ -4,7 +4,9 @@ title: "E2E-test every keyboard shortcut and menu command from the binding data"
 type: enhancement
 complexity: M
 priority: P2
-stage: RESEARCH
+pr: 486
+shipped: 2026-10-01
+stage: DONE
 ---
 
 # E2E-test every keyboard shortcut and menu command from the binding data
@@ -13,7 +15,7 @@ stage: RESEARCH
 - **Type:** enhancement
 - **Complexity:** M
 - **Priority:** P2
-- **Exec plan:** —
+- **Exec plan:** [docs/exec-plans/completed/481-e2e-every-shortcut.md](../exec-plans/completed/481-e2e-every-shortcut.md)
 
 ## Problem
 

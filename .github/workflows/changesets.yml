@@ -98,6 +98,11 @@ jobs:
         # stamp_features_release() only runs on the release path, where a
         # mistake reaches users instead of CI. Same reasoning as above.
         run: scripts/regen-features-selftest.py
+      - name: Self-test the bundle test-hook gate
+        # ci.yml only ever runs check-test-hooks-stripped.sh on a clean
+        # bundle; prove it still fails on a leaked hook. Same reasoning
+        # as the selftests above.
+        run: scripts/check-test-hooks-stripped-selftest.sh
       - name: Require a contract bump for daemon-side changes
         env:
           PR_LABELS: ${{ toJson(github.event.pull_request.labels) }}

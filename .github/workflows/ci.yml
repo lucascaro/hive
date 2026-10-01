@@ -125,6 +125,12 @@ jobs:
           npm ci --no-audit --no-fund
           npm run build
 
+      - name: Check the bundle carries no e2e test hooks
+        # window.__hive_state / __hive_commandLog are gated on the Vite
+        # mock/real env vars; this proves `npm run build` dropped them.
+        shell: bash
+        run: ./scripts/check-test-hooks-stripped.sh
+
       - name: npm audit (frontend, prod deps)
         if: matrix.biome
         # Platform-independent, so it rides the same single-leg flag as Biome

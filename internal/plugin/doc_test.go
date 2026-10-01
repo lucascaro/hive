@@ -52,3 +52,37 @@ func TestPluginDocListsEveryControlFrame(t *testing.T) {
 	check("request", wire.ControlRequestFrames, requests)
 	check("event", wire.ControlEventFrames, events)
 }
+
+// docs/plugins.md is where authors learn what each plugin API version
+// changed. Bumping APIVersion refuses every installed plugin, so the
+// bump must arrive with its changelog entry, and the GUI's copy of the
+// version and the doc's "Must be" line must say the same thing.
+func TestPluginDocRecordsCurrentAPIVersion(t *testing.T) {
+	b, err := os.ReadFile("../../docs/plugins.md")
+	if err != nil {
+		t.Fatal(err)
+	}
+	doc := string(b)
+	i := strings.Index(doc, "\n## API versions\n")
+	if i < 0 {
+		t.Fatal("docs/plugins.md has no \"## API versions\" section")
+	}
+	section := doc[i:]
+	if j := strings.Index(section[1:], "\n## "); j >= 0 {
+		section = section[:j+1]
+	}
+	if !strings.Contains(section, "\n### "+APIVersion+"\n") {
+		t.Errorf("docs/plugins.md API versions section has no \"### %s\" entry", APIVersion)
+	}
+	if want := "Must be `" + APIVersion + "` for this Hive"; !strings.Contains(doc, want) {
+		t.Errorf("docs/plugins.md manifest table does not say %q", want)
+	}
+
+	ts, err := os.ReadFile("../../cmd/hivegui/frontend/src/lib/plugin-api.ts")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if want := "export const PLUGIN_API_VERSION = '" + APIVersion + "';"; !strings.Contains(string(ts), want) {
+		t.Errorf("plugin-api.ts does not declare %s", want)
+	}
+}
