@@ -403,29 +403,44 @@ func TestRememberCheckReturnsStagingWhileBusy(t *testing.T) {
 // clicked it may be showing stale state; it must re-publish the ready
 // state or nothing re-enables the button.
 func TestStartUpdateWhenStagedRepublishesReady(t *testing.T) {
-	a := &App{}
+	// Stub the emitter and set ctx before staging starts: the staging
+	// goroutine reads both, so assigning them later is a data race.
+	events := make(chan UpdateInfo, 16)
+	prevEmit := emitFn
+	emitFn = func(_ *App, name string, data ...any) {
+		if name == "update:progress" && len(data) == 1 {
+			events <- data[0].(UpdateInfo)
+		}
+	}
+	t.Cleanup(func() { emitFn = prevEmit })
+	a := &App{ctx: t.Context()}
 	a.rememberCheck(UpdateInfo{Available: true, Latest: "9.9.9", Stage: StageAvailable})
 	_, release := stubStaging(t, "/staged/hivegui.app", nil)
 	if err := a.StartUpdate(); err != nil {
 		t.Fatalf("StartUpdate: %v", err)
 	}
 	close(release)
-	waitForStage(t, a, StageReady)
-
-	var events []UpdateInfo
-	prevEmit := emitFn
-	emitFn = func(_ *App, name string, data ...any) {
-		if name == "update:progress" && len(data) == 1 {
-			events = append(events, data[0].(UpdateInfo))
+	// Drain the staging goroutine's own ready event first.
+	timeout := time.After(2 * time.Second)
+	for staged := false; !staged; {
+		select {
+		case ev := <-events:
+			staged = ev.Stage == StageReady
+		case <-timeout:
+			t.Fatal("staging never emitted a ready update:progress")
 		}
 	}
-	t.Cleanup(func() { emitFn = prevEmit })
-	a.ctx = t.Context()
 
 	if err := a.StartUpdate(); err != nil {
 		t.Fatalf("second StartUpdate: %v", err)
 	}
-	if len(events) != 1 || events[0].Stage != StageReady {
-		t.Fatalf("events = %+v, want one update:progress with Stage %q", events, StageReady)
+	// The re-publish is synchronous, so it is already queued.
+	select {
+	case ev := <-events:
+		if ev.Stage != StageReady {
+			t.Fatalf("re-published Stage %q, want %q", ev.Stage, StageReady)
+		}
+	default:
+		t.Fatal("second StartUpdate emitted no update:progress")
 	}
 }
