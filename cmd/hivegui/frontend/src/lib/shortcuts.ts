@@ -1,27 +1,37 @@
-// Single source of truth for keyboard shortcuts. The help overlay
-// (⌘/) renders shortcutGroups(); the command palette pulls its
-// shortcut column from paletteShortcuts() — both consume this module,
-// so the two surfaces cannot drift from each other. (They can still
-// drift from the actual bindings in app/key-scopes.ts and menu_darwin.go, which is why
-// every binding change must touch this file too — see AGENTS.md.)
+// The shortcut lists the help overlay (⌘/) and the command palette show.
+// Every key here is DERIVED from the binding data in lib/bindings.ts under
+// the user's keymap (spec 477), so a surface cannot show a key the app
+// does not bind, and a rebind shows up everywhere at once.
 //
-// The full drift surface for a GUI binding change is five files:
-//   1. the binding — app/key-scopes.ts (chord data), naming a command in
-//      app/commands.ts
-//   2. this file — shortcutGroups() AND paletteShortcuts()
-//   3. the command's palette title — app/commands.ts
-//   4. the native macOS menu — cmd/hivegui/menu_darwin.go (⌘ chords only;
-//      Ctrl-only chords are deliberately JS-side, see the Ctrl+` comment
-//      in app/key-scopes.ts)
-//   5. the user-facing shortcut table in README.md
+// What stays hand-written: the group a command sits in and its overlay
+// wording, the rows that are not commands (mouse gestures, terminal
+// editing, overlay keys), and the compact text of a few merged rows
+// (⌘1–⌘9, the arrows). A merged row keeps its compact text only while
+// every command in it has its default keys; otherwise it splits into one
+// live row per command.
+//
+// The drift surface for a GUI binding change is now:
+//   1. the binding — lib/bindings.ts (chord data), naming a command in
+//      app/commands.ts (with its palette title)
+//   2. the native macOS menu's DEFAULT accelerator — menu_darwin.go,
+//      pinned to the binding data by
+//      cmd/hivegui/testdata/menu-default-accelerators.json
+//   3. the user-facing shortcut table in README.md
 //
 // UI plugins add chords at runtime (spec 471, app/plugin-host.ts). They
 // are not in this file: the host appends them to the palette and to a
-// "Plugins" group in the overlay, and refuses any whose label appears
-// here — so a new core binding is automatically protected from plugins
-// once it is listed below.
+// "Plugins" group in the overlay, and refuses any that overlaps a core
+// chord.
 //
 // Pure module: no DOM, unit-testable.
+
+import {
+  EMPTY_KEYMAP,
+  effectiveFor,
+  isDefaultIn,
+  labelIn,
+  type Keymap,
+} from './bindings.js';
 
 export interface Shortcut {
   keys: string;
@@ -123,31 +133,99 @@ function arrowSeq(isMac: boolean, ...keys: string[]): string {
   return keys.map((k) => keyLabel(k, isMac)).join(isMac ? '' : '/');
 }
 
-export function shortcutGroups({ isMac }: { isMac: boolean }): ShortcutGroup[] {
+interface Opts {
+  isMac: boolean;
+  /** The user's keymap; the shipped defaults when omitted. */
+  keymap?: Keymap;
+}
+
+type Row =
+  | Shortcut
+  | { command: string; label: string }
+  | {
+      /** Shown as one row with `keys` while every member is at its
+       * default; otherwise one row per member. */
+      merged: readonly { command: string; label: string }[];
+      keys: string;
+      label: string;
+    };
+
+function rows(list: Row[], keymap: Keymap, isMac: boolean): Shortcut[] {
+  const one = (command: string, label: string): Shortcut[] => {
+    const keys = labelIn(keymap, command, isMac);
+    return keys ? [{ keys, label }] : [];
+  };
+  return list.flatMap((r) => {
+    if ('command' in r) return one(r.command, r.label);
+    if ('merged' in r) {
+      return r.merged.every((m) => isDefaultIn(keymap, m.command, isMac))
+        ? [{ keys: r.keys, label: r.label }]
+        : r.merged.flatMap((m) => one(m.command, m.label));
+    }
+    return [r];
+  });
+}
+
+export function shortcutGroups({
+  isMac,
+  keymap = EMPTY_KEYMAP,
+}: Opts): ShortcutGroup[] {
+  const groups = rawGroups(isMac);
+  return groups.map((g) => ({
+    title: g.title,
+    items: rows(g.items, keymap, isMac),
+  }));
+}
+
+function rawGroups(isMac: boolean): { title: string; items: Row[] }[] {
   const m = (key: string, opts?: ModOpts) => mod(isMac, key, opts);
   const c = (key: string, opts?: ModOpts) => ctrl(isMac, key, opts);
   const ca = (key: string, opts?: ModOpts) => ctrlAlt(isMac, key, opts);
   const vArrows = arrowSeq(isMac, 'up', 'down');
   const hArrows = arrowSeq(isMac, 'left', 'right');
-  return [
+  const groups: { title: string; items: Row[] }[] = [
     {
       title: 'Sessions',
       items: [
-        { keys: m('T'), label: 'New session' },
-        { keys: m('T', { shift: true }), label: 'New session in git worktree' },
-        { keys: m('P'), label: 'Duplicate session' },
+        { command: 'new-session', label: 'New session' },
         {
-          keys: m('P', { shift: true }),
+          command: 'new-session-worktree',
+          label: 'New session in git worktree',
+        },
+        { command: 'duplicate-session', label: 'Duplicate session' },
+        {
+          command: 'duplicate-session-choose-tool',
           label: 'Duplicate session (choose tool)',
         },
-        { keys: m('W'), label: 'Close session' },
-        { keys: m('Z'), label: 'Reopen closed session' },
-        { keys: `${m('1')}–${m('9')}`, label: 'Switch to session 1–9' },
+        { command: 'close-session', label: 'Close session' },
+        { command: 'reopen-closed-session', label: 'Reopen closed session' },
         {
+          merged: Array.from({ length: 9 }, (_, i) => ({
+            command: `switch-${i + 1}`,
+            label: `Switch to session ${i + 1}`,
+          })),
+          keys: `${m('1')}–${m('9')}`,
+          label: 'Switch to session 1–9',
+        },
+        {
+          merged: [
+            {
+              command: 'next-session',
+              label: 'Next session (grid: move down)',
+            },
+            {
+              command: 'prev-session',
+              label: 'Previous session (grid: move up)',
+            },
+          ],
           keys: `${isMac ? '⌘' : 'Ctrl+'}${vArrows}`,
           label: 'Next / previous session (grid: move between tiles)',
         },
         {
+          merged: [
+            { command: 'grid-left', label: 'Grid: move left' },
+            { command: 'grid-right', label: 'Grid: move right' },
+          ],
           keys: `${isMac ? '⌘' : 'Ctrl+'}${hArrows}`,
           // The terminal half differs by platform: macLineEditSeq maps ⌘←/→
           // to \x01/\x05 on mac only, so off mac the chord falls through to
@@ -159,13 +237,26 @@ export function shortcutGroups({ isMac }: { isMac: boolean }): ShortcutGroup[] {
           })`,
         },
         {
+          merged: [
+            { command: 'move-forward', label: 'Move session forward (wraps)' },
+            {
+              command: 'move-backward',
+              label: 'Move session backward (wraps)',
+            },
+          ],
           keys: `${isMac ? '⇧⌘' : 'Ctrl+Shift+'}${vArrows}`,
           label: 'Reorder session within its project (wraps)',
         },
-        { keys: ca('-'), label: 'Go back to the previously visited session' },
-        { keys: ca('-', { shift: true }), label: 'Go forward again' },
-        { keys: m('B'), label: 'Next session needing attention (bell)' },
-        { keys: m('B', { shift: true }), label: 'Jump back to where you were' },
+        {
+          command: 'nav-back',
+          label: 'Go back to the previously visited session',
+        },
+        { command: 'nav-forward', label: 'Go forward again' },
+        {
+          command: 'next-attention',
+          label: 'Next session needing attention (bell)',
+        },
+        { command: 'jump-back', label: 'Jump back to where you were' },
         { keys: 'Double-click', label: 'Rename (sidebar row or tile title)' },
         {
           keys: `${isMac ? '⌘-' : 'Ctrl+'}click`,
@@ -181,43 +272,58 @@ export function shortcutGroups({ isMac }: { isMac: boolean }): ShortcutGroup[] {
     {
       title: 'Projects',
       items: [
-        { keys: m('N'), label: 'New project' },
+        { command: 'new-project', label: 'New project' },
+        { command: 'delete-project', label: 'Delete active project' },
         {
-          keys: m('backspace', { shift: true }),
-          label: 'Delete active project',
+          merged: [
+            { command: 'prev-project', label: 'Previous project' },
+            { command: 'next-project', label: 'Next project' },
+          ],
+          keys: `${m('[')} / ${m(']')}`,
+          label: 'Previous / next project',
         },
-        { keys: `${m('[')} / ${m(']')}`, label: 'Previous / next project' },
-        { keys: m('E'), label: 'Worktrees in the active project' },
-        { keys: m('I'), label: 'Capture an idea' },
-        { keys: m('I', { shift: true }), label: 'Ideas in the active project' },
+        { command: 'worktrees', label: 'Worktrees in the active project' },
+        { command: 'quick-idea', label: 'Capture an idea' },
+        { command: 'idea-inbox', label: 'Ideas in the active project' },
       ],
     },
     {
       title: 'View',
       items: [
-        { keys: m('G'), label: 'Toggle project grid' },
-        { keys: m('G', { shift: true }), label: 'Toggle all-sessions grid' },
+        { command: 'toggle-project-grid', label: 'Toggle project grid' },
+        { command: 'toggle-all-grid', label: 'Toggle all-sessions grid' },
         {
-          keys: m('enter'),
+          command: 'focus-active-session',
           label: 'Grid: focus the active session (single view)',
         },
-        { keys: m('S'), label: 'Toggle sidebar' },
+        { command: 'toggle-sidebar', label: 'Toggle sidebar' },
         {
-          keys: activityToggle(isMac),
+          command: 'toggle-activity',
           label: 'Agent activity: panel (single view) / activity grid (grid)',
         },
-        { keys: activityGrid(isMac), label: 'Agent activity grid' },
+        { command: 'activity-grid', label: 'Agent activity grid' },
         {
-          keys: findInSession(isMac),
+          command: 'find-in-session',
           label: 'Find in session (transcript on full-screen agents)',
         },
         {
+          merged: [
+            { command: 'zoom-in', label: 'Zoom in' },
+            { command: 'zoom-out', label: 'Zoom out' },
+            { command: 'zoom-reset', label: 'Reset zoom' },
+          ],
           keys: `${m('=')} / ${m('-')} / ${m('0')}`,
           label: 'Zoom in / out / reset',
         },
-        { keys: m('K', { shift: true }), label: 'Command palette' },
-        { keys: m(','), label: 'Settings (custom agents)' },
+        { command: 'command-palette', label: 'Command palette' },
+        { command: 'settings', label: 'Settings (custom agents)' },
         {
+          merged: [
+            {
+              command: 'keyboard-shortcuts',
+              label: 'Keyboard shortcuts (this panel)',
+            },
+          ],
           keys: `${m('?')} or ${m('/')}`,
           label: 'Keyboard shortcuts (this panel)',
         },
@@ -226,9 +332,12 @@ export function shortcutGroups({ isMac }: { isMac: boolean }): ShortcutGroup[] {
     {
       title: 'Window',
       items: [
-        { keys: m('N', { shift: true }), label: 'New window' },
-        { keys: m('W', { shift: true }), label: 'Close window' },
-        { keys: c('`'), label: 'Open OS terminal at session directory' },
+        { command: 'new-window', label: 'New window' },
+        { command: 'close-window', label: 'Close window' },
+        {
+          command: 'open-os-terminal',
+          label: 'Open OS terminal at session directory',
+        },
       ],
     },
     {
@@ -292,58 +401,20 @@ export function shortcutGroups({ isMac }: { isMac: boolean }): ShortcutGroup[] {
       ],
     },
   ];
+  return groups;
 }
 
-// Shortcut strings for the command palette, by command id. On mac
-// these match the glyph style the palette has always used.
+// Shortcut labels for the command palette, by command id: every command
+// with a shortcut under the keymap. A command with none is absent.
 export function paletteShortcuts({
   isMac,
-}: {
-  isMac: boolean;
-}): Record<string, string> {
-  const m = (key: string, opts?: ModOpts) => mod(isMac, key, opts);
-  const c = (key: string, opts?: ModOpts) => ctrl(isMac, key, opts);
-  const ca = (key: string, opts?: ModOpts) => ctrlAlt(isMac, key, opts);
-  const map: Record<string, string> = {
-    'new-project': m('N'),
-    'new-session': m('T'),
-    'new-session-worktree': m('T', { shift: true }),
-    'duplicate-session': m('P'),
-    'duplicate-session-choose-tool': m('P', { shift: true }),
-    'restart-session': '',
-    'delete-project': m('backspace', { shift: true }),
-    worktrees: m('E'),
-    'quick-idea': m('I'),
-    'idea-inbox': m('I', { shift: true }),
-    'close-session': m('W'),
-    'new-window': m('N', { shift: true }),
-    'open-os-terminal': c('`'),
-    'close-window': m('W', { shift: true }),
-    'toggle-sidebar': m('S'),
-    'toggle-project-grid': m('G'),
-    'toggle-all-grid': m('G', { shift: true }),
-    'toggle-activity': activityToggle(isMac),
-    'activity-grid': activityGrid(isMac),
-    'find-in-session': findInSession(isMac),
-    'focus-active-session': m('enter'),
-    'zoom-in': m('='),
-    'zoom-out': m('-'),
-    'zoom-reset': m('0'),
-    'next-session': m('down'),
-    'prev-session': m('up'),
-    'move-forward': m('down', { shift: true }),
-    'move-backward': m('up', { shift: true }),
-    'nav-back': ca('-'),
-    'nav-forward': ca('-', { shift: true }),
-    'next-attention': m('B'),
-    'jump-back': m('B', { shift: true }),
-    'next-project': m(']'),
-    'prev-project': m('['),
-    // ⌘/ is what the macOS menu item displays, so the palette matches it.
-    // ⌘? also works (see menu_darwin.go); the overlay lists both.
-    'keyboard-shortcuts': m('/'),
-    settings: m(','),
-  };
-  for (let i = 1; i <= 9; i++) map[`switch-${i}`] = m(String(i));
+  keymap = EMPTY_KEYMAP,
+}: Opts): Record<string, string> {
+  const map: Record<string, string> = {};
+  for (const b of effectiveFor(keymap, isMac).bindings) {
+    if (b.command !== null && !(b.command in map)) {
+      map[b.command] = labelIn(keymap, b.command, isMac);
+    }
+  }
   return map;
 }

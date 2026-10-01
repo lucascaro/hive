@@ -44,7 +44,6 @@ import {
   type PluginContributions,
   type ResolvedCommand,
 } from '../lib/plugin-api.js';
-import { paletteShortcuts, shortcutGroups } from '../lib/shortcuts.js';
 import {
   anyModalOpen,
   appStore,
@@ -56,7 +55,9 @@ import {
   setPluginPanel,
   setPluginUI,
   useAppStore,
+  type Keymap,
 } from '../store/store.js';
+import { appChords, keymapHalf, RESERVED_CHORDS } from './bindings.js';
 import { registerCommandSource } from './command-registry.js';
 import type { PluginInfo, SessionInfo } from './state.js';
 
@@ -479,20 +480,6 @@ export type HiveAPI = ReturnType<typeof makeApi>;
 
 // ---------- commands and chords ----------
 
-let coreLabels: Set<string> | null = null;
-
-function core(): Set<string> {
-  if (!coreLabels) {
-    coreLabels = new Set(
-      Object.values(paletteShortcuts({ isMac })).filter(Boolean),
-    );
-    for (const g of shortcutGroups({ isMac })) {
-      for (const item of g.items) coreLabels.add(item.keys);
-    }
-  }
-  return coreLabels;
-}
-
 type PluginCommandState = Readonly<
   Record<string, { status: string; contrib?: PluginContributions }>
 >;
@@ -503,6 +490,7 @@ type PluginCommandState = Readonly<
 // once per state rather than once per keystroke.
 let pluginCommandsMemo: {
   state: PluginCommandState;
+  keymap: Keymap;
   out: ResolvedCommand[];
 } | null = null;
 
@@ -511,7 +499,12 @@ let pluginCommandsMemo: {
 export function pluginCommands(
   state: PluginCommandState = appData().pluginUI,
 ): ResolvedCommand[] {
-  if (pluginCommandsMemo?.state === state) return pluginCommandsMemo.out;
+  const keymap = appData().keymap;
+  if (
+    pluginCommandsMemo?.state === state &&
+    pluginCommandsMemo.keymap === keymap
+  )
+    return pluginCommandsMemo.out;
   const plugins = Object.keys(state)
     .sort()
     .flatMap((id) => {
@@ -519,8 +512,18 @@ export function pluginCommands(
       const cmds = st.status === 'active' ? st.contrib?.commands : undefined;
       return cmds?.length ? [{ id, commands: cmds }] : [];
     });
-  const out = resolveCommands(plugins, core(), isMac, (m) => console.warn(m));
-  pluginCommandsMemo = { state, out };
+  const taken = [
+    ...appChords(isMac),
+    ...RESERVED_CHORDS[isMac ? 'mac' : 'other'],
+  ];
+  const out = resolveCommands(
+    plugins,
+    taken,
+    isMac,
+    (m) => console.warn(m),
+    keymapHalf(keymap, isMac),
+  );
+  pluginCommandsMemo = { state, keymap, out };
   return out;
 }
 
@@ -601,7 +604,6 @@ export function resetPluginHostForTest(): void {
   viewResolve = null;
   announced = null;
   assetBase = null;
-  coreLabels = null;
   pluginCommandsMemo = null;
   importer = (url) => import(/* @vite-ignore */ url);
 }

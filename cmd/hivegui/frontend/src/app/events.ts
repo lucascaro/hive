@@ -4,6 +4,8 @@
 // EventsOn handler; view/focus callbacks and the scroll tracer are
 // injected because they live in main.tsx until later stages.
 
+import { withKey } from '../lib/chord-label.js';
+import { shortcutLabel } from './bindings.js';
 import {
   EventsOn,
   Notify,
@@ -1231,7 +1233,7 @@ export function wireDaemonEvents(injected: EventsDeps) {
         bullets: [`It has uncommitted changes in ${branch}.`],
         note:
           'Closing keeps the worktree and its changes — find it under ' +
-          'Worktrees (⌘E) to resume or delete later. Cleaning up deletes ' +
+          `${withKey('Worktrees', shortcutLabel('worktrees'))} to resume or delete later. Cleaning up deletes ` +
           'the worktree and those changes now, which cannot be undone.',
         choices: [
           { label: 'Cancel', value: 'cancel' },

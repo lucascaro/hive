@@ -279,15 +279,11 @@ const UNLISTED: readonly Command[] = [
   { id: 'check-for-updates', run: () => manualUpdateCheck() },
   { id: 'toggle-scroll-debug', run: () => toggleScrollDebug() },
   { id: 'copy-scroll-trace', run: () => copyScrollTrace() },
-  // The arrows. Horizontal ones decline in focused mode (handleArrow
-  // returns false): ⌘←/⌘→ are start/end-of-line in the terminal. With
-  // Shift the vertical ones reorder in focused mode but still move
-  // spatially in a grid, unlike the palette's move-forward/backward,
-  // which reorder in every view.
+  // The horizontal arrows. They decline in focused mode (handleArrow
+  // returns false): ⌘←/⌘→ are start/end-of-line in the terminal. (⇧⌘↑/↓
+  // run move-forward/backward above, which reorder in every view.)
   { id: 'grid-left', run: () => handleArrow(-1, 0, false) },
   { id: 'grid-right', run: () => handleArrow(+1, 0, false) },
-  { id: 'arrow-shift-up', run: () => handleArrow(0, -1, true) },
-  { id: 'arrow-shift-down', run: () => handleArrow(0, +1, true) },
 
   { id: 'inline-rename.cancel', run: () => cancelInlineRename() },
   { id: 'choice-dialog.dismiss', run: () => dismissChoiceDialog() },

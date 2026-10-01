@@ -37,13 +37,12 @@ import {
 } from './bridge.js';
 import { classifyBeat, jsHeapMB } from './lib/freeze-heartbeat.js';
 import { isMac } from './lib/platform.js';
-import { modeHints } from './lib/status.js';
 import * as store from './store/store.js';
 import { termsMap } from './store/terms.js';
 
 // Live read of the store, for the heartbeat and the command table.
 const appData = () => store.appStore.getState();
-import { setStatus, setBootState, setModeHint, termsHost } from './app/dom.js';
+import { setStatus, setBootState, termsHost } from './app/dom.js';
 import { scrollTrace } from './app/trace.js';
 import { openLauncher, initLauncher } from './app/modals/launcher.js';
 import { initProjectEditor } from './app/modals/project-editor.js';
@@ -79,7 +78,9 @@ import {
   updateAppTitle,
   enforceViewFloor,
   initView,
+  refreshModeHint,
 } from './app/view.js';
+import { initKeymapSync, loadKeymap } from './app/keymap-sync.js';
 import { initActions } from './app/actions.js';
 import './app/keyboard.js';
 import { ensureTerm, bumpFontSize, resetFontSize } from './app/session-term.js';
@@ -146,7 +147,11 @@ initView({ ensureTerm, setActive, focusActiveTerm, scrollTrace });
 // Seed the status bar's hint slot. setModeHint is otherwise reached only
 // from switchTo() and setView(), and a boot with zero sessions calls
 // neither — leaving the first-run screen with no shortcuts at all.
-setModeHint(modeHints(appData().view, isMac));
+refreshModeHint();
+// The user's shortcuts (spec 477): wire the non-React surfaces, then
+// read keymap.json. Not awaited — until it answers the defaults apply.
+initKeymapSync({ refreshModeHint: () => refreshModeHint() });
+void loadKeymap();
 initActions({
   bumpFontSize,
   resetFontSize,

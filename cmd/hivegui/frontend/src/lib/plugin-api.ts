@@ -6,7 +6,8 @@
 //
 // Pure module: no DOM, no store.
 
-import { mod } from './shortcuts.js';
+import { chordsOverlap, parseChord } from './chord.js';
+import { chordLabel as formatChord } from './chord-label.js';
 
 /** The plugin API this app implements; manifests name it exactly. */
 export const PLUGIN_API_VERSION = '0.2';
@@ -82,7 +83,8 @@ export function chordLabel(keys: PluginKeys, isMac: boolean): string | null {
   if (!keys || typeof keys.key !== 'string' || !KEY_RE.test(keys.key)) {
     return null;
   }
-  return mod(isMac, keys.key.toUpperCase(), { shift: !!keys.shift });
+  const chord = pluginChord(keys);
+  return chord ? formatChord(chord, isMac) : null;
 }
 
 /** The chord string (lib/chord.ts) a plugin's keys bind, or null when
@@ -101,44 +103,62 @@ export function pluginChord(keys: PluginKeys): string | null {
 export interface ResolvedCommand {
   pluginId: string;
   command: PluginCommand;
-  /** The chord label, or '' when the command has none (or lost it). */
+  /** The chord labels, or '' when the command has none (or lost them). */
   shortcut: string;
-  /** Whether keys dispatch to it; false when core or an earlier plugin
-   * already owns the chord. */
+  /** Whether keys dispatch to it; false when it has no chord left. */
   bound: boolean;
+  /** The chords keys dispatch to it (lib/chord.ts strings). */
+  chords: string[];
 }
 
-/** Resolves every plugin's commands in plugin order. A chord whose label
- * a core shortcut already shows is refused (core always wins), as is one
- * an earlier plugin took; either way the command stays in the palette,
- * just without a key. */
+/** Resolves every plugin's commands in plugin order. A command's chords
+ * are the user's keymap override for `plugin:<plugin>:<command>` when
+ * there is one, else the plugin's own keys. A chord that overlaps one in
+ * `taken` (core's live chords and the reserved ones) is refused — core
+ * always wins — as is one an earlier plugin took; either way the command
+ * stays in the palette, just without that key. */
 export function resolveCommands(
   plugins: { id: string; commands: PluginCommand[] }[],
-  coreLabels: ReadonlySet<string>,
+  taken: readonly string[],
   isMac: boolean,
   warn: (msg: string) => void = () => {},
+  overrides: Readonly<Record<string, readonly string[]>> = {},
 ): ResolvedCommand[] {
-  const taken = new Set(coreLabels);
+  const claimed = [...taken];
   const out: ResolvedCommand[] = [];
   for (const p of plugins) {
     for (const command of p.commands) {
-      const label = command.keys ? chordLabel(command.keys, isMac) : null;
-      if (command.keys && label === null) {
+      const id = `plugin:${p.id}:${command.id}`;
+      const own = command.keys ? pluginChord(command.keys) : null;
+      if (command.keys && own === null) {
         warn(`plugin ${p.id}: command ${command.id} has an unbindable key`);
       }
-      if (label && taken.has(label)) {
-        warn(
-          `plugin ${p.id}: ${label} is already taken; ${command.id} has no key`,
-        );
-        out.push({ pluginId: p.id, command, shortcut: '', bound: false });
-        continue;
+      const wanted = id in overrides ? [...overrides[id]] : own ? [own] : [];
+      const chords: string[] = [];
+      for (const chord of wanted) {
+        try {
+          parseChord(chord, isMac);
+        } catch {
+          warn(
+            `plugin ${p.id}: ignoring keymap chord "${chord}" for ${command.id}`,
+          );
+          continue;
+        }
+        if (claimed.some((c) => chordsOverlap(c, chord, isMac))) {
+          warn(
+            `plugin ${p.id}: ${formatChord(chord, isMac)} is already taken; ${command.id} does not get it`,
+          );
+          continue;
+        }
+        chords.push(chord);
+        claimed.push(chord);
       }
-      if (label) taken.add(label);
       out.push({
         pluginId: p.id,
         command,
-        shortcut: label ?? '',
-        bound: !!label,
+        shortcut: chords.map((c) => formatChord(c, isMac)).join(' / '),
+        bound: chords.length > 0,
+        chords,
       });
     }
   }

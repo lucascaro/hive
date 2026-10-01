@@ -33,11 +33,13 @@ export function HelpOverlay({ root }: { root: HTMLElement | null }): ReactNode {
 }
 
 function HelpOverlayBody({ root }: { root: HTMLElement }): ReactNode {
-  // Plugin chords join as their own group, read once per opening like
-  // the rest: an overlay that re-sorted under the reader would be worse.
+  // Plugin chords join as their own group. Read per opening, and again
+  // when the keymap changes under an open overlay, so it never shows a
+  // key that no longer does anything.
+  const keymap = useAppStore((s) => s.keymap);
   const groups = useMemo(() => {
     const bound = pluginCommands().filter((r) => r.bound);
-    const core = shortcutGroups({ isMac });
+    const core = shortcutGroups({ isMac, keymap });
     if (bound.length === 0) return core;
     return [
       ...core,
@@ -46,7 +48,7 @@ function HelpOverlayBody({ root }: { root: HTMLElement }): ReactNode {
         items: bound.map((r) => ({ keys: r.shortcut, label: r.command.title })),
       },
     ];
-  }, []);
+  }, [keymap]);
 
   // Same modal-focus discipline as Settings: pull focus onto the dialog
   // so keystrokes don't leak behind the backdrop.

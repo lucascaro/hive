@@ -79,11 +79,11 @@ export function createStatus({
 // The status bar's right slot. patterns.md > Keyboard hints: "the status
 // bar right slot shows the current mode's top 1-2 shortcuts". Kept here,
 // beside the controller, and pure so a test can assert the table without
-// a DOM. Modifier spelling follows AGENTS.md (symbols on macOS, words
-// elsewhere); the chords themselves mirror lib/shortcuts.ts — ⌘G toggles
-// the project grid, ⇧⌘K opens the palette, and ⌘+arrows move between
-// tiles. A hint that names a chord nothing is bound to is worse than no
-// hint at all (AGENTS.md > Consistency).
+// a DOM. The keys are the user's current ones (lib/bindings.ts, spec
+// 477): a hint that names a chord nothing is bound to is worse than no
+// hint at all (AGENTS.md > Consistency), so a command with no shortcut
+// drops its hint.
+import { EMPTY_KEYMAP, isDefaultIn, labelIn, type Keymap } from './bindings.js';
 import type { ViewMode } from './view.js';
 
 export interface ModeHint {
@@ -91,25 +91,37 @@ export interface ModeHint {
   label: string;
 }
 
-export function modeHints(view: ViewMode, mac: boolean): ModeHint[] {
-  const mod = mac ? '⌘' : 'Ctrl+';
+const ARROWS = ['prev-session', 'next-session', 'grid-left', 'grid-right'];
+
+export function modeHints(
+  view: ViewMode,
+  mac: boolean,
+  keymap: Keymap = EMPTY_KEYMAP,
+): ModeHint[] {
+  const hint = (command: string, label: string): ModeHint[] => {
+    const key = labelIn(keymap, command, mac);
+    return key ? [{ key, label }] : [];
+  };
   if (view === 'grid-all' || view === 'grid-project') {
     return [
       // Each grid is toggled back to a single pane by the chord that
-      // opened it (app/key-scopes.ts): ⌘G for the project grid, ⇧⌘G for the
-      // all-sessions grid. Naming plain ⌘G in grid-all would advertise a
-      // chord that switches grids instead of focusing.
-      {
-        key: view === 'grid-all' ? (mac ? '⇧⌘G' : 'Ctrl+Shift+G') : `${mod}G`,
-        label: 'focus',
-      },
-      // Off macOS the four arrows spelled out would be longer than the
-      // slot; the word carries the same meaning.
-      { key: mac ? '⌘↑↓←→' : 'Ctrl+Arrows', label: 'move' },
+      // opened it: ⌘G for the project grid, ⇧⌘G for the all-sessions
+      // grid. Naming plain ⌘G in grid-all would advertise a chord that
+      // switches grids instead of focusing.
+      ...hint(
+        view === 'grid-all' ? 'toggle-all-grid' : 'toggle-project-grid',
+        'focus',
+      ),
+      // Four commands in one hint. Off macOS the arrows spelled out would
+      // be longer than the slot; the word carries the same meaning. Once
+      // any of them is rebound there is no short form, so it is dropped.
+      ...(ARROWS.every((c) => isDefaultIn(keymap, c, mac))
+        ? [{ key: mac ? '⌘↑↓←→' : 'Ctrl+Arrows', label: 'move' }]
+        : []),
     ];
   }
   return [
-    { key: `${mod}G`, label: 'grid' },
-    { key: mac ? '⇧⌘K' : 'Ctrl+Shift+K', label: 'actions' },
+    ...hint('toggle-project-grid', 'grid'),
+    ...hint('command-palette', 'actions'),
   ];
 }

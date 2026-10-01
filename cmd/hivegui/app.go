@@ -13,6 +13,7 @@ import (
 	"github.com/lucascaro/hive/internal/qos"
 	"github.com/lucascaro/hive/internal/registry"
 	"github.com/lucascaro/hive/internal/wire"
+	"github.com/wailsapp/wails/v2/pkg/menu"
 	wruntime "github.com/wailsapp/wails/v2/pkg/runtime"
 )
 
@@ -74,11 +75,24 @@ type App struct {
 	// and in Settings. See update_action.go.
 	update updateState
 
+	// menuMu guards the two fields the native menu is built from. Wails
+	// runs every bound call on its own goroutine (not the main thread), and
+	// SetDebugTrace and SetMenuAccelerators both fire at boot, so each one
+	// writes its field and rebuilds the menu under this lock. buildAppMenu
+	// itself never takes it: callers hold it (menuLocked), or build before
+	// Wails starts (window_options.go), or are tests.
+	menuMu sync.Mutex
+
 	// debugTrace mirrors the frontend's `hive.debug` localStorage flag so
-	// the Debug menu can say which state it will move to. Owned by the main
-	// thread: written only by SetDebugTrace (a Wails binding call, which
-	// Wails dispatches on the main thread), read only by buildAppMenu.
+	// the Debug menu can say which state it will move to. Written only by
+	// SetDebugTrace, read only by buildAppMenu. Guarded by menuMu.
 	debugTrace bool
+
+	// menuAccel overrides native-menu accelerators by command id, from the
+	// user's keymap (spec 477): "" means no accelerator. An id not in the
+	// map keeps the default buildAppMenu hard-codes. Written only by
+	// SetMenuAccelerators. Guarded by menuMu.
+	menuAccel map[string]string
 }
 
 // SetDebugTrace records whether the frontend's scroll/replay tracer is
@@ -91,13 +105,43 @@ type App struct {
 // tracer is deliberately invisible when armed, so the menu is the only
 // indicator there is.
 func (a *App) SetDebugTrace(on bool) {
+	a.menuMu.Lock()
 	a.debugTrace = on
-	if a.ctx == nil {
-		return
+	m := a.menuLocked()
+	a.menuMu.Unlock()
+	a.applyMenu(m)
+}
+
+// SetMenuAccelerators puts the user's shortcuts on the native menu (spec
+// 477). AppKit hands a menu accelerator to the menu before the webview
+// ever sees the keydown, so a rebound command whose item kept its default
+// would still fire on the old chord. The frontend sends only the items its
+// keymap changes, by command id; "" removes an item's accelerator. The map
+// replaces the previous one, so {} restores every default.
+func (a *App) SetMenuAccelerators(accel map[string]string) {
+	cp := make(map[string]string, len(accel))
+	for k, v := range accel {
+		cp[k] = v
 	}
-	m := buildAppMenu(a)
-	if m == nil {
-		return // no native menu on this platform — see menu_other.go
+	a.menuMu.Lock()
+	a.menuAccel = cp
+	m := a.menuLocked()
+	a.menuMu.Unlock()
+	a.applyMenu(m)
+}
+
+// menuLocked builds the menu from the current fields. The caller holds
+// menuMu. Nil when the platform has no native menu (menu_other.go).
+func (a *App) menuLocked() *menu.Menu {
+	return buildAppMenu(a)
+}
+
+// applyMenu installs a built menu. A no-op before startup (no Wails
+// context yet: the initial menu comes from window_options.go) and on
+// platforms without a menu.
+func (a *App) applyMenu(m *menu.Menu) {
+	if a.ctx == nil || m == nil {
+		return
 	}
 	wruntime.MenuSetApplicationMenu(a.ctx, m)
 	wruntime.MenuUpdateApplicationMenu(a.ctx)

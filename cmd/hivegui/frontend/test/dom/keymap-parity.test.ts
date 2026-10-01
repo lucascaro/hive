@@ -294,8 +294,38 @@ const APPROVED = {
     !cmdOrCtrl(e, mac),
 };
 
+// Spec 477's approved deltas, which change WHICH command a key runs
+// rather than whether one runs, so they name both ends of the change.
+const APPROVED_477 = {
+  // D2: macOS ⌘F gains a keydown binding to find-in-session. The native
+  // menu's ⌘F still takes the key first; the chord is in the data so the
+  // menu accelerator is derived from it.
+  F: (s: string, e: Ev, mac: boolean, was: string | null, now: string | null) =>
+    mac &&
+    s === 'app' &&
+    /^f$/i.test(e.key) &&
+    was === null &&
+    now === 'find-in-session',
+  // D1: ⇧⌘↑/↓ (⇧Ctrl↑/↓) run move-forward/backward in every view, as the
+  // macOS menu always did; they ran arrow-shift-*, which moved spatially
+  // in a grid.
+  M: (
+    s: string,
+    _e: Ev,
+    _mac: boolean,
+    was: string | null,
+    now: string | null,
+  ) =>
+    s === 'app' &&
+    ((was === 'arrow-shift-up' && now === 'move-backward') ||
+      (was === 'arrow-shift-down' && now === 'move-forward')),
+};
+
 describe('key bindings vs the pre-478 matchers', () => {
-  const seen: Record<keyof typeof APPROVED, number> = { A: 0, B: 0, D: 0 };
+  const seen: Record<
+    keyof typeof APPROVED | keyof typeof APPROVED_477,
+    number
+  > = { A: 0, B: 0, D: 0, F: 0, M: 0 };
   const unexpected: string[] = [];
 
   for (const mac of [true, false]) {
@@ -304,9 +334,13 @@ describe('key bindings vs the pre-478 matchers', () => {
         const was = legacyResolve(scope, e, mac);
         const now = newResolve(scope, e, mac);
         if (was === now) continue;
-        const why = (
-          Object.keys(APPROVED) as Array<keyof typeof APPROVED>
-        ).find((k) => now === null && APPROVED[k](scope, e, mac));
+        const why =
+          (Object.keys(APPROVED) as Array<keyof typeof APPROVED>).find(
+            (k) => now === null && APPROVED[k](scope, e, mac),
+          ) ??
+          (Object.keys(APPROVED_477) as Array<keyof typeof APPROVED_477>).find(
+            (k) => APPROVED_477[k](scope, e, mac, was, now),
+          );
         if (why) seen[why]++;
         else
           unexpected.push(
@@ -325,6 +359,8 @@ describe('key bindings vs the pre-478 matchers', () => {
     expect(seen.A).toBeGreaterThan(0);
     expect(seen.B).toBeGreaterThan(0);
     expect(seen.D).toBeGreaterThan(0);
+    expect(seen.F).toBeGreaterThan(0);
+    expect(seen.M).toBeGreaterThan(0);
   });
 
   it('pins one representative cell per delta', () => {
@@ -351,6 +387,19 @@ describe('key bindings vs the pre-478 matchers', () => {
     const d = e({ key: '/', code: 'Slash', ctrlKey: true });
     expect(legacyResolve('help-overlay', d, true)).toBe('help-overlay.close');
     expect(newResolve('help-overlay', d, true)).toBeNull();
+    // F (spec 477): ⌘F has a keydown binding on macOS.
+    const f = e({ key: 'f', code: 'KeyF', metaKey: true });
+    expect(legacyResolve('app', f, true)).toBeNull();
+    expect(newResolve('app', f, true)).toBe('find-in-session');
+    // M (spec 477): ⇧Ctrl↓ reorders on Windows/Linux.
+    const m = e({
+      key: 'ArrowDown',
+      code: 'ArrowDown',
+      ctrlKey: true,
+      shiftKey: true,
+    });
+    expect(legacyResolve('app', m, false)).toBe('arrow-shift-down');
+    expect(newResolve('app', m, false)).toBe('move-forward');
   });
 });
 

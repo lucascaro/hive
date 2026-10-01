@@ -14,8 +14,7 @@ import { useEffect, useLayoutEffect, type ReactNode } from 'react';
 import { OpenURL } from '../../bridge.js';
 import { reportFailure } from '../../app/dom.js';
 import { closeHelp, handOffToShortcuts } from '../../app/modals/help.js';
-import { isMac } from '../../lib/platform.js';
-import { mod } from '../../lib/shortcuts.js';
+import { useShortcutLabel } from '../../app/bindings.js';
 import { useAppStore } from '../../store/store.js';
 import { Kbd } from '../Kbd.js';
 import { ModalShell } from './ModalShell.js';
@@ -65,6 +64,7 @@ export function Help({ root }: { root: HTMLElement | null }): ReactNode {
 }
 
 function HelpBody({ root }: { root: HTMLElement }): ReactNode {
+  const shortcutsKey = useShortcutLabel('keyboard-shortcuts');
   // Same modal-focus discipline as the other dialogs: pull focus onto the
   // dialog so keystrokes don't leak behind the backdrop.
   useEffect(() => {
@@ -105,7 +105,7 @@ function HelpBody({ root }: { root: HTMLElement }): ReactNode {
             onClick={handOffToShortcuts}
           >
             <span>Keyboard shortcuts</span>
-            <Kbd>{mod(isMac, '/')}</Kbd>
+            {shortcutsKey ? <Kbd>{shortcutsKey}</Kbd> : null}
           </button>
         </section>
 

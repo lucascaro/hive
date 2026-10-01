@@ -7,9 +7,8 @@
 // matching key and menu item run.
 
 import { flushSync } from 'react-dom';
-import { isMac } from '../../lib/platform.js';
-import { paletteShortcuts } from '../../lib/shortcuts.js';
 import { closeModal, isModalOpen, openModal } from '../../store/store.js';
+import { shortcutLabel } from '../bindings.js';
 import { listCommands, runCommand } from '../command-registry.js';
 
 // One row the palette renders.
@@ -28,10 +27,9 @@ let deps: CommandPaletteDeps = {
   focusActiveTerm: () => {},
 };
 
-// Core labels come from lib/shortcuts.ts by command id, so the palette
-// and the ⌘/ overlay cannot drift from each other; plugin commands bring
-// their own.
-const CORE_KEYS = paletteShortcuts({ isMac });
+// Core labels are derived from the bindings under the user's keymap, per
+// call, so a rebind shows on the next opening; plugin commands bring
+// their own (resolved against the same keymap by the plugin host).
 
 export function paletteCommands(): PaletteCommand[] {
   return listCommands().flatMap((c) =>
@@ -41,7 +39,7 @@ export function paletteCommands(): PaletteCommand[] {
           {
             id: c.id,
             name: c.title,
-            shortcut: c.shortcut ?? CORE_KEYS[c.id] ?? '',
+            shortcut: c.shortcut ?? shortcutLabel(c.id),
             run: () => {
               runCommand(c.id);
             },

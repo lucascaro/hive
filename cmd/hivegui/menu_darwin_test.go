@@ -3,6 +3,10 @@
 package main
 
 import (
+	"encoding/json"
+	"os"
+	"reflect"
+	"sync"
 	"testing"
 
 	"github.com/wailsapp/wails/v2/pkg/menu"
@@ -231,5 +235,105 @@ func TestReloadAndRestartMenuItems(t *testing.T) {
 	// the expensive one, which is the confusion this split removes.
 	if findItem(m.Items, "Restart Hive…") != nil {
 		t.Error(`"Restart Hive…" still present; it was renamed to name its cost`)
+	}
+}
+
+func readMenuFixture(t *testing.T) map[string]string {
+	t.Helper()
+	b, err := os.ReadFile("testdata/menu-default-accelerators.json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var want map[string]string
+	if err := json.Unmarshal(b, &want); err != nil {
+		t.Fatal(err)
+	}
+	return want
+}
+
+// TestMenuDefaultsMatchFixture ties the hard-coded menu defaults to the
+// frontend's binding data (spec 477): the frontend asserts its derived
+// defaults equal the same fixture (test/unit/menu-accelerators.test.ts).
+// The keymap override sends only items whose accelerator differs from
+// the default, so the two sides drifting would leave a rebound command's
+// old chord live in the menu. Every item must go through accel(): one
+// that skips it is missing from the recorded map.
+func TestMenuDefaultsMatchFixture(t *testing.T) {
+	got := map[string]string{}
+	buildAppMenuRecorded(&App{}, got)
+	if want := readMenuFixture(t); !reflect.DeepEqual(got, want) {
+		t.Fatalf("menu accelerators drifted from testdata/menu-default-accelerators.json\ngot  %v\nwant %v", got, want)
+	}
+}
+
+func TestFixtureAcceleratorsParse(t *testing.T) {
+	for id, s := range readMenuFixture(t) {
+		if s == "" {
+			continue
+		}
+		acc, err := keys.Parse(s)
+		if err != nil {
+			t.Errorf("%s: %q does not parse: %v", id, s, err)
+			continue
+		}
+		if back := accelString(acc); back != s {
+			t.Errorf("%s: %q round-trips as %q", id, s, back)
+		}
+	}
+}
+
+// TestMenuAcceleratorOverride: the user's keymap replaces an item's
+// accelerator, "" removes it, and a string that will not parse removes
+// it too — never the default, which would keep the old chord firing.
+func TestMenuAcceleratorOverride(t *testing.T) {
+	a := &App{menuAccel: map[string]string{
+		"new-session":   "cmdorctrl+y",
+		"worktrees":     "cmdorctrl+e", // no menu item: ignored
+		"close-session": "",
+		"settings":      "cmdorctrl+nope",
+	}}
+	got := map[string]string{}
+	m := buildAppMenuRecorded(a, got)
+	if acc := findItem(m.Items, "New Session").Accelerator; acc == nil || acc.Key != "y" {
+		t.Fatalf("New Session accelerator = %+v, want ⌘Y", acc)
+	}
+	if acc := findItem(m.Items, "Close Session").Accelerator; acc != nil {
+		t.Fatalf("Close Session accelerator = %+v, want none", acc)
+	}
+	if acc := findItem(m.Items, "Settings…").Accelerator; acc != nil {
+		t.Fatalf("Settings accelerator = %+v, want none for an unparseable override", acc)
+	}
+	want := readMenuFixture(t)
+	want["new-session"] = "cmdorctrl+y"
+	want["close-session"] = ""
+	want["settings"] = ""
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("other items must keep their defaults\ngot  %v\nwant %v", got, want)
+	}
+}
+
+// TestMenuLockedConcurrent exercises the real build path (not the
+// no-context early return) from many goroutines, as Wails' bound calls
+// do. Run with -race.
+func TestMenuLockedConcurrent(t *testing.T) {
+	a := &App{}
+	var wg sync.WaitGroup
+	for i := 0; i < 8; i++ {
+		wg.Add(2)
+		go func(i int) {
+			defer wg.Done()
+			a.SetMenuAccelerators(map[string]string{"new-session": "cmdorctrl+y"})
+			a.menuMu.Lock()
+			_ = a.menuLocked()
+			a.menuMu.Unlock()
+		}(i)
+		go func(i int) {
+			defer wg.Done()
+			a.SetDebugTrace(i%2 == 0)
+		}(i)
+	}
+	wg.Wait()
+	if a.menuAccel["new-session"] != "cmdorctrl+y" {
+		t.Fatal("override lost")
 	}
 }

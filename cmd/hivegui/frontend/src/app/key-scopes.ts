@@ -26,23 +26,16 @@ import {
   type Keys,
 } from '../lib/chord.js';
 import { PHASE, phaseOf } from '../lib/phase-steps.js';
-import { pluginChord } from '../lib/plugin-api.js';
 import { isMac as platformIsMac } from '../lib/platform.js';
 import { appStore, isModalOpen, type ModalId } from '../store/store.js';
 import { termsMap } from '../store/terms.js';
 import { findBoxActive } from './find-session.js';
 import { inlineRenameActive } from './inline-rename.js';
 import { choiceDialogOpen } from './modals/choice-dialog.js';
+import { chordsOf, effectiveAppBindings, type Binding } from './bindings.js';
 import { pluginCommands } from './plugin-host.js';
 
-export interface Binding {
-  keys: Keys;
-  /** Command id, or null to reserve the chord: it ends dispatch but is
-   * left to the terminal, so nothing further down (a plugin) can take it. */
-  command: string | null;
-  /** false: a held key does not repeat the command. */
-  repeat?: false;
-}
+export type { Binding } from './bindings.js';
 
 /**
  * How a scope treats a key once it is active:
@@ -71,7 +64,7 @@ const ESCAPE: Keys = 'Any+Escape';
 function modal(
   id: string,
   modalId: ModalId,
-  bindings: readonly Binding[],
+  bindings: readonly Binding[] | (() => readonly Binding[]),
   trap?: string,
 ): KeyScope {
   return {
@@ -79,14 +72,17 @@ function modal(
     active: () => isModalOpen(modalId),
     owns: 'exclusive',
     trap,
-    bindings: () => bindings,
+    bindings: typeof bindings === 'function' ? bindings : () => bindings,
   };
 }
 
-// ⌘/ and ⌘? both mean the shortcuts panel: '?' is Shift+/ on a US layout.
-// The '?' form only ever fires off macOS — there the Help menu's ⌘/
-// accelerator takes both before the webview (menu_darwin.go).
-const HELP_CHORD: Keys = ['Mod+Shift?+/', 'Mod+Shift?+?'];
+// A modal's own chords that mirror the app command that opened it (⌘E
+// opens and closes the worktree browser). They follow the user's keymap:
+// rebinding the opener moves the closer with it.
+const mirror = (opener: string, command: string): Binding => ({
+  keys: chordsOf(opener),
+  command,
+});
 
 // ---------- the scopes, in precedence order ----------
 
@@ -154,9 +150,9 @@ const commandPalette = modal('command-palette', 'command-palette', [
 const settings = modal(
   'settings',
   'settings',
-  [
+  () => [
     { keys: ESCAPE, command: 'settings.close' },
-    { keys: 'Mod+Shift?+,', command: 'settings.close' },
+    mirror('settings', 'settings.close'),
   ],
   'settings',
 );
@@ -164,9 +160,9 @@ const settings = modal(
 const worktrees = modal(
   'worktrees',
   'worktrees',
-  [
+  () => [
     { keys: ESCAPE, command: 'worktrees.close' },
-    { keys: 'Mod+E', command: 'worktrees.close' },
+    mirror('worktrees', 'worktrees.close'),
   ],
   'worktrees',
 );
@@ -177,10 +173,10 @@ const worktrees = modal(
 const quickIdea = modal(
   'quick-idea',
   'quick-idea',
-  [
+  () => [
     { keys: ESCAPE, command: 'quick-idea.close' },
-    { keys: 'Mod+I', command: 'quick-idea.close' },
-    { keys: 'Mod+Shift+I', command: 'idea-inbox' },
+    mirror('quick-idea', 'quick-idea.close'),
+    mirror('idea-inbox', 'idea-inbox'),
   ],
   'quick-idea',
 );
@@ -188,10 +184,10 @@ const quickIdea = modal(
 const ideaInbox = modal(
   'idea-inbox',
   'idea-inbox',
-  [
+  () => [
     { keys: ESCAPE, command: 'idea-inbox.close' },
-    { keys: 'Mod+Shift+I', command: 'idea-inbox.close' },
-    { keys: 'Mod+I', command: 'quick-idea' },
+    mirror('idea-inbox', 'idea-inbox.close'),
+    mirror('quick-idea', 'quick-idea'),
   ],
   'idea-inbox',
 );
@@ -199,9 +195,9 @@ const ideaInbox = modal(
 const helpOverlay = modal(
   'help-overlay',
   'help',
-  [
+  () => [
     { keys: ESCAPE, command: 'help-overlay.close' },
-    { keys: HELP_CHORD, command: 'help-overlay.close' },
+    mirror('keyboard-shortcuts', 'help-overlay.close'),
   ],
   'help-overlay',
 );
@@ -211,9 +207,9 @@ const helpOverlay = modal(
 const helpModal = modal(
   'help-modal',
   'help-modal',
-  [
+  () => [
     { keys: ESCAPE, command: 'help-modal.close' },
-    { keys: HELP_CHORD, command: 'help-modal.shortcuts' },
+    mirror('keyboard-shortcuts', 'help-modal.shortcuts'),
   ],
   'help-modal',
 );
@@ -276,115 +272,12 @@ const deadOverlay: KeyScope = {
   ],
 };
 
-// The app's global chords. Exact matches, except where a key has always
-// ignored Shift ('+' is Shift+= on a US layout; digits need Shift on
-// AZERTY). Order only matters between chords that overlap, and none do.
-const APP_BINDINGS: readonly Binding[] = [
-  // Ctrl+` opens an OS terminal at the active session's worktree. Ctrl on
-  // every platform, mirroring VS Code: macOS reserves ⌘` for window
-  // cycling.
-  { keys: 'Ctrl+[Backquote]', command: 'open-os-terminal' },
-  // Session back / forward. Ctrl on macOS but Ctrl+Alt elsewhere, where
-  // plain Ctrl+- is already zoom out. '_' is shifted '-', and [Minus]
-  // covers layouts that produce neither. Known limitation off macOS:
-  // AltGr reports as Ctrl+Alt, so a layout where AltGr+'-' composes a
-  // character loses it — VS Code carries the same tradeoff.
-  {
-    keys: {
-      mac: ['Ctrl+-', 'Ctrl+_', 'Ctrl+[Minus]'],
-      other: ['Ctrl+Alt+-', 'Ctrl+Alt+_', 'Ctrl+Alt+[Minus]'],
-    },
-    command: 'nav-back',
-  },
-  {
-    keys: {
-      mac: ['Ctrl+Shift+-', 'Ctrl+Shift+_', 'Ctrl+Shift+[Minus]'],
-      other: ['Ctrl+Alt+Shift+-', 'Ctrl+Alt+Shift+_', 'Ctrl+Alt+Shift+[Minus]'],
-    },
-    command: 'nav-forward',
-  },
-  // Agent activity (spec 416). Not plain Ctrl+J off macOS: that is byte
-  // 0x0a, the newline Claude Code documents for every terminal.
-  {
-    keys: {
-      mac: ['Mod+J', 'Mod+[KeyJ]'],
-      other: ['Ctrl+Shift+J', 'Ctrl+Shift+[KeyJ]'],
-    },
-    command: 'toggle-activity',
-  },
-  {
-    keys: {
-      mac: ['Mod+Shift+J', 'Mod+Shift+[KeyJ]'],
-      other: ['Ctrl+Alt+Shift+J', 'Ctrl+Alt+Shift+[KeyJ]'],
-    },
-    command: 'activity-grid',
-  },
-  // Find in session (spec 431). Not plain Ctrl+F off macOS: that is 0x06,
-  // readline's forward-char. No macOS keydown: the native ⌘F accelerator
-  // takes the key and the menu event runs the same command.
-  {
-    keys: { other: ['Ctrl+Shift+F', 'Ctrl+Shift+[KeyF]'] },
-    command: 'find-in-session',
-  },
-
-  { keys: ['Mod+Shift?+=', 'Mod+Shift?++'], command: 'zoom-in' },
-  { keys: ['Mod+Shift?+-', 'Mod+Shift?+_'], command: 'zoom-out' },
-  { keys: 'Mod+Shift?+0', command: 'zoom-reset' },
-  { keys: 'Mod+Shift+K', command: 'command-palette' },
-  // ⌘⏎ zooms into the tile you navigated to, from a grid only (the
-  // command declines in single view). ONE-WAY on purpose: Claude and
-  // Codex bind Cmd+Enter themselves (spec #217), so in single view the
-  // key must reach the terminal, and ⇧⌘⏎ stays unclaimed in every view.
-  { keys: 'Mod+Shift+Enter', command: null },
-  { keys: 'Mod+Enter', command: 'focus-active-session' },
-  { keys: HELP_CHORD, command: 'keyboard-shortcuts' },
-  // ⌘, — the standard Settings chord. On macOS the File menu carries the
-  // same accelerator; Windows/Linux have no native menu, so this is the
-  // only path there.
-  { keys: 'Mod+Shift?+,', command: 'settings' },
-  { keys: 'Mod+P', command: 'duplicate-session' },
-  { keys: 'Mod+Shift+P', command: 'duplicate-session-choose-tool' },
-  { keys: 'Mod+T', command: 'new-session' },
-  { keys: 'Mod+Shift+T', command: 'new-session-worktree' },
-  { keys: 'Mod+Shift+Backspace', command: 'delete-project' },
-  { keys: 'Mod+E', command: 'worktrees' },
-  { keys: 'Mod+I', command: 'quick-idea' },
-  { keys: 'Mod+Shift+I', command: 'idea-inbox' },
-  { keys: 'Mod+S', command: 'toggle-sidebar' },
-  { keys: 'Mod+G', command: 'toggle-project-grid' },
-  { keys: 'Mod+Shift+G', command: 'toggle-all-grid' },
-  // ⌘N — new project. (⌥⌘N is reserved by macOS Spotlight.)
-  { keys: 'Mod+N', command: 'new-project' },
-  { keys: 'Mod+Shift+N', command: 'new-window' },
-  { keys: 'Mod+B', command: 'next-attention' },
-  { keys: 'Mod+Shift+B', command: 'jump-back' },
-  { keys: 'Mod+W', command: 'close-session' },
-  { keys: 'Mod+Shift+W', command: 'close-window' },
-  // ⌘Z undoes the close you just made. ⇧⌘Z reads as redo, which this has
-  // no counterpart for, so it is reserved rather than handed to a plugin.
-  { keys: 'Mod+Z', command: 'reopen-closed-session' },
-  { keys: 'Mod+Shift+Z', command: null },
-  ...Array.from({ length: 9 }, (_, i) => ({
-    keys: `Mod+Shift?+${i + 1}`,
-    command: `switch-${i + 1}`,
-  })),
-  // Horizontal arrows are only ours in a grid: in focused mode ⌘←/⌘→ are
-  // start/end-of-line in the terminal, and the command declines.
-  { keys: 'Mod+Shift?+ArrowLeft', command: 'grid-left' },
-  { keys: 'Mod+Shift?+ArrowRight', command: 'grid-right' },
-  { keys: 'Mod+ArrowUp', command: 'prev-session' },
-  { keys: 'Mod+ArrowDown', command: 'next-session' },
-  { keys: 'Mod+Shift+ArrowUp', command: 'arrow-shift-up' },
-  { keys: 'Mod+Shift+ArrowDown', command: 'arrow-shift-down' },
-  { keys: 'Mod+Shift?+[', command: 'prev-project' },
-  { keys: 'Mod+Shift?+]', command: 'next-project' },
-];
-
 const app: KeyScope = {
   id: 'app',
   active: () => true,
   owns: 'matched',
-  bindings: () => APP_BINDINGS,
+  // The shipped chords under the user's keymap (app/bindings.ts).
+  bindings: () => effectiveAppBindings().bindings,
 };
 
 const plugins: KeyScope = {
@@ -394,13 +287,12 @@ const plugins: KeyScope = {
   active: () => Object.keys(appData().pluginUI).length > 0,
   owns: 'matched',
   bindings: () =>
-    pluginCommands().flatMap((r) => {
-      const keys =
-        r.bound && r.command.keys ? pluginChord(r.command.keys) : null;
-      return keys
-        ? [{ keys, command: `plugin:${r.pluginId}:${r.command.id}` }]
-        : [];
-    }),
+    pluginCommands().flatMap((r) =>
+      r.chords.map((keys) => ({
+        keys,
+        command: `plugin:${r.pluginId}:${r.command.id}`,
+      })),
+    ),
 };
 
 export const KEY_SCOPES: readonly KeyScope[] = [

@@ -3,23 +3,46 @@
 package main
 
 import (
+	"log"
+	"strings"
+
 	"github.com/wailsapp/wails/v2/pkg/menu"
 	"github.com/wailsapp/wails/v2/pkg/menu/keys"
 	wruntime "github.com/wailsapp/wails/v2/pkg/runtime"
 )
 
-// buildAppMenu wires every keyboard shortcut in the GUI into the
-// native macOS menu. Menu items emit `menu:<action>` events that the
-// frontend listens for and dispatches to the same handlers used by
-// the in-window keyboard listener — so the menu stays in sync with
-// keyboard behavior by going through one code path.
+// buildAppMenu wires the GUI's commands into the native macOS menu. Menu
+// items emit `menu:<action>` events that the frontend dispatches through
+// the same command bus as its keyboard listener (app/commands.ts
+// MENU_COMMANDS), so a key and its menu item run one code path.
 //
-// Requirement: every keyboard shortcut in
-// cmd/hivegui/frontend/src/main.ts MUST be reachable from this menu.
-// macOS shows only one accelerator per item; alternate keys (e.g.
-// ⌘← as another way to trigger Previous Session) are still wired in
-// the JS keyboard handler.
+// The accelerators below are the DEFAULTS. They must equal the chords in
+// cmd/hivegui/frontend/src/lib/bindings.ts — both sides are pinned to
+// testdata/menu-default-accelerators.json. The user's keymap (spec 477)
+// overrides them per command id through a.menuAccel (SetMenuAccelerators).
+// macOS shows only one accelerator per item; a command's other chords,
+// and every non-⌘ chord, reach the webview as keydowns instead.
+//
+// The caller holds a.menuMu, or builds before Wails starts; this never
+// takes the lock.
 func buildAppMenu(a *App) *menu.Menu {
+	return buildAppMenuRecorded(a, nil)
+}
+
+// buildAppMenuRecorded builds the menu and, when record is non-nil, fills
+// it with every item's resolved accelerator by command id ("" = none).
+// Tests use it to prove each item goes through accel().
+func buildAppMenuRecorded(a *App, record map[string]string) *menu.Menu {
+	accel := func(id string, def *keys.Accelerator) *keys.Accelerator {
+		acc := def
+		if s, ok := a.menuAccel[id]; ok {
+			acc = parseMenuAccel(id, s)
+		}
+		if record != nil {
+			record[id] = accelString(acc)
+		}
+		return acc
+	}
 	emit := func(name string) func(*menu.CallbackData) {
 		return func(_ *menu.CallbackData) {
 			if a.ctx == nil {
@@ -33,47 +56,35 @@ func buildAppMenu(a *App) *menu.Menu {
 	m.Append(menu.AppMenu()) // About / Hide / Quit (⌘Q)
 
 	file := m.AddSubmenu("File")
-	file.AddText("New Project…", keys.CmdOrCtrl("n"), emit("menu:new-project"))
-	file.AddText("New Session", keys.CmdOrCtrl("t"), emit("menu:new-session"))
-	file.AddText("New Session in Worktree",
-		keys.Combo("t", keys.ShiftKey, keys.CmdOrCtrlKey),
-		emit("menu:new-session-worktree"))
-	file.AddText("Duplicate Session",
-		keys.CmdOrCtrl("p"),
-		emit("menu:duplicate-session"))
-	file.AddText("Duplicate Session (choose tool)…",
-		keys.Combo("p", keys.ShiftKey, keys.CmdOrCtrlKey),
-		emit("menu:duplicate-session-choose-tool"))
-	file.AddText("Restart Session", nil, emit("menu:restart-session"))
+	file.AddText("New Project…", accel("new-project", keys.CmdOrCtrl("n")), emit("menu:new-project"))
+	file.AddText("New Session", accel("new-session", keys.CmdOrCtrl("t")), emit("menu:new-session"))
+	file.AddText("New Session in Worktree", accel("new-session-worktree", keys.Combo("t", keys.ShiftKey, keys.CmdOrCtrlKey)), emit("menu:new-session-worktree"))
+	file.AddText("Duplicate Session", accel("duplicate-session", keys.CmdOrCtrl("p")), emit("menu:duplicate-session"))
+	file.AddText("Duplicate Session (choose tool)…", accel("duplicate-session-choose-tool", keys.Combo("p", keys.ShiftKey, keys.CmdOrCtrlKey)), emit("menu:duplicate-session-choose-tool"))
+	file.AddText("Restart Session", accel("restart-session", nil), emit("menu:restart-session"))
 	file.AddSeparator()
 	file.AddText("New Window",
-		keys.Combo("n", keys.ShiftKey, keys.CmdOrCtrlKey),
+		accel("new-window", keys.Combo("n", keys.ShiftKey, keys.CmdOrCtrlKey)),
 		func(_ *menu.CallbackData) { _ = a.OpenNewWindow() })
-	file.AddText("Close Session", keys.CmdOrCtrl("w"), emit("menu:close-session"))
+	file.AddText("Close Session", accel("close-session", keys.CmdOrCtrl("w")), emit("menu:close-session"))
 	file.AddText("Close Window",
-		keys.Combo("w", keys.ShiftKey, keys.CmdOrCtrlKey),
+		accel("close-window", keys.Combo("w", keys.ShiftKey, keys.CmdOrCtrlKey)),
 		func(_ *menu.CallbackData) { a.CloseWindow() })
-	// ⌘Z, the reflex after an accidental ⌘W. Hive has no Edit menu, so
-	// there is no stock Undo item to collide with, and ⌘ is not a
-	// terminal modifier — xterm.js never received this chord, so
+	// ⌘Z, the reflex after an accidental ⌘W. The stock Edit menu below
+	// also claims ⌘Z for Undo; this File item has always won it. ⌘ is not
+	// a terminal modifier — xterm.js never received this chord, so
 	// binding it takes nothing away from the focused agent.
-	file.AddText("Reopen Closed Session",
-		keys.CmdOrCtrl("z"),
-		emit("menu:reopen-closed-session"))
+	file.AddText("Reopen Closed Session", accel("reopen-closed-session", keys.CmdOrCtrl("z")), emit("menu:reopen-closed-session"))
 	file.AddSeparator()
 	// ⌘I files a note about anything, from anywhere; ⇧⌘I opens the
 	// active project's inbox. Both are ⌘ chords the terminal never
 	// receives, so binding them takes nothing from the focused agent.
-	file.AddText("Capture Idea…", keys.CmdOrCtrl("i"), emit("menu:quick-idea"))
-	file.AddText("Idea Inbox…",
-		keys.Combo("i", keys.ShiftKey, keys.CmdOrCtrlKey),
-		emit("menu:idea-inbox"))
+	file.AddText("Capture Idea…", accel("quick-idea", keys.CmdOrCtrl("i")), emit("menu:quick-idea"))
+	file.AddText("Idea Inbox…", accel("idea-inbox", keys.Combo("i", keys.ShiftKey, keys.CmdOrCtrlKey)), emit("menu:idea-inbox"))
 	file.AddSeparator()
-	file.AddText("Delete Project…",
-		keys.Combo("backspace", keys.ShiftKey, keys.CmdOrCtrlKey),
-		emit("menu:delete-project"))
+	file.AddText("Delete Project…", accel("delete-project", keys.Combo("backspace", keys.ShiftKey, keys.CmdOrCtrlKey)), emit("menu:delete-project"))
 	file.AddSeparator()
-	file.AddText("Check for Updates…", nil, emit("menu:check-for-updates"))
+	file.AddText("Check for Updates…", accel("check-for-updates", nil), emit("menu:check-for-updates"))
 	// Reload relaunches every GUI window and leaves hived — and every
 	// running shell and agent — alone. It is the cheap half of what
 	// used to be a single "Restart Hive".
@@ -82,12 +93,12 @@ func buildAppMenu(a *App) *menu.Menu {
 	// browser reload reflex, and a user who fires it out of habit while
 	// an agent is mid-run loses their window (and their scroll
 	// position) for nothing. The palette and this menu are enough.
-	file.AddText("Reload GUI", nil, emit("menu:reload-gui"))
+	file.AddText("Reload GUI", accel("reload-gui", nil), emit("menu:reload-gui"))
 	// No accelerator: this terminates every running shell and agent,
 	// which is not something to leave one fat-finger away. The label
 	// names the cost, because it now sits next to an item that looks
 	// similar and costs nothing.
-	file.AddText("Restart Daemon… (ends all sessions)", nil, emit("menu:restart-hive"))
+	file.AddText("Restart Daemon… (ends all sessions)", accel("restart-hive", nil), emit("menu:restart-hive"))
 	// macOS convention puts Settings in the app menu, but Wails v2
 	// builds that menu entirely in Objective-C from a role enum
 	// (WailsMenu.m's appendRole) — processMenuItem returns as soon as
@@ -95,18 +106,16 @@ func buildAppMenu(a *App) *menu.Menu {
 	// Hand-building the app menu instead would forfeit Hide / Hide
 	// Others / Show All, which need selectors Go can't invoke. File is
 	// the next-best home; ⌘, is what users actually reach for.
-	file.AddText("Settings…", keys.CmdOrCtrl(","), emit("menu:settings"))
+	file.AddText("Settings…", accel("settings", keys.CmdOrCtrl(",")), emit("menu:settings"))
 
 	m.Append(menu.EditMenu()) // Cut / Copy / Paste / Select All
 
 	view := m.AddSubmenu("View")
-	view.AddText("Command Palette…",
-		keys.Combo("k", keys.ShiftKey, keys.CmdOrCtrlKey),
-		emit("menu:command-palette"))
+	view.AddText("Command Palette…", accel("command-palette", keys.Combo("k", keys.ShiftKey, keys.CmdOrCtrlKey)), emit("menu:command-palette"))
 	view.AddSeparator()
-	view.AddText("Zoom In", keys.CmdOrCtrl("="), emit("menu:zoom-in"))
-	view.AddText("Zoom Out", keys.CmdOrCtrl("-"), emit("menu:zoom-out"))
-	view.AddText("Actual Size", keys.CmdOrCtrl("0"), emit("menu:zoom-reset"))
+	view.AddText("Zoom In", accel("zoom-in", keys.CmdOrCtrl("=")), emit("menu:zoom-in"))
+	view.AddText("Zoom Out", accel("zoom-out", keys.CmdOrCtrl("-")), emit("menu:zoom-out"))
+	view.AddText("Actual Size", accel("zoom-reset", keys.CmdOrCtrl("0")), emit("menu:zoom-reset"))
 	view.AddSeparator()
 	// Find lives under View rather than Edit because Edit is Wails'
 	// stock menu.EditMenu() (appended above) — it gives us Cut / Copy /
@@ -119,43 +128,32 @@ func buildAppMenu(a *App) *menu.Menu {
 	// chord. It opens the box, or with
 	// the box already open refocuses it and selects the query — the
 	// find-field convention. It never closes it; Escape does.
-	view.AddText("Find in Session…", keys.CmdOrCtrl("f"), emit("menu:find-in-session"))
+	view.AddText("Find in Session…", accel("find-in-session", keys.CmdOrCtrl("f")), emit("menu:find-in-session"))
 	view.AddSeparator()
-	view.AddText("Toggle Sidebar", keys.CmdOrCtrl("s"), emit("menu:toggle-sidebar"))
+	view.AddText("Toggle Sidebar", accel("toggle-sidebar", keys.CmdOrCtrl("s")), emit("menu:toggle-sidebar"))
 	view.AddSeparator()
-	view.AddText("Toggle Project Grid", keys.CmdOrCtrl("g"), emit("menu:toggle-project-grid"))
-	view.AddText("Toggle All Sessions Grid",
-		keys.Combo("g", keys.ShiftKey, keys.CmdOrCtrlKey),
-		emit("menu:toggle-all-grid"))
+	view.AddText("Toggle Project Grid", accel("toggle-project-grid", keys.CmdOrCtrl("g")), emit("menu:toggle-project-grid"))
+	view.AddText("Toggle All Sessions Grid", accel("toggle-all-grid", keys.Combo("g", keys.ShiftKey, keys.CmdOrCtrlKey)), emit("menu:toggle-all-grid"))
 	view.AddSeparator()
-	view.AddText("Toggle Agent Activity", keys.CmdOrCtrl("j"), emit("menu:toggle-activity"))
-	view.AddText("Agent Activity Grid",
-		keys.Combo("j", keys.ShiftKey, keys.CmdOrCtrlKey),
-		emit("menu:activity-grid"))
+	view.AddText("Toggle Agent Activity", accel("toggle-activity", keys.CmdOrCtrl("j")), emit("menu:toggle-activity"))
+	view.AddText("Agent Activity Grid", accel("activity-grid", keys.Combo("j", keys.ShiftKey, keys.CmdOrCtrlKey)), emit("menu:activity-grid"))
 
 	sess := m.AddSubmenu("Session")
-	sess.AddText("Next Session", keys.CmdOrCtrl("down"), emit("menu:next-session"))
-	sess.AddText("Previous Session", keys.CmdOrCtrl("up"), emit("menu:prev-session"))
+	sess.AddText("Next Session", accel("next-session", keys.CmdOrCtrl("down")), emit("menu:next-session"))
+	sess.AddText("Previous Session", accel("prev-session", keys.CmdOrCtrl("up")), emit("menu:prev-session"))
 	sess.AddSeparator()
-	sess.AddText("Next Session Needing Attention",
-		keys.CmdOrCtrl("b"), emit("menu:next-attention"))
-	sess.AddText("Jump Back to Where You Were",
-		keys.Combo("b", keys.ShiftKey, keys.CmdOrCtrlKey),
-		emit("menu:jump-back"))
+	sess.AddText("Next Session Needing Attention", accel("next-attention", keys.CmdOrCtrl("b")), emit("menu:next-attention"))
+	sess.AddText("Jump Back to Where You Were", accel("jump-back", keys.Combo("b", keys.ShiftKey, keys.CmdOrCtrlKey)), emit("menu:jump-back"))
 	sess.AddSeparator()
-	sess.AddText("Move Session Forward",
-		keys.Combo("down", keys.ShiftKey, keys.CmdOrCtrlKey),
-		emit("menu:move-session-forward"))
-	sess.AddText("Move Session Backward",
-		keys.Combo("up", keys.ShiftKey, keys.CmdOrCtrlKey),
-		emit("menu:move-session-backward"))
+	sess.AddText("Move Session Forward", accel("move-forward", keys.Combo("down", keys.ShiftKey, keys.CmdOrCtrlKey)), emit("menu:move-session-forward"))
+	sess.AddText("Move Session Backward", accel("move-backward", keys.Combo("up", keys.ShiftKey, keys.CmdOrCtrlKey)), emit("menu:move-session-backward"))
 	sess.AddSeparator()
-	sess.AddText("Next Project", keys.CmdOrCtrl("]"), emit("menu:next-project"))
-	sess.AddText("Previous Project", keys.CmdOrCtrl("["), emit("menu:prev-project"))
+	sess.AddText("Next Project", accel("next-project", keys.CmdOrCtrl("]")), emit("menu:next-project"))
+	sess.AddText("Previous Project", accel("prev-project", keys.CmdOrCtrl("[")), emit("menu:prev-project"))
 	sess.AddSeparator()
 	for i := 1; i <= 9; i++ {
 		k := string(rune('0' + i))
-		sess.AddText("Switch to Session "+k, keys.CmdOrCtrl(k), emit("menu:switch-"+k))
+		sess.AddText("Switch to Session "+k, accel("switch-"+k, keys.CmdOrCtrl(k)), emit("menu:switch-"+k))
 	}
 
 	m.Append(menu.WindowMenu()) // Minimize / Zoom / Front
@@ -178,8 +176,8 @@ func buildAppMenu(a *App) *menu.Menu {
 	if a.debugTrace {
 		traceLabel = "Turn Debug Trace Off (Reloads)"
 	}
-	debug.AddText(traceLabel, nil, emit("menu:toggle-scroll-debug"))
-	debug.AddText("Copy Debug Trace", nil, emit("menu:copy-scroll-trace"))
+	debug.AddText(traceLabel, accel("toggle-scroll-debug", nil), emit("menu:toggle-scroll-debug"))
+	debug.AddText("Copy Debug Trace", accel("copy-scroll-trace", nil), emit("menu:copy-scroll-trace"))
 
 	// Help submenu — macOS auto-injects a Search field that
 	// fuzzy-matches every item in every other menu, so the user can
@@ -198,7 +196,45 @@ func buildAppMenu(a *App) *menu.Menu {
 	// darwin (the menu consumes the chord first) and exists for
 	// Windows/Linux, where buildAppMenu returns nil and there is no menu
 	// to handle it.
-	help.AddText("Keyboard Shortcuts", keys.CmdOrCtrl("/"), emit("menu:keyboard-shortcuts"))
+	help.AddText("Keyboard Shortcuts", accel("keyboard-shortcuts", keys.CmdOrCtrl("/")), emit("menu:keyboard-shortcuts"))
 
 	return m
+}
+
+// parseMenuAccel turns a keymap accelerator ("cmdorctrl+shift+t") into a
+// Wails one. "" is no accelerator. One that will not parse is ALSO none:
+// falling back to the default would leave the old chord firing through
+// the menu after the user moved it.
+func parseMenuAccel(id, s string) *keys.Accelerator {
+	if s == "" {
+		return nil
+	}
+	acc, err := keys.Parse(s)
+	if err != nil {
+		log.Printf("menu: ignoring accelerator %q for %s: %v", s, id, err)
+		return nil
+	}
+	return acc
+}
+
+// accelString is the canonical form both sides of the parity fixture
+// use: modifiers in a fixed order, then the key ("+" spelled "plus").
+func accelString(acc *keys.Accelerator) string {
+	if acc == nil {
+		return ""
+	}
+	parts := []string{}
+	for _, want := range []keys.Modifier{keys.CmdOrCtrlKey, keys.ControlKey, keys.OptionOrAltKey, keys.ShiftKey} {
+		for _, m := range acc.Modifiers {
+			if m == want {
+				parts = append(parts, string(m))
+				break
+			}
+		}
+	}
+	k := strings.ToLower(acc.Key)
+	if k == "+" {
+		k = "plus"
+	}
+	return strings.Join(append(parts, k), "+")
 }

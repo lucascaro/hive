@@ -1130,6 +1130,19 @@ export async function SaveEditorSettings(s: {
   Object.assign(editorSettings, s);
   return '';
 }
+// The user's keymap.json (spec 477). A spec seeds it before the page
+// loads with page.addInitScript(() => { window.__hive_keymapSeed = … }),
+// so the app boots with it the way it would from disk.
+export async function GetKeymap() {
+  maybeFail('GetKeymap');
+  return (
+    (globalThis as { __hive_keymapSeed?: unknown }).__hive_keymapSeed ?? {}
+  );
+}
+export async function SetMenuAccelerators(accel: Record<string, string>) {
+  maybeFail('SetMenuAccelerators');
+  bridgeCalls.push({ method: 'SetMenuAccelerators', args: [{ ...accel }] });
+}
 export async function OpenTerminalAt(dir: string) {
   maybeFail('OpenTerminalAt');
   bridgeCalls.push({ method: 'OpenTerminalAt', args: [dir] });

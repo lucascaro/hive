@@ -5,6 +5,9 @@
 // scope, otherwise { kind, title, hint, actions } where actions is a
 // list of { id, label } the renderer turns into real buttons.
 
+import { EMPTY_KEYMAP, labelIn, type Keymap } from './bindings.js';
+import { withKey } from './chord-label.js';
+
 // Only `.length` is read off projects, so its element type is irrelevant.
 export interface EmptyStateInput {
   projects?: readonly unknown[];
@@ -14,6 +17,8 @@ export interface EmptyStateInput {
   gridProjectId?: string;
   minimized?: { has(id: string): boolean };
   isMac?: boolean;
+  /** The user's keymap (spec 477); the shipped defaults when omitted. */
+  keymap?: Keymap;
 }
 
 export interface EmptyState {
@@ -31,18 +36,33 @@ export function emptyStateModel({
   gridProjectId = '',
   minimized = new Set<string>(),
   isMac = true,
+  keymap = EMPTY_KEYMAP,
 }: EmptyStateInput = {}): EmptyState | null {
-  const mod = isMac ? '⌘' : 'Ctrl+';
+  // The user's current keys, or none: a hint never names a key that
+  // does nothing (spec 477).
+  const newSession = labelIn(keymap, 'new-session', isMac);
+  const newProject = labelIn(keymap, 'new-project', isMac);
+  const sessionAction = {
+    id: 'new-session',
+    label: withKey('New session', newSession),
+  };
 
   if (sessions.length === 0) {
+    const launch = newSession
+      ? `Press ${newSession} to launch an agent`
+      : 'Start a new session to launch an agent';
+    const create =
+      projects.length === 0 && newProject
+        ? `, or ${newProject} to create a project`
+        : '';
     return {
       kind: 'first-run',
       title: 'No sessions yet',
-      hint: `Press ${mod}T to launch an agent${projects.length === 0 ? `, or ${mod}N to create a project` : ''}.`,
+      hint: `${launch}${create}.`,
       actions: [
-        { id: 'new-session', label: `New session (${mod}T)` },
+        sessionAction,
         ...(projects.length === 0
-          ? [{ id: 'new-project', label: `New project (${mod}N)` }]
+          ? [{ id: 'new-project', label: withKey('New project', newProject) }]
           : []),
       ],
     };
@@ -69,8 +89,10 @@ export function emptyStateModel({
     return {
       kind: 'project-empty',
       title: 'No sessions in this project',
-      hint: `${mod}T launches an agent here.`,
-      actions: [{ id: 'new-session', label: `New session (${mod}T)` }],
+      hint: newSession
+        ? `${newSession} launches an agent here.`
+        : 'Start a new session to launch an agent here.',
+      actions: [sessionAction],
     };
   }
 

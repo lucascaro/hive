@@ -20,8 +20,7 @@ import {
 import { switchTo } from '../../app/view.js';
 import type { IdeaInfo } from '../../app/state.js';
 import { relativeAge } from '../../lib/ideas.js';
-import { isMac } from '../../lib/platform.js';
-import { mod } from '../../lib/shortcuts.js';
+import { useShortcutLabel } from '../../app/bindings.js';
 import { openIdeasOf, useAppStore } from '../../store/store.js';
 import { ModalShell } from './ModalShell.js';
 
@@ -56,6 +55,8 @@ function IdeaInboxPanel({
   projectId: string;
   projectName: string;
 }): ReactNode {
+  // ⌘I from inside the inbox opens the capture sheet (app/key-scopes.ts).
+  const captureKey = useShortcutLabel('quick-idea');
   // Raw slice selected, filtered in render: see openIdeasOf's note.
   const ideas = openIdeasOf(
     useAppStore((s) => s.ideas),
@@ -83,13 +84,16 @@ function IdeaInboxPanel({
       // patterns.md › Keyboard hints: `[…]` for symbols, `(…)` for letters.
       hints={[
         { keys: '[esc]', label: 'close' },
-        { keys: `[${mod(isMac, 'i')}]`, label: 'capture another' },
+        ...(captureKey
+          ? [{ keys: `[${captureKey}]`, label: 'capture another' }]
+          : []),
       ]}
     >
       <div className="idea-list" id="idea-inbox-list">
         {ideas.length === 0 ? (
           <p className="idea-empty" id="idea-inbox-empty">
-            Nothing captured yet. Press {mod(isMac, 'I')} — or run{' '}
+            Nothing captured yet.{' '}
+            {captureKey ? `Press ${captureKey} — or run ` : 'Run '}
             <code>hived idea add …</code> inside a session — to file one.
           </p>
         ) : (

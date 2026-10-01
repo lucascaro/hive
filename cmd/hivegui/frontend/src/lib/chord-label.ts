@@ -65,3 +65,8 @@ export function chordLabel(s: string, isMac: boolean): string {
   const mods = [ctrl && 'Ctrl', alt && 'Alt', shift && 'Shift', meta && 'Meta'];
   return [...mods.filter(Boolean), key].join('+');
 }
+
+/** 'Worktrees (⌘E)', or just 'Worktrees' for a command with no key. */
+export function withKey(label: string, key: string): string {
+  return key ? `${label} (${key})` : label;
+}
