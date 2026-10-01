@@ -105,6 +105,20 @@ describe('the e2e command log', () => {
     ]);
   });
 
+  it('records under the real bridge too', async () => {
+    const { m, win } = await load({
+      VITE_WAILS_MOCK: '',
+      VITE_WAILS_REAL: '1',
+    });
+    const off = m.registerCommandSource(
+      () => [{ id: 'ok', run: () => {} }],
+      'core',
+    );
+    m.runCommand('ok');
+    off();
+    expect(win.__hive_commandLog).toEqual([{ id: 'ok', ran: true }]);
+  });
+
   it('does not exist without the e2e env var', async () => {
     const { m, win } = await load({ VITE_WAILS_MOCK: '', VITE_WAILS_REAL: '' });
     const off = m.registerCommandSource(
