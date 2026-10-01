@@ -246,3 +246,11 @@ Would fail on a wrong implementation: the v0-fixture parity tests fail on any la
 - **2026-10-01 iter 3** — verdict: APPROVE; mergeable: MERGEABLE; findings_hash: empty; threads_open: 0; action: stop; head_sha: 3775bc2.
 - **2026-10-01 iter 4** — verdict: APPROVE; mergeable: MERGEABLE; findings_hash: empty; threads_open: 0; action: stop; head_sha: b7a97a1.
 - **2026-10-01 iter 5** — verdict: APPROVE; mergeable: MERGEABLE; findings_hash: empty; threads_open: 0; action: stop; head_sha: d24b2c0.
+
+## Gate verdict
+
+- **2026-10-01** — verdict: PASS; phase: 1/3; checks: 1 passed / 0 failed / 0 followups / 10 deferred; followups: none; one-line: Phase 1 engine, derived labels and menu sync verified; criteria 1–10 deferred to phases 2–3 (their Phase 1 engine halves verified), criterion 11 passes with the approved D1 exception.
+  - 2026-10-01 dimensions:
+    - acceptance — PASS — criterion 11 PASS (label + menu fixtures with empty keymap); 1–10 DEFERRED (phase > 1), engine halves of 1/2/4/6/7/8 exercised by bindings, keymap-surfaces, keymap-menu-sync, plugin-keymap, keymap-override e2e and Go keymap/menu tests
+    - non-goals — PASS — terminal-editing chords only as RESERVED_CHORDS; modal Escape hard-coded; no sequences, sync, per-project keymaps; README untouched; no wire/daemon change
+    - doc accuracy — PASS — changeset valid (type: changed); AGENTS.md policy and DESIGN.md StateDir list updated; no generated files edited
