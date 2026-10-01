@@ -351,3 +351,81 @@ func TestPackageIsIsolatedFromRealHiveState(t *testing.T) {
 		t.Error("stageUpdateFn is live in tests; it downloads or runs build.sh")
 	}
 }
+
+// A check that finds the version already staged must report the ready
+// state, not the raw "available" it computed. CheckForUpdate and the
+// periodic loop hand rememberCheck's result to the frontend; returning
+// the raw one re-rendered the banner as "Update", and clicking it hit
+// StartUpdate's already-staged no-op, which emits nothing — leaving the
+// button disabled for good.
+func TestRememberCheckReturnsReadyWhenAlreadyStaged(t *testing.T) {
+	a := &App{}
+	a.rememberCheck(UpdateInfo{Available: true, Latest: "9.9.9", Stage: StageAvailable})
+	_, release := stubStaging(t, "/staged/hivegui.app", nil)
+	if err := a.StartUpdate(); err != nil {
+		t.Fatalf("StartUpdate: %v", err)
+	}
+	close(release)
+	ready := waitForStage(t, a, StageReady)
+	if ready.RestartKind == "" {
+		t.Fatal("ready state carries no RestartKind")
+	}
+
+	got := a.rememberCheck(UpdateInfo{Available: true, Latest: "9.9.9", Stage: StageAvailable})
+	if got.Stage != StageReady {
+		t.Errorf("rememberCheck returned Stage %q, want %q", got.Stage, StageReady)
+	}
+	// Losing the kind would flip a sessions-safe Reload into Restart.
+	if got.RestartKind != ready.RestartKind {
+		t.Errorf("RestartKind = %q, want %q", got.RestartKind, ready.RestartKind)
+	}
+}
+
+// Mid-staging, a check must report the staging state, or the button
+// rewinds from "Updating…" to "Update".
+func TestRememberCheckReturnsStagingWhileBusy(t *testing.T) {
+	a := &App{}
+	a.rememberCheck(UpdateInfo{Available: true, Latest: "9.9.9", Stage: StageAvailable})
+	started, release := stubStaging(t, "/staged/hivegui.app", nil)
+	if err := a.StartUpdate(); err != nil {
+		t.Fatalf("StartUpdate: %v", err)
+	}
+	<-started
+	got := a.rememberCheck(UpdateInfo{Available: true, Latest: "9.9.9", Stage: StageAvailable})
+	close(release)
+	if got.Stage != StageStaging {
+		t.Errorf("rememberCheck mid-staging returned Stage %q, want %q", got.Stage, StageStaging)
+	}
+	waitForStage(t, a, StageReady)
+}
+
+// StartUpdate on an already-staged version is a no-op, but the UI that
+// clicked it may be showing stale state; it must re-publish the ready
+// state or nothing re-enables the button.
+func TestStartUpdateWhenStagedRepublishesReady(t *testing.T) {
+	a := &App{}
+	a.rememberCheck(UpdateInfo{Available: true, Latest: "9.9.9", Stage: StageAvailable})
+	_, release := stubStaging(t, "/staged/hivegui.app", nil)
+	if err := a.StartUpdate(); err != nil {
+		t.Fatalf("StartUpdate: %v", err)
+	}
+	close(release)
+	waitForStage(t, a, StageReady)
+
+	var events []UpdateInfo
+	prevEmit := emitFn
+	emitFn = func(_ *App, name string, data ...any) {
+		if name == "update:progress" && len(data) == 1 {
+			events = append(events, data[0].(UpdateInfo))
+		}
+	}
+	t.Cleanup(func() { emitFn = prevEmit })
+	a.ctx = t.Context()
+
+	if err := a.StartUpdate(); err != nil {
+		t.Fatalf("second StartUpdate: %v", err)
+	}
+	if len(events) != 1 || events[0].Stage != StageReady {
+		t.Fatalf("events = %+v, want one update:progress with Stage %q", events, StageReady)
+	}
+}

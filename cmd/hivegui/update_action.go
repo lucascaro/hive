@@ -63,10 +63,16 @@ type updateState struct {
 	gen int
 }
 
-// rememberCheck records a check result. A staged bundle that no longer
-// matches the newest available version is dropped: the button must not
-// offer "Restart" into a build that is already behind again.
-func (a *App) rememberCheck(info UpdateInfo) {
+// rememberCheck records a check result and returns the effective state
+// — what UpdateStatus would now report. Callers must hand the frontend
+// that, not the raw check: a check that lands mid-staging or after a
+// staging finished would otherwise re-render the button as "Update",
+// whose click StartUpdate then refuses or no-ops.
+//
+// A staged bundle that no longer matches the newest available version
+// is dropped: the button must not offer "Restart" into a build that is
+// already behind again.
+func (a *App) rememberCheck(info UpdateInfo) UpdateInfo {
 	info = withUpdateCapability(info)
 	a.update.mu.Lock()
 	defer a.update.mu.Unlock()
@@ -75,7 +81,7 @@ func (a *App) rememberCheck(info UpdateInfo) {
 		// from "Updating…" back to "Update".
 		a.update.last.Available = info.Available
 		a.update.last.Latest = info.Latest
-		return
+		return a.update.last
 	}
 	if a.update.bundle != "" {
 		if a.update.stagedFor == info.Latest {
@@ -83,14 +89,16 @@ func (a *App) rememberCheck(info UpdateInfo) {
 			// state instead of overwriting it with a fresh "available".
 			info.Stage = StageReady
 			info.Message = a.update.last.Message
+			info.RestartKind = a.update.restartKind
 			a.update.last = info
-			return
+			return info
 		}
 		a.update.bundle = ""
 		a.update.stagedFor = ""
 		a.update.restartKind = ""
 	}
 	a.update.last = info
+	return info
 }
 
 // forgetUpdateState discards the last check and any staged bundle. Used
@@ -152,7 +160,13 @@ func (a *App) StartUpdate() error {
 	info := a.update.last
 	if a.update.bundle != "" && a.update.stagedFor == info.Latest {
 		a.update.mu.Unlock()
-		return nil // already staged; the button is showing Restart
+		// Already staged. The caller's button may be showing a stale
+		// "Update" and has disabled itself waiting for an event;
+		// re-publish the ready state so it becomes Reload/Restart.
+		if a.ctx != nil {
+			emitFn(a, "update:progress", info)
+		}
+		return nil
 	}
 	if !info.Available {
 		a.update.mu.Unlock()

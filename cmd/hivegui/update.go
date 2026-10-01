@@ -156,13 +156,13 @@ func (a *App) checkForUpdate() (UpdateInfo, error) {
 		}
 		info, err := checkLatest(repo)
 		if err == nil {
-			a.rememberCheck(info)
+			info = a.rememberCheck(info)
 		}
 		return info, err
 	}
 	info, err := a.checkRelease()
 	if err == nil {
-		a.rememberCheck(info)
+		info = a.rememberCheck(info)
 	}
 	return info, err
 }
