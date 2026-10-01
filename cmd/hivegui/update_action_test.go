@@ -8,6 +8,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/lucascaro/hive/internal/buildinfo"
 	hdaemon "github.com/lucascaro/hive/internal/daemon"
 	"github.com/lucascaro/hive/internal/registry"
 )
@@ -349,5 +350,128 @@ func TestPackageIsIsolatedFromRealHiveState(t *testing.T) {
 	}
 	if _, err := stageUpdateFn(UpdateInfo{}, func(string) {}); err == nil {
 		t.Error("stageUpdateFn is live in tests; it downloads or runs build.sh")
+	}
+}
+
+// A check that finds the version already staged must report the ready
+// state, not the raw "available" it computed. CheckForUpdate and the
+// periodic loop hand rememberCheck's result to the frontend; returning
+// the raw one re-rendered the banner as "Update", and clicking it hit
+// StartUpdate's already-staged no-op, which emits nothing — leaving the
+// button disabled for good.
+func TestRememberCheckReturnsReadyWhenAlreadyStaged(t *testing.T) {
+	a := &App{}
+	a.rememberCheck(UpdateInfo{Available: true, Latest: "9.9.9", Stage: StageAvailable})
+	_, release := stubStaging(t, "/staged/hivegui.app", nil)
+	if err := a.StartUpdate(); err != nil {
+		t.Fatalf("StartUpdate: %v", err)
+	}
+	close(release)
+	ready := waitForStage(t, a, StageReady)
+	if ready.RestartKind == "" {
+		t.Fatal("ready state carries no RestartKind")
+	}
+
+	got := a.rememberCheck(UpdateInfo{Available: true, Latest: "9.9.9", Stage: StageAvailable})
+	if got.Stage != StageReady {
+		t.Errorf("rememberCheck returned Stage %q, want %q", got.Stage, StageReady)
+	}
+	// Losing the kind would flip a sessions-safe Reload into Restart.
+	if got.RestartKind != ready.RestartKind {
+		t.Errorf("RestartKind = %q, want %q", got.RestartKind, ready.RestartKind)
+	}
+}
+
+// Mid-staging, a check must report the staging state, or the button
+// rewinds from "Updating…" to "Update".
+func TestRememberCheckReturnsStagingWhileBusy(t *testing.T) {
+	a := &App{}
+	a.rememberCheck(UpdateInfo{Available: true, Latest: "9.9.9", Stage: StageAvailable})
+	started, release := stubStaging(t, "/staged/hivegui.app", nil)
+	if err := a.StartUpdate(); err != nil {
+		t.Fatalf("StartUpdate: %v", err)
+	}
+	<-started
+	got := a.rememberCheck(UpdateInfo{Available: true, Latest: "9.9.9", Stage: StageAvailable})
+	close(release)
+	if got.Stage != StageStaging {
+		t.Errorf("rememberCheck mid-staging returned Stage %q, want %q", got.Stage, StageStaging)
+	}
+	waitForStage(t, a, StageReady)
+}
+
+// StartUpdate on an already-staged version is a no-op, but the UI that
+// clicked it may be showing stale state; it must re-publish the ready
+// state or nothing re-enables the button.
+func TestStartUpdateWhenStagedRepublishesReady(t *testing.T) {
+	// Stub the emitter and set ctx before staging starts: the staging
+	// goroutine reads both, so assigning them later is a data race.
+	events := make(chan UpdateInfo, 16)
+	prevEmit := emitFn
+	emitFn = func(_ *App, name string, data ...any) {
+		if name == "update:progress" && len(data) == 1 {
+			events <- data[0].(UpdateInfo)
+		}
+	}
+	t.Cleanup(func() { emitFn = prevEmit })
+	a := &App{ctx: t.Context()}
+	a.rememberCheck(UpdateInfo{Available: true, Latest: "9.9.9", Stage: StageAvailable})
+	_, release := stubStaging(t, "/staged/hivegui.app", nil)
+	if err := a.StartUpdate(); err != nil {
+		t.Fatalf("StartUpdate: %v", err)
+	}
+	close(release)
+	// Drain the staging goroutine's own ready event first.
+	timeout := time.After(2 * time.Second)
+	for staged := false; !staged; {
+		select {
+		case ev := <-events:
+			staged = ev.Stage == StageReady
+		case <-timeout:
+			t.Fatal("staging never emitted a ready update:progress")
+		}
+	}
+
+	if err := a.StartUpdate(); err != nil {
+		t.Fatalf("second StartUpdate: %v", err)
+	}
+	// The re-publish is synchronous, so it is already queued.
+	select {
+	case ev := <-events:
+		if ev.Stage != StageReady {
+			t.Fatalf("re-published Stage %q, want %q", ev.Stage, StageReady)
+		}
+	default:
+		t.Fatal("second StartUpdate emitted no update:progress")
+	}
+}
+
+// The restart-kind probe runs a binary. A check landing while it runs
+// must still see staging, not a ready state with no RestartKind — that
+// would render a sessions-safe Reload as a session-ending Restart.
+func TestRememberCheckDuringRestartKindProbeReportsStaging(t *testing.T) {
+	a := &App{daemonContract: 21}
+	a.rememberCheck(UpdateInfo{Available: true, Latest: "9.9.9", Stage: StageAvailable})
+	probing, finish := make(chan struct{}), make(chan struct{})
+	prev := stagedIdentityFn
+	stagedIdentityFn = func(string) (buildinfo.Identity, error) {
+		close(probing)
+		<-finish
+		return buildinfo.Identity{DaemonContract: 21}, nil
+	}
+	t.Cleanup(func() { stagedIdentityFn = prev })
+	_, release := stubStaging(t, "/staged/hivegui.app", nil)
+	if err := a.StartUpdate(); err != nil {
+		t.Fatalf("StartUpdate: %v", err)
+	}
+	close(release)
+	<-probing
+	got := a.rememberCheck(UpdateInfo{Available: true, Latest: "9.9.9", Stage: StageAvailable})
+	close(finish)
+	if got.Stage != StageStaging {
+		t.Errorf("check during the probe returned Stage %q (RestartKind %q), want %q", got.Stage, got.RestartKind, StageStaging)
+	}
+	if ready := waitForStage(t, a, StageReady); ready.RestartKind != RestartGUI {
+		t.Errorf("RestartKind = %q, want %q", ready.RestartKind, RestartGUI)
 	}
 }
