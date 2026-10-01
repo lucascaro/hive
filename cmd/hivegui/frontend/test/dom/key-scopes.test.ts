@@ -263,13 +263,16 @@ describe('an exclusive scope with a focus trap', () => {
       const heard = vi.fn();
       const root = document.getElementById(id) as HTMLElement;
       root.addEventListener('keydown', heard);
-      for (const k of ['Enter', 'a']) {
-        const e = key(k);
-        (document.getElementById(field) as HTMLElement).dispatchEvent(e);
-        expect(e.defaultPrevented).toBe(false);
+      try {
+        for (const k of ['Enter', 'a']) {
+          const e = key(k);
+          (document.getElementById(field) as HTMLElement).dispatchEvent(e);
+          expect(e.defaultPrevented).toBe(false);
+        }
+        expect(heard).toHaveBeenCalledTimes(2);
+      } finally {
+        root.removeEventListener('keydown', heard);
       }
-      expect(heard).toHaveBeenCalledTimes(2);
-      root.removeEventListener('keydown', heard);
     });
   }
 });
