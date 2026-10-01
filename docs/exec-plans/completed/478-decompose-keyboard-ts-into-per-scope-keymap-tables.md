@@ -2,7 +2,7 @@
 
 - **Spec:** [docs/product-specs/478-decompose-keyboard-ts-into-per-scope-keymap-tables.md](../../product-specs/478-decompose-keyboard-ts-into-per-scope-keymap-tables.md)
 - **Issue:** #478
-- **Status:** active
+- **Status:** completed
 - **PR:** #480
 - **Branch:** feature/478-command-bus-keymap
 
@@ -367,6 +367,14 @@ cd ../../.. && CI=1 scripts/test.sh unit dom e2e && (cd cmd/hivegui/frontend && 
 - **2026-09-30 iter 1** — verdict: COMMENT; mergeable: MERGEABLE; findings_hash: 0b948d6869166e46d0daacd83c6898b6854a56655c5a62784eb0a82d520d52d2; threads_open: 1; action: autofix+push; head_sha: 7ec85a85. The thread-count disagreement was a race: CodeRabbit opened a thread on the pushed commit after autofix ran, not an autofix miss. It is handled in iter 2.
 - **2026-09-30 iter 2** — verdict: COMMENT; mergeable: MERGEABLE; findings_hash: 973f6037a32a2bb1912c16d98c71921bebe162fceaf2b04cdd34fc4031e12dcf; threads_open: 0; action: autofix+push; head_sha: ba7b914e.
 - **2026-09-30 iter 3** — verdict: APPROVE; mergeable: MERGEABLE; findings_hash: empty; threads_open: 0; action: stop; head_sha: 8e7d62b1. A follow-up commit after convergence changed only comments: the stale keyboard.ts references the review flagged as MINOR.
+
+## Gate verdict
+
+- **2026-09-30** — verdict: PASS; phase: —; checks: 3 passed / 0 failed / 0 followups; followups: none; one-line: every success criterion was delivered and the differential parity sweep is green; the only behaviour changes are the approved A/B/D/E; the docs match the new architecture.
+  - 2026-09-30 dimensions:
+    - acceptance — PASS — KEY_SCOPES ordered and order-tested; key, menu and palette share ids; the four predicates are gone and their cases ported; precedence, e2e and e2e-real are byte-identical; parity sweep passes; 127 tests in 7 files.
+    - non-goals — PASS — no command-semantics differences beyond E; no new component key listeners; no label or chord changes in shortcuts.ts; core commands catalogued centrally; Go changes are comment-only.
+    - doc accuracy — PASS — the changeset, FRONTEND.md, AGENTS.md and shortcuts.ts header are accurate; README and DESIGN.md need no change. The nit about the changeset's wording of A was applied before this verdict.
 
 ## Open questions
 

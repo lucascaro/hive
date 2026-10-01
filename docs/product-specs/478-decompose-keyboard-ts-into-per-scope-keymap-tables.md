@@ -5,7 +5,8 @@ type: enhancement
 complexity: L
 priority: P2
 pr: 480
-stage: GATE
+shipped: 2026-09-30
+stage: DONE
 ---
 
 # Decompose keyboard.ts into per-scope keymap tables
@@ -14,7 +15,7 @@ stage: GATE
 - **Type:** enhancement
 - **Complexity:** L
 - **Priority:** P2
-- **Exec plan:** [docs/exec-plans/active/478-decompose-keyboard-ts-into-per-scope-keymap-tables.md](../exec-plans/active/478-decompose-keyboard-ts-into-per-scope-keymap-tables.md)
+- **Exec plan:** [docs/exec-plans/active/478-decompose-keyboard-ts-into-per-scope-keymap-tables.md](../exec-plans/completed/478-decompose-keyboard-ts-into-per-scope-keymap-tables.md)
 
 ## Problem
 
