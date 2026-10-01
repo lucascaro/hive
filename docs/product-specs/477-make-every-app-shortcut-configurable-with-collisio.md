@@ -4,8 +4,8 @@ title: Make every app shortcut configurable, with collision resolution
 type: enhancement
 complexity: L
 priority: P2
-stage: IMPLEMENT
-pr: 487
+stage: REVIEW
+pr: 488
 ---
 
 # Make every app shortcut configurable, with collision resolution

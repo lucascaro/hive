@@ -3,8 +3,8 @@
 - **Spec:** [docs/product-specs/477-make-every-app-shortcut-configurable-with-collisio.md](../../product-specs/477-make-every-app-shortcut-configurable-with-collisio.md)
 - **Issue:** #477
 - **Status:** active
-- **PR:**
-- **Branch:**
+- **PR:** #488
+- **Branch:** feature/477-shortcuts-tab
 - **Phase:** 2 of 3
 
 ## Summary
