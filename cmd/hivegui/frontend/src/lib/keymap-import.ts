@@ -153,6 +153,10 @@ export function previewImport(
   const candidate: [string, string[]][] = [];
   for (const m of file.malformed) {
     if (m.half !== half || m.id === undefined) continue;
+    // An unknown command gets its own "no such command" row below; a note
+    // about its keys would only add noise.
+    if (m.partial && !catalog.has(m.id) && !isUnloadedPlugin(m.id, loaded))
+      continue;
     rows.push(
       m.partial
         ? {

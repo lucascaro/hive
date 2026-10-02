@@ -773,6 +773,22 @@ describe('settings: shortcuts import and export', () => {
     expect(el('settings').classList.contains('hidden')).toBe(true);
   });
 
+  // ["Mod+Q", 5]: Mod+Q is refused, so the entry imports nothing — the
+  // entry's note must still say what it is, not "Skipped".
+  it('a partial entry whose keys are all refused is not called skipped', async () => {
+    await openTab();
+    await startImport({ mac: { settings: ['Mod+Q', 5] } });
+    chooseMode('replace');
+    const rows = [
+      ...document.querySelectorAll<HTMLElement>('.hv-import-row'),
+    ].filter((r) => r.dataset.command === 'settings');
+    const entry = rows.find((r) => r.dataset.chord === undefined);
+    expect(entry?.dataset.state).toBe('partial');
+    expect(entry?.textContent).not.toContain('Skipped');
+    expect(entry?.textContent).toContain('left out');
+    expect(importRow('settings', 'Mod+Q').dataset.state).toBe('skipped');
+  });
+
   it('a file that is not a keymap is refused in the error slot', async () => {
     await openTab();
     await startImport('{not json');

@@ -918,9 +918,11 @@ function ImportPreviewView({
         <ul className="hv-shortcuts-list">
           {preview.rows.map((r) => {
             const c = conflictOf(r.id, r.chord);
+            // A key the user skipped. Rows with no key (unbound, partial)
+            // describe the entry, not a key, so they never read as one.
             const skippedByUser =
+              r.chord !== undefined &&
               !SKIPPED[r.status] &&
-              r.status !== 'unbound' &&
               !inCandidate(r.id, r.chord);
             const state = c
               ? 'conflict'

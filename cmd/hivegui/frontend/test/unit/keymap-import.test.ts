@@ -166,6 +166,15 @@ describe('previewImport', () => {
     expect(p.candidate).toEqual({ 'new-session': ['Mod+Y'] });
   });
 
+  it('a partial entry for an unknown command shows only the unknown row', () => {
+    const p = previewImport(
+      file({ mac: { 'no-such-thing': ['Mod+U', 5] } }),
+      true,
+      catalog,
+    );
+    expect(p.rows.map((r) => r.status)).toEqual(['unknown']);
+  });
+
   it('keeps a malformed id whole, even one containing ": "', () => {
     const p = previewImport(file({ mac: { 'a: b': null } }), true, catalog);
     expect(p.rows).toEqual([
