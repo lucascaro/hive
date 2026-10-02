@@ -402,6 +402,9 @@ Would fail on a wrong implementation: the v0-fixture parity tests fail on any la
 - **2026-10-01** — Phase 3: Export saves the tab's draft (what it shows, saved or not). Why: operator choice at the phase-3 plan stop.
 - **2026-10-01** — Phase 3: the import asks, at import time, whether to replace the current shortcuts or add to them. Why: operator choice at the phase-3 plan stop. The reviewer's case for Replace (only Replace reproduces the exporter's keymap) still holds, but it is offered as an option, not the default.
 - **2026-10-01** — Phase 3 second opinion: round 1 `revise` (7, 7 must-fix), round 2 `revise` (7, 3 must-fix). All were applied without a third round, per the feature-loop cap.
+- **2026-10-01** — Phase 3: `reassign` is unchanged. Round-2 must-fix 9 said the tab's `reassign` misses a clash on a second layout spelling. It does not reproduce: nine cases on both platforms (zoom-in `+`/`=`, nav-back `_`/`[Minus]`, `[KeyJ]` aliases, zoom-out off macOS) all pass on the phase-2 code, because every spelling of a binding overlaps its first. They stay in `keymap-edit.test.ts` as regression tests. Why: no patch without a reproducer.
+- **2026-10-01** — Phase 3: Escape inside the import preview reaches it through the `shortcut-capture` scope, widened from the capture button's class to any `[data-own-keys]` element inside `#settings`. Without the widening, keyboard.ts's capture-phase `settings` scope would close Settings first. This adds no new key scope, so no every-shortcut fixture. The trade-off: ⌘, does not close Settings while focus is in the preview.
+- **2026-10-01** — Phase 3: the footer reason for an open import is "Finish the shortcut import to save." The longer "Finish or cancel…" wrapped Save onto its own line (seen in a browser screenshot). The e2e test now asserts that Cancel and Save share a line.
 ## Progress
 
 - **2026-09-30** — Exec plan created; research started.
@@ -410,6 +413,7 @@ Would fail on a wrong implementation: the v0-fixture parity tests fail on any la
 - **2026-10-01** — Phase 1 implemented; PR #487 opened. All layers green.
 - **2026-10-01** — Phase 2 started (reset: stage IMPLEMENT, Phase 2 of 3). Implemented on `feature/477-shortcuts-tab`.
 - **2026-10-01** — Phase 2 merged (#488). Phase 3 reset: stage IMPLEMENT, Phase 3 of 3. Plan approved (chat). The flaky `plugin-view` e2e cell was filed as #489. Implementing on `feature/477-keymap-import-export`.
+- **2026-10-01** — Phase 3 implemented: Go `ExportKeymap`/`PickKeymapFile` (+ `writeJSONFile`), `lib/keymap-import.ts`, `keymapFromJSON` at both keymap readers, the tab's import preview and Export…, reason-typed Save block, inline disabled hints (Shortcuts, Editor), `resolvePluginCommands`. Notes a–e done.
 
 ## Open questions
 

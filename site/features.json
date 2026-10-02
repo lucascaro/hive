@@ -176,7 +176,7 @@
   },
   {
     "title": "Your own keyboard shortcuts",
-    "blurb": "Rebind any command, plugin ones included, under Settings → Shortcuts; Hive catches clashes and reserved keys before you save.",
+    "blurb": "Rebind any command, plugin ones included, under Settings → Shortcuts, and export or import your keymap; Hive catches clashes and reserved keys before you save.",
     "status": "shipped",
     "since": "Unreleased"
   }
