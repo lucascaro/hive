@@ -1147,6 +1147,23 @@ export async function SaveKeymap(k: Record<string, unknown>) {
   (globalThis as { __hive_keymapSeed?: unknown }).__hive_keymapSeed = saved;
   bridgeCalls.push({ method: 'SaveKeymap', args: [saved] });
 }
+// Export records what it was given; the e2e asserts on it. A test sets
+// __hive_exportCancel to model the user cancelling the dialog.
+export async function ExportKeymap(k: Record<string, unknown>) {
+  maybeFail('ExportKeymap');
+  const g = globalThis as { __hive_exportCancel?: boolean };
+  if (g.__hive_exportCancel) return false;
+  bridgeCalls.push({
+    method: 'ExportKeymap',
+    args: [JSON.parse(JSON.stringify(k))],
+  });
+  return true;
+}
+// The file the user "picks": a test seeds its text; "" is a cancel.
+export async function PickKeymapFile() {
+  maybeFail('PickKeymapFile');
+  return (globalThis as { __hive_importText?: string }).__hive_importText ?? '';
+}
 export async function SuspendMenuAccelerators(on: boolean) {
   maybeFail('SuspendMenuAccelerators');
   bridgeCalls.push({ method: 'SuspendMenuAccelerators', args: [on] });

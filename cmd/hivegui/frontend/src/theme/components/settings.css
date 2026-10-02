@@ -96,7 +96,8 @@
   user-select: none;
   cursor: pointer;
 }
-.settings-check input[type='checkbox'] {
+.settings-check input[type='checkbox'],
+.settings-check input[type='radio'] {
   margin: 0;
 }
 .settings-check:has(input:disabled) {
@@ -266,6 +267,16 @@
 .hv-shortcut-note[data-kind='refused'] { color: var(--state-error); }
 .hv-shortcut-note[data-kind='warn'],
 .hv-shortcut-note[data-kind='displaced'] { color: var(--state-attention); }
+/* The import preview (Import…): the mode choice, one row per entry or
+   key with its state in words, then Confirm / Cancel. */
+.hv-shortcut-row[data-state='conflict'] { border-left-color: var(--state-error); }
+.hv-shortcut-row[data-state='skipped'] .hv-shortcut-label { color: var(--fg-muted); }
+.hv-shortcuts-import-actions {
+  display: flex;
+  gap: var(--space-2);
+  justify-content: flex-end;
+  margin-top: var(--space-3);
+}
 /* The footer note that says why Save is disabled while a shortcut
    conflict waits (Settings.tsx); icon + words, never colour alone. */
 .settings-save-blocked {

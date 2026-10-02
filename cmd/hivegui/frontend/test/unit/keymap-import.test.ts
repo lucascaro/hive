@@ -26,12 +26,14 @@ const PLUGIN = 'plugin:notes:edit';
 
 // The tab's list: every bound core command, a titled one with no default
 // key (restart-session), and one loaded plugin command.
-const catalog: Catalog = new Map([
-  ...[
-    ...new Set(
-      DEFAULT_APP_BINDINGS.flatMap((b) => (b.command ? [b.command] : [])),
-    ),
-  ].map((id) => [id, { title: id }] as const),
+type Entry = { title: string; pluginDefaults?: readonly string[] };
+const coreIds = [
+  ...new Set(
+    DEFAULT_APP_BINDINGS.flatMap((b) => (b.command ? [b.command] : [])),
+  ),
+];
+const catalog: Catalog = new Map<string, Entry>([
+  ...coreIds.map((id): [string, Entry] => [id, { title: id }]),
   ['restart-session', { title: 'Restart session' }],
   [PLUGIN, { title: 'Edit note', pluginDefaults: ['Mod+Shift+U'] }],
 ]);
@@ -42,7 +44,12 @@ const file = (k: object) => {
   return p;
 };
 
-function preview(k: object, isMac: boolean, mode: ImportMode = 'replace', draft: Keymap = {}) {
+function preview(
+  k: object,
+  isMac: boolean,
+  mode: ImportMode = 'replace',
+  draft: Keymap = {},
+) {
   const p = previewImport(file(k), isMac, catalog);
   const base = importBase(draft, isMac, mode, catalog);
   return { ...p, base };
@@ -61,14 +68,17 @@ function overlappingPairs(km: Keymap, isMac: boolean): Set<string> {
   const out = new Set<string>();
   for (const [i, [a, ca]] of chords.entries())
     for (const [b, cb] of chords.slice(i + 1))
-      if (a !== b && chordsOverlap(ca, cb, isMac)) out.add(`${a} ${ca} / ${b} ${cb}`);
+      if (a !== b && chordsOverlap(ca, cb, isMac))
+        out.add(`${a} ${ca} / ${b} ${cb}`);
   return out;
 }
 
 function resolverAgrees(km: Keymap, isMac: boolean): void {
   expect(effectiveFor(km, isMac).displaced).toEqual([]);
   const shipped = overlappingPairs({}, isMac);
-  expect([...overlappingPairs(km, isMac)].filter((p) => !shipped.has(p))).toEqual([]);
+  expect(
+    [...overlappingPairs(km, isMac)].filter((p) => !shipped.has(p)),
+  ).toEqual([]);
 }
 
 describe('parseKeymapFile', () => {
@@ -180,7 +190,10 @@ describe('import conflicts', () => {
   });
 
   it('two imported commands on one key both conflict; one Reassign clears both', () => {
-    const p = preview({ mac: { 'new-session': ['Mod+Y'], settings: ['Mod+Y'] } }, true);
+    const p = preview(
+      { mac: { 'new-session': ['Mod+Y'], settings: ['Mod+Y'] } },
+      true,
+    );
     const cs = importConflicts(p.candidate, p.base, true, catalog);
     expect(cs.map((c) => c.id).sort()).toEqual(['new-session', 'settings']);
     const next = reassignInImport(p.candidate, true, cs[0]);
@@ -223,44 +236,88 @@ describe('import conflicts', () => {
 
   // Every Reassign and every Skip leaves a state the resolver agrees
   // with, on both platforms.
-  it.each([true, false])('settling every conflict agrees with the resolver (mac=%s)', (isMac) => {
-    const imports = isMac
-      ? { mac: { 'new-session': ['Mod+N', 'Mod+Shift?++'], settings: ['Mod+N'], worktrees: ['Mod+T'] } }
-      : { other: { 'new-session': ['Ctrl+N', 'Ctrl+Shift?++'], settings: ['Ctrl+N'], worktrees: ['Ctrl+T'] } };
-    for (const how of ['reassign', 'skip'] as const) {
-      const p = preview(imports, isMac);
-      let next = p.candidate;
-      for (let guard = 0; guard < 20; guard++) {
-        const [c] = importConflicts(next, p.base, isMac, catalog);
-        if (!c) break;
-        next = how === 'reassign' ? reassignInImport(next, isMac, c) : skipInImport(next, c.id, c.chord);
+  it.each([true, false])(
+    'settling every conflict agrees with the resolver (mac=%s)',
+    (isMac) => {
+      const imports = isMac
+        ? {
+            mac: {
+              'new-session': ['Mod+N', 'Mod+Shift?++'],
+              settings: ['Mod+N'],
+              worktrees: ['Mod+T'],
+            },
+          }
+        : {
+            other: {
+              'new-session': ['Ctrl+N', 'Ctrl+Shift?++'],
+              settings: ['Ctrl+N'],
+              worktrees: ['Ctrl+T'],
+            },
+          };
+      for (const how of ['reassign', 'skip'] as const) {
+        const p = preview(imports, isMac);
+        let next = p.candidate;
+        for (let guard = 0; guard < 20; guard++) {
+          const [c] = importConflicts(next, p.base, isMac, catalog);
+          if (!c) break;
+          next =
+            how === 'reassign'
+              ? reassignInImport(next, isMac, c)
+              : skipInImport(next, c.id, c.chord);
+        }
+        expect(importConflicts(next, p.base, isMac, catalog)).toEqual([]);
+        resolverAgrees(applyImport({}, next, p.base, isMac), isMac);
       }
-      expect(importConflicts(next, p.base, isMac, catalog)).toEqual([]);
-      resolverAgrees(applyImport({}, next, p.base, isMac), isMac);
-    }
-  });
+    },
+  );
 });
 
 describe('modes', () => {
   const draft: Keymap = {
-    mac: { settings: ['Mod+Shift+S'], 'plugin:absent:go': ['Mod+Shift+G'], [PLUGIN]: ['Mod+Shift+E'] },
+    mac: {
+      settings: ['Mod+Shift+S'],
+      'plugin:absent:go': ['Mod+Shift+G'],
+      [PLUGIN]: ['Mod+Shift+E'],
+    },
     other: { worktrees: [] },
   };
 
   it('replace makes the file this platform’s keymap, keeping unloaded plugins', () => {
-    const p = preview({ mac: { 'new-session': ['Mod+Y'] } }, true, 'replace', draft);
+    const p = preview(
+      { mac: { 'new-session': ['Mod+Y'] } },
+      true,
+      'replace',
+      draft,
+    );
     const out = applyImport(draft, p.candidate, p.base, true);
-    expect(out.mac).toEqual({ 'plugin:absent:go': ['Mod+Shift+G'], 'new-session': ['Mod+Y'] });
+    expect(out.mac).toEqual({
+      'plugin:absent:go': ['Mod+Shift+G'],
+      'new-session': ['Mod+Y'],
+    });
     expect(out.other).toBe(draft.other);
   });
 
   it('replace: an imported entry for an unloaded plugin wins over the draft’s', () => {
-    const p = preview({ mac: { 'plugin:absent:go': ['Mod+Shift+H'] } }, true, 'replace', draft);
-    expect(keymapHalf(applyImport(draft, p.candidate, p.base, true), true)['plugin:absent:go']).toEqual(['Mod+Shift+H']);
+    const p = preview(
+      { mac: { 'plugin:absent:go': ['Mod+Shift+H'] } },
+      true,
+      'replace',
+      draft,
+    );
+    expect(
+      keymapHalf(applyImport(draft, p.candidate, p.base, true), true)[
+        'plugin:absent:go'
+      ],
+    ).toEqual(['Mod+Shift+H']);
   });
 
   it('add keeps every other override', () => {
-    const p = preview({ mac: { 'new-session': ['Mod+Y'] } }, true, 'add', draft);
+    const p = preview(
+      { mac: { 'new-session': ['Mod+Y'] } },
+      true,
+      'add',
+      draft,
+    );
     const out = applyImport(draft, p.candidate, p.base, true);
     expect(out.mac).toEqual({ ...draft.mac, 'new-session': ['Mod+Y'] });
   });
@@ -270,8 +327,14 @@ describe('modes', () => {
     // clashes under add but not under replace.
     const k = { mac: { 'new-session': ['Mod+Shift+S'] } };
     const add = preview(k, true, 'add', draft);
-    expect(importConflicts(add.candidate, add.base, true, catalog)[0].holders.map((h) => h.id)).toEqual(['settings']);
+    expect(
+      importConflicts(add.candidate, add.base, true, catalog)[0].holders.map(
+        (h) => h.id,
+      ),
+    ).toEqual(['settings']);
     const replace = preview(k, true, 'replace', draft);
-    expect(importConflicts(replace.candidate, replace.base, true, catalog)).toEqual([]);
+    expect(
+      importConflicts(replace.candidate, replace.base, true, catalog),
+    ).toEqual([]);
   });
 });

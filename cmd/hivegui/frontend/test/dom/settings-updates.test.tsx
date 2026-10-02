@@ -60,6 +60,8 @@ const bridge = vi.hoisted(() => ({
   // drives it.
   GetKeymap: vi.fn(() => Promise.resolve({})),
   SaveKeymap: vi.fn(() => Promise.resolve()),
+  ExportKeymap: vi.fn(() => Promise.resolve(true)),
+  PickKeymapFile: vi.fn(() => Promise.resolve('')),
 }));
 
 vi.mock('../../src/bridge.js', () => bridge);

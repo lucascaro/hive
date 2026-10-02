@@ -208,23 +208,26 @@ describe('editing', () => {
     [false, 'toggle-activity', 'Ctrl+Shift+[KeyJ]'],
     [false, 'zoom-out', 'Ctrl+[Minus]'],
     [false, 'zoom-out', 'Ctrl+_'],
-  ])('reassign (mac=%s) takes %s whole when %s clashes', (mac, holder, chord) => {
-    // Not vacuous: the holder ships with a key that clashes.
-    expect(
-      chordsOfIn({}, holder, mac).some((c) => chordsOverlap(c, chord, mac)),
-    ).toBe(true);
-    const next = reassign({}, mac, 'new-session', [], chord, [
-      { id: holder, shortcuts: shortcutsIn({}, holder, mac) },
-    ]);
-    expect(
-      chordsOfIn(next, holder, mac).some((c) => chordsOverlap(c, chord, mac)),
-    ).toBe(false);
-    expect(
-      chordsOfIn(next, 'new-session', mac).some((c) =>
-        chordsOverlap(c, chord, mac),
-      ),
-    ).toBe(true);
-  });
+  ])(
+    'reassign (mac=%s) takes %s whole when %s clashes',
+    (mac, holder, chord) => {
+      // Not vacuous: the holder ships with a key that clashes.
+      expect(
+        chordsOfIn({}, holder, mac).some((c) => chordsOverlap(c, chord, mac)),
+      ).toBe(true);
+      const next = reassign({}, mac, 'new-session', [], chord, [
+        { id: holder, shortcuts: shortcutsIn({}, holder, mac) },
+      ]);
+      expect(
+        chordsOfIn(next, holder, mac).some((c) => chordsOverlap(c, chord, mac)),
+      ).toBe(false);
+      expect(
+        chordsOfIn(next, 'new-session', mac).some((c) =>
+          chordsOverlap(c, chord, mac),
+        ),
+      ).toBe(true);
+    },
+  );
 
   it('compares keymaps by meaning, not spelling', () => {
     expect(

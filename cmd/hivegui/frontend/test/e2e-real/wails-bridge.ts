@@ -450,6 +450,12 @@ export async function GetKeymap() {
 export async function SaveKeymap() {
   return undefined;
 }
+export async function ExportKeymap() {
+  return false;
+}
+export async function PickKeymapFile() {
+  return '';
+}
 export async function SuspendMenuAccelerators() {
   return undefined;
 }

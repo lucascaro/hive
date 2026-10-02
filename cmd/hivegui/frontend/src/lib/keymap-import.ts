@@ -105,7 +105,10 @@ export function parseKeymapFile(text: string): ParsedFile {
   try {
     raw = JSON.parse(text);
   } catch {
-    return { ok: false, error: 'That file is not JSON, so it is not a Hive keymap.' };
+    return {
+      ok: false,
+      error: 'That file is not JSON, so it is not a Hive keymap.',
+    };
   }
   if (typeof raw !== 'object' || raw === null || Array.isArray(raw)) {
     return { ok: false, error: 'That file is not a Hive keymap.' };
@@ -119,7 +122,10 @@ export function parseKeymapFile(text: string): ParsedFile {
   }
   for (const half of ['mac', 'other']) {
     const v = r[half];
-    if (v !== undefined && (typeof v !== 'object' || v === null || Array.isArray(v)))
+    if (
+      v !== undefined &&
+      (typeof v !== 'object' || v === null || Array.isArray(v))
+    )
       return { ok: false, error: 'That file is not a Hive keymap.' };
   }
   return { ok: true, ...keymapFromJSON(raw) };
@@ -146,7 +152,11 @@ export function previewImport(
   for (const [id, chords] of Object.entries(keymapHalf(file.keymap, isMac))) {
     const unloaded = isUnloadedPlugin(id, loaded);
     if (!unloaded && !catalog.has(id)) {
-      rows.push({ id, status: 'unknown', reason: 'No such command in this Hive.' });
+      rows.push({
+        id,
+        status: 'unknown',
+        reason: 'No such command in this Hive.',
+      });
       continue;
     }
     if (chords.length === 0) {
@@ -159,7 +169,12 @@ export function previewImport(
       try {
         parseChord(chord, isMac);
       } catch {
-        rows.push({ id, chord, status: 'invalid', reason: 'Not a key Hive can read.' });
+        rows.push({
+          id,
+          chord,
+          status: 'invalid',
+          reason: 'Not a key Hive can read.',
+        });
         continue;
       }
       const check = checkChord(chord, isMac);
@@ -233,7 +248,8 @@ function keysOf(
   catalog: Catalog,
   isMac: boolean,
 ): { all: readonly string[]; shortcuts: readonly string[] } {
-  if (has(candidate, id)) return { all: candidate[id], shortcuts: candidate[id] };
+  if (has(candidate, id))
+    return { all: candidate[id], shortcuts: candidate[id] };
   const plugin = catalog.get(id)?.pluginDefaults;
   if (plugin) {
     const k = has(base, id) ? base[id] : plugin;

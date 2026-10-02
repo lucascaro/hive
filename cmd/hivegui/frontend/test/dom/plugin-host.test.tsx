@@ -13,6 +13,7 @@ import {
   IMPORT_TIMEOUT_MS,
   initPluginHost,
   pluginCommands,
+  resolvePluginCommands,
   RENDER_TIMEOUT_MS,
   resetPluginHostForTest,
   type HiveAPI,
@@ -424,6 +425,18 @@ describe('plugin host: pluginCommands', () => {
     expect(pluginCommands(state)).toBe(first);
     expect(warn).toHaveBeenCalledTimes(1);
     expect(first.map((r) => r.bound)).toEqual([true, false]);
+  });
+
+  // Settings › Shortcuts resolves against its draft keymap; that must not
+  // evict the live result, or its clash warnings repeat on the next key.
+  it('a lookup for another keymap leaves the live result alone', () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const state = { a: active('one'), b: active('two') };
+    const first = pluginCommands(state);
+    const draft = resolvePluginCommands(state, { mac: { 'new-session': [] } });
+    expect(draft.map((r) => r.bound)).toEqual([true, false]);
+    expect(pluginCommands(state)).toBe(first);
+    expect(warn).toHaveBeenCalledTimes(1);
   });
 
   it('follows pluginUI: activation and deactivation take effect at once', () => {

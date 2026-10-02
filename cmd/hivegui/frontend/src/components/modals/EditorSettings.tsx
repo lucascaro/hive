@@ -6,6 +6,7 @@
 // takes a path and a line number, never a command. See
 // cmd/hivegui/editor_prefs.go.
 
+import { Icon } from '../Icon.js';
 import { isMac } from '../../lib/platform.js';
 
 export type EditorKind =
@@ -46,14 +47,31 @@ const PRESETS: { id: EditorKind; label: string }[] = [
 export function EditorSettings({
   draft,
   onChange,
-  disabled,
+  status = 'ready',
 }: {
   draft: EditorDraft;
   onChange: (next: EditorDraft) => void;
-  disabled?: boolean;
+  /** editor.json: editing is off until it is read, and stays off if it
+   * cannot be — and the section says which, at the point of use. */
+  status?: 'loading' | 'failed' | 'ready';
 }) {
+  const disabled = status !== 'ready';
   return (
     <>
+      {status === 'loading' ? (
+        <p className="settings-hint" role="status">
+          Loading your editor setting…
+        </p>
+      ) : null}
+      {status === 'failed' ? (
+        <div className="hv-shortcut-note" data-kind="refused" role="alert">
+          <Icon name="state-error" size={12} />
+          <span>
+            The editor setting can’t be changed: editor.json could not be read.
+            Fix or move the file, then reopen Settings.
+          </span>
+        </div>
+      ) : null}
       <label className="hv-field">
         <span className="hv-field__label">Editor for {EDITOR_CLICK}</span>
         <select

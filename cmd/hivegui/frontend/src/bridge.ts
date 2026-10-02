@@ -75,6 +75,8 @@ export {
   SaveEditorSettings,
   GetKeymap,
   SaveKeymap,
+  ExportKeymap,
+  PickKeymapFile,
   SetMenuAccelerators,
   SuspendMenuAccelerators,
   Notify,

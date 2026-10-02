@@ -352,6 +352,7 @@ describe('shortcut capture', () => {
     store.openModal({ id: 'settings' });
     const btn = document.createElement('button');
     btn.className = 'hv-shortcut-capture';
+    btn.dataset.ownKeys = '';
     document.getElementById('settings')?.append(btn);
     btn.focus();
     try {
@@ -366,6 +367,37 @@ describe('shortcut capture', () => {
     // Focus elsewhere in Settings: its own chords work again.
     press(',', { metaKey: true }, true);
     expect(ran()).toEqual(['settings.close']);
+  });
+
+  it('leaves Escape to the import preview, which owns its keys', () => {
+    store.openModal({ id: 'settings' });
+    const box = document.createElement('section');
+    box.dataset.ownKeys = '';
+    const btn = document.createElement('button');
+    box.append(btn);
+    document.getElementById('settings')?.append(box);
+    btn.focus();
+    try {
+      const esc = press('Escape', {}, true);
+      expect(ran()).toEqual([]);
+      expect(esc.defaultPrevented).toBe(false);
+    } finally {
+      box.remove();
+    }
+  });
+
+  it('a data-own-keys element outside Settings changes nothing', () => {
+    store.openModal({ id: 'settings' });
+    const btn = document.createElement('button');
+    btn.dataset.ownKeys = '';
+    document.body.append(btn);
+    btn.focus();
+    try {
+      press('Escape', {}, true);
+      expect(ran()).toEqual(['settings.close']);
+    } finally {
+      btn.remove();
+    }
   });
 });
 
