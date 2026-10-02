@@ -1,4 +1,4 @@
-// ---------- settings (agents, appearance, menu bar, plugins, updates) ----------
+// ---------- settings (agents, appearance, shortcuts, menu bar, plugins, updates) ----------
 //
 // The body is tabbed panels. All of them stay mounted and the
 // inactive ones are hidden: that is what keeps the agent draft, the
@@ -51,7 +51,11 @@ import {
   UpdateStatus,
   GetEditorSettings,
   SaveEditorSettings,
+  GetKeymap,
+  SaveKeymap,
 } from '../../bridge.js';
+import type { Keymap } from '../../lib/bindings.js';
+import { canonicalKeymap, sameKeymap } from '../../lib/keymap-edit.js';
 import { type EditorDraft, EditorSettings } from './EditorSettings.js';
 import { isMac } from '../../lib/platform.js';
 import {
@@ -92,9 +96,11 @@ import {
 } from '../../lib/agent-order.js';
 import { LauncherAgents } from './LauncherAgents.js';
 import { PluginsPanel } from './PluginsPanel.js';
-import { useAppStore } from '../../store/store.js';
+import { ShortcutsPanel } from './ShortcutsPanel.js';
+import { setKeymap, useAppStore } from '../../store/store.js';
 import { Button } from '../Button.js';
 import { Tabs } from '../Tabs.js';
+import { Icon } from '../Icon.js';
 import { IconButton } from '../IconButton.js';
 import { ModalShell } from './ModalShell.js';
 // Type-only, so the generated module is erased before Vite resolves it.
@@ -102,7 +108,13 @@ import type { main } from '../../../wailsjs/go/models';
 
 const DEFAULT_COLOR = '#64748b';
 
-type TabId = 'agents' | 'appearance' | 'menubar' | 'plugins' | 'updates';
+type TabId =
+  | 'agents'
+  | 'appearance'
+  | 'shortcuts'
+  | 'menubar'
+  | 'plugins'
+  | 'updates';
 // Menu bar is macOS-only and needs a login item the build can actually
 // register, so its tab is absent — not disabled — everywhere else, which
 // is what the section it replaced did with the same guard.
@@ -110,6 +122,7 @@ function tabsFor(showMenuBar: boolean): { id: TabId; label: string }[] {
   return [
     { id: 'agents', label: 'Agents' },
     { id: 'appearance', label: 'Appearance' },
+    { id: 'shortcuts', label: 'Shortcuts' },
     ...(showMenuBar ? [{ id: 'menubar' as TabId, label: 'Menu bar' }] : []),
     { id: 'plugins', label: 'Plugins' },
     { id: 'updates', label: 'Updates' },
@@ -212,6 +225,19 @@ function SettingsDialog({ root }: { root: HTMLElement }): ReactNode {
   });
   const [editorFailed, setEditorFailed] = useState(false);
   const [editorLoaded, setEditorLoaded] = useState(false);
+  // keymap.json (spec 477), the same way: read fresh rather than taken
+  // from the store, whose keymap falls back to the defaults when the file
+  // will not parse — saving that would overwrite the user's file.
+  const [keymapDraft, setKeymapDraft] = useState<Keymap>({});
+  const [keymapSaved, setKeymapSaved] = useState<Keymap>({});
+  const [keymapLoaded, setKeymapLoaded] = useState(false);
+  const [keymapFailed, setKeymapFailed] = useState(false);
+  // A captured shortcut another command holds, waiting for Reassign or
+  // Cancel: Save waits for it (spec 477 criterion 3).
+  const [shortcutConflict, setShortcutConflict] = useState(false);
+  // Set by the footer's "Show it": once the Shortcuts tab is showing, put
+  // focus on the waiting conflict's Reassign.
+  const focusConflict = useRef(false);
   // Save must never write agent settings it has not read: the checkbox's
   // initial `true` is a display default, not the user's value, and saving
   // it before the read lands would overwrite a saved `false`. The box
@@ -402,6 +428,22 @@ function SettingsDialog({ root }: { root: HTMLElement }): ReactNode {
         );
       });
 
+    GetKeymap()
+      .then((k) => {
+        if (!live) return;
+        const km = canonicalKeymap((k ?? {}) as Keymap);
+        setKeymapDraft(km);
+        setKeymapSaved(km);
+        setKeymapLoaded(true);
+      })
+      .catch((err) => {
+        if (!live) return;
+        setKeymapFailed(true);
+        showError(
+          `Could not read keymap.json — fix or move the file, then reopen Settings. (${String(err?.message || err)})`,
+        );
+      });
+
     GetEditorSettings()
       .then((s) => {
         if (!live) return;
@@ -583,6 +625,16 @@ function SettingsDialog({ root }: { root: HTMLElement }): ReactNode {
   const tabs = tabsFor(showMenuBar);
   const activeTab = tabs.some((t) => t.id === tab) ? tab : 'agents';
 
+  useEffect(() => {
+    if (!focusConflict.current || activeTab !== 'shortcuts') return;
+    focusConflict.current = false;
+    root
+      .querySelector<HTMLElement>(
+        '#settings-panel-shortcuts [data-action="reassign"]',
+      )
+      ?.focus();
+  }, [activeTab, root]);
+
   function runUpdate() {
     if (updateBtn.action === 'restart' || updateBtn.action === 'reload') {
       // Shared with the banner: confirm overlay + re-entrancy guard +
@@ -666,7 +718,7 @@ function SettingsDialog({ root }: { root: HTMLElement }): ReactNode {
   function saveSettings() {
     // A draft that is empty because the file would not parse must never
     // be written back over it.
-    if (loading || loadFailed) return;
+    if (loading || loadFailed || shortcutConflict) return;
     // Drop fully-blank rows so an accidental "+ Add agent" doesn't block
     // the save with a validation error.
     const payload = draft
@@ -706,6 +758,14 @@ function SettingsDialog({ root }: { root: HTMLElement }): ReactNode {
       )
       .then(() => {
         if (catalog && !catalogFailed) saveAgentPrefs(launcherPrefs);
+      })
+      .then(() => {
+        if (!keymapLoaded || keymapFailed) return;
+        if (sameKeymap(keymapDraft, keymapSaved)) return;
+        const km = canonicalKeymap(keymapDraft);
+        // The store drives dispatch, every label and the native menu, so
+        // the new keys work as soon as the file is written.
+        return SaveKeymap(km as main.Keymap).then(() => setKeymap(km));
       })
       .then(closeSettings)
       // Go returns one joined error naming every rejected entry; show it
@@ -767,12 +827,46 @@ function SettingsDialog({ root }: { root: HTMLElement }): ReactNode {
       ]}
       actions={
         <>
+          {/* Save is disabled while a conflict waits, and the conflict
+              itself may be on a tab the user has left, so the footer —
+              visible from every tab — says why and leads back to it. */}
+          {shortcutConflict ? (
+            <p
+              id="settings-save-blocked"
+              className="settings-save-blocked"
+              role="status"
+            >
+              <Icon name="state-error" size={12} />
+              {/* Off the Shortcuts tab the words themselves lead back to
+                  the conflict: a separate button would wrap Save. */}
+              {activeTab === 'shortcuts' ? (
+                <span>Resolve the shortcut conflict to save.</span>
+              ) : (
+                <button
+                  type="button"
+                  id="settings-show-conflict"
+                  className="settings-save-blocked__link"
+                  onClick={() => {
+                    focusConflict.current = true;
+                    setTab('shortcuts');
+                  }}
+                >
+                  Resolve the shortcut conflict to save.
+                </button>
+              )}
+            </p>
+          ) : null}
           <Button id="settings-cancel" label="Cancel" onClick={closeSettings} />
           <Button
             id="settings-save"
             label="Save"
             kind="primary"
-            disabled={!editingEnabled}
+            disabled={!editingEnabled || shortcutConflict}
+            extra={{
+              'aria-describedby': shortcutConflict
+                ? 'settings-save-blocked'
+                : undefined,
+            }}
             onClick={saveSettings}
           />
         </>
@@ -1113,6 +1207,15 @@ function SettingsDialog({ root }: { root: HTMLElement }): ReactNode {
           draft={editorDraft}
           onChange={setEditorDraft}
           disabled={editorFailed || !editorLoaded}
+        />
+      </Panel>
+
+      <Panel tab="shortcuts" active={activeTab}>
+        <ShortcutsPanel
+          draft={keymapDraft}
+          onChange={setKeymapDraft}
+          disabled={!keymapLoaded || keymapFailed}
+          onBlockedChange={setShortcutConflict}
         />
       </Panel>
 

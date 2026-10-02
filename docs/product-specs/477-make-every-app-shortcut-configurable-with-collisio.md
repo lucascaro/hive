@@ -5,7 +5,7 @@ type: enhancement
 complexity: L
 priority: P2
 stage: GATE
-pr: 487
+pr: 488
 ---
 
 # Make every app shortcut configurable, with collision resolution

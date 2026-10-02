@@ -176,6 +176,11 @@ export const RESERVED_CHORDS: {
     'Mod+Backspace',
     'Mod+Delete',
     'Alt+Delete',
+    // Terminal copy / paste / select-all is Ctrl+Shift on every platform
+    // (session-term.ts), deliberately not ⌘.
+    'Ctrl+Shift+C',
+    'Ctrl+Shift+V',
+    'Ctrl+Shift+A',
   ],
   other: [
     'Mod+Shift+Enter',
@@ -222,6 +227,16 @@ export function effectiveBindings(
   const userChords: string[] = [];
   const repeatOf = (id: string) =>
     defaults.find((b) => b.command === id)?.repeat;
+  // An override chord that is one spelling of a default shortcut (any
+  // command's) brings that shortcut's other layout spellings with it, so
+  // keeping ⌘J while adding a second key does not lose 'Mod+[KeyJ]' — the
+  // spelling a non-Latin layout matches on.
+  const spellings = new Map<string, string[]>();
+  for (const b of defaults) {
+    if (b.command === null) continue;
+    const all = chordsFor(b.keys, isMac);
+    for (const c of all) if (!spellings.has(c)) spellings.set(c, all);
+  }
   // The commands whose override applies. One that is not a list, or whose
   // chords all fail to parse, is ignored as a whole — the command keeps its
   // defaults rather than silently losing every key. [] still unbinds.
@@ -239,13 +254,20 @@ export function effectiveBindings(
     });
     if (chords.length > 0 && valid.length === 0) continue;
     applied.add(id);
+    const repeat = repeatOf(id);
+    const seen = new Set<string>();
     for (const chord of valid) {
-      const repeat = repeatOf(id);
+      if (seen.has(chord)) continue;
+      const all = spellings.get(chord) ?? [chord];
+      for (const c of all) seen.add(c);
+      const keys = all.length === 1 ? chord : all;
       out.push(
         repeat === false
-          ? { keys: chord, command: id, repeat }
-          : { keys: chord, command: id },
+          ? { keys, command: id, repeat }
+          : { keys, command: id },
       );
+      // Only the chord the user named displaces: its inherited spellings
+      // already coexist with every default, as they ship.
       userChords.push(chord);
     }
   }

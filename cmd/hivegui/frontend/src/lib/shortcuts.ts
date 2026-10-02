@@ -144,6 +144,49 @@ export function shortcutGroups({
   }));
 }
 
+/** A command row in Settings › Shortcuts, worded as in the help overlay. */
+export interface CommandRow {
+  command: string;
+  label: string;
+}
+
+// The overlay groups whose rows are not app commands: their keys belong to
+// the terminal or to an overlay, and are not rebindable (spec 477
+// non-goals). The terminal one is listed read-only in the Shortcuts tab.
+const TERMINAL_GROUP = 'Inside a terminal';
+const FIXED_GROUPS = new Set([
+  TERMINAL_GROUP,
+  'Ended session',
+  'Launcher & dialogs',
+]);
+
+/** The help overlay's command groups, one row per command (merged rows
+ * split), for Settings › Shortcuts. */
+export function commandGroups(
+  isMac: boolean,
+): { title: string; items: CommandRow[] }[] {
+  return rawGroups(isMac)
+    .filter((g) => !FIXED_GROUPS.has(g.title))
+    .map((g) => ({
+      title: g.title,
+      items: g.items.flatMap((r): CommandRow[] =>
+        'merged' in r
+          ? [...r.merged]
+          : 'command' in r
+            ? [{ command: r.command, label: r.label }]
+            : [],
+      ),
+    }));
+}
+
+/** The terminal's own keys: listed in Settings › Shortcuts, not editable. */
+export function terminalShortcuts(isMac: boolean): Shortcut[] {
+  const g = rawGroups(isMac).find((x) => x.title === TERMINAL_GROUP);
+  return (g?.items ?? []).filter(
+    (r): r is Shortcut => 'keys' in r && !('merged' in r),
+  );
+}
+
 function rawGroups(isMac: boolean): { title: string; items: Row[] }[] {
   const m = (key: string, opts?: ModOpts) => mod(isMac, key, opts);
   const c = (key: string, opts?: ModOpts) => ctrl(isMac, key, opts);

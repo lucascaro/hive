@@ -82,6 +82,10 @@ export function ModalShell({
   // handler having bailed out.
   useEffect(() => {
     function onKeyDown(e: KeyboardEvent) {
+      // An element marked data-own-keys answers every key itself, Escape
+      // included (Settings › Shortcuts' capture button, where Escape
+      // cancels the capture rather than the dialog).
+      if ((e.target as Element | null)?.closest?.('[data-own-keys]')) return;
       if (e.key === 'Escape') {
         e.preventDefault();
         e.stopPropagation();

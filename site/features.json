@@ -173,5 +173,11 @@
     "blurb": "Read, comment on and approve a Claude or Pi plan in Hive before the agent runs it: enable the bundled Plan review plugin under Settings → Plugins.",
     "status": "shipped",
     "since": "Unreleased"
+  },
+  {
+    "title": "Your own keyboard shortcuts",
+    "blurb": "Rebind any command, plugin ones included, under Settings → Shortcuts; Hive catches clashes and reserved keys before you save.",
+    "status": "shipped",
+    "since": "Unreleased"
   }
 ]

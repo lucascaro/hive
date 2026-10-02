@@ -38,6 +38,9 @@ func buildAppMenuRecorded(a *App, record map[string]string) *menu.Menu {
 		if s, ok := a.menuAccel[id]; ok {
 			acc = parseMenuAccel(id, s)
 		}
+		if a.menuSuspended {
+			acc = nil
+		}
 		if record != nil {
 			record[id] = accelString(acc)
 		}

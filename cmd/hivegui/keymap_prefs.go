@@ -57,3 +57,15 @@ func loadKeymap() (Keymap, error) {
 func (a *App) GetKeymap() (Keymap, error) {
 	return loadKeymap()
 }
+
+// SaveKeymap is the Wails binding behind Settings › Shortcuts. It writes
+// the whole keymap, both halves: the tab edits only the current platform's
+// half and hands the other back untouched, and overrides for plugins that
+// are not loaded ride along the same way. Go does not validate it: the
+// frontend owns the chord grammar (lib/keymap-edit.ts refuses bad keys
+// before they reach the draft), and its resolver ignores, with a warning,
+// any chord in a hand-edited file it cannot parse.
+func (a *App) SaveKeymap(k Keymap) error {
+	k.Version = 1
+	return writeStateJSON("keymap.json", k)
+}

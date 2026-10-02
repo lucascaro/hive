@@ -3,9 +3,9 @@
 - **Spec:** [docs/product-specs/477-make-every-app-shortcut-configurable-with-collisio.md](../../product-specs/477-make-every-app-shortcut-configurable-with-collisio.md)
 - **Issue:** #477
 - **Status:** active
-- **PR:** #487
-- **Branch:** feature/477-configurable-shortcuts
-- **Phase:** 1 of 3
+- **PR:** #488
+- **Branch:** feature/477-shortcuts-tab
+- **Phase:** 2 of 3
 
 ## Summary
 
@@ -196,6 +196,29 @@ Criterion 11 ("no change in behaviour") is met except D1, which is a deliberate,
 - Go `cmd/hivegui/keymap_prefs_test.go` — `TestGetKeymapMissingIsEmpty`, `TestGetKeymapReadsFile` (HIVE_STATE_DIR temp), `TestGetKeymapCorruptIsError`, `TestGetKeymapStripsBOM`.
 - Go `cmd/hivegui/menu_darwin_test.go` — `TestMenuDefaultsMatchFixture` (every item's accelerator == fixture); `TestMenuAcceleratorOverride` (`new-session`→`cmdorctrl+y` shows Y; `""` → nil; others keep defaults; unparseable → nil); `TestFixtureAcceleratorsParse` (every fixture value round-trips `keys.Parse`); existing tests unchanged. `TestMenuLockedConcurrent` under `-race`: goroutines hammer the setters' state writes and `menuLocked()` concurrently (the real build path, not the ctx-nil early return).
 
+## Files to change (Phase 2)
+
+1. Go: `cmd/hivegui/keymap_prefs.go` `SaveKeymap`; new `cmd/hivegui/state_file.go` `writeStateJSON` (atomic temp+rename, now shared with `saveEditorSettings`); `cmd/hivegui/app.go` + `menu_darwin.go` `SuspendMenuAccelerators` / `menuSuspended` (a new `SetMenuAccelerators` lifts it — a fresh page's first push).
+2. Bridge: `FE/bridge.ts`, `T/e2e/wails-mock.ts` (SaveKeymap writes the seed), `T/e2e-real/wails-bridge.ts`, Settings DOM mocks.
+3. `FE/lib/keymap-edit.ts` (new): `captureChord`, `OS_RESERVED`, `checkChord`, `withShortcuts`, `resetHalf`, `reassign`, `canonicalKeymap`/`sameKeymap`.
+4. `FE/lib/bindings.ts`: an override chord naming a default spelling inherits that entry's layout aliases (only the named chord displaces); mac `RESERVED_CHORDS` gains `Ctrl+Shift+C/V/A` (session-term handles them on every platform).
+5. `FE/lib/plugin-api.ts` `ResolvedCommand.refused`; `FE/app/plugin-host.ts` `pluginCommands(state, keymap)`; `appChords` removed.
+6. `FE/app/keymap-sync.ts`: `setShortcutCapture` on the menu queue (re-suspends after a push), focus re-read with `sameKeymap`.
+7. `FE/app/key-scopes.ts`: `shortcut-capture` scope above `settings`.
+8. `FE/components/modals/ShortcutsPanel.tsx` (new), `Settings.tsx` (tab, load/save, Save blocked on a pending conflict), `ModalShell.tsx` (`data-own-keys`), `IconButton.tsx` (`disabled`), `FE/lib/shortcuts.ts` (`commandGroups`, `terminalShortcuts`), `src/theme/components/settings.css`.
+9. Docs: changeset `477-shortcuts-settings-tab.md`, `site/features.json`, README Keybinds intro, AGENTS.md policy, `docs/design-docs/ui/README.md` decision row.
+
+## Tests (Phase 2)
+
+- `T/unit/keymap-edit.test.ts` — capture (⌘/⌃ tokens, ⌥ and non-Latin fall back to `[Code]`, AZERTY letter, modifier-only null, Windows key refused), refusals (OS list, terminal list incl. mac ⌃⇧C, no-modifier except F-keys), warnings, edits, canonical compare.
+- `T/unit/bindings.test.ts` — layout spellings come with an overridden default and follow a moved key; no spurious displacement.
+- `T/unit/plugin-chords.test.ts` — `refused` lists the chords a plugin did not get.
+- `T/dom/settings-shortcuts.test.tsx` — groups + read-only terminal group; capture + save → store; suspend/restore; conflict blocks Save (button and Enter) until Reassign, holder keeps its other keys; Cancel; OS refusal + terminal warning; remove/reset/reset all; displaced flag; plugin conflict + give-to-plugin; failed load never saves; search.
+- `T/dom/keymap-menu-sync.test.ts` — focus re-read: identical file → no store write, no menu call; changed → one; capture suspend ordering.
+- `T/dom/key-scopes.test.ts` — capture button focused: ⌘, / ⌘T / Esc run nothing.
+- `T/e2e/shortcuts-tab.spec.ts` — real keyboard pipeline: ⌘, captured as a conflict, ⌘Y saved, old key dead, palette shows new; Escape cancels capture not Settings.
+- Go: `TestSaveKeymapRoundTrips`, `TestSuspendMenuAccelerators`.
+
 ## Verification
 
 ```bash
@@ -229,6 +252,13 @@ Would fail on a wrong implementation: the v0-fixture parity tests fail on any la
 - **2026-10-01** — Second-opinion round 2 must-fix items applied without a third reviewer round. Why: feature-loop caps the reviewer at two rounds.
 - **2026-10-01** — Resolver split: pure data + resolver in `lib/bindings.ts` (so pure `lib/shortcuts.ts`, `lib/status.ts`, `lib/empty-state.ts` can derive labels), store glue in `app/bindings.ts`; `keymap-sync.ts` takes the menu command ids from `main.tsx` rather than importing `commands.ts`. Why: keeps lib/ pure and the sync module testable without the action graph.
 - **2026-10-01** — Shifted characters overlap their unshifted key only when the chord leaves Shift unnamed. Why: `Ctrl+Shift+_` (nav-forward) must not be displaced by a user `Ctrl+[Minus]`.
+- **2026-10-01** — Phase 2 conflict model: a captured key another command holds is pending — both rows marked, Save (and Enter) blocked until Reassign (the holder loses only that key) or Cancel; one pending at a time. Why: operator choice at the phase-2 start; matches criterion 3.
+- **2026-10-01** — Plugin keys core already holds show as conflicts with Give-to-plugin / Drop, and do not block Save. Why: operator choice; an installed plugin's clash must not stop unrelated edits.
+- **2026-10-01** — The tab lists the help-overlay groups plus an "Other commands" group of titled core commands with no row (palette-only ones like Restart session). Why: operator choice; criterion 1 says any core command.
+- **2026-10-01** — A captured key with no ⌘/Ctrl/Alt is refused, F-keys excepted. Why: operator choice; the app scope matches globally, so a bare key would stop the user typing it in a session.
+- **2026-10-01** — An override chord that equals a spelling of a default shortcut inherits that entry's other spellings. Why: otherwise editing ⌘J's command drops `Mod+[KeyJ]`, breaking it on non-Latin layouts; keeps keymap.json a flat list of chords (no Go type change).
+- **2026-10-01** — Menu suspension follows the panel's `capturing` state, not focus events, and runs on keymap-sync's queue; Go's `SetMenuAccelerators` lifts it and the frontend re-suspends after a push mid-capture. Why: removing a focused button fires no blur, and a reload mid-capture must not leave the menu stripped.
+- **2026-10-01** — Review iter 1 escalations, all applied on operator instruction: (1) focus moves to the row's + after any capture ends, to Reassign while a conflict waits, to the search box after Reset all; a capture ended by focus leaving is never pulled back; (2) while a conflict blocks Save the footer says so on every tab, linking back to Reassign off the Shortcuts tab (text link, so Save never wraps — checked in a browser screenshot); (3) menu suspension is reconciled (wanted vs. Go-confirmed state) instead of toggled: a failed call leaves Go's state unknown and is retried 3× with backoff, then on window focus, capture changes or menu pushes. Why: the real stuck case was a failed restore leaving the menu stripped; a failed re-suspend also used to roll back the menu-update bookkeeping.
 
 ## Progress
 
@@ -236,6 +266,7 @@ Would fail on a wrong implementation: the v0-fixture parity tests fail on any la
 - **2026-10-01** — Plan approved (chat fallback after the HTML page timed out). Phase 1 implementation starting.
 - **2026-10-01** — Rebased onto #486 (e2e sweep of every shortcut). The sweep passes unchanged. Three older tests needed edits (keymap-parity D1/D2 cells, plugin-chords helper signature, shortcuts.test `restart-session`); operator approved each before editing.
 - **2026-10-01** — Phase 1 implemented; PR #487 opened. All layers green.
+- **2026-10-01** — Phase 2 started (reset: stage IMPLEMENT, Phase 2 of 3). Implemented on `feature/477-shortcuts-tab`.
 
 ## Open questions
 
@@ -246,6 +277,9 @@ Would fail on a wrong implementation: the v0-fixture parity tests fail on any la
 - **2026-10-01 iter 3** — verdict: APPROVE; mergeable: MERGEABLE; findings_hash: empty; threads_open: 0; action: stop; head_sha: 3775bc2.
 - **2026-10-01 iter 4** — verdict: APPROVE; mergeable: MERGEABLE; findings_hash: empty; threads_open: 0; action: stop; head_sha: b7a97a1.
 - **2026-10-01 iter 5** — verdict: APPROVE; mergeable: MERGEABLE; findings_hash: empty; threads_open: 0; action: stop; head_sha: d24b2c0.
+- **2026-10-01 iter 6** — verdict: REQUEST_CHANGES; mergeable: MERGEABLE; findings_hash: 7dd95b51c1c6c61add98e00becbbf0ae3fdfa0dc0f7f88730742afcae0c6c183; threads_open: 0; action: escalated:risky-fix-needs-human-decision; head_sha: 5a8cd2d (phase 2, PR #488).
+- **2026-10-01 iter 7** — verdict: APPROVE; mergeable: MERGEABLE; findings_hash: empty; threads_open: 0; action: stop; head_sha: 9e27c55 (phase 2, PR #488).
+- **2026-10-01 iter 8** — verdict: APPROVE; mergeable: MERGEABLE; findings_hash: empty; threads_open: 0; action: stop; head_sha: c4305d1 (phase 2, PR #488).
 
 ## Gate verdict
 
@@ -254,3 +288,8 @@ Would fail on a wrong implementation: the v0-fixture parity tests fail on any la
     - acceptance — PASS — criterion 11 PASS (label + menu fixtures with empty keymap); 1–10 DEFERRED (phase > 1), engine halves of 1/2/4/6/7/8 exercised by bindings, keymap-surfaces, keymap-menu-sync, plugin-keymap, keymap-override e2e and Go keymap/menu tests
     - non-goals — PASS — terminal-editing chords only as RESERVED_CHORDS; modal Escape hard-coded; no sequences, sync, per-project keymaps; README untouched; no wire/daemon change
     - doc accuracy — PASS — changeset valid (type: changed); AGENTS.md policy and DESIGN.md StateDir list updated; no generated files edited
+- **2026-10-01** — verdict: PASS; phase: 2/3; checks: 10 passed / 0 failed / 0 followups / 1 deferred; followups: none; one-line: Settings → Shortcuts tab delivers criteria 1–8 and 10 (capture, conflicts that block Save, plugin clashes, refusals/warnings, displaced defaults, read-only terminal keys), criterion 11 still holds for an empty keymap; 9 (import/export) deferred to phase 3.
+  - 2026-10-01 dimensions:
+    - acceptance — PASS — 1–8, 10, 11 PASS (settings-shortcuts, keymap-menu-sync, keymap-edit, bindings, key-scopes DOM/unit tests; shortcuts-tab e2e; Go TestSaveKeymapRoundTrips/TestSuspendMenuAccelerators); 7 persistence proven via the state-dir file, reload/upgrade not run end to end; 9 DEFERRED (phase 3)
+    - non-goals — PASS — terminal keys and Ctrl+C refused, overlay keys not offered, no sequences/sync/per-project keymaps, 478 refactor untouched, README table unchanged, no wire/daemon change, no import/export leak
+    - doc accuracy — PASS — changeset (added/minor) matches code, features.json since Unreleased (whats-new test passes), README pointer, AGENTS.md policy and UI decision row accurate, no generated files edited, DESIGN.md needs no change

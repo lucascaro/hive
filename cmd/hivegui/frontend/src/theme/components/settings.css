@@ -198,3 +198,91 @@
 .settings-plugin-row .settings-plugin-remove { color: var(--fg-muted); }
 .settings-plugin-row .settings-plugin-remove:hover { color: var(--state-error); }
 #settings-plugin-source { font-family: var(--font-mono); font-size: var(--text-sm); }
+
+/* Settings → Shortcuts (ShortcutsPanel.tsx, spec 477). One row per
+   command: label, then its keys as kbd chips with a remove button each,
+   then add / reset. A conflict, a refusal or a displaced default adds a
+   note under the row; the note carries an icon and words, so the state
+   never rests on colour alone. */
+.hv-shortcuts-toolbar {
+  display: flex;
+  gap: var(--space-2);
+  align-items: center;
+  margin: var(--space-2) 0 var(--space-3);
+}
+.hv-shortcuts-toolbar .hv-input { flex: 1 1 auto; min-width: 0; }
+.hv-shortcuts-group h4 {
+  margin: var(--space-3) 0 var(--space-1);
+  color: var(--fg-muted);
+  font-size: var(--text-sm);
+}
+.hv-shortcuts-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+.hv-shortcut-row {
+  display: flex;
+  flex-wrap: wrap; /* a note takes its own line */
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-1) var(--space-2);
+  border-bottom: 1px solid var(--border);
+  border-left: 2px solid transparent;
+}
+.hv-shortcut-row[data-conflict] { border-left-color: var(--state-error); }
+.hv-shortcut-label {
+  flex: 1 1 auto;
+  min-width: 0;
+  color: var(--fg);
+  font-size: var(--text-md);
+}
+.hv-shortcut-keys {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-1);
+}
+.hv-shortcut-key { display: inline-flex; align-items: center; }
+.hv-shortcut-none { color: var(--fg-muted); font-size: var(--text-sm); }
+.hv-shortcut-capture {
+  padding: 0 var(--space-2);
+  border: 1px dashed var(--accent);
+  border-radius: var(--radius-sm);
+  background: none;
+  color: var(--fg);
+  font-size: var(--text-sm);
+}
+.hv-shortcut-capture:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+.hv-shortcut-note {
+  flex-basis: 100%;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
+  font-size: var(--text-sm);
+}
+.hv-shortcut-note[data-kind='conflict'],
+.hv-shortcut-note[data-kind='refused'] { color: var(--state-error); }
+.hv-shortcut-note[data-kind='warn'],
+.hv-shortcut-note[data-kind='displaced'] { color: var(--state-attention); }
+/* The footer note that says why Save is disabled while a shortcut
+   conflict waits (Settings.tsx); icon + words, never colour alone. */
+.settings-save-blocked {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  margin: 0;
+  color: var(--state-error);
+  font-size: var(--text-sm);
+}
+.settings-save-blocked__link {
+  padding: 0;
+  border: 0;
+  background: none;
+  color: inherit;
+  font: inherit;
+  text-decoration: underline;
+  cursor: pointer;
+}
+.settings-save-blocked__link:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }

@@ -141,3 +141,19 @@ describe('checkContributions', () => {
     ).toThrow(/component/);
   });
 });
+
+// Spec 477 criterion 4: Settings › Shortcuts shows a plugin key core
+// already holds as a conflict, so the resolver says which ones it refused.
+describe('refused chords', () => {
+  it('lists the keys a plugin asked for and did not get', () => {
+    const [palette, free] = resolveCommands(
+      [{ id: 'p', commands: [cmd('pal', 'k', true), cmd('free', 'y')] }],
+      coreChords(true),
+      true,
+    );
+    expect(palette.refused).toEqual(['Mod+Shift+[KeyK]']);
+    expect(palette.bound).toBe(false);
+    expect(free.refused).toEqual([]);
+    expect(free.chords).toEqual(['Mod+[KeyY]']);
+  });
+});

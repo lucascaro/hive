@@ -94,6 +94,13 @@ type App struct {
 	// SetMenuAccelerators. Guarded by menuMu.
 	menuAccel map[string]string
 
+	// menuSuspended strips every accelerator this app sets, while a
+	// Settings › Shortcuts capture field has focus: AppKit hands a menu's
+	// key equivalent to the menu before the webview sees it, so ⌘T could
+	// not be captured otherwise. Written only by SuspendMenuAccelerators
+	// and SetMenuAccelerators. Guarded by menuMu.
+	menuSuspended bool
+
 	// menuInstaller replaces the Wails install in tests. Nil in production.
 	menuInstaller func(*menu.Menu)
 }
@@ -122,7 +129,21 @@ func (a *App) SetMenuAccelerators(accel map[string]string) {
 	for k, v := range accel {
 		cp[k] = v
 	}
-	a.rebuildMenu(func() { a.menuAccel = cp })
+	// A new set also ends any capture suspension: the page that asked for
+	// it may have been reloaded before it could lift it, and this is the
+	// first call a fresh page makes (keymap-sync.ts loadKeymap).
+	a.rebuildMenu(func() {
+		a.menuAccel = cp
+		a.menuSuspended = false
+	})
+}
+
+// SuspendMenuAccelerators removes (on) or restores (off) the accelerators
+// of every item Hive builds, so a key-capture field in Settings ›
+// Shortcuts sees ⌘ chords as keydowns. The Wails role menus (Quit, Hide,
+// Edit) keep theirs; their chords are OS-reserved and refused anyway.
+func (a *App) SuspendMenuAccelerators(on bool) {
+	a.rebuildMenu(func() { a.menuSuspended = on })
 }
 
 // rebuildMenu applies a change to the menu's fields, then builds and

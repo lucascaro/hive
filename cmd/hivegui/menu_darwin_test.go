@@ -359,3 +359,36 @@ func TestMenuRebuildsInstallInOrder(t *testing.T) {
 		t.Fatalf("last installed menu does not reflect the final debugTrace=%v", a.debugTrace)
 	}
 }
+
+// TestSuspendMenuAccelerators: while a Settings › Shortcuts capture field
+// has focus every item Hive builds loses its accelerator, so ⌘ chords
+// reach the webview; lifting the suspension restores the user's keymap,
+// and a new accelerator set (a fresh page's first push) lifts it too.
+func TestSuspendMenuAccelerators(t *testing.T) {
+	var last *menu.Menu
+	a := &App{menuInstaller: func(m *menu.Menu) { last = m }}
+	a.SetMenuAccelerators(map[string]string{"new-session": "cmdorctrl+y"})
+
+	a.SuspendMenuAccelerators(true)
+	got := map[string]string{}
+	buildAppMenuRecorded(a, got)
+	for id, acc := range got {
+		if acc != "" {
+			t.Errorf("suspended: %s keeps accelerator %q", id, acc)
+		}
+	}
+	if acc := findItem(last.Items, "New Session").Accelerator; acc != nil {
+		t.Fatalf("installed menu still has New Session = %+v", acc)
+	}
+
+	a.SuspendMenuAccelerators(false)
+	if got := accelString(findItem(last.Items, "New Session").Accelerator); got != "cmdorctrl+y" {
+		t.Fatalf("after lifting, New Session = %q, want the user's cmdorctrl+y", got)
+	}
+
+	a.SuspendMenuAccelerators(true)
+	a.SetMenuAccelerators(map[string]string{})
+	if got := accelString(findItem(last.Items, "New Session").Accelerator); got != "cmdorctrl+t" {
+		t.Fatalf("a new accelerator set must lift the suspension; New Session = %q", got)
+	}
+}

@@ -2,7 +2,6 @@
 // store, so callers ask about "the user's shortcuts" without threading
 // the keymap through. Every function reads the store when called.
 
-import { chordsFor } from '../lib/chord.js';
 import {
   chordsOfIn,
   effectiveFor,
@@ -61,13 +60,6 @@ export function shortcutLabel(
   isMac: boolean = platformIsMac,
 ): string {
   return labelIn(keymap(), id, isMac);
-}
-
-/** Every chord the app scope binds, for collision checks. */
-export function appChords(isMac: boolean = platformIsMac): string[] {
-  return effectiveAppBindings(isMac).bindings.flatMap((b) =>
-    chordsFor(b.keys, isMac),
-  );
 }
 
 /** Calls fn whenever the keymap object changes (not on other store

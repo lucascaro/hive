@@ -10,8 +10,13 @@
 // a few milliseconds at boot and accepted: Go reading keymap.json itself
 // would mean a second copy of the chord grammar.
 
-import { GetKeymap, SetMenuAccelerators } from '../bridge.js';
+import {
+  GetKeymap,
+  SetMenuAccelerators,
+  SuspendMenuAccelerators,
+} from '../bridge.js';
 import { menuAcceleratorOverrides, type Keymap } from '../lib/bindings.js';
+import { canonicalKeymap, sameKeymap } from '../lib/keymap-edit.js';
 import { isMac } from '../lib/platform.js';
 import { appStore, setKeymap } from '../store/store.js';
 import { shortcutLabel, subscribeKeymap } from './bindings.js';
@@ -30,6 +35,42 @@ let menuIds: readonly string[] = [];
 // Sends go one at a time, in order: Go installs whatever arrives last, so
 // two in flight must not land newest-first.
 let queue: Promise<unknown> = Promise.resolve();
+// Settings › Shortcuts capture (setShortcutCapture). `wantSuspended` is
+// what the page wants; `goSuspended` is what Go last confirmed, or null
+// once a call failed and Go's state is unknown. The two are reconciled
+// (syncSuspension) rather than toggled, so a failed call is retried: a
+// lost "restore" would otherwise leave the native menu with no shortcuts
+// long after the capture ended.
+let wantSuspended = false;
+let goSuspended: boolean | null = false;
+// Failed reconciles are retried a few times with backoff, then left to
+// the next trigger (a capture change, a menu push, the window's focus).
+const RETRY_DELAYS_MS = [250, 1000, 4000];
+let retries = 0;
+let retryTimer: ReturnType<typeof setTimeout> | null = null;
+
+function syncSuspension(): void {
+  queue = queue.then(async () => {
+    if (goSuspended === wantSuspended) return;
+    const on = wantSuspended;
+    try {
+      await SuspendMenuAccelerators(on);
+      goSuspended = on;
+      retries = 0;
+    } catch (e: unknown) {
+      goSuspended = null;
+      console.warn('suspending the menu shortcuts failed', e);
+      const delay = RETRY_DELAYS_MS[retries];
+      if (delay !== undefined && retryTimer === null) {
+        retries++;
+        retryTimer = setTimeout(() => {
+          retryTimer = null;
+          syncSuspension();
+        }, delay);
+      }
+    }
+  });
+}
 
 function pushMenu(keymap: Keymap, ids: readonly string[], force = false): void {
   if (!isMac) return; // no native menu elsewhere (menu_other.go)
@@ -40,12 +81,34 @@ function pushMenu(keymap: Keymap, ids: readonly string[], force = false): void {
   sentMenu = json;
   queue = queue
     .then(() => SetMenuAccelerators(overrides))
-    .catch((e: unknown) => {
-      console.warn('updating the menu shortcuts failed', e);
-      // Go never took it, so the next keymap change must send again. Only
-      // if nothing newer was sent meanwhile: that one supersedes this.
-      if (sentMenu === json) sentMenu = before;
-    });
+    .then(
+      () => {
+        // A new set lifts the suspension in Go (it is also a fresh page's
+        // first call); syncSuspension below puts it back mid-capture.
+        goSuspended = false;
+      },
+      (e: unknown) => {
+        console.warn('updating the menu shortcuts failed', e);
+        // Go never took it, so the next keymap change must send again. Only
+        // if nothing newer was sent meanwhile: that one supersedes this.
+        if (sentMenu === json) sentMenu = before;
+      },
+    );
+  syncSuspension();
+}
+
+/**
+ * Strips (on) or restores (off) the native menu's accelerators while a
+ * Settings › Shortcuts capture field has focus: AppKit gives a menu its
+ * key equivalent before the webview sees the keydown, so ⌘T could not be
+ * captured otherwise. Queued behind menu updates, so the two never land
+ * out of order.
+ */
+export function setShortcutCapture(on: boolean): void {
+  if (!isMac || on === wantSuspended) return;
+  wantSuspended = on;
+  retries = 0;
+  syncSuspension();
 }
 
 function titleNewProjectButton(): void {
@@ -63,14 +126,29 @@ export function initKeymapSync(deps: KeymapSyncDeps): void {
   unsubscribe?.();
   menuIds = deps.menuCommands;
   titleNewProjectButton();
-  unsubscribe = subscribeKeymap((keymap) => {
+  const stop = subscribeKeymap((keymap) => {
     pushMenu(keymap, deps.menuCommands);
     deps.refreshModeHint();
     titleNewProjectButton();
   });
+  // Every window is its own process with its own store: one that saved
+  // a keymap cannot tell the others, so each re-reads the file when it
+  // gains focus. loadKeymap writes the store only on a real change.
+  // The same moment retries a menu suspension that failed to change.
+  const onFocus = () => {
+    void loadKeymap();
+    if (isMac) syncSuspension();
+  };
+  window.addEventListener('focus', onFocus);
+  unsubscribe = () => {
+    stop();
+    window.removeEventListener('focus', onFocus);
+  };
 }
 
-/** Reads keymap.json into the store. A missing file is the empty keymap;
+/** Reads keymap.json into the store — at boot, and again whenever the
+ * window gains focus, since each window is its own process and another
+ * one may have saved a new keymap. A missing file is the empty keymap;
  * a failure leaves the defaults in place — the app must start. The store
  * is only written when the keymap actually differs, so a re-read of an
  * unchanged file rebuilds nothing.
@@ -83,8 +161,8 @@ export function initKeymapSync(deps: KeymapSyncDeps): void {
 export async function loadKeymap(): Promise<void> {
   try {
     const next = ((await GetKeymap()) ?? {}) as Keymap;
-    if (JSON.stringify(next) !== JSON.stringify(appStore.getState().keymap))
-      setKeymap(next);
+    if (!sameKeymap(next, appStore.getState().keymap))
+      setKeymap(canonicalKeymap(next));
   } catch (e) {
     console.warn('loading keymap.json failed; using the default shortcuts', e);
   }
@@ -97,6 +175,11 @@ export function resetKeymapSyncForTest(): void {
   unsubscribe = null;
   sentMenu = null;
   menuIds = [];
+  wantSuspended = false;
+  goSuspended = false;
+  retries = 0;
+  if (retryTimer !== null) clearTimeout(retryTimer);
+  retryTimer = null;
   queue = Promise.resolve();
 }
 

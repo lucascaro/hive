@@ -56,6 +56,10 @@ const bridge = vi.hoisted(() => ({
     Promise.resolve({ kind: '', command: '', app: '' }),
   ),
   SaveEditorSettings: vi.fn(() => Promise.resolve()),
+  // Settings › Shortcuts (spec 477); test/dom/settings-shortcuts.test.tsx
+  // drives it.
+  GetKeymap: vi.fn(() => Promise.resolve({})),
+  SaveKeymap: vi.fn(() => Promise.resolve()),
 }));
 
 vi.mock('../../src/bridge.js', () => bridge);
