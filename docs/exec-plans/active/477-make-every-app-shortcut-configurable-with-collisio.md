@@ -3,8 +3,8 @@
 - **Spec:** [docs/product-specs/477-make-every-app-shortcut-configurable-with-collisio.md](../../product-specs/477-make-every-app-shortcut-configurable-with-collisio.md)
 - **Issue:** #477
 - **Status:** active
-- **PR:**
-- **Branch:**
+- **PR:** #490
+- **Branch:** feature/477-keymap-import-export
 - **Phase:** 3 of 3
 
 ## Summary
