@@ -66,6 +66,7 @@ const MARKUP = `
 type SettingsModule = typeof import('../../src/app/modals/settings.js');
 let openSettings: SettingsModule['openSettings'];
 let closeSettings: SettingsModule['closeSettings'];
+let dismissSettings: SettingsModule['dismissSettings'];
 let Settings: typeof import('../../src/components/modals/Settings.js')['Settings'];
 let menuQueue: () => Promise<unknown>;
 let resetKeymapSync: () => void;
@@ -129,6 +130,7 @@ beforeAll(async () => {
   const mod = await import('../../src/app/modals/settings.js');
   openSettings = mod.openSettings;
   closeSettings = mod.closeSettings;
+  dismissSettings = mod.dismissSettings;
   mod.initSettings({ refocusActiveTerm: vi.fn(), setFocusedTile: vi.fn() });
   ({ Settings } = await import('../../src/components/modals/Settings.js'));
   ({
@@ -654,6 +656,10 @@ describe('settings: shortcuts import and export', () => {
     expect(bridge.SaveKeymap).not.toHaveBeenCalled();
     act(() => action('confirm-import')?.click());
     expect(preview()).toBeNull();
+    // Confirming says so: the list looks much the same either way.
+    expect(el('settings-shortcuts-imported').textContent).toContain(
+      'Save to keep them',
+    );
     expect(keysOf('new-session')).toEqual(['⌘N']);
     expect(keysOf('new-project')).toEqual([]);
     await save();
@@ -726,6 +732,61 @@ describe('settings: shortcuts import and export', () => {
     expect(keysOf('new-session')).toEqual(['⌘T']);
     await save();
     expect(bridge.SaveKeymap).not.toHaveBeenCalled();
+  });
+
+  it('a cancelled import says nothing, and an edit clears the import note', async () => {
+    await openTab();
+    await startImport({ mac: { 'new-session': ['Mod+Y'] } });
+    chooseMode('replace');
+    act(() => action('cancel-import')?.click());
+    expect(document.getElementById('settings-shortcuts-imported')).toBeNull();
+    await startImport({ mac: { 'new-session': ['Mod+Y'] } });
+    chooseMode('replace');
+    act(() => action('confirm-import')?.click());
+    expect(el('settings-shortcuts-imported')).toBeTruthy();
+    act(() => btn('new-session', 'remove-shortcut')?.click());
+    expect(document.getElementById('settings-shortcuts-imported')).toBeNull();
+  });
+
+  // Focus can leave the preview (the tab strip, the body). Escape must
+  // still cancel the import first, not close Settings with the draft.
+  it('Escape outside the preview cancels the import, then closes Settings', async () => {
+    await openTab();
+    await startImport({ mac: { 'new-session': ['Mod+Y'] } });
+    chooseMode('replace');
+    el('settings-tab-shortcuts').focus();
+    act(() => {
+      fireEvent.keyDown(el('settings-tab-shortcuts'), {
+        key: 'Escape',
+        code: 'Escape',
+      });
+    });
+    expect(preview()).toBeNull();
+    expect(el('settings').classList.contains('hidden')).toBe(false);
+    // The command keyboard.ts runs for Escape with focus on the body.
+    await startImport({ mac: { 'new-session': ['Mod+Y'] } });
+    act(() => dismissSettings());
+    expect(preview()).toBeNull();
+    expect(el('settings').classList.contains('hidden')).toBe(false);
+    // Nothing left to cancel: Escape is the dialog's again.
+    act(() => dismissSettings());
+    expect(el('settings').classList.contains('hidden')).toBe(true);
+  });
+
+  // ["Mod+Q", 5]: Mod+Q is refused, so the entry imports nothing — the
+  // entry's note must still say what it is, not "Skipped".
+  it('a partial entry whose keys are all refused is not called skipped', async () => {
+    await openTab();
+    await startImport({ mac: { settings: ['Mod+Q', 5] } });
+    chooseMode('replace');
+    const rows = [
+      ...document.querySelectorAll<HTMLElement>('.hv-import-row'),
+    ].filter((r) => r.dataset.command === 'settings');
+    const entry = rows.find((r) => r.dataset.chord === undefined);
+    expect(entry?.dataset.state).toBe('partial');
+    expect(entry?.textContent).not.toContain('Skipped');
+    expect(entry?.textContent).toContain('left out');
+    expect(importRow('settings', 'Mod+Q').dataset.state).toBe('skipped');
   });
 
   it('a file that is not a keymap is refused in the error slot', async () => {

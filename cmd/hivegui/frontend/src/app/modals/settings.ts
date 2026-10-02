@@ -69,6 +69,23 @@ export function openSettings() {
   openModal({ id: 'settings' });
 }
 
+// Something inside Settings that Escape should close first (Settings ›
+// Shortcuts' import preview). Returns true when it handled the key.
+let escapeGuard: (() => boolean) | null = null;
+
+/** Lets a part of Settings take Escape before the dialog does, wherever
+ * focus is. Pass null to release it. */
+export function setSettingsEscapeGuard(fn: (() => boolean) | null): void {
+  escapeGuard = fn;
+}
+
+/** Escape (and the ⌘, toggle): closes whatever Settings has open inside
+ * it first — an import preview — and the dialog only when nothing is. */
+export function dismissSettings(): void {
+  if (escapeGuard?.()) return;
+  closeSettings();
+}
+
 export function closeSettings() {
   // Blur before hiding, then hand focus back: refocusActiveTerm() bails
   // when activeElement is an INPUT (lib/focus.ts), and unmounting the

@@ -207,3 +207,28 @@ test('importing a keymap file, then exporting it', async ({ page }) => {
   await page.keyboard.press(`${mod}+y`);
   await expect(page.locator('#launcher')).toBeVisible();
 });
+
+// Escape with focus outside the preview (here: dropped to the body) still
+// cancels the import first — through keyboard.ts's Settings scope — and
+// only the next Escape closes Settings.
+test('Escape cancels an open import even with focus outside it', async ({
+  page,
+}) => {
+  await boot(page);
+  await page.evaluate(
+    (text) => {
+      (window as unknown as { __hive_importText: string }).__hive_importText =
+        text;
+    },
+    JSON.stringify({ mac: {}, other: {} }),
+  );
+  await openShortcuts(page);
+  await page.locator('#settings-shortcuts-import').click();
+  await expect(page.locator('.hv-shortcuts-import')).toBeVisible();
+  await page.evaluate(() => (document.activeElement as HTMLElement)?.blur());
+  await page.keyboard.press('Escape');
+  await expect(page.locator('.hv-shortcuts-import')).toHaveCount(0);
+  await expect(page.locator('#settings')).toBeVisible();
+  await page.keyboard.press('Escape');
+  await expect(page.locator('#settings')).toBeHidden();
+});

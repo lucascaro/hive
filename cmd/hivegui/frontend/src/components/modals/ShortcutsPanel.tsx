@@ -24,6 +24,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import type { main } from '../../../wailsjs/go/models';
 import { listCommands } from '../../app/command-registry.js';
 import { setShortcutCapture } from '../../app/keymap-sync.js';
+import { setSettingsEscapeGuard } from '../../app/modals/settings.js';
 import { resolvePluginCommands } from '../../app/plugin-host.js';
 import { ExportKeymap, PickKeymapFile } from '../../bridge.js';
 import {
@@ -127,10 +128,14 @@ export function ShortcutsPanel({
   const [importing, setImporting] = useState<Importing | null>(null);
   // A file dialog is open (Export… or Import…).
   const [busy, setBusy] = useState(false);
-  // The draft the last export wrote, for "Shortcuts exported."; the note
-  // goes once the draft moves on (an edit, an import) or a new export or
-  // import starts.
-  const [exported, setExported] = useState<Keymap | null>(null);
+  // What the last export wrote, or what a confirmed import produced, for
+  // "Shortcuts exported." / "Shortcuts imported…"; the note goes once the
+  // draft moves on (an edit, another import) or a new export or import
+  // starts.
+  const [fileNote, setFileNote] = useState<{
+    kind: 'exported' | 'imported';
+    draft: Keymap;
+  } | null>(null);
   const rootRef = useRef<HTMLDivElement>(null);
 
   // Where focus goes after an action removes or disables the control that
@@ -399,10 +404,10 @@ export function ShortcutsPanel({
 
   async function exportKeymap() {
     setBusy(true);
-    setExported(null);
+    setFileNote(null);
     try {
       if (await ExportKeymap(canonicalKeymap(draft) as main.Keymap))
-        setExported(draft);
+        setFileNote({ kind: 'exported', draft });
     } catch (e) {
       onError(`Could not export your shortcuts. (${errText(e)})`);
     } finally {
@@ -415,7 +420,7 @@ export function ShortcutsPanel({
   async function startImport() {
     let opened = false;
     setBusy(true);
-    setExported(null);
+    setFileNote(null);
     try {
       const text = await PickKeymapFile();
       if (!text) return; // cancelled
@@ -475,11 +480,35 @@ export function ShortcutsPanel({
 
   function endImport(confirm: boolean) {
     if (confirm && importing?.mode) {
-      onChange(applyImport(draft, importing.candidate, importBaseHalf, isMac));
+      const next = applyImport(
+        draft,
+        importing.candidate,
+        importBaseHalf,
+        isMac,
+      );
+      onChange(next);
+      // Said out loud: the list behind the preview looks much the same
+      // either way, and a screen reader hears nothing else.
+      setFileNote({ kind: 'imported', draft: next });
     }
     setImporting(null);
     setFocusNext({ selector: '#settings-shortcuts-import' });
   }
+
+  // Escape cancels an open import wherever focus is in Settings, not only
+  // inside the preview: if focus falls to the body or the tab strip, the
+  // dialog's own Escape would otherwise close Settings and drop the draft.
+  const endImportRef = useRef(endImport);
+  endImportRef.current = endImport;
+  const previewOpen = importing !== null;
+  useEffect(() => {
+    if (!previewOpen) return;
+    setSettingsEscapeGuard(() => {
+      endImportRef.current(false);
+      return true;
+    });
+    return () => setSettingsEscapeGuard(null);
+  }, [previewOpen]);
 
   const q = query.trim().toLowerCase();
   const matches = (r: Row) =>
@@ -548,13 +577,15 @@ export function ShortcutsPanel({
           }}
         />
       </div>
-      {exported === draft ? (
+      {fileNote?.draft === draft ? (
         <p
           className="settings-hint"
           role="status"
-          id="settings-shortcuts-exported"
+          id={`settings-shortcuts-${fileNote.kind}`}
         >
-          Shortcuts exported.
+          {fileNote.kind === 'exported'
+            ? 'Shortcuts exported.'
+            : 'Shortcuts imported. Save to keep them.'}
         </p>
       ) : null}
       {importing ? (
@@ -887,9 +918,11 @@ function ImportPreviewView({
         <ul className="hv-shortcuts-list">
           {preview.rows.map((r) => {
             const c = conflictOf(r.id, r.chord);
+            // A key the user skipped. Rows with no key (unbound, partial)
+            // describe the entry, not a key, so they never read as one.
             const skippedByUser =
+              r.chord !== undefined &&
               !SKIPPED[r.status] &&
-              r.status !== 'unbound' &&
               !inCandidate(r.id, r.chord);
             const state = c
               ? 'conflict'
@@ -935,7 +968,9 @@ function ImportPreviewView({
                     <Icon name="state-error" size={12} />
                     <span>Skipped{r.reason ? `: ${r.reason}` : '.'}</span>
                   </div>
-                ) : r.status === 'warn' || r.status === 'kept' ? (
+                ) : r.status === 'warn' ||
+                  r.status === 'kept' ||
+                  r.status === 'partial' ? (
                   <div className="hv-shortcut-note" data-kind="warn">
                     <Icon name="state-attention" size={12} />
                     <span>{r.reason}</span>

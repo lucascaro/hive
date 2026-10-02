@@ -81,7 +81,7 @@ func stageUpdate(info UpdateInfo, progress func(string)) (string, error) {
 // Closing that gap needs either code-signing certificates or a detached
 // signature over checksums.txt with a key baked into the binary. Both
 // are upstream release-process decisions; see
-// docs/exec-plans/active/windows-in-app-update.md.
+// docs/exec-plans/completed/windows-in-app-update.md.
 func stageRelease(info UpdateInfo, progress func(string)) (string, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), downloadTimeout)
 	defer cancel()

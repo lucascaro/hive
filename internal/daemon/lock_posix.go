@@ -11,6 +11,11 @@ import (
 	"time"
 )
 
+// stateLockPoll is how often a starting daemon retries the held state
+// lock. POSIX-only: on Windows acquireStateLock never waits, and a
+// shared declaration reads as unused there (staticcheck U1000).
+const stateLockPoll = 50 * time.Millisecond
+
 // acquireStateLock takes an exclusive, non-blocking flock on
 // <stateDir>/hived.lock. The returned file must be kept open for the
 // daemon's lifetime — closing it releases the lock — and closed on

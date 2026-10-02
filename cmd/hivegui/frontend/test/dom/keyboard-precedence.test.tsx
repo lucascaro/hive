@@ -112,6 +112,9 @@ const toggleHelpOverlay = vi.fn();
 const handOffToShortcuts = vi.fn();
 vi.mock('../../src/app/modals/settings.js', () => ({
   closeSettings: () => closeSettings(),
+  // Escape runs settings.close, which dismisses: an open import preview
+  // would take it first; with none (as here), the dialog closes.
+  dismissSettings: () => closeSettings(),
   openSettings: vi.fn(),
   settingsEl: null,
 }));

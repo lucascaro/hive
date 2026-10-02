@@ -76,7 +76,7 @@ import {
 } from './modals/launcher.js';
 import { openProjectEditor } from './modals/project-editor.js';
 import { closeQuickIdea } from './modals/quick-idea.js';
-import { closeSettings, openSettings } from './modals/settings.js';
+import { dismissSettings, openSettings } from './modals/settings.js';
 import { openWhatsNew, closeWhatsNew } from './modals/whats-new.js';
 import { closeWorktrees } from './modals/worktrees.js';
 import { closeSessionView } from './plugin-host.js';
@@ -288,7 +288,7 @@ const UNLISTED: readonly Command[] = [
   { id: 'inline-rename.cancel', run: () => cancelInlineRename() },
   { id: 'choice-dialog.dismiss', run: () => dismissChoiceDialog() },
   { id: 'command-palette.close', run: () => closeCommandPalette() },
-  { id: 'settings.close', run: () => closeSettings() },
+  { id: 'settings.close', run: () => dismissSettings() },
   { id: 'worktrees.close', run: () => closeWorktrees() },
   { id: 'quick-idea.close', run: () => closeQuickIdea() },
   { id: 'idea-inbox.close', run: () => closeIdeaInbox() },

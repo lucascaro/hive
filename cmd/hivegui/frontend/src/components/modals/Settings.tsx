@@ -92,7 +92,11 @@ import {
 } from '../../theme/density.js';
 import { applyUpdateAndRestart } from '../../app/banners.js';
 import { applyXtermTheme } from '../../app/session-term.js';
-import { closeSettings, splitCommand } from '../../app/modals/settings.js';
+import {
+  closeSettings,
+  dismissSettings,
+  splitCommand,
+} from '../../app/modals/settings.js';
 import {
   type AgentPrefs,
   loadAgentPrefs,
@@ -839,6 +843,7 @@ function SettingsDialog({ root }: { root: HTMLElement }): ReactNode {
       title="Settings"
       size="md"
       onClose={closeSettings}
+      onEscape={dismissSettings}
       hints={[
         { keys: '[esc]', label: 'cancel' },
         { keys: '[enter]', label: 'save' },
