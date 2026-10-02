@@ -143,3 +143,67 @@ test('Escape in a capture button cancels the capture, not Settings', async ({
   await page.keyboard.press('Escape');
   await expect(page.locator('#settings')).toBeHidden();
 });
+
+// Phase 3 (criterion 9): an imported keymap goes through a preview that
+// changes nothing until Confirm; after Save its keys run the commands,
+// and Export hands Go what the tab shows. Escape cancels the import (the
+// real key-scope pipeline, not a synthetic event), not Settings.
+test('importing a keymap file, then exporting it', async ({ page }) => {
+  await boot(page);
+  const half = mac ? 'mac' : 'other';
+  await page.evaluate(
+    (text) => {
+      (window as unknown as { __hive_importText: string }).__hive_importText =
+        text;
+    },
+    JSON.stringify({
+      version: 1,
+      [half]: { 'new-session': ['Mod+Y'], 'no-such-thing': ['Mod+U'] },
+    }),
+  );
+  await openShortcuts(page);
+  const imp = (command: string) =>
+    page.locator(`.hv-import-row[data-command="${command}"]`);
+
+  // Escape inside the preview cancels it and leaves Settings open.
+  await page.locator('#settings-shortcuts-import').click();
+  await expect(page.locator('.hv-shortcuts-import')).toBeVisible();
+  await expect(
+    page.locator('input[name="shortcut-import-mode"]').first(),
+  ).toBeFocused();
+  await page.keyboard.press('Escape');
+  await expect(page.locator('.hv-shortcuts-import')).toHaveCount(0);
+  await expect(page.locator('#settings')).toBeVisible();
+
+  await page.locator('#settings-shortcuts-import').click();
+  await page
+    .locator('input[name="shortcut-import-mode"][value="replace"]')
+    .check();
+  await expect(imp('no-such-thing')).toHaveAttribute('data-state', 'skipped');
+  // Off macOS Mod+Y is Ctrl+Y, which programs in a session also receive.
+  await expect(imp('new-session')).toHaveAttribute(
+    'data-state',
+    mac ? 'ok' : 'warn',
+  );
+  await expect(page.locator('#settings-save')).toBeDisabled();
+  // The footer's reason fits beside the buttons: Save does not wrap.
+  const [cancelBox, saveBox] = await Promise.all([
+    page.locator('#settings-cancel').boundingBox(),
+    page.locator('#settings-save').boundingBox(),
+  ]);
+  expect(Math.abs((cancelBox?.y ?? 0) - (saveBox?.y ?? 99))).toBeLessThan(2);
+  await page.locator('[data-action="confirm-import"]').click();
+  await expect(keys(page, 'new-session')).toHaveText([NEW]);
+
+  await page.locator('#settings-shortcuts-export').click();
+  await expect
+    .poll(async () => (await calls(page, 'ExportKeymap')).map((c) => c.args[0]))
+    .toEqual([{ [half]: { 'new-session': ['Mod+Y'] } }]);
+
+  await page.locator('#settings-save').click();
+  await expect(page.locator('#settings')).toBeHidden();
+  await page.keyboard.press(`${mod}+t`);
+  await expect(page.locator('#launcher')).toBeHidden();
+  await page.keyboard.press(`${mod}+y`);
+  await expect(page.locator('#launcher')).toBeVisible();
+});

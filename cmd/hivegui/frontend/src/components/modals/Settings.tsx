@@ -55,7 +55,11 @@ import {
   SaveKeymap,
 } from '../../bridge.js';
 import type { Keymap } from '../../lib/bindings.js';
-import { canonicalKeymap, sameKeymap } from '../../lib/keymap-edit.js';
+import {
+  canonicalKeymap,
+  keymapFromJSON,
+  sameKeymap,
+} from '../../lib/keymap-edit.js';
 import { type EditorDraft, EditorSettings } from './EditorSettings.js';
 import { isMac } from '../../lib/platform.js';
 import {
@@ -96,7 +100,7 @@ import {
 } from '../../lib/agent-order.js';
 import { LauncherAgents } from './LauncherAgents.js';
 import { PluginsPanel } from './PluginsPanel.js';
-import { ShortcutsPanel } from './ShortcutsPanel.js';
+import { type ShortcutsBlock, ShortcutsPanel } from './ShortcutsPanel.js';
 import { setKeymap, useAppStore } from '../../store/store.js';
 import { Button } from '../Button.js';
 import { Tabs } from '../Tabs.js';
@@ -232,11 +236,13 @@ function SettingsDialog({ root }: { root: HTMLElement }): ReactNode {
   const [keymapSaved, setKeymapSaved] = useState<Keymap>({});
   const [keymapLoaded, setKeymapLoaded] = useState(false);
   const [keymapFailed, setKeymapFailed] = useState(false);
-  // A captured shortcut another command holds, waiting for Reassign or
-  // Cancel: Save waits for it (spec 477 criterion 3).
-  const [shortcutConflict, setShortcutConflict] = useState(false);
-  // Set by the footer's "Show it": once the Shortcuts tab is showing, put
-  // focus on the waiting conflict's Reassign.
+  // Why Save waits on Settings › Shortcuts: a captured shortcut another
+  // command holds, waiting for Reassign or Cancel (spec 477 criterion 3),
+  // or an import preview waiting for Confirm or Cancel (criterion 9).
+  const [shortcutBlock, setShortcutBlock] = useState<ShortcutsBlock>(null);
+  const shortcutBlocked = shortcutBlock !== null;
+  // Set by the footer's link: once the Shortcuts tab is showing, put
+  // focus on what is waiting — the conflict's Reassign, or the import.
   const focusConflict = useRef(false);
   // Save must never write agent settings it has not read: the checkbox's
   // initial `true` is a display default, not the user's value, and saving
@@ -431,7 +437,9 @@ function SettingsDialog({ root }: { root: HTMLElement }): ReactNode {
     GetKeymap()
       .then((k) => {
         if (!live) return;
-        const km = canonicalKeymap((k ?? {}) as Keymap);
+        // A malformed entry (a hand-typed null) is dropped on its own,
+        // as the boot load does; the rest stays editable.
+        const km = canonicalKeymap(keymapFromJSON(k).keymap);
         setKeymapDraft(km);
         setKeymapSaved(km);
         setKeymapLoaded(true);
@@ -622,17 +630,27 @@ function SettingsDialog({ root }: { root: HTMLElement }): ReactNode {
   // that from rendering as a strip with no selected tab, no visible panel,
   // and — because Tabs resolves the active id by index — dead arrow keys.
   const showMenuBar = isMac && menuBarStatus !== 'unsupported';
+  const blockedMsg =
+    shortcutBlock === 'import'
+      ? 'Finish the shortcut import to save.'
+      : 'Resolve the shortcut conflict to save.';
   const tabs = tabsFor(showMenuBar);
   const activeTab = tabs.some((t) => t.id === tab) ? tab : 'agents';
 
   useEffect(() => {
     if (!focusConflict.current || activeTab !== 'shortcuts') return;
     focusConflict.current = false;
-    root
-      .querySelector<HTMLElement>(
-        '#settings-panel-shortcuts [data-action="reassign"]',
-      )
-      ?.focus();
+    const q = (sel: string) =>
+      root.querySelector<HTMLElement>(`#settings-panel-shortcuts ${sel}`);
+    // An import: its first unsettled conflict, else Confirm once a mode is
+    // chosen, else the mode choice.
+    (
+      q('[data-action="reassign"]') ??
+      q('[data-action="reassign-import"]') ??
+      (q('input[name="shortcut-import-mode"]:checked')
+        ? q('[data-action="confirm-import"]')
+        : q('input[name="shortcut-import-mode"]'))
+    )?.focus();
   }, [activeTab, root]);
 
   function runUpdate() {
@@ -718,7 +736,7 @@ function SettingsDialog({ root }: { root: HTMLElement }): ReactNode {
   function saveSettings() {
     // A draft that is empty because the file would not parse must never
     // be written back over it.
-    if (loading || loadFailed || shortcutConflict) return;
+    if (loading || loadFailed || shortcutBlocked) return;
     // Drop fully-blank rows so an accidental "+ Add agent" doesn't block
     // the save with a validation error.
     const payload = draft
@@ -830,7 +848,7 @@ function SettingsDialog({ root }: { root: HTMLElement }): ReactNode {
           {/* Save is disabled while a conflict waits, and the conflict
               itself may be on a tab the user has left, so the footer —
               visible from every tab — says why and leads back to it. */}
-          {shortcutConflict ? (
+          {shortcutBlocked ? (
             <p
               id="settings-save-blocked"
               className="settings-save-blocked"
@@ -840,7 +858,7 @@ function SettingsDialog({ root }: { root: HTMLElement }): ReactNode {
               {/* Off the Shortcuts tab the words themselves lead back to
                   the conflict: a separate button would wrap Save. */}
               {activeTab === 'shortcuts' ? (
-                <span>Resolve the shortcut conflict to save.</span>
+                <span>{blockedMsg}</span>
               ) : (
                 <button
                   type="button"
@@ -851,7 +869,7 @@ function SettingsDialog({ root }: { root: HTMLElement }): ReactNode {
                     setTab('shortcuts');
                   }}
                 >
-                  Resolve the shortcut conflict to save.
+                  {blockedMsg}
                 </button>
               )}
             </p>
@@ -861,9 +879,9 @@ function SettingsDialog({ root }: { root: HTMLElement }): ReactNode {
             id="settings-save"
             label="Save"
             kind="primary"
-            disabled={!editingEnabled || shortcutConflict}
+            disabled={!editingEnabled || shortcutBlocked}
             extra={{
-              'aria-describedby': shortcutConflict
+              'aria-describedby': shortcutBlocked
                 ? 'settings-save-blocked'
                 : undefined,
             }}
@@ -1206,7 +1224,7 @@ function SettingsDialog({ root }: { root: HTMLElement }): ReactNode {
         <EditorSettings
           draft={editorDraft}
           onChange={setEditorDraft}
-          disabled={editorFailed || !editorLoaded}
+          status={editorFailed ? 'failed' : editorLoaded ? 'ready' : 'loading'}
         />
       </Panel>
 
@@ -1214,8 +1232,9 @@ function SettingsDialog({ root }: { root: HTMLElement }): ReactNode {
         <ShortcutsPanel
           draft={keymapDraft}
           onChange={setKeymapDraft}
-          disabled={!keymapLoaded || keymapFailed}
-          onBlockedChange={setShortcutConflict}
+          status={keymapFailed ? 'failed' : keymapLoaded ? 'ready' : 'loading'}
+          onBlockedChange={setShortcutBlock}
+          onError={showError}
         />
       </Panel>
 

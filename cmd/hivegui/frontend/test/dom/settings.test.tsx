@@ -63,6 +63,8 @@ const editorBridge = {
   // drives it.
   GetKeymap: vi.fn(() => Promise.resolve({})),
   SaveKeymap: vi.fn(() => Promise.resolve()),
+  ExportKeymap: vi.fn(() => Promise.resolve(true)),
+  PickKeymapFile: vi.fn(() => Promise.resolve('')),
 };
 
 // The Plugins tab shares the modal; test/dom/settings-plugins.test.tsx

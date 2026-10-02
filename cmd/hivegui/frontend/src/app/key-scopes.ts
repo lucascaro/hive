@@ -146,16 +146,18 @@ const commandPalette = modal('command-palette', 'command-palette', [
   { keys: ESCAPE, command: 'command-palette.close' },
 ]);
 
-// Settings › Shortcuts' capture button (ShortcutsPanel.tsx) takes every
-// key while it has focus — even ⌘, and Escape, which would otherwise close
-// Settings — so the key the user presses is recorded, not run. It binds
-// nothing: exclusive and unmatched, the key goes on to the button's own
-// handler. Tab still walks the Settings form.
+// Settings › Shortcuts' elements that answer their own keys, marked
+// data-own-keys (ShortcutsPanel.tsx): the capture button takes every key
+// while it has focus — even ⌘, and Escape, which would otherwise close
+// Settings — so the key the user presses is recorded, not run; in the
+// import preview, Escape cancels the import rather than Settings. It
+// binds nothing: exclusive and unmatched, the key goes on to the
+// element's own handler. Tab still walks the Settings form.
 const shortcutCapture: KeyScope = {
   id: 'shortcut-capture',
   active: () =>
     isModalOpen('settings') &&
-    document.activeElement?.classList.contains('hv-shortcut-capture') === true,
+    document.activeElement?.closest('#settings [data-own-keys]') != null,
   owns: 'exclusive',
   trap: 'settings',
   bindings: () => [],

@@ -497,7 +497,8 @@ let pluginCommandsMemo: {
 } | null = null;
 
 /** Every active plugin's commands, chords resolved against core and
- * against each other (plugins in id order, first one wins). */
+ * against each other (plugins in id order, first one wins). The live
+ * one: dispatch, the palette and runCommand read it, memoized. */
 export function pluginCommands(
   state: PluginCommandState = appData().pluginUI,
   keymap: Keymap = appData().keymap,
@@ -507,6 +508,19 @@ export function pluginCommands(
     pluginCommandsMemo.keymap === keymap
   )
     return pluginCommandsMemo.out;
+  const out = resolvePluginCommands(state, keymap, (m) => console.warn(m));
+  pluginCommandsMemo = { state, keymap, out };
+  return out;
+}
+
+/** pluginCommands for some other keymap (Settings › Shortcuts' draft),
+ * unmemoized: it must not evict the live result, or the clash warnings
+ * would fire again on the next keystroke. */
+export function resolvePluginCommands(
+  state: PluginCommandState,
+  keymap: Keymap,
+  warn: (msg: string) => void = () => {},
+): ResolvedCommand[] {
   const plugins = Object.keys(state)
     .sort()
     .flatMap((id) => {
@@ -520,15 +534,13 @@ export function pluginCommands(
     ),
     ...RESERVED_CHORDS[isMac ? 'mac' : 'other'],
   ];
-  const out = resolveCommands(
+  return resolveCommands(
     plugins,
     taken,
     isMac,
-    (m) => console.warn(m),
+    warn,
     keymapHalf(keymap, isMac),
   );
-  pluginCommandsMemo = { state, keymap, out };
-  return out;
 }
 
 /** Runs a plugin command, failing the plugin if it throws. */

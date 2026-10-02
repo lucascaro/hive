@@ -296,7 +296,7 @@ build.sh           # macOS universal build
 
 ## Keybinds
 
-These are the defaults. Rebind any of them, and any plugin command, under **Settings → Shortcuts**.
+These are the defaults. Rebind any of them, and any plugin command, under **Settings → Shortcuts**, where you can also export your keymap to a file and import one (with a preview before anything changes).
 
 | Key | Action |
 |---|---|

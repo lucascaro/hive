@@ -180,6 +180,22 @@ describe('loadKeymap', () => {
     expect(warn).toHaveBeenCalled();
     warn.mockRestore();
   });
+  it('a null entry costs only that entry, warned once', async () => {
+    // Go hands a hand-typed `"worktrees": null` over as null.
+    bridge.GetKeymap.mockResolvedValue({
+      mac: { 'new-session': ['Mod+Y'], worktrees: null },
+    });
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    await loadKeymap();
+    expect(appStore.getState().keymap).toEqual({
+      mac: { 'new-session': ['Mod+Y'] },
+    });
+    await loadKeymap();
+    expect(
+      warn.mock.calls.filter((c) => String(c[0]).includes('malformed')),
+    ).toHaveLength(1);
+    warn.mockRestore();
+  });
   it('re-reading an unchanged file does not touch the store', async () => {
     bridge.GetKeymap.mockResolvedValue({ mac: { 'new-session': ['Mod+Y'] } });
     await loadKeymap();

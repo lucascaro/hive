@@ -43,6 +43,8 @@ const bridge = vi.hoisted(() => ({
   // drives it.
   GetKeymap: vi.fn(() => Promise.resolve({})),
   SaveKeymap: vi.fn(() => Promise.resolve()),
+  ExportKeymap: vi.fn(() => Promise.resolve(true)),
+  PickKeymapFile: vi.fn(() => Promise.resolve('')),
 }));
 
 vi.mock('../../src/bridge.js', () => bridge);
@@ -205,8 +207,10 @@ describe('settings: editor', () => {
     // modal and editor.json coming back, where an edit would be
     // silently reverted by the load.
     expect(el<HTMLSelectElement>('settings-editor-kind').disabled).toBe(true);
+    expect(document.body.textContent).toContain('Loading your editor setting');
     await settle();
     expect(el<HTMLSelectElement>('settings-editor-kind').disabled).toBe(false);
+    expect(document.body.textContent).not.toContain('Loading your editor');
   });
 
   it('disables the section when the file failed to load', async () => {
@@ -214,5 +218,9 @@ describe('settings: editor', () => {
     open();
     await settle();
     expect(el<HTMLSelectElement>('settings-editor-kind').disabled).toBe(true);
+    // Said at the point of use, not only in the dialog's error line.
+    expect(document.body.textContent).toContain(
+      'editor.json could not be read',
+    );
   });
 });
