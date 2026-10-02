@@ -63,6 +63,7 @@ const MARKUP = `
 
 type SettingsModule = typeof import('../../src/app/modals/settings.js');
 let openSettings: SettingsModule['openSettings'];
+let closeSettings: SettingsModule['closeSettings'];
 let Settings: typeof import('../../src/components/modals/Settings.js')['Settings'];
 let menuQueue: () => Promise<unknown>;
 
@@ -124,6 +125,7 @@ beforeAll(async () => {
   document.body.innerHTML = MARKUP;
   const mod = await import('../../src/app/modals/settings.js');
   openSettings = mod.openSettings;
+  closeSettings = mod.closeSettings;
   mod.initSettings({ refocusActiveTerm: vi.fn(), setFocusedTile: vi.fn() });
   ({ Settings } = await import('../../src/components/modals/Settings.js'));
   ({ menuQueueSettledForTest: menuQueue } = await import(
@@ -465,6 +467,24 @@ describe('settings: shortcuts tab focus', () => {
     act(() => search.focus());
     expect(row('new-session').querySelector('.hv-shortcut-capture')).toBeNull();
     expect(focused()).toBe(search);
+  });
+});
+
+describe('settings: closing mid-capture', () => {
+  it('gives the native menu its shortcuts back', async () => {
+    // Settings unmounts its body on close, with the capture button still
+    // focused — no blur fires, so only the panel's cleanup restores it.
+    await openTab();
+    act(() => btn('new-session', 'add-shortcut')?.click());
+    await menuQueue();
+    expect(bridge.SuspendMenuAccelerators.mock.calls).toEqual([[true]]);
+    act(() => closeSettings());
+    await settle();
+    await menuQueue();
+    expect(bridge.SuspendMenuAccelerators.mock.calls).toEqual([
+      [true],
+      [false],
+    ]);
   });
 });
 

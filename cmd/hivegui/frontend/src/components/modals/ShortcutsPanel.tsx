@@ -94,16 +94,18 @@ export function ShortcutsPanel({
   // box. Applied after the render that changed the row. A capture that
   // ends because focus left it (Tab, a click elsewhere) sets nothing, so
   // focus is never pulled back.
-  const focusNext = useRef<
+  // State, not a ref: setting a target always renders, so the effect
+  // below consumes it at once and it can never linger to move focus on
+  // some later, unrelated render.
+  const [focusNext, setFocusNext] = useState<
     { command: string; action: string } | 'search' | null
   >(null);
-  const focusRow = (command: string, action = 'add-shortcut') => {
-    focusNext.current = { command, action };
-  };
+  const focusRow = (command: string, action = 'add-shortcut') =>
+    setFocusNext({ command, action });
   useEffect(() => {
-    const t = focusNext.current;
+    const t = focusNext;
     if (!t) return;
-    focusNext.current = null;
+    setFocusNext(null);
     const root = rootRef.current;
     const row =
       t === 'search'
@@ -121,7 +123,7 @@ export function ShortcutsPanel({
     (
       target ?? root?.querySelector<HTMLElement>('#settings-shortcuts-search')
     )?.focus();
-  });
+  }, [focusNext]);
 
   useEffect(
     () => onBlockedChange(pending !== null),
@@ -346,7 +348,7 @@ export function ShortcutsPanel({
             onChange(resetHalf(draft, isMac));
             setNote(null);
             // Reset all disables itself; the search box is next in order.
-            focusNext.current = 'search';
+            setFocusNext('search');
           }}
         />
       </div>

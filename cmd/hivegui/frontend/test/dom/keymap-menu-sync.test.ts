@@ -322,12 +322,18 @@ describe('shortcut capture when Go fails', () => {
   });
 
   it('a failed re-suspend does not count as a failed menu update', async () => {
+    vi.useFakeTimers();
     setShortcutCapture(true);
     await menuQueueSettledForTest();
     bridge.SuspendMenuAccelerators.mockRejectedValueOnce(new Error('gone'));
     setKeymap({ mac: { 'new-session': ['Mod+Y'] } });
     await menuQueueSettledForTest();
     expect(bridge.SetMenuAccelerators).toHaveBeenCalledTimes(1);
+    // The re-suspend that failed is retried; the capture is still on.
+    expect(suspendCalls()).toEqual([true, true]);
+    await vi.advanceTimersByTimeAsync(250);
+    await menuQueueSettledForTest();
+    expect(suspendCalls()).toEqual([true, true, true]);
     // The same overrides again: Go has them, so they are not re-sent.
     setKeymap({ mac: { 'new-session': ['Mod+Y'] } });
     await menuQueueSettledForTest();
