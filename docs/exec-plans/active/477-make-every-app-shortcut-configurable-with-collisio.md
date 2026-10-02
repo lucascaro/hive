@@ -427,6 +427,8 @@ Would fail on a wrong implementation: the v0-fixture parity tests fail on any la
 - **2026-10-01 iter 6** — verdict: REQUEST_CHANGES; mergeable: MERGEABLE; findings_hash: 7dd95b51c1c6c61add98e00becbbf0ae3fdfa0dc0f7f88730742afcae0c6c183; threads_open: 0; action: escalated:risky-fix-needs-human-decision; head_sha: 5a8cd2d (phase 2, PR #488).
 - **2026-10-01 iter 7** — verdict: APPROVE; mergeable: MERGEABLE; findings_hash: empty; threads_open: 0; action: stop; head_sha: 9e27c55 (phase 2, PR #488).
 - **2026-10-01 iter 8** — verdict: APPROVE; mergeable: MERGEABLE; findings_hash: empty; threads_open: 0; action: stop; head_sha: c4305d1 (phase 2, PR #488).
+- **2026-10-01 iter 9** — verdict: COMMENT; mergeable: MERGEABLE; findings_hash: 1050eddb7d215e556123e6bbc78f64ec8777620ebce9c6e53b82be5759d21864; threads_open: 1; action: escalated:required-ci-check-failed; head_sha: 0d95860 (phase 3, PR #490).
+- **2026-10-02 iter 10** — verdict: COMMENT; mergeable: MERGEABLE; findings_hash: 4f1a180510a4a8c34649afcc6b16fa98f036fb4b12a9d7aabb6ef9802185e14f; threads_open: 0; action: autofix+push; head_sha: 2b82b0a (phase 3, PR #490).
 
 ## Gate verdict
 
