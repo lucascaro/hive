@@ -16,7 +16,11 @@ import {
   SuspendMenuAccelerators,
 } from '../bridge.js';
 import { menuAcceleratorOverrides, type Keymap } from '../lib/bindings.js';
-import { canonicalKeymap, sameKeymap } from '../lib/keymap-edit.js';
+import {
+  canonicalKeymap,
+  keymapFromJSON,
+  sameKeymap,
+} from '../lib/keymap-edit.js';
 import { isMac } from '../lib/platform.js';
 import { appStore, setKeymap } from '../store/store.js';
 import { shortcutLabel, subscribeKeymap } from './bindings.js';
@@ -119,6 +123,9 @@ function titleNewProjectButton(): void {
 }
 
 let unsubscribe: (() => void) | null = null;
+// The malformed entries last warned about, so a re-read on every window
+// focus does not repeat the warning for a file that has not changed.
+let warnedMalformed = '';
 
 /** Wires the imperative surfaces to the keymap and applies the current
  * one to them. Call once at boot, before loadKeymap. */
@@ -149,6 +156,7 @@ export function initKeymapSync(deps: KeymapSyncDeps): void {
 /** Reads keymap.json into the store — at boot, and again whenever the
  * window gains focus, since each window is its own process and another
  * one may have saved a new keymap. A missing file is the empty keymap;
+ * a malformed entry (a hand-typed null) costs only that entry;
  * a failure leaves the defaults in place — the app must start. The store
  * is only written when the keymap actually differs, so a re-read of an
  * unchanged file rebuilds nothing.
@@ -160,7 +168,11 @@ export function initKeymapSync(deps: KeymapSyncDeps): void {
  * keys. */
 export async function loadKeymap(): Promise<void> {
   try {
-    const next = ((await GetKeymap()) ?? {}) as Keymap;
+    const { keymap: next, malformed } = keymapFromJSON(await GetKeymap());
+    const bad = malformed.join(', ');
+    if (bad && bad !== warnedMalformed)
+      console.warn(`keymap.json: ignoring malformed entries: ${bad}`);
+    warnedMalformed = bad;
     if (!sameKeymap(next, appStore.getState().keymap))
       setKeymap(canonicalKeymap(next));
   } catch (e) {
@@ -173,6 +185,7 @@ export async function loadKeymap(): Promise<void> {
 export function resetKeymapSyncForTest(): void {
   unsubscribe?.();
   unsubscribe = null;
+  warnedMalformed = '';
   sentMenu = null;
   menuIds = [];
   wantSuspended = false;

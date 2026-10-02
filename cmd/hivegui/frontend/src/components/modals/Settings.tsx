@@ -55,7 +55,11 @@ import {
   SaveKeymap,
 } from '../../bridge.js';
 import type { Keymap } from '../../lib/bindings.js';
-import { canonicalKeymap, sameKeymap } from '../../lib/keymap-edit.js';
+import {
+  canonicalKeymap,
+  keymapFromJSON,
+  sameKeymap,
+} from '../../lib/keymap-edit.js';
 import { type EditorDraft, EditorSettings } from './EditorSettings.js';
 import { isMac } from '../../lib/platform.js';
 import {
@@ -431,7 +435,9 @@ function SettingsDialog({ root }: { root: HTMLElement }): ReactNode {
     GetKeymap()
       .then((k) => {
         if (!live) return;
-        const km = canonicalKeymap((k ?? {}) as Keymap);
+        // A malformed entry (a hand-typed null) is dropped on its own,
+        // as the boot load does; the rest stays editable.
+        const km = canonicalKeymap(keymapFromJSON(k).keymap);
         setKeymapDraft(km);
         setKeymapSaved(km);
         setKeymapLoaded(true);

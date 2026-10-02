@@ -4,13 +4,15 @@ import { describe, expect, it } from 'vitest';
 import {
   canonicalKeymap,
   captureChord,
+  keymapFromJSON,
   checkChord,
   reassign,
   resetHalf,
   sameKeymap,
   withShortcuts,
 } from '../../src/lib/keymap-edit.js';
-import { shortcutsIn } from '../../src/lib/bindings.js';
+import { chordsOfIn, shortcutsIn } from '../../src/lib/bindings.js';
+import { chordsOverlap } from '../../src/lib/chord.js';
 
 const press = (
   key: string,
@@ -192,6 +194,38 @@ describe('editing', () => {
     expect(shortcutsIn(next, 'new-session', true)).toEqual(['Mod+T', 'Mod+Y']);
   });
 
+  // The holder's shortcut list holds first spellings only; a clash on a
+  // second spelling (zoom-in's '+', a non-Latin layout's [KeyX]) must
+  // still take the whole key, or the resolver puts the spelling group
+  // back and one key fires two commands.
+  it.each([
+    [true, 'zoom-in', 'Mod+Shift?++'],
+    [true, 'zoom-in', 'Mod+Shift?+='],
+    [true, 'zoom-in', 'Mod+Shift++'],
+    [true, 'nav-back', 'Ctrl+_'],
+    [true, 'nav-back', 'Ctrl+[Minus]'],
+    [true, 'toggle-activity', 'Mod+[KeyJ]'],
+    [false, 'toggle-activity', 'Ctrl+Shift+[KeyJ]'],
+    [false, 'zoom-out', 'Ctrl+[Minus]'],
+    [false, 'zoom-out', 'Ctrl+_'],
+  ])('reassign (mac=%s) takes %s whole when %s clashes', (mac, holder, chord) => {
+    // Not vacuous: the holder ships with a key that clashes.
+    expect(
+      chordsOfIn({}, holder, mac).some((c) => chordsOverlap(c, chord, mac)),
+    ).toBe(true);
+    const next = reassign({}, mac, 'new-session', [], chord, [
+      { id: holder, shortcuts: shortcutsIn({}, holder, mac) },
+    ]);
+    expect(
+      chordsOfIn(next, holder, mac).some((c) => chordsOverlap(c, chord, mac)),
+    ).toBe(false);
+    expect(
+      chordsOfIn(next, 'new-session', mac).some((c) =>
+        chordsOverlap(c, chord, mac),
+      ),
+    ).toBe(true);
+  });
+
   it('compares keymaps by meaning, not spelling', () => {
     expect(
       sameKeymap(
@@ -203,5 +237,49 @@ describe('editing', () => {
     expect(JSON.stringify(canonicalKeymap({ mac: { b: [], a: [] } }))).toBe(
       '{"mac":{"a":[],"b":[]}}',
     );
+  });
+});
+
+describe('keymapFromJSON', () => {
+  it('drops a null entry and keeps the rest', () => {
+    const got = keymapFromJSON({
+      version: 1,
+      mac: { 'new-session': ['Mod+Y'], worktrees: null },
+      other: { settings: [] },
+    });
+    expect(got.keymap).toEqual({
+      mac: { 'new-session': ['Mod+Y'] },
+      other: { settings: [] },
+    });
+    expect(got.malformed).toEqual(['mac: worktrees']);
+  });
+
+  it('drops non-string chords, keeping the strings', () => {
+    const got = keymapFromJSON({ mac: { a: ['Mod+Y', 3, null] } });
+    expect(got.keymap).toEqual({ mac: { a: ['Mod+Y'] } });
+    expect(got.malformed).toEqual(['mac: a']);
+  });
+
+  it('keeps the defaults for an entry with no string at all, not "unbound"', () => {
+    const got = keymapFromJSON({ mac: { a: [null], b: [] } });
+    expect(got.keymap).toEqual({ mac: { b: [] } });
+  });
+
+  it('drops a half that is not an object', () => {
+    expect(keymapFromJSON({ mac: ['x'], other: 'y' }).keymap).toEqual({});
+    expect(keymapFromJSON({ mac: null }).keymap).toEqual({});
+  });
+
+  it('reads a non-object root as the empty keymap', () => {
+    for (const raw of [null, undefined, 'x', 3, []])
+      expect(keymapFromJSON(raw).keymap).toEqual({});
+  });
+
+  it('never lets a __proto__ key reach the prototype', () => {
+    const raw = JSON.parse('{"mac":{"__proto__":["Mod+Y"],"a":["Mod+B"]}}');
+    const { keymap } = keymapFromJSON(raw);
+    expect(Object.hasOwn(keymap.mac ?? {}, '__proto__')).toBe(true);
+    expect(Object.getPrototypeOf(keymap.mac)).toBe(Object.prototype);
+    expect(keymap.mac?.a).toEqual(['Mod+B']);
   });
 });
