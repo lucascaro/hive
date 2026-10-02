@@ -127,9 +127,10 @@ export function ShortcutsPanel({
   const [importing, setImporting] = useState<Importing | null>(null);
   // A file dialog is open (Export… or Import…).
   const [busy, setBusy] = useState(false);
-  // "Shortcuts exported." after a save the user did not cancel; cleared by
-  // the next export or import.
-  const [exported, setExported] = useState(false);
+  // The draft the last export wrote, for "Shortcuts exported."; the note
+  // goes once the draft moves on (an edit, an import) or a new export or
+  // import starts.
+  const [exported, setExported] = useState<Keymap | null>(null);
   const rootRef = useRef<HTMLDivElement>(null);
 
   // Where focus goes after an action removes or disables the control that
@@ -398,19 +399,23 @@ export function ShortcutsPanel({
 
   async function exportKeymap() {
     setBusy(true);
-    setExported(false);
+    setExported(null);
     try {
-      setExported(await ExportKeymap(canonicalKeymap(draft) as main.Keymap));
+      if (await ExportKeymap(canonicalKeymap(draft) as main.Keymap))
+        setExported(draft);
     } catch (e) {
       onError(`Could not export your shortcuts. (${errText(e)})`);
     } finally {
       setBusy(false);
+      // The button disabled itself for the dialog, which drops its focus.
+      setFocusNext({ selector: '#settings-shortcuts-export' });
     }
   }
 
   async function startImport() {
+    let opened = false;
     setBusy(true);
-    setExported(false);
+    setExported(null);
     try {
       const text = await PickKeymapFile();
       if (!text) return; // cancelled
@@ -426,10 +431,14 @@ export function ShortcutsPanel({
         candidate: {},
       });
       setFocusNext({ selector: 'input[name="shortcut-import-mode"]' });
+      opened = true;
     } catch (e) {
       onError(`Could not read that file. (${errText(e)})`);
     } finally {
       setBusy(false);
+      // Cancelled or refused: back to the button, which disabled itself
+      // for the dialog and so lost focus.
+      if (!opened) setFocusNext({ selector: '#settings-shortcuts-import' });
     }
   }
 
@@ -539,7 +548,7 @@ export function ShortcutsPanel({
           }}
         />
       </div>
-      {exported ? (
+      {exported === draft ? (
         <p
           className="settings-hint"
           role="status"

@@ -570,6 +570,9 @@ describe('settings: shortcuts import and export', () => {
     });
     expect(bridge.SaveKeymap).not.toHaveBeenCalled();
     expect(el('settings-shortcuts-exported').textContent).toContain('exported');
+    // An edit after the export: the file no longer matches the draft.
+    await capture('new-session', 'u', 'KeyU', { metaKey: true });
+    expect(document.getElementById('settings-shortcuts-exported')).toBeNull();
   });
 
   it('a cancelled export says nothing', async () => {
@@ -578,6 +581,25 @@ describe('settings: shortcuts import and export', () => {
     act(() => tool('settings-shortcuts-export').click());
     await settle();
     expect(document.getElementById('settings-shortcuts-exported')).toBeNull();
+  });
+
+  // The buttons disable themselves while the file dialog is open, which
+  // drops focus; without a way back, the next Esc closes Settings.
+  it('focus returns to Export… / Import… after the dialog closes', async () => {
+    await openTab();
+    act(() => tool('settings-shortcuts-export').click());
+    await settle();
+    expect(document.activeElement?.id).toBe('settings-shortcuts-export');
+    act(() => tool('settings-shortcuts-import').click()); // cancelled
+    await settle();
+    expect(document.activeElement?.id).toBe('settings-shortcuts-import');
+    bridge.PickKeymapFile.mockImplementation(() =>
+      Promise.reject(new Error('unreadable')),
+    );
+    act(() => (document.activeElement as HTMLElement).blur());
+    act(() => tool('settings-shortcuts-import').click());
+    await settle();
+    expect(document.activeElement?.id).toBe('settings-shortcuts-import');
   });
 
   it('warns when the file has nothing for this platform', async () => {
