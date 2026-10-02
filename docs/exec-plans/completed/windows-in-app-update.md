@@ -3,8 +3,8 @@
 - **Spec:** this file (design agreed in-session; no separate product spec)
 - **Issue:** —
 - **PR:** #399
-- **Stage:** REVIEW
-- **Status:** active
+- **Stage:** DONE
+- **Status:** completed
 - **Depends on:** the `internal/proc` console-window fix, already on `main`
   via #400. Every child process added here is subject to its rule
   (`proc.Command`, enforced by `TestNoDirectExecOnWindows`).
@@ -266,6 +266,8 @@ latest channel.
   typecheck the darwin files. The darwin changes are a verbatim block
   move plus an import-list trim, and both darwin files parse under
   `gofmt -e`.
+- **2026-10-02** — #399 merged 2026-09-13. Plan moved to `completed/`
+  (flagged by `scripts/check-plan-lifecycle.sh`).
 
 ## Open questions
 

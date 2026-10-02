@@ -10,7 +10,7 @@ import (
 var ErrAlreadyRunning = errors.New("another hived is already running against this state directory")
 
 // stateLockBudget is how long a starting daemon waits for the state
-// lock before giving up, and stateLockPoll how often it retries.
+// lock before giving up (lock_posix.go has how often it retries).
 //
 // Non-zero because of the restart handoff: the outgoing daemon closes
 // its listeners first and releases the lock last, after draining its
@@ -20,10 +20,7 @@ var ErrAlreadyRunning = errors.New("another hived is already running against thi
 // leaves the app with no daemon at all. Waiting a few seconds costs a
 // slow start in the rare case; not waiting costs the restart.
 //
-// Vars, not consts, so the tests can shrink them. Declared here rather
-// than beside the POSIX implementation so the tests that shrink them
+// A var, not a const, so the tests can shrink it. Declared here rather
+// than beside the POSIX implementation so the tests that shrink it
 // still compile on Windows, where acquireStateLock is a no-op.
-var (
-	stateLockBudget = 5 * time.Second
-	stateLockPoll   = 50 * time.Millisecond
-)
+var stateLockBudget = 5 * time.Second
