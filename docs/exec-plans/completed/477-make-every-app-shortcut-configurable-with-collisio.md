@@ -2,7 +2,7 @@
 
 - **Spec:** [docs/product-specs/477-make-every-app-shortcut-configurable-with-collisio.md](../../product-specs/477-make-every-app-shortcut-configurable-with-collisio.md)
 - **Issue:** #477
-- **Status:** active
+- **Status:** completed
 - **PR:** #490
 - **Branch:** feature/477-keymap-import-export
 - **Phase:** 3 of 3
@@ -443,3 +443,9 @@ Would fail on a wrong implementation: the v0-fixture parity tests fail on any la
     - acceptance — PASS — 1–8, 10, 11 PASS (settings-shortcuts, keymap-menu-sync, keymap-edit, bindings, key-scopes DOM/unit tests; shortcuts-tab e2e; Go TestSaveKeymapRoundTrips/TestSuspendMenuAccelerators); 7 persistence proven via the state-dir file, reload/upgrade not run end to end; 9 DEFERRED (phase 3)
     - non-goals — PASS — terminal keys and Ctrl+C refused, overlay keys not offered, no sequences/sync/per-project keymaps, 478 refactor untouched, README table unchanged, no wire/daemon change, no import/export leak
     - doc accuracy — PASS — changeset (added/minor) matches code, features.json since Unreleased (whats-new test passes), README pointer, AGENTS.md policy and UI decision row accurate, no generated files edited, DESIGN.md needs no change
+- **2026-10-02** — verdict: PASS; phase: 3/3; checks: 11 passed / 0 failed / 0 followups; followups: none; one-line: Import/export with a replace-or-add preview delivers criterion 9; criteria 1–8, 10, 11 still hold across the whole feature; non-goals respected; docs accurate.
+  - 2026-10-02 dimensions:
+    - acceptance — PASS — criteria 1–11 PASS. Evidence: keymap-import, settings-shortcuts, bindings, keymap-edit, keymap-menu-sync and keymap-surfaces suites; shortcuts-tab and keymap-override e2e; Go Keymap/Menu tests. Criterion 7 is proven by the state-dir file round-trip; a reload, daemon restart and upgrade were not run end to end.
+    - non-goals — PASS — every import goes through checkChord: terminal and OS keys (Ctrl+C included) are refused, and a bare Enter/Esc is refused by the no-modifier rule. No sequences, no sync, no per-project keymaps, the 478 tables untouched, the README table unchanged, no wire or daemon change.
+    - doc accuracy — PASS — changeset `added`/minor (pr 490) claims tolerance for `null` entries only; features.json `since` is Unreleased (whats-new test green); README pointer only; UI design-doc row updated; no generated files edited.
+
