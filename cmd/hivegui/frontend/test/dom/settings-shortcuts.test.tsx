@@ -184,6 +184,8 @@ describe('settings: shortcuts tab', () => {
   it('suspends the native menu only while capturing', async () => {
     await openTab();
     act(() => btn('new-session', 'add-shortcut')?.click());
+    await menuQueue();
+    expect(bridge.SuspendMenuAccelerators.mock.calls).toEqual([[true]]);
     // A modifier on its own keeps listening.
     const field = row('new-session').querySelector<HTMLElement>(
       '.hv-shortcut-capture',
@@ -391,5 +393,104 @@ describe('settings: shortcuts tab', () => {
       ),
     ].map((r) => (r as HTMLElement).dataset.command);
     expect(shown).toEqual(['command-palette']);
+  });
+});
+
+// Review follow-up: every action that removes or disables the focused
+// control hands focus to a stable place, so keyboard users never drop to
+// <body> mid-dialog.
+describe('settings: shortcuts tab focus', () => {
+  const focused = () => document.activeElement as HTMLElement | null;
+  const action = (e: HTMLElement | null) => e?.dataset.action;
+  const rowOf = (e: HTMLElement | null) =>
+    e?.closest<HTMLElement>('.hv-shortcut-row')?.dataset.command;
+
+  it('returns to the row’s + after a capture ends, whatever ended it', async () => {
+    await openTab();
+    await capture('new-session', 'y', 'KeyY', { metaKey: true }); // bound
+    expect([rowOf(focused()), action(focused())]).toEqual([
+      'new-session',
+      'add-shortcut',
+    ]);
+    await capture('new-session', 'q', 'KeyQ', { metaKey: true }); // refused
+    expect([rowOf(focused()), action(focused())]).toEqual([
+      'new-session',
+      'add-shortcut',
+    ]);
+    await capture('new-session', 'Escape', 'Escape'); // cancelled
+    expect([rowOf(focused()), action(focused())]).toEqual([
+      'new-session',
+      'add-shortcut',
+    ]);
+  });
+
+  it('moves to Reassign while a conflict waits, and back after', async () => {
+    await openTab();
+    await capture('new-session', 'e', 'KeyE', { metaKey: true });
+    expect([rowOf(focused()), action(focused())]).toEqual([
+      'new-session',
+      'reassign',
+    ]);
+    act(() => btn('new-session', 'cancel-reassign')?.click());
+    expect([rowOf(focused()), action(focused())]).toEqual([
+      'new-session',
+      'add-shortcut',
+    ]);
+  });
+
+  it('keeps focus on the row after remove and reset, and on search after Reset all', async () => {
+    await openTab();
+    act(() => btn('new-session', 'remove-shortcut')?.click());
+    expect([rowOf(focused()), action(focused())]).toEqual([
+      'new-session',
+      'add-shortcut',
+    ]);
+    act(() => btn('new-session', 'reset-shortcut')?.click());
+    expect([rowOf(focused()), action(focused())]).toEqual([
+      'new-session',
+      'add-shortcut',
+    ]);
+    act(() => btn('worktrees', 'remove-shortcut')?.click());
+    act(() => el('settings-shortcuts-reset-all').click());
+    expect(el<HTMLButtonElement>('settings-shortcuts-reset-all').disabled).toBe(
+      true,
+    );
+    expect(focused()?.id).toBe('settings-shortcuts-search');
+  });
+
+  it('does not pull focus back when the capture loses it', async () => {
+    await openTab();
+    act(() => btn('new-session', 'add-shortcut')?.click());
+    const search = el<HTMLInputElement>('settings-shortcuts-search');
+    act(() => search.focus());
+    expect(row('new-session').querySelector('.hv-shortcut-capture')).toBeNull();
+    expect(focused()).toBe(search);
+  });
+});
+
+describe('settings: why Save is disabled', () => {
+  it('says so in the footer, from any tab, and leads back to the conflict', async () => {
+    await openTab();
+    expect(document.getElementById('settings-save-blocked')).toBeNull();
+    await capture('new-session', 'e', 'KeyE', { metaKey: true });
+    const note = el('settings-save-blocked');
+    expect(note.textContent).toContain('Resolve the shortcut conflict to save');
+    expect(saveBtn().getAttribute('aria-describedby')).toBe(
+      'settings-save-blocked',
+    );
+    // On the Shortcuts tab the conflict is in view: no "Show it".
+    expect(document.getElementById('settings-show-conflict')).toBeNull();
+
+    act(() => el('settings-tab-agents').click());
+    expect(el('settings-save-blocked')).toBeTruthy();
+    act(() => el('settings-show-conflict').click());
+    expect(el('settings-panel-shortcuts').hidden).toBe(false);
+    expect(document.activeElement?.getAttribute('data-action')).toBe(
+      'reassign',
+    );
+
+    act(() => btn('new-session', 'cancel-reassign')?.click());
+    expect(document.getElementById('settings-save-blocked')).toBeNull();
+    expect(saveBtn().hasAttribute('aria-describedby')).toBe(false);
   });
 });

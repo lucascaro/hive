@@ -237,13 +237,24 @@ describe('re-read on window focus', () => {
 describe('shortcut capture', () => {
   it('suspends and restores the menu, once per change', async () => {
     setShortcutCapture(true);
+    await menuQueueSettledForTest();
     setShortcutCapture(true);
+    await menuQueueSettledForTest();
     setShortcutCapture(false);
     await menuQueueSettledForTest();
     expect(bridge.SuspendMenuAccelerators.mock.calls).toEqual([
       [true],
       [false],
     ]);
+  });
+
+  it('sends nothing for a capture that ends before Go was told', async () => {
+    // Reconciled, not toggled: on-then-off with nothing sent in between
+    // leaves Go where it was.
+    setShortcutCapture(true);
+    setShortcutCapture(false);
+    await menuQueueSettledForTest();
+    expect(bridge.SuspendMenuAccelerators).not.toHaveBeenCalled();
   });
 
   it('re-suspends after a menu update lands mid-capture', async () => {
@@ -264,5 +275,62 @@ describe('shortcut capture', () => {
       .sort((a, b) => (a[0] as number) - (b[0] as number))
       .map((x) => x[1]);
     expect(order).toEqual(['suspend:true', 'set', 'suspend:true']);
+  });
+});
+
+// A failed suspend / restore must not strand the native menu: Go's state
+// is unknown after a failure, so the page keeps reconciling it with what
+// it wants until a call succeeds.
+describe('shortcut capture when Go fails', () => {
+  const suspendCalls = () =>
+    bridge.SuspendMenuAccelerators.mock.calls.map((c) => c[0]);
+
+  afterEach(() => vi.useRealTimers());
+
+  it('retries a failed restore, so the menu does not stay stripped', async () => {
+    vi.useFakeTimers();
+    setShortcutCapture(true);
+    await menuQueueSettledForTest();
+    bridge.SuspendMenuAccelerators.mockRejectedValueOnce(new Error('gone'));
+    setShortcutCapture(false);
+    await menuQueueSettledForTest();
+    expect(suspendCalls()).toEqual([true, false]);
+    await vi.advanceTimersByTimeAsync(250);
+    await menuQueueSettledForTest();
+    expect(suspendCalls()).toEqual([true, false, false]);
+    // Restored: nothing further is sent.
+    await vi.advanceTimersByTimeAsync(10_000);
+    expect(suspendCalls()).toEqual([true, false, false]);
+  });
+
+  it('gives up after a few retries and reconciles on window focus', async () => {
+    vi.useFakeTimers();
+    setShortcutCapture(true);
+    await menuQueueSettledForTest();
+    bridge.SuspendMenuAccelerators.mockRejectedValue(new Error('gone'));
+    setShortcutCapture(false);
+    await vi.advanceTimersByTimeAsync(60_000);
+    await menuQueueSettledForTest();
+    // The first attempt plus three bounded retries.
+    expect(suspendCalls()).toEqual([true, false, false, false, false]);
+    bridge.SuspendMenuAccelerators.mockResolvedValue(undefined);
+    bridge.GetKeymap.mockResolvedValue({});
+    window.dispatchEvent(new Event('focus'));
+    await vi.advanceTimersByTimeAsync(0);
+    await menuQueueSettledForTest();
+    expect(suspendCalls()).toEqual([true, false, false, false, false, false]);
+  });
+
+  it('a failed re-suspend does not count as a failed menu update', async () => {
+    setShortcutCapture(true);
+    await menuQueueSettledForTest();
+    bridge.SuspendMenuAccelerators.mockRejectedValueOnce(new Error('gone'));
+    setKeymap({ mac: { 'new-session': ['Mod+Y'] } });
+    await menuQueueSettledForTest();
+    expect(bridge.SetMenuAccelerators).toHaveBeenCalledTimes(1);
+    // The same overrides again: Go has them, so they are not re-sent.
+    setKeymap({ mac: { 'new-session': ['Mod+Y'] } });
+    await menuQueueSettledForTest();
+    expect(bridge.SetMenuAccelerators).toHaveBeenCalledTimes(1);
   });
 });

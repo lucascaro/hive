@@ -210,7 +210,7 @@
   align-items: center;
   margin: var(--space-2) 0 var(--space-3);
 }
-.hv-shortcuts-toolbar .hv-field { flex: 1 1 auto; min-width: 0; }
+.hv-shortcuts-toolbar .hv-input { flex: 1 1 auto; min-width: 0; }
 .hv-shortcuts-group h4 {
   margin: var(--space-3) 0 var(--space-1);
   color: var(--fg-muted);
@@ -266,3 +266,23 @@
 .hv-shortcut-note[data-kind='refused'] { color: var(--state-error); }
 .hv-shortcut-note[data-kind='warn'],
 .hv-shortcut-note[data-kind='displaced'] { color: var(--state-attention); }
+/* The footer note that says why Save is disabled while a shortcut
+   conflict waits (Settings.tsx); icon + words, never colour alone. */
+.settings-save-blocked {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  margin: 0;
+  color: var(--state-error);
+  font-size: var(--text-sm);
+}
+.settings-save-blocked__link {
+  padding: 0;
+  border: 0;
+  background: none;
+  color: inherit;
+  font: inherit;
+  text-decoration: underline;
+  cursor: pointer;
+}
+.settings-save-blocked__link:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }

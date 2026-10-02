@@ -58,9 +58,33 @@ test('rebinding a command in the tab moves its key everywhere', async ({
     'holder',
   );
   await expect(page.locator('#settings-save')).toBeDisabled();
+  // Focus waits on the answer, and the footer says why Save is off —
+  // laid out beside the buttons, not over them.
+  await expect(
+    row(page, 'new-session').locator('[data-action="reassign"]'),
+  ).toBeFocused();
+  const blocked = page.locator('#settings-save-blocked');
+  await expect(blocked).toBeVisible();
+  const [note, save] = await Promise.all([
+    blocked.boundingBox(),
+    page.locator('#settings-save').boundingBox(),
+  ]);
+  expect(note && save).toBeTruthy();
+  if (note && save) {
+    const overlaps =
+      note.x < save.x + save.width &&
+      save.x < note.x + note.width &&
+      note.y < save.y + save.height &&
+      save.y < note.y + note.height;
+    expect(overlaps).toBe(false);
+  }
   await row(page, 'new-session')
     .locator('[data-action="cancel-reassign"]')
     .click();
+  await expect(
+    row(page, 'new-session').locator('[data-action="add-shortcut"]'),
+  ).toBeFocused();
+  await expect(page.locator('#settings-save-blocked')).toHaveCount(0);
   await expect(page.locator('#settings-save')).toBeEnabled();
 
   await row(page, 'new-session')

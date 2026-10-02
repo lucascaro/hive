@@ -100,6 +100,7 @@ import { ShortcutsPanel } from './ShortcutsPanel.js';
 import { setKeymap, useAppStore } from '../../store/store.js';
 import { Button } from '../Button.js';
 import { Tabs } from '../Tabs.js';
+import { Icon } from '../Icon.js';
 import { IconButton } from '../IconButton.js';
 import { ModalShell } from './ModalShell.js';
 // Type-only, so the generated module is erased before Vite resolves it.
@@ -234,6 +235,9 @@ function SettingsDialog({ root }: { root: HTMLElement }): ReactNode {
   // A captured shortcut another command holds, waiting for Reassign or
   // Cancel: Save waits for it (spec 477 criterion 3).
   const [shortcutConflict, setShortcutConflict] = useState(false);
+  // Set by the footer's "Show it": once the Shortcuts tab is showing, put
+  // focus on the waiting conflict's Reassign.
+  const focusConflict = useRef(false);
   // Save must never write agent settings it has not read: the checkbox's
   // initial `true` is a display default, not the user's value, and saving
   // it before the read lands would overwrite a saved `false`. The box
@@ -621,6 +625,16 @@ function SettingsDialog({ root }: { root: HTMLElement }): ReactNode {
   const tabs = tabsFor(showMenuBar);
   const activeTab = tabs.some((t) => t.id === tab) ? tab : 'agents';
 
+  useEffect(() => {
+    if (!focusConflict.current || activeTab !== 'shortcuts') return;
+    focusConflict.current = false;
+    root
+      .querySelector<HTMLElement>(
+        '#settings-panel-shortcuts [data-action="reassign"]',
+      )
+      ?.focus();
+  }, [activeTab, root]);
+
   function runUpdate() {
     if (updateBtn.action === 'restart' || updateBtn.action === 'reload') {
       // Shared with the banner: confirm overlay + re-entrancy guard +
@@ -813,12 +827,46 @@ function SettingsDialog({ root }: { root: HTMLElement }): ReactNode {
       ]}
       actions={
         <>
+          {/* Save is disabled while a conflict waits, and the conflict
+              itself may be on a tab the user has left, so the footer —
+              visible from every tab — says why and leads back to it. */}
+          {shortcutConflict ? (
+            <p
+              id="settings-save-blocked"
+              className="settings-save-blocked"
+              role="status"
+            >
+              <Icon name="state-error" size={12} />
+              {/* Off the Shortcuts tab the words themselves lead back to
+                  the conflict: a separate button would wrap Save. */}
+              {activeTab === 'shortcuts' ? (
+                <span>Resolve the shortcut conflict to save.</span>
+              ) : (
+                <button
+                  type="button"
+                  id="settings-show-conflict"
+                  className="settings-save-blocked__link"
+                  onClick={() => {
+                    focusConflict.current = true;
+                    setTab('shortcuts');
+                  }}
+                >
+                  Resolve the shortcut conflict to save.
+                </button>
+              )}
+            </p>
+          ) : null}
           <Button id="settings-cancel" label="Cancel" onClick={closeSettings} />
           <Button
             id="settings-save"
             label="Save"
             kind="primary"
             disabled={!editingEnabled || shortcutConflict}
+            extra={{
+              'aria-describedby': shortcutConflict
+                ? 'settings-save-blocked'
+                : undefined,
+            }}
             onClick={saveSettings}
           />
         </>

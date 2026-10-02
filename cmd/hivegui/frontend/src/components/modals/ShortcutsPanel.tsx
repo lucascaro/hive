@@ -14,7 +14,7 @@
 // conflict until the user reassigns it (the other command loses only that
 // key) or cancels, and Save waits for the answer (spec 477 criterion 3).
 
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { listCommands } from '../../app/command-registry.js';
 import { setShortcutCapture } from '../../app/keymap-sync.js';
 import { pluginCommands } from '../../app/plugin-host.js';
@@ -86,6 +86,42 @@ export function ShortcutsPanel({
   const [capturing, setCapturing] = useState<string | null>(null);
   const [pending, setPending] = useState<Pending | null>(null);
   const [note, setNote] = useState<Note | null>(null);
+  const rootRef = useRef<HTMLDivElement>(null);
+
+  // Where focus goes after an action removes or disables the control that
+  // had it (the capture button, a remove or reset button, Reset all):
+  // the row's + button, Reassign while a conflict waits, or the search
+  // box. Applied after the render that changed the row. A capture that
+  // ends because focus left it (Tab, a click elsewhere) sets nothing, so
+  // focus is never pulled back.
+  const focusNext = useRef<
+    { command: string; action: string } | 'search' | null
+  >(null);
+  const focusRow = (command: string, action = 'add-shortcut') => {
+    focusNext.current = { command, action };
+  };
+  useEffect(() => {
+    const t = focusNext.current;
+    if (!t) return;
+    focusNext.current = null;
+    const root = rootRef.current;
+    const row =
+      t === 'search'
+        ? undefined
+        : [
+            ...(root?.querySelectorAll<HTMLElement>('.hv-shortcut-row') ?? []),
+          ].find((r) => r.dataset.command === t.command);
+    const target =
+      t === 'search'
+        ? null
+        : row?.querySelector<HTMLElement>(
+            `[data-action="${t.action}"]:not(:disabled)`,
+          );
+    // The row can be filtered out by the search it no longer matches.
+    (
+      target ?? root?.querySelector<HTMLElement>('#settings-shortcuts-search')
+    )?.focus();
+  });
 
   useEffect(
     () => onBlockedChange(pending !== null),
@@ -198,11 +234,13 @@ export function ShortcutsPanel({
     e.stopPropagation();
     if (plain && e.key === 'Escape') {
       setCapturing(null);
+      focusRow(id);
       return;
     }
     const got = captureChord(e.nativeEvent, isMac);
     if (!got) return; // a modifier on its own: keep listening
     setCapturing(null);
+    focusRow(id);
     if (got.kind === 'refused') {
       setNote({ id, kind: 'refused', text: got.reason });
       return;
@@ -224,6 +262,7 @@ export function ShortcutsPanel({
     const holders = holdersOf(chord, id);
     if (holders.length) {
       setPending({ id, chord, holders });
+      focusRow(id, 'reassign');
       return;
     }
     onChange(withShortcuts(draft, isMac, id, [...current, chord]));
@@ -245,12 +284,14 @@ export function ShortcutsPanel({
     }
     setPending(null);
     setNote(null);
+    focusRow(pending.id);
   }
 
   // A plugin key core (or an earlier plugin) already holds: give it to the
   // plugin, or settle the plugin on the keys it has.
   function resolveRefused(id: string, chord: string, give: boolean) {
     const current = shortcutsOf(id);
+    focusRow(id);
     onChange(
       give
         ? reassign(draft, isMac, id, current, chord, holdersOf(chord, id))
@@ -259,6 +300,7 @@ export function ShortcutsPanel({
   }
 
   function remove(id: string, chord: string) {
+    focusRow(id);
     onChange(
       withShortcuts(
         draft,
@@ -279,7 +321,7 @@ export function ShortcutsPanel({
   const locked = disabled || pending !== null;
 
   return (
-    <>
+    <div ref={rootRef} className="hv-shortcuts">
       <p className="settings-hint">
         Select <Icon name="plus" size={12} /> on a row, then press the keys.
         Changes apply when you save.
@@ -287,7 +329,7 @@ export function ShortcutsPanel({
       <div className="hv-shortcuts-toolbar">
         <input
           id="settings-shortcuts-search"
-          className="hv-field"
+          className="hv-input"
           type="search"
           placeholder="Search shortcuts"
           aria-label="Search shortcuts"
@@ -303,6 +345,8 @@ export function ShortcutsPanel({
           onClick={() => {
             onChange(resetHalf(draft, isMac));
             setNote(null);
+            // Reset all disables itself; the search box is next in order.
+            focusNext.current = 'search';
           }}
         />
       </div>
@@ -380,11 +424,12 @@ export function ShortcutsPanel({
                           label={`Reset ${r.label} to its default`}
                           action="reset-shortcut"
                           disabled={locked}
-                          onClick={() =>
+                          onClick={() => {
+                            focusRow(r.id);
                             onChange(
                               withShortcuts(draft, isMac, r.id, undefined),
-                            )
-                          }
+                            );
+                          }}
                         />
                       ) : null}
                     </span>
@@ -502,6 +547,6 @@ export function ShortcutsPanel({
           ))}
         </ul>
       </section>
-    </>
+    </div>
   );
 }
