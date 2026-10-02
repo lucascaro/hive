@@ -212,6 +212,41 @@ func TestExportKeymapDialogError(t *testing.T) {
 	}
 }
 
+// A write that fails (the target's directory does not exist) reports the
+// error and claims nothing was exported.
+func TestExportKeymapWriteFails(t *testing.T) {
+	out := filepath.Join(t.TempDir(), "missing", "mine.json")
+	ok, err := exportKeymapWith(func() (string, error) { return out, nil }, Keymap{})
+	if err == nil || ok {
+		t.Fatalf("a failed write = %v, %v; want false, error", ok, err)
+	}
+}
+
+func TestPickKeymapFileDialogError(t *testing.T) {
+	got, err := pickKeymapFileWith(func() (string, error) { return "", errors.New("boom") })
+	if err == nil || got != "" {
+		t.Fatalf("a failed dialog = %q, %v; want \"\", error", got, err)
+	}
+}
+
+func TestPickKeymapFileMissing(t *testing.T) {
+	p := filepath.Join(t.TempDir(), "gone.json")
+	if _, err := pickKeymapFileWith(pickFrom(p)); err == nil {
+		t.Fatal("a file that cannot be opened must be an error")
+	}
+}
+
+func TestPickKeymapFileAtLimit(t *testing.T) {
+	p := filepath.Join(t.TempDir(), "edge.json")
+	if err := os.WriteFile(p, make([]byte, maxKeymapFile), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	got, err := pickKeymapFileWith(pickFrom(p))
+	if err != nil || len(got) != maxKeymapFile {
+		t.Fatalf("a file at the limit = %d bytes, %v; want %d, nil", len(got), err, maxKeymapFile)
+	}
+}
+
 func pickFrom(path string) func() (string, error) {
 	return func() (string, error) { return path, nil }
 }

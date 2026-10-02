@@ -695,6 +695,22 @@ describe('settings: shortcuts import and export', () => {
     expect(el('settings-error').textContent).toContain('not JSON');
   });
 
+  it('a file that cannot be read shows the error and re-enables the buttons', async () => {
+    bridge.PickKeymapFile.mockImplementation(() =>
+      Promise.reject(new Error('larger than 1 MB')),
+    );
+    await openTab();
+    act(() => tool('settings-shortcuts-import').click());
+    await settle();
+    expect(preview()).toBeNull();
+    expect(el('settings-error').textContent).toContain(
+      'Could not read that file',
+    );
+    expect(el('settings-error').textContent).toContain('larger than 1 MB');
+    expect(tool('settings-shortcuts-export').disabled).toBe(false);
+    expect(tool('settings-shortcuts-import').disabled).toBe(false);
+  });
+
   it('a cancelled pick does nothing', async () => {
     await openTab();
     await startImport('');
