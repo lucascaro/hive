@@ -3,9 +3,9 @@
 - **Spec:** [docs/product-specs/477-make-every-app-shortcut-configurable-with-collisio.md](../../product-specs/477-make-every-app-shortcut-configurable-with-collisio.md)
 - **Issue:** #477
 - **Status:** active
-- **PR:** #488
-- **Branch:** feature/477-shortcuts-tab
-- **Phase:** 2 of 3
+- **PR:**
+- **Branch:**
+- **Phase:** 3 of 3
 
 ## Summary
 
@@ -219,6 +219,143 @@ Criterion 11 ("no change in behaviour") is met except D1, which is a deliberate,
 - `T/e2e/shortcuts-tab.spec.ts` — real keyboard pipeline: ⌘, captured as a conflict, ⌘Y saved, old key dead, palette shows new; Escape cancels capture not Settings.
 - Go: `TestSaveKeymapRoundTrips`, `TestSuspendMenuAccelerators`.
 
+## Phase 3 — import/export and phase-2 review notes
+
+FE = `cmd/hivegui/frontend/src`, T = `cmd/hivegui/frontend/test`.
+
+### Approach
+
+**Export.** A new Export… button in the Shortcuts toolbar sends the **draft** (what the tab shows, saved or not) to Go `ExportKeymap(k Keymap) (bool, error)`. Go opens `SaveFileDialog` (default name `hive-keymap.json`, `*.json` filter) and writes the keymap with `version: 1` and both halves, through the same marshal format as keymap.json. Cancelling returns `false`, and the frontend shows nothing. An error goes to the dialog's error slot, and the button re-enables either way.
+
+**Import.** A new Import… button calls Go `PickKeymapFile() (string, error)`, which opens `OpenFileDialog` (`*.json`), refuses a file over 1 MiB, strips a BOM and returns the file's text (`""` on cancel). The text goes to pure `lib/keymap-import.ts`:
+
+1. `parseKeymapFile(text)`. Not JSON, not an object, `version` other than 1/absent, or a half that is not an object: an error message, and nothing else happens. Otherwise `keymapFromJSON` (below) gives a clean keymap plus a list of malformed entries.
+2. `previewImport(file, isMac, catalog)` takes only the **current OS half** (decision log 2026-09-30) and returns rows `{command, title, chord?, status}`, where status is one of:
+   - `ok`, or `warn` with `checkChord`'s reason (bound).
+   - `unbound` (`[]`), applied.
+   - `unknown-command`, `reserved` (`checkChord` refused: OS, terminal, no modifier), `invalid` (unparseable chord) and `malformed` (a `null` or non-list entry). All four are skipped and say why.
+   - `conflict` with holders.
+
+   It also returns `candidate: Record<id, string[]>`, the accepted chords per command. `catalog` = `{ title(id), defaults(id) }` for every core and loaded-plugin command. The panel builds it: core defaults via `shortcutsIn(EMPTY_KEYMAP, id)`, plugin defaults via the unmemoized resolver (below) on an empty keymap.
+3. Conflicts are computed live from the candidate: a chord of command X conflicts when another command Y holds an overlapping chord, where Y's chords are `candidate[Y]` if Y is in the import and `defaults(Y)` otherwise. This is the same rule the tab uses at capture time. Each conflict row offers:
+   - **Reassign**: each holder loses only that key, through the same rule as `reassign()`. A holder outside the import gets an explicit override of its remaining defaults.
+   - **Skip**: X drops that chord.
+
+   Pairwise conflicts between two imported rows clear together.
+4. **Confirm** is disabled while any conflict remains. It writes `applyImport(draft, candidate, isMac)` into the Settings **draft**: the current OS half is **replaced** by the candidate, with existing `plugin:*` overrides for plugins that are not loaded preserved, and the other half untouched. Save then persists it as usual. **Cancel** discards the import. Nothing reaches the draft before Confirm (criterion 9).
+
+The preview renders **inline in the Shortcuts tab**, in place of the command list, with a header and Confirm/Cancel. It is not a nested modal, so there is no new key scope and no every-shortcut fixture. While the preview is open, `onBlockedChange(true)` blocks Save, the same mechanism as a pending conflict, and the footer reason reads "Finish or cancel the shortcut import".
+
+**Phase-2 review notes folded in:**
+- (a) New `keymapFromJSON(raw: unknown): { keymap, malformed: string[] }` in `lib/keymap-edit.ts`. It drops a non-object half, a non-list entry (`null`) and non-string chords, and keeps the rest. `loadKeymap` (keymap-sync) and Settings' `GetKeymap` read through it, so one `null` costs that entry only. Today `canonicalKeymap` spreads `null`, throws, and the catch falls back to all defaults. Import uses it too.
+- (b) Split `pluginCommands` in `app/plugin-host.ts` into an unmemoized `resolvePluginCommands(state, keymap, warn)` and the memoized live one. The tab calls the unmemoized one with a no-op `warn` inside its own `useMemo`, so it never evicts the live memo, and the clash warnings fire once per live state again.
+- (c) While the keymap is loading or failed, the Shortcuts tab shows an inline hint above the list: "Loading your shortcuts…", or "Shortcuts can't be edited: keymap.json could not be read. Fix or move the file, then reopen Settings." The Editor section gets the same treatment for `editor.json`, since it has the same gap.
+- (d) `T/dom/settings-shortcuts.test.tsx` `beforeEach` calls `resetKeymapSyncForTest()`.
+- (e) Go tests for the `SaveKeymap` write-error paths (below).
+
+**Rejected alternatives.**
+- *Merge import* (imported overrides layered over the current ones): an exported keymap lists only overrides, so merging can't reproduce the exporter's keymap. Replace is "use this keymap".
+- *Export the saved file rather than the draft*: the button sits in a tab whose rows are the draft, so exporting anything else would surprise.
+- *Nested modal for the preview*: it needs a new key scope and fixture, and Settings is already a modal.
+
+### Files to change
+
+1. `cmd/hivegui/keymap_prefs.go`: `ExportKeymap`, `PickKeymapFile`, with the dialog injected (`exportKeymapWith(save func() (string, error), k)`, `pickKeymapFileWith(open func() (string, error))`, the `pickDirectoryWith` precedent) so they are testable without Wails.
+2. `cmd/hivegui/state_file.go`: factor the marshal (`stateJSONBytes`) so export writes the same bytes as keymap.json.
+3. Bridge: `FE/bridge.ts`; `T/e2e/wails-mock.ts` (`ExportKeymap` records its argument on `window.__hive_mock`; `PickKeymapFile` returns a seedable text; both `maybeFail`); `T/e2e-real/wails-bridge.ts` stubs; DOM `vi.mock` factories that list bridge functions (grep at implementation time).
+4. `FE/lib/keymap-edit.ts`: `keymapFromJSON`.
+5. `FE/app/keymap-sync.ts` `loadKeymap`, and `FE/components/modals/Settings.tsx` `GetKeymap`: read through `keymapFromJSON`, with a single `console.warn` naming malformed entries. Settings also gets the import-blocked footer reason, and the inline loading/failed hints for the Shortcuts and Editor sections (via props).
+6. `FE/app/plugin-host.ts`: `resolvePluginCommands` split.
+7. `FE/components/modals/ShortcutsPanel.tsx`: Export…/Import… buttons, the preview mode, the disabled-state hint, and `resolvePluginCommands`.
+8. `FE/components/modals/EditorSettings.tsx`: the disabled-state hint.
+9. `FE/theme/components/settings.css`: preview row styles (tokens only).
+10. Docs: `.changesets/477-keymap-import-export.md` (`added`, minor); (a) gets no separate `fixed` entry since the Shortcuts tab is still unreleased; `site/features.json`: the "Your own keyboard shortcuts" blurb gains "export and import them".
+    - README Keybinds intro (line 299): "…and export or import your keymap there".
+11. Plan bookkeeping: Decision log, Progress.
+
+### New files
+
+- `FE/lib/keymap-import.ts`: `parseKeymapFile`, `previewImport`, `importConflicts`, `reassignInImport`, `skipInImport`, `applyImport`.
+
+### Tests
+
+- `T/unit/keymap-import.test.ts`:
+  - `parseKeymapFile` rejects non-JSON, an array, `version: 2`, and a non-object half.
+  - `previewImport` takes only the current half (a `mac` row is ignored off-mac); marks unknown command, reserved (`Mod+Q` mac, `Alt+F4` other), no-modifier, invalid chord and null entry as skipped with a reason; `warn` for `Ctrl+A`; `[]` gives `unbound`.
+  - Conflicts:
+    - Imported vs a default: new-session `Mod+N` conflicts with new-project; Reassign gives new-project an explicit override of its remaining defaults (empty here); Skip drops it.
+    - Imported vs imported: both rows conflict, and one Reassign clears both.
+    - No false conflict when the holder's default moved in the import itself.
+  - `applyImport` replaces the current half, keeps the other half, and keeps unloaded `plugin:*` overrides.
+  - An export → parse → preview round-trip of a keymap equals it (criterion 9, "export produces a file import accepts").
+- `T/unit/keymap-edit.test.ts` `keymapFromJSON`: `null` entry dropped with the others kept; non-string chord dropped; non-object half dropped; a non-object root gives the empty keymap.
+- `T/dom/keymap-menu-sync.test.ts`: `loadKeymap` with one `null` entry keeps the other override in the store (fails today: the store stays `{}`).
+- `T/unit/plugin-chords.test.ts` or a DOM test: calling `resolvePluginCommands` does not evict `pluginCommands`' memo, so a following `pluginCommands()` returns the same array and warns no more.
+- `T/dom/settings-shortcuts.test.tsx`, with `resetKeymapSyncForTest` in `beforeEach`:
+  - Export sends the draft and re-enables after a rejection.
+  - Import → preview rows with statuses; Confirm is disabled while a conflict remains; Reassign enables it; Confirm writes the draft and Save sends it.
+  - Cancel leaves the draft untouched and `SaveKeymap` uncalled.
+  - Save is blocked while the preview is open.
+  - A parse error goes to `#settings-error`, with no preview and the draft unchanged.
+  - Import cancelled (`""`) does nothing.
+  - The disabled-state hint shows when `GetKeymap` rejects; the Editor hint shows when `GetEditorSettings` rejects.
+- `T/e2e/shortcuts-tab.spec.ts`: one new case. Seed the `PickKeymapFile` text with a `new-session → Mod+Y` keymap plus one unknown command. The preview shows the unknown command skipped; Confirm, then Save; Mod+Y opens the launcher and Mod+T does not. Export records the saved keymap.
+- Go `cmd/hivegui/keymap_prefs_test.go`:
+  - `TestExportKeymapWritesFile` (bytes equal SaveKeymap's) and `TestExportKeymapCancelled`.
+  - `TestPickKeymapFileReadsAndStripsBOM`, `TestPickKeymapFileTooLarge` and `TestPickKeymapFileCancelled`.
+  - (e) `TestSaveKeymapStateDirUncreatable`: HIVE_STATE_DIR under a regular file, so MkdirAll fails. `TestSaveKeymapRenameFails`: `keymap.json` is a directory, so the rename fails. Both leave no temp file behind.
+- `T/unit/bridge-harness-parity.test.ts` passes with the two new bindings.
+
+#### Verification
+
+```bash
+GOTOOLCHAIN=go$(sed -n 's/^go //p' go.mod) scripts/test.sh go unit dom e2e
+GOTOOLCHAIN=go$(sed -n 's/^go //p' go.mod) go test -race ./cmd/hivegui/...
+(cd cmd/hivegui/frontend && npm run typecheck && npx biome ci .)
+scripts/ui-lint.sh
+for os in darwin linux windows; do GOOS=$os go vet ./... && GOOS=$os staticcheck ./...; done
+```
+
+What would fail on a wrong implementation:
+- The `null`-entry sync test fails on today's code.
+- The preview tests fail if a skipped row is applied or a conflict lets Confirm through.
+- The Cancel test fails if the draft is touched before Confirm.
+- The e2e test fails if the imported key doesn't fire or the old one still does.
+- The Go error-path tests fail if a temp file leaks.
+
+Manual check: `wails dev`, export, then import the file back. The real dialogs open, and the e2e-real stubs are not exercised.
+
+#### Open questions / risks
+
+- Wails `OpenFileDialog`/`SaveFileDialog` with a default filename on macOS: is the filter honoured? Cosmetic either way.
+- Window focus returns after the dialog and `loadKeymap` re-reads. It touches only the store, never the Settings draft, so a preview is not disturbed.
+- Spec Notes open question (one keymap per OS?) was answered in phase 1 (per-OS halves). An export carries both halves, and an import applies only the current one.
+
+#### Revisions after second opinion (round 1)
+
+1. **All spellings.** Conflicts are checked against every spelling of every default binding (`chordsFor(b.keys)` over `DEFAULT_APP_BINDINGS`, the same set `effectiveBindings` displaces on). `shortcutsIn` returns only the first spelling of each binding, so it is not used for this check. A unit test covers a clash with an alias spelling: zoom-in `Mod+Shift?++`, and a `[KeyX]` alias.
+2. **Resolver agreement test.** For a fixed set of imports, when the preview reports no conflicts, `effectiveFor(applyImport(…)).displaced` is empty and no two commands share an overlapping chord. Each case is checked on both platforms.
+3. **Reason-typed block.** `onBlockedChange` becomes `onBlockedChange(reason: null | 'conflict' | 'import')`. The Settings footer reads "Resolve the shortcut conflict to save." or "Finish or cancel the shortcut import to save.". The off-tab link opens the Shortcuts tab and focuses Reassign (conflict) or the preview's first unresolved control, else Confirm (import). A DOM test covers each wording and link.
+4. **When Import and Export are disabled.** Both are disabled while the keymap is loading or failed to load, while a capture is open, and while a conflict is pending. Import is also disabled while a preview is open. DOM tests cover these.
+5. **Unloaded plugins round-trip.** An imported `plugin:<id>:*` entry whose plugin is not loaded passes through without checks, shown as "kept — plugin not loaded". The plugin host resolves it, core wins, when the plugin loads. For the same id, the imported entry wins over the draft's (replace semantics), and the draft's unloaded-plugin entries that the import does not name are kept. A test covers it.
+6. **Catalog = the tab's list.** The catalog is the ids the tab lists: `commandGroups` rows, plus titled core `listCommands()` with no row, plus loaded plugin commands. The panel builds it from the same memo it renders. A test covers an override for a titled command with no default (for example `restart-session`), which counts as known.
+7. **Note (a) scope stated.** Go still refuses the whole file when an entry is a string or a half is not an object, which is the editor.json rule: a later save must not clobber a hand-edit. Go decodes `null` to an absent list, so `null` is what reaches the frontend. `keymapFromJSON` handles `null`, along with the shapes that can come from import, where the JS parser sees the raw file. The DOM regression test for Settings: `GetKeymap` resolving with one `null` entry leaves the tab enabled, and the other override shows.
+8. **Nice-to-haves folded in:** Esc while a preview is open cancels the preview, not Settings (DOM test). Catalog and candidate lookups use `Map` and `Object.hasOwn` (a `__proto__` key test). Go export test: `[]` exports as `[]`. The stale changeset item was removed.
+
+#### Revisions after second opinion (round 2), applied without a third round
+
+9. **`reassign` drops whole spelling groups.** When any spelling of a holder's binding overlaps the chord, the holder loses that whole binding, not just the overlapping spelling. Fixed once in `keymap-edit.ts`, so the tab gets the fix too; it is a latent phase-2 bug. Two tests: a unit test, in which zoom-in loses `Mod+Shift?+=` when `Mod+Shift?++` is reassigned, and a tab DOM case.
+10. **Agreement test scope.** The agreement test also checks the state after every Reassign and every Skip, including the alias case.
+11. **Unloaded-plugin entries are still checked.** These entries still go through the parse check and `checkChord`. A refused or invalid key is skipped. Only the conflict check is skipped.
+12. **Esc ownership and wording.** The preview container is `data-own-keys`, and Esc there cancels the preview. The DOM test sends Esc from the preview's Reassign button. Note 7's wording is corrected: Go keeps a `null` entry as a present key with a nil slice, and Wails sends it on as `null`.
+
+#### Operator decisions at the plan stop
+
+13. **The import mode is the user's choice, made at import time.** The preview opens with a required choice: **Replace my shortcuts** or **Add to my shortcuts**.
+    - **Replace:** the file becomes the current half, keeping unloaded-plugin entries.
+    - **Add:** the file's entries override the matching commands, and every other override stays.
+    - Conflicts are computed against the result of the chosen mode: a holder's keys come from its defaults (Replace), or from its current draft keys (Add). The rows render only after a choice is made, and Confirm stays disabled until then. The choice can be changed, which re-runs the preview.
+
 ## Verification
 
 ```bash
@@ -243,6 +380,8 @@ Would fail on a wrong implementation: the v0-fixture parity tests fail on any la
 
 - **Round 1** — `revise`, confidence 7. 12 must-fix items, all applied: plugin regression (terminal + null-reserved chords now in `RESERVED_CHORDS`); full `toMenuAccelerator` mapping with nil (not default) on parse failure; Go data race (mutex); imperatively-pushed status hints and boot-order claims corrected (subscription-driven, no `initKeyboard`); menu-sync DOM test; criterion 8 now unbinds the whole command; D2 parity row; D1 sign-off made explicit; TS/Go menu-default fixture; Phase 2 gaps (plugin rebinding, multi-window, terminal chords); missed test/blast-radius files.
 - **Round 2** — `revise`, confidence 8. Confirmed every round-1 item resolved. 3 new narrow must-fix items, applied without a third round (loop rule): parity fixture mechanism (`a.accel` records a per-build map; Wails menu items have no id), race test exercises the real `menuLocked()` build path, Phase 2 focus re-read compares structurally before `setKeymap`. Nice-to-haves folded in: exact per-platform `displaced` sets, Reassign keeps loser's remaining defaults, unknown `plugin:*` overrides preserved, CI macOS `-race` check.
+- **Phase 3, round 1:** `revise`, confidence 7. Seven must-fix items, all applied: overlap checked against every spelling of every default; a test that the preview agrees with the resolver; a reason-typed `onBlockedChange`; when Import and Export are disabled; unloaded-plugin entries round-trip; the catalog is the list the tab shows; note (a) scope stated.
+- **Phase 3, round 2:** `revise`, confidence 7. Three must-fix items, applied without a third round: `reassign` drops whole spelling groups; the agreement test runs after every Reassign and Skip; unloaded-plugin entries still go through `checkChord`.
 
 ## Decision log
 
@@ -260,6 +399,9 @@ Would fail on a wrong implementation: the v0-fixture parity tests fail on any la
 - **2026-10-01** — Menu suspension follows the panel's `capturing` state, not focus events, and runs on keymap-sync's queue; Go's `SetMenuAccelerators` lifts it and the frontend re-suspends after a push mid-capture. Why: removing a focused button fires no blur, and a reload mid-capture must not leave the menu stripped.
 - **2026-10-01** — Review iter 1 escalations, all applied on operator instruction: (1) focus moves to the row's + after any capture ends, to Reassign while a conflict waits, to the search box after Reset all; a capture ended by focus leaving is never pulled back; (2) while a conflict blocks Save the footer says so on every tab, linking back to Reassign off the Shortcuts tab (text link, so Save never wraps — checked in a browser screenshot); (3) menu suspension is reconciled (wanted vs. Go-confirmed state) instead of toggled: a failed call leaves Go's state unknown and is retried 3× with backoff, then on window focus, capture changes or menu pushes. Why: the real stuck case was a failed restore leaving the menu stripped; a failed re-suspend also used to roll back the menu-update bookkeeping.
 
+- **2026-10-01** — Phase 3: Export saves the tab's draft (what it shows, saved or not). Why: operator choice at the phase-3 plan stop.
+- **2026-10-01** — Phase 3: the import asks, at import time, whether to replace the current shortcuts or add to them. Why: operator choice at the phase-3 plan stop. The reviewer's case for Replace (only Replace reproduces the exporter's keymap) still holds, but it is offered as an option, not the default.
+- **2026-10-01** — Phase 3 second opinion: round 1 `revise` (7, 7 must-fix), round 2 `revise` (7, 3 must-fix). All were applied without a third round, per the feature-loop cap.
 ## Progress
 
 - **2026-09-30** — Exec plan created; research started.
@@ -267,6 +409,7 @@ Would fail on a wrong implementation: the v0-fixture parity tests fail on any la
 - **2026-10-01** — Rebased onto #486 (e2e sweep of every shortcut). The sweep passes unchanged. Three older tests needed edits (keymap-parity D1/D2 cells, plugin-chords helper signature, shortcuts.test `restart-session`); operator approved each before editing.
 - **2026-10-01** — Phase 1 implemented; PR #487 opened. All layers green.
 - **2026-10-01** — Phase 2 started (reset: stage IMPLEMENT, Phase 2 of 3). Implemented on `feature/477-shortcuts-tab`.
+- **2026-10-01** — Phase 2 merged (#488). Phase 3 reset: stage IMPLEMENT, Phase 3 of 3. Plan approved (chat). The flaky `plugin-view` e2e cell was filed as #489. Implementing on `feature/477-keymap-import-export`.
 
 ## Open questions
 
