@@ -42,6 +42,9 @@ export interface ModalShellProps {
   root: HTMLElement;
   title: string;
   onClose: () => void;
+  /** Escape's own handler, when it should not simply close (Settings
+   * cancels an open import preview first). Defaults to onClose. */
+  onEscape?: () => void;
   size?: 'sm' | 'md' | 'lg';
   /** Confirm/cancel key hints. Every overlay must show them (AGENTS.md). */
   hints?: ModalHint[];
@@ -67,6 +70,7 @@ export function ModalShell({
   root,
   title,
   onClose,
+  onEscape = onClose,
   size = 'md',
   hints,
   titleSuffix,
@@ -89,7 +93,7 @@ export function ModalShell({
       if (e.key === 'Escape') {
         e.preventDefault();
         e.stopPropagation();
-        onClose();
+        onEscape();
         return;
       }
       if (trapFocus(root, e)) e.stopPropagation();
@@ -116,7 +120,7 @@ export function ModalShell({
       root.removeEventListener('mousedown', onMouseDown);
       root.removeEventListener('click', onClick);
     };
-  }, [root, onClose]);
+  }, [root, onClose, onEscape]);
 
   const hintList = hints ?? [];
   return (

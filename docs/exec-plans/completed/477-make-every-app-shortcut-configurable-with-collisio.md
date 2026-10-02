@@ -367,6 +367,7 @@ for os in darwin linux windows; do GOOS=$os go vet ./... && GOOS=$os staticcheck
 ```
 
 Would fail on a wrong implementation: the v0-fixture parity tests fail on any label drift; `keymap-overrides`/e2e fail if the old chord still fires or the old label still shows; `keymap-menu-sync` fails on a missing or over-eager subscription; the menu fixture tests fail if TS and Go defaults drift; `TestMenuAcceleratorOverride` fails if the menu keeps the default. Manual macOS row (`wails dev` + hand-edited `keymap.json`): ⌘Y in the File menu next to New Session, ⌘T does nothing.
+- **2026-10-02** — Follow-up after the merge (operator request), fixing three MINOR review notes. A confirmed import now shows "Shortcuts imported. Save to keep them." Escape cancels an open import wherever focus is in Settings: `dismissSettings` plus a guard the panel registers, wired into both the `settings.close` command and ModalShell's new `onEscape`. A partly malformed entry (`["Mod+K", 5]`) now shows as kept-with-keys-left-out, not as skipped: `keymapFromJSON` reports structured `MalformedEntry` values.
 
 ## Open questions / risks
 

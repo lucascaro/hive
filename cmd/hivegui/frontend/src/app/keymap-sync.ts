@@ -19,6 +19,7 @@ import { menuAcceleratorOverrides, type Keymap } from '../lib/bindings.js';
 import {
   canonicalKeymap,
   keymapFromJSON,
+  malformedLabel,
   sameKeymap,
 } from '../lib/keymap-edit.js';
 import { isMac } from '../lib/platform.js';
@@ -169,7 +170,7 @@ export function initKeymapSync(deps: KeymapSyncDeps): void {
 export async function loadKeymap(): Promise<void> {
   try {
     const { keymap: next, malformed } = keymapFromJSON(await GetKeymap());
-    const bad = malformed.join(', ');
+    const bad = malformed.map(malformedLabel).join(', ');
     if (bad && bad !== warnedMalformed)
       console.warn(`keymap.json: ignoring malformed entries: ${bad}`);
     warnedMalformed = bad;

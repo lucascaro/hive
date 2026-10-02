@@ -254,13 +254,13 @@ describe('keymapFromJSON', () => {
       mac: { 'new-session': ['Mod+Y'] },
       other: { settings: [] },
     });
-    expect(got.malformed).toEqual(['mac: worktrees']);
+    expect(got.malformed).toEqual([{ half: 'mac', id: 'worktrees' }]);
   });
 
   it('drops non-string chords, keeping the strings', () => {
     const got = keymapFromJSON({ mac: { a: ['Mod+Y', 3, null] } });
     expect(got.keymap).toEqual({ mac: { a: ['Mod+Y'] } });
-    expect(got.malformed).toEqual(['mac: a']);
+    expect(got.malformed).toEqual([{ half: 'mac', id: 'a', partial: true }]);
   });
 
   it('keeps the defaults for an entry with no string at all, not "unbound"', () => {

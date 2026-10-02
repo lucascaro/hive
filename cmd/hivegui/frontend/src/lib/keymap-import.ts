@@ -23,7 +23,12 @@ import {
   type Keymap,
 } from './bindings.js';
 import { chordsOverlap, parseChord } from './chord.js';
-import { checkChord, keymapFromJSON, type Holder } from './keymap-edit.js';
+import {
+  checkChord,
+  type Holder,
+  keymapFromJSON,
+  type MalformedEntry,
+} from './keymap-edit.js';
 
 export type ImportMode = 'replace' | 'add';
 
@@ -45,7 +50,9 @@ export type RowStatus =
   | 'unknown'
   | 'reserved'
   | 'invalid'
-  | 'malformed';
+  | 'malformed'
+  /** An entry kept with some of its keys left out (not text). */
+  | 'partial';
 
 /** One line of the preview: an entry, or one key of an entry. */
 export interface ImportRow {
@@ -95,7 +102,7 @@ function isUnloadedPlugin(id: string, loaded: Set<string>): boolean {
 // ---------- reading ----------
 
 export type ParsedFile =
-  | { ok: true; keymap: Keymap; malformed: string[] }
+  | { ok: true; keymap: Keymap; malformed: MalformedEntry[] }
   | { ok: false; error: string };
 
 /** A keymap file's text, read the way keymap.json is: anything malformed
@@ -136,7 +143,7 @@ export function parseKeymapFile(text: string): ParsedFile {
 /** The rows to show and the keys that would be set, for this platform's
  * half of a parsed file. */
 export function previewImport(
-  file: { keymap: Keymap; malformed: readonly string[] },
+  file: { keymap: Keymap; malformed: readonly MalformedEntry[] },
   isMac: boolean,
   catalog: Catalog,
 ): ImportPreview {
@@ -145,12 +152,16 @@ export function previewImport(
   const rows: ImportRow[] = [];
   const candidate: [string, string[]][] = [];
   for (const m of file.malformed) {
-    // `half: id`; an id may itself contain ': '.
-    const at = m.indexOf(': ');
-    const h = m.slice(0, at);
-    const id = m.slice(at + 2);
-    if (at > 0 && h === half)
-      rows.push({ id, status: 'malformed', reason: 'Not a list of keys.' });
+    if (m.half !== half || m.id === undefined) continue;
+    rows.push(
+      m.partial
+        ? {
+            id: m.id,
+            status: 'partial',
+            reason: 'Some of its keys are not text and were left out.',
+          }
+        : { id: m.id, status: 'malformed', reason: 'Not a list of keys.' },
+    );
   }
   for (const [id, chords] of Object.entries(keymapHalf(file.keymap, isMac))) {
     const unloaded = isUnloadedPlugin(id, loaded);

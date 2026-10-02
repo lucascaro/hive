@@ -245,37 +245,54 @@ export function reassign(
 const isRecord = (v: unknown): v is Record<string, unknown> =>
   typeof v === 'object' && v !== null && !Array.isArray(v);
 
+/** Something keymapFromJSON could not take as it was. With no id, a whole
+ * half; with an id, that entry — dropped, or with `partial`, kept with its
+ * keys that were not text left out. */
+export interface MalformedEntry {
+  half: 'mac' | 'other';
+  id?: string;
+  partial?: true;
+}
+
+/** `mac` or `mac: <id>`, for a log line. */
+export const malformedLabel = (m: MalformedEntry): string =>
+  m.id === undefined ? m.half : `${m.half}: ${m.id}`;
+
 /**
  * A keymap from untrusted JSON: keymap.json as Go hands it over, or an
  * imported file. Anything malformed is dropped on its own, not the whole
  * keymap: a half that is not an object, an entry that is not a list (a
- * hand-typed `null`), a chord that is not a string. `malformed` names each
- * entry that lost something, as `half: id`.
+ * hand-typed `null`), a chord that is not a string. `malformed` lists
+ * each half or entry that lost something.
  */
 export function keymapFromJSON(raw: unknown): {
   keymap: Keymap;
-  malformed: string[];
+  malformed: MalformedEntry[];
 } {
-  const malformed: string[] = [];
+  const malformed: MalformedEntry[] = [];
   const out: { mac?: Keymap['mac']; other?: Keymap['other'] } = {};
   if (!isRecord(raw)) return { keymap: out, malformed };
   for (const half of ['mac', 'other'] as const) {
     const src = raw[half];
     if (src === undefined) continue;
     if (!isRecord(src)) {
-      malformed.push(half);
+      malformed.push({ half });
       continue;
     }
     const entries: [string, string[]][] = [];
     for (const [id, chords] of Object.entries(src)) {
       if (!Array.isArray(chords)) {
-        malformed.push(`${half}: ${id}`);
+        malformed.push({ half, id });
         continue;
       }
       const strings = chords.filter((c): c is string => typeof c === 'string');
-      if (strings.length !== chords.length) malformed.push(`${half}: ${id}`);
       // [null] is not [] ("no shortcut"): nothing usable means defaults.
-      if (chords.length > 0 && strings.length === 0) continue;
+      if (chords.length > 0 && strings.length === 0) {
+        malformed.push({ half, id });
+        continue;
+      }
+      if (strings.length !== chords.length)
+        malformed.push({ half, id, partial: true });
       entries.push([id, strings]);
     }
     // fromEntries defines own properties, so a "__proto__" id stays data.
