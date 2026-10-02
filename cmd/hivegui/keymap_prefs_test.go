@@ -5,6 +5,7 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"runtime"
 	"strings"
 	"testing"
 )
@@ -276,5 +277,45 @@ func TestPickKeymapFileCancelled(t *testing.T) {
 	got, err := pickKeymapFileWith(pickFrom(""))
 	if err != nil || got != "" {
 		t.Fatalf("a cancelled pick = %q, %v; want \"\", nil", got, err)
+	}
+}
+
+// An empty file must not read as "" — that is the cancel signal, so the
+// import would do nothing and say nothing.
+func TestPickKeymapFileEmptyIsError(t *testing.T) {
+	for _, body := range []string{"", "\ufeff", " \n\t"} {
+		p := filepath.Join(t.TempDir(), "k.json")
+		if err := os.WriteFile(p, []byte(body), 0o600); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := pickKeymapFileWith(pickFrom(p)); err == nil {
+			t.Fatalf("an empty file (%q) must be an error", body)
+		}
+	}
+}
+
+// An export is a document the user keeps (0644); keymap.json stays
+// private state (0600).
+func TestExportAndStateFileModes(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("no Unix permission bits on Windows")
+	}
+	state := t.TempDir()
+	t.Setenv("HIVE_STATE_DIR", state)
+	out := filepath.Join(t.TempDir(), "mine.json")
+	if _, err := exportKeymapWith(func() (string, error) { return out, nil }, Keymap{}); err != nil {
+		t.Fatal(err)
+	}
+	if err := (&App{}).SaveKeymap(Keymap{}); err != nil {
+		t.Fatal(err)
+	}
+	for path, want := range map[string]os.FileMode{out: 0o644, filepath.Join(state, "keymap.json"): 0o600} {
+		fi, err := os.Stat(path)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if got := fi.Mode().Perm(); got != want {
+			t.Errorf("%s mode = %o, want %o", filepath.Base(path), got, want)
+		}
 	}
 }

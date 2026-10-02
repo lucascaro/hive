@@ -127,6 +127,9 @@ export function ShortcutsPanel({
   const [importing, setImporting] = useState<Importing | null>(null);
   // A file dialog is open (Export… or Import…).
   const [busy, setBusy] = useState(false);
+  // "Shortcuts exported." after a save the user did not cancel; cleared by
+  // the next export or import.
+  const [exported, setExported] = useState(false);
   const rootRef = useRef<HTMLDivElement>(null);
 
   // Where focus goes after an action removes or disables the control that
@@ -395,8 +398,9 @@ export function ShortcutsPanel({
 
   async function exportKeymap() {
     setBusy(true);
+    setExported(false);
     try {
-      await ExportKeymap(canonicalKeymap(draft) as main.Keymap);
+      setExported(await ExportKeymap(canonicalKeymap(draft) as main.Keymap));
     } catch (e) {
       onError(`Could not export your shortcuts. (${errText(e)})`);
     } finally {
@@ -406,6 +410,7 @@ export function ShortcutsPanel({
 
   async function startImport() {
     setBusy(true);
+    setExported(false);
     try {
       const text = await PickKeymapFile();
       if (!text) return; // cancelled
@@ -534,6 +539,15 @@ export function ShortcutsPanel({
           }}
         />
       </div>
+      {exported ? (
+        <p
+          className="settings-hint"
+          role="status"
+          id="settings-shortcuts-exported"
+        >
+          Shortcuts exported.
+        </p>
+      ) : null}
       {importing ? (
         <ImportPreviewView
           importing={importing}
@@ -944,7 +958,19 @@ function ImportPreviewView({
           ))}
         </ul>
       )}
+      {mode !== null && preview.rows.length === 0 ? (
+        <div className="hv-shortcut-note" data-kind="warn" role="status">
+          <Icon name="state-attention" size={12} />
+          <span>
+            This file has no shortcuts for {isMac ? 'macOS' : 'this platform'}.
+            {mode === 'replace'
+              ? ' Replacing would put every command back to its default.'
+              : ' Adding it changes nothing.'}
+          </span>
+        </div>
+      ) : null}
       <div className="hv-shortcuts-import-actions">
+        <span className="settings-hint">[esc] cancel import</span>
         <Button
           label="Confirm import"
           kind="primary"

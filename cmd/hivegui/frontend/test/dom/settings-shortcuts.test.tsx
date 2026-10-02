@@ -569,6 +569,24 @@ describe('settings: shortcuts import and export', () => {
       mac: { 'new-session': ['Mod+T', 'Mod+Y'] },
     });
     expect(bridge.SaveKeymap).not.toHaveBeenCalled();
+    expect(el('settings-shortcuts-exported').textContent).toContain('exported');
+  });
+
+  it('a cancelled export says nothing', async () => {
+    bridge.ExportKeymap.mockImplementation(() => Promise.resolve(false));
+    await openTab();
+    act(() => tool('settings-shortcuts-export').click());
+    await settle();
+    expect(document.getElementById('settings-shortcuts-exported')).toBeNull();
+  });
+
+  it('warns when the file has nothing for this platform', async () => {
+    await openTab();
+    await startImport({ other: { 'new-session': ['Ctrl+Y'] } });
+    chooseMode('replace');
+    expect(preview()?.textContent).toContain('no shortcuts for macOS');
+    expect(preview()?.textContent).toContain('back to its default');
+    expect(preview()?.textContent).toContain('[esc] cancel import');
   });
 
   it('a failed export shows the error and re-enables the buttons', async () => {

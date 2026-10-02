@@ -95,7 +95,9 @@ func exportKeymapWith(save func() (string, error), k Keymap) (bool, error) {
 		return false, err
 	}
 	k.Version = 1
-	if err := writeJSONFile(path, k); err != nil {
+	// A file the user keeps and shares, not private state: readable like
+	// any other document they save.
+	if err := writeJSONFile(path, k, 0o644); err != nil {
 		return false, err
 	}
 	return true, nil
@@ -136,5 +138,11 @@ func pickKeymapFileWith(open func() (string, error)) (string, error) {
 	if len(b) > maxKeymapFile {
 		return "", fmt.Errorf("%s is larger than 1 MB, so it is not a Hive keymap", filepath.Base(path))
 	}
-	return string(bytes.TrimPrefix(b, []byte("\ufeff"))), nil
+	b = bytes.TrimPrefix(b, []byte("\ufeff"))
+	// "" means the user cancelled the dialog, so an empty file must not
+	// come back as "": it would do nothing and say nothing.
+	if len(bytes.TrimSpace(b)) == 0 {
+		return "", fmt.Errorf("%s is empty", filepath.Base(path))
+	}
+	return string(b), nil
 }

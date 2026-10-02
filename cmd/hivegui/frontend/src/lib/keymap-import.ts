@@ -145,8 +145,11 @@ export function previewImport(
   const rows: ImportRow[] = [];
   const candidate: [string, string[]][] = [];
   for (const m of file.malformed) {
-    const [h, id] = m.split(': ');
-    if (h === half && id !== undefined)
+    // `half: id`; an id may itself contain ': '.
+    const at = m.indexOf(': ');
+    const h = m.slice(0, at);
+    const id = m.slice(at + 2);
+    if (at > 0 && h === half)
       rows.push({ id, status: 'malformed', reason: 'Not a list of keys.' });
   }
   for (const [id, chords] of Object.entries(keymapHalf(file.keymap, isMac))) {

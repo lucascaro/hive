@@ -180,7 +180,11 @@ test('importing a keymap file, then exporting it', async ({ page }) => {
     .locator('input[name="shortcut-import-mode"][value="replace"]')
     .check();
   await expect(imp('no-such-thing')).toHaveAttribute('data-state', 'skipped');
-  await expect(imp('new-session')).toHaveAttribute('data-state', 'ok');
+  // Off macOS Mod+Y is Ctrl+Y, which programs in a session also receive.
+  await expect(imp('new-session')).toHaveAttribute(
+    'data-state',
+    mac ? 'ok' : 'warn',
+  );
   await expect(page.locator('#settings-save')).toBeDisabled();
   // The footer's reason fits beside the buttons: Save does not wrap.
   const [cancelBox, saveBox] = await Promise.all([

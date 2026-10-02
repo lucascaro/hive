@@ -151,6 +151,13 @@ describe('previewImport', () => {
     });
   });
 
+  it('keeps a malformed id whole, even one containing ": "', () => {
+    const p = previewImport(file({ mac: { 'a: b': null } }), true, catalog);
+    expect(p.rows).toEqual([
+      { id: 'a: b', status: 'malformed', reason: 'Not a list of keys.' },
+    ]);
+  });
+
   it('refuses the OS’s keys off macOS too', () => {
     const p = preview({ other: { settings: ['Alt+F4'] } }, false);
     expect(p.rows[0].status).toBe('reserved');

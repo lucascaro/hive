@@ -273,10 +273,12 @@
 .hv-shortcut-row[data-state='skipped'] .hv-shortcut-label { color: var(--fg-muted); }
 .hv-shortcuts-import-actions {
   display: flex;
+  align-items: center;
   gap: var(--space-2);
   justify-content: flex-end;
   margin-top: var(--space-3);
 }
+.hv-shortcuts-import-actions .settings-hint { margin: 0 auto 0 0; }
 /* The footer note that says why Save is disabled while a shortcut
    conflict waits (Settings.tsx); icon + words, never colour alone. */
 .settings-save-blocked {
