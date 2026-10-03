@@ -2,7 +2,7 @@
 
 - **Spec:** [docs/product-specs/492-research-acp-as-hive-s-engine-driven-workflow-tran.md](../../product-specs/492-research-acp-as-hive-s-engine-driven-workflow-tran.md)
 - **Issue:** #492
-- **Status:** active
+- **Status:** completed
 - **PR:** #493
 - **Branch:** feature/492-research-acp-workflows
 
@@ -186,3 +186,12 @@ Runs: Claude (`@agentclientprotocol/claude-agent-acp@0.85.1`), Codex (`@agentcli
 - **2026-10-02 iter 1** — verdict: APPROVE; mergeable: MERGEABLE; findings_hash: empty; threads_open: 0; action: stop; head_sha: 4819403. 5 MINOR nits applied after convergence; re-review follows as iter 2.
 - **2026-10-02 iter 2** — verdict: REQUEST_CHANGES; mergeable: MERGEABLE; findings_hash: 3889fa95066ec7ce9509df84453f2121cf8d225970f6af4c4918c8d81c9da858; threads_open: 1; action: escalated:risky-fix-needs-human-decision; head_sha: 5d4bed3. The orchestrator chose exit+drain-grace for the headless stdout drain (strictly safer, cannot flip the committed verdict); the new CodeRabbit date thread was posted after autofix ran.
 - **2026-10-02 iter 3** — verdict: APPROVE; mergeable: MERGEABLE; findings_hash: empty; threads_open: 0; action: stop; head_sha: 3343277.
+
+## Gate verdict
+
+- **2026-10-03** — verdict: PASS; phase: —; checks: 14 passed / 0 failed / 0 followups; followups: none; one-line: all 6 success criteria and 7 non-goals verified; docs accurate (two doc-only wording fixes applied during the gate: no-go now says "recommends stopping", and 391's cap is described as planned).
+  - 2026-10-03 dimensions:
+    - acceptance — PASS — SC1–SC6 verified; check-doc matches results; 40/40 probe tests pass; no internal/ or cmd/ changes
+    - non-goals — PASS — docs, scripts/acp-probe and one CI step only; phases 1–3 untouched; PTY stays the default
+    - doc accuracy — PASS — code citations verified; anchors resolve; no changeset needed (check-changeset exit 0)
+

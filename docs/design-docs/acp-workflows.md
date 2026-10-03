@@ -21,7 +21,9 @@ Both are allowed to spawn sessions, so both run under the one trust model in
 The rule (spec 492, success criterion 6), applied to Claude and Codex: an agent
 is *ok* when MCP injection and the Hive-PTY takeover both pass. **go** if at
 least one is ok; **no-go** if MCP fails for both, or takeover fails for both;
-otherwise **undecided** — never reported as go. `scripts/acp-probe/check-doc.mjs`
+otherwise **undecided** — never reported as go. A **no-go** means this doc recommends
+stopping the ACP track: no follow-up spec below is started, and the probe is
+re-run only when an adapter's version changes. `scripts/acp-probe/check-doc.mjs`
 recomputes this verdict from the results files in CI, so it cannot drift from
 the evidence.
 
@@ -239,7 +241,7 @@ or the engine plugin, which `hived` identifies by its plugin socket.
    identity and bound to the node's own server name (F7). Everything else surfaces as `waiting_permission`, just like a
    hook-tier session.
 5. **Caps.** The engine is limited to a fixed number of live nodes per run, in
-   the same way `maxChildrenPerOrchestrator` limits a granted session (391).
+   the same way spec 391's planned `maxChildrenPerOrchestrator` will limit a granted session (not built yet).
    Its frames are charged against the plugin token bucket (460).
 
 **Containing the drift.** Two tracks that both spawn sessions drift when each

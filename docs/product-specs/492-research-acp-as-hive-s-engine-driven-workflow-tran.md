@@ -5,7 +5,8 @@ type: enhancement
 complexity: M
 priority: P2
 pr: 493
-stage: GATE
+shipped: 2026-10-03
+stage: DONE
 ---
 
 # Research ACP as Hive's engine-driven workflow transport
@@ -14,7 +15,7 @@ stage: GATE
 - **Type:** enhancement
 - **Complexity:** M
 - **Priority:** P2
-- **Exec plan:** [docs/exec-plans/active/492-research-acp-as-hive-s-engine-driven-workflow-tran.md](../exec-plans/active/492-research-acp-as-hive-s-engine-driven-workflow-tran.md)
+- **Exec plan:** [docs/exec-plans/completed/492-research-acp-as-hive-s-engine-driven-workflow-tran.md](../exec-plans/completed/492-research-acp-as-hive-s-engine-driven-workflow-tran.md)
 
 ## Problem
 
