@@ -13,7 +13,6 @@ The *what* and *why* of work this project plans to do. Each spec describes user 
 | P2 | — | Orchestrator grant: a session you name can message its siblings | PLAN | [389-orchestrator-grant-and-session-msg](389-orchestrator-grant-and-session-msg.md) |
 | P2 | — | In-house VT emulator (replace hinshun/vt10x) | IMPLEMENT | [in-house-vt-emulator](in-house-vt-emulator.md) |
 | — | #142 | vt snapshot: CJK / wide-char column misalignment | TRIAGE | [142-vt-snapshot-cjk-wide-char-column-misalignment](142-vt-snapshot-cjk-wide-char-column-misalignment.md) |
-| — | — | Resume conversations on daemon restart | TRIAGE | [254-resume-conversations-on-daemon-restart](254-resume-conversations-on-daemon-restart.md) |
 | P3 | — | Move SocketPath out of internal/daemon so clients stop linking the daemon | TRIAGE | [331-move-socketpath-out-of-internal-daemon](331-move-socketpath-out-of-internal-daemon.md) |
 | P3 | — | Observe from a session: hived session list and hived wait | PLAN | [390-session-observe-list-and-wait](390-session-observe-list-and-wait.md) |
 | P3 | — | Agent-spawned sessions: a granted session can start a sibling | PLAN | [391-agent-spawned-sessions](391-agent-spawned-sessions.md) |
@@ -111,6 +110,7 @@ The *what* and *why* of work this project plans to do. Each spec describes user 
 | #159 | Returning to grid leaves session visually selected but keyboard input doesn't reach it | — | 2026-05-08 | [159-grid-return-session-input-focus](159-grid-return-session-input-focus.md) |
 | #163 | GUI: resize loses scroll position when viewport is 1-2 lines short of bottom | — | 2026-05-08 | [163-resize-stick-mostly-bottom](163-resize-stick-mostly-bottom.md) |
 | #165 | Restarting a session can reload the wrong session when multiple share a worktree/directory | — | 2026-05-08 | [165-restart-session-wrong-session](165-restart-session-wrong-session.md) |
+| — | Resume conversations on daemon restart | #166 | 2026-05-08 | [254-resume-conversations-on-daemon-restart](254-resume-conversations-on-daemon-restart.md) |
 | #155 | Save session name on Enter key when editing | — | 2026-05-07 | [155-save-session-name-on-enter-key](155-save-session-name-on-enter-key.md) |
 
 ## Rejected
