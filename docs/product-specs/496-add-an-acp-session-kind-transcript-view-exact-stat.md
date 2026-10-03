@@ -81,6 +81,6 @@ Spec 492 showed that ACP (Agent Client Protocol) fixes all three. Hive has no AC
 
 ## Notes
 
-- Depends on #494: Claude takeover and resume fail when the session's folder path contains `_`.
+- Depended on #494 (Claude takeover and resume failed when the folder path contained `_`); fixed in #497.
 - #254 (resume conversations after a daemon restart) looks stale: `Revive` already resumes through `ResumeArgs` (`internal/registry/registry.go:1367`). Close it or re-scope it separately.
 - This needs a `DaemonContract` bump, since it adds a new session kind and new wire operations.
