@@ -350,7 +350,10 @@ func (r *Registry) onACPPermission(ctx context.Context, id string, as *acpSessio
 	}
 	as.nextRq++
 	p := &acpPending{answer: make(chan any, 1), info: wire.AcpPermission{
-		RequestID:  strconv.Itoa(as.nextRq),
+		// Epoch-qualified: each adapter process restarts its counter,
+		// and a late answer to request 1 of the last process must not
+		// satisfy request 1 of this one.
+		RequestID:  strconv.Itoa(e.acpTx.Epoch()) + "-" + strconv.Itoa(as.nextRq),
 		ToolCallID: req.ToolCall.ToolCallID,
 		Title:      req.ToolCall.Title,
 	}}

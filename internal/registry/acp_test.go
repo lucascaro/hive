@@ -479,3 +479,38 @@ func TestReplayBroadcastsOneReset(t *testing.T) {
 		t.Errorf("final reset carries %d items, want the 6 replayed (resets seen: %d)", n, resets)
 	}
 }
+
+// A permission request id must name one request of one adapter process:
+// a late answer to the previous process's request must not satisfy the
+// new process's request, even though both counters start at one.
+func TestStalePermissionIDRefusedAfterRestart(t *testing.T) {
+	useFakeACP(t, acptest.FlagPermission)
+	r := freshRegistry(t)
+	e := createACP(t, r, wire.CreateSpec{Name: "a"})
+	pending := func() *wire.AcpPermission {
+		var p *wire.AcpPermission
+		waitFor(t, "permission request", func() bool {
+			msg, _ := r.AcpTranscript(e.ID)
+			p = msg.Permission
+			return p != nil
+		})
+		return p
+	}
+	r.PromptACP(e.ID, "one", wire.OriginUser)
+	old := pending()
+	if err := r.Restart(e.ID); err != nil {
+		t.Fatal(err)
+	}
+	waitFor(t, "alive", func() bool { return info(r, e.ID).Alive })
+	if err := r.PromptACP(e.ID, "two", wire.OriginUser); err != nil {
+		t.Fatal(err)
+	}
+	cur := pending()
+	if err := r.AnswerPermission(e.ID, old.RequestID, "allow"); !errors.Is(err, ErrPermissionStale) {
+		t.Fatalf("answer with the previous adapter's id %q (current %q) = %v, want ErrPermissionStale", old.RequestID, cur.RequestID, err)
+	}
+	if err := r.AnswerPermission(e.ID, cur.RequestID, "allow"); err != nil {
+		t.Fatal(err)
+	}
+	waitFor(t, "turn end", idleAfterTurn(r, e.ID))
+}
