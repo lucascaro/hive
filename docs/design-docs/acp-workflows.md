@@ -183,8 +183,10 @@ the headless escape hatch, or as human/PTY nodes.
 `hived` serves `submit_result`. Each agent node gets its own stdio MCP server
 instance (a `hived` subcommand) that records the call against that node in the
 registry. So results are typed, and identical across agents, by construction.
-The submit tool is the **only** tool the daemon auto-allows, and it matches on
-exact structured identity (F7).
+The submit tool is the **only** tool the daemon auto-allows. The match is on
+exact structured identity (F7), bound to that node's own server name: Hive
+names the server per node, so a user's MCP server that happens to be called
+"hive" never matches.
 
 ### Where the engine lives
 
@@ -233,7 +235,7 @@ or the engine plugin, which `hived` identifies by its plugin socket.
    - Pi runs only where the user's setting allows unattended tool use (F5).
 4. **Permission requests go to the user.** The engine never answers
    `request_permission` except for its own `submit_result`, matched by exact
-   identity (F7). Everything else surfaces as `waiting_permission`, just like a
+   identity and bound to the node's own server name (F7). Everything else surfaces as `waiting_permission`, just like a
    hook-tier session.
 5. **Caps.** The engine is limited to a fixed number of live nodes per run, in
    the same way `maxChildrenPerOrchestrator` limits a granted session (391).

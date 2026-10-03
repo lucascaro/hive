@@ -21,7 +21,7 @@ import { homedir, tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { createInterface } from 'node:readline';
 import { fileURLToPath } from 'node:url';
-import { AGENTS } from './agents.mjs';
+import { AGENTS, submitIdsFor } from './agents.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 export const SUBMIT_MCP = join(HERE, 'submit-mcp.mjs');
@@ -65,7 +65,13 @@ export function withTimeout(promise, ms, label) {
 
 export function spawnGroup(argv, opts) {
   // detached: own process group, so a timeout can kill npx + node + the CLI.
-  return spawn(argv[0], argv.slice(1), { ...opts, detached: true });
+  const child = spawn(argv[0], argv.slice(1), { ...opts, detached: true });
+  // A missing binary (no npx, no python3) emits 'error', not 'exit'; without
+  // a listener it would crash the probe before any results are written.
+  // EPIPE on a dead child's stdin is likewise expected, not fatal.
+  child.on('error', (e) => { child.spawnError = e; });
+  child.stdin?.on('error', () => {});
+  return child;
 }
 
 export async function killGroup(child) {
@@ -88,11 +94,13 @@ export class Rpc {
     this.pending = new Map();
     this.log = log ?? (() => {});
     this.closed = false;
-    child.on('exit', () => {
+    const close = (why) => {
       this.closed = true;
-      for (const { rej } of this.pending.values()) rej(new Error('adapter exited'));
+      for (const { rej } of this.pending.values()) rej(new Error(why));
       this.pending.clear();
-    });
+    };
+    child.on('exit', () => close('adapter exited'));
+    child.on('error', (e) => close(`adapter failed to start: ${e.code ?? e.message}`));
     createInterface({ input: child.stdout }).on('line', async (line) => {
       let msg;
       try { msg = JSON.parse(line); } catch { this.log('<- (non-json)', line); return; }
@@ -278,6 +286,7 @@ export async function ptyTakeover({ argv, branch, hiveBranch = branch, cwd, mark
   const deadline = Date.now() + budget;
   try {
     while (Date.now() < deadline && child.exitCode === null) {
+      if (child.spawnError) return { verdict: 'inconclusive', reason: 'cli_error', branch, hiveBranch };
       await new Promise((r) => setTimeout(r, 500));
       // TUIs position with cursor moves, not spaces: compare whitespace-free.
       const screen = stripAnsi(readFileSync(log, 'utf8')).replace(/\s+/g, '');
@@ -314,9 +323,26 @@ export function pidsMatching(re) {
   return new Set((r.stdout ?? '').split('\n').filter((l) => re.test(l)).map((l) => Number.parseInt(l, 10)));
 }
 
-export function headlessTakeover({ argv, cwd, nonce, budget }) {
-  const r = spawnSync(argv[0], argv.slice(1), { cwd, encoding: 'utf8', timeout: budget, stdio: ['ignore', 'pipe', 'pipe'], env: childEnv() });
-  if (r.error?.code === 'ETIMEDOUT' || r.signal) return { verdict: 'inconclusive', reason: 'timeout' };
+// Runs in its own process group so a timeout kills the whole CLI tree (a
+// detached daemon such as codex's app-server has its own group and is only
+// reported, by pidsMatching, never killed).
+export async function headlessTakeover({ argv, cwd, nonce, budget }) {
+  const child = spawnGroup(argv, { cwd, stdio: ['ignore', 'pipe', 'pipe'], env: childEnv() });
+  let stdout = '';
+  let stderr = '';
+  child.stdout.on('data', (d) => { stdout += d; });
+  child.stderr.on('data', (d) => { stderr += d; });
+  const done = new Promise((res) => { child.once('exit', res); child.once('error', res); });
+  let timedOut = false;
+  try {
+    await withTimeout(done, budget, 'headless resume');
+  } catch {
+    timedOut = true;
+  } finally {
+    await killGroup(child);
+  }
+  const r = { stdout, stderr, error: child.spawnError };
+  if (timedOut) return { verdict: 'inconclusive', reason: 'timeout' };
   if (r.error) return { verdict: 'inconclusive', reason: 'cli_error' };
   // codex: a thread has one writer; a detached app-server left behind by an
   // earlier resume keeps it (see the design doc's findings).
@@ -343,6 +369,9 @@ export async function runProbe(name, { def = AGENTS[name], budgets = DEFAULT_BUD
   const rawLog = join(rawDir, 'rpc.log');
   const outFile = join(rawDir, 'submit.jsonl');
   const nonce = `hive-${randomBytes(6).toString('hex')}`;
+  // Per-run MCP server name: the permission allow rule binds to THIS server.
+  const server = `hiveprobe${nonce.slice(5)}`;
+  const submitIds = submitIdsFor(server);
   const r = {
     agent: name, date: new Date().toISOString().slice(0, 10), route: def.route,
     adapter: def.pkg ? `${def.pkg}@${def.version}` : null, checks: {}, updateKinds: new Set(),
@@ -368,7 +397,7 @@ export async function runProbe(name, { def = AGENTS[name], budgets = DEFAULT_BUD
     },
     onRequest: async (method, params) => {
       if (method === 'session/request_permission') {
-        const d = decidePermission(params, seen, def.submitIds);
+        const d = decidePermission(params, seen, submitIds);
         permissions.push(d);
         if (d.identity) r.identityField = d.identity.field;
         return d.response;
@@ -386,7 +415,7 @@ export async function runProbe(name, { def = AGENTS[name], budgets = DEFAULT_BUD
     r.capabilities = init?.agentCapabilities ?? {};
     const created = await withTimeout(s.rpc.request('session/new', {
       cwd,
-      mcpServers: [{ name: 'hive', command: process.execPath, args: [SUBMIT_MCP, outFile], env: [] }],
+      mcpServers: [{ name: server, command: process.execPath, args: [SUBMIT_MCP, outFile], env: [] }],
     }), budgets.init, 'session/new');
     sessionId = created?.sessionId ?? null;
     r.modes = (created?.modes?.availableModes ?? []).map((m) => m.id);
@@ -449,7 +478,7 @@ export async function runProbe(name, { def = AGENTS[name], budgets = DEFAULT_BUD
     if (def.daemonPattern) {
       r.detachedDaemons = [...pidsMatching(def.daemonPattern)].filter((p) => !before.has(p)).length;
     }
-    r.checks.takeover_headless = headlessTakeover({
+    r.checks.takeover_headless = await headlessTakeover({
       argv: def.headlessResume(cli.id, 'Reply with only the nonce you were given earlier in this conversation.'),
       cwd, nonce, budget: budgets.headless,
     });

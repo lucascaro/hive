@@ -180,3 +180,7 @@ Runs: Claude (`@agentclientprotocol/claude-agent-acp@0.85.1`), Codex (`@agentcli
 - **2026-10-02** — PR #493 opened; stage REVIEW.
 
 ## Open questions
+
+## PR convergence ledger
+
+- **2026-10-02 iter 1** — verdict: APPROVE; mergeable: MERGEABLE; findings_hash: empty; threads_open: 0; action: stop; head_sha: 4819403. 5 MINOR nits applied after convergence; re-review follows as iter 2.

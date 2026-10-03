@@ -60,6 +60,7 @@ export function checkDoc(md, results) {
         return;
       }
       const want = res.checks?.[key]?.verdict;
+      if (want === undefined) { errors.push(`${where}: results file has no verdict for ${key}`); return; }
       const got = /^[`*]*([a-z-]+)/.exec(cell)?.[1];
       if (got !== want) errors.push(`${where}: doc says ${got}, results say ${want}`);
     });

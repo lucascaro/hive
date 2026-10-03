@@ -69,7 +69,7 @@ const handlers = {
     if (!flag('--ignore-mcp')) {
       const tc = flag('--no-identity-perm')
         ? { toolCallId: 't1', title: 'submit_result' }
-        : { toolCallId: 't1', name: 'mcp__hive__submit_result', title: 'submit_result', rawInput: { nonce } };
+        : { toolCallId: 't1', name: `mcp__${s.mcp[0].name}__submit_result`, title: 'submit_result', rawInput: { nonce } };
       update(p.sessionId, { sessionUpdate: 'tool_call', ...tc });
       const resp = await request('session/request_permission', { sessionId: p.sessionId, toolCall: tc, options: OPTIONS });
       if (allowed(resp)) await callMcp(s.mcp[0], { status: 'ok', nonce: flag('--wrong-nonce') ? 'hive-000000000000' : nonce });

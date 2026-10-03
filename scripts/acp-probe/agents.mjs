@@ -82,14 +82,12 @@ const TRUST_PROMPTS = [
   { re: /Updatenow|Skipuntilnextversion/i, keys: '\x1b', blocksEnter: true },
 ];
 
-// Exact identities of the injected tool. Matched against structured fields
-// only (never title/free text): see toolIdentity() in probe.mjs.
-const SUBMIT_IDS = new Set([
-  'mcp__hive__submit_result',
-  'hive__submit_result',
-  'hive.submit_result',
-  'hive/submit_result',
-]);
+// Exact identities of the injected tool, for the per-run server name the
+// probe injects (so a user's own MCP server that happens to be called "hive"
+// can never match). Matched against structured fields only (never title/free
+// text): see toolIdentity() in probe.mjs.
+export const submitIdsFor = (server) =>
+  new Set([`mcp__${server}__submit_result`, `${server}__submit_result`, `${server}.submit_result`, `${server}/submit_result`]);
 
 export const AGENTS = {
   claude: {
@@ -118,7 +116,6 @@ export const AGENTS = {
     },
     headlessResume: (id, prompt) => ['claude', '-p', '--resume', id, prompt],
     trustPrompts: TRUST_PROMPTS,
-    submitIds: SUBMIT_IDS,
   },
   codex: {
     route: 'adapter',
@@ -134,7 +131,6 @@ export const AGENTS = {
     // (parent pid 1, own process group) that outlives the TUI.
     daemonPattern: /codex app-server/,
     trustPrompts: TRUST_PROMPTS,
-    submitIds: SUBMIT_IDS,
   },
   pi: {
     route: 'adapter',
@@ -152,6 +148,5 @@ export const AGENTS = {
     },
     headlessResume: (id, prompt) => ['pi', '--session-id', id, '-p', prompt],
     trustPrompts: TRUST_PROMPTS,
-    submitIds: SUBMIT_IDS,
   },
 };

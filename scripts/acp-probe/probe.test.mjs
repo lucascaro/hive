@@ -3,27 +3,34 @@
 // agent CLI, no network, no model spend, no access to the user's real HOME.
 import assert from 'node:assert/strict';
 import { spawn } from 'node:child_process';
-import { mkdirSync, mkdtempSync, readFileSync, realpathSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { createInterface } from 'node:readline';
-import { test } from 'node:test';
+import { after, test } from 'node:test';
 import { fileURLToPath } from 'node:url';
-import { AGENTS, encodeClaudeProjectDirObserved, piResolveSessionId } from './agents.mjs';
+import { AGENTS, encodeClaudeProjectDirObserved, piResolveSessionId, submitIdsFor } from './agents.mjs';
 import { checkDoc, computeVerdict } from './check-doc.mjs';
 import { SUBMIT_MCP, childEnv, decidePermission, dialogKeys, ptyTakeover, replyMarker, runProbe, whitelist } from './probe.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const FAKE = join(HERE, 'testdata', 'fake-agent.mjs');
-const tmp = (p) => realpathSync(mkdtempSync(join(tmpdir(), p)));
+const made = [];
+const tmp = (p) => {
+  const d = realpathSync(mkdtempSync(join(tmpdir(), p)));
+  made.push(d);
+  return d;
+};
+after(() => { for (const d of made) rmSync(d, { recursive: true, force: true }); });
 const BUDGETS = { init: 5000, prompt: 10_000, load: 5000, headless: 5000, pty: 5000 };
 const fakeDef = (...flags) => ({
   route: 'adapter', pkg: 'fake', version: '0.0.0',
   launch: () => [process.execPath, FAKE, ...flags],
   cliSessionId: (id) => ({ id, mismatch: false }),
-  submitIds: AGENTS.claude.submitIds, trustPrompts: [],
+  trustPrompts: [],
 });
-const probe = (...flags) => runProbe('fake', { def: fakeDef(...flags), budgets: BUDGETS, skipTakeover: true });
+// home is a temp dir so no code path can touch the real ~/.claude or ~/.pi.
+const probe = (...flags) => runProbe('fake', { def: fakeDef(...flags), budgets: BUDGETS, skipTakeover: true, home: tmp('acp-home-') });
 
 // ---------- submit-mcp ----------
 
@@ -99,7 +106,7 @@ test('probe: permission request with no structured identity → mcp=inconclusive
 });
 
 test('probe: hung agent times out, its process group is gone, and the probe returns', async () => {
-  const r = await runProbe('fake', { def: fakeDef('--hang'), budgets: { ...BUDGETS, init: 1500 }, skipTakeover: true });
+  const r = await runProbe('fake', { def: fakeDef('--hang'), budgets: { ...BUDGETS, init: 1500 }, skipTakeover: true, home: tmp('acp-home-') });
   assert.equal(r.phase1Error, 'timeout');
   assert.equal(r.checks.mcp.verdict, 'inconclusive');
   for (const pgid of r.pgids) assert.throws(() => process.kill(-pgid, 0), { code: 'ESRCH' });
@@ -110,7 +117,7 @@ test('probe: hung agent times out, its process group is gone, and the probe retu
 const OPTS = [{ optionId: 'a', kind: 'allow_once' }, { optionId: 'r', kind: 'reject_once' }];
 
 test('decidePermission: allows only the exact injected tool identity', () => {
-  const ids = AGENTS.claude.submitIds;
+  const ids = submitIdsFor('hive');
   assert.equal(decidePermission({ toolCall: { name: 'mcp__hive__submit_result' }, options: OPTS }, new Map(), ids).allowed, true);
   assert.equal(decidePermission({ toolCall: { _meta: { claudeCode: { toolName: 'mcp__hive__submit_result' } } }, options: OPTS }, new Map(), ids).allowed, true);
   for (const tc of [
@@ -126,7 +133,19 @@ test('decidePermission: allows only the exact injected tool identity', () => {
 
 test('decidePermission: identity comes from the earlier tool_call update when the request omits it', () => {
   const seen = new Map([['t9', { toolCallId: 't9', name: 'mcp__hive__submit_result' }]]);
-  assert.equal(decidePermission({ toolCall: { toolCallId: 't9', title: 'x' }, options: OPTS }, seen, AGENTS.claude.submitIds).allowed, true);
+  assert.equal(decidePermission({ toolCall: { toolCallId: 't9', title: 'x' }, options: OPTS }, seen, submitIdsFor('hive')).allowed, true);
+});
+
+test('decidePermission: binds to the per-run server, so a user server named "hive" is rejected', () => {
+  const d = decidePermission({ toolCall: { name: 'mcp__hive__submit_result' }, options: OPTS }, new Map(), submitIdsFor('hiveprobeabc123'));
+  assert.equal(d.allowed, false);
+});
+
+test('probe: a missing adapter binary is reported, not a crash', async () => {
+  const def = { ...fakeDef(), launch: () => ['acp-probe-no-such-binary-xyz'] };
+  const r = await runProbe('fake', { def, budgets: BUDGETS, skipTakeover: true, home: tmp('acp-home-') });
+  assert.equal(r.phase1Error, 'adapter_error');
+  assert.equal(r.checks.mcp.verdict, 'inconclusive');
 });
 
 // ---------- takeover ----------
@@ -302,6 +321,11 @@ test('check-doc: fails on a run cell that disagrees with results', () => {
 
 test('check-doc: fails when the doc verdict differs from the computed one', () => {
   assert.ok(checkDoc(doc({ verdict: 'no-go' }), allPass).some((e) => e.startsWith('go/no-go')));
+});
+
+test('check-doc: fails when a results file lacks a verdict for a [run] cell', () => {
+  const partial = { ...allPass, codex: { ...res('pass', 'pass'), checks: { ...res('pass', 'pass').checks, load: undefined } } };
+  assert.ok(checkDoc(doc(), partial).some((e) => e.includes('codex/load: results file has no verdict')));
 });
 
 test('check-doc: fails when a probed row is tagged doc or has no results', () => {
