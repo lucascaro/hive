@@ -163,7 +163,12 @@ func TestCloseEndsHungTurn(t *testing.T) {
 	ns, _ := a.NewSession(ctx(t), dir, nil)
 	errc := make(chan error, 1)
 	go func() { _, err := a.Prompt(context.Background(), ns.SessionID, "wait"); errc <- err }()
-	time.Sleep(200 * time.Millisecond)
+	// Wait until the agent is actually inside the turn, not a fixed delay.
+	for deadline := time.Now().Add(10 * time.Second); !slices.Contains(acptest.Calls(dir), "session/prompt "+ns.SessionID); time.Sleep(10 * time.Millisecond) {
+		if time.Now().After(deadline) {
+			t.Fatal("the prompt never reached the agent")
+		}
+	}
 	a.Close()
 	select {
 	case err := <-errc:

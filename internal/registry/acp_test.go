@@ -153,6 +153,11 @@ func TestACPStateWorkingPermissionIdle(t *testing.T) {
 	if err := r.AnswerPermission(e.ID, perm.RequestID, "allow"); err != nil {
 		t.Fatal(err)
 	}
+	// A second answer to the same request (another window) was not used,
+	// and must say so — unless the first already cleared it.
+	if err := r.AnswerPermission(e.ID, perm.RequestID, "reject"); !errors.Is(err, ErrPermissionStale) {
+		t.Errorf("second answer = %v, want ErrPermissionStale", err)
+	}
 	waitFor(t, "turn end", idleAfterTurn(r, e.ID))
 	got := transcriptTexts(t, r, e.ID)
 	want := []string{"user:hello", "agent:echo: hello [selected:allow]"}

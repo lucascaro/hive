@@ -64,7 +64,10 @@ type acpSession struct {
 
 type acpPending struct {
 	info   wire.AcpPermission
-	answer chan any
+	answer chan any // buffered 1; written once, under r.mu
+	// answered is set by the one answer that counts; any later one (a
+	// second window, a double click) is refused as stale. Under r.mu.
+	answered bool
 }
 
 // acpKind normalises CreateSpec.Kind for storage: "" for a terminal
@@ -383,16 +386,14 @@ func (r *Registry) AnswerPermission(id, requestID, optionID string) error {
 	if !e.isACP() {
 		return ErrNotACP
 	}
-	if e.acp == nil || e.acp.perm == nil || e.acp.perm.info.RequestID != requestID {
+	if e.acp == nil || e.acp.perm == nil || e.acp.perm.info.RequestID != requestID || e.acp.perm.answered {
 		return ErrPermissionStale
 	}
 	p := e.acp.perm
 	for _, o := range p.info.Options {
 		if o.OptionID == optionID {
-			select {
-			case p.answer <- acp.Selected(optionID):
-			default: // already answered; the waiter is on its way out
-			}
+			p.answered = true
+			p.answer <- acp.Selected(optionID) // buffered, never blocks: first and only send
 			return nil
 		}
 	}
