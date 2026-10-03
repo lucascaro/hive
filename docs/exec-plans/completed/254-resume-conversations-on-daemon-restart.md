@@ -3,7 +3,7 @@
 - **Spec:** [docs/product-specs/254-resume-conversations-on-daemon-restart.md](../../product-specs/254-resume-conversations-on-daemon-restart.md)
 - **Issue:** —
 - **Branch:** —
-- **Status:** active
+- **Status:** completed
 
 ## Summary
 
@@ -59,3 +59,7 @@ Plan sketch:
 
 - Not started. Stage TRIAGE — research above predates the current tree and needs
   re-verification before planning.
+- **2026-10-03** — Closed as already shipped by #166 (per-session id pinned
+  at create, resumed by `Registry.Revive`); see the spec's Notes for the
+  evidence. Nothing implemented under this plan; the Approach above was
+  superseded by `SessionIDFlag` / `ResumeArgs` on `agent.Def`.

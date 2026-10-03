@@ -129,8 +129,9 @@ built. That is the point.
   everyone".
 - **Surviving a daemon restart.** An orchestration in flight dies with
   the daemon today; spawned children are ordinary entries and come
-  back as such. [254](../exec-plans/active/254-resume-conversations-on-daemon-restart.md)
-  is independent, but it becomes urgent once phase 3 ships.
+  back as such, each resumed onto its own agent conversation
+  ([254](../exec-plans/completed/254-resume-conversations-on-daemon-restart.md),
+  shipped in #166). Resuming the orchestration itself is still open.
 
 ## Alternatives considered
 

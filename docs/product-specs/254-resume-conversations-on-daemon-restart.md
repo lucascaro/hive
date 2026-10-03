@@ -3,7 +3,10 @@ issue: null
 title: Resume conversations on daemon restart
 type: enhancement
 complexity: M
-stage: TRIAGE
+priority: P3
+pr: 166
+shipped: 2026-05-08
+stage: DONE
 ---
 
 # Resume conversations on daemon restart
@@ -12,8 +15,8 @@ stage: TRIAGE
 - **Type:** enhancement
 - **Complexity:** M
 - **Priority:** P3
-- **Stage:** TRIAGE
-- **Exec plan:** [docs/exec-plans/active/254-resume-conversations-on-daemon-restart.md](../exec-plans/active/254-resume-conversations-on-daemon-restart.md)
+- **Stage:** DONE
+- **Exec plan:** [docs/exec-plans/completed/254-resume-conversations-on-daemon-restart.md](../exec-plans/completed/254-resume-conversations-on-daemon-restart.md)
 
 ## Problem
 
@@ -51,3 +54,15 @@ Flipping `Revive` to use `ResumeCmd` is trivial but wrong for duplicated
 sessions: `claude --continue` / `codex resume --last` resume the most recent
 conversation *in the cwd*, not the most recent conversation for that specific
 hive session. Doing it right needs a per-hive-session conversation ID.
+
+**Closed 2026-10-03 as already shipped.** The behaviour landed in #166
+(2026-05-08), before this spec was migrated: `Registry.Revive`
+(`internal/registry/registry.go`) resumes `Entry.AgentSessionID` through
+`def.ResumeArgs`, and falls back to plain `def.Cmd` when there is no id. The
+id is per Hive session (pinned with `SessionIDFlag` at create, or captured
+post-spawn for codex), so duplicated sessions on one cwd resume distinct
+conversations. Covered by `TestReviveUsesResumeArgsForPinnedClaude`,
+`TestCreatePinsAgentSessionIDForClaude`, `TestAgentSessionIDPersistsAcrossReload`
+and `TestRestartUsesCapturedAgentSessionIDForCodex` in
+`internal/registry/registry_test.go`. #494 fixed Claude transcript lookup for
+cwds containing `_`, which this path depends on.
