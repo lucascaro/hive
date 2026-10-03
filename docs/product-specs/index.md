@@ -24,6 +24,7 @@ The *what* and *why* of work this project plans to do. Each spec describes user 
 | Issue | Title | PR | Shipped | Spec |
 |-------|-------|----|---------|------|
 | #492 | Research ACP as Hive's engine-driven workflow transport | #493 | 2026-10-03 | [492-research-acp-as-hive-s-engine-driven-workflow-tran](492-research-acp-as-hive-s-engine-driven-workflow-tran.md) |
+| #494 | Claude Restart/Revive fails when the session cwd contains \"_\" | #497 | 2026-10-03 | [494-claude-restart-revive-fails-when-the-session-cwd-co](494-claude-restart-revive-fails-when-the-session-cwd-co.md) |
 | #477 | Make every app shortcut configurable, with collision resolution | #490 | 2026-10-02 | [477-make-every-app-shortcut-configurable-with-collisio](477-make-every-app-shortcut-configurable-with-collisio.md) |
 | #481 | E2E-test every keyboard shortcut and menu command from the binding data | #486 | 2026-10-01 | [481-e2e-test-every-keyboard-shortcut-and-menu-command](481-e2e-test-every-keyboard-shortcut-and-menu-command.md) |
 | #478 | Decompose keyboard.ts into per-scope keymap tables | #480 | 2026-09-30 | [478-decompose-keyboard-ts-into-per-scope-keymap-tables](478-decompose-keyboard-ts-into-per-scope-keymap-tables.md) |
