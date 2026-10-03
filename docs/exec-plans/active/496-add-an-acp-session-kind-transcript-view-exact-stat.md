@@ -415,4 +415,6 @@ The contract bumps once per phase because `scripts/check-daemon-contract.sh:36-4
 
 ## PR convergence ledger
 
+- **2026-10-03 iter 1** — verdict: COMMENT; mergeable: MERGEABLE; findings_hash: acbc2b4cece9d2b0bbf20a49c764298ffcddb6f6a59a26127a1aee30cda32b2b; threads_open: 4; action: escalated:ci-check-failed-and-risky-fixes; head_sha: 3849659b.
+
 ## Gate verdict
