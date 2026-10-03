@@ -15,6 +15,7 @@ import (
 
 func useFakeACP(t *testing.T, flags ...string) {
 	t.Helper()
+	skipOnWindows(t) // the fake agent is this binary re-executed; daemon tests are POSIX-only
 	dir := t.TempDir()
 	t.Cleanup(registry.SetACPCommandForTest(func(agent.Def) ([]string, []string) {
 		return []string{os.Args[0]}, append(acp.AdapterEnv(os.Environ(), ""), acptest.Env(dir, flags...)...)

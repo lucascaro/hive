@@ -395,3 +395,22 @@ func TestSubscribeACPDeltas(t *testing.T) {
 		}
 	}
 }
+
+// An ACP session created in a worktree is bound to it, as a terminal
+// session is: revive runs there, and kill disposes of it.
+func TestCreateACPRecordsWorktree(t *testing.T) {
+	useFakeACP(t)
+	r, p := freshRegistryWithProject(t)
+	e := createACP(t, r, wire.CreateSpec{Name: "w", ProjectID: p.ID, UseWorktree: true})
+	in := info(r, e.ID)
+	if in.WorktreePath == "" || in.WorktreeBranch == "" {
+		t.Fatalf("ACP entry has no worktree: %+v", in)
+	}
+	var meta MetaFile
+	if err := readJSON(filepath.Join(SessionsDir(r.stateDir), e.ID, "session.json"), &meta); err != nil {
+		t.Fatal(err)
+	}
+	if meta.WorktreePath != in.WorktreePath {
+		t.Errorf("persisted worktree = %q, want %q", meta.WorktreePath, in.WorktreePath)
+	}
+}

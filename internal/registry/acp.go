@@ -100,6 +100,22 @@ func validateKind(spec wire.CreateSpec) error {
 // adapter, open a conversation, then send the opening prompt, if any,
 // as its first turn.
 func (r *Registry) finishCreateACP(e *Entry, spec wire.CreateSpec, p createPlan) error {
+	// Bind the worktree before the adapter starts, as attachSession
+	// does for a PTY: revive and restart take their cwd from it, kill
+	// disposes of it, and an unclaimed worktree is reclaimed at boot.
+	r.mu.Lock()
+	if cur, ok := r.entries[p.id]; !ok || cur != e {
+		r.mu.Unlock()
+		r.discardWorktree(p)
+		return ErrNotFound
+	}
+	if p.wtPath != "" {
+		e.WorktreePath = p.wtPath
+		e.WorktreeBranch = p.wtBranch
+		r.persistEntryLoggedLocked(e, "create (acp worktree)")
+	}
+	r.mu.Unlock()
+
 	r.setPhase(p.id, wire.PhaseSpawning)
 	if err := r.startACP(p.id, p.cwd, ""); err != nil {
 		r.setPhaseIf(p.id, wire.PhaseSpawning, wire.PhaseReady)
