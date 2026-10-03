@@ -4,7 +4,7 @@ title: "Add an ACP session kind: transcript view, exact state, permission prompt
 type: enhancement
 complexity: L
 priority: P2
-stage: RESEARCH
+stage: PLAN
 ---
 
 # Add an ACP session kind: transcript view, exact state, permission prompts, typed results, PTY takeover
@@ -13,7 +13,7 @@ stage: RESEARCH
 - **Type:** enhancement
 - **Complexity:** L
 - **Priority:** P2
-- **Exec plan:** —
+- **Exec plan:** [docs/exec-plans/active/496-add-an-acp-session-kind-transcript-view-exact-stat.md](../exec-plans/active/496-add-an-acp-session-kind-transcript-view-exact-stat.md)
 
 ## Problem
 
