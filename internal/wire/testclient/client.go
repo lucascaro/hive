@@ -230,6 +230,21 @@ func (c *Client) ListIdeas(projectID string) error {
 	return c.cli.WriteJSON(wire.FrameListIdeas, wire.ListIdeasReq{ProjectID: projectID})
 }
 
+// GetAcpTranscript asks for an ACP session's whole transcript.
+func (c *Client) GetAcpTranscript(sessionID string) error {
+	return c.cli.WriteJSON(wire.FrameGetAcpTranscript, wire.GetAcpTranscriptReq{SessionID: sessionID})
+}
+
+// PromptAcp sends one user turn to an ACP session.
+func (c *Client) PromptAcp(sessionID, text string) error {
+	return c.cli.WriteJSON(wire.FramePromptAcp, wire.PromptAcpReq{SessionID: sessionID, Text: text})
+}
+
+// AnswerPermission answers an ACP session's pending permission request.
+func (c *Client) AnswerPermission(req wire.AnswerPermissionReq) error {
+	return c.cli.WriteJSON(wire.FrameAnswerPermission, req)
+}
+
 // GetActivity asks for one session's stored tool ring and plan.
 func (c *Client) GetActivity(sessionID string) error {
 	return c.cli.WriteJSON(wire.FrameGetActivity, wire.GetActivityReq{SessionID: sessionID})

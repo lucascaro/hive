@@ -112,6 +112,15 @@ type CreateSpec struct {
 	// correlates the SESSION_EVENT(added) that follows with the
 	// request that caused it. Empty for every ordinary create.
 	IdeaID string `json:"idea_id,omitempty"`
+
+	// Kind is KindPTY (the default, also when empty) or KindACP.
+	Kind string `json:"kind,omitempty"`
+
+	// SpawnedBy is the principal that created the session, stamped by
+	// the daemon from the connection the create arrived on. json:"-"
+	// is the point: a client can never claim it, because it is never
+	// decoded. See docs/design-docs/acp-workflows.md (trust model).
+	SpawnedBy string `json:"-"`
 }
 
 // Hello is the first frame the client sends after connecting.
@@ -272,6 +281,12 @@ type SessionInfo struct {
 	// and not yet ended. Subagent tool calls never drive CurrentTool,
 	// State or the plan; this is the only place they show on the row.
 	SubagentsRunning int `json:"subagents_running,omitempty"`
+
+	// Kind is KindPTY or KindACP; empty means KindPTY.
+	Kind string `json:"kind,omitempty"`
+	// SpawnedBy is the principal that created the session ("" = the
+	// user): "plugin:<id>", "session:<id>" or "workflow:<run-id>".
+	SpawnedBy string `json:"spawned_by,omitempty"`
 }
 
 // MaxTitleLen bounds SessionInfo.Title. The title is attacker-influenced
@@ -345,6 +360,12 @@ const (
 	// real agent event takes the session straight back. Daemon-only —
 	// the event socket rejects it from reporters.
 	StateSourceLaya = "laya"
+	// StateSourceACP is reported by the agent over the Agent Client
+	// Protocol, for KindACP sessions (spec 496). It ranks with
+	// StateSourceHook, and unlike it never goes stale: the daemon owns
+	// the ACP stream, so a silent stream is a silent agent, not a lost
+	// reporter. Daemon-only — the event socket rejects it.
+	StateSourceACP = "acp"
 )
 
 // Session lifecycle phases, carried by SessionInfo.Phase. The daemon

@@ -232,6 +232,17 @@ const (
 	// the plan-review plugin's UI. Read and dropped from plugin sockets
 	// and hivebar, which show no UI.
 	FrameSetClientUI FrameType = 0x3e // C → S, JSON, control
+
+	// ACP sessions (spec 496) — a session the daemon drives over the
+	// Agent Client Protocol instead of a PTY. GET_ACP_TRANSCRIPT is
+	// answered with one ACP_TRANSCRIPT snapshot (reset=true); every
+	// later change fans out as an ACP_TRANSCRIPT delta on every control
+	// connection. PROMPT_ACP sends one user turn; ANSWER_PERMISSION
+	// answers the agent's pending tool-permission request.
+	FrameGetAcpTranscript FrameType = 0x3f // C → S, JSON, control
+	FrameAcpTranscript    FrameType = 0x40 // S → C, JSON, control
+	FramePromptAcp        FrameType = 0x41 // C → S, JSON, control
+	FrameAnswerPermission FrameType = 0x42 // C → S, JSON, control
 )
 
 // ControlRequestFrames lists every frame a control-mode client may send.
@@ -252,6 +263,7 @@ var ControlRequestFrames = []FrameType{
 	FrameClientCommand, FrameShutdown,
 	FrameListPlugins, FrameInstallPlugin, FrameSetPluginEnabled, FrameRemovePlugin,
 	FrameSetPluginConfig, FrameSetClientUI,
+	FrameGetAcpTranscript, FramePromptAcp, FrameAnswerPermission,
 }
 
 // ControlEventFrames lists every frame the daemon sends on a control
@@ -262,7 +274,7 @@ var ControlEventFrames = []FrameType{
 	FrameWorktrees, FrameClosed, FrameSessionRestored, FrameClientBroadcast,
 	FrameIdeas, FrameIdeaEvent, FrameActivity,
 	FrameTranscriptMatches, FrameTranscriptLines, FramePlanReview,
-	FramePlugins, FramePluginEvent,
+	FramePlugins, FramePluginEvent, FrameAcpTranscript,
 }
 
 // NonControlFrames are the frames that never travel on a control
@@ -371,6 +383,14 @@ func (t FrameType) String() string {
 		return "IDEA_EVENT"
 	case FrameSetWorktreeLabel:
 		return "SET_WORKTREE_LABEL"
+	case FrameGetAcpTranscript:
+		return "GET_ACP_TRANSCRIPT"
+	case FrameAcpTranscript:
+		return "ACP_TRANSCRIPT"
+	case FramePromptAcp:
+		return "PROMPT_ACP"
+	case FrameAnswerPermission:
+		return "ANSWER_PERMISSION"
 	case FrameGetActivity:
 		return "GET_ACTIVITY"
 	case FrameActivity:

@@ -94,6 +94,9 @@ type createPlan struct {
 // daemon-scoped, not per-connection (see
 // startAgentSessionIDCaptureLocked).
 func (r *Registry) Create(ctx context.Context, spec wire.CreateSpec) (*Entry, error) {
+	if err := validateKind(spec); err != nil {
+		return nil, err
+	}
 	e, p, err := r.beginCreate(spec)
 	if err != nil {
 		return nil, err
@@ -171,6 +174,9 @@ func (r *Registry) finishCreateTail(ctx context.Context, e *Entry, spec wire.Cre
 	cmd := r.resolveAgentCmd(spec, p.id, sp)
 	if p.nameFromBranch && p.wtBranch == "" {
 		r.renameAfterWorktreeFailure(e, spec)
+	}
+	if e.isACP() {
+		return r.finishCreateACP(e, spec, p)
 	}
 
 	r.setPhase(p.id, wire.PhaseSpawning)
@@ -612,6 +618,8 @@ func (r *Registry) insertEntry(spec wire.CreateSpec, p createPlan) (*Entry, erro
 		ID: p.id, Name: p.name, Color: p.color,
 		Created: time.Now().UTC(),
 		Agent:   spec.Agent, ProjectID: projectID,
+		Kind:      acpKind(spec.Kind),
+		SpawnedBy: spec.SpawnedBy,
 	}
 	r.entries[p.id] = e
 	// Place the new session right after its anchor when the anchor is a
@@ -878,6 +886,11 @@ const (
 //   - a user-defined custom agent is an unknown program, and an unknown
 //     program is exactly the case the default must be safe for.
 func deliveryFor(spec wire.CreateSpec) promptDelivery {
+	// An ACP session sends its opening prompt as its first turn (see
+	// finishCreateACP), never as argv or a paste offer.
+	if spec.Kind == wire.KindACP {
+		return promptNone
+	}
 	if spec.InitialPrompt == "" || len(spec.Cmd) > 0 || spec.Agent == "" {
 		return promptNone
 	}

@@ -1,6 +1,6 @@
 //go:build !windows
 
-package plugin
+package proc
 
 import (
 	"errors"
@@ -9,18 +9,18 @@ import (
 	"syscall"
 )
 
-// ownGroup puts cmd in a new process group, so killTree reaches every
+// OwnGroup puts cmd in a new process group, so KillTree reaches every
 // process it forks, not only the leader.
-func ownGroup(cmd *exec.Cmd) {
+func OwnGroup(cmd *exec.Cmd) {
 	if cmd.SysProcAttr == nil {
 		cmd.SysProcAttr = &syscall.SysProcAttr{}
 	}
 	cmd.SysProcAttr.Setpgid = true
 }
 
-// killTree SIGKILLs p's whole process group. p must have been started
-// with ownGroup, so its pgid is its pid.
-func killTree(p *os.Process) error {
+// KillTree SIGKILLs p's whole process group. p must have been started
+// with OwnGroup, so its pgid is its pid.
+func KillTree(p *os.Process) error {
 	if p == nil {
 		return nil
 	}
@@ -31,9 +31,9 @@ func killTree(p *os.Process) error {
 	return err
 }
 
-// termTree asks p's process group to exit, giving a plugin the chance
-// to flush before killTree follows.
-func termTree(p *os.Process) {
+// TermTree asks p's process group to exit, giving a child the chance
+// to flush before KillTree follows.
+func TermTree(p *os.Process) {
 	if p != nil {
 		_ = syscall.Kill(-p.Pid, syscall.SIGTERM)
 	}

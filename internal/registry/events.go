@@ -209,6 +209,9 @@ func (r *Registry) Pressure() float64 {
 	for ch := range r.activityListeners {
 		p = max(p, fill(len(ch), cap(ch)))
 	}
+	for ch := range r.acpListeners {
+		p = max(p, fill(len(ch), cap(ch)))
+	}
 	return p
 }
 

@@ -116,6 +116,8 @@ func (r *Registry) writeTombstoneLocked(e *Entry, t Tombstone) {
 		WorktreePath:   e.WorktreePath,
 		WorktreeBranch: e.WorktreeBranch,
 		AgentSessionID: e.AgentSessionID,
+		Kind:           e.Kind,
+		SpawnedBy:      e.SpawnedBy,
 	}
 	t.ClosedAt = time.Now().UTC()
 	if err := writeJSON(r.tombstonePath(e.ID), t); err != nil {
@@ -359,6 +361,8 @@ func (r *Registry) Restore(id string, opts session.Options) (*Entry, RestoreResu
 		WorktreePath:   wtPath,
 		WorktreeBranch: wtBranch,
 		AgentSessionID: t.Meta.AgentSessionID,
+		Kind:           t.Meta.Kind,
+		SpawnedBy:      t.Meta.SpawnedBy,
 	}
 
 	r.mu.Lock()

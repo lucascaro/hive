@@ -89,6 +89,10 @@ export const Frame = Object.freeze({
   PLUGIN_EVENT: 0x3c,
   SET_PLUGIN_CONFIG: 0x3d,
   SET_CLIENT_UI: 0x3e,
+  GET_ACP_TRANSCRIPT: 0x3f,
+  ACP_TRANSCRIPT: 0x40,
+  PROMPT_ACP: 0x41,
+  ANSWER_PERMISSION: 0x42,
 });
 
 const frameName = new Map(Object.entries(Frame).map(([k, v]) => [v, k]));
@@ -156,6 +160,8 @@ const MAX_PAYLOAD = 1 << 20;
  * @property {number} [plan_total]
  * @property {string} [current_tool]
  * @property {number} [subagents_running]
+ * @property {string} [kind] "acp" for an ACP session; absent for a terminal session
+ * @property {string} [spawned_by] who created the session: "plugin:<id>", "session:<id>", …; absent = the user
  */
 
 /**

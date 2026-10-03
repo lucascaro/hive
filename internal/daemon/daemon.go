@@ -790,6 +790,16 @@ func (d *Daemon) serveConn(ctx context.Context, conn net.Conn, tag *pluginTag) {
 		if hello.Create != nil {
 			spec = *hello.Create
 		}
+		// A create HELLO turns into an attach, and an ACP session has no
+		// terminal to attach to; CREATE_SESSION is how one is made.
+		if spec.Kind == wire.KindACP {
+			_ = writeBounded(conn, writeTimeout(), wire.FrameError, wire.Error{
+				Code:    wire.ErrCodeACPSession,
+				Message: "an ACP session has no terminal; create it with CREATE_SESSION",
+			})
+			return
+		}
+		spec.SpawnedBy = principalOf(tag)
 		e, err := d.createSession(ctx, spec)
 		if err != nil {
 			_ = writeBounded(conn, writeTimeout(), wire.FrameError, wire.Error{Code: "create_failed", Message: err.Error()})
@@ -1066,6 +1076,8 @@ func (d *Daemon) serveControl(ctx context.Context, conn net.Conn, hello wire.Hel
 	defer iUnsub()
 	aListener, aUnsub := d.reg.SubscribeActivity()
 	defer aUnsub()
+	acpListener, acpUnsub := d.reg.SubscribeACP()
+	defer acpUnsub()
 	cmdListener, cmdUnsub := d.commands.Subscribe()
 	defer cmdUnsub()
 	// A nil channel blocks forever in the select below, which is what
@@ -1181,6 +1193,19 @@ func (d *Daemon) serveControl(ctx context.Context, conn net.Conn, hello wire.Hel
 				if err := writeJSON(wire.FrameActivity, act); err != nil {
 					return
 				}
+			case msg, ok := <-acpListener:
+				if !ok {
+					return
+				}
+				// Not to a session connection, for the same reason as
+				// activity: an agent reading other sessions' transcripts
+				// is a decision of its own.
+				if restricted {
+					continue
+				}
+				if err := writeJSON(wire.FrameAcpTranscript, msg); err != nil {
+					return
+				}
 			case cmd, ok := <-cmdListener:
 				if !ok {
 					return
@@ -1274,6 +1299,7 @@ func (d *Daemon) serveControl(ctx context.Context, conn net.Conn, hello wire.Hel
 		restricted:     restricted,
 		ownSessionID:   hello.SessionID,
 		ownProjectID:   ownProjectID,
+		principal:      principalOf(tag),
 		writeJSON:      writeJSON,
 		sendError:      sendError,
 		sendWorktrees:  sendWorktrees,
@@ -1361,8 +1387,12 @@ type controlOps struct {
 	// project it belongs to, resolved once at handshake. Meaningful
 	// only when restricted. An empty ownProjectID means the session id
 	// resolved to nothing, and every idea verb is refused.
-	ownSessionID   string
-	ownProjectID   string
+	ownSessionID string
+	ownProjectID string
+	// principal is who this connection acts as, for provenance:
+	// "plugin:<id>" on a plugin's socket, "" (the user) otherwise. The
+	// daemon derives it; nothing a client sends can set it.
+	principal      string
 	writeJSON      func(wire.FrameType, any) error
 	sendError      func(code, msg string)
 	sendWorktrees  func(projectID, failCode string)
@@ -1467,6 +1497,7 @@ func (d *Daemon) handleControlFrame(ctx context.Context, ops controlOps, ft wire
 		if !ok {
 			return false
 		}
+		spec.SpawnedBy = ops.principal
 		d.runOp(func() {
 			// ErrNotFound here means the user killed the session
 			// while it was still being created — an ordinary
@@ -1510,6 +1541,39 @@ func (d *Daemon) handleControlFrame(ctx context.Context, ops controlOps, ft wire
 			return false
 		}
 		_ = ops.writeJSON(wire.FrameActivity, msg)
+	case wire.FrameGetAcpTranscript:
+		req, ok := decodeReq[wire.GetAcpTranscriptReq](payload, ops.sendError)
+		if !ok {
+			return false
+		}
+		msg, err := d.reg.AcpTranscript(req.SessionID)
+		if err != nil {
+			sendACPError(ops, err)
+			return false
+		}
+		_ = ops.writeJSON(wire.FrameAcpTranscript, msg)
+	case wire.FramePromptAcp:
+		req, ok := decodeReq[wire.PromptAcpReq](payload, ops.sendError)
+		if !ok {
+			return false
+		}
+		origin := ops.principal
+		if origin == "" {
+			origin = wire.OriginUser
+		}
+		// Returns once the turn has started; the turn itself reports
+		// through ACP_TRANSCRIPT and the session's state.
+		if err := d.reg.PromptACP(req.SessionID, req.Text, origin); err != nil {
+			sendACPError(ops, err)
+		}
+	case wire.FrameAnswerPermission:
+		req, ok := decodeReq[wire.AnswerPermissionReq](payload, ops.sendError)
+		if !ok {
+			return false
+		}
+		if err := d.reg.AnswerPermission(req.SessionID, req.RequestID, req.OptionID); err != nil {
+			sendACPError(ops, err)
+		}
 	case wire.FrameSearchTranscript:
 		// Not in sessionModeFrames, like GET_ACTIVITY: an agent running
 		// inside a session reading its own transcript is a separate
@@ -1888,6 +1952,14 @@ func (d *Daemon) serveAttach(conn net.Conn, sessionID string, tag *pluginTag) {
 		})
 		return
 	}
+	if d.reg.IsACP(sessionID) {
+		_ = writeBounded(conn, writeTimeout(), wire.FrameError, wire.Error{
+			Code:      wire.ErrCodeACPSession,
+			Message:   "an ACP session has no terminal; read its transcript with GET_ACP_TRANSCRIPT",
+			SessionID: sessionID,
+		})
+		return
+	}
 	if entry.Session() == nil {
 		// Distinguish "not spawned yet" from "dead". SESSION_EVENT
 		// (added) now fires before the PTY exists, so an eager attach
@@ -1996,4 +2068,33 @@ func (d *Daemon) serveAttach(conn net.Conn, sessionID string, tag *pluginTag) {
 // Can't use struct equality because session.Options has a slice field.
 func bootstrapWanted(opts session.Options) bool {
 	return opts.Shell != "" || opts.Cols != 0 || opts.Rows != 0 || len(opts.Env) > 0
+}
+
+// principalOf names who a connection acts as, for provenance
+// (SpawnedBy, prompt origin): "plugin:<id>" on a plugin's own socket,
+// "" — the user — on the main socket.
+func principalOf(tag *pluginTag) string {
+	if tag == nil {
+		return ""
+	}
+	return "plugin:" + tag.id
+}
+
+// sendACPError answers a failed ACP operation with a code a client can
+// act on.
+func sendACPError(ops controlOps, err error) {
+	switch {
+	case errors.Is(err, registry.ErrNotFound):
+		ops.sendError("no_such_session", "that session is not open")
+	case errors.Is(err, registry.ErrNotACP):
+		ops.sendError(wire.ErrCodeNotACP, err.Error())
+	case errors.Is(err, registry.ErrACPBusy):
+		ops.sendError(wire.ErrCodeACPBusy, err.Error())
+	case errors.Is(err, registry.ErrPermissionStale):
+		ops.sendError(wire.ErrCodePermissionStale, err.Error())
+	case errors.Is(err, registry.ErrNoLiveSession):
+		ops.sendError("session_dead", "the session's agent is not running")
+	default:
+		ops.sendError("acp_failed", err.Error())
+	}
 }

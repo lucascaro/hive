@@ -820,3 +820,29 @@ func TestReplayRefreshesStaleAt(t *testing.T) {
 		t.Error("a replay was not marked accepted; no liveness frame would go out")
 	}
 }
+
+// An ACP turn can be silent for minutes (a long tool call, a slow
+// model) while the daemon still holds the stream, so the acp tier must
+// neither be demoted by Tick nor carry a staleness deadline the GUI
+// would render as "stale".
+func TestACPTierNeverGoesStale(t *testing.T) {
+	m := New(t0)
+	m.Apply(Event{Kind: KindPrompt, Source: wire.StateSourceACP, At: t0})
+	later := t0.Add(10 * HookStaleAfter)
+	if m.Tick(later) {
+		t.Error("Tick demoted a silent acp turn")
+	}
+	if m.Output(later) {
+		t.Error("Output moved a session on the acp tier")
+	}
+	if got := m.Snapshot(); got.State != wire.StateWorking || got.Source != wire.StateSourceACP {
+		t.Errorf("snapshot = %+v, want working on the acp tier", got)
+	}
+	if _, ok := m.StaleAt(); ok {
+		t.Error("StaleAt reported a deadline for the acp tier")
+	}
+	m.Apply(Event{Kind: KindWaitingPermission, Source: wire.StateSourceACP, At: later})
+	if got := m.Snapshot().State; got != wire.StateWaitingPermission {
+		t.Errorf("state = %q, want waiting_permission", got)
+	}
+}
