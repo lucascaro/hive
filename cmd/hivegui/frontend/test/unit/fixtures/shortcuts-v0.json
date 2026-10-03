@@ -239,8 +239,12 @@
             "label": "Pick agent by number"
           },
           {
-            "keys": "↑↓ / Tab",
+            "keys": "↑↓",
             "label": "Navigate items"
+          },
+          {
+            "keys": "Tab",
+            "label": "Next item (palette) · next field (launcher)"
           },
           {
             "keys": "↩",
@@ -529,8 +533,12 @@
             "label": "Pick agent by number"
           },
           {
-            "keys": "Up/Down / Tab",
+            "keys": "Up/Down",
             "label": "Navigate items"
+          },
+          {
+            "keys": "Tab",
+            "label": "Next item (palette) · next field (launcher)"
           },
           {
             "keys": "Enter",

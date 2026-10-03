@@ -789,6 +789,10 @@ describe('launcher branch name', () => {
     expect(warn()?.textContent).toBe('');
   });
 
+  const worktreeBox = () =>
+    launcher().querySelector(
+      '.launcher-worktree input[type=checkbox]',
+    ) as HTMLInputElement;
   const tab = (shift = false) => {
     act(() => {
       (document.activeElement ?? launcher()).dispatchEvent(
@@ -808,13 +812,16 @@ describe('launcher branch name', () => {
     // dismissed the launcher and discarded the brief.
     //
     // The worktree toggle is ON, so the branch field is in the cycle —
-    // the full search → prompt → branch → search rotation, asserted by
-    // element and not merely by "focus is still somewhere inside".
+    // the full search → prompt → toggle → branch → search rotation,
+    // asserted by element and not merely by "focus is still somewhere
+    // inside".
     await open({ initialPrompt: 'seeded', ideaId: 'i7', forceWorktree: true });
     expect(document.activeElement).toBe(searchBox());
 
     tab();
     expect(document.activeElement).toBe(promptBox());
+    tab();
+    expect(document.activeElement).toBe(worktreeBox());
     tab();
     expect(document.activeElement).toBe(branchBox());
     tab();
@@ -826,7 +833,7 @@ describe('launcher branch name', () => {
     tab(true);
     expect(document.activeElement).toBe(branchBox());
     tab(true);
-    expect(document.activeElement).toBe(promptBox());
+    expect(document.activeElement).toBe(worktreeBox());
   });
 
   it('drops the branch field from the cycle when the worktree toggle is off', async () => {
@@ -834,12 +841,14 @@ describe('launcher branch name', () => {
     // convention rather than offsetParent: jsdom has no layout, so an
     // offsetParent rule collapses the field list and makes the test
     // above assert nothing. With the toggle off the branch box carries
-    // `.hidden`, so the cycle is search → prompt → search.
+    // `.hidden`, so the cycle is search → prompt → toggle → search.
     await open({ initialPrompt: 'seeded', ideaId: 'i7' });
     expect(branchBox().classList.contains('hidden')).toBe(true);
 
     tab();
     expect(document.activeElement).toBe(promptBox());
+    tab();
+    expect(document.activeElement).toBe(worktreeBox());
     tab();
     expect(document.activeElement).toBe(searchBox());
   });
@@ -1184,6 +1193,35 @@ describe('launcher session kind', () => {
     expect(row('Gemini')?.querySelector('.experimental-tag')?.textContent).toBe(
       'experimental',
     );
+  });
+
+  it('is reached by Tab, at its checked radio, and Tab no longer moves the selection', async () => {
+    await openACP();
+    const sel = selectedName();
+    const tabKey = (shift = false) =>
+      act(() => {
+        (document.activeElement ?? launcher()).dispatchEvent(
+          new window.KeyboardEvent('keydown', {
+            key: 'Tab',
+            shiftKey: shift,
+            bubbles: true,
+          }),
+        );
+      });
+    const wt = launcher().querySelector(
+      '.launcher-worktree input',
+    ) as HTMLInputElement;
+    tabKey();
+    expect(document.activeElement).toBe(wt);
+    tabKey();
+    expect(document.activeElement).toBe(radio('pty'));
+    fireEvent.click(radio('acp'));
+    tabKey();
+    expect(document.activeElement).toBe(searchBox());
+    tabKey(true);
+    expect(document.activeElement).toBe(radio('acp'));
+    expect(selectedName()).toBe(sel);
+    expect(launcher().classList.contains('hidden')).toBe(false);
   });
 
   it('is not offered for an opening with a prompt', async () => {

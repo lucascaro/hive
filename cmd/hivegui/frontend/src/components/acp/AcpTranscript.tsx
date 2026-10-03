@@ -9,6 +9,8 @@
 import {
   type KeyboardEvent,
   type ReactNode,
+  type RefObject,
+  memo,
   useLayoutEffect,
   useRef,
   useState,
@@ -33,6 +35,7 @@ export function AcpTranscript({ sessionId }: { sessionId: string }): ReactNode {
   const scroller = useRef<HTMLDivElement>(null);
   // Follow the bottom while the user is there; leave a scroll-up alone.
   const atBottom = useRef(true);
+  const prompt = useRef<HTMLTextAreaElement>(null);
   // biome-ignore lint/correctness/useExhaustiveDependencies: re-run on content, not on identity of the ref
   useLayoutEffect(() => {
     const el = scroller.current;
@@ -60,10 +63,24 @@ export function AcpTranscript({ sessionId }: { sessionId: string }): ReactNode {
           tx.items.map((it) => <Item key={it.id} item={it} />)
         )}
         {tx.permission ? (
-          <PermissionCard sessionId={sessionId} perm={tx.permission} />
+          <PermissionCard
+            sessionId={sessionId}
+            perm={tx.permission}
+            // The button that was clicked unmounts with the card; without
+            // this, keyboard focus would fall to <body>.
+            onAnswered={() => prompt.current?.focus()}
+          />
         ) : null}
       </div>
-      <PromptBox sessionId={sessionId} busy={working} />
+      <PromptBox
+        sessionId={sessionId}
+        busy={working}
+        inputRef={prompt}
+        // A prompt the user just sent is what they want to see answered.
+        onSent={() => {
+          atBottom.current = true;
+        }}
+      />
     </div>
   );
 }
@@ -78,7 +95,9 @@ function Placeholder({ load }: { load: AcpLoad }): ReactNode {
   return <div className="acp-transcript__empty">{text}</div>;
 }
 
-function Item({ item }: { item: AcpItem }): ReactNode {
+// Memoized: the store keeps an unchanged item's object across a delta
+// (lib/acp.ts), so a streamed chunk re-renders only the item it grew.
+const Item = memo(function Item({ item }: { item: AcpItem }): ReactNode {
   switch (item.kind) {
     case 'user':
       return (
@@ -149,7 +168,7 @@ function Item({ item }: { item: AcpItem }): ReactNode {
     default:
       return null;
   }
-}
+});
 
 // ACP plan statuses (pending / in_progress / completed) in the
 // activity renderers' vocabulary, so their step styles apply as-is.
@@ -169,9 +188,11 @@ function originLabel(origin: string): string {
 function PermissionCard({
   sessionId,
   perm,
+  onAnswered,
 }: {
   sessionId: string;
   perm: AcpPermission;
+  onAnswered: () => void;
 }): ReactNode {
   return (
     <fieldset className="acp-permission" aria-label="Permission request">
@@ -186,11 +207,12 @@ function PermissionCard({
             label={o.name}
             kind={isAllowOption(o) ? 'primary' : 'default'}
             extra={{ 'data-option-kind': o.kind }}
-            onClick={() =>
+            onClick={() => {
               AnswerPermission(sessionId, perm.request_id, o.option_id).catch(
                 reportFailure('answer permission'),
-              )
-            }
+              );
+              onAnswered();
+            }}
           />
         ))}
       </div>
@@ -201,16 +223,26 @@ function PermissionCard({
 function PromptBox({
   sessionId,
   busy,
+  inputRef,
+  onSent,
 }: {
   sessionId: string;
   busy: boolean;
+  inputRef: RefObject<HTMLTextAreaElement | null>;
+  onSent: () => void;
 }): ReactNode {
   const [text, setText] = useState('');
   const send = () => {
     const t = text.trim();
     if (!t || busy) return;
     setText('');
-    PromptAcp(sessionId, t).catch(reportFailure('send prompt'));
+    onSent();
+    PromptAcp(sessionId, t).catch((err) => {
+      // The prompt never left: give it back rather than lose it, unless
+      // the user has already started typing another.
+      setText((cur) => cur || t);
+      reportFailure('send prompt')(err);
+    });
   };
   const onKeyDown = (e: KeyboardEvent<HTMLTextAreaElement>) => {
     // Enter sends and Shift+Enter is a newline — but never mid-IME
@@ -222,6 +254,8 @@ function PromptBox({
   return (
     <div className="acp-prompt">
       <textarea
+        ref={inputRef}
+        className="acp-prompt__input"
         data-acp-prompt=""
         aria-label="Prompt"
         rows={2}

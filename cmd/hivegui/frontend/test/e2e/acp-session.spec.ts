@@ -62,4 +62,16 @@ test('an ACP session runs a prompt, a permission and a reply in its transcript',
     'echo: hello [allow]',
   );
   await expect(tile.locator('.acp-item--tool')).toContainText('completed');
+
+  // Focus leaves the prompt box when the user picks a terminal tile:
+  // the prompt is this tile's input, not a control that keeps the
+  // keyboard (lib/focus.ts).
+  await expect(prompt).toBeFocused();
+  // From the keyboard, which is where the bug lived: a click moves
+  // focus by itself, a session switch does not.
+  await page.keyboard.press(`${mod}+ArrowUp`);
+  await expect(page.locator('.term-host.acp.visible')).toHaveCount(0);
+  await expect(
+    page.locator('.term-host.visible .xterm-helper-textarea').first(),
+  ).toBeFocused();
 });

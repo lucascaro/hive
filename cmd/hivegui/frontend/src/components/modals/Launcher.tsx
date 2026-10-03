@@ -405,37 +405,30 @@ function LauncherBody({
         return handle(() => moveSelection(+1));
       if (e.key === 'ArrowUp' && !inPrompt)
         return handle(() => moveSelection(-1));
-      // Tab moves the agent selection — EXCEPT when there is a prompt
-      // box, where it has to be the way in and out of it. Nothing else
-      // reaches that textarea from the keyboard: focus starts in the
-      // filter box and the arrows belong to the list. A feature whose
-      // headline is "editable right there in the launcher" cannot be
-      // mouse-only, so in prompt mode Tab cycles the popup's own text
-      // fields and the arrows stay the list's navigation.
-      if (e.key === 'Tab' && !hasPrompt)
-        return handle(() => moveSelection(e.shiftKey ? -1 : +1));
-      // In prompt mode Tab CYCLES the popup's own text fields rather
-      // than being handed to the browser. Handing it over was the
-      // obvious fix for "the textarea is unreachable" and it was
-      // wrong: nothing traps focus in #launcher, and the focusout
-      // handler below closes the popup the moment focus leaves — so
-      // one Tab past the last field dismissed the launcher and threw
-      // away the sharpened brief. Two keystrokes from open to gone.
-      if (e.key === 'Tab' && hasPrompt) {
-        // focusableWithin, not a hand-rolled visibility test. The first
-        // version of this judged the branch field by `offsetParent`,
-        // which is precisely the rule lib/focus-trap.ts warns against:
-        // jsdom has no layout, so offsetParent is always null there and
-        // the field list silently collapsed — making the cycle test
-        // assert nothing at all. This app's convention is the `.hidden`
-        // class, which `.launcher-branch.hidden` already uses, so the
+      // Tab CYCLES the popup's own fields: the filter box, the prompt
+      // box, the worktree toggle, the branch box and the Terminal/ACP
+      // choice (spec 496) — every control that would otherwise be
+      // mouse-only. The arrows are the list's navigation. Tab is never
+      // handed to the browser: nothing traps focus in #launcher, and the
+      // focusout handler below closes the popup the moment focus leaves,
+      // so one Tab past the last field would dismiss the launcher and
+      // throw away a sharpened brief.
+      if (e.key === 'Tab') {
+        // focusableWithin, not a hand-rolled visibility test: jsdom has
+        // no layout, so an offsetParent rule collapses the list and the
+        // cycle tests assert nothing. This app's convention is the
+        // `.hidden` class, which `.launcher-branch.hidden` uses, so the
         // branch field joins and leaves the cycle with the worktree
-        // toggle for free.
+        // toggle. A radio group is one stop, at its checked radio — the
+        // browser's own rule; the arrows inside it are the radio's.
         const fields = focusableWithin(root).filter(
           (el) =>
             el === searchRef.current ||
             el === promptRef.current ||
-            el === branchRef.current,
+            el === branchRef.current ||
+            el.closest('.launcher-worktree') !== null ||
+            (el.closest('.launcher-kind') !== null &&
+              (el as HTMLInputElement).checked),
         );
         if (fields.length > 0) {
           const at = fields.indexOf(e.target as HTMLElement);

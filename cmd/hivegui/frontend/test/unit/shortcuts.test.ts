@@ -94,7 +94,7 @@ describe('shortcutGroups', () => {
     expect(keys).toContain('Ctrl+Left/Right');
     expect(keys).toContain('Ctrl+Shift+Up/Down');
     expect(keys).not.toContain('Ctrl+Shift+Left/Right');
-    expect(keys).toContain('Up/Down / Tab');
+    expect(keys).toContain('Up/Down Tab');
     expect(keys).not.toMatch(/UpDown|LeftRight/);
     // Mac glyphs stay run together — the conventional rendering.
     const macKeys = shortcutGroups({ isMac: true })

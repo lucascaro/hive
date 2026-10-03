@@ -55,6 +55,15 @@ describe('decideFocusAction', () => {
     expect(a).toEqual({ kind: ACTION_FOCUS, id: 's1' });
   });
 
+  // Spec 496: an ACP tile's prompt box is that tile's input, not a
+  // sibling's — focus must move off it when another tile is chosen.
+  it('focuses through when an ACP prompt box is active', () => {
+    const a = decideFocusAction(
+      snap({ activeTag: 'TEXTAREA', activeClasses: 'acp-prompt__input' }),
+    );
+    expect(a).toEqual({ kind: ACTION_FOCUS, id: 's1' });
+  });
+
   it('focuses when activeElement is BODY (the post-blur single → grid state)', () => {
     expect(decideFocusAction(snap({ activeTag: 'BODY' }))).toEqual({
       kind: ACTION_FOCUS,

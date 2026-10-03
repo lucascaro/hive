@@ -177,4 +177,31 @@ describe('AcpTranscript', () => {
     expect(PromptAcp).not.toHaveBeenCalled();
     expect(box.value).toBe('again');
   });
+
+  it('moves focus to the prompt once a permission is answered', () => {
+    const { getByText, container } = render(<AcpTranscript sessionId={SID} />);
+    frame({ reset: true, items: [], permission: PERM });
+    const allow = getByText('Allow').closest('button') as HTMLButtonElement;
+    allow.focus();
+    fireEvent.click(allow);
+    expect(document.activeElement).toBe(
+      container.querySelector('textarea[data-acp-prompt]'),
+    );
+  });
+
+  it('gives a prompt back when it could not be sent', async () => {
+    PromptAcp.mockImplementationOnce(() =>
+      Promise.reject(new Error('no control')),
+    );
+    const { container } = render(<AcpTranscript sessionId={SID} />);
+    frame({ reset: true, items: [] });
+    const box = container.querySelector(
+      'textarea[data-acp-prompt]',
+    ) as HTMLTextAreaElement;
+    fireEvent.change(box, { target: { value: 'keep me' } });
+    fireEvent.keyDown(box, { key: 'Enter' });
+    expect(box.value).toBe('');
+    await flush();
+    expect(box.value).toBe('keep me');
+  });
 });

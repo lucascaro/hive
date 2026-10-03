@@ -233,15 +233,13 @@ function applyFocus(id: string, attempt: number) {
   // swap (single → grid) fires focusout. ta.focus() drives the real
   // event; the follow-up term.focus() resyncs xterm's internal state.
   // An ACP tile has no terminal to type into (session-term.ts hides
-  // it): keyboard focus goes to its prompt box instead.
-  if (st.host.classList.contains('acp')) {
-    const prompt =
-      st.host.querySelector<HTMLTextAreaElement>('[data-acp-prompt]');
-    if (prompt && document.activeElement !== prompt) prompt.focus(FOCUS_OPTS);
-    return;
-  }
+  // it): keyboard focus goes to its prompt box instead, with the same
+  // drift guard and retry. The box is a React portal, so on the first
+  // frame after a create it may not be mounted yet — the retry below
+  // waits for it.
+  const acp = st.host.classList.contains('acp');
   const ta = st.host.querySelector<HTMLTextAreaElement>(
-    '.xterm-helper-textarea',
+    acp ? '[data-acp-prompt]' : '.xterm-helper-textarea',
   );
   // Only drive focus when it has actually drifted off the target
   // textarea. Re-focusing an already-focused xterm helper-textarea is
@@ -254,7 +252,7 @@ function applyFocus(id: string, attempt: number) {
   // the #159/#181/#186 drift-correction while ending the keystroke loss.
   if (ta && document.activeElement !== ta) {
     ta.focus(FOCUS_OPTS);
-    if (typeof st.term?.focus === 'function') st.term.focus();
+    if (!acp && typeof st.term?.focus === 'function') st.term.focus();
   }
   // Schedule a verification rAF *next frame* (not this one — focus()
   // just fired and synchronously updated activeElement, so an in-tick
@@ -273,7 +271,7 @@ function applyFocus(id: string, attempt: number) {
   // bounded and idempotent (re-focusing an already-focused element is
   // a no-op).
   const FOCUS_MAX_RETRIES = 8;
-  if (ta && attempt < FOCUS_MAX_RETRIES) {
+  if ((ta || acp) && attempt < FOCUS_MAX_RETRIES) {
     requestAnimationFrame(() => {
       const verifyAction = decideFocusAction(focusSnapshot(id));
       if (verifyAction.kind !== ACTION_FOCUS) return; // a modal / rename took over
@@ -319,7 +317,9 @@ function scheduleFocusConsistencyCheck(id: string) {
       const st = termsMap().get(id);
       if (!st) return;
       const ta = st.host.querySelector<HTMLTextAreaElement>(
-        '.xterm-helper-textarea',
+        st.host.classList.contains('acp')
+          ? '[data-acp-prompt]'
+          : '.xterm-helper-textarea',
       );
       const ae = document.activeElement;
       const focusedHost = ae ? ae.closest('.term-host') : null;

@@ -15,6 +15,7 @@ import {
 import {
   applyAcp,
   emptyAcp,
+  MAX_ITEMS,
   type AcpTranscript,
   type AcpTranscriptMsg,
 } from '../../src/lib/acp.js';
@@ -164,5 +165,41 @@ describe('acp store', () => {
     expect(acpStore.getState().byId.has('s1')).toBe(true);
     forgetAcp('s1');
     expect(acpStore.getState().byId.has('s1')).toBe(false);
+  });
+});
+
+describe('applyAcp bounds', () => {
+  it('keeps unchanged items by identity across a delta', () => {
+    const t = loaded();
+    const next = applyAcp(
+      t,
+      msg({ items: [{ id: 2, kind: 'agent', text: 'lo', append: true }] }),
+    );
+    expect(next.items[0]).toBe(t.items[0]);
+    expect(next.items[1]).not.toBe(t.items[1]);
+  });
+
+  it('refetches rather than show a chunk for an item it does not hold', () => {
+    const t = applyAcp(
+      loaded(),
+      msg({ items: [{ id: 99, kind: 'agent', text: 'frag', append: true }] }),
+    );
+    expect(t.loaded).toBe(false);
+  });
+
+  it('keeps at most MAX_ITEMS, dropping the oldest', () => {
+    const many = Array.from({ length: MAX_ITEMS }, (_, i) => ({
+      id: i + 1,
+      kind: 'agent',
+      text: `m${i + 1}`,
+    }));
+    const t = applyAcp(emptyAcp(), msg({ reset: true, items: many }));
+    const next = applyAcp(
+      t,
+      msg({ items: [{ id: MAX_ITEMS + 1, kind: 'agent', text: 'new' }] }),
+    );
+    expect(next.items).toHaveLength(MAX_ITEMS);
+    expect(next.items[0].id).toBe(2);
+    expect(next.items.at(-1)?.text).toBe('new');
   });
 });

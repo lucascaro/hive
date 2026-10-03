@@ -57,6 +57,14 @@ export interface AcpTranscript {
   loaded: boolean;
 }
 
+// internal/acp.MaxTranscriptItems.
+export const MAX_ITEMS = 2000;
+
+function lastIndexOfId(items: readonly AcpItem[], id: number): number {
+  for (let i = items.length - 1; i >= 0; i--) if (items[i].id === id) return i;
+  return -1;
+}
+
 export const emptyAcp = (): AcpTranscript => ({
   epoch: 0,
   items: [],
@@ -95,22 +103,25 @@ export function applyAcp(
   let items = t.items;
   const delta = msg.items ?? [];
   if (delta.length > 0) {
+    // One shallow copy per message (bounded by MAX_ITEMS); unchanged
+    // items keep their object, so a memoized row skips the re-render.
     const next = items.slice();
-    // Index once per message, not per item: a delta usually touches the
-    // newest item, but a tool update can reach back.
-    const at = new Map<number, number>();
-    for (const [i, it] of next.entries()) at.set(it.id, i);
     for (const it of delta) {
-      const i = at.get(it.id);
-      if (i === undefined) {
-        at.set(it.id, next.length);
-        next.push({ ...it, append: undefined });
-      } else if (it.append) {
-        next[i] = { ...next[i], text: (next[i].text ?? '') + (it.text ?? '') };
-      } else {
-        next[i] = { ...it, append: undefined };
+      // From the end: a delta almost always touches the newest item.
+      const i = lastIndexOfId(next, it.id);
+      if (i < 0 && it.append) {
+        // A chunk for an item this copy does not hold cannot be placed:
+        // refetch rather than show a fragment as a message.
+        return { ...t, loaded: false };
       }
+      if (i < 0) next.push({ ...it, append: undefined });
+      else if (it.append)
+        next[i] = { ...next[i], text: (next[i].text ?? '') + (it.text ?? '') };
+      else next[i] = { ...it, append: undefined };
     }
+    // The daemon keeps at most this many (acp.MaxTranscriptItems); so
+    // does the copy, oldest first, so a long session costs no more.
+    if (next.length > MAX_ITEMS) next.splice(0, next.length - MAX_ITEMS);
     items = next;
   }
   const permission = msg.permission ?? null;
