@@ -74,7 +74,10 @@ func AppendTurn(dir, sessionID string, t Turn) error {
 // Calls returns the calls.log lines.
 func Calls(dir string) []string {
 	b, _ := os.ReadFile(filepath.Join(dir, "calls.log"))
-	return strings.Fields(strings.ReplaceAll(strings.TrimSpace(string(b)), " ", " "))
+	if s := strings.TrimSpace(string(b)); s != "" {
+		return strings.Split(s, "\n")
+	}
+	return nil
 }
 
 // Release unblocks prompts started with FlagBlock.

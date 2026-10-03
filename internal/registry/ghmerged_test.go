@@ -7,11 +7,18 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/lucascaro/hive/internal/acp/acptest"
 )
 
 // No registry test may reach the network: gh is stubbed out for the
 // whole package, and the cases that care install their own answer.
 func TestMain(m *testing.M) {
+	// The ACP tests re-execute this binary as a fake ACP agent.
+	if acptest.IsAgent() {
+		acptest.Main()
+		return
+	}
 	ghMergedLookup = func(string) ghMerged { return nil }
 	os.Exit(m.Run())
 }

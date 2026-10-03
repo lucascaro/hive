@@ -16,6 +16,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/lucascaro/hive/internal/acp"
 	"github.com/lucascaro/hive/internal/agent"
 	"github.com/lucascaro/hive/internal/agentstate"
 	"github.com/lucascaro/hive/internal/session"
@@ -108,6 +109,22 @@ type Entry struct {
 	AgentSessionID string
 	LastError      string           // human-readable error from last failed Start/Revive; cleared on success
 	sess           *session.Session // nil ⇔ not running this lifetime
+
+	// Kind is wire.KindACP for a session driven over the Agent Client
+	// Protocol (spec 496); "" or wire.KindPTY for a terminal session.
+	// Persisted. An ACP entry never has a sess: its live process is acp.
+	Kind string
+	// SpawnedBy is the principal that created the entry ("" = the
+	// user), stamped by the daemon from the creating connection.
+	SpawnedBy string
+	// acp is the running ACP adapter for a KindACP entry, nil when
+	// none runs this lifetime. See acp.go for the rest of its state.
+	acp *acpSession
+	// acpTx is a KindACP entry's transcript. In-memory only, and it
+	// outlives the adapter so a dead session still shows what it said;
+	// the next adapter's session/load rebuilds it from the agent's own
+	// store.
+	acpTx acp.Transcript
 
 	// Phase is the lifecycle phase surfaced to clients (see the
 	// wire.Phase* constants). In-memory only: never persisted, so a
@@ -262,7 +279,10 @@ func needsAttention(state string) bool {
 }
 
 // Alive reports whether this entry has a live session attached.
-func (e *Entry) Alive() bool { return e.sess != nil }
+func (e *Entry) Alive() bool { return e.sess != nil || e.acp != nil }
+
+// isACP reports whether the entry is an ACP session.
+func (e *Entry) isACP() bool { return e.Kind == wire.KindACP }
 
 // Session returns the live session, or nil.
 func (e *Entry) Session() *session.Session { return e.sess }
@@ -299,6 +319,9 @@ func (e *Entry) Info() wire.SessionInfo {
 		CurrentTool:           st.CurrentTool,
 
 		SubagentsRunning: st.SubagentsRunning,
+
+		Kind:      e.Kind,
+		SpawnedBy: e.SpawnedBy,
 	}
 }
 
@@ -427,6 +450,8 @@ type Registry struct {
 	// frequency feed the registry has: a slow activity consumer must
 	// not cost a client its session events.
 	activityListeners map[ActivityListener]struct{}
+	// acpListeners receive ACP_TRANSCRIPT messages (spec 496).
+	acpListeners map[AcpListener]struct{}
 
 	// createMu serializes the synchronous prefix of Create (id/color
 	// resolution, name planning, order splicing). The daemon now runs
@@ -576,6 +601,12 @@ func (r *Registry) ApplyAgentEvent(id string, ev wire.AgentEvent) error {
 	e, ok := r.entries[id]
 	if !ok {
 		return ErrNotFound
+	}
+	// An ACP session's state comes from its ACP stream alone. A hook or
+	// extension report for it (a Pi extension under the adapter) would
+	// flip the tier away from the authoritative one.
+	if e.isACP() {
+		return nil
 	}
 	prev := e.stateSnapshot()
 	aev := agentstate.Event{
@@ -1038,6 +1069,7 @@ func Open(stateDir string) (*Registry, error) {
 		projectListeners:  make(map[ProjectListener]struct{}),
 		ideaListeners:     make(map[IdeaListener]struct{}),
 		activityListeners: make(map[ActivityListener]struct{}),
+		acpListeners:      make(map[AcpListener]struct{}),
 		tickStop:          make(chan struct{}),
 		tickDone:          make(chan struct{}),
 	}
@@ -1198,6 +1230,8 @@ func (r *Registry) load() error {
 			WorktreeBranch: meta.WorktreeBranch,
 			AgentSessionID: meta.AgentSessionID,
 			awaitingChoice: meta.AwaitingWorktreeChoice,
+			Kind:           meta.Kind,
+			SpawnedBy:      meta.SpawnedBy,
 		}
 		r.order = append(r.order, meta.ID)
 		seen[meta.ID] = true
@@ -1220,6 +1254,8 @@ func (r *Registry) load() error {
 				WorktreePath:   meta.WorktreePath,
 				WorktreeBranch: meta.WorktreeBranch,
 				AgentSessionID: meta.AgentSessionID,
+				Kind:           meta.Kind,
+				SpawnedBy:      meta.SpawnedBy,
 			}
 			r.order = append(r.order, meta.ID)
 		}
@@ -1319,13 +1355,14 @@ func (r *Registry) Revive(id string, opts session.Options) error {
 		r.mu.Unlock()
 		return ErrNotFound
 	}
-	if e.sess != nil {
+	if e.Alive() {
 		r.mu.Unlock()
 		return nil
 	}
 	agentID := e.Agent
 	wtPath := e.WorktreePath
 	agentSessionID := e.AgentSessionID
+	isACP := e.isACP()
 	projectCwd := ""
 	if p, ok := r.projects[e.ProjectID]; ok {
 		projectCwd = p.Cwd
@@ -1354,6 +1391,13 @@ func (r *Registry) Revive(id string, opts session.Options) error {
 			r.mu.Unlock()
 			r.broadcast(wire.SessionEventUpdated, info)
 		}
+	}
+
+	// An ACP entry reopens its conversation over ACP: session/load of
+	// the id session/new gave it, replaying the transcript. Boot revive,
+	// Restart and Restore all arrive here.
+	if isACP {
+		return r.startACP(id, opts.Cwd, agentSessionID)
 	}
 
 	if agentID != "" && len(opts.Cmd) == 0 {
@@ -1427,6 +1471,7 @@ func (r *Registry) Restart(id string) error {
 		return ErrNotFound
 	}
 	sess := e.sess
+	ac := e.acp
 	agentID := e.Agent
 	wtPath := e.WorktreePath
 	projectCwd := ""
@@ -1458,6 +1503,7 @@ func (r *Registry) Restart(id string) error {
 		}
 		r.mu.Unlock()
 	}
+	r.stopACP(id, ac)
 
 	r.mu.Lock()
 	resumeID := ""
@@ -1729,8 +1775,13 @@ func (r *Registry) kill(id string, force, removeWorktree bool) error {
 	// Snapshot the PTY under the lock. Reading e.sess after the unlock
 	// races the create tail, which binds it under r.mu.
 	sess := e.sess
+	ac := e.acp
 	r.mu.Unlock()
 
+	// The entry is already gone from r.entries, so watchACPExit no-ops.
+	if ac != nil {
+		ac.agent.Close()
+	}
 	// Order: PTY first (releases any FD/cwd handles into the
 	// worktree), worktree second (now safe to git worktree remove),
 	// metadata last (so a crash mid-cleanup leaves a recoverable
@@ -1886,6 +1937,10 @@ func (r *Registry) Close() error {
 	for ch := range r.activityListeners {
 		close(ch)
 	}
+	for ch := range r.acpListeners {
+		close(ch)
+	}
+	r.acpListeners = nil
 	r.listeners = nil
 	r.projectListeners = nil
 	r.ideaListeners = nil
@@ -1900,6 +1955,9 @@ func (r *Registry) Close() error {
 	for _, e := range entries {
 		if e.sess != nil {
 			_ = e.sess.Close()
+		}
+		if e.acp != nil {
+			e.acp.agent.Close()
 		}
 	}
 	return nil
@@ -1963,6 +2021,8 @@ func (r *Registry) persistEntryLocked(e *Entry) error {
 		// survive a restart, so boot can tell a parked entry from an
 		// ordinary session instead of reviving it into a plain one.
 		AwaitingWorktreeChoice: e.awaitingChoice,
+		Kind:                   e.Kind,
+		SpawnedBy:              e.SpawnedBy,
 	})
 }
 

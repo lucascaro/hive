@@ -38,6 +38,11 @@ type MetaFile struct {
 	// by older daemons, which decodes to false — the pre-451 behaviour,
 	// and correct for every entry they wrote.
 	AwaitingWorktreeChoice bool `json:"awaiting_worktree_choice,omitempty"`
+	// Kind is wire.KindACP for an ACP session (spec 496); empty, as in
+	// every record written before it, means a PTY session.
+	Kind string `json:"kind,omitempty"`
+	// SpawnedBy is the principal that created the session; "" = the user.
+	SpawnedBy string `json:"spawned_by,omitempty"`
 }
 
 // IndexFile is what we write to sessions/index.json.
