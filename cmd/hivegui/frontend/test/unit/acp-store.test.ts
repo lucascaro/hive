@@ -7,8 +7,10 @@ vi.mock('../../src/bridge.js', () => ({
 import * as bridge from '../../src/bridge.js';
 import {
   acpStore,
+  applyAcpError,
   applyAcpFrame,
   forgetAcp,
+  noteSentPrompt,
   requestAcpTranscript,
   resetAcpOnSessionList,
 } from '../../src/store/acp.js';
@@ -158,6 +160,55 @@ describe('acp store', () => {
     expect(byId.has('gone')).toBe(false);
     expect(byId.get('s1')).toMatchObject({ requested: false, failed: false });
     expect(byId.get('s1')?.tx.loaded).toBe(false);
+  });
+
+  it('applyAcpError ignores codes that are not refusals, and unknown sessions', () => {
+    applyAcpFrame(msg({ reset: true, items: [] }));
+    noteSentPrompt('s1', 'go');
+    applyAcpError({ code: 'permission_stale', session_id: 's1' });
+    applyAcpError({ code: 'something_else', session_id: 's1' });
+    applyAcpError({ code: 'acp_busy' });
+    applyAcpError({ code: 'acp_busy', session_id: 'nobody' });
+    const { byId } = acpStore.getState();
+    expect(byId.get('s1')).toMatchObject({ sent: 'go', returned: null });
+    expect(byId.has('nobody')).toBe(false);
+  });
+
+  it('applyAcpError returns a pending prompt and fails a pending snapshot together', () => {
+    requestAcpTranscript('s1');
+    noteSentPrompt('s1', 'go');
+    applyAcpError({ code: 'session_dead', session_id: 's1' });
+    expect(acpStore.getState().byId.get('s1')).toMatchObject({
+      sent: null,
+      returned: 'go',
+      requested: false,
+      failed: true,
+    });
+  });
+
+  it('applyAcpError does not fail a transcript that is already loaded', () => {
+    applyAcpFrame(msg({ reset: true, items: [] }));
+    applyAcpError({ code: 'acp_failed', session_id: 's1' });
+    expect(acpStore.getState().byId.get('s1')?.failed).toBe(false);
+  });
+
+  it('a pending prompt survives a reconnect and a different user turn', () => {
+    applyAcpFrame(msg({ reset: true, items: [] }));
+    noteSentPrompt('s1', 'go');
+    applyAcpFrame(
+      msg({ items: [{ id: 1, kind: 'user', text: 'other', origin: 'user' }] }),
+    );
+    expect(acpStore.getState().byId.get('s1')?.sent).toBe('go');
+    resetAcpOnSessionList(new Set(['s1']));
+    expect(acpStore.getState().byId.get('s1')?.sent).toBe('go');
+    // The refetched snapshot records it.
+    applyAcpFrame(
+      msg({
+        reset: true,
+        items: [{ id: 2, kind: 'user', text: 'go', origin: 'user' }],
+      }),
+    );
+    expect(acpStore.getState().byId.get('s1')?.sent).toBeNull();
   });
 
   it('forgetAcp deletes the entry', () => {

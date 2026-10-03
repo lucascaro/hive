@@ -8,7 +8,11 @@
 import { describe, it, expect, vi, beforeAll, beforeEach } from 'vitest';
 import { createScrollTrace } from '../../src/lib/scroll-debug.js';
 import * as store from '../../src/store/store.js';
-import { acpStore, applyAcpFrame } from '../../src/store/acp.js';
+import {
+  acpStore,
+  applyAcpFrame,
+  noteSentPrompt,
+} from '../../src/store/acp.js';
 
 vi.mock('../../src/bridge.js', () => {
   const fn = () => vi.fn(() => Promise.resolve());
@@ -118,5 +122,18 @@ describe('ACP transcripts across daemon events', () => {
     const byId = acpStore.getState().byId;
     expect(byId.has('a')).toBe(false);
     expect(byId.has('b')).toBe(true);
+  });
+
+  it('a control:error naming an ACP session gives its refused prompt back', () => {
+    const emit = wire();
+    seedLoaded('a');
+    noteSentPrompt('a', 'hello');
+    emit(
+      'control:error',
+      JSON.stringify({ code: 'acp_busy', message: 'busy', session_id: 'a' }),
+    );
+    const e = acpStore.getState().byId.get('a');
+    expect(e?.sent).toBeNull();
+    expect(e?.returned).toBe('hello');
   });
 });

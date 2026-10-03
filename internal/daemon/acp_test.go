@@ -2,6 +2,8 @@ package daemon
 
 import (
 	"encoding/json"
+	"errors"
+	"fmt"
 	"os"
 	"testing"
 	"time"
@@ -86,6 +88,36 @@ func TestGetAcpTranscriptUnknownSession(t *testing.T) {
 	d.handleControlFrame(t.Context(), rec.ops(), wire.FramePromptAcp, []byte(`{"session_id":"nope","text":"x"}`))
 	if len(rec.errs) != 1 || rec.errs[0].Code != "no_such_session" || rec.errs[0].SessionID != "nope" {
 		t.Errorf("prompt errors = %+v, want no_such_session for session nope", rec.errs)
+	}
+}
+
+// Every ACP refusal carries a code the GUI's ACP_REFUSALS set (store/acp.ts)
+// matches on, and names the session it was for.
+func TestSendACPErrorCodes(t *testing.T) {
+	cases := []struct {
+		err  error
+		code string
+	}{
+		{registry.ErrNotFound, "no_such_session"},
+		{registry.ErrNotACP, "not_acp_session"},
+		{registry.ErrACPBusy, "acp_busy"},
+		{registry.ErrPermissionStale, "permission_stale"},
+		{registry.ErrNoLiveSession, "session_dead"},
+		{errors.New("boom"), "acp_failed"},
+	}
+	for _, c := range cases {
+		rec := &recordOps{}
+		sendACPError(rec.ops(), fmt.Errorf("wrapped: %w", c.err), "s1")
+		if len(rec.errs) != 1 || rec.errs[0].Code != c.code || rec.errs[0].SessionID != "s1" {
+			t.Errorf("%v: errors = %+v, want %s for session s1", c.err, rec.errs, c.code)
+		}
+	}
+	// ANSWER_PERMISSION names its session too.
+	d := newFrameTestDaemon(t)
+	rec := &recordOps{}
+	d.handleControlFrame(t.Context(), rec.ops(), wire.FrameAnswerPermission, []byte(`{"session_id":"nope","request_id":"r","option_id":"o"}`))
+	if len(rec.errs) != 1 || rec.errs[0].Code != "no_such_session" || rec.errs[0].SessionID != "nope" {
+		t.Errorf("answer errors = %+v, want no_such_session for session nope", rec.errs)
 	}
 }
 
