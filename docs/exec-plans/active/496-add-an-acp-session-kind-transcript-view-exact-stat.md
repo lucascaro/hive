@@ -4,7 +4,7 @@
 - **Issue:** #496
 - **Status:** active
 - **Phase:** 1 of 4
-- **PR:** —
+- **PR:** #499
 - **Branch:** feature/496-acp-session-kind
 
 ## Summary
@@ -395,6 +395,10 @@ The contract bumps once per phase because `scripts/check-daemon-contract.sh:36-4
 
 ## Decision log
 
+- **2026-10-03** — P1 updates `control-plane.md` (acp tier implemented), DESIGN.md and AGENTS.md now, not in P4. Why: the tier and the `internal/acp` package exist from P1, and docs that lag the code are a bug.
+- **2026-10-03** — P1 ships a changeset after all. Why: plugins can create and drive ACP sessions from P1, which is user-visible to plugin authors; the pre-push gate is right.
+- **2026-10-03** — `isStale` in the GUI was left unchanged. Why: the daemon sends no `stale_at` for the acp tier, so the existing check already returns false.
+- **2026-10-03** — The plugin SDK typedefs and frame table gained the ACP frames and fields, and the webhook plugin's vendored SDK was re-copied. Why: drift tests in `internal/plugin` require it. The plan missed this blast radius.
 - **2026-10-03** — Ship in 4 phases (daemon core, GUI, typed result + trust, takeover + docs), one PR each. Why: the change is large; per-phase gates keep review tractable, and `/hs-merge-gate` supports `Phase: N of M`.
 - **2026-10-03** — Hand-rolled JSON-RPC client, no Go ACP SDK. Why: none is official; `coder/acp-go-sdk` lags the schema.
 - **2026-10-03** — Transcript after restart comes from `session/load` replay, not daemon persistence. Why: PTY-typed turns during takeover live only in the agent's store; a daemon copy would diverge.
@@ -405,6 +409,7 @@ The contract bumps once per phase because `scripts/check-daemon-contract.sh:36-4
 
 - **2026-10-03** — Plan created; research started.
 - **2026-10-03** — Research done; plan approved (second opinion: revise→approve, 8/10). Phase 1 of 4 starts.
+- **2026-10-03** — Phase 1 implemented and PR #499 opened (daemon core, contract 22).
 
 ## Open questions
 
