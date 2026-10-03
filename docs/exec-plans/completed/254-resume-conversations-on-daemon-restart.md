@@ -13,6 +13,12 @@ session's own agent conversation rather than starting fresh.
 
 ## Research
 
+> **Historical.** This section describes the tree as the legacy feature file
+> saw it, and was already stale when migrated on 2026-08-30. Since #166,
+> `Registry.Revive` resumes a pinned `Entry.AgentSessionID` through
+> `def.ResumeArgs` and uses plain `def.Cmd` only when there is no id; see the
+> 2026-10-03 Progress entry.
+
 Carried over from the legacy feature file; not yet re-verified against current
 code. Relevant pieces named there:
 
