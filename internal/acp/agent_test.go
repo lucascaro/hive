@@ -6,8 +6,10 @@ import (
 	"path/filepath"
 	"runtime"
 	"slices"
+	"strconv"
 	"strings"
 	"sync"
+	"syscall"
 	"testing"
 	"time"
 
@@ -217,7 +219,8 @@ func TestDoneDespiteGrandchildHoldingStderr(t *testing.T) {
 		t.Skip("shell script adapter")
 	}
 	bin := t.TempDir()
-	writeScript(t, bin, "leaky", "sleep 30 &\necho bye >&2\nexit 0\n")
+	pidFile := filepath.Join(bin, "grandchild.pid")
+	writeScript(t, bin, "leaky", "sleep 30 &\necho $! > "+pidFile+"\necho bye >&2\nexit 0\n")
 	a, err := Start(Spec{Argv: []string{filepath.Join(bin, "leaky")}, Env: os.Environ(), Cwd: bin}, Handler{})
 	if err != nil {
 		t.Fatal(err)
@@ -227,7 +230,21 @@ func TestDoneDespiteGrandchildHoldingStderr(t *testing.T) {
 	case <-time.After(10 * time.Second):
 		t.Fatal("Done blocked on a grandchild holding stderr")
 	}
-	if got := a.LastError(); got != "bye" && got != "" {
-		t.Logf("LastError = %q", got)
+	raw, err := os.ReadFile(pidFile)
+	if err != nil {
+		t.Fatal(err)
+	}
+	pid, err := strconv.Atoi(strings.TrimSpace(string(raw)))
+	if err != nil {
+		t.Fatal(err)
+	}
+	gc, _ := os.FindProcess(pid)
+	deadline := time.Now().Add(5 * time.Second)
+	for gc.Signal(syscall.Signal(0)) == nil {
+		if time.Now().After(deadline) {
+			_ = gc.Kill()
+			t.Fatalf("grandchild %d outlived the adapter's group", pid)
+		}
+		time.Sleep(20 * time.Millisecond)
 	}
 }
