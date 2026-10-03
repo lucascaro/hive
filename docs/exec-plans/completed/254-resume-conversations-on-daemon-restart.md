@@ -3,7 +3,7 @@
 - **Spec:** [docs/product-specs/254-resume-conversations-on-daemon-restart.md](../../product-specs/254-resume-conversations-on-daemon-restart.md)
 - **Issue:** —
 - **Branch:** —
-- **Status:** active
+- **Status:** completed
 
 ## Summary
 
@@ -12,6 +12,12 @@ for Restart Session) to `Registry.Revive`, so a daemon restart recovers each
 session's own agent conversation rather than starting fresh.
 
 ## Research
+
+> **Historical.** This section describes the tree as the legacy feature file
+> saw it, and was already stale when migrated on 2026-08-30. Since #166,
+> `Registry.Revive` resumes a pinned `Entry.AgentSessionID` through
+> `def.ResumeArgs` and uses plain `def.Cmd` only when there is no id; see the
+> 2026-10-03 Progress entry.
 
 Carried over from the legacy feature file; not yet re-verified against current
 code. Relevant pieces named there:
@@ -59,3 +65,7 @@ Plan sketch:
 
 - Not started. Stage TRIAGE — research above predates the current tree and needs
   re-verification before planning.
+- **2026-10-03** — Closed as already shipped by #166 (per-session id pinned
+  at create, resumed by `Registry.Revive`); see the spec's Notes for the
+  evidence. Nothing implemented under this plan; the Approach above was
+  superseded by `SessionIDFlag` / `ResumeArgs` on `agent.Def`.

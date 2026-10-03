@@ -46,11 +46,11 @@ Un-skipping it would preserve in-place highlighting, which is the one thing rout
 
 ### C. Read the agent's own transcript
 
-Hive already derives the Claude Code transcript path — `~/.claude/projects/<encoded-cwd>/<sessionID>.jsonl` (`internal/agent/claude.go:18-31`) — and knows, per session, which agent is running (`registry.Entry.Agent`, `internal/registry/registry.go:90`) and the agent's own conversation id (`Entry.AgentSessionID`, `:94-101`).
+Hive already derives the Claude Code transcript path — `~/.claude/projects/<encoded-cwd>/<sessionID>.jsonl` (`encodeClaudeProjectDir`, `internal/agent/claude.go:40-61`) — and knows, per session, which agent is running (`registry.Entry.Agent`, `internal/registry/registry.go:90`) and the agent's own conversation id (`Entry.AgentSessionID`, `:94-101`).
 
 But it never reads content. Every existing read is an existence check or a single-line id probe:
 
-- `claudeSessionExists` does `os.Stat` only (`internal/agent/claude.go:42-53`).
+- `claudeSessionExists` does `os.Stat` only (`internal/agent/claude.go:72-83`).
 - `codexCaptureSessionID` reads **only the first line** of `~/.codex/sessions/.../rollout-*.jsonl` to parse `session_meta` (`internal/agent/codex.go:59-152`, the `ReadSlice('\n')` at `:139`).
 - Pi reports over the wire via a Hive-authored embedded extension (`internal/agent/pi.go`, `//go:embed pi/hive.ts`), not a file read.
 - `internal/agentstate/activity.go` holds tool/plan shape in a 200-entry in-memory ring, explicitly "dies with the daemon… there is no disk format" (`:24-30`) — not turn text.
