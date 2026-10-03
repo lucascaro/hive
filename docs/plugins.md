@@ -237,7 +237,7 @@ and reply payloads are the Go structs of the same name in
 | `SET_PLUGIN_CONFIG` | `SetPluginConfigReq` | `PLUGIN_EVENT` (updated) |
 | `SET_CLIENT_UI` | `SetClientUIReq` | nothing. The Hive app's own announcement of which plugin UIs it runs; ignored from a plugin |
 | `REMOVE_PLUGIN` | `RemovePluginReq` | `PLUGIN_EVENT` (removed) |
-| `GET_ACP_TRANSCRIPT` | `GetAcpTranscriptReq` | `ACP_TRANSCRIPT` (snapshot) |
+| `GET_ACP_TRANSCRIPT` | `GetAcpTranscriptReq` | `ACP_TRANSCRIPT` (snapshot). Start an ACP session with `CREATE_SESSION` and `"kind": "acp"` (Claude, Codex, Pi; Gemini and Copilot experimental). It records `spawned_by: "plugin:<id>"` |
 | `PROMPT_ACP` | `PromptAcpReq` | `ACP_TRANSCRIPT`, `SESSION_EVENT` (state). The turn's origin is recorded as `plugin:<id>` |
 | `ANSWER_PERMISSION` | `AnswerPermissionReq` | `ACP_TRANSCRIPT` |
 

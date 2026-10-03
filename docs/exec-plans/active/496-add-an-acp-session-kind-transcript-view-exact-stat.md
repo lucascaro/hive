@@ -424,3 +424,9 @@ The contract bumps once per phase because `scripts/check-daemon-contract.sh:36-4
 - **2026-10-03 iter 6** — verdict: APPROVE; mergeable: MERGEABLE; findings_hash: empty; threads_open: 0; action: stop; head_sha: 5cc750ed.
 
 ## Gate verdict
+
+- **2026-10-03** — verdict: PASS; phase: 1/4; checks: 13 passed / 0 failed / 0 followups / 3 deferred; followups: none; one-line: phase 1 (daemon core) delivers every P1 part of criteria 1–5, 7, 8; criterion 6 and 9 (takeover, gate B) and the GUI/trust parts are deferred to phases 2–4.
+  - 2026-10-03 dimensions:
+    - acceptance — PASS — criteria 1, 3, 7 fully; 2, 4, 5, 8 P1 parts (attach refusal, PROMPT_ACP with origin, daemon-stamped SpawnedBy, pinned adapters + no-Node reason + experimental flag); 6 and 9 DEFERRED (phase 4); targeted tests pass in acp, registry, daemon, agent, agentstate, wire.
+    - non-goals — PASS — PTY stays default and unchanged (empty kind persists as pty; only isACP-gated branches); text-only prompts; no picker, search, engine, bundled adapters or agent-side server.
+    - doc accuracy — PASS — changeset valid; plugins.md, SDK and vendored copy match wire; control-plane, acp-workflows, DESIGN/AGENTS, index, contract 22 and plan 391 accurate. Two optional notes (CREATE_SESSION kind in plugins.md; review-round hardening in acp-session-kind.md) added in the same commit.

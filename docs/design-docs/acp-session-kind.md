@@ -178,4 +178,8 @@ This note is the research for [spec 496](../product-specs/496-add-an-acp-session
   - `CreateSpec.kind`;
   - `CreateSpec.SpawnedBy` is `json:"-"` and is stamped by the daemon from the connection.
 - **Attach.** Attaching to an ACP session gets `ErrCodeACPSession`. A create HELLO with `kind: acp` is refused, because it would turn into an attach.
+- **Review-round hardening.**
+  - The transcript is budgeted by its JSON-escaped size, so a snapshot always fits one frame (`wire.MaxPayload`).
+  - Streamed chunks go out as `append` deltas.
+  - A `session/load` replay is broadcast once, as a reset, when it ends. Broadcasting it per chunk could overflow a listener mid-replay.
 - **GUI staleness.** `isStale` needs no change: the daemon sends no `stale_at` for the `acp` tier.
