@@ -54,6 +54,11 @@ type AcpItem struct {
 	// completed, failed) as the agent reports it.
 	Status string         `json:"status,omitempty"`
 	Plan   []AcpPlanEntry `json:"plan,omitempty"`
+	// Append, on a delta only, means Text is a chunk to add to the end
+	// of the item with this ID rather than its whole text. Streaming a
+	// reply re-sending everything said so far would cost the square of
+	// its length; a snapshot (Reset) never carries it.
+	Append bool `json:"append,omitempty"`
 }
 
 // AcpPlanEntry is one step of an agent's plan.

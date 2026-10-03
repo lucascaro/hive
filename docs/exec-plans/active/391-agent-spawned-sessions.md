@@ -48,7 +48,7 @@ that evidence, not from this file.
   `DaemonContract++`.
 - Daemon: `sessionModeFrames[FrameCreateSession] = true`; on a
   restricted connection require the grant (389's check), count live
-  entries with `SpawnedBy == ownSessionID` against a constant
+  entries with `SpawnedBy == "session:"+ownSessionID` against a constant
   (`maxChildrenPerOrchestrator = 4` — a constant, bump when someone
   needs more), then rewrite the spec: `ProjectID = ownProjectID`,
   `Orchestrator = false`, `Cmd = nil`, `Agent` must be a catalog id.

@@ -5,8 +5,10 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"strings"
 	"sync"
 	"time"
@@ -88,35 +90,65 @@ func Start(spec Spec, h Handler) (*Agent, error) {
 	if len(spec.Argv) == 0 {
 		return nil, errors.New("acp: empty adapter command")
 	}
-	cmd := proc.Command(spec.Argv[0], spec.Argv[1:]...)
+	// exec resolves a bare name on the DAEMON's PATH, not on the one in
+	// spec.Env — and a Finder-launched hived has no npx on its own PATH.
+	// Resolve it where the adapter will actually run.
+	name := spec.Argv[0]
+	if !filepath.IsAbs(name) {
+		if p := proc.LookPathIn(envPATH(spec.Env), name); p != "" {
+			name = p
+		}
+	}
+	cmd := proc.Command(name, spec.Argv[1:]...)
 	cmd.Dir = spec.Cwd
 	cmd.Env = spec.Env
 	proc.OwnGroup(cmd)
 
-	// Plain pipes rather than StdoutPipe: Wait must not close our read
-	// end while the reader still drains the last replies, and a
-	// grandchild (npx → node → CLI) may hold the write end past the
-	// leader's exit — the group kill after Wait closes it.
-	inR, inW, err := os.Pipe()
+	// Plain pipes, all three, rather than exec's own: Wait waits for
+	// exec's copy goroutines, and a grandchild (npx → node → CLI) can
+	// hold an inherited pipe past the leader's exit, so Wait would never
+	// return for a dead adapter. With os.Pipe, Wait returns when the
+	// leader exits, the group kill after it reaps the rest, and the
+	// readers drain what is left on their own.
+	var files []*os.File
+	pipe := func() (r, w *os.File, err error) {
+		r, w, err = os.Pipe()
+		files = append(files, r, w)
+		return
+	}
+	closeAll := func() {
+		for _, f := range files {
+			f.Close()
+		}
+	}
+	inR, inW, err := pipe()
 	if err != nil {
+		closeAll()
 		return nil, err
 	}
-	outR, outW, err := os.Pipe()
+	outR, outW, err := pipe()
 	if err != nil {
-		inR.Close()
-		inW.Close()
+		closeAll()
+		return nil, err
+	}
+	errR, errW, err := pipe()
+	if err != nil {
+		closeAll()
 		return nil, err
 	}
 	a := &Agent{cmd: cmd, stdin: inW, stderr: &tail{}, done: make(chan struct{})}
-	cmd.Stdin, cmd.Stdout, cmd.Stderr = inR, outW, a.stderr
+	cmd.Stdin, cmd.Stdout, cmd.Stderr = inR, outW, errW
 	if err := cmd.Start(); err != nil {
-		for _, f := range []*os.File{inR, inW, outR, outW} {
-			f.Close()
-		}
+		closeAll()
 		return nil, fmt.Errorf("acp: start %s: %w", spec.Argv[0], err)
 	}
 	inR.Close()
 	outW.Close()
+	errW.Close()
+	go func() {
+		_, _ = io.Copy(a.stderr, errR)
+		errR.Close()
+	}()
 
 	a.conn = NewConn(outR, inW, func(method string, params json.RawMessage) {
 		if method != MethodSessionUpdate || h.Update == nil {
@@ -223,6 +255,16 @@ func (a *Agent) Prompt(ctx context.Context, id, text string) (string, error) {
 		Prompt:    []ContentBlock{{Type: "text", Text: text}},
 	}, &res)
 	return res.StopReason, err
+}
+
+// envPATH returns the PATH entry of env.
+func envPATH(env []string) string {
+	for _, kv := range env {
+		if v, ok := strings.CutPrefix(kv, "PATH="); ok {
+			return v
+		}
+	}
+	return ""
 }
 
 // nonNil keeps "mcpServers": [] on the wire: adapters reject null.

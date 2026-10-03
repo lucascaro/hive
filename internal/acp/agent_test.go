@@ -3,6 +3,8 @@ package acp
 import (
 	"context"
 	"os"
+	"path/filepath"
+	"runtime"
 	"slices"
 	"strings"
 	"sync"
@@ -179,5 +181,53 @@ func TestCloseEndsHungTurn(t *testing.T) {
 func TestStartMissingBinary(t *testing.T) {
 	if _, err := Start(Spec{Argv: []string{"/nonexistent/adapter"}}, Handler{}); err == nil {
 		t.Error("Start of a missing binary succeeded")
+	}
+}
+
+func writeScript(t *testing.T, dir, name, body string) {
+	t.Helper()
+	if err := os.WriteFile(filepath.Join(dir, name), []byte("#!/bin/sh\n"+body), 0o755); err != nil {
+		t.Fatal(err)
+	}
+}
+
+// A Finder-launched daemon has no npx on its own PATH; the adapter must
+// be found on the PATH it is given, which is the login shell's.
+func TestStartResolvesOnEnvPATH(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("shell script adapter")
+	}
+	bin, dir := t.TempDir(), t.TempDir()
+	writeScript(t, bin, "fake-adapter", `exec "`+os.Args[0]+`"`+"\n")
+	env := append(AdapterEnv(os.Environ(), bin+string(os.PathListSeparator)+"/usr/bin:/bin"), acptest.Env(dir)...)
+	a, err := Start(Spec{Argv: []string{"fake-adapter"}, Env: env, Cwd: dir}, Handler{})
+	if err != nil {
+		t.Fatalf("Start on the env PATH: %v", err)
+	}
+	defer a.Close()
+	if _, err := a.Initialize(ctx(t)); err != nil {
+		t.Fatal(err)
+	}
+}
+
+// An adapter that exits while a grandchild still holds its stderr must
+// still read as exited, and the grandchild must die with its group.
+func TestDoneDespiteGrandchildHoldingStderr(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("shell script adapter")
+	}
+	bin := t.TempDir()
+	writeScript(t, bin, "leaky", "sleep 30 &\necho bye >&2\nexit 0\n")
+	a, err := Start(Spec{Argv: []string{filepath.Join(bin, "leaky")}, Env: os.Environ(), Cwd: bin}, Handler{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	select {
+	case <-a.Done():
+	case <-time.After(10 * time.Second):
+		t.Fatal("Done blocked on a grandchild holding stderr")
+	}
+	if got := a.LastError(); got != "bye" && got != "" {
+		t.Logf("LastError = %q", got)
 	}
 }

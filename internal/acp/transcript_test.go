@@ -1,6 +1,8 @@
 package acp
 
 import (
+	"encoding/json"
+	"strings"
 	"testing"
 
 	"github.com/lucascaro/hive/internal/wire"
@@ -110,5 +112,60 @@ func TestSnapshotIsACopy(t *testing.T) {
 	s[0].Plan[0].Content = "mutated"
 	if tr.Snapshot()[0].Plan[0].Content != "a" {
 		t.Error("Snapshot shares plan storage with the transcript")
+	}
+}
+
+// A streamed chunk is broadcast as just that chunk, marked Append, so a
+// long reply costs its length, not its length squared.
+func TestChunkDeltaIsAppendOnly(t *testing.T) {
+	var tr Transcript
+	first := tr.Apply(text(UpdateAgentMessage, "hel"), false)
+	second := tr.Apply(text(UpdateAgentMessage, "lo"), false)
+	if len(first) != 1 || first[0].Append || first[0].Text != "hel" {
+		t.Errorf("first delta = %+v, want the whole new item", first)
+	}
+	if len(second) != 1 || !second[0].Append || second[0].Text != "lo" || second[0].ID != first[0].ID {
+		t.Errorf("second delta = %+v, want an append of \"lo\" to item %d", second, first[0].ID)
+	}
+	for _, it := range tr.Snapshot() {
+		if it.Append {
+			t.Error("a snapshot item is marked Append")
+		}
+	}
+}
+
+// However much the agent says, a snapshot must fit in one frame.
+func TestSnapshotFitsFrameLimit(t *testing.T) {
+	var tr Transcript
+	big := strings.Repeat("x", 200<<10)
+	for i := 0; i < 40; i++ {
+		tr.AddUser("go", wire.OriginUser)
+		tr.Apply(text(UpdateAgentMessage, big), false)
+		tr.Apply(text(UpdateAgentMessage, big), false) // past maxItemText
+		tr.Apply(Update{SessionUpdate: UpdateToolCall, ToolCallID: "t", Title: big}, false)
+	}
+	b, err := json.Marshal(wire.AcpTranscriptMsg{SessionID: "s", Reset: true, Items: tr.Snapshot()})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(b) >= wire.MaxPayload {
+		t.Errorf("snapshot is %d bytes, want < %d", len(b), wire.MaxPayload)
+	}
+	last := tr.Snapshot()[len(tr.Snapshot())-1]
+	if last.Kind != wire.AcpItemTool {
+		t.Errorf("newest item = %s, want the newest kept", last.Kind)
+	}
+}
+
+func TestLongMessageIsTruncatedOnce(t *testing.T) {
+	var tr Transcript
+	tr.Apply(text(UpdateAgentMessage, strings.Repeat("a", maxItemText-1)), false)
+	tr.Apply(text(UpdateAgentMessage, "bbb"), false)
+	if d := tr.Apply(text(UpdateAgentMessage, "ccc"), false); d != nil {
+		t.Errorf("chunk after the cut = %+v, want dropped", d)
+	}
+	got := tr.Snapshot()[0].Text
+	if !strings.HasSuffix(got, truncatedMark) || strings.Count(got, truncatedMark) != 1 {
+		t.Errorf("text tail = %q, want one truncation mark", got[len(got)-40:])
 	}
 }

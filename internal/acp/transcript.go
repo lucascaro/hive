@@ -2,15 +2,24 @@ package acp
 
 import "github.com/lucascaro/hive/internal/wire"
 
-// MaxTranscriptItems caps one session's in-memory transcript; the
-// oldest items fall off first.
+// Transcript bounds. A snapshot travels as one ACP_TRANSCRIPT frame, and
+// frames are capped at wire.MaxPayload (1 MiB), so the text it holds is
+// budgeted well under that; the oldest items fall off first. A single
+// message longer than maxItemText keeps its beginning.
 //
-// ponytail: in-memory ring, no persistence. After a daemon restart the
+// ponytail: in-memory, no persistence. After a daemon restart the
 // transcript is rebuilt from the agent's own session/load replay — the
 // only copy that also holds turns typed in a PTY takeover. Persist a
 // cache only if adapters prove to replay too little (tool and plan
 // rows); the gate B run log records what each one replays.
-const MaxTranscriptItems = 2000
+const (
+	MaxTranscriptItems = 2000
+	maxTranscriptText  = 512 << 10
+	maxItemText        = 128 << 10
+)
+
+// truncatedMark ends a message cut at maxItemText.
+const truncatedMark = "\n\n[… truncated by Hive]"
 
 // Transcript folds session/update notifications into wire.AcpItems:
 // message chunks coalesce into one item per message, and tool call
@@ -20,6 +29,7 @@ type Transcript struct {
 	epoch  int
 	nextID int
 	items  []wire.AcpItem
+	text   int // total itemText over items
 }
 
 // Epoch identifies the current transcript generation.
@@ -30,6 +40,7 @@ func (t *Transcript) Epoch() int { return t.epoch }
 func (t *Transcript) Reset() {
 	t.epoch++
 	t.items = nil
+	t.text = 0
 }
 
 // Snapshot returns a copy of every item.
@@ -43,11 +54,12 @@ func (t *Transcript) Snapshot() []wire.AcpItem {
 
 // AddUser records a prompt Hive sent, with who sent it.
 func (t *Transcript) AddUser(text, origin string) wire.AcpItem {
-	return t.add(wire.AcpItem{Kind: wire.AcpItemUser, Text: text, Origin: origin})
+	return t.add(wire.AcpItem{Kind: wire.AcpItemUser, Text: clip(text), Origin: origin})
 }
 
-// Apply folds in one update and returns the items it created or
-// changed (copies), or nil when it changed nothing.
+// Apply folds in one update and returns the deltas to broadcast — items
+// created or changed, as copies, with a streamed chunk marked Append —
+// or nil when it changed nothing.
 //
 // user_message_chunk is honoured only while replaying a session/load:
 // a live prompt is already recorded by AddUser, with its origin, and an
@@ -67,7 +79,9 @@ func (t *Transcript) Apply(u Update, replaying bool) []wire.AcpItem {
 		if i := t.toolIndex(u.ToolCallID); i >= 0 {
 			it := &t.items[i]
 			if u.Title != "" {
-				it.Title = u.Title
+				title := clip(u.Title)
+				t.text += len(title) - len(it.Title)
+				it.Title = title
 			}
 			if u.Kind != "" {
 				it.ToolKind = u.Kind
@@ -75,23 +89,28 @@ func (t *Transcript) Apply(u Update, replaying bool) []wire.AcpItem {
 			if u.Status != "" {
 				it.Status = u.Status
 			}
-			return []wire.AcpItem{copyItem(*it)}
+			out := copyItem(*it)
+			t.trim()
+			return []wire.AcpItem{out}
 		}
 		return []wire.AcpItem{t.add(wire.AcpItem{
 			Kind: wire.AcpItemTool, ToolCallID: u.ToolCallID,
-			Title: u.Title, ToolKind: u.Kind, Status: u.Status,
+			Title: clip(u.Title), ToolKind: u.Kind, Status: u.Status,
 		})}
 	case UpdatePlan:
 		plan := make([]wire.AcpPlanEntry, len(u.Entries))
 		for i, e := range u.Entries {
-			plan[i] = wire.AcpPlanEntry{Content: e.Content, Priority: e.Priority, Status: e.Status}
+			plan[i] = wire.AcpPlanEntry{Content: clip(e.Content), Priority: e.Priority, Status: e.Status}
 		}
 		// One plan item per turn: a plan update is the whole plan, so it
 		// replaces this turn's plan rather than stacking a copy per step.
 		for i := len(t.items) - 1; i >= 0 && t.items[i].Kind != wire.AcpItemUser; i-- {
 			if t.items[i].Kind == wire.AcpItemPlan {
+				t.text += planText(plan) - planText(t.items[i].Plan)
 				t.items[i].Plan = plan
-				return []wire.AcpItem{copyItem(t.items[i])}
+				out := copyItem(t.items[i])
+				t.trim()
+				return []wire.AcpItem{out}
 			}
 		}
 		return []wire.AcpItem{t.add(wire.AcpItem{Kind: wire.AcpItemPlan, Plan: plan})}
@@ -99,15 +118,29 @@ func (t *Transcript) Apply(u Update, replaying bool) []wire.AcpItem {
 	return nil
 }
 
+// chunk appends streamed text to the open message of this kind, or
+// opens a new one. An append is broadcast as just the new text.
 func (t *Transcript) chunk(kind string, u Update, origin string) []wire.AcpItem {
 	if u.Content == nil || u.Content.Type != "text" || u.Content.Text == "" {
 		return nil
 	}
 	if n := len(t.items); n > 0 && t.items[n-1].Kind == kind {
-		t.items[n-1].Text += u.Content.Text
-		return []wire.AcpItem{copyItem(t.items[n-1])}
+		it := &t.items[n-1]
+		room := maxItemText - len(it.Text)
+		if room <= 0 {
+			return nil // already cut; the rest of this message is dropped
+		}
+		add := u.Content.Text
+		if len(add) > room {
+			add = add[:room] + truncatedMark
+		}
+		it.Text += add
+		t.text += len(add)
+		delta := wire.AcpItem{ID: it.ID, Kind: it.Kind, Origin: it.Origin, Text: add, Append: true}
+		t.trim()
+		return []wire.AcpItem{delta}
 	}
-	return []wire.AcpItem{t.add(wire.AcpItem{Kind: kind, Text: u.Content.Text, Origin: origin})}
+	return []wire.AcpItem{t.add(wire.AcpItem{Kind: kind, Text: clip(u.Content.Text), Origin: origin})}
 }
 
 func (t *Transcript) toolIndex(id string) int {
@@ -126,10 +159,42 @@ func (t *Transcript) add(it wire.AcpItem) wire.AcpItem {
 	t.nextID++
 	it.ID = t.nextID
 	t.items = append(t.items, it)
-	if over := len(t.items) - MaxTranscriptItems; over > 0 {
-		t.items = append([]wire.AcpItem(nil), t.items[over:]...)
+	t.text += itemText(it)
+	out := copyItem(it)
+	t.trim()
+	return out
+}
+
+// trim drops the oldest items until both budgets hold. The newest item
+// always stays, whatever its size (clip bounds it).
+func (t *Transcript) trim() {
+	drop := 0
+	for len(t.items)-drop > 1 && (len(t.items)-drop > MaxTranscriptItems || t.text > maxTranscriptText) {
+		t.text -= itemText(t.items[drop])
+		drop++
 	}
-	return copyItem(it)
+	if drop > 0 {
+		t.items = append([]wire.AcpItem(nil), t.items[drop:]...)
+	}
+}
+
+// clip bounds one string at maxItemText, keeping its beginning. It may
+// cut inside a UTF-8 sequence; encoding/json then writes U+FFFD there.
+func clip(s string) string {
+	if len(s) > maxItemText {
+		return s[:maxItemText] + truncatedMark
+	}
+	return s
+}
+
+func itemText(it wire.AcpItem) int { return len(it.Text) + len(it.Title) + planText(it.Plan) }
+
+func planText(p []wire.AcpPlanEntry) int {
+	n := 0
+	for _, e := range p {
+		n += len(e.Content)
+	}
+	return n
 }
 
 func copyItem(it wire.AcpItem) wire.AcpItem {
