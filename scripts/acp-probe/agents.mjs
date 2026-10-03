@@ -9,29 +9,22 @@ import { existsSync, readFileSync, readdirSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { join, basename } from 'node:path';
 
-// Mirrors encodeClaudeProjectDir (internal/agent/claude.go:28-34).
+// Mirrors encodeClaudeProjectDir (internal/agent/claude.go:40-63), which
+// ports claude's own encoder (2.1.288): every UTF-16 unit outside
+// [A-Za-z0-9] becomes "-", and a name over 200 is cut and suffixed with a
+// base-36 hash of the raw cwd. Unlike the Go side this does not
+// filepath.Clean the cwd first; the probe only passes clean temp paths.
 export function encodeClaudeProjectDir(cwd) {
-  return cwd.replaceAll('/', '-').replaceAll('.', '-').replaceAll(':', '-');
+  const k = cwd.replace(/[^A-Za-z0-9]/g, '-');
+  if (k.length <= 200) return k;
+  let h = 0;
+  for (let i = 0; i < cwd.length; i++) h = ((h << 5) - h + cwd.charCodeAt(i)) | 0;
+  return `${k.slice(0, 200)}-${Math.abs(h).toString(36)}`;
 }
 
-// What claude itself writes, observed 2026-10-02 (claude 2.1.288): EVERY
-// non-alphanumeric character becomes "-", not just "/", "." and ":". A cwd
-// with "_" (macOS $TMPDIR has one) therefore resolves to a different dir
-// under Hive's encoder — see the spec 492 design doc's findings.
-export function encodeClaudeProjectDirObserved(cwd) {
-  return cwd.replace(/[^A-Za-z0-9]/g, '-');
-}
-
-const claudeTranscript = (enc, id, cwd, home) =>
-  !!id && !!cwd && existsSync(join(home, '.claude', 'projects', enc(cwd), `${id}.jsonl`));
-
-// Mirrors claudeSessionExists (internal/agent/claude.go:45-56).
+// Mirrors claudeSessionExists (internal/agent/claude.go:72-83).
 export function claudeSessionExists(id, cwd, home = homedir()) {
-  return claudeTranscript(encodeClaudeProjectDir, id, cwd, home);
-}
-
-export function claudeSessionExistsObserved(id, cwd, home = homedir()) {
-  return claudeTranscript(encodeClaudeProjectDirObserved, id, cwd, home);
+  return !!id && !!cwd && existsSync(join(home, '.claude', 'projects', encodeClaudeProjectDir(cwd), `${id}.jsonl`));
 }
 
 // Mirrors encodePiSessionsDir (internal/agent/pi.go:98). Unlike claude,
@@ -97,20 +90,17 @@ export const AGENTS = {
     cli: ['claude', '--version'],
     launch: () => ['npx', '-y', '@agentclientprotocol/claude-agent-acp@0.85.1'],
     cliSessionId: (acpId) => ({ id: acpId, mismatch: false, via: 'identity' }),
-    // Mirrors claudeResumeArgs (internal/agent/claude.go:221-226): --resume
+    // Mirrors claudeResumeArgs (internal/agent/claude.go:248-253): --resume
     // only when the transcript exists, else --session-id, which silently
     // starts a FRESH session — a takeover failure, not a reopen.
     //
-    // hiveBranch is what Hive's code picks today. When it picks --session-id
-    // but the transcript DOES exist under claude's real encoding, that is a
-    // Hive encoder bug, not an ACP failure: the probe records the bug and
-    // still tests the ACP question with --resume.
+    // Hive's encoder used to diverge from claude's (#494), so this once
+    // computed a separate hiveBranch; the two now always agree.
     hiveResume: (id, cwd, home) => {
-      const hiveBranch = claudeSessionExists(id, cwd, home) ? 'resume' : 'session-id';
-      const branch = claudeSessionExistsObserved(id, cwd, home) ? 'resume' : 'session-id';
+      const branch = claudeSessionExists(id, cwd, home) ? 'resume' : 'session-id';
       return {
         branch,
-        hiveBranch,
+        hiveBranch: branch,
         argv: branch === 'resume' ? ['claude', '--resume', id] : ['claude', '--session-id', id],
       };
     },

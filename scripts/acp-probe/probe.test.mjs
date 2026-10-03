@@ -9,7 +9,7 @@ import { dirname, join } from 'node:path';
 import { createInterface } from 'node:readline';
 import { after, test } from 'node:test';
 import { fileURLToPath } from 'node:url';
-import { AGENTS, encodeClaudeProjectDirObserved, piResolveSessionId, submitIdsFor } from './agents.mjs';
+import { AGENTS, encodeClaudeProjectDir, piResolveSessionId, submitIdsFor } from './agents.mjs';
 import { checkDoc, computeVerdict } from './check-doc.mjs';
 import { SUBMIT_MCP, childEnv, decidePermission, dialogKeys, headlessTakeover, ptyTakeover, replyMarker, runProbe, whitelist } from './probe.mjs';
 
@@ -163,16 +163,23 @@ test('takeover: claude falls back to --session-id when no transcript exists, and
   assert.deepEqual([r.verdict, r.reason], ['fail', 'fresh_session']);
 });
 
-test("takeover: claude transcript under claude's real encoding is found even where Hive's encoder misses it", () => {
+test('takeover: claude transcript under a "_" cwd resumes (#494)', () => {
   const home = tmp('acp-home-');
   const cwd = '/tmp/a_b.c';
-  const dir = join(home, '.claude', 'projects', encodeClaudeProjectDirObserved(cwd));
+  // claude's own directory name, spelled out so a broken mirror cannot agree.
+  const dir = join(home, '.claude', 'projects', '-tmp-a-b-c');
   mkdirSync(dir, { recursive: true });
   writeFileSync(join(dir, 'abc.jsonl'), '{}\n');
   const h = AGENTS.claude.hiveResume('abc', cwd, home);
-  assert.equal(h.branch, 'resume');
-  assert.equal(h.hiveBranch, 'session-id'); // Hive's encoder keeps "_" → misses it
+  assert.deepEqual([h.branch, h.hiveBranch], ['resume', 'resume']);
   assert.deepEqual(h.argv, ['claude', '--resume', 'abc']);
+});
+
+test('encodeClaudeProjectDir truncates past 200 with the same hash as the Go encoder', () => {
+  // Same rows as TestEncodeClaudeProjectDir in internal/agent/claude_test.go.
+  assert.equal(encodeClaudeProjectDir('very_long_segment'.repeat(13)), `${'very-long-segment'.repeat(11)}very-long-seg-qqxzx5`);
+  assert.equal(encodeClaudeProjectDir('x_'.repeat(101)), `${'x-'.repeat(100)}-cuqrml`);
+  assert.equal(encodeClaudeProjectDir(`/Users/u/${'a'.repeat(191)}`), `-Users-u-${'a'.repeat(191)}`);
 });
 
 test('takeover: pi-acp id differs from the pi session id and is resolved through the mapping', () => {

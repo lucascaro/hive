@@ -14,23 +14,50 @@ import (
 	"strings"
 	"sync"
 	"time"
+	"unicode/utf16"
 
 	"github.com/lucascaro/hive/internal/proc"
 )
 
-// encodeClaudeProjectDir mirrors claude's on-disk encoding for the
-// per-cwd transcript directory under ~/.claude/projects/. Claude
-// replaces both path separators and the "." in dotted segments (e.g.
-// .worktrees) with "-", so /Users/u/repo/.worktrees/x becomes
-// "-Users-u-repo--worktrees-x". On Windows we normalize backslashes
-// to forward slashes first and replace the drive colon so the probe
-// has a chance of matching whatever path-flavor claude itself wrote.
+// claudeProjectDirMax is the length past which Claude truncates the
+// encoded directory name and appends a hash.
+const claudeProjectDirMax = 200
+
+// encodeClaudeProjectDir mirrors Claude's own encoding of the per-cwd
+// transcript directory under ~/.claude/projects/, ported from the claude
+// 2.1.288 bundle:
+//
+//	k = cwd.replace(/[^a-zA-Z0-9]/g, "-")
+//	k.length <= 200 ? k : k.slice(0, 200) + "-" + Math.abs(hash(cwd)).toString(36)
+//
+// where hash is the Java-style (h<<5)-h+charCode|0 over the raw cwd. Both
+// steps work on UTF-16 code units, as JS strings do, so a non-BMP rune
+// folds to "--". The hash covers the raw cleaned cwd with its native
+// separators, which is what Claude's process.cwd() returns on Windows too.
+// Folding only some punctuation (the old encoder kept "_" and spaces)
+// misses the transcript, and Restart then fails with "Session ID … is
+// already in use" (#494).
 func encodeClaudeProjectDir(cwd string) string {
-	s := filepath.ToSlash(filepath.Clean(cwd))
-	s = strings.ReplaceAll(s, "/", "-")
-	s = strings.ReplaceAll(s, ".", "-")
-	s = strings.ReplaceAll(s, ":", "-")
-	return s
+	units := utf16.Encode([]rune(filepath.Clean(cwd)))
+	out := make([]byte, len(units))
+	var hash int32
+	for i, u := range units {
+		hash = hash<<5 - hash + int32(u)
+		if u >= 'a' && u <= 'z' || u >= 'A' && u <= 'Z' || u >= '0' && u <= '9' {
+			out[i] = byte(u)
+		} else {
+			out[i] = '-'
+		}
+	}
+	if len(out) <= claudeProjectDirMax {
+		return string(out)
+	}
+	// int64 so abs(MinInt32) does not overflow, matching JS Math.abs.
+	h := int64(hash)
+	if h < 0 {
+		h = -h
+	}
+	return string(out[:claudeProjectDirMax]) + "-" + strconv.FormatInt(h, 36)
 }
 
 // claudeSessionExists reports whether claude has persisted a transcript
