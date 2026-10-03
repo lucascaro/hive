@@ -4,7 +4,8 @@ title: "Claude Restart/Revive fails when the session cwd contains \"_\""
 type: bug
 complexity: S
 priority: P1
-stage: IMPLEMENT
+pr: 497
+stage: REVIEW
 ---
 
 # Claude Restart/Revive fails when the session cwd contains "_"

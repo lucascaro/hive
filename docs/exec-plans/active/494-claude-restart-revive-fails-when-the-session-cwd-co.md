@@ -3,6 +3,8 @@
 - **Spec:** [docs/product-specs/494-claude-restart-revive-fails-when-the-session-cwd-co.md](../../product-specs/494-claude-restart-revive-fails-when-the-session-cwd-co.md)
 - **Issue:** #494
 - **Status:** active
+- **PR:** #497
+- **Branch:** feature/494-claude-resume-cwd-encoding
 
 ## Summary
 
