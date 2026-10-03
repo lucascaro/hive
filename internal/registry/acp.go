@@ -233,8 +233,12 @@ func (r *Registry) startACP(id, cwd, loadID string) error {
 		r.mu.Unlock()
 		return ErrNotFound
 	}
+	wasReplay := as.replaying
 	as.replaying = false
 	as.ready = true
+	if wasReplay {
+		r.broadcastACPLocked(e, e.acpTx.Snapshot(), true)
+	}
 	e.LastError = ""
 	if e.AgentSessionID != loadID {
 		e.AgentSessionID = loadID
@@ -310,7 +314,10 @@ func (r *Registry) onACPUpdate(id string, as *acpSession, u acp.Update) {
 			r.applyACPLocked(e, agentstate.Event{Kind: agentstate.KindPlan, Items: plan})
 		}
 	}
-	if len(items) > 0 {
+	// A session/load replay can be thousands of chunks; one broadcast
+	// each would overflow a listener and drop the client mid-replay.
+	// The replay is announced once, as a reset, when it ends.
+	if len(items) > 0 && !as.replaying {
 		r.broadcastACPLocked(e, items, false)
 	}
 }

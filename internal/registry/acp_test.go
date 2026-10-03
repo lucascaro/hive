@@ -443,3 +443,39 @@ func TestACPToolCallsReachTranscriptAndActivity(t *testing.T) {
 		t.Errorf("activity = %+v, %v; want the tool call recorded", act, err)
 	}
 }
+
+// A reload replays history without one broadcast per chunk: a long
+// history would overflow a listener. Subscribers get one reset carrying
+// the whole replayed transcript instead.
+func TestReplayBroadcastsOneReset(t *testing.T) {
+	useFakeACP(t)
+	r := freshRegistry(t)
+	e := createACP(t, r, wire.CreateSpec{Name: "a"})
+	for _, p := range []string{"one", "two", "three"} {
+		r.PromptACP(e.ID, p, wire.OriginUser)
+		waitFor(t, "turn end", idleAfterTurn(r, e.ID))
+	}
+	ch, unsub := r.SubscribeACP()
+	defer unsub()
+	if err := r.Restart(e.ID); err != nil {
+		t.Fatal(err)
+	}
+	waitFor(t, "alive", func() bool { return info(r, e.ID).Alive })
+	var deltas, resets int
+	var last wire.AcpTranscriptMsg
+	for len(ch) > 0 {
+		m := <-ch
+		if m.Reset {
+			resets++
+			last = m
+		} else if len(m.Items) > 0 {
+			deltas++
+		}
+	}
+	if deltas != 0 {
+		t.Errorf("replay sent %d item deltas, want none", deltas)
+	}
+	if n := len(last.Items); n != 6 {
+		t.Errorf("final reset carries %d items, want the 6 replayed (resets seen: %d)", n, resets)
+	}
+}
