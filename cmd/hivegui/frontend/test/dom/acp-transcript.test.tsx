@@ -166,6 +166,19 @@ describe('AcpTranscript', () => {
     expect(box.value).toBe('');
   });
 
+  it('does not send on the Enter that commits an IME composition', () => {
+    const { container } = render(<AcpTranscript sessionId={SID} />);
+    frame({ reset: true, items: [] });
+    const box = container.querySelector(
+      'textarea[data-acp-prompt]',
+    ) as HTMLTextAreaElement;
+    fireEvent.change(box, { target: { value: '日本' } });
+    // WebKit: compositionend has fired, so isComposing is false.
+    fireEvent.keyDown(box, { key: 'Enter', keyCode: 229 });
+    expect(PromptAcp).not.toHaveBeenCalled();
+    expect(box.value).toBe('日本');
+  });
+
   it('does not send while the agent is working', () => {
     resetStore({ sessions: [session({ state: 'working' })] });
     const { container } = render(<AcpTranscript sessionId={SID} />);

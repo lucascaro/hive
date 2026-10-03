@@ -246,8 +246,16 @@ function PromptBox({
   };
   const onKeyDown = (e: KeyboardEvent<HTMLTextAreaElement>) => {
     // Enter sends and Shift+Enter is a newline — but never mid-IME
-    // composition, where Enter commits the composed text.
-    if (e.key !== 'Enter' || e.shiftKey || e.nativeEvent.isComposing) return;
+    // composition, where Enter commits the composed text. WebKit (the
+    // macOS webview) fires that Enter after compositionend, so
+    // isComposing is already false; keyCode 229 still marks it.
+    if (
+      e.key !== 'Enter' ||
+      e.shiftKey ||
+      e.nativeEvent.isComposing ||
+      e.nativeEvent.keyCode === 229
+    )
+      return;
     e.preventDefault();
     send();
   };

@@ -192,8 +192,8 @@
   font-family: inherit;
 }
 
-/* Terminal / ACP (spec 496). Mouse-picked, like the worktree toggle
-   above it: the popup keeps keyboard focus in its text boxes. */
+/* Terminal / ACP (spec 496). One Tab stop at the checked radio, like
+   the worktree toggle above it; the arrows switch within the group. */
 .launcher-kind {
   display: flex;
   gap: var(--space-3);
