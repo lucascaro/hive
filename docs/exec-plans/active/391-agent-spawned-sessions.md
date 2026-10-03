@@ -40,8 +40,11 @@ that evidence, not from this file.
 ## Approach
 
 - Wire: `CreateSpec.SpawnedBy` is **not** a client field; the daemon
-  sets `Entry.SpawnedBy` from `ownSessionID`. `SessionInfo.SpawnedBy
-  string`. `ErrCodeTooManyChildren = "too_many_children"`.
+  sets `Entry.SpawnedBy` to the principal `session:<ownSessionID>` (the
+  format acp-workflows.md defines; spec 496 phase 1 added the field and
+  stamps `plugin:<id>` for plugin sockets), and the live-children count
+  below compares against that string, not the bare id.
+  `SessionInfo.SpawnedBy string` already exists. `ErrCodeTooManyChildren = "too_many_children"`.
   `DaemonContract++`.
 - Daemon: `sessionModeFrames[FrameCreateSession] = true`; on a
   restricted connection require the grant (389's check), count live

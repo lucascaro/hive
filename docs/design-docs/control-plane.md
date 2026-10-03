@@ -31,21 +31,24 @@ that outlives the UI. That is the gap Hive fills.
 
 Agents differ wildly in what they expose. Rather than pretend
 otherwise, the control plane has explicit tiers, and every session
-carries which tier it is on (`state_source` on the wire). Three are
-ranked by trust; a fourth (`laya`) only fills gaps:
+carries which tier it is on (`state_source` on the wire). Four are
+ranked by trust; a fifth (`laya`) only fills gaps:
 
 | Tier | Source | Agents | What Hive learns |
 |------|--------|--------|------------------|
 | `hook` | Agent-native lifecycle hooks calling back into `hived` | Claude Code | exact turn boundaries, permission prompts, prompt/summary text |
 | `extension` | A Hive-shipped extension loaded into the agent at spawn | Pi | exact turn boundaries (`agent_start` / `agent_settled`), prompt/summary text, a per-session inbox socket |
+| `acp` | The Agent Client Protocol stream `hived` itself drives, for an `acp` session ([acp-session-kind.md](acp-session-kind.md)) | Claude, Codex, Pi; Gemini and Copilot experimental | exact turn boundaries, permission requests, tool calls and plan. Ranks with `hook`, and never goes stale: the daemon owns the stream |
 | `heuristic` | PTY output cadence + bell + OSC title + process exit | shell, Codex, Gemini, Copilot, Aider, custom | working / idle / exited, "waiting" only via bell |
 | `laya` | The daemon's classification of the visible screen by a user-run Laya model (spec 458, [laya-state-classifier.md](laya-state-classifier.md)) | any, when configured | fills in only while the trusted tier is absent or stale; any real agent event takes the session back |
 
-**Proposed: an `acp` tier.** An ACP session (see
+**Implemented: the `acp` tier** (spec 496). An ACP session (see
 [acp-workflows.md](acp-workflows.md)) reports exact turn boundaries and
 permission requests over `session/update`, the same signal quality as
-`hook`. It would rank with `hook`. Nothing implements it yet; the first
-follow-up spec of the ACP track adds it.
+`hook`, and ranks with it. Unlike `hook` it has no staleness deadline:
+a quiet ACP stream is a quiet agent, and liveness comes from the adapter
+process exiting. Hook and extension reports for an ACP session are
+ignored, so nothing can move it off the tier it is on.
 
 The tiers are a **floor, not a fork**: every session gets the heuristic
 state machine; hook/extension events override it while they flow and
@@ -294,9 +297,9 @@ it true for every future feeder as well.
   stream.** Rejected for the default path: the user wants the agent's
   own TUI in the tile. Headless workers are a fine *addition* for a
   future orchestration layer, not a replacement for the terminal. That
-  layer is now designed as the ACP track in
-  [acp-workflows.md](acp-workflows.md). It adds an opt-in `acp` session
-  kind and keeps PTY as the default and the takeover path.
+  layer is the ACP track in [acp-workflows.md](acp-workflows.md). Its
+  opt-in `acp` session kind exists (spec 496) and keeps PTY as the
+  default and the takeover path.
 - **Heuristics only, no adapters.** Simplest, agnostic, and it cannot
   tell "waiting for permission" from "thinking hard" — the single most
   useful distinction. The floor stays; it is not enough on its own.

@@ -224,9 +224,10 @@ or the engine plugin, which `hived` identifies by its plugin socket.
 1. **Same project only.** Neither principal reaches outside its project (the
    cross-project non-goal of both tracks).
 2. **The daemon stamps provenance.**
-   - **Spawns.** `SpawnedBy` becomes a principal string, either
-     `session:<id>` or `workflow:<run-id>`. It is shown on every row the
-     principal creates.
+   - **Spawns.** `SpawnedBy` becomes a principal string: `session:<id>`,
+     `workflow:<run-id>`, or `plugin:<id>` for a create sent on a plugin's
+     own socket (spec 496, phase 1); empty means the user. It is shown on
+     every row the principal creates.
    - **Prompts.** Every engine prompt records its origin (run and node) in the
      registry's activity for that session.
    - The caller never supplies either value.

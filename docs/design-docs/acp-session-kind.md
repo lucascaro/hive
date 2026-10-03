@@ -160,3 +160,22 @@ This note is the research for [spec 496](../product-specs/496-add-an-acp-session
   The PTY-to-ACP direction was never probed.
 - **Environment.** Strip `CLAUDECODE`, `CLAUDE_CODE_CHILD_SESSION` and `HIVE_SOCKET` from adapter children, or Claude stops saving transcripts. Keep user preferences such as `CLAUDE_CODE_ENABLE_TODO_TOOLS`.
 - **Go SDK.** There is no official one. `coder/acp-go-sdk` trails the schema. A small hand-rolled newline-delimited JSON-RPC client, like the probe's `Rpc`, is the expected path.
+
+## What phase 1 built
+
+- `internal/acp`: the JSON-RPC client (`conn.go`), the adapter process (`agent.go`: own process group, `AdapterEnv`, login-shell PATH, a stderr tail), and `Transcript`.
+  - Message chunks coalesce, and tool updates merge by id.
+  - Live user echoes are ignored, because `PromptACP` records the turn with its origin. During a `session/load` replay those echoes *are* the record.
+- `internal/acp/acptest`: a Go fake agent that tests re-exec. It keeps one JSONL history per conversation so a second process can `session/load` it, and logs every call to `calls.log`.
+- **Registry** (`internal/registry/acp.go`): `Entry.acp` sits beside `Entry.sess`.
+  - Every revive path (boot, `Restart`, `Restore`) goes through `Revive`, which branches to `startACP(..., loadID)`.
+  - Prompts are one at a time; a second is refused with `ErrACPBusy`.
+  - A permission request waits for `AnswerPermission`, and the answer must name the pending request's id and one of the options it offered.
+- **State** comes in-process with `Source: acp`. The tier has no staleness deadline, and hook or extension events for an ACP entry are dropped.
+- **Wire:**
+  - frames `0x3f`–`0x42`;
+  - `SessionInfo.kind` and `spawned_by`;
+  - `CreateSpec.kind`;
+  - `CreateSpec.SpawnedBy` is `json:"-"` and is stamped by the daemon from the connection.
+- **Attach.** Attaching to an ACP session gets `ErrCodeACPSession`. A create HELLO with `kind: acp` is refused, because it would turn into an attach.
+- **Not built yet.** `isStale` in the GUI needs no change: the daemon sends no `stale_at` for the `acp` tier.

@@ -78,6 +78,7 @@ Package one-liners (full detail in `DESIGN.md`):
 | `internal/registry/` | Daemon's source of truth: sessions, projects, ordering, metadata + persistence. |
 | `internal/daemon/` (`cmd/hived/`) | Multi-session PTY host; Unix socket, dispatch by HELLO mode (`control`/`attach`/`create`). |
 | `internal/agent/` | Canonical agent catalog + human-readable name generation. |
+| `internal/acp/` | Agent Client Protocol client: JSON-RPC over an adapter's stdio, the adapter process, and the ACP transcript. The registry runs an `acp`-kind session's agent through it instead of a PTY. |
 | `internal/worktree/` | Git worktree lifecycle; tracks dirty state so the registry can refuse destructive ops. |
 | `internal/notify/` | Desktop notifications; platform splits behind one Go interface. |
 | `internal/proc/` | The only constructor for non-PTY child processes. Keeps Windows from opening a console window per spawn. |
