@@ -180,7 +180,7 @@ function PermissionCard({
         <span>{perm.title || 'The agent asks to use a tool'}</span>
       </div>
       <div className="acp-permission__actions">
-        {perm.options.map((o) => (
+        {(perm.options ?? []).map((o) => (
           <Button
             key={o.option_id}
             label={o.name}

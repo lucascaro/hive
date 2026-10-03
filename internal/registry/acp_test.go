@@ -374,6 +374,18 @@ func TestACPOpsRejectTerminalSession(t *testing.T) {
 	if _, err := r.AcpTranscript(e.ID); !errors.Is(err, ErrNotACP) {
 		t.Errorf("AcpTranscript on pty = %v", err)
 	}
+	ch, unsub := r.SubscribeACP()
+	defer unsub()
+	if err := r.SendAcpTranscript(e.ID, ch); !errors.Is(err, ErrNotACP) {
+		t.Errorf("SendAcpTranscript on pty = %v", err)
+	}
+	select {
+	case msg := <-ch:
+		if msg.SessionID == e.ID {
+			t.Errorf("SendAcpTranscript on pty queued %+v", msg)
+		}
+	default:
+	}
 }
 
 // Every transcript change reaches subscribers, in order, as deltas on

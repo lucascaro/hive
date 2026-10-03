@@ -1,4 +1,17 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi, beforeEach } from 'vitest';
+
+vi.mock('../../src/bridge.js', () => ({
+  GetAcpTranscript: vi.fn(() => Promise.resolve()),
+}));
+
+import * as bridge from '../../src/bridge.js';
+import {
+  acpStore,
+  applyAcpFrame,
+  forgetAcp,
+  requestAcpTranscript,
+  resetAcpOnSessionList,
+} from '../../src/store/acp.js';
 import {
   applyAcp,
   emptyAcp,
@@ -97,5 +110,59 @@ describe('applyAcp', () => {
   it('returns the same object when nothing changed', () => {
     const t = loaded();
     expect(applyAcp(t, msg({}))).toBe(t);
+  });
+});
+
+describe('acp store', () => {
+  const GetAcpTranscript = vi.mocked(bridge.GetAcpTranscript);
+  const flush = async () => {
+    await Promise.resolve();
+    await Promise.resolve();
+    await Promise.resolve();
+  };
+  beforeEach(() => {
+    acpStore.setState({ byId: new Map() });
+    GetAcpTranscript.mockReset();
+    GetAcpTranscript.mockImplementation(() => Promise.resolve());
+  });
+
+  it('drops a delta for a session nobody has shown', () => {
+    applyAcpFrame(msg({ items: [{ id: 1, kind: 'agent', text: 'x' }] }));
+    expect(acpStore.getState().byId.has('s1')).toBe(false);
+  });
+
+  it('marks a failed request and does not retry it', async () => {
+    GetAcpTranscript.mockImplementation(() =>
+      Promise.reject(new Error('no control')),
+    );
+    requestAcpTranscript('s1');
+    await flush();
+    expect(acpStore.getState().byId.get('s1')?.failed).toBe(true);
+    expect(acpStore.getState().byId.get('s1')?.requested).toBe(false);
+    requestAcpTranscript('s1');
+    await flush();
+    expect(GetAcpTranscript).toHaveBeenCalledTimes(1);
+  });
+
+  it('a session list drops dead ids and clears the rest for a refetch', async () => {
+    GetAcpTranscript.mockImplementation(() =>
+      Promise.reject(new Error('no control')),
+    );
+    requestAcpTranscript('s1');
+    requestAcpTranscript('gone');
+    await flush();
+    applyAcpFrame(msg({ reset: true, items: [] }));
+    resetAcpOnSessionList(new Set(['s1']));
+    const { byId } = acpStore.getState();
+    expect(byId.has('gone')).toBe(false);
+    expect(byId.get('s1')).toMatchObject({ requested: false, failed: false });
+    expect(byId.get('s1')?.tx.loaded).toBe(false);
+  });
+
+  it('forgetAcp deletes the entry', () => {
+    applyAcpFrame(msg({ reset: true, items: [] }));
+    expect(acpStore.getState().byId.has('s1')).toBe(true);
+    forgetAcp('s1');
+    expect(acpStore.getState().byId.has('s1')).toBe(false);
   });
 });

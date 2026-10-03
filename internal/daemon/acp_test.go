@@ -87,6 +87,33 @@ func TestGetAcpTranscriptUnknownSession(t *testing.T) {
 	}
 }
 
+// GET_ACP_TRANSCRIPT answers through the connection's own fan-out
+// listener, as a reset, and writes nothing directly.
+func TestGetAcpTranscriptQueuesResetOnListener(t *testing.T) {
+	useFakeACP(t)
+	d := newFrameTestDaemon(t)
+	e := createACPVia(t, d, (&recordOps{}).ops(), `{"kind":"acp","agent":"claude"}`)
+	ch, unsub := d.reg.SubscribeACP()
+	defer unsub()
+	rec := &recordOps{}
+	ops := rec.ops()
+	ops.acpListener = ch
+	d.handleControlFrame(t.Context(), ops, wire.FrameGetAcpTranscript, []byte(`{"session_id":"`+e.ID+`"}`))
+	if len(rec.errs) > 0 {
+		t.Fatalf("errors: %+v", rec.errs)
+	}
+	for {
+		select {
+		case msg := <-ch:
+			if msg.SessionID == e.ID && msg.Reset {
+				return
+			}
+		default:
+			t.Fatal("GET_ACP_TRANSCRIPT queued no reset on the connection's listener")
+		}
+	}
+}
+
 // The prompt's origin is the connection's principal, or "user".
 func TestPromptAcpOriginFromConnection(t *testing.T) {
 	useFakeACP(t)
