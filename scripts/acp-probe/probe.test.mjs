@@ -11,7 +11,7 @@ import { after, test } from 'node:test';
 import { fileURLToPath } from 'node:url';
 import { AGENTS, encodeClaudeProjectDirObserved, piResolveSessionId, submitIdsFor } from './agents.mjs';
 import { checkDoc, computeVerdict } from './check-doc.mjs';
-import { SUBMIT_MCP, childEnv, decidePermission, dialogKeys, ptyTakeover, replyMarker, runProbe, whitelist } from './probe.mjs';
+import { SUBMIT_MCP, childEnv, decidePermission, dialogKeys, headlessTakeover, ptyTakeover, replyMarker, runProbe, whitelist } from './probe.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const FAKE = join(HERE, 'testdata', 'fake-agent.mjs');
@@ -241,6 +241,35 @@ test('pty: nothing recognisable within budget → inconclusive, never pass', asy
   const d = tmp('acp-pty-');
   const r = await ptyTakeover({ argv: nodeArgv('setTimeout(()=>{},10000)'), branch: 'resume', cwd: d, marker: 'HIVE-OK', trustPrompts: [], budget: 1500, rawDir: d });
   assert.deepEqual([r.verdict, r.reason], ['inconclusive', 'nothing_rendered']);
+});
+
+// ---------- headless takeover ----------
+
+const headless = (argv, budget = 5000) => headlessTakeover({ argv, cwd: tmp('acp-headless-'), nonce: 'hive-n0nce', budget });
+
+test('headless: the nonce on stdout → pass', async () => {
+  assert.deepEqual(await headless(nodeArgv('console.log("it was hive-n0nce")')), { verdict: 'pass', reason: 'nonce_in_stdout' });
+});
+
+test('headless: a reply without the nonce → fail, never pass', async () => {
+  assert.deepEqual(await headless(nodeArgv('console.log("I do not remember")')), { verdict: 'fail', reason: 'nonce_missing' });
+});
+
+test('headless: a single-writer lock on stderr → writer_locked', async () => {
+  const r = await headless(nodeArgv('console.error("thread already has an active writer"); process.exit(1)'));
+  assert.deepEqual(r, { verdict: 'fail', reason: 'writer_locked' });
+});
+
+test('headless: a missing CLI binary → inconclusive cli_error, not a crash', async () => {
+  assert.deepEqual(await headless(['/nonexistent/acp-probe-cli']), { verdict: 'inconclusive', reason: 'cli_error' });
+});
+
+test('headless: a hung CLI times out and its process group is gone', async () => {
+  const pidFile = join(tmp('acp-headless-pid-'), 'pid');
+  const r = await headless(nodeArgv(`require("fs").writeFileSync(${JSON.stringify(pidFile)}, String(process.pid)); setTimeout(()=>{},10000)`), 1500);
+  assert.deepEqual(r, { verdict: 'inconclusive', reason: 'timeout' });
+  const pid = Number(readFileSync(pidFile, 'utf8'));
+  assert.throws(() => process.kill(-pid, 0), { code: 'ESRCH' });
 });
 
 test('childEnv: strips parent-session markers, keeps user preferences', () => {
