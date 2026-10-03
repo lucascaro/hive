@@ -240,7 +240,10 @@ func (f *fake) handle(id json.RawMessage, method string, params json.RawMessage)
 		f.update(p.SessionID, map[string]any{"sessionUpdate": "plan", "entries": []any{
 			map[string]any{"content": "answer", "priority": "medium", "status": "in_progress"},
 		}})
-		f.update(p.SessionID, map[string]any{"sessionUpdate": "tool_call", "toolCallId": "t1", "title": "Read file", "kind": "read", "status": "pending"})
+		// content is an ARRAY of ToolCallContent on tool calls, unlike a
+		// message chunk's single block — the shape the client must decode.
+		f.update(p.SessionID, map[string]any{"sessionUpdate": "tool_call", "toolCallId": "t1", "title": "Read file", "kind": "read", "status": "pending",
+			"content": []any{map[string]any{"type": "content", "content": map[string]any{"type": "text", "text": "reading"}}}})
 		answer := ""
 		if f.flags[FlagPermission] {
 			res := f.request("session/request_permission", map[string]any{
@@ -267,7 +270,8 @@ func (f *fake) handle(id json.RawMessage, method string, params json.RawMessage)
 				}
 			}
 		}
-		f.update(p.SessionID, map[string]any{"sessionUpdate": "tool_call_update", "toolCallId": "t1", "status": "completed"})
+		f.update(p.SessionID, map[string]any{"sessionUpdate": "tool_call_update", "toolCallId": "t1", "status": "completed",
+			"content": []any{map[string]any{"type": "content", "content": map[string]any{"type": "text", "text": "done"}}}})
 		agent := "echo: " + text + answer
 		// Two chunks, so the client's coalescing is exercised.
 		half := len(agent) / 2

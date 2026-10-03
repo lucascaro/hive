@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -156,7 +157,12 @@ func Start(spec Spec, h Handler) (*Agent, error) {
 		}
 		var n SessionNotification
 		var u Update
-		if json.Unmarshal(params, &n) != nil || json.Unmarshal(n.Update, &u) != nil {
+		if err := json.Unmarshal(params, &n); err != nil {
+			log.Printf("acp: dropping undecodable session/update: %v", err)
+			return
+		}
+		if err := json.Unmarshal(n.Update, &u); err != nil {
+			log.Printf("acp: dropping undecodable session/update: %v", err)
 			return
 		}
 		h.Update(n.SessionID, u)

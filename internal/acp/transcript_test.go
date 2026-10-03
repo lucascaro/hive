@@ -9,7 +9,8 @@ import (
 )
 
 func text(kind, s string) Update {
-	return Update{SessionUpdate: kind, Content: &ContentBlock{Type: "text", Text: s}}
+	b, _ := json.Marshal(ContentBlock{Type: "text", Text: s})
+	return Update{SessionUpdate: kind, Content: b}
 }
 
 func TestChunksCoalesce(t *testing.T) {
@@ -167,5 +168,24 @@ func TestLongMessageIsTruncatedOnce(t *testing.T) {
 	got := tr.Snapshot()[0].Text
 	if !strings.HasSuffix(got, truncatedMark) || strings.Count(got, truncatedMark) != 1 {
 		t.Errorf("text tail = %q, want one truncation mark", got[len(got)-40:])
+	}
+}
+
+// ACP sends tool_call content as an array of ToolCallContent, unlike a
+// message chunk's single block. Decoding must not drop the update.
+func TestToolCallWithArrayContentDecodes(t *testing.T) {
+	raw := `{"sessionUpdate":"tool_call","toolCallId":"t1","title":"Read","kind":"read","status":"pending",` +
+		`"content":[{"type":"content","content":{"type":"text","text":"x"}}]}`
+	var u Update
+	if err := json.Unmarshal([]byte(raw), &u); err != nil {
+		t.Fatalf("decode tool_call with array content: %v", err)
+	}
+	var tr Transcript
+	got := tr.Apply(u, false)
+	if len(got) != 1 || got[0].Kind != wire.AcpItemTool || got[0].Title != "Read" {
+		t.Errorf("Apply = %+v, want one tool item", got)
+	}
+	if _, ok := u.TextChunk(); ok {
+		t.Error("a tool call's array content read as a text chunk")
 	}
 }

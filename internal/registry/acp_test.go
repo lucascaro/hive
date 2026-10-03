@@ -414,3 +414,27 @@ func TestCreateACPRecordsWorktree(t *testing.T) {
 		t.Errorf("persisted worktree = %q, want %q", meta.WorktreePath, in.WorktreePath)
 	}
 }
+
+// A real adapter's tool calls (array content) reach the transcript and
+// the state machine's activity.
+func TestACPToolCallsReachTranscriptAndActivity(t *testing.T) {
+	useFakeACP(t)
+	r := freshRegistry(t)
+	e := createACP(t, r, wire.CreateSpec{Name: "a"})
+	r.PromptACP(e.ID, "go", wire.OriginUser)
+	waitFor(t, "turn end", idleAfterTurn(r, e.ID))
+	msg, _ := r.AcpTranscript(e.ID)
+	var tool *wire.AcpItem
+	for i := range msg.Items {
+		if msg.Items[i].Kind == wire.AcpItemTool {
+			tool = &msg.Items[i]
+		}
+	}
+	if tool == nil || tool.Status != "completed" || tool.Title != "Read file" {
+		t.Fatalf("tool item = %+v, want the completed Read file call", tool)
+	}
+	act, err := r.ActivitySnapshot(e.ID)
+	if err != nil || len(act.Events) == 0 {
+		t.Errorf("activity = %+v, %v; want the tool call recorded", act, err)
+	}
+}

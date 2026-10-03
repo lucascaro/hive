@@ -121,7 +121,8 @@ func (t *Transcript) Apply(u Update, replaying bool) []wire.AcpItem {
 // chunk appends streamed text to the open message of this kind, or
 // opens a new one. An append is broadcast as just the new text.
 func (t *Transcript) chunk(kind string, u Update, origin string) []wire.AcpItem {
-	if u.Content == nil || u.Content.Type != "text" || u.Content.Text == "" {
+	text, ok := u.TextChunk()
+	if !ok {
 		return nil
 	}
 	if n := len(t.items); n > 0 && t.items[n-1].Kind == kind {
@@ -130,7 +131,7 @@ func (t *Transcript) chunk(kind string, u Update, origin string) []wire.AcpItem 
 		if room <= 0 {
 			return nil // already cut; the rest of this message is dropped
 		}
-		add := u.Content.Text
+		add := text
 		if len(add) > room {
 			add = add[:room] + truncatedMark
 		}
@@ -140,7 +141,7 @@ func (t *Transcript) chunk(kind string, u Update, origin string) []wire.AcpItem 
 		t.trim()
 		return []wire.AcpItem{delta}
 	}
-	return []wire.AcpItem{t.add(wire.AcpItem{Kind: kind, Text: clip(u.Content.Text), Origin: origin})}
+	return []wire.AcpItem{t.add(wire.AcpItem{Kind: kind, Text: clip(text), Origin: origin})}
 }
 
 func (t *Transcript) toolIndex(id string) int {

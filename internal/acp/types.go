@@ -111,8 +111,12 @@ type SessionNotification struct {
 // Update is one decoded session/update payload. Fields are the union
 // of the kinds Hive renders; SessionUpdate says which apply.
 type Update struct {
-	SessionUpdate string        `json:"sessionUpdate"`
-	Content       *ContentBlock `json:"content,omitempty"`
+	SessionUpdate string `json:"sessionUpdate"`
+	// Content is raw because its shape depends on SessionUpdate: one
+	// ContentBlock on a message or thought chunk, an array of
+	// ToolCallContent on tool_call / tool_call_update. Read it with
+	// TextChunk.
+	Content json.RawMessage `json:"content,omitempty"`
 	// tool_call / tool_call_update
 	ToolCallID string `json:"toolCallId,omitempty"`
 	Title      string `json:"title,omitempty"`
@@ -120,6 +124,16 @@ type Update struct {
 	Status     string `json:"status,omitempty"`
 	// plan
 	Entries []PlanEntry `json:"entries,omitempty"`
+}
+
+// TextChunk returns the text of a message or thought chunk's content
+// block, and false when the update carries no text block.
+func (u Update) TextChunk() (string, bool) {
+	var b ContentBlock
+	if len(u.Content) == 0 || json.Unmarshal(u.Content, &b) != nil || b.Type != "text" || b.Text == "" {
+		return "", false
+	}
+	return b.Text, true
 }
 
 // PlanEntry is one step of a plan update.
