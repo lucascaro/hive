@@ -3,8 +3,8 @@
 - **Spec:** [docs/product-specs/492-research-acp-as-hive-s-engine-driven-workflow-tran.md](../../product-specs/492-research-acp-as-hive-s-engine-driven-workflow-tran.md)
 - **Issue:** #492
 - **Status:** active
-- **PR:** —
-- **Branch:** —
+- **PR:** #493
+- **Branch:** feature/492-research-acp-workflows
 
 ## Summary
 
@@ -177,5 +177,6 @@ Runs: Claude (`@agentclientprotocol/claude-agent-acp@0.85.1`), Codex (`@agentcli
 - **2026-10-02** — Research done (code + web); stage PLAN.
 - **2026-10-02** — Plan approved (html, round 1); stage IMPLEMENT.
 - **2026-10-02** — Probe implemented (30 tests, each mutation-checked against an injected bug). Final runs: Claude all pass; Codex MCP and PTY pass, headless fails on the writer lock; Pi MCP fails (ignored), the rest pass. Verdict **go**. Design doc and linked docs updated; check-doc is green.
+- **2026-10-02** — PR #493 opened; stage REVIEW.
 
 ## Open questions
