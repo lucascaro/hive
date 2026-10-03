@@ -30,7 +30,12 @@ const fakeDef = (...flags) => ({
   trustPrompts: [],
 });
 // home is a temp dir so no code path can touch the real ~/.claude or ~/.pi.
-const probe = (...flags) => runProbe('fake', { def: fakeDef(...flags), budgets: BUDGETS, skipTakeover: true, home: tmp('acp-home-') });
+// runProbe leaves its cwd and raw-log dir for a human to inspect; tests clean them.
+const probe = async (...flags) => {
+  const r = await runProbe('fake', { def: fakeDef(...flags), budgets: BUDGETS, skipTakeover: true, home: tmp('acp-home-') });
+  made.push(r.cwd, r.rawDir);
+  return r;
+};
 
 // ---------- submit-mcp ----------
 
@@ -237,6 +242,18 @@ test('pty: update nag dismissed with Esc, then a later trust prompt still gets E
   assert.equal(r.verdict, 'pass');
 });
 
+test('pty: the PTY child is killed too, although pty.fork gave it its own session', async () => {
+  const d = tmp('acp-pty-');
+  const pidFile = join(d, 'pid');
+  // Ignores SIGHUP (as some TUIs do), so only the forwarded SIGTERM can stop it.
+  const src = `process.on("SIGHUP", () => {}); require("fs").writeFileSync(${JSON.stringify(pidFile)}, String(process.pid)); setTimeout(() => {}, 30000)`;
+  const r = await ptyTakeover({ argv: nodeArgv(src), branch: 'resume', cwd: d, marker: 'NEVER', trustPrompts: [], budget: 1500, rawDir: d });
+  assert.equal(r.verdict, 'inconclusive');
+  const pid = Number(readFileSync(pidFile, 'utf8'));
+  await new Promise((res) => setTimeout(res, 500));
+  assert.throws(() => process.kill(pid, 0), { code: 'ESRCH' });
+});
+
 test('pty: nothing recognisable within budget → inconclusive, never pass', async () => {
   const d = tmp('acp-pty-');
   const r = await ptyTakeover({ argv: nodeArgv('setTimeout(()=>{},10000)'), branch: 'resume', cwd: d, marker: 'HIVE-OK', trustPrompts: [], budget: 1500, rawDir: d });
@@ -258,6 +275,17 @@ test('headless: a reply without the nonce → fail, never pass', async () => {
 test('headless: a single-writer lock on stderr → writer_locked', async () => {
   const r = await headless(nodeArgv('console.error("thread already has an active writer"); process.exit(1)'));
   assert.deepEqual(r, { verdict: 'fail', reason: 'writer_locked' });
+});
+
+test('headless: a detached daemon holding stdout cannot hang the check (exit + drain grace)', async () => {
+  // Mimics codex: the CLI leaves a detached process that inherited its stdout,
+  // so the pipe never closes. Waiting for 'close' alone would sit out the budget.
+  const src = `require("child_process").spawn(process.execPath, ["-e", "setTimeout(() => {}, 8000)"], { stdio: "inherit", detached: true }).unref();
+    console.log("hive-n0nce");`;
+  const t = Date.now();
+  const r = await headless([process.execPath, '-e', src], 6000);
+  assert.equal(r.verdict, 'pass');
+  assert.ok(Date.now() - t < 4000, `took ${Date.now() - t}ms`);
 });
 
 test('headless: a missing CLI binary → inconclusive cli_error, not a crash', async () => {

@@ -37,6 +37,12 @@ export const REASONS = new Set([
 
 class TimeoutError extends Error {}
 
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+// How long to wait for a child's pipes to drain after it exits. Bounded on
+// purpose: a detached daemon that inherited the pipe (codex app-server) holds
+// it open indefinitely, so waiting for 'close' alone could hang.
+const DRAIN_GRACE_MS = 1000;
+
 // The probe usually runs from inside an agent session (Claude Code, Hive).
 // Those markers leak into children and change their behaviour (claude turns
 // transcript saving off under CLAUDE_CODE_CHILD_SESSION; HIVE_SOCKET would
@@ -99,7 +105,10 @@ export class Rpc {
       for (const { rej } of this.pending.values()) rej(new Error(why));
       this.pending.clear();
     };
-    child.on('exit', () => close('adapter exited'));
+    // 'exit' can fire before stdout drains: give the last lines (often the
+    // reply being awaited) a moment to arrive before failing what's pending.
+    const drained = new Promise((r) => child.stdout.once('end', r));
+    child.on('exit', () => Promise.race([drained, sleep(DRAIN_GRACE_MS)]).then(() => close('adapter exited')));
     child.on('error', (e) => close(`adapter failed to start: ${e.code ?? e.message}`));
     createInterface({ input: child.stdout }).on('line', async (line) => {
       let msg;
@@ -296,6 +305,11 @@ export async function ptyTakeover({ argv, branch, hiveBranch = branch, cwd, mark
       const keys = dialogKeys(screen.slice(sentAt), trustPrompts, answered);
       if (keys) { child.stdin.write(keys); sentAt = screen.length; }
     }
+    // One last read: the child may have rendered the marker and exited
+    // between the previous poll and the loop condition.
+    if (stripAnsi(readFileSync(log, 'utf8')).replace(/\s+/g, '').includes(marker)) {
+      return { verdict: 'pass', reason: 'nonce_on_screen', branch, hiveBranch };
+    }
     return { verdict: 'inconclusive', reason: 'nothing_rendered', branch, hiveBranch };
   } finally {
     await killGroup(child);
@@ -333,9 +347,12 @@ export async function headlessTakeover({ argv, cwd, nonce, budget }) {
   child.stdout.on('data', (d) => { stdout += d; });
   child.stderr.on('data', (d) => { stderr += d; });
   const done = new Promise((res) => { child.once('exit', res); child.once('error', res); });
+  const closed = new Promise((res) => child.once('close', res));
   let timedOut = false;
   try {
     await withTimeout(done, budget, 'headless resume');
+    // Exit + drain grace, not 'close' alone (see DRAIN_GRACE_MS).
+    await Promise.race([closed, sleep(DRAIN_GRACE_MS)]);
   } catch {
     timedOut = true;
   } finally {

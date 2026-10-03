@@ -49,7 +49,8 @@ can:
 - **Takeover (a), headless.** The CLI's headless resume (`claude -p --resume`,
   `codex exec resume`, `pi --session-id … -p`) is asked for the nonce.
 
-Every agent ran on 2026-10-02, in a fresh temp cwd, with the user's normal
+Every agent ran on 2026-10-02 local time (2026-10-03 UTC, the date in the
+results file names), in a fresh temp cwd, with the user's normal
 agent configuration. Versions: claude 2.1.288, codex-cli 0.157.1, pi 1.0.0.
 Gemini CLI and Copilot CLI are not installed on the probe machine, so their
 row is from documentation only (spec 492 decision log). Each results file in

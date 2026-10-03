@@ -13,6 +13,7 @@ import fcntl
 import os
 import pty
 import select
+import signal
 import struct
 import sys
 import termios
@@ -32,6 +33,18 @@ def main() -> int:
             sys.stderr.write(f"pty-run: exec {argv[0]}: {e}\n")
             os._exit(127)
     fcntl.ioctl(fd, termios.TIOCSWINSZ, struct.pack("HHHH", rows, cols, 0, 0))
+
+    # pty.fork() puts the child in its own session, so the probe's killGroup
+    # (which signals OUR process group) never reaches it. Forward the signal.
+    def forward(signum, _frame):
+        try:
+            os.killpg(pid, signal.SIGTERM)
+        except ProcessLookupError:
+            pass
+        os._exit(128 + signum)
+
+    for s in (signal.SIGTERM, signal.SIGHUP, signal.SIGINT):
+        signal.signal(s, forward)
     stdin_open = True
     with open(log, "ab", buffering=0) as out:
         while True:
