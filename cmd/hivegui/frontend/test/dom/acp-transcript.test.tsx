@@ -19,6 +19,7 @@ import { AcpTranscript } from '../../src/components/acp/AcpTranscript.js';
 import type { AcpTranscriptMsg } from '../../src/lib/acp.js';
 import {
   acpStore,
+  applyAcpError,
   applyAcpFrame,
   resetAcpOnSessionList,
 } from '../../src/store/acp.js';
@@ -216,5 +217,44 @@ describe('AcpTranscript', () => {
     expect(box.value).toBe('');
     await flush();
     expect(box.value).toBe('keep me');
+  });
+
+  it('gives a prompt back when the daemon refuses it', async () => {
+    const { container } = render(<AcpTranscript sessionId={SID} />);
+    frame({ reset: true, items: [] });
+    const box = container.querySelector(
+      'textarea[data-acp-prompt]',
+    ) as HTMLTextAreaElement;
+    fireEvent.change(box, { target: { value: 'too soon' } });
+    fireEvent.keyDown(box, { key: 'Enter' });
+    await flush();
+    expect(box.value).toBe('');
+    // Another session's refusal is not this one's.
+    act(() => applyAcpError({ code: 'acp_busy', session_id: 'other' }));
+    expect(box.value).toBe('');
+    act(() => applyAcpError({ code: 'acp_busy', session_id: SID }));
+    expect(box.value).toBe('too soon');
+  });
+
+  it('keeps an accepted prompt gone, even if an error follows', async () => {
+    const { container } = render(<AcpTranscript sessionId={SID} />);
+    frame({ reset: true, items: [] });
+    const box = container.querySelector(
+      'textarea[data-acp-prompt]',
+    ) as HTMLTextAreaElement;
+    fireEvent.change(box, { target: { value: 'go' } });
+    fireEvent.keyDown(box, { key: 'Enter' });
+    await flush();
+    frame({ items: [{ id: 1, kind: 'user', text: 'go', origin: 'user' }] });
+    act(() => applyAcpError({ code: 'session_dead', session_id: SID }));
+    expect(box.value).toBe('');
+  });
+
+  it('shows a refused snapshot as failed, not loading', async () => {
+    const { container } = render(<AcpTranscript sessionId={SID} />);
+    await flush();
+    expect(container.textContent).toContain('Loading');
+    act(() => applyAcpError({ code: 'not_acp_session', session_id: SID }));
+    expect(container.textContent).toContain("Couldn't load the transcript");
   });
 });

@@ -437,6 +437,7 @@ The contract bumps once per phase because `scripts/check-daemon-contract.sh:36-4
 - **2026-10-03 iter 7** — verdict: REQUEST_CHANGES; mergeable: MERGEABLE; findings_hash: coderabbit-2-threads; threads_open: 0; action: autofix+push; head_sha: ce2293fe.
 - **2026-10-03 iter 8** — verdict: APPROVE; mergeable: MERGEABLE; findings_hash: empty; threads_open: 0; action: stop; head_sha: 93368a92.
 - **2026-10-03 iter 9 (phase 2, PR #500, iter 1)** — verdict: COMMENT; mergeable: MERGEABLE; findings_hash: 1f5fb287cc6901b8c662ad94507b31d535a99afec71baf3e14bff93c4579fdd6; threads_open: 1; action: escalated:risky-fix-needs-human-decision; head_sha: df842156.
+- **2026-10-03 iter 10 (phase 2, PR #500, iter 2)** — verdict: COMMENT; mergeable: MERGEABLE; findings_hash: 9d651d120073c411316690efe79a17d49176e087d9875836db420c21752d5779; threads_open: 0; action: escalated:risky-fix-needs-human-decision; head_sha: d96f85e5.
 
 ## Gate verdict
 

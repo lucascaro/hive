@@ -11,6 +11,7 @@ import {
   type ReactNode,
   type RefObject,
   memo,
+  useEffect,
   useLayoutEffect,
   useRef,
   useState,
@@ -23,7 +24,14 @@ import {
   type AcpItem,
   type AcpPermission,
 } from '../../lib/acp.js';
-import { useAcpTranscript, type AcpLoad } from '../../store/acp.js';
+import {
+  noteSentPrompt,
+  returnSentPrompt,
+  takeReturnedPrompt,
+  useAcpTranscript,
+  useReturnedPrompt,
+  type AcpLoad,
+} from '../../store/acp.js';
 import { useAppStore } from '../../store/store.js';
 import { Button } from '../Button.js';
 import { Icon } from '../Icon.js';
@@ -232,15 +240,23 @@ function PromptBox({
   onSent: () => void;
 }): ReactNode {
   const [text, setText] = useState('');
+  // A prompt the daemon refused (store/acp.ts applyAcpError), or one
+  // that never reached it, comes back here rather than being lost —
+  // unless the user has already started typing another.
+  const returned = useReturnedPrompt(sessionId);
+  useEffect(() => {
+    if (returned === null) return;
+    setText((cur) => cur || returned);
+    takeReturnedPrompt(sessionId);
+  }, [returned, sessionId]);
   const send = () => {
     const t = text.trim();
     if (!t || busy) return;
     setText('');
     onSent();
+    noteSentPrompt(sessionId, t);
     PromptAcp(sessionId, t).catch((err) => {
-      // The prompt never left: give it back rather than lose it, unless
-      // the user has already started typing another.
-      setText((cur) => cur || t);
+      returnSentPrompt(sessionId);
       reportFailure('send prompt')(err);
     });
   };

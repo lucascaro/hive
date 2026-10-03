@@ -77,13 +77,15 @@ func TestGetAcpTranscriptUnknownSession(t *testing.T) {
 	d := newFrameTestDaemon(t)
 	rec := &recordOps{}
 	d.handleControlFrame(t.Context(), rec.ops(), wire.FrameGetAcpTranscript, []byte(`{"session_id":"nope"}`))
-	if len(rec.errs) != 1 || rec.errs[0].Code != "no_such_session" {
-		t.Errorf("errors = %+v, want no_such_session", rec.errs)
+	// The refusal names the session, so the client can act on its own
+	// copy of it (stop showing the snapshot as loading).
+	if len(rec.errs) != 1 || rec.errs[0].Code != "no_such_session" || rec.errs[0].SessionID != "nope" {
+		t.Errorf("errors = %+v, want no_such_session for session nope", rec.errs)
 	}
 	rec = &recordOps{}
 	d.handleControlFrame(t.Context(), rec.ops(), wire.FramePromptAcp, []byte(`{"session_id":"nope","text":"x"}`))
-	if len(rec.errs) != 1 || rec.errs[0].Code != "no_such_session" {
-		t.Errorf("prompt errors = %+v, want no_such_session", rec.errs)
+	if len(rec.errs) != 1 || rec.errs[0].Code != "no_such_session" || rec.errs[0].SessionID != "nope" {
+		t.Errorf("prompt errors = %+v, want no_such_session for session nope", rec.errs)
 	}
 }
 

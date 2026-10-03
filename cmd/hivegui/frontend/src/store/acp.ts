@@ -29,6 +29,12 @@ export interface AcpEntry {
   // next session list — a reconnect — or the loop would be one request
   // per render.
   failed: boolean;
+  // The prompt this client sent and the daemon has neither recorded nor
+  // refused yet. A refusal (control:error naming this session) moves it
+  // to `returned`, for the prompt box to put back; the transcript
+  // recording it as a user turn drops it.
+  sent: string | null;
+  returned: string | null;
 }
 
 interface AcpData {
@@ -41,6 +47,8 @@ const blank = (): AcpEntry => ({
   tx: emptyAcp(),
   requested: false,
   failed: false,
+  sent: null,
+  returned: null,
 });
 
 function patch(id: string, fn: (e: AcpEntry) => AcpEntry): void {
@@ -62,7 +70,10 @@ export function applyAcpFrame(msg: AcpTranscriptMsg): void {
     if (tx === e.tx) return e;
     // A reset answers the request; a stale mark asks for another.
     const requested = msg.reset ? false : tx.loaded ? e.requested : false;
-    return { ...e, tx, requested };
+    const recorded =
+      e.sent !== null &&
+      (msg.items ?? []).some((it) => it.kind === 'user' && it.text === e.sent);
+    return { ...e, tx, requested, sent: recorded ? null : e.sent };
   });
 }
 
@@ -88,12 +99,73 @@ export function resetAcpOnSessionList(liveIds: ReadonlySet<string>): void {
   for (const [id, e] of byId) {
     if (liveIds.has(id))
       m.set(id, {
+        ...e,
         tx: { ...e.tx, loaded: false },
         requested: false,
         failed: false,
       });
   }
   acpStore.setState({ byId: m });
+}
+
+// noteSentPrompt records a prompt this client just sent, so a refusal
+// can give it back.
+export function noteSentPrompt(id: string, text: string): void {
+  patch(id, (e) => ({ ...e, sent: text, returned: null }));
+}
+
+// returnSentPrompt gives the pending prompt back to its box: the call
+// never reached the daemon.
+export function returnSentPrompt(id: string): void {
+  patch(id, (e) =>
+    e.sent === null ? e : { ...e, sent: null, returned: e.sent },
+  );
+}
+
+// useReturnedPrompt is the refused prompt waiting for its box, if any.
+export function useReturnedPrompt(id: string): string | null {
+  return useStore(acpStore, (s) => s.byId.get(id)?.returned ?? null);
+}
+
+// takeReturnedPrompt hands a refused prompt to the box once.
+export function takeReturnedPrompt(id: string): void {
+  patch(id, (e) => (e.returned === null ? e : { ...e, returned: null }));
+}
+
+// Codes the daemon answers an ACP request with when it did not act on
+// it (internal/daemon sendACPError). permission_stale is absent: only
+// ANSWER_PERMISSION earns it, and the next message clears the card.
+const ACP_REFUSALS = new Set([
+  'no_such_session',
+  'not_acp_session',
+  'acp_busy',
+  'session_dead',
+  'acp_failed',
+]);
+
+/**
+ * applyAcpError folds a control:error into the session it names: a
+ * pending prompt goes back to its box, and a pending snapshot request
+ * becomes a failed one instead of loading until the next reconnect.
+ * The error carries no request id, so on the rare overlap both happen —
+ * either way the request was refused.
+ */
+export function applyAcpError(err: {
+  code?: string;
+  session_id?: string;
+}): void {
+  const id = err?.session_id;
+  if (!id || !err.code || !ACP_REFUSALS.has(err.code)) return;
+  if (!acpStore.getState().byId.has(id)) return;
+  patch(id, (e) => {
+    let next = e;
+    // An accepted prompt is recorded (and drops `sent`) before PROMPT_ACP
+    // returns, so a refusal that finds one still pending is its own.
+    if (e.sent !== null) next = { ...next, sent: null, returned: e.sent };
+    if (e.requested && !e.tx.loaded)
+      next = { ...next, requested: false, failed: true };
+    return next;
+  });
 }
 
 export function forgetAcp(id: string): void {

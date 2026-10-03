@@ -25,8 +25,13 @@ type recordOps struct {
 
 func (r *recordOps) ops() controlOps {
 	return controlOps{
-		writeJSON: func(t wire.FrameType, _ any) error {
+		writeJSON: func(t wire.FrameType, v any) error {
 			r.frames = append(r.frames, t)
+			// An error written as a whole frame (one that carries a
+			// session or project id) is still an error.
+			if e, ok := v.(wire.Error); ok && t == wire.FrameError {
+				r.errs = append(r.errs, e)
+			}
 			return nil
 		},
 		sendError: func(code, msg string) {

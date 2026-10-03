@@ -31,6 +31,9 @@ package buildinfo
 //	    built before it, a reply can wipe a streamed chunk or be
 //	    followed by one it already holds, and the view shows a
 //	    truncated or doubled message.
+//	    ACP refusals (no_such_session, acp_busy, session_dead, …) now
+//	    carry the session_id they were for, which is how the GUI gives
+//	    a refused prompt back to its box.
 //	22 — ACP sessions (spec 496, phase 1): SessionInfo gained kind and
 //	    spawned_by, CreateSpec gained kind, and the GET_ACP_TRANSCRIPT /
 //	    ACP_TRANSCRIPT / PROMPT_ACP / ANSWER_PERMISSION frames drive a

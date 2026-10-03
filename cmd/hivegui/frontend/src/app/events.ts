@@ -68,6 +68,7 @@ import {
 import type { ActivityMsg } from '../lib/activity.js';
 import type { AcpTranscriptMsg } from '../lib/acp.js';
 import {
+  applyAcpError,
   applyAcpFrame,
   forgetAcp,
   resetAcpOnSessionList,
@@ -1235,6 +1236,10 @@ export function wireDaemonEvents(injected: EventsDeps) {
     }
     // This window's own install failure: the Plugins tab shows it.
     if (claimPluginInstallError(e)) return;
+    // An ACP refusal names its session: give a refused prompt back to
+    // its box and stop showing a refused snapshot as loading. The status
+    // line below still says why.
+    applyAcpError(e);
     // A plan review ended between the session event and the fetch. The
     // plan-review plugin hears this error too and moves on; it is not
     // worth a status line.
