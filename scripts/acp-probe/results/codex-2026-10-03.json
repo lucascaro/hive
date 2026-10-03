@@ -1,0 +1,75 @@
+{
+  "agent": "codex",
+  "date": "2026-10-03",
+  "route": "adapter",
+  "adapter": "@agentclientprotocol/codex-acp@2.1.1",
+  "cli_version": "0.157.1",
+  "capabilities": {
+    "loadSession": true,
+    "session": {
+      "list": true,
+      "resume": true,
+      "close": true,
+      "delete": true,
+      "fork": true
+    },
+    "mcp": {
+      "http": true,
+      "sse": false
+    }
+  },
+  "modes": [
+    "agent",
+    "agent-full-access",
+    "read-only",
+    "workspace-write"
+  ],
+  "config_options": [
+    "collaboration_mode",
+    "fast-mode",
+    "mode",
+    "model",
+    "reasoning_effort"
+  ],
+  "update_kinds": [
+    "agent_message_chunk",
+    "agent_thought_chunk",
+    "available_commands_update",
+    "session_info_update",
+    "tool_call",
+    "tool_call_update",
+    "usage_update",
+    "user_message_chunk"
+  ],
+  "identity_field": null,
+  "session_id_mismatch": false,
+  "detached_daemons_after_pty": 2,
+  "checks": {
+    "mcp": {
+      "verdict": "pass",
+      "reason": "out_file_nonce"
+    },
+    "permission": {
+      "verdict": "no",
+      "reason": "none_seen"
+    },
+    "streaming": {
+      "verdict": "partial",
+      "reason": "ok"
+    },
+    "load": {
+      "verdict": "pass",
+      "reason": "agent_replay_has_nonce"
+    },
+    "takeover_headless": {
+      "verdict": "fail",
+      "reason": "writer_locked"
+    },
+    "takeover_pty": {
+      "verdict": "pass",
+      "reason": "nonce_on_screen",
+      "branch": "resume",
+      "hive_branch": "resume"
+    }
+  }
+}

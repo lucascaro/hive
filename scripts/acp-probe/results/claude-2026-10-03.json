@@ -1,0 +1,74 @@
+{
+  "agent": "claude",
+  "date": "2026-10-03",
+  "route": "adapter",
+  "adapter": "@agentclientprotocol/claude-agent-acp@0.85.1",
+  "cli_version": "2.1.288",
+  "capabilities": {
+    "loadSession": true,
+    "session": {
+      "list": true,
+      "resume": true,
+      "close": true,
+      "delete": true,
+      "fork": true
+    },
+    "mcp": {
+      "http": true,
+      "sse": true
+    }
+  },
+  "modes": [
+    "acceptEdits",
+    "auto",
+    "bypassPermissions",
+    "default",
+    "plan"
+  ],
+  "config_options": [
+    "effort",
+    "fast",
+    "mode",
+    "model"
+  ],
+  "update_kinds": [
+    "agent_message_chunk",
+    "available_commands_update",
+    "plan",
+    "tool_call",
+    "tool_call_update",
+    "usage_update",
+    "user_message_chunk"
+  ],
+  "identity_field": "name",
+  "session_id_mismatch": false,
+  "detached_daemons_after_pty": null,
+  "checks": {
+    "mcp": {
+      "verdict": "pass",
+      "reason": "out_file_nonce"
+    },
+    "permission": {
+      "verdict": "yes",
+      "reason": "request_seen"
+    },
+    "streaming": {
+      "verdict": "yes",
+      "reason": "ok"
+    },
+    "load": {
+      "verdict": "pass",
+      "reason": "agent_replay_has_nonce"
+    },
+    "takeover_headless": {
+      "verdict": "pass",
+      "reason": "nonce_in_stdout"
+    },
+    "takeover_pty": {
+      "verdict": "pass",
+      "reason": "nonce_on_screen",
+      "branch": "resume",
+      "hive_branch": "session-id"
+    }
+  }
+}

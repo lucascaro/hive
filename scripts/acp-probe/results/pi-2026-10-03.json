@@ -1,0 +1,74 @@
+{
+  "agent": "pi",
+  "date": "2026-10-03",
+  "route": "adapter",
+  "adapter": "pi-acp@0.0.34",
+  "cli_version": "1.0.0",
+  "capabilities": {
+    "loadSession": true,
+    "session": {
+      "list": true,
+      "resume": false,
+      "close": false,
+      "delete": true,
+      "fork": false
+    },
+    "mcp": {
+      "http": false,
+      "sse": false
+    }
+  },
+  "modes": [
+    "high",
+    "low",
+    "max",
+    "medium",
+    "minimal",
+    "off",
+    "xhigh"
+  ],
+  "config_options": [
+    "model",
+    "thought_level"
+  ],
+  "update_kinds": [
+    "agent_message_chunk",
+    "available_commands_update",
+    "session_info_update",
+    "tool_call",
+    "tool_call_update",
+    "usage_update",
+    "user_message_chunk"
+  ],
+  "identity_field": null,
+  "session_id_mismatch": false,
+  "detached_daemons_after_pty": null,
+  "checks": {
+    "mcp": {
+      "verdict": "fail",
+      "reason": "no_call"
+    },
+    "permission": {
+      "verdict": "no",
+      "reason": "none_seen"
+    },
+    "streaming": {
+      "verdict": "partial",
+      "reason": "ok"
+    },
+    "load": {
+      "verdict": "pass",
+      "reason": "agent_replay_has_nonce"
+    },
+    "takeover_headless": {
+      "verdict": "pass",
+      "reason": "nonce_in_stdout"
+    },
+    "takeover_pty": {
+      "verdict": "pass",
+      "reason": "nonce_on_screen",
+      "branch": "resume",
+      "hive_branch": "resume"
+    }
+  }
+}

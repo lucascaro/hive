@@ -15,11 +15,19 @@ one before:
 | 1 | [389 — orchestrator grant + `hived msg` from a session](../product-specs/389-orchestrator-grant-and-session-msg.md) | a **granted** session can `hived msg` a sibling in its project | ≥10 session-originated sends in real work over ≥2 weeks |
 | 2 | [390 — observe: `hived session list` / `hived wait`](../product-specs/390-session-observe-list-and-wait.md) | any session can list its project's sessions and block until one reaches a state | `wait` shows up in real agent transcripts |
 | 3 | [391 — agent-spawned sessions](../product-specs/391-agent-spawned-sessions.md) | a granted session can start a sibling and wait on it | one real task fanned out by an agent that you would repeat |
-| 4 | — | results collection, headless workers, templates | **not designed** until phase 3 has evidence |
+| 4 | — | results collection, headless workers, templates | moved to the ACP track: [acp-workflows.md](acp-workflows.md) (spec 492), which has its own gates |
 
 Phase 2 may fold into phase 1 if the phase-1 gate turns out to be
 unreachable without `wait`; that is a decision-log entry, not a new
 design.
+
+A **parallel track**, [acp-workflows.md](acp-workflows.md), makes a
+deterministic workflow engine the orchestrator, driving agents over ACP.
+It does not replace phases 1–3. Both tracks spawn sessions, so both obey
+the single trust model set out there: one principal model, one `SpawnedBy`
+provenance field, one `authorize` path through `Registry.Create`. Its gates
+are its own, because an engine-driven workflow never produces the
+session-originated `hived msg` / `wait` that the gates above count.
 
 ## The question it answers
 
@@ -107,8 +115,11 @@ built. That is the point.
 ## What is deliberately *not* here
 
 - **Phase 4.** Collecting results, headless (`-p`) workers, task
-  templates, a DAG. Every one of these is a guess about how phase 3
-  will be used. Design it after phase 3 has been used.
+  templates, a DAG. For an *agent* orchestrator, every one of these is
+  still a guess about how phase 3 will be used. The engine-driven version
+  of the same needs (typed results via `submit_result`, headless escape
+  hatches, code-defined workflows) is designed in
+  [acp-workflows.md](acp-workflows.md), on its own evidence.
 - **Cross-project targets. Broadcast. Message history.** Non-goals
   carried over from 338.
 - **An open model where every session may orchestrate.** It is what
