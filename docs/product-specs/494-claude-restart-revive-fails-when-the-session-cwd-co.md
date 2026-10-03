@@ -5,7 +5,8 @@ type: bug
 complexity: S
 priority: P1
 pr: 497
-stage: GATE
+shipped: 2026-10-03
+stage: DONE
 ---
 
 # Claude Restart/Revive fails when the session cwd contains "_"
@@ -14,7 +15,7 @@ stage: GATE
 - **Type:** bug
 - **Complexity:** S
 - **Priority:** P1
-- **Exec plan:** [docs/exec-plans/active/494-claude-restart-revive-fails-when-the-session-cwd-co.md](../exec-plans/active/494-claude-restart-revive-fails-when-the-session-cwd-co.md)
+- **Exec plan:** [docs/exec-plans/completed/494-claude-restart-revive-fails-when-the-session-cwd-co.md](../exec-plans/completed/494-claude-restart-revive-fails-when-the-session-cwd-co.md)
 
 ## Problem
 

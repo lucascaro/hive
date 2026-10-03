@@ -2,7 +2,7 @@
 
 - **Spec:** [docs/product-specs/494-claude-restart-revive-fails-when-the-session-cwd-co.md](../../product-specs/494-claude-restart-revive-fails-when-the-session-cwd-co.md)
 - **Issue:** #494
-- **Status:** active
+- **Status:** completed
 - **PR:** #497
 - **Branch:** feature/494-claude-resume-cwd-encoding
 
@@ -153,3 +153,11 @@ All expected strings below were produced by running Claude's own JS
 ## PR convergence ledger
 
 - **2026-10-03 iter 1** — verdict: APPROVE; mergeable: MERGEABLE; findings_hash: empty; threads_open: 0; action: stop; head_sha: 3b101c0.
+
+## Gate verdict
+
+- **2026-10-03** — verdict: PASS; phase: —; checks: 8 passed / 0 failed / 0 followups; followups: none; one-line: encoder matches Claude's on 7 fresh node-computed inputs, all non-goals held, docs and changeset accurate.
+  - 2026-10-03 dimensions:
+    - acceptance — PASS — 4/4 criteria; Go encoder/resume tests and 41/41 probe tests green; 7 fresh inputs (incl. 200/201 boundary, emoji) match Claude's algorithm
+    - non-goals — PASS — no symlink resolution, no transcript migration, pi/codex/copilot encoders untouched
+    - doc accuracy — PASS — changeset valid (regression_of: declared-absent); generated files untouched; check-doc green; no stale encoder prose. Pre-existing stale line citations in docs/design-docs/session-history-search.md:49,53 noted, out of scope
