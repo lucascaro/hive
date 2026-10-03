@@ -13,11 +13,11 @@ import (
 	"github.com/lucascaro/hive/internal/wire"
 )
 
-func useFakeACP(t *testing.T) {
+func useFakeACP(t *testing.T, flags ...string) {
 	t.Helper()
 	dir := t.TempDir()
 	t.Cleanup(registry.SetACPCommandForTest(func(agent.Def) ([]string, []string) {
-		return []string{os.Args[0]}, append(acp.AdapterEnv(os.Environ(), ""), acptest.Env(dir)...)
+		return []string{os.Args[0]}, append(acp.AdapterEnv(os.Environ(), ""), acptest.Env(dir, flags...)...)
 	}))
 }
 
@@ -97,6 +97,43 @@ func TestPromptAcpOriginFromConnection(t *testing.T) {
 	msg, err := d.reg.AcpTranscript(e.ID)
 	if err != nil || len(msg.Items) == 0 || msg.Items[0].Origin != "plugin:wf" {
 		t.Errorf("transcript = %+v, %v; want the turn with origin plugin:wf", msg.Items, err)
+	}
+}
+
+// ANSWER_PERMISSION reaches the registry and maps its errors to wire
+// codes: an unknown session, an answer with nothing pending, and a
+// wrong request id are refused; the pending request's id and an
+// offered option clear it.
+func TestAnswerPermissionFrame(t *testing.T) {
+	useFakeACP(t, acptest.FlagPermission)
+	d := newFrameTestDaemon(t)
+	answer := func(sid, rid, opt string) []wire.Error {
+		rec := &recordOps{}
+		d.handleControlFrame(t.Context(), rec.ops(), wire.FrameAnswerPermission,
+			[]byte(`{"session_id":"`+sid+`","request_id":"`+rid+`","option_id":"`+opt+`"}`))
+		return rec.errs
+	}
+	if errs := answer("nope", "1", "allow"); len(errs) != 1 || errs[0].Code != "no_such_session" {
+		t.Errorf("unknown session errors = %+v, want no_such_session", errs)
+	}
+	e := createACPVia(t, d, (&recordOps{}).ops(), `{"kind":"acp","agent":"claude"}`)
+	if errs := answer(e.ID, "1", "allow"); len(errs) != 1 || errs[0].Code != wire.ErrCodePermissionStale {
+		t.Errorf("nothing pending errors = %+v, want %s", errs, wire.ErrCodePermissionStale)
+	}
+	d.handleControlFrame(t.Context(), (&recordOps{}).ops(), wire.FramePromptAcp, []byte(`{"session_id":"`+e.ID+`","text":"hi"}`))
+	var perm *wire.AcpPermission
+	for deadline := time.Now().Add(5 * time.Second); perm == nil && time.Now().Before(deadline); time.Sleep(10 * time.Millisecond) {
+		msg, _ := d.reg.AcpTranscript(e.ID)
+		perm = msg.Permission
+	}
+	if perm == nil {
+		t.Fatal("no permission request became pending")
+	}
+	if errs := answer(e.ID, perm.RequestID+"0", "allow"); len(errs) != 1 || errs[0].Code != wire.ErrCodePermissionStale {
+		t.Errorf("wrong request id errors = %+v, want %s", errs, wire.ErrCodePermissionStale)
+	}
+	if errs := answer(e.ID, perm.RequestID, "allow"); len(errs) != 0 {
+		t.Errorf("valid answer errors = %+v, want none", errs)
 	}
 }
 
