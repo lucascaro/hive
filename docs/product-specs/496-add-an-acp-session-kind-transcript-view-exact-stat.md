@@ -5,7 +5,7 @@ type: enhancement
 complexity: L
 priority: P2
 pr: 499
-stage: GATE
+stage: IMPLEMENT
 ---
 
 # Add an ACP session kind: transcript view, exact state, permission prompts, typed results, PTY takeover
@@ -69,7 +69,7 @@ Spec 492 showed that ACP (Agent Client Protocol) fixes all three. Hive has no AC
    - **Unprobed agents.** Gemini and Copilot are labeled experimental in the dialog.
 9. **Gate B.**
    - **The gate.** `acp-workflows.md`'s gate B is updated to Claude and Pi.
-   - **The log.** The doc logs 5 or more real tasks per agent, each taken over in a PTY and handed back once, with 0 lost turns: date, agent, task and outcome for each run.
+   - **The log.** The doc logs at least 2 real tasks per agent, at least 1 of them taken over in a PTY and handed back, with 0 lost turns: date, agent, task and outcome for each run. The fake-agent test in criterion 6 is the automated proof that no turn is lost; the real runs confirm it holds against the actual adapters.
 
 ## Non-goals
 

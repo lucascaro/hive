@@ -3,9 +3,9 @@
 - **Spec:** [docs/product-specs/496-add-an-acp-session-kind-transcript-view-exact-stat.md](../../product-specs/496-add-an-acp-session-kind-transcript-view-exact-stat.md)
 - **Issue:** #496
 - **Status:** active
-- **Phase:** 1 of 4
-- **PR:** #499
-- **Branch:** feature/496-acp-session-kind
+- **Phase:** 2 of 4
+- **PR:** —
+- **Branch:** —
 
 ## Summary
 
@@ -328,7 +328,7 @@ The contract bumps once per phase because `scripts/check-daemon-contract.sh:36-4
 - **P4:**
   - `npm run test:e2e:real`, isolated with `HIVE_SOCKET` and `HIVE_STATE_DIR`
   - `node scripts/acp-probe/check-doc.mjs docs/design-docs/acp-workflows.md` (the same invocation as `ci.yml:359`)
-  - the operator's gate B run log (≥5 runs per agent for Claude and Pi), filled in before P4's gate
+  - the operator's gate B run log (≥2 real runs per agent for Claude and Pi, ≥1 of them with a takeover and hand-back), filled in before P4's gate
 
 ## Criteria → phase
 
@@ -342,7 +342,7 @@ The contract bumps once per phase because `scripts/check-daemon-contract.sh:36-4
 | 6 | Takeover and hand-back, F2, no-lost-turn test | P4 |
 | 7 | Restart via `session/load` | P1 |
 | 8 | Pinned adapters, no-Node reason, experimental label | P1 spec and reason; P2 UI |
-| 9 | Gate B update and run log | P4 (the runs themselves are the operator's) |
+| 9 | Gate B update and run log (≥2 real runs per agent, ≥1 with takeover + hand-back) | P4 (the runs themselves are the operator's) |
 
 ## Risks
 
@@ -359,9 +359,11 @@ The contract bumps once per phase because `scripts/check-daemon-contract.sh:36-4
 - **Q4. Prompt provenance.** `origin` is stored on the in-memory transcript item and in the activity event.
   - Prompts replayed after a restart are labelled "replayed".
   - A durable audit log is #495's job.
-- **Q5. Pi extension under pi-acp is unknown.** It is unverified whether pi-acp passes `-e`/env through to `pi --mode rpc`, and that blocks criterion 4 for Pi.
-  - P3's first task is to read the pi-acp 0.0.34 source.
-  - If it doesn't pass them through, the fallback is an upstream PR or pi's auto-discovered extension directory. Both need the operator's OK.
+- **Q5. Pi extension under pi-acp — resolved 2026-10-03.**
+  - pi-acp 0.0.34 spawns `pi --mode rpc --no-themes [--session <file>]` with fixed args and `env: process.env` (`dist/index.js:129-137`). There is no arg pass-through; `PI_ACP_PI_COMMAND` replaces only the binary, and it is spawned without a shell on Unix (`.cmd`/`.bat` go through cross-spawn on Windows).
+  - Probe (fake `pi` behind a shim, real `npx -y pi-acp@0.0.34`, `initialize` + `session/new`): the shim's `-e` reached pi as `-e /state/pi/hive.ts --mode rpc --no-themes`, and `HIVE_SESSION_ID` / `HIVE_SOCKET` set on the adapter's env reached pi.
+  - P3 therefore: write a shim next to the extension (`<stateDir>/pi/pi-acp-shim` on Unix, `.cmd` on Windows) that execs the login-PATH `pi` with `-e <stateDir>/pi/hive.ts "$@"`, set `PI_ACP_PI_COMMAND` to it, and add the session's own `HIVE_SESSION_ID` / `HIVE_SOCKET` (and the submit nonce) back onto the Pi adapter's env, since `AdapterEnv` strips inherited `HIVE_*`.
+  - pi-acp also maps Pi extension UI requests (`extension_ui_request`) to `session/request_permission` with `toolCallId: pi-ui-<id>` and `kind: other`; those go to the user like any other permission.
 - **Q6. `session/set_mode` is unproven.** P3's first task is a probe run for Claude and Codex. If an adapter lacks it, Hive refuses ACP for that agent rather than running it in its default mode.
 - **Q7. PTY-to-ACP hand-back was never probed against real adapters.** The fake-agent test proves Hive's mechanics; gate B is the real evidence.
 - **Q8. The ceiling lives in agent settings**, the same exposure as every other setting. Noted, not solved here.
@@ -395,6 +397,8 @@ The contract bumps once per phase because `scripts/check-daemon-contract.sh:36-4
 
 ## Decision log
 
+- **2026-10-03** — Gate B (criterion 9) relaxed from ≥5 real runs per agent, each with a takeover and hand-back, to ≥2 real runs per agent with ≥1 takeover and hand-back. Why: the operator chose it; the fake-agent test in criterion 6 is the automated no-lost-turn proof, and the real runs only confirm it against the actual adapters. The `acp-workflows.md` verdict rule is unchanged; the gate B row is rewritten in P4 as planned.
+- **2026-10-03** — Q5 settled before P2 instead of in P3, by reading pi-acp 0.0.34 and probing it with a shim: Hive's Pi extension reaches Pi through a `PI_ACP_PI_COMMAND` shim, with no upstream change needed.
 - **2026-10-03** — Review loop extended past 5 iterations (operator approved up to 3 more); it converged at iter 6. Iters 1–5 each surfaced one real, shrinking issue in new code (worktree binding, PATH resolution, stderr pipe, tool-content arrays, escaped-size budget, replay flood), all fixed with mutation-checked tests. Five MINORs from iter 6 are deferred to phase 2, which reworks the transcript path anyway: O(n²) chunk concat and trim copies, per-chunk copies during replay, untested slow-listener drop. (The startACP failure-branch tests were added after all, in ce2293fe, after CodeRabbit flagged the deferral against AGENTS.md.)
 - **2026-10-03** — P1 updates `control-plane.md` (acp tier implemented), DESIGN.md and AGENTS.md now, not in P4. Why: the tier and the `internal/acp` package exist from P1, and docs that lag the code are a bug.
 - **2026-10-03** — P1 ships a changeset after all. Why: plugins can create and drive ACP sessions from P1, which is user-visible to plugin authors; the pre-push gate is right.
@@ -411,6 +415,7 @@ The contract bumps once per phase because `scripts/check-daemon-contract.sh:36-4
 - **2026-10-03** — Plan created; research started.
 - **2026-10-03** — Research done; plan approved (second opinion: revise→approve, 8/10). Phase 1 of 4 starts.
 - **2026-10-03** — Phase 1 implemented and PR #499 opened (daemon core, contract 22).
+- **2026-10-03** — PR #499 merged (phase 1/4). Phase 2 (GUI) starts on `feature/496-acp-phase2`.
 
 ## Open questions
 
