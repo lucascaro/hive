@@ -185,3 +185,4 @@ Runs: Claude (`@agentclientprotocol/claude-agent-acp@0.85.1`), Codex (`@agentcli
 
 - **2026-10-02 iter 1** — verdict: APPROVE; mergeable: MERGEABLE; findings_hash: empty; threads_open: 0; action: stop; head_sha: 4819403. 5 MINOR nits applied after convergence; re-review follows as iter 2.
 - **2026-10-02 iter 2** — verdict: REQUEST_CHANGES; mergeable: MERGEABLE; findings_hash: 3889fa95066ec7ce9509df84453f2121cf8d225970f6af4c4918c8d81c9da858; threads_open: 1; action: escalated:risky-fix-needs-human-decision; head_sha: 5d4bed3. The orchestrator chose exit+drain-grace for the headless stdout drain (strictly safer, cannot flip the committed verdict); the new CodeRabbit date thread was posted after autofix ran.
+- **2026-10-02 iter 3** — verdict: APPROVE; mergeable: MERGEABLE; findings_hash: empty; threads_open: 0; action: stop; head_sha: 3343277.
