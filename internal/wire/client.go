@@ -132,6 +132,8 @@ var controlEvents = map[FrameType]string{
 	FrameIdeaEvent: "idea:event",
 
 	FrameActivity: "activity:event",
+	// Not transcript:* — find-in-session (spec 431) owns those names.
+	FrameAcpTranscript: "acp:transcript",
 
 	FrameTranscriptMatches: "transcript:matches",
 	FrameTranscriptLines:   "transcript:lines",

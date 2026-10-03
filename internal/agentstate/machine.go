@@ -272,6 +272,13 @@ func (m *Machine) Snapshot() Snapshot {
 // are ignored: a streaming reply is already "working", and a permission
 // prompt repainting itself must not flip waiting_permission back.
 func (m *Machine) trusted(now time.Time) bool {
+	// The ACP tier never goes stale: the daemon owns the ACP stream, so
+	// a quiet stream is a quiet agent (a long tool call, a slow model),
+	// not a reporter that stopped. Liveness comes from the adapter
+	// process exiting, which ends in Exit.
+	if m.source == wire.StateSourceACP {
+		return true
+	}
 	if m.source == wire.StateSourceHeuristic || m.hookSeenAt.IsZero() {
 		return false
 	}
@@ -672,7 +679,9 @@ func (m *Machine) Apply(ev Event) bool {
 func (m *Machine) StaleAt() (time.Time, bool) {
 	// Laya reports nothing, so it has no report deadline — its own
 	// staleness is LayaRecheckAfter, applied by the classifier.
-	if m.source == wire.StateSourceHeuristic || m.source == wire.StateSourceLaya || m.reportedAt.IsZero() {
+	// ACP has no deadline either: see trusted.
+	if m.source == wire.StateSourceHeuristic || m.source == wire.StateSourceLaya ||
+		m.source == wire.StateSourceACP || m.reportedAt.IsZero() {
 		return time.Time{}, false
 	}
 	return m.reportedAt.Add(HookStaleAfter), true
