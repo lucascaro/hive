@@ -41,6 +41,8 @@ const (
 	FlagPermission = "permission"
 	// FlagBlock makes each prompt wait until <dir>/release exists.
 	FlagBlock = "block"
+	// FlagNoLoad makes initialize report loadSession: false.
+	FlagNoLoad = "no-load"
 )
 
 // IsAgent reports whether this process was started as the fake agent.
@@ -211,7 +213,7 @@ func (f *fake) handle(id json.RawMessage, method string, params json.RawMessage)
 
 	switch method {
 	case "initialize":
-		reply(map[string]any{"protocolVersion": 1, "agentCapabilities": map[string]any{"loadSession": true}})
+		reply(map[string]any{"protocolVersion": 1, "agentCapabilities": map[string]any{"loadSession": !f.flags[FlagNoLoad]}})
 	case "session/new":
 		sid := fmt.Sprintf("fake-%d", time.Now().UnixNano())
 		if err := os.WriteFile(filepath.Join(f.dir, sid+".jsonl"), nil, 0o600); err != nil {

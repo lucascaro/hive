@@ -514,3 +514,53 @@ func TestStalePermissionIDRefusedAfterRestart(t *testing.T) {
 	}
 	waitFor(t, "turn end", idleAfterTurn(r, e.ID))
 }
+
+// Every startACP failure leaves a dead session with a reason, never a
+// live-looking one or a hang.
+func TestStartACPFailuresLeaveDeadSessionWithReason(t *testing.T) {
+	expectDead := func(t *testing.T, r *Registry, id, want string) {
+		t.Helper()
+		waitFor(t, "dead", func() bool { return !info(r, id).Alive })
+		if got := info(r, id).LastError; !strings.Contains(got, want) {
+			t.Errorf("LastError = %q, want it to mention %q", got, want)
+		}
+	}
+
+	t.Run("spawn fails", func(t *testing.T) {
+		skipOnWindows(t)
+		prev := acpCommand
+		acpCommand = func(agent.Def) ([]string, []string) {
+			return []string{filepath.Join(t.TempDir(), "no-such-adapter")}, os.Environ()
+		}
+		t.Cleanup(func() { acpCommand = prev })
+		r := freshRegistry(t)
+		e, err := r.Create(context.Background(), wire.CreateSpec{Name: "a", Kind: wire.KindACP, Agent: string(agent.IDClaude)})
+		if err == nil {
+			t.Fatal("Create succeeded with a missing adapter")
+		}
+		expectDead(t, r, e.ID, "no-such-adapter")
+	})
+
+	t.Run("load of an unknown conversation", func(t *testing.T) {
+		useFakeACP(t)
+		r := freshRegistry(t)
+		e := createACP(t, r, wire.CreateSpec{Name: "a"})
+		r.mu.Lock()
+		r.entries[e.ID].AgentSessionID = "fake-gone"
+		r.mu.Unlock()
+		if err := r.Restart(e.ID); err == nil {
+			t.Fatal("Restart reloading an unknown conversation succeeded")
+		}
+		expectDead(t, r, e.ID, "session/load")
+	})
+
+	t.Run("adapter cannot load sessions", func(t *testing.T) {
+		useFakeACP(t, acptest.FlagNoLoad)
+		r := freshRegistry(t)
+		e := createACP(t, r, wire.CreateSpec{Name: "a"})
+		if err := r.Restart(e.ID); err == nil {
+			t.Fatal("Restart succeeded against an adapter without loadSession")
+		}
+		expectDead(t, r, e.ID, "loadSession")
+	})
+}
