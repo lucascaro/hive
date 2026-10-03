@@ -395,7 +395,7 @@ The contract bumps once per phase because `scripts/check-daemon-contract.sh:36-4
 
 ## Decision log
 
-- **2026-10-03** — Review loop extended past 5 iterations (operator approved up to 3 more); it converged at iter 6. Iters 1–5 each surfaced one real, shrinking issue in new code (worktree binding, PATH resolution, stderr pipe, tool-content arrays, escaped-size budget, replay flood), all fixed with mutation-checked tests. Five MINORs from iter 6 are deferred to phase 2, which reworks the transcript path anyway: O(n²) chunk concat and trim copies, per-chunk copies during replay, untested startACP failure branches, untested slow-listener drop.
+- **2026-10-03** — Review loop extended past 5 iterations (operator approved up to 3 more); it converged at iter 6. Iters 1–5 each surfaced one real, shrinking issue in new code (worktree binding, PATH resolution, stderr pipe, tool-content arrays, escaped-size budget, replay flood), all fixed with mutation-checked tests. Five MINORs from iter 6 are deferred to phase 2, which reworks the transcript path anyway: O(n²) chunk concat and trim copies, per-chunk copies during replay, untested slow-listener drop. (The startACP failure-branch tests were added after all, in ce2293fe, after CodeRabbit flagged the deferral against AGENTS.md.)
 - **2026-10-03** — P1 updates `control-plane.md` (acp tier implemented), DESIGN.md and AGENTS.md now, not in P4. Why: the tier and the `internal/acp` package exist from P1, and docs that lag the code are a bug.
 - **2026-10-03** — P1 ships a changeset after all. Why: plugins can create and drive ACP sessions from P1, which is user-visible to plugin authors; the pre-push gate is right.
 - **2026-10-03** — `isStale` in the GUI was left unchanged. Why: the daemon sends no `stale_at` for the acp tier, so the existing check already returns false.
@@ -422,6 +422,7 @@ The contract bumps once per phase because `scripts/check-daemon-contract.sh:36-4
 - **2026-10-03 iter 4** — verdict: COMMENT; mergeable: MERGEABLE; findings_hash: 3c0a5fadf565d9f018a9e4ffa8ab5c48c8cc0ec4d058d01d5dd3b9819908c9ab; threads_open: 0; action: autofix+push; head_sha: 9061d336.
 - **2026-10-03 iter 5** — verdict: COMMENT; mergeable: MERGEABLE; findings_hash: 1eb37cc22a111b8b2bb97f337009b172b6f65c694c570362e568d21ee5091dc2; threads_open: 0; action: escalated:risky-fix-needs-human-decision; head_sha: 221e246f.
 - **2026-10-03 iter 6** — verdict: APPROVE; mergeable: MERGEABLE; findings_hash: empty; threads_open: 0; action: stop; head_sha: 5cc750ed.
+- **2026-10-03 iter 7** — verdict: REQUEST_CHANGES; mergeable: MERGEABLE; findings_hash: coderabbit-2-threads; threads_open: 0; action: autofix+push; head_sha: ce2293fe.
 
 ## Gate verdict
 
