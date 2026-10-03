@@ -70,7 +70,7 @@ This note is the research for [spec 496](../product-specs/496-add-an-acp-session
   - `resolveCommand`;
   - a scrubbed env;
   - `WaitDelay`;
-  - own process group plus `killTree` (kill_unix.go).
+  - own process group plus `proc.KillTree` (`internal/proc/tree_unix.go`, moved from the plugin package by 496).
 - ACP is the first bidirectional JSON-RPC child in the codebase.
 
 ### Agent catalog and settings

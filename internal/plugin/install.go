@@ -137,8 +137,8 @@ func runGit(ctx context.Context, dir string, args ...string) (string, error) {
 	cmd := proc.CommandContext(ctx, "git", args...)
 	cmd.Dir = dir
 	cmd.Env = gitEnv()
-	ownGroup(cmd)
-	cmd.Cancel = func() error { return killTree(cmd.Process) }
+	proc.OwnGroup(cmd)
+	cmd.Cancel = func() error { return proc.KillTree(cmd.Process) }
 	cmd.WaitDelay = 5 * time.Second
 	out, err := cmd.CombinedOutput()
 	return string(out), err

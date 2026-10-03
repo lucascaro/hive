@@ -579,18 +579,18 @@ func (m *Manager) supervise(e *entry, r *runner) {
 		var exitErr error
 		select {
 		case <-r.stop:
-			termTree(cmd.Process)
+			proc.TermTree(cmd.Process)
 			select {
 			case <-exited:
 			case <-time.After(termGrace):
-				_ = killTree(cmd.Process)
+				_ = proc.KillTree(cmd.Process)
 				<-exited
 			}
-			_ = killTree(cmd.Process) // reap anything left in the group
+			_ = proc.KillTree(cmd.Process) // reap anything left in the group
 			closeListener()
 			return
 		case exitErr = <-exited:
-			_ = killTree(cmd.Process)
+			_ = proc.KillTree(cmd.Process)
 			closeListener()
 		}
 
@@ -667,7 +667,7 @@ func (m *Manager) spawn(e *entry) (*exec.Cmd, func(), error) {
 	cmd.Stdout, cmd.Stderr = logw, logw
 	// A grandchild that keeps the output pipe open must not pin Wait.
 	cmd.WaitDelay = termGrace
-	ownGroup(cmd)
+	proc.OwnGroup(cmd)
 	if err := cmd.Start(); err != nil {
 		closeListener()
 		logw.Close()
