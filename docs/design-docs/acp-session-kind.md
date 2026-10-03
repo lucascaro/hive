@@ -183,3 +183,16 @@ This note is the research for [spec 496](../product-specs/496-add-an-acp-session
   - Streamed chunks go out as `append` deltas.
   - A `session/load` replay is broadcast once, as a reset, when it ends. Broadcasting it per chunk could overflow a listener mid-replay.
 - **GUI staleness.** `isStale` needs no change: the daemon sends no `stale_at` for the `acp` tier.
+
+## What phase 2 built
+
+- **Tile.** An ACP session gets an ordinary grid tile. `session-term.ts` marks its host `.acp` and never attaches: `ensureAttached` returns `deferred` for the kind, and `setInfo` attaches if the kind ever flips back to `pty`. `TileChrome.tsx` portals `components/acp/AcpTranscript.tsx` into the tile's overlay host, and `acp.css` hides the terminal body under it.
+- **Store.** `src/store/acp.ts` holds one transcript per session, fed by `acp:transcript`. The fold is pure (`src/lib/acp.ts`):
+  - a reset replaces everything;
+  - a delta before the first snapshot is dropped, since the snapshot that follows already holds it;
+  - a delta from another epoch marks the copy stale, and the view refetches;
+  - `append` deltas add text to the end of their item;
+  - every message overwrites the pending permission.
+- **Snapshot ordering (contract 23).** Phase 1 wrote the `GET_ACP_TRANSCRIPT` reply directly while deltas went through the connection's fan-out goroutine, so a reply could overtake or trail a delta and the view would lose or double a chunk. `Registry.SendAcpTranscript` now queues the snapshot on the caller's own listener under `r.mu`, which orders it with the deltas. That is what lets the client fold in plain arrival order.
+- **Launcher.** A Terminal/ACP radio pair, Terminal by default on every opening. It is offered only for a plain new session (no duplicate, opening prompt or continue). In ACP mode a row that cannot run it is disabled with `AgentInfo.acpReason` (`agent.Def.ACPAvailable`, judged on the GUI's login PATH — Q11), and unprobed adapters carry an `experimental` tag.
+- **Keyboard.** Focusing an ACP tile focuses its prompt box. The `acp-prompt` key scope (text-input) gives it plain typing; Enter sends and Shift+Enter is a newline. The permission buttons have no key: they are ordinary buttons reached by Tab or a click.

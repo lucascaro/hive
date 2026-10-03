@@ -68,3 +68,8 @@
 }
 .palette-name { flex: 1; min-width: 0; }
 .palette-shortcut { flex-shrink: 0; }
+.launcher-item .experimental-tag {
+  flex-shrink: 0;
+  font-size: var(--text-xs);
+  color: var(--state-attention);
+}

@@ -1300,6 +1300,7 @@ func (d *Daemon) serveControl(ctx context.Context, conn net.Conn, hello wire.Hel
 		ownSessionID:   hello.SessionID,
 		ownProjectID:   ownProjectID,
 		principal:      principalOf(tag),
+		acpListener:    acpListener,
 		writeJSON:      writeJSON,
 		sendError:      sendError,
 		sendWorktrees:  sendWorktrees,
@@ -1392,7 +1393,10 @@ type controlOps struct {
 	// principal is who this connection acts as, for provenance:
 	// "plugin:<id>" on a plugin's socket, "" (the user) otherwise. The
 	// daemon derives it; nothing a client sends can set it.
-	principal      string
+	principal string
+	// acpListener is this connection's ACP_TRANSCRIPT fan-out, which
+	// GET_ACP_TRANSCRIPT answers through.
+	acpListener    registry.AcpListener
 	writeJSON      func(wire.FrameType, any) error
 	sendError      func(code, msg string)
 	sendWorktrees  func(projectID, failCode string)
@@ -1546,12 +1550,13 @@ func (d *Daemon) handleControlFrame(ctx context.Context, ops controlOps, ft wire
 		if !ok {
 			return false
 		}
-		msg, err := d.reg.AcpTranscript(req.SessionID)
-		if err != nil {
+		// Queued on this connection's own fan-out listener, not written
+		// here, so the snapshot is ordered with the deltas around it
+		// (see Registry.SendAcpTranscript).
+		if err := d.reg.SendAcpTranscript(req.SessionID, ops.acpListener); err != nil {
 			sendACPError(ops, err)
 			return false
 		}
-		_ = ops.writeJSON(wire.FrameAcpTranscript, msg)
 	case wire.FramePromptAcp:
 		req, ok := decodeReq[wire.PromptAcpReq](payload, ops.sendError)
 		if !ok {

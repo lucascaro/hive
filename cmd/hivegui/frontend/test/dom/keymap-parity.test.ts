@@ -276,7 +276,13 @@ function* events(): Generator<Ev> {
 // nothing; the coverage and order tests in key-scopes.test.ts and
 // every-shortcut.spec.ts hold it.
 const SWEPT = KEY_SCOPES.map((s) => s.id).filter(
-  (id) => id !== 'find-box' && id !== 'plugins' && id !== 'shortcut-capture',
+  // acp-prompt (spec 496) is post-478 and binds nothing, like find-box:
+  // there is no pre-478 matcher to compare it with.
+  (id) =>
+    id !== 'find-box' &&
+    id !== 'acp-prompt' &&
+    id !== 'plugins' &&
+    id !== 'shortcut-capture',
 );
 
 // The approved deltas. Each returns true when this cell is one the spec

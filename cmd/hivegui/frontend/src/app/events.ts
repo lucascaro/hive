@@ -66,6 +66,12 @@ import {
   resetActivityOnSessionList,
 } from '../store/activity.js';
 import type { ActivityMsg } from '../lib/activity.js';
+import type { AcpTranscriptMsg } from '../lib/acp.js';
+import {
+  applyAcpFrame,
+  forgetAcp,
+  resetAcpOnSessionList,
+} from '../store/acp.js';
 import { appStore } from '../store/store.js';
 import { setStatus, flashStatus, reportFailure, setBootState } from './dom.js';
 import { orderedSessions } from './selectors.js';
@@ -747,6 +753,17 @@ export function wireDaemonEvents(injected: EventsDeps) {
     }
   });
 
+  // ACP transcripts (spec 496): snapshots this client asked for and
+  // every ACP session's deltas, in one ordered stream. A malformed frame
+  // costs one delta; the next epoch check refetches if it mattered.
+  EventsOn('acp:transcript', (jsonStr: string) => {
+    try {
+      applyAcpFrame(JSON.parse(jsonStr) as AcpTranscriptMsg);
+    } catch {
+      /* dropped */
+    }
+  });
+
   // Transcript search (spec 431). Both responses are dropped on a parse
   // failure rather than surfaced: a malformed frame costs one search,
   // and the box re-issues on the next keystroke.
@@ -889,6 +906,7 @@ export function wireDaemonEvents(injected: EventsDeps) {
     pruneNav(appData().nav, (id) => liveIds.has(id));
     // Sent on every (re)connect: refetch what may have missed deltas.
     resetActivityOnSessionList(liveIds);
+    resetAcpOnSessionList(liveIds);
     if (!appData().activeId && appData().sessions.length > 0) {
       deps.switchTo(orderedSessions()[0].id);
     }
@@ -991,6 +1009,7 @@ export function wireDaemonEvents(injected: EventsDeps) {
       onSessionRemoved(ev.session.id);
       forgetSession(ev.session.id);
       forgetActivity(ev.session.id);
+      forgetAcp(ev.session.id);
       const nextId =
         appData().activeId === ev.session.id
           ? neighbourOf(ev.session.id)

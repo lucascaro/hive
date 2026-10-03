@@ -232,6 +232,14 @@ function applyFocus(id: string, attempt: number) {
   // synchronous display:none flip during the layout pass's parent class
   // swap (single → grid) fires focusout. ta.focus() drives the real
   // event; the follow-up term.focus() resyncs xterm's internal state.
+  // An ACP tile has no terminal to type into (session-term.ts hides
+  // it): keyboard focus goes to its prompt box instead.
+  if (st.host.classList.contains('acp')) {
+    const prompt =
+      st.host.querySelector<HTMLTextAreaElement>('[data-acp-prompt]');
+    if (prompt && document.activeElement !== prompt) prompt.focus(FOCUS_OPTS);
+    return;
+  }
   const ta = st.host.querySelector<HTMLTextAreaElement>(
     '.xterm-helper-textarea',
   );

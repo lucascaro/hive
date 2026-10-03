@@ -564,3 +564,111 @@ func TestStartACPFailuresLeaveDeadSessionWithReason(t *testing.T) {
 		expectDead(t, r, e.ID, "loadSession")
 	})
 }
+
+// GET_ACP_TRANSCRIPT's snapshot is queued on the caller's own listener,
+// so a client that applies the stream in order — the reset, then every
+// delta after it — ends with exactly the daemon's transcript, even when
+// the snapshot is taken mid-turn while chunks stream.
+func TestSendAcpTranscriptOrderedWithDeltas(t *testing.T) {
+	useFakeACP(t)
+	r := freshRegistry(t)
+	e := createACP(t, r, wire.CreateSpec{Name: "a"})
+	ch, unsub := r.SubscribeACP()
+	defer unsub()
+	if err := r.PromptACP(e.ID, "hello there", wire.OriginUser); err != nil {
+		t.Fatal(err)
+	}
+	if err := r.SendAcpTranscript(e.ID, ch); err != nil {
+		t.Fatal(err)
+	}
+	waitFor(t, "turn idle", idleAfterTurn(r, e.ID))
+
+	var folded []wire.AcpItem
+	seenReset := false
+	for drained := false; !drained; {
+		select {
+		case msg := <-ch:
+			if msg.SessionID != e.ID {
+				continue
+			}
+			if msg.Reset {
+				seenReset, folded = true, slices.Clone(msg.Items)
+				continue
+			}
+			if !seenReset {
+				continue // before the snapshot: already in it
+			}
+			for _, it := range msg.Items {
+				i := slices.IndexFunc(folded, func(x wire.AcpItem) bool { return x.ID == it.ID })
+				switch {
+				case i < 0:
+					folded = append(folded, it)
+				case it.Append:
+					folded[i].Text += it.Text
+				default:
+					folded[i] = it
+				}
+			}
+		default:
+			drained = true
+		}
+	}
+	if !seenReset {
+		t.Fatal("SendAcpTranscript queued no reset on the listener")
+	}
+	want, _ := r.AcpTranscript(e.ID)
+	got := make([]string, len(folded))
+	for i, it := range folded {
+		got[i] = it.Kind + ":" + it.Text + ":" + it.Status
+	}
+	exp := make([]string, len(want.Items))
+	for i, it := range want.Items {
+		exp[i] = it.Kind + ":" + it.Text + ":" + it.Status
+	}
+	if !slices.Equal(got, exp) {
+		t.Errorf("reset + later deltas = %q, want the transcript %q", got, exp)
+	}
+}
+
+func TestSendAcpTranscriptErrorsAndUnsubscribed(t *testing.T) {
+	useFakeACP(t)
+	r := freshRegistry(t)
+	e := createACP(t, r, wire.CreateSpec{Name: "a"})
+	ch, unsub := r.SubscribeACP()
+	unsub() // closed: sending on it would panic
+	if err := r.SendAcpTranscript(e.ID, ch); err != nil {
+		t.Errorf("unsubscribed listener: err %v, want nil and nothing sent", err)
+	}
+	if err := r.SendAcpTranscript("nope", nil); !errors.Is(err, ErrNotFound) {
+		t.Errorf("unknown id: err %v, want ErrNotFound", err)
+	}
+}
+
+// A listener that stops reading is dropped once its buffer is full: its
+// channel is closed (so the daemon hangs up and the client reconnects
+// and refetches) and it gets nothing more.
+func TestACPSlowListenerDropped(t *testing.T) {
+	useFakeACP(t)
+	r := freshRegistry(t)
+	e := createACP(t, r, wire.CreateSpec{Name: "a"})
+	ch, unsub := r.SubscribeACP()
+	defer unsub()
+	for i := 0; i <= cap(ch); i++ {
+		if err := r.SendAcpTranscript(e.ID, ch); err != nil {
+			t.Fatal(err)
+		}
+	}
+	n := 0
+	for range ch { // ends only if the channel was closed
+		n++
+	}
+	if n != cap(ch) {
+		t.Errorf("got %d messages before the close, want the buffer's %d", n, cap(ch))
+	}
+	r.mu.Lock()
+	_, still := r.acpListeners[ch]
+	r.mu.Unlock()
+	if still {
+		t.Error("slow listener still subscribed")
+	}
+}

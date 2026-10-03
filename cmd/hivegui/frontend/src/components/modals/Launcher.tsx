@@ -134,6 +134,10 @@ function LauncherBody({
   // state like every other field here, so reopening the launcher over
   // an edited one starts from the note again.
   const [prompt, setPrompt] = useState(req.initialPrompt);
+  // Terminal or ACP (spec 496). Terminal is the default and stays the
+  // default on every opening: nothing changes for a user who never
+  // picks ACP.
+  const [kind, setKind] = useState<'pty' | 'acp'>('pty');
   // Null until the IsGitRepo probe answers; false disables the worktree
   // row. The row renders enabled meanwhile — the probe almost always
   // beats the user to the checkbox.
@@ -186,6 +190,24 @@ function LauncherBody({
   // Whether the prompt box is on screen at all — it changes the
   // keyboard model (see the Tab branch below), so it is derived once.
   const hasPrompt = !!(req.ideaId || req.initialPrompt);
+  // ACP is offered only for a plain new session: the daemon refuses
+  // kind=acp with continueConversation, a duplicate copies a terminal
+  // session's command, and an ACP session takes no opening prompt.
+  const offerKind =
+    !req.duplicateFrom &&
+    !hasPrompt &&
+    !req.continueConversation &&
+    agents.some((a) => a.acp);
+  const acp = offerKind && kind === 'acp';
+  // Why a row cannot launch as ACP, or '' when it can.
+  const acpBlocked = (a: main.AgentInfo): string =>
+    !acp
+      ? ''
+      : !a.acp
+        ? 'No ACP support'
+        : a.acpAvailable
+          ? ''
+          : a.acpReason || 'ACP is not available';
 
   // Position and focus, before the first paint: the popup is anchored
   // under the resolved project's card header so the user can see which
@@ -300,6 +322,14 @@ function LauncherBody({
   // the keyboard-select path and the per-row click handler: bump usage,
   // flash status, call the daemon, close the launcher.
   function launchSelected(agentId: string) {
+    const agent = agents.find((a) => a.id === agentId);
+    const blocked = agent ? acpBlocked(agent) : '';
+    if (blocked) {
+      // Kept open: the user picked ACP and a row that cannot run it, and
+      // the next pick should not need the toggle again.
+      flashStatus(`${agent?.name ?? 'This agent'}: ${blocked}`, true);
+      return;
+    }
     bumpAgentUsage(agentId);
     flashStatus('creating session…');
     // Anchor the new session under the one it came from (duplicate) or
@@ -337,6 +367,7 @@ function LauncherBody({
         // the idea, since there is no delivery left to wait for.
         initialPrompt: prompt.trim(),
         ideaId: req.ideaId,
+        kind: acp ? 'acp' : '',
       }).catch(reportFailure('new session'));
     }
     closeLauncher();
@@ -602,6 +633,26 @@ function LauncherBody({
           />
         </>
       ) : null}
+      {offerKind && !loading ? (
+        <div
+          className="launcher-kind"
+          role="radiogroup"
+          aria-label="Session kind"
+        >
+          {(['pty', 'acp'] as const).map((k) => (
+            <label key={k} className="launcher-kind__option">
+              <input
+                type="radio"
+                name="launcher-kind"
+                value={k}
+                checked={kind === k}
+                onChange={() => setKind(k)}
+              />
+              <span>{k === 'pty' ? 'Terminal' : 'ACP'}</span>
+            </label>
+          ))}
+        </div>
+      ) : null}
       <div className="launcher-list">
         {matches.length === 0 ? (
           // Three different facts, and conflating any two of them
@@ -634,7 +685,7 @@ function LauncherBody({
             ref={idx === selected ? selectedRef : undefined}
             className="launcher-item"
             data-selected={idx === selected ? '' : undefined}
-            data-available={a.available ? undefined : 'false'}
+            data-available={a.available && !acpBlocked(a) ? undefined : 'false'}
             style={{ ['--agent-color' as string]: a.color }}
             onClick={() => launchSelected(a.id)}
             onMouseEnter={(e) => {
@@ -651,7 +702,20 @@ function LauncherBody({
             </span>
             <span className="agent-dot" />
             <span className="agent-name">{a.name}</span>
-            {!a.available && a.installCmd?.length ? (
+            {acp && a.acpExperimental ? (
+              <span
+                className="experimental-tag"
+                title="This agent's ACP adapter has not been probed by Hive yet"
+              >
+                experimental
+              </span>
+            ) : null}
+            {acpBlocked(a) ? (
+              <span className="install-tag" title={acpBlocked(a)}>
+                {acpBlocked(a)}
+              </span>
+            ) : null}
+            {!acpBlocked(a) && !a.available && a.installCmd?.length ? (
               <span className="install-tag" title={a.installCmd.join(' ')}>
                 install?
               </span>

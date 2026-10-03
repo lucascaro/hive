@@ -179,6 +179,7 @@ describe('KEY_SCOPES', () => {
   it('is consulted in the documented order', () => {
     expect(scopes.KEY_SCOPES.map((s) => s.id)).toEqual([
       'find-box',
+      'acp-prompt',
       'inline-rename',
       'choice-dialog',
       'launcher',

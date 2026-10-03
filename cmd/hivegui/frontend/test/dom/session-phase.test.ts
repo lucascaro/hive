@@ -362,3 +362,28 @@ describe('_restartDead', () => {
     expect(RestartSession).toHaveBeenCalledTimes(2);
   });
 });
+
+// Spec 496: an ACP session has no PTY. Its tile must never dial one —
+// the daemon refuses with acp_session — and hides the terminal body the
+// transcript view covers.
+describe('ACP session tile', () => {
+  it('never attaches, whatever path asks', async () => {
+    const st = makeTerm({ id: 'acp1', kind: 'acp' });
+    st.setPhase('');
+    expect(await st.ensureAttached()).toBe('deferred');
+    st._onBodyResize();
+    await Promise.resolve();
+    expect(OpenSession).not.toHaveBeenCalled();
+    expect(st.host.classList.contains('acp')).toBe(true);
+  });
+
+  it('attaches once its kind flips back to a terminal', async () => {
+    const st = makeTerm({ id: 'acp2', kind: 'acp' });
+    st.setPhase('');
+    await st.ensureAttached();
+    st.setInfo({ id: 'acp2', kind: 'pty' });
+    await Promise.resolve();
+    expect(st.host.classList.contains('acp')).toBe(false);
+    expect(OpenSession).toHaveBeenCalledTimes(1);
+  });
+});

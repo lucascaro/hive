@@ -109,9 +109,9 @@ Detailed findings, with line citations, are in [docs/design-docs/acp-session-kin
 | Phase | PR content | DaemonContract |
 |---|---|---|
 | P1 daemon core | `internal/acp`, Kind, registry lifecycle, `acp` tier, transcript, prompt, permission frames, `SpawnedBy`, `ACPSpec` + availability, `proc.LoginPATH` | 21 → 22 |
-| P2 GUI | transcript tile, store, launcher toggle, bindings, mocks, key scopes, UI mock | none (GUI and ws-bridge only) |
-| P3 typed result + trust | `hived mcp-submit`, `SUBMIT_RESULT`, permission matcher, Pi tool, mode ceiling setting + UI, Pi gate | 22 → 23 |
-| P4 takeover + docs | `SET_SESSION_KIND`, `SetKind`, F2 handling, commands and menu, `control-plane.md`, `acp-workflows.md` gate B, DESIGN/AGENTS/README, changeset, `features.json` | 23 → 24 |
+| P2 GUI | transcript tile, store, launcher toggle, bindings, mocks, key scopes, UI mock; snapshot ordered with deltas | 22 → 23 |
+| P3 typed result + trust | `hived mcp-submit`, `SUBMIT_RESULT`, permission matcher, Pi tool, mode ceiling setting + UI, Pi gate | 23 → 24 |
+| P4 takeover + docs | `SET_SESSION_KIND`, `SetKind`, F2 handling, commands and menu, `control-plane.md`, `acp-workflows.md` gate B, DESIGN/AGENTS/README, changeset, `features.json` | 24 → 25 |
 
 The contract bumps once per phase because `scripts/check-daemon-contract.sh:36-40` fails every daemon-touching PR that doesn't bump it.
 
@@ -200,7 +200,7 @@ The contract bumps once per phase because `scripts/check-daemon-contract.sh:36-4
    - Every prompt clears the result; a turn that ends with none sets `result_status: none` (F3).
 4. `internal/agent/settings.go:40`: `ACPModeCeiling map[string]string`, defaulting to the most restrictive. Mirror it in `cmd/hivegui/app_calls.go:119-155`, and add a per-agent select in the Agents tab of `Settings.tsx`.
 5. `internal/agent/pi/hive.ts`: the `submit_result` tool, registered only when `HIVE_SUBMIT_NONCE` is set.
-6. `contract.go`: 23. Update the three clients and `docs/plugins.md`.
+6. `contract.go`: 24. Update the three clients and `docs/plugins.md`.
 
 ### P4
 
@@ -215,7 +215,7 @@ The contract bumps once per phase because `scripts/check-daemon-contract.sh:36-4
    - Persist the new kind, then call `Restart`.
    - On a failed hand-back, revert to `pty` and `Restart` once.
    - Map the F2 writer-lock error.
-2. `internal/daemon/daemon.go`: a `SET_SESSION_KIND` (0x44) arm through `runOp`. Add the frame in `internal/wire`, bump the contract to 24, and update the three clients, the bridges and the mocks.
+2. `internal/daemon/daemon.go`: a `SET_SESSION_KIND` (0x44) arm through `runOp`. Add the frame in `internal/wire`, bump the contract to 25, and update the three clients, the bridges and the mocks.
 3. GUI commands `take-over-session` and `hand-back-session`.
    - Each declines when the session isn't the right kind.
    - Rows in `shortcuts.ts` with no default key.
@@ -397,6 +397,12 @@ The contract bumps once per phase because `scripts/check-daemon-contract.sh:36-4
 
 ## Decision log
 
+- **2026-10-03** — P2 deviations from the approved P2 list, each smaller than planned:
+  - **No `matched` key scope for Allow/Deny.** The permission card's options are plain buttons (Tab or click). Single-letter keys would collide with typing in the prompt box, and a chord needs a new rebindable command plus help rows for a card that is on screen only while the agent waits. Criterion 2 asks only that the user can allow or deny inline.
+  - **No `mocks/acp-transcript.html`.** One layout was on the table; the decision is recorded in `docs/design-docs/ui/README.md` with "no mock", as the Settings-layout row does.
+  - **Plan and tool rows reuse the activity CSS classes, not the components.** `CallRow` takes the activity ring's `ToolEvent` shape, which an ACP tool item does not have.
+  - **`site/features.json` and the GUI changeset ship in P2, not P4.** P2 is where users first see the feature. P1's changeset loses its "arrives in a later release" sentence, since both land in the same release.
+- **2026-10-03** — P2 bumps `DaemonContract` to 23 after all, shifting P3 to 24 and P4 to 25. Why: a phase-1 race. `GET_ACP_TRANSCRIPT`'s reply was written directly while deltas went through the fan-out goroutine, so a reply could overtake or trail a delta and the transcript view would lose or double a chunk. The reply is now queued on the connection's own listener (`Registry.SendAcpTranscript`), which orders it with the deltas.
 - **2026-10-03** — Gate B (criterion 9) relaxed from ≥5 real runs per agent, each with a takeover and hand-back, to ≥2 real runs per agent with ≥1 takeover and hand-back. Why: the operator chose it; the fake-agent test in criterion 6 is the automated no-lost-turn proof, and the real runs only confirm it against the actual adapters. The `acp-workflows.md` verdict rule is unchanged; the gate B row is rewritten in P4 as planned.
 - **2026-10-03** — Q5 settled before P2 instead of in P3, by reading pi-acp 0.0.34 and probing it with a shim: Hive's Pi extension reaches Pi through a `PI_ACP_PI_COMMAND` shim, with no upstream change needed.
 - **2026-10-03** — Review loop extended past 5 iterations (operator approved up to 3 more); it converged at iter 6. Iters 1–5 each surfaced one real, shrinking issue in new code (worktree binding, PATH resolution, stderr pipe, tool-content arrays, escaped-size budget, replay flood), all fixed with mutation-checked tests. Five MINORs from iter 6 are deferred to phase 2, which reworks the transcript path anyway: O(n²) chunk concat and trim copies, per-chunk copies during replay, untested slow-listener drop. (The startACP failure-branch tests were added after all, in ce2293fe, after CodeRabbit flagged the deferral against AGENTS.md.)
@@ -416,6 +422,7 @@ The contract bumps once per phase because `scripts/check-daemon-contract.sh:36-4
 - **2026-10-03** — Research done; plan approved (second opinion: revise→approve, 8/10). Phase 1 of 4 starts.
 - **2026-10-03** — Phase 1 implemented and PR #499 opened (daemon core, contract 22).
 - **2026-10-03** — PR #499 merged (phase 1/4). Phase 2 (GUI) starts on `feature/496-acp-phase2`.
+- **2026-10-03** — Phase 2 implemented: transcript tile, ACP store, launcher toggle, `acp-prompt` scope, bindings in all three clients, snapshot ordering fix (contract 23).
 
 ## Open questions
 

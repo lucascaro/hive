@@ -40,6 +40,14 @@ export interface SessionInfo {
   // Lifecycle phase (internal/wire/control.go Phase*). Absent/empty
   // means ready — the daemon omits it in the steady state.
   phase?: string;
+  // Session kind (internal/wire KindPTY / KindACP, spec 496). Absent
+  // or "pty" is a terminal session; "acp" is one the daemon drives over
+  // the Agent Client Protocol, which has no terminal — the tile shows
+  // its transcript instead. Single-spelled: the wire tag is `kind`.
+  kind?: string;
+  // Who started the session (SessionInfo.SpawnedBy): absent for the
+  // user, otherwise a principal such as "plugin:<id>". Daemon-stamped.
+  spawned_by?: string;
   // OSC 0/2 window title the running program most recently set, read off
   // the daemon's VT mirror (internal/wire/control.go SessionInfo.Title).
   // Daemon-owned and in-memory only, so it is absent for a session with
@@ -355,4 +363,10 @@ export interface AppState {
   view: ViewMode;
   gridProjectId: string | null;
   fontSize: number;
+}
+
+/** isAcpSession reports whether a session runs over ACP rather than in
+ *  a terminal. */
+export function isAcpSession(info: SessionInfo | undefined): boolean {
+  return info?.kind === 'acp';
 }
