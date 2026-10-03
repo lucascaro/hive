@@ -1,11 +1,22 @@
 package acp
 
-import "github.com/lucascaro/hive/internal/wire"
+import (
+	"unicode/utf8"
+
+	"github.com/lucascaro/hive/internal/wire"
+)
 
 // Transcript bounds. A snapshot travels as one ACP_TRANSCRIPT frame, and
 // frames are capped at wire.MaxPayload (1 MiB), so the text it holds is
-// budgeted well under that; the oldest items fall off first. A single
-// message longer than maxItemText keeps its beginning.
+// budgeted by its JSON-ESCAPED size — a quote or newline costs two bytes
+// on the wire and an ESC or '<' six — well under that; the oldest items
+// fall off first. A single message longer than maxItemText raw bytes
+// keeps its beginning.
+//
+// Worst case, by construction: the text budget (512 KiB) or one item at
+// six times maxItemText (384 KiB), whichever is larger, plus per-item JSON
+// framing for MaxTranscriptItems items (~100 bytes each) — under 1 MiB.
+// TestSnapshotFitsFrameLimitWorstCase holds this.
 //
 // ponytail: in-memory, no persistence. After a daemon restart the
 // transcript is rebuilt from the agent's own session/load replay — the
@@ -14,8 +25,8 @@ import "github.com/lucascaro/hive/internal/wire"
 // rows); the gate B run log records what each one replays.
 const (
 	MaxTranscriptItems = 2000
-	maxTranscriptText  = 512 << 10
-	maxItemText        = 128 << 10
+	maxTranscriptText  = 512 << 10 // escaped bytes
+	maxItemText        = 64 << 10  // raw bytes
 )
 
 // truncatedMark ends a message cut at maxItemText.
@@ -29,7 +40,7 @@ type Transcript struct {
 	epoch  int
 	nextID int
 	items  []wire.AcpItem
-	text   int // total itemText over items
+	text   int // total itemText (escaped bytes) over items
 }
 
 // Epoch identifies the current transcript generation.
@@ -80,7 +91,7 @@ func (t *Transcript) Apply(u Update, replaying bool) []wire.AcpItem {
 			it := &t.items[i]
 			if u.Title != "" {
 				title := clip(u.Title)
-				t.text += len(title) - len(it.Title)
+				t.text += escLen(title) - escLen(it.Title)
 				it.Title = title
 			}
 			if u.Kind != "" {
@@ -136,7 +147,7 @@ func (t *Transcript) chunk(kind string, u Update, origin string) []wire.AcpItem 
 			add = add[:room] + truncatedMark
 		}
 		it.Text += add
-		t.text += len(add)
+		t.text += escLen(add)
 		delta := wire.AcpItem{ID: it.ID, Kind: it.Kind, Origin: it.Origin, Text: add, Append: true}
 		t.trim()
 		return []wire.AcpItem{delta}
@@ -188,12 +199,46 @@ func clip(s string) string {
 	return s
 }
 
-func itemText(it wire.AcpItem) int { return len(it.Text) + len(it.Title) + planText(it.Plan) }
+func itemText(it wire.AcpItem) int { return escLen(it.Text) + escLen(it.Title) + planText(it.Plan) }
 
 func planText(p []wire.AcpPlanEntry) int {
 	n := 0
 	for _, e := range p {
-		n += len(e.Content)
+		n += escLen(e.Content)
+	}
+	return n
+}
+
+// escLen is the length of s once encoding/json has escaped it (without
+// the quotes): its HTML-safe default escapes <, > and & to \u003c-style
+// six-byte sequences, as it does control characters other than \n \r
+// \t and U+2028/U+2029; each byte of invalid UTF-8 becomes U+FFFD.
+func escLen(s string) int {
+	n := 0
+	for i := 0; i < len(s); {
+		c := s[i]
+		if c < utf8.RuneSelf {
+			switch {
+			case c == '"' || c == '\\' || c == '\n' || c == '\r' || c == '\t':
+				n += 2
+			case c < 0x20 || c == '<' || c == '>' || c == '&':
+				n += 6
+			default:
+				n++
+			}
+			i++
+			continue
+		}
+		r, size := utf8.DecodeRuneInString(s[i:])
+		switch {
+		case r == utf8.RuneError && size == 1:
+			n += 3 // written as the raw UTF-8 of U+FFFD
+		case r == '\u2028', r == '\u2029':
+			n += 6
+		default:
+			n += size
+		}
+		i += size
 	}
 	return n
 }

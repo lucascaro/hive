@@ -143,7 +143,7 @@ func TestSnapshotFitsFrameLimit(t *testing.T) {
 		tr.AddUser("go", wire.OriginUser)
 		tr.Apply(text(UpdateAgentMessage, big), false)
 		tr.Apply(text(UpdateAgentMessage, big), false) // past maxItemText
-		tr.Apply(Update{SessionUpdate: UpdateToolCall, ToolCallID: "t", Title: big}, false)
+		tr.Apply(Update{SessionUpdate: UpdateToolCall, ToolCallID: "t" + strings.Repeat("x", i), Title: big}, false)
 	}
 	b, err := json.Marshal(wire.AcpTranscriptMsg{SessionID: "s", Reset: true, Items: tr.Snapshot()})
 	if err != nil {
@@ -187,5 +187,44 @@ func TestToolCallWithArrayContentDecodes(t *testing.T) {
 	}
 	if _, ok := u.TextChunk(); ok {
 		t.Error("a tool call's array content read as a text chunk")
+	}
+}
+
+// The budget is in escaped bytes: text that JSON inflates (quotes,
+// newlines, ESC, '<') must still leave a snapshot that fits one frame.
+func TestSnapshotFitsFrameLimitWorstCase(t *testing.T) {
+	for name, unit := range map[string]string{
+		"quotes": `"`, "esc": "\x1b", "html": "<", "newline": "\n", "invalid-utf8": "\xff",
+	} {
+		t.Run(name, func(t *testing.T) {
+			var tr Transcript
+			big := strings.Repeat(unit, maxItemText)
+			for i := 0; i < 20; i++ {
+				tr.AddUser(big, wire.OriginUser)
+				tr.Apply(text(UpdateAgentMessage, big), false)
+				tr.Apply(Update{SessionUpdate: UpdatePlan, Entries: []PlanEntry{{Content: big}}}, false)
+			}
+			// …and as many tiny items as the count cap allows.
+			for i := 0; i < MaxTranscriptItems; i++ {
+				tr.Apply(Update{SessionUpdate: UpdateToolCall, ToolCallID: strings.Repeat("i", 40) + string(rune('a'+i%26)), Title: unit + unit}, false)
+			}
+			b, err := json.Marshal(wire.AcpTranscriptMsg{SessionID: strings.Repeat("s", 36), Reset: true, Epoch: 1 << 30, Items: tr.Snapshot(),
+				Permission: &wire.AcpPermission{RequestID: "1", Title: "x", Options: []wire.AcpPermissionOption{{OptionID: "a", Name: "b", Kind: "allow_once"}}}})
+			if err != nil {
+				t.Fatal(err)
+			}
+			if len(b) >= wire.MaxPayload {
+				t.Errorf("snapshot is %d bytes, want < %d", len(b), wire.MaxPayload)
+			}
+		})
+	}
+}
+
+func TestEscLenMatchesEncodingJSON(t *testing.T) {
+	for _, s := range []string{"plain", `"q"`, "a\\b", "\n\r\t", "\x1b[0m", "<a&b>", "é漢", "  ", "bad\xff\xfe", ""} {
+		b, _ := json.Marshal(s)
+		if got, want := escLen(s), len(b)-2; got != want {
+			t.Errorf("escLen(%q) = %d, want %d", s, got, want)
+		}
 	}
 }

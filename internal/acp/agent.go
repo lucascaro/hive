@@ -183,7 +183,14 @@ func Start(spec Spec, h Handler) (*Agent, error) {
 		// which also closes the pipe a grandchild was holding.
 		_ = proc.KillTree(cmd.Process)
 		_ = inW.Close()
-		<-a.conn.Done()
+		// The group kill closes stdout unless a grandchild left the
+		// group (setsid) still holding it; don't wait on that forever.
+		select {
+		case <-a.conn.Done():
+		case <-time.After(closeGrace):
+			outR.Close() // ends the reader with an error
+			<-a.conn.Done()
+		}
 		outR.Close()
 		close(a.done)
 	}()
