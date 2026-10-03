@@ -348,6 +348,16 @@ jobs:
         working-directory: cmd/hivegui/frontend
         run: node scripts/check-spec-discovery.mjs
 
+      - name: ACP probe tests + design-doc evidence check (spec 492)
+        if: matrix.biome
+        # Repo root on purpose (not the frontend dir above). The tests drive a
+        # fake ACP agent and a python3 stdlib PTY — no agent CLI, no network,
+        # no model spend. check-doc fails when the capability table or the
+        # go/no-go in acp-workflows.md disagrees with the committed results.
+        run: |
+          node --test 'scripts/acp-probe/*.test.mjs'
+          node scripts/acp-probe/check-doc.mjs docs/design-docs/acp-workflows.md
+
       - name: Test (frontend E2E — mock Wails)
         if: matrix.e2e_mock
         working-directory: cmd/hivegui/frontend
