@@ -149,3 +149,7 @@ All expected strings below were produced by running Claude's own JS
 
 - **2026-10-03** — Spec created, triaged (bug, S, P1), research done.
 - **2026-10-03** — Plan approved (chat). Implemented on `feature/494-claude-resume-cwd-encoding`: Go encoder port, tests red-then-green, probe mirror + tests (new probe tests proven to fail on the old mirror), design doc, changeset. Go suite green under go1.27.1; vet + staticcheck clean on darwin/linux/windows; probe tests + check-doc green.
+
+## PR convergence ledger
+
+- **2026-10-03 iter 1** — verdict: APPROVE; mergeable: MERGEABLE; findings_hash: empty; threads_open: 0; action: stop; head_sha: 3b101c0.

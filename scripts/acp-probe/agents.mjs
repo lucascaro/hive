@@ -9,7 +9,7 @@ import { existsSync, readFileSync, readdirSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { join, basename } from 'node:path';
 
-// Mirrors encodeClaudeProjectDir (internal/agent/claude.go:40-63), which
+// Mirrors encodeClaudeProjectDir (internal/agent/claude.go:40-61), which
 // ports claude's own encoder (2.1.288): every UTF-16 unit outside
 // [A-Za-z0-9] becomes "-", and a name over 200 is cut and suffixed with a
 // base-36 hash of the raw cwd. Unlike the Go side this does not

@@ -5,7 +5,7 @@ type: bug
 complexity: S
 priority: P1
 pr: 497
-stage: REVIEW
+stage: GATE
 ---
 
 # Claude Restart/Revive fails when the session cwd contains "_"
