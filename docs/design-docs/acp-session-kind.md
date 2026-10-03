@@ -178,4 +178,4 @@ This note is the research for [spec 496](../product-specs/496-add-an-acp-session
   - `CreateSpec.kind`;
   - `CreateSpec.SpawnedBy` is `json:"-"` and is stamped by the daemon from the connection.
 - **Attach.** Attaching to an ACP session gets `ErrCodeACPSession`. A create HELLO with `kind: acp` is refused, because it would turn into an attach.
-- **Not built yet.** `isStale` in the GUI needs no change: the daemon sends no `stale_at` for the `acp` tier.
+- **GUI staleness.** `isStale` needs no change: the daemon sends no `stale_at` for the `acp` tier.
