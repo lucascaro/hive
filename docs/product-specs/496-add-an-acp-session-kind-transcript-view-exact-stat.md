@@ -4,8 +4,8 @@ title: "Add an ACP session kind: transcript view, exact state, permission prompt
 type: enhancement
 complexity: L
 priority: P2
-pr: 499
-stage: IMPLEMENT
+pr: 500
+stage: REVIEW
 ---
 
 # Add an ACP session kind: transcript view, exact state, permission prompts, typed results, PTY takeover

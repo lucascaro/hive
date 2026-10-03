@@ -4,8 +4,8 @@
 - **Issue:** #496
 - **Status:** active
 - **Phase:** 2 of 4
-- **PR:** —
-- **Branch:** —
+- **PR:** #500
+- **Branch:** feature/496-acp-phase2
 
 ## Summary
 
