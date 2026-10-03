@@ -391,6 +391,27 @@ func (s *session) dispatch(req rpcReq) {
 			return
 		}
 		s.respond(req.ID, "", s.controlWriteJSON(wire.FrameGetActivity, p))
+	case "GetAcpTranscript":
+		var p wire.GetAcpTranscriptReq
+		if err := parseParams(req.Params, &p); err != nil {
+			s.respond(req.ID, nil, err)
+			return
+		}
+		s.respond(req.ID, "", s.controlWriteJSON(wire.FrameGetAcpTranscript, p))
+	case "PromptAcp":
+		var p wire.PromptAcpReq
+		if err := parseParams(req.Params, &p); err != nil {
+			s.respond(req.ID, nil, err)
+			return
+		}
+		s.respond(req.ID, "", s.controlWriteJSON(wire.FramePromptAcp, p))
+	case "AnswerPermission":
+		var p wire.AnswerPermissionReq
+		if err := parseParams(req.Params, &p); err != nil {
+			s.respond(req.ID, nil, err)
+			return
+		}
+		s.respond(req.ID, "", s.controlWriteJSON(wire.FrameAnswerPermission, p))
 	case "SearchTranscript":
 		var p wire.SearchTranscriptReq
 		if err := parseParams(req.Params, &p); err != nil {

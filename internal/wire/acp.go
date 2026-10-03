@@ -128,4 +128,9 @@ const (
 	// allows one prompt in flight per session; the daemon rejects
 	// rather than queues so a result can never attach to the wrong turn.
 	ErrCodeACPBusy = "acp_busy"
+	// ErrCodeNotACP: an ACP operation reached a terminal session.
+	ErrCodeNotACP = "not_acp_session"
+	// ErrCodePermissionStale: ANSWER_PERMISSION for a request that is no
+	// longer pending, or with an option it did not offer.
+	ErrCodePermissionStale = "permission_stale"
 )

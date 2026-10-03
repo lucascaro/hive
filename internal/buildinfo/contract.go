@@ -24,6 +24,13 @@ package buildinfo
 // History (newest first), so a bump is a decision with a record and
 // not just a number going up:
 //
+//	22 — ACP sessions (spec 496, phase 1): SessionInfo gained kind and
+//	    spawned_by, CreateSpec gained kind, and the GET_ACP_TRANSCRIPT /
+//	    ACP_TRANSCRIPT / PROMPT_ACP / ANSWER_PERMISSION frames drive a
+//	    session the daemon runs over the Agent Client Protocol instead
+//	    of a PTY, on the new acp state tier. A daemon built before this
+//	    silently creates a terminal session for a kind=acp request; a GUI
+//	    built before it would try to attach a terminal to an ACP session.
 //	21 — Plan review moves into the bundled plan-review plugin (spec
 //	    471, phase 2). The daemon parks a review only for a client whose
 //	    SET_CLIENT_UI names that plugin, and reads "is review on" from
@@ -198,7 +205,7 @@ package buildinfo
 //	    before this cannot see or clear the flag.
 //	1 — first contract; everything up to and including the
 //	    CLIENT_COMMAND relay.
-const DaemonContract = 21
+const DaemonContract = 22
 
 // Identity is this binary's full build identity. `hived --version
 // --json` prints it, and Welcome carries the same three values, so a

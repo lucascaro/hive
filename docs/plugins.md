@@ -237,6 +237,9 @@ and reply payloads are the Go structs of the same name in
 | `SET_PLUGIN_CONFIG` | `SetPluginConfigReq` | `PLUGIN_EVENT` (updated) |
 | `SET_CLIENT_UI` | `SetClientUIReq` | nothing. The Hive app's own announcement of which plugin UIs it runs; ignored from a plugin |
 | `REMOVE_PLUGIN` | `RemovePluginReq` | `PLUGIN_EVENT` (removed) |
+| `GET_ACP_TRANSCRIPT` | `GetAcpTranscriptReq` | `ACP_TRANSCRIPT` (snapshot) |
+| `PROMPT_ACP` | `PromptAcpReq` | `ACP_TRANSCRIPT`, `SESSION_EVENT` (state). The turn's origin is recorded as `plugin:<id>` |
+| `ANSWER_PERMISSION` | `AnswerPermissionReq` | `ACP_TRANSCRIPT` |
 
 And everything the daemon sends on a control connection:
 
@@ -260,6 +263,7 @@ And everything the daemon sends on a control connection:
 | `PLAN_REVIEW` | Answer to `GET_PLAN_REVIEW`. |
 | `PLUGINS` | Answer to `LIST_PLUGINS`. |
 | `PLUGIN_EVENT` | Broadcast: a plugin was installed, removed, or changed status. |
+| `ACP_TRANSCRIPT` | Answer to `GET_ACP_TRANSCRIPT` (`reset`), and broadcast as an ACP session's transcript changes. |
 
 The two things to watch most plugins need are `SESSION_EVENT`'s `state`
 (`working`, `waiting_input`, `waiting_permission`, `exited`, `error`,

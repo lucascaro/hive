@@ -439,6 +439,14 @@ func (r *Registry) PromptACP(id, text, origin string) error {
 	return nil
 }
 
+// IsACP reports whether id names an ACP session.
+func (r *Registry) IsACP(id string) bool {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	e, ok := r.entries[id]
+	return ok && e.isACP()
+}
+
 // AcpTranscript returns the whole transcript of an ACP session — the
 // answer to GET_ACP_TRANSCRIPT.
 func (r *Registry) AcpTranscript(id string) (wire.AcpTranscriptMsg, error) {
@@ -515,4 +523,13 @@ func (r *Registry) SubscribeACP() (AcpListener, func()) {
 		}
 		r.mu.Unlock()
 	}
+}
+
+// SetACPCommandForTest replaces how ACP adapters are launched, for
+// packages that drive the registry from outside (the daemon's tests);
+// it returns a restore func.
+func SetACPCommandForTest(fn func(agent.Def) (argv, env []string)) func() {
+	prev := acpCommand
+	acpCommand = fn
+	return func() { acpCommand = prev }
 }
