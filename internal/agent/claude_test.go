@@ -3,6 +3,9 @@ package agent
 import (
 	"encoding/json"
 	"errors"
+	"os"
+	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -33,15 +36,48 @@ func TestEncodeClaudeProjectDir(t *testing.T) {
 			want: "-home-u--config-x",
 		},
 		{
-			// Pre-normalized Windows-style input (already
-			// ToSlash'd) — covers the drive-colon branch in a
-			// platform-independent way. filepath.Clean's
-			// backslash handling differs between GOOS=windows
-			// and POSIX, so we feed the encoder slash form
-			// directly to keep the assertion deterministic.
+			// Windows drive colon. filepath.Clean turns "/" into
+			// "\" on Windows; both fold to "-",
+			// so this row holds on every platform.
 			name: "windows drive with forward slashes",
 			cwd:  "C:/Users/u/repo",
 			want: "C--Users-u-repo",
+		},
+		// Expected values below were produced by Claude's own encoder
+		// (copied from the claude 2.1.288 bundle and run under node),
+		// not by this package.
+		{
+			name: "underscore and space",
+			cwd:  "/var/folders/x_y/T/my repo",
+			want: "-var-folders-x-y-T-my-repo",
+		},
+		{
+			name: "non-ASCII folds one dash per UTF-16 unit",
+			cwd:  "/Users/u/café/日本",
+			want: "-Users-u-caf----",
+		},
+		{
+			name: "non-BMP rune is two UTF-16 units",
+			cwd:  "/Users/u/😀x",
+			want: "-Users-u---x",
+		},
+		{
+			name: "exactly 200 is not truncated",
+			cwd:  "/Users/u/" + strings.Repeat("a", 191),
+			want: "-Users-u-" + strings.Repeat("a", 191),
+		},
+		// The truncation rows carry no path separator so filepath.Clean
+		// leaves them byte-identical on every GOOS: the hash covers the
+		// raw cwd, and Windows would otherwise hash a "\" form.
+		{
+			name: "over 200 truncates and appends positive hash",
+			cwd:  strings.Repeat("very_long_segment", 13),
+			want: strings.Repeat("very-long-segment", 11) + "very-long-seg-qqxzx5",
+		},
+		{
+			name: "over 200 truncates and appends abs of negative hash",
+			cwd:  strings.Repeat("x_", 101),
+			want: strings.Repeat("x-", 100) + "-cuqrml",
 		},
 	}
 	for _, tc := range cases {
@@ -69,6 +105,33 @@ func TestClaudeResumeArgsResumesWhenTranscriptExists(t *testing.T) {
 	want := []string{"claude", "--resume", "abc"}
 	if len(got) != len(want) || got[0] != want[0] || got[1] != want[1] || got[2] != want[2] {
 		t.Errorf("got %v, want %v", got, want)
+	}
+}
+
+// TestClaudeResumeArgsFindsTranscriptInUnderscoreCwd drives the real
+// on-disk probe (no stub): a transcript Claude wrote for a cwd containing
+// "_" must be found, or Restart falls back to --session-id and Claude
+// refuses it as "already in use" (#494).
+func TestClaudeResumeArgsFindsTranscriptInUnderscoreCwd(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	t.Setenv("USERPROFILE", home)
+	cwd := filepath.FromSlash("/work/my_repo")
+	// The directory name Claude writes, spelled out rather than derived
+	// from encodeClaudeProjectDir so the test cannot agree with a broken
+	// encoder. On Windows the cleaned cwd is "\work\my_repo", which
+	// folds to the same name.
+	dir := filepath.Join(home, ".claude", "projects", "-work-my-repo")
+	if err := os.MkdirAll(dir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "abc.jsonl"), []byte("{}\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	got := claudeResumeArgs("abc", cwd)
+	want := []string{"claude", "--resume", "abc"}
+	if strings.Join(got, " ") != strings.Join(want, " ") {
+		t.Errorf("claudeResumeArgs = %v, want %v", got, want)
 	}
 }
 

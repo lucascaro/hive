@@ -67,7 +67,7 @@ Cells are tagged **[run]** (verified by the probe; the first word must equal
 <!-- capability-table:start -->
 | Agent | ACP route | MCP via `session/new` | Permission prompts | Plan / tool-call streaming | Load / resume | Reopen headless (a) | Reopen in Hive PTY (b) |
 |---|---|---|---|---|---|---|---|
-| Claude | adapter `@agentclientprotocol/claude-agent-acp@0.85.1` (wraps the Agent SDK) [run] | pass [run] — stdio; http + sse advertised | yes [run] — tool identity in ACP's `name` field | yes [run] — `plan` comes from the TodoWrite tool | pass [run] — also list / resume / close / delete / fork | pass [run] | pass [run] — but only with `--resume`; Hive today picks `--session-id` here ([F1](#f1)) |
+| Claude | adapter `@agentclientprotocol/claude-agent-acp@0.85.1` (wraps the Agent SDK) [run] | pass [run] — stdio; http + sse advertised | yes [run] — tool identity in ACP's `name` field | yes [run] — `plan` comes from the TodoWrite tool | pass [run] — also list / resume / close / delete / fork | pass [run] | pass [run] — but only with `--resume`; Hive picked `--session-id` here at probe time ([F1](#f1), fixed in #494) |
 | Codex | adapter `@agentclientprotocol/codex-acp@2.1.1` (drives `codex app-server`) [run] | pass [run] — 1 of 5 runs made no call ([F3](#f3)); http advertised, no sse | no [run] — none asked in the default `agent` mode ([F4](#f4)) | partial [run] — `tool_call` yes, `plan` not observed | pass [run] — also list / resume / close / delete / fork | fail [run] — thread writer lock ([F2](#f2)) | pass [run] — after answering the update nag and folder-trust dialogs |
 | Gemini | native `gemini --acp` (0.62.0) [doc] | yes [doc] — stdio / http / sse | yes [doc] — default / autoEdit / yolo / plan | partial [doc] — no `plan` updates | load [doc] — no list / resume / close | likely [doc] — `loadSession` uses the same selector as `--resume` | unknown [doc] |
 | Copilot | native `copilot --acp --stdio` (1.0.91, public preview) [doc] | unknown [doc] — the changelog claims it; [issue #1040](https://github.com/github/copilot-cli/issues/1040) says it is ignored | yes [doc] | yes [doc] | load [doc] — plus close; list / resume unknown | unknown [doc] — closed binary | unknown [doc] |
@@ -82,20 +82,21 @@ Doc sources: [Gemini ACP mode](https://github.com/google-gemini/gemini-cli/blob/
 
 ## Findings
 
-<a id="f1"></a>**F1 — Hive's Claude resume already misses transcripts. This bug is
-independent of ACP.**
+<a id="f1"></a>**F1 — Hive's Claude resume missed transcripts. This bug was
+independent of ACP. Fixed in #494:** `encodeClaudeProjectDir` now ports
+claude's own encoder, and the probe's mirror follows it.
 - **Mismatch.** Claude names its transcript directory by folding *every*
   non-alphanumeric character of the cwd to `-`. Hive's `encodeClaudeProjectDir`
-  (`internal/agent/claude.go:28`) folds only `/`, `.` and `:`.
+  (`internal/agent/claude.go`) folded only `/`, `.` and `:`.
 - **What breaks.** For a cwd containing `_` (every macOS `$TMPDIR` does, and
-  so do many repo names), `claudeSessionExists` returns false. `claudeResumeArgs`
-  then falls back to `claude --session-id <id>`, and claude exits with
+  so do many repo names), `claudeSessionExists` returned false. `claudeResumeArgs`
+  then fell back to `claude --session-id <id>`, and claude exits with
   `Error: Session ID <id> is already in use.` (observed). So Hive's Restart and
-  Revive of such a Claude session fail **today**, in plain PTY sessions.
-- **Effect on the verdict.** The probe tests the ACP question with the observed
-  encoding and records Hive's branch separately (`hive_branch` in the results).
-  This bug is the first follow-up below and must be fixed before an ACP
-  takeover can rely on `ResumeArgs`.
+  Revive of such a Claude session failed, in plain PTY sessions.
+- **Effect on the verdict.** The probe tested the ACP question with the observed
+  encoding and recorded Hive's branch separately (`hive_branch` in the results;
+  the 2026-10-03 Claude run shows `session-id`). Since #494 the two encoders
+  agree, so `hive_branch` always equals the branch the probe takes.
 
 <a id="f2"></a>**F2 — A Codex thread has one writer, and the interactive CLI leaves a
 daemon holding it.**
@@ -270,10 +271,10 @@ then fails CI until this table matches the new results.
 
 ## Follow-up specs, in order
 
-0. **Fix Claude transcript lookup (bug, independent).** Hive's
-   `encodeClaudeProjectDir` doesn't fold `_` and the other non-alphanumeric
+0. **Fix Claude transcript lookup (bug, independent) — done in #494.** Hive's
+   `encodeClaudeProjectDir` didn't fold `_` and the other non-alphanumeric
    characters that Claude does. So Restart and Revive of a Claude session in
-   such a cwd run `--session-id` and fail with "Session ID … is already in
+   such a cwd ran `--session-id` and failed with "Session ID … is already in
    use" (F1).
 1. **ACP session kind.** Hive can only run agents in a PTY. An `acp` session
    kind, owned by `hived`, gives exact state, typed output and permission relay
