@@ -288,4 +288,22 @@ describe('pending prompt matching', () => {
     applyAcpError({ code: 'session_dead', session_id: SID2 });
     expect(entry()?.returned).toBeNull();
   });
+
+  it('is not matched by the clipped form of a different prompt', () => {
+    seed([]);
+    noteSentPrompt(SID2, 'abc');
+    for (const text of [
+      'zzz\n\n[… truncated by Hive]',
+      '�\n\n[… truncated by Hive]',
+    ]) {
+      applyAcpFrame({
+        session_id: SID2,
+        epoch: 1,
+        items: [{ id: 1, kind: 'user', text, origin: 'user' }],
+      });
+      expect(entry()?.sent).toBe('abc');
+    }
+    applyAcpError({ code: 'acp_busy', session_id: SID2 });
+    expect(entry()?.returned).toBe('abc');
+  });
 });

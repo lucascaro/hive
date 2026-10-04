@@ -104,6 +104,17 @@ beforeEach(() => {
 });
 
 describe('ACP transcripts across daemon events', () => {
+  it('acp:transcript folds a frame and drops a malformed one', () => {
+    const emit = wire();
+    emit(
+      'acp:transcript',
+      JSON.stringify({ session_id: 'a', epoch: 1, reset: true, items: [] }),
+    );
+    expect(acpStore.getState().byId.get('a')?.tx.loaded).toBe(true);
+    expect(() => emit('acp:transcript', '{not json')).not.toThrow();
+    expect(acpStore.getState().byId.get('a')?.tx.loaded).toBe(true);
+  });
+
   it('a session list marks live transcripts for refetch and drops gone ones', () => {
     const emit = wire();
     seedLoaded('a');
