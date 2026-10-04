@@ -224,7 +224,12 @@ function PermissionCard({
             onClick={() => {
               setAnswered(true);
               AnswerPermission(sessionId, perm.request_id, o.option_id).catch(
-                reportFailure('answer permission'),
+                (err: unknown) => {
+                  // The answer never left: the agent is still waiting,
+                  // so the user must be able to answer again.
+                  setAnswered(false);
+                  reportFailure('answer permission')(err);
+                },
               );
               onAnswered();
             }}

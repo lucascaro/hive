@@ -151,11 +151,28 @@ describe('AcpTranscript', () => {
     expect(AnswerPermission).toHaveBeenCalledWith(SID, '1-3', 'reject');
     // One answer per request: the card's buttons go inert until the
     // daemon's next message clears it.
-    expect((getByText('Allow').closest('button') as HTMLButtonElement).disabled).toBe(true);
+    expect(
+      (getByText('Allow').closest('button') as HTMLButtonElement).disabled,
+    ).toBe(true);
     fireEvent.click(getByText('Allow'));
     expect(AnswerPermission).toHaveBeenCalledTimes(1);
     frame({ items: [] }); // the daemon's next message carries no permission
     expect(container.querySelector('.acp-permission')).toBeNull();
+  });
+
+  it('lets a permission be answered again when the answer failed to send', async () => {
+    AnswerPermission.mockImplementationOnce(() =>
+      Promise.reject(new Error('no control connection')),
+    );
+    const { getByText } = render(<AcpTranscript sessionId={SID} />);
+    frame({ reset: true, items: [], permission: PERM });
+    fireEvent.click(getByText('Deny'));
+    await flush();
+    expect(
+      (getByText('Allow').closest('button') as HTMLButtonElement).disabled,
+    ).toBe(false);
+    fireEvent.click(getByText('Allow'));
+    expect(AnswerPermission).toHaveBeenLastCalledWith(SID, '1-3', 'allow');
   });
 
   it('Enter sends the prompt, Shift+Enter does not', () => {
