@@ -6,7 +6,6 @@ import (
 	"slices"
 	"strings"
 	"testing"
-	"time"
 
 	"github.com/lucascaro/hive/internal/acp/acptest"
 	"github.com/lucascaro/hive/internal/agent"
@@ -145,6 +144,16 @@ func TestEscalationResetToCeiling(t *testing.T) {
 	}
 }
 
+// resets is how many escalations id's running adapter was reset from.
+func resets(r *Registry, id string) int {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if as := r.entries[id].acp; as != nil {
+		return as.resets
+	}
+	return -1
+}
+
 // answerAndFinish starts a turn, answers its permission request with
 // optionID, and waits for the turn to end.
 func answerAndFinish(t *testing.T, r *Registry, id, optionID string) {
@@ -168,9 +177,13 @@ func TestUserChosenModeSwitchKept(t *testing.T) {
 	r := freshRegistry(t)
 	e := createACP(t, r, wire.CreateSpec{Name: "a"})
 	answerAndFinish(t, r, e.ID, "exit-plan-accept-edits")
-	time.Sleep(100 * time.Millisecond) // a reset would be async
+	// Settled before the turn ended: updates are handled in order, ahead
+	// of the prompt's reply.
+	if n := resets(r, e.ID); n != 0 {
+		t.Errorf("resets = %d, want 0: the user chose acceptEdits", n)
+	}
 	if got := setModes(dir); !slices.Equal(got, []string{"default"}) {
-		t.Errorf("set_mode calls = %q, want only the initial default: the user chose acceptEdits", got)
+		t.Errorf("set_mode calls = %q, want only the initial default", got)
 	}
 }
 
@@ -217,7 +230,11 @@ func TestModeSwitchDuringStartupNotPoliced(t *testing.T) {
 	useSettings(t, agent.DefaultSettings())
 	r := freshRegistry(t)
 	e := createACP(t, r, wire.CreateSpec{Name: "a"})
-	time.Sleep(100 * time.Millisecond) // a reset would be async
+	// The switch arrived before session/new returned, so Create has
+	// seen it handled.
+	if n := resets(r, e.ID); n != 0 {
+		t.Errorf("resets = %d, want 0 during startup", n)
+	}
 	if got := setModes(dir); !slices.Equal(got, []string{"default"}) {
 		t.Errorf("set_mode calls = %q, want only startACP's own", got)
 	}

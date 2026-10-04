@@ -48,6 +48,11 @@ const (
 	// the first MCP server it was given, as Claude's adapter names it
 	// (mcp__<server>__submit_result), before its other work.
 	FlagSubmit = "submit"
+	// FlagSubmitBareID makes each prompt ask permission for the submit
+	// tool with a bare toolCallId, its identity only on the tool_call
+	// update before it — and that update is sent on the first prompt
+	// only, so a later prompt's request carries no identity at all.
+	FlagSubmitBareID = "submit-bare-id"
 	// FlagEscalate makes each prompt switch, on its own, to the most
 	// permissive mode (current_mode_update), as an adapter that
 	// escalates would.
@@ -135,6 +140,7 @@ type fake struct {
 	next    int
 	pending map[string]chan json.RawMessage
 	servers map[string]string // sessionId -> first MCP server name
+	prompts map[string]int    // sessionId -> prompts so far
 	setMode int               // set_mode calls so far
 }
 
@@ -146,6 +152,7 @@ func Main() {
 		out:     bufio.NewWriter(os.Stdout),
 		pending: map[string]chan json.RawMessage{},
 		servers: map[string]string{},
+		prompts: map[string]int{},
 	}
 	for fl := range strings.SplitSeq(os.Getenv("HIVE_FAKE_ACP_FLAGS"), ",") {
 		f.flags[fl] = true
@@ -354,6 +361,26 @@ func (f *fake) handle(id json.RawMessage, method string, params json.RawMessage)
 			res := f.request("session/request_permission", map[string]any{
 				"sessionId": p.SessionID,
 				"toolCall":  map[string]any{"toolCallId": "s1", "title": "submit_result", "name": "mcp__" + server + "__submit_result"},
+				"options": []any{
+					map[string]any{"optionId": "allow-once", "name": "Yes", "kind": "allow_once"},
+					map[string]any{"optionId": "reject", "name": "No", "kind": "reject_once"},
+				},
+			})
+			answer += " [submit " + outcome(res) + "]"
+		}
+		if f.flags[FlagSubmitBareID] {
+			f.mu.Lock()
+			server := f.servers[p.SessionID]
+			f.prompts[p.SessionID]++
+			first := f.prompts[p.SessionID] == 1
+			f.mu.Unlock()
+			if first {
+				f.update(p.SessionID, map[string]any{"sessionUpdate": "tool_call", "toolCallId": "s1", "title": "submit_result",
+					"name": "mcp__" + server + "__submit_result", "status": "pending"})
+			}
+			res := f.request("session/request_permission", map[string]any{
+				"sessionId": p.SessionID,
+				"toolCall":  map[string]any{"toolCallId": "s1"},
 				"options": []any{
 					map[string]any{"optionId": "allow-once", "name": "Yes", "kind": "allow_once"},
 					map[string]any{"optionId": "reject", "name": "No", "kind": "reject_once"},

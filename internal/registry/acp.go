@@ -77,6 +77,10 @@ type acpSession struct {
 	// A switch above the ceiling to exactly that mode is the user's own
 	// choice and stands; any other is reset to mode.
 	userMode string
+	// resets counts the escalations this process was reset from. The
+	// decision is made on the ACP reader goroutine, in update order, so
+	// it is settled before the turn that caused it ends.
+	resets int
 	// nonce authenticates SUBMIT_RESULT from this process's submit
 	// server; server is that server's name, which every structured
 	// identity of its tool embeds (acp.SubmitIdentities). New per start.
@@ -496,6 +500,7 @@ func (r *Registry) onACPModeLocked(id string, e *Entry, as *acpSession, mode str
 		log.Printf("registry: acp %s: mode %q above the ceiling, kept: the user chose it on a permission card", id, mode)
 		return
 	}
+	as.resets++
 	log.Printf("registry: acp %s: adapter switched to mode %q above the ceiling; resetting to %q", id, mode, as.mode)
 	sid, reset := e.AgentSessionID, as.mode
 	go func() {

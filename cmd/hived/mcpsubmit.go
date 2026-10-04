@@ -21,8 +21,11 @@ import (
 // the session's typed result. The daemon names the server per start and
 // passes the session's HIVE_SESSION_ID, HIVE_SOCKET and HIVE_SUBMIT_NONCE
 // in its environment only — never in the tool's schema — so the model
-// cannot see the nonce and another session cannot forge this one's
-// result. A port of scripts/acp-probe/submit-mcp.mjs, which wrote to a
+// is not handed the nonce, and a process that merely holds HIVE_SOCKET
+// (another session's agent, a copied environment) cannot put a result
+// in this session. It is not a boundary against a process running as
+// the same user, which can read another process's environment; Hive is
+// not a sandbox (docs/design-docs/acp-session-kind.md). A port of scripts/acp-probe/submit-mcp.mjs, which wrote to a
 // file; this one reports over the session's events socket.
 
 const (

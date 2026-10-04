@@ -219,3 +219,33 @@ func TestMCPServersResentOnLoad(t *testing.T) {
 		}
 	}
 }
+
+// Claude's adapter can put the submit tool's identity on the tool_call
+// update alone and send the permission request with a bare id. That is
+// still auto-allowed — and the identity is not carried into the next
+// prompt, whose bare-id request goes to the user.
+func TestSubmitAutoAllowedFromEarlierToolCallNotCarriedOver(t *testing.T) {
+	useFakeACP(t, acptest.FlagSubmitBareID)
+	r := freshRegistry(t)
+	r.SetHivedPath("/opt/hive/hived")
+	e := createACP(t, r, wire.CreateSpec{Name: "a"})
+	if err := r.PromptACP(e.ID, "one", wire.OriginUser); err != nil {
+		t.Fatal(err)
+	}
+	waitFor(t, "turn end", idleAfterTurn(r, e.ID))
+	if got := transcriptTexts(t, r, e.ID); !slices.Contains(got, "agent:echo: one [submit selected:allow-once]") {
+		t.Fatalf("transcript = %q, want the bare-id submit auto-allowed", got)
+	}
+	if err := r.PromptACP(e.ID, "two", wire.OriginUser); err != nil {
+		t.Fatal(err)
+	}
+	var perm *wire.AcpPermission
+	waitFor(t, "the second request reaches the user", func() bool { perm = result(t, r, e.ID).Permission; return perm != nil })
+	if perm.ToolCallID != "s1" {
+		t.Fatalf("pending = %+v, want the bare-id submit request", perm)
+	}
+	if err := r.AnswerPermission(e.ID, perm.RequestID, "reject"); err != nil {
+		t.Fatal(err)
+	}
+	waitFor(t, "turn end", idleAfterTurn(r, e.ID))
+}

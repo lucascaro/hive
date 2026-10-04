@@ -397,6 +397,7 @@ The contract bumps once per phase because `scripts/check-daemon-contract.sh:36-4
 
 ## Decision log
 
+- **2026-10-04** — Review iter 3 (PR #501): the no-reset assertions count reset decisions (made on the ACP reader goroutine, in update order, so settled before the turn ends) instead of sleeping; the bare-id submit auto-allow and its no-carry-over across prompts are tested. The submit nonce is documented as stopping a process that only holds `HIVE_SOCKET` (another session, a copied environment), not a same-user process that reads the environment — Hive is not a sandbox, so a peer-process check would add platform code with no boundary behind it.
 - **2026-10-04** — Review iter 2 (PR #501) raised the asynchronous ceiling reset (an unrequested escalation stays live until `set_mode` returns, up to 30s). Accepted as is, operator's choice: the mode is enforced by the adapter itself, so the reset guards only against an adapter bug (the pinned adapters have no unrequested upward switch), never a malicious adapter; a shorter timeout would protect nothing real and could close healthy sessions on a loaded machine. Documented in acp-session-kind.md.
 - **2026-10-04** — Review iter 1 (PR #501) findings, operator decisions: the submit auto-allow no longer reads `rawInput`'s server+tool (model-written arguments; a call to another tool could carry them) — adapter-filled fields only, so a Codex submit may ask the user once. The escalation window is bound to the exact mode of the exit-plan option the user picked (`ACPSpec.ModeOptions`), not to any allow answer; this supersedes the earlier "any allow opens the window" entry. Also fixed: no mode policing before startup completes (a reset there went out with an empty session id), and tests for the missing-ceiling-mode refusal and the failed-reset close.
 - **2026-10-04** — P3 adds `SUBMIT_RESULT_OK` (0x44), so `SET_SESSION_KIND` moves to 0x45. Why: without an ack, the submit tool could return to the agent before the daemon recorded the result, and a fast turn end would report `none` for a turn that did submit.
@@ -458,6 +459,7 @@ The contract bumps once per phase because `scripts/check-daemon-contract.sh:36-4
 - **2026-10-03 iter 16 (phase 2, PR #500, iter 8)** — verdict: APPROVE; mergeable: MERGEABLE; findings_hash: empty; threads_open: 0; action: stop; head_sha: d80545ac.
 - **2026-10-04 iter 17 (phase 3, PR #501, iter 1)** — verdict: COMMENT; mergeable: MERGEABLE; findings_hash: f3032ea76f47a5652d81ac8b704fde2c96712b9423bb50220583d5e4872e790a; threads_open: 0; action: escalated:risky-fix-needs-human-decision; head_sha: c94def01.
 - **2026-10-04 iter 18 (phase 3, PR #501, iter 2)** — verdict: COMMENT; mergeable: MERGEABLE; findings_hash: b73142b8e1eb06468ff103310bfd77f638525a02e394a80cb824ba86229430f6; threads_open: 0; action: escalated:risky-fix-needs-human-decision; head_sha: 36730718.
+- **2026-10-04 iter 19 (phase 3, PR #501, iter 3)** — verdict: COMMENT; mergeable: MERGEABLE; findings_hash: 3367509254014d4ee40162164bdaae1eefe914c3df363d5e284a7e63d5657cc7; threads_open: 0; action: escalated:risky-fix-needs-human-decision; head_sha: 9ce25564.
 
 ## Gate verdict
 
