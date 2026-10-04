@@ -23,7 +23,10 @@ func TestAllowsOnlyExactIdentity(t *testing.T) {
 	}{
 		{"claude name", PermissionToolCall{ToolCallID: "a", Name: "mcp__" + testServer + "__submit_result"}, true},
 		{"claude meta", PermissionToolCall{ToolCallID: "a", Meta: json.RawMessage(`{"claudeCode":{"toolName":"mcp__` + testServer + `__submit_result"}}`)}, true},
-		{"rawInput server+tool", PermissionToolCall{ToolCallID: "a", RawInput: json.RawMessage(`{"server":"` + testServer + `","tool":"submit_result"}`)}, true},
+		// rawInput is the tool's arguments, which the model writes: a call
+		// to some other tool can carry this server's name and the tool's.
+		{"forged rawInput server+tool", PermissionToolCall{ToolCallID: "a", RawInput: json.RawMessage(`{"server":"` + testServer + `","tool":"submit_result"}`)}, false},
+		{"rawInput mcp name", PermissionToolCall{ToolCallID: "a", RawInput: json.RawMessage(`{"name":"mcp__` + testServer + `__submit_result"}`)}, false},
 		{"other tool same server", PermissionToolCall{ToolCallID: "a", Name: "mcp__" + testServer + "__other"}, false},
 		{"other session's server", PermissionToolCall{ToolCallID: "a", Name: "mcp__hive-ffff__submit_result"}, false},
 		{"prefix only", PermissionToolCall{ToolCallID: "a", Name: "mcp__" + testServer + "__submit_result_x"}, false},

@@ -71,12 +71,12 @@ type acpSession struct {
 	// the user's ceiling, which a mode switch may reach on its own.
 	mode    string
 	ceiling int
-	// userAllowed is set when the user answers a permission request
-	// with an allow option, and cleared by the next tool call, prompt
-	// or turn end. A mode switch above the ceiling inside that window
-	// is the user's own choice (Claude's exit-plan card offers them) and
-	// is kept; any other is reset to mode.
-	userAllowed bool
+	// userMode is the mode the user just chose on a permission card:
+	// the ModeOptions entry of the option they picked (Claude's exit-plan
+	// card), cleared by the next switch, tool call, prompt or turn end.
+	// A switch above the ceiling to exactly that mode is the user's own
+	// choice and stands; any other is reset to mode.
+	userMode string
 	// nonce authenticates SUBMIT_RESULT from this process's submit
 	// server; server is that server's name, which every structured
 	// identity of its tool embeds (acp.SubmitIdentities). New per start.
@@ -446,7 +446,7 @@ func (r *Registry) onACPUpdate(id string, as *acpSession, u acp.Update) {
 		case acp.UpdateCurrentMode:
 			r.onACPModeLocked(id, e, as, u.CurrentModeID)
 		case acp.UpdateToolCall:
-			as.userAllowed = false
+			as.userMode = ""
 			if len(as.tools) >= maxACPToolRefs {
 				clear(as.tools)
 			}
@@ -481,14 +481,18 @@ func (r *Registry) onACPUpdate(id string, as *acpSession, u acp.Update) {
 // Pi's modes are thinking levels, not permissions, so they are not
 // policed. Callers hold r.mu.
 func (r *Registry) onACPModeLocked(id string, e *Entry, as *acpSession, mode string) {
-	if as.spec.NoApprovalGate {
+	// Until startACP has set the mode (as.ready), a switch is the
+	// adapter settling in: the set_mode that follows replaces it, and a
+	// reset now would have no session id to send.
+	if as.spec.NoApprovalGate || !as.ready {
 		return
 	}
+	chosen := as.userMode
+	as.userMode = ""
 	if rank := as.spec.ModeRank(mode); rank >= 0 && rank <= as.ceiling {
 		return
 	}
-	if as.userAllowed {
-		as.userAllowed = false
+	if chosen != "" && mode == chosen {
 		log.Printf("registry: acp %s: mode %q above the ceiling, kept: the user chose it on a permission card", id, mode)
 		return
 	}
@@ -603,7 +607,7 @@ func (r *Registry) AnswerPermission(id, requestID, optionID string) error {
 	for _, o := range p.info.Options {
 		if o.OptionID == optionID {
 			p.answered = true
-			e.acp.userAllowed = strings.HasPrefix(o.Kind, "allow")
+			e.acp.userMode = e.acp.spec.ModeOptions[optionID]
 			p.answer <- acp.Selected(optionID) // buffered, never blocks: first and only send
 			return nil
 		}
@@ -639,7 +643,7 @@ func (r *Registry) PromptACP(id, text, origin string) error {
 		return ErrACPBusy
 	}
 	as.busy = true
-	as.userAllowed = false
+	as.userMode = ""
 	clear(as.tools)
 	sid := e.AgentSessionID
 	item := e.acpTx.AddUser(text, origin)
@@ -654,7 +658,7 @@ func (r *Registry) PromptACP(id, text, origin string) error {
 		r.mu.Lock()
 		defer r.mu.Unlock()
 		as.busy = false
-		as.userAllowed = false
+		as.userMode = ""
 		cur, ok := r.entries[id]
 		if !ok {
 			return

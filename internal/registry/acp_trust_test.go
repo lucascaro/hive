@@ -32,12 +32,13 @@ func withCeiling(ceilings map[string]string) agent.Settings {
 	return st
 }
 
-// setModes returns the modes the fake was set to, in order.
+// setModes returns the modes the fake was set to, in order — every
+// call, including one sent with an empty session id.
 func setModes(dir string) []string {
 	var out []string
 	for _, c := range acptest.Calls(dir) {
-		if f := strings.Fields(c); len(f) == 3 && f[0] == "session/set_mode" {
-			out = append(out, f[2])
+		if f := strings.Fields(c); len(f) >= 2 && f[0] == "session/set_mode" {
+			out = append(out, f[len(f)-1])
 		}
 	}
 	return out
@@ -144,50 +145,121 @@ func TestEscalationResetToCeiling(t *testing.T) {
 	}
 }
 
-// A switch the user chose on a permission card stands.
-func TestUserAllowedEscalationKept(t *testing.T) {
-	dir := useFakeACP(t, acptest.FlagPermission, acptest.FlagEscalateOnAllow)
-	useSettings(t, agent.DefaultSettings())
-	r := freshRegistry(t)
-	e := createACP(t, r, wire.CreateSpec{Name: "a"})
-	if err := r.PromptACP(e.ID, "go", wire.OriginUser); err != nil {
+// answerAndFinish starts a turn, answers its permission request with
+// optionID, and waits for the turn to end.
+func answerAndFinish(t *testing.T, r *Registry, id, optionID string) {
+	t.Helper()
+	if err := r.PromptACP(id, "go", wire.OriginUser); err != nil {
 		t.Fatal(err)
 	}
 	var perm *wire.AcpPermission
-	waitFor(t, "permission", func() bool { perm = result(t, r, e.ID).Permission; return perm != nil })
-	if err := r.AnswerPermission(e.ID, perm.RequestID, "allow"); err != nil {
+	waitFor(t, "permission", func() bool { perm = result(t, r, id).Permission; return perm != nil })
+	if err := r.AnswerPermission(id, perm.RequestID, optionID); err != nil {
 		t.Fatal(err)
 	}
-	waitFor(t, "turn end", idleAfterTurn(r, e.ID))
-	time.Sleep(50 * time.Millisecond) // a reset would be async
+	waitFor(t, "turn end", idleAfterTurn(r, id))
+}
+
+// The switch the user chose on the exit-plan card stands: the fake
+// switches to acceptEdits, which is what that option sets.
+func TestUserChosenModeSwitchKept(t *testing.T) {
+	dir := useFakeACP(t, acptest.FlagPermission, acptest.FlagEscalateAfterAnswer)
+	useSettings(t, agent.DefaultSettings())
+	r := freshRegistry(t)
+	e := createACP(t, r, wire.CreateSpec{Name: "a"})
+	answerAndFinish(t, r, e.ID, "exit-plan-accept-edits")
+	time.Sleep(100 * time.Millisecond) // a reset would be async
 	if got := setModes(dir); !slices.Equal(got, []string{"default"}) {
-		t.Errorf("set_mode calls = %q, want only the initial default: the user chose the switch", got)
+		t.Errorf("set_mode calls = %q, want only the initial default: the user chose acceptEdits", got)
 	}
 }
 
-// A deny answer opens no escalation window.
-func TestRejectOpensNoEscalationWindow(t *testing.T) {
-	useFakeACP(t, acptest.FlagPermission, acptest.FlagEscalate)
+// Any other answer — a plain allow on an unrelated card, or a deny —
+// opens no window: the switch that follows it is reset.
+func TestOtherAnswersOpenNoEscalationWindow(t *testing.T) {
+	for _, option := range []string{"allow", "reject"} {
+		t.Run(option, func(t *testing.T) {
+			dir := useFakeACP(t, acptest.FlagPermission, acptest.FlagEscalateAfterAnswer)
+			useSettings(t, agent.DefaultSettings())
+			r := freshRegistry(t)
+			e := createACP(t, r, wire.CreateSpec{Name: "a"})
+			answerAndFinish(t, r, e.ID, option)
+			waitFor(t, "the reset", func() bool { return slices.Equal(setModes(dir), []string{"default", "default"}) })
+		})
+	}
+}
+
+// The window is for exactly the mode the user chose: a different
+// above-ceiling switch after it is still reset.
+func TestUserChosenModeOnlyExactly(t *testing.T) {
+	dir := useFakeACP(t)
 	useSettings(t, agent.DefaultSettings())
 	r := freshRegistry(t)
 	e := createACP(t, r, wire.CreateSpec{Name: "a"})
 	r.mu.Lock()
-	as := r.entries[e.ID].acp
+	ent := r.entries[e.ID]
+	ent.acp.userMode = "acceptEdits"
+	r.onACPModeLocked(e.ID, ent, ent.acp, "bypassPermissions")
+	left := ent.acp.userMode
 	r.mu.Unlock()
+	waitFor(t, "the reset", func() bool { return slices.Equal(setModes(dir), []string{"default", "default"}) })
+	if left != "" {
+		t.Errorf("userMode = %q after a switch, want it consumed", left)
+	}
+}
+
+// A switch the adapter reports while session/new is still running is
+// not policed: the session id is not known yet, and startACP's own
+// set_mode follows. Before the guard, the reset went out with an empty
+// session id.
+func TestModeSwitchDuringStartupNotPoliced(t *testing.T) {
+	dir := useFakeACP(t, acptest.FlagModeOnNew)
+	useSettings(t, agent.DefaultSettings())
+	r := freshRegistry(t)
+	e := createACP(t, r, wire.CreateSpec{Name: "a"})
+	time.Sleep(100 * time.Millisecond) // a reset would be async
+	if got := setModes(dir); !slices.Equal(got, []string{"default"}) {
+		t.Errorf("set_mode calls = %q, want only startACP's own", got)
+	}
+	if !info(r, e.ID).Alive {
+		t.Error("the session died during startup")
+	}
+}
+
+// An adapter that does not offer the ceiling mode is never run in one
+// it does offer.
+func TestAdapterWithoutCeilingModeRefused(t *testing.T) {
+	dir := useFakeACP(t, acptest.FlagFewModes)
+	useSettings(t, agent.DefaultSettings())
+	r := freshRegistry(t)
+	e, _ := r.Create(context.Background(), wire.CreateSpec{Kind: wire.KindACP, Agent: "claude"})
+	if e == nil {
+		t.Fatal("Create returned no entry; want it kept, dead, with the reason")
+	}
+	defer r.Kill(e.ID, true)
+	var in wire.SessionInfo
+	waitFor(t, "adapter gone", func() bool { in = info(r, e.ID); return !in.Alive })
+	if !strings.Contains(in.LastError, `does not offer mode "default"`) {
+		t.Errorf("LastError = %q, want it to name the missing mode", in.LastError)
+	}
+	if got := setModes(dir); len(got) != 0 {
+		t.Errorf("set_mode calls = %q, want none", got)
+	}
+}
+
+// An adapter that will not switch back is closed, with the reason.
+func TestFailedResetClosesAdapter(t *testing.T) {
+	useFakeACP(t, acptest.FlagEscalate, acptest.FlagSetModeFailsAfterFirst)
+	useSettings(t, agent.DefaultSettings())
+	r := freshRegistry(t)
+	e := createACP(t, r, wire.CreateSpec{Name: "a"})
 	if err := r.PromptACP(e.ID, "go", wire.OriginUser); err != nil {
 		t.Fatal(err)
 	}
-	var perm *wire.AcpPermission
-	waitFor(t, "permission", func() bool { perm = result(t, r, e.ID).Permission; return perm != nil })
-	if err := r.AnswerPermission(e.ID, perm.RequestID, "reject"); err != nil {
-		t.Fatal(err)
-	}
-	waitFor(t, "turn end", idleAfterTurn(r, e.ID))
-	r.mu.Lock()
-	allowed := as.userAllowed
-	r.mu.Unlock()
-	if allowed {
-		t.Error("a reject answer opened the escalation window")
+	var in wire.SessionInfo
+	waitFor(t, "adapter closed", func() bool { in = info(r, e.ID); return !in.Alive })
+	if !strings.Contains(in.LastError, "above your ceiling") {
+		t.Errorf("LastError = %q, want it to say the agent went above the ceiling", in.LastError)
 	}
 }
 

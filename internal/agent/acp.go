@@ -27,6 +27,11 @@ type ACPSpec struct {
 	Modes []ACPMode
 	// DefaultMode is the ceiling when the user has not chosen one.
 	DefaultMode string
+	// ModeOptions maps the permission-card option ids that switch the
+	// session's mode to the mode each one sets. A switch above the
+	// ceiling stands only when it is the mode of the option the user
+	// just picked; every other one is reset (spec 496, phase 3).
+	ModeOptions map[string]string
 	// NoApprovalGate marks an agent that never asks before using a
 	// tool (Pi, F5 in acp-workflows.md). Its Modes are ACPModeOff and
 	// ACPModeUnattended, which are Hive's, not the adapter's: no
@@ -74,6 +79,16 @@ var acpSpecs = map[ID]*ACPSpec{
 	IDClaude: {Argv: []string{"npx", "-y", claudeACPPackage}, DefaultMode: "default", Modes: []ACPMode{
 		{"plan", "Plan"}, {"default", "Manual"}, {"acceptEdits", "Accept edits"},
 		{"auto", "Auto"}, {"bypassPermissions", "Bypass permissions"},
+	}, ModeOptions: map[string]string{
+		// The exit-plan card's options (permissions/options/shared.js in
+		// the pinned adapter).
+		"exit-plan-default":            "default",
+		"exit-plan-accept-edits":       "acceptEdits",
+		"exit-plan-auto":               "auto",
+		"exit-plan-bypass":             "bypassPermissions",
+		"exit-plan-clear-accept-edits": "acceptEdits",
+		"exit-plan-clear-auto":         "auto",
+		"exit-plan-clear-bypass":       "bypassPermissions",
 	}},
 	IDCodex: {Argv: []string{"npx", "-y", codexACPPackage}, DefaultMode: "read-only", Modes: []ACPMode{
 		{"read-only", "Read-only"}, {"workspace-write", "Workspace access"},

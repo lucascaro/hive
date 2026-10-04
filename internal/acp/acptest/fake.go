@@ -52,11 +52,21 @@ const (
 	// permissive mode (current_mode_update), as an adapter that
 	// escalates would.
 	FlagEscalate = "escalate"
-	// FlagEscalateOnAllow makes an allow answer to a FlagPermission
-	// request switch the mode up, as Claude's exit-plan card does.
-	FlagEscalateOnAllow = "escalate-on-allow"
+	// FlagEscalateAfterAnswer adds Claude's exit-plan option
+	// "exit-plan-accept-edits" to a FlagPermission request, and makes ANY
+	// answer to it switch the mode to acceptEdits — as the exit-plan card
+	// does for that option, and as a misbehaving adapter might for any.
+	FlagEscalateAfterAnswer = "escalate-after-answer"
+	// FlagModeOnNew makes session/new report a switch to the most
+	// permissive mode before it returns, as an adapter settling in might.
+	FlagModeOnNew = "mode-on-new"
+	// FlagFewModes makes the fake advertise only Codex's "agent" mode.
+	FlagFewModes = "few-modes"
 	// FlagSetModeFails makes session/set_mode fail.
 	FlagSetModeFails = "set-mode-fails"
+	// FlagSetModeFailsAfterFirst makes every set_mode after the first
+	// fail, so the start succeeds and a later reset does not.
+	FlagSetModeFailsAfterFirst = "set-mode-fails-after-first"
 )
 
 // Modes is what the fake advertises, least permissive first: Claude's
@@ -125,6 +135,7 @@ type fake struct {
 	next    int
 	pending map[string]chan json.RawMessage
 	servers map[string]string // sessionId -> first MCP server name
+	setMode int               // set_mode calls so far
 }
 
 // Main runs the fake agent on stdin/stdout until stdin closes.
@@ -259,8 +270,12 @@ func (f *fake) handle(id json.RawMessage, method string, params json.RawMessage)
 		}
 	}
 	modes := func() map[string]any {
+		advertised := Modes
+		if f.flags[FlagFewModes] {
+			advertised = []string{"agent"}
+		}
 		var avail []any
-		for _, m := range Modes {
+		for _, m := range advertised {
 			avail = append(avail, map[string]any{"id": m})
 		}
 		return map[string]any{"currentModeId": "agent", "availableModes": avail}
@@ -291,6 +306,9 @@ func (f *fake) handle(id json.RawMessage, method string, params json.RawMessage)
 			return
 		}
 		logMCP(sid)
+		if f.flags[FlagModeOnNew] {
+			f.update(sid, map[string]any{"sessionUpdate": "current_mode_update", "currentModeId": "bypassPermissions"})
+		}
 		reply(map[string]any{"sessionId": sid, "modes": modes()})
 	case "session/load":
 		turns, ok := f.turns(p.SessionID)
@@ -307,7 +325,11 @@ func (f *fake) handle(id json.RawMessage, method string, params json.RawMessage)
 		// default mode, whatever was set before.
 		reply(map[string]any{"modes": modes()})
 	case "session/set_mode":
-		if f.flags[FlagSetModeFails] || !slices.Contains(Modes, p.ModeID) {
+		f.mu.Lock()
+		f.setMode++
+		n := f.setMode
+		f.mu.Unlock()
+		if f.flags[FlagSetModeFails] || (f.flags[FlagSetModeFailsAfterFirst] && n > 1) || !slices.Contains(Modes, p.ModeID) {
 			fail(-32602, "Invalid params")
 			return
 		}
@@ -343,17 +365,21 @@ func (f *fake) handle(id json.RawMessage, method string, params json.RawMessage)
 			f.update(p.SessionID, map[string]any{"sessionUpdate": "current_mode_update", "currentModeId": "bypassPermissions"})
 		}
 		if f.flags[FlagPermission] {
+			options := []any{
+				map[string]any{"optionId": "allow", "name": "Allow", "kind": "allow_once"},
+				map[string]any{"optionId": "reject", "name": "Deny", "kind": "reject_once"},
+			}
+			if f.flags[FlagEscalateAfterAnswer] {
+				options = append(options, map[string]any{"optionId": "exit-plan-accept-edits", "name": "Yes, and auto-accept edits", "kind": "allow_always"})
+			}
 			res := f.request("session/request_permission", map[string]any{
 				"sessionId": p.SessionID,
 				"toolCall":  map[string]any{"toolCallId": "t1", "title": "Read file"},
-				"options": []any{
-					map[string]any{"optionId": "allow", "name": "Allow", "kind": "allow_once"},
-					map[string]any{"optionId": "reject", "name": "Deny", "kind": "reject_once"},
-				},
+				"options":   options,
 			})
 			o := outcome(res)
 			answer += " [" + o + "]"
-			if f.flags[FlagEscalateOnAllow] && o == "selected:allow" {
+			if f.flags[FlagEscalateAfterAnswer] {
 				f.update(p.SessionID, map[string]any{"sessionUpdate": "current_mode_update", "currentModeId": "acceptEdits"})
 			}
 		}

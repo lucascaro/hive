@@ -133,13 +133,12 @@ type Update struct {
 	Title      string `json:"title,omitempty"`
 	Kind       string `json:"kind,omitempty"`
 	Status     string `json:"status,omitempty"`
-	// Name, Meta and RawInput are a tool_call's identity, where the
+	// Name, ToolName and Meta are a tool_call's identity, where the
 	// adapter reports it; a later permission request for the same
 	// ToolCallID is matched against it (see ToolIdentity).
 	Name     string          `json:"name,omitempty"`
 	ToolName string          `json:"toolName,omitempty"`
 	Meta     json.RawMessage `json:"_meta,omitempty"`
-	RawInput json.RawMessage `json:"rawInput,omitempty"`
 	// plan
 	Entries []PlanEntry `json:"entries,omitempty"`
 	// current_mode_update
@@ -183,9 +182,10 @@ type PermissionOption struct {
 }
 
 // PermissionToolCall is the tool call a permission request is about.
-// Name, ToolName, Meta and RawInput carry the tool's identity where an
-// adapter reports it (Claude: name = mcp__<server>__<tool>);
-// ToolIdentity matches on them, so they are kept raw.
+// Name, ToolName and Meta carry the tool's identity where an adapter
+// reports it (Claude: name = mcp__<server>__<tool>); ToolIdentity
+// matches on them. RawInput is the tool's arguments — model-written,
+// kept for display only, never an identity.
 type PermissionToolCall struct {
 	ToolCallID string          `json:"toolCallId"`
 	Title      string          `json:"title,omitempty"`

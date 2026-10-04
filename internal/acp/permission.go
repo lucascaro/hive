@@ -12,23 +12,24 @@ const SubmitToolName = "submit_result"
 
 // SubmitIdentities is every structured identity under which an adapter
 // reports the submit tool of the MCP server named server: ACP's `name`
-// as Claude's adapter fills it (`mcp__<server>__<tool>`), and the
-// `rawInput` server+tool pair (`<server>.<tool>`). Both embed the
-// session's own server name, which carries its nonce, so a user's MCP
+// as Claude's adapter fills it (`mcp__<server>__<tool>`). It embeds the
+// session's own server name, which is random per start, so a user's MCP
 // server that happens to be called "hive" never matches.
 func SubmitIdentities(server string) []string {
-	return []string{"mcp__" + server + "__" + SubmitToolName, server + "." + SubmitToolName}
+	return []string{"mcp__" + server + "__" + SubmitToolName}
 }
 
 // toolRef is the part of a tool call that can identify the tool. Every
-// field is reported by the adapter, never written by the model: a title
-// is free text the model controls (a Bash call can be *titled*
-// "submit_result"), so it is never consulted.
+// field is filled by the adapter, never written by the model. A title is
+// free text the model controls (a Bash call can be *titled*
+// "submit_result"), and rawInput is the tool's own arguments, which the
+// model writes — a `{server, tool}` there names whatever the model
+// likes — so neither is ever consulted. The probe's toolIdentity also
+// read rawInput's server+tool; that branch is deliberately not ported.
 type toolRef struct {
 	Name     string
 	ToolName string
 	Meta     json.RawMessage
-	RawInput json.RawMessage
 }
 
 // ToolIdentity returns the structured identity of the tool a
@@ -37,9 +38,9 @@ type toolRef struct {
 // when none was seen). A port of scripts/acp-probe/probe.mjs's
 // toolIdentity. ok is false when neither carries one.
 func ToolIdentity(tc PermissionToolCall, earlier *Update) (string, bool) {
-	refs := []toolRef{{Name: tc.Name, ToolName: tc.ToolName, Meta: tc.Meta, RawInput: tc.RawInput}}
+	refs := []toolRef{{Name: tc.Name, ToolName: tc.ToolName, Meta: tc.Meta}}
 	if earlier != nil {
-		refs = append(refs, toolRef{Name: earlier.Name, ToolName: earlier.ToolName, Meta: earlier.Meta, RawInput: earlier.RawInput})
+		refs = append(refs, toolRef{Name: earlier.Name, ToolName: earlier.ToolName, Meta: earlier.Meta})
 	}
 	for _, r := range refs {
 		if id, ok := r.identity(); ok {
@@ -73,13 +74,6 @@ func (r toolRef) identity() (string, bool) {
 	}
 	if r.ToolName != "" {
 		return r.ToolName, true
-	}
-	var ri struct {
-		Server string `json:"server"`
-		Tool   string `json:"tool"`
-	}
-	if json.Unmarshal(r.RawInput, &ri) == nil && ri.Server != "" && ri.Tool != "" {
-		return ri.Server + "." + ri.Tool, true
 	}
 	return "", false
 }

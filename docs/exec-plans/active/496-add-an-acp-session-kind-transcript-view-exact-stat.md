@@ -397,6 +397,7 @@ The contract bumps once per phase because `scripts/check-daemon-contract.sh:36-4
 
 ## Decision log
 
+- **2026-10-04** — Review iter 1 (PR #501) findings, operator decisions: the submit auto-allow no longer reads `rawInput`'s server+tool (model-written arguments; a call to another tool could carry them) — adapter-filled fields only, so a Codex submit may ask the user once. The escalation window is bound to the exact mode of the exit-plan option the user picked (`ACPSpec.ModeOptions`), not to any allow answer; this supersedes the earlier "any allow opens the window" entry. Also fixed: no mode policing before startup completes (a reset there went out with an empty session id), and tests for the missing-ceiling-mode refusal and the failed-reset close.
 - **2026-10-04** — P3 adds `SUBMIT_RESULT_OK` (0x44), so `SET_SESSION_KIND` moves to 0x45. Why: without an ack, the submit tool could return to the agent before the daemon recorded the result, and a fast turn end would report `none` for a turn that did submit.
 - **2026-10-04** — P3 keeps the submit server's nonce and its MCP server name separate: the name (`hive-<12 hex>`) is part of the tool name the model sees, so it only has to be unique per start; the 32-byte nonce lives in the server's env alone.
 - **2026-10-04** — P3 does not show the result in the transcript view. Criterion 4 asks only that the result can be read over the wire, and the approved P3 file list had no GUI result display; plugins and the engine read it from `ACP_TRANSCRIPT`.
@@ -454,6 +455,7 @@ The contract bumps once per phase because `scripts/check-daemon-contract.sh:36-4
 - **2026-10-03 iter 14 (phase 2, PR #500, iter 6)** — verdict: APPROVE; mergeable: MERGEABLE; findings_hash: empty; threads_open: 0; action: stop; head_sha: ea370261.
 - **2026-10-03 iter 15 (phase 2, PR #500, iter 7)** — verdict: COMMENT; mergeable: MERGEABLE; findings_hash: bc9e3682378fd6f91899267c4cf49f420c5d8611bb9cf287a750941e342e3a29; threads_open: 0; action: escalated:risky-fix-needs-human-decision; head_sha: 7967339e.
 - **2026-10-03 iter 16 (phase 2, PR #500, iter 8)** — verdict: APPROVE; mergeable: MERGEABLE; findings_hash: empty; threads_open: 0; action: stop; head_sha: d80545ac.
+- **2026-10-04 iter 17 (phase 3, PR #501, iter 1)** — verdict: COMMENT; mergeable: MERGEABLE; findings_hash: f3032ea76f47a5652d81ac8b704fde2c96712b9423bb50220583d5e4872e790a; threads_open: 0; action: escalated:risky-fix-needs-human-decision; head_sha: c94def01.
 
 ## Gate verdict
 
