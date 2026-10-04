@@ -78,8 +78,13 @@ export function AcpTranscript({ sessionId }: { sessionId: string }): ReactNode {
             sessionId={sessionId}
             perm={tx.permission}
             // The button that was clicked unmounts with the card; without
-            // this, keyboard focus would fall to <body>.
-            onAnswered={() => prompt.current?.focus()}
+            // this, keyboard focus would fall to <body>. Clicking it may
+            // also have scrolled the log, so answering re-pins it.
+            onAnswered={() => {
+              // What the agent does next is what the user wants to see.
+              atBottom.current = true;
+              prompt.current?.focus();
+            }}
           />
         ) : null}
       </div>

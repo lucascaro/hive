@@ -36,6 +36,19 @@ test('an ACP session runs a prompt, a permission and a reply in its transcript',
   await expect(
     launcher.locator('.launcher-item', { hasText: 'Codex' }),
   ).toHaveAttribute('data-available', 'false');
+  // Its reason ellipsizes at half the row; the agent name keeps its room.
+  const codexRow = launcher.locator('.launcher-item', { hasText: 'Codex' });
+  const widths = await codexRow.evaluate((row) => ({
+    row: row.getBoundingClientRect().width,
+    name: (
+      row.querySelector('.agent-name') as HTMLElement
+    ).getBoundingClientRect().width,
+    tag: (
+      row.querySelector('.install-tag') as HTMLElement
+    ).getBoundingClientRect().width,
+  }));
+  expect(widths.name).toBeGreaterThan(30);
+  expect(widths.tag).toBeLessThanOrEqual(widths.row / 2 + 1);
   await launcher.locator('.launcher-item', { hasText: 'Claude' }).click();
   await page.waitForFunction(
     (n) => (window.__hive.state?.sessions.length ?? 0) === n + 1,
@@ -49,6 +62,9 @@ test('an ACP session runs a prompt, a permission and a reply in its transcript',
 
   const prompt = tile.locator('textarea[data-acp-prompt]');
   await expect(prompt).toBeFocused();
+  // Usable once the phase overlay is gone; it covers the transcript
+  // until then, and a click on the card would only retry under it.
+  await expect(tile.locator('.phase-overlay')).toBeHidden();
   await page.keyboard.type('hello');
   await page.keyboard.press('Enter');
 
@@ -91,11 +107,21 @@ test('an ACP tile keeps its place at the bottom across a switch away and back', 
   const tile = page.locator('.term-host.acp.visible');
   const prompt = tile.locator('textarea[data-acp-prompt]');
   await expect(prompt).toBeFocused();
+  // The session is usable once its phase overlay is gone; before that
+  // the overlay sits over the permission card and a click retries.
+  await expect(tile.locator('.phase-overlay')).toBeHidden();
   // Long enough to overflow the log several times over.
   await prompt.fill(
     Array.from({ length: 120 }, (_, i) => `line ${i}`).join('\n'),
   );
   await page.keyboard.press('Enter');
+  // Scrolled up to the card (as clicking it can do): answering re-pins
+  // the log, so the reply is what the user sees.
+  await expect(tile.locator('.acp-permission')).toBeVisible();
+  await tile.locator('.acp-transcript__log').evaluate((el) => {
+    el.scrollTop = 0;
+    el.dispatchEvent(new Event('scroll'));
+  });
   await tile
     .locator('.acp-permission')
     .getByRole('button', { name: 'Allow' })

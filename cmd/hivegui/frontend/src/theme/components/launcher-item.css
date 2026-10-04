@@ -55,9 +55,11 @@
 .launcher-item .agent-name { flex: 1; min-width: 0; }
 .launcher-item[data-available='false'] .agent-name { color: var(--fg-subtle); }
 .launcher-item .install-tag {
-  /* Shrinks and ellipsizes: an ACP-unavailable reason is a sentence,
-     and the row's title attribute carries all of it. */
-  flex-shrink: 1;
+  /* At most half the row, so a long ACP-unavailable reason ellipsizes
+     instead of squeezing the agent name out; the tag's own title
+     attribute carries the whole reason. */
+  flex: 0 1 auto;
+  max-width: 50%;
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
