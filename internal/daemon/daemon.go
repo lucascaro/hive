@@ -1300,6 +1300,7 @@ func (d *Daemon) serveControl(ctx context.Context, conn net.Conn, hello wire.Hel
 		ownSessionID:   hello.SessionID,
 		ownProjectID:   ownProjectID,
 		principal:      principalOf(tag),
+		acpListener:    acpListener,
 		writeJSON:      writeJSON,
 		sendError:      sendError,
 		sendWorktrees:  sendWorktrees,
@@ -1392,7 +1393,10 @@ type controlOps struct {
 	// principal is who this connection acts as, for provenance:
 	// "plugin:<id>" on a plugin's socket, "" (the user) otherwise. The
 	// daemon derives it; nothing a client sends can set it.
-	principal      string
+	principal string
+	// acpListener is this connection's ACP_TRANSCRIPT fan-out, which
+	// GET_ACP_TRANSCRIPT answers through.
+	acpListener    registry.AcpListener
 	writeJSON      func(wire.FrameType, any) error
 	sendError      func(code, msg string)
 	sendWorktrees  func(projectID, failCode string)
@@ -1546,12 +1550,13 @@ func (d *Daemon) handleControlFrame(ctx context.Context, ops controlOps, ft wire
 		if !ok {
 			return false
 		}
-		msg, err := d.reg.AcpTranscript(req.SessionID)
-		if err != nil {
-			sendACPError(ops, err)
+		// Queued on this connection's own fan-out listener, not written
+		// here, so the snapshot is ordered with the deltas around it
+		// (see Registry.SendAcpTranscript).
+		if err := d.reg.SendAcpTranscript(req.SessionID, ops.acpListener); err != nil {
+			sendACPError(ops, err, req.SessionID)
 			return false
 		}
-		_ = ops.writeJSON(wire.FrameAcpTranscript, msg)
 	case wire.FramePromptAcp:
 		req, ok := decodeReq[wire.PromptAcpReq](payload, ops.sendError)
 		if !ok {
@@ -1564,7 +1569,7 @@ func (d *Daemon) handleControlFrame(ctx context.Context, ops controlOps, ft wire
 		// Returns once the turn has started; the turn itself reports
 		// through ACP_TRANSCRIPT and the session's state.
 		if err := d.reg.PromptACP(req.SessionID, req.Text, origin); err != nil {
-			sendACPError(ops, err)
+			sendACPError(ops, err, req.SessionID)
 		}
 	case wire.FrameAnswerPermission:
 		req, ok := decodeReq[wire.AnswerPermissionReq](payload, ops.sendError)
@@ -1572,7 +1577,7 @@ func (d *Daemon) handleControlFrame(ctx context.Context, ops controlOps, ft wire
 			return false
 		}
 		if err := d.reg.AnswerPermission(req.SessionID, req.RequestID, req.OptionID); err != nil {
-			sendACPError(ops, err)
+			sendACPError(ops, err, req.SessionID)
 		}
 	case wire.FrameSearchTranscript:
 		// Not in sessionModeFrames, like GET_ACTIVITY: an agent running
@@ -2082,19 +2087,22 @@ func principalOf(tag *pluginTag) string {
 
 // sendACPError answers a failed ACP operation with a code a client can
 // act on.
-func sendACPError(ops controlOps, err error) {
+func sendACPError(ops controlOps, err error, sessionID string) {
+	code, msg := "acp_failed", err.Error()
 	switch {
 	case errors.Is(err, registry.ErrNotFound):
-		ops.sendError("no_such_session", "that session is not open")
+		code, msg = "no_such_session", "that session is not open"
 	case errors.Is(err, registry.ErrNotACP):
-		ops.sendError(wire.ErrCodeNotACP, err.Error())
+		code = wire.ErrCodeNotACP
 	case errors.Is(err, registry.ErrACPBusy):
-		ops.sendError(wire.ErrCodeACPBusy, err.Error())
+		code = wire.ErrCodeACPBusy
 	case errors.Is(err, registry.ErrPermissionStale):
-		ops.sendError(wire.ErrCodePermissionStale, err.Error())
+		code = wire.ErrCodePermissionStale
 	case errors.Is(err, registry.ErrNoLiveSession):
-		ops.sendError("session_dead", "the session's agent is not running")
-	default:
-		ops.sendError("acp_failed", err.Error())
+		code, msg = "session_dead", "the session's agent is not running"
 	}
+	// SessionID names the session the refused request was for, so a
+	// client can act on its own copy: give a refused prompt back to the
+	// box it was typed in, stop showing a refused snapshot as loading.
+	_ = ops.writeJSON(wire.FrameError, wire.Error{Code: code, Message: msg, SessionID: sessionID})
 }

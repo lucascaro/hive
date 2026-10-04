@@ -134,6 +134,10 @@ function LauncherBody({
   // state like every other field here, so reopening the launcher over
   // an edited one starts from the note again.
   const [prompt, setPrompt] = useState(req.initialPrompt);
+  // Terminal or ACP (spec 496). Terminal is the default and stays the
+  // default on every opening: nothing changes for a user who never
+  // picks ACP.
+  const [kind, setKind] = useState<'pty' | 'acp'>('pty');
   // Null until the IsGitRepo probe answers; false disables the worktree
   // row. The row renders enabled meanwhile — the probe almost always
   // beats the user to the checkbox.
@@ -186,6 +190,24 @@ function LauncherBody({
   // Whether the prompt box is on screen at all — it changes the
   // keyboard model (see the Tab branch below), so it is derived once.
   const hasPrompt = !!(req.ideaId || req.initialPrompt);
+  // ACP is offered only for a plain new session: the daemon refuses
+  // kind=acp with continueConversation, a duplicate copies a terminal
+  // session's command, and an ACP session takes no opening prompt.
+  const offerKind =
+    !req.duplicateFrom &&
+    !hasPrompt &&
+    !req.continueConversation &&
+    agents.some((a) => a.acp);
+  const acp = offerKind && kind === 'acp';
+  // Why a row cannot launch as ACP, or '' when it can.
+  const acpBlocked = (a: main.AgentInfo): string =>
+    !acp
+      ? ''
+      : !a.acp
+        ? 'No ACP support'
+        : a.acpAvailable
+          ? ''
+          : a.acpReason || 'ACP is not available';
 
   // Position and focus, before the first paint: the popup is anchored
   // under the resolved project's card header so the user can see which
@@ -300,6 +322,14 @@ function LauncherBody({
   // the keyboard-select path and the per-row click handler: bump usage,
   // flash status, call the daemon, close the launcher.
   function launchSelected(agentId: string) {
+    const agent = agents.find((a) => a.id === agentId);
+    const blocked = agent ? acpBlocked(agent) : '';
+    if (blocked) {
+      // Kept open: the user picked ACP and a row that cannot run it, and
+      // the next pick should not need the toggle again.
+      flashStatus(`${agent?.name ?? 'This agent'}: ${blocked}`, true);
+      return;
+    }
     bumpAgentUsage(agentId);
     flashStatus('creating session…');
     // Anchor the new session under the one it came from (duplicate) or
@@ -337,6 +367,7 @@ function LauncherBody({
         // the idea, since there is no delivery left to wait for.
         initialPrompt: prompt.trim(),
         ideaId: req.ideaId,
+        kind: acp ? 'acp' : '',
       }).catch(reportFailure('new session'));
     }
     closeLauncher();
@@ -374,37 +405,30 @@ function LauncherBody({
         return handle(() => moveSelection(+1));
       if (e.key === 'ArrowUp' && !inPrompt)
         return handle(() => moveSelection(-1));
-      // Tab moves the agent selection — EXCEPT when there is a prompt
-      // box, where it has to be the way in and out of it. Nothing else
-      // reaches that textarea from the keyboard: focus starts in the
-      // filter box and the arrows belong to the list. A feature whose
-      // headline is "editable right there in the launcher" cannot be
-      // mouse-only, so in prompt mode Tab cycles the popup's own text
-      // fields and the arrows stay the list's navigation.
-      if (e.key === 'Tab' && !hasPrompt)
-        return handle(() => moveSelection(e.shiftKey ? -1 : +1));
-      // In prompt mode Tab CYCLES the popup's own text fields rather
-      // than being handed to the browser. Handing it over was the
-      // obvious fix for "the textarea is unreachable" and it was
-      // wrong: nothing traps focus in #launcher, and the focusout
-      // handler below closes the popup the moment focus leaves — so
-      // one Tab past the last field dismissed the launcher and threw
-      // away the sharpened brief. Two keystrokes from open to gone.
-      if (e.key === 'Tab' && hasPrompt) {
-        // focusableWithin, not a hand-rolled visibility test. The first
-        // version of this judged the branch field by `offsetParent`,
-        // which is precisely the rule lib/focus-trap.ts warns against:
-        // jsdom has no layout, so offsetParent is always null there and
-        // the field list silently collapsed — making the cycle test
-        // assert nothing at all. This app's convention is the `.hidden`
-        // class, which `.launcher-branch.hidden` already uses, so the
+      // Tab CYCLES the popup's own fields: the filter box, the prompt
+      // box, the worktree toggle, the branch box and the Terminal/ACP
+      // choice (spec 496) — every control that would otherwise be
+      // mouse-only. The arrows are the list's navigation. Tab is never
+      // handed to the browser: nothing traps focus in #launcher, and the
+      // focusout handler below closes the popup the moment focus leaves,
+      // so one Tab past the last field would dismiss the launcher and
+      // throw away a sharpened brief.
+      if (e.key === 'Tab') {
+        // focusableWithin, not a hand-rolled visibility test: jsdom has
+        // no layout, so an offsetParent rule collapses the list and the
+        // cycle tests assert nothing. This app's convention is the
+        // `.hidden` class, which `.launcher-branch.hidden` uses, so the
         // branch field joins and leaves the cycle with the worktree
-        // toggle for free.
+        // toggle. A radio group is one stop, at its checked radio — the
+        // browser's own rule; the arrows inside it are the radio's.
         const fields = focusableWithin(root).filter(
           (el) =>
             el === searchRef.current ||
             el === promptRef.current ||
-            el === branchRef.current,
+            el === branchRef.current ||
+            el.closest('.launcher-worktree') !== null ||
+            (el.closest('.launcher-kind') !== null &&
+              (el as HTMLInputElement).checked),
         );
         if (fields.length > 0) {
           const at = fields.indexOf(e.target as HTMLElement);
@@ -602,6 +626,26 @@ function LauncherBody({
           />
         </>
       ) : null}
+      {offerKind && !loading ? (
+        <div
+          className="launcher-kind"
+          role="radiogroup"
+          aria-label="Session kind"
+        >
+          {(['pty', 'acp'] as const).map((k) => (
+            <label key={k} className="launcher-kind__option">
+              <input
+                type="radio"
+                name="launcher-kind"
+                value={k}
+                checked={kind === k}
+                onChange={() => setKind(k)}
+              />
+              <span>{k === 'pty' ? 'Terminal' : 'ACP'}</span>
+            </label>
+          ))}
+        </div>
+      ) : null}
       <div className="launcher-list">
         {matches.length === 0 ? (
           // Three different facts, and conflating any two of them
@@ -634,7 +678,7 @@ function LauncherBody({
             ref={idx === selected ? selectedRef : undefined}
             className="launcher-item"
             data-selected={idx === selected ? '' : undefined}
-            data-available={a.available ? undefined : 'false'}
+            data-available={a.available && !acpBlocked(a) ? undefined : 'false'}
             style={{ ['--agent-color' as string]: a.color }}
             onClick={() => launchSelected(a.id)}
             onMouseEnter={(e) => {
@@ -651,7 +695,20 @@ function LauncherBody({
             </span>
             <span className="agent-dot" />
             <span className="agent-name">{a.name}</span>
-            {!a.available && a.installCmd?.length ? (
+            {acp && a.acpExperimental ? (
+              <span
+                className="experimental-tag"
+                title="This agent's ACP adapter has not been probed by Hive yet"
+              >
+                experimental
+              </span>
+            ) : null}
+            {acpBlocked(a) ? (
+              <span className="install-tag" title={acpBlocked(a)}>
+                {acpBlocked(a)}
+              </span>
+            ) : null}
+            {!acpBlocked(a) && !a.available && a.installCmd?.length ? (
               <span className="install-tag" title={a.installCmd.join(' ')}>
                 install?
               </span>

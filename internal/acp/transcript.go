@@ -1,6 +1,7 @@
 package acp
 
 import (
+	"strings"
 	"unicode/utf8"
 
 	"github.com/lucascaro/hive/internal/wire"
@@ -41,6 +42,12 @@ type Transcript struct {
 	nextID int
 	items  []wire.AcpItem
 	text   int // total itemText (escaped bytes) over items
+	// open accumulates the text of the message being streamed, the item
+	// whose ID is openID, so each chunk costs its own length rather than
+	// a copy of everything said so far. Item.Text views its buffer
+	// (Builder.String does not copy, and never rewrites written bytes).
+	open   strings.Builder
+	openID int
 }
 
 // Epoch identifies the current transcript generation.
@@ -52,6 +59,7 @@ func (t *Transcript) Reset() {
 	t.epoch++
 	t.items = nil
 	t.text = 0
+	t.open, t.openID = strings.Builder{}, 0
 }
 
 // Snapshot returns a copy of every item.
@@ -146,7 +154,13 @@ func (t *Transcript) chunk(kind string, u Update, origin string) []wire.AcpItem 
 		if len(add) > room {
 			add = add[:room] + truncatedMark
 		}
-		it.Text += add
+		if t.openID != it.ID {
+			t.open = strings.Builder{}
+			t.open.WriteString(it.Text)
+			t.openID = it.ID
+		}
+		t.open.WriteString(add)
+		it.Text = t.open.String()
 		t.text += escLen(add)
 		delta := wire.AcpItem{ID: it.ID, Kind: it.Kind, Origin: it.Origin, Text: add, Append: true}
 		t.trim()

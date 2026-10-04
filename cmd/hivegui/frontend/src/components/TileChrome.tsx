@@ -26,6 +26,7 @@
 // Membership comes from store/terms.ts's useTermIds — which ids have a
 // live host, never the SessionTerm values. Observable, not reactive.
 import { activityRenderers } from './activity/registry.js';
+import { AcpTranscript } from './acp/AcpTranscript.js';
 import { createPortal } from 'react-dom';
 import { FindBox } from './FindBox.js';
 import { useRef, type ReactNode } from 'react';
@@ -83,6 +84,9 @@ function TileChrome({ id }: { id: string }): ReactNode {
           )
         : null}
       {term.overlays ? (
+        <AcpTranscriptMount id={id} host={term.overlays} />
+      ) : null}
+      {term.overlays ? (
         <ActivityTileMount id={id} host={term.overlays} />
       ) : null}
       {/* The find box is per-session state, so it portals into this
@@ -94,6 +98,24 @@ function TileChrome({ id }: { id: string }): ReactNode {
         : null}
     </>
   );
+}
+
+// An ACP session's tile body (spec 496): its transcript, over the
+// terminal body session-term.ts hides for the kind. Beside TileOverlays
+// in the same mount, below them, so the dead and phase overlays still
+// cover it.
+function AcpTranscriptMount({
+  id,
+  host,
+}: {
+  id: string;
+  host: HTMLElement;
+}): ReactNode {
+  const acp = useAppStore(
+    (s) => s.sessions.find((x) => x.id === id)?.kind === 'acp',
+  );
+  if (!acp) return null;
+  return createPortal(<AcpTranscript sessionId={id} />, host);
 }
 
 // The activity grid's tile body. Mounted only while the activity grid is

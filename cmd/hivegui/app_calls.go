@@ -43,6 +43,14 @@ type AgentInfo struct {
 	// the authority; this only stops the GUI promising something it
 	// will refuse.
 	TakesPrompt bool `json:"takesPrompt"`
+	// ACP reports whether the agent can run as an ACP session at all
+	// (spec 496); ACPAvailable whether it can right now, with ACPReason
+	// saying why not. ACPExperimental marks an adapter spike 492 never
+	// probed (Gemini, Copilot).
+	ACP             bool   `json:"acp"`
+	ACPAvailable    bool   `json:"acpAvailable"`
+	ACPReason       string `json:"acpReason,omitempty"`
+	ACPExperimental bool   `json:"acpExperimental"`
 }
 
 // ListAgents returns every agent definition — built-ins plus the
@@ -52,7 +60,7 @@ func (a *App) ListAgents() []AgentInfo {
 	defs := agent.All()
 	out := make([]AgentInfo, 0, len(defs))
 	for _, d := range defs {
-		out = append(out, AgentInfo{
+		info := AgentInfo{
 			ID:         string(d.ID),
 			Name:       d.Name,
 			Color:      d.Color,
@@ -63,7 +71,13 @@ func (a *App) ListAgents() []AgentInfo {
 			// with ID/Name/Cmd/Color only, so both flags are false by
 			// construction.
 			TakesPrompt: d.PositionalPrompt || d.TypedPrompt,
-		})
+		}
+		if spec := d.ACP(); spec != nil {
+			info.ACP = true
+			info.ACPExperimental = spec.Experimental
+			info.ACPAvailable, info.ACPReason = d.ACPAvailable()
+		}
+		out = append(out, info)
 	}
 	return out
 }
@@ -268,6 +282,9 @@ type CreateSessionOpts struct {
 	// IdeaID is the idea the session is being started from. The daemon
 	// flips it to `started` once the prompt is delivered.
 	IdeaID string `json:"ideaId"`
+	// Kind is the session kind: "" or "pty" for a terminal session,
+	// "acp" for one the daemon drives over ACP (spec 496).
+	Kind string `json:"kind"`
 }
 
 // CreateSession asks the daemon to create a new session. The daemon
@@ -298,6 +315,7 @@ func (a *App) CreateSession(opts CreateSessionOpts) error {
 		InsertAfterSessionID: opts.InsertAfter,
 		InitialPrompt:        opts.InitialPrompt,
 		IdeaID:               opts.IdeaID,
+		Kind:                 opts.Kind,
 	})
 }
 
@@ -779,6 +797,39 @@ func (a *App) GetActivity(sessionID string) error {
 		return err
 	}
 	return cs.WriteJSON(wire.FrameGetActivity, wire.GetActivityReq{SessionID: sessionID})
+}
+
+// GetAcpTranscript asks for an ACP session's whole transcript. The
+// answer arrives as an "acp:transcript" event with reset set; after
+// that the ACP_TRANSCRIPT fan-out keeps it current.
+func (a *App) GetAcpTranscript(sessionID string) error {
+	cs, err := a.requireControl()
+	if err != nil {
+		return err
+	}
+	return cs.WriteJSON(wire.FrameGetAcpTranscript, wire.GetAcpTranscriptReq{SessionID: sessionID})
+}
+
+// PromptAcp sends one user turn to an ACP session. The daemon refuses
+// with "acp_busy" on the control:error channel while a turn is running.
+func (a *App) PromptAcp(sessionID, text string) error {
+	cs, err := a.requireControl()
+	if err != nil {
+		return err
+	}
+	return cs.WriteJSON(wire.FramePromptAcp, wire.PromptAcpReq{SessionID: sessionID, Text: text})
+}
+
+// AnswerPermission answers the permission request an ACP session is
+// blocked on with one of the options it offered.
+func (a *App) AnswerPermission(sessionID, requestID, optionID string) error {
+	cs, err := a.requireControl()
+	if err != nil {
+		return err
+	}
+	return cs.WriteJSON(wire.FrameAnswerPermission, wire.AnswerPermissionReq{
+		SessionID: sessionID, RequestID: requestID, OptionID: optionID,
+	})
 }
 
 // SearchTranscript asks the daemon to search one session's agent

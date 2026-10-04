@@ -44,6 +44,7 @@ const PLATFORMS: Platform[] = ['mac', 'other'];
 // text box (find). The coverage test fails if one ever gains a binding.
 const UNBOUND_SCOPES = [
   'find-box',
+  'acp-prompt',
   'launcher',
   'project-editor',
   // Settings › Shortcuts' capture button: binds nothing on purpose, so

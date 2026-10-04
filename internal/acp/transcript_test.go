@@ -2,6 +2,7 @@ package acp
 
 import (
 	"encoding/json"
+	"runtime"
 	"strings"
 	"testing"
 
@@ -226,5 +227,26 @@ func TestEscLenMatchesEncodingJSON(t *testing.T) {
 		if got, want := escLen(s), len(b)-2; got != want {
 			t.Errorf("escLen(%q) = %d, want %d", s, got, want)
 		}
+	}
+}
+
+// Streaming a reply costs its length, not its length squared: with
+// string concatenation every chunk copied everything said so far, which
+// for 4000 16-byte chunks is ~128 MB of copying for one 64 KiB message.
+func TestChunkAppendIsLinear(t *testing.T) {
+	var tx Transcript
+	chunk := strings.Repeat("x", 16)
+	var before, after runtime.MemStats
+	runtime.GC()
+	runtime.ReadMemStats(&before)
+	for range maxItemText / len(chunk) {
+		tx.Apply(text(UpdateAgentMessage, chunk), false)
+	}
+	runtime.ReadMemStats(&after)
+	if got := tx.Snapshot()[0].Text; len(got) != maxItemText {
+		t.Fatalf("message is %d bytes, want %d", len(got), maxItemText)
+	}
+	if alloc := after.TotalAlloc - before.TotalAlloc; alloc > 16<<20 {
+		t.Errorf("streaming one %d-byte message allocated %d bytes; quadratic append?", maxItemText, alloc)
 	}
 }

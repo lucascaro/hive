@@ -24,6 +24,16 @@ package buildinfo
 // History (newest first), so a bump is a decision with a record and
 // not just a number going up:
 //
+//	23 — GET_ACP_TRANSCRIPT's snapshot is queued on the connection's own
+//	    ACP_TRANSCRIPT fan-out instead of being written directly, so it
+//	    is ordered with the deltas around it (spec 496, phase 2). The
+//	    GUI's transcript view relies on that order: against a daemon
+//	    built before it, a reply can wipe a streamed chunk or be
+//	    followed by one it already holds, and the view shows a
+//	    truncated or doubled message.
+//	    ACP refusals (no_such_session, acp_busy, session_dead, …) now
+//	    carry the session_id they were for, which is how the GUI gives
+//	    a refused prompt back to its box.
 //	22 — ACP sessions (spec 496, phase 1): SessionInfo gained kind and
 //	    spawned_by, CreateSpec gained kind, and the GET_ACP_TRANSCRIPT /
 //	    ACP_TRANSCRIPT / PROMPT_ACP / ANSWER_PERMISSION frames drive a
@@ -205,7 +215,7 @@ package buildinfo
 //	    before this cannot see or clear the flag.
 //	1 — first contract; everything up to and including the
 //	    CLIENT_COMMAND relay.
-const DaemonContract = 22
+const DaemonContract = 23
 
 // Identity is this binary's full build identity. `hived --version
 // --json` prints it, and Welcome carries the same three values, so a

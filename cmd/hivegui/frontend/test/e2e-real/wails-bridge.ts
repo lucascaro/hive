@@ -166,6 +166,7 @@ export interface CreateSessionOpts {
   continueConversation: boolean;
   initialPrompt: string;
   ideaId: string;
+  kind: string;
 }
 export async function CreateSession(o: Partial<CreateSessionOpts> = {}) {
   // camelCase in, snake_case out: the bridge speaks the wire's
@@ -183,6 +184,7 @@ export async function CreateSession(o: Partial<CreateSessionOpts> = {}) {
     branch: o.branch || '',
     worktree_path: o.worktreePath || '',
     continue_conversation: !!o.continueConversation,
+    kind: o.kind || '',
     insert_after_session_id: o.insertAfter || '',
     initial_prompt: o.initialPrompt || '',
     idea_id: o.ideaId || '',
@@ -495,6 +497,24 @@ export async function RequestReloadAllGUIs() {
 }
 export async function GetActivity(id: string) {
   return call('GetActivity', { session_id: id });
+}
+// ACP sessions (spec 496). Answers arrive as `acp:transcript` events.
+export async function GetAcpTranscript(id: string) {
+  return call('GetAcpTranscript', { session_id: id });
+}
+export async function PromptAcp(id: string, text: string) {
+  return call('PromptAcp', { session_id: id, text });
+}
+export async function AnswerPermission(
+  id: string,
+  requestId: string,
+  optionId: string,
+) {
+  return call('AnswerPermission', {
+    session_id: id,
+    request_id: requestId,
+    option_id: optionId,
+  });
 }
 // Transcript search (spec 431). The ws-bridge names these verbs
 // exactly as the Wails methods, and the daemon answers on the control

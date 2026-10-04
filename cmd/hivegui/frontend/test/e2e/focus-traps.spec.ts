@@ -371,23 +371,31 @@ test('help overlay: Tab stays on its single control', async ({ page }) => {
   await tabAround(page, '#help-overlay', 6);
 });
 
-// ---------- list popups (Tab means "next item", not "trap") ----------
+// ---------- list popups (Tab never leaves the popup) ----------
 
-test('launcher: Tab moves the selection instead of leaving', async ({
+test('launcher: Tab walks its own fields instead of leaving', async ({
   page,
 }) => {
+  // Spec 496: Tab cycles the popup's fields (filter box, worktree
+  // toggle, Terminal/ACP choice) so none of them is mouse-only; the
+  // arrows move the agent selection. Focus never leaves #launcher, or
+  // its focusout handler would close it.
   await boot(page);
   await page.keyboard.press(`${mod}+t`);
   await expect(page.locator('#launcher')).toBeVisible();
-  const before = await page
-    .locator('#launcher .launcher-list > *[data-selected]')
-    .textContent();
-  await page.keyboard.press('Tab');
-  const after = await page
-    .locator('#launcher .launcher-list > *[data-selected]')
-    .textContent();
-  expect(after).not.toBe(before);
-  await expect(page.locator('#launcher')).toBeVisible();
+  const selected = () =>
+    page.locator('#launcher .launcher-list > *[data-selected]').textContent();
+  const before = await selected();
+  for (let i = 0; i < 4; i++) {
+    await page.keyboard.press('Tab');
+    await expect(page.locator('#launcher')).toBeVisible();
+    expect(
+      await page.evaluate(() => !!document.activeElement?.closest('#launcher')),
+    ).toBe(true);
+  }
+  expect(await selected()).toBe(before);
+  await page.keyboard.press('ArrowDown');
+  expect(await selected()).not.toBe(before);
 });
 
 test('command palette: Tab moves the selection instead of leaving', async ({

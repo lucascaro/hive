@@ -333,6 +333,7 @@ export interface MockCreateSessionOpts {
   continueConversation: boolean;
   initialPrompt: string;
   ideaId: string;
+  kind: string;
 }
 export async function CreateSession(o: Partial<MockCreateSessionOpts> = {}) {
   maybeFail('CreateSession');
@@ -365,6 +366,12 @@ export async function CreateSession(o: Partial<MockCreateSessionOpts> = {}) {
     worktree_branch: '',
     last_error: '',
   };
+  if (o.kind === 'acp') {
+    s.kind = 'acp';
+    // Daemon-fed and exact on the acp tier (wire.StateSourceACP).
+    s.state_source = 'acp';
+    acpById.set(id, { epoch: 1, items: [], nextId: 0, permission: null });
+  }
   // Splice after the anchor only when it exists AND shares the new
   // session's project — exactly registry.insertEntry's guard.
   const anchorIdx = insertAfter
@@ -681,6 +688,9 @@ export async function ListAgents(): Promise<AgentInfo[]> {
       // daemon refuses to hand it an opening prompt at all
       // (registry.deliveryFor).
       takesPrompt: false,
+      acp: false,
+      acpAvailable: false,
+      acpExperimental: false,
     },
     // Second built-in so the launcher's filter box has something to
     // narrow. Order matters: several specs assert the FIRST
@@ -693,6 +703,11 @@ export async function ListAgents(): Promise<AgentInfo[]> {
       available: true,
       installCmd: [],
       takesPrompt: true,
+      // ACP-capable (spec 496), so the launcher's ACP toggle and the
+      // transcript view have an agent to run.
+      acp: true,
+      acpAvailable: true,
+      acpExperimental: false,
     },
     // A typed-path agent: it can take an opening prompt, but by having
     // it typed in rather than as argv — so Hive OFFERS it and the user
@@ -705,6 +720,12 @@ export async function ListAgents(): Promise<AgentInfo[]> {
       available: true,
       installCmd: [],
       takesPrompt: true,
+      // ACP-capable but not runnable here, so the launcher's disabled
+      // row and its reason have coverage.
+      acp: true,
+      acpAvailable: false,
+      acpReason: 'Node.js (npx) was not found on your login PATH',
+      acpExperimental: false,
     },
     ...customAgents.map((a) => ({
       id: a.id,
@@ -716,6 +737,10 @@ export async function ListAgents(): Promise<AgentInfo[]> {
       // their Def without either prompt flag, so this is false by
       // construction Go-side too.
       takesPrompt: false,
+      // No ACP spec for a custom agent (agent.Def.ACP).
+      acp: false,
+      acpAvailable: false,
+      acpExperimental: false,
     })),
   ];
 }
@@ -1247,6 +1272,129 @@ export async function GetActivity(id: string) {
       }),
     );
   }, 0);
+  return '';
+}
+
+// --- ACP sessions (spec 496) ---
+//
+// A scripted agent: every prompt asks permission for one tool call,
+// and the answer lets it run the tool and echo the prompt back in two
+// streamed chunks, the second an `append` delta — the same message
+// shapes the daemon sends (internal/wire/acp.go).
+type MockAcpItem = {
+  id: number;
+  kind: string;
+  text?: string;
+  origin?: string;
+  tool_call_id?: string;
+  title?: string;
+  tool_kind?: string;
+  status?: string;
+  append?: boolean;
+};
+type MockAcpPermission = {
+  request_id: string;
+  tool_call_id?: string;
+  title?: string;
+  options: { option_id: string; name: string; kind: string }[];
+};
+type MockAcp = {
+  epoch: number;
+  items: MockAcpItem[];
+  nextId: number;
+  permission: MockAcpPermission | null;
+  pendingText?: string;
+};
+const acpById = new Map<string, MockAcp>();
+
+function emitAcp(id: string, items: MockAcpItem[], reset = false) {
+  const a = acpById.get(id);
+  if (!a) return;
+  emit(
+    'acp:transcript',
+    JSON.stringify({
+      session_id: id,
+      epoch: a.epoch,
+      reset: reset || undefined,
+      items,
+      permission: a.permission ?? undefined,
+    }),
+  );
+}
+
+function setAcpState(id: string, st: string) {
+  const s = state.sessions.find((x) => x.id === id);
+  if (!s) return;
+  s.state = st;
+  emit('session:event', JSON.stringify({ kind: 'updated', session: s }));
+}
+
+function addAcpItem(a: MockAcp, it: Omit<MockAcpItem, 'id'>): MockAcpItem {
+  a.nextId += 1;
+  const item = { ...it, id: a.nextId };
+  a.items.push(item);
+  return item;
+}
+
+export async function GetAcpTranscript(id: string) {
+  maybeFail('GetAcpTranscript');
+  const a = acpById.get(id);
+  // The daemon answers on the control stream, not as the call's return.
+  setTimeout(() => {
+    if (a) emitAcp(id, a.items, true);
+  }, 0);
+  return '';
+}
+
+export async function PromptAcp(id: string, text: string) {
+  maybeFail('PromptAcp');
+  const a = acpById.get(id);
+  if (!a) return '';
+  const user = addAcpItem(a, { kind: 'user', text, origin: 'user' });
+  const tool = addAcpItem(a, {
+    kind: 'tool',
+    tool_call_id: `t${a.nextId}`,
+    title: 'Read file',
+    tool_kind: 'read',
+    status: 'pending',
+  });
+  a.permission = {
+    request_id: `${a.epoch}-${a.nextId}`,
+    tool_call_id: tool.tool_call_id,
+    title: 'Read file',
+    options: [
+      { option_id: 'allow', name: 'Allow', kind: 'allow_once' },
+      { option_id: 'reject', name: 'Deny', kind: 'reject_once' },
+    ],
+  };
+  a.pendingText = text;
+  setAcpState(id, 'waiting_permission');
+  emitAcp(id, [user, tool]);
+  return '';
+}
+
+export async function AnswerPermission(
+  id: string,
+  requestId: string,
+  optionId: string,
+) {
+  maybeFail('AnswerPermission');
+  const a = acpById.get(id);
+  if (!a?.permission || a.permission.request_id !== requestId) return '';
+  const toolId = a.permission.tool_call_id;
+  a.permission = null;
+  const tool = a.items.find((x) => x.tool_call_id === toolId);
+  if (tool) tool.status = optionId === 'allow' ? 'completed' : 'failed';
+  const reply = `echo: ${a.pendingText ?? ''} [${optionId}]`;
+  const half = Math.floor(reply.length / 2);
+  const agent = addAcpItem(a, { kind: 'agent', text: reply.slice(0, half) });
+  setAcpState(id, 'working');
+  emitAcp(id, tool ? [tool, { ...agent }] : [{ ...agent }]);
+  agent.text = reply;
+  emitAcp(id, [
+    { id: agent.id, kind: 'agent', text: reply.slice(half), append: true },
+  ]);
+  setAcpState(id, 'waiting_input');
   return '';
 }
 
