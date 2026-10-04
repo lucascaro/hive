@@ -5,7 +5,7 @@ type: enhancement
 complexity: L
 priority: P2
 pr: 501
-stage: REVIEW
+stage: GATE
 ---
 
 # Add an ACP session kind: transcript view, exact state, permission prompts, typed results, PTY takeover
