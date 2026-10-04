@@ -183,3 +183,19 @@ This note is the research for [spec 496](../product-specs/496-add-an-acp-session
   - Streamed chunks go out as `append` deltas.
   - A `session/load` replay is broadcast once, as a reset, when it ends. Broadcasting it per chunk could overflow a listener mid-replay.
 - **GUI staleness.** `isStale` needs no change: the daemon sends no `stale_at` for the `acp` tier.
+
+## What phase 2 built
+
+- **Tile.** An ACP session gets an ordinary grid tile. `session-term.ts` marks its host `.acp` and never attaches: `ensureAttached` returns `deferred` for the kind, and `setInfo` attaches if the kind ever flips back to `pty`. `TileChrome.tsx` portals `components/acp/AcpTranscript.tsx` into the tile's overlay host, and `acp.css` hides the terminal body under it.
+- **Store.** `src/store/acp.ts` holds one transcript per session, fed by `acp:transcript`. The fold is pure (`src/lib/acp.ts`):
+  - a reset replaces everything;
+  - a delta before the first snapshot is dropped, since the snapshot that follows already holds it;
+  - a delta from another epoch marks the copy stale, and the view refetches;
+  - `append` deltas add text to the end of their item;
+  - every message overwrites the pending permission.
+- **Snapshot ordering (contract 23).** Phase 1 wrote the `GET_ACP_TRANSCRIPT` reply directly while deltas went through the connection's fan-out goroutine, so a reply could overtake or trail a delta and the view would lose or double a chunk. `Registry.SendAcpTranscript` now queues the snapshot on the caller's own listener under `r.mu`, which orders it with the deltas. That is what lets the client fold in plain arrival order.
+- **Launcher.** A Terminal/ACP radio pair, Terminal by default on every opening. It is offered only for a plain new session (no duplicate, opening prompt or continue). In ACP mode a row that cannot run it is disabled with `AgentInfo.acpReason` (`agent.Def.ACPAvailable`, judged on the GUI's login PATH — Q11), and unprobed adapters carry an `experimental` tag.
+- **Keyboard.** Focusing an ACP tile focuses its prompt box. The `acp-prompt` key scope (text-input) gives it plain typing; Enter sends and Shift+Enter is a newline. The permission buttons have no key: they are ordinary buttons reached by Tab or a click, and answering one hands focus back to the prompt box. The prompt box counts as the tile's own input (`lib/focus.ts`, class `acp-prompt__input`), so switching to another tile moves focus off it as it would off a terminal.
+- **Launcher Tab.** Tab now cycles the launcher's own fields: filter box, prompt box, worktree toggle, branch box and the Terminal/ACP radio group (one stop, at its checked radio). Before this it moved the agent selection whenever no prompt box was shown; the arrows still do that. The help overlay's "Launcher & dialogs" group says so.
+- **Client bounds.** The client copy keeps at most `MAX_ITEMS` (2000, the daemon's cap) items, drops the oldest first, refetches rather than place a chunk for an item it does not hold, and keeps unchanged items by identity so memoized rows skip a re-render.
+- **Refusals name their session.** `sendACPError` answers `GET_ACP_TRANSCRIPT`, `PROMPT_ACP` and `ANSWER_PERMISSION` refusals with `wire.Error.SessionID` set (the field `worktree_dirty` already uses). The GUI folds them into that session's store entry (`applyAcpError`): a prompt still pending goes back to its box, and a pending snapshot request becomes a failed one instead of loading until the next reconnect. A prompt counts as accepted once a delta records it as a user turn, which happens before `PROMPT_ACP` returns. Only deltas count (a snapshot may hold an older identical turn), the daemon's 64 KiB clip matches by its kept prefix, and a reconnect drops a pending prompt, since a refusal sent on the old connection can never arrive.

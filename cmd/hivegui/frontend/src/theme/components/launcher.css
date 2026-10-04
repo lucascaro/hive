@@ -191,3 +191,18 @@
   font-size: var(--text-sm);
   font-family: inherit;
 }
+
+/* Terminal / ACP (spec 496). One Tab stop at the checked radio, like
+   the worktree toggle above it; the arrows switch within the group. */
+.launcher-kind {
+  display: flex;
+  gap: var(--space-3);
+  padding: var(--space-1) var(--space-2);
+  margin: 0 0 var(--space-1);
+  border-bottom: 1px solid var(--border);
+  color: var(--fg);
+  font-size: var(--text-sm);
+  user-select: none;
+}
+.launcher-kind__option { display: flex; align-items: center; gap: var(--space-1); cursor: pointer; }
+.launcher-kind__option input { margin: 0; }

@@ -42,9 +42,13 @@ export function decideFocusAction(snapshot: FocusSnapshot): FocusAction {
   // visual border, so the UI can't claim a tile is focused while
   // keystrokes go to a sibling DOM input. (contentEditable hosts
   // are not part of the v2 UI surface and are not covered here.)
-  const isXtermHelper = hasClass(activeClasses, 'xterm-helper-textarea');
-  if (!isXtermHelper && isRealInput(activeTag))
-    return { kind: ACTION_PRESERVE };
+  // A tile's own input is not a sibling's: an ACP tile's prompt box
+  // (spec 496) stands where a terminal's helper textarea does, so focus
+  // moves off it to the next tile like it moves off a terminal.
+  const isTileInput =
+    hasClass(activeClasses, 'xterm-helper-textarea') ||
+    hasClass(activeClasses, 'acp-prompt__input');
+  if (!isTileInput && isRealInput(activeTag)) return { kind: ACTION_PRESERVE };
 
   return { kind: ACTION_FOCUS, id };
 }

@@ -489,6 +489,32 @@ func (r *Registry) AcpTranscript(id string) (wire.AcpTranscriptMsg, error) {
 	return acpMsgLocked(e, e.acpTx.Snapshot(), true), nil
 }
 
+// SendAcpTranscript queues an ACP session's whole transcript, as a
+// reset, on ch — the caller's own listener from SubscribeACP — the
+// answer to GET_ACP_TRANSCRIPT. It goes through the listener, under
+// r.mu, rather than being written by the caller, so it is ordered with
+// the deltas: every delta made before the snapshot is ahead of it on
+// ch and every one after is behind it. Written directly, a delta from
+// after the snapshot could reach the client first and be wiped by the
+// reset, or one from before could follow it and be applied twice.
+// A ch that is no longer subscribed (its connection is closing) gets
+// nothing.
+func (r *Registry) SendAcpTranscript(id string, ch AcpListener) error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	e, ok := r.entries[id]
+	if !ok {
+		return ErrNotFound
+	}
+	if !e.isACP() {
+		return ErrNotACP
+	}
+	if _, ok := r.acpListeners[ch]; ok {
+		r.sendACPLocked(ch, acpMsgLocked(e, e.acpTx.Snapshot(), true))
+	}
+	return nil
+}
+
 // applyACPLocked feeds one ACP-derived event to the state machine and
 // announces it, the way ApplyAgentEvent does for hook events.
 func (r *Registry) applyACPLocked(e *Entry, ev agentstate.Event) {
@@ -516,13 +542,19 @@ func acpMsgLocked(e *Entry, items []wire.AcpItem, reset bool) wire.AcpTranscript
 func (r *Registry) broadcastACPLocked(e *Entry, items []wire.AcpItem, reset bool) {
 	msg := acpMsgLocked(e, items, reset)
 	for ch := range r.acpListeners {
-		select {
-		case ch <- msg:
-		default:
-			log.Printf("registry: dropping slow ACP transcript listener (buffer %d full); closing the channel, so the daemon hangs up on that client and it reconnects", cap(ch))
-			delete(r.acpListeners, ch)
-			close(ch)
-		}
+		r.sendACPLocked(ch, msg)
+	}
+}
+
+// sendACPLocked queues msg on one listener, dropping the listener if
+// its buffer is full. Callers hold r.mu.
+func (r *Registry) sendACPLocked(ch AcpListener, msg wire.AcpTranscriptMsg) {
+	select {
+	case ch <- msg:
+	default:
+		log.Printf("registry: dropping slow ACP transcript listener (buffer %d full); closing the channel, so the daemon hangs up on that client and it reconnects", cap(ch))
+		delete(r.acpListeners, ch)
+		close(ch)
 	}
 }
 

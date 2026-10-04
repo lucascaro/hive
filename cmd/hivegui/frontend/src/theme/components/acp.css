@@ -1,0 +1,117 @@
+/* ACP session tile body (spec 496): the transcript, the pending
+   permission request and the prompt box, over the hidden terminal body.
+   Tokens only, so every theme preset works. Plan and tool rows reuse the
+   activity renderers' classes (activity.css). */
+
+/* Hidden, not display:none: the xterm keeps its box, as in the
+   activity grid, and an ACP session has no PTY to render anyway. */
+.term-host.acp .term-body { visibility: hidden; }
+
+.acp-transcript {
+  position: absolute;
+  /* Below the 28px tile header (tile-header.css). */
+  top: 28px;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 3;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  background: var(--term-bg);
+  color: var(--term-fg);
+  font-family: var(--font-ui);
+  font-size: var(--text-md);
+}
+.acp-transcript__log {
+  flex: 1 1 0;
+  min-height: 0;
+  overflow-y: auto;
+  padding: var(--space-2) var(--space-3);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+.acp-transcript__empty { color: var(--fg-muted); font-size: var(--text-sm); }
+
+.acp-item { margin: 0; min-width: 0; overflow-wrap: anywhere; }
+.acp-item__text { white-space: pre-wrap; }
+.acp-item__origin {
+  display: block;
+  color: var(--fg-subtle);
+  font-size: var(--text-xs);
+}
+.acp-item--user {
+  align-self: flex-end;
+  max-width: 85%;
+  padding: var(--space-1) var(--space-2);
+  border-radius: var(--radius-md);
+  background: var(--sel);
+}
+.acp-item--thought { color: var(--fg-muted); font-size: var(--text-sm); }
+.acp-item--plan { list-style: none; padding: 0; font-size: var(--text-sm); }
+.acp-item--tool { font-size: var(--text-sm); }
+
+/* Agent Markdown (components/Markdown.tsx), as plan-review styles it. */
+.acp-item--agent p { margin: 0 0 var(--space-2); }
+.acp-item--agent p:last-child { margin-bottom: 0; }
+.acp-item--agent ul,
+.acp-item--agent ol { margin: 0 0 var(--space-2); padding-left: var(--space-5); }
+.acp-item--agent .hv-md-heading { margin: var(--space-2) 0 var(--space-1); }
+.acp-item--agent code { font-family: var(--font-mono); font-size: var(--text-sm); }
+.acp-item--agent .hv-md-code {
+  margin: 0 0 var(--space-2);
+  padding: var(--space-2);
+  overflow-x: auto;
+  border-radius: var(--radius-sm);
+  background: var(--surface-raised);
+  font-family: var(--font-mono);
+  font-size: var(--text-sm);
+}
+.acp-item--agent blockquote {
+  margin: 0 0 var(--space-2);
+  padding-left: var(--space-3);
+  border-left: 2px solid var(--border);
+  color: var(--fg-muted);
+}
+.acp-item--agent .hv-md-link { text-decoration: underline dotted; }
+
+.acp-permission {
+  margin: 0;
+  min-width: 0;
+  padding: var(--space-2);
+  border: 1px solid var(--state-attention);
+  border-radius: var(--radius-md);
+  background: var(--surface);
+}
+.acp-permission__title {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  margin-bottom: var(--space-2);
+  color: var(--fg);
+}
+.acp-permission__actions { display: flex; flex-wrap: wrap; gap: var(--space-2); }
+
+.acp-prompt {
+  flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  padding: var(--space-2) var(--space-3);
+  border-top: 1px solid var(--border);
+  background: var(--surface);
+}
+.acp-prompt textarea {
+  resize: none;
+  padding: var(--space-1) var(--space-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--term-bg);
+  color: var(--fg);
+  font-family: var(--font-ui);
+  font-size: var(--text-md);
+}
+.acp-prompt textarea:focus { outline: none; border-color: var(--accent); }
+.acp-prompt__bar { display: flex; align-items: center; justify-content: space-between; gap: var(--space-2); }
+.acp-prompt__hint { color: var(--fg-subtle); font-size: var(--text-xs); }

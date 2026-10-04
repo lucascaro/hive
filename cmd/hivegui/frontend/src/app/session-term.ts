@@ -40,7 +40,7 @@ import {
 } from './file-link-provider.js';
 import { isFileUri, parseFileUri } from '../lib/file-links.js';
 import { resolveSessionCwd } from './selectors.js';
-import type { AttachOutcome, SessionInfo } from './state.js';
+import { isAcpSession, type AttachOutcome, type SessionInfo } from './state.js';
 import {
   addDismissedDead,
   addTileChrome,
@@ -328,6 +328,7 @@ export class SessionTerm {
     this.decoder = new TextDecoder('utf-8', { fatal: false });
     this.host = document.createElement('div');
     this.host.className = 'term-host';
+    this.host.classList.toggle('acp', isAcpSession(info));
     this.host.dataset.sid = info.id;
     this.host.style.setProperty('--session-color', info.color || '#888');
 
@@ -1133,7 +1134,13 @@ export class SessionTerm {
   }
 
   setInfo(info: SessionInfo) {
+    const wasAcp = isAcpSession(this.info);
     this.info = info;
+    // An ACP session has no terminal: the transcript view covers the
+    // body (components/acp/) and xterm is hidden under it. A session
+    // whose kind flips back to a terminal attaches now.
+    this.host.classList.toggle('acp', isAcpSession(info));
+    if (wasAcp && !isAcpSession(info)) void this.ensureAttached();
     this.host.style.setProperty('--session-color', info.color || '#888');
     this.header.setAttribute('aria-label', `Session ${info.name}`);
     // Name, worktree marker and state icon are NOT published here: the
@@ -1405,6 +1412,10 @@ export class SessionTerm {
       );
       return 'deferred';
     }
+    // An ACP session has no PTY to attach to; the daemon would refuse
+    // with acp_session. Not _pendingAttach: no resize can change that,
+    // only setInfo seeing the kind flip.
+    if (isAcpSession(this.info)) return 'deferred';
     // If the host is still display:none, the body has no box yet and
     // fit.fit() would measure 0x0. Defer until ResizeObserver fires
     // with a real size — _onBodyResize will re-enter ensureAttached.

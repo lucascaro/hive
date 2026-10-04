@@ -55,6 +55,9 @@ vi.mock('../../src/bridge.js', () => {
     CheckForUpdates: fn(),
     ApplyUpdate: fn(),
     RestartDaemon: fn(),
+    GetAcpTranscript: fn(),
+    PromptAcp: fn(),
+    AnswerPermission: fn(),
   };
 });
 
@@ -376,5 +379,20 @@ describe('tile rename', () => {
     if (!el) throw new Error('no rename input');
     fireEvent.keyDown(el, { key: 'Enter' });
     expect(UpdateSession).not.toHaveBeenCalled();
+  });
+});
+
+// Spec 496: an ACP session's tile body is its transcript, portalled
+// into the overlay host beside the dead and phase overlays.
+describe('ACP tile body', () => {
+  it('mounts the transcript for an ACP session only', () => {
+    const { host } = mount({ kind: 'acp' });
+    expect(host.querySelector('.tile-overlays .acp-transcript')).not.toBeNull();
+    expect(host.querySelector('textarea[data-acp-prompt]')).not.toBeNull();
+  });
+
+  it('mounts nothing extra for a terminal session', () => {
+    const { host } = mount();
+    expect(host.querySelector('.acp-transcript')).toBeNull();
   });
 });

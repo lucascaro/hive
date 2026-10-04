@@ -100,6 +100,22 @@ const findBox: KeyScope = {
   bindings: () => [],
 };
 
+const acpPrompt: KeyScope = {
+  // An ACP tile's prompt box (spec 496) owns plain typing while it has
+  // focus, as the find box does: Enter sends and Shift+Enter is a
+  // newline, both handled by the box itself; ⌘/Ctrl chords go on down
+  // to the app.
+  id: 'acp-prompt',
+  active: () =>
+    Boolean(
+      (document.activeElement as HTMLElement | null)?.hasAttribute?.(
+        'data-acp-prompt',
+      ),
+    ),
+  owns: 'text-input',
+  bindings: () => [],
+};
+
 const inlineRename: KeyScope = {
   // An inline rename owns the keyboard while it is open: Escape cancels
   // the edit, and every other key is text the user is typing. Here rather
@@ -316,6 +332,7 @@ const plugins: KeyScope = {
 
 export const KEY_SCOPES: readonly KeyScope[] = [
   findBox,
+  acpPrompt,
   inlineRename,
   choiceDialog,
   launcher,

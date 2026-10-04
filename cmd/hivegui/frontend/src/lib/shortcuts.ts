@@ -398,9 +398,10 @@ function rawGroups(isMac: boolean): { title: string; items: Row[] }[] {
       items: [
         { keys: '1–9', label: 'Pick agent by number' },
         {
-          keys: `${arrowSeq(isMac, 'up', 'down')} / Tab`,
+          keys: arrowSeq(isMac, 'up', 'down'),
           label: 'Navigate items',
         },
+        { keys: 'Tab', label: 'Next item (palette) · next field (launcher)' },
         { keys: keyLabel('enter', isMac), label: 'Confirm' },
         { keys: 'Esc', label: 'Dismiss / cancel' },
         {

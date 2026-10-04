@@ -125,6 +125,13 @@ Decided in [mocks/sidebar-redesign.html](mocks/sidebar-redesign.html) (G3c).
 - **Stale:** `data-stale` recolours tool names, marks and pips to `--fg-subtle`; the head says how long the tier has been quiet.
 - Read-only and never focusable: no buttons, no `tabIndex`, and the root cancels `mousedown` so the terminal keeps the keyboard.
 
+## ACP transcript (tile body) — `src/components/acp/AcpTranscript.tsx`
+
+- The body of an ACP session's tile (spec 496), portalled into `.tile-overlays` by `TileChrome.tsx` the way the activity tile is. `session-term.ts` puts `.acp` on the `.term-host` and never attaches; `acp.css` hides `.term-body` under it. The dead and phase overlays (`z-index: 5`) still cover it.
+- **Log** (`.acp-transcript__log`, `role="log"`): user turns right-aligned on `--sel` with `--radius-md`, with an `--fg-subtle --text-xs` origin line when someone other than the user here sent them ("From plugin …", "Earlier turn"); agent text through `Markdown` (untrusted, never `innerHTML`); thoughts in `--fg-muted --text-sm`; plan and tool rows reuse the activity classes (`hv-activity__step`, `hv-activity__call`), so their marks and colours match the activity panel. It follows the bottom while the user is there.
+- **Permission card** (`.acp-permission`, a `<fieldset>`): `--surface` with a `--state-attention` border and the `state-waiting-permission` icon; one `Button` per option the agent offered, `primary` for the allow kinds.
+- **Prompt** (`.acp-prompt`): a textarea marked `data-acp-prompt` on `--surface` above a `--border` rule. Enter sends and Shift+Enter is a newline, with the hint shown under it; Send is disabled while the agent works. The `acp-prompt` key scope (text-input) gives it plain typing, and focusing an ACP tile focuses it; answering a permission hands focus back to it. Rows are memoized, so a streamed chunk re-renders only its own row.
+
 ## Form fields (project editor, settings)
 
 - Label `--text-sm --fg-muted` above input. Input 28px, `--surface-raised`, `--border`, `--radius-sm`, `--text-md`; focus → border `--accent`. Colour input keeps native picker, wrapped in a 28px swatch button.

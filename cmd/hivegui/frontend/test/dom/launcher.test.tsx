@@ -22,7 +22,7 @@ import type { main } from '../../wailsjs/go/models';
 import { isMac } from '../../src/lib/platform.js';
 import { hiveStateView as state } from '../../src/store/store.js';
 
-const AGENTS: main.AgentInfo[] = [
+const AGENTS = [
   {
     id: 'shell',
     name: 'Shell',
@@ -48,7 +48,12 @@ const AGENTS: main.AgentInfo[] = [
     installCmd: [],
     takesPrompt: true,
   },
-] as main.AgentInfo[];
+].map((a) => ({
+  acp: false,
+  acpAvailable: false,
+  acpExperimental: false,
+  ...a,
+})) as main.AgentInfo[];
 
 // Held so a test can decide WHEN ListAgents resolves — the in-flight
 // query case needs to type between the open and the resolve.
@@ -635,6 +640,7 @@ describe('launcher branch name', () => {
       continueConversation: false,
       initialPrompt: '',
       ideaId: '',
+      kind: '',
     });
   });
 
@@ -783,6 +789,10 @@ describe('launcher branch name', () => {
     expect(warn()?.textContent).toBe('');
   });
 
+  const worktreeBox = () =>
+    launcher().querySelector(
+      '.launcher-worktree input[type=checkbox]',
+    ) as HTMLInputElement;
   const tab = (shift = false) => {
     act(() => {
       (document.activeElement ?? launcher()).dispatchEvent(
@@ -802,13 +812,16 @@ describe('launcher branch name', () => {
     // dismissed the launcher and discarded the brief.
     //
     // The worktree toggle is ON, so the branch field is in the cycle —
-    // the full search → prompt → branch → search rotation, asserted by
-    // element and not merely by "focus is still somewhere inside".
+    // the full search → prompt → toggle → branch → search rotation,
+    // asserted by element and not merely by "focus is still somewhere
+    // inside".
     await open({ initialPrompt: 'seeded', ideaId: 'i7', forceWorktree: true });
     expect(document.activeElement).toBe(searchBox());
 
     tab();
     expect(document.activeElement).toBe(promptBox());
+    tab();
+    expect(document.activeElement).toBe(worktreeBox());
     tab();
     expect(document.activeElement).toBe(branchBox());
     tab();
@@ -820,7 +833,7 @@ describe('launcher branch name', () => {
     tab(true);
     expect(document.activeElement).toBe(branchBox());
     tab(true);
-    expect(document.activeElement).toBe(promptBox());
+    expect(document.activeElement).toBe(worktreeBox());
   });
 
   it('drops the branch field from the cycle when the worktree toggle is off', async () => {
@@ -828,12 +841,14 @@ describe('launcher branch name', () => {
     // convention rather than offsetParent: jsdom has no layout, so an
     // offsetParent rule collapses the field list and makes the test
     // above assert nothing. With the toggle off the branch box carries
-    // `.hidden`, so the cycle is search → prompt → search.
+    // `.hidden`, so the cycle is search → prompt → toggle → search.
     await open({ initialPrompt: 'seeded', ideaId: 'i7' });
     expect(branchBox().classList.contains('hidden')).toBe(true);
 
     tab();
     expect(document.activeElement).toBe(promptBox());
+    tab();
+    expect(document.activeElement).toBe(worktreeBox());
     tab();
     expect(document.activeElement).toBe(searchBox());
   });
@@ -1096,5 +1111,139 @@ describe('launcher teardown', () => {
       await Promise.resolve();
     });
     expect(launcher().classList.contains('hidden')).toBe(true);
+  });
+});
+
+// Spec 496: Terminal or ACP, offered when some agent can run as ACP.
+describe('launcher session kind', () => {
+  const ACP_AGENTS = [
+    { ...AGENTS[0] },
+    { ...AGENTS[1], acp: true, acpAvailable: true },
+    {
+      ...AGENTS[2],
+      acp: true,
+      acpAvailable: false,
+      acpReason: 'Node.js (npx) was not found on your login PATH',
+    },
+    {
+      ...AGENTS[1],
+      id: 'gemini',
+      name: 'Gemini',
+      acp: true,
+      acpAvailable: true,
+      acpExperimental: true,
+    },
+  ] as main.AgentInfo[];
+  async function openACP(opts?: Parameters<typeof open>[0]) {
+    const { projectId, ...rest } = opts ?? {};
+    await openWith(() => openLauncher(projectId ?? 'p1', rest));
+    await settleAgents(ACP_AGENTS);
+  }
+  const radio = (k: string) =>
+    launcher().querySelector(
+      `.launcher-kind input[value="${k}"]`,
+    ) as HTMLInputElement;
+  const row = (name: string) =>
+    rows().find((r) => r.querySelector('.agent-name')?.textContent === name);
+
+  it('is not offered when no agent can run as ACP', async () => {
+    await open();
+    expect(launcher().querySelector('.launcher-kind')).toBeNull();
+    press('2');
+    expect(sent().kind).toBe('');
+  });
+
+  it('defaults to Terminal on every opening', async () => {
+    await openACP();
+    expect(radio('pty').checked).toBe(true);
+    fireEvent.click(radio('acp'));
+    expect(radio('acp').checked).toBe(true);
+    act(() => closeLauncher());
+    await openACP();
+    expect(radio('pty').checked).toBe(true);
+  });
+
+  it('launches kind acp for an agent that can run it', async () => {
+    await openACP();
+    fireEvent.click(radio('acp'));
+    fireEvent.click(row('Claude') as HTMLElement);
+    expect(sent().kind).toBe('acp');
+    expect(sent().agent).toBe('claude');
+  });
+
+  it('disables a row that cannot run as ACP, with the reason, and stays open', async () => {
+    await openACP();
+    expect(row('Codex CLI')?.getAttribute('data-available')).toBeNull();
+    fireEvent.click(radio('acp'));
+    const codex = row('Codex CLI') as HTMLElement;
+    expect(codex.getAttribute('data-available')).toBe('false');
+    expect(codex.querySelector('.install-tag')?.textContent).toContain('npx');
+    expect(row('Shell')?.querySelector('.install-tag')?.textContent).toBe(
+      'No ACP support',
+    );
+    fireEvent.click(codex);
+    expect(createSession).not.toHaveBeenCalled();
+    expect(launcher().classList.contains('hidden')).toBe(false);
+  });
+
+  it('labels an unprobed adapter experimental, only in ACP mode', async () => {
+    await openACP();
+    expect(row('Gemini')?.querySelector('.experimental-tag')).toBeNull();
+    fireEvent.click(radio('acp'));
+    expect(row('Gemini')?.querySelector('.experimental-tag')?.textContent).toBe(
+      'experimental',
+    );
+  });
+
+  it('is reached by Tab, at its checked radio, and Tab no longer moves the selection', async () => {
+    await openACP();
+    const sel = selectedName();
+    const tabKey = (shift = false) =>
+      act(() => {
+        (document.activeElement ?? launcher()).dispatchEvent(
+          new window.KeyboardEvent('keydown', {
+            key: 'Tab',
+            shiftKey: shift,
+            bubbles: true,
+          }),
+        );
+      });
+    const wt = launcher().querySelector(
+      '.launcher-worktree input',
+    ) as HTMLInputElement;
+    tabKey();
+    expect(document.activeElement).toBe(wt);
+    tabKey();
+    expect(document.activeElement).toBe(radio('pty'));
+    fireEvent.click(radio('acp'));
+    tabKey();
+    expect(document.activeElement).toBe(searchBox());
+    tabKey(true);
+    expect(document.activeElement).toBe(radio('acp'));
+    expect(selectedName()).toBe(sel);
+    expect(launcher().classList.contains('hidden')).toBe(false);
+  });
+
+  it('leaves the arrows to the radio group once Tab has reached it', async () => {
+    await openACP();
+    const sel = selectedName();
+    radio('pty').focus();
+    let delivered = true;
+    act(() => {
+      delivered = radio('pty').dispatchEvent(
+        new window.KeyboardEvent('keydown', {
+          key: 'ArrowDown',
+          bubbles: true,
+          cancelable: true,
+        }),
+      );
+    });
+    expect(delivered).toBe(true); // not consumed: the browser moves the radio
+    expect(selectedName()).toBe(sel);
+  });
+
+  it('is not offered for an opening with a prompt', async () => {
+    await openACP({ initialPrompt: 'do the thing' });
+    expect(launcher().querySelector('.launcher-kind')).toBeNull();
   });
 });
