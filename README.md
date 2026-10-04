@@ -15,6 +15,12 @@ What works:
 - Projects (name, color, working dir) — sidebar tree
 - Agent launcher (Claude, Codex, Gemini, Copilot, Aider, Pi, shell) — hide the
   agents you don't use and pin favourites to the top in Settings → Agents
+- ACP sessions: pick **ACP** instead of **Terminal** in the launcher
+  (Tab reaches the choice) and Claude, Codex or Pi runs over the Agent
+  Client Protocol (via `npx` and your Node), with a transcript instead of
+  a terminal: messages, plan steps, tool calls, permission requests you
+  allow or deny in place, and a prompt box. Gemini and Copilot are
+  marked experimental
 - Grid view: per-project (⌘G) or all-sessions (⇧⌘G), spatial arrow nav
 - Multi-window (⇧⌘N) — independent windows share the same daemon
 - BEL → desktop notification + visual pulse on non-focused sessions

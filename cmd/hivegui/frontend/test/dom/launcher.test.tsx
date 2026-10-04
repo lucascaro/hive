@@ -1224,6 +1224,24 @@ describe('launcher session kind', () => {
     expect(launcher().classList.contains('hidden')).toBe(false);
   });
 
+  it('leaves the arrows to the radio group once Tab has reached it', async () => {
+    await openACP();
+    const sel = selectedName();
+    radio('pty').focus();
+    let delivered = true;
+    act(() => {
+      delivered = radio('pty').dispatchEvent(
+        new window.KeyboardEvent('keydown', {
+          key: 'ArrowDown',
+          bubbles: true,
+          cancelable: true,
+        }),
+      );
+    });
+    expect(delivered).toBe(true); // not consumed: the browser moves the radio
+    expect(selectedName()).toBe(sel);
+  });
+
   it('is not offered for an opening with a prompt', async () => {
     await openACP({ initialPrompt: 'do the thing' });
     expect(launcher().querySelector('.launcher-kind')).toBeNull();

@@ -400,7 +400,11 @@ function LauncherBody({
       // text. Tab does NOT stand in for them there; see the Tab branch
       // below, which cycles the popup's own text fields whenever a
       // prompt box exists so the textarea is reachable at all.
-      const inPrompt = e.target === promptRef.current;
+      // The Terminal/ACP radio group keeps its own arrows too: that is
+      // how a radio choice moves once Tab has reached it.
+      const inPrompt =
+        e.target === promptRef.current ||
+        (e.target as Element | null)?.closest?.('.launcher-kind') != null;
       if (e.key === 'ArrowDown' && !inPrompt)
         return handle(() => moveSelection(+1));
       if (e.key === 'ArrowUp' && !inPrompt)

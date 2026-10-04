@@ -55,7 +55,13 @@
 .launcher-item .agent-name { flex: 1; min-width: 0; }
 .launcher-item[data-available='false'] .agent-name { color: var(--fg-subtle); }
 .launcher-item .install-tag {
-  flex-shrink: 0;
+  /* Shrinks and ellipsizes: an ACP-unavailable reason is a sentence,
+     and the row's title attribute carries all of it. */
+  flex-shrink: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
   font-family: var(--font-mono);
   font-size: var(--text-xs);
   color: var(--fg-subtle);
