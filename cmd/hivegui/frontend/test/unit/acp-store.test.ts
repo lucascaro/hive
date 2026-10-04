@@ -192,23 +192,18 @@ describe('acp store', () => {
     expect(acpStore.getState().byId.get('s1')?.failed).toBe(false);
   });
 
-  it('a pending prompt survives a reconnect and a different user turn', () => {
+  it('a pending prompt survives a different user turn, not a reconnect', () => {
     applyAcpFrame(msg({ reset: true, items: [] }));
     noteSentPrompt('s1', 'go');
     applyAcpFrame(
       msg({ items: [{ id: 1, kind: 'user', text: 'other', origin: 'user' }] }),
     );
     expect(acpStore.getState().byId.get('s1')?.sent).toBe('go');
+    // Its refusal could only come on the old connection, which is gone.
     resetAcpOnSessionList(new Set(['s1']));
-    expect(acpStore.getState().byId.get('s1')?.sent).toBe('go');
-    // The refetched snapshot records it.
-    applyAcpFrame(
-      msg({
-        reset: true,
-        items: [{ id: 2, kind: 'user', text: 'go', origin: 'user' }],
-      }),
-    );
     expect(acpStore.getState().byId.get('s1')?.sent).toBeNull();
+    applyAcpError({ code: 'session_dead', session_id: 's1' });
+    expect(acpStore.getState().byId.get('s1')?.returned).toBeNull();
   });
 
   it('forgetAcp deletes the entry', () => {
@@ -252,5 +247,45 @@ describe('applyAcp bounds', () => {
     expect(next.items).toHaveLength(MAX_ITEMS);
     expect(next.items[0].id).toBe(2);
     expect(next.items.at(-1)?.text).toBe('new');
+  });
+});
+
+describe('pending prompt matching', () => {
+  const SID2 = 'p1';
+  const seed = (
+    items: { id: number; kind: string; text?: string; origin?: string }[],
+  ) => {
+    acpStore.setState({ byId: new Map() });
+    applyAcpFrame({ session_id: SID2, epoch: 1, reset: true, items });
+  };
+  const entry = () => acpStore.getState().byId.get(SID2);
+
+  it('is not matched by an identical older turn in a snapshot', () => {
+    seed([]);
+    noteSentPrompt(SID2, 'again');
+    applyAcpFrame({
+      session_id: SID2,
+      epoch: 1,
+      reset: true,
+      items: [{ id: 1, kind: 'user', text: 'again', origin: 'user' }],
+    });
+    expect(entry()?.sent).toBe('again');
+    applyAcpError({ code: 'acp_busy', session_id: SID2 });
+    expect(entry()?.returned).toBe('again');
+  });
+
+  it('is matched by the daemon-clipped form of a long prompt', () => {
+    seed([]);
+    const long = `${'é'.repeat(40000)}tail`;
+    noteSentPrompt(SID2, long);
+    const clipped = `${'é'.repeat(32767)}�\n\n[… truncated by Hive]`;
+    applyAcpFrame({
+      session_id: SID2,
+      epoch: 1,
+      items: [{ id: 1, kind: 'user', text: clipped, origin: 'user' }],
+    });
+    expect(entry()?.sent).toBeNull();
+    applyAcpError({ code: 'session_dead', session_id: SID2 });
+    expect(entry()?.returned).toBeNull();
   });
 });

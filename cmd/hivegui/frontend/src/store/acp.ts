@@ -70,11 +70,31 @@ export function applyAcpFrame(msg: AcpTranscriptMsg): void {
     if (tx === e.tx) return e;
     // A reset answers the request; a stale mark asks for another.
     const requested = msg.reset ? false : tx.loaded ? e.requested : false;
+    // Only a delta records a prompt: a snapshot may hold an older,
+    // identical turn, which says nothing about this one.
     const recorded =
       e.sent !== null &&
-      (msg.items ?? []).some((it) => it.kind === 'user' && it.text === e.sent);
+      !msg.reset &&
+      (msg.items ?? []).some(
+        (it) =>
+          it.kind === 'user' && recordsPrompt(it.text ?? '', e.sent ?? ''),
+      );
     return { ...e, tx, requested, sent: recorded ? null : e.sent };
   });
+}
+
+// The daemon clips a prompt at 64 KiB of UTF-8 and marks the cut
+// (internal/acp truncatedMark); the cut may split a character, which
+// encoding/json writes as U+FFFD. So a clipped turn records a prompt
+// that starts with what it kept.
+const TRUNCATED_MARK = '\n\n[… truncated by Hive]';
+function recordsPrompt(recorded: string, sent: string): boolean {
+  if (recorded === sent) return true;
+  if (!recorded.endsWith(TRUNCATED_MARK)) return false;
+  const kept = recorded
+    .slice(0, -TRUNCATED_MARK.length)
+    .replace(/\uFFFD+$/, '');
+  return kept.length > 0 && sent.startsWith(kept);
 }
 
 export function requestAcpTranscript(id: string): void {
@@ -98,11 +118,16 @@ export function resetAcpOnSessionList(liveIds: ReadonlySet<string>): void {
   const m = new Map<string, AcpEntry>();
   for (const [id, e] of byId) {
     if (liveIds.has(id))
+      // A prompt pending on the old connection is dropped: its refusal,
+      // if any, will never arrive, and keeping it would hand it back on
+      // some later, unrelated refusal. A refused prompt already waiting
+      // for its box is kept.
       m.set(id, {
         ...e,
         tx: { ...e.tx, loaded: false },
         requested: false,
         failed: false,
+        sent: null,
       });
   }
   acpStore.setState({ byId: m });
