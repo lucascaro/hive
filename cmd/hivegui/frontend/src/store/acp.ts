@@ -150,6 +150,14 @@ export function returnSentPrompt(id: string): void {
   );
 }
 
+// usePromptPending reports whether a sent prompt is still waiting for
+// the daemon to record or refuse it. One at a time: a second send would
+// replace `sent`, and the first one's refusal would then return the
+// wrong text.
+export function usePromptPending(id: string): boolean {
+  return useStore(acpStore, (s) => (s.byId.get(id)?.sent ?? null) !== null);
+}
+
 // useReturnedPrompt is the refused prompt waiting for its box, if any.
 export function useReturnedPrompt(id: string): string | null {
   return useStore(acpStore, (s) => s.byId.get(id)?.returned ?? null);

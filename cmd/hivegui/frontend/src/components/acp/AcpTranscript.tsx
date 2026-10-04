@@ -29,6 +29,7 @@ import {
   returnSentPrompt,
   takeReturnedPrompt,
   useAcpTranscript,
+  usePromptPending,
   useReturnedPrompt,
   type AcpLoad,
 } from '../../store/acp.js';
@@ -252,6 +253,10 @@ function PromptBox({
   onSent: () => void;
 }): ReactNode {
   const [text, setText] = useState('');
+  // The last prompt not yet recorded or refused blocks the next one
+  // (store/acp.ts usePromptPending), as a running turn does.
+  const pending = usePromptPending(sessionId);
+  const blocked = busy || pending;
   // A prompt the daemon refused (store/acp.ts applyAcpError), or one
   // that never reached it, comes back here rather than being lost —
   // unless the user has already started typing another.
@@ -263,7 +268,7 @@ function PromptBox({
   }, [returned, sessionId]);
   const send = () => {
     const t = text.trim();
-    if (!t || busy) return;
+    if (!t || blocked) return;
     setText('');
     onSent();
     noteSentPrompt(sessionId, t);
@@ -307,7 +312,7 @@ function PromptBox({
         <Button
           label="Send"
           kind="primary"
-          disabled={busy || !text.trim()}
+          disabled={blocked || !text.trim()}
           onClick={send}
         />
       </div>

@@ -279,4 +279,23 @@ describe('AcpTranscript', () => {
     act(() => applyAcpError({ code: 'not_acp_session', session_id: SID }));
     expect(container.textContent).toContain("Couldn't load the transcript");
   });
+
+  it('sends one prompt at a time, until the daemon records it', async () => {
+    const { container } = render(<AcpTranscript sessionId={SID} />);
+    frame({ reset: true, items: [] });
+    const box = container.querySelector(
+      'textarea[data-acp-prompt]',
+    ) as HTMLTextAreaElement;
+    fireEvent.change(box, { target: { value: 'first' } });
+    fireEvent.keyDown(box, { key: 'Enter' });
+    await flush();
+    fireEvent.change(box, { target: { value: 'second' } });
+    fireEvent.keyDown(box, { key: 'Enter' });
+    expect(PromptAcp).toHaveBeenCalledTimes(1);
+    expect(box.value).toBe('second');
+    frame({ items: [{ id: 1, kind: 'user', text: 'first', origin: 'user' }] });
+    fireEvent.keyDown(box, { key: 'Enter' });
+    expect(PromptAcp).toHaveBeenCalledTimes(2);
+    expect(PromptAcp).toHaveBeenLastCalledWith(SID, 'second');
+  });
 });
