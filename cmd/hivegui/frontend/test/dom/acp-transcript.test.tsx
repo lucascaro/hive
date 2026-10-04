@@ -149,6 +149,11 @@ describe('AcpTranscript', () => {
     );
     fireEvent.click(getByText('Deny'));
     expect(AnswerPermission).toHaveBeenCalledWith(SID, '1-3', 'reject');
+    // One answer per request: the card's buttons go inert until the
+    // daemon's next message clears it.
+    expect((getByText('Allow').closest('button') as HTMLButtonElement).disabled).toBe(true);
+    fireEvent.click(getByText('Allow'));
+    expect(AnswerPermission).toHaveBeenCalledTimes(1);
     frame({ items: [] }); // the daemon's next message carries no permission
     expect(container.querySelector('.acp-permission')).toBeNull();
   });

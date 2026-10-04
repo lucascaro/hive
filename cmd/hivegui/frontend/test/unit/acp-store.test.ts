@@ -307,3 +307,20 @@ describe('pending prompt matching', () => {
     expect(entry()?.returned).toBe('abc');
   });
 });
+
+describe('pending prompt on an unloaded copy', () => {
+  it('is cleared by its delta even when the fold drops it', () => {
+    acpStore.setState({ byId: new Map() });
+    applyAcpFrame({ session_id: 'u1', epoch: 1, reset: true, items: [] });
+    resetAcpOnSessionList(new Set(['u1'])); // unloaded: deltas are dropped
+    noteSentPrompt('u1', 'hi');
+    applyAcpFrame({
+      session_id: 'u1',
+      epoch: 1,
+      items: [{ id: 1, kind: 'user', text: 'hi', origin: 'user' }],
+    });
+    expect(acpStore.getState().byId.get('u1')?.sent).toBeNull();
+    applyAcpError({ code: 'session_dead', session_id: 'u1' });
+    expect(acpStore.getState().byId.get('u1')?.returned).toBeNull();
+  });
+});

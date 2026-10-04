@@ -72,6 +72,8 @@ export function AcpTranscript({ sessionId }: { sessionId: string }): ReactNode {
         )}
         {tx.permission ? (
           <PermissionCard
+            // One card per request, so its answered state starts fresh.
+            key={tx.permission.request_id}
             sessionId={sessionId}
             perm={tx.permission}
             // The button that was clicked unmounts with the card; without
@@ -202,6 +204,9 @@ function PermissionCard({
   perm: AcpPermission;
   onAnswered: () => void;
 }): ReactNode {
+  // One answer per request: a second click would only earn
+  // permission_stale while the daemon's next message is on its way.
+  const [answered, setAnswered] = useState(false);
   return (
     <fieldset className="acp-permission" aria-label="Permission request">
       <div className="acp-permission__title">
@@ -215,7 +220,9 @@ function PermissionCard({
             label={o.name}
             kind={isAllowOption(o) ? 'primary' : 'default'}
             extra={{ 'data-option-kind': o.kind }}
+            disabled={answered}
             onClick={() => {
+              setAnswered(true);
               AnswerPermission(sessionId, perm.request_id, o.option_id).catch(
                 reportFailure('answer permission'),
               );

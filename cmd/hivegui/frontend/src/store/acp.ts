@@ -66,12 +66,10 @@ export function applyAcpFrame(msg: AcpTranscriptMsg): void {
   // Deltas for a session nobody has shown are not worth an entry.
   if (!msg.reset && !acpStore.getState().byId.has(msg.session_id)) return;
   patch(msg.session_id, (e) => {
-    const tx = applyAcp(e.tx, msg);
-    if (tx === e.tx) return e;
-    // A reset answers the request; a stale mark asks for another.
-    const requested = msg.reset ? false : tx.loaded ? e.requested : false;
     // Only a delta records a prompt: a snapshot may hold an older,
-    // identical turn, which says nothing about this one.
+    // identical turn, which says nothing about this one. Judged on the
+    // message itself, before the fold — a delta the fold drops (the
+    // copy is unloaded or stale) still proves the daemon recorded it.
     const recorded =
       e.sent !== null &&
       !msg.reset &&
@@ -79,7 +77,12 @@ export function applyAcpFrame(msg: AcpTranscriptMsg): void {
         (it) =>
           it.kind === 'user' && recordsPrompt(it.text ?? '', e.sent ?? ''),
       );
-    return { ...e, tx, requested, sent: recorded ? null : e.sent };
+    const sent = recorded ? null : e.sent;
+    const tx = applyAcp(e.tx, msg);
+    if (tx === e.tx) return sent === e.sent ? e : { ...e, sent };
+    // A reset answers the request; a stale mark asks for another.
+    const requested = msg.reset ? false : tx.loaded ? e.requested : false;
+    return { ...e, tx, requested, sent };
   });
 }
 

@@ -75,3 +75,53 @@ test('an ACP session runs a prompt, a permission and a reply in its transcript',
     page.locator('.term-host.visible .xterm-helper-textarea').first(),
   ).toBeFocused();
 });
+
+test('an ACP tile keeps its place at the bottom across a switch away and back', async ({
+  page,
+}) => {
+  // A hidden tile is display:none (layout.css), which reads as
+  // scrollTop 0 while hidden; Chromium and WebKit both restore the
+  // offset on show, so the transcript comes back at the newest message.
+  // This pins that, rather than a re-pin Hive would have to add.
+  await boot(page);
+  await page.keyboard.press(`${mod}+t`);
+  const launcher = page.locator('#launcher');
+  await launcher.locator('.launcher-kind input[value="acp"]').click();
+  await launcher.locator('.launcher-item', { hasText: 'Claude' }).click();
+  const tile = page.locator('.term-host.acp.visible');
+  const prompt = tile.locator('textarea[data-acp-prompt]');
+  await expect(prompt).toBeFocused();
+  // Long enough to overflow the log several times over.
+  await prompt.fill(
+    Array.from({ length: 120 }, (_, i) => `line ${i}`).join('\n'),
+  );
+  await page.keyboard.press('Enter');
+  await tile
+    .locator('.acp-permission')
+    .getByRole('button', { name: 'Allow' })
+    .click();
+  await expect(tile.locator('.acp-item--agent')).toContainText('[allow]');
+  const log = tile.locator('.acp-transcript__log');
+  const atBottom = () =>
+    log.evaluate((el) => el.scrollHeight - el.scrollTop - el.clientHeight < 8);
+  await expect.poll(atBottom).toBe(true);
+  expect(
+    await log.evaluate((el) => el.scrollHeight > el.clientHeight * 2),
+  ).toBe(true);
+  const sid = await tile.getAttribute('data-sid');
+
+  await page.keyboard.press(`${mod}+ArrowUp`);
+  await expect(page.locator('.term-host.acp.visible')).toHaveCount(0);
+  await page.keyboard.press(`${mod}+ArrowDown`);
+  const back = page.locator(
+    `.term-host.acp.visible[data-sid="${sid}"] .acp-transcript__log`,
+  );
+  await expect(back).toBeVisible();
+  await expect
+    .poll(() =>
+      back.evaluate(
+        (el) => el.scrollHeight - el.scrollTop - el.clientHeight < 8,
+      ),
+    )
+    .toBe(true);
+});
