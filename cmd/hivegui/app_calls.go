@@ -51,6 +51,12 @@ type AgentInfo struct {
 	ACPAvailable    bool   `json:"acpAvailable"`
 	ACPReason       string `json:"acpReason,omitempty"`
 	ACPExperimental bool   `json:"acpExperimental"`
+	// ACPModes is the agent's ACP permission modes, least permissive
+	// first, and ACPDefaultMode the ceiling with no setting — for the
+	// Settings screen's ceiling picker. Empty when Hive cannot cap the
+	// agent's mode (Gemini, Copilot).
+	ACPModes       []agent.ACPMode `json:"acpModes,omitempty"`
+	ACPDefaultMode string          `json:"acpDefaultMode,omitempty"`
 }
 
 // ListAgents returns every agent definition — built-ins plus the
@@ -59,6 +65,9 @@ type AgentInfo struct {
 func (a *App) ListAgents() []AgentInfo {
 	defs := agent.All()
 	out := make([]AgentInfo, 0, len(defs))
+	// The ACP gates (Pi's unattended setting) are judged on the same
+	// file hived reads at spawn.
+	st := agent.SpawnSettings()
 	for _, d := range defs {
 		info := AgentInfo{
 			ID:         string(d.ID),
@@ -75,7 +84,8 @@ func (a *App) ListAgents() []AgentInfo {
 		if spec := d.ACP(); spec != nil {
 			info.ACP = true
 			info.ACPExperimental = spec.Experimental
-			info.ACPAvailable, info.ACPReason = d.ACPAvailable()
+			info.ACPModes, info.ACPDefaultMode = spec.Modes, spec.DefaultMode
+			info.ACPAvailable, info.ACPReason = d.ACPAvailable(st)
 		}
 		out = append(out, info)
 	}
@@ -144,6 +154,10 @@ type AgentSettings struct {
 	LayaEnabled bool   `json:"laya_enabled"`
 	LayaURL     string `json:"laya_url"`
 	LayaModel   string `json:"laya_model"`
+	// ACPModeCeiling is, per agent id, the most permissive mode an ACP
+	// session of that agent may run in (spec 496). Missing = the
+	// agent's default. Read by hived at every ACP start.
+	ACPModeCeiling map[string]string `json:"acp_mode_ceiling"`
 }
 
 // GetAgentSettings reads agent-settings.json. A malformed file is an
@@ -154,6 +168,7 @@ func (a *App) GetAgentSettings() (AgentSettings, error) {
 	return AgentSettings{
 		ClaudeTaskTools: s.ClaudeTaskTools, PiTodoTool: s.PiTodoTool,
 		LayaEnabled: s.LayaEnabled, LayaURL: s.LayaURL, LayaModel: s.LayaModel,
+		ACPModeCeiling: s.ACPModeCeiling,
 	}, err
 }
 
@@ -165,6 +180,7 @@ func (a *App) SaveAgentSettings(s AgentSettings) error {
 	return agent.SaveSettings(agent.Settings{
 		ClaudeTaskTools: s.ClaudeTaskTools, PiTodoTool: s.PiTodoTool,
 		LayaEnabled: s.LayaEnabled, LayaURL: s.LayaURL, LayaModel: s.LayaModel,
+		ACPModeCeiling: s.ACPModeCeiling,
 	})
 }
 

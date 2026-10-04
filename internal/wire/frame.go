@@ -243,6 +243,16 @@ const (
 	FrameAcpTranscript    FrameType = 0x40 // S → C, JSON, control
 	FramePromptAcp        FrameType = 0x41 // C → S, JSON, control
 	FrameAnswerPermission FrameType = 0x42 // C → S, JSON, control
+	// SUBMIT_RESULT carries an ACP session's typed result from its own
+	// `hived mcp-submit` server (or Hive's Pi extension), on a
+	// ModeSession connection bound to that session. It is checked
+	// against the session's per-start nonce and then reported in
+	// ACP_TRANSCRIPT's result fields. Answered with SUBMIT_RESULT_OK
+	// once it is recorded, or ERROR: the submit tool returns to the
+	// agent only after that, so the turn cannot end before the daemon
+	// holds the result and be reported as having none.
+	FrameSubmitResult   FrameType = 0x43 // C → S, JSON, control
+	FrameSubmitResultOK FrameType = 0x44 // S → C, JSON, control
 )
 
 // ControlRequestFrames lists every frame a control-mode client may send.
@@ -264,6 +274,7 @@ var ControlRequestFrames = []FrameType{
 	FrameListPlugins, FrameInstallPlugin, FrameSetPluginEnabled, FrameRemovePlugin,
 	FrameSetPluginConfig, FrameSetClientUI,
 	FrameGetAcpTranscript, FramePromptAcp, FrameAnswerPermission,
+	FrameSubmitResult,
 }
 
 // ControlEventFrames lists every frame the daemon sends on a control
@@ -275,6 +286,7 @@ var ControlEventFrames = []FrameType{
 	FrameIdeas, FrameIdeaEvent, FrameActivity,
 	FrameTranscriptMatches, FrameTranscriptLines, FramePlanReview,
 	FramePlugins, FramePluginEvent, FrameAcpTranscript,
+	FrameSubmitResultOK,
 }
 
 // NonControlFrames are the frames that never travel on a control
@@ -391,6 +403,10 @@ func (t FrameType) String() string {
 		return "PROMPT_ACP"
 	case FrameAnswerPermission:
 		return "ANSWER_PERMISSION"
+	case FrameSubmitResult:
+		return "SUBMIT_RESULT"
+	case FrameSubmitResultOK:
+		return "SUBMIT_RESULT_OK"
 	case FrameGetActivity:
 		return "GET_ACTIVITY"
 	case FrameActivity:

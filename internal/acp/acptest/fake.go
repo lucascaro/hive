@@ -26,6 +26,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"sync"
 	"time"
@@ -43,7 +44,24 @@ const (
 	FlagBlock = "block"
 	// FlagNoLoad makes initialize report loadSession: false.
 	FlagNoLoad = "no-load"
+	// FlagSubmit makes each prompt ask permission for the submit tool of
+	// the first MCP server it was given, as Claude's adapter names it
+	// (mcp__<server>__submit_result), before its other work.
+	FlagSubmit = "submit"
+	// FlagEscalate makes each prompt switch, on its own, to the most
+	// permissive mode (current_mode_update), as an adapter that
+	// escalates would.
+	FlagEscalate = "escalate"
+	// FlagEscalateOnAllow makes an allow answer to a FlagPermission
+	// request switch the mode up, as Claude's exit-plan card does.
+	FlagEscalateOnAllow = "escalate-on-allow"
+	// FlagSetModeFails makes session/set_mode fail.
+	FlagSetModeFails = "set-mode-fails"
 )
+
+// Modes is what the fake advertises, least permissive first: Claude's
+// adapter's ids then Codex's, so a test can use either agent's def.
+var Modes = []string{"plan", "default", "acceptEdits", "auto", "bypassPermissions", "read-only", "workspace-write", "agent", "agent-full-access"}
 
 // IsAgent reports whether this process was started as the fake agent.
 func IsAgent() bool { return os.Getenv(EnvAgent) == "1" }
@@ -106,6 +124,7 @@ type fake struct {
 	mu      sync.Mutex
 	next    int
 	pending map[string]chan json.RawMessage
+	servers map[string]string // sessionId -> first MCP server name
 }
 
 // Main runs the fake agent on stdin/stdout until stdin closes.
@@ -115,6 +134,7 @@ func Main() {
 		flags:   map[string]bool{},
 		out:     bufio.NewWriter(os.Stdout),
 		pending: map[string]chan json.RawMessage{},
+		servers: map[string]string{},
 	}
 	for fl := range strings.SplitSeq(os.Getenv("HIVE_FAKE_ACP_FLAGS"), ",") {
 		f.flags[fl] = true
@@ -203,9 +223,48 @@ func (f *fake) handle(id json.RawMessage, method string, params json.RawMessage)
 		Prompt    []struct {
 			Text string `json:"text"`
 		} `json:"prompt"`
+		ModeID     string `json:"modeId"`
+		MCPServers []struct {
+			Name    string   `json:"name"`
+			Command string   `json:"command"`
+			Args    []string `json:"args"`
+			Env     []struct {
+				Name  string `json:"name"`
+				Value string `json:"value"`
+			} `json:"env"`
+		} `json:"mcpServers"`
 	}
 	_ = json.Unmarshal(params, &p)
-	f.log(method, p.SessionID)
+	if method == "session/set_mode" {
+		// The mode is part of the line, so a test can see what was set.
+		f.log(method, p.SessionID+" "+p.ModeID)
+	} else {
+		f.log(method, p.SessionID)
+	}
+	// "mcp <sessionId> <name> <command> <args…> <env names…>", one line
+	// per server received, so a test can check new and load both got it.
+	logMCP := func(sid string) {
+		for i, m := range p.MCPServers {
+			if i == 0 {
+				f.mu.Lock()
+				f.servers[sid] = m.Name
+				f.mu.Unlock()
+			}
+			line := []string{m.Name, m.Command}
+			line = append(line, m.Args...)
+			for _, e := range m.Env {
+				line = append(line, e.Name)
+			}
+			f.log("mcp", sid+" "+strings.Join(line, " "))
+		}
+	}
+	modes := func() map[string]any {
+		var avail []any
+		for _, m := range Modes {
+			avail = append(avail, map[string]any{"id": m})
+		}
+		return map[string]any{"currentModeId": "agent", "availableModes": avail}
+	}
 	reply := func(res any) { f.send(msg{ID: id, Result: res}) }
 	fail := func(code int, text string) {
 		f.send(msg{ID: id, Error: map[string]any{"code": code, "message": text}})
@@ -213,6 +272,17 @@ func (f *fake) handle(id json.RawMessage, method string, params json.RawMessage)
 
 	switch method {
 	case "initialize":
+		// "env <name>…": the HIVE_* and PI_ACP_* variables the adapter
+		// was started with (names only), so a test sees what reached it.
+		var names []string
+		for _, kv := range os.Environ() {
+			k, _, _ := strings.Cut(kv, "=")
+			if (strings.HasPrefix(k, "HIVE_") && !strings.HasPrefix(k, "HIVE_FAKE_ACP")) || strings.HasPrefix(k, "PI_ACP_") {
+				names = append(names, k)
+			}
+		}
+		slices.Sort(names)
+		f.log("env", strings.Join(names, " "))
 		reply(map[string]any{"protocolVersion": 1, "agentCapabilities": map[string]any{"loadSession": !f.flags[FlagNoLoad]}})
 	case "session/new":
 		sid := fmt.Sprintf("fake-%d", time.Now().UnixNano())
@@ -220,18 +290,26 @@ func (f *fake) handle(id json.RawMessage, method string, params json.RawMessage)
 			fail(-32603, err.Error())
 			return
 		}
-		reply(map[string]any{"sessionId": sid, "modes": map[string]any{
-			"currentModeId": "default", "availableModes": []any{map[string]any{"id": "default"}},
-		}})
+		logMCP(sid)
+		reply(map[string]any{"sessionId": sid, "modes": modes()})
 	case "session/load":
 		turns, ok := f.turns(p.SessionID)
 		if !ok {
 			fail(-32002, "unknown session "+p.SessionID)
 			return
 		}
+		logMCP(p.SessionID)
 		for _, t := range turns {
 			f.update(p.SessionID, map[string]any{"sessionUpdate": "user_message_chunk", "content": map[string]any{"type": "text", "text": t.User}})
 			f.update(p.SessionID, map[string]any{"sessionUpdate": "agent_message_chunk", "content": map[string]any{"type": "text", "text": t.Agent}})
+		}
+		// Like Codex's adapter, a load comes back in the adapter's own
+		// default mode, whatever was set before.
+		reply(map[string]any{"modes": modes()})
+	case "session/set_mode":
+		if f.flags[FlagSetModeFails] || !slices.Contains(Modes, p.ModeID) {
+			fail(-32602, "Invalid params")
+			return
 		}
 		reply(map[string]any{})
 	case "session/prompt":
@@ -247,6 +325,23 @@ func (f *fake) handle(id json.RawMessage, method string, params json.RawMessage)
 		f.update(p.SessionID, map[string]any{"sessionUpdate": "tool_call", "toolCallId": "t1", "title": "Read file", "kind": "read", "status": "pending",
 			"content": []any{map[string]any{"type": "content", "content": map[string]any{"type": "text", "text": "reading"}}}})
 		answer := ""
+		if f.flags[FlagSubmit] {
+			f.mu.Lock()
+			server := f.servers[p.SessionID]
+			f.mu.Unlock()
+			res := f.request("session/request_permission", map[string]any{
+				"sessionId": p.SessionID,
+				"toolCall":  map[string]any{"toolCallId": "s1", "title": "submit_result", "name": "mcp__" + server + "__submit_result"},
+				"options": []any{
+					map[string]any{"optionId": "allow-once", "name": "Yes", "kind": "allow_once"},
+					map[string]any{"optionId": "reject", "name": "No", "kind": "reject_once"},
+				},
+			})
+			answer += " [submit " + outcome(res) + "]"
+		}
+		if f.flags[FlagEscalate] {
+			f.update(p.SessionID, map[string]any{"sessionUpdate": "current_mode_update", "currentModeId": "bypassPermissions"})
+		}
 		if f.flags[FlagPermission] {
 			res := f.request("session/request_permission", map[string]any{
 				"sessionId": p.SessionID,
@@ -256,14 +351,11 @@ func (f *fake) handle(id json.RawMessage, method string, params json.RawMessage)
 					map[string]any{"optionId": "reject", "name": "Deny", "kind": "reject_once"},
 				},
 			})
-			var r struct {
-				Outcome struct {
-					Outcome  string `json:"outcome"`
-					OptionID string `json:"optionId"`
-				} `json:"outcome"`
+			o := outcome(res)
+			answer += " [" + o + "]"
+			if f.flags[FlagEscalateOnAllow] && o == "selected:allow" {
+				f.update(p.SessionID, map[string]any{"sessionUpdate": "current_mode_update", "currentModeId": "acceptEdits"})
 			}
-			_ = json.Unmarshal(res, &r)
-			answer = " [" + r.Outcome.Outcome + ":" + r.Outcome.OptionID + "]"
 		}
 		if f.flags[FlagBlock] {
 			for deadline := time.Now().Add(10 * time.Second); time.Now().Before(deadline); time.Sleep(10 * time.Millisecond) {
@@ -287,4 +379,16 @@ func (f *fake) handle(id json.RawMessage, method string, params json.RawMessage)
 	default:
 		fail(-32601, "unsupported method "+method)
 	}
+}
+
+// outcome renders a permission response as "<outcome>:<optionId>".
+func outcome(res json.RawMessage) string {
+	var r struct {
+		Outcome struct {
+			Outcome  string `json:"outcome"`
+			OptionID string `json:"optionId"`
+		} `json:"outcome"`
+	}
+	_ = json.Unmarshal(res, &r)
+	return r.Outcome.Outcome + ":" + r.Outcome.OptionID
 }

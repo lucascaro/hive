@@ -1,5 +1,7 @@
 package wire
 
+import "encoding/json"
+
 // Session kinds, carried by CreateSpec.Kind and SessionInfo.Kind. Empty
 // means KindPTY on both, so every session persisted or created before
 // spec 496 is a terminal session with no migration.
@@ -104,6 +106,35 @@ type AcpTranscriptMsg struct {
 	// Permission is the request currently pending, or nil when none is.
 	// Every message carries it, so a client simply overwrites.
 	Permission *AcpPermission `json:"permission,omitempty"`
+	// The typed result of the latest prompt, carried like Permission on
+	// every message. PromptID is the ID of that prompt's user item (0
+	// before the first prompt). ResultStatus is "" while the turn runs
+	// with nothing submitted, AcpResultSubmitted once Result holds the
+	// submit tool's arguments, and AcpResultNone when the turn ended
+	// without one — never success (F3 in acp-workflows.md). Every
+	// prompt clears all three.
+	PromptID     int             `json:"prompt_id,omitempty"`
+	ResultStatus string          `json:"result_status,omitempty"`
+	Result       json.RawMessage `json:"result,omitempty"`
+}
+
+// ResultStatus values.
+const (
+	AcpResultSubmitted = "submitted"
+	AcpResultNone      = "none"
+)
+
+// MaxAcpResult bounds a submitted result's JSON, so a model cannot park
+// megabytes in every ACP_TRANSCRIPT message.
+const MaxAcpResult = 64 * 1024
+
+// SubmitResultReq is the SUBMIT_RESULT payload. There is no session id:
+// the connection is a ModeSession one, bound to the session its HELLO
+// named, and Nonce proves the sender is that session's own submit
+// server rather than any process holding HIVE_SOCKET.
+type SubmitResultReq struct {
+	Nonce  string          `json:"nonce"`
+	Result json.RawMessage `json:"result"`
 }
 
 // GetAcpTranscriptReq is the GET_ACP_TRANSCRIPT payload.
@@ -138,4 +169,11 @@ const (
 	// ErrCodePermissionStale: ANSWER_PERMISSION for a request that is no
 	// longer pending, or with an option it did not offer.
 	ErrCodePermissionStale = "permission_stale"
+	// ErrCodeSubmitRejected: SUBMIT_RESULT with a wrong nonce, for a
+	// session that is not ACP or not running, or with a result that is
+	// not a JSON object or exceeds MaxAcpResult.
+	ErrCodeSubmitRejected = "submit_rejected"
+	// ErrCodeACPModeAboveCeiling: CREATE_SESSION asked for an ACP mode
+	// above the user's ceiling for that agent. Refused, never lowered.
+	ErrCodeACPModeAboveCeiling = "acp_mode_above_ceiling"
 )

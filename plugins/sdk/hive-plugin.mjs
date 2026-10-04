@@ -93,6 +93,8 @@ export const Frame = Object.freeze({
   ACP_TRANSCRIPT: 0x40,
   PROMPT_ACP: 0x41,
   ANSWER_PERMISSION: 0x42,
+  SUBMIT_RESULT: 0x43,
+  SUBMIT_RESULT_OK: 0x44,
 });
 
 const frameName = new Map(Object.entries(Frame).map(([k, v]) => [v, k]));

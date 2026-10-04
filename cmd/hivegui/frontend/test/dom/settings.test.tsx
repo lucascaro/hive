@@ -38,7 +38,18 @@ const testLayaConnection = vi.fn(
 // from. Three agents, the same shape the Go side returns.
 const CATALOG = [
   { id: 'shell', name: 'Shell', color: '#888888', available: true },
-  { id: 'claude', name: 'Claude', color: '#d97757', available: true },
+  {
+    id: 'claude',
+    name: 'Claude',
+    color: '#d97757',
+    available: true,
+    acpModes: [
+      { id: 'plan', label: 'Plan' },
+      { id: 'default', label: 'Manual' },
+      { id: 'acceptEdits', label: 'Accept edits' },
+    ],
+    acpDefaultMode: 'default',
+  },
   { id: 'codex', name: 'Codex', color: '#10a37f', available: true },
 ] as main.AgentInfo[];
 const listAgents = vi.fn(
@@ -282,6 +293,7 @@ describe('settings: Claude plan progress toggle', () => {
       laya_enabled: false,
       laya_url: '',
       laya_model: '',
+      acp_mode_ceiling: {},
     });
     expect(el('settings').classList.contains('hidden')).toBe(true);
   });
@@ -369,6 +381,7 @@ describe('settings: Pi plan progress toggle', () => {
       laya_enabled: false,
       laya_url: '',
       laya_model: '',
+      acp_mode_ceiling: {},
     });
   });
 
@@ -1567,5 +1580,48 @@ describe('settings: launcher visibility', () => {
     expect(saveCustomAgents).toHaveBeenCalled();
     expect(el('settings').classList.contains('hidden')).toBe(true);
     expect(localStorage.getItem(PREFS)).toBe(before);
+  });
+});
+
+describe('settings: ACP mode ceiling', () => {
+  const select = () => el<HTMLSelectElement>('settings-acp-ceiling-claude');
+
+  it('lists only agents whose modes Hive knows, at the default', async () => {
+    open();
+    await flush();
+    expect(select().value).toBe('default');
+    expect([...select().options].map((o) => o.text)).toEqual([
+      'Plan',
+      'Manual (default)',
+      'Accept edits',
+    ]);
+    // Codex has no acpModes in this catalog: no picker for it.
+    expect(document.getElementById('settings-acp-ceiling-codex')).toBeNull();
+  });
+
+  it('loads and saves the ceiling per agent', async () => {
+    getAgentSettings.mockResolvedValue({
+      claude_task_tools: true,
+      pi_todo_tool: true,
+      acp_mode_ceiling: { pi: 'unattended' },
+    } as unknown as main.AgentSettings);
+    open();
+    await flush();
+    fireEvent.change(select(), { target: { value: 'acceptEdits' } });
+    click(el('settings-save'));
+    await flush();
+    // An agent's setting the screen does not show is kept, not dropped.
+    expect(saveAgentSettings).toHaveBeenCalledWith(
+      expect.objectContaining({
+        acp_mode_ceiling: { pi: 'unattended', claude: 'acceptEdits' },
+      }),
+    );
+  });
+
+  it('is disabled when agent-settings.json could not be read', async () => {
+    getAgentSettings.mockRejectedValue(new Error('parse agent-settings.json'));
+    open();
+    await flush();
+    expect(select().disabled).toBe(true);
   });
 });

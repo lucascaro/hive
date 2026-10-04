@@ -132,7 +132,7 @@ func TestLoadReplaysHistory(t *testing.T) {
 	rec := &recorder{}
 	b := startFake(t, dir, rec.handler(nil))
 	b.Initialize(ctx(t))
-	if err := b.LoadSession(ctx(t), ns.SessionID, dir, nil); err != nil {
+	if _, err := b.LoadSession(ctx(t), ns.SessionID, dir, nil); err != nil {
 		t.Fatal(err)
 	}
 	if got := rec.transcript(); !slices.Equal(got, []string{"user:one", "agent:echo: one"}) {

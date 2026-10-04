@@ -79,6 +79,12 @@ type Settings struct {
 	// LayaModel names the checkpoint to ask; empty lets the server pick.
 	// This is where a fine-tuned checkpoint plugs in.
 	LayaModel string `json:"laya_model"`
+	// ACPModeCeiling is, per agent id, the most permissive ACP mode an
+	// ACP session of that agent may run in (spec 496, criterion 5). A
+	// missing or unknown entry means the agent's ACPSpec.DefaultMode,
+	// its most restrictive working mode. Read it through ACPCeiling.
+	// Read by hived at every ACP start, like the rest of this file.
+	ACPModeCeiling map[string]string `json:"acp_mode_ceiling"`
 }
 
 // DefaultLayaURL is a Laya server on this machine's default port.
@@ -110,6 +116,9 @@ type settingsFile struct {
 	LayaEnabled     *bool   `json:"laya_enabled,omitempty"`
 	LayaURL         *string `json:"laya_url,omitempty"`
 	LayaModel       *string `json:"laya_model,omitempty"`
+	// A map rather than a pointer: a missing agent key already reads
+	// as that agent's default.
+	ACPModeCeiling map[string]string `json:"acp_mode_ceiling,omitempty"`
 }
 
 // DefaultSettings is what a fresh install, or a missing key, means.
@@ -134,6 +143,7 @@ func (f settingsFile) resolve() Settings {
 	if f.LayaModel != nil {
 		s.LayaModel = strings.TrimSpace(*f.LayaModel)
 	}
+	s.ACPModeCeiling = f.ACPModeCeiling
 	return s
 }
 
@@ -180,6 +190,7 @@ func SaveSettings(s Settings) error {
 	blob, err := json.MarshalIndent(settingsFile{
 		ClaudeTaskTools: &s.ClaudeTaskTools, PiTodoTool: &s.PiTodoTool,
 		LayaEnabled: &s.LayaEnabled, LayaURL: &s.LayaURL, LayaModel: &s.LayaModel,
+		ACPModeCeiling: s.ACPModeCeiling,
 	}, "", "  ")
 	if err != nil {
 		return err

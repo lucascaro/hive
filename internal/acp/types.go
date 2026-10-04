@@ -13,6 +13,7 @@ const (
 	MethodSessionPrompt     = "session/prompt"
 	MethodSessionUpdate     = "session/update"
 	MethodRequestPermission = "session/request_permission"
+	MethodSessionSetMode    = "session/set_mode"
 )
 
 type fsCapability struct {
@@ -86,6 +87,16 @@ type loadSessionParams struct {
 	MCPServers []MCPServer `json:"mcpServers"`
 }
 
+// LoadSessionResult is session/load's result.
+type LoadSessionResult struct {
+	Modes *Modes `json:"modes,omitempty"`
+}
+
+type setModeParams struct {
+	SessionID string `json:"sessionId"`
+	ModeID    string `json:"modeId"`
+}
+
 // ContentBlock is a prompt or message content block. Hive sends and
 // renders text only (images are a spec 496 non-goal).
 type ContentBlock struct {
@@ -122,8 +133,17 @@ type Update struct {
 	Title      string `json:"title,omitempty"`
 	Kind       string `json:"kind,omitempty"`
 	Status     string `json:"status,omitempty"`
+	// Name, Meta and RawInput are a tool_call's identity, where the
+	// adapter reports it; a later permission request for the same
+	// ToolCallID is matched against it (see ToolIdentity).
+	Name     string          `json:"name,omitempty"`
+	ToolName string          `json:"toolName,omitempty"`
+	Meta     json.RawMessage `json:"_meta,omitempty"`
+	RawInput json.RawMessage `json:"rawInput,omitempty"`
 	// plan
 	Entries []PlanEntry `json:"entries,omitempty"`
+	// current_mode_update
+	CurrentModeID string `json:"currentModeId,omitempty"`
 }
 
 // TextChunk returns the text of a message or thought chunk's content
@@ -152,6 +172,7 @@ const (
 	UpdateToolCall      = "tool_call"
 	UpdateToolCallPatch = "tool_call_update"
 	UpdatePlan          = "plan"
+	UpdateCurrentMode   = "current_mode_update"
 )
 
 // PermissionOption is one answer the agent offers.
@@ -162,13 +183,14 @@ type PermissionOption struct {
 }
 
 // PermissionToolCall is the tool call a permission request is about.
-// Name and Meta carry the tool's identity where an adapter reports it
-// (Claude: name = mcp__<server>__<tool>); spec 496 phase 3 matches on
-// them, so they are kept raw.
+// Name, ToolName, Meta and RawInput carry the tool's identity where an
+// adapter reports it (Claude: name = mcp__<server>__<tool>);
+// ToolIdentity matches on them, so they are kept raw.
 type PermissionToolCall struct {
 	ToolCallID string          `json:"toolCallId"`
 	Title      string          `json:"title,omitempty"`
 	Name       string          `json:"name,omitempty"`
+	ToolName   string          `json:"toolName,omitempty"`
 	Meta       json.RawMessage `json:"_meta,omitempty"`
 	RawInput   json.RawMessage `json:"rawInput,omitempty"`
 }

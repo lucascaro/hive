@@ -3,9 +3,9 @@
 - **Spec:** [docs/product-specs/496-add-an-acp-session-kind-transcript-view-exact-stat.md](../../product-specs/496-add-an-acp-session-kind-transcript-view-exact-stat.md)
 - **Issue:** #496
 - **Status:** active
-- **Phase:** 2 of 4
-- **PR:** #500
-- **Branch:** feature/496-acp-phase2
+- **Phase:** 3 of 4
+- **PR:**
+- **Branch:**
 
 ## Summary
 
@@ -215,7 +215,7 @@ The contract bumps once per phase because `scripts/check-daemon-contract.sh:36-4
    - Persist the new kind, then call `Restart`.
    - On a failed hand-back, revert to `pty` and `Restart` once.
    - Map the F2 writer-lock error.
-2. `internal/daemon/daemon.go`: a `SET_SESSION_KIND` (0x44) arm through `runOp`. Add the frame in `internal/wire`, bump the contract to 25, and update the three clients, the bridges and the mocks.
+2. `internal/daemon/daemon.go`: a `SET_SESSION_KIND` (0x45; 0x44 went to P3's `SUBMIT_RESULT_OK`) arm through `runOp`. Add the frame in `internal/wire`, bump the contract to 25, and update the three clients, the bridges and the mocks.
 3. GUI commands `take-over-session` and `hand-back-session`.
    - Each declines when the session isn't the right kind.
    - Rows in `shortcuts.ts` with no default key.
@@ -397,6 +397,14 @@ The contract bumps once per phase because `scripts/check-daemon-contract.sh:36-4
 
 ## Decision log
 
+- **2026-10-04** — P3 adds `SUBMIT_RESULT_OK` (0x44), so `SET_SESSION_KIND` moves to 0x45. Why: without an ack, the submit tool could return to the agent before the daemon recorded the result, and a fast turn end would report `none` for a turn that did submit.
+- **2026-10-04** — P3 keeps the submit server's nonce and its MCP server name separate: the name (`hive-<12 hex>`) is part of the tool name the model sees, so it only has to be unique per start; the 32-byte nonce lives in the server's env alone.
+- **2026-10-04** — P3 does not show the result in the transcript view. Criterion 4 asks only that the result can be read over the wire, and the approved P3 file list had no GUI result display; plugins and the engine read it from `ACP_TRANSCRIPT`.
+- **2026-10-04** — Q6 probed (`session/new`, then `session/set_mode` to every advertised mode, then `session/load`; no prompts). Claude 0.85.1 modes: `default` (Manual), `acceptEdits`, `plan`, `auto`, `bypassPermissions`; Codex 2.1.1: `read-only`, `workspace-write`, `agent` (its default), `agent-full-access`. Both accept every advertised id and reject an unknown one. Codex resets to `agent` on `session/load`, so the mode is re-sent after every load, as planned. Neither emits `current_mode_update` for a client `set_mode`; Claude emits one when its exit-plan permission card switches mode.
+- **2026-10-04** — Default ceilings: Claude `default`, Codex `read-only` — the most restrictive mode that still does work (Claude's `plan` cannot edit at all). Operator's choice, on the condition that the workflow engine can pick another mode: `CreateSpec.acp_mode` lets a client ask for any mode at or below the ceiling, and a create above it is refused, never silently lowered. The mode is persisted, so revive re-applies it (clamped to the ceiling as it is then).
+- **2026-10-04** — A mode switch above the ceiling mid-session is allowed only when it follows the user answering a permission card with an allow option, before the next tool call or turn end (operator: "allow the switch if the user selected it"). Claude's exit-plan options carry structured ids (`exit-plan-accept-edits`, …), not mode ids, so the rule keys on "the user just allowed something", not on the option id. Any other switch above the ceiling is reset with `set_mode`; the adapter is killed only if that reset fails. Deviation from the plan's kill-on-mismatch, which would end a session for a click the user made.
+- **2026-10-04** — Gemini and Copilot: their mode ids were never probed, so Hive cannot cap them. ACP stays disabled for them with a reason, and the Experimental chip stays (operator's choice). Pi: its ACP "modes" are thinking levels, not permissions, so Pi's ceiling setting is `off` (default; ACP refused) or `unattended`, and Hive sends no `set_mode` to it.
+- **2026-10-04** — The submit tool takes `{status: "ok"|"error", summary?, data?}`; the arguments are stored raw (size-capped) as the result. A per-node schema is #495's job.
 - **2026-10-03** — P2 deviations from the approved P2 list, each smaller than planned:
   - **No `matched` key scope for Allow/Deny.** The permission card's options are plain buttons (Tab or click). Single-letter keys would collide with typing in the prompt box, and a chord needs a new rebindable command plus help rows for a card that is on screen only while the agent waits. Criterion 2 asks only that the user can allow or deny inline.
   - **No `mocks/acp-transcript.html`.** One layout was on the table; the decision is recorded in `docs/design-docs/ui/README.md` with "no mock", as the Settings-layout row does.
@@ -423,6 +431,8 @@ The contract bumps once per phase because `scripts/check-daemon-contract.sh:36-4
 - **2026-10-03** — Phase 1 implemented and PR #499 opened (daemon core, contract 22).
 - **2026-10-03** — PR #499 merged (phase 1/4). Phase 2 (GUI) starts on `feature/496-acp-phase2`.
 - **2026-10-03** — Phase 2 implemented: transcript tile, ACP store, launcher toggle, `acp-prompt` scope, bindings in all three clients, snapshot ordering fix (contract 23).
+- **2026-10-04** — PR #500 merged (phase 2/4). Phase 3 (typed result + trust) starts on `feature/496-acp-phase3`.
+- **2026-10-04** — Phase 3 implemented: mode ceiling setting and enforcement, Pi gate and shim, `hived mcp-submit`, `SUBMIT_RESULT`/`SUBMIT_RESULT_OK`, result fields, the submit auto-allow (contract 24).
 
 ## Open questions
 

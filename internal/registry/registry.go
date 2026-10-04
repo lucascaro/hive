@@ -117,6 +117,8 @@ type Entry struct {
 	// SpawnedBy is the principal that created the entry ("" = the
 	// user), stamped by the daemon from the creating connection.
 	SpawnedBy string
+	// ACPMode is CreateSpec.ACPMode, persisted ("" = the ceiling).
+	ACPMode string
 	// acp is the running ACP adapter for a KindACP entry, nil when
 	// none runs this lifetime. See acp.go for the rest of its state.
 	acp *acpSession
@@ -125,6 +127,9 @@ type Entry struct {
 	// the next adapter's session/load rebuilds it from the agent's own
 	// store.
 	acpTx acp.Transcript
+	// acpRes is the typed result of the latest prompt in this
+	// transcript epoch. In-memory, like acpTx. Guarded by r.mu.
+	acpRes acpResult
 
 	// Phase is the lifecycle phase surfaced to clients (see the
 	// wire.Phase* constants). In-memory only: never persisted, so a
@@ -1232,6 +1237,7 @@ func (r *Registry) load() error {
 			awaitingChoice: meta.AwaitingWorktreeChoice,
 			Kind:           meta.Kind,
 			SpawnedBy:      meta.SpawnedBy,
+			ACPMode:        meta.ACPMode,
 		}
 		r.order = append(r.order, meta.ID)
 		seen[meta.ID] = true
@@ -1256,6 +1262,7 @@ func (r *Registry) load() error {
 				AgentSessionID: meta.AgentSessionID,
 				Kind:           meta.Kind,
 				SpawnedBy:      meta.SpawnedBy,
+				ACPMode:        meta.ACPMode,
 			}
 			r.order = append(r.order, meta.ID)
 		}
@@ -2023,6 +2030,7 @@ func (r *Registry) persistEntryLocked(e *Entry) error {
 		AwaitingWorktreeChoice: e.awaitingChoice,
 		Kind:                   e.Kind,
 		SpawnedBy:              e.SpawnedBy,
+		ACPMode:                e.ACPMode,
 	})
 }
 

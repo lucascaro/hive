@@ -742,7 +742,9 @@ export async function ListAgents(): Promise<AgentInfo[]> {
       acpAvailable: false,
       acpExperimental: false,
     })),
-  ];
+    // Plain objects: Wails generates AgentInfo as a class (it has a nested
+    // model field, acpModes), and the bridge only ever reads the data.
+  ] as unknown as AgentInfo[];
 }
 export async function ListCustomAgents() {
   await maybeDelay('ListCustomAgents');

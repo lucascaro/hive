@@ -25,9 +25,11 @@ const (
 	// Welcome and the connection never streams DATA.
 	ModeEvent Mode = "event"
 	// ModeSession is a narrowed control connection for a program
-	// running INSIDE a Hive session — `hive idea` today. It reaches the
-	// daemon over the events socket (HIVE_SOCKET), and the daemon
-	// serves only the idea verbs on it: ADD_IDEA and LIST_IDEAS, plus
+	// running INSIDE a Hive session — `hive idea`, and an ACP session's
+	// `hived mcp-submit`. It reaches the daemon over the events socket
+	// (HIVE_SOCKET), and the daemon serves only the idea verbs on it:
+	// ADD_IDEA and LIST_IDEAS, and SUBMIT_RESULT for its own session,
+	// plus
 	// the IDEA_EVENT stream and a SESSIONS snapshot narrowed to the
 	// one session named in Hello.SessionID. Everything else — creating,
 	// attaching to or killing sessions, worktree mutations, shutdown,
@@ -115,6 +117,12 @@ type CreateSpec struct {
 
 	// Kind is KindPTY (the default, also when empty) or KindACP.
 	Kind string `json:"kind,omitempty"`
+	// ACPMode, for an ACP session, asks for one of the agent's ACP
+	// modes (agent.ACPSpec.Modes) instead of the user's ceiling for it.
+	// One above the ceiling is refused (ErrCodeACPModeAboveCeiling),
+	// never lowered. Empty means the ceiling. Persisted, so revive and
+	// restart re-apply it, clamped to the ceiling as it is then.
+	ACPMode string `json:"acp_mode,omitempty"`
 
 	// SpawnedBy is the principal that created the session, stamped by
 	// the daemon from the connection the create arrived on. json:"-"
@@ -1336,7 +1344,8 @@ const (
 	// process inside a session cannot use the environment it was
 	// handed to create, attach to or kill sessions. It is also the
 	// code a ModeSession connection gets for any verb outside
-	// ADD_IDEA / LIST_IDEAS.
+	// ADD_IDEA / LIST_IDEAS / SUBMIT_RESULT, and a control connection
+	// gets for SUBMIT_RESULT.
 	ErrCodeModeNotAllowed = "mode_not_allowed"
 	// ErrCodeWorktreeLabelTooLong is returned when a worktree group's
 	// name exceeds MaxWorktreeLabel. Rejected, never truncated.

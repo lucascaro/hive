@@ -237,9 +237,10 @@ and reply payloads are the Go structs of the same name in
 | `SET_PLUGIN_CONFIG` | `SetPluginConfigReq` | `PLUGIN_EVENT` (updated) |
 | `SET_CLIENT_UI` | `SetClientUIReq` | nothing. The Hive app's own announcement of which plugin UIs it runs; ignored from a plugin |
 | `REMOVE_PLUGIN` | `RemovePluginReq` | `PLUGIN_EVENT` (removed) |
-| `GET_ACP_TRANSCRIPT` | `GetAcpTranscriptReq` | `ACP_TRANSCRIPT` (snapshot). Start an ACP session with `CREATE_SESSION` and `"kind": "acp"` (Claude, Codex, Pi; Gemini and Copilot experimental). It records `spawned_by: "plugin:<id>"` |
+| `GET_ACP_TRANSCRIPT` | `GetAcpTranscriptReq` | `ACP_TRANSCRIPT` (snapshot). Start an ACP session with `CREATE_SESSION` and `"kind": "acp"` (Claude, Codex; Pi only where the user allows unattended tool use; Gemini and Copilot not yet). It runs at the user's mode ceiling for that agent, or at `"acp_mode"` when that is at or below it (`acp_mode_above_ceiling` otherwise). It records `spawned_by: "plugin:<id>"` |
 | `PROMPT_ACP` | `PromptAcpReq` | `ACP_TRANSCRIPT`, `SESSION_EVENT` (state). The turn's origin is recorded as `plugin:<id>` |
 | `ANSWER_PERMISSION` | `AnswerPermissionReq` | `ACP_TRANSCRIPT` |
+| `SUBMIT_RESULT` | `SubmitResultReq` | `SUBMIT_RESULT_OK`, `ACP_TRANSCRIPT` (result). Not for plugins: a plugin socket gets `mode_not_allowed`. An ACP session's own submit server (`hived mcp-submit`) sends it on a session connection, with that session's nonce |
 
 And everything the daemon sends on a control connection:
 
@@ -263,7 +264,8 @@ And everything the daemon sends on a control connection:
 | `PLAN_REVIEW` | Answer to `GET_PLAN_REVIEW`. |
 | `PLUGINS` | Answer to `LIST_PLUGINS`. |
 | `PLUGIN_EVENT` | Broadcast: a plugin was installed, removed, or changed status. |
-| `ACP_TRANSCRIPT` | Answer to `GET_ACP_TRANSCRIPT` (`reset`), and broadcast as an ACP session's transcript changes. |
+| `ACP_TRANSCRIPT` | Answer to `GET_ACP_TRANSCRIPT` (`reset`), and broadcast as an ACP session's transcript changes. Every message also carries the latest prompt's typed result: `prompt_id` (that prompt's user item), `result_status` (`submitted`, `none` once the turn ended without one, or absent while it runs) and `result` (the `submit_result` arguments). |
+| `SUBMIT_RESULT_OK` | Answer to `SUBMIT_RESULT`: the result is recorded. |
 
 The two things to watch most plugins need are `SESSION_EVENT`'s `state`
 (`working`, `waiting_input`, `waiting_permission`, `exited`, `error`,
