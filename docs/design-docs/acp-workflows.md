@@ -263,7 +263,7 @@ engine-driven workflow produces neither, so this track has its own gates:
 | Gate | Passed when | Status |
 |---|---|---|
 | A — protocol | the probe's go/no-go is **go** | passed (this doc) |
-| B — ACP session kind | ≥2 real tasks run as `acp` sessions for each of Claude and Pi, at least 1 per agent taken over in a PTY and handed back, with no lost turns ([run log](#gate-b-run-log)). The fake-agent test `TestTakeoverHandBackLosesNoTurn` is the automated no-lost-turn proof; these runs confirm it against the real adapters | open — spec 1 shipped (#499–#501 and phase 4); the run log below is not yet filled |
+| B — ACP session kind | ≥2 real tasks run as `acp` sessions for each of Claude and Pi, at least 1 per agent taken over in a PTY and handed back, with no lost turns ([run log](#gate-b-run-log)). The fake-agent test `TestTakeoverHandBackLosesNoTurn` is the automated no-lost-turn proof; these runs confirm it against the real adapters | open — spec 1 shipped (#499–#502); the run log below is not yet filled (#503) |
 | C — engine | ≥5 runs of the plan → implement → review loop in two weeks that the user would repeat, at least one with a cross-vendor reviewer | after spec 2 |
 | D — monitoring | ≥3 code-defined workflows each reused ≥3 times | before spec 4 |
 

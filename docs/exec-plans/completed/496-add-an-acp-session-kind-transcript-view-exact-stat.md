@@ -2,7 +2,7 @@
 
 - **Spec:** [docs/product-specs/496-add-an-acp-session-kind-transcript-view-exact-stat.md](../../product-specs/496-add-an-acp-session-kind-transcript-view-exact-stat.md)
 - **Issue:** #496
-- **Status:** active
+- **Status:** completed
 - **Phase:** 4 of 4
 - **PR:** #502
 - **Branch:** feature/496-acp-phase4
@@ -447,6 +447,7 @@ The contract bumps once per phase because `scripts/check-daemon-contract.sh:36-4
 - **2026-10-04** — Phase 4 implemented: `Registry.SetKind`, `SET_SESSION_KIND` (0x45), F2 writer-lock mapping and revert, Pi session-map resolution, Take Over / Hand Back commands, gate B rewrite and run log (contract 25).
 - **2026-10-04** — Gate FAIL (third run, all three dimensions); DESIGN.md's ACP and daemon entries did not mention the mode ceiling, `session/set_mode` or `hived mcp-submit` — fixed on the branch. The same run found Windows CI red on two new Pi submit socket tests, now skipped on Windows like the file's other unix-socket tests (456c72ed).
 - **2026-10-04** — Gate FAIL (phase 4); DESIGN.md:16 missing takeover/hand-back and SET_SESSION_KIND. Criterion 9 NEEDS_FOLLOWUP: gate B run log empty.
+- **2026-10-04** — Gate NEEDS_FOLLOWUP (phase 4); criterion 9: gate B run log has no real Claude or Pi runs yet. Operator chose to advance; tracked as #503.
 
 ## Open questions
 
@@ -512,3 +513,9 @@ The contract bumps once per phase because `scripts/check-daemon-contract.sh:36-4
     - acceptance — NEEDS_FOLLOWUP — criteria 1–8 pass (registry, daemon, acp, agent, wire tests; playwright acp-session 3/3); criterion 9: gate B rewritten for Claude and Pi, but the run log has 0 rows — the operator's real runs close it
     - non-goals — PASS — PTY paths unchanged outside ACP/kind gates (kill() Info() snapshot is a lock fix with an equivalent payload); no picker, search, export, images, engine, bundled adapters or Hive-as-agent
     - doc accuracy — FAIL — DESIGN.md:16 omits takeover/hand-back (SetKind, SET_SESSION_KIND, takeover_refused, acp_writer_locked, the switching lock); changeset, features.json, README, plugins.md, SDK tables, contract 25, acp-session-kind.md, acp-workflows.md (check-doc passes), menu/help/accelerators all accurate
+- **2026-10-04** — verdict: NEEDS_FOLLOWUP; phase: 4/4; checks: 2 passed / 0 failed / 1 followups; followups: #503; one-line: doc-accuracy re-run after the DESIGN.md fix (82c57383) passes; acceptance and non-goals carried (the change since was docs and one test). Criterion 9 waits on the gate B run log.
+  - 2026-10-04 dimensions:
+    - acceptance — NEEDS_FOLLOWUP — carried: criteria 1–8 pass; criterion 9 run log has 0 rows (needs the operator's real Claude and Pi runs)
+    - non-goals — PASS — carried
+    - doc accuracy — PASS — DESIGN.md:16 now names SetKind, SET_SESSION_KIND, the switching lock, takeover_refused, the revert and acp_writer_locked, each true against acp.go and daemon.go; check-doc passes
+
