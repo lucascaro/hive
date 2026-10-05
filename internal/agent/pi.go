@@ -1,8 +1,8 @@
 package agent
 
 import (
-	"encoding/json"
 	_ "embed"
+	"encoding/json"
 	"fmt"
 	"log"
 	"os"

@@ -230,6 +230,7 @@ func TestTakeoverWhileWorkingRejected(t *testing.T) {
 	dir := useFakeACP(t, acptest.FlagBlock)
 	transcriptOK(t, true)
 	useFakeCLI(t, "", nil)
+	t.Cleanup(func() { _ = acptest.Release(dir) })
 	r := freshRegistry(t)
 	e := createACP(t, r, wire.CreateSpec{Name: "a"})
 	if err := r.PromptACP(e.ID, "one", wire.OriginUser); err != nil {
@@ -238,7 +239,6 @@ func TestTakeoverWhileWorkingRejected(t *testing.T) {
 	if err := r.SetKind(e.ID, wire.KindPTY); !errors.Is(err, ErrACPBusy) {
 		t.Errorf("SetKind mid-turn = %v, want ErrACPBusy", err)
 	}
-	_ = acptest.Release(dir)
 }
 
 // Pi resumes by the id pi-acp mapped the ACP session to; an ACP id
@@ -285,5 +285,44 @@ func TestTakeoverPiResolvesSessionMap(t *testing.T) {
 	}
 	if got := cli.calls(); len(got) != 1 || !slices.Equal(got[0][:3], []string{"pi", "--session-id", sid}) {
 		t.Errorf("terminal argv = %q, want pi --session-id %s", got, sid)
+	}
+}
+
+func TestSetKindUnknownSession(t *testing.T) {
+	r := freshRegistry(t)
+	if err := r.SetKind("nope", wire.KindPTY); !errors.Is(err, ErrNotFound) {
+		t.Errorf("SetKind(unknown) = %v, want ErrNotFound", err)
+	}
+}
+
+// pi-acp mapping the ACP id to a different Pi id is refused: Hive keeps
+// one id for both kinds, so a hand-back would load the wrong one.
+func TestTakeoverPiMappedToOtherIDRefused(t *testing.T) {
+	useFakeACP(t)
+	useSettings(t, withCeiling(map[string]string{"pi": agent.ACPModeUnattended}))
+	transcriptOK(t, true)
+	cli := useFakeCLI(t, "", nil)
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	t.Setenv("USERPROFILE", home)
+	r := freshRegistry(t)
+	e := createACP(t, r, wire.CreateSpec{Name: "p", Agent: string(agent.IDPi)})
+	sid := agentSessionID(r, e.ID)
+	mapDir := filepath.Join(home, ".pi", "pi-acp")
+	if err := os.MkdirAll(mapDir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	body := `{"sessions":{"` + sid + `":{"sessionFile":"/s/2026-10-04T10-00-00-000Z_other-id.jsonl"}}}`
+	if err := os.WriteFile(filepath.Join(mapDir, "session-map.json"), []byte(body), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := r.SetKind(e.ID, wire.KindPTY); !errors.Is(err, ErrTakeoverRefused) {
+		t.Fatalf("SetKind = %v, want ErrTakeoverRefused", err)
+	}
+	if in := info(r, e.ID); in.Kind != wire.KindACP || persistedKind(t, r, e.ID) != wire.KindACP {
+		t.Errorf("refused takeover changed the kind to %q", in.Kind)
+	}
+	if n := len(cli.calls()); n != 0 {
+		t.Errorf("refused takeover spawned %d terminals", n)
 	}
 }
