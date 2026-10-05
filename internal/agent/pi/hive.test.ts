@@ -1138,7 +1138,7 @@ function replyFrame(conn: net.Socket, type: number, payload: unknown) {
   conn.write(Buffer.concat([head, body]));
 }
 
-test("submitResult sends one SUBMIT_RESULT on a session connection and waits for the ack", async () => {
+test("submitResult sends one SUBMIT_RESULT on a session connection and waits for the ack", unixOnly, async () => {
   const d = await fakeSubmitDaemon((c) => replyFrame(c, 0x44, {}));
   try {
     const r = await mod.submitResult(d.sock, "s1", "n0nce", { status: "ok", summary: "done" });
@@ -1151,7 +1151,7 @@ test("submitResult sends one SUBMIT_RESULT on a session connection and waits for
   }
 });
 
-test("submitResult reports the daemon's refusal", async () => {
+test("submitResult reports the daemon's refusal", unixOnly, async () => {
   const d = await fakeSubmitDaemon((c) => replyFrame(c, 0x06, { code: "submit_rejected", message: "no turn is running" }));
   try {
     assert.deepEqual(await mod.submitResult(d.sock, "s1", "n", { status: "ok" }), { ok: false, error: "no turn is running" });
