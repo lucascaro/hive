@@ -25,6 +25,9 @@ import (
 type fakeCLI struct {
 	mu    sync.Mutex
 	argvs [][]string
+	// failFrom, when above 0, makes the failFrom-th launch and every one
+	// after it fail, as a CLI missing from PATH would.
+	failFrom int
 }
 
 func useFakeCLI(t *testing.T, dir string, turn *acptest.Turn) *fakeCLI {
@@ -33,7 +36,11 @@ func useFakeCLI(t *testing.T, dir string, turn *acptest.Turn) *fakeCLI {
 	t.Cleanup(SetStartSessionForTest(func(opts session.Options) (*session.Session, error) {
 		f.mu.Lock()
 		f.argvs = append(f.argvs, opts.Cmd)
+		fail := f.failFrom > 0 && len(f.argvs) >= f.failFrom
 		f.mu.Unlock()
+		if fail {
+			return nil, errors.New("fake CLI: not found")
+		}
 		if turn != nil && len(opts.Cmd) > 2 {
 			if err := acptest.AppendTurn(dir, opts.Cmd[2], *turn); err != nil {
 				return nil, err
@@ -272,14 +279,7 @@ func TestTakeoverPiResolvesSessionMap(t *testing.T) {
 	r := freshRegistry(t)
 	e := createACP(t, r, wire.CreateSpec{Name: "p", Agent: string(agent.IDPi)})
 	sid := agentSessionID(r, e.ID)
-	mapDir := filepath.Join(home, ".pi", "pi-acp")
-	if err := os.MkdirAll(mapDir, 0o700); err != nil {
-		t.Fatal(err)
-	}
-	body := `{"sessions":{"` + sid + `":{"sessionFile":"/s/2026-10-04T10-00-00-000Z_` + sid + `.jsonl"}}}`
-	if err := os.WriteFile(filepath.Join(mapDir, "session-map.json"), []byte(body), 0o600); err != nil {
-		t.Fatal(err)
-	}
+	writePiMap(t, home, sid, sid)
 	if err := r.SetKind(e.ID, wire.KindPTY); err != nil {
 		t.Fatalf("SetKind = %v", err)
 	}
@@ -308,14 +308,7 @@ func TestTakeoverPiMappedToOtherIDRefused(t *testing.T) {
 	r := freshRegistry(t)
 	e := createACP(t, r, wire.CreateSpec{Name: "p", Agent: string(agent.IDPi)})
 	sid := agentSessionID(r, e.ID)
-	mapDir := filepath.Join(home, ".pi", "pi-acp")
-	if err := os.MkdirAll(mapDir, 0o700); err != nil {
-		t.Fatal(err)
-	}
-	body := `{"sessions":{"` + sid + `":{"sessionFile":"/s/2026-10-04T10-00-00-000Z_other-id.jsonl"}}}`
-	if err := os.WriteFile(filepath.Join(mapDir, "session-map.json"), []byte(body), 0o600); err != nil {
-		t.Fatal(err)
-	}
+	writePiMap(t, home, sid, "other-id")
 	if err := r.SetKind(e.ID, wire.KindPTY); !errors.Is(err, ErrTakeoverRefused) {
 		t.Fatalf("SetKind = %v, want ErrTakeoverRefused", err)
 	}
@@ -324,5 +317,203 @@ func TestTakeoverPiMappedToOtherIDRefused(t *testing.T) {
 	}
 	if n := len(cli.calls()); n != 0 {
 		t.Errorf("refused takeover spawned %d terminals", n)
+	}
+}
+
+// writePiMap writes pi-acp's session map under home, mapping ACP id
+// acpID to a Pi session file for piID.
+func writePiMap(t *testing.T, home, acpID, piID string) {
+	t.Helper()
+	mapDir := filepath.Join(home, ".pi", "pi-acp")
+	if err := os.MkdirAll(mapDir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	body := `{"sessions":{"` + acpID + `":{"sessionFile":"/s/2026-10-04T10-00-00-000Z_` + piID + `.jsonl"}}}`
+	if err := os.WriteFile(filepath.Join(mapDir, "session-map.json"), []byte(body), 0o600); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func (f *fakeCLI) failFromLaunch(n int) {
+	f.mu.Lock()
+	f.failFrom = n
+	f.mu.Unlock()
+}
+
+// A second switch, or a new turn, while one switch runs is refused, so
+// a double click cannot interleave two restarts and a prompt cannot be
+// accepted only to be killed by the restart.
+func TestSwitchInProgressRefusesSwitchAndPrompt(t *testing.T) {
+	useFakeACP(t)
+	transcriptOK(t, true)
+	cli := useFakeCLI(t, "", nil)
+	r := freshRegistry(t)
+	e := createACP(t, r, wire.CreateSpec{Name: "a"})
+	r.mu.Lock()
+	r.entries[e.ID].switching = true
+	r.mu.Unlock()
+	if err := r.SetKind(e.ID, wire.KindPTY); !errors.Is(err, ErrACPBusy) {
+		t.Errorf("SetKind during a switch = %v, want ErrACPBusy", err)
+	}
+	if err := r.PromptACP(e.ID, "hi", wire.OriginUser); !errors.Is(err, ErrACPBusy) {
+		t.Errorf("PromptACP during a switch = %v, want ErrACPBusy", err)
+	}
+	r.mu.Lock()
+	r.entries[e.ID].switching = false
+	r.mu.Unlock()
+	if n := len(cli.calls()); n != 0 {
+		t.Errorf("a refused switch spawned %d terminals", n)
+	}
+	// The flag is released when a switch ends, refused or not.
+	if err := r.SetKind(e.ID, wire.KindPTY); err != nil {
+		t.Fatal(err)
+	}
+	r.mu.Lock()
+	stuck := r.entries[e.ID].switching
+	r.mu.Unlock()
+	if stuck {
+		t.Error("switching still set after SetKind returned")
+	}
+}
+
+// A permission card waiting on the user is a turn in flight.
+func TestTakeoverWithPendingPermissionRejected(t *testing.T) {
+	useFakeACP(t, acptest.FlagPermission)
+	transcriptOK(t, true)
+	useFakeCLI(t, "", nil)
+	r := freshRegistry(t)
+	e := createACP(t, r, wire.CreateSpec{Name: "a"})
+	if err := r.PromptACP(e.ID, "one", wire.OriginUser); err != nil {
+		t.Fatal(err)
+	}
+	waitFor(t, "permission", func() bool { return info(r, e.ID).State == wire.StateWaitingPermission })
+	if err := r.SetKind(e.ID, wire.KindPTY); !errors.Is(err, ErrACPBusy) {
+		t.Errorf("SetKind with a pending permission = %v, want ErrACPBusy", err)
+	}
+}
+
+// A hand-back that fails for any reason, not only the writer lock,
+// reverts to a terminal and restarts it.
+func TestHandBackLoadFailsRevertsToPTY(t *testing.T) {
+	useFakeACP(t, acptest.FlagLoadFails)
+	transcriptOK(t, true)
+	cli := useFakeCLI(t, "", nil)
+	r := freshRegistry(t)
+	e := createACP(t, r, wire.CreateSpec{Name: "a"})
+	if err := r.SetKind(e.ID, wire.KindPTY); err != nil {
+		t.Fatal(err)
+	}
+	err := r.SetKind(e.ID, wire.KindACP)
+	if err == nil || errors.Is(err, ErrACPWriterLocked) || !strings.Contains(err.Error(), "session/load") {
+		t.Fatalf("hand-back = %v, want the load error, not a writer lock", err)
+	}
+	waitFor(t, "terminal back", func() bool { return info(r, e.ID).Alive })
+	if in := info(r, e.ID); in.Kind != "" || persistedKind(t, r, e.ID) != "" {
+		t.Errorf("after a failed hand-back kind = %q, want a terminal", in.Kind)
+	}
+	if n := len(cli.calls()); n != 2 {
+		t.Errorf("terminal spawns = %d, want 2 (takeover, then the revert)", n)
+	}
+}
+
+// When the revert's restart fails too, the caller hears both.
+func TestHandBackRevertRestartFailureReported(t *testing.T) {
+	useFakeACP(t, acptest.FlagLoadFails)
+	transcriptOK(t, true)
+	cli := useFakeCLI(t, "", nil)
+	r := freshRegistry(t)
+	e := createACP(t, r, wire.CreateSpec{Name: "a"})
+	if err := r.SetKind(e.ID, wire.KindPTY); err != nil {
+		t.Fatal(err)
+	}
+	cli.failFromLaunch(2)
+	err := r.SetKind(e.ID, wire.KindACP)
+	if err == nil || !strings.Contains(err.Error(), "session/load") || !strings.Contains(err.Error(), "fake CLI: not found") {
+		t.Fatalf("hand-back = %v, want both the load and the restart failure", err)
+	}
+	if k := persistedKind(t, r, e.ID); k != "" {
+		t.Errorf("persisted kind = %q, want the terminal it reverted to", k)
+	}
+}
+
+// A takeover whose terminal fails to start goes back to ACP rather than
+// leaving the session down as a terminal.
+func TestTakeoverLaunchFailsRevertsToACP(t *testing.T) {
+	useFakeACP(t)
+	transcriptOK(t, true)
+	cli := useFakeCLI(t, "", nil)
+	cli.failFromLaunch(1)
+	r := freshRegistry(t)
+	e := createACP(t, r, wire.CreateSpec{Name: "a"})
+	if err := r.SetKind(e.ID, wire.KindPTY); err == nil || !strings.Contains(err.Error(), "fake CLI: not found") {
+		t.Fatalf("takeover = %v, want the launch error", err)
+	}
+	waitFor(t, "acp back", func() bool { return info(r, e.ID).Alive })
+	if in := info(r, e.ID); in.Kind != wire.KindACP || persistedKind(t, r, e.ID) != wire.KindACP {
+		t.Errorf("after a failed takeover kind = %q, want acp", in.Kind)
+	}
+}
+
+func TestTakeoverRefusedWithoutSessionID(t *testing.T) {
+	useFakeACP(t)
+	transcriptOK(t, true)
+	useFakeCLI(t, "", nil)
+	r := freshRegistry(t)
+	e := createACP(t, r, wire.CreateSpec{Name: "a"})
+	r.mu.Lock()
+	r.entries[e.ID].AgentSessionID = ""
+	r.mu.Unlock()
+	if err := r.SetKind(e.ID, wire.KindPTY); !errors.Is(err, ErrTakeoverRefused) {
+		t.Errorf("SetKind = %v, want ErrTakeoverRefused", err)
+	}
+}
+
+// A terminal session of an agent with no ACP adapter cannot be handed
+// to ACP.
+func TestHandBackRefusedForAgentWithoutACP(t *testing.T) {
+	skipOnWindows(t)
+	r := freshRegistry(t)
+	e, err := r.Create(t.Context(), wire.CreateSpec{Name: "p", Shell: "/bin/sh"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = r.Kill(e.ID, true) })
+	if err := r.SetKind(e.ID, wire.KindACP); !errors.Is(err, ErrBadKind) {
+		t.Errorf("SetKind = %v, want ErrBadKind", err)
+	}
+}
+
+// Settings that forbid ACP for the agent now refuse the hand-back
+// before the terminal is stopped.
+func TestHandBackRefusedBySettings(t *testing.T) {
+	useFakeACP(t)
+	useSettings(t, withCeiling(map[string]string{"pi": agent.ACPModeUnattended}))
+	transcriptOK(t, true)
+	cli := useFakeCLI(t, "", nil)
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	t.Setenv("USERPROFILE", home)
+	r := freshRegistry(t)
+	e := createACP(t, r, wire.CreateSpec{Name: "p", Agent: string(agent.IDPi)})
+	sid := agentSessionID(r, e.ID)
+	writePiMap(t, home, sid, sid)
+	if err := r.SetKind(e.ID, wire.KindPTY); err != nil {
+		t.Fatal(err)
+	}
+	useSettings(t, withCeiling(map[string]string{"pi": agent.ACPModeOff}))
+	if err := r.SetKind(e.ID, wire.KindACP); !errors.Is(err, ErrACPRefused) {
+		t.Errorf("SetKind = %v, want ErrACPRefused", err)
+	}
+	if n := len(cli.calls()); n != 1 {
+		t.Errorf("terminal spawns = %d, want 1: a refused hand-back must not restart the terminal", n)
+	}
+}
+
+// An agent whose CLI cannot resume by id cannot be taken over.
+func TestTakeoverPrecheckNeedsResumeArgs(t *testing.T) {
+	def, _ := agent.Get(agent.IDCodex)
+	def.ResumeArgs = nil
+	if err := takeoverPrecheck(def, "sid", "/repo"); !errors.Is(err, ErrTakeoverRefused) {
+		t.Errorf("takeoverPrecheck = %v, want ErrTakeoverRefused", err)
 	}
 }

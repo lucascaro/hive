@@ -650,7 +650,7 @@ func (r *Registry) PromptACP(id, text, origin string) error {
 		r.mu.Unlock()
 		return ErrNoLiveSession
 	}
-	if as.busy {
+	if as.busy || e.switching {
 		r.mu.Unlock()
 		return ErrACPBusy
 	}
@@ -881,13 +881,25 @@ func (r *Registry) SetKind(id, kind string) error {
 		r.mu.Unlock()
 		return nil
 	}
-	agentID, sid, wtPath := e.Agent, e.AgentSessionID, e.WorktreePath
+	// One switch at a time, and no new turn while it runs: reserved under
+	// the same lock PromptACP takes, so a prompt cannot slip in between
+	// the busy check and the restart that would kill it.
+	if e.switching || (e.acp != nil && (e.acp.busy || e.acp.perm != nil)) {
+		r.mu.Unlock()
+		return ErrACPBusy
+	}
+	e.switching = true
+	agentID, sid, wtPath, prev := e.Agent, e.AgentSessionID, e.WorktreePath, e.Kind
 	cwd := ""
 	if p, ok := r.projects[e.ProjectID]; ok {
 		cwd = p.Cwd
 	}
-	busy := e.acp != nil && (e.acp.busy || e.acp.perm != nil)
 	r.mu.Unlock()
+	defer func() {
+		r.mu.Lock()
+		e.switching = false
+		r.mu.Unlock()
+	}()
 	// The directory the restart will run in, as Restart resolves it.
 	if wtPath != "" {
 		if _, err := os.Stat(wtPath); err == nil {
@@ -903,10 +915,6 @@ func (r *Registry) SetKind(id, kind string) error {
 		return fmt.Errorf("%w: the agent has not recorded a conversation id yet", ErrTakeoverRefused)
 	}
 	if kind == wire.KindPTY {
-		// Taking over mid-turn would kill the turn.
-		if busy {
-			return ErrACPBusy
-		}
 		if err := takeoverPrecheck(def, sid, cwd); err != nil {
 			return err
 		}
@@ -918,18 +926,25 @@ func (r *Registry) SetKind(id, kind string) error {
 		return err
 	}
 	err := r.Restart(id)
-	if err == nil || kind == wire.KindPTY {
-		return err
+	if err == nil {
+		return nil
 	}
-	if strings.Contains(err.Error(), "already has an active writer") {
+	if kind == wire.KindACP && strings.Contains(err.Error(), "already has an active writer") {
 		err = fmt.Errorf("%w: %s still holds it (quit any `codex` left running for it, then hand back again)", ErrACPWriterLocked, def.Name)
 	}
-	log.Printf("registry: hand-back %s failed (%v); reverting to a terminal", id, err)
-	if perr := r.persistKind(id, wire.KindPTY); perr != nil {
+	// Back to the kind it had, restarted once: best effort, so a session
+	// whose switch failed is running again in the form it was in.
+	back := wire.KindPTY
+	if prev == wire.KindACP {
+		back = wire.KindACP
+	}
+	log.Printf("registry: switching %s to %s failed (%v); reverting to %s", id, kind, err, back)
+	if perr := r.persistKind(id, back); perr != nil {
 		return errors.Join(err, perr)
 	}
 	if rerr := r.Restart(id); rerr != nil {
-		log.Printf("registry: hand-back %s: terminal restart after the revert failed: %v", id, rerr)
+		log.Printf("registry: %s: restart after the revert failed too: %v", id, rerr)
+		return errors.Join(err, fmt.Errorf("and restarting it as %s failed: %w", back, rerr))
 	}
 	return err
 }

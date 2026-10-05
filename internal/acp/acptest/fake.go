@@ -75,6 +75,8 @@ const (
 	// FlagWriterLocked makes session/load fail the way codex-acp does
 	// while a `codex app-server` left by the CLI holds the thread (F2).
 	FlagWriterLocked = "writer-locked"
+	// FlagLoadFails makes session/load fail with a generic error.
+	FlagLoadFails = "load-fails"
 )
 
 // Modes is what the fake advertises, least permissive first: Claude's
@@ -323,6 +325,10 @@ func (f *fake) handle(id json.RawMessage, method string, params json.RawMessage)
 	case "session/load":
 		if f.flags[FlagWriterLocked] {
 			fail(-32603, "thread "+p.SessionID+" already has an active writer")
+			return
+		}
+		if f.flags[FlagLoadFails] {
+			fail(-32603, "internal error")
 			return
 		}
 		turns, ok := f.turns(p.SessionID)

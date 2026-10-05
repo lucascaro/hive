@@ -130,6 +130,10 @@ type Entry struct {
 	// acpRes is the typed result of the latest prompt in this
 	// transcript epoch. In-memory, like acpTx. Guarded by r.mu.
 	acpRes acpResult
+	// switching is set while SetKind moves the entry between ACP and a
+	// terminal: a second switch, and any new ACP turn, is refused with
+	// ErrACPBusy until it ends. In-memory only. Guarded by r.mu.
+	switching bool
 
 	// Phase is the lifecycle phase surfaced to clients (see the
 	// wire.Phase* constants). In-memory only: never persisted, so a
@@ -1783,6 +1787,9 @@ func (r *Registry) kill(id string, force, removeWorktree bool) error {
 	// races the create tail, which binds it under r.mu.
 	sess := e.sess
 	ac := e.acp
+	// Rendered under the lock too: an ACP adapter closing below still
+	// resolves its pending permission, which writes e's state under r.mu.
+	removed := e.Info()
 	r.mu.Unlock()
 
 	// The entry is already gone from r.entries, so watchACPExit no-ops.
@@ -1800,7 +1807,7 @@ func (r *Registry) kill(id string, force, removeWorktree bool) error {
 		r.disposeWorktree(id, projectID, projectCwd, wtPath, wtBranch, removeWorktree)
 	}
 	_ = os.RemoveAll(dir)
-	r.broadcast(wire.SessionEventRemoved, e.Info())
+	r.broadcast(wire.SessionEventRemoved, removed)
 	// Re-read the survivors HERE rather than snapshotting them back
 	// under the lock above: the worktree teardown between the two can
 	// take seconds, and anything that ran meanwhile — a create

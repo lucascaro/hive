@@ -397,6 +397,7 @@ The contract bumps once per phase because `scripts/check-daemon-contract.sh:36-4
 
 ## Decision log
 
+- **2026-10-04** — Review iter 1 (PR #502), operator decisions: `SetKind` reserves the entry with a per-entry `switching` flag (refuses a concurrent switch and new prompts with `acp_busy`) rather than a per-id mutex or reverting only on its own error, because it also closes the prompt-vs-restart gap; every untested `SetKind` branch gets a test. Also from CodeRabbit: a takeover whose terminal fails to start now reverts to ACP (the revert is symmetric), and the revert is documented as best effort. The new pending-permission test surfaced a pre-existing race in `kill()` (`e.Info()` read after `r.mu` was released while a closing adapter resolves its permission under the lock); fixed by rendering it under the lock.
 - **2026-10-04** — P4: Pi takeover refuses an ACP id that pi-acp's session map ties to a *different* Pi id, rather than persisting a second id. Why: one `AgentSessionID` serves the terminal resume and the hand-back's `session/load`; the probe measured the two ids equal, so a second persisted field would carry a case never seen.
 - **2026-10-04** — P4: takeover is also refused mid-turn or with a permission pending (`acp_busy`). Why: `Restart` would kill the turn, which loses it — the opposite of criterion 6.
 - **2026-10-04** — P4: the two commands have no default key, so the README Keybinds table (defaults only) gets no row; the README's ACP bullet names them instead. Hand back is offered for any terminal session and the daemon decides (an agent with no adapter is refused; a failed load reverts), so the GUI needs no per-agent catalog.
@@ -470,6 +471,7 @@ The contract bumps once per phase because `scripts/check-daemon-contract.sh:36-4
 - **2026-10-04 iter 18 (phase 3, PR #501, iter 2)** — verdict: COMMENT; mergeable: MERGEABLE; findings_hash: b73142b8e1eb06468ff103310bfd77f638525a02e394a80cb824ba86229430f6; threads_open: 0; action: escalated:risky-fix-needs-human-decision; head_sha: 36730718.
 - **2026-10-04 iter 19 (phase 3, PR #501, iter 3)** — verdict: COMMENT; mergeable: MERGEABLE; findings_hash: 3367509254014d4ee40162164bdaae1eefe914c3df363d5e284a7e63d5657cc7; threads_open: 0; action: escalated:risky-fix-needs-human-decision; head_sha: 9ce25564.
 - **2026-10-04 iter 20 (phase 3, PR #501, iter 4)** — verdict: APPROVE; mergeable: MERGEABLE; findings_hash: empty; threads_open: 0; action: stop; head_sha: e2cccf53.
+- **2026-10-04 iter 21 (phase 4, PR #502, iter 1)** — verdict: REQUEST_CHANGES; mergeable: MERGEABLE; findings_hash: fac179c0647753c3fcf0907aec2ab7a56cd95394657f0d0acca6e815959a3cc2; threads_open: 4; action: escalated:risky-fix-needs-human-decision; head_sha: 6f628c92.
 
 ## Gate verdict
 
