@@ -11,6 +11,7 @@ Index entries are short. Detailed rationale belongs in the per-doc files.
 - [The control plane](control-plane.md) — daemon-owned session state across agent CLIs: the knowledge tiers (hook, extension, acp, heuristic, laya), the `event` wire mode, what is deliberately out of scope
 - [Agent orchestration](agent-orchestration.md) — the per-session grant that lets an agent message, watch and spawn siblings; phased and evidence-gated
 - [ACP workflows](acp-workflows.md) — engine-driven workflows over the Agent Client Protocol: probe-verified capabilities per agent, go/no-go, where the engine lives, one trust model shared with orchestration, ordered follow-ups
+- [Workflow engine](workflow-engine.md) — spec 495: typed TS workflows that build a static, reviewable IR; a plugin-owned SQLite checkpoint log for durable runs; events keyed by node id for the live overlay; go/no-go (go, custom)
 - [ACP session kind](acp-session-kind.md) — spec 496's research notes: where an `acp` session plugs into the registry, wire and GUI, and the spike-492 facts the implementation honours
 - [Agent activity](agent-activity.md) — what an agent is doing *inside* a turn: plan and tool events from the hook/extension tiers, the source-side privacy rule, one renderer in three placements
 - [Slow-client policy](slow-client-policy.md) — the daemon never blocks on a client: bounded attach queue, write deadlines, hang up on a dropped subscription, GUI auto-reattach

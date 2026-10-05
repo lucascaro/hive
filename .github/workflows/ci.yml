@@ -358,6 +358,18 @@ jobs:
           node --test 'scripts/acp-probe/*.test.mjs'
           node scripts/acp-probe/check-doc.mjs docs/design-docs/acp-workflows.md
 
+      - name: Workflow prototype tests + design-doc drift check (spec 495)
+        if: matrix.biome
+        # Repo root, like the probe step above. Runs the prototype's .ts files
+        # on Node's native type stripping (no build, no install), type-checks
+        # them with the frontend's pinned tsc (node_modules installed by the
+        # bootstrap step above), and fails when the IR / Mermaid / schema
+        # blocks in workflow-engine.md differ from what the prototype builds.
+        run: |
+          node --test 'scripts/workflow-proto/*.test.ts'
+          node scripts/workflow-proto/check-doc.ts docs/design-docs/workflow-engine.md
+          cmd/hivegui/frontend/node_modules/.bin/tsc -p scripts/workflow-proto/tsconfig.json
+
       - name: Test (frontend E2E — mock Wails)
         if: matrix.e2e_mock
         working-directory: cmd/hivegui/frontend

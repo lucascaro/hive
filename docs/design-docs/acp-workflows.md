@@ -293,9 +293,10 @@ restart, or with message text only (risk Q3 in the 496 exec plan).
    in the same conversation. Gate B waits on its run log.
 2. **Code-defined workflow engine.** Multi-agent loops are run by hand today.
    A bundled plugin runs workflows written in code over ACP, check and human
-   nodes, with `submit_result` and the shared trust model. Its design is
-   [spec 495](../product-specs/495-design-hive-s-workflow-engine-typed-ts-workflows-a.md);
-   building it waits on gate B.
+   nodes, with `submit_result` and the shared trust model. Its design,
+   [workflow-engine.md](workflow-engine.md) (spec 495), says **go, custom**:
+   a typed TS builder producing a static IR, run by an interpreter with a
+   plugin-owned SQLite checkpoint log. Building it waits on gate B and on #505.
 3. **Live workflow monitoring.** The user can't see where each agent is in a
    running workflow. The GUI shows the run graph, each node's state, and its
    provenance.
