@@ -90,6 +90,6 @@ A design doc, plus a small runnable prototype, define 492's follow-up 2:
 
 ## Notes
 
-- 492's gate B (ACP session kind proven on 5 or more real tasks) still sits before building spec 2. This doc may be written now; implementing the engine waits on follow-up 1.
+- Follow-up 1, the ACP session kind, shipped in spec 496 (#499–#502). Building the engine still waits on gate B in [acp-workflows.md](../design-docs/acp-workflows.md#gates-for-the-acp-track): at least 2 real tasks as `acp` sessions for each of Claude and Pi, at least 1 per agent taken over in a PTY and handed back, with no lost turns. That run log is tracked in #503. This design doc and its prototype don't wait on gate B.
 - Billing sources: https://support.claude.com/en/articles/15036540-use-the-claude-agent-sdk-with-your-claude-plan , https://zed.dev/blog/anthropic-subscription-changes
 - Durability profile is the operator's stated requirement, not measured: no usage data exists, and the users are all Hive users, not one tool's telemetry.
