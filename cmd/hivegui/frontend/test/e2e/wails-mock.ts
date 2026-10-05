@@ -645,9 +645,17 @@ export async function RestartSession(id: string) {
   bridgeCalls.push({ method: 'RestartSession', args: [id] });
   const s = state.sessions.find((x) => x.id === id);
   if (s && s.alive === false) {
+    // The daemon's order: restarting, alive while still restarting,
+    // then ready — never ready while the old process is gone.
+    const send = () =>
+      emit('session:event', JSON.stringify({ kind: 'updated', session: s }));
+    s.phase = 'restarting';
+    send();
     s.alive = true;
     s.last_error = '';
-    emit('session:event', JSON.stringify({ kind: 'updated', session: s }));
+    send();
+    s.phase = '';
+    send();
   }
   return '';
 }

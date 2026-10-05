@@ -930,3 +930,65 @@ func TestBellFromPTYReachesListeners(t *testing.T) {
 		}
 	}
 }
+
+// deadWhileReady returns "<kind>:<phase>" for every event about id that
+// reported it ready and not alive — the combination every client reads
+// as the session having died.
+func (p *phaseLog) deadWhileReady(id string) []string {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	var out []string
+	for _, ev := range p.events {
+		if ev.Session.ID == id && ev.Session.Phase == wire.PhaseReady && !ev.Session.Alive {
+			out = append(out, ev.Kind+":"+ev.Session.Phase)
+		}
+	}
+	return out
+}
+
+// A restart replaces the process; it must never pass through ready +
+// dead on the way, or the GUI shows "session ended" (overlay and
+// notification) for a session that is only restarting.
+func TestRestartNeverReportsDeadWhileRespawning(t *testing.T) {
+	skipOnWindows(t)
+	r := freshRegistry(t)
+	a, err := r.Create(context.Background(), wire.CreateSpec{Name: "a", Shell: "/bin/bash"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	log, stop := watch(t, r)
+	defer stop()
+	if err := r.Restart(a.ID); err != nil {
+		t.Fatal(err)
+	}
+	got := log.waitForLastEvent(t, a.ID, wire.SessionEventUpdated+":"+wire.PhaseReady)
+	if dead := log.deadWhileReady(a.ID); len(dead) > 0 {
+		t.Errorf("restart reported the session dead: %s (all events %s)", joined(dead), joined(got))
+	}
+	if !info(r, a.ID).Alive {
+		t.Error("not alive after restart")
+	}
+}
+
+// A restart whose respawn fails is a real death: it must still end
+// ready + dead, so the GUI shows it.
+func TestRestartThatFailsEndsDead(t *testing.T) {
+	skipOnWindows(t)
+	r := freshRegistry(t)
+	a, err := r.Create(context.Background(), wire.CreateSpec{Name: "a", Shell: "/bin/bash"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(SetStartSessionForTest(func(session.Options) (*session.Session, error) {
+		return nil, errors.New("spawn failed")
+	}))
+	log, stop := watch(t, r)
+	defer stop()
+	if err := r.Restart(a.ID); err == nil {
+		t.Fatal("Restart succeeded with a failing spawn")
+	}
+	log.waitForLastEvent(t, a.ID, wire.SessionEventUpdated+":"+wire.PhaseReady)
+	if in := info(r, a.ID); in.Alive || in.Phase != wire.PhaseReady {
+		t.Errorf("after a failed restart alive=%v phase=%q, want dead and ready", in.Alive, in.Phase)
+	}
+}

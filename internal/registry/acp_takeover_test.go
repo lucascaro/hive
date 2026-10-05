@@ -517,3 +517,41 @@ func TestTakeoverPrecheckNeedsResumeArgs(t *testing.T) {
 		t.Errorf("takeoverPrecheck = %v, want ErrTakeoverRefused", err)
 	}
 }
+
+// Restart Session, takeover and hand-back each replace the process, so
+// none may report the session dead on the way (see
+// TestRestartNeverReportsDeadWhileRespawning).
+func TestKindSwitchAndRestartNeverReportDead(t *testing.T) {
+	dir := useFakeACP(t)
+	transcriptOK(t, true)
+	useFakeCLI(t, dir, nil)
+	r := freshRegistry(t)
+	e := createACP(t, r, wire.CreateSpec{Name: "a"})
+	if err := r.PromptACP(e.ID, "one", wire.OriginUser); err != nil {
+		t.Fatal(err)
+	}
+	waitFor(t, "turn end", idleAfterTurn(r, e.ID))
+
+	log, stop := watch(t, r)
+	defer stop()
+	for _, step := range []struct {
+		name string
+		run  func() error
+		kind string
+	}{
+		{"restart", func() error { return r.Restart(e.ID) }, wire.KindACP},
+		{"take over", func() error { return r.SetKind(e.ID, wire.KindPTY) }, ""},
+		{"hand back", func() error { return r.SetKind(e.ID, wire.KindACP) }, wire.KindACP},
+	} {
+		if err := step.run(); err != nil {
+			t.Fatalf("%s: %v", step.name, err)
+		}
+		waitFor(t, step.name, func() bool {
+			in := info(r, e.ID)
+			return in.Alive && in.Kind == step.kind && in.Phase == wire.PhaseReady
+		})
+	}
+	if dead := log.deadWhileReady(e.ID); len(dead) > 0 {
+		t.Errorf("reported the session dead %d time(s): %s (all events %s)", len(dead), joined(dead), joined(log.phasesFor(e.ID)))
+	}
+}
