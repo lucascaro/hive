@@ -438,6 +438,7 @@ The contract bumps once per phase because `scripts/check-daemon-contract.sh:36-4
 - **2026-10-04** — Phase 3 implemented: mode ceiling setting and enforcement, Pi gate and shim, `hived mcp-submit`, `SUBMIT_RESULT`/`SUBMIT_RESULT_OK`, result fields, the submit auto-allow (contract 24).
 - **2026-10-04** — Gate FAIL; control-plane.md:41 still listed Gemini and Copilot as experimental ACP agents and Pi as ungated — fixed on the branch.
 - **2026-10-04** — Gate FAIL again (re-run); three Pi mentions without the unattended setting (features.json, two earlier changesets) — fixed on the branch, gate not re-run (one-retry limit).
+- **2026-10-04** — Gate FAIL (third run, all three dimensions); DESIGN.md's ACP and daemon entries did not mention the mode ceiling, `session/set_mode` or `hived mcp-submit` — fixed on the branch. The same run found Windows CI red on two new Pi submit socket tests, now skipped on Windows like the file's other unix-socket tests (456c72ed).
 
 ## Open questions
 
@@ -486,4 +487,8 @@ The contract bumps once per phase because `scripts/check-daemon-contract.sh:36-4
     - acceptance — PASS — carried from the run above (no code changed)
     - non-goals — PASS — carried from the run above
     - doc accuracy — FAIL — three stale Pi mentions (features.json blurb, 496-acp-transcript-view and 496-acp-sessions-for-plugins changesets); README, plugins.md, control-plane, design doc, contract and wire tests all correct
-
+- **2026-10-04** — verdict: FAIL; phase: 3/4; checks: 2 passed / 1 failed / 0 followups / 2 deferred; followups: none; one-line: full re-run at 456c72ed; the earlier doc fixes hold, but DESIGN.md (a structural doc the wire and subcommand change must update) still described ACP as speaking only spike 492's methods and `hived` as only a PTY host.
+  - 2026-10-04 dimensions:
+    - acceptance — PASS — criteria 1–5, 7, 8 pass (targeted registry, acp, daemon, agent and mcp-submit tests green); 6 and 9 DEFERRED (phase 4)
+    - non-goals — PASS — Settings ceiling is the criterion-5 trust setting, not a per-session picker; mcp-submit is an MCP tool server, not an ACP adapter; PTY paths untouched
+    - doc accuracy — FAIL — DESIGN.md:12,16 missing the mode ceiling, set_mode and `hived mcp-submit`; README, features.json, changesets, plugins.md, SDKs, control-plane, design doc and contract 24 accurate
