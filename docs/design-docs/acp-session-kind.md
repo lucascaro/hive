@@ -217,3 +217,15 @@ This note is the research for [spec 496](../product-specs/496-add-an-acp-session
 - **Wire.** Contract 24. Phase 4's `SET_SESSION_KIND` moves to 0x45, since 0x44 is `SUBMIT_RESULT_OK`.
 - **Not built.** The transcript view does not show the result yet; plugins and the engine read it from `ACP_TRANSCRIPT`.
 
+## What phase 4 built
+
+- **Takeover and hand-back (criterion 6).** `Registry.SetKind(id, kind)` persists the new kind, then calls `Restart`; `Revive` already branches on the kind, so a terminal resumes the conversation through `ResumeArgs(AgentSessionID)` and ACP reopens it with `session/load` of the same id. One `AgentSessionID` serves both kinds.
+  - **Takeover is refused before anything stops** (`takeover_refused`) unless the CLI is sure to reopen this conversation: there must be an id; an agent with `TranscriptPaths` (Claude, Pi) must have its transcript on disk, because `ResumeArgs` falls back to a fresh session without one; Codex's `codex resume <id>` has no such fallback, so the id is enough. A turn in flight or a pending permission refuses it with `acp_busy` — a takeover would kill the turn.
+  - **Session ids.** Claude's and Codex's adapters use the CLI's own id (F6 reopened both in a PTY by it). Pi's is resolved through pi-acp's `~/.pi/pi-acp/session-map.json` (`ACPSpec.CLISessionID`); an id missing from the map is refused, and so is one mapped to a different Pi id, since Hive keeps one id for both kinds. The probe measured the two equal.
+  - **A failed hand-back reverts** to a terminal and restarts it once, so the user is never left with neither. Codex's `already has an active writer` (F2: a detached `codex app-server` holds the thread) becomes `acp_writer_locked` with a message naming the agent; Hive never kills a process it did not spawn.
+  - The GUI tile follows the kind on the `SESSION_EVENT` the restart sends (phase 2's `setInfo` re-runs the attach), so it is the same tile before and after.
+- **Wire.** `SET_SESSION_KIND` (0x45), run off the read loop like `RESTART_SESSION`. Contract 25.
+- **Commands.** **Take Over in Terminal** (`take-over-session`) and **Hand Back to ACP** (`hand-back-session`): palette, File menu and the help overlay, no default key. Each declines on a session already of that kind. Hand back is offered for any terminal session of an ACP-capable agent; the daemon refuses an agent with no adapter, and a load that fails reverts as above.
+- **Tests.** `internal/registry/acp_takeover_test.go`: the no-lost-turn proof (`TestTakeoverHandBackLosesNoTurn` — two ACP turns, a third typed into the terminal, then Hive's own transcript holds all three once, the epoch moved, the fake saw one `session/load` of the original id and no second `session/new`, `kind` is persisted, a fourth prompt round-trips), the refusals, the Codex id-only precheck, the writer lock and the Pi map. The fake agent's `writer-locked` flag fails `session/load` the way codex-acp does.
+- **Gate B** is rewritten in [acp-workflows.md](acp-workflows.md#gate-b-run-log) for Claude and Pi, with a run log the user fills from real tasks.
+

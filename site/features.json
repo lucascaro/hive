@@ -1,5 +1,11 @@
 [
   {
+    "title": "Take an ACP session over in a terminal",
+    "blurb": "Open an ACP session's conversation in the agent's own terminal when you want to drive it yourself, then hand it back to the transcript view with every turn intact.",
+    "status": "shipped",
+    "since": "Unreleased"
+  },
+  {
     "title": "A permission ceiling for ACP sessions",
     "blurb": "Pick, per agent, the most an ACP session may do without asking — Hive starts every session there and switches the agent back if it tries to go further on its own.",
     "status": "shipped",

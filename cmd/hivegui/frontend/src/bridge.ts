@@ -31,6 +31,7 @@ export {
   GetAcpTranscript,
   PromptAcp,
   AnswerPermission,
+  SetSessionKind,
   SearchTranscript,
   GetTranscriptLines,
   ListAgents,

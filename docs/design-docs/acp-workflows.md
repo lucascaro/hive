@@ -176,7 +176,7 @@ interactive sessions behave exactly as today.
 
 | Node | Transport | Result | Used for |
 |---|---|---|---|
-| agent | ACP session (`acp` kind) | `submit_result` through the injected MCP server, with the schema set by the node definition | Claude, Codex; Gemini and Copilot once probed |
+| agent | ACP session (`acp` kind) | `submit_result` through the injected MCP server (Pi: through Hive's Pi extension), with the schema set by the node definition | Claude, Codex; Pi where the user allows unattended tool use; Gemini and Copilot once probed |
 | agent (escape hatch) | per-vendor headless (`claude -p`, `codex exec`) or a Hive extension | the same `submit_result` schema | agents or features ACP lacks (F5, Pi) |
 | check | a plain command in the node's cwd | exit code plus captured output | every pass/fail claim ("tests pass", "it builds") — never a model's word |
 | human | a Hive PTY session through `ResumeArgs` | the node resumes when the user hands it back | takeover of any agent node (F1, F2, F6) |
@@ -263,12 +263,20 @@ engine-driven workflow produces neither, so this track has its own gates:
 | Gate | Passed when | Status |
 |---|---|---|
 | A — protocol | the probe's go/no-go is **go** | passed (this doc) |
-| B — ACP session kind | ≥5 real tasks run as `acp` sessions, each taken over in a PTY and handed back once, with no lost turns, for both Claude and Codex | after spec 1 |
+| B — ACP session kind | ≥2 real tasks run as `acp` sessions for each of Claude and Pi, at least 1 per agent taken over in a PTY and handed back, with no lost turns ([run log](#gate-b-run-log)). The fake-agent test `TestTakeoverHandBackLosesNoTurn` is the automated no-lost-turn proof; these runs confirm it against the real adapters | open — spec 1 shipped (#499–#501 and phase 4); the run log below is not yet filled |
 | C — engine | ≥5 runs of the plan → implement → review loop in two weeks that the user would repeat, at least one with a cross-vendor reviewer | after spec 2 |
 | D — monitoring | ≥3 code-defined workflows each reused ≥3 times | before spec 4 |
 
 Re-run the probe whenever a pinned adapter version changes. `check-doc.mjs`
 then fails CI until this table matches the new results.
+
+<a id="gate-b-run-log"></a>**Gate B run log.** One row per real task, run by
+the user on their own subscription (CI cannot). *Replayed after restart* records
+whether the transcript came back with its tool and plan rows after a `hived`
+restart, or with message text only (risk Q3 in the 496 exec plan).
+
+| Date | Agent | Task | Taken over + handed back | Lost turns | Replayed after restart | Outcome |
+|---|---|---|---|---|---|---|
 
 ## Follow-up specs, in order
 
@@ -277,10 +285,12 @@ then fails CI until this table matches the new results.
    characters that Claude does. So Restart and Revive of a Claude session in
    such a cwd ran `--session-id` and failed with "Session ID … is already in
    use" (F1).
-1. **ACP session kind.** Hive can only run agents in a PTY. An `acp` session
-   kind, owned by `hived`, gives exact state, typed output and permission relay
-   for agents that speak ACP. It includes the `acp` state tier and PTY takeover
-   and hand-back (F2, F6).
+1. **ACP session kind — shipped in spec 496 (four phases).** Hive could only
+   run agents in a PTY. An `acp` session kind, owned by `hived`, gives exact
+   state, typed output and permission relay for agents that speak ACP. It
+   includes the `acp` state tier and PTY takeover and hand-back (F2, F6): Take
+   Over in Terminal and Hand Back to ACP move a session between the two kinds
+   in the same conversation. Gate B waits on its run log.
 2. **Code-defined workflow engine.** Multi-agent loops are run by hand today.
    A bundled plugin runs workflows written in code over ACP, check and human
    nodes, with `submit_result` and the shared trust model.

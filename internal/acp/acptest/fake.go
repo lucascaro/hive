@@ -72,6 +72,9 @@ const (
 	// FlagSetModeFailsAfterFirst makes every set_mode after the first
 	// fail, so the start succeeds and a later reset does not.
 	FlagSetModeFailsAfterFirst = "set-mode-fails-after-first"
+	// FlagWriterLocked makes session/load fail the way codex-acp does
+	// while a `codex app-server` left by the CLI holds the thread (F2).
+	FlagWriterLocked = "writer-locked"
 )
 
 // Modes is what the fake advertises, least permissive first: Claude's
@@ -318,6 +321,10 @@ func (f *fake) handle(id json.RawMessage, method string, params json.RawMessage)
 		}
 		reply(map[string]any{"sessionId": sid, "modes": modes()})
 	case "session/load":
+		if f.flags[FlagWriterLocked] {
+			fail(-32603, "thread "+p.SessionID+" already has an active writer")
+			return
+		}
 		turns, ok := f.turns(p.SessionID)
 		if !ok {
 			fail(-32002, "unknown session "+p.SessionID)

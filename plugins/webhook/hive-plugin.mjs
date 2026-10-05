@@ -95,6 +95,7 @@ export const Frame = Object.freeze({
   ANSWER_PERMISSION: 0x42,
   SUBMIT_RESULT: 0x43,
   SUBMIT_RESULT_OK: 0x44,
+  SET_SESSION_KIND: 0x45,
 });
 
 const frameName = new Map(Object.entries(Frame).map(([k, v]) => [v, k]));

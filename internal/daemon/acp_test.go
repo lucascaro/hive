@@ -103,6 +103,8 @@ func TestSendACPErrorCodes(t *testing.T) {
 		{registry.ErrACPBusy, "acp_busy"},
 		{registry.ErrPermissionStale, "permission_stale"},
 		{registry.ErrNoLiveSession, "session_dead"},
+		{registry.ErrTakeoverRefused, "takeover_refused"},
+		{registry.ErrACPWriterLocked, "acp_writer_locked"},
 		{errors.New("boom"), "acp_failed"},
 	}
 	for _, c := range cases {
@@ -289,5 +291,17 @@ func TestCreateACPAboveCeilingErrorCode(t *testing.T) {
 	d.ops.Wait()
 	if len(rec.errs) != 1 || rec.errs[0].Code != wire.ErrCodeACPModeAboveCeiling {
 		t.Errorf("errors = %+v, want acp_mode_above_ceiling", rec.errs)
+	}
+}
+
+// SET_SESSION_KIND runs off the read loop and refuses with an error
+// naming its session, like every other ACP refusal.
+func TestSetSessionKindRefusalNamesSession(t *testing.T) {
+	d := newFrameTestDaemon(t)
+	rec := &recordOps{}
+	d.handleControlFrame(t.Context(), rec.ops(), wire.FrameSetSessionKind, []byte(`{"session_id":"nope","kind":"pty"}`))
+	d.ops.Wait()
+	if len(rec.errs) != 1 || rec.errs[0].Code != "no_such_session" || rec.errs[0].SessionID != "nope" {
+		t.Errorf("errors = %+v, want no_such_session for session nope", rec.errs)
 	}
 }

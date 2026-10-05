@@ -241,6 +241,7 @@ and reply payloads are the Go structs of the same name in
 | `PROMPT_ACP` | `PromptAcpReq` | `ACP_TRANSCRIPT`, `SESSION_EVENT` (state). The turn's origin is recorded as `plugin:<id>` |
 | `ANSWER_PERMISSION` | `AnswerPermissionReq` | `ACP_TRANSCRIPT` |
 | `SUBMIT_RESULT` | `SubmitResultReq` | `SUBMIT_RESULT_OK`, `ACP_TRANSCRIPT` (result). Not for plugins: a plugin socket gets `mode_not_allowed`. An ACP session's own submit server (`hived mcp-submit`) sends it on a session connection, with that session's nonce |
+| `SET_SESSION_KIND` | `SetSessionKindReq` | `SESSION_EVENT` (updated, with the new `kind`). `"kind": "pty"` takes an ACP session over in a terminal in the same conversation; `"acp"` hands it back. Refused with `takeover_refused` when the agent's CLI might start a fresh conversation instead, `acp_busy` mid-turn, and `acp_writer_locked` when Codex still holds the conversation (the session is then back in a terminal) |
 
 And everything the daemon sends on a control connection:
 

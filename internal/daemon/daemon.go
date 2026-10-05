@@ -1603,6 +1603,18 @@ func (d *Daemon) handleControlFrame(ctx context.Context, ops controlOps, ft wire
 			return false
 		}
 		_ = ops.writeJSON(wire.FrameSubmitResultOK, struct{}{})
+	case wire.FrameSetSessionKind:
+		req, ok := decodeReq[wire.SetSessionKindReq](payload, ops.sendError)
+		if !ok {
+			return false
+		}
+		// Off the read loop: it restarts the session, and a hand-back
+		// waits for the adapter's session/load.
+		d.runOp(func() {
+			if err := d.reg.SetKind(req.SessionID, req.Kind); err != nil {
+				sendACPError(ops, err, req.SessionID)
+			}
+		})
 	case wire.FrameSearchTranscript:
 		// Not in sessionModeFrames, like GET_ACTIVITY: an agent running
 		// inside a session reading its own transcript is a separate
@@ -2133,6 +2145,10 @@ func sendACPError(ops controlOps, err error, sessionID string) {
 		code = wire.ErrCodePermissionStale
 	case errors.Is(err, registry.ErrNoLiveSession):
 		code, msg = "session_dead", "the session's agent is not running"
+	case errors.Is(err, registry.ErrTakeoverRefused):
+		code = wire.ErrCodeTakeoverRefused
+	case errors.Is(err, registry.ErrACPWriterLocked):
+		code = wire.ErrCodeACPWriterLocked
 	}
 	// SessionID names the session the refused request was for, so a
 	// client can act on its own copy: give a refused prompt back to the

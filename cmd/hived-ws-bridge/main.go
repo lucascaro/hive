@@ -412,6 +412,13 @@ func (s *session) dispatch(req rpcReq) {
 			return
 		}
 		s.respond(req.ID, "", s.controlWriteJSON(wire.FrameAnswerPermission, p))
+	case "SetSessionKind":
+		var p wire.SetSessionKindReq
+		if err := parseParams(req.Params, &p); err != nil {
+			s.respond(req.ID, nil, err)
+			return
+		}
+		s.respond(req.ID, "", s.controlWriteJSON(wire.FrameSetSessionKind, p))
 	case "SearchTranscript":
 		var p wire.SearchTranscriptReq
 		if err := parseParams(req.Params, &p); err != nil {

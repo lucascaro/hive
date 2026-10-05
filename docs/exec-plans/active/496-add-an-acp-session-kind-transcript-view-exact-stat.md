@@ -3,9 +3,9 @@
 - **Spec:** [docs/product-specs/496-add-an-acp-session-kind-transcript-view-exact-stat.md](../../product-specs/496-add-an-acp-session-kind-transcript-view-exact-stat.md)
 - **Issue:** #496
 - **Status:** active
-- **Phase:** 3 of 4
-- **PR:** #501
-- **Branch:** feature/496-acp-phase3
+- **Phase:** 4 of 4
+- **PR:**
+- **Branch:** feature/496-acp-phase4
 
 ## Summary
 
@@ -397,6 +397,10 @@ The contract bumps once per phase because `scripts/check-daemon-contract.sh:36-4
 
 ## Decision log
 
+- **2026-10-04** — P4: Pi takeover refuses an ACP id that pi-acp's session map ties to a *different* Pi id, rather than persisting a second id. Why: one `AgentSessionID` serves the terminal resume and the hand-back's `session/load`; the probe measured the two ids equal, so a second persisted field would carry a case never seen.
+- **2026-10-04** — P4: takeover is also refused mid-turn or with a permission pending (`acp_busy`). Why: `Restart` would kill the turn, which loses it — the opposite of criterion 6.
+- **2026-10-04** — P4: the two commands have no default key, so the README Keybinds table (defaults only) gets no row; the README's ACP bullet names them instead. Hand back is offered for any terminal session and the daemon decides (an agent with no adapter is refused; a failed load reverts), so the GUI needs no per-agent catalog.
+- **2026-10-04** — P4: `npm run test:e2e:real` fails `glyph-utf8.spec.ts` locally on this tree and identically on a clean `origin/main` worktree (bash 3.2 echoes no output); not caused by P4. The other 32 pass.
 - **2026-10-04** — Review iter 3 (PR #501): the no-reset assertions count reset decisions (made on the ACP reader goroutine, in update order, so settled before the turn ends) instead of sleeping; the bare-id submit auto-allow and its no-carry-over across prompts are tested. The submit nonce is documented as stopping a process that only holds `HIVE_SOCKET` (another session, a copied environment), not a same-user process that reads the environment — Hive is not a sandbox, so a peer-process check would add platform code with no boundary behind it.
 - **2026-10-04** — Review iter 2 (PR #501) raised the asynchronous ceiling reset (an unrequested escalation stays live until `set_mode` returns, up to 30s). Accepted as is, operator's choice: the mode is enforced by the adapter itself, so the reset guards only against an adapter bug (the pinned adapters have no unrequested upward switch), never a malicious adapter; a shorter timeout would protect nothing real and could close healthy sessions on a loaded machine. Documented in acp-session-kind.md.
 - **2026-10-04** — Review iter 1 (PR #501) findings, operator decisions: the submit auto-allow no longer reads `rawInput`'s server+tool (model-written arguments; a call to another tool could carry them) — adapter-filled fields only, so a Codex submit may ask the user once. The escalation window is bound to the exact mode of the exit-plan option the user picked (`ACPSpec.ModeOptions`), not to any allow answer; this supersedes the earlier "any allow opens the window" entry. Also fixed: no mode policing before startup completes (a reset there went out with an empty session id), and tests for the missing-ceiling-mode refusal and the failed-reset close.
@@ -438,6 +442,8 @@ The contract bumps once per phase because `scripts/check-daemon-contract.sh:36-4
 - **2026-10-04** — Phase 3 implemented: mode ceiling setting and enforcement, Pi gate and shim, `hived mcp-submit`, `SUBMIT_RESULT`/`SUBMIT_RESULT_OK`, result fields, the submit auto-allow (contract 24).
 - **2026-10-04** — Gate FAIL; control-plane.md:41 still listed Gemini and Copilot as experimental ACP agents and Pi as ungated — fixed on the branch.
 - **2026-10-04** — Gate FAIL again (re-run); three Pi mentions without the unattended setting (features.json, two earlier changesets) — fixed on the branch, gate not re-run (one-retry limit).
+- **2026-10-04** — PR #501 merged (phase 3/4). Phase 4 (takeover, hand-back, docs) starts on `feature/496-acp-phase4`.
+- **2026-10-04** — Phase 4 implemented: `Registry.SetKind`, `SET_SESSION_KIND` (0x45), F2 writer-lock mapping and revert, Pi session-map resolution, Take Over / Hand Back commands, gate B rewrite and run log (contract 25).
 - **2026-10-04** — Gate FAIL (third run, all three dimensions); DESIGN.md's ACP and daemon entries did not mention the mode ceiling, `session/set_mode` or `hived mcp-submit` — fixed on the branch. The same run found Windows CI red on two new Pi submit socket tests, now skipped on Windows like the file's other unix-socket tests (456c72ed).
 
 ## Open questions

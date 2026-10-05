@@ -151,3 +151,50 @@ test('an ACP tile keeps its place at the bottom across a switch away and back', 
     )
     .toBe(true);
 });
+
+test('an ACP session is taken over in a terminal and handed back from the palette', async ({
+  page,
+}) => {
+  await boot(page);
+  await page.keyboard.press(`${mod}+t`);
+  const launcher = page.locator('#launcher');
+  await launcher.locator('.launcher-kind input[value="acp"]').click();
+  await launcher.locator('.launcher-item', { hasText: 'Claude' }).click();
+  await expect(
+    page.locator('.term-host.acp.visible .acp-transcript'),
+  ).toBeVisible();
+  const id = await page.evaluate(() => window.__hive_state?.activeId);
+
+  const palette = async (query: string) => {
+    await page.keyboard.press(`${mod}+Shift+k`);
+    await page.locator('#command-palette-input').fill(query);
+    await page.keyboard.press('Enter');
+  };
+  const kindCalls = () =>
+    page.evaluate(() => window.__hive.bridgeCalls?.('SetSessionKind') ?? []);
+
+  // Hand back is declined on a session already running over ACP.
+  await palette('Hand Back to ACP');
+  expect(await kindCalls()).toEqual([]);
+
+  await palette('Take Over in Terminal');
+  await expect
+    .poll(kindCalls)
+    .toEqual([{ method: 'SetSessionKind', args: [id, 'pty'] }]);
+  // Same tile, now a terminal: the transcript is gone, xterm is back.
+  await expect(page.locator('.term-host.acp.visible')).toHaveCount(0);
+  await expect(
+    page.locator('.term-host.visible .xterm-helper-textarea').first(),
+  ).toBeAttached();
+  expect(await page.evaluate(() => window.__hive_state?.activeId)).toBe(id);
+
+  await palette('Hand Back to ACP');
+  await expect.poll(kindCalls).toHaveLength(2);
+  expect((await kindCalls())[1]).toEqual({
+    method: 'SetSessionKind',
+    args: [id, 'acp'],
+  });
+  await expect(
+    page.locator('.term-host.acp.visible .acp-transcript'),
+  ).toBeVisible();
+});

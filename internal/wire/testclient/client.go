@@ -245,6 +245,11 @@ func (c *Client) AnswerPermission(req wire.AnswerPermissionReq) error {
 	return c.cli.WriteJSON(wire.FrameAnswerPermission, req)
 }
 
+// SetSessionKind takes an ACP session over in a terminal or hands it back.
+func (c *Client) SetSessionKind(sessionID, kind string) error {
+	return c.cli.WriteJSON(wire.FrameSetSessionKind, wire.SetSessionKindReq{SessionID: sessionID, Kind: kind})
+}
+
 // GetActivity asks for one session's stored tool ring and plan.
 func (c *Client) GetActivity(sessionID string) error {
 	return c.cli.WriteJSON(wire.FrameGetActivity, wire.GetActivityReq{SessionID: sessionID})
