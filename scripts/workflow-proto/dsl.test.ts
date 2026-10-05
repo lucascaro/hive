@@ -261,6 +261,64 @@ test('ref order: upstream across subgraphs, edge conditions on their source, loo
   assert.deepEqual(validate(ir), []);
 });
 
+test('ref order: a node cannot read its own container', () => {
+  const ir = workflow('own-container', s.object({}), (g) => {
+    const a = g.agent('a', { agent: 'claude', prompt: 'x', output: s.object({ items: s.array(s.string()) }) });
+    const lp = g.loop('lp', { maxIters: 2 }, (b) => {
+      const r = b.agent('r', { agent: 'codex', prompt: 'Round {{lp.iterations}}', output: verdict });
+      return when(r.out.verdict, 'eq', 'approve');
+    });
+    const m = g.map('m', { over: a.out.items }, (b) => b.agent('do', { agent: 'codex', prompt: 'Sofar {{m.results}}', output: summary }));
+    g.edge(a, lp);
+    g.edge(a, m);
+  });
+  const errors = validate(ir).join('\n');
+  assert.match(errors, /^lp\/r: ref "lp\.iterations" is not upstream of lp\/r$/m);
+  assert.match(errors, /^m\/do: ref "m\.results" is not upstream of m\/do$/m);
+});
+
+test('ref order: the loop exception applies under a loop and nowhere else', () => {
+  const ok = workflow('loop-nested', s.object({}), (g) => {
+    g.loop('lp', { maxIters: 2 }, (b) => {
+      b.group('grp', (gg) => {
+        const x = gg.agent('x', { agent: 'claude', prompt: 'Last time: {{lp/grp/y.summary}}', output: summary });
+        const y = gg.agent('y', { agent: 'codex', prompt: 'p', output: summary });
+        gg.edge(x, y);
+      });
+      return when({ ref: 'lp/grp/y.summary' } as Ref<string>, 'ne', '');
+    });
+  });
+  assert.deepEqual(validate(ok), [], 'a forward ref inside a group nested in a loop reads the previous round');
+
+  const bad = workflow('no-loop', s.object({}), (g) => {
+    g.group('grp', (gg) => {
+      const x = gg.agent('x', { agent: 'claude', prompt: 'Read {{grp/y.summary}}', output: summary });
+      const y = gg.agent('y', { agent: 'codex', prompt: 'p', output: summary });
+      gg.edge(x, y);
+    });
+    const lp = g.loop('lp', { maxIters: 2 }, (b) => {
+      const r = b.agent('r', { agent: 'codex', prompt: 'Peek {{after.summary}}', output: verdict });
+      return when(r.out.verdict, 'eq', 'approve');
+    });
+    const after = g.agent('after', { agent: 'claude', prompt: 'p', output: summary });
+    g.edge(lp, after);
+  });
+  const errors = validate(bad).join('\n');
+  assert.match(errors, /^grp\/x: ref "grp\/y\.summary" is not upstream of grp\/x$/m, 'a plain group gets no loop exception');
+  assert.match(errors, /^lp\/r: ref "after\.summary" is not upstream of lp\/r$/m, 'the exception does not reach outside the loop');
+});
+
+test('ref order: map.over and $item must name an upstream node', () => {
+  const build = (prompt: string) =>
+    workflow('map-order', s.object({}), (g) => {
+      const a = g.agent('a', { agent: 'claude', prompt: 'x', output: s.object({ items: s.array(s.string()) }) });
+      g.map('m', { over: a.out.items }, (b) => b.agent('do', { agent: 'codex', prompt, output: summary }));
+    });
+  const count = (ir: IR) => validate(ir).filter((e) => e === 'm.over: ref "a.items" is not upstream of m').length;
+  assert.equal(count(build('p')), 1, 'map.over with no path from its source');
+  assert.equal(count(build('Do {{$item}}')), 2, '$item resolves map.over again, with the same order check');
+});
+
 test('validate rejects worktree.of pointing downstream', () => {
   const ir = workflow('wt-order', s.object({}), (g) => {
     let later: { id: string } = { id: 'later' };
