@@ -624,6 +624,20 @@ function closedList() {
 // __hive.bridgeCalls(method?).
 const bridgeCalls: { method: string; args: unknown[] }[] = [];
 
+// Takeover / hand-back (spec 496): flips the kind the way the daemon's
+// restart announces it.
+export async function SetSessionKind(id: string, kind: string) {
+  maybeFail('SetSessionKind');
+  bridgeCalls.push({ method: 'SetSessionKind', args: [id, kind] });
+  const s = state.sessions.find((x) => x.id === id);
+  if (!s) return '';
+  if (kind === 'acp') s.kind = 'acp';
+  else delete s.kind;
+  s.alive = true;
+  emit('session:event', JSON.stringify({ kind: 'updated', session: s }));
+  return '';
+}
+
 // Respawn in place, as the registry does: same entry, alive again.
 // The GUI clears the dead-session card on that alive false→true edge.
 export async function RestartSession(id: string) {

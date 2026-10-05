@@ -5,6 +5,8 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"slices"
+	"sync"
 	"testing"
 	"time"
 
@@ -12,6 +14,7 @@ import (
 	"github.com/lucascaro/hive/internal/acp/acptest"
 	"github.com/lucascaro/hive/internal/agent"
 	"github.com/lucascaro/hive/internal/registry"
+	"github.com/lucascaro/hive/internal/session"
 	"github.com/lucascaro/hive/internal/wire"
 )
 
@@ -103,6 +106,8 @@ func TestSendACPErrorCodes(t *testing.T) {
 		{registry.ErrACPBusy, "acp_busy"},
 		{registry.ErrPermissionStale, "permission_stale"},
 		{registry.ErrNoLiveSession, "session_dead"},
+		{registry.ErrTakeoverRefused, "takeover_refused"},
+		{registry.ErrACPWriterLocked, "acp_writer_locked"},
 		{errors.New("boom"), "acp_failed"},
 	}
 	for _, c := range cases {
@@ -289,5 +294,62 @@ func TestCreateACPAboveCeilingErrorCode(t *testing.T) {
 	d.ops.Wait()
 	if len(rec.errs) != 1 || rec.errs[0].Code != wire.ErrCodeACPModeAboveCeiling {
 		t.Errorf("errors = %+v, want acp_mode_above_ceiling", rec.errs)
+	}
+}
+
+// SET_SESSION_KIND runs off the read loop and refuses with an error
+// naming its session, like every other ACP refusal.
+func TestSetSessionKindRefusalNamesSession(t *testing.T) {
+	d := newFrameTestDaemon(t)
+	rec := &recordOps{}
+	d.handleControlFrame(t.Context(), rec.ops(), wire.FrameSetSessionKind, []byte(`{"session_id":"nope","kind":"pty"}`))
+	d.ops.Wait()
+	if len(rec.errs) != 1 || rec.errs[0].Code != "no_such_session" || rec.errs[0].SessionID != "nope" {
+		t.Errorf("errors = %+v, want no_such_session for session nope", rec.errs)
+	}
+}
+
+// SET_SESSION_KIND end to end through the frame handler: a Codex ACP
+// session is taken over in a terminal (resumed by its id) and handed
+// back, with no error written either way.
+func TestSetSessionKindTakeOverAndHandBack(t *testing.T) {
+	useFakeACP(t)
+	var argv [][]string
+	var mu sync.Mutex
+	t.Cleanup(registry.SetStartSessionForTest(func(opts session.Options) (*session.Session, error) {
+		mu.Lock()
+		argv = append(argv, opts.Cmd)
+		mu.Unlock()
+		opts.Cmd = []string{"sleep", "60"}
+		return session.Start(opts)
+	}))
+	d := newFrameTestDaemon(t)
+	e := createACPVia(t, d, (&recordOps{}).ops(), `{"kind":"acp","agent":"codex"}`)
+	sid := d.reg.Get(e.ID).AgentSessionID
+	send := func(kind string) *recordOps {
+		rec := &recordOps{}
+		d.handleControlFrame(t.Context(), rec.ops(), wire.FrameSetSessionKind, []byte(`{"session_id":"`+e.ID+`","kind":"`+kind+`"}`))
+		d.ops.Wait()
+		return rec
+	}
+	if rec := send(wire.KindPTY); len(rec.errs) != 0 {
+		t.Fatalf("take over errors = %+v", rec.errs)
+	}
+	mu.Lock()
+	got := slices.Clone(argv)
+	mu.Unlock()
+	// The test daemon's bootstrap shell may come first; the takeover is
+	// the last launch.
+	if len(got) == 0 || !slices.Equal(got[len(got)-1], []string{"codex", "resume", sid}) {
+		t.Errorf("terminal argv = %q, want codex resume %s", got, sid)
+	}
+	if k := d.reg.Get(e.ID).Kind; k != "" {
+		t.Errorf("kind after takeover = %q, want a terminal", k)
+	}
+	if rec := send(wire.KindACP); len(rec.errs) != 0 {
+		t.Fatalf("hand back errors = %+v", rec.errs)
+	}
+	if k := d.reg.Get(e.ID).Kind; k != wire.KindACP {
+		t.Errorf("kind after hand-back = %q, want acp", k)
 	}
 }

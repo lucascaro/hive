@@ -24,6 +24,11 @@ package buildinfo
 // History (newest first), so a bump is a decision with a record and
 // not just a number going up:
 //
+//	25 — ACP takeover and hand-back (spec 496, phase 4). New frame
+//	    SET_SESSION_KIND (0x45) moves an ACP session into a terminal in
+//	    the same conversation and back, persisting the new kind; refusals
+//	    takeover_refused and acp_writer_locked. A GUI built with this
+//	    sends a frame a daemon built before it does not know.
 //	24 — ACP typed results and trust (spec 496, phase 3). New frames
 //	    SUBMIT_RESULT (0x43, on a session connection) and
 //	    SUBMIT_RESULT_OK (0x44); ACP_TRANSCRIPT gains prompt_id,
@@ -225,7 +230,7 @@ package buildinfo
 //	    before this cannot see or clear the flag.
 //	1 — first contract; everything up to and including the
 //	    CLIENT_COMMAND relay.
-const DaemonContract = 24
+const DaemonContract = 25
 
 // Identity is this binary's full build identity. `hived --version
 // --json` prints it, and Welcome carries the same three values, so a

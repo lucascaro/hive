@@ -73,6 +73,7 @@ import {
   duplicateActiveSessionChooseTool,
   openLauncher,
   restartActiveSession,
+  setActiveSessionKind,
 } from './modals/launcher.js';
 import { openProjectEditor } from './modals/project-editor.js';
 import { closeQuickIdea } from './modals/quick-idea.js';
@@ -122,6 +123,16 @@ const PALETTE: readonly Command[] = [
     id: 'restart-session',
     title: 'Restart Session',
     run: () => restartActiveSession(),
+  },
+  {
+    id: 'take-over-session',
+    title: 'Take Over in Terminal',
+    run: () => setActiveSessionKind('pty'),
+  },
+  {
+    id: 'hand-back-session',
+    title: 'Hand Back to ACP',
+    run: () => setActiveSessionKind('acp'),
   },
   {
     id: 'delete-project',
@@ -328,6 +339,8 @@ export const MENU_COMMANDS: Readonly<Record<string, string>> = {
   'menu:duplicate-session': 'duplicate-session',
   'menu:duplicate-session-choose-tool': 'duplicate-session-choose-tool',
   'menu:restart-session': 'restart-session',
+  'menu:take-over-session': 'take-over-session',
+  'menu:hand-back-session': 'hand-back-session',
   'menu:new-project': 'new-project',
   'menu:delete-project': 'delete-project',
   'menu:command-palette': 'command-palette',

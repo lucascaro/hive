@@ -371,3 +371,35 @@ func TestTranscriptPathsWiredForClaudeAndPiOnly(t *testing.T) {
 		}
 	}
 }
+
+// A Pi takeover opens, in a terminal, the conversation pi-acp mapped the
+// ACP session to — by the id in the session file's name, not a guess.
+func TestPiACPSessionIDResolvesSessionMap(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	t.Setenv("USERPROFILE", home)
+	write := func(body string) {
+		dir := filepath.Join(home, ".pi", "pi-acp")
+		if err := os.MkdirAll(dir, 0o700); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(filepath.Join(dir, "session-map.json"), []byte(body), 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if _, err := piACPSessionID("acp-1"); err == nil {
+		t.Error("no session map: resolved, want an error")
+	}
+	write(`{"sessions":{"acp-1":{"sessionFile":"/h/.pi/agent/sessions/--r--/2026-10-04T10-00-00_000Z_pi-9.jsonl"},"acp-2":{"sessionFile":"/h/x/nounderscore.jsonl"}}}`)
+	if id, err := piACPSessionID("acp-1"); err != nil || id != "pi-9" {
+		t.Errorf("mapped id = %q, %v; want pi-9", id, err)
+	}
+	for _, missing := range []string{"acp-unmapped", "acp-2"} {
+		if id, err := piACPSessionID(missing); err == nil {
+			t.Errorf("piACPSessionID(%q) = %q, want an error (fail closed)", missing, id)
+		}
+	}
+	if acpSpecs[IDPi].CLISessionID == nil || acpSpecs[IDClaude].CLISessionID != nil {
+		t.Error("only Pi maps its ACP id; Claude and Codex resume by the ACP id itself")
+	}
+}

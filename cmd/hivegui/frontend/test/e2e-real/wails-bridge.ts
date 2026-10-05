@@ -505,6 +505,10 @@ export async function GetAcpTranscript(id: string) {
 export async function PromptAcp(id: string, text: string) {
   return call('PromptAcp', { session_id: id, text });
 }
+export async function SetSessionKind(id: string, kind: string) {
+  return call('SetSessionKind', { session_id: id, kind });
+}
+
 export async function AnswerPermission(
   id: string,
   requestId: string,

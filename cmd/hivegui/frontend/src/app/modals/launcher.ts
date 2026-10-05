@@ -16,7 +16,11 @@
 // that wiring).
 
 import { flushSync } from 'react-dom';
-import { DuplicateSession, RestartSession } from '../../bridge.js';
+import {
+  DuplicateSession,
+  RestartSession,
+  SetSessionKind,
+} from '../../bridge.js';
 import { flashStatus, reportFailure } from '../dom.js';
 import { activeProjectId, resolveSessionCwd } from '../selectors.js';
 import { releaseFocus } from '../../lib/focus-trap.js';
@@ -27,7 +31,7 @@ import {
   isModalOpen,
   openModal,
 } from '../../store/store.js';
-import type { SessionInfo } from '../state.js';
+import { isAcpSession, type SessionInfo } from '../state.js';
 
 // Live read of the store. A function, not a destructured snapshot: this
 // module runs inside event handlers and must never cache a slice across
@@ -174,6 +178,32 @@ export function restartActiveSession() {
     return;
   }
   RestartSession(s.id).catch(reportFailure('restart'));
+}
+
+/**
+ * Moves the active session between ACP and a terminal in the same
+ * conversation (spec 496): 'pty' takes an ACP session over, 'acp' hands
+ * a taken-over one back. Declines on a session already of that kind;
+ * the daemon refuses one it cannot switch safely (an agent with no ACP
+ * adapter, no saved conversation yet, a turn running) on control:error.
+ */
+export function setActiveSessionKind(kind: 'pty' | 'acp') {
+  const s = appData().sessions.find((x) => x.id === appData().activeId);
+  if (!s) {
+    flashStatus('no active session', true);
+    return;
+  }
+  if (kind === 'pty' && !isAcpSession(s)) {
+    flashStatus('take over: this session is already a terminal', true);
+    return;
+  }
+  if (kind === 'acp' && isAcpSession(s)) {
+    flashStatus('hand back: this session already runs over ACP', true);
+    return;
+  }
+  SetSessionKind(s.id, kind).catch(
+    reportFailure(kind === 'pty' ? 'take over' : 'hand back'),
+  );
 }
 
 export function duplicateActiveSessionChooseTool() {

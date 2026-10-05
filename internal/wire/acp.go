@@ -155,6 +155,13 @@ type AnswerPermissionReq struct {
 	OptionID  string `json:"option_id"`
 }
 
+// SetSessionKindReq is the SET_SESSION_KIND payload. Kind is KindPTY
+// (take over) or KindACP (hand back).
+type SetSessionKindReq struct {
+	SessionID string `json:"session_id"`
+	Kind      string `json:"kind"`
+}
+
 // Error codes for ACP sessions.
 const (
 	// ErrCodeACPSession: an attach (or other terminal operation)
@@ -176,4 +183,12 @@ const (
 	// ErrCodeACPModeAboveCeiling: CREATE_SESSION asked for an ACP mode
 	// above the user's ceiling for that agent. Refused, never lowered.
 	ErrCodeACPModeAboveCeiling = "acp_mode_above_ceiling"
+	// ErrCodeTakeoverRefused: SET_SESSION_KIND could not be sure the
+	// other kind reopens the same conversation (no id yet, no saved
+	// transcript, an unmapped Pi session), so nothing was changed.
+	ErrCodeTakeoverRefused = "takeover_refused"
+	// ErrCodeACPWriterLocked: a hand-back found the conversation held by
+	// another writer (Codex's app-server, F2). The session was reverted
+	// to a terminal.
+	ErrCodeACPWriterLocked = "acp_writer_locked"
 )

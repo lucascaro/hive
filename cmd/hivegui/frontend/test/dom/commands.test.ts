@@ -133,6 +133,8 @@ describe('the palette', () => {
       'duplicate-session',
       'duplicate-session-choose-tool',
       'restart-session',
+      'take-over-session',
+      'hand-back-session',
       'delete-project',
       'worktrees',
       'whats-new',

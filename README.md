@@ -23,7 +23,9 @@ What works:
   permission mode you cap in Settings → Agents (Claude: Manual, Codex:
   Read-only by default); Pi needs unattended tool use allowed there.
   Gemini and Copilot are marked experimental and stay off until Hive
-  can cap their modes
+  can cap their modes. **Take Over in Terminal** (File menu, command
+  palette) reopens the same conversation in the agent's own CLI, and
+  **Hand Back to ACP** returns it to the transcript with every turn
 - Grid view: per-project (⌘G) or all-sessions (⇧⌘G), spatial arrow nav
 - Multi-window (⇧⌘N) — independent windows share the same daemon
 - BEL → desktop notification + visual pulse on non-focused sessions

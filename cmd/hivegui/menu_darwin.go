@@ -65,6 +65,8 @@ func buildAppMenuRecorded(a *App, record map[string]string) *menu.Menu {
 	file.AddText("Duplicate Session", accel("duplicate-session", keys.CmdOrCtrl("p")), emit("menu:duplicate-session"))
 	file.AddText("Duplicate Session (choose tool)…", accel("duplicate-session-choose-tool", keys.Combo("p", keys.ShiftKey, keys.CmdOrCtrlKey)), emit("menu:duplicate-session-choose-tool"))
 	file.AddText("Restart Session", accel("restart-session", nil), emit("menu:restart-session"))
+	file.AddText("Take Over in Terminal", accel("take-over-session", nil), emit("menu:take-over-session"))
+	file.AddText("Hand Back to ACP", accel("hand-back-session", nil), emit("menu:hand-back-session"))
 	file.AddSeparator()
 	file.AddText("New Window",
 		accel("new-window", keys.Combo("n", keys.ShiftKey, keys.CmdOrCtrlKey)),

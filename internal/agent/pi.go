@@ -2,6 +2,7 @@ package agent
 
 import (
 	_ "embed"
+	"encoding/json"
 	"fmt"
 	"log"
 	"os"
@@ -92,6 +93,38 @@ func PiACPShim(stateDir string) (string, error) {
 	}
 	dst := filepath.Join(stateDir, "pi", name)
 	return dst, ensureFile(dst, body, 0o700)
+}
+
+// piACPSessionID resolves an ACP session id of pi-acp's to the id
+// `pi --session-id` resumes, through the map pi-acp keeps at
+// ~/.pi/pi-acp/session-map.json (ACP id → pi session file, which pi
+// names "<timestamp>_<pi session id>.jsonl"). An id missing from the
+// map is an error: Hive cannot tell which conversation to open in a
+// terminal, and guessing could open, or start, the wrong one.
+func piACPSessionID(acpID string) (string, error) {
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return "", err
+	}
+	b, err := os.ReadFile(filepath.Join(home, ".pi", "pi-acp", "session-map.json"))
+	if err != nil {
+		return "", fmt.Errorf("pi-acp has no session map: %w", err)
+	}
+	var m struct {
+		Sessions map[string]struct {
+			SessionFile string `json:"sessionFile"`
+		} `json:"sessions"`
+	}
+	if err := json.Unmarshal(b, &m); err != nil {
+		return "", fmt.Errorf("pi-acp's session map is unreadable: %w", err)
+	}
+	name := strings.TrimSuffix(filepath.Base(m.Sessions[acpID].SessionFile), ".jsonl")
+	i := strings.LastIndex(name, "_")
+	id := name[i+1:]
+	if i < 0 || id == "" {
+		return "", fmt.Errorf("pi-acp's session map has no Pi conversation for %s", acpID)
+	}
+	return id, nil
 }
 
 // shQuote single-quotes s for sh.

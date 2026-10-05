@@ -848,6 +848,16 @@ func (a *App) AnswerPermission(sessionID, requestID, optionID string) error {
 	})
 }
 
+// SetSessionKind takes an ACP session over in a terminal (kind "pty")
+// or hands it back to ACP ("acp"). Refusals arrive on control:error.
+func (a *App) SetSessionKind(sessionID, kind string) error {
+	cs, err := a.requireControl()
+	if err != nil {
+		return err
+	}
+	return cs.WriteJSON(wire.FrameSetSessionKind, wire.SetSessionKindReq{SessionID: sessionID, Kind: kind})
+}
+
 // SearchTranscript asks the daemon to search one session's agent
 // transcript. The answer arrives as the "transcript:matches" event.
 //

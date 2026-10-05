@@ -253,6 +253,11 @@ const (
 	// holds the result and be reported as having none.
 	FrameSubmitResult   FrameType = 0x43 // C → S, JSON, control
 	FrameSubmitResultOK FrameType = 0x44 // S → C, JSON, control
+	// SET_SESSION_KIND moves an ACP-capable session between ACP and a
+	// terminal in the same conversation: kind "pty" takes it over in a
+	// PTY, "acp" hands it back. Answered by the SESSION_EVENT the
+	// restart sends, or ERROR.
+	FrameSetSessionKind FrameType = 0x45 // C → S, JSON, control
 )
 
 // ControlRequestFrames lists every frame a control-mode client may send.
@@ -274,7 +279,7 @@ var ControlRequestFrames = []FrameType{
 	FrameListPlugins, FrameInstallPlugin, FrameSetPluginEnabled, FrameRemovePlugin,
 	FrameSetPluginConfig, FrameSetClientUI,
 	FrameGetAcpTranscript, FramePromptAcp, FrameAnswerPermission,
-	FrameSubmitResult,
+	FrameSubmitResult, FrameSetSessionKind,
 }
 
 // ControlEventFrames lists every frame the daemon sends on a control
@@ -407,6 +412,8 @@ func (t FrameType) String() string {
 		return "SUBMIT_RESULT"
 	case FrameSubmitResultOK:
 		return "SUBMIT_RESULT_OK"
+	case FrameSetSessionKind:
+		return "SET_SESSION_KIND"
 	case FrameGetActivity:
 		return "GET_ACTIVITY"
 	case FrameActivity:

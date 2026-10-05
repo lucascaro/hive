@@ -37,6 +37,11 @@ type ACPSpec struct {
 	// ACPModeUnattended, which are Hive's, not the adapter's: no
 	// set_mode is sent, and a session starts only at ACPModeUnattended.
 	NoApprovalGate bool
+	// CLISessionID maps the adapter's session id to the id the agent's
+	// own CLI resumes by (ResumeArgs), for a PTY takeover. nil means the
+	// two are the same, which is what Claude's and Codex's adapters do
+	// (F6 in acp-workflows.md reopened both in a PTY by the ACP id).
+	CLISessionID func(acpID string) (string, error)
 }
 
 // ACPMode is one permission mode an adapter advertises.
@@ -94,7 +99,7 @@ var acpSpecs = map[ID]*ACPSpec{
 		{"read-only", "Read-only"}, {"workspace-write", "Workspace access"},
 		{"agent", "Auto review"}, {"agent-full-access", "Full access"},
 	}},
-	IDPi: {Argv: []string{"npx", "-y", piACPPackage}, DefaultMode: ACPModeOff, NoApprovalGate: true, Modes: []ACPMode{
+	IDPi: {Argv: []string{"npx", "-y", piACPPackage}, DefaultMode: ACPModeOff, NoApprovalGate: true, CLISessionID: piACPSessionID, Modes: []ACPMode{
 		{ACPModeOff, "Off"}, {ACPModeUnattended, "Unattended tool use"},
 	}},
 	IDGemini:  {Argv: []string{"gemini", "--acp"}, Experimental: true},

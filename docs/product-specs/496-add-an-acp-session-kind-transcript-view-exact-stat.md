@@ -4,8 +4,9 @@ title: "Add an ACP session kind: transcript view, exact state, permission prompt
 type: enhancement
 complexity: L
 priority: P2
-pr: 501
-stage: GATE
+pr: 502
+shipped: 2026-10-04
+stage: DONE
 ---
 
 # Add an ACP session kind: transcript view, exact state, permission prompts, typed results, PTY takeover
@@ -14,7 +15,7 @@ stage: GATE
 - **Type:** enhancement
 - **Complexity:** L
 - **Priority:** P2
-- **Exec plan:** [docs/exec-plans/active/496-add-an-acp-session-kind-transcript-view-exact-stat.md](../exec-plans/active/496-add-an-acp-session-kind-transcript-view-exact-stat.md)
+- **Exec plan:** [docs/exec-plans/completed/496-add-an-acp-session-kind-transcript-view-exact-stat.md](../exec-plans/completed/496-add-an-acp-session-kind-transcript-view-exact-stat.md)
 
 ## Problem
 

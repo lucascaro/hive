@@ -206,6 +206,14 @@ function rawGroups(isMac: boolean): { title: string; items: Row[] }[] {
           command: 'duplicate-session-choose-tool',
           label: 'Duplicate session (choose tool)',
         },
+        {
+          command: 'take-over-session',
+          label: 'Take an ACP session over in a terminal',
+        },
+        {
+          command: 'hand-back-session',
+          label: 'Hand a taken-over session back to ACP',
+        },
         { command: 'close-session', label: 'Close session' },
         { command: 'reopen-closed-session', label: 'Reopen closed session' },
         {

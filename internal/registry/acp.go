@@ -49,6 +49,13 @@ var (
 	// ErrSubmitRejected is returned by SubmitResult for a wrong nonce, a
 	// session with no running turn to attach to, or a malformed result.
 	ErrSubmitRejected = errors.New("registry: result rejected")
+	// ErrTakeoverRefused is returned by SetKind when the conversation
+	// cannot be opened in the other kind without risking a fresh one.
+	ErrTakeoverRefused = errors.New("registry: cannot switch this session")
+	// ErrACPWriterLocked is returned by a hand-back that found the
+	// conversation still held by another writer — Codex's detached
+	// `codex app-server` (F2). The session is reverted to a terminal.
+	ErrACPWriterLocked = errors.New("registry: the conversation is still open in another process")
 )
 
 // acpStartTimeout bounds initialize plus session/new or session/load.
@@ -643,7 +650,7 @@ func (r *Registry) PromptACP(id, text, origin string) error {
 		r.mu.Unlock()
 		return ErrNoLiveSession
 	}
-	if as.busy {
+	if as.busy || e.switching {
 		r.mu.Unlock()
 		return ErrACPBusy
 	}
@@ -841,6 +848,146 @@ func (r *Registry) SubscribeACP() (AcpListener, func()) {
 		}
 		r.mu.Unlock()
 	}
+}
+
+// takeoverTranscriptExists reports whether the agent's CLI has the
+// conversation on disk under cwd. A seam: the real one reads the
+// user's home directory.
+var takeoverTranscriptExists = func(def agent.Def, sessionID, cwd string) bool {
+	return len(def.TranscriptPaths(sessionID, cwd)) > 0
+}
+
+// SetKind switches an ACP-capable session between ACP and a terminal in
+// the same conversation (spec 496): kind wire.KindPTY takes it over in
+// a PTY, wire.KindACP hands it back. The new kind is persisted, then the
+// session restarts — Revive branches on the kind, so a terminal resumes
+// the conversation through ResumeArgs and ACP through session/load.
+//
+// A takeover is refused, before anything is stopped, unless the CLI is
+// sure to reopen this conversation rather than start a new one. A
+// failed hand-back reverts to a terminal and restarts it once, so the
+// user is never left with neither.
+func (r *Registry) SetKind(id, kind string) error {
+	if kind != wire.KindACP && kind != wire.KindPTY {
+		return fmt.Errorf("%w %q", ErrBadKind, kind)
+	}
+	r.mu.Lock()
+	e, ok := r.entries[id]
+	if !ok {
+		r.mu.Unlock()
+		return ErrNotFound
+	}
+	if e.Kind == acpKind(kind) {
+		r.mu.Unlock()
+		return nil
+	}
+	// One switch at a time, and no new turn while it runs: reserved under
+	// the same lock PromptACP takes, so a prompt cannot slip in between
+	// the busy check and the restart that would kill it.
+	if e.switching || (e.acp != nil && (e.acp.busy || e.acp.perm != nil)) {
+		r.mu.Unlock()
+		return ErrACPBusy
+	}
+	e.switching = true
+	agentID, sid, wtPath, prev := e.Agent, e.AgentSessionID, e.WorktreePath, e.Kind
+	cwd := ""
+	if p, ok := r.projects[e.ProjectID]; ok {
+		cwd = p.Cwd
+	}
+	r.mu.Unlock()
+	defer func() {
+		r.mu.Lock()
+		e.switching = false
+		r.mu.Unlock()
+	}()
+	// The directory the restart will run in, as Restart resolves it.
+	if wtPath != "" {
+		if _, err := os.Stat(wtPath); err == nil {
+			cwd = wtPath
+		}
+	}
+
+	def, ok := agent.Get(agent.ID(agentID))
+	if !ok || def.ACP() == nil {
+		return fmt.Errorf("%w: agent %q cannot run as an ACP session", ErrBadKind, agentID)
+	}
+	if sid == "" {
+		return fmt.Errorf("%w: the agent has not recorded a conversation id yet", ErrTakeoverRefused)
+	}
+	if kind == wire.KindPTY {
+		if err := takeoverPrecheck(def, sid, cwd); err != nil {
+			return err
+		}
+	} else if reason := def.ACPRefusal(agent.SpawnSettings()); reason != "" {
+		return fmt.Errorf("%w: %s", ErrACPRefused, reason)
+	}
+
+	if err := r.persistKind(id, kind); err != nil {
+		return err
+	}
+	err := r.Restart(id)
+	if err == nil {
+		return nil
+	}
+	if kind == wire.KindACP && strings.Contains(err.Error(), "already has an active writer") {
+		err = fmt.Errorf("%w: %s still holds it (quit any `codex` left running for it, then hand back again)", ErrACPWriterLocked, def.Name)
+	}
+	// Back to the kind it had, restarted once: best effort, so a session
+	// whose switch failed is running again in the form it was in.
+	back := wire.KindPTY
+	if prev == wire.KindACP {
+		back = wire.KindACP
+	}
+	log.Printf("registry: switching %s to %s failed (%v); reverting to %s", id, kind, err, back)
+	if perr := r.persistKind(id, back); perr != nil {
+		return errors.Join(err, perr)
+	}
+	if rerr := r.Restart(id); rerr != nil {
+		log.Printf("registry: %s: restart after the revert failed too: %v", id, rerr)
+		return errors.Join(err, fmt.Errorf("and restarting it as %s failed: %w", back, rerr))
+	}
+	return err
+}
+
+// takeoverPrecheck refuses a takeover the CLI could not resume. For an
+// agent with TranscriptPaths (Claude, Pi), ResumeArgs falls back to a
+// fresh session when the transcript is missing, so it must exist;
+// Codex's `codex resume <id>` has no fallback, so the id is enough.
+func takeoverPrecheck(def agent.Def, sid, cwd string) error {
+	if f := def.ACP().CLISessionID; f != nil {
+		id, err := f(sid)
+		if err != nil {
+			return fmt.Errorf("%w: %v", ErrTakeoverRefused, err)
+		}
+		// Entry.AgentSessionID holds one id for both kinds: a terminal
+		// resumes by it and a hand-back loads by it.
+		if id != sid {
+			return fmt.Errorf("%w: %s keeps this conversation under another id (%s)", ErrTakeoverRefused, def.Name, id)
+		}
+	}
+	if def.ResumeArgs == nil {
+		return fmt.Errorf("%w: %s cannot resume a conversation by id", ErrTakeoverRefused, def.Name)
+	}
+	if def.TranscriptPaths != nil && !takeoverTranscriptExists(def, sid, cwd) {
+		return fmt.Errorf("%w: %s has not saved this conversation yet (send a prompt first)", ErrTakeoverRefused, def.Name)
+	}
+	return nil
+}
+
+// persistKind records kind on the entry and announces it.
+func (r *Registry) persistKind(id, kind string) error {
+	r.mu.Lock()
+	e, ok := r.entries[id]
+	if !ok {
+		r.mu.Unlock()
+		return ErrNotFound
+	}
+	e.Kind = acpKind(kind)
+	r.persistEntryLoggedLocked(e, "kind")
+	info := e.Info()
+	r.mu.Unlock()
+	r.broadcast(wire.SessionEventUpdated, info)
+	return nil
 }
 
 // SetACPCommandForTest replaces how ACP adapters are launched, for
