@@ -7,6 +7,7 @@
 import {
   type AgentSpec,
   type CheckOut,
+  type LoopOut,
   type CheckSpec,
   type Fragment,
   type Handle,
@@ -18,8 +19,7 @@ import { s } from './schema.ts';
 
 export type Verdict = 'approve' | 'revise';
 
-export interface ReviewLoop<W, R> {
-  id: string;
+export interface ReviewLoop<W, R> extends Handle<LoopOut> {
   worker: Handle<W>;
   reviewer: Handle<R>;
 }
@@ -51,7 +51,7 @@ export function reviewLoop<W extends { summary: string }, R extends { verdict: V
       body.edge(work, review);
       return when(review.out.verdict as Ref<Verdict>, 'eq', 'approve');
     });
-    return { id: loop.id, worker: work as Handle<W>, reviewer: review as Handle<R> };
+    return { ...loop, worker: work as Handle<W>, reviewer: review as Handle<R> };
   };
 }
 
@@ -87,7 +87,9 @@ export interface PlanImplementVerifySpec {
 }
 
 /** plan → human approval → (approved only) review-looped implementation →
- * check. A rejected plan skips everything after the approval node. */
+ * check. A rejected plan skips everything after the approval node. A review
+ * loop that runs out of rounds without approval does not fall through to
+ * the check: it asks a human whether to run the check anyway. */
 export function planImplementVerify(spec: PlanImplementVerifySpec) {
   return ((b: Scope, id: string) =>
     b.group(id, (g) => {
@@ -104,10 +106,16 @@ export function planImplementVerify(spec: PlanImplementVerifySpec) {
           { maxIters: spec.maxIters },
         ),
       );
+      const exhausted = g.human('exhausted', {
+        prompt: `The review loop ran {{${build.out.iterations.ref}}} rounds without approval. Last feedback: {{${build.reviewer.out.feedback.ref}}}\n\nRun the checks on the work as it stands, or stop?`,
+        output: s.object({ decision: s.enum('run-checks', 'stop'), note: s.string() }),
+      });
       const tests = g.check('tests', spec.check);
       g.edge(plan, approve);
       g.edge(approve, build, when(approve.out.decision, 'eq', 'approve'));
-      g.edge(build, tests);
-      return { plan, approve, build, tests };
+      g.edge(build, tests, when(build.out.converged, 'eq', true));
+      g.edge(build, exhausted, when(build.out.converged, 'eq', false));
+      g.edge(exhausted, tests, when(exhausted.out.decision, 'eq', 'run-checks'));
+      return { plan, approve, build, exhausted, tests };
     })) satisfies Fragment<unknown>;
 }

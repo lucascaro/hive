@@ -39,7 +39,7 @@ test('fanOutThenVerify maps step over items, then joins into verify', () => {
   assert.ok(step.kind === 'agent' && step.prompt.includes('{{$item}}'));
 });
 
-test('planImplementVerify chains plan→approve→implement→check with a human approval gate', () => {
+test('planImplementVerify chains plan→approve→implement→check, and asks a human when the loop runs out', () => {
   const group = examples.planImplementVerify().nodes[0] as GroupNode;
   assert.deepEqual(
     group.nodes.map((n) => [n.id, n.kind]),
@@ -47,6 +47,7 @@ test('planImplementVerify chains plan→approve→implement→check with a human
       ['feature/plan', 'agent'],
       ['feature/approve', 'human'],
       ['feature/build', 'loop'],
+      ['feature/exhausted', 'human'],
       ['feature/tests', 'check'],
     ],
   );
@@ -57,7 +58,13 @@ test('planImplementVerify chains plan→approve→implement→check with a human
       to: 'feature/build',
       when: { ref: 'feature/approve.decision', op: 'eq', value: 'approve' },
     },
-    { from: 'feature/build', to: 'feature/tests' },
+    { from: 'feature/build', to: 'feature/tests', when: { ref: 'feature/build.converged', op: 'eq', value: true } },
+    { from: 'feature/build', to: 'feature/exhausted', when: { ref: 'feature/build.converged', op: 'eq', value: false } },
+    {
+      from: 'feature/exhausted',
+      to: 'feature/tests',
+      when: { ref: 'feature/exhausted.decision', op: 'eq', value: 'run-checks' },
+    },
   ]);
   const build = group.nodes[2] as LoopNode;
   assert.deepEqual(

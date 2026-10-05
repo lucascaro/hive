@@ -252,6 +252,7 @@ node scripts/workflow-proto/emit.ts reviewLoop --mermaid | grep -q '^flowchart'
 - **2026-10-05** — Go/no-go verdict: go, custom, gated on gate B and #505. Why: the framework adapter (data conditions, node-id keys, interrupt-safe ACP nodes, IR export, checkpoint mapping) is about one-half to one-third of the custom core. That sits at the "under half" threshold, not under it, and it adds a native module and license terms. Detail in the doc.
 - **2026-10-05** — Moved the OpenTelemetry spec file a research subagent left untracked at the repo root (`a.md`) into the session scratchpad. It was not part of this change.
 - **2026-10-05** — The Node floor for workflow files is 22.18 (or 23.6), not 22.6. Why: type stripping is unflagged only from those versions, and the engine should not depend on `--experimental-strip-types`. This corrects the round-B entry above.
+- **2026-10-05** — Review iter 1 decisions (user): references must read upstream, with loop back-refs as the one exception; loops expose `{ converged, iterations }`, and `planImplementVerify` routes an exhausted loop to a human node; the `runs.db` carve-out is deferred to the engine spec as a `DESIGN.md` change; and the doc specifies four security rules (a per-project workflow trust confirmation, a builder environment allowlist, interpolated outputs treated as data, and secrets enforcement through `0600`, redaction, and OTel content off by default). Join rule: a node runs when at least one incoming edge was taken, so alternative routes join without a special node.
 
 ## Progress
 
@@ -259,6 +260,7 @@ node scripts/workflow-proto/emit.ts reviewLoop --mermaid | grep -q '^flowchart'
 - **2026-10-05** — Research done (three passes); clarifying round B answered; #505 filed. Stage → PLAN.
 - **2026-10-05** — Plan approved (chat, round 1) after two second-opinion rounds.
 - **2026-10-05** — Implemented: design doc, prototype (42 tests), CI step, cross-links. Mermaid output rendered in headless Chromium with mermaid@11 (all three examples render).
+- **2026-10-05** — Review iter 1 escalated 7 design items; all decided and applied (47 tests).
 
 ## PR convergence ledger
 

@@ -77,9 +77,10 @@ test('validate rejects unresolved prompt placeholders', () => {
 test('validate rejects map over a non-array output', () => {
   const ir = workflow('bad-map', s.object({}), (g) => {
     const a = g.agent('a', { agent: 'claude', prompt: 'x', output: summary });
-    g.map('m', { over: a.out.summary as unknown as Ref<string[]> }, (b) =>
+    const m = g.map('m', { over: a.out.summary as unknown as Ref<string[]> }, (b) =>
       b.agent('do', { agent: 'codex', prompt: 'y', output: summary }),
     );
+    g.edge(a, m);
   });
   assert.match(validate(ir).join('\n'), /over "a\.summary" is not an array/);
 });
@@ -192,9 +193,10 @@ test('validate rejects each malformed node, edge, ref and condition', () => {
         const r = sub.agent('r', { agent: 'codex', prompt: 'p', output: verdict });
         return when(r.out.verdict, 'eq', 'approve');
       });
-      g.map('m', { over: list.out.items }, (sub) => sub.agent('do', { agent: 'codex', prompt: 'p', output: summary }));
+      const m = g.map('m', { over: list.out.items }, (sub) => sub.agent('do', { agent: 'codex', prompt: 'p', output: summary }));
       g.edge(a, b);
       g.edge(a, c);
+      g.edge(list, m);
     });
   const node = (ir: IR, id: string) => ir.nodes.find((n) => n.id === id) as unknown as Record<string, unknown>;
   const cond = (c: Cond) => (ir: IR) => {
@@ -226,4 +228,58 @@ test('validate rejects each malformed node, edge, ref and condition', () => {
     mutate(ir);
     assert.match(validate(ir).join('\n'), want, name);
   }
+});
+
+test('validate rejects a ref to a node that has not run yet', () => {
+  const ir = workflow('order', s.object({}), (g) => {
+    const a = g.agent('a', { agent: 'claude', prompt: 'Read {{b.summary}}', output: summary });
+    const b = g.agent('b', { agent: 'codex', prompt: 'y', output: summary });
+    const c = g.agent('c', { agent: 'codex', prompt: 'Sibling {{b.summary}}', output: summary });
+    g.edge(a, b);
+    g.edge(a, c);
+  });
+  const errors = validate(ir).join('\n');
+  assert.match(errors, /^a: ref "b\.summary" is not upstream of a$/m);
+  assert.match(errors, /^c: ref "b\.summary" is not upstream of c$/m, 'a parallel sibling is not upstream either');
+});
+
+test('ref order: upstream across subgraphs, edge conditions on their source, loop back-refs', () => {
+  const ir = workflow('order-ok', s.object({}), (g) => {
+    const a = g.agent('a', { agent: 'claude', prompt: 'x', output: summary });
+    const grp = g.group('grp', (b) => b.agent('in', { agent: 'claude', prompt: 'Uses {{a.summary}}', output: verdict }));
+    const lp = g.loop('lp', { maxIters: 2 }, (b) => {
+      // `first` reads `second`, later in the same body: the previous round.
+      const first = b.agent('first', { agent: 'claude', prompt: 'Last time: {{lp/second.summary}}', output: summary });
+      const second = b.agent('second', { agent: 'codex', prompt: 'Now: {{lp/first.summary}}', output: summary });
+      b.edge(first, second);
+      return when(second.out.summary, 'ne', '');
+    });
+    g.edge(a, grp);
+    // A condition on an edge out of a group may read the group's inner nodes.
+    g.edge(grp, lp, when({ ref: 'grp/in.verdict' } as Ref<string>, 'eq', 'approve'));
+  });
+  assert.deepEqual(validate(ir), []);
+});
+
+test('validate rejects worktree.of pointing downstream', () => {
+  const ir = workflow('wt-order', s.object({}), (g) => {
+    let later: { id: string } = { id: 'later' };
+    const first = g.agent('first', { agent: 'claude', prompt: 'p', output: summary, worktree: later });
+    later = g.agent('later', { agent: 'claude', prompt: 'p', output: summary });
+    g.edge(first, later);
+  });
+  assert.match(validate(ir).join('\n'), /first: worktree\.of "later" is not upstream of it/);
+});
+
+test('a loop exposes converged and iterations', () => {
+  const ir = workflow('loop-out', s.object({}), (g) => {
+    const lp = g.loop('lp', { maxIters: 3 }, (b) => {
+      const r = b.agent('r', { agent: 'codex', prompt: 'p', output: verdict });
+      return when(r.out.verdict, 'eq', 'approve');
+    });
+    const next = g.agent('next', { agent: 'claude', prompt: 'Took {{lp.iterations}} rounds', output: summary });
+    g.edge(lp, next, when(lp.out.converged, 'eq', true));
+  });
+  assert.deepEqual(validate(ir), []);
+  assert.deepEqual(ir.edges[0].when, { ref: 'lp.converged', op: 'eq', value: true });
 });

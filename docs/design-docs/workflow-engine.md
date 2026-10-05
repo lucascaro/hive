@@ -61,7 +61,7 @@ export default workflow('review-loop', s.object({ task: s.string() }), (g, input
 | `check` | A command (`argv`) in the worktree of its upstream node. | `{ ok, exit_code }`. Every "tests pass" or "it builds" claim is a check node, never a model's word. |
 | `human` | A question shown in the GUI. | A typed answer: for example `{ decision: 'approve' \| 'reject', note }`. |
 | `group` | A named subgraph. | Nothing; inner nodes are referenced directly. |
-| `loop` | Its body, repeated until `until` holds, at most `max_iters` (1–20) times. | Nothing; `until` and later nodes read inner nodes' latest outputs. |
+| `loop` | Its body, repeated until `until` holds, at most `max_iters` (1–20) times. | `{ converged, iterations }`: `converged` is false when the bound ran out first. Later nodes can also read inner nodes' latest outputs. |
 | `map` | One copy of its template per element of an array output (`over`), at most `concurrency` (1–16) at once. | `{ results }`: the template sink's outputs, in input order. |
 
 There is no `llm` node, and Hive never calls a model API or holds a key.
@@ -100,7 +100,9 @@ complete before the run starts.
 - **Loops.** `loop` is the only way to repeat. A back-edge anywhere else is a
   validation error. The loop's bound (`max_iters`) and exit test (`until`) are
   fields of the node, so the reviewed graph shows both. The iteration count is
-  run state, not graph shape.
+  run state, not graph shape. Running out of rounds is an explicit outcome,
+  not a silent pass: the loop's `converged` output is false, and the graph
+  routes that case with an edge condition like any other.
 - **Dynamic fan-out.** `map` holds one template subgraph. Only the number of
   copies is decided at run time, by the length of the array named in `over`.
   Each copy's events are keyed `<map>[<index>]/<node>`, so the overlay can show
@@ -119,17 +121,26 @@ implements; they are part of the design, not an engine detail.
 - **Ready.** A node is ready when every incoming edge has been settled. An edge
   is *taken* when its source finished and its condition holds (or it has
   none), and *not taken* otherwise.
-- **Skip.** A node whose incoming edges are all settled but which has an
-  untaken edge is skipped. Skipping propagates: a rejected plan skips
-  everything downstream of the approval.
+- **Run or skip.** A ready node runs when at least one incoming edge was
+  taken, and is skipped when none was. Alternative routes into one node (a
+  converged loop, or a human's "run the checks anyway") therefore join
+  without a special node. A skipped node's outgoing edges are not taken, so
+  skipping propagates: a rejected plan skips everything after the approval.
+- **References read upstream.** A prompt placeholder, `map.over` or
+  `worktree.of` may name only a node that finishes before the reader starts,
+  meaning upstream of it by edges, possibly across subgraphs. An edge
+  condition may also read its own source and the nodes inside it. A loop's
+  `until` may read its own body. `validate` rejects anything else, including a
+  parallel sibling. A reference to an upstream node that was skipped reads
+  as empty.
 - **Subgraphs.** A group, loop or map starts at its body's entry nodes (those
   with no incoming edge inside the body). It is done when every node inside
   has finished or been skipped.
 - **Loops.** Before each new iteration the loop evaluates `until` against the
   iteration that just ended. A reference from inside the body to a node later
   in the body reads the previous iteration's output, and is empty on the first
-  one. That is how `reviewLoop` hands the reviewer's feedback back to the
-  worker.
+  one. That is the one exception to "references read upstream", and it is how
+  `reviewLoop` hands the reviewer's feedback back to the worker.
 - **Failure.** A node that fails after its retries fails its run. Optional
   error edges are left to the engine spec, because the prototype has no
   example that needs them.
@@ -395,7 +406,10 @@ flowchart TD
 
 Plan, then a human approves, then a review loop implements, then a check runs.
 The edge into `build` is taken only on `decision = approve`; a rejection skips
-the rest.
+the rest. When the review loop runs out of rounds without approval
+(`converged = false`), the work does not fall through to the checks. A second
+human node, `exhausted`, shows the last feedback and asks whether to run the
+checks anyway or stop.
 
 <!-- wf:planImplementVerify:mermaid:start -->
 ```mermaid
@@ -408,10 +422,13 @@ flowchart TD
       feature__build__review["review · codex"]
       feature__build__work --> feature__build__review
     end
+    feature__exhausted(["exhausted · human"])
     feature__tests[["tests · check"]]
     feature__plan --> feature__approve
     feature__approve -->|"approve.decision = approve"| feature__build
-    feature__build --> feature__tests
+    feature__build -->|"build.converged = true"| feature__tests
+    feature__build -->|"build.converged = false"| feature__exhausted
+    feature__exhausted -->|"exhausted.decision = run-checks"| feature__tests
   end
 ```
 <!-- wf:planImplementVerify:mermaid:end -->
@@ -564,6 +581,31 @@ flowchart TD
           ]
         },
         {
+          "id": "feature/exhausted",
+          "kind": "human",
+          "prompt": "The review loop ran {{feature/build.iterations}} rounds without approval. Last feedback: {{feature/build/review.feedback}}\n\nRun the checks on the work as it stands, or stop?",
+          "output": {
+            "type": "object",
+            "properties": {
+              "decision": {
+                "type": "string",
+                "enum": [
+                  "run-checks",
+                  "stop"
+                ]
+              },
+              "note": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "decision",
+              "note"
+            ],
+            "additionalProperties": false
+          }
+        },
+        {
           "id": "feature/tests",
           "kind": "check",
           "argv": [
@@ -589,7 +631,30 @@ flowchart TD
         },
         {
           "from": "feature/build",
-          "to": "feature/tests"
+          "to": "feature/tests",
+          "when": {
+            "ref": "feature/build.converged",
+            "op": "eq",
+            "value": true
+          }
+        },
+        {
+          "from": "feature/build",
+          "to": "feature/exhausted",
+          "when": {
+            "ref": "feature/build.converged",
+            "op": "eq",
+            "value": false
+          }
+        },
+        {
+          "from": "feature/exhausted",
+          "to": "feature/tests",
+          "when": {
+            "ref": "feature/exhausted.decision",
+            "op": "eq",
+            "value": "run-checks"
+          }
         }
       ]
     }
@@ -614,6 +679,8 @@ plain JSON:
 - edges that stay inside one subgraph;
 - no cycle outside `loop`;
 - every reference and placeholder resolving to a declared field;
+- every reference naming a node upstream of its reader, or a loop body's own
+  node (see [Run semantics](#run-semantics));
 - condition values that fit the field;
 - the loop and map bounds;
 - exactly one sink in a map template;
@@ -1193,9 +1260,13 @@ The engine plugin keeps one database, `runs.db`, in its data folder
 It writes it with Node's built-in `node:sqlite`, so the database adds no
 dependency and no native module.
 
-The registry rule in `DESIGN.md` still holds: the registry stays the only
-writer of `hived`'s own state, and the plugin writes only inside the folder
-that 460 gives it. Each transition is one transaction in WAL mode with
+**This needs a `DESIGN.md` change before it ships.** `DESIGN.md` says
+`plugin-data/<id>/` is written only through the plugin Manager: the plugin's
+config and log. A plugin writing its own database there is not covered. The
+engine spec must add the carve-out: a plugin may write its own files under its
+`plugin-data/<id>/`, still with atomic or transactional writes, and nothing
+outside it. Until then this is a design, not a rule change. The registry
+stays the only writer of session state either way. Each transition is one transaction in WAL mode with
 `synchronous=FULL`. A transition is a node finishing, failing or starting to
 wait, so writes are rare and the full fsync is cheap.
 
@@ -1416,13 +1487,46 @@ stamps provenance, permission requests go to the user, and nothing escalates.
     and is filed as **#505**. The engine must not ship before it is fixed.
   - **Codex.** It loads project `.codex/` layers only for trusted paths; #505
     also verifies how `codex-acp` treats a path that was never trusted.
+- **Trusting a project's workflow files.**
+  - **The risk.** Building a workflow runs its `.ts` file, and a cloned
+    repository can carry `.hive/workflows/`.
+  - **The rule.** The engine never builds a project's workflow files until the
+    user has confirmed, once per project, that they trust that folder. The
+    confirmation is keyed by the project and the folder's path. It is asked
+    again when the folder's contents change, as identified by a hash of its
+    files. Opening a project never builds anything.
+- **The builder's environment.** The child `node` that builds a workflow gets
+  an allowlisted environment: `PATH`, `HOME`, `LANG`, `TZ`, plus the engine's
+  own variables. The daemon's other variables are dropped, so nothing reaches
+  a workflow file's top-level code by inheritance. That includes tokens and
+  `HIVE_SOCKET`. Building has no reason to reach the network or the daemon.
+- **Agent outputs in prompts are data.** A `{{node.field}}` placeholder pastes
+  one agent's output into another agent's prompt, and that output may itself
+  carry injected instructions from whatever the agent read. So the engine
+  follows three rules:
+  - It wraps every interpolated value in a delimited block labelled as the
+    named node's output, with an instruction that its contents are data, not
+    directions.
+  - It never interpolates into anything but a prompt: no argv, no file path,
+    no mode, no agent id. Those are fixed in the IR.
+  - Pass/fail stays with check nodes and human nodes. A model's output can
+    steer the next prompt, but never what counts as done.
 - **Permission defaults.** Least-permissive mode unless the node names one,
   capped at the user's per-agent setting. The engine auto-answers only its own
   `submit_result`, matched on exact identity (F7).
 - **Secrets.** The IR, the events and `runs.db` hold prompts, outputs and tool
-  titles, never credentials. Hive never reads the user's tokens, and workflow
-  inputs are shown to the user before a run. `runs.db` sits in the plugin's
-  data folder with the rest of Hive's state, at the same permissions.
+  titles. Hive never reads the user's tokens, and workflow inputs are shown to
+  the user before a run. An agent can still echo a secret it read in a
+  worktree, so "never credentials" is enforced at three points:
+  - **The file.** `runs.db` and its WAL files are created at mode `0600`.
+  - **The events.** Before an event or output is stored, values matching
+    common credential formats (private-key blocks, `AKIA…`, `ghp_…`,
+    `sk-…`-style tokens, `Authorization:` headers) are replaced with
+    `[redacted]`. The redaction is recorded in the event, so the gap shows
+    in the overlay.
+  - **OTel export.** It is opt-in. When on, it carries attributes and timings
+    only: prompt and output content capture is off by default, the same
+    default the GenAI conventions recommend.
 - **Workflow files are code.** See [Workflow files in a project](#workflow-files-in-a-project).
   Building one runs it, as the user, at the user's request.
 
@@ -1524,6 +1628,12 @@ yet:
 - **GUI events.** A way for the plugin to push run events to GUI clients.
 - **Untrusted settings.** #505: no untrusted project hooks or MCP servers in
   ACP sessions.
+- **Plugin-owned data.** A `DESIGN.md` carve-out letting a plugin write its own
+  files (here `runs.db`) under `plugin-data/<id>/`. Today only the plugin
+  Manager writes there.
+- **Workflow trust.** The per-project workflow trust confirmation, the builder's
+  environment allowlist, and secret redaction before events are stored. All
+  three are in [Security](#security).
 
 ## Prototype
 

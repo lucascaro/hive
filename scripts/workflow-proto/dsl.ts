@@ -119,6 +119,9 @@ const AGENT_TIMEOUT_S = 3600;
 const CHECK_TIMEOUT_S = 600;
 
 export type CheckOut = { ok: boolean; exit_code: number };
+/** A loop's own output: whether `until` held before `max_iters` ran out. */
+export type LoopOut = { converged: boolean; iterations: number };
+export const LOOP_OUTPUT = s.object({ converged: s.boolean(), iterations: s.number() }).json as ObjectSchema;
 export const CHECK_OUTPUT = s.object({ ok: s.boolean(), exit_code: s.number() }).json as ObjectSchema;
 
 // ------------------------------------------------------------------- builder
@@ -211,8 +214,10 @@ export class Scope {
   }
 
   /** Runs `body` again until the returned condition holds, at most
-   * `maxIters` times. The bound is part of the graph, not runtime state. */
-  loop(id: string, opts: { maxIters: number }, body: (b: Scope) => Cond): Handle {
+   * `maxIters` times. The bound is part of the graph, not runtime state.
+   * Its output says which way it ended: `converged` is false when the bound
+   * ran out first, so the graph can route that case explicitly. */
+  loop(id: string, opts: { maxIters: number }, body: (b: Scope) => Cond): Handle<LoopOut> {
     const node: LoopNode = {
       id: this.#full(id),
       kind: 'loop',
@@ -223,7 +228,7 @@ export class Scope {
     };
     this.#body.nodes.push(node);
     node.until = body(new Scope(node.id, node));
-    return { id: node.id, out: {} };
+    return handle<LoopOut>(node.id, LOOP_OUTPUT);
   }
 
   /** Runs one copy of the template subgraph per element of `over`. The
@@ -297,6 +302,8 @@ function outputOf(placed: Map<string, Placed>, n: Node): JsonSchema | null {
       return n.output;
     case 'check':
       return CHECK_OUTPUT;
+    case 'loop':
+      return LOOP_OUTPUT;
     case 'map': {
       const sink = sinks(n);
       const s0 = sink.length === 1 ? placed.get(sink[0]) : undefined;
@@ -326,8 +333,51 @@ export function validate(ir: IR): string[] {
     placed.set(node.id, p);
   }
 
-  // Resolves a ref seen from inside `ctx` (a container id, '' for top level).
-  const resolve = (ref: string, ctx: string, where: string): JsonSchema | null => {
+  const parentOf = (id: string): string => placed.get(id)?.parent ?? '';
+  // id, its container, that container's container, … up to a top-level node.
+  const chain = (id: string): string[] => {
+    const out: string[] = [];
+    for (let x = id; x; x = parentOf(x)) out.push(x);
+    return out;
+  };
+  const reaches = (body: Body, from: string, to: string): boolean => {
+    const todo = [from];
+    const seen = new Set<string>();
+    while (todo.length > 0) {
+      const at = todo.pop() as string;
+      if (at === to) return true;
+      if (seen.has(at)) continue;
+      seen.add(at);
+      for (const e of body.edges) if (e.from === at) todo.push(e.to);
+    }
+    return false;
+  };
+  // Is `target`'s output available when `anchor` reads it? `strict`: target
+  // must finish before anchor starts (prompts, map.over, worktree.of).
+  // `inclusive`: anchor itself, or anything inside it, also counts (an edge
+  // condition reads its source after it finished; a loop's until reads its
+  // own body). Inside a loop, a ref to a node that is not upstream reads the
+  // previous iteration, so it is allowed there and nowhere else.
+  const ordered = (target: string, anchor: string, mode: 'strict' | 'inclusive'): boolean => {
+    const tc = chain(target);
+    const ac = chain(anchor);
+    if (mode === 'inclusive' && tc.includes(anchor)) return true;
+    if (ac.includes(target)) return false;
+    const inT = new Set(tc);
+    const common = ac.slice(1).find((x) => inT.has(x)) ?? '';
+    const a = common ? tc[tc.indexOf(common) - 1] : tc[tc.length - 1];
+    const b = common ? ac[ac.indexOf(common) - 1] : ac[ac.length - 1];
+    const body = common ? (placed.get(common)?.node as Body) : ir;
+    if (reaches(body, a, b)) return true;
+    for (let x = common; x; x = parentOf(x)) if (placed.get(x)?.node.kind === 'loop') return true;
+    return false;
+  };
+
+  type Order = { anchor: string; mode: 'strict' | 'inclusive' };
+
+  // Resolves a ref seen from inside `ctx` (a container id, '' for top level)
+  // and checks it is available to `order.anchor` when that node runs.
+  const resolve = (ref: string, ctx: string, where: string, order: Order): JsonSchema | null => {
     const fail = (why: string) => {
       errors.push(`${where}: ref "${ref}" ${why}`);
       return null;
@@ -336,7 +386,7 @@ export function validate(ir: IR): string[] {
       const mapId = enclosingMap(ctx);
       if (!mapId) return fail('used outside a map');
       const m = placed.get(mapId)?.node as MapNode;
-      const arr = resolve(m.over, placed.get(mapId)?.parent ?? '', `${mapId}.over`);
+      const arr = resolve(m.over, parentOf(mapId), `${mapId}.over`, { anchor: mapId, mode: 'strict' });
       if (!arr || arr.type !== 'array') return null;
       return ref === '$item' ? arr.items : field(arr.items, ref.slice('$item.'.length), fail);
     }
@@ -350,6 +400,7 @@ export function validate(ir: IR): string[] {
     if (t.map && ctx !== t.map && !ctx.startsWith(`${t.map}/`)) return fail(`reaches into map "${t.map}" from outside it`);
     const schema = outputOf(placed, t.node);
     if (!schema) return fail(`names a ${t.node.kind} node, which has no output`);
+    if (!ordered(target, order.anchor, order.mode)) return fail(`is not upstream of ${order.anchor}`);
     return field(schema, name, fail);
   };
 
@@ -360,11 +411,11 @@ export function validate(ir: IR): string[] {
     return null;
   };
 
-  const checkCond = (c: Cond, ctx: string, where: string): void => {
-    if ('all' in c) return c.all.forEach((x) => checkCond(x, ctx, where));
-    if ('any' in c) return c.any.forEach((x) => checkCond(x, ctx, where));
-    if ('not' in c) return checkCond(c.not, ctx, where);
-    const schema = resolve(c.ref, ctx, where);
+  const checkCond = (c: Cond, ctx: string, where: string, order: Order): void => {
+    if ('all' in c) return c.all.forEach((x) => checkCond(x, ctx, where, order));
+    if ('any' in c) return c.any.forEach((x) => checkCond(x, ctx, where, order));
+    if ('not' in c) return checkCond(c.not, ctx, where, order);
+    const schema = resolve(c.ref, ctx, where, order);
     if (!schema) return;
     const bad = (why: string) => errors.push(`${where}: condition on "${c.ref}" ${why}`);
     if (c.op === 'truthy') {
@@ -379,8 +430,8 @@ export function validate(ir: IR): string[] {
     }
   };
 
-  const checkPrompt = (prompt: string, ctx: string, where: string): void => {
-    for (const m of prompt.matchAll(/\{\{([^}]*)\}\}/g)) resolve(m[1], ctx, where);
+  const checkPrompt = (node: Node, prompt: string): void => {
+    for (const m of prompt.matchAll(/\{\{([^}]*)\}\}/g)) resolve(m[1], node.id, node.id, { anchor: node.id, mode: 'strict' });
   };
 
   const checkBody = (body: Body, ctx: string): void => {
@@ -392,7 +443,7 @@ export function validate(ir: IR): string[] {
       if (e.from === e.to) errors.push(`${where}: self-edge`);
       if (seen.has(`${e.from}>${e.to}`)) errors.push(`${where}: duplicate edge`);
       seen.add(`${e.from}>${e.to}`);
-      if (e.when) checkCond(e.when, ctx, where);
+      if (e.when) checkCond(e.when, ctx, where, { anchor: e.from, mode: 'inclusive' });
     }
     const cycle = findCycle(body);
     if (cycle) errors.push(`${ctx || ir.name}: cycle ${cycle.join(' -> ')}; use loop() for repetition`);
@@ -411,13 +462,15 @@ export function validate(ir: IR): string[] {
             errors.push(`${node.id}: worktree.of "${node.worktree.of}" must name another agent node`);
           } else if (of.map && !node.id.startsWith(`${of.map}/`)) {
             errors.push(`${node.id}: worktree.of reaches into map "${of.map}" from outside it`);
+          } else if (!ordered(of.node.id, node.id, 'strict')) {
+            errors.push(`${node.id}: worktree.of "${of.node.id}" is not upstream of it`);
           }
         }
-        checkPrompt(node.prompt, node.id, node.id);
+        checkPrompt(node, node.prompt);
         break;
       case 'human':
         if (node.output.type !== 'object') errors.push(`${node.id}: output must be an object schema`);
-        checkPrompt(node.prompt, node.id, node.id);
+        checkPrompt(node, node.prompt);
         break;
       case 'check':
         if (node.argv.length === 0) errors.push(`${node.id}: argv is empty`);
@@ -432,13 +485,13 @@ export function validate(ir: IR): string[] {
           if (!Number.isInteger(node.max_iters) || node.max_iters < 1 || node.max_iters > MAX_ITERS) {
             errors.push(`${node.id}: max_iters must be an integer in 1..${MAX_ITERS}`);
           }
-          checkCond(node.until, node.id, `${node.id}.until`);
+          checkCond(node.until, node.id, `${node.id}.until`, { anchor: node.id, mode: 'inclusive' });
         }
         if (node.kind === 'map') {
           if (!Number.isInteger(node.concurrency) || node.concurrency < 1 || node.concurrency > MAX_CONCURRENCY) {
             errors.push(`${node.id}: concurrency must be an integer in 1..${MAX_CONCURRENCY}`);
           }
-          const over = resolve(node.over, placed.get(node.id)?.parent ?? '', `${node.id}.over`);
+          const over = resolve(node.over, parentOf(node.id), `${node.id}.over`, { anchor: node.id, mode: 'strict' });
           if (over && over.type !== 'array') errors.push(`${node.id}: over "${node.over}" is not an array`);
           if (node.nodes.length > 0 && sinks(node).length !== 1) errors.push(`${node.id}: template must have exactly one sink`);
         }
