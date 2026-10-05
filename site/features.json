@@ -7,7 +7,7 @@
   },
   {
     "title": "ACP sessions with a transcript view",
-    "blurb": "Start Claude, Codex or Pi as an ACP session and its tile shows the conversation as a transcript, with tool permission requests you answer in place and exact working and waiting states.",
+    "blurb": "Start Claude or Codex (or Pi, if you allow it unattended tool use) as an ACP session and its tile shows the conversation as a transcript, with tool permission requests you answer in place and exact working and waiting states.",
     "status": "shipped",
     "since": "Unreleased"
   },

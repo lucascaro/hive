@@ -437,6 +437,7 @@ The contract bumps once per phase because `scripts/check-daemon-contract.sh:36-4
 - **2026-10-04** — PR #500 merged (phase 2/4). Phase 3 (typed result + trust) starts on `feature/496-acp-phase3`.
 - **2026-10-04** — Phase 3 implemented: mode ceiling setting and enforcement, Pi gate and shim, `hived mcp-submit`, `SUBMIT_RESULT`/`SUBMIT_RESULT_OK`, result fields, the submit auto-allow (contract 24).
 - **2026-10-04** — Gate FAIL; control-plane.md:41 still listed Gemini and Copilot as experimental ACP agents and Pi as ungated — fixed on the branch.
+- **2026-10-04** — Gate FAIL again (re-run); three Pi mentions without the unattended setting (features.json, two earlier changesets) — fixed on the branch, gate not re-run (one-retry limit).
 
 ## Open questions
 
@@ -480,4 +481,9 @@ The contract bumps once per phase because `scripts/check-daemon-contract.sh:36-4
     - acceptance — PASS — criteria 4 and 5 pass (result, nonce, none-on-turn-end, exact-identity auto-allow, ceiling, clamp, escalation reset, Pi gate); 1–3, 7, 8 not regressed; 6 and 9 DEFERRED (phase 4); targeted Go tests and Pi node tests green
     - non-goals — PASS — PTY paths untouched; the Settings ceiling select and wire-only acp_mode are the trust setting the operator asked for, not a per-session picker; no images, engine, bundled adapters or agent-side ACP
     - doc accuracy — FAIL — control-plane.md:41 stale (Gemini/Copilot "experimental", Pi ungated); everything else (changeset, features.json, README, plugins.md, SDKs, contract 24, design doc, plan) accurate
+- **2026-10-04** — verdict: FAIL; phase: 3/4; checks: 2 passed / 1 failed / 0 followups / 2 deferred; followups: none; one-line: re-run after the control-plane fix (doc accuracy only; acceptance and non-goals carried, the change was one doc line); control-plane.md:41 now correct, but site/features.json and the phase 1 and 2 changesets still said Pi starts as ACP with no mention of the unattended setting. Fixed on the branch after this verdict; the loop stopped at its one gate retry, so the next /hs-merge-gate run validates the fix.
+  - 2026-10-04 dimensions:
+    - acceptance — PASS — carried from the run above (no code changed)
+    - non-goals — PASS — carried from the run above
+    - doc accuracy — FAIL — three stale Pi mentions (features.json blurb, 496-acp-transcript-view and 496-acp-sessions-for-plugins changesets); README, plugins.md, control-plane, design doc, contract and wire tests all correct
 
