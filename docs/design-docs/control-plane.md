@@ -38,7 +38,7 @@ ranked by trust; a fifth (`laya`) only fills gaps:
 |------|--------|--------|------------------|
 | `hook` | Agent-native lifecycle hooks calling back into `hived` | Claude Code | exact turn boundaries, permission prompts, prompt/summary text |
 | `extension` | A Hive-shipped extension loaded into the agent at spawn | Pi | exact turn boundaries (`agent_start` / `agent_settled`), prompt/summary text, a per-session inbox socket |
-| `acp` | The Agent Client Protocol stream `hived` itself drives, for an `acp` session ([acp-session-kind.md](acp-session-kind.md)) | Claude, Codex, Pi; Gemini and Copilot experimental | exact turn boundaries, permission requests, tool calls and plan. Ranks with `hook`, and never goes stale: the daemon owns the stream |
+| `acp` | The Agent Client Protocol stream `hived` itself drives, for an `acp` session ([acp-session-kind.md](acp-session-kind.md)) | Claude, Codex; Pi when unattended tool use is allowed; not yet Gemini or Copilot (their modes cannot be capped) | exact turn boundaries, permission requests, tool calls and plan. Ranks with `hook`, and never goes stale: the daemon owns the stream |
 | `heuristic` | PTY output cadence + bell + OSC title + process exit | shell, Codex, Gemini, Copilot, Aider, custom | working / idle / exited, "waiting" only via bell |
 | `laya` | The daemon's classification of the visible screen by a user-run Laya model (spec 458, [laya-state-classifier.md](laya-state-classifier.md)) | any, when configured | fills in only while the trusted tier is absent or stale; any real agent event takes the session back |
 

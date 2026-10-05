@@ -436,6 +436,7 @@ The contract bumps once per phase because `scripts/check-daemon-contract.sh:36-4
 - **2026-10-03** — Phase 2 implemented: transcript tile, ACP store, launcher toggle, `acp-prompt` scope, bindings in all three clients, snapshot ordering fix (contract 23).
 - **2026-10-04** — PR #500 merged (phase 2/4). Phase 3 (typed result + trust) starts on `feature/496-acp-phase3`.
 - **2026-10-04** — Phase 3 implemented: mode ceiling setting and enforcement, Pi gate and shim, `hived mcp-submit`, `SUBMIT_RESULT`/`SUBMIT_RESULT_OK`, result fields, the submit auto-allow (contract 24).
+- **2026-10-04** — Gate FAIL; control-plane.md:41 still listed Gemini and Copilot as experimental ACP agents and Pi as ungated — fixed on the branch.
 
 ## Open questions
 
@@ -474,3 +475,9 @@ The contract bumps once per phase because `scripts/check-daemon-contract.sh:36-4
     - acceptance — PASS — 137 vitest + 2 e2e (acp-session) + Go Acp/ACP tests; criteria 1, 2, 8 (P2 parts) pass; 3–7, 9 deferred
     - non-goals — PASS — Terminal stays default and every session-side change is ACP-gated; launcher Tab change is approved launcher UX; no search/export/picker, images, engine, bundled adapters or ACP-agent code
     - doc accuracy — PASS — changesets, features.json, README, design docs, UI docs, contract 23 entry, help row and plan Decision log all match the code
+- **2026-10-04** — verdict: FAIL; phase: 3/4; checks: 2 passed / 1 failed / 0 followups / 2 deferred; followups: none; one-line: phase 3 delivers criteria 4 and 5 (typed result, the one auto-allow, mode ceiling, Pi gate); doc accuracy failed on one stale line, control-plane.md:41 still calling Gemini and Copilot experimental ACP agents.
+  - 2026-10-04 dimensions:
+    - acceptance — PASS — criteria 4 and 5 pass (result, nonce, none-on-turn-end, exact-identity auto-allow, ceiling, clamp, escalation reset, Pi gate); 1–3, 7, 8 not regressed; 6 and 9 DEFERRED (phase 4); targeted Go tests and Pi node tests green
+    - non-goals — PASS — PTY paths untouched; the Settings ceiling select and wire-only acp_mode are the trust setting the operator asked for, not a per-session picker; no images, engine, bundled adapters or agent-side ACP
+    - doc accuracy — FAIL — control-plane.md:41 stale (Gemini/Copilot "experimental", Pi ungated); everything else (changeset, features.json, README, plugins.md, SDKs, contract 24, design doc, plan) accurate
+
