@@ -3,8 +3,8 @@
 - **Spec:** [docs/product-specs/495-design-hive-s-workflow-engine-typed-ts-workflows-a.md](../../product-specs/495-design-hive-s-workflow-engine-typed-ts-workflows-a.md)
 - **Issue:** #495
 - **Status:** active
-- **PR:** —
-- **Branch:** —
+- **PR:** #506
+- **Branch:** feature/495-workflow-engine-design
 
 ## Summary
 
