@@ -3,9 +3,9 @@
 - **Spec:** [docs/product-specs/496-add-an-acp-session-kind-transcript-view-exact-stat.md](../../product-specs/496-add-an-acp-session-kind-transcript-view-exact-stat.md)
 - **Issue:** #496
 - **Status:** active
-- **Phase:** 2 of 4
-- **PR:** #500
-- **Branch:** feature/496-acp-phase2
+- **Phase:** 3 of 4
+- **PR:** #501
+- **Branch:** feature/496-acp-phase3
 
 ## Summary
 
@@ -215,7 +215,7 @@ The contract bumps once per phase because `scripts/check-daemon-contract.sh:36-4
    - Persist the new kind, then call `Restart`.
    - On a failed hand-back, revert to `pty` and `Restart` once.
    - Map the F2 writer-lock error.
-2. `internal/daemon/daemon.go`: a `SET_SESSION_KIND` (0x44) arm through `runOp`. Add the frame in `internal/wire`, bump the contract to 25, and update the three clients, the bridges and the mocks.
+2. `internal/daemon/daemon.go`: a `SET_SESSION_KIND` (0x45; 0x44 went to P3's `SUBMIT_RESULT_OK`) arm through `runOp`. Add the frame in `internal/wire`, bump the contract to 25, and update the three clients, the bridges and the mocks.
 3. GUI commands `take-over-session` and `hand-back-session`.
    - Each declines when the session isn't the right kind.
    - Rows in `shortcuts.ts` with no default key.
@@ -397,6 +397,17 @@ The contract bumps once per phase because `scripts/check-daemon-contract.sh:36-4
 
 ## Decision log
 
+- **2026-10-04** — Review iter 3 (PR #501): the no-reset assertions count reset decisions (made on the ACP reader goroutine, in update order, so settled before the turn ends) instead of sleeping; the bare-id submit auto-allow and its no-carry-over across prompts are tested. The submit nonce is documented as stopping a process that only holds `HIVE_SOCKET` (another session, a copied environment), not a same-user process that reads the environment — Hive is not a sandbox, so a peer-process check would add platform code with no boundary behind it.
+- **2026-10-04** — Review iter 2 (PR #501) raised the asynchronous ceiling reset (an unrequested escalation stays live until `set_mode` returns, up to 30s). Accepted as is, operator's choice: the mode is enforced by the adapter itself, so the reset guards only against an adapter bug (the pinned adapters have no unrequested upward switch), never a malicious adapter; a shorter timeout would protect nothing real and could close healthy sessions on a loaded machine. Documented in acp-session-kind.md.
+- **2026-10-04** — Review iter 1 (PR #501) findings, operator decisions: the submit auto-allow no longer reads `rawInput`'s server+tool (model-written arguments; a call to another tool could carry them) — adapter-filled fields only, so a Codex submit may ask the user once. The escalation window is bound to the exact mode of the exit-plan option the user picked (`ACPSpec.ModeOptions`), not to any allow answer; this supersedes the earlier "any allow opens the window" entry. Also fixed: no mode policing before startup completes (a reset there went out with an empty session id), and tests for the missing-ceiling-mode refusal and the failed-reset close.
+- **2026-10-04** — P3 adds `SUBMIT_RESULT_OK` (0x44), so `SET_SESSION_KIND` moves to 0x45. Why: without an ack, the submit tool could return to the agent before the daemon recorded the result, and a fast turn end would report `none` for a turn that did submit.
+- **2026-10-04** — P3 keeps the submit server's nonce and its MCP server name separate: the name (`hive-<12 hex>`) is part of the tool name the model sees, so it only has to be unique per start; the 32-byte nonce lives in the server's env alone.
+- **2026-10-04** — P3 does not show the result in the transcript view. Criterion 4 asks only that the result can be read over the wire, and the approved P3 file list had no GUI result display; plugins and the engine read it from `ACP_TRANSCRIPT`.
+- **2026-10-04** — Q6 probed (`session/new`, then `session/set_mode` to every advertised mode, then `session/load`; no prompts). Claude 0.85.1 modes: `default` (Manual), `acceptEdits`, `plan`, `auto`, `bypassPermissions`; Codex 2.1.1: `read-only`, `workspace-write`, `agent` (its default), `agent-full-access`. Both accept every advertised id and reject an unknown one. Codex resets to `agent` on `session/load`, so the mode is re-sent after every load, as planned. Neither emits `current_mode_update` for a client `set_mode`; Claude emits one when its exit-plan permission card switches mode.
+- **2026-10-04** — Default ceilings: Claude `default`, Codex `read-only` — the most restrictive mode that still does work (Claude's `plan` cannot edit at all). Operator's choice, on the condition that the workflow engine can pick another mode: `CreateSpec.acp_mode` lets a client ask for any mode at or below the ceiling, and a create above it is refused, never silently lowered. The mode is persisted, so revive re-applies it (clamped to the ceiling as it is then).
+- **2026-10-04** — A mode switch above the ceiling mid-session is allowed only when it follows the user answering a permission card with an allow option, before the next tool call or turn end (operator: "allow the switch if the user selected it"). Claude's exit-plan options carry structured ids (`exit-plan-accept-edits`, …), not mode ids, so the rule keys on "the user just allowed something", not on the option id. Any other switch above the ceiling is reset with `set_mode`; the adapter is killed only if that reset fails. Deviation from the plan's kill-on-mismatch, which would end a session for a click the user made.
+- **2026-10-04** — Gemini and Copilot: their mode ids were never probed, so Hive cannot cap them. ACP stays disabled for them with a reason, and the Experimental chip stays (operator's choice). Pi: its ACP "modes" are thinking levels, not permissions, so Pi's ceiling setting is `off` (default; ACP refused) or `unattended`, and Hive sends no `set_mode` to it.
+- **2026-10-04** — The submit tool takes `{status: "ok"|"error", summary?, data?}`; the arguments are stored raw (size-capped) as the result. A per-node schema is #495's job.
 - **2026-10-03** — P2 deviations from the approved P2 list, each smaller than planned:
   - **No `matched` key scope for Allow/Deny.** The permission card's options are plain buttons (Tab or click). Single-letter keys would collide with typing in the prompt box, and a chord needs a new rebindable command plus help rows for a card that is on screen only while the agent waits. Criterion 2 asks only that the user can allow or deny inline.
   - **No `mocks/acp-transcript.html`.** One layout was on the table; the decision is recorded in `docs/design-docs/ui/README.md` with "no mock", as the Settings-layout row does.
@@ -423,6 +434,11 @@ The contract bumps once per phase because `scripts/check-daemon-contract.sh:36-4
 - **2026-10-03** — Phase 1 implemented and PR #499 opened (daemon core, contract 22).
 - **2026-10-03** — PR #499 merged (phase 1/4). Phase 2 (GUI) starts on `feature/496-acp-phase2`.
 - **2026-10-03** — Phase 2 implemented: transcript tile, ACP store, launcher toggle, `acp-prompt` scope, bindings in all three clients, snapshot ordering fix (contract 23).
+- **2026-10-04** — PR #500 merged (phase 2/4). Phase 3 (typed result + trust) starts on `feature/496-acp-phase3`.
+- **2026-10-04** — Phase 3 implemented: mode ceiling setting and enforcement, Pi gate and shim, `hived mcp-submit`, `SUBMIT_RESULT`/`SUBMIT_RESULT_OK`, result fields, the submit auto-allow (contract 24).
+- **2026-10-04** — Gate FAIL; control-plane.md:41 still listed Gemini and Copilot as experimental ACP agents and Pi as ungated — fixed on the branch.
+- **2026-10-04** — Gate FAIL again (re-run); three Pi mentions without the unattended setting (features.json, two earlier changesets) — fixed on the branch, gate not re-run (one-retry limit).
+- **2026-10-04** — Gate FAIL (third run, all three dimensions); DESIGN.md's ACP and daemon entries did not mention the mode ceiling, `session/set_mode` or `hived mcp-submit` — fixed on the branch. The same run found Windows CI red on two new Pi submit socket tests, now skipped on Windows like the file's other unix-socket tests (456c72ed).
 
 ## Open questions
 
@@ -444,6 +460,10 @@ The contract bumps once per phase because `scripts/check-daemon-contract.sh:36-4
 - **2026-10-03 iter 14 (phase 2, PR #500, iter 6)** — verdict: APPROVE; mergeable: MERGEABLE; findings_hash: empty; threads_open: 0; action: stop; head_sha: ea370261.
 - **2026-10-03 iter 15 (phase 2, PR #500, iter 7)** — verdict: COMMENT; mergeable: MERGEABLE; findings_hash: bc9e3682378fd6f91899267c4cf49f420c5d8611bb9cf287a750941e342e3a29; threads_open: 0; action: escalated:risky-fix-needs-human-decision; head_sha: 7967339e.
 - **2026-10-03 iter 16 (phase 2, PR #500, iter 8)** — verdict: APPROVE; mergeable: MERGEABLE; findings_hash: empty; threads_open: 0; action: stop; head_sha: d80545ac.
+- **2026-10-04 iter 17 (phase 3, PR #501, iter 1)** — verdict: COMMENT; mergeable: MERGEABLE; findings_hash: f3032ea76f47a5652d81ac8b704fde2c96712b9423bb50220583d5e4872e790a; threads_open: 0; action: escalated:risky-fix-needs-human-decision; head_sha: c94def01.
+- **2026-10-04 iter 18 (phase 3, PR #501, iter 2)** — verdict: COMMENT; mergeable: MERGEABLE; findings_hash: b73142b8e1eb06468ff103310bfd77f638525a02e394a80cb824ba86229430f6; threads_open: 0; action: escalated:risky-fix-needs-human-decision; head_sha: 36730718.
+- **2026-10-04 iter 19 (phase 3, PR #501, iter 3)** — verdict: COMMENT; mergeable: MERGEABLE; findings_hash: 3367509254014d4ee40162164bdaae1eefe914c3df363d5e284a7e63d5657cc7; threads_open: 0; action: escalated:risky-fix-needs-human-decision; head_sha: 9ce25564.
+- **2026-10-04 iter 20 (phase 3, PR #501, iter 4)** — verdict: APPROVE; mergeable: MERGEABLE; findings_hash: empty; threads_open: 0; action: stop; head_sha: e2cccf53.
 
 ## Gate verdict
 
@@ -457,3 +477,23 @@ The contract bumps once per phase because `scripts/check-daemon-contract.sh:36-4
     - acceptance — PASS — 137 vitest + 2 e2e (acp-session) + Go Acp/ACP tests; criteria 1, 2, 8 (P2 parts) pass; 3–7, 9 deferred
     - non-goals — PASS — Terminal stays default and every session-side change is ACP-gated; launcher Tab change is approved launcher UX; no search/export/picker, images, engine, bundled adapters or ACP-agent code
     - doc accuracy — PASS — changesets, features.json, README, design docs, UI docs, contract 23 entry, help row and plan Decision log all match the code
+- **2026-10-04** — verdict: FAIL; phase: 3/4; checks: 2 passed / 1 failed / 0 followups / 2 deferred; followups: none; one-line: phase 3 delivers criteria 4 and 5 (typed result, the one auto-allow, mode ceiling, Pi gate); doc accuracy failed on one stale line, control-plane.md:41 still calling Gemini and Copilot experimental ACP agents.
+  - 2026-10-04 dimensions:
+    - acceptance — PASS — criteria 4 and 5 pass (result, nonce, none-on-turn-end, exact-identity auto-allow, ceiling, clamp, escalation reset, Pi gate); 1–3, 7, 8 not regressed; 6 and 9 DEFERRED (phase 4); targeted Go tests and Pi node tests green
+    - non-goals — PASS — PTY paths untouched; the Settings ceiling select and wire-only acp_mode are the trust setting the operator asked for, not a per-session picker; no images, engine, bundled adapters or agent-side ACP
+    - doc accuracy — FAIL — control-plane.md:41 stale (Gemini/Copilot "experimental", Pi ungated); everything else (changeset, features.json, README, plugins.md, SDKs, contract 24, design doc, plan) accurate
+- **2026-10-04** — verdict: FAIL; phase: 3/4; checks: 2 passed / 1 failed / 0 followups / 2 deferred; followups: none; one-line: re-run after the control-plane fix (doc accuracy only; acceptance and non-goals carried, the change was one doc line); control-plane.md:41 now correct, but site/features.json and the phase 1 and 2 changesets still said Pi starts as ACP with no mention of the unattended setting. Fixed on the branch after this verdict; the loop stopped at its one gate retry, so the next /hs-merge-gate run validates the fix.
+  - 2026-10-04 dimensions:
+    - acceptance — PASS — carried from the run above (no code changed)
+    - non-goals — PASS — carried from the run above
+    - doc accuracy — FAIL — three stale Pi mentions (features.json blurb, 496-acp-transcript-view and 496-acp-sessions-for-plugins changesets); README, plugins.md, control-plane, design doc, contract and wire tests all correct
+- **2026-10-04** — verdict: FAIL; phase: 3/4; checks: 2 passed / 1 failed / 0 followups / 2 deferred; followups: none; one-line: full re-run at 456c72ed; the earlier doc fixes hold, but DESIGN.md (a structural doc the wire and subcommand change must update) still described ACP as speaking only spike 492's methods and `hived` as only a PTY host.
+  - 2026-10-04 dimensions:
+    - acceptance — PASS — criteria 1–5, 7, 8 pass (targeted registry, acp, daemon, agent and mcp-submit tests green); 6 and 9 DEFERRED (phase 4)
+    - non-goals — PASS — Settings ceiling is the criterion-5 trust setting, not a per-session picker; mcp-submit is an MCP tool server, not an ACP adapter; PTY paths untouched
+    - doc accuracy — FAIL — DESIGN.md:12,16 missing the mode ceiling, set_mode and `hived mcp-submit`; README, features.json, changesets, plugins.md, SDKs, control-plane, design doc and contract 24 accurate
+- **2026-10-04** — verdict: PASS; phase: 3/4; checks: 3 passed / 0 failed / 0 followups / 2 deferred; followups: none; one-line: doc-accuracy re-run after the DESIGN.md fix (acceptance and non-goals carried from the full run above; the change since was docs only); phase 3 gated.
+  - 2026-10-04 dimensions:
+    - acceptance — PASS — carried from the full run at 456c72ed; 6 and 9 DEFERRED (phase 4)
+    - non-goals — PASS — carried from the full run at 456c72ed
+    - doc accuracy — PASS — DESIGN.md:12,16 now name the ceiling, set_mode and `hived mcp-submit` (with Pi's extension noted); README, features.json, changesets, plugins.md, SDKs, control-plane, design doc and contract 24 accurate

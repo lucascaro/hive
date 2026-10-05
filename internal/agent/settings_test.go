@@ -3,6 +3,7 @@ package agent
 import (
 	"os"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"testing"
 )
@@ -70,6 +71,7 @@ func TestSettingsRoundTrip(t *testing.T) {
 		{ClaudeTaskTools: false, PiTodoTool: true, PlanReviewer: PlanReviewerExternal},
 		{ClaudeTaskTools: true, PiTodoTool: false, PlanReviewer: PlanReviewerExternal},
 		{ClaudeTaskTools: true, PiTodoTool: true, PlanReviewer: PlanReviewerExternal, LayaEnabled: true},
+		{ClaudeTaskTools: true, PiTodoTool: true, PlanReviewer: PlanReviewerExternal, ACPModeCeiling: map[string]string{"claude": "acceptEdits", "pi": ACPModeUnattended}},
 	} {
 		if err := SaveSettings(want); err != nil {
 			t.Fatalf("save: %v", err)
@@ -78,7 +80,7 @@ func TestSettingsRoundTrip(t *testing.T) {
 		if err != nil {
 			t.Fatalf("load: %v", err)
 		}
-		if got != want {
+		if !reflect.DeepEqual(got, want) {
 			t.Errorf("saved %+v, loaded %+v", want, got)
 		}
 	}
@@ -438,7 +440,7 @@ func TestLayaSettingsRoundTrip(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got != want {
+	if !reflect.DeepEqual(got, want) {
 		t.Errorf("round trip = %+v, want %+v", got, want)
 	}
 }

@@ -4,7 +4,7 @@ title: "Add an ACP session kind: transcript view, exact state, permission prompt
 type: enhancement
 complexity: L
 priority: P2
-pr: 500
+pr: 501
 stage: GATE
 ---
 

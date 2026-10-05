@@ -19,8 +19,11 @@ What works:
   (Tab reaches the choice) and Claude, Codex or Pi runs over the Agent
   Client Protocol (via `npx` and your Node), with a transcript instead of
   a terminal: messages, plan steps, tool calls, permission requests you
-  allow or deny in place, and a prompt box. Gemini and Copilot are
-  marked experimental
+  allow or deny in place, and a prompt box. Each agent runs in a
+  permission mode you cap in Settings → Agents (Claude: Manual, Codex:
+  Read-only by default); Pi needs unattended tool use allowed there.
+  Gemini and Copilot are marked experimental and stay off until Hive
+  can cap their modes
 - Grid view: per-project (⌘G) or all-sessions (⇧⌘G), spatial arrow nav
 - Multi-window (⇧⌘N) — independent windows share the same daemon
 - BEL → desktop notification + visual pulse on non-focused sessions

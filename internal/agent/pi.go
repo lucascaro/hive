@@ -2,9 +2,11 @@ package agent
 
 import (
 	_ "embed"
+	"fmt"
 	"log"
 	"os"
 	"path/filepath"
+	"runtime"
 	"sort"
 	"strings"
 	"sync"
@@ -39,29 +41,62 @@ func EnsurePiExtension(stateDir string) error {
 	if stateDir == "" {
 		return nil
 	}
-	dst := filepath.Join(stateDir, PiExtensionRelPath)
-	if cur, err := os.ReadFile(dst); err == nil && string(cur) == piExtensionSource {
+	return ensureFile(filepath.Join(stateDir, PiExtensionRelPath), piExtensionSource, 0o600)
+}
+
+// ensureFile writes content to dst with perm, atomically (temp +
+// rename) and only when it differs from what is there.
+func ensureFile(dst, content string, perm os.FileMode) error {
+	if cur, err := os.ReadFile(dst); err == nil && string(cur) == content {
 		return nil
 	}
 	if err := os.MkdirAll(filepath.Dir(dst), 0o700); err != nil {
 		return err
 	}
-	tmp, err := os.CreateTemp(filepath.Dir(dst), ".hive-*.ts")
+	tmp, err := os.CreateTemp(filepath.Dir(dst), ".hive-*"+filepath.Ext(dst))
 	if err != nil {
 		return err
 	}
 	defer os.Remove(tmp.Name()) // no-op once the rename succeeded
-	if _, err := tmp.WriteString(piExtensionSource); err != nil {
+	if _, err := tmp.WriteString(content); err != nil {
 		tmp.Close()
 		return err
 	}
 	if err := tmp.Close(); err != nil {
 		return err
 	}
-	if err := os.Chmod(tmp.Name(), 0o600); err != nil {
+	if err := os.Chmod(tmp.Name(), perm); err != nil {
 		return err
 	}
 	return os.Rename(tmp.Name(), dst)
+}
+
+// PiACPShim writes, beside the extension, the command pi-acp runs in
+// place of `pi` (its PI_ACP_PI_COMMAND), and returns its path. pi-acp
+// starts pi with fixed arguments and no pass-through, so the shim is
+// how an ACP Pi session gets `-e <extension>` — and with it Hive's
+// submit_result tool (F5 in acp-workflows.md). It runs the `pi` on the
+// adapter's PATH, the login shell's. Errors when the extension itself
+// is missing: a shim loading nothing would hide that.
+func PiACPShim(stateDir string) (string, error) {
+	if stateDir == "" {
+		return "", fmt.Errorf("no state dir")
+	}
+	ext := filepath.Join(stateDir, PiExtensionRelPath)
+	if _, err := os.Stat(ext); err != nil {
+		return "", err
+	}
+	name, body := "pi-acp-shim", "#!/bin/sh\n# Written by hived (spec 496): pi-acp runs this in place of pi.\nexec pi -e "+shQuote(ext)+" \"$@\"\n"
+	if runtime.GOOS == "windows" {
+		name, body = "pi-acp-shim.cmd", "@pi -e \""+ext+"\" %*\r\n"
+	}
+	dst := filepath.Join(stateDir, "pi", name)
+	return dst, ensureFile(dst, body, 0o700)
+}
+
+// shQuote single-quotes s for sh.
+func shQuote(s string) string {
+	return "'" + strings.ReplaceAll(s, "'", `'\''`) + "'"
 }
 
 var piExtensionWarnOnce sync.Once

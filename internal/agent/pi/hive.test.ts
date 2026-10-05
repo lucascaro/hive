@@ -81,7 +81,7 @@ async function collectFrames(
   return (await collectConnections(body, expected)).flat();
 }
 
-function withEnv(env: Record<string, string | undefined>, fn: () => void) {
+function withEnv<T>(env: Record<string, string | undefined>, fn: () => T): T {
   const saved = { ...process.env };
   // Assigning undefined to process.env stores the string "undefined",
   // which would defeat the very guard this file is checking.
@@ -90,7 +90,7 @@ function withEnv(env: Record<string, string | undefined>, fn: () => void) {
     else process.env[k] = v;
   }
   try {
-    fn();
+    return fn();
   } finally {
     process.env = saved;
   }
@@ -1066,4 +1066,96 @@ test("with review off, the system prompt is left alone", () => {
     mod.default(pi as never);
     assert.equal(pi.handlers.get("before_agent_start"), undefined);
   });
+});
+
+// submit_result (spec 496): registered only for an ACP Pi session, which
+// is the only one hived gives HIVE_SUBMIT_NONCE.
+test("submit_result is registered only when HIVE_SUBMIT_NONCE is set", () => {
+  const names = (env: Record<string, string | undefined>) =>
+    withEnv({ HIVE_SESSION_ID: "s1", HIVE_SOCKET: "/tmp/x.sock", ...env }, () => {
+      const pi = fakePi();
+      mod.default(pi as never);
+      return pi.tools.map((t: any) => t.name);
+    });
+  assert.ok(!names({ HIVE_SUBMIT_NONCE: undefined }).includes("submit_result"));
+  assert.ok(names({ HIVE_SUBMIT_NONCE: "n" }).includes("submit_result"));
+  // Outside Hive there is nowhere to submit to, nonce or not.
+  withEnv({ HIVE_SESSION_ID: undefined, HIVE_SOCKET: undefined, HIVE_SUBMIT_NONCE: "n" }, () => {
+    const pi = fakePi();
+    mod.default(pi as never);
+    assert.deepEqual(pi.tools, []);
+  });
+});
+
+test("submit_result's schema never carries the nonce", () => {
+  withEnv({ HIVE_SESSION_ID: "s1", HIVE_SOCKET: "/tmp/x.sock", HIVE_SUBMIT_NONCE: "secret-nonce" }, () => {
+    const pi = fakePi();
+    mod.default(pi as never);
+    const tool = pi.tools.find((t: any) => t.name === "submit_result");
+    const shown = JSON.stringify({ d: tool.description, p: tool.parameters });
+    assert.ok(!/nonce/i.test(shown) && !shown.includes("secret-nonce"), shown);
+  });
+});
+
+// fakeDaemon answers one session connection: it skips HELLO, records
+// SUBMIT_RESULT's payload, sends an unrelated frame first and then reply.
+async function fakeSubmitDaemon(reply: (conn: net.Socket) => void) {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "hive-pi-"));
+  const sock = path.join(dir, "h.sock");
+  const seen: { hello?: any; submit?: any } = {};
+  const server = net.createServer((conn) => {
+    let buf = Buffer.alloc(0);
+    conn.on("data", (c) => {
+      buf = Buffer.concat([buf, c]);
+      while (buf.length >= 5) {
+        const type = buf[0];
+        const len = buf.readUInt32BE(1);
+        if (buf.length < 5 + len) return;
+        const body = JSON.parse(buf.subarray(5, 5 + len).toString("utf8"));
+        buf = buf.subarray(5 + len);
+        if (type === 0x01) seen.hello = body;
+        if (type === 0x43) {
+          seen.submit = body;
+          const sessions = Buffer.from('{"sessions":[]}');
+          const head = Buffer.alloc(5);
+          head.writeUInt8(0x04, 0);
+          head.writeUInt32BE(sessions.length, 1);
+          conn.write(Buffer.concat([head, sessions]));
+          reply(conn);
+        }
+      }
+    });
+  });
+  await new Promise<void>((r) => server.listen(sock, r));
+  return { sock, seen, close: () => server.close() };
+}
+
+function replyFrame(conn: net.Socket, type: number, payload: unknown) {
+  const body = Buffer.from(JSON.stringify(payload));
+  const head = Buffer.alloc(5);
+  head.writeUInt8(type, 0);
+  head.writeUInt32BE(body.length, 1);
+  conn.write(Buffer.concat([head, body]));
+}
+
+test("submitResult sends one SUBMIT_RESULT on a session connection and waits for the ack", unixOnly, async () => {
+  const d = await fakeSubmitDaemon((c) => replyFrame(c, 0x44, {}));
+  try {
+    const r = await mod.submitResult(d.sock, "s1", "n0nce", { status: "ok", summary: "done" });
+    assert.deepEqual(r, { ok: true });
+    assert.equal(d.seen.hello.mode, "session");
+    assert.equal(d.seen.hello.session_id, "s1");
+    assert.deepEqual(d.seen.submit, { nonce: "n0nce", result: { status: "ok", summary: "done" } });
+  } finally {
+    d.close();
+  }
+});
+
+test("submitResult reports the daemon's refusal", unixOnly, async () => {
+  const d = await fakeSubmitDaemon((c) => replyFrame(c, 0x06, { code: "submit_rejected", message: "no turn is running" }));
+  try {
+    assert.deepEqual(await mod.submitResult(d.sock, "s1", "n", { status: "ok" }), { ok: false, error: "no turn is running" });
+  } finally {
+    d.close();
+  }
 });

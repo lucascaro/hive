@@ -802,7 +802,7 @@ func (d *Daemon) serveConn(ctx context.Context, conn net.Conn, tag *pluginTag) {
 		spec.SpawnedBy = principalOf(tag)
 		e, err := d.createSession(ctx, spec)
 		if err != nil {
-			_ = writeBounded(conn, writeTimeout(), wire.FrameError, wire.Error{Code: "create_failed", Message: err.Error()})
+			_ = writeBounded(conn, writeTimeout(), wire.FrameError, wire.Error{Code: createErrCode(err), Message: err.Error()})
 			return
 		}
 		d.serveAttach(conn, e.ID, tag)
@@ -1338,10 +1338,12 @@ func (d *Daemon) serveControl(ctx context.Context, conn net.Conn, hello wire.Hel
 }
 
 // sessionModeFrames is everything a ModeSession connection may ask
-// for: capture an idea, and read the ideas back. See wire.ModeSession.
+// for: capture an idea, read the ideas back, and — for an ACP session's
+// own submit server — submit its typed result. See wire.ModeSession.
 var sessionModeFrames = map[wire.FrameType]bool{
-	wire.FrameAddIdea:   true,
-	wire.FrameListIdeas: true,
+	wire.FrameAddIdea:      true,
+	wire.FrameListIdeas:    true,
+	wire.FrameSubmitResult: true,
 }
 
 // projectOfSession resolves the project a session belongs to, or "" if
@@ -1483,7 +1485,7 @@ func (d *Daemon) handleControlFrame(ctx context.Context, ops controlOps, ft wire
 	// which is the direction a mistake here should fail in.
 	if ops.restricted && !sessionModeFrames[ft] {
 		ops.sendError(wire.ErrCodeModeNotAllowed,
-			fmt.Sprintf("%s is not served on a session connection; want ADD_IDEA or LIST_IDEAS", ft))
+			fmt.Sprintf("%s is not served on a session connection; want ADD_IDEA, LIST_IDEAS or SUBMIT_RESULT", ft))
 		return false
 	}
 	switch ft {
@@ -1508,7 +1510,7 @@ func (d *Daemon) handleControlFrame(ctx context.Context, ops controlOps, ft wire
 			// outcome, not something to flash at them.
 			if _, err := d.reg.Create(ctx, spec); err != nil &&
 				!errors.Is(err, registry.ErrNotFound) {
-				ops.sendError("create_failed", err.Error())
+				ops.sendError(createErrCode(err), err.Error())
 			}
 		})
 	case wire.FrameKillSession:
@@ -1579,6 +1581,28 @@ func (d *Daemon) handleControlFrame(ctx context.Context, ops controlOps, ft wire
 		if err := d.reg.AnswerPermission(req.SessionID, req.RequestID, req.OptionID); err != nil {
 			sendACPError(ops, err, req.SessionID)
 		}
+	case wire.FrameSubmitResult:
+		// Only from a session connection, and only for the session its
+		// HELLO named: the payload names no session, so a submit server
+		// can reach no other. The nonce then proves it is that session's
+		// own server (Registry.SubmitResult).
+		if !ops.restricted {
+			ops.sendError(wire.ErrCodeModeNotAllowed, "SUBMIT_RESULT is sent on a session connection by a session's own submit server")
+			return false
+		}
+		req, ok := decodeReq[wire.SubmitResultReq](payload, ops.sendError)
+		if !ok {
+			return false
+		}
+		if err := d.reg.SubmitResult(ops.ownSessionID, req.Nonce, req.Result); err != nil {
+			if errors.Is(err, registry.ErrSubmitRejected) {
+				ops.sendError(wire.ErrCodeSubmitRejected, err.Error())
+			} else {
+				sendACPError(ops, err, ops.ownSessionID)
+			}
+			return false
+		}
+		_ = ops.writeJSON(wire.FrameSubmitResultOK, struct{}{})
 	case wire.FrameSearchTranscript:
 		// Not in sessionModeFrames, like GET_ACTIVITY: an agent running
 		// inside a session reading its own transcript is a separate
@@ -2083,6 +2107,15 @@ func principalOf(tag *pluginTag) string {
 		return ""
 	}
 	return "plugin:" + tag.id
+}
+
+// createErrCode is the ERROR code for a failed create: the general
+// create_failed, or one a client can act on.
+func createErrCode(err error) string {
+	if errors.Is(err, registry.ErrACPModeAboveCeiling) {
+		return wire.ErrCodeACPModeAboveCeiling
+	}
+	return "create_failed"
 }
 
 // sendACPError answers a failed ACP operation with a code a client can

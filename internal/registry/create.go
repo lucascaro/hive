@@ -620,6 +620,7 @@ func (r *Registry) insertEntry(spec wire.CreateSpec, p createPlan) (*Entry, erro
 		Agent:   spec.Agent, ProjectID: projectID,
 		Kind:      acpKind(spec.Kind),
 		SpawnedBy: spec.SpawnedBy,
+		ACPMode:   spec.ACPMode,
 	}
 	r.entries[p.id] = e
 	// Place the new session right after its anchor when the anchor is a

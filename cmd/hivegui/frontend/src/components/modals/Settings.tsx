@@ -208,6 +208,9 @@ function SettingsDialog({ root }: { root: HTMLElement }): ReactNode {
   // slow read never flashes the box unchecked first.
   const [claudeTaskTools, setClaudeTaskTools] = useState(true);
   const [piTodoTool, setPiTodoTool] = useState(true);
+  // Per-agent ACP mode ceiling (spec 496). Only the agents the user has
+  // set are keys; a missing one is the agent's acpDefaultMode, as in Go.
+  const [acpCeiling, setAcpCeiling] = useState<Record<string, string>>({});
   // Laya state detection (spec 458): off by default, because turning it
   // on sends screen text to layaUrl. An empty URL means the Go default.
   const [layaEnabled, setLayaEnabled] = useState(false);
@@ -421,6 +424,7 @@ function SettingsDialog({ root }: { root: HTMLElement }): ReactNode {
         if (!live) return;
         setClaudeTaskTools(s?.claude_task_tools ?? true);
         setPiTodoTool(s?.pi_todo_tool ?? true);
+        setAcpCeiling(s?.acp_mode_ceiling ?? {});
         setLayaEnabled(s?.laya_enabled ?? false);
         setLayaUrl(s?.laya_url ?? '');
         setLayaModel(s?.laya_model ?? '');
@@ -762,6 +766,7 @@ function SettingsDialog({ root }: { root: HTMLElement }): ReactNode {
           : SaveAgentSettings({
               claude_task_tools: claudeTaskTools,
               pi_todo_tool: piTodoTool,
+              acp_mode_ceiling: acpCeiling,
               laya_enabled: layaEnabled,
               laya_url: layaUrl.trim(),
               laya_model: layaModel.trim(),
@@ -944,6 +949,42 @@ function SettingsDialog({ root }: { root: HTMLElement }): ReactNode {
           one is through its plan. It uses some of the model's context, and
           applies to newly started sessions only.
         </p>
+        {(catalog ?? []).some((a) => a.acpModes?.length) && (
+          <>
+            <p id="settings-acp-ceiling-hint" className="settings-hint">
+              The most an ACP session may do without asking. Hive starts each
+              ACP session in this mode, or a stricter one a workflow asks for,
+              and switches it back if the agent tries to go further on its own.
+              Applies when a session starts.
+            </p>
+            {(catalog ?? [])
+              .filter((a) => a.acpModes?.length)
+              .map((a) => (
+                <label className="hv-field" key={a.id}>
+                  <span className="hv-field__label">{a.name} ACP mode</span>
+                  <select
+                    id={`settings-acp-ceiling-${a.id}`}
+                    className="hv-input"
+                    aria-describedby="settings-acp-ceiling-hint"
+                    value={acpCeiling[a.id] ?? a.acpDefaultMode ?? ''}
+                    disabled={!agentSettingsLoaded || agentSettingsFailed}
+                    onChange={(e) => {
+                      const mode = e.target.value;
+                      setAcpCeiling((c) => ({ ...c, [a.id]: mode }));
+                    }}
+                  >
+                    {(a.acpModes ?? []).map((m) => (
+                      <option key={m.id} value={m.id}>
+                        {m.id === a.acpDefaultMode
+                          ? `${m.label} (default)`
+                          : m.label}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+              ))}
+          </>
+        )}
         <div id="settings-agents-list" ref={listRef}>
           {loading ? (
             <p className="settings-hint">Loading…</p>

@@ -24,6 +24,16 @@ package buildinfo
 // History (newest first), so a bump is a decision with a record and
 // not just a number going up:
 //
+//	24 — ACP typed results and trust (spec 496, phase 3). New frames
+//	    SUBMIT_RESULT (0x43, on a session connection) and
+//	    SUBMIT_RESULT_OK (0x44); ACP_TRANSCRIPT gains prompt_id,
+//	    result_status and result; CREATE_SESSION gains acp_mode. Every
+//	    ACP session is now set to a mode at or below the user's ceiling
+//	    (agent-settings.json acp_mode_ceiling), Pi runs only unattended,
+//	    and the session's own submit_result is the one permission the
+//	    daemon answers. A GUI built with this reads the result fields and
+//	    the Settings ceiling, which a daemon built before it neither sends
+//	    nor enforces.
 //	23 — GET_ACP_TRANSCRIPT's snapshot is queued on the connection's own
 //	    ACP_TRANSCRIPT fan-out instead of being written directly, so it
 //	    is ordered with the deltas around it (spec 496, phase 2). The
@@ -215,7 +225,7 @@ package buildinfo
 //	    before this cannot see or clear the flag.
 //	1 — first contract; everything up to and including the
 //	    CLIENT_COMMAND relay.
-const DaemonContract = 23
+const DaemonContract = 24
 
 // Identity is this binary's full build identity. `hived --version
 // --json` prints it, and Welcome carries the same three values, so a

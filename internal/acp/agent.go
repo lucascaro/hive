@@ -255,8 +255,16 @@ func (a *Agent) NewSession(ctx context.Context, cwd string, mcp []MCPServer) (Ne
 
 // LoadSession reopens conversation id; the agent replays its history
 // as session/update notifications before the call returns.
-func (a *Agent) LoadSession(ctx context.Context, id, cwd string, mcp []MCPServer) error {
-	return a.conn.Call(ctx, MethodSessionLoad, loadSessionParams{SessionID: id, Cwd: cwd, MCPServers: nonNil(mcp)}, nil)
+func (a *Agent) LoadSession(ctx context.Context, id, cwd string, mcp []MCPServer) (LoadSessionResult, error) {
+	var res LoadSessionResult
+	err := a.conn.Call(ctx, MethodSessionLoad, loadSessionParams{SessionID: id, Cwd: cwd, MCPServers: nonNil(mcp)}, &res)
+	return res, err
+}
+
+// SetMode switches conversation id to mode, one of the ids session/new
+// or session/load advertised.
+func (a *Agent) SetMode(ctx context.Context, id, mode string) error {
+	return a.conn.Call(ctx, MethodSessionSetMode, setModeParams{SessionID: id, ModeID: mode}, nil)
 }
 
 // Prompt sends one user turn and blocks until the turn ends, returning

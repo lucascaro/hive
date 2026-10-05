@@ -43,6 +43,9 @@ type MetaFile struct {
 	Kind string `json:"kind,omitempty"`
 	// SpawnedBy is the principal that created the session; "" = the user.
 	SpawnedBy string `json:"spawned_by,omitempty"`
+	// ACPMode is the ACP mode CreateSpec.ACPMode asked for; "" = the
+	// ceiling. Meaningful only for Kind "acp".
+	ACPMode string `json:"acp_mode,omitempty"`
 }
 
 // IndexFile is what we write to sessions/index.json.

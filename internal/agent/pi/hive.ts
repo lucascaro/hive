@@ -36,9 +36,12 @@ import net from "node:net";
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 
 const FRAME_HELLO = 0x01;
+const FRAME_ERROR = 0x06;
 const FRAME_AGENT_EVENT = 0x22;
 const FRAME_PLAN_REVIEW_REQUEST = 0x32;
 const FRAME_PLAN_REVIEW_DECISION = 0x33;
+const FRAME_SUBMIT_RESULT = 0x43;
+const FRAME_SUBMIT_RESULT_OK = 0x44;
 const PROTOCOL_VERSION = 1;
 
 // Caps mirroring internal/wire (control.go). The daemon truncates again
@@ -258,6 +261,85 @@ export function createSender(sock: string, sid: string, timeoutMs = 2000) {
   };
 }
 
+// The typed-result tool of an ACP Pi session (spec 496). pi-acp ignores
+// the MCP servers Hive sends (F5 in docs/design-docs/acp-workflows.md),
+// so this extension registers the tool `hived mcp-submit` serves for
+// every other agent, with the same schema. Registered only when hived
+// sets SUBMIT_NONCE_ENV, which it does for an ACP Pi session alone.
+export const SUBMIT_TOOL_NAME = "submit_result";
+export const SUBMIT_NONCE_ENV = "HIVE_SUBMIT_NONCE";
+export const MAX_RESULT_LEN = 64 * 1024; // wire.MaxAcpResult
+const SUBMIT_TIMEOUT_MS = 10_000;
+
+const SUBMIT_PARAMETERS = {
+  type: "object",
+  properties: {
+    status: { type: "string", enum: ["ok", "error"] },
+    summary: { type: "string", description: "One or two sentences on the outcome." },
+    data: { type: "object", description: "Structured result fields, if the task asked for any." },
+  },
+  required: ["status"],
+  additionalProperties: false,
+};
+
+// submitResult sends one SUBMIT_RESULT on a session connection and
+// resolves once the daemon has recorded it — so the tool returns only
+// after that, and the turn cannot end first and be reported as having
+// no result — or with the daemon's refusal. It never rejects.
+export function submitResult(
+  sock: string,
+  sid: string,
+  nonce: string,
+  result: unknown,
+): Promise<{ ok: true } | { ok: false; error: string }> {
+  return new Promise((resolve) => {
+    let settled = false;
+    let conn: net.Socket | undefined;
+    const done = (r: { ok: true } | { ok: false; error: string }) => {
+      if (settled) return;
+      settled = true;
+      conn?.destroy();
+      resolve(r);
+    };
+    let buf = Buffer.alloc(0);
+    try {
+      conn = net.createConnection(sock);
+    } catch {
+      return done({ ok: false, error: "cannot reach Hive" });
+    }
+    conn.setTimeout(SUBMIT_TIMEOUT_MS, () => done({ ok: false, error: "Hive did not answer" }));
+    conn.on("connect", () => {
+      conn?.write(
+        Buffer.concat([
+          frame(FRAME_HELLO, { version: PROTOCOL_VERSION, client: "hive-pi-ext", mode: "session", session_id: sid }),
+          frame(FRAME_SUBMIT_RESULT, { nonce, result }),
+        ]),
+      );
+    });
+    conn.on("data", (chunk: Buffer) => {
+      buf = Buffer.concat([buf, chunk]);
+      // A session connection also gets its own snapshots; skip them.
+      while (buf.length >= 5) {
+        const type = buf[0];
+        const len = buf.readUInt32BE(1);
+        if (buf.length < 5 + len) return;
+        const body = buf.subarray(5, 5 + len);
+        buf = buf.subarray(5 + len);
+        if (type === FRAME_SUBMIT_RESULT_OK) return done({ ok: true });
+        if (type === FRAME_ERROR) {
+          let msg = "refused";
+          try {
+            msg = str(JSON.parse(body.toString("utf8"))?.message) || msg;
+          } catch {}
+          return done({ ok: false, error: msg });
+        }
+      }
+    });
+    conn.on("error", () => done({ ok: false, error: "cannot reach Hive" }));
+    conn.on("close", () => done({ ok: false, error: "Hive closed the connection" }));
+  });
+}
+
 export type PlanReviewDecision = { status: string; message?: string };
 
 // requestPlanReview asks the user to review plan in Hive and resolves
@@ -444,6 +526,7 @@ export default function (pi: ExtensionAPI) {
   if (!sid || !sock) return; // not under Hive: inert
 
   const todoTool = process.env[TODO_TOOL_ENV] !== "0";
+  const submitNonce = process.env[SUBMIT_NONCE_ENV] ?? "";
   const planTool = process.env[PLAN_REVIEW_ENV] === "1";
   // The review in flight, if any. Aborted by the tool's own signal (Esc)
   // and by session_shutdown, so a review never outlives its instance.
@@ -505,6 +588,28 @@ export default function (pi: ExtensionAPI) {
           content: [{ type: "text", text: [`Plan: ${done}/${todos.length} done.`, ...lines].join("\n") }],
           details: { todos },
         };
+      },
+    } as any);
+  }
+
+  if (submitNonce) {
+    pi.registerTool({
+      name: SUBMIT_TOOL_NAME,
+      label: "Submit result",
+      description:
+        "Submit the typed result of this task to Hive. Call it exactly once, when the task is done (status ok) or cannot be done (status error).",
+      parameters: SUBMIT_PARAMETERS as any,
+      async execute(_toolCallId: string, params: any) {
+        const status = params?.status;
+        if (status !== "ok" && status !== "error") {
+          throw new Error(`${SUBMIT_TOOL_NAME} needs "status": "ok" or "error"; call it again.`);
+        }
+        if (Buffer.byteLength(JSON.stringify(params), "utf8") > MAX_RESULT_LEN) {
+          throw new Error(`The result is longer than ${MAX_RESULT_LEN} bytes; shorten it and call ${SUBMIT_TOOL_NAME} again.`);
+        }
+        const r = await submitResult(sock, sid, submitNonce, params);
+        if (!r.ok) throw new Error(`Hive did not record the result: ${r.error}`);
+        return { content: [{ type: "text", text: "Result recorded." }], details: {} };
       },
     } as any);
   }

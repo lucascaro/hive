@@ -53,7 +53,7 @@ const AGENTS = [
   acpAvailable: false,
   acpExperimental: false,
   ...a,
-})) as main.AgentInfo[];
+})) as unknown as main.AgentInfo[];
 
 // Held so a test can decide WHEN ListAgents resolves — the in-flight
 // query case needs to type between the open and the resolve.

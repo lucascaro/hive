@@ -228,3 +228,66 @@ func TestAttachRefusesACPSession(t *testing.T) {
 		}
 	}
 }
+
+// SUBMIT_RESULT is served only on a session connection and only for the
+// session its HELLO named; the nonce does the rest.
+func TestSubmitResultBoundToOwnSessionConnection(t *testing.T) {
+	useFakeACP(t, acptest.FlagBlock)
+	d := newFrameTestDaemon(t)
+	e := createACPVia(t, d, (&recordOps{}).ops(), `{"kind":"acp","agent":"claude"}`)
+	other := createACPVia(t, d, (&recordOps{}).ops(), `{"kind":"acp","agent":"claude"}`)
+	if err := d.reg.PromptACP(e.ID, "task", wire.OriginUser); err != nil {
+		t.Fatal(err)
+	}
+	payload := func(nonce string) []byte {
+		b, _ := json.Marshal(wire.SubmitResultReq{Nonce: nonce, Result: json.RawMessage(`{"status":"ok"}`)})
+		return b
+	}
+	session := func(id string) (*recordOps, controlOps) {
+		rec := &recordOps{}
+		ops := rec.ops()
+		ops.restricted, ops.ownSessionID = true, id
+		return rec, ops
+	}
+	nonce := d.reg.ACPNonceForTest(e.ID)
+
+	// A control connection (the GUI, a plugin) cannot submit at all.
+	rec := &recordOps{}
+	d.handleControlFrame(t.Context(), rec.ops(), wire.FrameSubmitResult, payload(nonce))
+	if len(rec.errs) != 1 || rec.errs[0].Code != wire.ErrCodeModeNotAllowed {
+		t.Errorf("control-connection submit errors = %+v, want mode_not_allowed", rec.errs)
+	}
+	// Another session's connection, even holding the right nonce, only
+	// ever reaches its own session — whose nonce it is not.
+	rec, ops := session(other.ID)
+	d.handleControlFrame(t.Context(), ops, wire.FrameSubmitResult, payload(nonce))
+	if len(rec.errs) != 1 || rec.errs[0].Code != wire.ErrCodeSubmitRejected {
+		t.Errorf("other-session submit errors = %+v, want submit_rejected", rec.errs)
+	}
+	rec, ops = session(e.ID)
+	d.handleControlFrame(t.Context(), ops, wire.FrameSubmitResult, payload(nonce))
+	if len(rec.errs) != 0 || len(rec.frames) != 1 || rec.frames[0] != wire.FrameSubmitResultOK {
+		t.Fatalf("own submit: errors %+v frames %v, want one SUBMIT_RESULT_OK", rec.errs, rec.frames)
+	}
+	msg, err := d.reg.AcpTranscript(e.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if msg.ResultStatus != wire.AcpResultSubmitted || string(msg.Result) != `{"status":"ok"}` {
+		t.Errorf("result = %q %s, want submitted", msg.ResultStatus, msg.Result)
+	}
+	if m, _ := d.reg.AcpTranscript(other.ID); m.ResultStatus != "" {
+		t.Errorf("the other session got a result: %q", m.ResultStatus)
+	}
+}
+
+func TestCreateACPAboveCeilingErrorCode(t *testing.T) {
+	useFakeACP(t)
+	d := newFrameTestDaemon(t)
+	rec := &recordOps{}
+	d.handleControlFrame(t.Context(), rec.ops(), wire.FrameCreateSession, []byte(`{"kind":"acp","agent":"claude","acp_mode":"bypassPermissions"}`))
+	d.ops.Wait()
+	if len(rec.errs) != 1 || rec.errs[0].Code != wire.ErrCodeACPModeAboveCeiling {
+		t.Errorf("errors = %+v, want acp_mode_above_ceiling", rec.errs)
+	}
+}

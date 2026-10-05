@@ -1,12 +1,19 @@
 package registry
 
 import (
+	"bytes"
 	"context"
+	"crypto/rand"
+	"crypto/subtle"
+	"encoding/hex"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"log"
 	"os"
+	"slices"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/lucascaro/hive/internal/acp"
@@ -33,6 +40,15 @@ var (
 	ErrPermissionStale = errors.New("registry: that permission request is no longer pending")
 	// ErrBadKind is returned by Create for a kind it cannot honour.
 	ErrBadKind = errors.New("registry: invalid session kind")
+	// ErrACPRefused is returned when the user's settings forbid an ACP
+	// session of the agent (agent.Def.ACPRefusal).
+	ErrACPRefused = errors.New("registry: ACP is off for this agent")
+	// ErrACPModeAboveCeiling is returned by Create for a CreateSpec.ACPMode
+	// above the user's ceiling for the agent. Refused, never lowered.
+	ErrACPModeAboveCeiling = errors.New("registry: ACP mode is above your ceiling for this agent")
+	// ErrSubmitRejected is returned by SubmitResult for a wrong nonce, a
+	// session with no running turn to attach to, or a malformed result.
+	ErrSubmitRejected = errors.New("registry: result rejected")
 )
 
 // acpStartTimeout bounds initialize plus session/new or session/load.
@@ -49,6 +65,29 @@ var acpCommand = func(def agent.Def) (argv, env []string) {
 // acpSession is the live half of an ACP entry. Guarded by r.mu.
 type acpSession struct {
 	agent *acp.Agent
+	spec  *agent.ACPSpec
+	// mode is the mode set after session/new and session/load, and the
+	// one an unrequested escalation is reset to; ceiling is the rank of
+	// the user's ceiling, which a mode switch may reach on its own.
+	mode    string
+	ceiling int
+	// userMode is the mode the user just chose on a permission card:
+	// the ModeOptions entry of the option they picked (Claude's exit-plan
+	// card), cleared by the next switch, tool call, prompt or turn end.
+	// A switch above the ceiling to exactly that mode is the user's own
+	// choice and stands; any other is reset to mode.
+	userMode string
+	// resets counts the escalations this process was reset from. The
+	// decision is made on the ACP reader goroutine, in update order, so
+	// it is settled before the turn that caused it ends.
+	resets int
+	// nonce authenticates SUBMIT_RESULT from this process's submit
+	// server; server is that server's name, which every structured
+	// identity of its tool embeds (acp.SubmitIdentities). New per start.
+	nonce, server string
+	// tools is each live tool_call update by ToolCallID, for the
+	// permission request that may follow it. Cleared every prompt.
+	tools map[string]acp.Update
 	// replaying is true while session/load replays history: those
 	// updates rebuild the transcript but are past turns, not state.
 	replaying bool
@@ -61,6 +100,23 @@ type acpSession struct {
 	perm   *acpPending
 	nextRq int
 }
+
+// acpResult is the typed result of the latest prompt; see the result
+// fields of wire.AcpTranscriptMsg.
+type acpResult struct {
+	// epoch is the transcript epoch promptID belongs to: item ids
+	// restart with each adapter process.
+	epoch    int
+	promptID int
+	status   string
+	value    json.RawMessage
+}
+
+// maxACPToolRefs bounds acpSession.tools within one turn.
+const maxACPToolRefs = 512
+
+// acpSetModeTimeout bounds a set_mode that resets an escalation.
+var acpSetModeTimeout = 30 * time.Second
 
 type acpPending struct {
 	info   wire.AcpPermission
@@ -96,7 +152,74 @@ func validateKind(spec wire.CreateSpec) error {
 	if len(spec.Cmd) > 0 || spec.ContinueConversation {
 		return fmt.Errorf("%w: an ACP session takes neither a command nor continue-conversation", ErrBadKind)
 	}
+	st := agent.SpawnSettings()
+	if reason := def.ACPRefusal(st); reason != "" {
+		return fmt.Errorf("%w: %s", ErrACPRefused, reason)
+	}
+	if spec.ACPMode != "" {
+		acpSpec := def.ACP()
+		rank := acpSpec.ModeRank(spec.ACPMode)
+		if rank < 0 {
+			return fmt.Errorf("%w: %s has no ACP mode %q", ErrBadKind, def.Name, spec.ACPMode)
+		}
+		if ceiling := st.ACPCeiling(def.ID); rank > acpSpec.ModeRank(ceiling) {
+			return fmt.Errorf("%w: %q is above %q", ErrACPModeAboveCeiling, spec.ACPMode, ceiling)
+		}
+	}
 	return nil
+}
+
+// acpModeFor is the mode an ACP session starts in: the one it asked for
+// at create when that is still at or below the user's ceiling, and the
+// ceiling otherwise — the user may have lowered it since (revive,
+// restart). Returns the mode and the ceiling's rank.
+func acpModeFor(spec *agent.ACPSpec, ceiling, requested string) (string, int) {
+	limit := spec.ModeRank(ceiling)
+	if r := spec.ModeRank(requested); r >= 0 && r <= limit {
+		return requested, limit
+	}
+	return ceiling, limit
+}
+
+// newNonce returns n random bytes, hex-encoded.
+func newNonce(n int) string {
+	b := make([]byte, n)
+	_, _ = rand.Read(b) // never fails (crypto/rand, Go 1.24+)
+	return hex.EncodeToString(b)
+}
+
+// acpExtras is what one adapter start adds to the seam's argv/env: the
+// session's submit transport. Every agent but Pi gets a stdio MCP
+// server, `hived mcp-submit`, sent on session/new and session/load.
+// Pi ignores mcpServers (F5), so it gets Hive's extension through the
+// pi-acp shim instead, and the extension registers the same tool. The
+// session's own HIVE_* values reach only these two places: AdapterEnv
+// stripped every inherited one from the adapter.
+func (r *Registry) acpExtras(id string, spec *agent.ACPSpec, as *acpSession) (env []string, mcp []acp.MCPServer) {
+	r.mu.Lock()
+	hived, stateDir := r.hivedPath, r.stateDir
+	r.mu.Unlock()
+	hive := append(r.hiveEnv(id), "HIVE_SUBMIT_NONCE="+as.nonce)
+	if spec.NoApprovalGate {
+		shim, err := agent.PiACPShim(stateDir)
+		if err != nil {
+			log.Printf("registry: acp %s: no Pi shim (%v); this session cannot submit a result", id, err)
+			return nil, nil
+		}
+		// Only the submit tool: the extension's state reports are dropped
+		// for an ACP session, so its plan tools would be dead weight.
+		return append(hive, "PI_ACP_PI_COMMAND="+shim, agent.PiTodoToolEnv+"=0", agent.PiPlanReviewEnv+"=0"), nil
+	}
+	if hived == "" {
+		log.Printf("registry: acp %s: hived path unknown; this session cannot submit a result", id)
+		return nil, nil
+	}
+	server := acp.MCPServer{Name: as.server, Command: hived, Args: []string{"mcp-submit"}}
+	for _, kv := range hive {
+		k, v, _ := strings.Cut(kv, "=")
+		server.Env = append(server.Env, acp.EnvVar{Name: k, Value: v})
+	}
+	return nil, []acp.MCPServer{server}
 }
 
 // finishCreateACP is finishCreateTail for an ACP entry: start the
@@ -153,7 +276,7 @@ func (r *Registry) startACP(id, cwd, loadID string) error {
 		r.mu.Unlock()
 		return ErrNotFound
 	}
-	agentID := e.Agent
+	agentID, requested := e.Agent, e.ACPMode
 	r.mu.Unlock()
 
 	fail := func(err error) error {
@@ -174,8 +297,18 @@ func (r *Registry) startACP(id, cwd, loadID string) error {
 	if !ok || def.ACP() == nil {
 		return fail(fmt.Errorf("%w: agent %q cannot run as an ACP session", ErrBadKind, agentID))
 	}
+	// Checked at every start, not only at create: a setting the user
+	// lowered since applies from the next start on.
+	st := agent.SpawnSettings()
+	if reason := def.ACPRefusal(st); reason != "" {
+		return fail(fmt.Errorf("%w: %s", ErrACPRefused, reason))
+	}
+	spec := def.ACP()
+	as := &acpSession{spec: spec, nonce: newNonce(32), server: "hive-" + newNonce(6), tools: map[string]acp.Update{}}
+	as.mode, as.ceiling = acpModeFor(spec, st.ACPCeiling(def.ID), requested)
 	argv, env := acpCommand(def)
-	as := &acpSession{}
+	extraEnv, mcp := r.acpExtras(id, spec, as)
+	env = append(env, extraEnv...)
 	a, err := acp.Start(acp.Spec{Argv: argv, Env: env, Cwd: cwd}, acp.Handler{
 		Update: func(_ string, u acp.Update) { r.onACPUpdate(id, as, u) },
 		Permission: func(ctx context.Context, req acp.PermissionRequest) any {
@@ -199,6 +332,7 @@ func (r *Registry) startACP(id, cwd, loadID string) error {
 	e.acp = as
 	e.state = agentstate.New(time.Now())
 	e.acpTx.Reset()
+	e.acpRes = acpResult{}
 	r.broadcastACPLocked(e, nil, true)
 	r.mu.Unlock()
 	go r.watchACPExit(id, as)
@@ -213,19 +347,33 @@ func (r *Registry) startACP(id, cwd, loadID string) error {
 	if err != nil {
 		return abort(fmt.Errorf("acp initialize: %w", err))
 	}
+	var modes *acp.Modes
 	if loadID != "" {
 		if !init.AgentCapabilities.LoadSession {
 			return abort(errors.New("the ACP adapter cannot reopen conversations (no loadSession)"))
 		}
-		if err := a.LoadSession(ctx, loadID, cwd, nil); err != nil {
+		ld, err := a.LoadSession(ctx, loadID, cwd, mcp)
+		if err != nil {
 			return abort(fmt.Errorf("acp session/load: %w", err))
 		}
+		modes = ld.Modes
 	} else {
-		ns, err := a.NewSession(ctx, cwd, nil)
+		ns, err := a.NewSession(ctx, cwd, mcp)
 		if err != nil {
 			return abort(fmt.Errorf("acp session/new: %w", err))
 		}
-		loadID = ns.SessionID
+		loadID, modes = ns.SessionID, ns.Modes
+	}
+	// The mode is set explicitly after every new and load, never left
+	// to the adapter: Codex starts — and reloads — in "agent", which
+	// called the submit tool unasked in spike 492 (F4).
+	if !spec.NoApprovalGate {
+		if modes != nil && !slices.ContainsFunc(modes.AvailableModes, func(m acp.Mode) bool { return m.ID == as.mode }) {
+			return abort(fmt.Errorf("the ACP adapter does not offer mode %q; refusing to run it in another", as.mode))
+		}
+		if err := a.SetMode(ctx, loadID, as.mode); err != nil {
+			return abort(fmt.Errorf("acp session/set_mode %q: %w", as.mode, err))
+		}
 	}
 
 	r.mu.Lock()
@@ -299,7 +447,14 @@ func (r *Registry) onACPUpdate(id string, as *acpSession, u acp.Update) {
 	items := e.acpTx.Apply(u, as.replaying)
 	if !as.replaying {
 		switch u.SessionUpdate {
+		case acp.UpdateCurrentMode:
+			r.onACPModeLocked(id, e, as, u.CurrentModeID)
 		case acp.UpdateToolCall:
+			as.userMode = ""
+			if len(as.tools) >= maxACPToolRefs {
+				clear(as.tools)
+			}
+			as.tools[u.ToolCallID] = u
 			r.applyACPLocked(e, agentstate.Event{Kind: agentstate.KindToolStart, Tool: toolLabel(u), CallID: u.ToolCallID})
 		case acp.UpdateToolCallPatch:
 			if u.Status == "completed" || u.Status == "failed" {
@@ -322,6 +477,47 @@ func (r *Registry) onACPUpdate(id string, as *acpSession, u acp.Update) {
 	}
 }
 
+// onACPModeLocked enforces the ceiling on a mode switch the adapter
+// reports. At or below the ceiling it stands. Above it, it stands only
+// when the user just allowed something on a permission card (Claude's
+// exit-plan card switches mode this way); otherwise it is reset to the
+// session's mode, and an adapter that refuses the reset is closed.
+// Pi's modes are thinking levels, not permissions, so they are not
+// policed. Callers hold r.mu.
+func (r *Registry) onACPModeLocked(id string, e *Entry, as *acpSession, mode string) {
+	// Until startACP has set the mode (as.ready), a switch is the
+	// adapter settling in: the set_mode that follows replaces it, and a
+	// reset now would have no session id to send.
+	if as.spec.NoApprovalGate || !as.ready {
+		return
+	}
+	chosen := as.userMode
+	as.userMode = ""
+	if rank := as.spec.ModeRank(mode); rank >= 0 && rank <= as.ceiling {
+		return
+	}
+	if chosen != "" && mode == chosen {
+		log.Printf("registry: acp %s: mode %q above the ceiling, kept: the user chose it on a permission card", id, mode)
+		return
+	}
+	as.resets++
+	log.Printf("registry: acp %s: adapter switched to mode %q above the ceiling; resetting to %q", id, mode, as.mode)
+	sid, reset := e.AgentSessionID, as.mode
+	go func() {
+		ctx, cancel := context.WithTimeout(context.Background(), acpSetModeTimeout)
+		defer cancel()
+		if err := as.agent.SetMode(ctx, sid, reset); err != nil {
+			log.Printf("registry: acp %s: reset to mode %q failed (%v); closing the adapter", id, reset, err)
+			r.mu.Lock()
+			if cur, ok := r.entries[id]; ok && cur.acp == as && cur.LastError == "" {
+				cur.LastError = fmt.Sprintf("closed: the agent switched to a mode above your ceiling and would not switch back (%v)", err)
+			}
+			r.mu.Unlock()
+			as.agent.Close() // watchACPExit reports it
+		}
+	}()
+}
+
 func toolLabel(u acp.Update) string {
 	if u.Kind != "" {
 		return u.Kind
@@ -332,14 +528,27 @@ func toolLabel(u acp.Update) string {
 // onACPPermission parks the agent's permission request until the user
 // answers it (AnswerPermission) or the adapter goes away.
 //
-// Every request goes to the user. Phase 3 of spec 496 adds the one
-// exception — the session's own submit_result tool — and nothing else.
+// Every request goes to the user except one: the session's own
+// submit_result tool, auto-allowed on exact identity.
 func (r *Registry) onACPPermission(ctx context.Context, id string, as *acpSession, req acp.PermissionRequest) any {
 	r.mu.Lock()
 	e, ok := r.entries[id]
 	if !ok || e.acp != as {
 		r.mu.Unlock()
 		return acp.Cancelled()
+	}
+	// The one request the daemon answers itself: this session's own
+	// submit tool, matched on exact structured identity bound to its
+	// own server name. Everything else goes to the user.
+	if as.server != "" && !as.spec.NoApprovalGate {
+		var earlier *acp.Update
+		if u, ok := as.tools[req.ToolCall.ToolCallID]; ok {
+			earlier = &u
+		}
+		if opt, ok := acp.AutoAllowOption(req, earlier, acp.SubmitIdentities(as.server)); ok {
+			r.mu.Unlock()
+			return acp.Selected(opt)
+		}
 	}
 	if as.perm != nil {
 		// Adapters ask one at a time; a second concurrent request has no
@@ -403,6 +612,7 @@ func (r *Registry) AnswerPermission(id, requestID, optionID string) error {
 	for _, o := range p.info.Options {
 		if o.OptionID == optionID {
 			p.answered = true
+			e.acp.userMode = e.acp.spec.ModeOptions[optionID]
 			p.answer <- acp.Selected(optionID) // buffered, never blocks: first and only send
 			return nil
 		}
@@ -438,8 +648,12 @@ func (r *Registry) PromptACP(id, text, origin string) error {
 		return ErrACPBusy
 	}
 	as.busy = true
+	as.userMode = ""
+	clear(as.tools)
 	sid := e.AgentSessionID
 	item := e.acpTx.AddUser(text, origin)
+	e.acpRes = acpResult{epoch: e.acpTx.Epoch(), promptID: item.ID}
+	epoch := e.acpRes.epoch
 	r.applyACPLocked(e, agentstate.Event{Kind: agentstate.KindPrompt, Text: text})
 	r.broadcastACPLocked(e, []wire.AcpItem{item}, false)
 	r.mu.Unlock()
@@ -449,8 +663,19 @@ func (r *Registry) PromptACP(id, text, origin string) error {
 		r.mu.Lock()
 		defer r.mu.Unlock()
 		as.busy = false
+		as.userMode = ""
 		cur, ok := r.entries[id]
-		if !ok || cur.acp != as {
+		if !ok {
+			return
+		}
+		// A turn that ends — however it ends, the adapter dying with it
+		// included — with nothing submitted has no result. Never read
+		// as success (F3).
+		if res := &cur.acpRes; res.epoch == epoch && res.promptID == item.ID && res.status == "" {
+			res.status = wire.AcpResultNone
+			r.broadcastACPLocked(cur, nil, false)
+		}
+		if cur.acp != as {
 			return
 		}
 		if err != nil {
@@ -463,6 +688,39 @@ func (r *Registry) PromptACP(id, text, origin string) error {
 		}
 		r.applyACPLocked(cur, ev)
 	}()
+	return nil
+}
+
+// SubmitResult records the typed result of session id's running turn,
+// sent by its own submit server (or Pi extension) as SUBMIT_RESULT.
+// nonce must be the one this adapter process was started with, so no
+// other process holding the events socket — another session's agent
+// included — can put a result in this session. result must be a JSON
+// object of at most wire.MaxAcpResult bytes. A later submit in the same
+// turn replaces an earlier one.
+func (r *Registry) SubmitResult(id, nonce string, result json.RawMessage) error {
+	var buf bytes.Buffer
+	if len(result) > wire.MaxAcpResult || json.Compact(&buf, result) != nil || buf.Len() == 0 || buf.Bytes()[0] != '{' {
+		return fmt.Errorf("%w: the result must be a JSON object of at most %d bytes", ErrSubmitRejected, wire.MaxAcpResult)
+	}
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	e, ok := r.entries[id]
+	if !ok {
+		return ErrNotFound
+	}
+	if !e.isACP() {
+		return ErrNotACP
+	}
+	as := e.acp
+	if as == nil || nonce == "" || subtle.ConstantTimeCompare([]byte(nonce), []byte(as.nonce)) != 1 {
+		return fmt.Errorf("%w: not this session's submit server", ErrSubmitRejected)
+	}
+	if !as.busy || e.acpRes.promptID == 0 {
+		return fmt.Errorf("%w: no turn is running", ErrSubmitRejected)
+	}
+	e.acpRes.status, e.acpRes.value = wire.AcpResultSubmitted, json.RawMessage(buf.Bytes())
+	r.broadcastACPLocked(e, nil, false)
 	return nil
 }
 
@@ -528,7 +786,8 @@ func (r *Registry) applyACPLocked(e *Entry, ev agentstate.Event) {
 }
 
 func acpMsgLocked(e *Entry, items []wire.AcpItem, reset bool) wire.AcpTranscriptMsg {
-	msg := wire.AcpTranscriptMsg{SessionID: e.ID, Epoch: e.acpTx.Epoch(), Reset: reset, Items: items}
+	msg := wire.AcpTranscriptMsg{SessionID: e.ID, Epoch: e.acpTx.Epoch(), Reset: reset, Items: items,
+		PromptID: e.acpRes.promptID, ResultStatus: e.acpRes.status, Result: e.acpRes.value}
 	if e.acp != nil && e.acp.perm != nil {
 		p := e.acp.perm.info
 		p.Options = append([]wire.AcpPermissionOption(nil), p.Options...)
@@ -591,4 +850,15 @@ func SetACPCommandForTest(fn func(agent.Def) (argv, env []string)) func() {
 	prev := acpCommand
 	acpCommand = fn
 	return func() { acpCommand = prev }
+}
+
+// ACPNonceForTest returns the submit nonce of id's running adapter, for
+// the daemon's tests, which play its submit server.
+func (r *Registry) ACPNonceForTest(id string) string {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if e, ok := r.entries[id]; ok && e.acp != nil {
+		return e.acp.nonce
+	}
+	return ""
 }
