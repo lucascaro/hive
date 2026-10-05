@@ -492,3 +492,8 @@ The contract bumps once per phase because `scripts/check-daemon-contract.sh:36-4
     - acceptance — PASS — criteria 1–5, 7, 8 pass (targeted registry, acp, daemon, agent and mcp-submit tests green); 6 and 9 DEFERRED (phase 4)
     - non-goals — PASS — Settings ceiling is the criterion-5 trust setting, not a per-session picker; mcp-submit is an MCP tool server, not an ACP adapter; PTY paths untouched
     - doc accuracy — FAIL — DESIGN.md:12,16 missing the mode ceiling, set_mode and `hived mcp-submit`; README, features.json, changesets, plugins.md, SDKs, control-plane, design doc and contract 24 accurate
+- **2026-10-04** — verdict: PASS; phase: 3/4; checks: 3 passed / 0 failed / 0 followups / 2 deferred; followups: none; one-line: doc-accuracy re-run after the DESIGN.md fix (acceptance and non-goals carried from the full run above; the change since was docs only); phase 3 gated.
+  - 2026-10-04 dimensions:
+    - acceptance — PASS — carried from the full run at 456c72ed; 6 and 9 DEFERRED (phase 4)
+    - non-goals — PASS — carried from the full run at 456c72ed
+    - doc accuracy — PASS — DESIGN.md:12,16 now name the ceiling, set_mode and `hived mcp-submit` (with Pi's extension noted); README, features.json, changesets, plugins.md, SDKs, control-plane, design doc and contract 24 accurate
