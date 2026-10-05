@@ -446,6 +446,7 @@ The contract bumps once per phase because `scripts/check-daemon-contract.sh:36-4
 - **2026-10-04** — PR #501 merged (phase 3/4). Phase 4 (takeover, hand-back, docs) starts on `feature/496-acp-phase4`.
 - **2026-10-04** — Phase 4 implemented: `Registry.SetKind`, `SET_SESSION_KIND` (0x45), F2 writer-lock mapping and revert, Pi session-map resolution, Take Over / Hand Back commands, gate B rewrite and run log (contract 25).
 - **2026-10-04** — Gate FAIL (third run, all three dimensions); DESIGN.md's ACP and daemon entries did not mention the mode ceiling, `session/set_mode` or `hived mcp-submit` — fixed on the branch. The same run found Windows CI red on two new Pi submit socket tests, now skipped on Windows like the file's other unix-socket tests (456c72ed).
+- **2026-10-04** — Gate FAIL (phase 4); DESIGN.md:16 missing takeover/hand-back and SET_SESSION_KIND. Criterion 9 NEEDS_FOLLOWUP: gate B run log empty.
 
 ## Open questions
 
@@ -506,3 +507,8 @@ The contract bumps once per phase because `scripts/check-daemon-contract.sh:36-4
     - acceptance — PASS — carried from the full run at 456c72ed; 6 and 9 DEFERRED (phase 4)
     - non-goals — PASS — carried from the full run at 456c72ed
     - doc accuracy — PASS — DESIGN.md:12,16 now name the ceiling, set_mode and `hived mcp-submit` (with Pi's extension noted); README, features.json, changesets, plugins.md, SDKs, control-plane, design doc and contract 24 accurate
+- **2026-10-04** — verdict: FAIL; phase: 4/4; checks: 1 passed / 1 failed / 1 followups; followups: none; one-line: phase 4 delivers criteria 1–8 (takeover and hand-back with the no-lost-turn test); DESIGN.md does not mention takeover, hand-back or SET_SESSION_KIND, and criterion 9's gate B run log has no real runs yet.
+  - 2026-10-04 dimensions:
+    - acceptance — NEEDS_FOLLOWUP — criteria 1–8 pass (registry, daemon, acp, agent, wire tests; playwright acp-session 3/3); criterion 9: gate B rewritten for Claude and Pi, but the run log has 0 rows — the operator's real runs close it
+    - non-goals — PASS — PTY paths unchanged outside ACP/kind gates (kill() Info() snapshot is a lock fix with an equivalent payload); no picker, search, export, images, engine, bundled adapters or Hive-as-agent
+    - doc accuracy — FAIL — DESIGN.md:16 omits takeover/hand-back (SetKind, SET_SESSION_KIND, takeover_refused, acp_writer_locked, the switching lock); changeset, features.json, README, plugins.md, SDK tables, contract 25, acp-session-kind.md, acp-workflows.md (check-doc passes), menu/help/accelerators all accurate
