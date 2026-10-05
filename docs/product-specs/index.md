@@ -8,7 +8,6 @@ The *what* and *why* of work this project plans to do. Each spec describes user 
 
 | Priority | Issue | Title | Stage | Spec |
 |----------|-------|-------|-------|------|
-| P2 | #496 | Add an ACP session kind: transcript view, exact state, permission prompts, typed results, PTY takeover | GATE | [496-add-an-acp-session-kind-transcript-view-exact-stat](496-add-an-acp-session-kind-transcript-view-exact-stat.md) |
 | P2 | — | A red CI check name should say which stage failed | TRIAGE | [256-ci-check-names-identify-the-failing-stage](256-ci-check-names-identify-the-failing-stage.md) |
 | P2 | — | Session messaging: hand a session a message, get told when it idles | PLAN | [338-session-messaging](338-session-messaging.md) |
 | P2 | — | Orchestrator grant: a session you name can message its siblings | PLAN | [389-orchestrator-grant-and-session-msg](389-orchestrator-grant-and-session-msg.md) |
@@ -23,6 +22,7 @@ The *what* and *why* of work this project plans to do. Each spec describes user 
 
 | Issue | Title | PR | Shipped | Spec |
 |-------|-------|----|---------|------|
+| #496 | Add an ACP session kind: transcript view, exact state, permission prompts, typed results, PTY takeover | #502 | 2026-10-04 | [496-add-an-acp-session-kind-transcript-view-exact-stat](496-add-an-acp-session-kind-transcript-view-exact-stat.md) |
 | #492 | Research ACP as Hive's engine-driven workflow transport | #493 | 2026-10-03 | [492-research-acp-as-hive-s-engine-driven-workflow-tran](492-research-acp-as-hive-s-engine-driven-workflow-tran.md) |
 | #494 | Claude Restart/Revive fails when the session cwd contains \"_\" | #497 | 2026-10-03 | [494-claude-restart-revive-fails-when-the-session-cwd-co](494-claude-restart-revive-fails-when-the-session-cwd-co.md) |
 | #477 | Make every app shortcut configurable, with collision resolution | #490 | 2026-10-02 | [477-make-every-app-shortcut-configurable-with-collisio](477-make-every-app-shortcut-configurable-with-collisio.md) |
