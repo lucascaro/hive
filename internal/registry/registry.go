@@ -1303,12 +1303,11 @@ func (r *Registry) Get(id string) *Entry {
 // another lifecycle op (create tail, restart, kill) held the entry
 // and nothing was done — the caller decides whether to come back.
 //
-// Unlike Restart, ready is set AFTER Revive, not before: the whole
+// Like Restart, ready is set AFTER Revive, not before: the whole
 // point is that the phase covers the fork. Revive broadcasts
 // alive:true from inside while the phase still reads "spawning", and
 // the setPhase below is the later event that unsticks a client gating
-// its attach on ready — Restart has no such trailing event, which is
-// why it clears the phase first.
+// its attach on ready.
 func (r *Registry) ReviveWithPhase(id string, opts session.Options) (bool, error) {
 	// Claim the entry: the check and the set are one critical
 	// section, so a kill or restart that got there first keeps it.
@@ -1557,12 +1556,17 @@ func (r *Registry) Restart(id string) error {
 	// leaves opts.Cwd alone — projectCwd is what session.Start should use.
 	opts.Cwd = projectCwd
 
-	// Back to ready BEFORE Revive: Revive broadcasts alive:true from
-	// inside, and a client gating attach on ready would otherwise see
-	// alive:true + phase:"restarting" with no later event to unstick
-	// it. Clearing here means ready and alive:true ride the same event.
-	r.setPhase(id, wire.PhaseReady)
-	return r.Revive(id, opts)
+	// Back to ready only AFTER Revive, as ReviveWithPhase does. The old
+	// process is gone and the new one not yet bound, so a ready
+	// broadcast here would carry alive:false + ready — what every client
+	// reads as death — and the GUI flashed "session ended" on every
+	// restart and kind switch. Revive broadcasts alive (or the failure)
+	// while the phase still reads restarting; this is the trailing
+	// event that unsticks a client gating its attach on ready.
+	// Compare-and-set: a kill that started meanwhile owns the phase.
+	err := r.Revive(id, opts)
+	r.setPhaseIf(id, wire.PhaseRestarting, wire.PhaseReady)
+	return err
 }
 
 // watchSessionExit waits for sess to exit, then — if the entry is

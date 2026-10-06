@@ -355,3 +355,38 @@ describe('pty:disconnect on a live tile', () => {
     expect(st.attached).toBe(true);
   });
 });
+
+// Restart Session (and an ACP takeover or hand-back, which restart
+// under the hood): the daemon keeps the phase at restarting until the
+// new process is up, then reports ready.
+describe('Restart Session events', () => {
+  const updated = (id: string, phase: string, alive: boolean) =>
+    emit(
+      'session:event',
+      JSON.stringify({
+        kind: 'updated',
+        session: { id, name: id, phase, alive },
+      }),
+    );
+
+  it('never reports a live session as ended while it restarts', () => {
+    const st = liveTile('r1');
+    vi.mocked(bridge.Notify).mockClear();
+    updated('r1', 'restarting', true);
+    updated('r1', 'restarting', true);
+    updated('r1', '', true);
+    expect(bridge.Notify).not.toHaveBeenCalled();
+    expect(st.deadOverlayShown).toBe(false);
+  });
+
+  it('clears a dead session overlay when it comes back mid-restart', () => {
+    const st = liveTile('r2');
+    updated('r2', '', false);
+    expect(st.deadOverlayShown).toBe(true);
+    updated('r2', 'restarting', false);
+    updated('r2', 'restarting', true);
+    expect(st.deadOverlayShown).toBe(false);
+    updated('r2', '', true);
+    expect(st.deadOverlayShown).toBe(false);
+  });
+});

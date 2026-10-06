@@ -828,22 +828,14 @@ export function wireDaemonEvents(injected: EventsDeps) {
     ) {
       forgetActivity(info.id);
     }
-    // A session that hasn't finished starting is not dead — it has no
-    // PTY *yet*. Death is only meaningful once the daemon says ready.
-    if (!isReady(phase)) return;
-    if (prev === true && info.alive === false) {
-      onSessionDeath(info);
-    } else if (prev === undefined && info.alive === false) {
-      // Session was born dead (e.g. agent binary not found).
-      onSessionDeath(info);
-    } else if (prev === false && info.alive === false && wasPending) {
-      // Reached ready still dead: the spawn failed. Alive-transition
-      // detection can't see this — `added` already recorded
-      // alive:false while the session was merely starting, so this is
-      // false→false — and without the explicit call a born-dead
-      // session would sit under the loading panel forever.
-      onSessionDeath(info);
-    } else if (prev === false && info.alive === true) {
+    // A revive clears the dead overlay. Restart Session brings the
+    // process back while the phase still reads restarting, and only
+    // reports ready after it, so that edge counts too.
+    if (
+      prev === false &&
+      info.alive === true &&
+      (isReady(phase) || phase === PHASE.restarting)
+    ) {
       clearDismissedDead(info.id);
       const t = termsMap().get(info.id);
       if (t) {
@@ -864,6 +856,22 @@ export function wireDaemonEvents(injected: EventsDeps) {
         // phase, liveness and a non-zero box.
         t.ensureAttached();
       }
+    }
+    // A session that hasn't finished starting is not dead — it has no
+    // PTY *yet*. Death is only meaningful once the daemon says ready.
+    if (!isReady(phase)) return;
+    if (prev === true && info.alive === false) {
+      onSessionDeath(info);
+    } else if (prev === undefined && info.alive === false) {
+      // Session was born dead (e.g. agent binary not found).
+      onSessionDeath(info);
+    } else if (prev === false && info.alive === false && wasPending) {
+      // Reached ready still dead: the spawn failed. Alive-transition
+      // detection can't see this — `added` already recorded
+      // alive:false while the session was merely starting, so this is
+      // false→false — and without the explicit call a born-dead
+      // session would sit under the loading panel forever.
+      onSessionDeath(info);
     }
   }
 
