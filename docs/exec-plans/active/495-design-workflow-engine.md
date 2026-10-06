@@ -265,6 +265,7 @@ node scripts/workflow-proto/emit.ts reviewLoop --mermaid | grep -q '^flowchart'
 ## PR convergence ledger
 
 - **2026-10-05 iter 1** — verdict: COMMENT; mergeable: MERGEABLE; findings_hash: 9f6af028cb224522171916e05fbed7867474265eff7ecc29548c973bd47879b3; threads_open: 0; action: escalated:risky fix needs human decision; head_sha: 3a6e5561.
+- **2026-10-06 iter 2** — verdict: unrecorded (worker stalled after its autofix push, before returning its envelope); mergeable: MERGEABLE; findings_hash: unrecorded; threads_open: 0; action: autofix+push; head_sha: 9789418d. No metric was emitted, because without the envelope it would carry made-up values. The fix decisions from iter 1 landed in 9bed5565 before this iteration.
 
 ## Gate verdict
 
