@@ -261,6 +261,7 @@ node scripts/workflow-proto/emit.ts reviewLoop --mermaid | grep -q '^flowchart'
 - **2026-10-05** — Plan approved (chat, round 1) after two second-opinion rounds.
 - **2026-10-05** — Implemented: design doc, prototype (42 tests), CI step, cross-links. Mermaid output rendered in headless Chromium with mermaid@11 (all three examples render).
 - **2026-10-05** — Review iter 1 escalated 7 design items; all decided and applied (47 tests).
+- **2026-10-06** — Review iters 2–3: branch-pinning tests for `ordered()`, an empty-workflow check in `validate()`, `emit.ts` no longer treats inherited keys such as `constructor` as examples, and the `check-doc.ts` CLI's exit codes are tested (53 tests).
 
 ## PR convergence ledger
 

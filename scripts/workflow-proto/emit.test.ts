@@ -27,3 +27,9 @@ test('an unknown example exits non-zero', () => {
   assert.equal(r.status, 2);
   assert.match(r.stderr, /usage: emit\.ts/);
 });
+
+test('an inherited property name is not an example', () => {
+  const r = run('constructor');
+  assert.equal(r.status, 2);
+  assert.match(r.stderr, /usage: emit\.ts/);
+});

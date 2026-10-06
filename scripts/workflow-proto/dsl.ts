@@ -318,6 +318,7 @@ function outputOf(placed: Map<string, Placed>, n: Node): JsonSchema | null {
 /** Returns every structural error in the IR; an empty list means valid. */
 export function validate(ir: IR): string[] {
   const errors: string[] = [];
+  if (ir.nodes.length === 0) errors.push(`${ir.name}: workflow has no nodes`);
   const list: Placed[] = [];
   walk(ir, '', null, list);
   const placed = new Map<string, Placed>();

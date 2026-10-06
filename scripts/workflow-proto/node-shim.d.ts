@@ -34,6 +34,12 @@ declare module 'node:assert/strict' {
 declare module 'node:fs' {
   export function readFileSync(path: string, encoding: 'utf8'): string;
   export function writeFileSync(path: string, data: string): void;
+  export function mkdtempSync(prefix: string): string;
+  export function rmSync(path: string, opts: { recursive: boolean; force: boolean }): void;
+}
+
+declare module 'node:os' {
+  export function tmpdir(): string;
 }
 
 declare module 'node:path' {

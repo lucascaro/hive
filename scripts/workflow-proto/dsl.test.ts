@@ -341,3 +341,8 @@ test('a loop exposes converged and iterations', () => {
   assert.deepEqual(validate(ir), []);
   assert.deepEqual(ir.edges[0].when, { ref: 'lp.converged', op: 'eq', value: true });
 });
+
+test('validate rejects a workflow with no nodes', () => {
+  const ir: IR = { ...examples.reviewLoop(), nodes: [], edges: [] };
+  assert.match(validate(ir).join('\n'), /workflow has no nodes/);
+});

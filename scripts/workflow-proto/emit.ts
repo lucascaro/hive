@@ -15,7 +15,7 @@ import { toMermaid } from './mermaid.ts';
 const [name, flag] = process.argv.slice(2);
 if (name === '--schema') {
   process.stdout.write(`${JSON.stringify(irSchema(), null, 2)}\n`);
-} else if (!name || !(name in examples)) {
+} else if (!name || !Object.hasOwn(examples, name)) {
   process.stderr.write(`usage: emit.ts <${Object.keys(examples).join('|')}> [--ir|--mermaid]\n`);
   process.exitCode = 2;
 } else {

@@ -1,5 +1,7 @@
 import assert from 'node:assert/strict';
-import { readFileSync } from 'node:fs';
+import { spawnSync } from 'node:child_process';
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { test } from 'node:test';
 import { fileURLToPath } from 'node:url';
@@ -79,4 +81,22 @@ test('--write regenerates blocks', () => {
   const fixed = writeDoc(stale);
   assert.deepEqual(checkDoc(fixed), []);
   assert.equal(writeDoc(fixed), fixed, 'idempotent');
+});
+
+test('the CLI exits 0 in step, 1 on drift and 2 without a doc', () => {
+  const cli = join(dirname(fileURLToPath(import.meta.url)), 'check-doc.ts');
+  const run = (...args: string[]) => spawnSync(process.execPath, [cli, ...args], { encoding: 'utf8' });
+  const dir = mkdtempSync(join(tmpdir(), 'check-doc-'));
+  try {
+    const md = join(dir, 'doc.md');
+    writeFileSync(md, good());
+    assert.equal(run(md).status, 0);
+    writeFileSync(md, good().replace('"kind": "agent"', '"kind": "agnt"'));
+    const drift = run(md);
+    assert.equal(drift.status, 1);
+    assert.match(drift.stderr, /check-doc: block "reviewLoop:ir" differs/);
+    assert.equal(run().status, 2);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
 });
