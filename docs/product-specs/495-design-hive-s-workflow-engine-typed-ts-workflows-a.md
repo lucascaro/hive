@@ -5,7 +5,8 @@ type: enhancement
 complexity: L
 priority: P2
 pr: 506
-stage: GATE
+shipped: 2026-10-07
+stage: DONE
 ---
 
 # Design Hive's workflow engine: typed TS workflows, an inspectable graph, durable runs
@@ -14,7 +15,7 @@ stage: GATE
 - **Type:** enhancement
 - **Complexity:** L
 - **Priority:** P2
-- **Exec plan:** [docs/exec-plans/active/495-design-workflow-engine.md](../exec-plans/active/495-design-workflow-engine.md)
+- **Exec plan:** [docs/exec-plans/completed/495-design-workflow-engine.md](../exec-plans/completed/495-design-workflow-engine.md)
 
 ## Problem
 

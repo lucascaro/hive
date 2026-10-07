@@ -2,7 +2,7 @@
 
 - **Spec:** [docs/product-specs/495-design-hive-s-workflow-engine-typed-ts-workflows-a.md](../../product-specs/495-design-hive-s-workflow-engine-typed-ts-workflows-a.md)
 - **Issue:** #495
-- **Status:** active
+- **Status:** completed
 - **PR:** #506
 - **Branch:** feature/495-workflow-engine-design
 
@@ -273,6 +273,7 @@ node scripts/workflow-proto/emit.ts reviewLoop --mermaid | grep -q '^flowchart'
 - **2026-10-06** — Review iter 3 escalated 2 security items plus 2 CodeRabbit threads. All four were decided and applied to the doc.
 - **2026-10-06** — Review iter 4: `validate()` now rejects a loop's `until` that reads the loop's own output, and limits the loop back-ref exception to nodes later in the body, so a parallel sibling is rejected as the doc says (55 tests).
 - **2026-10-07** — Review converged at iter 6 (APPROVE, 0 threads). The user authorized iter 6 past the default 5. Stage → GATE.
+- **2026-10-07** — Merge gate PASS (prototype at 56 tests). Plan → completed/, spec → DONE.
 
 ## PR convergence ledger
 
@@ -284,5 +285,11 @@ node scripts/workflow-proto/emit.ts reviewLoop --mermaid | grep -q '^flowchart'
 - **2026-10-07 iter 6** — verdict: APPROVE; mergeable: MERGEABLE; findings_hash: ; threads_open: 0; action: stop; head_sha: 072b52ab.
 
 ## Gate verdict
+
+- **2026-10-07** — verdict: PASS; phase: —; checks: 3 passed / 0 failed / 0 followups; followups: none; one-line: all 8 success criteria met with evidence (56 tests, check-doc fails on a corrupted copy), all 9 non-goals respected, and the docs and cross-links are accurate.
+  - 2026-10-07 dimensions:
+    - acceptance — PASS — SC1–SC8 each cited in workflow-engine.md; prototype tests 56/56; tsc and check-doc clean; the CI step is at ci.yml:367-371
+    - non-goals — PASS — no internal/, cmd/, plugins/ or frontend paths in the diff; no llm kind; no always-on service; interrupted nodes are retried, never resumed mid-turn
+    - doc accuracy — PASS — no changeset needed; 10 code citations match HEAD; links and anchors resolve; the runs.db DESIGN.md carve-out is deferred, not claimed. One nit: the Progress log stopped at 55 tests; this run counts 56.
 
 ## Open questions
