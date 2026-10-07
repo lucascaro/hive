@@ -260,6 +260,7 @@ node scripts/workflow-proto/emit.ts reviewLoop --mermaid | grep -q '^flowchart'
   - Credential redaction is called best-effort.
   - A loop's `until` can't read the loop's own output; it doesn't exist until the loop ends.
 - **2026-10-06** — Review iter 4: I applied two security points directly rather than asking again, because they tighten the user's iter-3 choices. First, the trust hash is taken over a snapshot (sorted paths plus bytes, symlinks refused), and the build runs from that snapshot, so there is no time-of-check/time-of-use gap. Second, the sandbox is framed as defence in depth behind the trust confirmation. Node's permission docs, accessed 2026-10-06, call it a "seat belt" with no guarantee against malicious code and say symlinks escape it. Also: the exact read set, no `node:` built-ins, and a per-run nonce on output delimiters.
+- **2026-10-07** — Review iter 5: the loop back-ref exception now applies only to prompt placeholders and conditions. `map.over` and `worktree.of` must be truly upstream (`ordered()` gains a `resource` mode, with a mutation-checked test). I applied this without asking because it implements the user's iter-1 rule "upstream only + loop back-refs" as the doc already stated it for those two fields; a back-ref leaves them no array or worktree on the first iteration. Also: no `node:` built-ins at all (one wording in both places), and the trust hash is length-framed.
 
 ## Progress
 
@@ -278,6 +279,7 @@ node scripts/workflow-proto/emit.ts reviewLoop --mermaid | grep -q '^flowchart'
 - **2026-10-06 iter 2** — verdict: unrecorded (worker stalled after its autofix push, before returning its envelope); mergeable: MERGEABLE; findings_hash: unrecorded; threads_open: 0; action: autofix+push; head_sha: 9789418d. No metric was emitted, because without the envelope it would carry made-up values. The fix decisions from iter 1 landed in 9bed5565 before this iteration.
 - **2026-10-06 iter 3** — verdict: COMMENT; mergeable: MERGEABLE; findings_hash: 7f95ecc94fc7a882357faf79bb6b7bf20f7e8ae76fe94fc10c8b0171b4281ae2; threads_open: 2; action: escalated:risky fix needs human decision; head_sha: 65c50a22.
 - **2026-10-06 iter 4** — verdict: COMMENT; mergeable: MERGEABLE; findings_hash: a437f6ecff80928f446ba42a5e0e9d8d6756f5e6f0c8195f4714e8577ca63a78; threads_open: 0; action: escalated:risky fix needs human decision; head_sha: 6d47bd21.
+- **2026-10-07 iter 5** — verdict: COMMENT; mergeable: MERGEABLE; findings_hash: 368addc9339c03c9d060ced6d936fbe695c03923e956242a81a36e6536523707; threads_open: 0; action: escalated:risky fix needs human decision; head_sha: ee1e11f6.
 
 ## Gate verdict
 

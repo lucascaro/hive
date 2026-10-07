@@ -131,8 +131,8 @@ implements; they are part of the design, not an engine detail.
   meaning upstream of it by edges, possibly across subgraphs. An edge
   condition may also read its own source and the nodes inside it. A loop's
   `until` may read its own body, but not the loop's own `converged` or
-  `iterations`, which exist only once the loop has ended. `validate` rejects anything else, including a
-  parallel sibling. A reference to an upstream node that was skipped reads
+  `iterations`, which exist only once the loop has ended. `validate` rejects
+  anything else, including a parallel sibling. A reference to an upstream node that was skipped reads
   as empty.
 - **Subgraphs.** A group, loop or map starts at its body's entry nodes (those
   with no incoming edge inside the body). It is done when every node inside
@@ -141,7 +141,10 @@ implements; they are part of the design, not an engine detail.
   iteration that just ended. A reference from inside the body to a node later
   in the body reads the previous iteration's output, and is empty on the first
   one. That is the one exception to "references read upstream", and it is how
-  `reviewLoop` hands the reviewer's feedback back to the worker.
+  `reviewLoop` hands the reviewer's feedback back to the worker. It applies
+  to prompt placeholders and conditions, which can read an empty value. It
+  does not apply to `map.over` or `worktree.of`: those need a real array or
+  worktree, and a back-reference has none on the first iteration.
 - **Failure.** A node that fails after its retries fails its run. Optional
   error edges are left to the engine spec, because the prototype has no
   example that needs them.
@@ -1186,7 +1189,7 @@ whatever was stored, not what the types once checked.
   the project needs no `package.json` and no `node_modules`. The same hook
   **refuses any other import that resolves outside `.hive/workflows/`**,
   including relative paths that climb out, absolute paths, bare npm specifiers
-  and `node:` built-ins other than the few the SDK needs. So the folder holds
+  and every `node:` built-in (the SDK needs none; see the sandbox below). So the folder holds
   everything a build can run, and its hash (see [Security](#security)) covers
   all of it.
 - **Running without a toolchain.**
@@ -1222,8 +1225,8 @@ whatever was stored, not what the types once checked.
   - **Reads:** only from three places, through `--allow-fs-read`. They are the
     build snapshot of `.hive/workflows/` (see below), the bundled SDK, and the
     engine's import-hook file.
-  - **Imports:** `node:` built-ins only from an allowlist, which the prototype
-    puts at none at all, since the SDK needs none.
+  - **Imports:** no `node:` built-ins; the SDK needs none, and the import
+    hook refuses them.
   - **No other access:** no file writes, child processes, workers, native
     addons or WASI.
   - **Environment:** the allowlist in [Security](#security), without `HOME`.
@@ -1521,8 +1524,9 @@ stamps provenance, permission requests go to the user, and nothing escalates.
     confirmation is keyed by the project and the folder's path. It is asked
     again when the folder's contents change, as identified by a hash of its
     files. Opening a project never builds anything.
-  - **What is hashed.** The folder's sorted relative paths plus each file's
-    bytes. A symlink anywhere in the folder fails the snapshot, and so the
+  - **What is hashed.** SHA-256 over the folder's files in sorted relative-path
+    order. Each file contributes its path and its bytes, each prefixed with its
+    length, so no two different folders encode to the same input. A symlink anywhere in the folder fails the snapshot, and so the
     build.
   - **Hash the bytes that run.** To build, the engine first copies the folder
     into a private snapshot directory and hashes the snapshot. It builds only

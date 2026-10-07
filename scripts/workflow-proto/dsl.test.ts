@@ -367,3 +367,24 @@ test('ref order: the loop exception does not cover a parallel sibling', () => {
   });
   assert.match(validate(ir).join('\n'), /lp\/a: ref "lp\/b\.summary" is not upstream of lp\/a/);
 });
+
+test('worktree.of and map.over take no loop back-refs', () => {
+  const ir = workflow('resource-backref', s.object({}), (g) => {
+    g.loop('lp', { maxIters: 2 }, (b) => {
+      let later: { id: string } = { id: 'lp/later' };
+      const first = b.agent('first', { agent: 'claude', prompt: 'p', output: summary, worktree: later });
+      const each = b.map('each', { over: { ref: 'lp/later.items' } as Ref<string[]> }, (m) =>
+        m.agent('do', { agent: 'codex', prompt: 'q', output: summary }),
+      );
+      later = b.agent('later', { agent: 'claude', prompt: 'r', output: s.object({ items: s.array(s.string()) }) });
+      // Both readers sit before `later` in the body: as prompt placeholders
+      // these would be legal back-refs.
+      b.edge(first, later);
+      b.edge(each, later);
+      return when(first.out.summary, 'ne', '');
+    });
+  });
+  const errors = validate(ir).join('\n');
+  assert.match(errors, /lp\/first: worktree\.of "lp\/later" is not upstream of it/);
+  assert.match(errors, /lp\/each\.over: ref "lp\/later\.items" is not upstream of lp\/each/);
+});

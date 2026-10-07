@@ -354,7 +354,10 @@ export function validate(ir: IR): string[] {
     return false;
   };
   // Is `target`'s output available when `anchor` reads it? `strict`: target
-  // must finish before anchor starts (prompts, map.over, worktree.of).
+  // must finish before anchor starts (prompt placeholders). `resource`: the
+  // same, without the loop back-ref exception below: map.over and
+  // worktree.of need a real array or worktree, and a back-ref has none on
+  // the first iteration.
   // `inclusive`: anchor itself, or anything inside it, also counts (an edge
   // condition reads its source after it finished). `body`: anything inside
   // anchor but not anchor itself (a loop's until reads its body; the loop's
@@ -373,12 +376,12 @@ export function validate(ir: IR): string[] {
     const b = common ? ac[ac.indexOf(common) - 1] : ac[ac.length - 1];
     const body = common ? (placed.get(common)?.node as Body) : ir;
     if (reaches(body, a, b)) return true;
-    if (!reaches(body, b, a)) return false;
+    if (mode === 'resource' || !reaches(body, b, a)) return false;
     for (let x = common; x; x = parentOf(x)) if (placed.get(x)?.node.kind === 'loop') return true;
     return false;
   };
 
-  type Mode = 'strict' | 'inclusive' | 'body';
+  type Mode = 'strict' | 'resource' | 'inclusive' | 'body';
   type Order = { anchor: string; mode: Mode };
 
   // Resolves a ref seen from inside `ctx` (a container id, '' for top level)
@@ -392,7 +395,7 @@ export function validate(ir: IR): string[] {
       const mapId = enclosingMap(ctx);
       if (!mapId) return fail('used outside a map');
       const m = placed.get(mapId)?.node as MapNode;
-      const arr = resolve(m.over, parentOf(mapId), `${mapId}.over`, { anchor: mapId, mode: 'strict' });
+      const arr = resolve(m.over, parentOf(mapId), `${mapId}.over`, { anchor: mapId, mode: 'resource' });
       if (!arr || arr.type !== 'array') return null;
       return ref === '$item' ? arr.items : field(arr.items, ref.slice('$item.'.length), fail);
     }
@@ -468,7 +471,7 @@ export function validate(ir: IR): string[] {
             errors.push(`${node.id}: worktree.of "${node.worktree.of}" must name another agent node`);
           } else if (of.map && !node.id.startsWith(`${of.map}/`)) {
             errors.push(`${node.id}: worktree.of reaches into map "${of.map}" from outside it`);
-          } else if (!ordered(of.node.id, node.id, 'strict')) {
+          } else if (!ordered(of.node.id, node.id, 'resource')) {
             errors.push(`${node.id}: worktree.of "${of.node.id}" is not upstream of it`);
           }
         }
@@ -497,7 +500,7 @@ export function validate(ir: IR): string[] {
           if (!Number.isInteger(node.concurrency) || node.concurrency < 1 || node.concurrency > MAX_CONCURRENCY) {
             errors.push(`${node.id}: concurrency must be an integer in 1..${MAX_CONCURRENCY}`);
           }
-          const over = resolve(node.over, parentOf(node.id), `${node.id}.over`, { anchor: node.id, mode: 'strict' });
+          const over = resolve(node.over, parentOf(node.id), `${node.id}.over`, { anchor: node.id, mode: 'resource' });
           if (over && over.type !== 'array') errors.push(`${node.id}: over "${node.over}" is not an array`);
           if (node.nodes.length > 0 && sinks(node).length !== 1) errors.push(`${node.id}: template must have exactly one sink`);
         }
