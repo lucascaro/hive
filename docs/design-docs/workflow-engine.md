@@ -130,7 +130,8 @@ implements; they are part of the design, not an engine detail.
   `worktree.of` may name only a node that finishes before the reader starts,
   meaning upstream of it by edges, possibly across subgraphs. An edge
   condition may also read its own source and the nodes inside it. A loop's
-  `until` may read its own body. `validate` rejects anything else, including a
+  `until` may read its own body, but not the loop's own `converged` or
+  `iterations`, which exist only once the loop has ended. `validate` rejects anything else, including a
   parallel sibling. A reference to an upstream node that was skipped reads
   as empty.
 - **Subgraphs.** A group, loop or map starts at its body's entry nodes (those
@@ -1182,7 +1183,12 @@ whatever was stored, not what the types once checked.
 - **Imports.** Files import `@hive/workflow` and `@hive/workflow/library`.
   These are not npm packages. The engine starts `node` with an `--import` hook
   that resolves both specifiers to the copies bundled inside the plugin, so
-  the project needs no `package.json` and no `node_modules`.
+  the project needs no `package.json` and no `node_modules`. The same hook
+  **refuses any other import that resolves outside `.hive/workflows/`**,
+  including relative paths that climb out, absolute paths, bare npm specifiers
+  and `node:` built-ins other than the few the SDK needs. So the folder holds
+  everything a build can run, and its hash (see [Security](#security)) covers
+  all of it.
 - **Running without a toolchain.**
   - The user installs no TypeScript compiler, bundler or package.
   - The file runs on the user's own Node, which strips the types natively
@@ -1206,12 +1212,22 @@ whatever was stored, not what the types once checked.
   pairing: its own `.ts` files run unbuilt on Node 24 and type-check with
   `tsc -p scripts/workflow-proto`. **Open: the checker's size per platform**,
   to be measured in the engine spec.
-- **Building is running code.** A workflow file executes when it is built. It
-  is the project's own code, run at the user's request, like `scripts/test.sh`.
-  The engine builds it in a child process. Where the user's Node supports it,
-  that process runs under Node's permission model, with file-system reads only
-  (`--permission`). Whether that model also fences the network on the user's
-  Node version is **unverified** and left to the engine spec.
+- **Building is running code, so it is always sandboxed.** A workflow file
+  executes when it is built. The engine always builds it in a child `node`
+  under Node's permission model (`--permission`, stable since Node 22.13 and
+  23.5, so already within the 22.18 floor):
+  - file reads only from `.hive/workflows/` and the bundled SDK
+    (`--allow-fs-read` scoped to those two paths);
+  - no file writes, child processes, workers, native addons or WASI;
+  - the environment allowlist in [Security](#security), without `HOME`.
+
+  Without the permission model the engine refuses to build; it never falls
+  back to an unsandboxed build. Current Node documents network access as
+  restricted too, behind `--allow-net`
+  ([permissions](https://nodejs.org/api/permissions.html), accessed
+  2026-10-06). **Open: whether every Node version Hive accepts fences the
+  network.** The engine spec must pin a floor that does, or say plainly that
+  it doesn't.
 - **Editing a file during a run.** A run stores the IR it started with and a
   hash of the source. It interprets only that stored IR, never the file again,
   so an edit changes new runs only. The GUI marks a run whose source has
@@ -1495,9 +1511,12 @@ stamps provenance, permission requests go to the user, and nothing escalates.
     confirmation is keyed by the project and the folder's path. It is asked
     again when the folder's contents change, as identified by a hash of its
     files. Opening a project never builds anything.
+  - **Why the folder hash is enough.** Builds may not import anything outside
+    the folder (see [Imports](#workflow-files-in-a-project)) and may only read
+    inside it, so the hashed files are the whole of what can run.
 - **The builder's environment.** The child `node` that builds a workflow gets
-  an allowlisted environment: `PATH`, `HOME`, `LANG`, `TZ`, plus the engine's
-  own variables. The daemon's other variables are dropped, so nothing reaches
+  an allowlisted environment: `PATH`, `LANG`, `TZ`, plus the engine's own
+  variables. `HOME` is left out: building never needs it. The daemon's other variables are dropped, so nothing reaches
   a workflow file's top-level code by inheritance. That includes tokens and
   `HIVE_SOCKET`. Building has no reason to reach the network or the daemon.
 - **Agent outputs in prompts are data.** A `{{node.field}}` placeholder pastes
@@ -1506,24 +1525,39 @@ stamps provenance, permission requests go to the user, and nothing escalates.
   follows three rules:
   - It wraps every interpolated value in a delimited block labelled as the
     named node's output, with an instruction that its contents are data, not
-    directions.
+    directions. This is a **mitigation, not a boundary**: a model can still
+    follow injected text.
   - It never interpolates into anything but a prompt: no argv, no file path,
     no mode, no agent id. Those are fixed in the IR.
   - Pass/fail stays with check nodes and human nodes. A model's output can
     steer the next prompt, but never what counts as done.
+
+  **The boundary is what the next agent is allowed to do,** not what it reads:
+  - its ACP mode, capped at the user's per-agent setting;
+  - every non-`submit_result` permission request going to the user;
+  - its own worktree.
+
+  **Remaining risk.** An injected instruction can still make an agent act
+  within its mode, for example edit files in its worktree when it runs in
+  `acceptEdits`. Check nodes, review loops and human nodes are where that is
+  caught. A node that reads untrusted outputs should run in the least
+  permissive mode that does its job.
 - **Permission defaults.** Least-permissive mode unless the node names one,
   capped at the user's per-agent setting. The engine auto-answers only its own
   `submit_result`, matched on exact identity (F7).
 - **Secrets.** The IR, the events and `runs.db` hold prompts, outputs and tool
   titles. Hive never reads the user's tokens, and workflow inputs are shown to
   the user before a run. An agent can still echo a secret it read in a
-  worktree, so "never credentials" is enforced at three points:
+  worktree. Hive cannot promise that no credential is ever stored, so it
+  limits the exposure at three points:
   - **The file.** `runs.db` and its WAL files are created at mode `0600`.
-  - **The events.** Before an event or output is stored, values matching
-    common credential formats (private-key blocks, `AKIA…`, `ghp_…`,
+  - **The events (best-effort).** Before an event or output is stored, values
+    matching common credential formats (private-key blocks, `AKIA…`, `ghp_…`,
     `sk-…`-style tokens, `Authorization:` headers) are replaced with
-    `[redacted]`. The redaction is recorded in the event, so the gap shows
-    in the overlay.
+    `[redacted]`. The redaction is recorded in the event, so the gap shows in
+    the overlay. Pattern matching misses formats it doesn't know. An unlisted
+    credential an agent echoes is stored as-is, which is why the file mode and
+    the export default below matter.
   - **OTel export.** It is opt-in. When on, it carries attributes and timings
     only: prompt and output content capture is off by default, the same
     default the GenAI conventions recommend.
@@ -1631,9 +1665,14 @@ yet:
 - **Plugin-owned data.** A `DESIGN.md` carve-out letting a plugin write its own
   files (here `runs.db`) under `plugin-data/<id>/`. Today only the plugin
   Manager writes there.
-- **Workflow trust.** The per-project workflow trust confirmation, the builder's
-  environment allowlist, and secret redaction before events are stored. All
-  three are in [Security](#security).
+- **Workflow trust.** These are in [Security](#security) and
+  [Workflow files in a project](#workflow-files-in-a-project):
+  - the per-project workflow trust confirmation;
+  - the import hook that refuses imports from outside the folder;
+  - the required, scoped permission-model sandbox for builds, with a Node
+    floor that fences the network;
+  - the builder's environment allowlist;
+  - best-effort secret redaction before events are stored.
 
 ## Prototype
 

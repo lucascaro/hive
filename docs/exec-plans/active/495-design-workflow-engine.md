@@ -253,6 +253,12 @@ node scripts/workflow-proto/emit.ts reviewLoop --mermaid | grep -q '^flowchart'
 - **2026-10-05** — Moved the OpenTelemetry spec file a research subagent left untracked at the repo root (`a.md`) into the session scratchpad. It was not part of this change.
 - **2026-10-05** — The Node floor for workflow files is 22.18 (or 23.6), not 22.6. Why: type stripping is unflagged only from those versions, and the engine should not depend on `--experimental-strip-types`. This corrects the round-B entry above.
 - **2026-10-05** — Review iter 1 decisions (user): references must read upstream, with loop back-refs as the one exception; loops expose `{ converged, iterations }`, and `planImplementVerify` routes an exhausted loop to a human node; the `runs.db` carve-out is deferred to the engine spec as a `DESIGN.md` change; and the doc specifies four security rules (a per-project workflow trust confirmation, a builder environment allowlist, interpolated outputs treated as data, and secrets enforcement through `0600`, redaction, and OTel content off by default). Join rule: a node runs when at least one incoming edge was taken, so alternative routes join without a special node.
+- **2026-10-06** — Review iter 3 decisions (user):
+  - Builds may not import anything that resolves outside `.hive/workflows/`, so the folder hash covers everything that can run.
+  - The builder always runs under Node's permission model, with reads scoped to the folder and the SDK, no writes, no child processes, no workers and no `HOME`. It refuses to build without the permission model. Network fencing per Node version stays open.
+  - The doc calls prompt delimiting a mitigation and the mode ceiling the boundary.
+  - Credential redaction is called best-effort.
+  - A loop's `until` can't read the loop's own output; it doesn't exist until the loop ends.
 
 ## Progress
 
@@ -262,11 +268,13 @@ node scripts/workflow-proto/emit.ts reviewLoop --mermaid | grep -q '^flowchart'
 - **2026-10-05** — Implemented: design doc, prototype (42 tests), CI step, cross-links. Mermaid output rendered in headless Chromium with mermaid@11 (all three examples render).
 - **2026-10-05** — Review iter 1 escalated 7 design items; all decided and applied (47 tests).
 - **2026-10-06** — Review iters 2–3: branch-pinning tests for `ordered()`, an empty-workflow check in `validate()`, `emit.ts` no longer treats inherited keys such as `constructor` as examples, and the `check-doc.ts` CLI's exit codes are tested (53 tests).
+- **2026-10-06** — Review iter 3 escalated 2 security items plus 2 CodeRabbit threads. All four were decided and applied to the doc.
 
 ## PR convergence ledger
 
 - **2026-10-05 iter 1** — verdict: COMMENT; mergeable: MERGEABLE; findings_hash: 9f6af028cb224522171916e05fbed7867474265eff7ecc29548c973bd47879b3; threads_open: 0; action: escalated:risky fix needs human decision; head_sha: 3a6e5561.
 - **2026-10-06 iter 2** — verdict: unrecorded (worker stalled after its autofix push, before returning its envelope); mergeable: MERGEABLE; findings_hash: unrecorded; threads_open: 0; action: autofix+push; head_sha: 9789418d. No metric was emitted, because without the envelope it would carry made-up values. The fix decisions from iter 1 landed in 9bed5565 before this iteration.
+- **2026-10-06 iter 3** — verdict: COMMENT; mergeable: MERGEABLE; findings_hash: 7f95ecc94fc7a882357faf79bb6b7bf20f7e8ae76fe94fc10c8b0171b4281ae2; threads_open: 2; action: escalated:risky fix needs human decision; head_sha: 65c50a22.
 
 ## Gate verdict
 
