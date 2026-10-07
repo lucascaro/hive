@@ -356,13 +356,16 @@ export function validate(ir: IR): string[] {
   // Is `target`'s output available when `anchor` reads it? `strict`: target
   // must finish before anchor starts (prompts, map.over, worktree.of).
   // `inclusive`: anchor itself, or anything inside it, also counts (an edge
-  // condition reads its source after it finished; a loop's until reads its
-  // own body). Inside a loop, a ref to a node that is not upstream reads the
-  // previous iteration, so it is allowed there and nowhere else.
-  const ordered = (target: string, anchor: string, mode: 'strict' | 'inclusive'): boolean => {
+  // condition reads its source after it finished). `body`: anything inside
+  // anchor but not anchor itself (a loop's until reads its body; the loop's
+  // own output exists only once it ends). Inside a loop, a ref to a node
+  // later in the same body reads the previous iteration, so it is allowed
+  // there and nowhere else; a parallel sibling is not later, so it is not.
+  const ordered = (target: string, anchor: string, mode: Mode): boolean => {
     const tc = chain(target);
     const ac = chain(anchor);
     if (mode === 'inclusive' && tc.includes(anchor)) return true;
+    if (mode === 'body' && target !== anchor && tc.includes(anchor)) return true;
     if (ac.includes(target)) return false;
     const inT = new Set(tc);
     const common = ac.slice(1).find((x) => inT.has(x)) ?? '';
@@ -370,11 +373,13 @@ export function validate(ir: IR): string[] {
     const b = common ? ac[ac.indexOf(common) - 1] : ac[ac.length - 1];
     const body = common ? (placed.get(common)?.node as Body) : ir;
     if (reaches(body, a, b)) return true;
+    if (!reaches(body, b, a)) return false;
     for (let x = common; x; x = parentOf(x)) if (placed.get(x)?.node.kind === 'loop') return true;
     return false;
   };
 
-  type Order = { anchor: string; mode: 'strict' | 'inclusive' };
+  type Mode = 'strict' | 'inclusive' | 'body';
+  type Order = { anchor: string; mode: Mode };
 
   // Resolves a ref seen from inside `ctx` (a container id, '' for top level)
   // and checks it is available to `order.anchor` when that node runs.
@@ -486,7 +491,7 @@ export function validate(ir: IR): string[] {
           if (!Number.isInteger(node.max_iters) || node.max_iters < 1 || node.max_iters > MAX_ITERS) {
             errors.push(`${node.id}: max_iters must be an integer in 1..${MAX_ITERS}`);
           }
-          checkCond(node.until, node.id, `${node.id}.until`, { anchor: node.id, mode: 'inclusive' });
+          checkCond(node.until, node.id, `${node.id}.until`, { anchor: node.id, mode: 'body' });
         }
         if (node.kind === 'map') {
           if (!Number.isInteger(node.concurrency) || node.concurrency < 1 || node.concurrency > MAX_CONCURRENCY) {

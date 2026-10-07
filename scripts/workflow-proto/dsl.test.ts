@@ -346,3 +346,24 @@ test('validate rejects a workflow with no nodes', () => {
   const ir: IR = { ...examples.reviewLoop(), nodes: [], edges: [] };
   assert.match(validate(ir).join('\n'), /workflow has no nodes/);
 });
+
+test("a loop's until cannot read the loop's own converged or iterations", () => {
+  const ir = workflow('until-self', s.object({}), (g) => {
+    g.loop('lp', { maxIters: 2 }, (b) => {
+      b.agent('r', { agent: 'codex', prompt: 'p', output: verdict });
+      return when({ ref: 'lp.iterations' } as Ref<number>, 'gt', 1);
+    });
+  });
+  assert.match(validate(ir).join('\n'), /lp\.until: ref "lp\.iterations" is not upstream of lp/);
+});
+
+test('ref order: the loop exception does not cover a parallel sibling', () => {
+  const ir = workflow('loop-sibling', s.object({}), (g) => {
+    g.loop('lp', { maxIters: 2 }, (b) => {
+      b.agent('a', { agent: 'claude', prompt: 'Peek {{lp/b.summary}}', output: summary });
+      const r = b.agent('b', { agent: 'codex', prompt: 'p', output: summary });
+      return when(r.out.summary, 'ne', '');
+    });
+  });
+  assert.match(validate(ir).join('\n'), /lp\/a: ref "lp\/b\.summary" is not upstream of lp\/a/);
+});

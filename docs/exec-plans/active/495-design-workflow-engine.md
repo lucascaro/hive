@@ -269,6 +269,7 @@ node scripts/workflow-proto/emit.ts reviewLoop --mermaid | grep -q '^flowchart'
 - **2026-10-05** — Review iter 1 escalated 7 design items; all decided and applied (47 tests).
 - **2026-10-06** — Review iters 2–3: branch-pinning tests for `ordered()`, an empty-workflow check in `validate()`, `emit.ts` no longer treats inherited keys such as `constructor` as examples, and the `check-doc.ts` CLI's exit codes are tested (53 tests).
 - **2026-10-06** — Review iter 3 escalated 2 security items plus 2 CodeRabbit threads. All four were decided and applied to the doc.
+- **2026-10-06** — Review iter 4: `validate()` now rejects a loop's `until` that reads the loop's own output, and limits the loop back-ref exception to nodes later in the body, so a parallel sibling is rejected as the doc says (55 tests).
 
 ## PR convergence ledger
 
