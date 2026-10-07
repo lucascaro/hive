@@ -1213,13 +1213,23 @@ whatever was stored, not what the types once checked.
   `tsc -p scripts/workflow-proto`. **Open: the checker's size per platform**,
   to be measured in the engine spec.
 - **Building is running code, so it is always sandboxed.** A workflow file
-  executes when it is built. The engine always builds it in a child `node`
-  under Node's permission model (`--permission`, stable since Node 22.13 and
-  23.5, so already within the 22.18 floor):
-  - file reads only from `.hive/workflows/` and the bundled SDK
-    (`--allow-fs-read` scoped to those two paths);
-  - no file writes, child processes, workers, native addons or WASI;
-  - the environment allowlist in [Security](#security), without `HOME`.
+  executes when it is built. The trust confirmation in [Security](#security)
+  is the boundary. The sandbox is **defence in depth** behind it: Node calls
+  its permission model a "seat belt" that "does not provide security
+  guarantees in the presence of malicious code". The engine always builds in a
+  child `node` under that model (`--permission`, stable since Node 22.13 and
+  23.5, so already within the 22.18 floor), with exactly this:
+  - **Reads:** only from three places, through `--allow-fs-read`. They are the
+    build snapshot of `.hive/workflows/` (see below), the bundled SDK, and the
+    engine's import-hook file.
+  - **Imports:** `node:` built-ins only from an allowlist, which the prototype
+    puts at none at all, since the SDK needs none.
+  - **No other access:** no file writes, child processes, workers, native
+    addons or WASI.
+  - **Environment:** the allowlist in [Security](#security), without `HOME`.
+  - **No symlinks.** Node follows symbolic links even outside the granted
+    paths. So the snapshot step refuses any symlink in the workflows folder,
+    rather than trusting the sandbox to contain it.
 
   Without the permission model the engine refuses to build; it never falls
   back to an unsandboxed build. Current Node documents network access as
@@ -1511,12 +1521,22 @@ stamps provenance, permission requests go to the user, and nothing escalates.
     confirmation is keyed by the project and the folder's path. It is asked
     again when the folder's contents change, as identified by a hash of its
     files. Opening a project never builds anything.
-  - **Why the folder hash is enough.** Builds may not import anything outside
-    the folder (see [Imports](#workflow-files-in-a-project)) and may only read
-    inside it, so the hashed files are the whole of what can run.
+  - **What is hashed.** The folder's sorted relative paths plus each file's
+    bytes. A symlink anywhere in the folder fails the snapshot, and so the
+    build.
+  - **Hash the bytes that run.** To build, the engine first copies the folder
+    into a private snapshot directory and hashes the snapshot. It builds only
+    if that hash matches the confirmed one, and it builds **from the
+    snapshot**. An edit made after the check therefore cannot reach the
+    build: there is no gap between the time of check and the time of use.
+  - **Why the folder hash covers the build.** Builds may not import anything
+    outside the folder (see [Imports](#workflow-files-in-a-project)), so the
+    snapshot is all of the project's code that runs. The sandbox only limits
+    what that code can reach if it misbehaves.
 - **The builder's environment.** The child `node` that builds a workflow gets
-  an allowlisted environment: `PATH`, `LANG`, `TZ`, plus the engine's own
-  variables. `HOME` is left out: building never needs it. The daemon's other variables are dropped, so nothing reaches
+  an allowlisted environment: `PATH`, `LANG` and `TZ`, plus one engine
+  variable naming the snapshot to build. `HOME` is left out, because building
+  never needs it. The daemon's other variables are dropped, so nothing reaches
   a workflow file's top-level code by inheritance. That includes tokens and
   `HIVE_SOCKET`. Building has no reason to reach the network or the daemon.
 - **Agent outputs in prompts are data.** A `{{node.field}}` placeholder pastes
@@ -1525,7 +1545,8 @@ stamps provenance, permission requests go to the user, and nothing escalates.
   follows three rules:
   - It wraps every interpolated value in a delimited block labelled as the
     named node's output, with an instruction that its contents are data, not
-    directions. This is a **mitigation, not a boundary**: a model can still
+    directions. The delimiter carries a random per-run nonce, so an output
+    cannot close the block early by printing the closing tag. This is a **mitigation, not a boundary**: a model can still
     follow injected text.
   - It never interpolates into anything but a prompt: no argv, no file path,
     no mode, no agent id. Those are fixed in the IR.

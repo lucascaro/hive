@@ -259,6 +259,7 @@ node scripts/workflow-proto/emit.ts reviewLoop --mermaid | grep -q '^flowchart'
   - The doc calls prompt delimiting a mitigation and the mode ceiling the boundary.
   - Credential redaction is called best-effort.
   - A loop's `until` can't read the loop's own output; it doesn't exist until the loop ends.
+- **2026-10-06** — Review iter 4: I applied two security points directly rather than asking again, because they tighten the user's iter-3 choices. First, the trust hash is taken over a snapshot (sorted paths plus bytes, symlinks refused), and the build runs from that snapshot, so there is no time-of-check/time-of-use gap. Second, the sandbox is framed as defence in depth behind the trust confirmation. Node's permission docs, accessed 2026-10-06, call it a "seat belt" with no guarantee against malicious code and say symlinks escape it. Also: the exact read set, no `node:` built-ins, and a per-run nonce on output delimiters.
 
 ## Progress
 
@@ -276,6 +277,7 @@ node scripts/workflow-proto/emit.ts reviewLoop --mermaid | grep -q '^flowchart'
 - **2026-10-05 iter 1** — verdict: COMMENT; mergeable: MERGEABLE; findings_hash: 9f6af028cb224522171916e05fbed7867474265eff7ecc29548c973bd47879b3; threads_open: 0; action: escalated:risky fix needs human decision; head_sha: 3a6e5561.
 - **2026-10-06 iter 2** — verdict: unrecorded (worker stalled after its autofix push, before returning its envelope); mergeable: MERGEABLE; findings_hash: unrecorded; threads_open: 0; action: autofix+push; head_sha: 9789418d. No metric was emitted, because without the envelope it would carry made-up values. The fix decisions from iter 1 landed in 9bed5565 before this iteration.
 - **2026-10-06 iter 3** — verdict: COMMENT; mergeable: MERGEABLE; findings_hash: 7f95ecc94fc7a882357faf79bb6b7bf20f7e8ae76fe94fc10c8b0171b4281ae2; threads_open: 2; action: escalated:risky fix needs human decision; head_sha: 65c50a22.
+- **2026-10-06 iter 4** — verdict: COMMENT; mergeable: MERGEABLE; findings_hash: a437f6ecff80928f446ba42a5e0e9d8d6756f5e6f0c8195f4714e8577ca63a78; threads_open: 0; action: escalated:risky fix needs human decision; head_sha: 6d47bd21.
 
 ## Gate verdict
 
