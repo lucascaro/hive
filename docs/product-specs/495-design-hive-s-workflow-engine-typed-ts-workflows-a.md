@@ -5,7 +5,7 @@ type: enhancement
 complexity: L
 priority: P2
 pr: 506
-stage: REVIEW
+stage: GATE
 ---
 
 # Design Hive's workflow engine: typed TS workflows, an inspectable graph, durable runs

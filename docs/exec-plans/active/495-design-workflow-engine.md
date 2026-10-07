@@ -272,6 +272,7 @@ node scripts/workflow-proto/emit.ts reviewLoop --mermaid | grep -q '^flowchart'
 - **2026-10-06** — Review iters 2–3: branch-pinning tests for `ordered()`, an empty-workflow check in `validate()`, `emit.ts` no longer treats inherited keys such as `constructor` as examples, and the `check-doc.ts` CLI's exit codes are tested (53 tests).
 - **2026-10-06** — Review iter 3 escalated 2 security items plus 2 CodeRabbit threads. All four were decided and applied to the doc.
 - **2026-10-06** — Review iter 4: `validate()` now rejects a loop's `until` that reads the loop's own output, and limits the loop back-ref exception to nodes later in the body, so a parallel sibling is rejected as the doc says (55 tests).
+- **2026-10-07** — Review converged at iter 6 (APPROVE, 0 threads). The user authorized iter 6 past the default 5. Stage → GATE.
 
 ## PR convergence ledger
 
@@ -280,6 +281,7 @@ node scripts/workflow-proto/emit.ts reviewLoop --mermaid | grep -q '^flowchart'
 - **2026-10-06 iter 3** — verdict: COMMENT; mergeable: MERGEABLE; findings_hash: 7f95ecc94fc7a882357faf79bb6b7bf20f7e8ae76fe94fc10c8b0171b4281ae2; threads_open: 2; action: escalated:risky fix needs human decision; head_sha: 65c50a22.
 - **2026-10-06 iter 4** — verdict: COMMENT; mergeable: MERGEABLE; findings_hash: a437f6ecff80928f446ba42a5e0e9d8d6756f5e6f0c8195f4714e8577ca63a78; threads_open: 0; action: escalated:risky fix needs human decision; head_sha: 6d47bd21.
 - **2026-10-07 iter 5** — verdict: COMMENT; mergeable: MERGEABLE; findings_hash: 368addc9339c03c9d060ced6d936fbe695c03923e956242a81a36e6536523707; threads_open: 0; action: escalated:risky fix needs human decision; head_sha: ee1e11f6.
+- **2026-10-07 iter 6** — verdict: APPROVE; mergeable: MERGEABLE; findings_hash: ; threads_open: 0; action: stop; head_sha: 072b52ab.
 
 ## Gate verdict
 
