@@ -4,7 +4,9 @@ title: "Design Hive's workflow engine: typed TS workflows, an inspectable graph,
 type: enhancement
 complexity: L
 priority: P2
-stage: RESEARCH
+pr: 506
+shipped: 2026-10-07
+stage: DONE
 ---
 
 # Design Hive's workflow engine: typed TS workflows, an inspectable graph, durable runs
@@ -13,7 +15,7 @@ stage: RESEARCH
 - **Type:** enhancement
 - **Complexity:** L
 - **Priority:** P2
-- **Exec plan:** —
+- **Exec plan:** [docs/exec-plans/completed/495-design-workflow-engine.md](../exec-plans/completed/495-design-workflow-engine.md)
 
 ## Problem
 

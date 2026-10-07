@@ -23,6 +23,7 @@ design.
 
 A **parallel track**, [acp-workflows.md](acp-workflows.md), makes a
 deterministic workflow engine the orchestrator, driving agents over ACP.
+The engine's own design is [workflow-engine.md](workflow-engine.md).
 It does not replace phases 1–3. Both tracks spawn sessions, so both obey
 the single trust model set out there: one principal model, one `SpawnedBy`
 provenance field, one `authorize` path through `Registry.Create`. Its gates
