@@ -58,9 +58,38 @@ type MCPServer struct {
 	Env     []EnvVar `json:"env"`
 }
 
+// ClaudeOptions are the Claude adapter's per-session options, sent as
+// _meta.claudeCode.options on session/new and session/load. The adapter
+// spreads them over its own defaults, so a field set here wins. nil sends
+// no _meta at all, which is what every other adapter gets.
+type ClaudeOptions struct {
+	// SettingSources picks which Claude settings layers the session
+	// reads. The adapter's default is user, project and local; the
+	// project and local ones carry hooks, env, apiKeyHelper and the
+	// folder's .mcp.json.
+	SettingSources []string `json:"settingSources,omitempty"`
+}
+
+type sessionMeta struct {
+	ClaudeCode struct {
+		Options *ClaudeOptions `json:"options"`
+	} `json:"claudeCode"`
+}
+
+// meta wraps o for the _meta field; nil o yields no field.
+func (o *ClaudeOptions) meta() *sessionMeta {
+	if o == nil {
+		return nil
+	}
+	var m sessionMeta
+	m.ClaudeCode.Options = o
+	return &m
+}
+
 type newSessionParams struct {
-	Cwd        string      `json:"cwd"`
-	MCPServers []MCPServer `json:"mcpServers"`
+	Cwd        string       `json:"cwd"`
+	MCPServers []MCPServer  `json:"mcpServers"`
+	Meta       *sessionMeta `json:"_meta,omitempty"`
 }
 
 // Mode is one of the session's permission/behaviour modes.
@@ -82,9 +111,10 @@ type NewSessionResult struct {
 }
 
 type loadSessionParams struct {
-	SessionID  string      `json:"sessionId"`
-	Cwd        string      `json:"cwd"`
-	MCPServers []MCPServer `json:"mcpServers"`
+	SessionID  string       `json:"sessionId"`
+	Cwd        string       `json:"cwd"`
+	MCPServers []MCPServer  `json:"mcpServers"`
+	Meta       *sessionMeta `json:"_meta,omitempty"`
 }
 
 // LoadSessionResult is session/load's result.

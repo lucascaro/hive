@@ -83,7 +83,7 @@ func TestStartNewPromptRoundTrip(t *testing.T) {
 	if res, err := a.Initialize(ctx(t)); err != nil || !res.AgentCapabilities.LoadSession {
 		t.Fatalf("Initialize = %+v, %v", res, err)
 	}
-	ns, err := a.NewSession(ctx(t), dir, nil)
+	ns, err := a.NewSession(ctx(t), dir, nil, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -107,7 +107,7 @@ func TestPermissionRequestReachesHandler(t *testing.T) {
 	if _, err := a.Initialize(ctx(t)); err != nil {
 		t.Fatal(err)
 	}
-	ns, _ := a.NewSession(ctx(t), dir, nil)
+	ns, _ := a.NewSession(ctx(t), dir, nil, nil)
 	if _, err := a.Prompt(ctx(t), ns.SessionID, "go"); err != nil {
 		t.Fatal(err)
 	}
@@ -125,14 +125,14 @@ func TestLoadReplaysHistory(t *testing.T) {
 	dir := t.TempDir()
 	a := startFake(t, dir, Handler{})
 	a.Initialize(ctx(t))
-	ns, _ := a.NewSession(ctx(t), dir, nil)
+	ns, _ := a.NewSession(ctx(t), dir, nil, nil)
 	a.Prompt(ctx(t), ns.SessionID, "one")
 	a.Close()
 
 	rec := &recorder{}
 	b := startFake(t, dir, rec.handler(nil))
 	b.Initialize(ctx(t))
-	if _, err := b.LoadSession(ctx(t), ns.SessionID, dir, nil); err != nil {
+	if _, err := b.LoadSession(ctx(t), ns.SessionID, dir, nil, nil); err != nil {
 		t.Fatal(err)
 	}
 	if got := rec.transcript(); !slices.Equal(got, []string{"user:one", "agent:echo: one"}) {
@@ -160,7 +160,7 @@ func TestCloseEndsHungTurn(t *testing.T) {
 	dir := t.TempDir()
 	a := startFake(t, dir, Handler{}, acptest.FlagBlock)
 	a.Initialize(ctx(t))
-	ns, _ := a.NewSession(ctx(t), dir, nil)
+	ns, _ := a.NewSession(ctx(t), dir, nil, nil)
 	errc := make(chan error, 1)
 	go func() { _, err := a.Prompt(context.Background(), ns.SessionID, "wait"); errc <- err }()
 	// Wait until the agent is actually inside the turn, not a fixed delay.

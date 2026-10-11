@@ -33,6 +33,8 @@ const (
 	AcpItemThought = "thought"
 	AcpItemPlan    = "plan"
 	AcpItemTool    = "tool"
+	// AcpItemNotice is a line from Hive itself, not the agent.
+	AcpItemNotice = "notice"
 )
 
 // AcpItem is one row of an ACP session's transcript. Message chunks are

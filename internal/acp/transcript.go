@@ -76,6 +76,12 @@ func (t *Transcript) AddUser(text, origin string) wire.AcpItem {
 	return t.add(wire.AcpItem{Kind: wire.AcpItemUser, Text: clip(text), Origin: origin})
 }
 
+// AddNotice appends a line from Hive itself (not the agent) and returns
+// it as a delta.
+func (t *Transcript) AddNotice(text string) wire.AcpItem {
+	return t.add(wire.AcpItem{Kind: wire.AcpItemNotice, Text: clip(text)})
+}
+
 // Apply folds in one update and returns the deltas to broadcast — items
 // created or changed, as copies, with a streamed chunk marked Append —
 // or nil when it changed nothing.

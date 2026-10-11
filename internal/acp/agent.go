@@ -243,10 +243,11 @@ func (a *Agent) Initialize(ctx context.Context) (InitializeResult, error) {
 	return res, err
 }
 
-// NewSession starts a conversation in cwd.
-func (a *Agent) NewSession(ctx context.Context, cwd string, mcp []MCPServer) (NewSessionResult, error) {
+// NewSession starts a conversation in cwd. opts is the Claude adapter's
+// session options, or nil.
+func (a *Agent) NewSession(ctx context.Context, cwd string, mcp []MCPServer, opts *ClaudeOptions) (NewSessionResult, error) {
 	var res NewSessionResult
-	err := a.conn.Call(ctx, MethodSessionNew, newSessionParams{Cwd: cwd, MCPServers: nonNil(mcp)}, &res)
+	err := a.conn.Call(ctx, MethodSessionNew, newSessionParams{Cwd: cwd, MCPServers: nonNil(mcp), Meta: opts.meta()}, &res)
 	if err == nil && res.SessionID == "" {
 		err = errors.New("acp: session/new returned no sessionId")
 	}
@@ -255,9 +256,9 @@ func (a *Agent) NewSession(ctx context.Context, cwd string, mcp []MCPServer) (Ne
 
 // LoadSession reopens conversation id; the agent replays its history
 // as session/update notifications before the call returns.
-func (a *Agent) LoadSession(ctx context.Context, id, cwd string, mcp []MCPServer) (LoadSessionResult, error) {
+func (a *Agent) LoadSession(ctx context.Context, id, cwd string, mcp []MCPServer, opts *ClaudeOptions) (LoadSessionResult, error) {
 	var res LoadSessionResult
-	err := a.conn.Call(ctx, MethodSessionLoad, loadSessionParams{SessionID: id, Cwd: cwd, MCPServers: nonNil(mcp)}, &res)
+	err := a.conn.Call(ctx, MethodSessionLoad, loadSessionParams{SessionID: id, Cwd: cwd, MCPServers: nonNil(mcp), Meta: opts.meta()}, &res)
 	return res, err
 }
 

@@ -24,6 +24,13 @@ package buildinfo
 // History (newest first), so a bump is a decision with a record and
 // not just a number going up:
 //
+//	26 — ACP folder trust (issue 505). A Claude ACP session in a folder
+//	    that is neither a Hive project nor trusted in Claude's own state
+//	    starts with settingSources ["user"], so the folder's hooks,
+//	    .mcp.json servers, env and apiKeyHelper do not run, and the
+//	    transcript gets a "notice" item. A security fix that lives in the
+//	    daemon: a GUI reloaded into a daemon built before it would keep
+//	    starting such sessions with the folder's project config loaded.
 //	25 — ACP takeover and hand-back (spec 496, phase 4). New frame
 //	    SET_SESSION_KIND (0x45) moves an ACP session into a terminal in
 //	    the same conversation and back, persisting the new kind; refusals
@@ -230,7 +237,7 @@ package buildinfo
 //	    before this cannot see or clear the flag.
 //	1 — first contract; everything up to and including the
 //	    CLIENT_COMMAND relay.
-const DaemonContract = 25
+const DaemonContract = 26
 
 // Identity is this binary's full build identity. `hived --version
 // --json` prints it, and Welcome carries the same three values, so a
