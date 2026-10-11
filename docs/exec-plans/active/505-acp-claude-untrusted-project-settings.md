@@ -3,6 +3,8 @@
 - **Spec:** [docs/product-specs/505-acp-claude-untrusted-project-settings.md](../../product-specs/505-acp-claude-untrusted-project-settings.md)
 - **Issue:** #505
 - **Status:** active
+- **PR:** #510
+- **Branch:** feature/505-acp-untrusted-project-settings
 
 ## Summary
 

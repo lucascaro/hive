@@ -1,6 +1,7 @@
 ---
 type: security
 bump: patch
+pr: 510
 issue: 505
 ---
 

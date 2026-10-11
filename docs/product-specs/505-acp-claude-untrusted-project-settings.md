@@ -4,7 +4,8 @@ title: "ACP Claude sessions load untrusted project hooks and MCP servers without
 type: bug
 complexity: M
 priority: P1
-stage: IMPLEMENT
+stage: REVIEW
+pr: 510
 ---
 
 # ACP Claude sessions load untrusted project hooks and MCP servers without a trust prompt
