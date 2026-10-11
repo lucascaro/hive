@@ -82,11 +82,9 @@ func TestUntrustedClaudeFolderGetsUserSettingsOnly(t *testing.T) {
 	if len(metas) != 2 || !strings.Contains(metas[1], userOnly) {
 		t.Fatalf("after restart _meta = %q, want session/load to carry the same options", metas)
 	}
-	for _, name := range []string{"pwned-hook", "pwned-mcp"} {
-		if _, err := os.Stat(filepath.Join(proj, name)); err == nil {
-			t.Errorf("%s ran in an untrusted folder", name)
-		}
-	}
+	// The fake adapter never reads project config, so the _meta assertions
+	// above are the proof; the real adapter is covered by
+	// scripts/acp-probe/untrusted-settings.mjs.
 	if !hasNotice(t, r, e.ID) {
 		t.Error("an untrusted start left no notice in the transcript")
 	}
@@ -162,6 +160,39 @@ func TestHiveKnowsFolderIsExact(t *testing.T) {
 	home, _ := os.UserHomeDir()
 	if _, err := r.CreateProject(wire.CreateProjectReq{Name: "home", Cwd: home}); err != nil {
 		t.Fatal(err)
+	}
+	// Worktree branch: a session of a known project may use its own
+	// worktree exactly, nothing near it.
+	wt := filepath.Join(parent, "wt")
+	if err := os.MkdirAll(filepath.Join(wt, "sub"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(filepath.Join(parent, "q"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	pr, err := r.CreateProject(wire.CreateProjectReq{Name: "q", Cwd: filepath.Join(parent, "q")})
+	if err != nil {
+		t.Fatal(err)
+	}
+	we := &Entry{ProjectID: pr.ID, WorktreePath: wt}
+	for cwd, want := range map[string]bool{
+		wt:                         true,
+		filepath.Join(wt, "sub"):   false,
+		filepath.Join(parent, "x"): false,
+	} {
+		if got := r.hiveKnowsFolder(we, cwd); got != want {
+			t.Errorf("worktree hiveKnowsFolder(%s) = %v, want %v", cwd, got, want)
+		}
+	}
+	if got := r.hiveKnowsFolder(&Entry{ProjectID: "nope", WorktreePath: wt}, wt); got {
+		t.Error("unknown project vouched for its worktree")
+	}
+	// A project rooted at the filesystem root never vouches for anything.
+	if _, err := r.CreateProject(wire.CreateProjectReq{Name: "root", Cwd: string(filepath.Separator)}); err != nil {
+		t.Fatal(err)
+	}
+	if r.hiveKnowsFolder(&Entry{}, filepath.Join(parent, "x")) {
+		t.Error("filesystem-root project vouched for a folder")
 	}
 	e := &Entry{}
 	for cwd, want := range map[string]bool{
