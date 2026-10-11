@@ -1,3 +1,7 @@
+// SPDX-License-Identifier: GPL-3.0-only
+// Copyright (C) 2026 Lucas Caro
+// See LICENSE and ADDITIONAL-TERMS.md.
+
 // The Appropriate Legal Notices (GPLv3 §0, §5(d)) shown in Help › About.
 // ADDITIONAL-TERMS.md term (a) requires the attribution to stay unaltered.
 // internal/buildinfo/legal.go holds the same strings for the CLIs;
