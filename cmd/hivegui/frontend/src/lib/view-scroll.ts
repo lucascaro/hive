@@ -1,3 +1,7 @@
+// SPDX-License-Identifier: GPL-3.0-only
+// Copyright (C) 2026 Lucas Caro
+// See LICENSE and ADDITIONAL-TERMS.md.
+
 // snapVisibleTermsToBottom snaps each currently-visible session-term
 // to the bottom of its scrollback. Used after a mode switch
 // (single ↔ grid ↔ grid-project) so the user lands at the latest

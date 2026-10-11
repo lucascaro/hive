@@ -1,3 +1,7 @@
+// SPDX-License-Identifier: GPL-3.0-only
+// Copyright (C) 2026 Lucas Caro
+// See LICENSE and ADDITIONAL-TERMS.md.
+
 // Chip — the minimized-project tray in the sidebar and the
 // minimized-session tray above the status bar.
 // docs/design-docs/ui/components.md › chip.

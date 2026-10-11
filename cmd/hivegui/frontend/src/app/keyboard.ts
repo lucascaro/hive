@@ -1,3 +1,7 @@
+// SPDX-License-Identifier: GPL-3.0-only
+// Copyright (C) 2026 Lucas Caro
+// See LICENSE and ADDITIONAL-TERMS.md.
+
 // ---------- keyboard: the capture-phase dispatcher ----------
 //
 // One window keydown listener, registered capture-phase so it sees a key

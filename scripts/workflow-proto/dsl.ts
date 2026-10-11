@@ -1,3 +1,7 @@
+// SPDX-License-Identifier: GPL-3.0-only
+// Copyright (C) 2026 Lucas Caro
+// See LICENSE and ADDITIONAL-TERMS.md.
+
 // Workflow builder and IR for spec 495's prototype. Building a workflow runs
 // ordinary TypeScript once and records a static graph (the IR): node kinds,
 // edges, and conditions stored as data rather than closures. Nothing here

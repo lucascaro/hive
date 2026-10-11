@@ -1,3 +1,9 @@
+/*
+ * SPDX-License-Identifier: GPL-3.0-only
+ * Copyright (C) 2026 Lucas Caro
+ * See LICENSE and ADDITIONAL-TERMS.md.
+ */
+
 /* Session notes. Classes are prefixed with the plugin id and use Hive's
    theme tokens, per docs/plugins.md. */
 .session-notes-editor { display: flex; flex-direction: column; gap: var(--space-3); }

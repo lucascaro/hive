@@ -1,3 +1,7 @@
+// SPDX-License-Identifier: GPL-3.0-only
+// Copyright (C) 2026 Lucas Caro
+// See LICENSE and ADDITIONAL-TERMS.md.
+
 // Package worktree manages git worktrees on behalf of Hive sessions.
 //
 // A worktree-backed session lives inside <gitRoot>/.worktrees/<branch>

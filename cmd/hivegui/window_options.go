@@ -1,12 +1,18 @@
+// SPDX-License-Identifier: GPL-3.0-only
+// Copyright (C) 2026 Lucas Caro
+// See LICENSE and ADDITIONAL-TERMS.md.
+
 package main
 
 import (
 	"runtime"
 
+	"github.com/lucascaro/hive/internal/buildinfo"
 	"github.com/lucascaro/hive/internal/plugin/pluginassets"
 	"github.com/lucascaro/hive/internal/registry"
 	"github.com/wailsapp/wails/v2/pkg/options"
 	"github.com/wailsapp/wails/v2/pkg/options/assetserver"
+	"github.com/wailsapp/wails/v2/pkg/options/mac"
 	"github.com/wailsapp/wails/v2/pkg/options/windows"
 )
 
@@ -27,7 +33,15 @@ func appOptions(a *App, width, height int) *options.App {
 			Assets:  assets,
 			Handler: pluginassets.Handler(registry.StateDir()),
 		},
-		Menu:          buildAppMenu(a),
+		Menu: buildAppMenu(a),
+		// macOS's native About panel (the app menu's first item) is the
+		// Appropriate Legal Notice (GPLv3 §0) on that platform. Inert
+		// elsewhere; the Help modal's About section covers every platform.
+		Mac: &mac.Options{About: &mac.AboutInfo{
+			Title: "Hive",
+			Message: buildinfo.Copyright + "\n\n" + buildinfo.Warranty +
+				"\n\n" + buildinfo.Attribution,
+		}},
 		OnStartup:     a.startup,
 		OnShutdown:    a.shutdown,
 		OnBeforeClose: a.beforeClose,

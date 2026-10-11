@@ -1,3 +1,7 @@
+// SPDX-License-Identifier: GPL-3.0-only
+// Copyright (C) 2026 Lucas Caro
+// See LICENSE and ADDITIONAL-TERMS.md.
+
 package main
 
 import (
@@ -154,7 +158,7 @@ func TestPrintIdentityHuman(t *testing.T) {
 	printIdentity(&buf, false)
 
 	out := buf.String()
-	for _, want := range []string{"hived", "0.9.9", "abc1234", "daemon contract"} {
+	for _, want := range []string{"hived", "0.9.9", "abc1234", "daemon contract", buildinfo.Copyright, "GPL-3.0-only"} {
 		if !strings.Contains(out, want) {
 			t.Errorf("%q missing from %q", want, out)
 		}

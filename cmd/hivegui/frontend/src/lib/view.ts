@@ -1,3 +1,7 @@
+// SPDX-License-Identifier: GPL-3.0-only
+// Copyright (C) 2026 Lucas Caro
+// See LICENSE and ADDITIONAL-TERMS.md.
+
 // View mode constants + persistence helpers for the GUI's
 // single/grid view state. Pure functions kept here so they are
 // unit-testable without a DOM / localStorage harness.

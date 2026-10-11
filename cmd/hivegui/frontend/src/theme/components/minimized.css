@@ -1,3 +1,9 @@
+/*
+ * SPDX-License-Identifier: GPL-3.0-only
+ * Copyright (C) 2026 Lucas Caro
+ * See LICENSE and ADDITIONAL-TERMS.md.
+ */
+
 /* Minimized projects: a name-only list pinned to the bottom of the
    sidebar, above the version footer. #projects takes the free space
    (flex: 1), so this sits under it without needing margin-top: auto. */

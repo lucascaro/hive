@@ -86,6 +86,13 @@ docs: document hook environment variables
 
 Prefixes: `feat`, `fix`, `docs`, `test`, `refactor`, `chore`.
 
+## Licensing
+
+Hive is `GPL-3.0-only` with additional terms (`LICENSE`, `ADDITIONAL-TERMS.md`).
+By contributing you agree your work is licensed the same way. Every first-party
+source file carries an SPDX header; run `scripts/license-headers.py` after adding
+files (`--check` verifies).
+
 ## Reporting Bugs
 
 Open a [GitHub Issue](https://github.com/lucascaro/hive/issues) and include:

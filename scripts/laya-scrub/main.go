@@ -1,3 +1,7 @@
+// SPDX-License-Identifier: GPL-3.0-only
+// Copyright (C) 2026 Lucas Caro
+// See LICENSE and ADDITIONAL-TERMS.md.
+
 // Command laya-scrub redacts secrets from captured screens before they
 // join the Laya corpus (internal/laya/testdata/corpus/README.md). It
 // rewrites each file in place and exits non-zero if anything still

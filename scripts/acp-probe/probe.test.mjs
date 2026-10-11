@@ -1,3 +1,7 @@
+// SPDX-License-Identifier: GPL-3.0-only
+// Copyright (C) 2026 Lucas Caro
+// See LICENSE and ADDITIONAL-TERMS.md.
+
 // node --test 'scripts/acp-probe/*.test.mjs'
 // Everything here runs against testdata/fake-agent.mjs and temp dirs — no real
 // agent CLI, no network, no model spend, no access to the user's real HOME.

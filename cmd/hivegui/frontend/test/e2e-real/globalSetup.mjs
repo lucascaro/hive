@@ -1,3 +1,7 @@
+// SPDX-License-Identifier: GPL-3.0-only
+// Copyright (C) 2026 Lucas Caro
+// See LICENSE and ADDITIONAL-TERMS.md.
+
 // Layer B globalSetup: build hived + hived-ws-bridge, spawn both
 // against fully-isolated temp dirs, write the bridge URL to a temp
 // file so individual specs (and the Vite server) can pick it up.

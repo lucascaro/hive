@@ -1,3 +1,7 @@
+// SPDX-License-Identifier: GPL-3.0-only
+// Copyright (C) 2026 Lucas Caro
+// See LICENSE and ADDITIONAL-TERMS.md.
+
 // getElementById wrappers for the ids index.html owns. Neither treats
 // the null half of the return as a runtime condition — a missing id is
 // document/module drift, a load-time bug. They differ only in WHEN that

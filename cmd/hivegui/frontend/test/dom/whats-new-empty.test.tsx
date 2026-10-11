@@ -1,3 +1,7 @@
+// SPDX-License-Identifier: GPL-3.0-only
+// Copyright (C) 2026 Lucas Caro
+// See LICENSE and ADDITIONAL-TERMS.md.
+
 // The What's New modal's empty-list branches.
 //
 // Its own file because these need the lib mocked: WhatsNewBody calls

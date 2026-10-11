@@ -1,3 +1,7 @@
+// SPDX-License-Identifier: GPL-3.0-only
+// Copyright (C) 2026 Lucas Caro
+// See LICENSE and ADDITIONAL-TERMS.md.
+
 // Guardrail: the vitest config's `dom` project must provide a jsdom
 // environment to every test/dom/ file BY DIRECTORY — without a
 // per-file `// @vitest-environment jsdom` magic comment.

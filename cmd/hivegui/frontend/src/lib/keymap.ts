@@ -1,3 +1,7 @@
+// SPDX-License-Identifier: GPL-3.0-only
+// Copyright (C) 2026 Lucas Caro
+// See LICENSE and ADDITIONAL-TERMS.md.
+
 // Pure key-decision helpers for the terminal's custom key handler: the
 // byte sequences written to the PTY (session-term.ts). Unit-tested with
 // fake event objects in test/unit/keymap.test.ts.

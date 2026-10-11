@@ -1,3 +1,7 @@
+// SPDX-License-Identifier: GPL-3.0-only
+// Copyright (C) 2026 Lucas Caro
+// See LICENSE and ADDITIONAL-TERMS.md.
+
 // ---------- the What's New modal (sidebar gift) ----------
 //
 // Renders site/features.json — the same curated list the website shows — as

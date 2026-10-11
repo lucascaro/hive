@@ -1,3 +1,7 @@
+// SPDX-License-Identifier: GPL-3.0-only
+// Copyright (C) 2026 Lucas Caro
+// See LICENSE and ADDITIONAL-TERMS.md.
+
 // In-browser fake of the Wails bridge. Replaces the generated
 // wailsjs/go/main/App + wailsjs/runtime/runtime modules so the
 // frontend boots in plain Vite dev (and Playwright) without the

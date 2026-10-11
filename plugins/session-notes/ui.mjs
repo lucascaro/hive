@@ -1,3 +1,7 @@
+// SPDX-License-Identifier: GPL-3.0-only
+// Copyright (C) 2026 Lucas Caro
+// See LICENSE and ADDITIONAL-TERMS.md.
+
 // Session notes — the example UI plugin. Written only against
 // docs/plugins.md: it uses every app surface a plugin can contribute
 // (session view, command palette, sidebar badge, settings section) and

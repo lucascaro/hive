@@ -1,3 +1,9 @@
+/*
+ * SPDX-License-Identifier: GPL-3.0-only
+ * Copyright (C) 2026 Lucas Caro
+ * See LICENSE and ADDITIONAL-TERMS.md.
+ */
+
 /* Closing: the tile is on its way out. Dim it and stop taking input;
    the removal event lands moments later. */
 .term-host.closing .term-body {

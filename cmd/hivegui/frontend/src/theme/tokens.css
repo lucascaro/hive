@@ -1,3 +1,9 @@
+/*
+ * SPDX-License-Identifier: GPL-3.0-only
+ * Copyright (C) 2026 Lucas Caro
+ * See LICENSE and ADDITIONAL-TERMS.md.
+ */
+
 /* Semantic tokens. Defaults are the hive-dark preset; themes.css re-values
    them per [data-theme]. Components read ONLY these — no literals.
    See docs/design-docs/ui/tokens.md. */

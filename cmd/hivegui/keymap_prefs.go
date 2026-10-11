@@ -1,3 +1,7 @@
+// SPDX-License-Identifier: GPL-3.0-only
+// Copyright (C) 2026 Lucas Caro
+// See LICENSE and ADDITIONAL-TERMS.md.
+
 // The user's keyboard shortcut overrides (spec 477), on disk.
 //
 // A GUI-owned JSON file under the state dir, like editor.json: it survives

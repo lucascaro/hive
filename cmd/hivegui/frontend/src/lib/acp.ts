@@ -1,3 +1,7 @@
+// SPDX-License-Identifier: GPL-3.0-only
+// Copyright (C) 2026 Lucas Caro
+// See LICENSE and ADDITIONAL-TERMS.md.
+
 // ---------- ACP transcript (spec 496) ----------
 //
 // The wire shape of an ACP session's transcript (internal/wire/acp.go)

@@ -1,3 +1,7 @@
+// SPDX-License-Identifier: GPL-3.0-only
+// Copyright (C) 2026 Lucas Caro
+// See LICENSE and ADDITIONAL-TERMS.md.
+
 // Scrollback-replay decision helpers. Pure functions so the resize-
 // driven replay logic in app/session-term.ts can be unit-tested without dragging
 // xterm.js or the Wails bridge into jsdom.

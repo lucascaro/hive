@@ -1,3 +1,7 @@
+// SPDX-License-Identifier: GPL-3.0-only
+// Copyright (C) 2026 Lucas Caro
+// See LICENSE and ADDITIONAL-TERMS.md.
+
 // App methods that are thin control-connection RPCs: the agent
 // catalog, sessions, projects, and worktrees. Each one validates its
 // arguments, forwards a wire request, and lets the control read loop

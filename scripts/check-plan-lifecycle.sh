@@ -1,4 +1,8 @@
 #!/usr/bin/env bash
+# SPDX-License-Identifier: GPL-3.0-only
+# Copyright (C) 2026 Lucas Caro
+# See LICENSE and ADDITIONAL-TERMS.md.
+
 # check-plan-lifecycle.sh — flag exec plans left in active/ after their PR merged.
 #
 # docs/exec-plans/active/ has drifted twice (247 sat in REVIEW for a month

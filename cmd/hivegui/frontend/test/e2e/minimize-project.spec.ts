@@ -1,3 +1,7 @@
+// SPDX-License-Identifier: GPL-3.0-only
+// Copyright (C) 2026 Lucas Caro
+// See LICENSE and ADDITIONAL-TERMS.md.
+
 import { test, expect, type Page } from '@playwright/test';
 // The persisted key is namespaced by the daemon's state-dir id (#340).
 // Kept in sync by hand with MOCK_STATE_DIR_ID in wails-mock.ts: that

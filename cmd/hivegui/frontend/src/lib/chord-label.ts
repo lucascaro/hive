@@ -1,3 +1,7 @@
+// SPDX-License-Identifier: GPL-3.0-only
+// Copyright (C) 2026 Lucas Caro
+// See LICENSE and ADDITIONAL-TERMS.md.
+
 // A chord string (lib/chord.ts) as the text a user reads: '⇧⌘K' on macOS,
 // 'Ctrl+Shift+K' elsewhere. Every shortcut hint in the app is built here
 // from the binding data, so a hint cannot name a key the binding does not

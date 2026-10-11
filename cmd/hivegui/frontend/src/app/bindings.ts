@@ -1,3 +1,7 @@
+// SPDX-License-Identifier: GPL-3.0-only
+// Copyright (C) 2026 Lucas Caro
+// See LICENSE and ADDITIONAL-TERMS.md.
+
 // The live keymap (spec 477): lib/bindings.ts's resolver bound to the
 // store, so callers ask about "the user's shortcuts" without threading
 // the keymap through. Every function reads the store when called.

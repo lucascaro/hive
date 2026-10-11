@@ -1,3 +1,7 @@
+// SPDX-License-Identifier: GPL-3.0-only
+// Copyright (C) 2026 Lucas Caro
+// See LICENSE and ADDITIONAL-TERMS.md.
+
 // What UI plugins contribute to the app (spec 471): the session view
 // (modal and side panel), the session banner, sidebar badges and a
 // settings section. The commands surface lives in the palette and the ⌘/

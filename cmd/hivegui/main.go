@@ -1,13 +1,19 @@
+// SPDX-License-Identifier: GPL-3.0-only
+// Copyright (C) 2026 Lucas Caro
+// See LICENSE and ADDITIONAL-TERMS.md.
+
 // hivegui is the desktop client for hived. See DESIGN.md for its role
 // in the architecture.
 package main
 
 import (
 	"embed"
+	"fmt"
 	"io"
 	"log"
 	"os"
 
+	"github.com/lucascaro/hive/internal/buildinfo"
 	"github.com/lucascaro/hive/internal/menubar"
 	"github.com/lucascaro/hive/internal/registry"
 	"github.com/wailsapp/wails/v2"
@@ -77,7 +83,22 @@ func (t logTee) Write(p []byte) (int, error) {
 	return t.file.Write(p)
 }
 
+// printVersion answers `hivegui --version` without opening a window or the
+// log file. It reports whether it handled args.
+func printVersion(w io.Writer, args []string) bool {
+	if len(args) != 1 || (args[0] != "--version" && args[0] != "-version") {
+		return false
+	}
+	id := buildinfo.CurrentIdentity()
+	fmt.Fprintf(w, "hivegui %s (build %s, daemon contract %d)\n%s",
+		id.Release, id.BuildID, id.DaemonContract, buildinfo.LegalNotice())
+	return true
+}
+
 func main() {
+	if printVersion(os.Stdout, os.Args[1:]) {
+		return
+	}
 	setupLogFile()
 	logLaunch()
 	// Belt and braces with hived's own call: a user who opens the GUI

@@ -1,3 +1,7 @@
+// SPDX-License-Identifier: GPL-3.0-only
+// Copyright (C) 2026 Lucas Caro
+// See LICENSE and ADDITIONAL-TERMS.md.
+
 // Status-bar controller with a persistent slot and a transient flash
 // layer. Pure (all effects injected) so the semantics are unit-testable
 // without a DOM.

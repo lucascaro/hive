@@ -1,3 +1,7 @@
+// SPDX-License-Identifier: GPL-3.0-only
+// Copyright (C) 2026 Lucas Caro
+// See LICENSE and ADDITIONAL-TERMS.md.
+
 import { defineConfig } from '@playwright/test';
 
 // Layer B: Playwright suite running against a REAL hived daemon via

@@ -1,3 +1,7 @@
+// SPDX-License-Identifier: GPL-3.0-only
+// Copyright (C) 2026 Lucas Caro
+// See LICENSE and ADDITIONAL-TERMS.md.
+
 // The grid shell: React owns *when* the terminal area is laid out,
 // app/grid-layout.ts owns *what* it does. This component renders no DOM
 // of its own — the tiles are SessionTerm hosts, which React must never

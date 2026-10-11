@@ -1,3 +1,7 @@
+// SPDX-License-Identifier: GPL-3.0-only
+// Copyright (C) 2026 Lucas Caro
+// See LICENSE and ADDITIONAL-TERMS.md.
+
 // Package acptest is a scripted fake ACP agent for tests, so Go tests
 // exercise the real protocol without Node or a real adapter. It is the
 // Go counterpart of scripts/acp-probe/testdata/fake-agent.mjs.

@@ -1,3 +1,7 @@
+// SPDX-License-Identifier: GPL-3.0-only
+// Copyright (C) 2026 Lucas Caro
+// See LICENSE and ADDITIONAL-TERMS.md.
+
 // Fixture for test/e2e/xterm-reflow.spec.ts. Boots a real xterm Terminal in
 // a real (Chromium) DOM so we can verify what jsdom couldn't: whether
 // xterm.js reflows (rewraps) its own scrollback on resize. If it does, the

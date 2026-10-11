@@ -1,3 +1,7 @@
+// SPDX-License-Identifier: GPL-3.0-only
+// Copyright (C) 2026 Lucas Caro
+// See LICENSE and ADDITIONAL-TERMS.md.
+
 // @vitest-environment jsdom
 //
 // Differential test for spec 478: the binding data in app/key-scopes.ts

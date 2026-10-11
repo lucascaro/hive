@@ -1,3 +1,7 @@
+// SPDX-License-Identifier: GPL-3.0-only
+// Copyright (C) 2026 Lucas Caro
+// See LICENSE and ADDITIONAL-TERMS.md.
+
 // The e2e build (-tags=e2e) has its own TestMain in e2e_test.go; like
 // the Claude probe this one is opt-in and lives in the default build.
 //go:build !e2e

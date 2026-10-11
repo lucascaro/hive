@@ -1,3 +1,9 @@
+/*
+ * SPDX-License-Identifier: GPL-3.0-only
+ * Copyright (C) 2026 Lucas Caro
+ * See LICENSE and ADDITIONAL-TERMS.md.
+ */
+
 /* Keyboard-shortcuts help overlay (⌘/). The shell is the dialog
    primitive; what is left is this screen's two-column shortcut table. */
 #help-overlay-groups {

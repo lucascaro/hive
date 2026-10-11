@@ -1,3 +1,7 @@
+// SPDX-License-Identifier: GPL-3.0-only
+// Copyright (C) 2026 Lucas Caro
+// See LICENSE and ADDITIONAL-TERMS.md.
+
 import { test, expect, type Page } from '@playwright/test';
 
 // Spec 496 end to end against the Wails mock: the launcher creates an

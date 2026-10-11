@@ -1,3 +1,7 @@
+// SPDX-License-Identifier: GPL-3.0-only
+// Copyright (C) 2026 Lucas Caro
+// See LICENSE and ADDITIONAL-TERMS.md.
+
 // ---------- command palette ----------
 //
 // React port of src/app/modals/command-palette.ts. Not a `hv-dialog`

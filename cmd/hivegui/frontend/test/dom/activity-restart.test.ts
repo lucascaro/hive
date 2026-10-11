@@ -1,3 +1,7 @@
+// SPDX-License-Identifier: GPL-3.0-only
+// Copyright (C) 2026 Lucas Caro
+// See LICENSE and ADDITIONAL-TERMS.md.
+
 // @vitest-environment jsdom
 //
 // Spec 416 phase 4: a restart or revive keeps the session id but gives

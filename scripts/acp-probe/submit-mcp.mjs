@@ -1,4 +1,8 @@
 #!/usr/bin/env node
+// SPDX-License-Identifier: GPL-3.0-only
+// Copyright (C) 2026 Lucas Caro
+// See LICENSE and ADDITIONAL-TERMS.md.
+
 // Minimal stdio MCP server exposing one tool, `submit_result` (spec 492).
 //
 //   node submit-mcp.mjs <outFile>

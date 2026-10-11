@@ -1,3 +1,7 @@
+// SPDX-License-Identifier: GPL-3.0-only
+// Copyright (C) 2026 Lucas Caro
+// See LICENSE and ADDITIONAL-TERMS.md.
+
 // Spec 471: plan review is the bundled plan-review plugin
 // (plugins/plan-review), and the app keeps no second implementation of
 // its UI. This fails if one creeps back.

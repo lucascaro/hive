@@ -1,3 +1,7 @@
+// SPDX-License-Identifier: GPL-3.0-only
+// Copyright (C) 2026 Lucas Caro
+// See LICENSE and ADDITIONAL-TERMS.md.
+
 // An actionable hint pane when the current scope has nothing to show
 // (first run, empty project, everything minimized). Mounted on
 // #empty-state; the model stays pure in lib/empty-state.ts and is called

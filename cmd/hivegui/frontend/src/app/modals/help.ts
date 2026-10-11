@@ -1,3 +1,7 @@
+// SPDX-License-Identifier: GPL-3.0-only
+// Copyright (C) 2026 Lucas Caro
+// See LICENSE and ADDITIONAL-TERMS.md.
+
 // ---------- the Help modal (sidebar help icon): the non-React half ----------
 //
 // Modelled on whats-new.ts, which has the same shape: a modal with no daemon

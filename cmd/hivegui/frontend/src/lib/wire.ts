@@ -1,3 +1,7 @@
+// SPDX-License-Identifier: GPL-3.0-only
+// Copyright (C) 2026 Lucas Caro
+// See LICENSE and ADDITIONAL-TERMS.md.
+
 // Wire-payload helpers. The hived daemon emits snake_case JSON on
 // the unix socket; older code paths in the GUI sometimes used
 // camelCase.

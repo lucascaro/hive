@@ -1,3 +1,9 @@
+/*
+ * SPDX-License-Identifier: GPL-3.0-only
+ * Copyright (C) 2026 Lucas Caro
+ * See LICENSE and ADDITIONAL-TERMS.md.
+ */
+
 /* xterm 6 draws its own scrollbar (VS Code's scrollable element) instead of
    relying on the native overflow one, and the slider is themed from
    --scrollbar-thumb* via xtermTheme() in theme.ts — that is what keeps it

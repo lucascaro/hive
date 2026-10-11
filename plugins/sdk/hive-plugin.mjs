@@ -1,3 +1,7 @@
+// SPDX-License-Identifier: GPL-3.0-only
+// Copyright (C) 2026 Lucas Caro
+// See LICENSE and ADDITIONAL-TERMS.md.
+
 // hive-plugin.mjs — the Hive plugin SDK. One file, no dependencies,
 // Node >= 18. Copy it into your plugin next to your entry point; it is
 // vendored rather than published so a git-URL install needs no build

@@ -1,3 +1,9 @@
+/*
+ * SPDX-License-Identifier: GPL-3.0-only
+ * Copyright (C) 2026 Lucas Caro
+ * See LICENSE and ADDITIONAL-TERMS.md.
+ */
+
 /* What's New modal (sidebar gift). The shell is the dialog primitive; what
    is left is one scrolling column of releases, newest first. Single column
    rather than the help overlay's two: these are sentences, not key/label

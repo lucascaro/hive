@@ -1,3 +1,7 @@
+// SPDX-License-Identifier: GPL-3.0-only
+// Copyright (C) 2026 Lucas Caro
+// See LICENSE and ADDITIONAL-TERMS.md.
+
 // The icon sprite: the symbol set every icon <use> resolves against, and
 // the one-time injection that puts it in the document.
 // Spec: docs/design-docs/ui/icons.md, components.md › icon().

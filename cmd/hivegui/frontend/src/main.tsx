@@ -1,3 +1,7 @@
+// SPDX-License-Identifier: GPL-3.0-only
+// Copyright (C) 2026 Lucas Caro
+// See LICENSE and ADDITIONAL-TERMS.md.
+
 // Composition root. Every subsystem lives in src/app/* (pure logic in
 // src/lib/*); this file builds the command table, injects the
 // cross-module callbacks, mounts the single React root, and boots the

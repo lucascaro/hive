@@ -1,3 +1,7 @@
+// SPDX-License-Identifier: GPL-3.0-only
+// Copyright (C) 2026 Lucas Caro
+// See LICENSE and ADDITIONAL-TERMS.md.
+
 // Collapse/expand animation state for the sidebar's two collapsible
 // surfaces (project card, worktree group panel).
 //

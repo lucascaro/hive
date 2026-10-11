@@ -1,3 +1,9 @@
+/*
+ * SPDX-License-Identifier: GPL-3.0-only
+ * Copyright (C) 2026 Lucas Caro
+ * See LICENSE and ADDITIONAL-TERMS.md.
+ */
+
 /* Project card — docs/design-docs/ui/components.md › projectCard.
    --project-color is data (a user-picked colour), not a token. */
 /* The project is a LABEL, not a card. The worktree group band

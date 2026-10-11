@@ -1,3 +1,7 @@
+// SPDX-License-Identifier: GPL-3.0-only
+// Copyright (C) 2026 Lucas Caro
+// See LICENSE and ADDITIONAL-TERMS.md.
+
 // The shortcut lists the help overlay (⌘/) and the command palette show.
 // Every key here is DERIVED from the binding data in lib/bindings.ts under
 // the user's keymap (spec 477), so a surface cannot show a key the app

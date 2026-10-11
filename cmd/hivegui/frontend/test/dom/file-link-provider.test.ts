@@ -1,3 +1,7 @@
+// SPDX-License-Identifier: GPL-3.0-only
+// Copyright (C) 2026 Lucas Caro
+// See LICENSE and ADDITIONAL-TERMS.md.
+
 // The link provider's two jobs: only underline paths that exist (the
 // answer comes from Go), and only activate on the platform modifier —
 // a plain click in a terminal still selects text.

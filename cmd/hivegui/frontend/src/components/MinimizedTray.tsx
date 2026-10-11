@@ -1,3 +1,7 @@
+// SPDX-License-Identifier: GPL-3.0-only
+// Copyright (C) 2026 Lucas Caro
+// See LICENSE and ADDITIONAL-TERMS.md.
+
 // The minimized-session tray above the status bar. Mounted on
 // #minimized-tray, which keeps its id, role="toolbar" and the `.hidden`
 // class that collapses its grid row when the set is empty.

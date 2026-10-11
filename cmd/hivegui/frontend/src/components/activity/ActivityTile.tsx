@@ -1,3 +1,7 @@
+// SPDX-License-Identifier: GPL-3.0-only
+// Copyright (C) 2026 Lucas Caro
+// See LICENSE and ADDITIONAL-TERMS.md.
+
 // The activity grid's tile body (spec 416, reshaped by 428): the plan's
 // tasks are the body, and the live tool feed takes whatever height they
 // leave — down to none. Mounted over the tile's hidden terminal body;

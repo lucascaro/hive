@@ -1,3 +1,7 @@
+// SPDX-License-Identifier: GPL-3.0-only
+// Copyright (C) 2026 Lucas Caro
+// See LICENSE and ADDITIONAL-TERMS.md.
+
 // @vitest-environment jsdom
 //
 // A reorder is a SEQUENCE of daemon moves now (a shared-worktree group moves

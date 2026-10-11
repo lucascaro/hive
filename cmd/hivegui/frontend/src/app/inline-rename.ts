@@ -1,3 +1,7 @@
+// SPDX-License-Identifier: GPL-3.0-only
+// Copyright (C) 2026 Lucas Caro
+// See LICENSE and ADDITIONAL-TERMS.md.
+
 // Shared inline-rename control flow. SessionTerm's tile-name rename
 // and the sidebar's session/project renames all did the same dance:
 // drop an <input> in place of the label, focus+select it, commit on

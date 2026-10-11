@@ -1,3 +1,7 @@
+// SPDX-License-Identifier: GPL-3.0-only
+// Copyright (C) 2026 Lucas Caro
+// See LICENSE and ADDITIONAL-TERMS.md.
+
 // Importing a keymap file (spec 477, criterion 9): read it, preview what
 // it would change, settle its conflicts, and apply it to the Settings
 // draft — nothing changes before the user confirms.

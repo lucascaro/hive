@@ -1,3 +1,7 @@
+// SPDX-License-Identifier: GPL-3.0-only
+// Copyright (C) 2026 Lucas Caro
+// See LICENSE and ADDITIONAL-TERMS.md.
+
 // Pinned agent table for the ACP probe (spec 492).
 //
 // Each entry says how to launch the agent over ACP and how Hive would reopen

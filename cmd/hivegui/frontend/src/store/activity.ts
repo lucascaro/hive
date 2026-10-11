@@ -1,3 +1,7 @@
+// SPDX-License-Identifier: GPL-3.0-only
+// Copyright (C) 2026 Lucas Caro
+// See LICENSE and ADDITIONAL-TERMS.md.
+
 // ---------- agent activity store (spec 416) ----------
 //
 // Per-session tool calls and plan, fed by `activity:event`. Its own store

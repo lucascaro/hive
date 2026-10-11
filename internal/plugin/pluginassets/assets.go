@@ -1,3 +1,7 @@
+// SPDX-License-Identifier: GPL-3.0-only
+// Copyright (C) 2026 Lucas Caro
+// See LICENSE and ADDITIONAL-TERMS.md.
+
 // Package pluginassets serves an installed plugin's UI files to the Hive
 // app. It is a leaf on purpose: the GUI and hived-ws-bridge import it to
 // load plugin UI, and must not link the plugin Manager (supervisor,

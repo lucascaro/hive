@@ -1,3 +1,7 @@
+// SPDX-License-Identifier: GPL-3.0-only
+// Copyright (C) 2026 Lucas Caro
+// See LICENSE and ADDITIONAL-TERMS.md.
+
 // ---------- the Help modal (sidebar help icon) ----------
 //
 // The wider help surface: what the pieces of hive are, the way into the
@@ -10,8 +14,13 @@
 // sentences and four links, and the cheapest thing that cannot go out of sync
 // with a build is a literal.
 
-import { useEffect, useLayoutEffect, type ReactNode } from 'react';
-import { OpenURL } from '../../bridge.js';
+import { useEffect, useLayoutEffect, useState, type ReactNode } from 'react';
+import { EventsOn, OpenURL } from '../../bridge.js';
+import {
+  formatBinary,
+  type DaemonStaleEvent,
+} from '../../app/version-footer.js';
+import { ATTRIBUTION, COPYRIGHT, WARRANTY } from '../../lib/legal.js';
 import { reportFailure } from '../../app/dom.js';
 import { closeHelp, handOffToShortcuts } from '../../app/modals/help.js';
 import { useShortcutLabel } from '../../app/bindings.js';
@@ -65,6 +74,16 @@ export function Help({ root }: { root: HTMLElement | null }): ReactNode {
 
 function HelpBody({ root }: { root: HTMLElement }): ReactNode {
   const shortcutsKey = useShortcutLabel('keyboard-shortcuts');
+  // The build line comes from the same event the sidebar footer reads; it is
+  // blank until the first daemon connect, like the footer.
+  const [ev, setEv] = useState<DaemonStaleEvent | null>(null);
+  useEffect(
+    () =>
+      EventsOn('daemon:stale', (next: DaemonStaleEvent | null) => {
+        if (next) setEv(next);
+      }),
+    [],
+  );
   // Same modal-focus discipline as the other dialogs: pull focus onto the
   // dialog so keystrokes don't leak behind the backdrop.
   useEffect(() => {
@@ -127,6 +146,18 @@ function HelpBody({ root }: { root: HTMLElement }): ReactNode {
               </button>
             ))}
           </div>
+        </section>
+
+        {/* Appropriate Legal Notices (GPLv3 §0, §5(d)). The attribution line
+            is required verbatim by ADDITIONAL-TERMS.md term (a). */}
+        <section id="help-about">
+          <h4>About</h4>
+          <p className="help-about-name">
+            {ev ? formatBinary('Hive', ev.guiRelease, ev.guiBuild) : 'Hive'}
+          </p>
+          <p className="help-about-text">{COPYRIGHT}</p>
+          <p className="help-about-text">{WARRANTY}</p>
+          <p className="help-about-text">{ATTRIBUTION}</p>
         </section>
       </div>
     </ModalShell>

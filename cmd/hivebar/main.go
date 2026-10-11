@@ -1,3 +1,7 @@
+// SPDX-License-Identifier: GPL-3.0-only
+// Copyright (C) 2026 Lucas Caro
+// See LICENSE and ADDITIONAL-TERMS.md.
+
 //go:build darwin
 
 // hivebar is Hive's macOS menu-bar agent: a status-bar item showing
@@ -31,6 +35,7 @@ import (
 	"log"
 	"os"
 	"path/filepath"
+	"strings"
 
 	"fyne.io/systray"
 
@@ -61,6 +66,7 @@ func main() {
 		log.SetOutput(os.Stdout)
 		log.Printf("hivebar %s (build %s, daemon contract %d)",
 			id.Release, id.BuildID, id.DaemonContract)
+		log.Print(strings.TrimSuffix(buildinfo.LegalNotice(), "\n"))
 		return
 	}
 

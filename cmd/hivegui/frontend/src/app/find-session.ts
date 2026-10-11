@@ -1,3 +1,7 @@
+// SPDX-License-Identifier: GPL-3.0-only
+// Copyright (C) 2026 Lucas Caro
+// See LICENSE and ADDITIONAL-TERMS.md.
+
 // The ⌘F entry point: resolves "the focused session" and applies the
 // view gate, so the key binding and the native menu share one command.
 //

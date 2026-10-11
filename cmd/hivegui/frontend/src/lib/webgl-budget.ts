@@ -1,3 +1,7 @@
+// SPDX-License-Identifier: GPL-3.0-only
+// Copyright (C) 2026 Lucas Caro
+// See LICENSE and ADDITIONAL-TERMS.md.
+
 // Process-wide WebGL context budget (#magenta-blocks).
 //
 // Every SessionTerm wants its own xterm WebGL renderer, but browsers /

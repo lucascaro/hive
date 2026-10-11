@@ -1,3 +1,7 @@
+// SPDX-License-Identifier: GPL-3.0-only
+// Copyright (C) 2026 Lucas Caro
+// See LICENSE and ADDITIONAL-TERMS.md.
+
 // Editing a keymap (spec 477, Settings › Shortcuts): turning a key press
 // into a chord, deciding whether a chord may be bound, and the keymap
 // edits the tab makes. lib/bindings.ts resolves a keymap; this module

@@ -1,3 +1,7 @@
+// SPDX-License-Identifier: GPL-3.0-only
+// Copyright (C) 2026 Lucas Caro
+// See LICENSE and ADDITIONAL-TERMS.md.
+
 // The Help modal and the sidebar button that opens it.
 //
 // Modelled on whats-new.test.tsx's harness — same header scaffold, same
@@ -15,6 +19,7 @@ const openURL = vi.fn((_url: string) => Promise.resolve());
 // imported by anything in this tree.
 vi.mock('../../src/bridge.js', () => ({
   OpenURL: (url: string) => openURL(url),
+  EventsOn: () => () => {},
 }));
 
 // Both dialog roots: the handoff test needs the ⌘/ overlay's root to exist
@@ -99,6 +104,19 @@ describe('the sidebar help button', () => {
 });
 
 describe('the Help modal', () => {
+  it('renders the legal notices and the required attribution', async () => {
+    await mount();
+    await act(async () => {
+      helpBtn().click();
+    });
+    const about = document.getElementById('help-about') as HTMLElement;
+    expect(about.textContent).toContain('Copyright (C) 2026 Lucas Caro');
+    expect(about.textContent).toContain('ABSOLUTELY NO WARRANTY');
+    expect(about.textContent).toContain(
+      'Based on Hive by Lucas Caro — https://github.com/lucascaro/hive',
+    );
+  });
+
   it('is hidden until the button is clicked', async () => {
     await mount();
     expect(dialog().classList.contains('hidden')).toBe(true);

@@ -1,3 +1,7 @@
+// SPDX-License-Identifier: GPL-3.0-only
+// Copyright (C) 2026 Lucas Caro
+// See LICENSE and ADDITIONAL-TERMS.md.
+
 // ---------- grid layout (imperative DOM half of the grid) ----------
 //
 // Everything in this file was moved out of view.ts by Phase 5 of the

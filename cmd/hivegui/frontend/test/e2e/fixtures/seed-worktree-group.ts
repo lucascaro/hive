@@ -1,3 +1,7 @@
+// SPDX-License-Identifier: GPL-3.0-only
+// Copyright (C) 2026 Lucas Caro
+// See LICENSE and ADDITIONAL-TERMS.md.
+
 // Playwright-SIDE seeder (unlike fixtures/xterm-reflow.ts, which is a
 // browser-side module the page loads). Shared by sidebar-sticky.spec.ts and
 // sidebar-group-flatten.spec.ts: two copies of this would drift, and the
