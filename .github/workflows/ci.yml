@@ -222,7 +222,7 @@ jobs:
         uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: ~/go/bin
-          key: go-analysis-tools-${{ runner.os }}-staticcheck2026.2.1-govulncheck1.7.0
+          key: go-analysis-tools-${{ runner.os }}-staticcheck2026.2.1-xtools0.52.0-govulncheck1.7.0
 
       - name: Staticcheck (Go)
         if: matrix.biome
@@ -232,7 +232,9 @@ jobs:
         # new release can't turn a green PR red on its own.
         run: |
           BIN="$(go env GOPATH)/bin/staticcheck"
-          [ -x "$BIN" ] || go install honnef.co/go/tools/cmd/staticcheck@2026.2.1
+          # Built from tools/staticcheck, which pins a newer x/tools: the
+          # released staticcheck cannot read Go 1.27.2's export data.
+          [ -x "$BIN" ] || (cd tools/staticcheck && go install honnef.co/go/tools/cmd/staticcheck)
           "$BIN" ./...
 
       - name: Vulnerability scan (govulncheck)

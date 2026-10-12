@@ -454,6 +454,9 @@ This repository uses Graphify to maintain a structural map of its logic and asse
   exactly how `internal/notify`'s activation callback got through. Before
   relying on a green local run: `for os in darwin linux windows; do GOOS=$os
   staticcheck ./... ; GOOS=$os go vet ./... ; done`.
+  Install staticcheck with `(cd tools/staticcheck && go install
+  honnef.co/go/tools/cmd/staticcheck)`, not `@2026.2.1`: the released binary
+  cannot read Go 1.27.2's export data (see `tools/staticcheck/tools.go`).
 - `scripts/check-daemon-contract.sh <base> <head>` — the local form of the
   CI gate that requires a `buildinfo.DaemonContract` bump for daemon-side
   changes. `scripts/check-daemon-contract-selftest.sh` proves the gate still
