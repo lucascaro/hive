@@ -25,11 +25,12 @@ func useFakeACP(t *testing.T, flags ...string) string {
 	t.Helper()
 	skipOnWindows(t)
 	dir := t.TempDir()
-	prev := acpCommand
+	prev, prevTrust := acpCommand, acpTrustForTest
 	acpCommand = func(agent.Def) ([]string, []string) {
 		return []string{os.Args[0]}, append(acp.AdapterEnv(os.Environ(), ""), acptest.Env(dir, flags...)...)
 	}
-	t.Cleanup(func() { acpCommand = prev })
+	acpTrustForTest = func(string) bool { return true }
+	t.Cleanup(func() { acpCommand, acpTrustForTest = prev, prevTrust })
 	return dir
 }
 

@@ -17,7 +17,8 @@
 // Conversations live in <dir>/<sessionId>.jsonl, one {user, agent} line
 // per turn, so a second process can session/load them like a real
 // adapter. Every method received is appended to <dir>/calls.log as
-// "<method> <sessionId>".
+// "<method> <sessionId>"; session/new and session/load also log
+// "meta <sessionId> <_meta JSON or none>".
 package acptest
 
 import (
@@ -256,6 +257,7 @@ func (f *fake) handle(id json.RawMessage, method string, params json.RawMessage)
 				Value string `json:"value"`
 			} `json:"env"`
 		} `json:"mcpServers"`
+		Meta json.RawMessage `json:"_meta"`
 	}
 	_ = json.Unmarshal(params, &p)
 	if method == "session/set_mode" {
@@ -280,6 +282,15 @@ func (f *fake) handle(id json.RawMessage, method string, params json.RawMessage)
 			}
 			f.log("mcp", sid+" "+strings.Join(line, " "))
 		}
+	}
+	// "meta <sessionId> <_meta JSON | none>", one line per session/new or
+	// session/load, so a test can check the options both calls carried.
+	logMeta := func(sid string) {
+		m := strings.TrimSpace(string(p.Meta))
+		if m == "" {
+			m = "none"
+		}
+		f.log("meta", sid+" "+m)
 	}
 	modes := func() map[string]any {
 		advertised := Modes
@@ -318,6 +329,7 @@ func (f *fake) handle(id json.RawMessage, method string, params json.RawMessage)
 			return
 		}
 		logMCP(sid)
+		logMeta(sid)
 		if f.flags[FlagModeOnNew] {
 			f.update(sid, map[string]any{"sessionUpdate": "current_mode_update", "currentModeId": "bypassPermissions"})
 		}
@@ -337,6 +349,7 @@ func (f *fake) handle(id json.RawMessage, method string, params json.RawMessage)
 			return
 		}
 		logMCP(p.SessionID)
+		logMeta(p.SessionID)
 		for _, t := range turns {
 			f.update(p.SessionID, map[string]any{"sessionUpdate": "user_message_chunk", "content": map[string]any{"type": "text", "text": t.User}})
 			f.update(p.SessionID, map[string]any{"sessionUpdate": "agent_message_chunk", "content": map[string]any{"type": "text", "text": t.Agent}})

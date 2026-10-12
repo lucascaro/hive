@@ -445,7 +445,7 @@ This repository uses Graphify to maintain a structural map of its logic and asse
   A local run on a newer toolchain can be green while CI is red (this is how
   three reachable stdlib advisories reached a required gate). Use
   `GOTOOLCHAIN=go$(sed -n 's/^go //p' go.mod)` when checking anything CI
-  gates. The `go` prefix is required: the bare version (`GOTOOLCHAIN=1.27.1`)
+  gates. The `go` prefix is required: the bare version (`GOTOOLCHAIN=1.27.2`)
   is rejected with `go: invalid GOTOOLCHAIN`, so the command silently does
   nothing useful without it.
 - **Static analysis is per-GOOS.** `staticcheck` analyses one platform at a
@@ -454,6 +454,9 @@ This repository uses Graphify to maintain a structural map of its logic and asse
   exactly how `internal/notify`'s activation callback got through. Before
   relying on a green local run: `for os in darwin linux windows; do GOOS=$os
   staticcheck ./... ; GOOS=$os go vet ./... ; done`.
+  Install staticcheck with `(cd tools/staticcheck && go install
+  honnef.co/go/tools/cmd/staticcheck)`, not `@2026.2.1`: the released binary
+  cannot read Go 1.27.2's export data (see `tools/staticcheck/tools.go`).
 - `scripts/check-daemon-contract.sh <base> <head>` — the local form of the
   CI gate that requires a `buildinfo.DaemonContract` bump for daemon-side
   changes. `scripts/check-daemon-contract-selftest.sh` proves the gate still

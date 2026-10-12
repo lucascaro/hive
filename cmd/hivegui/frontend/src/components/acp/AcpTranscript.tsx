@@ -140,6 +140,13 @@ const Item = memo(function Item({ item }: { item: AcpItem }): ReactNode {
           <div className="acp-item__text">{item.text}</div>
         </div>
       );
+    case 'notice':
+      // From Hive itself (the daemon), not the agent: plain text.
+      return (
+        <div className="acp-item acp-item--notice" role="note">
+          {item.text}
+        </div>
+      );
     case 'plan':
       return (
         <ol className="acp-item acp-item--plan" aria-label="Plan">

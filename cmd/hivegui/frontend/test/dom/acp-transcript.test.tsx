@@ -103,6 +103,21 @@ describe('AcpTranscript', () => {
     expect(GetAcpTranscript).toHaveBeenCalledTimes(1);
   });
 
+  it("renders Hive's own notice as plain text, apart from the agent", async () => {
+    const { container } = render(<AcpTranscript sessionId={SID} />);
+    frame({
+      reset: true,
+      items: [
+        { id: 1, kind: 'notice', text: "This folder isn't <b>trusted</b>" },
+      ],
+    });
+    const note = container.querySelector('.acp-item--notice');
+    expect(note?.getAttribute('role')).toBe('note');
+    expect(note?.textContent).toBe("This folder isn't <b>trusted</b>");
+    expect(note?.querySelector('b')).toBeNull();
+    expect(container.querySelector('.acp-item--agent')).toBeNull();
+  });
+
   it('streams appended chunks into one message', async () => {
     const { container } = render(<AcpTranscript sessionId={SID} />);
     frame({ reset: true, items: [{ id: 1, kind: 'agent', text: 'hel' }] });

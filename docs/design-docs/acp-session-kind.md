@@ -133,6 +133,47 @@ This note is the research for [spec 496](../product-specs/496-add-an-acp-session
 - The mock bridge is `test/e2e/wails-mock.ts`.
 - `bridge-harness-parity.test.ts` requires every bridge export to exist in both the mock and `e2e-real/wails-bridge.ts`.
 
+## Folder trust (issue 505)
+
+A PTY Claude session shows Claude's own trust dialog before the folder's hooks
+or MCP servers run. An ACP session never does: Claude's headless/SDK path
+skips both the workspace-trust dialog and the `.mcp.json` approval prompt,
+so the daemon decides. `Registry.startACP` calls `acpFolderTrusted` at
+every start (create, revive, restart, takeover), so `session/new` and
+`session/load` always agree and a change applies on the next start.
+
+A folder is trusted when **either**:
+- Claude's own state file (`$CLAUDE_CONFIG_DIR/.claude.json`, else
+  `~/.claude.json`) has `projects[<cwd or an ancestor>].hasTrustDialogAccepted`.
+  `agent.ClaudeFolderTrusted` decodes only that flag: the file also holds
+  account data, and its schema is undocumented (Claude itself is inconsistent
+  about ancestors). Unreadable or unparseable means "not known", never
+  "trusted".
+- The folder is **exactly** a Hive project's folder, or the worktree Hive made
+  for that session. Never an ancestor match: the default project is rooted
+  at the daemon's cwd (often `$HOME`), and a home or filesystem-root project
+  never vouches for anything. Registering a project is a weaker act than
+  answering Claude's dialog, and a registered path can later hold a different
+  repo. That is accepted.
+
+What an untrusted folder gets:
+
+| Agent | Adapter (pinned) | Behaviour | What Hive does |
+|-------|------------------|-----------|----------------|
+| Claude | claude-agent-acp 0.85.1 | Defaults to `settingSources: ["user","project","local"]` (`acp-agent.js:6827`); `_meta.claudeCode.options` is spread over it (`:6718`) | Sends `settingSources: ["user"]` on `session/new` and `session/load`. Project hooks, `.mcp.json` servers and `apiKeyHelper` do not run; user settings and user-level hooks still do. A transcript notice says so. |
+| Codex | codex-acp 2.1.1 | Writes `projects[<cwd>].trust_level = "trusted"` into the session config for every session (`dist/index.js:34203`), so `.codex/` project layers always load | Nothing can hold it back. Outside a Hive project the transcript gets a warning notice. |
+| Pi | pi-acp 0.0.34 | No trust concept; loads `<cwd>/.pi/` prompts and settings unconditionally (per its README) | Same warning. |
+
+Evidence: `node scripts/acp-probe/untrusted-settings.mjs` starts the pinned
+Claude adapter in a temp project with a `SessionStart` hook, an `.mcp.json`
+server and an `apiKeyHelper`, under an isolated `HOME` and with no model call.
+With the adapter's defaults all three ran; with `settingSources: ["user"]`
+none did, so `strictMcpConfig` is not needed (and would also drop the user's
+own MCP servers). Re-run it when the pinned adapter version changes. Codex
+and Pi were read from the adapters' source, not run; Pi's `.pi/` behaviour is
+from its README. Not a goal: reimplementing Claude's trust dialog, and PTY
+sessions.
+
 ## Spike 492 facts the implementation must honour
 
 - **Adapters**, pinned through `npx -y`:

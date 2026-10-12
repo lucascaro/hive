@@ -354,18 +354,27 @@ func (r *Registry) startACP(id, cwd, loadID string) error {
 	if err != nil {
 		return abort(fmt.Errorf("acp initialize: %w", err))
 	}
+	// Project-scoped agent config (hooks, .mcp.json, env) runs unprompted
+	// in an ACP session, so a folder nobody trusted gets none of it
+	// (issue 505). Decided per start, so session/new and session/load
+	// agree and a change of mind applies at the next restart.
+	trusted := r.acpFolderTrusted(e, cwd, def.ID == agent.IDClaude)
+	var opts *acp.ClaudeOptions
+	if def.ID == agent.IDClaude && !trusted {
+		opts = &acp.ClaudeOptions{SettingSources: []string{"user"}}
+	}
 	var modes *acp.Modes
 	if loadID != "" {
 		if !init.AgentCapabilities.LoadSession {
 			return abort(errors.New("the ACP adapter cannot reopen conversations (no loadSession)"))
 		}
-		ld, err := a.LoadSession(ctx, loadID, cwd, mcp)
+		ld, err := a.LoadSession(ctx, loadID, cwd, mcp, opts)
 		if err != nil {
 			return abort(fmt.Errorf("acp session/load: %w", err))
 		}
 		modes = ld.Modes
 	} else {
-		ns, err := a.NewSession(ctx, cwd, mcp)
+		ns, err := a.NewSession(ctx, cwd, mcp, opts)
 		if err != nil {
 			return abort(fmt.Errorf("acp session/new: %w", err))
 		}
@@ -391,8 +400,15 @@ func (r *Registry) startACP(id, cwd, loadID string) error {
 	wasReplay := as.replaying
 	as.replaying = false
 	as.ready = true
+	// After the replay, so a restart shows it once, at the end of history.
+	var notice []wire.AcpItem
+	if !trusted {
+		notice = []wire.AcpItem{e.acpTx.AddNotice(untrustedNotice(def.ID))}
+	}
 	if wasReplay {
 		r.broadcastACPLocked(e, e.acpTx.Snapshot(), true)
+	} else if notice != nil {
+		r.broadcastACPLocked(e, notice, false)
 	}
 	e.LastError = ""
 	if e.AgentSessionID != loadID {
@@ -994,9 +1010,10 @@ func (r *Registry) persistKind(id, kind string) error {
 // packages that drive the registry from outside (the daemon's tests);
 // it returns a restore func.
 func SetACPCommandForTest(fn func(agent.Def) (argv, env []string)) func() {
-	prev := acpCommand
+	prev, prevTrust := acpCommand, acpTrustForTest
 	acpCommand = fn
-	return func() { acpCommand = prev }
+	acpTrustForTest = func(string) bool { return true }
+	return func() { acpCommand, acpTrustForTest = prev, prevTrust }
 }
 
 // ACPNonceForTest returns the submit nonce of id's running adapter, for
@@ -1008,4 +1025,15 @@ func (r *Registry) ACPNonceForTest(id string) string {
 		return e.acp.nonce
 	}
 	return ""
+}
+
+// untrustedNotice is the transcript line for a session started in a
+// folder nobody trusted. Claude is held back; Codex's and Pi's adapters
+// have no setting that does that (codex-acp marks every cwd trusted, and
+// pi loads <cwd>/.pi unconditionally), so for them it is only a warning.
+func untrustedNotice(id agent.ID) string {
+	if id == agent.IDClaude {
+		return "This folder isn't trusted, so its Claude hooks and .mcp.json servers will not run. Your own user settings, including your hooks, still apply. Add the folder as a Hive project, or accept Claude's trust dialog for it in a terminal session, to let them run."
+	}
+	return "This folder isn't a Hive project. The agent may run the folder's own hooks, MCP servers and extensions without asking, so only continue in a repository you trust."
 }

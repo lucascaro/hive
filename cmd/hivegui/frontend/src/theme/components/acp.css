@@ -49,6 +49,12 @@
   background: var(--sel);
 }
 .acp-item--thought { color: var(--fg-muted); font-size: var(--text-sm); }
+.acp-item--notice {
+  padding: var(--space-1) var(--space-2);
+  border-left: 2px solid var(--fg-subtle);
+  color: var(--fg-muted);
+  font-size: var(--text-sm);
+}
 .acp-item--plan { list-style: none; padding: 0; font-size: var(--text-sm); }
 .acp-item--tool { font-size: var(--text-sm); }
 
