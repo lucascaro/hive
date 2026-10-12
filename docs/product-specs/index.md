@@ -22,6 +22,7 @@ The *what* and *why* of work this project plans to do. Each spec describes user 
 
 | Issue | Title | PR | Shipped | Spec |
 |-------|-------|----|---------|------|
+| #505 | ACP Claude sessions load untrusted project hooks and MCP servers without a trust prompt | #510 | 2026-10-11 | [505-acp-claude-untrusted-project-settings](505-acp-claude-untrusted-project-settings.md) |
 | #495 | Design Hive's workflow engine: typed TS workflows, an inspectable graph, durable runs | #506 | 2026-10-07 | [495-design-hive-s-workflow-engine-typed-ts-workflows-a](495-design-hive-s-workflow-engine-typed-ts-workflows-a.md) |
 | #496 | Add an ACP session kind: transcript view, exact state, permission prompts, typed results, PTY takeover | #502 | 2026-10-04 | [496-add-an-acp-session-kind-transcript-view-exact-stat](496-add-an-acp-session-kind-transcript-view-exact-stat.md) |
 | #492 | Research ACP as Hive's engine-driven workflow transport | #493 | 2026-10-03 | [492-research-acp-as-hive-s-engine-driven-workflow-tran](492-research-acp-as-hive-s-engine-driven-workflow-tran.md) |

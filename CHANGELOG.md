@@ -111,6 +111,9 @@ A Pi session that started with plan review on no longer skips approval when revi
 Restart Session, Take Over in Terminal and Hand Back to ACP no longer flash "session ended" (overlay and notification) while the session restarts.
 The update button no longer gets stuck disabled when an update check runs after an update was already staged; it now shows Reload/Restart instead of a dead "Update".
 
+### Security
+ACP Claude sessions no longer run a folder's project hooks, `.mcp.json` servers, `env` or `apiKeyHelper` unless the folder is a Hive project or you trusted it in Claude. In any other folder those do not run (your own user settings and user-level hooks still apply) and the transcript says so. Codex and Pi sessions in a folder that isn't a Hive project start with a warning, because their adapters offer no way to hold the folder's config back.
+
 ## [2.9.0] — 2026-09-17
 
 ### Added
