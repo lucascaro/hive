@@ -87,3 +87,4 @@ Round 1: revise (7/10), 6 must_fix, applied. Round 2: revise (7/10), 4 must_fix,
 
 - **2026-10-11 iter 1** — verdict: COMMENT; mergeable: MERGEABLE; findings_hash: e9eaa6a95e13; threads_open: 0; action: escalated:ci-check-failed; head_sha: 62ceeb2.
 - **2026-10-11 iter 2** — verdict: COMMENT; mergeable: MERGEABLE; findings_hash: 344684328b58; threads_open: 2; action: autofix+push; head_sha: 3b010a2. The two open threads (case folding, notice wording) were resolved by hand in 5bbf082.
+- **2026-10-11 iter 3** — verdict: APPROVE; mergeable: MERGEABLE; findings_hash: empty; threads_open: 0; action: stop; head_sha: 9377592.

@@ -4,7 +4,7 @@ title: "ACP Claude sessions load untrusted project hooks and MCP servers without
 type: bug
 complexity: M
 priority: P1
-stage: REVIEW
+stage: GATE
 pr: 510
 ---
 
