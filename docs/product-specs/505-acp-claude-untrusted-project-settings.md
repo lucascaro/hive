@@ -4,14 +4,15 @@ title: "ACP Claude sessions load untrusted project hooks and MCP servers without
 type: bug
 complexity: M
 priority: P1
-stage: GATE
+stage: DONE
 pr: 510
+shipped: 2026-10-11
 ---
 
 # ACP Claude sessions load untrusted project hooks and MCP servers without a trust prompt
 
 - **Issue:** #505
-- **Exec plan:** [docs/exec-plans/active/505-acp-claude-untrusted-project-settings.md](../exec-plans/active/505-acp-claude-untrusted-project-settings.md)
+- **Exec plan:** [docs/exec-plans/completed/505-acp-claude-untrusted-project-settings.md](../exec-plans/completed/505-acp-claude-untrusted-project-settings.md)
 
 ## Problem
 

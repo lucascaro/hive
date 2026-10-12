@@ -2,7 +2,7 @@
 
 - **Spec:** [docs/product-specs/505-acp-claude-untrusted-project-settings.md](../../product-specs/505-acp-claude-untrusted-project-settings.md)
 - **Issue:** #505
-- **Status:** active
+- **Status:** completed
 - **PR:** #510
 - **Branch:** feature/505-acp-untrusted-project-settings
 
@@ -90,3 +90,11 @@ Round 1: revise (7/10), 6 must_fix, applied. Round 2: revise (7/10), 4 must_fix,
 - **2026-10-11 iter 1** — verdict: COMMENT; mergeable: MERGEABLE; findings_hash: e9eaa6a95e13; threads_open: 0; action: escalated:ci-check-failed; head_sha: 62ceeb2.
 - **2026-10-11 iter 2** — verdict: COMMENT; mergeable: MERGEABLE; findings_hash: 344684328b58; threads_open: 2; action: autofix+push; head_sha: 3b010a2. The two open threads (case folding, notice wording) were resolved by hand in 5bbf082.
 - **2026-10-11 iter 3** — verdict: APPROVE; mergeable: MERGEABLE; findings_hash: empty; threads_open: 0; action: stop; head_sha: 9377592.
+
+## Gate verdict
+
+- **2026-10-11** — verdict: PASS; phase: —; checks: 3 passed / 0 failed / 0 followups; followups: none; one-line: both success criteria delivered (registry tests + real-adapter probe: control runs hook, .mcp.json server and apiKeyHelper, `settingSources ["user"]` runs none; Codex/Pi behaviour verified and documented).
+  - 2026-10-11 dimensions:
+    - acceptance — PASS — registry tests green; `node scripts/acp-probe/untrusted-settings.mjs` ok/ok; cited adapter lines match the real packages (Pi cited from its README only)
+    - non-goals — PASS — the validator's NEEDS_FOLLOWUP was that the Go bump and `tools/staticcheck` had no decision-log entry; both were operator-directed and are now recorded (commit after 93775929), nothing implemented that the non-goals exclude
+    - doc accuracy — PASS — `regression_of` not applicable (type: security); minor: changeset/contract comment list `env` as held back, which the probe did not exercise (SDK semantics of excluding project settings)
