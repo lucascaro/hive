@@ -77,6 +77,8 @@ Round 1: revise (7/10), 6 must_fix, applied. Round 2: revise (7/10), 4 must_fix,
 
 
 - **2026-10-11** — Dropped `strictMcpConfig` from the plan. Why: the real-adapter smoke (`scripts/acp-probe/untrusted-settings.mjs`) showed `settingSources: ["user"]` alone stops the project hook, `.mcp.json` server and `apiKeyHelper` (control run with defaults ran all three), and strict mode would also drop the user's own MCP servers. This was the operator's stated condition.
+- **2026-10-11** — Bumped `go` to 1.27.2 inside this PR, at the operator's direction ("bump here"). Why: required `govulncheck` gate failed on GO-2026-6613 / GO-2026-6617 in the 1.27.1 standard library (pre-existing on `main`, fixed in 1.27.2).
+- **2026-10-11** — Added `tools/staticcheck` (pinned module requiring x/tools v0.52.0) and pointed CI's staticcheck step and the AGENTS.md install note at it. Why: released staticcheck 2026.2.1 cannot read Go 1.27.2's export data ("export data version 5 is greater than maximum supported version 4"), so the Go bump alone turned the Linux leg red. Consequence of the operator-approved bump, not separate scope; drop it when a staticcheck release ships with x/tools >= v0.52.0.
 - **2026-10-11** — Hive-project trust is exact-match only (project folder, or the session's own worktree). Why: ancestor matching would trust every clone under a home-rooted default project.
 
 ## Progress
