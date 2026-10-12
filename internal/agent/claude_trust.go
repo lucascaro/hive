@@ -4,7 +4,6 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
-	"runtime"
 	"strings"
 )
 
@@ -38,16 +37,18 @@ func ClaudeFolderTrusted(statePath, cwd string) bool {
 	if json.Unmarshal(b, &st) != nil {
 		return false
 	}
-	trusted := make(map[string]bool, len(st.Projects))
+	var trusted []string
 	for k, v := range st.Projects {
 		if v.Trusted {
-			trusted[trustKey(k)] = true
+			trusted = append(trusted, k)
 		}
 	}
 	for _, start := range trustStarts(cwd) {
 		for dir := start; ; {
-			if trusted[trustKey(dir)] {
-				return true
+			for _, k := range trusted {
+				if samePathOne(k, dir) {
+					return true
+				}
 			}
 			parent := filepath.Dir(dir)
 			if parent == dir {
@@ -71,22 +72,37 @@ func trustStarts(cwd string) []string {
 	return out
 }
 
-// trustKey normalizes a path for comparison: slashes forward, no
-// trailing separator, and case folded where the filesystem usually is.
+// trustKey normalizes a path for exact comparison: slashes forward, no
+// trailing separator. It does not fold case; see samePathOne.
 func trustKey(p string) string {
-	p = strings.TrimRight(filepath.ToSlash(filepath.Clean(p)), "/")
-	if runtime.GOOS == "darwin" || runtime.GOOS == "windows" {
-		p = strings.ToLower(p)
+	return strings.TrimRight(filepath.ToSlash(filepath.Clean(p)), "/")
+}
+
+// samePathOne reports whether a and b are the same folder spelled the
+// same way, or spelled with different case on a filesystem that treats
+// the two as one. Case-insensitivity is a property of the volume, not of
+// the OS (APFS and NTFS can each be either), so a case-only difference is
+// settled by asking the filesystem, never by folding case: folding would
+// trust "Repo" because "repo" was trusted, on a volume where they differ.
+func samePathOne(a, b string) bool {
+	ka, kb := trustKey(a), trustKey(b)
+	if ka == kb {
+		return true
 	}
-	return p
+	if !strings.EqualFold(ka, kb) {
+		return false
+	}
+	fa, errA := os.Stat(a)
+	fb, errB := os.Stat(b)
+	return errA == nil && errB == nil && os.SameFile(fa, fb)
 }
 
 // SamePath reports whether a and b name the same folder, through
-// symlinks and, on case-insensitive filesystems, case.
+// symlinks and, where the volume is case-insensitive, case.
 func SamePath(a, b string) bool {
 	for _, x := range trustStarts(a) {
 		for _, y := range trustStarts(b) {
-			if trustKey(x) == trustKey(y) {
+			if samePathOne(x, y) {
 				return true
 			}
 		}

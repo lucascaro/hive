@@ -81,3 +81,22 @@ func quote(s string) string {
 	b, _ := json.Marshal(filepath.ToSlash(s))
 	return string(b)
 }
+
+// A case-only difference is the filesystem's call: the same folder on a
+// case-insensitive volume, two folders on a case-sensitive one.
+func TestClaudeFolderTrustedCaseFollowsTheFilesystem(t *testing.T) {
+	repo := filepath.Join(t.TempDir(), "Repo")
+	if err := os.MkdirAll(repo, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	lower := filepath.Join(filepath.Dir(repo), "repo")
+	_, err := os.Stat(lower)
+	insensitive := err == nil
+	p := writeState(t, `{"projects":{`+quote(lower)+`:{"hasTrustDialogAccepted":true}}}`)
+	if got := ClaudeFolderTrusted(p, repo); got != insensitive {
+		t.Errorf("ClaudeFolderTrusted(%q trusted, cwd %q) = %v, but the volume is case-insensitive = %v", lower, repo, got, insensitive)
+	}
+	if SamePath(repo, lower) != insensitive {
+		t.Errorf("SamePath = %v, want %v (follows the filesystem)", !insensitive, insensitive)
+	}
+}

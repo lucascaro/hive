@@ -1033,7 +1033,7 @@ func (r *Registry) ACPNonceForTest(id string) string {
 // pi loads <cwd>/.pi unconditionally), so for them it is only a warning.
 func untrustedNotice(id agent.ID) string {
 	if id == agent.IDClaude {
-		return "This folder isn't trusted, so its Claude hooks, .mcp.json servers and project settings are not loaded. Your own user settings are. Add the folder as a Hive project, or accept Claude's trust dialog for it in a terminal session, to load them."
+		return "This folder isn't trusted, so its Claude hooks and .mcp.json servers will not run. Your own user settings, including your hooks, still apply. Add the folder as a Hive project, or accept Claude's trust dialog for it in a terminal session, to let them run."
 	}
 	return "This folder isn't a Hive project. The agent may run the folder's own hooks, MCP servers and extensions without asking, so only continue in a repository you trust."
 }
