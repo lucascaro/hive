@@ -135,7 +135,7 @@ This note is the research for [spec 496](../product-specs/496-add-an-acp-session
 
 ## Folder trust (issue 505)
 
-A PTY session shows the agent's own trust dialog before the folder's hooks
+A PTY Claude session shows Claude's own trust dialog before the folder's hooks
 or MCP servers run. An ACP session never does: Claude's headless/SDK path
 skips both the workspace-trust dialog and the `.mcp.json` approval prompt,
 so the daemon decides. `Registry.startACP` calls `acpFolderTrusted` at
