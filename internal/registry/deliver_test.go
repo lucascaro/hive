@@ -358,3 +358,38 @@ func TestSendACPSubmitsATurn(t *testing.T) {
 	acptest.Release(dir)
 	waitFor(t, "turn end", idleAfterTurn(r, e.ID))
 }
+
+// Only a transition OUT OF working pings. The sampler never produces
+// idle -> idle (announceStateLocked returns early on an unchanged
+// snapshot), so the rule itself is pinned directly: a waiting state
+// ending in idle is the user answering, not the session finishing.
+func TestSettleSendStatePingsOnlyOutOfWorking(t *testing.T) {
+	skipOnWindows(t)
+	r := freshRegistry(t)
+	manualClock(t, r)
+	e, _ := liveSession(t, r, wire.CreateSpec{Name: "rule"})
+	ch, unsub := r.Subscribe()
+	defer unsub()
+	for _, tc := range []struct {
+		prev, cur string
+		want      bool
+	}{
+		{wire.StateWorking, wire.StateIdle, true},
+		{wire.StateWorking, wire.StateError, true},
+		{wire.StateWorking, wire.StateWaitingInput, false},
+		{wire.StateWaitingInput, wire.StateIdle, false},
+		{wire.StateWaitingPermission, wire.StateIdle, false},
+		{wire.StateIdle, wire.StateIdle, false},
+		{wire.StateWorking, wire.StateExited, true}, // last: it drops the entry's send state
+	} {
+		r.mu.Lock()
+		e.notifyWhenIdle = true
+		r.settleSendStateLocked(e, agentstate.Snapshot{State: tc.prev}, agentstate.Snapshot{State: tc.cur})
+		fired := !e.notifyWhenIdle
+		r.mu.Unlock()
+		_, got := nextKind(t, ch, wire.SessionEventIdlePing, 100*time.Millisecond)
+		if got != tc.want || fired != tc.want {
+			t.Errorf("%q -> %q: ping=%v disarmed=%v, want %v", tc.prev, tc.cur, got, fired, tc.want)
+		}
+	}
+}
