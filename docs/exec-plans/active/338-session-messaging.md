@@ -385,6 +385,18 @@ Independent reviewer (general-purpose subagent), 2 rounds.
 - **2026-10-13** — Delivered as `Phase: 1 of 3`; per-phase gate. Operator-approved.
 - **2026-10-13** — Queue is unsupported for `acp` sessions (`session_busy`); GUI hides the queue button for them.
 
+## Progress (Phase 1 implementation, 2026-10-13)
+
+- Shipped on `feature/338-session-messaging`: wire frames `SEND_TO_SESSION`/`SENT` (0x46/0x47), `notify_when_idle`, `idle_ping` event, DaemonContract 27; `internal/registry/deliver.go` (typed / queued / acp, PTY sanitiser, bounded queue, settle helper shared by announce and exit); daemon arm via `runOp`, plugin refusal; `hived msg` (exact id or name); GUI sheet (⇧⌘M), bell (⌥⌘B + row), `idle_ping` notification; plugin SDK frame table; docs, changeset, features.json.
+- Verified: `go test ./...`, `-tags e2e ./cmd/hived`, per-GOOS vet + staticcheck, `npm run typecheck`, `biome ci`, unit + dom (1245), Playwright (551 passed; one `every-shortcut` plugin-view cell failed once under full-suite load and passed 12/12 in isolation), ui-lint, daemon-contract + selftest, test-hooks-stripped.
+- Mutation-checked: exit-path settle, ping rule, one-per-idle drain, ACP queue offer, session:sent close, idle_ping notify, plugin SDK parity.
+
+## Decision log (implementation additions)
+
+- **2026-10-13** — The app has no sidebar context menu, so the plan's "context menu" entry points became: ⇧⌘M and ⌥⌘B chords, command-palette rows, and a bell button on the session row's hover actions (plus a passive bell glyph while armed). No new menu surface invented.
+- **2026-10-13** — Typed delivery also refuses while an opening prompt is still pending (`session_busy`): a fresh agent may be on a startup gate that Enter would answer (the lesson behind spec 337's paste-not-type).
+- **2026-10-13** — The plugin SDK (`plugins/sdk/hive-plugin.mjs` + vendored webhook copy) is a fifth wire client with drift tests; the plan's lock-step list missed it and the Go suite caught it.
+
 ## Open questions
 
 1. **Exact JSON line Claude expects on its inbox socket.** Public docs
