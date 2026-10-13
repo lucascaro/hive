@@ -4,7 +4,7 @@
 - **Design:** [docs/design-docs/control-plane.md](../../design-docs/control-plane.md)
 - **Issue:** —
 - **Branch:** `feature/338-session-messaging`
-- **PR:** —
+- **PR:** [#513](https://github.com/lucascaro/hive/pull/513)
 - **Status:** active
 - **Phase:** 1 of 3
 

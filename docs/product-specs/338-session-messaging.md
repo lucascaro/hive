@@ -4,7 +4,8 @@ title: "Session messaging: hand a session a message, get told when it idles"
 type: enhancement
 complexity: M
 priority: P2
-stage: IMPLEMENT
+pr: 513
+stage: REVIEW
 ---
 
 # Session messaging: hand a session a message, get told when it idles
