@@ -268,6 +268,7 @@ And everything the daemon sends on a control connection:
 | `PLUGIN_EVENT` | Broadcast: a plugin was installed, removed, or changed status. |
 | `ACP_TRANSCRIPT` | Answer to `GET_ACP_TRANSCRIPT` (`reset`), and broadcast as an ACP session's transcript changes. Every message also carries the latest prompt's typed result: `prompt_id` (that prompt's user item), `result_status` (`submitted`, `none` once the turn ended without one, or absent while it runs) and `result` (the `submit_result` arguments). |
 | `SUBMIT_RESULT_OK` | Answer to `SUBMIT_RESULT`: the result is recorded. |
+| `SENT` | Answer to `SEND_TO_SESSION`: how the note was delivered (`typed`, `queued` or `acp`). Never sent to a plugin, which is refused. |
 
 The two things to watch most plugins need are `SESSION_EVENT`'s `state`
 (`working`, `waiting_input`, `waiting_permission`, `exited`, `error`,
