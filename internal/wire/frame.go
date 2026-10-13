@@ -258,6 +258,13 @@ const (
 	// PTY, "acp" hands it back. Answered by the SESSION_EVENT the
 	// restart sends, or ERROR.
 	FrameSetSessionKind FrameType = 0x45 // C → S, JSON, control
+	// SEND_TO_SESSION hands a running session a one-line note (spec
+	// 338). Answered with SENT on success or ERROR (session_busy,
+	// session_dead, delivery_failed, bad_payload). Control connections
+	// only: a plugin gets mode_not_allowed and a ModeSession connection
+	// is not offered it (that is spec 389's grant).
+	FrameSendToSession FrameType = 0x46 // C → S, JSON, control
+	FrameSent          FrameType = 0x47 // S → C, JSON, control
 )
 
 // ControlRequestFrames lists every frame a control-mode client may send.
@@ -279,7 +286,7 @@ var ControlRequestFrames = []FrameType{
 	FrameListPlugins, FrameInstallPlugin, FrameSetPluginEnabled, FrameRemovePlugin,
 	FrameSetPluginConfig, FrameSetClientUI,
 	FrameGetAcpTranscript, FramePromptAcp, FrameAnswerPermission,
-	FrameSubmitResult, FrameSetSessionKind,
+	FrameSubmitResult, FrameSetSessionKind, FrameSendToSession,
 }
 
 // ControlEventFrames lists every frame the daemon sends on a control
@@ -291,7 +298,7 @@ var ControlEventFrames = []FrameType{
 	FrameIdeas, FrameIdeaEvent, FrameActivity,
 	FrameTranscriptMatches, FrameTranscriptLines, FramePlanReview,
 	FramePlugins, FramePluginEvent, FrameAcpTranscript,
-	FrameSubmitResultOK,
+	FrameSubmitResultOK, FrameSent,
 }
 
 // NonControlFrames are the frames that never travel on a control
@@ -414,6 +421,10 @@ func (t FrameType) String() string {
 		return "SUBMIT_RESULT_OK"
 	case FrameSetSessionKind:
 		return "SET_SESSION_KIND"
+	case FrameSendToSession:
+		return "SEND_TO_SESSION"
+	case FrameSent:
+		return "SENT"
 	case FrameGetActivity:
 		return "GET_ACTIVITY"
 	case FrameActivity:

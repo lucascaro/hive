@@ -243,6 +243,10 @@ type SessionInfo struct {
 	// answers to one question and no way for the menu bar to have any
 	// answer at all.
 	NeedsAttention bool `json:"needs_attention,omitempty"`
+	// NotifyWhenIdle is true while the session is armed to ping the
+	// user when it next stops working (spec 338). Daemon-owned and
+	// in-memory: a daemon restart disarms every session.
+	NotifyWhenIdle bool `json:"notify_when_idle,omitempty"`
 
 	// State is what the session is doing right now — see the State*
 	// constants. Daemon-owned and in-memory like Phase, Title and
@@ -517,6 +521,9 @@ type UpdateSessionReq struct {
 	// the user has now looked at it, so clearing is a client-driven
 	// update rather than something the daemon can infer.
 	NeedsAttention *bool `json:"needs_attention,omitempty"`
+	// NotifyWhenIdle arms (true) or disarms (false) the one-shot "tell
+	// me when this session stops working" bell (spec 338).
+	NotifyWhenIdle *bool `json:"notify_when_idle,omitempty"`
 }
 
 // SessionEventKind enumerates the kinds carried by SESSION_EVENT.
@@ -551,6 +558,13 @@ const (
 	// doing. Consumers that re-render the world on "updated" must not
 	// be made to do so on every turn.
 	SessionEventState = "state"
+	// SessionEventIdlePing reports that a session armed with
+	// NotifyWhenIdle just stopped working (spec 338). The payload is the
+	// session's SessionInfo with NotifyWhenIdle already cleared. Clients
+	// that do not know the kind ignore it. Every attached client
+	// receives it; a client fires its desktop notification with the
+	// session id as the tag so the OS collapses duplicates.
+	SessionEventIdlePing = "idle_ping"
 )
 
 // AgentEvent is the payload of FrameAgentEvent — the only frame type a
@@ -1347,6 +1361,16 @@ const (
 	// ADD_IDEA / LIST_IDEAS / SUBMIT_RESULT, and a control connection
 	// gets for SUBMIT_RESULT.
 	ErrCodeModeNotAllowed = "mode_not_allowed"
+	// ErrCodeSessionBusy is SEND_TO_SESSION's answer when the target is
+	// not idle (or is an ACP session mid-turn) and the request did not
+	// ask to queue. Queueing is unsupported for ACP sessions, so a busy
+	// ACP session answers this regardless of Queue.
+	ErrCodeSessionBusy = "session_busy"
+	// ErrCodeSessionDead is returned when the target has no live process.
+	ErrCodeSessionDead = "session_dead"
+	// ErrCodeDeliveryFailed is returned when the write to the target
+	// failed, or the target's queue is full.
+	ErrCodeDeliveryFailed = "delivery_failed"
 	// ErrCodeWorktreeLabelTooLong is returned when a worktree group's
 	// name exceeds MaxWorktreeLabel. Rejected, never truncated.
 	ErrCodeWorktreeLabelTooLong = "worktree_label_too_long"
@@ -1713,4 +1737,36 @@ type PluginEvent struct {
 	Plugin PluginInfo `json:"plugin"`
 	// Nonce is set only on the "added" event an INSTALL_PLUGIN produced.
 	Nonce string `json:"nonce,omitempty"`
+}
+
+// MaxMessageLen caps SendToSessionReq.Text in bytes. A note, not a
+// transcript: Claude's own inbox allows far more, and this is smaller
+// on purpose.
+const MaxMessageLen = 64 << 10
+
+// Delivery values carried by SentResp.Delivery.
+const (
+	// DeliveryTyped means the text was written to the session's PTY now.
+	DeliveryTyped = "typed"
+	// DeliveryQueued means the session was busy and the text will be
+	// typed at its next idle transition.
+	DeliveryQueued = "queued"
+	// DeliveryACP means the text was submitted as a user turn of an
+	// ACP session (spec 496).
+	DeliveryACP = "acp"
+)
+
+// SendToSessionReq is the SEND_TO_SESSION payload.
+type SendToSessionReq struct {
+	SessionID string `json:"session_id"`
+	Text      string `json:"text"`
+	// Queue asks to hold the text until the session is idle rather than
+	// failing with session_busy. Unsupported for ACP sessions.
+	Queue bool `json:"queue,omitempty"`
+}
+
+// SentResp is the SENT payload: how the text was (or will be) delivered.
+type SentResp struct {
+	SessionID string `json:"session_id"`
+	Delivery  string `json:"delivery"`
 }
