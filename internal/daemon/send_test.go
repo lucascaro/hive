@@ -17,8 +17,8 @@ import (
 // SEND_TO_SESSION answers from a runOp goroutine and recordOps is not
 // safe to read from the test while that goroutine appends.
 func asyncOps(principal string) (controlOps, chan wire.Error, chan wire.FrameType) {
-	errs := make(chan wire.Error, 4)
-	frames := make(chan wire.FrameType, 4)
+	errs := make(chan wire.Error, 64)
+	frames := make(chan wire.FrameType, 64)
 	return controlOps{
 		principal: principal,
 		writeJSON: func(t wire.FrameType, v any) error {
@@ -135,5 +135,24 @@ func TestSendToSessionRejectsBadText(t *testing.T) {
 		}
 	case <-time.After(2 * time.Second):
 		t.Fatal("no answer")
+	}
+}
+
+// TestSendToSessionDoesNotBlockClose: the delivery runs through runOp, so
+// a Close racing an in-flight send must neither hang nor panic.
+func TestSendToSessionDoesNotBlockClose(t *testing.T) {
+	d := newFrameTestDaemon(t)
+	id := bootstrapSessionID(t, d)
+	ops, _, _ := asyncOps("")
+	for i := 0; i < 5; i++ {
+		d.handleControlFrame(context.Background(), ops, wire.FrameSendToSession,
+			sendReq(t, id, "echo hello"))
+	}
+	done := make(chan struct{})
+	go func() { _ = d.Close(); close(done) }()
+	select {
+	case <-done:
+	case <-time.After(10 * time.Second):
+		t.Fatal("Close hung with sends in flight")
 	}
 }
