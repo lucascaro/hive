@@ -83,6 +83,7 @@ func TestControlFrameBadPayload(t *testing.T) {
 		wire.FrameDeleteBranch,
 		wire.FrameRenameWorktree,
 		wire.FrameSetSessionKind,
+		wire.FrameSendToSession,
 	}
 	for _, ft := range frames {
 		t.Run(fmt.Sprintf("frame_%#x", byte(ft)), func(t *testing.T) {

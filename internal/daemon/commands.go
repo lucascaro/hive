@@ -107,7 +107,7 @@ func (h *commandHub) Close() {
 // times a minute, to record something that is never persisted at all.
 func updatesPersistedFields(req wire.UpdateSessionReq) bool {
 	return req.Name != nil || req.Color != nil ||
-		req.Order != nil || req.ProjectID != nil
+		req.Order != nil || req.ProjectID != nil || req.NotifyWhenIdle != nil
 }
 
 // pressure is how full the fullest command listener is, 0 to 1; see

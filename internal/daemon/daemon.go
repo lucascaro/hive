@@ -1701,6 +1701,37 @@ func (d *Daemon) handleControlFrame(ctx context.Context, ops controlOps, ft wire
 				ops.sendError("restart_failed", err.Error())
 			}
 		})
+	case wire.FrameSendToSession:
+		req, ok := decodeReq[wire.SendToSessionReq](payload, ops.sendError)
+		if !ok {
+			return false
+		}
+		// Typing into another session's terminal is the confused-deputy
+		// case (docs/design-docs/agent-orchestration.md): a plugin does
+		// not get it until it can be granted explicitly.
+		if ops.principal != "" {
+			ops.sendError(wire.ErrCodeModeNotAllowed, "SEND_TO_SESSION is not available to plugins")
+			return false
+		}
+		// Off the read loop: the PTY write can block on a full pipe and
+		// must not stall this client's other requests.
+		d.runOp(func() {
+			delivery, err := d.reg.SendToSession(req.SessionID, req.Text, req.Queue, wire.OriginUser)
+			outcome := delivery
+			if err != nil {
+				outcome = sendErrCode(err)
+			}
+			// One greppable line per send: the evidence that gates the
+			// orchestration phases (agent-orchestration.md).
+			log.Printf("daemon: send_to_session caller=control from=%s to=%s delivery=%s",
+				wire.OriginUser, req.SessionID, outcome)
+			if err != nil {
+				_ = ops.writeJSON(wire.FrameError, wire.Error{
+					Code: sendErrCode(err), Message: sendErrMessage(err), SessionID: req.SessionID})
+				return
+			}
+			_ = ops.writeJSON(wire.FrameSent, wire.SentResp{SessionID: req.SessionID, Delivery: delivery})
+		})
 	case wire.FrameUpdateSession:
 		req, ok := decodeReq[wire.UpdateSessionReq](payload, ops.sendError)
 		if !ok {
@@ -2119,6 +2150,33 @@ func principalOf(tag *pluginTag) string {
 		return ""
 	}
 	return "plugin:" + tag.id
+}
+
+// sendErrCode maps a SendToSession failure onto its ERROR code.
+func sendErrCode(err error) string {
+	switch {
+	case errors.Is(err, registry.ErrNotFound):
+		return "no_such_session"
+	case errors.Is(err, registry.ErrMessageInvalid):
+		return "bad_payload"
+	case errors.Is(err, registry.ErrSessionBusy):
+		return wire.ErrCodeSessionBusy
+	case errors.Is(err, registry.ErrNoLiveSession):
+		return wire.ErrCodeSessionDead
+	}
+	return wire.ErrCodeDeliveryFailed
+}
+
+func sendErrMessage(err error) string {
+	switch {
+	case errors.Is(err, registry.ErrNotFound):
+		return "that session is not open"
+	case errors.Is(err, registry.ErrSessionBusy):
+		return "the session is busy"
+	case errors.Is(err, registry.ErrNoLiveSession):
+		return "the session's agent is not running"
+	}
+	return err.Error()
 }
 
 // createErrCode is the ERROR code for a failed create: the general
