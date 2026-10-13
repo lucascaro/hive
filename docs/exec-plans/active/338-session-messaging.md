@@ -6,6 +6,7 @@
 - **Branch:** `feature/338-session-messaging`
 - **PR:** —
 - **Status:** active
+- **Phase:** 1 of 3
 
 ## Summary
 
@@ -276,6 +277,113 @@ makes it 5.
   `internal/notify` out of the daemon.
 
 - **2026-09-04** — Spec and plan written; stage PLAN.
+
+## Approved plan — Phase 1 of 3 (2026-10-13)
+
+Supersedes the Approach, Files to change, New files, Tests and Phasing
+sections above for Phase 1; they remain as history. Phase 2 = Claude inbox
+socket (needs the message shape captured from a real `claude --debug`
+pair); Phase 3 = Pi extension inbox. Where REVISION 1/2 below conflicts with
+the draft body, the revision wins.
+
+Existing (stale) plan: docs/exec-plans/active/338-session-messaging.md — this draft supersedes its Approach/Phasing.
+
+## Freshness corrections vs the existing plan (verified on main today)
+- Next free frame id is 0x46 (0x45 = FrameSetSessionKind is last, internal/wire/frame.go:260). Plan said 0x29/0x2a — taken.
+- DaemonContract is 26 (internal/buildinfo/contract.go:240) -> bump to 27. Plan said 5.
+- 337 shipped (pendingPrompt/typedPrompt exist: internal/registry/create.go:137, registry.go:208/752). Generalise it, don't build it.
+- `acp`-kind sessions exist (spec 496): Registry.PromptACP(id, text, origin) (internal/registry/acp.go:650) already takes an `origin` principal recorded on the transcript. A 4th delivery strategy `acp` is trivial and gives provenance for free. Maps ErrACPBusy -> session_busy.
+- Keybindings are data now (AGENTS.md Keybindings Policy): chords go in src/lib/bindings.ts, command in src/app/commands.ts, MENU_COMMANDS + menu_darwin.go + cmd/hivegui/testdata/menu-default-accelerators.json, row in src/lib/shortcuts.ts, README Keybinds table. Existing plan's `app/keyboard.ts` and "spec 478 doc" lines are stale.
+- Notification layering: internal/notify is imported only by cmd/hivegui/app.go; daemon/registry never import it.
+
+## Phase split (spec has 6 success criteria; they span 3 strategies)
+- Phase 1 (this PR): wire + registry SendToSession with strategies typed / queued / acp; `hived msg`; GUI message sheet; ping-when-idle (flag + GUI notification); `.key` grep guard; log line `send_to_session caller=... from=... to=... delivery=...`.
+- Phase 2: Claude inbox socket (blocked on capturing the undocumented message shape via `claude --debug`; needs a real Claude).
+- Phase 3: Pi extension inbox.
+Plan header gets `Phase: 1 of 3`; gate records per-phase PASS (spec holds at GATE; manual reset for phase 2).
+
+## Approach (Phase 1)
+Wire: FrameSendToSession 0x46 (C->S), FrameSent 0x47 (S->C). SendToSessionReq{session_id,text,queue}, SentResp{session_id,delivery in typed|queued|acp}. Text cap 64 KiB. ErrCodeSessionBusy/SessionDead/DeliveryFailed. UpdateSessionReq.NotifyWhenIdle *bool; SessionInfo.NotifyWhenIdle bool (in-memory). DaemonContract 27. Snake_case tags; update the 3 clients in lock-step (cmd/hivegui/app_calls.go, cmd/hived-ws-bridge/main.go, internal/wire/testclient) + JS snake_case ?? camelCase readers. NOT in sessionModeFrames (a session socket must not send; that is spec 389).
+Registry (internal/registry/deliver.go): SendToSession(id,text,queue). Dead -> session_dead. acp kind -> PromptACP(id,text,wire.OriginUser) (ErrACPBusy -> session_busy unless queue... acp queue unsupported in v1: return session_busy). PTY kinds: state != idle -> queue ? append to Entry.pendingInputs : session_busy; idle -> write text+"\r" (sanitised via typedPrompt rules) to the PTY; delivery typed. pendingInputs FIFO drained one per idle transition (300ms grace), in the same place pendingPrompt is resolved (registry.go ~752). Drain must be cleared on exit/kill.
+Daemon: arm runs the registry call in a goroutine tracked by the existing wg drained in Close (so a slow PTY write cannot stall the read loop).
+Ping when idle: Entry.NotifyWhenIdle set via UpdateSession. In announceStateLocked (registry.go:708), when flag && prev==working && next in {idle,exited,error}: clear flag and broadcast SessionEventUpdated with a new field/marker so the GUI fires notify.Notify (GUI owns notifications, consistent with 336's boundary; no notification for headless hived). DECISION FOR OPERATOR (see below).
+hived msg (cmd/hived/msg.go): `hived msg <name-or-id> <text...>`; resolve via LIST_SESSIONS exact then unique prefix; queue:true; print delivery. Control socket only (session socket is 389).
+GUI: MessageSession modal (Enter send, Shift+Enter newline; session_busy -> "Working - queue until idle?" button resends queue:true; status-bar toast on SENT). Entry points: sidebar row context menu "Message..." and "Notify me when idle" (checkbox), bell glyph on row; chords Mod+Shift+M and Mod+Alt+B as bindings/commands (not hard-coded), shown via shortcutLabel.
+Docs: DESIGN.md (new frames; `.key` rule), docs/design-docs/control-plane.md, README keybinds, .changesets/338-session-messaging.md (minor), site/features.json entry since:"Unreleased".
+
+## Files to change
+internal/wire/{frame.go,control.go}; internal/buildinfo/contract.go; internal/registry/{registry.go,deliver.go(new)}; internal/daemon/daemon.go; cmd/hived/{main.go,msg.go(new)}; cmd/hived-ws-bridge/main.go; internal/wire/testclient; cmd/hivegui/{app_calls.go,menu_darwin.go,testdata/menu-default-accelerators.json}; frontend src/{lib/bindings.ts,lib/shortcuts.ts,app/commands.ts,store/*,bridge.ts,components/SessionRow.tsx,components/modals/MessageSession.tsx(new),StatusBar.tsx}; scripts/check-no-claude-keys.sh(new, wired into scripts/test.sh); README.md; DESIGN.md; docs/design-docs/control-plane.md; .changesets/; site/features.json.
+
+## Tests
+registry: TestSendTypedRequiresIdle, TestSendQueuedDrainsOnIdle (one per idle transition), TestSendQueueClearedOnExit, TestSendDeadSession, TestSendACPUsesPromptACP, TestSendACPBusy, TestNotifyWhenIdleFiresOnce, TestNotifyWhenIdleIgnoresIdleToIdle.
+daemon: TestSendToSessionOffReadLoop (blocked deliverer does not stall another client's LIST_SESSIONS); TestSendToSessionRefusedOnSessionMode (not in sessionModeFrames); log line greppable.
+cmd/hived: TestMsgResolvesUniquePrefix; e2e typed path with a shell session (text lands only after idle; working -> session_busy unless queue).
+frontend: unit/reducer; dom for glyph; playwright mock e2e for sheet busy->queue path and bell toggle; every-shortcut sweep covers new chords automatically.
+Contract: scripts/check-daemon-contract.sh origin/main HEAD passes.
+
+## Verification
+GOTOOLCHAIN=go$(sed -n 's/^go //p' go.mod) go test ./internal/... ./cmd/hived/...; scripts/test.sh; for os in darwin linux windows; do GOOS=$os go vet ./... ; done (+ staticcheck per AGENTS.md); scripts/check-daemon-contract.sh origin/main HEAD; scripts/check-no-claude-keys.sh; CI=1 playwright via scripts/test.sh e2e.
+
+## Risks / open
+- Typed path into an arbitrary TUI can corrupt a prompt being edited; mitigated by idle-only + documented ceiling.
+- Multi-line text on typed path: newline->CR (ceiling, ponytail comment).
+- Phase 2 hinges on an undocumented Claude protocol.
+- Spec success criteria for Claude/Pi paths are deferred to phases 2/3 (per-phase gate).
+
+---
+# REVISION 1 (applies round-1 must_fix; these override anything above that conflicts)
+
+1. **Queue drain.** Drain hooks into `announceStateLocked` (registry.go:708), NOT ResolvePrompt (registry.go:752). It runs under r.mu, so it only *schedules*: on a qualifying transition to idle it starts a `time.AfterFunc(300ms)` stored on the Entry (`drainTimer`). At fire time (no lock held for the PTY write): take r.mu, re-check entry still present, `sess != nil`, state == idle and queue non-empty, pop ONE item, release r.mu, write to PTY. If the session went working again during the grace, do nothing (next idle re-arms). Timer is stopped and queue cleared on exit, kill and restart (Restart nils e.sess). Queue cap: 16 items / 64 KiB total; over cap -> `delivery_failed`.
+2. **Goroutine tracking.** Use `Daemon.runOp` (daemon.go ~186; refuses work after opsClosed; ops intentionally not waited in Shutdown, comment daemon.go:145-150). Only the PTY write needs it; PromptACP is synchronous and cheap. Test: Close with an in-flight delivery neither hangs nor panics.
+3. **Plugin exposure (security-sensitive -> Opus review before merge).** SEND_TO_SESSION lands in ControlRequestFrames and is therefore plugin-callable (docs/plugins.md:225-245; TestEveryFrameClassified wire/plugins_test.go:51). Decision for v1: **refuse for plugin principals** with `ErrCodeModeNotAllowed` (use `ops.principal`, daemon.go:1567 pattern; a `plugin:` prefix check), document the refusal in docs/plugins.md, test it. Rationale: typing into a PTY is the confused-deputy case in docs/design-docs/agent-orchestration.md; plugins get it only via a later explicit capability. Also: not in sessionModeFrames (daemon.go:1343) — real test `TestSendToSessionRefusedOnSessionMode`.
+4. **Enumerated sites added to Files to change:** wire/frame.go frame-name String() switch (~405-420) and ControlRequestFrames/response classification (~265-285); internal/daemon/control_frame_test.go bad_payload table (:70-86); daemon handleControlFrame switch (~1562); docs/plugins.md row; wire SessionEvent kinds (control.go:524-553), JS event handlers, DESIGN.md event list.
+5. **Idle semantics (typed path), stated plainly:** "idle" is whatever agentstate reports — hook-driven for Claude/Pi, but a 2 s no-output heuristic for shells/unhooked agents (registry.go:706-716). So typed delivery means "after output has been quiet 2 s", not "the program is reading input". Documented in the sheet copy ("sent when the session is quiet") and DESIGN notes. E2E asserts BOTH: nothing reaches the PTY while the shell is producing output (negative), and text lands after quiet (positive), plus queue-then-exit (queue dropped, no write).
+6. **PTY sanitiser (new, not typedPrompt).** `sanitizeInput(text)`: reject (bad_payload) if empty after trim or > 64 KiB; strip all C0 control bytes except `\n` and `\t`, strip DEL and ESC (so no escape-sequence or bracketed-paste-terminator injection); `\n` -> `\r` on write; no whitespace collapsing, no Windows `%`/`"` stripping. Table test incl. ESC[201~ injection, CRLF, tabs, 64 KiB boundary.
+7. **Ping-when-idle semantics.** Flag logic runs in announceStateLocked *before* the `cur==prev` early return is irrelevant: we key on `prev.State == working` (waiting/attention states do NOT count as working) and `cur.State ∈ {idle, exited, error}`; fires on the first such transition only, clears the flag in the same locked section. Cleared on Restart; in-memory only (dies with daemon; survives GUI reload since it lives in registry). Marker: new `SessionEvent` kind `idle_ping` (enumerated-sites treatment as in item 4), carrying title/body source (`LastSummary`). Every attached GUI receives it; double-notification is avoided by passing the session id as the `notify.Notify` tag so the OS collapses duplicates. Headless hived never pings (GUI owns `internal/notify`, per 336); changeset and features.json blurb say "in the app". **Operator decision flagged.**
+8. **Verification made real.** (a) `TestNoClaudeSessionKeyReads` — a Go test (runs in `go` layer/CI, not just scripts/test.sh) that walks non-test *.go and *.ts/*.tsx sources and fails on any string literal that contains both `.claude` and `sessions` AND ends a path segment with `.key` (regex `\.claude[^"\x60]*sessions[^"\x60]*\.key|sessions/\*\.key`); with a planted-violation self-test fixture proving it fires. No shell script. (b) Log line asserted: daemon test captures the logger and matches `send_to_session caller=(control|session) from=\S* to=\S+ delivery=\w+`; `from` for control path = "" / principal from `ops.principal`. (c) Contract: `scripts/check-daemon-contract.sh origin/main HEAD` AND `scripts/check-daemon-contract-selftest.sh`.
+9. **ACP queue.** `queue:true` on an `acp` session is NOT supported in v1: PromptACP's ErrACPBusy -> `session_busy` regardless of queue; the GUI hides the "queue until idle" button when kind=acp (shows "busy — try again"). Tests: TestSendACPBusyIgnoresQueue (registry), dom test button hidden for acp.
+10. Spec amendment in this PR: success criterion lists `SENT{delivery: socket|extension|typed|queued}`; add `acp`. `hived msg` resolves by exact id or exact name only (no prefix match — typed input into the wrong session is a footgun) and prints the resolved target before sending. Check DEFAULT_APP_BINDINGS / RESERVED_CHORDS for collisions before fixing Mod+Shift+M / Mod+Alt+B; menu-default-accelerators.json only if a menu item is added.
+
+---
+# REVISION 2 (round-2 must_fix; overrides conflicting text)
+11. **Exit path.** watchSessionExit (registry.go:1577-1620) does Exit()/logStateLocked/manual broadcast and never calls announceStateLocked. Extract one locked helper `settleSendStateLocked(e, prev, cur)` that (a) evaluates the ping rule and (b) on exit/kill/restart stops `drainTimer` and clears `pendingInputs`; call it from announceStateLocked AND watchSessionExit (where e.sess=nil). Tests: TestNotifyWhenIdleFiresOnExit, TestSendQueueClearedOnExit (asserts timer stopped). Verify `StateError` name exists in agentstate before listing it.
+12. **Key-read guard.** TestNoClaudeSessionKeyReads flags per FILE (non-test .go/.ts/.tsx): contains a `".claude"` token AND a `"sessions"` token AND a `.key` token (any literal ending/containing `.key` or `"*.key"`). Self-test fixture plants the realistic split form `filepath.Join(home, ".claude", "sessions", id+".key")` plus the single-literal form and asserts both are caught.
+13. Nice-to-haves adopted: Registry.Close stops all drain timers; fire path tolerates and logs a write error; plugin-refusal test runs over a real plugin socket; sheet copy notes the bell is lost on daemon restart.
+
+
+### Conventions card (added 2026-10-13, from AGENTS.md)
+
+Checks (verify each by exit code, not output grep). Toolchain: `export GOTOOLCHAIN=go$(sed -n 's/^go //p' go.mod)`.
+- Bootstrap (fresh worktree, needed for typecheck): `./scripts/ci-bootstrap.sh`
+- Tests, all layers: `scripts/test.sh` (run Playwright with `CI=1`)
+- Static: `for os in darwin linux windows; do GOOS=$os go vet ./... ; GOOS=$os staticcheck ./... ; done`
+- Frontend: `cd cmd/hivegui/frontend && npm run typecheck && npx biome ci .`; `scripts/ui-lint.sh`
+- Gates: `scripts/check-daemon-contract.sh origin/main HEAD`, `scripts/check-daemon-contract-selftest.sh`, `scripts/check-changeset.sh`
+- Conventions: wire JSON snake_case (JS readers `snake_case ?? camelCase`); update all 3 wire clients in lock-step (hivegui app_*.go, hived-ws-bridge, wire/testclient); shell-outs via `internal/proc` only; keybindings are data (bindings.ts/commands.ts/shortcuts.ts, README, menu accelerators json); changeset `.changesets/<slug>.md` + `site/features.json` entry `since: "Unreleased"`; never write a literal skip-ci marker in commit/PR text.
+
+### Spec success criteria -> phase
+
+| Criterion | Phase |
+|---|---|
+| SEND_TO_SESSION / SENT frames, error codes | 1 (delivery enum gains `acp`; amend spec) |
+| Typed path e2e, busy vs queue | 1 |
+| Ping-when-idle fires once, flag clears; GUI glyph | 1 |
+| `.key` source-tree guard | 1 |
+| Claude inbox: fake-socket test + manual checklist | 2 |
+| Pi extension inbox: node test + manual checklist | 3 |
+
+## Second opinion
+
+Independent reviewer (general-purpose subagent), 2 rounds.
+- Round 1: `revise`, confidence 8, 8 must-fix (drain site, runOp, plugin exposure, enumerated sites, idle semantics, PTY sanitiser, ping-flag semantics, vacuous verification, ACP queue). All applied -> REVISION 1.
+- Round 2: `revise`, confidence 8, 2 must-fix (exit path never reaches announceStateLocked; key-read guard evadable by split literals). Both applied -> REVISION 2. Not re-reviewed (one revise round allowed).
+
+## Decision log (additions)
+
+- **2026-10-13** — Ping-when-idle notification is fired by the GUI from a new `idle_ping` event; daemon never imports `internal/notify` (336 boundary). Headless hived never pings. Operator-approved.
+- **2026-10-13** — Plugins are refused `SEND_TO_SESSION` in v1 (`mode_not_allowed` via `ops.principal`): typing into a PTY is the confused-deputy case. Operator-approved.
+- **2026-10-13** — Delivered as `Phase: 1 of 3`; per-phase gate. Operator-approved.
+- **2026-10-13** — Queue is unsupported for `acp` sessions (`session_busy`); GUI hides the queue button for them.
 
 ## Open questions
 

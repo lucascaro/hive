@@ -4,7 +4,7 @@ title: "Session messaging: hand a session a message, get told when it idles"
 type: enhancement
 complexity: M
 priority: P2
-stage: PLAN
+stage: IMPLEMENT
 ---
 
 # Session messaging: hand a session a message, get told when it idles
@@ -55,7 +55,7 @@ the toggle. One-shot, per session.
 ## Success criteria
 
 - `SEND_TO_SESSION{session_id, text, queue}` control frame; response
-  `SENT{delivery: socket|extension|typed|queued}` or
+  `SENT{delivery: socket|extension|typed|queued|acp}` or
   `ERROR{code: session_busy|session_dead|delivery_failed}`.
 - Claude path: a Go test with a fake inbox socket asserts the exact
   line Hive writes; manual checklist: message arrives in a real Claude
