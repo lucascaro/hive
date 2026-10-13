@@ -165,6 +165,21 @@ unchanged and stays in core.
   the model as a prompt injection and ignored. Attributing it to the
   user, then quoting each passage with its comment, got it applied.
 
+## Session messaging (spec 338)
+
+`SEND_TO_SESSION{session_id, text, queue}` is answered with
+`SENT{session_id, delivery}` (`typed`, `queued` or `acp`) or an `ERROR`
+(`session_busy`, `session_dead`, `delivery_failed`, `no_such_session`,
+`bad_payload`). It is served on control connections only; plugin sockets
+and the narrowed `ModeSession` connection are refused, so what an agent
+inside a session may direct is decided by the orchestrator grant in
+[agent-orchestration.md](agent-orchestration.md), not here. Every send
+logs one `send_to_session caller=… from=… to=… delivery=…` line.
+`UPDATE_SESSION{notify_when_idle}` arms a one-shot bell; the daemon
+answers when the session next stops working with `SESSION_EVENT(idle_ping)`
+to every control connection, and each client fires its own notification
+(the daemon imports no notification code).
+
 ## Plugins are control clients (spec 460)
 
 The control plane's answer is not only for Hive's own windows. A
