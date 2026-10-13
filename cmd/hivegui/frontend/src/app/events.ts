@@ -83,6 +83,7 @@ import {
   dismissChoiceDialog,
 } from './modals/choice-dialog.js';
 import { KillProject } from '../bridge.js';
+import { onMessageError, onMessageSent } from './modals/message-session.js';
 import type { WorktreesPayload } from '../lib/worktrees.js';
 import { PHASE, phaseOf, isReady, isClosing } from '../lib/phase-steps.js';
 import { pruneNav } from '../lib/nav-history.js';
@@ -150,7 +151,14 @@ interface SessionEvent {
   // (SessionEventAttention). Both are kept out of 'updated' so that
   // churn from the PTY never triggers the full re-render 'updated'
   // means.
-  kind: 'added' | 'removed' | 'updated' | 'title' | 'attention' | 'state';
+  kind:
+    | 'added'
+    | 'removed'
+    | 'updated'
+    | 'title'
+    | 'attention'
+    | 'state'
+    | 'idle_ping';
   session: SessionInfo;
 }
 
@@ -320,6 +328,31 @@ function fireBellNotification(info: SessionInfo) {
   Notify(title, subtitle, body, info.id).catch(() => {
     // Best-effort; the visual sidebar pulse covers the user even if
     // the OS notification fails (no notify-send installed, etc.).
+  });
+}
+
+// A session armed with "notify me when idle" stopped working (spec 338).
+// Fired from the idle_ping event, which every window receives: the
+// session id is the tag, so the OS collapses the duplicates exactly as
+// it does for bells.
+function fireIdleNotification(info: SessionInfo) {
+  const proj = appData().projects.find(
+    (p) => p.id === (info.projectId ?? info.project_id),
+  );
+  const summary = (info.last_summary ?? '').trim();
+  const verdict =
+    info.state === DAEMON_STATE.exited
+      ? 'Exited'
+      : info.state === DAEMON_STATE.error
+        ? 'Stopped on an error'
+        : 'Finished';
+  Notify(
+    info.name || 'Session',
+    proj?.name ?? '',
+    summary ? `${verdict} — ${summary}` : `${verdict} — click to switch.`,
+    info.id,
+  ).catch(() => {
+    // Best-effort, like the bell: the sidebar state still shows it.
   });
 }
 
@@ -980,6 +1013,13 @@ export function wireDaemonEvents(injected: EventsDeps) {
       syncAttentionClass(ev.session);
       return;
     }
+    // An armed session stopped working (spec 338). The payload carries the
+    // flag already cleared, so storing it also drops the row's bell.
+    if (ev.kind === 'idle_ping') {
+      if (i >= 0) updateSession(ev.session);
+      fireIdleNotification(ev.session);
+      return;
+    }
     // The daemon's bell scanner fired, or another client reported that
     // the user looked. Its own kind, like 'title', so a bell never
     // triggers the full re-render that 'updated' means.
@@ -1234,6 +1274,17 @@ export function wireDaemonEvents(injected: EventsDeps) {
     clearAttention(sessionId);
   });
 
+  // The answer to SEND_TO_SESSION (spec 338). A refusal arrives below as
+  // control:error carrying the session id.
+  EventsOn('session:sent', (jsonStr: string) => {
+    try {
+      const r = JSON.parse(jsonStr) as { session_id: string; delivery: string };
+      onMessageSent(r.session_id, r.delivery);
+    } catch {
+      // A malformed frame is the daemon's bug; nothing to tell the user.
+    }
+  });
+
   EventsOn('control:error', async (jsonStr: string) => {
     let e: ControlError;
     try {
@@ -1244,6 +1295,9 @@ export function wireDaemonEvents(injected: EventsDeps) {
     }
     // This window's own install failure: the Plugins tab shows it.
     if (claimPluginInstallError(e)) return;
+    // A refused note: the sheet explains it (busy -> queue offer) or the
+    // status line does.
+    if (onMessageError(e.code, e.session_id)) return;
     // An ACP refusal names its session: give a refused prompt back to
     // its box and stop showing a refused snapshot as loading. The status
     // line below still says why.

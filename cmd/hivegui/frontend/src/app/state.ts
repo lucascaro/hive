@@ -60,6 +60,11 @@ export interface SessionInfo {
   // Daemon-owned, so every window and the menu bar agree; omitted when
   // false. Single-spelled, like `title`.
   needs_attention?: boolean;
+  // True while the session is armed to ping the user when it next stops
+  // working (internal/wire SessionInfo.NotifyWhenIdle, spec 338). One
+  // shot and in-memory on the daemon: it clears after firing and a
+  // daemon restart disarms it. Single-spelled snake_case.
+  notify_when_idle?: boolean;
   // What the daemon believes this session is doing right now
   // (internal/wire/control.go State*). Absent means idle — that is the
   // omitempty case AND what a daemon too old to send it looks like, on

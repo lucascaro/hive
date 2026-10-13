@@ -216,6 +216,18 @@ const quickIdea = modal(
   'quick-idea',
 );
 
+// ⇧⌘M toggles the note sheet closed. Enter and Escape inside the sheet are
+// its own and ModalShell's.
+const messageSession = modal(
+  'message-session',
+  'message-session',
+  () => [
+    { keys: ESCAPE, command: 'message-session.close' },
+    mirror('message-session', 'message-session.close'),
+  ],
+  'message-session',
+);
+
 const ideaInbox = modal(
   'idea-inbox',
   'idea-inbox',
@@ -342,6 +354,7 @@ export const KEY_SCOPES: readonly KeyScope[] = [
   settings,
   worktrees,
   quickIdea,
+  messageSession,
   ideaInbox,
   helpOverlay,
   helpModal,

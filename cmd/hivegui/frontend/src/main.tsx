@@ -49,6 +49,7 @@ import { initCommandPalette } from './app/modals/command-palette.js';
 import { initSettings, initThemeWatch } from './app/modals/settings.js';
 import { initWorktrees } from './app/modals/worktrees.js';
 import { initQuickIdea } from './app/modals/quick-idea.js';
+import { initMessageSession } from './app/modals/message-session.js';
 import { initIdeaInbox, refreshIdeas } from './app/modals/idea-inbox.js';
 import { initHelpOverlay } from './app/modals/help-overlay.js';
 import { initFindBox } from './app/find-box.js';
@@ -123,6 +124,7 @@ initFindBox({
   focusActiveTerm,
 });
 initQuickIdea({ setFocusedTile, refocusActiveTerm });
+initMessageSession({ setFocusedTile, refocusActiveTerm });
 initIdeaInbox({ setFocusedTile, refocusActiveTerm });
 initWhatsNew({ setFocusedTile, focusActiveTerm });
 // UI plugins (spec 471). The host acts only on enabled plugins with a

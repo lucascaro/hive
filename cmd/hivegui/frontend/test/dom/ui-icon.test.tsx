@@ -56,6 +56,6 @@ describe('<Icon>', () => {
     // Bump deliberately when adding an icon: the count is a tripwire
     // against a name declared with no symbol behind it, which renders an
     // empty <use> rather than failing.
-    expect(ICON_NAMES).toHaveLength(28);
+    expect(ICON_NAMES).toHaveLength(29);
   });
 });

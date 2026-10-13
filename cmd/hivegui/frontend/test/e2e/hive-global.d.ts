@@ -56,6 +56,8 @@ interface HiveTestApi {
   setSessionPlan?(id: string, done: number, total: number, tool?: string): void;
   setSessionSubagents?(id: string, running: number): void;
   ringBell?(id: string): void;
+  // Every SEND_TO_SESSION the GUI made (spec 338), in order.
+  sentMessages?(): { id: string; text: string; queue: boolean }[];
   // Plan review (#457).
   requestPlanReview?(id: string, plan: string, source?: string): string | null;
   withdrawPlanReview?(id: string): void;

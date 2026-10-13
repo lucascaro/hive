@@ -302,6 +302,11 @@ function rawGroups(isMac: boolean): { title: string; items: Row[] }[] {
         { command: 'worktrees', label: 'Worktrees in the active project' },
         { command: 'quick-idea', label: 'Capture an idea' },
         { command: 'idea-inbox', label: 'Ideas in the active project' },
+        { command: 'message-session', label: 'Message the active session' },
+        {
+          command: 'notify-when-idle',
+          label: 'Notify me when the active session goes idle',
+        },
       ],
     },
     {

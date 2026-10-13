@@ -555,6 +555,12 @@ export async function GetTranscriptLines(
 export async function SetSessionAttention(id: string, want: boolean) {
   return call('SetSessionAttention', { session_id: id, want: !!want });
 }
+export async function SendToSession(id: string, text: string, queue: boolean) {
+  return call('SendToSession', { session_id: id, text, queue: !!queue });
+}
+export async function SetSessionNotifyWhenIdle(id: string, want: boolean) {
+  return call('SetSessionNotifyWhenIdle', { session_id: id, want: !!want });
+}
 export async function MenuBarLoginItemStatus() {
   return 'not-registered';
 }

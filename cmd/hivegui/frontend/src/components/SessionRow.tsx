@@ -90,6 +90,8 @@ export interface SessionRowProps {
   onRestore: () => void;
   onRestart: () => void;
   onKill: () => void;
+  /** Arm or disarm the one-shot "notify me when idle" bell (spec 338). */
+  onToggleBell: () => void;
   onWorktrees: () => void;
   onColor: (hex: string) => void;
   onDoubleClick: () => void;
@@ -335,6 +337,16 @@ export function SessionRow(p: SessionRowProps) {
         </span>
       ) : null}
       <span className="hv-session-row__meta">
+        {s.notify_when_idle ? (
+          <span
+            className="hv-session-row__bell"
+            role="img"
+            title="Will notify when this session stops working"
+            aria-label="Will notify when this session stops working"
+          >
+            <Icon name="bell" size={12} />
+          </span>
+        ) : null}
         {hint ? <Kbd>{hint}</Kbd> : null}
         {code ? (
           <span
@@ -352,6 +364,21 @@ export function SessionRow(p: SessionRowProps) {
         ) : null}
       </span>
       <span className="hv-session-row__actions">
+        {s.alive === false ? null : (
+          <IconButton
+            icon="bell"
+            label={
+              s.notify_when_idle
+                ? `Stop notifying when ${name} is idle`
+                : `Notify me when ${name} is idle`
+            }
+            action="notify-when-idle"
+            onClick={(e) => {
+              e.stopPropagation();
+              p.onToggleBell();
+            }}
+          />
+        )}
         <IconButton
           icon={p.minimized ? 'plus' : 'minus'}
           label={`${p.minimized ? 'Restore' : 'Minimize'} ${name}`}

@@ -20,6 +20,7 @@ const base = {
   onRestore: noop,
   onRestart: noop,
   onKill: noop,
+  onToggleBell: noop,
   onWorktrees: noop,
   onColor: noop,
   onDoubleClick: noop,
