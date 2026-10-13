@@ -409,3 +409,7 @@ Independent reviewer (general-purpose subagent), 2 rounds.
    from the sender's registry entry. Hive has no entry. Either the
    message line carries a display name field (likely) or it shows as
    unnamed. Resolve with question 1.
+
+## PR convergence ledger
+
+- **2026-10-13 iter 1** — verdict: REQUEST_CHANGES; mergeable: MERGEABLE; findings_hash: 6abdefe7bbea14653a4d050a4d396854e25cdcf9bf56bda9fb742c93beb9b3a6; threads_open: 0; action: escalated:risky-fix-needs-human-decision; head_sha: ad46a1a.
