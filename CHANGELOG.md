@@ -8,6 +8,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+Message a session. ⇧⌘M hands the active session a note — typed into its terminal when it is quiet, or queued for when it next settles if it is working (an ACP session takes it as a turn, and refuses it while busy). ⌥⌘B, or the bell on a session's row, notifies you once when the session stops working. `hived msg <session> <text…>` does the same from a shell.
 - **A Help button in the sidebar, next to What's new.** It opens a Help panel that explains what projects, sessions, worktrees and agents are, links out to the README, docs, issue tracker and releases, and points at the keyboard-shortcuts overlay with its binding shown. Reachable from the command palette too. `⌘/` still opens the shortcuts list directly.
 Settings → Agents can now tailor the new-session menu. Untick an agent to hide
 it from the launcher — its running sessions keep working — and pin favourites
