@@ -153,7 +153,7 @@ func (r *Registry) SendToSession(id, text string, queue bool, origin string) (st
 		}
 		e.pendingInputs = append(e.pendingInputs, clean)
 		e.pendingBytes += len(clean)
-		if e.drainTimer == nil && e.settledLocked(time.Now()) {
+		if e.drainTimer == nil && settled(e.stateSnapshot()) {
 			e.armDrainLocked(r)
 		}
 		r.mu.Unlock()
@@ -222,9 +222,13 @@ func (r *Registry) settleSendStateLocked(e *Entry, prev, cur agentstate.Snapshot
 	}
 }
 
+// armDrainLocked schedules drainOne after drainGrace, or after the
+// typing hold if that ends later: a session that stays idle after our
+// own write has no state change to re-arm the timer.
 func (e *Entry) armDrainLocked(r *Registry) {
 	id := e.ID
-	e.drainTimer = time.AfterFunc(drainGrace, func() { r.drainOne(id) })
+	delay := max(drainGrace, typedHold-time.Since(e.typedAt))
+	e.drainTimer = time.AfterFunc(delay, func() { r.drainOne(id) })
 }
 
 // drainOne types ONE queued message into a session that is still settled
@@ -240,6 +244,11 @@ func (r *Registry) drainOne(id string) {
 	e.drainTimer = nil
 	if e.sess == nil || len(e.pendingInputs) == 0 || e.pendingPrompt != "" ||
 		!settled(e.stateSnapshot()) {
+		r.mu.Unlock()
+		return
+	}
+	if time.Since(e.typedAt) < typedHold {
+		e.armDrainLocked(r)
 		r.mu.Unlock()
 		return
 	}

@@ -500,3 +500,19 @@ func TestNotifyWhenIdleFiresOnACPTurnEnd(t *testing.T) {
 		t.Fatal("no idle_ping when an ACP turn ended")
 	}
 }
+
+// A note queued inside the hold after a direct send must still be
+// delivered even though an idle session raises no further transition.
+func TestQueuedInsideTypedHoldStillDrains(t *testing.T) {
+	skipOnWindows(t)
+	r := freshRegistry(t)
+	manualClock(t, r)
+	e, sess := liveSession(t, r, wire.CreateSpec{Name: "hold"})
+	if got, err := r.SendToSession(e.ID, "first", false, wire.OriginUser); err != nil || got != wire.DeliveryTyped {
+		t.Fatalf("first = %q, %v", got, err)
+	}
+	if got, err := r.SendToSession(e.ID, "second", true, wire.OriginUser); err != nil || got != wire.DeliveryQueued {
+		t.Fatalf("second = %q, %v; want queued", got, err)
+	}
+	waitFor(t, "second note after the hold", func() bool { return strings.Contains(ptyText(sess), "second") })
+}
