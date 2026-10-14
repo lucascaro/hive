@@ -88,7 +88,8 @@ function MessageSheet({
   // every multi-line input. When the session is busy Enter is not a send
   // (the sheet is asking a question), so it is left to the buttons.
   function onKeyDown(e: React.KeyboardEvent<HTMLTextAreaElement>) {
-    if (e.key !== 'Enter' || e.shiftKey) return;
+    // Enter confirms an IME candidate while composing.
+    if (e.key !== 'Enter' || e.shiftKey || e.nativeEvent.isComposing) return;
     e.preventDefault();
     if (!busy) send(false);
   }

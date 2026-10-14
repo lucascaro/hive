@@ -200,7 +200,7 @@
   },
   {
     "title": "Message a session",
-    "blurb": "Hand a running session a note with ⇧⌘M — queued if it is working — and get one notification when it stops, with ⌥⌘B or the bell on its row.",
+    "blurb": "Hand a running session a note with ⇧⌘M — queued if a terminal session is working — and get one notification when it stops, with ⌥⌘B or the bell on its row.",
     "status": "shipped",
     "since": "Unreleased"
   }

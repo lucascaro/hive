@@ -13,14 +13,14 @@ import type { SessionInfo } from '../../src/app/state';
 
 const noop = () => {};
 
-function mount(s: Partial<SessionInfo>, onToggleBell = noop) {
+function mount(s: Partial<SessionInfo>, onToggleBell = noop, onSelect = noop) {
   const p: SessionRowProps = {
     session: { id: 's1', name: 'api', alive: true, ...s } as SessionInfo,
     state: 'running',
     selected: false,
     minimized: false,
     index: null,
-    onSelect: noop,
+    onSelect,
     onMinimize: noop,
     onRestore: noop,
     onRestart: noop,
@@ -62,7 +62,7 @@ describe('session row bell', () => {
   it('the action button toggles, without selecting the row', () => {
     const onToggle = vi.fn();
     const onSelect = vi.fn();
-    const c = mount({}, onToggle);
+    const c = mount({}, onToggle, onSelect);
     const btn = c.querySelector<HTMLButtonElement>(
       '[data-action="notify-when-idle"]',
     );
