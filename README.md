@@ -127,9 +127,11 @@ What works:
 - Session messaging: **⇧⌘M** hands the active session a note — typed into
   its terminal with Enter, or submitted as a turn for an ACP session. A
   session that is working refuses it, and the sheet offers to queue the
-  note for its next idle moment (typed once, a few hundred milliseconds
-  after it settles). "Idle" is the daemon's view: for a plain shell or an
-  agent without hooks that means no output for two seconds, so a session
+  note for when it next settles (typed once, a few hundred milliseconds
+  after). Settled means idle, or an agent that reports its own turns
+  (Claude, Pi) finishing one; an ACP session that is busy refuses the
+  note. "Idle" is the daemon's view: for a plain shell or an agent
+  without hooks that means no output for two seconds, so a session
   sitting at a question you have not answered may take the note as the
   answer. **⌥⌘B** (or the bell on a session row) arms a one-shot
   notification for when the session stops working; it clears after
