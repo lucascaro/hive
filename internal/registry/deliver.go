@@ -7,6 +7,7 @@ import (
 	"time"
 	"unicode/utf8"
 
+	"github.com/lucascaro/hive/internal/agent"
 	"github.com/lucascaro/hive/internal/agentstate"
 	"github.com/lucascaro/hive/internal/wire"
 )
@@ -104,6 +105,9 @@ func (r *Registry) SendToSession(id, text string, queue bool, origin string) (st
 	if err != nil {
 		return "", err
 	}
+	if r.tryInbox(id, clean) {
+		return wire.DeliverySocket, nil
+	}
 	r.mu.Lock()
 	e, ok := r.entries[id]
 	if !ok {
@@ -167,6 +171,40 @@ func (r *Registry) SendToSession(id, text string, queue bool, origin string) (st
 		return "", ErrDeliveryFailed
 	}
 	return wire.DeliveryTyped, nil
+}
+
+// tryInbox hands the note to a live Claude through its own inbox, which
+// takes it between tool calls or as a new turn, idle or not. It reports
+// whether that worked; on false the caller runs the usual typed/queued
+// logic from scratch, so nothing that changed during the dial is trusted.
+//
+// Older queued notes keep their place: with any waiting, or an opening
+// prompt still unplaced, the inbox is not used.
+func (r *Registry) tryInbox(id, text string) bool {
+	r.mu.Lock()
+	e, ok := r.entries[id]
+	if !ok || r.inboxSend == nil || e.Agent != string(agent.IDClaude) || e.isACP() ||
+		e.sess == nil || e.pendingPrompt != "" || len(e.pendingInputs) > 0 {
+		r.mu.Unlock()
+		return false
+	}
+	// Claude names its session with the id Hive gave it at first launch;
+	// after a resume the agent's own id can differ.
+	ids := []string{e.AgentSessionID, e.ID}
+	send := r.inboxSend
+	r.mu.Unlock()
+	// Outside r.mu: a dial can block.
+	if err := send(ids, text); err != nil {
+		return false
+	}
+	r.mu.Lock()
+	if cur := r.entries[id]; cur == e {
+		// The agent is about to start a turn it has not reported yet; hold
+		// off typing a fallback note onto it.
+		e.typedAt = time.Now()
+	}
+	r.mu.Unlock()
+	return true
 }
 
 // ptyBytes is the on-the-wire form of a sanitised message: lines are

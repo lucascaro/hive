@@ -1754,6 +1754,10 @@ const (
 	// DeliveryACP means the text was submitted as a user turn of an
 	// ACP session (spec 496).
 	DeliveryACP = "acp"
+	// DeliverySocket means the text went to the agent's own inbox socket
+	// (Claude Code, spec 338 phase 2). The agent takes it between tool
+	// calls or as a new turn, so it is never queued or refused as busy.
+	DeliverySocket = "socket"
 )
 
 // SendToSessionReq is the SEND_TO_SESSION payload.

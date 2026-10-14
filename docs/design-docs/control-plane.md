@@ -168,7 +168,7 @@ unchanged and stays in core.
 ## Session messaging (spec 338)
 
 `SEND_TO_SESSION{session_id, text, queue}` is answered with
-`SENT{session_id, delivery}` (`typed`, `queued` or `acp`) or an `ERROR`
+`SENT{session_id, delivery}` (`typed`, `queued`, `acp` or `socket`) or an `ERROR`
 (`session_busy`, `session_dead`, `delivery_failed`, `no_such_session`,
 `bad_payload`). It is served on control connections only; plugin sockets
 and the narrowed `ModeSession` connection are refused, so what an agent
@@ -185,6 +185,19 @@ and ACP agents end a turn in `waiting_input`, not idle. A queued note is typed o
 the session is *settled*: idle, or `waiting_input` because the agent itself reported
 `turn_end` (`Snapshot.TurnEnded`). A question on screen is also `waiting_input` but
 never settled, so nothing is typed at it.
+
+A Claude Code session is tried first through its own inbox (`socket`):
+Hive looks up the registration file naming it (`sessionId` matches the
+entry's agent session id, then its Hive id), checks the socket and its
+directory belong to the current user, and writes one JSON line,
+`{"type":"user","message":{"role":"user","content":"…"}}`. Claude reads it
+between tool calls or starts a turn, so a working session is neither
+refused nor queued. Hive sends no auth line (optional on macOS/Linux,
+verified on claude 2.1.300) and never opens the credentials files beside
+the registrations. Any failure — no registration, wrong owner, dial or
+write error, claude older than 2.1.300, Windows — falls back to the typed
+or queued path above. Notes already queued are never overtaken. A Claude in
+bypass mode holds the message for approval in its own session.
 
 ## Plugins are control clients (spec 460)
 
@@ -230,7 +243,7 @@ classification.
 | `--settings` `enabledPlugins: {id: false}` overriding a user-level `true` | 457 | public settings key; the override was verified by hand on 2.1.282 | `agent/claude.go` `pluginReviewersToDisable` | the plugin reviewer prompts too; Settings warns |
 | positional initial prompt (`claude "…"`) | 337 | public, documented | `agent/claude.go` `PromptArgs` | typed-on-idle path |
 | `~/.claude/sessions/<pid>.json` (`sessionId`, `messagingSocketPath`, `pid`) | 338 | **internal**; documented only as "registers itself in files on disk" | `agent/claude_inbox.go` | typed-on-idle path |
-| inbox socket message line | 338 | **internal**; only the auth line and the 30 s timeout are documented | `agent/claude_inbox.go` + one version-pinned fixture | typed-on-idle path |
+| inbox socket message line | 338 | **internal**; only the auth line and the 30 s timeout are documented; line shape verified on claude 2.1.300 (`minInboxVersion`) | `agent/claude_inbox.go` + `agent/testdata/claude_inbox_line.json` (captured from a real run) | typed-on-idle path |
 
 Rules that follow:
 

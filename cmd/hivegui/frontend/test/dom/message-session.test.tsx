@@ -160,6 +160,19 @@ describe('message sheet', () => {
     );
   });
 
+  it('says "sent" for the agent inbox, and mentions the bypass hold', async () => {
+    await open();
+    await act(async () => {
+      m.onMessageSent('s1', 'socket');
+    });
+    expect(flashStatus).toHaveBeenCalledWith(
+      expect.stringMatching(/Sent to refactor.*held for approval/),
+    );
+    expect(flashStatus).not.toHaveBeenCalledWith(
+      expect.stringMatching(/Typed into/),
+    );
+  });
+
   it('session_busy keeps the text and offers to queue', async () => {
     await open();
     type('later please');

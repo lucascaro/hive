@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/lucascaro/hive/internal/acp/acptest"
+	"github.com/lucascaro/hive/internal/agent"
 	"github.com/lucascaro/hive/internal/agentstate"
 	"github.com/lucascaro/hive/internal/session"
 	"github.com/lucascaro/hive/internal/wire"
@@ -515,4 +516,198 @@ func TestQueuedInsideTypedHoldStillDrains(t *testing.T) {
 		t.Fatalf("second = %q, %v; want queued", got, err)
 	}
 	waitFor(t, "second note after the hold", func() bool { return strings.Contains(ptyText(sess), "second") })
+}
+
+// --- Claude inbox (spec 338, phase 2) ---
+
+type inboxCall struct {
+	ids  []string
+	text string
+}
+
+// claudeSession is liveSession pretending to be a Claude entry, with a
+// fake inbox recording what it was asked to deliver.
+func claudeSession(t *testing.T, r *Registry, name string, send func(c inboxCall) error) (*Entry, *session.Session, *[]inboxCall) {
+	t.Helper()
+	e, sess := liveSession(t, r, wire.CreateSpec{Name: name})
+	r.mu.Lock()
+	e.Agent = "claude"
+	e.AgentSessionID = "agent-" + e.ID
+	r.mu.Unlock()
+	var calls []inboxCall
+	r.inboxSend = func(ids []string, text string) error {
+		c := inboxCall{ids, text}
+		calls = append(calls, c)
+		if send == nil {
+			return nil
+		}
+		return send(c)
+	}
+	return e, sess, &calls
+}
+
+func TestSendClaudeUsesSocketWhileWorking(t *testing.T) {
+	skipOnWindows(t)
+	r := freshRegistry(t)
+	manualClock(t, r)
+	e, sess, calls := claudeSession(t, r, "c1", nil)
+	goWorking(t, r, e, sess, time.Now())
+	got, err := r.SendToSession(e.ID, "mid-turn note", false, wire.OriginUser)
+	if err != nil || got != wire.DeliverySocket {
+		t.Fatalf("send = %q, %v; want socket", got, err)
+	}
+	if len(*calls) != 1 || (*calls)[0].text != "mid-turn note" {
+		t.Fatalf("inbox calls = %+v", *calls)
+	}
+	if ids := (*calls)[0].ids; len(ids) != 2 || ids[0] != "agent-"+e.ID || ids[1] != e.ID {
+		t.Fatalf("ids = %v, want agent id then hive id", ids)
+	}
+	time.Sleep(150 * time.Millisecond)
+	if strings.Contains(ptyText(sess), "mid-turn note") {
+		t.Fatal("a socket delivery was also typed")
+	}
+}
+
+func TestSendClaudeFallsBackToTypedWhenInboxFails(t *testing.T) {
+	skipOnWindows(t)
+	r := freshRegistry(t)
+	manualClock(t, r)
+	e, sess, _ := claudeSession(t, r, "c2", func(inboxCall) error { return errors.New("dial refused") })
+	got, err := r.SendToSession(e.ID, "fall back", false, wire.OriginUser)
+	if err != nil || got != wire.DeliveryTyped {
+		t.Fatalf("send = %q, %v; want typed", got, err)
+	}
+	waitFor(t, "typed", func() bool { return strings.Contains(ptyText(sess), "fall back") })
+}
+
+func TestSendClaudeFallsBackToQueuedWhenBusyAndInboxDown(t *testing.T) {
+	skipOnWindows(t)
+	r := freshRegistry(t)
+	manualClock(t, r)
+	e, sess, _ := claudeSession(t, r, "c3", func(inboxCall) error { return agent.ErrNoInbox })
+	goWorking(t, r, e, sess, time.Now())
+	if got, err := r.SendToSession(e.ID, "later", true, wire.OriginUser); err != nil || got != wire.DeliveryQueued {
+		t.Fatalf("send = %q, %v; want queued", got, err)
+	}
+	if _, err := r.SendToSession(e.ID, "later2", false, wire.OriginUser); !errors.Is(err, ErrSessionBusy) {
+		t.Fatalf("err = %v, want ErrSessionBusy", err)
+	}
+}
+
+// Queued notes go first: the inbox must not overtake them.
+func TestSendClaudeSkipsInboxBehindAQueue(t *testing.T) {
+	skipOnWindows(t)
+	r := freshRegistry(t)
+	manualClock(t, r)
+	e, sess, calls := claudeSession(t, r, "c4", func(inboxCall) error { return agent.ErrNoInbox })
+	goWorking(t, r, e, sess, time.Now())
+	if _, err := r.SendToSession(e.ID, "older", true, wire.OriginUser); err != nil {
+		t.Fatal(err)
+	}
+	n := len(*calls)
+	r.inboxSend = func(ids []string, text string) error { *calls = append(*calls, inboxCall{ids, text}); return nil }
+	got, err := r.SendToSession(e.ID, "newer", true, wire.OriginUser)
+	if err != nil || got != wire.DeliveryQueued {
+		t.Fatalf("send behind a queue = %q, %v; want queued", got, err)
+	}
+	if len(*calls) != n {
+		t.Fatalf("inbox used while notes were queued: %+v", (*calls)[n:])
+	}
+}
+
+func TestSendClaudeSocketHoldsTheTypingWindow(t *testing.T) {
+	skipOnWindows(t)
+	r := freshRegistry(t)
+	manualClock(t, r)
+	e, _, _ := claudeSession(t, r, "c5", nil)
+	if got, err := r.SendToSession(e.ID, "one", false, wire.OriginUser); err != nil || got != wire.DeliverySocket {
+		t.Fatalf("send = %q, %v", got, err)
+	}
+	r.mu.Lock()
+	held := time.Since(e.typedAt) < typedHold
+	r.mu.Unlock()
+	if !held {
+		t.Fatal("typedAt not set after a socket delivery")
+	}
+}
+
+func TestSendNonClaudeNeverUsesInbox(t *testing.T) {
+	skipOnWindows(t)
+	r := freshRegistry(t)
+	manualClock(t, r)
+	e, _, calls := claudeSession(t, r, "sh", nil)
+	r.mu.Lock()
+	e.Agent = ""
+	r.mu.Unlock()
+	if got, err := r.SendToSession(e.ID, "plain", false, wire.OriginUser); err != nil || got != wire.DeliveryTyped {
+		t.Fatalf("send = %q, %v; want typed", got, err)
+	}
+	if len(*calls) != 0 {
+		t.Fatalf("inbox used for a non-claude session: %+v", *calls)
+	}
+}
+
+// A dial that never returns must not hold r.mu.
+func TestSendClaudeInboxDialDoesNotHoldTheLock(t *testing.T) {
+	skipOnWindows(t)
+	r := freshRegistry(t)
+	manualClock(t, r)
+	e, _, _ := claudeSession(t, r, "c6", nil)
+	entered, release := make(chan struct{}), make(chan struct{})
+	r.inboxSend = func([]string, string) error { close(entered); <-release; return nil }
+	done := make(chan struct{})
+	go func() { _, _ = r.SendToSession(e.ID, "slow", false, wire.OriginUser); close(done) }()
+	<-entered
+	lock := make(chan struct{})
+	go func() { r.Get(e.ID); close(lock) }()
+	select {
+	case <-lock:
+	case <-time.After(2 * time.Second):
+		t.Fatal("registry blocked behind a slow inbox dial")
+	}
+	close(release)
+	<-done
+}
+
+// The session dies while the dial is in flight: the fallback re-checks
+// from scratch rather than trusting what it saw before.
+func TestSendClaudeFallbackRechecksAfterDial(t *testing.T) {
+	skipOnWindows(t)
+	r := freshRegistry(t)
+	manualClock(t, r)
+	e, _, _ := claudeSession(t, r, "c7", nil)
+	r.inboxSend = func([]string, string) error {
+		r.mu.Lock()
+		e.sess = nil
+		r.mu.Unlock()
+		return errors.New("gone")
+	}
+	if _, err := r.SendToSession(e.ID, "x", false, wire.OriginUser); !errors.Is(err, ErrNoLiveSession) {
+		t.Fatalf("err = %v, want ErrNoLiveSession", err)
+	}
+}
+
+// A socket send to an idle Claude starts a turn; the hook tier reports it
+// and the idle ping still fires exactly once at its end.
+func TestNotifyWhenIdleFiresOnceAfterSocketDelivery(t *testing.T) {
+	skipOnWindows(t)
+	r := freshRegistry(t)
+	manualClock(t, r)
+	e, _, _ := claudeSession(t, r, "c8", nil)
+	ch, unsub := r.Subscribe()
+	defer unsub()
+	arm(t, r, e.ID)
+	if got, err := r.SendToSession(e.ID, "go", false, wire.OriginUser); err != nil || got != wire.DeliverySocket {
+		t.Fatalf("send = %q, %v", got, err)
+	}
+	hookEvent(t, r, e.ID, wire.AgentEventPrompt)
+	hookEvent(t, r, e.ID, wire.AgentEventTurnEnd)
+	if _, ok := nextKind(t, ch, wire.SessionEventIdlePing, 2*time.Second); !ok {
+		t.Fatal("no idle ping after the turn the socket note started")
+	}
+	hookEvent(t, r, e.ID, wire.AgentEventPrompt)
+	hookEvent(t, r, e.ID, wire.AgentEventTurnEnd)
+	if _, ok := nextKind(t, ch, wire.SessionEventIdlePing, 300*time.Millisecond); ok {
+		t.Fatal("idle ping fired twice")
+	}
 }
