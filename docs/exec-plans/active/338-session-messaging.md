@@ -3,10 +3,10 @@
 - **Spec:** [docs/product-specs/338-session-messaging.md](../../product-specs/338-session-messaging.md)
 - **Design:** [docs/design-docs/control-plane.md](../../design-docs/control-plane.md)
 - **Issue:** —
-- **Branch:** `feature/338-session-messaging`
-- **PR:** [#513](https://github.com/lucascaro/hive/pull/513)
+- **Branch:** `feature/338-claude-inbox`
+- **PR:** —
 - **Status:** active
-- **Phase:** 1 of 3
+- **Phase:** 2 of 3
 
 ## Summary
 
