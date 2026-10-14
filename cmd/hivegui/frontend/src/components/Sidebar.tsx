@@ -30,6 +30,7 @@ import {
   Confirm,
   KillSession,
   RestartSession,
+  SetSessionNotifyWhenIdle,
   UpdateProject,
   UpdateSession,
   SetWorktreeLabel,
@@ -287,6 +288,11 @@ const SessionItem = memo(function SessionItem(p: SessionItemProps) {
         RestartSession(id).catch(reportFailure('restart session'))
       }
       onKill={() => killSession(live())}
+      onToggleBell={() =>
+        SetSessionNotifyWhenIdle(id, !live().notify_when_idle).catch(
+          reportFailure('toggle idle bell'),
+        )
+      }
       onWorktrees={() => {
         const proj = appData().projects.find(
           (x) => x.id === readProjectId(live()),

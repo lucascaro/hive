@@ -124,6 +124,21 @@ What works:
   prompt at all: the launcher says so before you start. A linked
   idea's session carries a small idea glyph on its sidebar row
 
+- Session messaging: **⇧⌘M** hands the active session a note — typed into
+  its terminal with Enter, or submitted as a turn for an ACP session. A
+  session that is working refuses it, and the sheet offers to queue the
+  note for when it next settles (typed once, a few hundred milliseconds
+  after). Settled means idle, or an agent that reports its own turns
+  (Claude, Pi) finishing one; an ACP session that is busy refuses the
+  note. "Idle" is the daemon's view: for a plain shell or an agent
+  without hooks that means no output for two seconds, so a session
+  sitting at a question you have not answered may take the note as the
+  answer. **⌥⌘B** (or the bell on a session row) arms a one-shot
+  notification for when the session stops working; it clears after
+  firing, and a daemon restart disarms it. `hived msg <id-or-name> <text…>`
+  does the same from an ordinary shell (exact id or exact name only).
+  Plugins cannot send messages. Delivery through Claude's and Pi's own
+  inboxes comes later; today every agent gets the typed path
 - In-app updates (macOS): pick a release or latest-commit channel in
   Settings, then Update → Reload (or Restart, when the daemon changed)
 - What's new: the gift in the sidebar header opens a list of what has
@@ -330,6 +345,8 @@ These are the defaults. Rebind any of them, and any plugin command, under **Sett
 | ⌘E | Worktrees in the active project (browse, resume, delete) |
 | ⌘I | Capture an idea for later (note, kind, project) |
 | ⇧⌘I | Ideas captured for the active project |
+| ⇧⌘M | Message the active session: a note typed into it when it is quiet (queued if it is working) |
+| ⌥⌘B | Notify me once when the active session stops working (Ctrl+Alt+Shift+B on Windows and Linux) |
 | ⌘1–9 | Jump to nth session |
 | ⌘= / ⌘- / ⌘0 | Font size up / down / reset |
 | ⌘S | Toggle sidebar |

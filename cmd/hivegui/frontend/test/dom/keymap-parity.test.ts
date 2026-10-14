@@ -99,6 +99,11 @@ function legacyResolve(scope: string, e: Ev, mac: boolean): Out {
         return 'quick-idea.close';
       if (cmdOrCtrl(e, mac) && e.shiftKey && isI) return 'idea-inbox';
       return null;
+    case 'message-session':
+      return e.key === 'Escape' ||
+        (cmdOrCtrl(e, mac) && e.shiftKey && (e.key === 'm' || e.key === 'M'))
+        ? 'message-session.close'
+        : null;
     case 'idea-inbox':
       if (e.key === 'Escape' || (cmdOrCtrl(e, mac) && e.shiftKey && isI))
         return 'idea-inbox.close';
@@ -306,6 +311,16 @@ const APPROVED = {
 // Spec 477's approved deltas, which change WHICH command a key runs
 // rather than whether one runs, so they name both ends of the change.
 const APPROVED_477 = {
+  // Spec 338: two new chords. ⇧⌘M (⇧Ctrl+M) is new. ⌥⌘B / Ctrl+Alt+Shift+B
+  // now name notify-when-idle; the pre-478 matcher ignored Alt, so they
+  // used to run next-attention / jump-back as an accident of that.
+  N: (s: string, e: Ev, mac: boolean, was: string | null, now: string | null) =>
+    s === 'app' &&
+    ((/^m$/i.test(e.key) && was === null && now === 'message-session') ||
+      (/^b$/i.test(e.key) &&
+        e.altKey &&
+        now === 'notify-when-idle' &&
+        (mac ? was === 'next-attention' : was === 'jump-back'))),
   // D2: macOS ⌘F gains a keydown binding to find-in-session. The native
   // menu's ⌘F still takes the key first; the chord is in the data so the
   // menu accelerator is derived from it.
@@ -334,7 +349,7 @@ describe('key bindings vs the pre-478 matchers', () => {
   const seen: Record<
     keyof typeof APPROVED | keyof typeof APPROVED_477,
     number
-  > = { A: 0, B: 0, D: 0, F: 0, M: 0 };
+  > = { A: 0, B: 0, D: 0, F: 0, M: 0, N: 0 };
   const unexpected: string[] = [];
 
   for (const mac of [true, false]) {
@@ -370,6 +385,7 @@ describe('key bindings vs the pre-478 matchers', () => {
     expect(seen.D).toBeGreaterThan(0);
     expect(seen.F).toBeGreaterThan(0);
     expect(seen.M).toBeGreaterThan(0);
+    expect(seen.N).toBeGreaterThan(0);
   });
 
   it('pins one representative cell per delta', () => {

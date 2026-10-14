@@ -34,6 +34,7 @@ import {
   handleArrow,
   jumpBack,
   jumpToAttention,
+  messageActiveSession,
   navBack,
   navForward,
   navSession,
@@ -45,6 +46,7 @@ import {
   toggleActivity,
   toggleAllGrid,
   toggleIdeaInbox,
+  toggleNotifyWhenIdle,
   toggleProjectGrid,
   toggleScrollDebug,
   toggleSidebar,
@@ -77,6 +79,7 @@ import {
 } from './modals/launcher.js';
 import { openProjectEditor } from './modals/project-editor.js';
 import { closeQuickIdea } from './modals/quick-idea.js';
+import { closeMessageSession } from './modals/message-session.js';
 import { dismissSettings, openSettings } from './modals/settings.js';
 import { openWhatsNew, closeWhatsNew } from './modals/whats-new.js';
 import { closeWorktrees } from './modals/worktrees.js';
@@ -152,6 +155,19 @@ const PALETTE: readonly Command[] = [
   // path does elsewhere (see captureIdea in actions.ts).
   { id: 'quick-idea', title: 'Capture Idea…', run: () => captureIdea() },
   { id: 'idea-inbox', title: 'Ideas…', run: () => toggleIdeaInbox() },
+  // Spec 338. ⇧⌘M hands the focused session a note; ⌥⌘B arms a one-shot
+  // ping for when it stops working. Palette-reachable like everything
+  // else, since the sidebar has no context menu to hang them on.
+  {
+    id: 'message-session',
+    title: 'Message Session…',
+    run: () => messageActiveSession(),
+  },
+  {
+    id: 'notify-when-idle',
+    title: 'Notify When Session Is Idle',
+    run: () => toggleNotifyWhenIdle(),
+  },
   {
     id: 'close-session',
     title: 'Close Session',
@@ -302,6 +318,7 @@ const UNLISTED: readonly Command[] = [
   { id: 'settings.close', run: () => dismissSettings() },
   { id: 'worktrees.close', run: () => closeWorktrees() },
   { id: 'quick-idea.close', run: () => closeQuickIdea() },
+  { id: 'message-session.close', run: () => closeMessageSession() },
   { id: 'idea-inbox.close', run: () => closeIdeaInbox() },
   { id: 'help-overlay.close', run: () => closeHelpOverlay() },
   { id: 'help-modal.close', run: () => closeHelp() },

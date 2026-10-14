@@ -210,6 +210,20 @@ type Entry struct {
 	// from, flipped to `started` once the prompt is delivered. Also
 	// in-memory only, and for the same reason.
 	ideaID string
+
+	// Session messaging (spec 338). All in-memory only: a daemon restart
+	// disarms the bell and drops the queue, like pendingPrompt.
+	//
+	// pendingInputs is the FIFO of messages sent with queue=true while
+	// the session was busy, drained ONE per idle transition by
+	// drainTimer; pendingBytes is its total size. notifyWhenIdle is the
+	// one-shot idle-ping arm. See deliver.go.
+	pendingInputs  []string
+	pendingBytes   int
+	drainTimer     *time.Timer
+	notifyWhenIdle bool
+	// typedAt is when messaging last wrote into the PTY; see typedHold.
+	typedAt time.Time
 }
 
 // Project is the registry-side representation of a project.
@@ -312,6 +326,7 @@ func (e *Entry) Info() wire.SessionInfo {
 		WorktreeBranch: e.WorktreeBranch,
 		LastError:      e.LastError,
 		PendingPrompt:  e.pendingPrompt,
+		NotifyWhenIdle: e.notifyWhenIdle,
 		// Copied, not shared: Info snapshots escape r.mu and a caller
 		// must not be able to mutate the entry's own pending choice.
 		PendingWorktreeChoice: e.pendingChoiceCopy(),
@@ -720,6 +735,7 @@ func (r *Registry) announceStateLocked(e *Entry, prev agentstate.Snapshot, reaso
 		r.broadcastLocked(wire.SessionEventAttention, e.Info())
 	}
 	r.broadcastLocked(wire.SessionEventState, e.Info())
+	r.settleSendStateLocked(e, prev, cur)
 }
 
 // ResolvePrompt settles a session's pending opening prompt: paste it
@@ -1504,6 +1520,7 @@ func (r *Registry) Restart(id string) error {
 		r.mu.Lock()
 		if e2, ok := r.entries[id]; ok && e2.sess == sess {
 			e2.sess = nil
+			e2.dropSendStateLocked()
 			// watchSessionExit will no-op, so cancel the old agent's
 			// review here; Revive's broadcast withdraws it in every GUI.
 			if e2.planReview != nil {
@@ -1590,6 +1607,11 @@ func (r *Registry) watchSessionExit(id string, sess *session.Session) {
 	prev := e.stateSnapshot()
 	e.machine().Exit()
 	logStateLocked(e, prev, e.stateSnapshot(), "exit")
+	// This path does not go through announceStateLocked, so the
+	// messaging half of the change is settled here: an armed session
+	// that was working pings, and the queue and its timer die with the
+	// process.
+	r.settleSendStateLocked(e, prev, e.stateSnapshot())
 	// Stop any post-spawn AgentSessionID capture that's still
 	// polling — the session is gone, no point waiting for codex's
 	// rollout file. The capture goroutine will return ctx.Canceled
@@ -1760,6 +1782,7 @@ func (r *Registry) kill(id string, force, removeWorktree bool) error {
 		e.planReview.finish(wire.PlanReviewDecision{Status: wire.PlanReviewCancelled})
 		e.planReview = nil
 	}
+	e.dropSendStateLocked()
 	delete(r.entries, id)
 	for i, sid := range r.order {
 		if sid == id {
@@ -1906,15 +1929,26 @@ func (r *Registry) Update(req wire.UpdateSessionReq) (*Entry, error) {
 	if req.Color != nil {
 		e.Color = *req.Color
 	}
+	if req.NotifyWhenIdle != nil {
+		// Arming a session with no process would never fire; ignore it
+		// rather than leave a bell that looks set.
+		e.notifyWhenIdle = *req.NotifyWhenIdle && e.Alive()
+	}
 	orderChanged := req.Order != nil
 	if orderChanged {
 		r.moveLocked(e.ID, *req.Order)
 	}
-	if err := r.persistEntryLocked(e); err != nil {
-		return e, err
-	}
-	if err := r.persistIndexLocked(); err != nil {
-		return e, err
+	// The bell lives in memory only: arming it costs no disk write, and
+	// a failing disk must not swallow the broadcast clients wait on.
+	bellOnly := req.NotifyWhenIdle != nil && req.Name == nil && req.Color == nil &&
+		req.Order == nil && req.ProjectID == nil
+	if !bellOnly {
+		if err := r.persistEntryLocked(e); err != nil {
+			return e, err
+		}
+		if err := r.persistIndexLocked(); err != nil {
+			return e, err
+		}
 	}
 	if orderChanged {
 		// Notify clients of every session, since reindexLocked
@@ -1942,6 +1976,7 @@ func (r *Registry) Close() error {
 	// apply its result, and it must never broadcast into listeners
 	// Close is about to close.
 	r.stopClassifier()
+	r.stopDrainTimers()
 	r.mu.Lock()
 	for ch := range r.listeners {
 		close(ch)

@@ -187,6 +187,12 @@ type Snapshot struct {
 	CurrentTool string
 	// SubagentsRunning counts subagents started and not yet ended.
 	SubagentsRunning int
+	// TurnEnded is true while State is waiting_input BECAUSE the agent
+	// reported turn_end — it finished and is back at its prompt. A
+	// question on screen, a bell, and a Laya classification are
+	// waiting_input too but leave this false: typing at them would
+	// answer, not start, a turn.
+	TurnEnded bool
 }
 
 // Machine tracks one session. The zero value is not usable; call New.
@@ -232,6 +238,13 @@ type Machine struct {
 	extInstance string
 	extSeq      uint64
 	extState    State
+	// extTurnEnded rides with extState so Replay restores a finished
+	// turn as finished.
+	extTurnEnded bool
+	// turnEnded: the current waiting_input came from KindTurnEnd. Only
+	// meaningful while state is waiting_input (Snapshot gates on it);
+	// every other way of changing state clears it.
+	turnEnded bool
 
 	// act is the tool ring and plan snapshot. Its lifetime is this
 	// struct's: New zeroes it, and a fresh Machine on restart/revive
@@ -264,6 +277,7 @@ func (m *Machine) Snapshot() Snapshot {
 		PlanDone:         done,
 		PlanTotal:        total,
 		CurrentTool:      current,
+		TurnEnded:        m.turnEnded && m.state == wire.StateWaitingInput,
 	}
 }
 
@@ -321,6 +335,7 @@ func (m *Machine) Output(now time.Time) bool {
 	// kept coming. Take it back.
 	changed := m.state != wire.StateWorking || m.source != wire.StateSourceHeuristic
 	m.state = wire.StateWorking
+	m.turnEnded = false
 	m.source = wire.StateSourceHeuristic
 	return changed
 }
@@ -355,6 +370,7 @@ func (m *Machine) Bell(now time.Time) bool {
 		}
 	}
 	m.state = wire.StateWaitingInput
+	m.turnEnded = false
 	m.noteExtState()
 	return true
 }
@@ -384,6 +400,7 @@ func (m *Machine) Exit() bool {
 // Deliberately not folded into Apply: this is not something an agent
 // reported, so it must not touch the tier or the staleness clock.
 func (m *Machine) ClearWaiting() bool {
+	m.turnEnded = false
 	switch m.state {
 	case wire.StateWaitingInput, wire.StateError:
 		// Nothing runs until the next prompt is submitted.
@@ -407,6 +424,7 @@ func (m *Machine) ClearWaiting() bool {
 func (m *Machine) noteExtState() {
 	if m.source == wire.StateSourceExtension {
 		m.extState = m.state
+		m.extTurnEnded = m.turnEnded
 	}
 }
 
@@ -449,6 +467,7 @@ func (m *Machine) Replay(ev Event) (handled, changed bool) {
 	before := m.Snapshot()
 	m.source = wire.StateSourceExtension
 	m.state = m.extState
+	m.turnEnded = m.extTurnEnded
 	return true, m.Snapshot() != before
 }
 
@@ -467,6 +486,7 @@ func (m *Machine) Tick(now time.Time) bool {
 		return false
 	}
 	m.state = wire.StateIdle
+	m.turnEnded = false
 	// The tier is stale by definition here — trusted() said so above —
 	// so this idle is ours, inferred from silence, not something the
 	// agent reported. Say so, the way Output does when it takes a
@@ -601,6 +621,13 @@ func (m *Machine) Apply(ev Event) bool {
 	}
 
 	switch ev.Kind {
+	case KindTurnEnd, KindWaitingInput, KindPing, KindPlan, KindPlanItem:
+		// These leave a finished turn finished (waiting_input after
+		// turn_end stays a turn end through Claude's idle_prompt).
+	default:
+		m.turnEnded = false
+	}
+	switch ev.Kind {
 	case KindPrompt:
 		m.state = wire.StateWorking
 		// First prompt only: the question the session was opened to
@@ -612,6 +639,7 @@ func (m *Machine) Apply(ev Event) bool {
 		}
 	case KindTurnEnd:
 		m.state = wire.StateWaitingInput
+		m.turnEnded = true
 		m.lastSummary = text
 		m.act.endTurn(ev.At)
 		if ev.RunningAgents != nil {
@@ -664,6 +692,7 @@ func (m *Machine) Apply(ev Event) bool {
 
 	if keyed {
 		m.extState = m.state
+		m.extTurnEnded = m.turnEnded
 	}
 	return m.Snapshot() != before
 }
@@ -728,6 +757,7 @@ func (m *Machine) Classify(s State, now time.Time) bool {
 		return false
 	}
 	m.state = s
+	m.turnEnded = false
 	m.source = wire.StateSourceLaya
 	return true
 }

@@ -27,6 +27,8 @@ export {
   ListClosedSessions,
   UpdateSession,
   SetSessionAttention,
+  SendToSession,
+  SetSessionNotifyWhenIdle,
   GetActivity,
   GetAcpTranscript,
   PromptAcp,

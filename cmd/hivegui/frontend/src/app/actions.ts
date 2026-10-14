@@ -9,7 +9,13 @@
 // from main.tsx, so this module never imports the focus pipeline (see the
 // acyclic-modules note at the wiring block in main.tsx).
 
-import { KillProject, Confirm, SetClipboardText, Notify } from '../bridge.js';
+import {
+  KillProject,
+  Confirm,
+  SetClipboardText,
+  Notify,
+  SetSessionNotifyWhenIdle,
+} from '../bridge.js';
 import { readNeedsAttention } from './state.js';
 import { appStore } from '../store/store.js';
 import {
@@ -30,6 +36,10 @@ import {
 } from './selectors.js';
 import { openWorktrees } from './modals/worktrees.js';
 import { openQuickIdea, closeQuickIdea } from './modals/quick-idea.js';
+import {
+  closeMessageSession,
+  openMessageSession,
+} from './modals/message-session.js';
 import {
   openIdeaInbox,
   closeIdeaInbox,
@@ -494,6 +504,31 @@ export function captureIdea() {
     return;
   }
   openQuickIdea();
+}
+
+// messageActiveSession is ⇧⌘M: open the note sheet addressed to the
+// focused session, or close it if it is already up. Declines (returns
+// false) with nothing live to address, so the key falls through.
+export function messageActiveSession(): boolean | undefined {
+  if (isModalOpen('message-session')) {
+    closeMessageSession();
+    return;
+  }
+  const s = appData().sessions.find((x) => x.id === appData().activeId);
+  if (!s || s.alive === false) return false;
+  openMessageSession(s.id);
+}
+
+// toggleNotifyWhenIdle is ⌥⌘B: arm or disarm the one-shot "tell me when
+// this session stops working" bell on the focused session. The daemon owns
+// the flag (it clears it after firing), so this only asks.
+export function toggleNotifyWhenIdle(sessionId?: string): boolean | undefined {
+  const id = sessionId ?? appData().activeId;
+  const s = appData().sessions.find((x) => x.id === id);
+  if (!s || s.alive === false) return false;
+  SetSessionNotifyWhenIdle(s.id, !s.notify_when_idle).catch(
+    reportFailure('toggle idle bell'),
+  );
 }
 
 // toggleIdeaInbox is ⇧⌘I. The capture sheet closes first: it is the

@@ -250,6 +250,43 @@ func (c *Client) SetSessionKind(sessionID, kind string) error {
 	return c.cli.WriteJSON(wire.FrameSetSessionKind, wire.SetSessionKindReq{SessionID: sessionID, Kind: kind})
 }
 
+// SendToSession hands a session a note (spec 338). Use AwaitSent to
+// consume the answer.
+func (c *Client) SendToSession(sessionID, text string, queue bool) error {
+	return c.cli.WriteJSON(wire.FrameSendToSession, wire.SendToSessionReq{SessionID: sessionID, Text: text, Queue: queue})
+}
+
+// AwaitSent consumes frames until the SENT reply to a SEND_TO_SESSION
+// arrives, or an ERROR does (returned as the error).
+func (c *Client) AwaitSent(timeout time.Duration) (wire.SentResp, error) {
+	deadline := time.Now().Add(timeout)
+	for {
+		remaining := time.Until(deadline)
+		if remaining <= 0 {
+			return wire.SentResp{}, errors.New("testclient: timeout waiting for SENT")
+		}
+		select {
+		case msg := <-c.snaps:
+			switch msg.t {
+			case wire.FrameSent:
+				var resp wire.SentResp
+				if err := json.Unmarshal(msg.payload, &resp); err != nil {
+					return wire.SentResp{}, err
+				}
+				return resp, nil
+			case wire.FrameError:
+				var e wire.Error
+				_ = json.Unmarshal(msg.payload, &e)
+				return wire.SentResp{}, fmt.Errorf("testclient: daemon refused: %s: %s", e.Code, e.Message)
+			}
+		case err := <-c.errs:
+			return wire.SentResp{}, err
+		case <-time.After(remaining):
+			return wire.SentResp{}, errors.New("testclient: timeout waiting for SENT")
+		}
+	}
+}
+
 // GetActivity asks for one session's stored tool ring and plan.
 func (c *Client) GetActivity(sessionID string) error {
 	return c.cli.WriteJSON(wire.FrameGetActivity, wire.GetActivityReq{SessionID: sessionID})

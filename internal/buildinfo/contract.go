@@ -24,6 +24,11 @@ package buildinfo
 // History (newest first), so a bump is a decision with a record and
 // not just a number going up:
 //
+//	27 — Session messaging (spec 338, phase 1). New frames SEND_TO_SESSION
+//	    (0x46) / SENT (0x47), the notify_when_idle flag on SessionInfo and
+//	    UPDATE_SESSION, and the SESSION_EVENT(idle_ping) kind. A GUI built
+//	    after this against an older daemon gets a message sheet whose sends
+//	    are rejected as unknown frames and a bell that never rings.
 //	26 — ACP folder trust (issue 505). A Claude ACP session in a folder
 //	    that is neither a Hive project nor trusted in Claude's own state
 //	    starts with settingSources ["user"], so the folder's hooks,
@@ -237,7 +242,7 @@ package buildinfo
 //	    before this cannot see or clear the flag.
 //	1 — first contract; everything up to and including the
 //	    CLIENT_COMMAND relay.
-const DaemonContract = 26
+const DaemonContract = 27
 
 // Identity is this binary's full build identity. `hived --version
 // --json` prints it, and Welcome carries the same three values, so a

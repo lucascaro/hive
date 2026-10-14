@@ -127,6 +127,18 @@ export const DEFAULT_APP_BINDINGS: readonly Binding[] = [
   { keys: 'Mod+E', command: 'worktrees' },
   { keys: 'Mod+I', command: 'quick-idea' },
   { keys: 'Mod+Shift+I', command: 'idea-inbox' },
+  // Session messaging (spec 338).
+  { keys: 'Mod+Shift+M', command: 'message-session' },
+  // ⌥⌘B on macOS, where the ⌥ spelling needs [KeyB] (⌥B types '∫'). Off
+  // macOS Ctrl+Alt+Shift, like activity-grid above: AltGr reports as
+  // Ctrl+Alt, so a bare Ctrl+Alt chord would lose a layout's character.
+  {
+    keys: {
+      mac: ['Mod+Alt+B', 'Mod+Alt+[KeyB]'],
+      other: ['Ctrl+Alt+Shift+B', 'Ctrl+Alt+Shift+[KeyB]'],
+    },
+    command: 'notify-when-idle',
+  },
   { keys: 'Mod+S', command: 'toggle-sidebar' },
   { keys: 'Mod+G', command: 'toggle-project-grid' },
   { keys: 'Mod+Shift+G', command: 'toggle-all-grid' },

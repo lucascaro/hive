@@ -846,3 +846,45 @@ func TestACPTierNeverGoesStale(t *testing.T) {
 		t.Errorf("state = %q, want waiting_permission", got)
 	}
 }
+
+// TurnEnded separates "the agent finished its turn" from every other
+// reason for waiting_input; message delivery types only at the former.
+func TestSnapshotTurnEnded(t *testing.T) {
+	steps := []struct {
+		name string
+		do   func(m *Machine)
+		want bool
+	}{
+		{"prompt", func(m *Machine) { m.Apply(hookEvent(KindPrompt, t0, "x")) }, false},
+		{"turn_end", func(m *Machine) { m.Apply(hookEvent(KindTurnEnd, t0.Add(1*time.Second), "")) }, true},
+		{"idle_prompt notification keeps it", func(m *Machine) { m.Apply(hookEvent(KindWaitingInput, t0.Add(2*time.Second), "")) }, true},
+		{"next prompt", func(m *Machine) { m.Apply(hookEvent(KindPrompt, t0.Add(3*time.Second), "y")) }, false},
+		{"question", func(m *Machine) { m.Apply(hookEvent(KindWaitingInput, t0.Add(4*time.Second), "")) }, false},
+		{"turn_end again", func(m *Machine) { m.Apply(hookEvent(KindTurnEnd, t0.Add(5*time.Second), "")) }, true},
+		{"user answers", func(m *Machine) { m.ClearWaiting() }, false},
+	}
+	m := New(t0)
+	for _, s := range steps {
+		s.do(m)
+		if got := m.Snapshot().TurnEnded; got != s.want {
+			t.Errorf("%s: TurnEnded = %v, want %v (state %q)", s.name, got, s.want, m.Snapshot().State)
+		}
+	}
+}
+
+// A heartbeat Replay restores the state the extension last reported; a
+// finished turn must come back finished, not as a bare waiting_input.
+func TestReplayRestoresTurnEnded(t *testing.T) {
+	m := New(t0)
+	deliver(m, piKeyed(KindTurnEnd, "A", 1, t0, t0))
+	// The heuristic tier takes the session over (what Output/Classify
+	// do once the tier goes stale), clearing the flag.
+	m.state, m.source, m.turnEnded = wire.StateWorking, wire.StateSourceHeuristic, false
+	replay := piKeyed(KindTurnEnd, "A", 1, t0, t0.Add(HookStaleAfter+2*time.Second))
+	if handled, _ := m.Replay(replay); !handled {
+		t.Fatal("replay not handled")
+	}
+	if s := m.Snapshot(); s.State != wire.StateWaitingInput || !s.TurnEnded {
+		t.Errorf("after replay = %+v, want waiting_input with TurnEnded", s)
+	}
+}

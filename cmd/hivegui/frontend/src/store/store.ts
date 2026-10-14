@@ -179,6 +179,7 @@ export type ModalId =
   | 'worktrees'
   | 'quick-idea'
   | 'idea-inbox'
+  | 'message-session'
   | 'help'
   | 'help-modal'
   | 'whats-new'
@@ -204,6 +205,16 @@ export type ModalEntry =
   // capture asked for are exactly the fields that can be wrong.
   | { id: 'quick-idea'; seq: number; projectId: string; idea?: IdeaInfo | null }
   | { id: 'idea-inbox'; seq: number; projectId: string; projectName: string }
+  // Spec 338. `busy` is set when the daemon answered session_busy: the
+  // sheet then offers to queue the note instead of failing. `sending`
+  // disables the controls between the click and the daemon's answer.
+  | {
+      id: 'message-session';
+      seq: number;
+      sessionId: string;
+      busy?: boolean;
+      sending?: boolean;
+    }
   | { id: 'help'; seq: number }
   // The sidebar's Help button. Distinct from 'help' above, which is the
   // ⌘/ keyboard-shortcuts overlay — the two are separate surfaces and one
@@ -1242,6 +1253,18 @@ export function closeModal(id: ModalId): void {
 
 export function isModalOpen(id: ModalId): boolean {
   return get().modals.some((m) => m.id === id);
+}
+
+// patchModal updates fields of an open modal's entry in place, keeping its
+// seq so the component is NOT remounted (a remount would drop the text
+// the user typed). No-op when the modal is closed.
+export function patchModal<T extends ModalId>(
+  id: T,
+  patch: Partial<Omit<Extract<ModalEntry, { id: T }>, 'id' | 'seq'>>,
+): void {
+  const cur = get().modals;
+  if (!cur.some((m) => m.id === id)) return;
+  set({ modals: cur.map((m) => (m.id === id ? { ...m, ...patch } : m)) });
 }
 
 // modalEntry returns the open entry for `id`, narrowed. The modals that

@@ -141,6 +141,8 @@ describe('the palette', () => {
       'help',
       'quick-idea',
       'idea-inbox',
+      'message-session',
+      'notify-when-idle',
       'close-session',
       'reopen-closed-session',
       'new-window',

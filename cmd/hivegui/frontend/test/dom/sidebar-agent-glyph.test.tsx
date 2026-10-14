@@ -27,6 +27,7 @@ function row(s: Partial<SessionInfo>) {
     onRestore: noop,
     onRestart: noop,
     onKill: noop,
+    onToggleBell: noop,
     onWorktrees: noop,
     onColor: noop,
     onDoubleClick: noop,

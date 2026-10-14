@@ -858,6 +858,29 @@ func (a *App) SetSessionKind(sessionID, kind string) error {
 	return cs.WriteJSON(wire.FrameSetSessionKind, wire.SetSessionKindReq{SessionID: sessionID, Kind: kind})
 }
 
+// SendToSession hands a session a one-line note (spec 338). The answer
+// arrives as "session:sent"; a refusal (session_busy, session_dead,
+// delivery_failed, no_such_session, bad_payload) arrives as
+// "control:error" carrying the session id.
+func (a *App) SendToSession(sessionID, text string, queue bool) error {
+	cs, err := a.requireControl()
+	if err != nil {
+		return err
+	}
+	return cs.WriteJSON(wire.FrameSendToSession, wire.SendToSessionReq{SessionID: sessionID, Text: text, Queue: queue})
+}
+
+// SetSessionNotifyWhenIdle arms or disarms the one-shot "ping me when
+// this session stops working" bell (spec 338). The daemon clears it
+// after it fires and announces that with a SESSION_EVENT(idle_ping).
+func (a *App) SetSessionNotifyWhenIdle(sessionID string, want bool) error {
+	cs, err := a.requireControl()
+	if err != nil {
+		return err
+	}
+	return cs.WriteJSON(wire.FrameUpdateSession, wire.UpdateSessionReq{SessionID: sessionID, NotifyWhenIdle: &want})
+}
+
 // SearchTranscript asks the daemon to search one session's agent
 // transcript. The answer arrives as the "transcript:matches" event.
 //

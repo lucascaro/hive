@@ -127,6 +127,16 @@
 .hv-session-row__plan--stale { --hv-plan-color: var(--fg-subtle) !important; }
 .hv-session-row__plan--stale .hv-session-row__subagents { background: var(--fg-subtle); }
 
+/* "Notify me when this session stops working" is armed (spec 338). Sits at
+   the head of the meta column, so it goes with it when the hover actions
+   replace the column — the toggle is in those actions. Muted like the other
+   passive metadata. */
+.hv-session-row__bell {
+  display: inline-flex;
+  align-items: center;
+  color: var(--fg-subtle);
+}
+
 /* Where the session came from. Not a button: the inbox is reached from
    the project card's badge, and a second route to it on every row would
    put one action in two places. Muted like the other passive metadata —
@@ -481,6 +491,7 @@
 .hv-session-row[data-selected] .hv-session-row__sub,
 .hv-session-row[data-selected] .hv-session-row__meta,
 .hv-session-row[data-selected] .hv-session-row__idea,
+.hv-session-row[data-selected] .hv-session-row__bell,
 .hv-session-row[data-selected] .hv-session-row__worktree-count,
 .hv-session-row[data-selected] .hv-session-row__agent,
 .hv-session-row[data-selected] .hv-kbd,

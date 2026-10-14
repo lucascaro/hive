@@ -100,6 +100,14 @@
           {
             "keys": "⇧⌘I",
             "label": "Ideas in the active project"
+          },
+          {
+            "keys": "⇧⌘M",
+            "label": "Message the active session"
+          },
+          {
+            "keys": "⌥⌘B",
+            "label": "Notify me when the active session goes idle"
           }
         ]
       },
@@ -410,6 +418,14 @@
           {
             "keys": "Ctrl+Shift+I",
             "label": "Ideas in the active project"
+          },
+          {
+            "keys": "Ctrl+Shift+M",
+            "label": "Message the active session"
+          },
+          {
+            "keys": "Ctrl+Alt+Shift+B",
+            "label": "Notify me when the active session goes idle"
           }
         ]
       },

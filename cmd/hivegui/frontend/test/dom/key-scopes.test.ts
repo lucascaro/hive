@@ -189,6 +189,7 @@ describe('KEY_SCOPES', () => {
       'settings',
       'worktrees',
       'quick-idea',
+      'message-session',
       'idea-inbox',
       'help-overlay',
       'help-modal',

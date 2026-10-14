@@ -1590,6 +1590,46 @@ export async function SetSessionAttention(id: string, want: boolean) {
   return '';
 }
 
+// SEND_TO_SESSION (spec 338). The mock plays the daemon's rules: a working
+// session refuses unless the note asks to queue; an idle one takes it.
+// Every attempt is logged for the specs to assert on.
+const sentMessages: { id: string; text: string; queue: boolean }[] = [];
+export async function SendToSession(id: string, text: string, queue: boolean) {
+  maybeFail('SendToSession');
+  sentMessages.push({ id, text, queue });
+  const s = state.sessions.find((x) => x.id === id);
+  if (!s) {
+    emit(
+      'control:error',
+      JSON.stringify({ code: 'no_such_session', session_id: id }),
+    );
+    return '';
+  }
+  const busy = (s as { state?: string }).state === 'working';
+  if (busy && !queue) {
+    emit(
+      'control:error',
+      JSON.stringify({ code: 'session_busy', session_id: id }),
+    );
+    return '';
+  }
+  emit(
+    'session:sent',
+    JSON.stringify({ session_id: id, delivery: busy ? 'queued' : 'typed' }),
+  );
+  return '';
+}
+
+export async function SetSessionNotifyWhenIdle(id: string, want: boolean) {
+  maybeFail('SetSessionNotifyWhenIdle');
+  const s = state.sessions.find((x) => x.id === id);
+  if (s && !!s.notify_when_idle !== want) {
+    s.notify_when_idle = want;
+    emit('session:event', JSON.stringify({ kind: 'updated', session: s }));
+  }
+  return '';
+}
+
 // Login-item registration is a real macOS service call with no browser
 // equivalent. "not-registered" is the honest default: it is what an
 // install that has never been toggled reports.
@@ -1973,6 +2013,7 @@ if (typeof window !== 'undefined') {
   window.__hive = {
     state,
     emit,
+    sentMessages: () => sentMessages.map((m) => ({ ...m })),
     // projectId defaults to the seed project; pass it to build an
     // r.order that interleaves projects, which is where display position
     // and .order diverge. agent defaults to none (a plain shell row).

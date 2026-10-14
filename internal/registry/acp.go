@@ -438,6 +438,7 @@ func (r *Registry) watchACPExit(id string, as *acpSession) {
 	prev := e.stateSnapshot()
 	e.machine().Exit()
 	logStateLocked(e, prev, e.stateSnapshot(), "exit")
+	r.settleSendStateLocked(e, prev, e.stateSnapshot())
 	r.broadcastACPLocked(e, nil, false)
 	info := e.Info()
 	r.mu.Unlock()

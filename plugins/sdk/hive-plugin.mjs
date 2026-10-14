@@ -96,6 +96,8 @@ export const Frame = Object.freeze({
   SUBMIT_RESULT: 0x43,
   SUBMIT_RESULT_OK: 0x44,
   SET_SESSION_KIND: 0x45,
+  SEND_TO_SESSION: 0x46,
+  SENT: 0x47,
 });
 
 const frameName = new Map(Object.entries(Frame).map(([k, v]) => [v, k]));
@@ -155,6 +157,7 @@ const MAX_PAYLOAD = 1 << 20;
  * @property {string} [phase]
  * @property {string} [title]
  * @property {boolean} [needs_attention]
+ * @property {boolean} [notify_when_idle]
  * @property {''|'working'|'waiting_input'|'waiting_permission'|'exited'|'error'} [state]
  * @property {string} [state_source]
  * @property {string} [last_prompt]

@@ -127,6 +127,9 @@ var controlEvents = map[FrameType]string{
 
 	FrameClosed:          "closed:list",
 	FrameSessionRestored: "session:restored",
+	// The answer to SEND_TO_SESSION (spec 338); a refusal arrives as
+	// control:error carrying the session id.
+	FrameSent: "session:sent",
 
 	FrameIdeas:     "idea:list",
 	FrameIdeaEvent: "idea:event",
