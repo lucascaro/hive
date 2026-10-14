@@ -238,6 +238,9 @@ type Machine struct {
 	extInstance string
 	extSeq      uint64
 	extState    State
+	// extTurnEnded rides with extState so Replay restores a finished
+	// turn as finished.
+	extTurnEnded bool
 	// turnEnded: the current waiting_input came from KindTurnEnd. Only
 	// meaningful while state is waiting_input (Snapshot gates on it);
 	// every other way of changing state clears it.
@@ -421,6 +424,7 @@ func (m *Machine) ClearWaiting() bool {
 func (m *Machine) noteExtState() {
 	if m.source == wire.StateSourceExtension {
 		m.extState = m.state
+		m.extTurnEnded = m.turnEnded
 	}
 }
 
@@ -463,6 +467,7 @@ func (m *Machine) Replay(ev Event) (handled, changed bool) {
 	before := m.Snapshot()
 	m.source = wire.StateSourceExtension
 	m.state = m.extState
+	m.turnEnded = m.extTurnEnded
 	return true, m.Snapshot() != before
 }
 
@@ -687,6 +692,7 @@ func (m *Machine) Apply(ev Event) bool {
 
 	if keyed {
 		m.extState = m.state
+		m.extTurnEnded = m.turnEnded
 	}
 	return m.Snapshot() != before
 }

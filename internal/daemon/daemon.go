@@ -1723,7 +1723,7 @@ func (d *Daemon) handleControlFrame(ctx context.Context, ops controlOps, ft wire
 			}
 			// One greppable line per send: the evidence that gates the
 			// orchestration phases (agent-orchestration.md).
-			log.Printf("daemon: send_to_session caller=control from=%s to=%s delivery=%s",
+			log.Printf("daemon: send_to_session caller=control from=%s to=%q delivery=%s",
 				wire.OriginUser, req.SessionID, outcome)
 			if err != nil {
 				_ = ops.writeJSON(wire.FrameError, wire.Error{

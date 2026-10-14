@@ -111,7 +111,7 @@ func TestSendToSessionErrorsAndLogLine(t *testing.T) {
 	case <-time.After(2 * time.Second):
 		t.Fatal("no answer")
 	}
-	want := "send_to_session caller=control from=user to=ghost delivery=no_such_session"
+	want := "send_to_session caller=control from=user to=\"ghost\" delivery=no_such_session"
 	deadline := time.Now().Add(2 * time.Second)
 	for !strings.Contains(buf.String(), want) {
 		if time.Now().After(deadline) {

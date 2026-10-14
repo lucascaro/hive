@@ -1938,11 +1938,17 @@ func (r *Registry) Update(req wire.UpdateSessionReq) (*Entry, error) {
 	if orderChanged {
 		r.moveLocked(e.ID, *req.Order)
 	}
-	if err := r.persistEntryLocked(e); err != nil {
-		return e, err
-	}
-	if err := r.persistIndexLocked(); err != nil {
-		return e, err
+	// The bell lives in memory only: arming it costs no disk write, and
+	// a failing disk must not swallow the broadcast clients wait on.
+	bellOnly := req.NotifyWhenIdle != nil && req.Name == nil && req.Color == nil &&
+		req.Order == nil && req.ProjectID == nil
+	if !bellOnly {
+		if err := r.persistEntryLocked(e); err != nil {
+			return e, err
+		}
+		if err := r.persistIndexLocked(); err != nil {
+			return e, err
+		}
 	}
 	if orderChanged {
 		// Notify clients of every session, since reindexLocked

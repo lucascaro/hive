@@ -483,3 +483,20 @@ func TestSendKeepsQueueOrder(t *testing.T) {
 		t.Fatal("newer note typed ahead of, or with, the older one")
 	}
 }
+
+// An ACP turn ends in waiting_input: the bell must ring there too.
+func TestNotifyWhenIdleFiresOnACPTurnEnd(t *testing.T) {
+	dir := useFakeACP(t, acptest.FlagBlock)
+	r := freshRegistry(t)
+	e := createACP(t, r, wire.CreateSpec{Name: "a"})
+	ch, unsub := r.Subscribe()
+	defer unsub()
+	if _, err := r.SendToSession(e.ID, "go", false, wire.OriginUser); err != nil {
+		t.Fatal(err)
+	}
+	arm(t, r, e.ID)
+	acptest.Release(dir)
+	if _, ok := nextKind(t, ch, wire.SessionEventIdlePing, 5*time.Second); !ok {
+		t.Fatal("no idle_ping when an ACP turn ended")
+	}
+}
