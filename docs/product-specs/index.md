@@ -13,6 +13,7 @@ The *what* and *why* of work this project plans to do. Each spec describes user 
 | P2 | — | Orchestrator grant: a session you name can message its siblings | PLAN | [389-orchestrator-grant-and-session-msg](389-orchestrator-grant-and-session-msg.md) |
 | P2 | — | In-house VT emulator (replace hinshun/vt10x) | IMPLEMENT | [in-house-vt-emulator](in-house-vt-emulator.md) |
 | — | #142 | vt snapshot: CJK / wide-char column misalignment | TRIAGE | [142-vt-snapshot-cjk-wide-char-column-misalignment](142-vt-snapshot-cjk-wide-char-column-misalignment.md) |
+| P3 | #512 | Handoff: an agent passes its work to a new session | RESEARCH | [512-handoff-an-agent-passes-its-work-to-a-new-session](512-handoff-an-agent-passes-its-work-to-a-new-session.md) |
 | P3 | — | Move SocketPath out of internal/daemon so clients stop linking the daemon | TRIAGE | [331-move-socketpath-out-of-internal-daemon](331-move-socketpath-out-of-internal-daemon.md) |
 | P3 | — | Observe from a session: hived session list and hived wait | PLAN | [390-session-observe-list-and-wait](390-session-observe-list-and-wait.md) |
 | P3 | — | Agent-spawned sessions: a granted session can start a sibling | PLAN | [391-agent-spawned-sessions](391-agent-spawned-sessions.md) |
