@@ -413,3 +413,4 @@ Independent reviewer (general-purpose subagent), 2 rounds.
 ## PR convergence ledger
 
 - **2026-10-13 iter 1** — verdict: REQUEST_CHANGES; mergeable: MERGEABLE; findings_hash: 6abdefe7bbea14653a4d050a4d396854e25cdcf9bf56bda9fb742c93beb9b3a6; threads_open: 0; action: escalated:risky-fix-needs-human-decision; head_sha: ad46a1a.
+- **2026-10-14 iter 2** — verdict: COMMENT; mergeable: MERGEABLE; findings_hash: 656aec67f4bb1a281462e99985327668417df2cc60c447aabdf2131c827f5962; threads_open: 1; action: autofix+push; head_sha: ece5b70.
