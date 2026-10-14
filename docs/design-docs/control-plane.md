@@ -180,6 +180,12 @@ answers when the session next stops working with `SESSION_EVENT(idle_ping)`
 to every control connection, and each client fires its own notification
 (the daemon imports no notification code).
 
+"Stops working" means working → idle, `waiting_input`, `exited` or `error`. Hook-tier
+and ACP agents end a turn in `waiting_input`, not idle. A queued note is typed once
+the session is *settled*: idle, or `waiting_input` because the agent itself reported
+`turn_end` (`Snapshot.TurnEnded`). A question on screen is also `waiting_input` but
+never settled, so nothing is typed at it.
+
 ## Plugins are control clients (spec 460)
 
 The control plane's answer is not only for Hive's own windows. A

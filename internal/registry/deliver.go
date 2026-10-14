@@ -48,7 +48,25 @@ const (
 	// transition before one queued message is typed. The idle edge
 	// itself is not a promise that the prompt is ready.
 	drainGrace = 300 * time.Millisecond
+	// typedHold is how long after typing a message the session still
+	// counts as busy. A hook-tier agent takes a moment to report the
+	// prompt it was just handed, and until it does its state still reads
+	// "settled"; without the hold a second note would be typed on top.
+	typedHold = time.Second
 )
+
+// settled reports whether a session is at a prompt that is safe to type
+// into: idle, or waiting_input because the agent itself reported
+// turn_end. Plain waiting_input is not enough — that is also a question
+// on screen, and typing at it answers the question.
+func settled(s agentstate.Snapshot) bool {
+	return s.State == wire.StateIdle || s.TurnEnded
+}
+
+// settledLocked is settled plus the hold after our own last write.
+func (e *Entry) settledLocked(now time.Time) bool {
+	return settled(e.stateSnapshot()) && now.Sub(e.typedAt) >= typedHold
+}
 
 // sanitizeInput prepares message text for a PTY write. It is not
 // typedPrompt: that collapses all whitespace and, on Windows, strips
@@ -122,7 +140,9 @@ func (r *Registry) SendToSession(id, text string, queue bool, origin string) (st
 		r.mu.Unlock()
 		return "", ErrSessionBusy
 	}
-	if e.stateSnapshot().State != wire.StateIdle {
+	// Older queued notes go first: while any wait, a new one joins the
+	// back of the line even when the session is settled.
+	if len(e.pendingInputs) > 0 || !e.settledLocked(time.Now()) {
 		if !queue {
 			r.mu.Unlock()
 			return "", ErrSessionBusy
@@ -133,9 +153,13 @@ func (r *Registry) SendToSession(id, text string, queue bool, origin string) (st
 		}
 		e.pendingInputs = append(e.pendingInputs, clean)
 		e.pendingBytes += len(clean)
+		if e.drainTimer == nil && e.settledLocked(time.Now()) {
+			e.armDrainLocked(r)
+		}
 		r.mu.Unlock()
 		return wire.DeliveryQueued, nil
 	}
+	e.typedAt = time.Now()
 	r.mu.Unlock()
 	// Outside r.mu: a PTY write can block on a full pipe.
 	if _, err := sess.Write(ptyBytes(clean)); err != nil {
@@ -174,15 +198,18 @@ func (e *Entry) dropSendStateLocked() {
 // under r.mu from announceStateLocked and from watchSessionExit (which
 // does not go through announce), and does two things:
 //
-//   - ping-when-idle: an armed session that was working and now is
-//     idle, exited or errored fires one SESSION_EVENT(idle_ping) and
-//     disarms. Only a transition out of "working" counts: waiting
-//     states are not working, and idle→idle is not a transition.
-//   - queue: when the session settles idle with messages waiting, arm
-//     the drain timer; when it is gone, drop everything.
+//   - ping-when-idle: an armed session that was working and has now
+//     stopped (idle, exited, errored, or waiting_input — which is where
+//     a hook-tier or ACP agent lands at the end of a turn) fires one
+//     SESSION_EVENT(idle_ping) and disarms. Only a transition out of
+//     "working" counts: idle→idle is not a transition. waiting_permission
+//     does not ping; it already raises attention.
+//   - queue: when the session settles (see settled) with messages
+//     waiting, arm the drain timer; when it is gone, drop everything.
 func (r *Registry) settleSendStateLocked(e *Entry, prev, cur agentstate.Snapshot) {
 	if e.notifyWhenIdle && prev.State == wire.StateWorking &&
-		(cur.State == wire.StateIdle || cur.State == wire.StateExited || cur.State == wire.StateError) {
+		(cur.State == wire.StateIdle || cur.State == wire.StateWaitingInput ||
+			cur.State == wire.StateExited || cur.State == wire.StateError) {
 		e.notifyWhenIdle = false
 		r.broadcastLocked(wire.SessionEventIdlePing, e.Info())
 	}
@@ -190,13 +217,17 @@ func (r *Registry) settleSendStateLocked(e *Entry, prev, cur agentstate.Snapshot
 		e.dropSendStateLocked()
 		return
 	}
-	if cur.State == wire.StateIdle && len(e.pendingInputs) > 0 && e.drainTimer == nil {
-		id := e.ID
-		e.drainTimer = time.AfterFunc(drainGrace, func() { r.drainOne(id) })
+	if settled(cur) && len(e.pendingInputs) > 0 && e.drainTimer == nil {
+		e.armDrainLocked(r)
 	}
 }
 
-// drainOne types ONE queued message into a session that is still idle
+func (e *Entry) armDrainLocked(r *Registry) {
+	id := e.ID
+	e.drainTimer = time.AfterFunc(drainGrace, func() { r.drainOne(id) })
+}
+
+// drainOne types ONE queued message into a session that is still settled
 // when the grace period ends. If the session went working again, it does
 // nothing: the next idle transition re-arms the timer.
 func (r *Registry) drainOne(id string) {
@@ -208,10 +239,11 @@ func (r *Registry) drainOne(id string) {
 	}
 	e.drainTimer = nil
 	if e.sess == nil || len(e.pendingInputs) == 0 || e.pendingPrompt != "" ||
-		e.stateSnapshot().State != wire.StateIdle {
+		!settled(e.stateSnapshot()) {
 		r.mu.Unlock()
 		return
 	}
+	e.typedAt = time.Now()
 	msg := e.pendingInputs[0]
 	e.pendingInputs = e.pendingInputs[1:]
 	e.pendingBytes -= len(msg)

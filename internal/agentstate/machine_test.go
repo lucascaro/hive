@@ -846,3 +846,28 @@ func TestACPTierNeverGoesStale(t *testing.T) {
 		t.Errorf("state = %q, want waiting_permission", got)
 	}
 }
+
+// TurnEnded separates "the agent finished its turn" from every other
+// reason for waiting_input; message delivery types only at the former.
+func TestSnapshotTurnEnded(t *testing.T) {
+	steps := []struct {
+		name string
+		do   func(m *Machine)
+		want bool
+	}{
+		{"prompt", func(m *Machine) { m.Apply(hookEvent(KindPrompt, t0, "x")) }, false},
+		{"turn_end", func(m *Machine) { m.Apply(hookEvent(KindTurnEnd, t0.Add(1*time.Second), "")) }, true},
+		{"idle_prompt notification keeps it", func(m *Machine) { m.Apply(hookEvent(KindWaitingInput, t0.Add(2*time.Second), "")) }, true},
+		{"next prompt", func(m *Machine) { m.Apply(hookEvent(KindPrompt, t0.Add(3*time.Second), "y")) }, false},
+		{"question", func(m *Machine) { m.Apply(hookEvent(KindWaitingInput, t0.Add(4*time.Second), "")) }, false},
+		{"turn_end again", func(m *Machine) { m.Apply(hookEvent(KindTurnEnd, t0.Add(5*time.Second), "")) }, true},
+		{"user answers", func(m *Machine) { m.ClearWaiting() }, false},
+	}
+	m := New(t0)
+	for _, s := range steps {
+		s.do(m)
+		if got := m.Snapshot().TurnEnded; got != s.want {
+			t.Errorf("%s: TurnEnded = %v, want %v (state %q)", s.name, got, s.want, m.Snapshot().State)
+		}
+	}
+}

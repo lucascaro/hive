@@ -105,6 +105,9 @@ func (h *commandHub) Close() {
 // and broadcasts "updated" to every client. Focusing a session would
 // then cost two disk writes and a full re-render everywhere, several
 // times a minute, to record something that is never persisted at all.
+//
+// NotifyWhenIdle does count: it is in-memory, but arming it must reach
+// every client (the bell glyph), and it is rare, so it takes the full path.
 func updatesPersistedFields(req wire.UpdateSessionReq) bool {
 	return req.Name != nil || req.Color != nil ||
 		req.Order != nil || req.ProjectID != nil || req.NotifyWhenIdle != nil

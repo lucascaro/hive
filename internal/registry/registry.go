@@ -222,6 +222,8 @@ type Entry struct {
 	pendingBytes   int
 	drainTimer     *time.Timer
 	notifyWhenIdle bool
+	// typedAt is when messaging last wrote into the PTY; see typedHold.
+	typedAt time.Time
 }
 
 // Project is the registry-side representation of a project.

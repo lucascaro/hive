@@ -1749,7 +1749,7 @@ const (
 	// DeliveryTyped means the text was written to the session's PTY now.
 	DeliveryTyped = "typed"
 	// DeliveryQueued means the session was busy and the text will be
-	// typed at its next idle transition.
+	// typed when it next settles (idle, or an agent-reported turn end).
 	DeliveryQueued = "queued"
 	// DeliveryACP means the text was submitted as a user turn of an
 	// ACP session (spec 496).

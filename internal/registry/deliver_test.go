@@ -376,7 +376,8 @@ func TestSettleSendStatePingsOnlyOutOfWorking(t *testing.T) {
 	}{
 		{wire.StateWorking, wire.StateIdle, true},
 		{wire.StateWorking, wire.StateError, true},
-		{wire.StateWorking, wire.StateWaitingInput, false},
+		{wire.StateWorking, wire.StateWaitingInput, true}, // hook/ACP turn_end lands here
+		{wire.StateWorking, wire.StateWaitingPermission, false},
 		{wire.StateWaitingInput, wire.StateIdle, false},
 		{wire.StateWaitingPermission, wire.StateIdle, false},
 		{wire.StateIdle, wire.StateIdle, false},
@@ -391,5 +392,94 @@ func TestSettleSendStatePingsOnlyOutOfWorking(t *testing.T) {
 		if got != tc.want || fired != tc.want {
 			t.Errorf("%q -> %q: ping=%v disarmed=%v, want %v", tc.prev, tc.cur, got, fired, tc.want)
 		}
+	}
+}
+
+func hookEvent(t *testing.T, r *Registry, id, kind string) {
+	t.Helper()
+	if err := r.ApplyAgentEvent(id, wire.AgentEvent{SessionID: id, Kind: kind, Source: wire.StateSourceHook}); err != nil {
+		t.Fatal(err)
+	}
+}
+
+// A hook-tier agent ends its turn in waiting_input, never idle. That
+// must ping, and must count as settled for the queue.
+func TestHookTierTurnEndPingsAndDrains(t *testing.T) {
+	skipOnWindows(t)
+	r := freshRegistry(t)
+	manualClock(t, r)
+	e, sess := liveSession(t, r, wire.CreateSpec{Name: "hook"})
+	ch, unsub := r.Subscribe()
+	defer unsub()
+	hookEvent(t, r, e.ID, wire.AgentEventPrompt)
+	arm(t, r, e.ID)
+	if got, err := r.SendToSession(e.ID, "after", true, wire.OriginUser); err != nil || got != wire.DeliveryQueued {
+		t.Fatalf("send while working = %q, %v; want queued", got, err)
+	}
+	hookEvent(t, r, e.ID, wire.AgentEventTurnEnd)
+	if _, ok := nextKind(t, ch, wire.SessionEventIdlePing, time.Second); !ok {
+		t.Fatal("no idle_ping when a hook-tier turn ended")
+	}
+	waitFor(t, "queued note typed at turn end", func() bool { return strings.Contains(ptyText(sess), "after") })
+}
+
+// waiting_input from a question on screen is not a turn end: nothing
+// is typed at it, queued or direct.
+func TestQuestionOnScreenIsNotSettled(t *testing.T) {
+	skipOnWindows(t)
+	r := freshRegistry(t)
+	manualClock(t, r)
+	e, sess := liveSession(t, r, wire.CreateSpec{Name: "ask"})
+	hookEvent(t, r, e.ID, wire.AgentEventPrompt)
+	hookEvent(t, r, e.ID, wire.AgentEventWaitingInput)
+	if _, err := r.SendToSession(e.ID, "typed?", false, wire.OriginUser); !errors.Is(err, ErrSessionBusy) {
+		t.Fatalf("direct send at a question = %v, want ErrSessionBusy", err)
+	}
+	if got, err := r.SendToSession(e.ID, "held", true, wire.OriginUser); err != nil || got != wire.DeliveryQueued {
+		t.Fatalf("queued send at a question = %q, %v", got, err)
+	}
+	time.Sleep(drainGrace + 150*time.Millisecond)
+	if s := ptyText(sess); strings.Contains(s, "typed?") || strings.Contains(s, "held") {
+		t.Fatal("text was typed at a question on screen")
+	}
+}
+
+// A direct send to a hook-tier session that just finished is typed,
+// and a second one right after is held back until the agent reports.
+func TestSendAfterTurnEndTypesOnceThenHolds(t *testing.T) {
+	skipOnWindows(t)
+	r := freshRegistry(t)
+	manualClock(t, r)
+	e, sess := liveSession(t, r, wire.CreateSpec{Name: "done"})
+	hookEvent(t, r, e.ID, wire.AgentEventPrompt)
+	hookEvent(t, r, e.ID, wire.AgentEventTurnEnd)
+	if got, err := r.SendToSession(e.ID, "go on", false, wire.OriginUser); err != nil || got != wire.DeliveryTyped {
+		t.Fatalf("send after turn end = %q, %v; want typed", got, err)
+	}
+	waitFor(t, "note typed", func() bool { return strings.Contains(ptyText(sess), "go on") })
+	if _, err := r.SendToSession(e.ID, "again", false, wire.OriginUser); !errors.Is(err, ErrSessionBusy) {
+		t.Fatalf("second send inside the hold = %v, want ErrSessionBusy", err)
+	}
+}
+
+// Queued notes go first: a new send to a settled session joins the back.
+func TestSendKeepsQueueOrder(t *testing.T) {
+	skipOnWindows(t)
+	r := freshRegistry(t)
+	manualClock(t, r)
+	e, sess := liveSession(t, r, wire.CreateSpec{Name: "fifo"})
+	now := time.Now()
+	goWorking(t, r, e, sess, now)
+	if _, err := r.SendToSession(e.ID, "older", true, wire.OriginUser); err != nil {
+		t.Fatal(err)
+	}
+	sample(r, e, now.Add(agentstate.QuietAfter)) // idle: drain timer armed
+	got, err := r.SendToSession(e.ID, "newer", true, wire.OriginUser)
+	if err != nil || got != wire.DeliveryQueued {
+		t.Fatalf("send behind a queue = %q, %v; want queued", got, err)
+	}
+	waitFor(t, "older note first", func() bool { return strings.Contains(ptyText(sess), "older") })
+	if strings.Contains(ptyText(sess), "newer") {
+		t.Fatal("newer note typed ahead of, or with, the older one")
 	}
 }
