@@ -5,9 +5,11 @@ package agent
 import (
 	"bufio"
 	"encoding/json"
+	"errors"
 	"net"
 	"os"
 	"path/filepath"
+	"sync"
 	"testing"
 	"time"
 )
@@ -173,6 +175,77 @@ func TestFindClaudeInboxesIgnoresNonJSON(t *testing.T) {
 	register(t, reg, "10.abc.notjson", "s", "/nonexistent/other.sock")
 	if got := FindClaudeInboxes(reg, "s"); len(got) != 1 || got[0] != sock {
 		t.Fatalf("got %v", got)
+	}
+}
+
+// stubInboxVersion makes `claude --version` print out and re-arms the
+// inbox's once-per-daemon gate, so SendToClaude probes again.
+func stubInboxVersion(t *testing.T, out string, err error) {
+	t.Helper()
+	restore := SetClaudeVersionProbeForTest(func() ([]byte, error) { return []byte(out), err })
+	reset := func() { inboxVersionOnce, inboxVersionOK = sync.Once{}, false }
+	reset()
+	t.Cleanup(func() { restore(); reset() })
+}
+
+// registerInConfigDir points CLAUDE_CONFIG_DIR at a temp dir holding one
+// registration for session id "s" naming a live fake inbox.
+func registerInConfigDir(t *testing.T) <-chan string {
+	t.Helper()
+	sock, got := listen(t)
+	cfg := t.TempDir()
+	if err := os.Mkdir(filepath.Join(cfg, "sessions"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	register(t, filepath.Join(cfg, "sessions"), "1.json", "s", sock)
+	t.Setenv("CLAUDE_CONFIG_DIR", cfg)
+	return got
+}
+
+func TestSendToClaudeDeliversOnVerifiedVersion(t *testing.T) {
+	stubInboxVersion(t, "2.1.300 (Claude Code)\n", nil)
+	got := registerInConfigDir(t)
+	if err := SendToClaude([]string{"", "s"}, "hello"); err != nil {
+		t.Fatal(err)
+	}
+	select {
+	case <-got:
+	case <-time.After(2 * time.Second):
+		t.Fatal("nothing reached the inbox")
+	}
+}
+
+// The version gate is the guard against an unverified wire shape: below
+// it, or when the version is unknown, nothing is dialled.
+func TestSendToClaudeVersionGate(t *testing.T) {
+	for name, probe := range map[string]struct {
+		out string
+		err error
+	}{
+		"older":   {"2.1.299 (Claude Code)\n", nil},
+		"garbled": {"claude", nil},
+		"missing": {"", errors.New("exec: not found")},
+	} {
+		t.Run(name, func(t *testing.T) {
+			stubInboxVersion(t, probe.out, probe.err)
+			got := registerInConfigDir(t)
+			if err := SendToClaude([]string{"s"}, "hello"); !errors.Is(err, ErrNoInbox) {
+				t.Fatalf("err = %v, want ErrNoInbox", err)
+			}
+			select {
+			case line := <-got:
+				t.Fatalf("gated claude still received %q", line)
+			case <-time.After(100 * time.Millisecond):
+			}
+		})
+	}
+}
+
+func TestSendToClaudeNoRegistration(t *testing.T) {
+	stubInboxVersion(t, "2.1.300\n", nil)
+	registerInConfigDir(t)
+	if err := SendToClaude([]string{"someone-else"}, "hello"); !errors.Is(err, ErrNoInbox) {
+		t.Fatalf("err = %v, want ErrNoInbox", err)
 	}
 }
 
