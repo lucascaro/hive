@@ -423,3 +423,54 @@ Independent reviewer (general-purpose subagent), 2 rounds.
     - acceptance — PASS — Claude inbox and Pi inbox criteria DEFERRED (phase > 1); typed, ping, key-file guard, GUI and `hived msg` verified by tests
     - non-goals — PASS
     - doc accuracy — PASS — three minor wording/count nits (README, changeset, icons.md) found by the validator and fixed in the PR before the verdict
+
+## Approved plan — Phase 2 of 3 (2026-10-14): Claude inbox socket
+
+## Captured protocol (claude 2.1.300, verified by hand 2026-10-14)
+- Registration: ~/.claude/sessions/<pid>.json {sessionId, pid, messagingSocketPath=/tmp/cc-socks/<pid>.sock}. sessionId == Hive entry id (Hive passes --session-id).
+- Socket dir 0700, socket 0600, owned by user. Claude debug log: "auth line optional here"; token lives only in the child's env (CLAUDE_CODE_MESSAGING_TOKEN) which Hive never reads.
+- Framing: one JSON object per '\n'-terminated line; connection with no complete line in 30s is closed.
+- Message line: {"type":"user","message":{"role":"user","content":"<text>"}}
+- Verified: auth-less line to an idle session -> message appeared, nc exit 0.
+
+## Approach
+New delivery strategy `socket` (spec's name) tried FIRST for claude-agent PTY sessions, before typed/queued. It works whether Claude is idle or mid-turn (Claude reads it between tool calls), so no queue and no busy refusal. Any failure (no registry file, socket missing/not-a-socket/not owned by us, dial/write error, version gate) falls through to the existing typed/queued path. Never reads *.key (existing guard test stays green: lookup globs only *.json).
+Dial happens outside r.mu with a short timeout (2s) so a wedged socket cannot stall the registry.
+Content is json.Marshal'd from the already-sanitised text, so multi-line notes arrive intact (better than typed path's CR-per-line).
+
+## Files
+1. internal/agent/claude_inbox.go (+_windows stub, build tag !windows): FindClaudeInbox(sessionsDir, sessionID) (sockPath string, ok bool) — globs <sessionsDir>/*.json, matches sessionId, requires pid alive-or-socket exists, os.Lstat Mode&ModeSocket, uid == os.Getuid(); SendClaudeInbox(sockPath, text string, timeout) error — dial unix, write line, close.
+2. internal/agent/claude.go: minInboxVersion = 2.1.300 (only verified version) + cached `claude --version` probe via internal/proc (reuse existing probe if one exists for hooks).
+3. internal/registry/deliver.go: in SendToSession PTY branch, after pendingPrompt check and before the queue logic: if e.agent is claude && inboxFn != nil, drop r.mu, call inboxFn(id,text); success -> return wire.DeliverySocket. Failure -> re-take lock path unchanged. Registry gets an injectable `inbox func(id, text string) error` (default wires agent funcs; tests inject fake).
+4. internal/wire/control.go: const DeliverySocket = "socket" (+ comment). Additive string value; no new frame.
+5. internal/buildinfo/contract.go: bump DaemonContract (daemon-side behaviour).
+6. Clients: cmd/hived/msg.go prints delivery (check no enum switch); cmd/hivegui frontend toast mapping for delivery strings (add "socket" -> "delivered"); ws-bridge/testclient pass strings through (verify, no change expected).
+7. Docs: docs/design-docs/control-plane.md (surface table: message line now verified on 2.1.300, auth confirmed optional, fallback unchanged); spec 338 criteria wording; DESIGN.md only if needed; .changesets/338-claude-inbox.md (minor); site/features.json entry blurb updated (since Unreleased already exists from phase 1 — edit, don't duplicate).
+New: internal/agent/testdata/claude_inbox_line.json (version-pinned fixture of the exact line).
+
+## Tests
+- agent: TestSendClaudeInboxWritesExactLine (fake unix listener asserts bytes == fixture, incl. multi-line + quotes escaping); TestFindClaudeInboxMatchesSessionID; TestFindClaudeInboxRejectsNonSocket (regular file at path); TestFindClaudeInboxRejectsForeignOwner (skip if not root/uid change impossible -> test the uid check via injected stat); TestFindClaudeInboxIgnoresKeyFiles (dir with .key files only -> not found, and .key never opened: assert via unreadable 0000 .key file not erroring); existing TestNoClaudeSessionKeyReads stays green.
+- registry: TestSendClaudeUsesSocketWhenWorking (working state -> delivery socket, nothing written to PTY); TestSendClaudeFallsBackToTypedOnInboxError; TestSendClaudeFallsBackToQueuedWhenBusyAndInboxDown; TestSendNonClaudeNeverUsesInbox; TestSendSocketNotUnderLock (blocked fake inbox does not block another registry call).
+- opt-in real probe: extend cmd/hived claude_probe (HIVE_PROBE_CLAUDE=1) to send via inbox and assert a UserPromptSubmit hook event arrives.
+- frontend: unit test for delivery->toast mapping includes socket.
+
+## Verification
+GOTOOLCHAIN=go$(sed -n 's/^go //p' go.mod) go test ./internal/agent/... ./internal/registry/... ./cmd/hived/...; per-GOOS go vet + staticcheck (windows stub must compile); scripts/check-daemon-contract.sh origin/main HEAD; scripts/test.sh unit dom; manual: real hived+claude, `hived msg <claude-session> hi` while idle and while working -> arrives, delivery=socket.
+
+## Risks
+- Internal Claude surface may drift: mitigated by version gate, fixture, fallback to typed.
+- Message provenance in Claude's UI unknown (spec expected "Message from @hive:"); the captured line has no sender field. Phase 2 does not claim provenance; manual check will record how it renders.
+- Socket path from a stale registry file for a recycled pid: sessionId match + socket-owned-by-us + dial success; worst case falls back.
+
+### Revisions from second opinion (round 1, revise, confidence 7; all must_fix applied)
+- Skip socket when `pendingInputs` non-empty or `pendingPrompt` set; set `typedAt` on socket success.
+- Match registry `sessionId` on `Entry.AgentSessionID` (fallback `Entry.ID`); field is `Entry.Agent`.
+- `FindClaudeInbox` returns all candidates; send tries each.
+- After failed dial, re-run deliver.go checks block (no reuse of stale `e`/`sess`).
+- Frontend `message-session.ts:95-99` gets a `socket` branch; toast mentions bypass-mode hold (spec line 90).
+- Replace vacuous `.key` test; fixture captured from real claude 2.1.300; probe hard-asserts arrival.
+- Spec criterion "Message from @hive:" edited to "record how it renders" in this PR.
+- Reuse `claudeVersionProbe` (claude.go ~429-470) with a `claudeVersionAtLeast`. Reviewer re-run skipped for cost (operator informed).
+
+## Second opinion
+Independent hs-reviewer: revise, confidence 7, must_fix applied above (one round; no re-run).
