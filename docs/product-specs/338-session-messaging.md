@@ -15,7 +15,7 @@ stage: DONE
 - **Type:** enhancement
 - **Complexity:** M
 - **Priority:** P2
-- **Exec plan:** [docs/exec-plans/completed/338-session-messaging.md](../exec-plans/active/338-session-messaging.md)
+- **Exec plan:** [docs/exec-plans/completed/338-session-messaging.md](../exec-plans/completed/338-session-messaging.md)
 - **Design:** [docs/design-docs/control-plane.md](../design-docs/control-plane.md)
 
 ## Problem
