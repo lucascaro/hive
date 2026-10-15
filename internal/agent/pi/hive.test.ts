@@ -1268,7 +1268,7 @@ test("inbox: a connection that never finishes is dropped after the timeout", uni
   const was = mod.inboxTimeout.ms;
   mod.inboxTimeout.ms = 50;
   try {
-    // A server created before the change keeps the old value, so make a new one.
+    // The timeout is read per connection at accept time; a fresh harness keeps the test self-contained.
     h.shutdown();
     const h2 = await inboxHarness();
     try {
