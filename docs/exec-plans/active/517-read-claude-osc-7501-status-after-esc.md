@@ -120,7 +120,9 @@ Independent reviewer (opus subagent), two rounds. Round 1: revise, confidence 7,
 
 ## Open questions
 
-- None open. (`blocked:kind=permission` was verified by the live probe.) Windows ConPTY remains unverified.
+- Review iter 2 (MINOR, deliberately not applied): the query reply stays armed for the whole session for every non-`shell` agent, not only the first N seconds after spawn. Spec says once per spawn; a time bound is a design call and the reply is a fixed 10 bytes, once. Revisit if a real injection route appears.
+- None else open. (`blocked:kind=permission` was verified by the live probe.) Windows ConPTY remains unverified.
 
 ## PR convergence ledger
 - **2026-10-15 iter 1** — verdict: REQUEST_CHANGES; mergeable: MERGEABLE; findings_hash: 4ccc86335635113f09a361b4cbbe8d41c4ea298e4374dbd4c09f60d3e1d8affc; threads_open: 0; action: autofix+push (orchestrator applied both findings as spec-conforming fixes: Esc on a stale tier relabels to osc, plain "shell" never answers the query; plus batched status hook and doc fix); head_sha: c19043ad.
+- **2026-10-15 iter 2** — verdict: COMMENT; mergeable: MERGEABLE; findings_hash: 4ea8e87ebc7db4686ad838add2435776fa0e63b5d54308967344e5d11ee5bfa2; threads_open: 0; action: autofix+push; head_sha: 04deedd2.
