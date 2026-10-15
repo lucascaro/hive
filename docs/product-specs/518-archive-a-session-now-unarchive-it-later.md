@@ -4,8 +4,9 @@ title: "Archive a session now, unarchive it later"
 type: enhancement
 complexity: L
 priority: P2
-stage: GATE
+stage: DONE
 pr: 519
+shipped: 2026-10-15
 ---
 
 # Archive a session now, unarchive it later
@@ -13,6 +14,7 @@ pr: 519
 - **Issue:** #518
 - **Type:** enhancement
 - **Complexity:** L
+- **Exec plan:** [docs/exec-plans/completed/518-archive-a-session-now-unarchive-it-later.md](../exec-plans/completed/518-archive-a-session-now-unarchive-it-later.md)
 - **Priority:** P2
 
 ## Problem

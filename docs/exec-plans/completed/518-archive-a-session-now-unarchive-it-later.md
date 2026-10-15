@@ -2,7 +2,7 @@
 
 - **Spec:** [docs/product-specs/518-archive-a-session-now-unarchive-it-later.md](../../product-specs/518-archive-a-session-now-unarchive-it-later.md)
 - **Issue:** #518
-- **Status:** active
+- **Status:** completed
 - **PR:** #519
 - **Branch:** feature/518-archive-sessions
 
@@ -175,3 +175,12 @@ Round 1 (independent reviewer): **revise**, confidence 7. Must-fix: (1) write fa
 ## PR convergence ledger
 - **2026-10-15 iter 1** — verdict: COMMENT; mergeable: MERGEABLE; findings_hash: 506c9a37592a4e69875c3a210c7960251e2f3fcb325e4bdd06604709508c3b6b; threads_open: 0; action: autofix+push; head_sha: 935b1f1.
 - **2026-10-15 iter 2** — verdict: COMMENT; mergeable: MERGEABLE; findings_hash: empty; threads_open: 0; action: stop; head_sha: 935b1f1.
+
+## Gate verdict
+
+- **2026-10-15** — verdict: PASS; phase: —; checks: 11 passed / 0 failed / 0 followups; followups: none; one-line: all 11 success criteria delivered with tests, no non-goal implemented, docs/changeset/features.json/DESIGN/plugins.md accurate.
+  - 2026-10-15 dimensions:
+    - acceptance — PASS — criteria 1-11 each traced to code and a failing-if-broken test (registry -race, daemon frames, vitest dom, Playwright mock + real)
+    - non-goals — PASS — no transcript search, bulk/auto archive, sync, scrollback persistence, minimize/Close changes or sidebar section
+    - doc accuracy — PASS — validator's one flag (CHANGELOG/index diff) was a stale local `main`; against origin/main those generated files are untouched
+
