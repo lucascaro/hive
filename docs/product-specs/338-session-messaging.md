@@ -5,7 +5,8 @@ type: enhancement
 complexity: M
 priority: P2
 pr: 516
-stage: GATE
+shipped: 2026-10-15
+stage: DONE
 ---
 
 # Session messaging: hand a session a message, get told when it idles
@@ -14,7 +15,7 @@ stage: GATE
 - **Type:** enhancement
 - **Complexity:** M
 - **Priority:** P2
-- **Exec plan:** [docs/exec-plans/active/338-session-messaging.md](../exec-plans/active/338-session-messaging.md)
+- **Exec plan:** [docs/exec-plans/completed/338-session-messaging.md](../exec-plans/active/338-session-messaging.md)
 - **Design:** [docs/design-docs/control-plane.md](../design-docs/control-plane.md)
 
 ## Problem

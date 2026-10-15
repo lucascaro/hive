@@ -5,7 +5,7 @@
 - **Issue:** —
 - **Branch:** `feature/338-pi-inbox`
 - **PR:** [#516](https://github.com/lucascaro/hive/pull/516)
-- **Status:** active
+- **Status:** completed
 - **Phase:** 3 of 3
 
 ## Summary
@@ -433,6 +433,12 @@ Independent reviewer (general-purpose subagent), 2 rounds.
     - acceptance — PASS — `socket` value, fake-socket exact-line tests, key-file guard green; Pi inbox DEFERRED (phase 3); real-Claude manual render check DEFERRED (human step, recorded in spec)
     - non-goals — PASS
     - doc accuracy — PASS — needed three validator passes (first two found stale README, msg help, deliver.go header, DESIGN, plan probe wording; fixed in 2589ff14 and 11257738)
+- **2026-10-15** — verdict: NEEDS_FOLLOWUP (accepted by operator, advanced); phase: 3/3; checks: 5 passed / 0 failed / 2 followups; followups: #521; one-line: Pi extension inbox (`extension`) verified by node unit + real-extension e2e + Go tests, CI green; real-pi and real-Claude manual checks are human steps tracked in #521.
+  - 2026-10-15 dimensions:
+    - acceptance — NEEDS_FOLLOWUP — Pi inbox node test + e2e + `SendToPi` ack tests pass; "manual checklist against real pi" and real-Claude render check not runnable by agent (#521)
+    - non-goals — PASS — no broker, history, broadcast; Windows falls back to typed (`PiInboxPath` empty)
+    - doc accuracy — PASS — control-plane.md, README, DESIGN.md, `hived msg` usage, changeset, features.json updated in-PR
+
 
 ## Approved plan — Phase 2 of 3 (2026-10-14): Claude inbox socket
 
