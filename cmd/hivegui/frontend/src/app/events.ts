@@ -1327,7 +1327,7 @@ export function wireDaemonEvents(injected: EventsDeps) {
       void onArchivedWorktreeDirty(e.session_id);
       return;
     }
-    if (onArchiveError(e.code)) return;
+    if (onArchiveError(e.code, e.session_id)) return;
     // An ACP refusal names its session: give a refused prompt back to
     // its box and stop showing a refused snapshot as loading. The status
     // line below still says why.

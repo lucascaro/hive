@@ -110,19 +110,28 @@ const ARCHIVE_ERRORS: Record<string, string> = {
 
 /** events.ts › control:error. Returns true when the code was one of
  * this feature's, so the generic status line is not shown twice. */
-export function onArchiveError(code: string | undefined): boolean {
+export function onArchiveError(
+  code: string | undefined,
+  sessionId?: string,
+): boolean {
   if (!code || !(code in ARCHIVE_ERRORS)) return false;
-  // These errors carry no session id, so every outstanding request of
-  // this kind is dropped rather than guessing which one failed.
-  if (
+  const pending =
     code === 'archive_busy' ||
     code === 'no_such_session' ||
     code === 'archive_failed'
-  ) {
-    pendingArchive.clear();
-  } else {
-    pendingUnarchive.clear();
+      ? pendingArchive
+      : pendingUnarchive;
+  // no_such_session and session_already_open are not archive's alone
+  // (an ACP prompt or a restore can raise them too): claim them only
+  // while a request of this kind is outstanding, and never one that
+  // names a session this window did not ask about.
+  if (code === 'no_such_session' || code === 'session_already_open') {
+    if (pending.size === 0) return false;
+    if (sessionId && !pending.has(sessionId)) return false;
   }
+  // These errors carry no session id, so every outstanding request of
+  // this kind is dropped rather than guessing which one failed.
+  pending.clear();
   flashStatus(ARCHIVE_ERRORS[code], true);
   return true;
 }

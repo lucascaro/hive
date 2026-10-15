@@ -301,4 +301,23 @@ describe('archiving', () => {
     expect(archive.onArchiveError('worktree_dirty')).toBe(false);
     expect(archive.onArchiveError(undefined)).toBe(false);
   });
+
+  it('leaves shared codes to other features when no archive request is pending', () => {
+    // An ACP prompt to a closed session raises no_such_session with its
+    // id; archive must not swallow it before applyAcpError runs.
+    expect(archive.onArchiveError('no_such_session', 'acp1')).toBe(false);
+    expect(archive.onArchiveError('session_already_open')).toBe(false);
+  });
+
+  it('claims no_such_session for its own pending archive only', () => {
+    resetStore({
+      sessions: [{ id: 'live1', name: 'api refactor' }] as never,
+      activeId: 'live1',
+    });
+    archive.archiveSession('live1');
+    expect(archive.onArchiveError('no_such_session', 'other')).toBe(false);
+    expect(archive.onArchiveError('no_such_session')).toBe(true);
+    // The pending request is cleared, so a second one is not claimed.
+    expect(archive.onArchiveError('no_such_session')).toBe(false);
+  });
 });
