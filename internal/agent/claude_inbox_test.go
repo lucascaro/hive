@@ -10,6 +10,7 @@ import (
 	"os"
 	"path/filepath"
 	"sync"
+	"syscall"
 	"testing"
 	"time"
 )
@@ -257,5 +258,62 @@ func TestClaudeSessionsDirHonoursConfigDir(t *testing.T) {
 	t.Setenv("CLAUDE_CONFIG_DIR", "")
 	if got := ClaudeSessionsDir("/home/u"); got != "/home/u/.claude/sessions" {
 		t.Fatalf("got %q", got)
+	}
+}
+
+func TestFindClaudeInboxesSkipsSymlinkAndFIFORegistrations(t *testing.T) {
+	sock, _ := listen(t)
+	reg := t.TempDir()
+	real := t.TempDir()
+	register(t, real, "target.json", "s", sock)
+	if err := os.Symlink(filepath.Join(real, "target.json"), filepath.Join(reg, "10.json")); err != nil {
+		t.Fatal(err)
+	}
+	if err := syscall.Mkfifo(filepath.Join(reg, "11.json"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	done := make(chan []string, 1)
+	go func() { done <- FindClaudeInboxes(reg, "s") }()
+	select {
+	case got := <-done:
+		if len(got) != 0 {
+			t.Fatalf("accepted a symlink or FIFO registration: %v", got)
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("a FIFO registration blocked the lookup")
+	}
+}
+
+func TestReadRegistrationRejectsOversize(t *testing.T) {
+	p := filepath.Join(t.TempDir(), "big.json")
+	if err := os.WriteFile(p, make([]byte, inboxRegMax+1), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := readRegistration(p); err == nil {
+		t.Fatal("oversize registration accepted")
+	}
+}
+
+func TestFindClaudeInboxesRejectsWritableSocketDir(t *testing.T) {
+	dir, err := os.MkdirTemp("", "cc")
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { os.RemoveAll(dir) })
+	l, err := net.Listen("unix", filepath.Join(dir, "1.sock"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { l.Close() })
+	reg := t.TempDir()
+	register(t, reg, "1.json", "s", filepath.Join(dir, "1.sock"))
+	if got := FindClaudeInboxes(reg, "s"); len(got) != 1 {
+		t.Fatalf("0700 dir rejected: %v", got)
+	}
+	if err := os.Chmod(dir, 0o770); err != nil {
+		t.Fatal(err)
+	}
+	if got := FindClaudeInboxes(reg, "s"); len(got) != 0 {
+		t.Fatalf("group-writable socket dir accepted: %v", got)
 	}
 }

@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"log"
 	"net"
 	"os"
@@ -86,10 +87,12 @@ func FindClaudeInboxes(sessionsDir string, ids ...string) []string {
 			continue
 		}
 		fi, err := de.Info()
-		if err != nil || fi.Size() > inboxRegMax {
+		// DirEntry.Info is an Lstat: a symlink or FIFO named *.json is not a
+		// regular file, so it is skipped before anything opens it.
+		if err != nil || !fi.Mode().IsRegular() || !ownedByUs(fi) {
 			continue
 		}
-		b, err := os.ReadFile(filepath.Join(sessionsDir, de.Name()))
+		b, err := readRegistration(filepath.Join(sessionsDir, de.Name()))
 		if err != nil {
 			continue
 		}
@@ -116,13 +119,31 @@ func FindClaudeInboxes(sessionsDir string, ids ...string) []string {
 	return out
 }
 
+// readRegistration reads at most inboxRegMax bytes and rejects a longer
+// file, whatever its stat size claimed.
+func readRegistration(path string) ([]byte, error) {
+	f, err := os.Open(path)
+	if err != nil {
+		return nil, err
+	}
+	defer f.Close()
+	b, err := io.ReadAll(io.LimitReader(f, inboxRegMax+1))
+	if err == nil && len(b) > inboxRegMax {
+		err = errors.New("registration too large")
+	}
+	return b, err
+}
+
 func socketOwnedByUs(path string) bool {
 	fi, err := os.Lstat(path)
 	if err != nil || fi.Mode()&os.ModeSocket == 0 || !ownedByUs(fi) {
 		return false
 	}
 	dir, err := os.Lstat(filepath.Dir(path))
-	return err == nil && dir.IsDir() && dir.Mode()&os.ModeSymlink == 0 && ownedByUs(dir)
+	// A directory others can write to lets them swap the socket between
+	// this check and the dial.
+	return err == nil && dir.IsDir() && dir.Mode()&os.ModeSymlink == 0 &&
+		dir.Mode().Perm()&0o022 == 0 && ownedByUs(dir)
 }
 
 // inboxLine is the exact wire form of one message. Encoder.Encode adds
