@@ -123,4 +123,4 @@ Independent reviewer (opus subagent), two rounds. Round 1: revise, confidence 7,
 - None open. (`blocked:kind=permission` was verified by the live probe.) Windows ConPTY remains unverified.
 
 ## PR convergence ledger
-- **2026-10-15 iter 1** — verdict: REQUEST_CHANGES; mergeable: MERGEABLE; findings_hash: 4ccc86335635113f09a361b4cbbe8d41c4ea298e4374dbd4c09f60d3e1d8affc; threads_open: 0; action: autofix+push (orchestrator applied both findings as spec-conforming fixes: Esc on a stale tier relabels to osc, plain "shell" never answers the query; plus batched status hook and doc fix); head_sha: pending.
+- **2026-10-15 iter 1** — verdict: REQUEST_CHANGES; mergeable: MERGEABLE; findings_hash: 4ccc86335635113f09a361b4cbbe8d41c4ea298e4374dbd4c09f60d3e1d8affc; threads_open: 0; action: autofix+push (orchestrator applied both findings as spec-conforming fixes: Esc on a stale tier relabels to osc, plain "shell" never answers the query; plus batched status hook and doc fix); head_sha: c19043ad.
