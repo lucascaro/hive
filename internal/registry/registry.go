@@ -736,7 +736,8 @@ func sourceName(s string) string {
 // when the new state is one the user has to act on.
 //
 // Attention is only ever raised for a session whose state came from the
-// agent itself, or from the Laya classifier (spec 458) — which reads the
+// agent itself (a hook, an extension, ACP, or the program's own OSC 7501
+// status report, spec 517), or from the Laya classifier (spec 458) — which reads the
 // screen for exactly the question "is this waiting on the user", and
 // which the user opted into. The heuristic tier deliberately does not
 // participate:

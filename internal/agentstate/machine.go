@@ -890,8 +890,10 @@ func (m *Machine) oscFresh(now time.Time) bool {
 // when no tier is speaking for the session — none trusted, or the
 // trusted one silent of state-bearing events for HookStaleAfter, the
 // Classifiable rule — and never over an ACP session, an exited one, or a
-// wait that a hook, extension or the bell raised (only Laya's guess and
-// osc's own waits may be revised by it). It never touches the tier
+// wait that a hook or extension raised, or that the bell raised on any
+// other tier (only Laya's guess and osc's own waits may be revised by
+// it; Bell keeps the osc label, so a bell on an osc-sourced session is
+// osc's wait — the same program speaking twice). It never touches the tier
 // clocks, so a stale hook stays stale and its next event takes the
 // session straight back through Apply.
 //

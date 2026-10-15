@@ -8,7 +8,7 @@ Index entries are short. Detailed rationale belongs in the per-doc files.
 
 <!-- One row per design doc. Add: `- [Title](slug.md) — one-line description` -->
 - [UI design system](ui/README.md) — tokens, themes, icons, components, patterns for the GUI; decisions + mocks
-- [The control plane](control-plane.md) — daemon-owned session state across agent CLIs: the knowledge tiers (hook, extension, acp, heuristic, laya), the `event` wire mode, what is deliberately out of scope
+- [The control plane](control-plane.md) — daemon-owned session state across agent CLIs: the knowledge tiers (hook, extension, acp, heuristic, laya, osc), the `event` wire mode, what is deliberately out of scope
 - [Agent orchestration](agent-orchestration.md) — the per-session grant that lets an agent message, watch and spawn siblings; phased and evidence-gated
 - [ACP workflows](acp-workflows.md) — engine-driven workflows over the Agent Client Protocol: probe-verified capabilities per agent, go/no-go, where the engine lives, one trust model shared with orchestration, ordered follow-ups
 - [Workflow engine](workflow-engine.md) — spec 495: typed TS workflows that build a static, reviewable IR; a plugin-owned SQLite checkpoint log for durable runs; events keyed by node id for the live overlay; go/no-go (go, custom)

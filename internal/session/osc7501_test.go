@@ -55,8 +55,6 @@ func TestStatusScannerParsesRecordedClaudeStream(t *testing.T) {
 	}
 }
 
-// A PTY read splits a sequence anywhere; the stream must parse the same
-// from every cut.
 // The Go probe's recording (TestClaudeProbeOSC7501EscGoesIdle, Claude
 // 2.1.301): a permission dialog (blocked/permission) dismissed with Esc,
 // Esc mid-turn, and Esc during a running tool. Esc is `idle` each time.
@@ -77,6 +75,8 @@ func TestStatusScannerParsesRecordedProbeStream(t *testing.T) {
 	}
 }
 
+// A PTY read splits a sequence anywhere; the stream must parse the same
+// from every cut.
 func TestStatusScannerSplitAtEveryOffset(t *testing.T) {
 	raw, err := os.ReadFile("testdata/osc7501/claude-2.1.300.bin")
 	if err != nil {
@@ -135,8 +135,8 @@ func TestStatusScannerCapsPendingReports(t *testing.T) {
 	}
 }
 
-// echoReply runs a bash script in a PTY session. The script prints the
-// 7501 query, then waits up to a second for a reply on stdin and prints
+// askAndEcho runs as a bash script in a PTY session. It prints the
+// 7501 query, then waits up to two seconds for a reply on stdin and prints
 // what it read, bracketed.
 const askAndEcho = `stty raw -echo; printf '\033]7501;?\007'; ` +
 	`IFS= read -r -s -n 6 -t 2 x; printf 'REPLY[%s]' "$(printf '%s' "$x" | od -An -c | tr -d ' \n')"`
