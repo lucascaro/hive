@@ -3,10 +3,10 @@
 - **Spec:** [docs/product-specs/338-session-messaging.md](../../product-specs/338-session-messaging.md)
 - **Design:** [docs/design-docs/control-plane.md](../../design-docs/control-plane.md)
 - **Issue:** —
-- **Branch:** `feature/338-claude-inbox`
-- **PR:** [#515](https://github.com/lucascaro/hive/pull/515)
+- **Branch:** `feature/338-pi-inbox`
+- **PR:** —
 - **Status:** active
-- **Phase:** 2 of 3
+- **Phase:** 3 of 3
 
 ## Summary
 
@@ -481,3 +481,45 @@ GOTOOLCHAIN=go$(sed -n 's/^go //p' go.mod) go test ./internal/agent/... ./intern
 
 ## Second opinion
 Independent hs-reviewer: revise, confidence 7, must_fix applied above (one round; no re-run).
+
+## Draft plan — Phase 3 of 3 (2026-10-15): Pi extension inbox
+
+### Verified facts (pi-coding-agent 1.0.4, read from `dist/`)
+
+- `pi.sendUserMessage(content, {deliverAs})` "always triggers a turn". While streaming it **throws** unless `deliverAs` is `"steer"` or `"followUp"` (`agent-session.js` ~1547: "Agent is already processing. Specify streamingBehavior…"). The spec's "queues while streaming" is only true if the extension passes `deliverAs`. Decision: always pass `deliverAs: "followUp"` (delivered after the current turn finishes; ignored when idle). `steer` would interrupt mid-turn, wrong for a note.
+- The extension gets only `HIVE_SESSION_ID`/`HIVE_SOCKET` plus `HIVE_PI_*` env set by `piSpawnEnv` (`internal/agent/settings.go:262`); it has no state dir. Session ids are UUIDs (36 chars); macOS sun_path limit is 104.
+- The extension is embedded (`internal/agent/pi.go`) and its tests run via `node` type stripping (`nodeForTS` in `internal/agent/pi_test.go`; `hive.test.ts`).
+
+### Approach
+
+- **Daemon → env.** `piSpawnEnv` adds `HIVE_PI_INBOX=<path>` (unix only; empty on Windows = feature off, spec non-goal). Path = `<dir of events socket>/pi-<first 16 hex of id>.sock`, from a pure helper `agent.PiInboxPath(sockPath, id)` so extension and registry cannot disagree and the path stays short enough for sun_path. (`SpawnInfo` gains `SocketPath`.)
+- **Extension (`hive.ts`).** At `session_start`, if `HIVE_PI_INBOX` set: unlink stale path, `net.createServer`, listen, `chmod 0600`; each connection = UTF-8 note terminated by EOF, bounded to 64 KiB (`wire.MaxMessageLen`), 5 s idle timeout, then `pi.sendUserMessage(text, {deliverAs:"followUp"})`. Re-listen is idempotent across `/new`/`/reload` (close old server first); `session_shutdown` closes and unlinks. Listen errors are swallowed (feature degrades to typed).
+- **Registry/agent.** `agent.SendToPi(path, text)`: parent dir must be real, owned by us, not group/world-writable; socket must be an Lstat'd socket owned by us (reuse the claude_inbox helpers); dial 2 s, write text, half-close, wait for the extension's single-byte ack (`ok\n`, so "delivered" means the extension accepted it, not just that bytes were written), close. `Registry.tryInbox` generalised: Claude branch unchanged, Pi branch (`e.Agent == pi`, not ACP) uses `piInboxSend`. Failure ⇒ falls through to typed/queued exactly as phase 2. Success returns `wire.DeliveryExtension` (`"extension"`, new constant; the frame already documents it).
+- `DaemonContract` 28→29. Frontend toast gains an "extension" label. `hived msg` prints the new delivery word through the existing path (no code change expected; verify).
+- Because `sendUserMessage` never errors on the idle→busy race and Pi's own queue orders notes, concurrent sends are ordered by Pi, not by Hive.
+
+### Files to change
+1. `internal/agent/pi/hive.ts` — inbox server.
+2. `internal/agent/settings.go` — `HIVE_PI_INBOX` in `piSpawnEnv`; `SpawnInfo.SocketPath`.
+3. `internal/agent/pi_inbox.go` (+`_unix.go`/`_windows.go` stub if needed) — `PiInboxPath`, `SendToPi`; share dir/socket checks with `claude_inbox.go` (extract, no duplication).
+4. `internal/registry/deliver.go`, `registry.go` — Pi branch in `tryInbox`, `piInboxSend` field, pass socket path in `spawnInfo`.
+5. `internal/wire` — `DeliveryExtension` constant.
+6. `internal/buildinfo/contract.go` — bump + history.
+7. Frontend `message-session.ts` (+ dom test), docs: control-plane.md, README paragraph, DESIGN.md bullet, `hived msg` usage, changeset text + features.json blurb (extend the shared 338 entries), spec criterion wording.
+
+### Tests
+- `internal/agent/pi/hive.test.ts`: `inbox delivers a note via sendUserMessage with deliverAs followUp`; `ignores oversize note`; `idle connection is dropped after timeout`; `session_shutdown unlinks the socket`; `re-start replaces the socket (no EADDRINUSE)`; `inert without HIVE_PI_INBOX`; socket mode is 0600.
+- `internal/agent`: `TestPiInboxPathShortAndStable` (len < 104 for realistic dirs, differs per id), `TestSendToPiWritesNoteAndAwaitsAck`, `TestSendToPiRefusesWritableDir`, `TestSendToPiNoAckIsError`, `TestPiSpawnEnvCarriesInbox` (and absent on windows/ACP).
+- `internal/registry`: `TestPiNoteGoesThroughInbox`, `TestPiInboxFailureFallsBackToTyped`, `TestPiInboxSkippedWithQueue` (older queued notes keep place).
+- Cross-language: a Go test that starts the embedded extension under node with a fake `pi`, then calls `SendToPi` end to end (skipped without node, as `pi_test.go` does).
+- Frontend dom: toast for `extension`.
+- Mutation checks on the ack wait, dir-mode check, and `deliverAs`.
+
+### Verification
+`GOTOOLCHAIN=go$(sed -n 's/^go //p' go.mod) go test ./internal/... ./cmd/hived/...`; per-GOOS `go vet` + staticcheck; `node --test internal/agent/pi/`; `scripts/test.sh`; `scripts/check-daemon-contract.sh origin/main HEAD`. Manual (human): real `pi` session, `hived msg <name> hi` idle and mid-stream — I can drive this myself with the installed pi 1.0.4 in an isolated HIVE_SOCKET/HIVE_STATE_DIR if you want it done now (needs a configured Pi provider; will not touch credentials).
+
+### Risks / open
+- Pi API drift (`sendUserMessage` signature) — gated by the node test against a fake; no version probe in v1 (extension is embedded, the daemon cannot detect Pi's version cheaply). Fallback to typed on dial failure covers an extension that fails to load.
+- Any same-user process can write to the socket (same as Claude's inbox); 0600 socket in a 0700 dir.
+- Idle-ping/`working` state: a Pi turn triggered by a note reports state itself through the existing extension events.
+- Not built: Windows named pipe (spec non-goal), steer-mode delivery.
