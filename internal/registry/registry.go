@@ -390,10 +390,13 @@ func truncateTitle(t string) string {
 // Registry is the daemon-side authoritative store of sessions and
 // the projects they belong to.
 type Registry struct {
-	mu       sync.Mutex
-	entries  map[string]*Entry
-	order    []string
-	stateDir string
+	mu sync.Mutex
+	// inboxSend hands a note to a Claude session's own inbox (spec 338,
+	// phase 2); tests replace it. Nil disables the socket strategy.
+	inboxSend func(ids []string, text string) error
+	entries   map[string]*Entry
+	order     []string
+	stateDir  string
 
 	// socketPath is the daemon's EVENTS socket — not its control
 	// socket. Set once by the daemon right after Open (SetSocketPath);
@@ -1085,6 +1088,7 @@ func Open(stateDir string) (*Registry, error) {
 		stateDir = StateDir()
 	}
 	r := &Registry{
+		inboxSend:         agent.SendToClaude,
 		entries:           make(map[string]*Entry),
 		parked:            make(map[string]*parkedCreate),
 		stateDir:          stateDir,

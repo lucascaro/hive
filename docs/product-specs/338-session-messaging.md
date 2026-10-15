@@ -4,7 +4,7 @@ title: "Session messaging: hand a session a message, get told when it idles"
 type: enhancement
 complexity: M
 priority: P2
-pr: 513
+pr: 515
 stage: GATE
 ---
 
@@ -60,7 +60,9 @@ the toggle. One-shot, per session.
   `ERROR{code: session_busy|session_dead|delivery_failed}`.
 - Claude path: a Go test with a fake inbox socket asserts the exact
   line Hive writes; manual checklist: message arrives in a real Claude
-  session as `› Message from @hive:` and Claude reacts.
+  session and Claude reacts (record how the UI renders it — the
+  captured line carries no sender field, so `› Message from @hive:` is
+  not promised).
 - Pi path: extension unit test (node) shows a message written to the
   inbox socket surfaces via `sendUserMessage`; manual checklist against
   real `pi`.

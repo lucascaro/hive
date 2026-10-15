@@ -96,7 +96,9 @@ export function onMessageSent(sessionId: string, delivery: string): void {
       ? `Queued for ${name} — typed when it goes idle`
       : delivery === 'acp'
         ? `Sent to ${name}`
-        : `Typed into ${name}`,
+        : delivery === 'socket'
+          ? `Sent to ${name} — held for approval if it is in bypass mode`
+          : `Typed into ${name}`,
   );
 }
 
