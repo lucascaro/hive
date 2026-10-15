@@ -534,9 +534,11 @@ const STATUS_MARK: Record<string, string> = { pending: "[ ]", active: "[>]", don
 // The path to listen on; set by hived (piSpawnEnv). Absent on Windows.
 export const INBOX_ENV = "HIVE_PI_INBOX";
 export const MAX_INBOX_NOTE = 64 * 1024; // wire.MaxMessageLen
-// A connection that has not finished within this is dropped. Mutable for
-// tests only.
-export const inboxTimeout = { ms: 5000 };
+// A connection that has not finished within this is dropped. It must stay
+// below Hive's ack wait (piAckTimeout, 3 s in internal/agent/pi_inbox.go):
+// once Hive has given up and typed the note, delivering it here too would
+// show it twice. Mutable for tests only.
+export const inboxTimeout = { ms: 2000 };
 
 // startInbox listens on path. deliver returns whether the note was
 // accepted; only then is the ack written. Listen failures are swallowed:
@@ -553,6 +555,7 @@ export function startInbox(path: string, deliver: (text: string) => boolean): { 
     const chunks: Buffer[] = [];
     let size = 0;
     let over = false;
+    const accepted = Date.now();
     conn.setTimeout(inboxTimeout.ms, () => conn.destroy());
     conn.on("error", () => {});
     conn.on("data", (d: Buffer) => {
@@ -565,7 +568,13 @@ export function startInbox(path: string, deliver: (text: string) => boolean): { 
       chunks.push(d);
     });
     conn.on("end", () => {
-      if (over) return;
+      // Same reason as inboxTimeout: a note that took this long to finish
+      // is one Hive has probably already typed. A stall before the
+      // connection is accepted cannot be seen from here.
+      if (over || Date.now() - accepted > inboxTimeout.ms) {
+        conn.destroy();
+        return;
+      }
       const text = Buffer.concat(chunks).toString("utf8");
       if (text.trim() === "" || !deliver(text)) {
         conn.destroy();

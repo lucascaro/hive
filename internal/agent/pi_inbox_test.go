@@ -144,8 +144,9 @@ func TestSendToPiRefusesRegularFile(t *testing.T) {
 	}
 }
 
-// A crashed pi leaves its socket behind; the refused dial removes it.
-func TestSendToPiRemovesStaleSocket(t *testing.T) {
+// A refused dial leaves the socket file alone: a full backlog reads the
+// same, and a restarted extension may own the path now.
+func TestSendToPiKeepsSocketOnRefusedDial(t *testing.T) {
 	dir := shortDir(t)
 	p := filepath.Join(dir, "pi-stale.sock")
 	l, err := net.Listen("unix", p)
@@ -157,7 +158,7 @@ func TestSendToPiRemovesStaleSocket(t *testing.T) {
 	if err := SendToPi(p, "x"); err == nil {
 		t.Fatal("dialing a dead socket must fail")
 	}
-	if _, err := os.Lstat(p); !os.IsNotExist(err) {
-		t.Fatalf("stale socket still there: %v", err)
+	if _, err := os.Lstat(p); err != nil {
+		t.Fatalf("socket file removed on a refused dial: %v", err)
 	}
 }

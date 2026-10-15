@@ -1313,3 +1313,28 @@ test("inbox: a second session_start replaces the listener and a stale socket doe
     h.restore();
   }
 });
+
+test("inbox: a note that finishes after the budget is dropped, not delivered", unixOnly, async () => {
+  const was = mod.inboxTimeout.ms;
+  mod.inboxTimeout.ms = 150;
+  const h = await inboxHarness();
+  try {
+    const reply = await new Promise<string>((resolve) => {
+      const c = net.createConnection(h.inboxPath);
+      let out = "";
+      c.on("data", (d) => (out += d));
+      c.on("close", () => resolve(out));
+      c.on("error", () => resolve(out));
+      c.on("connect", () => {
+        c.write("slow");
+        setTimeout(() => c.end(), 400);
+      });
+    });
+    assert.equal(reply, "");
+    assert.equal(h.sent.length, 0);
+  } finally {
+    mod.inboxTimeout.ms = was;
+    h.shutdown();
+    h.restore();
+  }
+});

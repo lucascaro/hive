@@ -211,8 +211,12 @@ queues the note behind the turn in flight instead of interrupting it; when
 Pi is idle the call starts a turn. The extension answers `ok\n` *before*
 the agent acts — an idle Pi's call spans a whole turn — and Hive waits at
 most 3 s for it, then types instead. It refuses (no ack, so Hive types)
-when no model is selected. Known limit: a note acked and then rejected by
-Pi (compaction in progress) is lost. A custom agent built on Pi gets the
+when no model is selected. Known limits: a note acked and then rejected by
+Pi (compaction in progress) is lost; and if Pi's event loop stalls for over
+3 s *before* it accepts the connection, Hive types the note and the extension
+later delivers it as well (a stall after accepting is caught: the extension
+drops a note older than its 2 s budget). A refused dial never deletes the
+socket file; the extension unlinks a stale one when it starts. A custom agent built on Pi gets the
 extension but keeps typed delivery, as the inbox is keyed on the `pi` id.
 
 ## Plugins are control clients (spec 460)

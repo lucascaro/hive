@@ -1,14 +1,11 @@
 package agent
 
 import (
-	"errors"
 	"fmt"
 	"net"
-	"os"
 	"path/filepath"
 	"runtime"
 	"strings"
-	"syscall"
 	"time"
 )
 
@@ -21,7 +18,11 @@ import (
 // half-closes; the extension replies "ok\n" once it has accepted the
 // note — before the agent has acted on it, since a note to an idle Pi
 // starts a whole turn. No ack in piAckTimeout is a failure, and the
-// caller types the note instead.
+// caller types the note instead. The extension drops a note that took
+// longer than its own budget (shorter than piAckTimeout) rather than
+// deliver what Hive has already typed; a stall before the extension
+// accepts the connection cannot be seen from its side, so a note can
+// still arrive twice then (documented in control-plane.md).
 
 // PiInboxEnv names the socket the extension should listen on.
 const PiInboxEnv = "HIVE_PI_INBOX"
@@ -74,12 +75,9 @@ func SendToPi(sockPath, text string) error {
 func sendPiInbox(sockPath, text string, dial, ack time.Duration) error {
 	c, err := net.DialTimeout("unix", sockPath, dial)
 	if err != nil {
-		// A crashed pi leaves its socket behind; nothing else removes it.
-		// Ownership was checked by the caller, and a refused connection
-		// means nobody is listening.
-		if errors.Is(err, syscall.ECONNREFUSED) {
-			_ = os.Remove(sockPath)
-		}
+		// A refused dial is not removed: a full listen backlog reads the
+		// same, and an extension that just restarted may have bound a new
+		// socket here. The extension unlinks a stale one when it starts.
 		return err
 	}
 	defer c.Close()
