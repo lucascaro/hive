@@ -347,7 +347,7 @@ These are the defaults. Rebind any of them, and any plugin command, under **Sett
 | ⌘E | Worktrees in the active project (browse, resume, delete) |
 | ⌘I | Capture an idea for later (note, kind, project) |
 | ⇧⌘I | Ideas captured for the active project |
-| ⇧⌘M | Message the active session: a note typed into it when it is quiet (queued if it is working) |
+| ⇧⌘M | Message the active session: a note sent to it: through Claude's own inbox for Claude Code, otherwise typed when it is quiet (queued if it is working) |
 | ⌥⌘B | Notify me once when the active session stops working (Ctrl+Alt+Shift+B on Windows and Linux) |
 | ⌘1–9 | Jump to nth session |
 | ⌘= / ⌘- / ⌘0 | Font size up / down / reset |

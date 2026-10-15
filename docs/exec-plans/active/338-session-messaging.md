@@ -191,7 +191,7 @@ shell) message any other session with the same semantics the GUI has.
 - `cmd/hived/msg.go`, `msg_test.go`
 - `cmd/hivegui/frontend/src/components/modals/MessageSession.tsx` + test
 - `scripts/check-no-claude-keys.sh` (grep guard, wired into `scripts/test.sh`)
-- (Not built in phase 2 — deferred with the manual real-Claude check.) The drift probe (which shipped as `cmd/hived/claude_probe_test.go`
+- (Not built in phase 2 — deferred with the manual real-Claude check; the probe file itself predates phase 2.) The drift probe (which shipped as `cmd/hived/claude_probe_test.go`
   behind `HIVE_PROBE_CLAUDE=1`, NOT as the `scripts/probe-claude.sh`
   this line originally assumed) gains a 338 section: assert
   `~/.claude/sessions/<pid>.json` for the probe session still carries
