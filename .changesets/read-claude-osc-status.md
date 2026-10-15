@@ -1,6 +1,6 @@
 ---
-type: fixed
-bump: patch
+type: changed
+bump: minor
 issue: 517
 pr: 520
 ---

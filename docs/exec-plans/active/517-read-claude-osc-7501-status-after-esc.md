@@ -108,6 +108,7 @@ Independent reviewer (opus subagent), two rounds. Round 1: revise, confidence 7,
 
 ## Decision log
 
+- **2026-10-15** — Changeset is `changed`/`minor`, not `fixed`/`patch`: the spec classes this an enhancement and ships a `site/features.json` entry, which AGENTS.md ties to a minor bump (review iter 3). Why: the two must agree.
 - **2026-10-15** — Found by the live probe, not the plan: (1) a startup `idle` after the SessionStart ping must not relabel a live hook session, and osc keeps a live hook/extension tier's label whenever it supplies a state (`liveTier` rule) — otherwise the existing real-Claude probes' "hook tier" waits flake; (2) `oscWorking` must span a `blocked` report, or Esc on a permission dialog never latches; (3) `blocked:kind=permission` is emitted (resolves the open question); (4) status reports end with BEL, not ST.
 - **2026-10-15** — Spec amended with operator approval: criterion 3 gains the interrupt-edge exception; forgery non-goal widened to forged working→idle sequences (never a wait). Why: hooks cannot report Esc, so a literal gap-only rule leaves criterion 1 unmet.
 - **2026-10-15** — Brainstorm decisions: Claude-only verified scope; osc tier fills gaps only; forgery accepted as for BEL; criteria and non-goals as in the spec.
@@ -126,3 +127,4 @@ Independent reviewer (opus subagent), two rounds. Round 1: revise, confidence 7,
 ## PR convergence ledger
 - **2026-10-15 iter 1** — verdict: REQUEST_CHANGES; mergeable: MERGEABLE; findings_hash: 4ccc86335635113f09a361b4cbbe8d41c4ea298e4374dbd4c09f60d3e1d8affc; threads_open: 0; action: autofix+push (orchestrator applied both findings as spec-conforming fixes: Esc on a stale tier relabels to osc, plain "shell" never answers the query; plus batched status hook and doc fix); head_sha: c19043ad.
 - **2026-10-15 iter 2** — verdict: COMMENT; mergeable: MERGEABLE; findings_hash: 4ea8e87ebc7db4686ad838add2435776fa0e63b5d54308967344e5d11ee5bfa2; threads_open: 0; action: autofix+push; head_sha: 04deedd2.
+- **2026-10-15 iter 3** — verdict: COMMENT; mergeable: MERGEABLE; findings_hash: c475b2114bbd67a84868fb1462495c1426563c96992787e33a37c09d1a6b37e1; threads_open: 0; action: autofix+push; head_sha: 71f1d082.
