@@ -200,7 +200,7 @@
   },
   {
     "title": "Message a session",
-    "blurb": "Hand a running session a note with ⇧⌘M — delivered straight to Claude Code, queued for other terminal sessions that are working — and get one notification when it stops, with ⌥⌘B or the bell on its row.",
+    "blurb": "Hand a running session a note with ⇧⌘M — delivered straight to Claude Code when its inbox is available, otherwise queued if a terminal session is working — and get one notification when it stops, with ⌥⌘B or the bell on its row.",
     "status": "shipped",
     "since": "Unreleased"
   }
