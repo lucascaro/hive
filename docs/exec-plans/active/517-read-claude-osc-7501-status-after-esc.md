@@ -2,6 +2,8 @@
 
 - **Spec:** [docs/product-specs/517-read-claude-osc-7501-status-after-esc.md](../../product-specs/517-read-claude-osc-7501-status-after-esc.md)
 - **Issue:** #517
+- **PR:** #520
+- **Branch:** feature/517-osc-7501-status
 - **Status:** active
 
 ## Summary

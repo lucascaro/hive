@@ -1,10 +1,11 @@
 ---
 issue: 517
+pr: 520
 title: Read Claude's terminal status (OSC 7501) to fix stuck "working" after Esc
 type: enhancement
 complexity: M
 priority: P2
-stage: IMPLEMENT
+stage: REVIEW
 ---
 
 # Read Claude's terminal status (OSC 7501) to fix stuck "working" after Esc
