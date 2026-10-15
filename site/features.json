@@ -121,6 +121,12 @@
     "since": "2.5.0"
   },
   {
+    "title": "Archive a session",
+    "blurb": "Put a session away from the command palette and bring it back weeks later — its worktree stays on disk, and a searchable list restores any archived session with its name, project and conversation.",
+    "status": "shipped",
+    "since": "Unreleased"
+  },
+  {
     "title": "Multi-window",
     "blurb": "⇧⌘N opens another window on the same daemon.",
     "status": "shipped",

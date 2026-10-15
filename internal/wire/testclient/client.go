@@ -156,6 +156,36 @@ func (c *Client) AwaitSessionRestored(timeout time.Duration) (wire.RestoredResp,
 	return resp, err
 }
 
+// ArchiveSession sends ARCHIVE_SESSION. Use AwaitArchived to consume
+// the refreshed list, or AwaitControlError for a refusal.
+func (c *Client) ArchiveSession(id string) error {
+	return c.cli.WriteJSON(wire.FrameArchiveSession, wire.ArchiveSessionReq{SessionID: id})
+}
+
+// ListArchivedSessions sends LIST_ARCHIVED. Use AwaitArchived to
+// consume the response.
+func (c *Client) ListArchivedSessions() error {
+	return c.cli.WriteJSON(wire.FrameListArchived, wire.ListArchivedReq{})
+}
+
+// UnarchiveSession sends UNARCHIVE_SESSION. The id is required; use
+// AwaitSessionRestored for the degradation report.
+func (c *Client) UnarchiveSession(id string) error {
+	return c.cli.WriteJSON(wire.FrameUnarchiveSession, wire.UnarchiveSessionReq{SessionID: id})
+}
+
+// DeleteArchivedSession sends DELETE_ARCHIVED.
+func (c *Client) DeleteArchivedSession(req wire.DeleteArchivedReq) error {
+	return c.cli.WriteJSON(wire.FrameDeleteArchived, req)
+}
+
+// AwaitArchived consumes the next ARCHIVED snapshot.
+func (c *Client) AwaitArchived(timeout time.Duration) (wire.ArchivedResp, error) {
+	var resp wire.ArchivedResp
+	err := c.awaitSnapshot(wire.FrameArchived, "ARCHIVED", timeout, &resp)
+	return resp, err
+}
+
 // awaitSnapshot drains the snapshot channel until the wanted frame
 // type arrives and unmarshals it into out. Control mode interleaves
 // several unsolicited snapshots (PROJECTS, SESSIONS, CLOSED), so

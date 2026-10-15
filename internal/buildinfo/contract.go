@@ -24,7 +24,7 @@ package buildinfo
 // History (newest first), so a bump is a decision with a record and
 // not just a number going up:
 //
-//	29 — OSC 7501 status tier (spec 517). A new state_source, "osc",
+//	30 — OSC 7501 status tier (spec 517). A new state_source, "osc",
 //	    for states the daemon read off a program's own terminal status
 //	    reports, and the daemon now answers an agent's OSC 7501
 //	    capability query at spawn. A GUI built before this renders
@@ -32,6 +32,12 @@ package buildinfo
 //	    tier (plan staleness, activity); a GUI built after it against an
 //	    older daemon never sees the tier, so Esc keeps a hook-driven
 //	    session "working" until the staleness timeout.
+//	29 — Archive (spec 518). New frames ARCHIVE_SESSION (0x48),
+//	    LIST_ARCHIVED (0x49), ARCHIVED (0x4a), UNARCHIVE_SESSION (0x4b) and
+//	    DELETE_ARCHIVED (0x4c), and the <stateDir>/archived/ store the
+//	    orphan-worktree reclaim now honours. A GUI built after this against
+//	    an older daemon gets an Archive action whose frames are rejected as
+//	    unknown; a GUI built before it never offers one.
 //	28 — Session messaging via Claude's inbox (spec 338, phase 2). A new
 //	    SENT delivery value, "socket". A GUI built after this against an
 //	    older daemon never sees it (the daemon types instead); a GUI built
@@ -254,7 +260,7 @@ package buildinfo
 //	    before this cannot see or clear the flag.
 //	1 — first contract; everything up to and including the
 //	    CLIENT_COMMAND relay.
-const DaemonContract = 29
+const DaemonContract = 30
 
 // Identity is this binary's full build identity. `hived --version
 // --json` prints it, and Welcome carries the same three values, so a

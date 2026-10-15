@@ -691,6 +691,55 @@ func (a *App) ListClosedSessions() error {
 	return cs.WriteJSON(wire.FrameListClosed, wire.ListClosedReq{})
 }
 
+// ArchiveSession stops a session and keeps a durable record of it so it
+// can be brought back later (spec 518). Unlike KillSession it never
+// touches the worktree, so there is no dirty-worktree confirm. The
+// removal arrives on the ordinary session event stream, then an
+// "archived:list" event refreshes the archived list.
+func (a *App) ArchiveSession(id string) error {
+	cs, err := a.requireControl()
+	if err != nil {
+		return err
+	}
+	return cs.WriteJSON(wire.FrameArchiveSession, wire.ArchiveSessionReq{SessionID: id})
+}
+
+// ListArchivedSessions asks for every archived session; the daemon
+// answers with an "archived:list" event.
+func (a *App) ListArchivedSessions() error {
+	cs, err := a.requireControl()
+	if err != nil {
+		return err
+	}
+	return cs.WriteJSON(wire.FrameListArchived, wire.ListArchivedReq{})
+}
+
+// UnarchiveSession brings an archived session back. The id is
+// required: there is no "latest" shorthand. The entry arrives on the
+// session event stream, followed by "session:restored" with whatever
+// could not be brought back.
+func (a *App) UnarchiveSession(id string) error {
+	cs, err := a.requireControl()
+	if err != nil {
+		return err
+	}
+	return cs.WriteJSON(wire.FrameUnarchiveSession, wire.UnarchiveSessionReq{SessionID: id})
+}
+
+// DeleteArchivedSession discards an archived session for good.
+// removeWorktree also deletes its worktree; force allows that when the
+// worktree has uncommitted changes, which otherwise comes back as a
+// "worktree_dirty" control error.
+func (a *App) DeleteArchivedSession(id string, removeWorktree, force bool) error {
+	cs, err := a.requireControl()
+	if err != nil {
+		return err
+	}
+	return cs.WriteJSON(wire.FrameDeleteArchived, wire.DeleteArchivedReq{
+		SessionID: id, RemoveWorktree: removeWorktree, Force: force,
+	})
+}
+
 // RestartSession asks the daemon to recycle the agent process for
 // the given session in place. The session entry (name/color/order/
 // worktree) is preserved; the new process uses the agent's resume

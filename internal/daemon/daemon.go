@@ -1533,6 +1533,90 @@ func (d *Daemon) handleControlFrame(ctx context.Context, ops controlOps, ft wire
 		})
 	case wire.FrameListClosed:
 		_ = ops.writeJSON(wire.FrameClosed, wire.ClosedResp{Closed: d.reg.ListClosed()})
+	case wire.FrameListArchived:
+		_ = ops.writeJSON(wire.FrameArchived, wire.ArchivedResp{Archived: d.reg.ListArchived()})
+	case wire.FrameArchiveSession:
+		req, ok := decodeReq[wire.ArchiveSessionReq](payload, ops.sendError)
+		if !ok {
+			return false
+		}
+		d.runOp(func() {
+			if err := d.reg.Archive(req.SessionID); err != nil {
+				switch {
+				case errors.Is(err, registry.ErrNotFound):
+					ops.sendError("no_such_session", "that session no longer exists")
+				case errors.Is(err, registry.ErrArchiveBusy):
+					ops.sendError("archive_busy", err.Error())
+				default:
+					ops.sendError("archive_failed", err.Error())
+				}
+				return
+			}
+			// The removal reaches every client as a SESSION_EVENT; this
+			// refreshes the requester's archived list.
+			_ = ops.writeJSON(wire.FrameArchived, wire.ArchivedResp{Archived: d.reg.ListArchived()})
+		})
+	case wire.FrameUnarchiveSession:
+		req, ok := decodeReq[wire.UnarchiveSessionReq](payload, ops.sendError)
+		if !ok {
+			return false
+		}
+		// Unlike RESTORE_SESSION there is no "latest" shorthand: an empty
+		// id is a malformed request, not "the last archived session".
+		if req.SessionID == "" {
+			ops.sendError("bad_payload", "session_id is required")
+			return false
+		}
+		d.runOp(func() {
+			_, res, err := d.reg.Unarchive(req.SessionID, d.cfg.BootstrapSession)
+			if err != nil {
+				switch {
+				case errors.Is(err, registry.ErrNotFound):
+					ops.sendError("no_such_archived_session", "that session is no longer archived")
+				case errors.Is(err, registry.ErrExists):
+					ops.sendError("session_already_open", "that session is already open")
+				default:
+					ops.sendError("unarchive_failed", err.Error())
+				}
+				_ = ops.writeJSON(wire.FrameArchived, wire.ArchivedResp{Archived: d.reg.ListArchived()})
+				return
+			}
+			_ = ops.writeJSON(wire.FrameSessionRestored, wire.RestoredResp{
+				SessionID:         req.SessionID,
+				ProjectReassigned: res.ProjectReassigned,
+				WorktreeRecreated: res.WorktreeRecreated,
+				WorktreeLost:      res.WorktreeLost,
+				ConversationLost:  res.ConversationLost,
+				AgentFellBack:     res.AgentFellBack,
+			})
+			_ = ops.writeJSON(wire.FrameArchived, wire.ArchivedResp{Archived: d.reg.ListArchived()})
+		})
+	case wire.FrameDeleteArchived:
+		req, ok := decodeReq[wire.DeleteArchivedReq](payload, ops.sendError)
+		if !ok {
+			return false
+		}
+		d.runOp(func() {
+			_, err := d.reg.DeleteArchived(req.SessionID, req.RemoveWorktree, req.Force)
+			if err != nil {
+				switch {
+				case errors.Is(err, registry.ErrNotFound):
+					ops.sendError("no_such_archived_session", "that session is no longer archived")
+				case errors.Is(err, registry.ErrWorktreeDirty):
+					// Its own code, not worktree_dirty: that one belongs
+					// to the close flow, whose handler would answer by
+					// asking to close a session that is not open.
+					_ = ops.writeJSON(wire.FrameError, wire.Error{
+						Code:      "archived_worktree_dirty",
+						Message:   "worktree has uncommitted changes",
+						SessionID: req.SessionID,
+					})
+				default:
+					ops.sendError("delete_archived_failed", err.Error())
+				}
+			}
+			_ = ops.writeJSON(wire.FrameArchived, wire.ArchivedResp{Archived: d.reg.ListArchived()})
+		})
 	case wire.FrameGetActivity:
 		// Not in sessionModeFrames, so a ModeSession connection never
 		// reaches this arm — the restricted check at the top of

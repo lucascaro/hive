@@ -267,6 +267,11 @@ func (r *Registry) RemoveWorktree(projectID, path string, force, deleteBranch, d
 	if ids := r.liveSessionsIn(resolved); len(ids) > 0 {
 		return fmt.Errorf("%w: %s", ErrWorktreeInUse, strings.Join(ids, ", "))
 	}
+	// An archived session is a claim too: unarchive would have to rebuild
+	// the worktree. Delete the archived entry (with its worktree) instead.
+	if name, held := r.archivedHolder(resolved, ""); held {
+		return fmt.Errorf("%w: archived session %q", ErrWorktreeInUse, name)
+	}
 
 	// Network call, so it happens before the git lock is taken.
 	ghSet := ghMergedLookup(root)

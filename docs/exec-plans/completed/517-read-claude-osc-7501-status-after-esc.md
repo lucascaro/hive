@@ -108,6 +108,7 @@ Independent reviewer (opus subagent), two rounds. Round 1: revise, confidence 7,
 
 ## Decision log
 
+- **2026-10-15** — `DaemonContract` renumbered 29 → 30 at merge: #519 (archive) landed on main first and took 29. Why: contract numbers are unique and ordered; this PR's history entry now sits above #519's.
 - **2026-10-15** — Changeset is `changed`/`minor`, not `fixed`/`patch`: the spec classes this an enhancement and ships a `site/features.json` entry, which AGENTS.md ties to a minor bump (review iter 3). Why: the two must agree.
 - **2026-10-15** — Found by the live probe, not the plan: (1) a startup `idle` after the SessionStart ping must not relabel a live hook session, and osc keeps a live hook/extension tier's label whenever it supplies a state (`liveTier` rule) — otherwise the existing real-Claude probes' "hook tier" waits flake; (2) `oscWorking` must span a `blocked` report, or Esc on a permission dialog never latches; (3) `blocked:kind=permission` is emitted (resolves the open question); (4) status reports end with BEL, not ST.
 - **2026-10-15** — Spec amended with operator approval: criterion 3 gains the interrupt-edge exception; forgery non-goal widened to forged working→idle sequences (never a wait). Why: hooks cannot report Esc, so a literal gap-only rule leaves criterion 1 unmet.

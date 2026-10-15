@@ -1,0 +1,80 @@
+/* ---------- archived sessions (spec 518) ---------- */
+
+#archived-sessions .hv-dialog__body {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-height: 0;
+  overflow: hidden;
+}
+.archived-list {
+  flex: 1 1 auto;
+  overflow-y: auto;
+  /* Flex items refuse to shrink below their content unless said so. */
+  min-height: 0;
+}
+.archived-empty {
+  color: var(--fg-muted);
+  line-height: 1.5;
+  max-width: 46ch;
+}
+.archived-group-name {
+  margin: 8px 0 4px;
+  font-size: var(--text-xs);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--fg-muted);
+}
+
+/* Same row shape as .idea-row and .worktree-row. */
+.archived-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 7px 8px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  margin-bottom: 6px;
+  background: var(--surface-raised);
+}
+.archived-row[data-selected] { border-color: var(--accent); }
+.archived-main { flex: 1; min-width: 0; }
+.archived-name {
+  display: block;
+  color: var(--fg);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.archived-meta {
+  display: flex;
+  gap: 8px;
+  font-size: var(--text-xs);
+  color: var(--fg-muted);
+}
+.archived-agent {
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+.archived-actions {
+  display: flex;
+  gap: 4px;
+  flex-shrink: 0;
+}
+.archived-actions button {
+  background: var(--sel);
+  border: 1px solid var(--btn-border);
+  color: var(--fg);
+  border-radius: var(--radius-sm);
+  padding: 3px 8px;
+  font-size: var(--text-sm);
+  cursor: pointer;
+}
+.archived-actions button:hover { background: var(--hover); }
+.archived-actions button:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+/* tokens.md gives --state-error the destructive-action role; colour
+   only, so the label keeps a ground the contrast gate can check. */
+.archived-actions button.danger { color: var(--state-error); }
