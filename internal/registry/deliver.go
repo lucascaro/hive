@@ -12,10 +12,12 @@ import (
 	"github.com/lucascaro/hive/internal/wire"
 )
 
-// Session messaging (spec 338, phase 1): hand a running session a note,
-// and get told when it stops working.
+// Session messaging (spec 338): hand a running session a note, and get
+// told when it stops working.
 //
-// Three strategies, chosen by the target:
+// Four strategies, chosen by the target:
+//   - socket: a live Claude Code session takes the note through its own
+//     inbox, working or idle (see tryInbox); any failure falls through.
 //   - acp:    an ACP-kind session takes the note as a user turn.
 //   - typed:  a PTY session that is idle gets the text and Enter.
 //   - queued: a PTY session that is busy holds the text until its next

@@ -25,8 +25,9 @@ import (
 const msgUsage = `usage:
   hived msg [--no-queue] <session-id-or-name> <text...>
 
-Types <text> into the session. A session that is working is queued (the
-text is typed when it next goes idle) unless --no-queue is given.
+Claude Code sessions take <text> through Claude's own inbox, working or
+idle. Any other session has it typed in; one that is working is queued (typed
+when it next goes idle) unless --no-queue is given.
 `
 
 // runMsg implements `hived msg`; it returns the process exit code.

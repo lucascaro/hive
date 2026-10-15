@@ -191,7 +191,7 @@ shell) message any other session with the same semantics the GUI has.
 - `cmd/hived/msg.go`, `msg_test.go`
 - `cmd/hivegui/frontend/src/components/modals/MessageSession.tsx` + test
 - `scripts/check-no-claude-keys.sh` (grep guard, wired into `scripts/test.sh`)
-- The drift probe (which shipped as `cmd/hived/claude_probe_test.go`
+- (Not built in phase 2 — deferred with the manual real-Claude check.) The drift probe (which shipped as `cmd/hived/claude_probe_test.go`
   behind `HIVE_PROBE_CLAUDE=1`, NOT as the `scripts/probe-claude.sh`
   this line originally assumed) gains a 338 section: assert
   `~/.claude/sessions/<pid>.json` for the probe session still carries
@@ -470,7 +470,7 @@ GOTOOLCHAIN=go$(sed -n 's/^go //p' go.mod) go test ./internal/agent/... ./intern
 - `FindClaudeInbox` returns all candidates; send tries each.
 - After failed dial, re-run deliver.go checks block (no reuse of stale `e`/`sess`).
 - Frontend `message-session.ts:95-99` gets a `socket` branch; toast mentions bypass-mode hold (spec line 90).
-- Replace vacuous `.key` test; fixture captured from real claude 2.1.300; probe hard-asserts arrival.
+- Replace vacuous `.key` test; fixture captured from real claude 2.1.300; probe hard-asserts arrival (superseded: the probe was not built in phase 2; see Tests).
 - Spec criterion "Message from @hive:" edited to "record how it renders" in this PR.
 - Reuse `claudeVersionProbe` (claude.go ~429-470) with a `claudeVersionAtLeast`. Reviewer re-run skipped for cost (operator informed).
 

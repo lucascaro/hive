@@ -137,8 +137,10 @@ What works:
   notification for when the session stops working; it clears after
   firing, and a daemon restart disarms it. `hived msg <id-or-name> <text…>`
   does the same from an ordinary shell (exact id or exact name only).
-  Plugins cannot send messages. Delivery through Claude's and Pi's own
-  inboxes comes later; today every agent gets the typed path
+  Plugins cannot send messages. A Claude Code session receives the note
+  through Claude's own inbox, working or idle, and falls back to the typed
+  path if that is unavailable; Pi's own inbox comes later, so every other
+  agent gets the typed path
 - In-app updates (macOS): pick a release or latest-commit channel in
   Settings, then Update → Reload (or Restart, when the daemon changed)
 - What's new: the gift in the sidebar header opens a list of what has
