@@ -425,6 +425,11 @@ Independent reviewer (general-purpose subagent), 2 rounds.
     - acceptance — PASS — Claude inbox and Pi inbox criteria DEFERRED (phase > 1); typed, ping, key-file guard, GUI and `hived msg` verified by tests
     - non-goals — PASS
     - doc accuracy — PASS — three minor wording/count nits (README, changeset, icons.md) found by the validator and fixed in the PR before the verdict
+- **2026-10-15** — verdict: PASS; phase: 2/3; checks: 5 passed / 0 failed / 0 followups / 2 deferred; followups: none; one-line: Claude inbox delivery (`socket`) with typed/queued fallback verified; real-Claude manual check and Pi inbox deferred.
+  - 2026-10-15 dimensions:
+    - acceptance — PASS — `socket` value, fake-socket exact-line tests, key-file guard green; Pi inbox DEFERRED (phase 3); real-Claude manual render check DEFERRED (human step, recorded in spec)
+    - non-goals — PASS
+    - doc accuracy — PASS — needed three validator passes (first two found stale README, msg help, deliver.go header, DESIGN, plan probe wording; fixed in 2589ff14 and 11257738)
 
 ## Approved plan — Phase 2 of 3 (2026-10-14): Claude inbox socket
 
