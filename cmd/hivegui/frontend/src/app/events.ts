@@ -21,7 +21,14 @@ import {
   onSessionRemoved,
   onSessionRestored,
 } from './undo-close.js';
+import {
+  onArchiveError,
+  onArchivedList,
+  onArchivedWorktreeDirty,
+  onUnarchived,
+} from './archive.js';
 import type {
+  ArchivedSessionInfo,
   AttachOutcome,
   IdeaInfo,
   PluginEvent,
@@ -954,13 +961,29 @@ export function wireDaemonEvents(injected: EventsDeps) {
     }
   });
 
+  // Spec 518: the daemon's archived list, sent in answer to every
+  // archive, unarchive, delete and list request.
+  EventsOn('archived:list', (jsonStr: string) => {
+    try {
+      const r = JSON.parse(jsonStr) as {
+        archived?: ArchivedSessionInfo[] | null;
+      };
+      onArchivedList(r.archived ?? []);
+    } catch {
+      // A malformed frame is the daemon's bug; the old list stays up.
+    }
+  });
+
   // What a restore could NOT bring back. Its own event rather than a
   // field on the session, because it describes the transition, not the
   // session — a tile that has been open for an hour should not still
   // be advertising that its worktree was rebuilt.
   EventsOn('session:restored', (jsonStr: string) => {
     try {
-      onSessionRestored(JSON.parse(jsonStr));
+      const ev = JSON.parse(jsonStr);
+      // An unarchive this window asked for reports on the status line;
+      // everything else is a ⌘Z reopen and uses the undo banner.
+      if (!onUnarchived(ev)) onSessionRestored(ev);
     } catch {
       // A malformed payload costs the user the "what was lost" line,
       // not the restored session — the tile already arrived on the
@@ -1298,6 +1321,13 @@ export function wireDaemonEvents(injected: EventsDeps) {
     // A refused note: the sheet explains it (busy -> queue offer) or the
     // status line does.
     if (onMessageError(e.code, e.session_id)) return;
+    // Archive's own refusals. A dirty worktree on delete is a question,
+    // not an error: it gets its own confirm before anything is forced.
+    if (e.code === 'archived_worktree_dirty' && e.session_id) {
+      void onArchivedWorktreeDirty(e.session_id);
+      return;
+    }
+    if (onArchiveError(e.code, e.session_id)) return;
     // An ACP refusal names its session: give a refused prompt back to
     // its box and stop showing a refused snapshot as loading. The status
     // line below still says why.

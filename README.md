@@ -363,6 +363,8 @@ Plugins can add their own shortcuts; they are listed under **Plugins**
 in that overlay and beside their commands in the palette, and can never
 take one of the shortcuts above.
 
+Archiving has no default key: run **Archive Session** or **Archived Sessions…** from the command palette. Archiving stops the focused session but keeps its worktree and a record that never expires (unlike a close, whose ⌘Z undo lasts 20 closes or 7 days); **Archived Sessions…** lists them all, with a filter, and brings any one back.
+
 ### When a session ends
 
 A tile whose process has exited shows a card over the terminal.

@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"net"
+	"reflect"
 	"strings"
 	"testing"
 	"time"
@@ -187,6 +188,10 @@ func TestRPCsRequireAControlConnection(t *testing.T) {
 		"DeleteBranch":           func() error { return a.DeleteBranch("p", "b", false, false) },
 		"RestoreSession":         func() error { return a.RestoreSession("s") },
 		"ListClosedSessions":     func() error { return a.ListClosedSessions() },
+		"ArchiveSession":         func() error { return a.ArchiveSession("s") },
+		"ListArchivedSessions":   func() error { return a.ListArchivedSessions() },
+		"UnarchiveSession":       func() error { return a.UnarchiveSession("s") },
+		"DeleteArchivedSession":  func() error { return a.DeleteArchivedSession("s", false, false) },
 		"ListPlugins":            func() error { return a.ListPlugins() },
 		"InstallPlugin":          func() error { return a.InstallPlugin("/tmp/p", "n1") },
 		"SetPluginEnabled":       func() error { return a.SetPluginEnabled("p", true) },
@@ -248,6 +253,44 @@ func TestListClosedSessionsCall(t *testing.T) {
 	}
 	if err := <-done; err != nil {
 		t.Fatalf("ListClosedSessions: %v", err)
+	}
+}
+
+// TestArchiveCallsReachTheWire pins the frame and payload of each
+// archive call, including that DeleteArchivedSession carries both of
+// its destructive flags independently.
+func TestArchiveCallsReachTheWire(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		call func(a *App) error
+		want wire.FrameType
+		req  any
+		pin  any
+	}{
+		{"archive", func(a *App) error { return a.ArchiveSession("s1") }, wire.FrameArchiveSession, &wire.ArchiveSessionReq{}, &wire.ArchiveSessionReq{SessionID: "s1"}},
+		{"list", func(a *App) error { return a.ListArchivedSessions() }, wire.FrameListArchived, &wire.ListArchivedReq{}, &wire.ListArchivedReq{}},
+		{"unarchive", func(a *App) error { return a.UnarchiveSession("s1") }, wire.FrameUnarchiveSession, &wire.UnarchiveSessionReq{}, &wire.UnarchiveSessionReq{SessionID: "s1"}},
+		{"delete keep", func(a *App) error { return a.DeleteArchivedSession("s1", false, false) }, wire.FrameDeleteArchived, &wire.DeleteArchivedReq{}, &wire.DeleteArchivedReq{SessionID: "s1"}},
+		{"delete forced", func(a *App) error { return a.DeleteArchivedSession("s1", true, true) }, wire.FrameDeleteArchived, &wire.DeleteArchivedReq{}, &wire.DeleteArchivedReq{SessionID: "s1", RemoveWorktree: true, Force: true}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			a, next := appWithControl(t)
+			done := make(chan error, 1)
+			go func() { done <- tc.call(a) }()
+			ft, payload := next(t)
+			if ft != tc.want {
+				t.Fatalf("frame = %#x, want %#x", byte(ft), byte(tc.want))
+			}
+			if err := json.Unmarshal(payload, tc.req); err != nil {
+				t.Fatalf("unmarshal: %v", err)
+			}
+			if !reflect.DeepEqual(tc.req, tc.pin) {
+				t.Errorf("payload = %+v, want %+v", tc.req, tc.pin)
+			}
+			if err := <-done; err != nil {
+				t.Fatalf("call: %v", err)
+			}
+		})
 	}
 }
 

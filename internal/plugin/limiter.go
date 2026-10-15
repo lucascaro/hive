@@ -33,6 +33,7 @@ func FrameCost(ft wire.FrameType) float64 {
 	switch ft {
 	case wire.FrameCreateSession, wire.FrameRestartSession, wire.FrameRestoreSession,
 		wire.FrameKillSession, wire.FrameKillProject,
+		wire.FrameArchiveSession, wire.FrameUnarchiveSession, wire.FrameDeleteArchived,
 		wire.FrameCreateWorktree, wire.FrameRemoveWorktree, wire.FrameDeleteBranch,
 		wire.FrameInstallPlugin, wire.FrameShutdown:
 		return costExpense

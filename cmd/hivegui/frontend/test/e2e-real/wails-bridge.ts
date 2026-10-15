@@ -361,6 +361,26 @@ export async function RestoreSession(id: string) {
 export async function ListClosedSessions() {
   return call('ListClosedSessions', {});
 }
+export async function ArchiveSession(id: string) {
+  return call('ArchiveSession', { session_id: id });
+}
+export async function ListArchivedSessions() {
+  return call('ListArchivedSessions', {});
+}
+export async function UnarchiveSession(id: string) {
+  return call('UnarchiveSession', { session_id: id });
+}
+export async function DeleteArchivedSession(
+  id: string,
+  removeWorktree: boolean,
+  force: boolean,
+) {
+  return call('DeleteArchivedSession', {
+    session_id: id,
+    remove_worktree: removeWorktree,
+    force,
+  });
+}
 export async function RestartSession(_id: string) {
   return '';
 }

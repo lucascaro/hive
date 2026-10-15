@@ -499,7 +499,11 @@ type Registry struct {
 	//
 	// ponytail: one global git lock; key it per repo root if
 	// multi-repo create throughput ever matters.
-	gitMu sync.Mutex
+	// archiveMu serializes Unarchive against DeleteArchived so a delete
+	// can't remove the worktree of a session that was just unarchived.
+	// Lock order: archiveMu > gitMu > r.mu; never taken under r.mu.
+	archiveMu sync.Mutex
+	gitMu     sync.Mutex
 
 	// tickStop closes when Close runs, stopping the state ticker.
 	tickStop chan struct{}
@@ -1664,7 +1668,7 @@ func (r *Registry) watchSessionExit(id string, sess *session.Session) {
 // returns ErrWorktreeDirty without modifying any state. Callers can
 // retry with force=true after confirming with the user.
 func (r *Registry) Kill(id string, force bool) error {
-	return r.kill(id, force, false)
+	return r.kill(id, force, false, false)
 }
 
 // KillAndRemoveWorktree closes the session AND deletes its worktree,
@@ -1673,10 +1677,14 @@ func (r *Registry) Kill(id string, force bool) error {
 // the user asked for exactly that in the close dialog — the ordinary
 // Kill deliberately keeps anything holding work.
 func (r *Registry) KillAndRemoveWorktree(id string, force bool) error {
-	return r.kill(id, force, true)
+	return r.kill(id, force, true, false)
 }
 
-func (r *Registry) kill(id string, force, removeWorktree bool) error {
+// kill closes a session. archive=true is the Archive path: the durable
+// archive record replaces the tombstone, the worktree is never disposed,
+// tombstone retention is not run, and a failed record write aborts
+// before any teardown (the record is the only copy).
+func (r *Registry) kill(id string, force, removeWorktree, archive bool) error {
 	// A session parked on a worktree-setup question can be killed from
 	// under the dialog. Its worktree (if the add half-succeeded) is not
 	// on the entry yet, so the cleanup below cannot see it, and its
@@ -1786,7 +1794,15 @@ func (r *Registry) kill(id string, force, removeWorktree bool) error {
 	// Under r.mu, alongside the index persist a few lines down: it is
 	// one small atomic write, and the entry it describes must not
 	// change between reading it and writing it.
-	r.writeTombstoneLocked(e, tomb)
+	if archive {
+		if err := r.writeArchiveLocked(e); err != nil {
+			r.mu.Unlock()
+			r.setPhase(id, wire.PhaseReady)
+			return fmt.Errorf("archive %s: %w", id, err)
+		}
+	} else {
+		r.writeTombstoneLocked(e, tomb)
+	}
 	if e.planReview != nil {
 		e.planReview.finish(wire.PlanReviewDecision{Status: wire.PlanReviewCancelled})
 		e.planReview = nil
@@ -1839,7 +1855,7 @@ func (r *Registry) kill(id string, force, removeWorktree bool) error {
 	if sess != nil {
 		_ = sess.Close()
 	}
-	if wtPath != "" && !worktreeShared {
+	if wtPath != "" && !worktreeShared && !archive {
 		r.disposeWorktree(id, projectID, projectCwd, wtPath, wtBranch, removeWorktree)
 	}
 	_ = os.RemoveAll(dir)
@@ -1856,7 +1872,9 @@ func (r *Registry) kill(id string, force, removeWorktree bool) error {
 	// Last, and outside every lock: enforce the tombstone retention
 	// bounds. Doing it after the broadcast keeps the close's visible
 	// latency independent of how many old records need sweeping.
-	r.pruneTombstones()
+	if !archive {
+		r.pruneTombstones()
+	}
 	return nil
 }
 

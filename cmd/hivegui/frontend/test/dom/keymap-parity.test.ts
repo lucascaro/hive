@@ -117,6 +117,8 @@ function legacyResolve(scope: string, e: Ev, mac: boolean): Out {
       if (e.key === 'Escape') return 'help-modal.close';
       if (isHelpOverlayKey(e)) return 'help-modal.shortcuts';
       return null;
+    case 'archived-sessions':
+      return e.key === 'Escape' ? 'archived-sessions.close' : null;
     case 'whats-new':
       return e.key === 'Escape' ? 'whats-new.close' : null;
     case 'plugin-view':

@@ -466,6 +466,52 @@ type ClosedSessionInfo struct {
 	HasPatch bool `json:"has_patch,omitempty"`
 }
 
+// ArchiveSessionReq is the ARCHIVE_SESSION payload: stop the session
+// and keep a durable record of it. Unlike KILL_SESSION it never touches
+// the worktree and never asks about uncommitted work.
+type ArchiveSessionReq struct {
+	SessionID string `json:"session_id"`
+}
+
+// ListArchivedReq is the LIST_ARCHIVED payload.
+type ListArchivedReq struct{}
+
+// ArchivedResp is the ARCHIVED payload: every archived session, most
+// recently archived first.
+type ArchivedResp struct {
+	Archived []ArchivedSessionInfo `json:"archived"`
+}
+
+// ArchivedSessionInfo describes one archived session. ProjectName is a
+// snapshot taken at archive time, so a list can still group sessions
+// whose project has since been deleted.
+type ArchivedSessionInfo struct {
+	SessionID      string `json:"session_id"`
+	Name           string `json:"name"`
+	Color          string `json:"color,omitempty"`
+	Agent          string `json:"agent,omitempty"`
+	ProjectID      string `json:"project_id,omitempty"`
+	ProjectName    string `json:"project_name,omitempty"`
+	WorktreeBranch string `json:"worktree_branch,omitempty"`
+	ArchivedAt     string `json:"archived_at"`
+}
+
+// UnarchiveSessionReq is the UNARCHIVE_SESSION payload. SessionID is
+// required: unlike RESTORE_SESSION there is no "latest" shorthand.
+type UnarchiveSessionReq struct {
+	SessionID string `json:"session_id"`
+}
+
+// DeleteArchivedReq is the DELETE_ARCHIVED payload: discard an
+// archived record for good. RemoveWorktree also deletes the session's
+// worktree (only a hive-managed one no other session or record holds);
+// Force allows that when the worktree has uncommitted changes.
+type DeleteArchivedReq struct {
+	SessionID      string `json:"session_id"`
+	RemoveWorktree bool   `json:"remove_worktree,omitempty"`
+	Force          bool   `json:"force,omitempty"`
+}
+
 // RestoredResp is the SESSION_RESTORED payload: what the restore could
 // NOT bring back. Sent after the session's "added" event so a client
 // can render the tile first and then explain the gaps.

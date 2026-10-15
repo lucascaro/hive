@@ -228,6 +228,15 @@ const messageSession = modal(
   'message-session',
 );
 
+// Palette-only (no opening chord), so Escape is the one key it owns; Enter
+// and the arrows are the list's own.
+const archivedSessions = modal(
+  'archived-sessions',
+  'archived-sessions',
+  () => [{ keys: ESCAPE, command: 'archived-sessions.close' }],
+  'archived-sessions',
+);
+
 const ideaInbox = modal(
   'idea-inbox',
   'idea-inbox',
@@ -355,6 +364,7 @@ export const KEY_SCOPES: readonly KeyScope[] = [
   worktrees,
   quickIdea,
   messageSession,
+  archivedSessions,
   ideaInbox,
   helpOverlay,
   helpModal,

@@ -190,6 +190,7 @@ describe('KEY_SCOPES', () => {
       'worktrees',
       'quick-idea',
       'message-session',
+      'archived-sessions',
       'idea-inbox',
       'help-overlay',
       'help-modal',

@@ -384,6 +384,34 @@ func (s *session) dispatch(req rpcReq) {
 			return
 		}
 		s.respond(req.ID, "", s.controlWriteJSON(wire.FrameListClosed, p))
+	case "ArchiveSession":
+		var p wire.ArchiveSessionReq
+		if err := parseParams(req.Params, &p); err != nil {
+			s.respond(req.ID, nil, err)
+			return
+		}
+		s.respond(req.ID, "", s.controlWriteJSON(wire.FrameArchiveSession, p))
+	case "ListArchivedSessions":
+		var p wire.ListArchivedReq
+		if err := parseParams(req.Params, &p); err != nil {
+			s.respond(req.ID, nil, err)
+			return
+		}
+		s.respond(req.ID, "", s.controlWriteJSON(wire.FrameListArchived, p))
+	case "UnarchiveSession":
+		var p wire.UnarchiveSessionReq
+		if err := parseParams(req.Params, &p); err != nil {
+			s.respond(req.ID, nil, err)
+			return
+		}
+		s.respond(req.ID, "", s.controlWriteJSON(wire.FrameUnarchiveSession, p))
+	case "DeleteArchivedSession":
+		var p wire.DeleteArchivedReq
+		if err := parseParams(req.Params, &p); err != nil {
+			s.respond(req.ID, nil, err)
+			return
+		}
+		s.respond(req.ID, "", s.controlWriteJSON(wire.FrameDeleteArchived, p))
 	case "GetActivity":
 		var p wire.GetActivityReq
 		if err := parseParams(req.Params, &p); err != nil {
