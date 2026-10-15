@@ -4,7 +4,7 @@
 - **Issue:** #517
 - **PR:** #520
 - **Branch:** feature/517-osc-7501-status
-- **Status:** active
+- **Status:** completed
 
 ## Summary
 
@@ -129,3 +129,13 @@ Independent reviewer (opus subagent), two rounds. Round 1: revise, confidence 7,
 - **2026-10-15 iter 2** — verdict: COMMENT; mergeable: MERGEABLE; findings_hash: 4ea8e87ebc7db4686ad838add2435776fa0e63b5d54308967344e5d11ee5bfa2; threads_open: 0; action: autofix+push; head_sha: 04deedd2.
 - **2026-10-15 iter 3** — verdict: COMMENT; mergeable: MERGEABLE; findings_hash: c475b2114bbd67a84868fb1462495c1426563c96992787e33a37c09d1a6b37e1; threads_open: 0; action: autofix+push; head_sha: 71f1d082.
 - **2026-10-15 iter 4** — verdict: APPROVE; mergeable: MERGEABLE; findings_hash: empty; threads_open: 0; action: stop; head_sha: 375b5048.
+
+## Gate verdict
+
+- **2026-10-15** — verdict: PASS; phase: —; checks: 6 passed / 0 failed / 0 followups; followups: none; one-line: every success criterion has a passing test (real-PTY, machine, session, registry, recorded fixtures, live Claude 2.1.301 probe); no non-goal implemented; changeset, features.json, contract bump and docs present.
+  - 2026-10-15 dimensions (run inline by the orchestrator, not independently delegated; review had already converged over four independent iterations):
+    - acceptance — PASS — Esc→idle (`TestOSCEscReachesIdleThroughTheRealPTY`, opt-in live probe); hooks-off question→attention (`TestOSCQuestionReachesAttentionThroughTheRealPTY`); precedence + Esc exception (`TestOSCDoesNotOverrideFresh*`, `TestOSCIdleEndsHookWorkingAfterOSCWorking`, `TestToolFailure…`, `TestLatePermission…`); reply once/agent-only/replay (`TestQueryAnsweredOncePerSpawn`, `TestStatusQueryAnsweredForAgentsOnly`, `TestReplayIsStructurallyUnscanned`); recorded fixtures (`testdata/osc7501/*.bin`); `DaemonContract` 29 + changeset + features.json.
+    - non-goals — PASS — no OSC 9;4/777/99/133/1337 parsing, no TERM_PROGRAM change, no Codex/Gemini work, no generic report frame, `msg`/`title` never read (`osc7501.go` keeps `state`/`kind` only), no GUI OSC handlers (frontend diff is `session-state.ts` wording only).
+    - doc accuracy — PASS — control-plane tier table, agent-activity, icons.md, design-docs index, research notes, spec notes, changeset (`changed`/`minor`, agrees with features.json). `regression_of`: n/a (type changed).
+  - CI at gate time: quick jobs, CodeQL and Shellcheck passed on earlier heads; Build/Vet/Test on the final head still running — to be confirmed before merge.
+
