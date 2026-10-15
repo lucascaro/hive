@@ -550,3 +550,181 @@ func TestClaudeProbeSubagentCount(t *testing.T) {
 	wait(120*time.Second, func(i wire.SessionInfo) bool { return i.SubagentsRunning == 0 }, "subagents_running back to 0")
 	_, _ = sess.Write([]byte("/exit\r"))
 }
+
+// TestClaudeProbeOSC7501EscGoesIdle is the live check for spec 517: a
+// REAL claude, which only emits OSC 7501 once the daemon has answered
+// its capability query, goes idle when the user presses Esc — while its
+// hook tier, which fires nothing on interrupt, still says working — and
+// stays idle through the hooks the interrupt itself fires (Esc during a
+// running tool). Opt-in, a few API calls:
+//
+//	HIVE_PROBE_CLAUDE=1 go test ./cmd/hived/ -run TestClaudeProbeOSC7501 -v
+//
+// HIVE_PROBE_RECORD=<path> also writes the OSC 7501 sequences seen, with
+// their real terminators, which is how internal/session's recorded
+// fixture is captured.
+func TestClaudeProbeOSC7501EscGoesIdle(t *testing.T) {
+	if os.Getenv("HIVE_PROBE_CLAUDE") != "1" {
+		t.Skip("set HIVE_PROBE_CLAUDE=1 to run the real-claude probe")
+	}
+	if _, err := exec.LookPath("claude"); err != nil {
+		t.Skip("claude not on PATH")
+	}
+	for _, kv := range os.Environ() {
+		k, v, _ := strings.Cut(kv, "=")
+		if k == "CLAUDECODE" || k == "CLAUDE_PID" || strings.HasPrefix(k, "CLAUDE_CODE_") || k == "TERM_PROGRAM" {
+			k, v := k, v
+			t.Cleanup(func() { _ = os.Setenv(k, v) })
+			_ = os.Unsetenv(k)
+		}
+	}
+	d := startHookTestDaemon(t)
+	def, _ := agent.Get(agent.IDClaude)
+	exe, _ := os.Executable()
+	hooks := def.SpawnArgs(agent.SpawnInfo{HivedPath: exe})
+	cmd := append([]string{"claude", "--permission-mode", "default"}, hooks...)
+	e, err := d.Registry().Create(context.Background(), wire.CreateSpec{
+		Agent: "claude", Cmd: cmd, Cwd: t.TempDir(), Cols: 120, Rows: 40,
+	})
+	if err != nil {
+		t.Fatalf("create: %v", err)
+	}
+	id := e.ID
+	t.Cleanup(func() { _ = d.Registry().Kill(id, true) })
+
+	wait := func(within time.Duration, cond func(wire.SessionInfo) bool, what string) wire.SessionInfo {
+		t.Helper()
+		deadline := time.Now().Add(within)
+		for {
+			info, ok := findSessionByID(d, id)
+			if ok && cond(info) {
+				return info
+			}
+			if time.Now().After(deadline) {
+				t.Fatalf("timed out waiting for %s; last info = %+v", what, info)
+			}
+			time.Sleep(100 * time.Millisecond)
+		}
+	}
+	wait(20*time.Second, func(i wire.SessionInfo) bool { return i.Alive }, "session alive")
+	sess := d.Registry().Get(id).Session()
+	sink := &captureSink{}
+	unsub, err := sess.SubscribeWithAtomicReplay(sink, func(replay []byte) error {
+		_, err := sink.Write(replay)
+		return err
+	})
+	if err != nil {
+		t.Fatalf("subscribe: %v", err)
+	}
+	defer unsub()
+	t.Cleanup(func() {
+		if t.Failed() {
+			t.Logf("screen tail: %q", sink.tail(1200))
+		}
+	})
+	t.Cleanup(func() {
+		path := os.Getenv("HIVE_PROBE_RECORD")
+		if path == "" {
+			return
+		}
+		sink.mu.Lock()
+		defer sink.mu.Unlock()
+		var out []byte
+		raw := sink.buf.Bytes()
+		for {
+			i := bytes.Index(raw, []byte("\x1b]7501;"))
+			if i < 0 {
+				break
+			}
+			raw = raw[i:]
+			end := bytes.IndexAny(raw, "\x07")
+			st := bytes.Index(raw, []byte("\x1b\\"))
+			n := end + 1
+			if end < 0 || (st >= 0 && st+2 < n) {
+				n = st + 2
+			}
+			if n <= 0 {
+				break
+			}
+			out = append(out, raw[:n]...)
+			raw = raw[n:]
+		}
+		_ = os.WriteFile(path, out, 0o644)
+	})
+
+	deadline := time.Now().Add(20 * time.Second)
+	for time.Now().Before(deadline) {
+		if sink.contains("trust") {
+			_, _ = sess.Write([]byte("\r"))
+			break
+		}
+		if info, _ := findSessionByID(d, id); info.StateSource == wire.StateSourceHook {
+			break
+		}
+		time.Sleep(200 * time.Millisecond)
+	}
+	wait(30*time.Second, func(i wire.SessionInfo) bool { return i.StateSource == wire.StateSourceHook }, "hook tier")
+	time.Sleep(2 * time.Second)
+	if !sink.contains("\x1b]7501;state=idle") {
+		t.Fatalf("claude never reported OSC 7501 idle: the daemon's query reply was not accepted; tail=%q", sink.tail(400))
+	}
+
+	// 1. A permission prompt reports blocked/permission (the case the
+	// spec could not verify without a dialog).
+	if _, err := sess.Write([]byte("use the Bash tool to run: touch probe.txt\r")); err != nil {
+		t.Fatal(err)
+	}
+	wait(90*time.Second, func(i wire.SessionInfo) bool { return i.State == wire.StateWaitingPermission }, "waiting_permission")
+	// The hook report beats the PTY bytes by a few milliseconds.
+	for end := time.Now().Add(5 * time.Second); time.Now().Before(end) && !sink.contains("kind=permission"); {
+		time.Sleep(100 * time.Millisecond)
+	}
+	if !sink.contains("state=blocked") || !sink.contains("kind=permission") {
+		t.Errorf("a permission dialog did not report blocked/permission over 7501; tail=%q", sink.tail(600))
+	}
+	_, _ = sess.Write([]byte("\x1b")) // deny
+	// Hooks report nothing for a dismissed dialog; the GUI's keystroke
+	// handling clears it (SetAttention), and because Esc followed an osc
+	// working this resolves to idle, not working.
+	time.Sleep(time.Second)
+	if err := d.Registry().SetAttention(id, false); err != nil {
+		t.Fatal(err)
+	}
+	wait(5*time.Second, func(i wire.SessionInfo) bool { return i.State == wire.StateIdle }, "idle after Esc on the dialog")
+	time.Sleep(2 * time.Second)
+
+	// 2. Esc mid-turn: hooks say working, osc says idle.
+	if _, err := sess.Write([]byte("write about 600 words on the history of tea. Do not use any tools.")); err != nil {
+		t.Fatal(err)
+	}
+	time.Sleep(500 * time.Millisecond)
+	if _, err := sess.Write([]byte("\r")); err != nil {
+		t.Fatal(err)
+	}
+	wait(15*time.Second, func(i wire.SessionInfo) bool { return i.State == wire.StateWorking }, "working")
+	time.Sleep(3 * time.Second)
+	_, _ = sess.Write([]byte("\x1b"))
+	info := wait(3*time.Second, func(i wire.SessionInfo) bool { return i.State == wire.StateIdle }, "idle within 3s of Esc")
+	if info.StateSource != wire.StateSourceHook {
+		t.Errorf("Esc relabelled the source to %q, want the hook's label kept", info.StateSource)
+	}
+
+	// 3. Esc during a running tool: the interrupt itself fires hooks
+	// (PostToolUseFailure) stamped after the osc idle. They must not
+	// bring the turn back.
+	time.Sleep(8 * time.Second)
+	if _, err := sess.Write([]byte("use the Bash tool to run: sleep 25")); err != nil {
+		t.Fatal(err)
+	}
+	time.Sleep(500 * time.Millisecond)
+	_, _ = sess.Write([]byte("\r"))
+	// `sleep` is read-only and runs without a dialog.
+	wait(15*time.Second, func(i wire.SessionInfo) bool { return i.State == wire.StateWorking }, "working while the tool runs")
+	time.Sleep(3 * time.Second)
+	_, _ = sess.Write([]byte("\x1b"))
+	wait(3*time.Second, func(i wire.SessionInfo) bool { return i.State == wire.StateIdle }, "idle within 3s of Esc during a tool")
+	time.Sleep(5 * time.Second)
+	if now, _ := findSessionByID(d, id); now.State != wire.StateIdle {
+		t.Errorf("state = %q 5s after Esc during a tool, want idle: a hook fired by the interrupt resurrected the turn", now.State)
+	}
+}

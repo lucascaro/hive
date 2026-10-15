@@ -162,6 +162,26 @@ delivered plan must never make a lost state report look already
 applied. Only the latest state heals; a lost tool event from the middle
 of a batch leaves a gap in the timeline.
 
+**Claude and Codex, from the terminal (osc tier) — spec 517.** A
+program that speaks OSC 7501 (the Program Status Protocol) prints
+`state=working|idle|blocked|done|error` and, for `blocked`, a `kind`.
+Claude only does so after the terminal answers its `OSC 7501 ; ?` query,
+so `hived` writes that reply once per spawn for every agent session
+(never a plain shell, never on replay; the write is off the read loop so
+a full PTY input queue cannot stall output). The scanner in
+`internal/session` keeps a 256-byte payload prefix and reads `state`
+and `kind` only. `Machine.OSC` applies a report on the lowest-trust
+`osc` tier: it fills a gap (no tier speaking, or the speaking one silent
+for `HookStaleAfter`), never overrides a fresh hook, extension or ACP
+report, and never touches the tier clocks. The one exception is Esc,
+which no hook reports: an `idle` that ends an osc `working` ends a hook
+`working`, keeps the hook's label, and latches the interrupt for ten
+seconds so the hooks the interrupt itself fires (`PostToolUseFailure`,
+a late permission request) cannot resurrect the turn. A fresh osc state
+is shielded from byte-level output and Laya for `HookStaleAfter`, so the
+repaint after Esc cannot flip it back. Not verified: a Claude permission
+prompt's `blocked:kind=permission`, and Windows ConPTY.
+
 **Everyone else (heuristic tier).** Shell, Codex, Gemini, Aider and
 custom agents produce no activity. They get an explicit "no activity
 data" empty state, never a blank panel that reads as a bug.

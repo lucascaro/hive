@@ -47,17 +47,24 @@ export const DAEMON_STATE = {
 export const STATE_SOURCE = {
   heuristic: '',
   laya: 'laya',
+  osc: 'osc',
 } as const;
 
 /**
  * Whether `source` is Hive inferring the state rather than the agent
  * reporting it: the heuristic tier, or a Laya classification of the
- * screen (spec 458). Neither carries a plan or a report deadline, so
+ * screen (spec 458), or the program's own OSC 7501 status read from the
+ * terminal stream (spec 517). None carries a plan or a report deadline, so
  * every "is the agent's own reporting live" check keys off this one
  * helper.
  */
 export function isInferredSource(source: string | undefined): boolean {
-  return !source || source === 'heuristic' || source === STATE_SOURCE.laya;
+  return (
+    !source ||
+    source === 'heuristic' ||
+    source === STATE_SOURCE.laya ||
+    source === STATE_SOURCE.osc
+  );
 }
 
 export interface StateCarrier {
@@ -108,8 +115,11 @@ export const STATE_WORDS: Record<SessionState, string> = {
 // would silently relabel it as a guess.
 // Laya is the exception: it is Hive's own reading of the screen, so it
 // must not borrow "reported by the agent".
+// OSC is the other: the daemon read the program's own status report off
+// the terminal stream, which is neither a hook the agent sent nor a guess.
 function sourceWords(source: string | undefined): string {
   if (source === STATE_SOURCE.laya) return 'classified from the screen by Laya';
+  if (source === STATE_SOURCE.osc) return 'read from the terminal status';
   return source ? 'reported by the agent' : 'guessed from terminal output';
 }
 

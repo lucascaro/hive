@@ -246,6 +246,19 @@ type Machine struct {
 	// every other way of changing state clears it.
 	turnEnded bool
 
+	// OSC 7501 tier (spec 517). oscSeenAt is the daemon clock at the last
+	// status report, applied or not; it bounds how long a report shields
+	// the state from byte-level observation. oscWorking is true between
+	// an osc working and the next osc report that ends it — the "same
+	// turn" an interrupt edge needs. interrupted/interruptedAt latch an
+	// Esc: the hook processes the interrupt itself fires (a tool's
+	// PostToolUseFailure, a late permission request) are stamped after it
+	// and must not resurrect the turn.
+	oscSeenAt     time.Time
+	oscWorking    bool
+	interrupted   bool
+	interruptedAt time.Time
+
 	// act is the tool ring and plan snapshot. Its lifetime is this
 	// struct's: New zeroes it, and a fresh Machine on restart/revive
 	// discards it. See activity.go.
@@ -293,6 +306,13 @@ func (m *Machine) trusted(now time.Time) bool {
 	if m.source == wire.StateSourceACP {
 		return true
 	}
+	// An osc state is a byte-level report, forgeable and heartbeat-less:
+	// never "a tier in charge". Its own shield is oscFresh, kept separate
+	// so a heartbeating Pi refreshing hookSeenAt cannot make a stale osc
+	// state look trusted forever.
+	if m.source == wire.StateSourceOSC {
+		return false
+	}
 	if m.source == wire.StateSourceHeuristic || m.hookSeenAt.IsZero() {
 		return false
 	}
@@ -328,6 +348,12 @@ func (m *Machine) Output(now time.Time) bool {
 	}
 	m.lastOutputAt = now
 	if m.trusted(now) {
+		return false
+	}
+	// A fresh osc report is exact; the repaint that follows it (Claude
+	// redraws "Interrupted" right after Esc) must not flip it back to a
+	// guess. Once osc goes quiet it falls through like any stale tier.
+	if m.source == wire.StateSourceOSC && m.oscFresh(now) {
 		return false
 	}
 	// Either we were already heuristic, or the tier that claimed this
@@ -411,6 +437,11 @@ func (m *Machine) ClearWaiting() bool {
 		// runs BEFORE the dialog), so this keystroke is the only signal
 		// that the tool is now running.
 		m.state = wire.StateWorking
+		if m.interrupted {
+			// Except when the dialog was dismissed with Esc: the turn
+			// is over, nothing is running.
+			m.state = wire.StateIdle
+		}
 	default:
 		return false
 	}
@@ -461,7 +492,8 @@ func (m *Machine) Replay(ev Event) (handled, changed bool) {
 	// state; the heartbeat is repeating the report Laya corrected, so it
 	// proves liveness and nothing else. The next real event takes the
 	// session back through Apply.
-	if m.source == wire.StateSourceExtension || m.source == wire.StateSourceLaya {
+	if m.source == wire.StateSourceExtension || m.source == wire.StateSourceLaya ||
+		m.source == wire.StateSourceOSC {
 		return true, false
 	}
 	before := m.Snapshot()
@@ -620,6 +652,16 @@ func (m *Machine) Apply(ev Event) bool {
 		return m.Snapshot() != before
 	}
 
+	// An Esc latched by the osc tier (see OSC) outlives the interrupt by
+	// the hooks it fires: they are stamped after it, so the ordering
+	// guard above cannot catch them. Until the next turn begins or ends,
+	// they record activity but do not move the state back.
+	prevState, prevTurn := m.state, m.turnEnded
+	latched := m.interruptLatched(now)
+	switch ev.Kind {
+	case KindPrompt, KindTurnEnd, KindSessionEnd:
+		m.interrupted, latched = false, false
+	}
 	switch ev.Kind {
 	case KindTurnEnd, KindWaitingInput, KindPing, KindPlan, KindPlanItem:
 		// These leave a finished turn finished (waiting_input after
@@ -690,6 +732,14 @@ func (m *Machine) Apply(ev Event) bool {
 		// alive rather than dropping the session back to heuristics.
 	}
 
+	if latched {
+		switch ev.Kind {
+		case KindToolStart, KindToolEnd, KindPermissionResolved,
+			KindWaitingInput, KindWaitingPermission, KindIdle:
+			m.state, m.turnEnded = prevState, prevTurn
+		}
+	}
+
 	if keyed {
 		m.extState = m.state
 		m.extTurnEnded = m.turnEnded
@@ -710,7 +760,7 @@ func (m *Machine) StaleAt() (time.Time, bool) {
 	// staleness is LayaRecheckAfter, applied by the classifier.
 	// ACP has no deadline either: see trusted.
 	if m.source == wire.StateSourceHeuristic || m.source == wire.StateSourceLaya ||
-		m.source == wire.StateSourceACP || m.reportedAt.IsZero() {
+		m.source == wire.StateSourceACP || m.source == wire.StateSourceOSC || m.reportedAt.IsZero() {
 		return time.Time{}, false
 	}
 	return m.reportedAt.Add(HookStaleAfter), true
@@ -730,6 +780,11 @@ func (m *Machine) Classifiable(now time.Time) bool {
 	// cannot clear it (the tier is still trusted), so a changed screen
 	// is re-asked instead. Every other wait is the user's to answer.
 	if wantsUser(m.state) && m.source != wire.StateSourceLaya {
+		return false
+	}
+	// A fresh osc report is an exact reading; a screen guess must not
+	// overwrite it.
+	if m.source == wire.StateSourceOSC && m.oscFresh(now) {
 		return false
 	}
 	if !m.trusted(now) {
@@ -811,4 +866,122 @@ func truncate(s string) string {
 		return s
 	}
 	return strings.ToValidUTF8(s[:wire.MaxSummaryLen], "")
+}
+
+// interruptLatch bounds how long an Esc keeps late hook events from
+// moving the state. The processes an interrupt fires report within a
+// second or two; the bound keeps a latch that nothing cleared (no new
+// prompt, no turn end) from muting the agent's own later reports.
+const interruptLatch = 10 * time.Second
+
+func (m *Machine) interruptLatched(now time.Time) bool {
+	return m.interrupted && now.Sub(m.interruptedAt) <= interruptLatch
+}
+
+// oscFresh reports whether an osc report arrived within HookStaleAfter.
+func (m *Machine) oscFresh(now time.Time) bool {
+	return !m.oscSeenAt.IsZero() && now.Sub(m.oscSeenAt) <= HookStaleAfter
+}
+
+// OSC folds in one OSC 7501 status report read from the PTY stream
+// (spec 517) and reports whether the visible state changed.
+//
+// It is the lowest-trust tier, and it fills gaps: a report applies only
+// when no tier is speaking for the session — none trusted, or the
+// trusted one silent of state-bearing events for HookStaleAfter, the
+// Classifiable rule — and never over an ACP session, an exited one, or a
+// wait that a hook, extension or the bell raised (only Laya's guess and
+// osc's own waits may be revised by it). It never touches the tier
+// clocks, so a stale hook stays stale and its next event takes the
+// session straight back through Apply.
+//
+// The one exception is Esc. Claude fires no hook when the user
+// interrupts, so a hook-driven turn would read "working" until the
+// staleness timeout. An osc idle that ends an osc working in the same
+// turn therefore ends a working state on any non-ACP tier, keeping that
+// tier's label, and latches the interrupt (see Apply). It never lowers a
+// wait and never raises anything.
+func (m *Machine) OSC(st, kind string, now time.Time) bool {
+	if m.state == wire.StateExited {
+		return false
+	}
+	m.oscSeenAt = now
+	before := m.Snapshot()
+
+	var to State
+	turnEnded := false
+	switch st {
+	case "working":
+		to = wire.StateWorking
+	case "idle":
+		to = wire.StateIdle
+	case "done":
+		// The turn finished, like a hook turn_end: the user's move.
+		to, turnEnded = wire.StateWaitingInput, true
+	case "blocked":
+		to = wire.StateWaitingInput
+		if kind == "permission" {
+			to = wire.StateWaitingPermission
+		}
+	case "error":
+		to = wire.StateError
+	default:
+		// clear (the program is shutting down), or a state this version
+		// does not know: not something to act on.
+		m.oscWorking = false
+		return false
+	}
+
+	// oscWorking spans the turn: a blocked report (a dialog inside the
+	// turn) keeps it, so Esc on that dialog still reads as an interrupt.
+	wasWorking := m.oscWorking
+	switch st {
+	case "working":
+		m.oscWorking = true
+	case "blocked":
+	default:
+		m.oscWorking = false
+	}
+	if st == "working" {
+		m.interrupted = false
+	}
+	if st == "idle" && wasWorking {
+		m.interrupted, m.interruptedAt = true, now
+		if m.state == wire.StateWorking && m.source != wire.StateSourceACP {
+			m.state = wire.StateIdle
+			m.turnEnded = false
+			m.noteExtState()
+			return m.Snapshot() != before
+		}
+	}
+
+	if m.source == wire.StateSourceACP {
+		return false
+	}
+	if wantsUser(m.state) && m.source != wire.StateSourceOSC && m.source != wire.StateSourceLaya {
+		return false
+	}
+	if m.trusted(now) && !m.lastEventAt.IsZero() && now.Sub(m.lastEventAt) <= HookStaleAfter {
+		return false
+	}
+	// A live tier that has only pinged (Claude's SessionStart) is not yet
+	// speaking, so osc may fill in — but restating the state it already
+	// holds is not a gap, and must not take the label from the tier. The
+	// startup `idle` on a fresh hooked session is exactly this.
+	if m.trusted(now) && m.state == to && m.turnEnded == turnEnded {
+		return false
+	}
+	m.state = to
+	m.turnEnded = turnEnded
+	// A live tier keeps its label: its hooks are installed and answering
+	// (it has pinged, or just heartbeated), so the session is still that
+	// tier's — osc only supplied a state the tier has not yet reported.
+	// Relabelling would swap "reported by the agent" for "read from the
+	// terminal" on every startup, since Claude prints a working/idle pair
+	// before its first hook event.
+	liveTier := m.trusted(now) && (m.source == wire.StateSourceHook || m.source == wire.StateSourceExtension)
+	if !liveTier {
+		m.source = wire.StateSourceOSC
+	}
+	return m.Snapshot() != before
 }

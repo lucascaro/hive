@@ -562,6 +562,7 @@ func (r *Registry) attachSessionHooks(e *Entry, sess *session.Session) {
 	id := e.ID
 	sess.SetTitleHook(func(string) { r.noteTitleChange(id) })
 	sess.SetBellHook(func() { r.noteBell(id) })
+	sess.SetStatusHook(func(st session.Status) { r.noteOSC(id, st) })
 	e.screenDigest = sess.ScreenDigest()
 }
 
@@ -589,6 +590,22 @@ func (r *Registry) noteBell(id string) {
 	prev := e.stateSnapshot()
 	if e.machine().Bell(time.Now()) {
 		r.announceStateLocked(e, prev, "bell")
+	}
+}
+
+// noteOSC folds one OSC 7501 status report the session's program printed
+// into its state machine (spec 517) and announces what changed. The
+// tier's rules live in Machine.OSC.
+func (r *Registry) noteOSC(id string, st session.Status) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	e, ok := r.entries[id]
+	if !ok {
+		return
+	}
+	prev := e.stateSnapshot()
+	if e.machine().OSC(st.State, st.Kind, time.Now()) {
+		r.announceStateLocked(e, prev, "osc")
 	}
 }
 
@@ -1064,6 +1081,9 @@ func (r *Registry) spawnInfo() agent.SpawnInfo {
 // restarted Claude session kept its hooks and silently lost its plan.
 // The create path pairs them through agentDef instead.
 func (r *Registry) applyAgentSpawn(opts *session.Options, agentID string) {
+	// Every agent session answers an OSC 7501 capability query (spec
+	// 517); a plain shell never does. Create sets the same flag.
+	opts.AnswerStatusQuery = agentID != ""
 	def, ok := agent.Get(agent.ID(agentID))
 	if !ok {
 		return
