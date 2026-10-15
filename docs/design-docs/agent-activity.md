@@ -179,8 +179,9 @@ which no hook reports: an `idle` that ends an osc `working` ends a hook
 seconds so the hooks the interrupt itself fires (`PostToolUseFailure`,
 a late permission request) cannot resurrect the turn. A fresh osc state
 is shielded from byte-level output and Laya for `HookStaleAfter`, so the
-repaint after Esc cannot flip it back. Not verified: a Claude permission
-prompt's `blocked:kind=permission`, and Windows ConPTY.
+repaint after Esc cannot flip it back. A Claude permission prompt
+reports `blocked:kind=permission` (verified by the live probe). Not
+verified: Windows ConPTY.
 
 **Everyone else (heuristic tier).** Shell, Codex, Gemini, Aider and
 custom agents produce no activity. They get an explicit "no activity

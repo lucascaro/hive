@@ -229,7 +229,8 @@ func TestQueryAnswerNeverBlocksReadLoop(t *testing.T) {
 // attach many times, and nothing is delivered again.
 func TestReplayIsStructurallyUnscanned(t *testing.T) {
 	skipOnWindows(t)
-	script := `printf '\033]7501;?\007\033]7501;state=working\007'; sleep 5`
+	// The sleep lets SetStatusHook below land before the report is read.
+	script := `sleep 0.3; printf '\033]7501;?\007\033]7501;state=working\007'; sleep 5`
 	sess, err := Start(Options{Shell: "/bin/bash", Cmd: []string{"/bin/bash", "-c", script}, Cols: 80, Rows: 24, AnswerStatusQuery: true})
 	if err != nil {
 		t.Fatal(err)
