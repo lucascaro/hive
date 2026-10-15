@@ -416,6 +416,7 @@ Independent reviewer (general-purpose subagent), 2 rounds.
 - **2026-10-14 iter 2** — verdict: COMMENT; mergeable: MERGEABLE; findings_hash: 656aec67f4bb1a281462e99985327668417df2cc60c447aabdf2131c827f5962; threads_open: 1; action: autofix+push; head_sha: ece5b70.
 - **2026-10-14 iter 3** — verdict: APPROVE; mergeable: MERGEABLE; findings_hash: empty; threads_open: 0; action: stop; head_sha: 9e8bfca.
 - **2026-10-14 iter 1 (phase 2)** — verdict: COMMENT; mergeable: MERGEABLE; findings_hash: 8f40c548e34f1b789ff7e03af9a02d920c25eb3bd032f50a9d0b5949ceb83a15; threads_open: 0; action: escalated:risky-fix-needs-human-decision (worker pushed test-only 69d0a7ff; the two risky hardening fixes applied by orchestrator in 992431d0); head_sha: 69d0a7ff.
+- **2026-10-14 iter 2 (phase 2)** — verdict: APPROVE; mergeable: MERGEABLE; findings_hash: 3cdac4c83550cdbb1ea6973b34b32cdea6a3731a2bca741ef6fe7249e6b80bcc; threads_open: 0; action: stop (autofix+push d8b7bdc5 closed 2 threads first); head_sha: d8b7bdc5.
 
 ## Gate verdict
 
@@ -452,7 +453,7 @@ New: internal/agent/testdata/claude_inbox_line.json (version-pinned fixture of t
 ## Tests
 - agent: TestSendClaudeInboxWritesExactLine (fake unix listener asserts bytes == fixture, incl. multi-line + quotes escaping); TestFindClaudeInboxMatchesSessionID; TestFindClaudeInboxRejectsNonSocket (regular file at path); TestFindClaudeInboxRejectsForeignOwner (skip if not root/uid change impossible -> test the uid check via injected stat); TestFindClaudeInboxIgnoresKeyFiles (dir with .key files only -> not found, and .key never opened: assert via unreadable 0000 .key file not erroring); existing TestNoClaudeSessionKeyReads stays green.
 - registry: TestSendClaudeUsesSocketWhenWorking (working state -> delivery socket, nothing written to PTY); TestSendClaudeFallsBackToTypedOnInboxError; TestSendClaudeFallsBackToQueuedWhenBusyAndInboxDown; TestSendNonClaudeNeverUsesInbox; TestSendSocketNotUnderLock (blocked fake inbox does not block another registry call).
-- opt-in real probe: extend cmd/hived claude_probe (HIVE_PROBE_CLAUDE=1) to send via inbox and assert a UserPromptSubmit hook event arrives.
+- opt-in real probe: NOT built in phase 2 (needs a live Claude); the manual real-Claude check stays on the checklist.
 - frontend: unit test for delivery->toast mapping includes socket.
 
 ## Verification
