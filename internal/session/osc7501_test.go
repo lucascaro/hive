@@ -216,7 +216,7 @@ func TestQueryAnswerNeverBlocksReadLoop(t *testing.T) {
 	defer sess.Close()
 	var mu sync.Mutex
 	var got []Status
-	sess.SetStatusHook(func(st Status) { mu.Lock(); got = append(got, st); mu.Unlock() })
+	sess.SetStatusHook(func(sts []Status) { mu.Lock(); got = append(got, sts...); mu.Unlock() })
 	// Fill the child's stdin queue: it never reads, so this blocks.
 	go func() { _, _ = sess.Write([]byte(strings.Repeat("x", 1<<20))) }()
 	if !drainUntil(func() bool { mu.Lock(); defer mu.Unlock(); return len(got) > 0 }, 6*time.Second) {
@@ -237,7 +237,7 @@ func TestReplayIsStructurallyUnscanned(t *testing.T) {
 	defer sess.Close()
 	var mu sync.Mutex
 	n := 0
-	sess.SetStatusHook(func(Status) { mu.Lock(); n++; mu.Unlock() })
+	sess.SetStatusHook(func(sts []Status) { mu.Lock(); n += len(sts); mu.Unlock() })
 	if !drainUntil(func() bool { mu.Lock(); defer mu.Unlock(); return n == 1 }, 6*time.Second) {
 		t.Fatal("live status never delivered")
 	}

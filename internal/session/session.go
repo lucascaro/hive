@@ -89,7 +89,7 @@ type Session struct {
 	// OSC 7501 status plumbing (spec 517). statusHook receives parsed
 	// reports; answerQuery arms the one-time capability reply and
 	// queryAnswered records that it was sent. All guarded by mu.
-	statusHook    func(Status)
+	statusHook    func([]Status)
 	answerQuery   bool
 	queryAnswered bool
 }
@@ -414,18 +414,18 @@ func (s *Session) noteBell(p []byte) {
 	if rang && hook != nil {
 		hook()
 	}
-	if statusHook != nil {
-		for _, st := range statuses {
-			statusHook(st)
-		}
+	if statusHook != nil && len(statuses) > 0 {
+		statusHook(statuses)
 	}
 }
 
-// SetStatusHook installs the callback invoked for each OSC 7501 status
-// report the program prints. Passing nil disables reporting. Same
+// SetStatusHook installs the callback invoked with the OSC 7501 status
+// reports one PTY read contained, in order. One call per read, so a
+// program (or hostile output) printing a burst costs the listener one
+// pass, not one per report. Passing nil disables reporting. Same
 // contract as SetBellHook: it runs on the readLoop goroutine with no
 // session lock held.
-func (s *Session) SetStatusHook(fn func(Status)) {
+func (s *Session) SetStatusHook(fn func([]Status)) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.statusHook = fn

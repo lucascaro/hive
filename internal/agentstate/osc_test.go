@@ -340,3 +340,24 @@ func TestOSCStartupIdleKeepsPingedHookLabel(t *testing.T) {
 	}
 	snap(t, m, wire.StateWorking, wire.StateSourceHook)
 }
+
+// Review round 1 (PR #520): Esc after a long tool run, when the hook
+// tier has been silent past HookStaleAfter. The idle must survive the
+// repaint that follows.
+func TestOSCEscOnStaleTierSurvivesRepaint(t *testing.T) {
+	m := New(t0)
+	m.Apply(hookEvent(KindPrompt, t0, "go"))
+	m.OSC("working", "", t0)
+	esc := t0.Add(HookStaleAfter + 5*time.Second)
+	m.Output(esc.Add(-time.Second)) // the spinner: heuristic territory by now
+	if !m.OSC("idle", "", esc) {
+		t.Fatal("Esc did not end working on a stale tier")
+	}
+	if m.Output(esc.Add(100 * time.Millisecond)) {
+		t.Error("the repaint after Esc undid the idle")
+	}
+	snap(t, m, wire.StateIdle, wire.StateSourceOSC)
+	if m.Classifiable(esc.Add(time.Second)) {
+		t.Error("a screen guess may overwrite a fresh Esc idle")
+	}
+}

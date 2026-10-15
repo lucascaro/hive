@@ -28,7 +28,7 @@
 **Hook-tier interaction (finding that changes the spec's reading)** — a hook-driven Claude turn sets `working` via hooks and Esc fires no hook, so the hook tier is trusted *and* its last event is recent when the user presses Esc. A literal "osc changes nothing while a hook report is fresh" (success criterion 3) would ignore the Esc `idle` and leave criterion 1 unmet. Resolution needed: see Decision log.
 
 **Wire / GUI / contract**
-- `DaemonContract` is `internal/buildinfo/contract.go:245` (27 → 28). Do not bump `wire.PROTOCOL_VERSION`. A new `state_source` string value needs no new field/frame; `hivegui/app_*.go`, `hived-ws-bridge`, `testclient` need no struct change.
+- `DaemonContract` is `internal/buildinfo/contract.go:245` (28 → 29; main was already at 28 by the time of implementation). Do not bump `wire.PROTOCOL_VERSION`. A new `state_source` string value needs no new field/frame; `hivegui/app_*.go`, `hived-ws-bridge`, `testclient` need no struct change.
 - GUI: `cmd/hivegui/frontend/src/lib/session-state.ts` (`STATE_SOURCE` :47, inferred helper :52-58, `sourceWords` :111, used :140), `src/app/state.ts:81`, tests `test/unit/session-state.test.ts`, `test/e2e/wails-mock.ts`; also `cmd/hivebar/{client,model}.go`. Today any non-empty non-laya source reads "reported by the agent".
 
 **Tests to copy:** `internal/session/bell_test.go` (chunk-boundary cases), `internal/agentstate/laya_test.go` (:241/:271/:289 tier precedence), `machine_test.go:397`, `internal/registry/state_test.go:415` (real PTY → attention), `registry.go:2135` `NoteBellForTest` (add a twin), `internal/session/testdata/state/*.bin`, `cmd/hived/claude_probe_test.go` (opt-in probes).
@@ -52,7 +52,7 @@ Two daemon additions, no new wire frame.
    - `StaleAt` returns `ok=false` for osc (as laya/acp), `Replay` leaves it alone like Laya.
    - `registry.noteOSC` mirrors `noteBell` (`announceStateLocked(e, prev, "osc")`).
 3. **GUI.** `sourceWords` gets an `osc` case; `isInferredSource` counts a session whose source is `osc` as inferred. `icons.md` wording rule updated.
-4. **Contract/docs.** `DaemonContract` 27→28 with a history line modelled on the laya entry (`contract.go:84-88`: an older GUI mislabels `osc` as "reported by the agent"). Changeset, `site/features.json` entry, `docs/design-docs/agent-activity.md` and `control-plane.md:34-43` (trust-tier table gets an `osc` row), `docs/design-docs/ui/icons.md:50-53`. Spec amended: criterion 3 becomes "while a hook or extension report is fresh, osc changes no state **except** an osc `idle` after an osc `working` ends a hook `working` (the Esc interrupt hooks cannot report)", and the forgery non-goal now says a forged working→idle sequence can end a hook-fresh `working` (never a wait).
+4. **Contract/docs.** `DaemonContract` 28→29 with a history line modelled on the laya entry (`contract.go:84-88`: an older GUI mislabels `osc` as "reported by the agent"). Changeset, `site/features.json` entry, `docs/design-docs/agent-activity.md` and `control-plane.md:34-43` (trust-tier table gets an `osc` row), `docs/design-docs/ui/icons.md:50-53`. Spec amended: criterion 3 becomes "while a hook or extension report is fresh, osc changes no state **except** an osc `idle` after an osc `working` ends a hook `working` (the Esc interrupt hooks cannot report)", and the forgery non-goal now says a forged working→idle sequence can end a hook-fresh `working` (never a wait).
 
 Why not GUI-side: absent for headless sessions. Why not `Apply` with source=osc: it moves the tier clocks and would make a forged report look like a heartbeat.
 
@@ -121,3 +121,6 @@ Independent reviewer (opus subagent), two rounds. Round 1: revise, confidence 7,
 ## Open questions
 
 - None open. (`blocked:kind=permission` was verified by the live probe.) Windows ConPTY remains unverified.
+
+## PR convergence ledger
+- **2026-10-15 iter 1** — verdict: REQUEST_CHANGES; mergeable: MERGEABLE; findings_hash: 4ccc86335635113f09a361b4cbbe8d41c4ea298e4374dbd4c09f60d3e1d8affc; threads_open: 0; action: autofix+push (orchestrator applied both findings as spec-conforming fixes: Esc on a stale tier relabels to osc, plain "shell" never answers the query; plus batched status hook and doc fix); head_sha: pending.

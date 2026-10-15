@@ -562,7 +562,7 @@ func (r *Registry) attachSessionHooks(e *Entry, sess *session.Session) {
 	id := e.ID
 	sess.SetTitleHook(func(string) { r.noteTitleChange(id) })
 	sess.SetBellHook(func() { r.noteBell(id) })
-	sess.SetStatusHook(func(st session.Status) { r.noteOSC(id, st) })
+	sess.SetStatusHook(func(sts []session.Status) { r.noteOSC(id, sts) })
 	e.screenDigest = sess.ScreenDigest()
 }
 
@@ -593,10 +593,11 @@ func (r *Registry) noteBell(id string) {
 	}
 }
 
-// noteOSC folds one OSC 7501 status report the session's program printed
-// into its state machine (spec 517) and announces what changed. The
-// tier's rules live in Machine.OSC.
-func (r *Registry) noteOSC(id string, st session.Status) {
+// noteOSC folds the OSC 7501 status reports one PTY read contained into
+// the session's state machine (spec 517) and announces the net change
+// once. The tier's rules live in Machine.OSC; folding the whole read
+// under one lock keeps a burst of reports to a single broadcast.
+func (r *Registry) noteOSC(id string, sts []session.Status) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	e, ok := r.entries[id]
@@ -604,9 +605,12 @@ func (r *Registry) noteOSC(id string, st session.Status) {
 		return
 	}
 	prev := e.stateSnapshot()
-	if e.machine().OSC(st.State, st.Kind, time.Now()) {
-		r.announceStateLocked(e, prev, "osc")
+	m := e.machine()
+	now := time.Now()
+	for _, st := range sts {
+		m.OSC(st.State, st.Kind, now)
 	}
+	r.announceStateLocked(e, prev, "osc")
 }
 
 // ApplyAgentEvent folds one hook/extension-reported observation
@@ -1070,6 +1074,14 @@ func (r *Registry) spawnInfo() agent.SpawnInfo {
 	return agent.SpawnInfo{HivedPath: r.hivedPath, StateDir: r.stateDir, Settings: &st}
 }
 
+// answersStatusQuery reports whether a session started for agentID gets
+// the OSC 7501 capability reply (spec 517). An agent id is not enough: the
+// catalog's built-in "shell" is what the launcher sends for a plain
+// shell, and a plain shell that cats a hostile file must not receive one.
+func answersStatusQuery(agentID string) bool {
+	return agentID != "" && agentID != string(agent.IDShell)
+}
+
 // applyAgentSpawn appends everything the agent adapter adds at spawn —
 // argv (Def.SpawnArgs, the hook wiring) AND environment (Def.SpawnEnv,
 // the task-tool opt-in) — to opts. It is the ONLY place Restart and the
@@ -1083,7 +1095,7 @@ func (r *Registry) spawnInfo() agent.SpawnInfo {
 func (r *Registry) applyAgentSpawn(opts *session.Options, agentID string) {
 	// Every agent session answers an OSC 7501 capability query (spec
 	// 517); a plain shell never does. Create sets the same flag.
-	opts.AnswerStatusQuery = agentID != ""
+	opts.AnswerStatusQuery = answersStatusQuery(agentID)
 	def, ok := agent.Get(agent.ID(agentID))
 	if !ok {
 		return

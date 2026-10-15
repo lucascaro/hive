@@ -951,6 +951,14 @@ func (m *Machine) OSC(st, kind string, now time.Time) bool {
 			m.state = wire.StateIdle
 			m.turnEnded = false
 			m.noteExtState()
+			// A stale tier (a long tool run: no hook fires for 30 s) no
+			// longer speaks for the session, so this idle is osc's and
+			// is shielded as such — otherwise the "Interrupted" repaint
+			// that follows Esc takes it back to heuristic working. A
+			// live tier keeps its label, as in the gap rule below.
+			if !m.trusted(now) {
+				m.source = wire.StateSourceOSC
+			}
 			return m.Snapshot() != before
 		}
 	}

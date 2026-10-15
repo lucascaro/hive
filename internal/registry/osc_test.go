@@ -1,9 +1,11 @@
 package registry
 
 import (
+	"context"
 	"testing"
 	"time"
 
+	"github.com/lucascaro/hive/internal/session"
 	"github.com/lucascaro/hive/internal/wire"
 )
 
@@ -107,5 +109,78 @@ func TestOSCDoesNotOverrideFreshHookThroughTheRealPTY(t *testing.T) {
 	s, _ := sessionInfo(r, e.ID)
 	if s.State != wire.StateWorking || s.StateSource != wire.StateSourceHook {
 		t.Errorf("state = %q/%q, want the hook's working untouched", s.State, s.StateSource)
+	}
+}
+
+// Review round 1 (PR #520): an agent id is not an agent. The launcher
+// sends the catalog's built-in "shell" for a plain shell, and that
+// session must not answer an OSC 7501 query — on any spawn path.
+func TestStatusQueryAnsweredForAgentsOnly(t *testing.T) {
+	skipOnWindows(t)
+	for _, c := range []struct {
+		agent string
+		want  bool
+	}{
+		{"", false}, {"shell", false}, {"claude", true}, {"codex", true}, {"my-custom-agent", true},
+	} {
+		if got := answersStatusQuery(c.agent); got != c.want {
+			t.Errorf("answersStatusQuery(%q) = %v, want %v", c.agent, got, c.want)
+		}
+
+		// Revive/Restart path.
+		r := freshRegistry(t)
+		var opts session.Options
+		r.applyAgentSpawn(&opts, c.agent)
+		if opts.AnswerStatusQuery != c.want {
+			t.Errorf("applyAgentSpawn(%q): AnswerStatusQuery = %v, want %v", c.agent, opts.AnswerStatusQuery, c.want)
+		}
+
+		// Create path, through the real spawn seam.
+		var got bool
+		restore := SetStartSessionForTest(func(o session.Options) (*session.Session, error) {
+			got = o.AnswerStatusQuery
+			return session.Start(session.Options{Shell: "/bin/cat", Cols: 80, Rows: 24})
+		})
+		e, err := r.Create(context.Background(), wire.CreateSpec{Name: "q", Agent: c.agent, Cmd: []string{"/bin/cat"}, Cols: 80, Rows: 24})
+		restore()
+		if err != nil {
+			t.Fatalf("Create(%q): %v", c.agent, err)
+		}
+		if got != c.want {
+			t.Errorf("Create(%q): AnswerStatusQuery = %v, want %v", c.agent, got, c.want)
+		}
+		_ = r.Kill(e.ID, true)
+	}
+}
+
+// A burst of reports in one read is one broadcast, not one per report.
+func TestOSCBurstIsOneBroadcast(t *testing.T) {
+	skipOnWindows(t)
+	r := freshRegistry(t)
+	e, _ := liveSession(t, r, wire.CreateSpec{Name: "burst"})
+	ch, unsub := r.Subscribe()
+	defer unsub()
+	drain(ch)
+	burst := make([]session.Status, 0, 40)
+	for i := 0; i < 20; i++ {
+		burst = append(burst, session.Status{State: "blocked", Kind: "question"}, session.Status{State: "working"})
+	}
+	burst = append(burst, session.Status{State: "done"})
+	r.noteOSC(e.ID, burst)
+	n := 0
+	deadline := time.After(300 * time.Millisecond)
+loop:
+	for {
+		select {
+		case ev := <-ch:
+			if ev.Session.ID == e.ID && ev.Kind == wire.SessionEventState {
+				n++
+			}
+		case <-deadline:
+			break loop
+		}
+	}
+	if n != 1 {
+		t.Errorf("state broadcasts = %d, want 1 for the burst", n)
 	}
 }
