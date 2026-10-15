@@ -415,6 +415,7 @@ Independent reviewer (general-purpose subagent), 2 rounds.
 - **2026-10-13 iter 1** — verdict: REQUEST_CHANGES; mergeable: MERGEABLE; findings_hash: 6abdefe7bbea14653a4d050a4d396854e25cdcf9bf56bda9fb742c93beb9b3a6; threads_open: 0; action: escalated:risky-fix-needs-human-decision; head_sha: ad46a1a.
 - **2026-10-14 iter 2** — verdict: COMMENT; mergeable: MERGEABLE; findings_hash: 656aec67f4bb1a281462e99985327668417df2cc60c447aabdf2131c827f5962; threads_open: 1; action: autofix+push; head_sha: ece5b70.
 - **2026-10-14 iter 3** — verdict: APPROVE; mergeable: MERGEABLE; findings_hash: empty; threads_open: 0; action: stop; head_sha: 9e8bfca.
+- **2026-10-14 iter 1 (phase 2)** — verdict: COMMENT; mergeable: MERGEABLE; findings_hash: 8f40c548e34f1b789ff7e03af9a02d920c25eb3bd032f50a9d0b5949ceb83a15; threads_open: 0; action: escalated:risky-fix-needs-human-decision (worker pushed test-only 69d0a7ff; the two risky hardening fixes applied by orchestrator in 992431d0); head_sha: 69d0a7ff.
 
 ## Gate verdict
 
@@ -474,4 +475,3 @@ GOTOOLCHAIN=go$(sed -n 's/^go //p' go.mod) go test ./internal/agent/... ./intern
 
 ## Second opinion
 Independent hs-reviewer: revise, confidence 7, must_fix applied above (one round; no re-run).
-- **2026-10-14 iter 1 (phase 2)** — verdict: COMMENT; mergeable: MERGEABLE; findings_hash: 8f40c548e34f1b789ff7e03af9a02d920c25eb3bd032f50a9d0b5949ceb83a15; threads_open: 0; action: escalated:risky-fix-needs-human-decision (worker pushed test-only 69d0a7ff; the two risky hardening fixes applied by orchestrator in 992431d0); head_sha: 69d0a7ff.
