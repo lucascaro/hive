@@ -79,7 +79,12 @@ import {
 } from './modals/launcher.js';
 import { openProjectEditor } from './modals/project-editor.js';
 import { closeQuickIdea } from './modals/quick-idea.js';
+import {
+  closeArchivedSessions,
+  toggleArchivedSessions,
+} from './modals/archived-sessions.js';
 import { closeMessageSession } from './modals/message-session.js';
+import { archiveActiveSession } from './archive.js';
 import { dismissSettings, openSettings } from './modals/settings.js';
 import { openWhatsNew, closeWhatsNew } from './modals/whats-new.js';
 import { closeWorktrees } from './modals/worktrees.js';
@@ -173,6 +178,19 @@ const PALETTE: readonly Command[] = [
     title: 'Close Session',
     // Never declines: ⌘W with no session is consumed and does nothing.
     run: () => closeActiveSession(),
+  },
+  // Spec 518. Palette-only: no default chord, so there is no menu item,
+  // README row or help row to keep in step. Archive keeps the worktree
+  // and the conversation and asks nothing; the list is one command away.
+  {
+    id: 'archive-session',
+    title: 'Archive Session',
+    run: () => archiveActiveSession(),
+  },
+  {
+    id: 'archived-sessions',
+    title: 'Archived Sessions…',
+    run: () => toggleArchivedSessions(),
   },
   {
     id: 'reopen-closed-session',
@@ -319,6 +337,7 @@ const UNLISTED: readonly Command[] = [
   { id: 'worktrees.close', run: () => closeWorktrees() },
   { id: 'quick-idea.close', run: () => closeQuickIdea() },
   { id: 'message-session.close', run: () => closeMessageSession() },
+  { id: 'archived-sessions.close', run: () => closeArchivedSessions() },
   { id: 'idea-inbox.close', run: () => closeIdeaInbox() },
   { id: 'help-overlay.close', run: () => closeHelpOverlay() },
   { id: 'help-modal.close', run: () => closeHelp() },

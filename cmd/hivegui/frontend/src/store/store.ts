@@ -41,6 +41,7 @@ import type { PhasePanel } from '../lib/phase-steps.js';
 import type { ModeHint } from '../lib/status.js';
 import type {
   AppState,
+  ArchivedSessionInfo,
   IdeaInfo,
   PluginInfo,
   ProjectInfo,
@@ -134,6 +135,9 @@ export interface AppData {
   // fans out single-idea events that a map would have to find the right
   // bucket for anyway.
   ideas: IdeaInfo[];
+  // Spec 518: every archived session, newest first, as the daemon last
+  // listed them. Refreshed by archived:list, never edited locally.
+  archived: ArchivedSessionInfo[];
   // Every installed plugin, sorted by id. Listed once per control
   // connection (boot and reconnect, main.tsx / events.ts); PLUGIN_EVENT
   // keeps it current in between.
@@ -180,6 +184,7 @@ export type ModalId =
   | 'quick-idea'
   | 'idea-inbox'
   | 'message-session'
+  | 'archived-sessions'
   | 'help'
   | 'help-modal'
   | 'whats-new'
@@ -215,6 +220,8 @@ export type ModalEntry =
       busy?: boolean;
       sending?: boolean;
     }
+  // Spec 518: the searchable list of archived sessions.
+  | { id: 'archived-sessions'; seq: number }
   | { id: 'help'; seq: number }
   // The sidebar's Help button. Distinct from 'help' above, which is the
   // ⌘/ keyboard-shortcuts overlay — the two are separate surfaces and one
@@ -538,6 +545,7 @@ function initialData(): AppData {
     modals: [],
     worktreesPayload: null,
     ideas: [],
+    archived: [],
     plugins: [],
     agentColors: new Map(),
     choiceDialog: null,
@@ -1329,6 +1337,10 @@ function byCreatedDesc(list: IdeaInfo[]): IdeaInfo[] {
 // Boot-time only; ListAgents() is static for the life of the daemon.
 export function setAgentColors(colors: ReadonlyMap<string, string>): void {
   set({ agentColors: colors });
+}
+
+export function setArchived(archived: ArchivedSessionInfo[]): void {
+  set({ archived: archived || [] });
 }
 
 export function setIdeas(ideas: IdeaInfo[]): void {

@@ -144,6 +144,8 @@ describe('the palette', () => {
       'message-session',
       'notify-when-idle',
       'close-session',
+      'archive-session',
+      'archived-sessions',
       'reopen-closed-session',
       'new-window',
       'open-os-terminal',

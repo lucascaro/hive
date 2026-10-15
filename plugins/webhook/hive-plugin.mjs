@@ -98,6 +98,11 @@ export const Frame = Object.freeze({
   SET_SESSION_KIND: 0x45,
   SEND_TO_SESSION: 0x46,
   SENT: 0x47,
+  ARCHIVE_SESSION: 0x48,
+  LIST_ARCHIVED: 0x49,
+  ARCHIVED: 0x4a,
+  UNARCHIVE_SESSION: 0x4b,
+  DELETE_ARCHIVED: 0x4c,
 });
 
 const frameName = new Map(Object.entries(Frame).map(([k, v]) => [v, k]));

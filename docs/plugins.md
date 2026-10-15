@@ -208,6 +208,10 @@ and reply payloads are the Go structs of the same name in
 | `RESTART_SESSION` | `RestartSessionReq` | `SESSION_EVENT` |
 | `RESTORE_SESSION` | `RestoreSessionReq` | `SESSION_RESTORED`, `CLOSED` |
 | `LIST_CLOSED` | `ListClosedReq` | `CLOSED` |
+| `ARCHIVE_SESSION` | `ArchiveSessionReq` | `SESSION_EVENT` (removed), `ARCHIVED` |
+| `LIST_ARCHIVED` | `ListArchivedReq` | `ARCHIVED` |
+| `UNARCHIVE_SESSION` | `UnarchiveSessionReq` | `SESSION_RESTORED`, `ARCHIVED` |
+| `DELETE_ARCHIVED` | `DeleteArchivedReq` | `ARCHIVED` |
 | `LIST_PROJECTS` | `ListProjectsReq` | `PROJECTS` |
 | `CREATE_PROJECT` | `CreateProjectReq` | `PROJECT_EVENT` (added) |
 | `KILL_PROJECT` | `KillProjectReq` | `PROJECT_EVENT` (removed) |
@@ -257,6 +261,7 @@ And everything the daemon sends on a control connection:
 | `WORKTREES` | A project's worktree inventory. |
 | `CLOSED` | The sessions that can be reopened. |
 | `SESSION_RESTORED` | A reopen succeeded. |
+| `ARCHIVED` | The archived sessions (spec 518). |
 | `CLIENT_BROADCAST` | Broadcast: a relayed `CLIENT_COMMAND`. |
 | `IDEAS` | Answer to `LIST_IDEAS`. |
 | `IDEA_EVENT` | Broadcast: an idea was added, removed or updated. |

@@ -265,6 +265,21 @@ const (
 	// is not offered it (that is spec 389's grant).
 	FrameSendToSession FrameType = 0x46 // C → S, JSON, control
 	FrameSent          FrameType = 0x47 // S → C, JSON, control
+
+	// Archive (spec 518). ARCHIVE_SESSION stops a session and keeps a
+	// durable record (never pruned, worktree untouched); LIST_ARCHIVED
+	// is answered with ARCHIVED; UNARCHIVE_SESSION rebuilds the entry
+	// like RESTORE_SESSION (an "added" event, then SESSION_RESTORED);
+	// DELETE_ARCHIVED discards a record, optionally with its worktree.
+	// Every success is followed by ARCHIVED so the client's list is
+	// current. These are new frames rather than a flag on KILL_SESSION
+	// on purpose: an older daemon ignores an unknown flag and would
+	// close the session instead.
+	FrameArchiveSession   FrameType = 0x48 // C → S, JSON, control
+	FrameListArchived     FrameType = 0x49 // C → S, JSON, control
+	FrameArchived         FrameType = 0x4a // S → C, JSON, control
+	FrameUnarchiveSession FrameType = 0x4b // C → S, JSON, control
+	FrameDeleteArchived   FrameType = 0x4c // C → S, JSON, control
 )
 
 // ControlRequestFrames lists every frame a control-mode client may send.
@@ -287,6 +302,7 @@ var ControlRequestFrames = []FrameType{
 	FrameSetPluginConfig, FrameSetClientUI,
 	FrameGetAcpTranscript, FramePromptAcp, FrameAnswerPermission,
 	FrameSubmitResult, FrameSetSessionKind, FrameSendToSession,
+	FrameArchiveSession, FrameListArchived, FrameUnarchiveSession, FrameDeleteArchived,
 }
 
 // ControlEventFrames lists every frame the daemon sends on a control
@@ -298,7 +314,7 @@ var ControlEventFrames = []FrameType{
 	FrameIdeas, FrameIdeaEvent, FrameActivity,
 	FrameTranscriptMatches, FrameTranscriptLines, FramePlanReview,
 	FramePlugins, FramePluginEvent, FrameAcpTranscript,
-	FrameSubmitResultOK, FrameSent,
+	FrameSubmitResultOK, FrameSent, FrameArchived,
 }
 
 // NonControlFrames are the frames that never travel on a control
@@ -425,6 +441,16 @@ func (t FrameType) String() string {
 		return "SEND_TO_SESSION"
 	case FrameSent:
 		return "SENT"
+	case FrameArchiveSession:
+		return "ARCHIVE_SESSION"
+	case FrameListArchived:
+		return "LIST_ARCHIVED"
+	case FrameArchived:
+		return "ARCHIVED"
+	case FrameUnarchiveSession:
+		return "UNARCHIVE_SESSION"
+	case FrameDeleteArchived:
+		return "DELETE_ARCHIVED"
 	case FrameGetActivity:
 		return "GET_ACTIVITY"
 	case FrameActivity:

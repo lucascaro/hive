@@ -34,6 +34,7 @@
 @import './help-overlay.css';
 @import './worktrees.css';
 @import './ideas.css';
+@import './archived.css';
 @import './pending-prompt.css';
 @import './choice-dialog.css';
 @import './whats-new.css';
