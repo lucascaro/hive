@@ -267,11 +267,17 @@ func piSpawnEnv(sp SpawnInfo) []string {
 	// ordering key; this daemon does, and it is the one spawning pi.
 	heartbeat := PiHeartbeatEnv + "=1"
 	st := sp.settings()
-	return []string{
+	env := []string{
 		PiTodoToolEnv + "=" + boolEnv(st.PiTodoTool),
 		PiPlanReviewEnv + "=" + boolEnv(st.PlanReview),
-		heartbeat,
 	}
+	// The path itself, not "1": the extension listens exactly where the
+	// daemon will dial, so neither derives it.
+	if p := PiInboxPath(sp.SocketPath, sp.SessionID); p != "" {
+		env = append(env, PiInboxEnv+"="+p)
+	}
+	// Last: a test pins the heartbeat as the final element.
+	return append(env, heartbeat)
 }
 
 func boolEnv(b bool) string {

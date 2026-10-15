@@ -160,6 +160,17 @@ describe('message sheet', () => {
     );
   });
 
+  it('says "sent" for the Pi extension inbox, never "typed"', async () => {
+    await open();
+    await act(async () => {
+      m.onMessageSent('s1', 'extension');
+    });
+    expect(flashStatus).toHaveBeenCalledWith('Sent to refactor');
+    expect(flashStatus).not.toHaveBeenCalledWith(
+      expect.stringMatching(/Typed into|held for approval/),
+    );
+  });
+
   it('says "sent" for the agent inbox, and mentions the bypass hold', async () => {
     await open();
     await act(async () => {

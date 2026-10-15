@@ -394,6 +394,9 @@ type Registry struct {
 	// inboxSend hands a note to a Claude session's own inbox (spec 338,
 	// phase 2); tests replace it. Nil disables the socket strategy.
 	inboxSend func(ids []string, text string) error
+	// piInboxSend hands a note to a Pi session's Hive extension (phase 3),
+	// given the session's inbox socket path. Swapped in tests.
+	piInboxSend func(sockPath, text string) error
 	entries   map[string]*Entry
 	order     []string
 	stateDir  string
@@ -1050,7 +1053,7 @@ func (r *Registry) spawnInfo() agent.SpawnInfo {
 	}
 	r.mu.Lock()
 	defer r.mu.Unlock()
-	return agent.SpawnInfo{HivedPath: r.hivedPath, StateDir: r.stateDir, Settings: &st}
+	return agent.SpawnInfo{HivedPath: r.hivedPath, StateDir: r.stateDir, SocketPath: r.socketPath, Settings: &st}
 }
 
 // applyAgentSpawn appends everything the agent adapter adds at spawn —
@@ -1063,12 +1066,13 @@ func (r *Registry) spawnInfo() agent.SpawnInfo {
 // broke: Restart appended the hooks but never the environment, so a
 // restarted Claude session kept its hooks and silently lost its plan.
 // The create path pairs them through agentDef instead.
-func (r *Registry) applyAgentSpawn(opts *session.Options, agentID string) {
+func (r *Registry) applyAgentSpawn(opts *session.Options, id, agentID string) {
 	def, ok := agent.Get(agent.ID(agentID))
 	if !ok {
 		return
 	}
 	sp := r.spawnInfo()
+	sp.SessionID = id
 	if def.SpawnArgs != nil {
 		if extra := def.SpawnArgs(sp); len(extra) > 0 {
 			opts.Cmd = append(append([]string(nil), opts.Cmd...), extra...)
@@ -1089,6 +1093,7 @@ func Open(stateDir string) (*Registry, error) {
 	}
 	r := &Registry{
 		inboxSend:         agent.SendToClaude,
+		piInboxSend:       agent.SendToPi,
 		entries:           make(map[string]*Entry),
 		parked:            make(map[string]*parkedCreate),
 		stateDir:          stateDir,
@@ -1443,7 +1448,7 @@ func (r *Registry) Revive(id string, opts session.Options) error {
 			} else {
 				opts.Cmd = def.Cmd
 			}
-			r.applyAgentSpawn(&opts, agentID)
+			r.applyAgentSpawn(&opts, id, agentID)
 		}
 	}
 	opts.Env = append(append([]string(nil), opts.Env...), r.hiveEnv(id)...)
@@ -1569,7 +1574,7 @@ func (r *Registry) Restart(id string) error {
 		default:
 			opts.Cmd = def.Cmd
 		}
-		r.applyAgentSpawn(&opts, agentID)
+		r.applyAgentSpawn(&opts, id, agentID)
 	}
 	// Pass the project cwd as the fallback. Revive promotes opts.Cwd to
 	// wtPath when the worktree directory still exists; if the user removed

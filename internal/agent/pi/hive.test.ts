@@ -1159,3 +1159,157 @@ test("submitResult reports the daemon's refusal", unixOnly, async () => {
     d.close();
   }
 });
+
+// --- Inbox (spec 338, phase 3) ---
+
+// inboxHarness loads the extension under a fake pi with HIVE_PI_INBOX set,
+// fires session_start, and hands back the inbox path. sendUserMessage
+// returns a promise that NEVER resolves, like a real Pi that is idle and
+// has just started a turn: the ack must not depend on it.
+async function inboxHarness(opts: { model?: unknown; sendThrows?: boolean } = {}) {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "hive-pi-inbox-"));
+  const inboxPath = path.join(dir, "pi-test.sock");
+  const sent: Array<{ text: string; opts: any }> = [];
+  const hp: any = handlerPi();
+  hp.sendUserMessage = (text: string, o: any) => {
+    if (opts.sendThrows) throw new Error("boom");
+    sent.push({ text, opts: o });
+    return new Promise(() => {});
+  };
+  const saved = { sid: process.env.HIVE_SESSION_ID, sock: process.env.HIVE_SOCKET, inbox: process.env.HIVE_PI_INBOX };
+  process.env.HIVE_SESSION_ID = "s1";
+  process.env.HIVE_SOCKET = path.join(dir, "no-daemon.sock");
+  process.env.HIVE_PI_INBOX = inboxPath;
+  mod.default(hp);
+  const ctx = { model: "model" in opts ? opts.model : { id: "m" }, isIdle: () => true, sessionManager: { getBranch: () => [] } };
+  hp.handlers.get("session_start")?.({}, ctx);
+  // Wait for the listener.
+  for (let i = 0; i < 100 && !fs.existsSync(inboxPath); i++) await new Promise((r) => setTimeout(r, 10));
+  const restore = () => {
+    for (const [k, v] of [["HIVE_SESSION_ID", saved.sid], ["HIVE_SOCKET", saved.sock], ["HIVE_PI_INBOX", saved.inbox]] as const) {
+      if (v === undefined) delete process.env[k];
+      else process.env[k] = v;
+    }
+  };
+  return { hp, ctx, inboxPath, sent, restore, shutdown: () => hp.handlers.get("session_shutdown")?.({ reason: "quit" }, ctx) };
+}
+
+// sendNote is what internal/agent/pi_inbox.go does: write, half-close,
+// read the reply until the server closes.
+function sendNote(sockPath: string, text: string | Buffer): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const c = net.createConnection(sockPath);
+    let out = "";
+    c.on("data", (d) => (out += d));
+    c.on("close", () => resolve(out));
+    c.on("error", reject);
+    c.on("connect", () => c.end(text));
+  });
+}
+
+test("inbox: a note reaches sendUserMessage as a followUp and is acked without waiting for the turn", unixOnly, async () => {
+  const h = await inboxHarness();
+  try {
+    assert.equal(await sendNote(h.inboxPath, "rebase onto main"), "ok\n");
+    assert.deepEqual(h.sent, [{ text: "rebase onto main", opts: { deliverAs: "followUp" } }]);
+    assert.equal(fs.statSync(h.inboxPath).mode & 0o777, 0o600);
+  } finally {
+    h.shutdown();
+    h.restore();
+  }
+});
+
+test("inbox: no model selected means no ack, so Hive types the note", unixOnly, async () => {
+  const h = await inboxHarness({ model: undefined });
+  try {
+    assert.equal(await sendNote(h.inboxPath, "hi"), "");
+    assert.equal(h.sent.length, 0);
+  } finally {
+    h.shutdown();
+    h.restore();
+  }
+});
+
+test("inbox: a synchronous sendUserMessage failure is not acked", unixOnly, async () => {
+  const h = await inboxHarness({ sendThrows: true });
+  try {
+    assert.equal(await sendNote(h.inboxPath, "hi"), "");
+  } finally {
+    h.shutdown();
+    h.restore();
+  }
+});
+
+test("inbox: an oversize note is dropped, not delivered", unixOnly, async () => {
+  const h = await inboxHarness();
+  try {
+    const reply = await sendNote(h.inboxPath, Buffer.alloc(mod.MAX_INBOX_NOTE + 1, "a")).catch(() => "");
+    assert.equal(reply, "");
+    assert.equal(h.sent.length, 0);
+  } finally {
+    h.shutdown();
+    h.restore();
+  }
+});
+
+test("inbox: an empty note is dropped", unixOnly, async () => {
+  const h = await inboxHarness();
+  try {
+    assert.equal(await sendNote(h.inboxPath, "  \n"), "");
+    assert.equal(h.sent.length, 0);
+  } finally {
+    h.shutdown();
+    h.restore();
+  }
+});
+
+test("inbox: a connection that never finishes is dropped after the timeout", unixOnly, async () => {
+  const h = await inboxHarness();
+  const was = mod.inboxTimeout.ms;
+  mod.inboxTimeout.ms = 50;
+  try {
+    // A server created before the change keeps the old value, so make a new one.
+    h.shutdown();
+    const h2 = await inboxHarness();
+    try {
+      const closed = await new Promise<boolean>((resolve) => {
+        const c = net.createConnection(h2.inboxPath);
+        c.on("close", () => resolve(true));
+        c.on("error", () => resolve(true));
+        setTimeout(() => resolve(false), 2000);
+      });
+      assert.equal(closed, true);
+      assert.equal(h2.sent.length, 0);
+    } finally {
+      h2.shutdown();
+      h2.restore();
+    }
+  } finally {
+    mod.inboxTimeout.ms = was;
+    h.restore();
+  }
+});
+
+test("inbox: session_shutdown removes the socket", unixOnly, async () => {
+  const h = await inboxHarness();
+  try {
+    h.shutdown();
+    for (let i = 0; i < 100 && fs.existsSync(h.inboxPath); i++) await new Promise((r) => setTimeout(r, 10));
+    assert.equal(fs.existsSync(h.inboxPath), false);
+  } finally {
+    h.restore();
+  }
+});
+
+test("inbox: a second session_start replaces the listener and a stale socket does not block it", unixOnly, async () => {
+  const h = await inboxHarness();
+  try {
+    h.hp.handlers.get("session_start")?.({}, h.ctx);
+    await new Promise((r) => setTimeout(r, 100));
+    assert.equal(await sendNote(h.inboxPath, "after reload"), "ok\n");
+    assert.equal(h.sent.at(-1)?.text, "after reload");
+  } finally {
+    h.shutdown();
+    h.restore();
+  }
+});

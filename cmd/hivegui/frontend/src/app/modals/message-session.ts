@@ -98,7 +98,9 @@ export function onMessageSent(sessionId: string, delivery: string): void {
         ? `Sent to ${name}`
         : delivery === 'socket'
           ? `Sent to ${name} — held for approval if it is in bypass mode`
-          : `Typed into ${name}`,
+          : delivery === 'extension'
+            ? `Sent to ${name}`
+            : `Typed into ${name}`,
   );
 }
 

@@ -482,7 +482,7 @@ GOTOOLCHAIN=go$(sed -n 's/^go //p' go.mod) go test ./internal/agent/... ./intern
 ## Second opinion
 Independent hs-reviewer: revise, confidence 7, must_fix applied above (one round; no re-run).
 
-## Draft plan — Phase 3 of 3 (2026-10-15): Pi extension inbox
+## Approved plan — Phase 3 of 3 (2026-10-15): Pi extension inbox
 
 ### Verified facts (pi-coding-agent 1.0.4, read from `dist/`)
 
@@ -532,3 +532,10 @@ Independent hs-reviewer: revise, confidence 7, must_fix applied above (one round
 4. **Wording.** Fixed above; spec text "queues while streaming, triggers a turn when idle" stays; the hive.ts comment says the same so nobody adds an idle check.
 5. **Post-ack loss is a documented limitation.** If `prompt()` rejects after the ack (no model selected, compaction in progress) the note is dropped while Hive reported `extension`. Mitigation in v1: the extension pre-checks `ctx.model` and skips acking when none (⇒ typed fallback); compaction race stays a documented limitation in Risks and docs.
 6. **Nice-to-haves taken (cheap):** shutdown unlinks only the socket its own server created (inode compare) + a `/new` ordering test; `PiInboxPath` returns "" when `len(path)+1 >= 104` + test; extension listens under `process.umask(0o177)` and registry unlinks a stale inbox socket on session exit; note that plugin env scrubbing needs no change; test that a note-triggered turn still sets `working`; changeset + extend the existing features.json 338 blurb. Not taken: custom Pi-based agents (tryInbox keys off agent id `pi`; a custom agent with another id keeps typed — recorded as a limitation).
+
+## Progress (Phase 3 implementation, 2026-10-15)
+
+- Built per the approved plan: `internal/agent/pi_inbox.go` (`PiInboxPath`, `SendToPi`, 3 s ack deadline, stale-socket removal on ECONNREFUSED), `HIVE_PI_INBOX` in `piSpawnEnv` (inserted before the heartbeat, which stays last), `SpawnInfo.SessionID`/`SocketPath`, Pi branch in `tryInbox`, `wire.DeliveryExtension`, `DaemonContract` 29, extension `startInbox` (ack before the agent acts; refuses with no model; `deliverAs: "followUp"`), toast, docs.
+- Deviation: the plan's "registry unlinks the stale inbox socket on session exit" was NOT built. Stale sockets are removed by the next failed dial and by the next extension start for the same id; a session that crashes and is never messaged again leaves one small socket file in the events-socket dir.
+- Deviation: the shutdown-inode compare was not built; libuv unlinks the path on `close()` regardless, and Pi runs shutdown before the replacement's `session_start`. A late old-instance close could unlink a new instance's socket — then the next send falls back to typed.
+- Mutation checks: ack comparison, ack deadline, dir/ownership check (Go); `deliverAs`, no-model refusal, empty-note drop (node). `allowHalfOpen` is not mutation-caught (node 24 delivers the ack either way); kept as explicit intent.

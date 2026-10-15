@@ -4,6 +4,7 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"runtime"
 	"strings"
 	"testing"
 )
@@ -450,5 +451,29 @@ func TestLayaSettingsBlankURLIsDefault(t *testing.T) {
 	s, _ := LoadSettings()
 	if s.LayaEndpoint() != DefaultLayaURL {
 		t.Errorf("blank url resolved to %q, want the default", s.LayaEndpoint())
+	}
+}
+
+// TestPiSpawnEnvCarriesInbox: the extension is told where to listen, as
+// the plain path (not "=1"), and the heartbeat stays last.
+func TestPiSpawnEnvCarriesInbox(t *testing.T) {
+	settingsDir(t, "")
+	sp := piExtensionDir(t)
+	sp.SocketPath = "/tmp/hive/hived.sock"
+	sp.SessionID = "0f8fad5b-d9cb-469f-a165-70867728950e"
+	got := piSpawnEnv(sp)
+	want := PiInboxEnv + "=" + PiInboxPath(sp.SocketPath, sp.SessionID)
+	if runtime.GOOS == "windows" {
+		if len(got) != 3 {
+			t.Fatalf("env = %v, want no inbox on windows", got)
+		}
+		return
+	}
+	if len(got) != 4 || got[2] != want || got[len(got)-1] != PiHeartbeatEnv+"=1" {
+		t.Fatalf("env = %v, want %q third and the heartbeat last", got, want)
+	}
+	sp.SocketPath = ""
+	if got := piSpawnEnv(sp); len(got) != 3 {
+		t.Fatalf("env = %v with no socket path, want no inbox variable", got)
 	}
 }
