@@ -14,13 +14,7 @@ import (
 	"time"
 )
 
-// TestSendToPiReachesTheRealExtension is the cross-language contract
-// check for the inbox: the REAL embedded extension (under node, with a
-// fake pi) and the REAL SendToPi. A fake sendUserMessage never resolves,
-// like an idle Pi that has just started a turn, so this also proves the
-// ack does not wait for the agent. Skipped without a node that can load
-// .ts, like the other extension tests.
-// The extension must drop a late note before Hive gives up on the ack
+// TestPiExtensionBudgetBelowAckWait: the extension must drop a late note before Hive gives up on the ack
 // and types it, or the note shows up twice.
 func TestPiExtensionBudgetBelowAckWait(t *testing.T) {
 	node := nodeForTS(t)
@@ -44,6 +38,12 @@ func TestPiExtensionBudgetBelowAckWait(t *testing.T) {
 	}
 }
 
+// TestSendToPiReachesTheRealExtension is the cross-language contract
+// check for the inbox: the REAL embedded extension (under node, with a
+// fake pi) and the REAL SendToPi. A fake sendUserMessage never resolves,
+// like an idle Pi that has just started a turn, so this also proves the
+// ack does not wait for the agent. Skipped without a node that can load
+// .ts, like the other extension tests.
 func TestSendToPiReachesTheRealExtension(t *testing.T) {
 	node := nodeForTS(t)
 	if node == "" {

@@ -5,7 +5,7 @@ type: enhancement
 complexity: M
 priority: P2
 pr: 516
-stage: REVIEW
+stage: GATE
 ---
 
 # Session messaging: hand a session a message, get told when it idles
