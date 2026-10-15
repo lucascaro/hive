@@ -4,7 +4,8 @@ title: "Archive a session now, unarchive it later"
 type: enhancement
 complexity: L
 priority: P2
-stage: IMPLEMENT
+stage: REVIEW
+pr: 519
 ---
 
 # Archive a session now, unarchive it later

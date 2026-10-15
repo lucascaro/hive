@@ -3,6 +3,8 @@
 - **Spec:** [docs/product-specs/518-archive-a-session-now-unarchive-it-later.md](../../product-specs/518-archive-a-session-now-unarchive-it-later.md)
 - **Issue:** #518
 - **Status:** active
+- **PR:** #519
+- **Branch:** feature/518-archive-sessions
 
 ## Summary
 
