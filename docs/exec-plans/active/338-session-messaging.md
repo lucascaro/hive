@@ -4,7 +4,7 @@
 - **Design:** [docs/design-docs/control-plane.md](../../design-docs/control-plane.md)
 - **Issue:** —
 - **Branch:** `feature/338-pi-inbox`
-- **PR:** —
+- **PR:** [#516](https://github.com/lucascaro/hive/pull/516)
 - **Status:** active
 - **Phase:** 3 of 3
 
