@@ -3,7 +3,8 @@
 // Every session the user has put away, grouped by project, with a filter
 // box. Enter unarchives the highlighted row; ↑/↓ move it. Nothing here
 // holds a copy of an archived session — the list is the daemon's
-// (archived:list), so two windows never disagree about what is archived.
+// (archived:list), refreshed whenever this window opens the list or acts on
+// it. Another window's archive shows up the next time the list is opened.
 
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import type { ReactNode } from 'react';

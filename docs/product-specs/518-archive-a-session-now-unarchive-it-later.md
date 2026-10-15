@@ -4,7 +4,7 @@ title: "Archive a session now, unarchive it later"
 type: enhancement
 complexity: L
 priority: P2
-stage: REVIEW
+stage: GATE
 pr: 519
 ---
 

@@ -171,3 +171,7 @@ Plus a throwaway Playwright pass against `wails dev` (`docs/verifying-the-gui-by
 ## Second opinion
 
 Round 1 (independent reviewer): **revise**, confidence 7. Must-fix: (1) write failure data loss, (2) expired-conversation detection, (3) unarchive/delete race, (4) project-name loss, (5) criterion-5 test asserted the wrong thing, (6) vacuous verification loop, (7) empty-id handling. All applied. Nice-to-haves applied: stale-record boot filter, banner wording/id, RemoveWorktree claim check, send-state note, prune-after-close assertion, delete-dialog options. Round 2: **revise**, confidence 7 — must-fix: abort side effects before record slot (parked sessions), false fsync claim, orphaned forced-delete patch; all applied (no third round per loop rules). Nice-to-haves applied: Unarchive-only transcript check, lock order, e2e no-confirm assertion, `./internal/agent/...` in test run.
+
+## PR convergence ledger
+- **2026-10-15 iter 1** — verdict: COMMENT; mergeable: MERGEABLE; findings_hash: 506c9a37592a4e69875c3a210c7960251e2f3fcb325e4bdd06604709508c3b6b; threads_open: 0; action: autofix+push; head_sha: 935b1f1.
+- **2026-10-15 iter 2** — verdict: COMMENT; mergeable: MERGEABLE; findings_hash: empty; threads_open: 0; action: stop; head_sha: 935b1f1.
