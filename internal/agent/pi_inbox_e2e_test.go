@@ -9,6 +9,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strconv"
 	"testing"
 	"time"
 )
@@ -19,6 +20,30 @@ import (
 // like an idle Pi that has just started a turn, so this also proves the
 // ack does not wait for the agent. Skipped without a node that can load
 // .ts, like the other extension tests.
+// The extension must drop a late note before Hive gives up on the ack
+// and types it, or the note shows up twice.
+func TestPiExtensionBudgetBelowAckWait(t *testing.T) {
+	node := nodeForTS(t)
+	if node == "" {
+		t.Skip("no node that can load .ts (needs node >= 23.6, or 22.6 with --experimental-strip-types)")
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
+	defer cancel()
+	cmd := exec.CommandContext(ctx, node, "--input-type=module", "-e",
+		`const m = await import("./pi/hive.ts"); process.stdout.write(String(m.inboxTimeout.ms));`)
+	out, err := cmd.Output()
+	if err != nil {
+		t.Fatalf("node: %v", err)
+	}
+	ms, err := strconv.Atoi(string(out))
+	if err != nil {
+		t.Fatalf("inboxTimeout.ms = %q: %v", out, err)
+	}
+	if budget := time.Duration(ms) * time.Millisecond; budget <= 0 || budget >= piAckTimeout {
+		t.Fatalf("extension budget %v must be positive and below piAckTimeout %v", budget, piAckTimeout)
+	}
+}
+
 func TestSendToPiReachesTheRealExtension(t *testing.T) {
 	node := nodeForTS(t)
 	if node == "" {

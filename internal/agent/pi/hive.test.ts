@@ -1316,18 +1316,32 @@ test("inbox: a second session_start replaces the listener and a stale socket doe
 
 test("inbox: a note that finishes after the budget is dropped, not delivered", unixOnly, async () => {
   const was = mod.inboxTimeout.ms;
-  mod.inboxTimeout.ms = 150;
+  mod.inboxTimeout.ms = 300;
   const h = await inboxHarness();
   try {
+    // Trickle a byte every 50 ms so the idle timeout never fires: only
+    // the elapsed-budget check can drop this note.
     const reply = await new Promise<string>((resolve) => {
       const c = net.createConnection(h.inboxPath);
       let out = "";
+      let tick: ReturnType<typeof setInterval> | undefined;
+      const done = () => {
+        clearInterval(tick);
+        resolve(out);
+      };
       c.on("data", (d) => (out += d));
-      c.on("close", () => resolve(out));
-      c.on("error", () => resolve(out));
+      c.on("close", done);
+      c.on("error", done);
       c.on("connect", () => {
-        c.write("slow");
-        setTimeout(() => c.end(), 400);
+        const start = Date.now();
+        tick = setInterval(() => {
+          if (Date.now() - start < 500) {
+            c.write("s");
+            return;
+          }
+          clearInterval(tick);
+          c.end();
+        }, 50);
       });
     });
     assert.equal(reply, "");

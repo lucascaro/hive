@@ -204,7 +204,7 @@ A Pi session is tried the same way through the Hive extension
 with `HIVE_PI_INBOX`, a socket named `pi-<16 id chars>.sock` beside the
 events socket (so it fits `sun_path`; no path, no inbox — Windows and an
 over-long socket directory included). The extension creates it 0600,
-reads one UTF-8 note per connection to EOF (64 KiB cap, 5 s idle drop)
+reads one UTF-8 note per connection to EOF (64 KiB cap, 2 s idle drop)
 and calls `pi.sendUserMessage(text, {deliverAs: "followUp"})`: `deliverAs`
 is required while Pi is streaming (the call throws without it) and `followUp`
 queues the note behind the turn in flight instead of interrupting it; when
