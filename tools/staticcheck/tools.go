@@ -1,3 +1,7 @@
+// SPDX-License-Identifier: GPL-3.0-only
+// Copyright (C) 2026 Lucas Caro
+// See LICENSE and ADDITIONAL-TERMS.md.
+
 //go:build tools
 
 // Package tools pins how CI builds staticcheck. A separate module so the
