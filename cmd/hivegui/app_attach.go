@@ -1,3 +1,7 @@
+// SPDX-License-Identifier: GPL-3.0-only
+// Copyright (C) 2026 Lucas Caro
+// See LICENSE and ADDITIONAL-TERMS.md.
+
 // App methods for per-session attach connections: opening a session's
 // PTY stream, the per-attach read loop, stdin/resize/replay, and
 // teardown. Split out of app.go; see app.go for the App type itself.

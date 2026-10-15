@@ -1,3 +1,7 @@
+// SPDX-License-Identifier: GPL-3.0-only
+// Copyright (C) 2026 Lucas Caro
+// See LICENSE and ADDITIONAL-TERMS.md.
+
 // ---------- project editor (new + edit): the non-React half ----------
 //
 // The dialog renders from components/modals/ProjectEditor.tsx (Phase 4).

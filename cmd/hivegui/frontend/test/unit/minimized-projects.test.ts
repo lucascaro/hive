@@ -1,3 +1,7 @@
+// SPDX-License-Identifier: GPL-3.0-only
+// Copyright (C) 2026 Lucas Caro
+// See LICENSE and ADDITIONAL-TERMS.md.
+
 // Project-level minimization: the persisted id set (src/lib/collapsed.ts
 // under a second key) and the hidden-session predicate that unifies it
 // with per-session minimization (src/lib/minimized.ts:filterHidden).

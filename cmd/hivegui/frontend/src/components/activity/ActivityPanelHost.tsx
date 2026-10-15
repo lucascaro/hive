@@ -1,3 +1,7 @@
+// SPDX-License-Identifier: GPL-3.0-only
+// Copyright (C) 2026 Lucas Caro
+// See LICENSE and ADDITIONAL-TERMS.md.
+
 // Places the inspector panel: a third #app column beside #terms, shown in
 // single view while the panel is toggled on. Not inside #terms, whose
 // children app/grid-layout.ts owns, and not inside the terminal host,

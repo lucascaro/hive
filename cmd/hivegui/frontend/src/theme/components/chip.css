@@ -1,3 +1,9 @@
+/*
+ * SPDX-License-Identifier: GPL-3.0-only
+ * Copyright (C) 2026 Lucas Caro
+ * See LICENSE and ADDITIONAL-TERMS.md.
+ */
+
 /* Chip — docs/design-docs/ui/components.md › chip. 24px, --btn fill.
    --chip-color is data (a user-picked session/project colour), not a token. */
 .hv-chip {

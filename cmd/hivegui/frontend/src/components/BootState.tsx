@@ -1,3 +1,7 @@
+// SPDX-License-Identifier: GPL-3.0-only
+// Copyright (C) 2026 Lucas Caro
+// See LICENSE and ADDITIONAL-TERMS.md.
+
 // The full-pane boot overlay. Mounted on #boot-state, whose markup
 // index.html still declares so the card is painted before any module
 // script runs — on a cold machine the daemon can take seconds to bind

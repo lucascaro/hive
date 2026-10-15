@@ -1,4 +1,8 @@
 #!/usr/bin/env bash
+# SPDX-License-Identifier: GPL-3.0-only
+# Copyright (C) 2026 Lucas Caro
+# See LICENSE and ADDITIONAL-TERMS.md.
+
 # Self-test for check-changeset.sh, run in CI before the gate judges a PR.
 #
 # The exempt list is the part that can quietly go wrong: too narrow and

@@ -1,3 +1,7 @@
+// SPDX-License-Identifier: GPL-3.0-only
+// Copyright (C) 2026 Lucas Caro
+// See LICENSE and ADDITIONAL-TERMS.md.
+
 // ---------- UI plugin host (spec 471) ----------
 //
 // Loads the app-side half of every enabled plugin that declares a "ui"

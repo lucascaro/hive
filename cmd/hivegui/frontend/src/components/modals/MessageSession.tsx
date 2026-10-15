@@ -1,3 +1,7 @@
+// SPDX-License-Identifier: GPL-3.0-only
+// Copyright (C) 2026 Lucas Caro
+// See LICENSE and ADDITIONAL-TERMS.md.
+
 // ---------- message a session (spec 338) ----------
 //
 // A one-field sheet: the note, addressed to a named session. Enter sends,

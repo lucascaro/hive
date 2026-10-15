@@ -1,3 +1,9 @@
+/*
+ * SPDX-License-Identifier: GPL-3.0-only
+ * Copyright (C) 2026 Lucas Caro
+ * See LICENSE and ADDITIONAL-TERMS.md.
+ */
+
 /* Failed-build log viewer. The dialog body (dialog.css) is the scroller;
    the <pre> just wraps so a long compiler line never scrolls sideways. */
 #build-log-text {

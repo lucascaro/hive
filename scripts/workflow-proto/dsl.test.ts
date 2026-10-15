@@ -1,3 +1,7 @@
+// SPDX-License-Identifier: GPL-3.0-only
+// Copyright (C) 2026 Lucas Caro
+// See LICENSE and ADDITIONAL-TERMS.md.
+
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { type Cond, type IR, type Ref, all, not, validate, when, workflow } from './dsl.ts';

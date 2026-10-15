@@ -1,3 +1,7 @@
+// SPDX-License-Identifier: GPL-3.0-only
+// Copyright (C) 2026 Lucas Caro
+// See LICENSE and ADDITIONAL-TERMS.md.
+
 // ---------- choice dialog: the non-React half ----------
 //
 // A small in-DOM replacement for the native Confirm on paths where the

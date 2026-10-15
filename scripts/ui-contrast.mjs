@@ -1,4 +1,8 @@
 #!/usr/bin/env node
+// SPDX-License-Identifier: GPL-3.0-only
+// Copyright (C) 2026 Lucas Caro
+// See LICENSE and ADDITIONAL-TERMS.md.
+
 // WCAG 2.1 contrast gate for the theme presets. No dependencies: it parses the
 // two token files with a regex rather than a CSS AST because the input is a
 // flat list of `--name: value;` declarations we control, and a real parser

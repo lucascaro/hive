@@ -1,3 +1,7 @@
+// SPDX-License-Identifier: GPL-3.0-only
+// Copyright (C) 2026 Lucas Caro
+// See LICENSE and ADDITIONAL-TERMS.md.
+
 // Session row — docs/design-docs/ui/components.md › sessionRow.
 //
 // 40px, two lines: name over window title. Grid is

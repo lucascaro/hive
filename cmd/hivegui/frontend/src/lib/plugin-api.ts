@@ -1,3 +1,7 @@
+// SPDX-License-Identifier: GPL-3.0-only
+// Copyright (C) 2026 Lucas Caro
+// See LICENSE and ADDITIONAL-TERMS.md.
+
 // The contract between the Hive app and a UI plugin (plugin API 0.2,
 // docs/plugins.md). Types plus the pure pieces of the host — chord
 // labels and conflict resolution, descriptor checks — so they are

@@ -1,3 +1,7 @@
+// SPDX-License-Identifier: GPL-3.0-only
+// Copyright (C) 2026 Lucas Caro
+// See LICENSE and ADDITIONAL-TERMS.md.
+
 // Package session — vt.go wraps a headless VT emulator that mirrors the
 // PTY's visible state. On reattach the daemon asks the emulator to render
 // a synthesized snapshot of the current screen, instead of replaying the

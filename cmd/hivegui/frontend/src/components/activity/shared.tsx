@@ -1,3 +1,7 @@
+// SPDX-License-Identifier: GPL-3.0-only
+// Copyright (C) 2026 Lucas Caro
+// See LICENSE and ADDITIONAL-TERMS.md.
+
 // Pieces the activity renderers share: what a session's activity looks
 // like right now (data, staleness, empty) and one tool-call row.
 import type { MouseEvent, ReactNode } from 'react';

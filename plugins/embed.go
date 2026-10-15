@@ -1,3 +1,7 @@
+// SPDX-License-Identifier: GPL-3.0-only
+// Copyright (C) 2026 Lucas Caro
+// See LICENSE and ADDITIONAL-TERMS.md.
+
 // Package plugins holds the plugins that ship inside Hive. Only the
 // directories embedded below are bundled; the rest of this tree
 // (examples, the SDK) is installed by hand or vendored.

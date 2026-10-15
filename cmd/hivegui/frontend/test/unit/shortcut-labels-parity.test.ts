@@ -1,3 +1,7 @@
+// SPDX-License-Identifier: GPL-3.0-only
+// Copyright (C) 2026 Lucas Caro
+// See LICENSE and ADDITIONAL-TERMS.md.
+
 // Spec 477: labels are derived from the binding data now. With no user
 // keymap they must read exactly as the hand-written tables did — the
 // fixture is that table's output, captured before the refactor.

@@ -1,4 +1,8 @@
 #!/usr/bin/env node
+// SPDX-License-Identifier: GPL-3.0-only
+// Copyright (C) 2026 Lucas Caro
+// See LICENSE and ADDITIONAL-TERMS.md.
+
 // ACP capability probe (spec 492). Evidence for docs/design-docs/acp-workflows.md.
 //
 //   node scripts/acp-probe/probe.mjs <claude|codex|pi> [--out <dir>]

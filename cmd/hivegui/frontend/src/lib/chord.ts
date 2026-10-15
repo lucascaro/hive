@@ -1,3 +1,7 @@
+// SPDX-License-Identifier: GPL-3.0-only
+// Copyright (C) 2026 Lucas Caro
+// See LICENSE and ADDITIONAL-TERMS.md.
+
 // Chord strings: the data form of a key binding (spec 478).
 //
 //   'Mod+Shift+K'        ⌘⇧K on macOS, Ctrl+Shift+K elsewhere

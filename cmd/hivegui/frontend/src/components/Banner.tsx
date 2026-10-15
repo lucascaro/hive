@@ -1,3 +1,7 @@
+// SPDX-License-Identifier: GPL-3.0-only
+// Copyright (C) 2026 Lucas Caro
+// See LICENSE and ADDITIONAL-TERMS.md.
+
 // Full-width notice row above the app grid. React port of
 // src/ui/banner.ts — same markup, same classes, same `hidden` property.
 // docs/design-docs/ui/components.md › banner.

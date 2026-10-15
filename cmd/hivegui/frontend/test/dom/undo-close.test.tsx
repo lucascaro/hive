@@ -1,3 +1,7 @@
+// SPDX-License-Identifier: GPL-3.0-only
+// Copyright (C) 2026 Lucas Caro
+// See LICENSE and ADDITIONAL-TERMS.md.
+
 // @vitest-environment jsdom
 //
 // Undo for an accidental session close (src/app/undo-close.ts).

@@ -1,3 +1,7 @@
+// SPDX-License-Identifier: GPL-3.0-only
+// Copyright (C) 2026 Lucas Caro
+// See LICENSE and ADDITIONAL-TERMS.md.
+
 // The icon primitive. One sprite, one <use>, colour from the parent's
 // `color` — docs/design-docs/ui/icons.md, components.md › icon().
 // Feature components never write SVG or a Unicode glyph.

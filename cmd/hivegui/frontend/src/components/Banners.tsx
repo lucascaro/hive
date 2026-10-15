@@ -1,3 +1,7 @@
+// SPDX-License-Identifier: GPL-3.0-only
+// Copyright (C) 2026 Lucas Caro
+// See LICENSE and ADDITIONAL-TERMS.md.
+
 // The three banner slots, in the DOM order the imperative code produced
 // by prepending into #app: undo-close, then daemon, then update.
 // banner.css places [data-slot='daemon'] on grid row 1 and

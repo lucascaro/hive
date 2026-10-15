@@ -6,6 +6,10 @@
   "frontend:build": "npm run build",
   "frontend:dev:watcher": "npm run dev",
   "frontend:dev:serverUrl": "auto",
+  "info": {
+    "copyright": "Copyright (C) 2026 Lucas Caro",
+    "comments": "GPL-3.0-only with additional terms. Based on Hive by Lucas Caro — https://github.com/lucascaro/hive"
+  },
   "author": {
     "name": "Hive",
     "email": ""

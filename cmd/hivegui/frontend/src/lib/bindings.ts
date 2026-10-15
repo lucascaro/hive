@@ -1,3 +1,7 @@
+// SPDX-License-Identifier: GPL-3.0-only
+// Copyright (C) 2026 Lucas Caro
+// See LICENSE and ADDITIONAL-TERMS.md.
+
 // ---------- the app's chords, and the user's overrides of them ----------
 //
 // The shipped default chords for every app command (spec 478), and the

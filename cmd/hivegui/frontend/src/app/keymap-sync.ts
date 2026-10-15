@@ -1,3 +1,7 @@
+// SPDX-License-Identifier: GPL-3.0-only
+// Copyright (C) 2026 Lucas Caro
+// See LICENSE and ADDITIONAL-TERMS.md.
+
 // Loads the user's keymap (spec 477) and keeps the surfaces that are not
 // React components in step with it. Dispatch, the palette, the help
 // overlay and every component already derive from the store's keymap;

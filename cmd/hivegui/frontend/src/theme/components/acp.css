@@ -1,3 +1,9 @@
+/*
+ * SPDX-License-Identifier: GPL-3.0-only
+ * Copyright (C) 2026 Lucas Caro
+ * See LICENSE and ADDITIONAL-TERMS.md.
+ */
+
 /* ACP session tile body (spec 496): the transcript, the pending
    permission request and the prompt box, over the hidden terminal body.
    Tokens only, so every theme preset works. Plan and tool rows reuse the

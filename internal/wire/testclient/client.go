@@ -1,3 +1,7 @@
+// SPDX-License-Identifier: GPL-3.0-only
+// Copyright (C) 2026 Lucas Caro
+// See LICENSE and ADDITIONAL-TERMS.md.
+
 // Package testclient is a small async client over the binary hived
 // wire protocol, intended for end-to-end tests that spawn the real
 // hived binary as a subprocess.

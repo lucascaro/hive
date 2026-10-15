@@ -1,4 +1,8 @@
 #!/usr/bin/env bash
+# SPDX-License-Identifier: GPL-3.0-only
+# Copyright (C) 2026 Lucas Caro
+# See LICENSE and ADDITIONAL-TERMS.md.
+
 # check-changeset.sh — the changeset gate, shared by the pre-push hook and CI.
 #
 #   scripts/check-changeset.sh [BASE HEAD]

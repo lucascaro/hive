@@ -1,3 +1,7 @@
+// SPDX-License-Identifier: GPL-3.0-only
+// Copyright (C) 2026 Lucas Caro
+// See LICENSE and ADDITIONAL-TERMS.md.
+
 // Agent activity (spec 416): the client half of the daemon's per-session
 // tool ring and plan. Pure — the store in store/activity.ts holds the
 // result, the renderers in components/activity/ read it.

@@ -1,4 +1,8 @@
 #!/usr/bin/env node
+// SPDX-License-Identifier: GPL-3.0-only
+// Copyright (C) 2026 Lucas Caro
+// See LICENSE and ADDITIONAL-TERMS.md.
+
 // Keeps docs/design-docs/acp-workflows.md honest against the probe results
 // (spec 492). Fails when:
 //   - the capability table is not 5 agent rows × 7 data columns,

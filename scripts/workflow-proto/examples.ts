@@ -1,3 +1,7 @@
+// SPDX-License-Identifier: GPL-3.0-only
+// Copyright (C) 2026 Lucas Caro
+// See LICENSE and ADDITIONAL-TERMS.md.
+
 // The worked examples in docs/design-docs/workflow-engine.md (spec 495).
 // check-doc.ts regenerates each one's IR and Mermaid and fails when the doc
 // differs, so the doc can only show graphs this prototype really builds.

@@ -1,4 +1,8 @@
 #!/usr/bin/env bash
+# SPDX-License-Identifier: GPL-3.0-only
+# Copyright (C) 2026 Lucas Caro
+# See LICENSE and ADDITIONAL-TERMS.md.
+
 # Self-test for check-test-hooks-stripped.sh, run in CI beside the gate.
 #
 # CI only ever hands the gate a clean bundle, so its pass path is all a

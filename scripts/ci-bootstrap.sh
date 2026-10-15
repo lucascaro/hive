@@ -1,4 +1,8 @@
 #!/usr/bin/env bash
+# SPDX-License-Identifier: GPL-3.0-only
+# Copyright (C) 2026 Lucas Caro
+# See LICENSE and ADDITIONAL-TERMS.md.
+
 # ci-bootstrap.sh — shared Wails bootstrap for CI and build.sh.
 #
 # Single source of truth for the pinned Wails CLI version. Seeds an

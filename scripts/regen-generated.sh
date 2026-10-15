@@ -1,4 +1,8 @@
 #!/usr/bin/env bash
+# SPDX-License-Identifier: GPL-3.0-only
+# Copyright (C) 2026 Lucas Caro
+# See LICENSE and ADDITIONAL-TERMS.md.
+
 # Regenerate hivesmith's centralized aggregate files from per-PR sources.
 #
 # This is a thin shim around scripts/regen-generated.py. It exists so CI and

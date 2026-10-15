@@ -1,3 +1,7 @@
+// SPDX-License-Identifier: GPL-3.0-only
+// Copyright (C) 2026 Lucas Caro
+// See LICENSE and ADDITIONAL-TERMS.md.
+
 // Session lifecycle phases and the loading-panel model for a session
 // that isn't in its steady state. Pure — session-term.ts renders
 // whatever this returns, tests assert on the model. Same shape of seam

@@ -1,3 +1,9 @@
+/*
+ * SPDX-License-Identifier: GPL-3.0-only
+ * Copyright (C) 2026 Lucas Caro
+ * See LICENSE and ADDITIONAL-TERMS.md.
+ */
+
 /* App skeleton: the #app grid, its row/column placement, the sidebar
    resizer, and the two terminal arrangements (#terms.single / #terms.grid).
    Geometry only — how the boxes are placed and sized. What is drawn inside

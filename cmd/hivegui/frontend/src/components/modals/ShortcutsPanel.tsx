@@ -1,3 +1,7 @@
+// SPDX-License-Identifier: GPL-3.0-only
+// Copyright (C) 2026 Lucas Caro
+// See LICENSE and ADDITIONAL-TERMS.md.
+
 // Settings › Shortcuts (spec 477): rebind any app or plugin command.
 //
 // Edits a draft keymap the Settings dialog owns and writes on Save, like

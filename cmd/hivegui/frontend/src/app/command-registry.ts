@@ -1,3 +1,7 @@
+// SPDX-License-Identifier: GPL-3.0-only
+// Copyright (C) 2026 Lucas Caro
+// See LICENSE and ADDITIONAL-TERMS.md.
+
 // The command bus (spec 478): one registry of `id → run`, shared by
 // keydown (app/key-scopes.ts), the native menu and the command palette
 // (app/commands.ts), so the three paths run the same code by construction.

@@ -1,3 +1,9 @@
+/*
+ * SPDX-License-Identifier: GPL-3.0-only
+ * Copyright (C) 2026 Lucas Caro
+ * See LICENSE and ADDITIONAL-TERMS.md.
+ */
+
 /* Plan review: the bundled plugin's styles. Classes are prefixed with
    the plugin id and use Hive's theme tokens only, per docs/plugins.md,
    so every theme preset restyles the review. */

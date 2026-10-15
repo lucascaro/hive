@@ -1,3 +1,7 @@
+// SPDX-License-Identifier: GPL-3.0-only
+// Copyright (C) 2026 Lucas Caro
+// See LICENSE and ADDITIONAL-TERMS.md.
+
 import { test, expect, type Page } from '@playwright/test';
 
 // The session state glyph, end to end through a real layout engine.

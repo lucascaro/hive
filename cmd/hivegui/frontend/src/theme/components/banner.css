@@ -1,3 +1,9 @@
+/*
+ * SPDX-License-Identifier: GPL-3.0-only
+ * Copyright (C) 2026 Lucas Caro
+ * See LICENSE and ADDITIONAL-TERMS.md.
+ */
+
 /* docs/design-docs/ui/components.md > banner. 36px, --text-md, left
    border carries the kind. Grid placement (rows 1 and 2 of #app) comes
    from [data-slot], set by components/Banners.tsx. Its container,

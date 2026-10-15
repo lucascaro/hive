@@ -1,3 +1,7 @@
+// SPDX-License-Identifier: GPL-3.0-only
+// Copyright (C) 2026 Lucas Caro
+// See LICENSE and ADDITIONAL-TERMS.md.
+
 // The only way a feature component makes a labelled button (it began as
 // a port of the deleted src/ui/button.ts). Kinds are data attributes so a
 // variant never needs a second class and CSS can select on [data-kind].

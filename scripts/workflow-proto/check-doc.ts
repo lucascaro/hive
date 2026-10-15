@@ -1,4 +1,8 @@
 #!/usr/bin/env node
+// SPDX-License-Identifier: GPL-3.0-only
+// Copyright (C) 2026 Lucas Caro
+// See LICENSE and ADDITIONAL-TERMS.md.
+
 // Keeps docs/design-docs/workflow-engine.md honest against this prototype
 // (spec 495). The doc carries generated blocks between markers:
 //

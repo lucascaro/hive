@@ -1,3 +1,7 @@
+// SPDX-License-Identifier: GPL-3.0-only
+// Copyright (C) 2026 Lucas Caro
+// See LICENSE and ADDITIONAL-TERMS.md.
+
 // ---------- settings (agents, appearance, shortcuts, menu bar, plugins, updates) ----------
 //
 // The body is tabbed panels. All of them stay mounted and the

@@ -1,3 +1,7 @@
+// SPDX-License-Identifier: GPL-3.0-only
+// Copyright (C) 2026 Lucas Caro
+// See LICENSE and ADDITIONAL-TERMS.md.
+
 // ---------- core commands ----------
 //
 // Every core action the app exposes, by id: the catalog the key bindings
@@ -149,6 +153,9 @@ const PALETTE: readonly Command[] = [
   },
   { id: 'whats-new', title: "What's New…", run: () => openWhatsNew() },
   { id: 'help', title: 'Help…', run: () => openHelp() },
+  // About lives in the Help modal (its last section); this is the palette
+  // entry for people who look for it by name.
+  { id: 'about', title: 'About Hive…', run: () => openHelp() },
   // ⌘I / ⇧⌘I. Toggles, and gated by the open scopes: on macOS the native
   // accelerators take the chord before the webview, so the menu path is
   // the only one that runs there, and it must behave like the keydown

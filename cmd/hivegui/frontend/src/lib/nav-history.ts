@@ -1,3 +1,7 @@
+// SPDX-License-Identifier: GPL-3.0-only
+// Copyright (C) 2026 Lucas Caro
+// See LICENSE and ADDITIONAL-TERMS.md.
+
 // Back / forward navigation history over visited sessions.
 //
 // Pure module: no DOM, no imports, unit-testable — same idiom as

@@ -1,3 +1,7 @@
+// SPDX-License-Identifier: GPL-3.0-only
+// Copyright (C) 2026 Lucas Caro
+// See LICENSE and ADDITIONAL-TERMS.md.
+
 // @vitest-environment jsdom
 //
 // The tray's half of the rewrite's performance goal, pinned — the same

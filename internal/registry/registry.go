@@ -1,3 +1,7 @@
+// SPDX-License-Identifier: GPL-3.0-only
+// Copyright (C) 2026 Lucas Caro
+// See LICENSE and ADDITIONAL-TERMS.md.
+
 // Package registry tracks the daemon's open sessions and their
 // user-facing metadata (name, color, order). It owns persistence so
 // the daemon's main loop can stay focused on transport.

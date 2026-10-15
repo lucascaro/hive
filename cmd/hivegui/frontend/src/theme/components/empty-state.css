@@ -1,3 +1,9 @@
+/*
+ * SPDX-License-Identifier: GPL-3.0-only
+ * Copyright (C) 2026 Lucas Caro
+ * See LICENSE and ADDITIONAL-TERMS.md.
+ */
+
 /* Empty state, boot card and phase overlay. Bespoke surfaces
    (components.md > "What is not a primitive") — tokens and icon() only.
    The empty state sits in the same grid cell as #terms and floats above

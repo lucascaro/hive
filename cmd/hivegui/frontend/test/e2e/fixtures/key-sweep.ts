@@ -1,3 +1,7 @@
+// SPDX-License-Identifier: GPL-3.0-only
+// Copyright (C) 2026 Lucas Caro
+// See LICENSE and ADDITIONAL-TERMS.md.
+
 import { expect, type Page } from '@playwright/test';
 
 // Spec 481: helpers for test/e2e/every-shortcut.spec.ts, the sweep that

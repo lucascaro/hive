@@ -1,3 +1,7 @@
+// SPDX-License-Identifier: GPL-3.0-only
+// Copyright (C) 2026 Lucas Caro
+// See LICENSE and ADDITIONAL-TERMS.md.
+
 // App methods for the control connection: dialing and handshaking the
 // daemon, the daemon-version banner, restart, and the control read
 // loop that fans daemon events out to the frontend. Split out of

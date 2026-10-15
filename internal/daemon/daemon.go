@@ -1,3 +1,7 @@
+// SPDX-License-Identifier: GPL-3.0-only
+// Copyright (C) 2026 Lucas Caro
+// See LICENSE and ADDITIONAL-TERMS.md.
+
 // Package daemon is the hived process: a multi-session PTY host that
 // accepts client connections over a Unix socket and speaks the wire
 // protocol from internal/wire.

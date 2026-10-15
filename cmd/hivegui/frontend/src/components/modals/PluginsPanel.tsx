@@ -1,3 +1,7 @@
+// SPDX-License-Identifier: GPL-3.0-only
+// Copyright (C) 2026 Lucas Caro
+// See LICENSE and ADDITIONAL-TERMS.md.
+
 // Settings → Plugins (#460). Lists the daemon's installed plugins and
 // drives the four plugin ops. Unlike the Agents tab there is no draft
 // and no Save: each control is an action the daemon applies at once,

@@ -1,4 +1,8 @@
 #!/usr/bin/env bash
+# SPDX-License-Identifier: GPL-3.0-only
+# Copyright (C) 2026 Lucas Caro
+# See LICENSE and ADDITIONAL-TERMS.md.
+
 # measure-idle.sh — sample an idle hived's CPU and memory.
 #
 # Builds hived (from the working tree, or from --ref <git-ref> in a

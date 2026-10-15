@@ -1,3 +1,7 @@
+// SPDX-License-Identifier: GPL-3.0-only
+// Copyright (C) 2026 Lucas Caro
+// See LICENSE and ADDITIONAL-TERMS.md.
+
 // Plugin install correlation (#460). INSTALL_PLUGIN has no reply of
 // its own: the daemon answers with a PLUGIN_EVENT "added" fanned out
 // to EVERY window, or a plugin_install_failed error to this one. Each

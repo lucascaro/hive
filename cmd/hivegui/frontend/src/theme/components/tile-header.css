@@ -1,3 +1,9 @@
+/*
+ * SPDX-License-Identifier: GPL-3.0-only
+ * Copyright (C) 2026 Lucas Caro
+ * See LICENSE and ADDITIONAL-TERMS.md.
+ */
+
 /* docs/design-docs/ui/components.md > Grid tile header. 28px, --surface,
    bottom border, state icon + name + '·' + window title, hover actions.
    The project colour is deliberately gone from this bar: the sidebar

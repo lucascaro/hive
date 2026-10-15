@@ -1,3 +1,7 @@
+// SPDX-License-Identifier: GPL-3.0-only
+// Copyright (C) 2026 Lucas Caro
+// See LICENSE and ADDITIONAL-TERMS.md.
+
 // Plan review — the bundled plugin that shows an agent's plan in Hive
 // before it runs (#457, moved out of the app by spec 471). Written only
 // against docs/plugins.md, like any third-party plugin.

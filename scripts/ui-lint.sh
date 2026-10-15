@@ -1,4 +1,8 @@
 #!/usr/bin/env bash
+# SPDX-License-Identifier: GPL-3.0-only
+# Copyright (C) 2026 Lucas Caro
+# See LICENSE and ADDITIONAL-TERMS.md.
+
 # UI literal lint. Rules (docs/design-docs/ui/README.md, principle 3):
 #   hex      — raw #rgb/#rrggbb/#rrggbbaa outside src/theme/{tokens,themes}.css
 #              (CSS comments are stripped before matching, so prose that

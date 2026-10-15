@@ -1,3 +1,7 @@
+// SPDX-License-Identifier: GPL-3.0-only
+// Copyright (C) 2026 Lucas Caro
+// See LICENSE and ADDITIONAL-TERMS.md.
+
 // Spec 477: comparing chords (collisions) and turning them into native
 // menu accelerators.
 import { describe, expect, it } from 'vitest';

@@ -1,4 +1,8 @@
 #!/usr/bin/env bash
+# SPDX-License-Identifier: GPL-3.0-only
+# Copyright (C) 2026 Lucas Caro
+# See LICENSE and ADDITIONAL-TERMS.md.
+
 # dev-iso.sh — Build and launch an isolated dev Hive that doesn't
 # touch your prod daemon, sessions, or registry. Uses the
 # HIVE_SOCKET / HIVE_STATE_DIR env-var overrides.
