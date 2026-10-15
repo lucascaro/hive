@@ -28,7 +28,7 @@ const appData = () => appStore.getState();
 const BANNER_MS = 15_000;
 
 /** Shape of the daemon's session:restored payload (snake_case on the wire). */
-interface RestoredEvent {
+export interface RestoredEvent {
   session_id?: string;
   sessionId?: string;
   project_reassigned?: boolean;
@@ -161,7 +161,7 @@ export function reopenLastClosedSession() {
  * than dismissing it: a restore that silently dropped the worktree or
  * the conversation would otherwise look like a clean undo.
  */
-export function onSessionRestored(ev: RestoredEvent) {
+export function restoreLosses(ev: RestoredEvent): string[] {
   const losses: string[] = [];
   if (ev.worktree_lost ?? ev.worktreeLost) {
     losses.push('its worktree could not be restored');
@@ -184,6 +184,11 @@ export function onSessionRestored(ev: RestoredEvent) {
   }
   const patch = ev.patch_path ?? ev.patchPath;
   if (patch) losses.push(`uncommitted changes were saved to ${patch}`);
+  return losses;
+}
+
+export function onSessionRestored(ev: RestoredEvent) {
+  const losses = restoreLosses(ev);
 
   // Name the session that actually came back. ⌘Z sends an empty id and
   // the daemon resolves "the last closed one", so the session restored

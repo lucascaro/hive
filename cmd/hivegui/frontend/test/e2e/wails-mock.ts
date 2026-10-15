@@ -160,6 +160,15 @@ export type MockClosed = {
   degraded: Record<string, boolean>;
 };
 
+/** One archived session the mock keeps — the stand-in for
+ * <stateDir>/archived/. */
+export type MockArchived = {
+  session: MockSession;
+  archivedAt: string;
+  projectName: string;
+  degraded: Record<string, boolean>;
+};
+
 const state: {
   projects: MockProject[];
   sessions: MockSession[];
@@ -171,6 +180,7 @@ const state: {
   // <stateDir>/closed/. `degraded` is what the daemon would report on
   // SESSION_RESTORED for this particular close.
   closed: MockClosed[];
+  archived: MockArchived[];
   ideas: MockIdea[];
 } = {
   projects: [
@@ -204,6 +214,7 @@ const state: {
   orphanBranches: [],
   deletedRemotes: [],
   closed: [],
+  archived: [],
   // Seeded empty, like worktrees: a spec that needs ideas files them
   // through the UI or seeds them with window.__hive.seedIdeas.
   ideas: [],
@@ -618,6 +629,115 @@ function closedList() {
       name: t.session.name,
       closed_at: t.closedAt,
     }));
+}
+// Archive (spec 518). Never prompts and never touches the worktree —
+// the mock keeps the session's worktree_path on the archived record so
+// unarchive can hand it back, exactly as the daemon's record does.
+export async function ArchiveSession(id: string) {
+  maybeFail('ArchiveSession');
+  const j = state.sessions.findIndex((s) => s.id === id);
+  if (j < 0) {
+    emit(
+      'control:error',
+      JSON.stringify({ code: 'no_such_session', message: 'gone' }),
+    );
+    return '';
+  }
+  const [removed] = state.sessions.splice(j, 1);
+  state.archived.unshift({
+    session: { ...removed, phase: 'ready' },
+    archivedAt: new Date().toISOString(),
+    projectName:
+      state.projects.find((p) => p.id === removed.project_id)?.name ?? '',
+    degraded: {},
+  });
+  renumber();
+  emit('session:event', JSON.stringify({ kind: 'removed', session: removed }));
+  emitUpdatedExcept(removed.id);
+  emit('archived:list', JSON.stringify({ archived: archivedList() }));
+  return '';
+}
+export async function ListArchivedSessions() {
+  maybeFail('ListArchivedSessions');
+  emit('archived:list', JSON.stringify({ archived: archivedList() }));
+  return '';
+}
+export async function UnarchiveSession(id: string) {
+  maybeFail('UnarchiveSession');
+  const i = state.archived.findIndex((a) => a.session.id === id);
+  if (i < 0) {
+    emit(
+      'control:error',
+      JSON.stringify({
+        code: 'no_such_archived_session',
+        message: 'not archived',
+      }),
+    );
+    emit('archived:list', JSON.stringify({ archived: archivedList() }));
+    return '';
+  }
+  const [rec] = state.archived.splice(i, 1);
+  state.sessions.push(rec.session);
+  renumber();
+  emit(
+    'session:event',
+    JSON.stringify({ kind: 'added', session: rec.session }),
+  );
+  emit(
+    'session:restored',
+    JSON.stringify({ session_id: rec.session.id, ...rec.degraded }),
+  );
+  emit('archived:list', JSON.stringify({ archived: archivedList() }));
+  return '';
+}
+export async function DeleteArchivedSession(
+  id: string,
+  removeWorktree: boolean,
+  force: boolean,
+) {
+  maybeFail('DeleteArchivedSession');
+  const i = state.archived.findIndex((a) => a.session.id === id);
+  if (i < 0) {
+    emit('archived:list', JSON.stringify({ archived: archivedList() }));
+    return '';
+  }
+  const rec = state.archived[i];
+  if (removeWorktree && !force) {
+    const wt = state.worktrees.find(
+      (w) => w.path === rec.session.worktree_path,
+    );
+    if (wt?.uncommitted) {
+      emit(
+        'control:error',
+        JSON.stringify({
+          code: 'archived_worktree_dirty',
+          message: 'uncommitted changes',
+          session_id: id,
+        }),
+      );
+      return '';
+    }
+  }
+  state.archived.splice(i, 1);
+  if (removeWorktree) {
+    const w = state.worktrees.findIndex(
+      (x) => x.path === rec.session.worktree_path,
+    );
+    if (w >= 0) state.worktrees.splice(w, 1);
+  }
+  emit('archived:list', JSON.stringify({ archived: archivedList() }));
+  return '';
+}
+function archivedList() {
+  return state.archived.map((a) => ({
+    session_id: a.session.id,
+    name: a.session.name,
+    agent: a.session.agent,
+    project_id: a.session.project_id,
+    project_name: a.projectName,
+    worktree_branch: a.session.worktree_branch,
+    archived_at: a.archivedAt,
+  }));
 }
 // Calls whose only effect is outside the webview (an OS window, a
 // terminal) or that the spec-481 sweep must see reached Go. Read with

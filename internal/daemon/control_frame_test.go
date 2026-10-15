@@ -4,6 +4,8 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"os"
+	"os/exec"
 	"path/filepath"
 	"testing"
 
@@ -456,5 +458,170 @@ func TestUpdateSessionAttentionEmitsAttentionKind(t *testing.T) {
 		}
 	default:
 		t.Fatal("no event")
+	}
+}
+
+// --- archive (spec 518) ---
+
+func TestControlFrameArchiveBadPayload(t *testing.T) {
+	d := newFrameTestDaemon(t)
+	for _, ft := range []wire.FrameType{wire.FrameArchiveSession, wire.FrameUnarchiveSession, wire.FrameDeleteArchived} {
+		rec := &recordOps{}
+		if done := d.handleControlFrame(context.Background(), rec.ops(), ft, []byte(`["not","an","object"]`)); done {
+			t.Fatalf("%v: a bad payload closed the connection", ft)
+		}
+		if len(rec.errs) != 1 || rec.errs[0].Code != "bad_payload" {
+			t.Errorf("%v: got %+v, want exactly one bad_payload error", ft, rec.errs)
+		}
+	}
+}
+
+func TestControlFrameListArchivedAnswersInPlace(t *testing.T) {
+	d := newFrameTestDaemon(t)
+	rec := &recordOps{}
+	if done := d.handleControlFrame(context.Background(), rec.ops(), wire.FrameListArchived, nil); done {
+		t.Fatal("LIST_ARCHIVED closed the connection")
+	}
+	if len(rec.frames) != 1 || rec.frames[0] != wire.FrameArchived {
+		t.Errorf("got frames %v, want [ARCHIVED]", rec.frames)
+	}
+}
+
+// An empty id must NOT inherit RESTORE_SESSION's "reopen the latest"
+// shorthand: unarchiving something the user never named is wrong.
+func TestControlFrameUnarchiveEmptyIdRejected(t *testing.T) {
+	d := newFrameTestDaemon(t)
+	reg := d.Registry()
+	if _, err := reg.EnsureDefaultProject(t.TempDir()); err != nil {
+		t.Fatal(err)
+	}
+	e, err := reg.Create(context.Background(), wire.CreateSpec{Shell: "/bin/bash"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := reg.Archive(e.ID); err != nil {
+		t.Fatal(err)
+	}
+	rec := &recordOps{}
+	payload, _ := json.Marshal(wire.UnarchiveSessionReq{})
+	d.handleControlFrame(context.Background(), rec.ops(), wire.FrameUnarchiveSession, payload)
+	d.ops.Wait()
+	if len(rec.errs) != 1 || rec.errs[0].Code != "bad_payload" {
+		t.Fatalf("got %+v, want one bad_payload error", rec.errs)
+	}
+	if reg.Get(e.ID) != nil {
+		t.Error("an empty-id unarchive brought a session back")
+	}
+	if len(reg.ListArchived()) != 1 {
+		t.Error("an empty-id unarchive consumed an archived record")
+	}
+}
+
+func TestControlFrameUnarchiveUnknownIDSendsError(t *testing.T) {
+	d := newFrameTestDaemon(t)
+	rec := &recordOps{}
+	payload, _ := json.Marshal(wire.UnarchiveSessionReq{SessionID: "no-such-session"})
+	d.handleControlFrame(context.Background(), rec.ops(), wire.FrameUnarchiveSession, payload)
+	d.ops.Wait()
+	if len(rec.errs) != 1 || rec.errs[0].Code != "no_such_archived_session" {
+		t.Fatalf("got %+v, want one no_such_archived_session error", rec.errs)
+	}
+}
+
+// TestArchiveUnarchiveOverFrames drives archive → list → unarchive →
+// delete through the frame layer.
+func TestArchiveUnarchiveOverFrames(t *testing.T) {
+	d := newFrameTestDaemon(t)
+	reg := d.Registry()
+	if _, err := reg.EnsureDefaultProject(t.TempDir()); err != nil {
+		t.Fatal(err)
+	}
+	e, err := reg.Create(context.Background(), wire.CreateSpec{Shell: "/bin/bash"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	id := e.ID
+
+	send := func(ft wire.FrameType, req any) *recordOps {
+		rec := &recordOps{}
+		payload, _ := json.Marshal(req)
+		d.handleControlFrame(context.Background(), rec.ops(), ft, payload)
+		d.ops.Wait()
+		if len(rec.errs) != 0 {
+			t.Fatalf("%v errored: %+v", ft, rec.errs)
+		}
+		return rec
+	}
+
+	send(wire.FrameArchiveSession, wire.ArchiveSessionReq{SessionID: id})
+	if reg.Get(id) != nil {
+		t.Fatal("session still live after ARCHIVE_SESSION")
+	}
+	if got := reg.ListArchived(); len(got) != 1 || got[0].SessionID != id {
+		t.Fatalf("ListArchived = %+v, want the archived session", got)
+	}
+
+	rec := send(wire.FrameUnarchiveSession, wire.UnarchiveSessionReq{SessionID: id})
+	defer reg.Kill(id, true)
+	want := []wire.FrameType{wire.FrameSessionRestored, wire.FrameArchived}
+	if len(rec.frames) != 2 || rec.frames[0] != want[0] || rec.frames[1] != want[1] {
+		t.Fatalf("unarchive frames = %v, want %v", rec.frames, want)
+	}
+	if reg.Get(id) == nil {
+		t.Fatal("session did not come back")
+	}
+
+	// Archive it again, then delete the record.
+	send(wire.FrameArchiveSession, wire.ArchiveSessionReq{SessionID: id})
+	rec = send(wire.FrameDeleteArchived, wire.DeleteArchivedReq{SessionID: id})
+	if len(rec.frames) != 1 || rec.frames[0] != wire.FrameArchived {
+		t.Errorf("delete frames = %v, want [ARCHIVED]", rec.frames)
+	}
+	if len(reg.ListArchived()) != 0 {
+		t.Error("record survived DELETE_ARCHIVED")
+	}
+}
+
+// A dirty worktree on DELETE_ARCHIVED must not reuse worktree_dirty:
+// the GUI answers that code by asking to close a session, and an
+// archived one is not open.
+func TestControlFrameDeleteArchivedDirtyUsesItsOwnCode(t *testing.T) {
+	d := newFrameTestDaemon(t)
+	reg := d.Registry()
+	repo := t.TempDir()
+	for _, args := range [][]string{{"init", "-q"}, {"-c", "user.email=t@t", "-c", "user.name=t", "commit", "-q", "--allow-empty", "-m", "init"}} {
+		cmd := exec.Command("git", args...)
+		cmd.Dir = repo
+		if out, err := cmd.CombinedOutput(); err != nil {
+			t.Skipf("git unavailable: %v %s", err, out)
+		}
+	}
+	p, err := reg.CreateProject(wire.CreateProjectReq{Name: "git", Cwd: repo})
+	if err != nil {
+		t.Fatal(err)
+	}
+	e, err := reg.Create(context.Background(), wire.CreateSpec{ProjectID: p.ID, Shell: "/bin/bash", UseWorktree: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if e.WorktreePath == "" {
+		t.Skip("worktree creation unavailable in this environment")
+	}
+	if err := os.WriteFile(filepath.Join(e.WorktreePath, "wip.txt"), []byte("x"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := reg.Archive(e.ID); err != nil {
+		t.Fatal(err)
+	}
+
+	rec := &recordOps{}
+	payload, _ := json.Marshal(wire.DeleteArchivedReq{SessionID: e.ID, RemoveWorktree: true})
+	d.handleControlFrame(context.Background(), rec.ops(), wire.FrameDeleteArchived, payload)
+	d.ops.Wait()
+	if len(reg.ListArchived()) != 1 {
+		t.Fatalf("a refused delete discarded the record (frames %v)", rec.frames)
+	}
+	if len(rec.errs) != 1 || rec.errs[0].Code != "archived_worktree_dirty" || rec.errs[0].SessionID != e.ID {
+		t.Fatalf("errs = %+v, want one archived_worktree_dirty carrying the session id", rec.errs)
 	}
 }

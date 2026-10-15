@@ -64,6 +64,7 @@ import { Help } from './modals/Help.js';
 import { HelpOverlay } from './modals/HelpOverlay.js';
 import { IdeaInbox } from './modals/IdeaInbox.js';
 import { QuickIdea } from './modals/QuickIdea.js';
+import { ArchivedSessions } from './modals/ArchivedSessions.js';
 import { MessageSession } from './modals/MessageSession.js';
 import { Launcher } from './modals/Launcher.js';
 import { ProjectEditor } from './modals/ProjectEditor.js';
@@ -111,6 +112,7 @@ export function App(): ReactNode {
   const helpModal = mustEl('help-modal');
   const quickIdea = mustEl('quick-idea');
   const messageSession = mustEl('message-session');
+  const archivedSessions = mustEl('archived-sessions');
   const ideaInbox = mustEl('idea-inbox');
   const choiceDialog = mustEl('choice-dialog');
   const commandPalette = mustEl('command-palette');
@@ -175,6 +177,10 @@ export function App(): ReactNode {
       {createPortal(<Help root={helpModal} />, helpModal)}
       {createPortal(<QuickIdea root={quickIdea} />, quickIdea)}
       {createPortal(<MessageSession root={messageSession} />, messageSession)}
+      {createPortal(
+        <ArchivedSessions root={archivedSessions} />,
+        archivedSessions,
+      )}
       {createPortal(<IdeaInbox root={ideaInbox} />, ideaInbox)}
       {createPortal(<ChoiceDialog root={choiceDialog} />, choiceDialog)}
       {createPortal(<CommandPalette root={commandPalette} />, commandPalette)}

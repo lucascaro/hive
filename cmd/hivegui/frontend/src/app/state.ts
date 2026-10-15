@@ -169,6 +169,21 @@ export function readNeedsAttention(s: SessionInfo): boolean {
  * raw JSON on the control connection, where the daemon's struct tags
  * are the only spelling that exists. `external_ref` is deliberately
  * absent — the daemon persists it but does not put it on the wire. */
+/** One archived session (internal/wire/control.go ArchivedSessionInfo).
+ * `project_name` is a snapshot taken at archive time: the project may
+ * have been deleted since, and the list still has to group by name. */
+export interface ArchivedSessionInfo {
+  session_id: string;
+  name: string;
+  color?: string;
+  agent?: string;
+  project_id?: string;
+  project_name?: string;
+  worktree_branch?: string;
+  /** RFC 3339. */
+  archived_at: string;
+}
+
 /** One installed plugin, as PLUGINS / PLUGIN_EVENT carry it
  * (internal/wire/control.go PluginInfo). */
 export interface PluginInfo {

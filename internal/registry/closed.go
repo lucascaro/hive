@@ -65,6 +65,20 @@ type Tombstone struct {
 	// false means nothing was at stake, "" plus true means something
 	// was and we could not save it.
 	PatchSkipped bool `json:"patch_skipped,omitempty"`
+	// ArchivedAt and ProjectName are set only on archive records
+	// (<stateDir>/archived/). ProjectName is a snapshot: a project can be
+	// deleted while its sessions sit archived, and the list still has to
+	// group them under a name.
+	ArchivedAt  time.Time `json:"archived_at,omitempty"`
+	ProjectName string    `json:"project_name,omitempty"`
+}
+
+// stamp is the time a record was made, whichever store it is in.
+func (t Tombstone) stamp() time.Time {
+	if !t.ArchivedAt.IsZero() {
+		return t.ArchivedAt
+	}
+	return t.ClosedAt
 }
 
 // RestoreResult reports everything a restore could NOT bring back
@@ -95,7 +109,11 @@ func ClosedDir(stateDir string) string {
 }
 
 func (r *Registry) tombstonePath(id string) string {
-	return filepath.Join(ClosedDir(r.stateDir), id+".json")
+	return recordPath(ClosedDir(r.stateDir), id)
+}
+
+func recordPath(dir, id string) string {
+	return filepath.Join(dir, id+".json")
 }
 
 func (r *Registry) patchPath(id string) string {
@@ -109,7 +127,17 @@ func (r *Registry) patchPath(id string) string {
 // Failure is logged, never returned: a close the user asked for must
 // not be blocked because undo bookkeeping failed.
 func (r *Registry) writeTombstoneLocked(e *Entry, t Tombstone) {
-	t.Meta = MetaFile{
+	t.Meta = recordMeta(e)
+	t.ClosedAt = time.Now().UTC()
+	if err := writeJSON(r.tombstonePath(e.ID), t); err != nil {
+		log.Printf("registry: kill %s: could not record tombstone (undo unavailable for this close): %v", e.ID, err)
+	}
+}
+
+// recordMeta is the part of an entry a close or an archive must be able
+// to rebuild it from.
+func recordMeta(e *Entry) MetaFile {
+	return MetaFile{
 		ID: e.ID, Name: e.Name, Color: e.Color,
 		Order: e.Order, Created: e.Created, Agent: e.Agent,
 		ProjectID:      e.ProjectID,
@@ -119,10 +147,6 @@ func (r *Registry) writeTombstoneLocked(e *Entry, t Tombstone) {
 		Kind:           e.Kind,
 		SpawnedBy:      e.SpawnedBy,
 		ACPMode:        e.ACPMode,
-	}
-	t.ClosedAt = time.Now().UTC()
-	if err := writeJSON(r.tombstonePath(e.ID), t); err != nil {
-		log.Printf("registry: kill %s: could not record tombstone (undo unavailable for this close): %v", e.ID, err)
 	}
 }
 
@@ -158,6 +182,11 @@ func (r *Registry) dumpRecoveryPatch(id, wtPath string) (patchPath string, skipp
 // missing — an unreadable tombstone is not something the user can act
 // on, and failing the restore with a JSON error helps nobody.
 func (r *Registry) readTombstone(id string) (Tombstone, error) {
+	return readRecord(ClosedDir(r.stateDir), id)
+}
+
+// readRecord loads one record from dir (closed/ or archived/).
+func readRecord(dir, id string) (Tombstone, error) {
 	var t Tombstone
 	// The id arrives off the wire and is about to be joined into a
 	// path that discardTombstone will later os.Remove. Kill() is
@@ -169,7 +198,7 @@ func (r *Registry) readTombstone(id string) (Tombstone, error) {
 	if !validSessionID(id) {
 		return t, ErrNotFound
 	}
-	if err := readJSON(r.tombstonePath(id), &t); err != nil {
+	if err := readJSON(recordPath(dir, id), &t); err != nil {
 		return t, ErrNotFound
 	}
 	if t.Meta.ID == "" {
@@ -206,7 +235,12 @@ func validSessionID(id string) bool {
 
 // listTombstones returns every readable tombstone, newest close first.
 func (r *Registry) listTombstones() []Tombstone {
-	ents, err := os.ReadDir(ClosedDir(r.stateDir))
+	return listRecords(ClosedDir(r.stateDir))
+}
+
+// listRecords returns every readable record in dir, newest first.
+func listRecords(dir string) []Tombstone {
+	ents, err := os.ReadDir(dir)
 	if err != nil {
 		return nil
 	}
@@ -216,7 +250,7 @@ func (r *Registry) listTombstones() []Tombstone {
 			continue
 		}
 		var t Tombstone
-		if err := readJSON(filepath.Join(ClosedDir(r.stateDir), de.Name()), &t); err != nil {
+		if err := readJSON(filepath.Join(dir, de.Name()), &t); err != nil {
 			continue
 		}
 		if t.Meta.ID == "" {
@@ -224,7 +258,7 @@ func (r *Registry) listTombstones() []Tombstone {
 		}
 		out = append(out, t)
 	}
-	sort.Slice(out, func(i, j int) bool { return out[i].ClosedAt.After(out[j].ClosedAt) })
+	sort.Slice(out, func(i, j int) bool { return out[i].stamp().After(out[j].stamp()) })
 	return out
 }
 
@@ -267,13 +301,18 @@ func (r *Registry) pruneTombstones() {
 // removes files, and it is one line to make that independent of who
 // calls it.
 func (r *Registry) discardTombstone(id string) {
+	discardRecord(ClosedDir(r.stateDir), id)
+}
+
+// discardRecord removes a record and any recovery patch beside it.
+func discardRecord(dir, id string) {
 	if !validSessionID(id) {
 		return
 	}
-	if err := os.Remove(r.tombstonePath(id)); err != nil && !os.IsNotExist(err) {
-		log.Printf("registry: could not remove tombstone %s: %v", id, err)
+	if err := os.Remove(recordPath(dir, id)); err != nil && !os.IsNotExist(err) {
+		log.Printf("registry: could not remove record %s: %v", id, err)
 	}
-	if err := os.Remove(r.patchPath(id)); err != nil && !os.IsNotExist(err) {
+	if err := os.Remove(filepath.Join(dir, id+".patch")); err != nil && !os.IsNotExist(err) {
 		log.Printf("registry: could not remove recovery patch %s: %v", id, err)
 	}
 }
@@ -296,7 +335,8 @@ func (r *Registry) tombstoneClaimsWorktree(path string) bool {
 			return true
 		}
 	}
-	return false
+	// An archived session is the same claim, held indefinitely.
+	return r.archivedClaimsWorktree(path, "")
 }
 
 // Restore brings back a session closed earlier in this state dir,
@@ -313,9 +353,36 @@ func (r *Registry) tombstoneClaimsWorktree(path string) bool {
 // close into a merge conflict; the path is surfaced and `git apply`
 // stays the user's decision.
 func (r *Registry) Restore(id string, opts session.Options) (*Entry, RestoreResult, error) {
+	_, res, err := r.restoreEntry(ClosedDir(r.stateDir), id, nil)
+	if err != nil {
+		return nil, res, err
+	}
+	return r.reviveRestored(id, opts, res)
+}
+
+// reviveRestored respawns the agent of an entry restoreEntry just
+// rebuilt and returns it.
+func (r *Registry) reviveRestored(id string, opts session.Options, res RestoreResult) (*Entry, RestoreResult, error) {
+	if rerr := r.Revive(id, opts); rerr != nil {
+		// The entry stays: a session whose agent failed to spawn is an
+		// ordinary dead tile the user can restart, which is strictly
+		// better than silently undoing the undo.
+		log.Printf("registry: restore %s: revive failed: %v", id, rerr)
+	}
+	r.mu.Lock()
+	e := r.entries[id]
+	r.mu.Unlock()
+	return e, res, nil
+}
+
+// restoreEntry rebuilds the registry entry for a record in dir and
+// drops the record, without spawning anything. check, when non-nil, may
+// add degradations that need the resolved working directory (the
+// directory Revive will spawn the agent in).
+func (r *Registry) restoreEntry(dir, id string, check func(t Tombstone, cwd string, res *RestoreResult)) (*Entry, RestoreResult, error) {
 	var res RestoreResult
 
-	t, err := r.readTombstone(id)
+	t, err := readRecord(dir, id)
 	if err != nil {
 		return nil, res, err
 	}
@@ -352,6 +419,13 @@ func (r *Registry) Restore(id string, opts session.Options) (*Entry, RestoreResu
 			res.AgentFellBack = true
 		}
 		res.ConversationLost = t.Meta.AgentSessionID == ""
+	}
+	if check != nil {
+		cwd := projectCwd
+		if wtPath != "" {
+			cwd = wtPath
+		}
+		check(t, cwd, &res)
 	}
 
 	e := &Entry{
@@ -399,18 +473,7 @@ func (r *Registry) Restore(id string, opts session.Options) (*Entry, RestoreResu
 	// The tombstone has done its job. Drop it before the revive so a
 	// spawn failure can't leave a record that would restore a second
 	// copy of a session that is already in the map.
-	r.discardTombstone(id)
-
-	if rerr := r.Revive(id, opts); rerr != nil {
-		// The entry stays: a session whose agent failed to spawn is an
-		// ordinary dead tile the user can restart, which is strictly
-		// better than silently undoing the undo.
-		log.Printf("registry: restore %s: revive failed: %v", id, rerr)
-	}
-
-	r.mu.Lock()
-	e = r.entries[id]
-	r.mu.Unlock()
+	discardRecord(dir, id)
 	return e, res, nil
 }
 
