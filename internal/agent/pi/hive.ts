@@ -32,6 +32,7 @@
 // exception is hive_submit_plan's plan: the model hands it over for the
 // user to read, which is the whole point of the tool.
 import { randomUUID } from "node:crypto";
+import fs from "node:fs";
 import net from "node:net";
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 
@@ -520,6 +521,91 @@ const TODO_PARAMETERS = {
 
 const STATUS_MARK: Record<string, string> = { pending: "[ ]", active: "[>]", done: "[x]" };
 
+// --- Inbox (spec 338, phase 3) ---
+//
+// Hive hands a session a note by connecting to a unix socket this
+// extension listens on (internal/agent/pi_inbox.go is the other half).
+// One connection is one note: the client writes UTF-8 text and half-closes,
+// and we answer "ok\n" once the note is accepted. The ack deliberately does
+// NOT wait for the agent: pi.sendUserMessage on an idle Pi starts a whole
+// turn, and the sender would hang for minutes. No ack means Hive types the
+// note instead, so a refusal here must never be followed by delivery.
+
+// The path to listen on; set by hived (piSpawnEnv). Absent on Windows.
+export const INBOX_ENV = "HIVE_PI_INBOX";
+export const MAX_INBOX_NOTE = 64 * 1024; // wire.MaxMessageLen
+// A connection that has not finished within this is dropped. It must stay
+// below Hive's ack wait (piAckTimeout, 3 s in internal/agent/pi_inbox.go):
+// once Hive has given up and typed the note, delivering it here too would
+// show it twice. Mutable for tests only.
+export const inboxTimeout = { ms: 2000 };
+
+// startInbox listens on path. deliver returns whether the note was
+// accepted; only then is the ack written. Listen failures are swallowed:
+// without an inbox Hive falls back to typing.
+export function startInbox(path: string, deliver: (text: string) => boolean): { close(): void } {
+  // A crashed pi leaves its socket behind and listen would fail with
+  // EADDRINUSE. Only a socket is removed, never a file someone put there.
+  try {
+    if (fs.lstatSync(path).isSocket()) fs.unlinkSync(path);
+  } catch {}
+  // allowHalfOpen: the client half-closes to end the note, and the ack
+  // still has to go back the other way.
+  const srv = net.createServer({ allowHalfOpen: true }, (conn) => {
+    const chunks: Buffer[] = [];
+    let size = 0;
+    let over = false;
+    const accepted = Date.now();
+    conn.setTimeout(inboxTimeout.ms, () => conn.destroy());
+    conn.on("error", () => {});
+    conn.on("data", (d: Buffer) => {
+      size += d.length;
+      if (size > MAX_INBOX_NOTE) {
+        over = true;
+        conn.destroy();
+        return;
+      }
+      chunks.push(d);
+    });
+    conn.on("end", () => {
+      // Same reason as inboxTimeout: a note that took this long to finish
+      // is one Hive has probably already typed. A stall before the
+      // connection is accepted cannot be seen from here.
+      if (over || Date.now() - accepted > inboxTimeout.ms) {
+        conn.destroy();
+        return;
+      }
+      const text = Buffer.concat(chunks).toString("utf8");
+      if (text.trim() === "" || !deliver(text)) {
+        conn.destroy();
+        return;
+      }
+      conn.end("ok\n");
+    });
+  });
+  srv.on("error", () => {});
+  // The socket is created with the process umask; tighten it for the
+  // moment between bind and chmod.
+  let mask: number | undefined;
+  try {
+    mask = process.umask(0o177);
+  } catch {}
+  try {
+    srv.listen(path, () => {
+      try {
+        fs.chmodSync(path, 0o600);
+      } catch {}
+    });
+  } finally {
+    if (mask !== undefined) process.umask(mask);
+  }
+  return {
+    close() {
+      srv.close();
+    },
+  };
+}
+
 export default function (pi: ExtensionAPI) {
   const sid = process.env.HIVE_SESSION_ID;
   const sock = process.env.HIVE_SOCKET;
@@ -553,6 +639,7 @@ export default function (pi: ExtensionAPI) {
     },
   };
 
+  let inbox: { close(): void } | undefined;
   let beat: ReturnType<typeof setInterval> | undefined;
   if (process.env[HEARTBEAT_ENV] === "1") {
     beat = setInterval(() => {
@@ -673,6 +760,28 @@ export default function (pi: ExtensionAPI) {
   }
 
   pi.on("session_start", (_event, ctx: any) => {
+    // Every start replaces the previous inbox: the old instance's shutdown
+    // normally ran first, but /reload's order is not worth trusting.
+    inbox?.close();
+    inbox = undefined;
+    const inboxPath = process.env[INBOX_ENV];
+    if (inboxPath) {
+      inbox = startInbox(inboxPath, (text) => {
+        // No model selected: Pi would reject the prompt after we had
+        // acked it and the note would vanish. Refuse, and Hive types it.
+        if (!ctx?.model) return false;
+        try {
+          // deliverAs only matters while streaming, where omitting it
+          // throws; idle, the call just starts a turn. followUp (not
+          // steer) so a note never interrupts a turn in flight.
+          const r: any = pi.sendUserMessage(text, { deliverAs: "followUp" });
+          if (r && typeof r.catch === "function") r.catch(() => {});
+        } catch {
+          return false;
+        }
+        return true;
+      });
+    }
     // Every start — startup, reload, /new, /resume, fork — reports the
     // plan of the branch it lands on, empty when there is none, so a
     // new conversation never shows the previous one's plan.
@@ -805,6 +914,8 @@ export default function (pi: ExtensionAPI) {
     // Every shutdown ends this instance, quit or not: the runtime that
     // replaces it runs this factory again and starts its own heartbeat.
     if (beat) clearInterval(beat);
+    inbox?.close();
+    inbox = undefined;
     reviewAbort?.abort();
     turnInFlight = false;
     if (event?.reason === "quit") post("session_end");

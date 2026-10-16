@@ -169,7 +169,7 @@ unchanged and stays in core.
 ## Session messaging (spec 338)
 
 `SEND_TO_SESSION{session_id, text, queue}` is answered with
-`SENT{session_id, delivery}` (`typed`, `queued`, `acp` or `socket`) or an `ERROR`
+`SENT{session_id, delivery}` (`typed`, `queued`, `acp`, `socket` or `extension`) or an `ERROR`
 (`session_busy`, `session_dead`, `delivery_failed`, `no_such_session`,
 `bad_payload`). It is served on control connections only; plugin sockets
 and the narrowed `ModeSession` connection are refused, so what an agent
@@ -199,6 +199,26 @@ the registrations. Any failure — no registration, wrong owner, dial or
 write error, claude older than 2.1.300, Windows — falls back to the typed
 or queued path above. Notes already queued are never overtaken. A Claude in
 bypass mode holds the message for approval in its own session.
+
+A Pi session is tried the same way through the Hive extension
+(`extension`, phase 3). The daemon tells the extension where to listen
+with `HIVE_PI_INBOX`, a socket named `pi-<16 id chars>.sock` beside the
+events socket (so it fits `sun_path`; no path, no inbox — Windows and an
+over-long socket directory included). The extension creates it 0600,
+reads one UTF-8 note per connection to EOF (64 KiB cap, 2 s idle drop)
+and calls `pi.sendUserMessage(text, {deliverAs: "followUp"})`: `deliverAs`
+is required while Pi is streaming (the call throws without it) and `followUp`
+queues the note behind the turn in flight instead of interrupting it; when
+Pi is idle the call starts a turn. The extension answers `ok\n` *before*
+the agent acts — an idle Pi's call spans a whole turn — and Hive waits at
+most 3 s for it, then types instead. It refuses (no ack, so Hive types)
+when no model is selected. Known limits: a note acked and then rejected by
+Pi (compaction in progress) is lost; and if Pi's event loop stalls for over
+3 s *before* it accepts the connection, Hive types the note and the extension
+later delivers it as well (a stall after accepting is caught: the extension
+drops a note older than its 2 s budget). A refused dial never deletes the
+socket file; the extension unlinks a stale one when it starts. A custom agent built on Pi gets the
+extension but keeps typed delivery, as the inbox is keyed on the `pi` id.
 
 ## Plugins are control clients (spec 460)
 

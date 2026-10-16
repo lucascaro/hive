@@ -25,9 +25,10 @@ import (
 const msgUsage = `usage:
   hived msg [--no-queue] <session-id-or-name> <text...>
 
-Claude Code sessions take <text> through Claude's own inbox, working or
-idle. Any other session has it typed in; one that is working is queued (typed
-when it next goes idle) unless --no-queue is given.
+Claude Code sessions take <text> through Claude's own inbox, and Pi sessions
+through Hive's Pi extension, working or idle. Any other session has it
+typed in; one that is working is queued (typed when it next goes idle)
+unless --no-queue is given.
 `
 
 // runMsg implements `hived msg`; it returns the process exit code.

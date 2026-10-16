@@ -171,6 +171,7 @@ func (r *Registry) finishCreate(ctx context.Context, e *Entry, spec wire.CreateS
 func (r *Registry) finishCreateTail(ctx context.Context, e *Entry, spec wire.CreateSpec, p createPlan) error {
 	// One spawn snapshot for argv and env, so they agree (#457).
 	sp := r.spawnInfo()
+	sp.SessionID = p.id
 	cmd := r.resolveAgentCmd(spec, p.id, sp)
 	if p.nameFromBranch && p.wtBranch == "" {
 		r.renameAfterWorktreeFailure(e, spec)

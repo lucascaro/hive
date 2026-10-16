@@ -139,7 +139,8 @@ What works:
   does the same from an ordinary shell (exact id or exact name only).
   Plugins cannot send messages. A Claude Code session receives the note
   through Claude's own inbox, working or idle, and falls back to the typed
-  path if that is unavailable; Pi's own inbox comes later, so every other
+  path if that is unavailable; a Pi session takes it through Hive's Pi
+  extension the same way (queued behind its current turn), and every other
   agent gets the typed path
 - In-app updates (macOS): pick a release or latest-commit channel in
   Settings, then Update → Reload (or Restart, when the daemon changed)
@@ -347,7 +348,7 @@ These are the defaults. Rebind any of them, and any plugin command, under **Sett
 | ⌘E | Worktrees in the active project (browse, resume, delete) |
 | ⌘I | Capture an idea for later (note, kind, project) |
 | ⇧⌘I | Ideas captured for the active project |
-| ⇧⌘M | Message the active session: a note sent to it — through Claude's own inbox for Claude Code, otherwise typed when it is quiet (queued if it is working) |
+| ⇧⌘M | Message the active session: a note sent to it — through the agent's own inbox for Claude Code and Pi, otherwise typed when it is quiet (queued if it is working) |
 | ⌥⌘B | Notify me once when the active session stops working (Ctrl+Alt+Shift+B on Windows and Linux) |
 | ⌘1–9 | Jump to nth session |
 | ⌘= / ⌘- / ⌘0 | Font size up / down / reset |

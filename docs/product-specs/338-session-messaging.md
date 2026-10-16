@@ -4,8 +4,9 @@ title: "Session messaging: hand a session a message, get told when it idles"
 type: enhancement
 complexity: M
 priority: P2
-pr: 515
-stage: GATE
+pr: 516
+shipped: 2026-10-15
+stage: DONE
 ---
 
 # Session messaging: hand a session a message, get told when it idles
@@ -14,7 +15,7 @@ stage: GATE
 - **Type:** enhancement
 - **Complexity:** M
 - **Priority:** P2
-- **Exec plan:** [docs/exec-plans/active/338-session-messaging.md](../exec-plans/active/338-session-messaging.md)
+- **Exec plan:** [docs/exec-plans/completed/338-session-messaging.md](../exec-plans/completed/338-session-messaging.md)
 - **Design:** [docs/design-docs/control-plane.md](../design-docs/control-plane.md)
 
 ## Problem
@@ -37,8 +38,9 @@ sends. Delivery depends on the target's tier (spec 336):
   so it arrives as "message from another session", read between tool
   calls or starting a new turn if idle. Never fakes typing.
 - Pi: delivered to the Hive extension's per-session inbox; the
-  extension injects it with `pi.sendUserMessage`, which queues while
-  streaming and triggers a turn when idle.
+  extension injects it with `pi.sendUserMessage`, which needs
+  `deliverAs: "followUp"` to queue while streaming and triggers a turn
+  when idle.
 - Everything else: typed into the PTY followed by Enter, **only when
   the session is `idle`**. If it is `working` the sheet says so and
   offers "queue until idle" (Hive holds it and types it at the next

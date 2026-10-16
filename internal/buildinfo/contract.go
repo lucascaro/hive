@@ -24,6 +24,11 @@ package buildinfo
 // History (newest first), so a bump is a decision with a record and
 // not just a number going up:
 //
+//	31 — Session messaging via Pi's Hive extension (spec 338, phase 3). A
+//	    new SENT delivery value, "extension", and a HIVE_PI_INBOX variable
+//	    in a Pi session's environment. An older daemon never sets it, so a
+//	    new GUI against it just sees typed delivery; an older GUI reports
+//	    an extension delivery as typed.
 //	30 — OSC 7501 status tier (spec 517). A new state_source, "osc",
 //	    for states the daemon read off a program's own terminal status
 //	    reports, and the daemon now answers an agent's OSC 7501
@@ -260,7 +265,7 @@ package buildinfo
 //	    before this cannot see or clear the flag.
 //	1 — first contract; everything up to and including the
 //	    CLIENT_COMMAND relay.
-const DaemonContract = 30
+const DaemonContract = 31
 
 // Identity is this binary's full build identity. `hived --version
 // --json` prints it, and Welcome carries the same three values, so a

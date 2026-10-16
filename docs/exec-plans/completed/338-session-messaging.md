@@ -3,10 +3,10 @@
 - **Spec:** [docs/product-specs/338-session-messaging.md](../../product-specs/338-session-messaging.md)
 - **Design:** [docs/design-docs/control-plane.md](../../design-docs/control-plane.md)
 - **Issue:** —
-- **Branch:** `feature/338-claude-inbox`
-- **PR:** [#515](https://github.com/lucascaro/hive/pull/515)
-- **Status:** active
-- **Phase:** 2 of 3
+- **Branch:** `feature/338-pi-inbox`
+- **PR:** [#516](https://github.com/lucascaro/hive/pull/516)
+- **Status:** completed
+- **Phase:** 3 of 3
 
 ## Summary
 
@@ -417,6 +417,9 @@ Independent reviewer (general-purpose subagent), 2 rounds.
 - **2026-10-14 iter 3** — verdict: APPROVE; mergeable: MERGEABLE; findings_hash: empty; threads_open: 0; action: stop; head_sha: 9e8bfca.
 - **2026-10-14 iter 1 (phase 2)** — verdict: COMMENT; mergeable: MERGEABLE; findings_hash: 8f40c548e34f1b789ff7e03af9a02d920c25eb3bd032f50a9d0b5949ceb83a15; threads_open: 0; action: escalated:risky-fix-needs-human-decision (worker pushed test-only 69d0a7ff; the two risky hardening fixes applied by orchestrator in 992431d0); head_sha: 69d0a7ff.
 - **2026-10-14 iter 2 (phase 2)** — verdict: APPROVE; mergeable: MERGEABLE; findings_hash: 3cdac4c83550cdbb1ea6973b34b32cdea6a3731a2bca741ef6fe7249e6b80bcc; threads_open: 0; action: stop (autofix+push d8b7bdc5 closed 2 threads first); head_sha: d8b7bdc5.
+- **2026-10-15 iter 1 (phase 3)** — verdict: COMMENT; mergeable: MERGEABLE; findings_hash: 141c991372e15dd93833765905569a841ff291be13ec3fd2ca3cba6602b56328; threads_open: 0; action: escalated:risky-fix-needs-human-decision (worker pushed b744fa36 usage rewrap; double-delivery hardening applied by orchestrator afterwards); head_sha: b744fa36.
+- **2026-10-15 iter 2 (phase 3)** — verdict: COMMENT; mergeable: MERGEABLE; findings_hash: 1bb1ea1b3d7190d584a95fbc67ec6517aa4481d590f1c8d401cbf3e39bba7d42; threads_open: 0; action: autofix+push; head_sha: b4b50b7d.
+- **2026-10-15 iter 3 (phase 3)** — verdict: APPROVE; mergeable: MERGEABLE; findings_hash: empty; threads_open: 0; action: stop; head_sha: ca44b2e6.
 
 ## Gate verdict
 
@@ -430,6 +433,12 @@ Independent reviewer (general-purpose subagent), 2 rounds.
     - acceptance — PASS — `socket` value, fake-socket exact-line tests, key-file guard green; Pi inbox DEFERRED (phase 3); real-Claude manual render check DEFERRED (human step, recorded in spec)
     - non-goals — PASS
     - doc accuracy — PASS — needed three validator passes (first two found stale README, msg help, deliver.go header, DESIGN, plan probe wording; fixed in 2589ff14 and 11257738)
+- **2026-10-15** — verdict: NEEDS_FOLLOWUP (accepted by operator, advanced); phase: 3/3; checks: 5 passed / 0 failed / 2 followups; followups: #521; one-line: Pi extension inbox (`extension`) verified by node unit + real-extension e2e + Go tests, CI green; real-pi and real-Claude manual checks are human steps tracked in #521.
+  - 2026-10-15 dimensions:
+    - acceptance — NEEDS_FOLLOWUP — Pi inbox node test + e2e + `SendToPi` ack tests pass; "manual checklist against real pi" and real-Claude render check not runnable by agent (#521)
+    - non-goals — PASS — no broker, history, broadcast; Windows falls back to typed (`PiInboxPath` empty)
+    - doc accuracy — PASS — control-plane.md, README, DESIGN.md, `hived msg` usage, changeset, features.json updated in-PR
+
 
 ## Approved plan — Phase 2 of 3 (2026-10-14): Claude inbox socket
 
@@ -481,3 +490,62 @@ GOTOOLCHAIN=go$(sed -n 's/^go //p' go.mod) go test ./internal/agent/... ./intern
 
 ## Second opinion
 Independent hs-reviewer: revise, confidence 7, must_fix applied above (one round; no re-run).
+
+## Approved plan — Phase 3 of 3 (2026-10-15): Pi extension inbox
+
+### Verified facts (pi-coding-agent 1.0.4, read from `dist/`)
+
+- `pi.sendUserMessage(content, {deliverAs})` "always triggers a turn". While streaming it **throws** unless `deliverAs` is `"steer"` or `"followUp"` (`agent-session.js` ~1547: "Agent is already processing. Specify streamingBehavior…"). The spec's "queues while streaming" is only true if the extension passes `deliverAs`. Decision: always pass `deliverAs: "followUp"` (while streaming it queues until the turn ends; when idle `prompt` simply starts a turn — the option only matters while streaming). `steer` would interrupt mid-turn, wrong for a note.
+- The extension gets only `HIVE_SESSION_ID`/`HIVE_SOCKET` plus `HIVE_PI_*` env set by `piSpawnEnv` (`internal/agent/settings.go:262`); it has no state dir. Session ids are UUIDs (36 chars); macOS sun_path limit is 104.
+- The extension is embedded (`internal/agent/pi.go`) and its tests run via `node` type stripping (`nodeForTS` in `internal/agent/pi_test.go`; `hive.test.ts`).
+
+### Approach
+
+- **Daemon → env.** `piSpawnEnv` adds `HIVE_PI_INBOX=<path>` (unix only; empty on Windows = feature off, spec non-goal). Path = `<dir of events socket>/pi-<first 16 hex of id>.sock`, from a pure helper `agent.PiInboxPath(sockPath, id)` so extension and registry cannot disagree and the path stays short enough for sun_path. (`SpawnInfo` gains `SocketPath`.)
+- **Extension (`hive.ts`).** At `session_start`, if `HIVE_PI_INBOX` set: unlink stale path, `net.createServer`, listen, `chmod 0600`; each connection = UTF-8 note terminated by EOF, bounded to 64 KiB (`wire.MaxMessageLen`), 5 s idle timeout, then `pi.sendUserMessage(text, {deliverAs:"followUp"})`. Re-listen is idempotent across `/new`/`/reload` (close old server first); `session_shutdown` closes and unlinks. Listen errors are swallowed (feature degrades to typed).
+- **Registry/agent.** `agent.SendToPi(path, text)`: parent dir must be real, owned by us, not group/world-writable; socket must be an Lstat'd socket owned by us (reuse the claude_inbox helpers); dial 2 s, write text, half-close, wait for the extension's single-byte ack (`ok\n`, so "delivered" means the extension accepted it, not just that bytes were written), close. `Registry.tryInbox` generalised: Claude branch unchanged, Pi branch (`e.Agent == pi`, not ACP) uses `piInboxSend`. Failure ⇒ falls through to typed/queued exactly as phase 2. Success returns `wire.DeliveryExtension` (`"extension"`, new constant; the frame already documents it).
+- `DaemonContract` 28→29. Frontend toast gains an "extension" label. `hived msg` prints the new delivery word through the existing path (no code change expected; verify).
+- Because `sendUserMessage` never errors on the idle→busy race and Pi's own queue orders notes, concurrent sends are ordered by Pi, not by Hive.
+
+### Files to change
+1. `internal/agent/pi/hive.ts` — inbox server.
+2. `internal/agent/settings.go` — `HIVE_PI_INBOX` in `piSpawnEnv`; `SpawnInfo.SocketPath`.
+3. `internal/agent/pi_inbox.go` (+`_unix.go`/`_windows.go` stub if needed) — `PiInboxPath`, `SendToPi`; share dir/socket checks with `claude_inbox.go` (extract, no duplication).
+4. `internal/registry/deliver.go`, `registry.go` — Pi branch in `tryInbox`, `piInboxSend` field, pass socket path in `spawnInfo`.
+5. `internal/wire` — `DeliveryExtension` constant.
+6. `internal/buildinfo/contract.go` — bump + history.
+7. Frontend `message-session.ts` (+ dom test), docs: control-plane.md, README paragraph, DESIGN.md bullet, `hived msg` usage, changeset text + features.json blurb (extend the shared 338 entries), spec criterion wording.
+
+### Tests
+- `internal/agent/pi/hive.test.ts`: `inbox delivers a note via sendUserMessage with deliverAs followUp`; `ignores oversize note`; `idle connection is dropped after timeout`; `session_shutdown unlinks the socket`; `re-start replaces the socket (no EADDRINUSE)`; `inert without HIVE_PI_INBOX`; socket mode is 0600.
+- `internal/agent`: `TestPiInboxPathShortAndStable` (len < 104 for realistic dirs, differs per id), `TestSendToPiWritesNoteAndAwaitsAck`, `TestSendToPiRefusesWritableDir`, `TestSendToPiNoAckIsError`, `TestPiSpawnEnvCarriesInbox` (and absent on windows/ACP).
+- `internal/registry`: `TestPiNoteGoesThroughInbox`, `TestPiInboxFailureFallsBackToTyped`, `TestPiInboxSkippedWithQueue` (older queued notes keep place).
+- Cross-language: a Go test that starts the embedded extension under node with a fake `pi`, then calls `SendToPi` end to end (skipped without node, as `pi_test.go` does).
+- Frontend dom: toast for `extension`.
+- Mutation checks on the ack wait, dir-mode check, and `deliverAs`.
+
+### Verification
+`GOTOOLCHAIN=go$(sed -n 's/^go //p' go.mod) go test ./internal/... ./cmd/hived/...`; per-GOOS `go vet` + staticcheck; `node --test internal/agent/pi/`; `scripts/test.sh`; `scripts/check-daemon-contract.sh origin/main HEAD`. Manual (human): real `pi` session, `hived msg <name> hi` idle and mid-stream — I can drive this myself with the installed pi 1.0.4 in an isolated HIVE_SOCKET/HIVE_STATE_DIR if you want it done now (needs a configured Pi provider; will not touch credentials).
+
+### Risks / open
+- Pi API drift (`sendUserMessage` signature) — gated by the node test against a fake; no version probe in v1 (extension is embedded, the daemon cannot detect Pi's version cheaply). Fallback to typed on dial failure covers an extension that fails to load.
+- Any same-user process can write to the socket (same as Claude's inbox); 0600 socket in a 0700 dir.
+- Idle-ping/`working` state: a Pi turn triggered by a note reports state itself through the existing extension events.
+- Not built: Windows named pipe (spec non-goal), steer-mode delivery.
+
+### Revisions from second opinion (round 1: revise, confidence 8; all must_fix applied, nice_to_haves marked)
+
+1. **Existing tests + plumbing.** Add `internal/agent/settings_test.go` (asserts `len(piSpawnEnv(sp)) == 3` at ~288/294/306) to Files to change; `TestPiSpawnEnvCarriesInbox` pins `HIVE_PI_INBOX=<plain path>` (not the `=1` form). `spawnInfo()` (registry.go ~1033) gains `SocketPath` from `r.socketPath`; audit every `Def.SpawnEnv` caller (create.go ~173/~692, resume path registry.go ~1071) so spawn and resume both set it. Empty `SocketPath` (Windows / unset) ⇒ no env var.
+2. **Ack ordering + deadline.** The extension writes `ok\n` **before** and without awaiting `sendUserMessage` (fire-and-forget, `.catch(log)`): when idle the call awaits a whole turn. `SendToPi` has its own ack deadline (3 s) separate from the 2 s dial timeout; no ack ⇒ error ⇒ typed fallback. Failure modes are therefore: fallback only on the Pi branch's own send error, never after an ack (no double delivery).
+3. **Stronger verification.** Fake `pi.sendUserMessage` returns a never-resolving promise in the hive.test.ts and cross-language tests; assert the ack still arrives. `TestSendToPiNoAckIsError` uses a server that accepts and never acks and must return within the deadline. `TestPiInboxFailureFallsBackToTyped` dials a stale (dead) socket. Mutation checks: await-before-ack, ack deadline, dir-mode, `deliverAs`.
+4. **Wording.** Fixed above; spec text "queues while streaming, triggers a turn when idle" stays; the hive.ts comment says the same so nobody adds an idle check.
+5. **Post-ack loss is a documented limitation.** If `prompt()` rejects after the ack (no model selected, compaction in progress) the note is dropped while Hive reported `extension`. Mitigation in v1: the extension pre-checks `ctx.model` and skips acking when none (⇒ typed fallback); compaction race stays a documented limitation in Risks and docs.
+6. **Nice-to-haves taken (cheap):** shutdown unlinks only the socket its own server created (inode compare) + a `/new` ordering test; `PiInboxPath` returns "" when `len(path)+1 >= 104` + test; extension listens under `process.umask(0o177)` and registry unlinks a stale inbox socket on session exit; note that plugin env scrubbing needs no change; test that a note-triggered turn still sets `working`; changeset + extend the existing features.json 338 blurb. Not taken: custom Pi-based agents (tryInbox keys off agent id `pi`; a custom agent with another id keeps typed — recorded as a limitation).
+
+## Progress (Phase 3 implementation, 2026-10-15)
+
+- Built per the approved plan: `internal/agent/pi_inbox.go` (`PiInboxPath`, `SendToPi`, 3 s ack deadline, stale-socket removal on ECONNREFUSED), `HIVE_PI_INBOX` in `piSpawnEnv` (inserted before the heartbeat, which stays last), `SpawnInfo.SessionID`/`SocketPath`, Pi branch in `tryInbox`, `wire.DeliveryExtension`, `DaemonContract` 29, extension `startInbox` (ack before the agent acts; refuses with no model; `deliverAs: "followUp"`), toast, docs.
+- Deviation: the plan's "registry unlinks the stale inbox socket on session exit" was NOT built. Stale sockets are removed by the next failed dial and by the next extension start for the same id; a session that crashes and is never messaged again leaves one small socket file in the events-socket dir.
+- Deviation: the shutdown-inode compare was not built; libuv unlinks the path on `close()` regardless, and Pi runs shutdown before the replacement's `session_start`. A late old-instance close could unlink a new instance's socket — then the next send falls back to typed.
+- Review iter 1 (Opus worker, COMMENT, 1 IMPORTANT risky): late ack after delivery => double delivery. Applied by orchestrator in-scope (plan said "never after an ack"): extension `inboxTimeout` 5 s -> 2 s (< Hive's 3 s ack wait) and drops a note whose connection outlived that budget. Residual (stall before accept) needs a protocol change; documented. Also dropped Hive's delete-on-ECONNREFUSED (a full backlog or a just-restarted extension reads the same; could delete a live socket) — supersedes the "removed on next failed dial" deviation above.
+- Mutation checks: ack comparison, ack deadline, dir/ownership check (Go); `deliverAs`, no-model refusal, empty-note drop (node). `allowHalfOpen` is not mutation-caught (node 24 delivers the ack either way); kept as explicit intent.

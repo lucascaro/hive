@@ -130,7 +130,7 @@ func TestStatusQueryAnsweredForAgentsOnly(t *testing.T) {
 		// Revive/Restart path.
 		r := freshRegistry(t)
 		var opts session.Options
-		r.applyAgentSpawn(&opts, c.agent)
+		r.applyAgentSpawn(&opts, "sess", c.agent)
 		if opts.AnswerStatusQuery != c.want {
 			t.Errorf("applyAgentSpawn(%q): AnswerStatusQuery = %v, want %v", c.agent, opts.AnswerStatusQuery, c.want)
 		}

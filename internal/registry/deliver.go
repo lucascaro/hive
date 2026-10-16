@@ -15,9 +15,10 @@ import (
 // Session messaging (spec 338): hand a running session a note, and get
 // told when it stops working.
 //
-// Four strategies, chosen by the target:
-//   - socket: a live Claude Code session takes the note through its own
-//     inbox, working or idle (see tryInbox); any failure falls through.
+// Five strategies, chosen by the target:
+//   - socket/extension: a live Claude Code session takes the note through
+//     its own inbox, a Pi session through its Hive extension's, working or
+//     idle (see tryInbox); any failure falls through.
 //   - acp:    an ACP-kind session takes the note as a user turn.
 //   - typed:  a PTY session that is idle gets the text and Enter.
 //   - queued: a PTY session that is busy holds the text until its next
@@ -107,8 +108,8 @@ func (r *Registry) SendToSession(id, text string, queue bool, origin string) (st
 	if err != nil {
 		return "", err
 	}
-	if r.tryInbox(id, clean) {
-		return wire.DeliverySocket, nil
+	if kind := r.tryInbox(id, clean); kind != "" {
+		return kind, nil
 	}
 	r.mu.Lock()
 	e, ok := r.entries[id]
@@ -175,29 +176,40 @@ func (r *Registry) SendToSession(id, text string, queue bool, origin string) (st
 	return wire.DeliveryTyped, nil
 }
 
-// tryInbox hands the note to a live Claude through its own inbox, which
-// takes it between tool calls or as a new turn, idle or not. It reports
-// whether that worked; on false the caller runs the usual typed/queued
-// logic from scratch, so nothing that changed during the dial is trusted.
+// tryInbox hands the note to a live Claude through its own inbox, or to
+// a Pi through its Hive extension's. Either takes it between turns or as
+// a new one, idle or not. It returns the wire.Delivery* kind that worked,
+// or "" on any failure; the caller then runs the usual typed/queued logic
+// from scratch, so nothing that changed during the dial is trusted.
 //
 // Older queued notes keep their place: with any waiting, or an opening
 // prompt still unplaced, the inbox is not used.
-func (r *Registry) tryInbox(id, text string) bool {
+func (r *Registry) tryInbox(id, text string) string {
 	r.mu.Lock()
 	e, ok := r.entries[id]
-	if !ok || r.inboxSend == nil || e.Agent != string(agent.IDClaude) || e.isACP() ||
-		e.sess == nil || e.pendingPrompt != "" || len(e.pendingInputs) > 0 {
+	if !ok || e.isACP() || e.sess == nil || e.pendingPrompt != "" || len(e.pendingInputs) > 0 {
 		r.mu.Unlock()
-		return false
+		return ""
 	}
-	// Claude names its session with the id Hive gave it at first launch;
-	// after a resume the agent's own id can differ.
-	ids := []string{e.AgentSessionID, e.ID}
-	send := r.inboxSend
+	var send func() error
+	kind := ""
+	switch {
+	case e.Agent == string(agent.IDClaude) && r.inboxSend != nil:
+		// Claude names its session with the id Hive gave it at first launch;
+		// after a resume the agent's own id can differ.
+		ids, f := []string{e.AgentSessionID, e.ID}, r.inboxSend
+		send, kind = func() error { return f(ids, text) }, wire.DeliverySocket
+	case e.Agent == string(agent.IDPi) && r.piInboxSend != nil:
+		sock, f := agent.PiInboxPath(r.socketPath, e.ID), r.piInboxSend
+		send, kind = func() error { return f(sock, text) }, wire.DeliveryExtension
+	default:
+		r.mu.Unlock()
+		return ""
+	}
 	r.mu.Unlock()
 	// Outside r.mu: a dial can block.
-	if err := send(ids, text); err != nil {
-		return false
+	if err := send(); err != nil {
+		return ""
 	}
 	r.mu.Lock()
 	if cur := r.entries[id]; cur == e {
@@ -206,7 +218,7 @@ func (r *Registry) tryInbox(id, text string) bool {
 		e.typedAt = time.Now()
 	}
 	r.mu.Unlock()
-	return true
+	return kind
 }
 
 // ptyBytes is the on-the-wire form of a sanitised message: lines are

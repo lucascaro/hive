@@ -1811,6 +1811,10 @@ const (
 	// (Claude Code, spec 338 phase 2). The agent takes it between tool
 	// calls or as a new turn, so it is never queued or refused as busy.
 	DeliverySocket = "socket"
+	// DeliveryExtension means the text went to the agent's Hive extension
+	// (Pi, spec 338 phase 3), which handed it to the agent: queued behind
+	// the current turn while it streams, a new turn when idle.
+	DeliveryExtension = "extension"
 )
 
 // SendToSessionReq is the SEND_TO_SESSION payload.

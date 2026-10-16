@@ -123,6 +123,12 @@ type SpawnInfo struct {
 	HivedPath string
 	// StateDir is registry.StateDir() for this daemon.
 	StateDir string
+	// SessionID is the Hive session being spawned; "" when the caller
+	// has none (tests).
+	SessionID string
+	// SocketPath is the daemon's events socket (HIVE_SOCKET); per-session
+	// sockets live beside it. "" when unknown.
+	SocketPath string
 	// Settings is agent-settings.json read ONCE for this spawn. SpawnArgs
 	// and SpawnEnv both consult it, and reading the file separately in
 	// each let them disagree when the user saved Settings in between: a

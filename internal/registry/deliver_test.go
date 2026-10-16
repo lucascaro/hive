@@ -2,6 +2,8 @@ package registry
 
 import (
 	"errors"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -709,5 +711,105 @@ func TestNotifyWhenIdleFiresOnceAfterSocketDelivery(t *testing.T) {
 	hookEvent(t, r, e.ID, wire.AgentEventTurnEnd)
 	if _, ok := nextKind(t, ch, wire.SessionEventIdlePing, 300*time.Millisecond); ok {
 		t.Fatal("idle ping fired twice")
+	}
+}
+
+// --- Pi extension inbox (spec 338, phase 3) ---
+
+// piSession is liveSession pretending to be a Pi entry, with a fake
+// extension inbox recording the socket path and text it was handed.
+func piSession(t *testing.T, r *Registry, name string, send func(sock, text string) error) (*Entry, *session.Session, *[][2]string) {
+	t.Helper()
+	e, sess := liveSession(t, r, wire.CreateSpec{Name: name})
+	r.mu.Lock()
+	e.Agent = "pi"
+	// Short on purpose: PiInboxPath refuses a path that cannot be a
+	// unix socket, and t.TempDir is too long on macOS.
+	dir, err := os.MkdirTemp("", "hp")
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { os.RemoveAll(dir) })
+	r.socketPath = filepath.Join(dir, "hived.sock")
+	r.mu.Unlock()
+	var calls [][2]string
+	r.piInboxSend = func(sock, text string) error {
+		calls = append(calls, [2]string{sock, text})
+		if send == nil {
+			return nil
+		}
+		return send(sock, text)
+	}
+	return e, sess, &calls
+}
+
+func TestSendPiUsesExtensionWhileWorking(t *testing.T) {
+	skipOnWindows(t)
+	r := freshRegistry(t)
+	manualClock(t, r)
+	e, sess, calls := piSession(t, r, "p1", nil)
+	goWorking(t, r, e, sess, time.Now())
+	got, err := r.SendToSession(e.ID, "mid-turn note", false, wire.OriginUser)
+	if err != nil || got != wire.DeliveryExtension {
+		t.Fatalf("send = %q, %v; want extension", got, err)
+	}
+	r.mu.Lock()
+	want := agent.PiInboxPath(r.socketPath, e.ID)
+	r.mu.Unlock()
+	if len(*calls) != 1 || (*calls)[0] != [2]string{want, "mid-turn note"} || want == "" {
+		t.Fatalf("calls = %+v, want one to %q", *calls, want)
+	}
+	time.Sleep(150 * time.Millisecond)
+	if strings.Contains(ptyText(sess), "mid-turn note") {
+		t.Fatal("an extension delivery was also typed")
+	}
+}
+
+// A dead or stale socket (a crashed pi) must fall back, not lose the note.
+func TestSendPiFallsBackToTypedWhenInboxFails(t *testing.T) {
+	skipOnWindows(t)
+	r := freshRegistry(t)
+	manualClock(t, r)
+	e, sess, _ := piSession(t, r, "p2", func(string, string) error { return errors.New("connection refused") })
+	got, err := r.SendToSession(e.ID, "fall back", false, wire.OriginUser)
+	if err != nil || got != wire.DeliveryTyped {
+		t.Fatalf("send = %q, %v; want typed", got, err)
+	}
+	waitFor(t, "typed", func() bool { return strings.Contains(ptyText(sess), "fall back") })
+}
+
+func TestSendPiSkipsInboxBehindAQueue(t *testing.T) {
+	skipOnWindows(t)
+	r := freshRegistry(t)
+	manualClock(t, r)
+	e, sess, calls := piSession(t, r, "p3", func(string, string) error { return agent.ErrNoInbox })
+	goWorking(t, r, e, sess, time.Now())
+	if _, err := r.SendToSession(e.ID, "older", true, wire.OriginUser); err != nil {
+		t.Fatal(err)
+	}
+	n := len(*calls)
+	r.piInboxSend = func(sock, text string) error { *calls = append(*calls, [2]string{sock, text}); return nil }
+	if got, err := r.SendToSession(e.ID, "newer", true, wire.OriginUser); err != nil || got != wire.DeliveryQueued {
+		t.Fatalf("send behind a queue = %q, %v; want queued", got, err)
+	}
+	if len(*calls) != n {
+		t.Fatalf("inbox used while notes were queued: %+v", (*calls)[n:])
+	}
+}
+
+// An unrelated agent never reaches either inbox.
+func TestSendOtherAgentNeverUsesPiInbox(t *testing.T) {
+	skipOnWindows(t)
+	r := freshRegistry(t)
+	manualClock(t, r)
+	e, _, calls := piSession(t, r, "p4", nil)
+	r.mu.Lock()
+	e.Agent = "codex"
+	r.mu.Unlock()
+	if got, err := r.SendToSession(e.ID, "plain", false, wire.OriginUser); err != nil || got != wire.DeliveryTyped {
+		t.Fatalf("send = %q, %v; want typed", got, err)
+	}
+	if len(*calls) != 0 {
+		t.Fatalf("pi inbox used for a non-pi session: %+v", *calls)
 	}
 }
