@@ -23,6 +23,7 @@ The *what* and *why* of work this project plans to do. Each spec describes user 
 
 | Issue | Title | PR | Shipped | Spec |
 |-------|-------|----|---------|------|
+| #517 | Read Claude's terminal status (OSC 7501) to fix stuck "working" after Esc | #520 | 2026-10-15 | [517-read-claude-osc-7501-status-after-esc](517-read-claude-osc-7501-status-after-esc.md) |
 | #518 | Archive a session now, unarchive it later | #519 | 2026-10-15 | [518-archive-a-session-now-unarchive-it-later](518-archive-a-session-now-unarchive-it-later.md) |
 | #505 | ACP Claude sessions load untrusted project hooks and MCP servers without a trust prompt | #510 | 2026-10-11 | [505-acp-claude-untrusted-project-settings](505-acp-claude-untrusted-project-settings.md) |
 | #495 | Design Hive's workflow engine: typed TS workflows, an inspectable graph, durable runs | #506 | 2026-10-07 | [495-design-hive-s-workflow-engine-typed-ts-workflows-a](495-design-hive-s-workflow-engine-typed-ts-workflows-a.md) |
