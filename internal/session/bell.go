@@ -21,6 +21,15 @@ package session
 type bellScanner struct {
 	// state is what the byte stream is in the middle of.
 	state bellState
+
+	// payload holds the first oscPrefixMax bytes of the OSC in progress
+	// (plen of them), so a finished sequence can be classified — see
+	// osc7501.go. query and statuses are what finished sequences found
+	// since the last Take.
+	payload  [oscPrefixMax]byte
+	plen     int
+	query    bool
+	statuses []Status
 }
 
 type bellState uint8
@@ -54,6 +63,7 @@ func (s *bellScanner) Scan(p []byte) bool {
 				s.state = bellCSI
 			case ']':
 				s.state = bellOSC
+				s.plen = 0
 			case 0x1B:
 				// ESC ESC: stay here; the second one starts the real
 				// sequence.
@@ -79,8 +89,11 @@ func (s *bellScanner) Scan(p []byte) bool {
 				// The terminator, not a bell. This is the case the
 				// whole type exists for.
 				s.state = bellText
+				s.classifyOSC()
 			case 0x1B:
 				s.state = bellOSCEsc
+			default:
+				s.keep(c)
 			}
 		case bellOSCEsc:
 			// ESC \ is the other OSC terminator (ST). Anything else
@@ -88,10 +101,21 @@ func (s *bellScanner) Scan(p []byte) bool {
 			// sequence.
 			if c == '\\' {
 				s.state = bellText
+				s.classifyOSC()
 			} else {
 				s.state = bellOSC
+				s.keep(0x1B)
+				s.keep(c)
 			}
 		}
 	}
 	return rang
+}
+
+// keep appends one payload byte while the prefix has room.
+func (s *bellScanner) keep(c byte) {
+	if s.plen < oscPrefixMax {
+		s.payload[s.plen] = c
+		s.plen++
+	}
 }
