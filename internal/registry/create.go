@@ -188,6 +188,8 @@ func (r *Registry) finishCreateTail(ctx context.Context, e *Entry, spec wire.Cre
 		Cols:  spec.Cols,
 		Rows:  spec.Rows,
 		Env:   append(r.hiveEnv(p.id), r.resolveAgentEnv(spec, sp)...),
+
+		AnswerStatusQuery: answersStatusQuery(spec.Agent),
 	})
 	if err != nil {
 		log.Printf("registry: session.Start failed for %s (agent=%q cmd=%v): %v",

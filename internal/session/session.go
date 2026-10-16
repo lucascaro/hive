@@ -85,6 +85,13 @@ type Session struct {
 	// bool compare, not a frame per bell.
 	bells    bellScanner
 	bellHook func()
+
+	// OSC 7501 status plumbing (spec 517). statusHook receives parsed
+	// reports; answerQuery arms the one-time capability reply and
+	// queryAnswered records that it was sent. All guarded by mu.
+	statusHook    func([]Status)
+	answerQuery   bool
+	queryAnswered bool
 }
 
 // titleThrottle bounds how often a session reports a title change. Some
@@ -103,6 +110,12 @@ type Options struct {
 	Cwd        string   // working directory; default = sane choice
 	Cols, Rows int
 	Env        []string // appended to os.Environ()
+
+	// AnswerStatusQuery makes the session reply, once, to a program's
+	// `OSC 7501 ; ?` capability query (spec 517). Set for agent sessions
+	// only: the reply lands on the program's stdin, so a plain shell
+	// that happens to cat a hostile file must not receive one.
+	AnswerStatusQuery bool
 }
 
 // resolveCwd returns the working directory to use for a new session.
@@ -223,6 +236,8 @@ func Start(opts Options) (*Session, error) {
 		ptmx:  ptmx,
 		sinks: make(map[Sink]struct{}),
 		done:  make(chan struct{}),
+
+		answerQuery: opts.AnswerStatusQuery,
 	}
 	go s.readLoop()
 	go s.reapChild()
@@ -380,11 +395,40 @@ func (s *Session) SetBellHook(fn func()) {
 func (s *Session) noteBell(p []byte) {
 	s.mu.Lock()
 	rang := s.bells.Scan(p)
-	hook := s.bellHook
+	query, statuses := s.bells.Take()
+	hook, statusHook := s.bellHook, s.statusHook
+	answer := query && s.answerQuery && !s.queryAnswered
+	if answer {
+		s.queryAnswered = true
+	}
 	s.mu.Unlock()
+	if answer {
+		// Off this goroutine: readLoop is the PTY drain, and a write
+		// into a full input queue (a large paste or an injected message
+		// at spawn, before the program reads stdin) would block it
+		// while the program blocks writing output to us. os.File writes
+		// serialize, so bypassing Write is safe; a close racing the
+		// write is the ordinary end of a session.
+		go func() { _, _ = s.ptmx.Write(statusQueryReply) }()
+	}
 	if rang && hook != nil {
 		hook()
 	}
+	if statusHook != nil && len(statuses) > 0 {
+		statusHook(statuses)
+	}
+}
+
+// SetStatusHook installs the callback invoked with the OSC 7501 status
+// reports one PTY read contained, in order. One call per read, so a
+// program (or hostile output) printing a burst costs the listener one
+// pass, not one per report. Passing nil disables reporting. Same
+// contract as SetBellHook: it runs on the readLoop goroutine with no
+// session lock held.
+func (s *Session) SetStatusHook(fn func([]Status)) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.statusHook = fn
 }
 
 // noteTitle reports a changed window title to the hook, at most once per

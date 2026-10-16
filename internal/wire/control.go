@@ -378,6 +378,13 @@ const (
 	// the ACP stream, so a silent stream is a silent agent, not a lost
 	// reporter. Daemon-only — the event socket rejects it.
 	StateSourceACP = "acp"
+	// StateSourceOSC is read from the program's own OSC 7501 status
+	// reports in the PTY stream (spec 517). It is the lowest-trust
+	// reported tier: PTY bytes can be forged by anything that writes to
+	// the terminal, so it fills gaps and never overrides a fresh hook,
+	// extension or ACP report (the one exception is Esc, which hooks
+	// cannot report). Daemon-only — the event socket rejects it.
+	StateSourceOSC = "osc"
 )
 
 // Session lifecycle phases, carried by SessionInfo.Phase. The daemon

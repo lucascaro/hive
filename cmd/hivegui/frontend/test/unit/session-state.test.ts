@@ -226,3 +226,19 @@ describe('Laya source (spec 458)', () => {
     expect(isInferredSource('extension')).toBe(false);
   });
 });
+
+describe('OSC source (spec 517)', () => {
+  it('names the terminal status in the tooltip rather than crediting the agent', () => {
+    expect(
+      stateTooltip({
+        alive: true,
+        state: 'waiting_input',
+        state_source: 'osc',
+      }),
+    ).toBe('Waiting for you\nread from the terminal status');
+  });
+  it('treats osc as inferred: no plan, no report deadline', () => {
+    expect(isInferredSource('osc')).toBe(true);
+    expect(isInferredSource('hook')).toBe(false);
+  });
+});

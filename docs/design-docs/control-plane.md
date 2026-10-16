@@ -32,7 +32,7 @@ that outlives the UI. That is the gap Hive fills.
 Agents differ wildly in what they expose. Rather than pretend
 otherwise, the control plane has explicit tiers, and every session
 carries which tier it is on (`state_source` on the wire). Four are
-ranked by trust; a fifth (`laya`) only fills gaps:
+ranked by trust; a fifth (`laya`) and a sixth (`osc`) only fill gaps:
 
 | Tier | Source | Agents | What Hive learns |
 |------|--------|--------|------------------|
@@ -40,6 +40,7 @@ ranked by trust; a fifth (`laya`) only fills gaps:
 | `extension` | A Hive-shipped extension loaded into the agent at spawn | Pi | exact turn boundaries (`agent_start` / `agent_settled`), prompt/summary text, a per-session inbox socket |
 | `acp` | The Agent Client Protocol stream `hived` itself drives, for an `acp` session ([acp-session-kind.md](acp-session-kind.md)) | Claude, Codex; Pi when unattended tool use is allowed; not yet Gemini or Copilot (their modes cannot be capped) | exact turn boundaries, permission requests, tool calls and plan. Ranks with `hook`, and never goes stale: the daemon owns the stream |
 | `heuristic` | PTY output cadence + bell + OSC title + process exit | shell, Codex, Gemini, Copilot, Aider, custom | working / idle / exited, "waiting" only via bell |
+| `osc` | The program's own OSC 7501 status report (`state=working\|idle\|blocked\|done\|error`), read off the PTY stream (spec 517, [agent-osc-signals.md](../references/agent-osc-signals.md)). The daemon answers the capability query that makes Claude emit it | Claude Code (verified); Codex 0.163+ emits it unprompted | fills in only while no tier is speaking; never overrides a fresh hook, extension or ACP report. One exception: an `idle` ending an `osc` `working` ends a hook `working` — Esc, which fires no hook. Forgeable like the bell, so it uses `state` and `kind` only, never `msg`/`title` |
 | `laya` | The daemon's classification of the visible screen by a user-run Laya model (spec 458, [laya-state-classifier.md](laya-state-classifier.md)) | any, when configured | fills in only while the trusted tier is absent or stale; any real agent event takes the session back |
 
 **Implemented: the `acp` tier** (spec 496). An ACP session (see
