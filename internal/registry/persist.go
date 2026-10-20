@@ -46,6 +46,10 @@ type MetaFile struct {
 	// ACPMode is the ACP mode CreateSpec.ACPMode asked for; "" = the
 	// ceiling. Meaningful only for Kind "acp".
 	ACPMode string `json:"acp_mode,omitempty"`
+	// Orchestrator is the user's grant (spec 389) letting this session
+	// message its siblings. Persisted because it is intent, not derived
+	// state: losing it on a restart would silently break a setup.
+	Orchestrator bool `json:"orchestrator,omitempty"`
 }
 
 // IndexFile is what we write to sessions/index.json.

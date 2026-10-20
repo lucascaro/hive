@@ -4,7 +4,7 @@ title: "Orchestrator grant: a session you name can message its siblings"
 type: enhancement
 complexity: M
 priority: P2
-stage: PLAN
+stage: IMPLEMENT
 ---
 
 # Orchestrator grant: a session you name can message its siblings
@@ -29,8 +29,10 @@ wants an agent to do for them, and today it is the user who relays it.
 ## Desired behavior
 
 **Grant.** The launcher has a checkbox, off by default: *May direct
-other sessions*. A running session's sidebar context menu has the same
-item as a toggle. A granted session shows a small glyph on its row.
+other sessions*. A running session has the same
+toggle in the command palette ("Toggle May Direct Other Sessions"; the
+sidebar has no context menu, and a fourth hover button on the row widens
+the action strip over its click target). A granted session shows a small glyph on its row.
 The grant survives daemon restart.
 
 **`hived msg` from inside a granted session.** `hived msg <session>
@@ -59,13 +61,14 @@ delivery=<kind>`. This is the phase gate.
   `SessionInfo.orchestrator` on the wire; persisted in `MetaFile`.
 - `hived msg` on a `ModeSession` connection: granted ⇒ delivered
   with provenance; not granted ⇒ `ERROR{code: not_orchestrator}`;
-  other project ⇒ `ERROR{code: not_found}`; self ⇒ `ERROR{code:
-  invalid}` (or the existing nearest code).
+  other project ⇒ `ERROR{code: no_such_session}`; self ⇒ `ERROR{code:
+  bad_payload}` (338's existing codes; only `not_orchestrator` is new).
+  Always queued; plain shell targets refused (`bad_payload`).
 - Daemon test: revoking the grant with `UpdateSession` makes the very
   next `SEND_TO_SESSION` on an already-open session connection fail.
 - Registry test: every delivery path receives the provenance prefix;
   a client-supplied sender field, if the wire gains one, is ignored.
-- GUI: launcher checkbox and context-menu toggle round-trip through
+- GUI: launcher checkbox and palette toggle round-trip through
   the daemon; glyph reflects `orchestrator` from the wire.
 - Log line present and greppable for both caller kinds.
 

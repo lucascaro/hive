@@ -65,6 +65,10 @@ export interface SessionInfo {
   // shot and in-memory on the daemon: it clears after firing and a
   // daemon restart disarms it. Single-spelled snake_case.
   notify_when_idle?: boolean;
+  // True when the user granted this session leave to message its
+  // siblings (internal/wire SessionInfo.Orchestrator, spec 389).
+  // Persisted by the daemon. Single-spelled snake_case.
+  orchestrator?: boolean;
   // What the daemon believes this session is doing right now
   // (internal/wire/control.go State*). Absent means idle — that is the
   // omitempty case AND what a daemon too old to send it looks like, on

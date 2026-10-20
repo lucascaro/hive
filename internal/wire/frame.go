@@ -260,9 +260,10 @@ const (
 	FrameSetSessionKind FrameType = 0x45 // C → S, JSON, control
 	// SEND_TO_SESSION hands a running session a one-line note (spec
 	// 338). Answered with SENT on success or ERROR (session_busy,
-	// session_dead, delivery_failed, bad_payload). Control connections
-	// only: a plugin gets mode_not_allowed and a ModeSession connection
-	// is not offered it (that is spec 389's grant).
+	// session_dead, delivery_failed, bad_payload). A plugin gets
+	// mode_not_allowed; a ModeSession connection is served only when its
+	// session holds the orchestrator grant (spec 389), else
+	// not_orchestrator, and its target is resolved within its own project.
 	FrameSendToSession FrameType = 0x46 // C → S, JSON, control
 	FrameSent          FrameType = 0x47 // S → C, JSON, control
 

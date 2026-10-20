@@ -64,20 +64,25 @@ func TestSendToSessionRefusedForPlugin(t *testing.T) {
 	}
 }
 
-// TestSendToSessionNotInSessionModeFrames: a ModeSession connection (an
-// agent inside a session) must not be offered SEND_TO_SESSION; that is
-// spec 389's grant, not this spec's.
-func TestSendToSessionNotInSessionModeFrames(t *testing.T) {
-	if sessionModeFrames[wire.FrameSendToSession] {
-		t.Fatal("SEND_TO_SESSION is in sessionModeFrames")
+// TestSendToSessionIsGrantGatedInSessionMode: a ModeSession connection
+// is offered SEND_TO_SESSION (spec 389), but a session the user has not
+// granted gets not_orchestrator, never a delivery.
+func TestSendToSessionIsGrantGatedInSessionMode(t *testing.T) {
+	if !sessionModeFrames[wire.FrameSendToSession] {
+		t.Fatal("SEND_TO_SESSION is not in sessionModeFrames")
 	}
 	d := newFrameTestDaemon(t)
-	rec := &recordOps{}
-	o := rec.ops()
-	o.restricted = true
-	d.handleControlFrame(context.Background(), o, wire.FrameSendToSession, sendReq(t, "any", "hi"))
-	if len(rec.errs) != 1 || rec.errs[0].Code != wire.ErrCodeModeNotAllowed {
-		t.Fatalf("restricted connection got %+v, want one mode_not_allowed", rec.errs)
+	ops, errs, _ := asyncOps("")
+	ops.restricted = true
+	ops.ownSessionID = "ungranted"
+	d.handleControlFrame(context.Background(), ops, wire.FrameSendToSession, sendReq(t, "any", "hi"))
+	select {
+	case e := <-errs:
+		if e.Code != wire.ErrCodeNotOrchestrator {
+			t.Fatalf("restricted connection got %+v, want not_orchestrator", e)
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("no refusal")
 	}
 }
 

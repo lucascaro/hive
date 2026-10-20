@@ -19,6 +19,7 @@ import { act, fireEvent, render } from '@testing-library/react';
 import { resetStore } from '../../src/store/store.js';
 // Type-only: erased, so the generated module is never resolved at runtime.
 import type { main } from '../../wailsjs/go/models';
+import type { SessionInfo } from '../../src/app/state';
 import { isMac } from '../../src/lib/platform.js';
 import { hiveStateView as state } from '../../src/store/store.js';
 
@@ -480,6 +481,8 @@ describe('launcher worktree row', () => {
       // The branch field trails the toggle it belongs to, hidden until
       // the toggle is on.
       'launcher-branch hidden',
+      // Spec 389: its own row, after the worktree pair, before the list.
+      'launcher-orchestrator',
       'launcher-list',
     ]);
   });
@@ -641,6 +644,7 @@ describe('launcher branch name', () => {
       initialPrompt: '',
       ideaId: '',
       kind: '',
+      orchestrator: false,
     });
   });
 
@@ -789,6 +793,10 @@ describe('launcher branch name', () => {
     expect(warn()?.textContent).toBe('');
   });
 
+  const orchestratorBox = () =>
+    launcher().querySelector(
+      '.launcher-orchestrator input',
+    ) as HTMLInputElement;
   const worktreeBox = () =>
     launcher().querySelector(
       '.launcher-worktree input[type=checkbox]',
@@ -825,11 +833,15 @@ describe('launcher branch name', () => {
     tab();
     expect(document.activeElement).toBe(branchBox());
     tab();
+    expect(document.activeElement).toBe(orchestratorBox());
+    tab();
     expect(document.activeElement).toBe(searchBox());
     // Never out of the popup, so it never closes.
     expect(launcher().classList.contains('hidden')).toBe(false);
 
     // And backwards, all the way round.
+    tab(true);
+    expect(document.activeElement).toBe(orchestratorBox());
     tab(true);
     expect(document.activeElement).toBe(branchBox());
     tab(true);
@@ -841,7 +853,7 @@ describe('launcher branch name', () => {
     // convention rather than offsetParent: jsdom has no layout, so an
     // offsetParent rule collapses the field list and makes the test
     // above assert nothing. With the toggle off the branch box carries
-    // `.hidden`, so the cycle is search → prompt → toggle → search.
+    // `.hidden`, so the cycle is search → prompt → toggle → grant → search.
     await open({ initialPrompt: 'seeded', ideaId: 'i7' });
     expect(branchBox().classList.contains('hidden')).toBe(true);
 
@@ -849,6 +861,8 @@ describe('launcher branch name', () => {
     expect(document.activeElement).toBe(promptBox());
     tab();
     expect(document.activeElement).toBe(worktreeBox());
+    tab();
+    expect(document.activeElement).toBe(orchestratorBox());
     tab();
     expect(document.activeElement).toBe(searchBox());
   });
@@ -1001,6 +1015,7 @@ describe('launcher stale-response handling', () => {
       'launcher-search',
       'launcher-worktree',
       'launcher-branch hidden',
+      'launcher-orchestrator',
       'launcher-list',
     ]);
     expect(names()).toEqual(['Shell', 'Claude', 'Codex CLI']);
@@ -1214,6 +1229,10 @@ describe('launcher session kind', () => {
     tabKey();
     expect(document.activeElement).toBe(wt);
     tabKey();
+    expect(document.activeElement).toBe(
+      launcher().querySelector('.launcher-orchestrator input'),
+    );
+    tabKey();
     expect(document.activeElement).toBe(radio('pty'));
     fireEvent.click(radio('acp'));
     tabKey();
@@ -1245,5 +1264,42 @@ describe('launcher session kind', () => {
   it('is not offered for an opening with a prompt', async () => {
     await openACP({ initialPrompt: 'do the thing' });
     expect(launcher().querySelector('.launcher-kind')).toBeNull();
+  });
+});
+
+describe('launcher orchestrator grant (spec 389)', () => {
+  const box = () =>
+    launcher().querySelector(
+      '.launcher-orchestrator input[type="checkbox"]',
+    ) as HTMLInputElement;
+
+  it('is off by default and sent as false', async () => {
+    await open();
+    expect(box().checked).toBe(false);
+    press('Enter');
+    expect(sent().orchestrator).toBe(false);
+  });
+
+  it('is sent as true once ticked', async () => {
+    await open();
+    fireEvent.click(box());
+    press('Enter');
+    expect(sent().orchestrator).toBe(true);
+  });
+
+  it('is not remembered across openings', async () => {
+    await open();
+    fireEvent.click(box());
+    act(() => closeLauncher());
+    await open();
+    expect(box().checked).toBe(false);
+  });
+
+  it('is not offered when duplicating a session', async () => {
+    await open({
+      duplicateFrom: { id: 's1', name: 'api' } as SessionInfo,
+      duplicateCwd: '/tmp',
+    });
+    expect(launcher().querySelector('.launcher-orchestrator')).toBeNull();
   });
 });

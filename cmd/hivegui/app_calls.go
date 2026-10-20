@@ -301,6 +301,9 @@ type CreateSessionOpts struct {
 	// Kind is the session kind: "" or "pty" for a terminal session,
 	// "acp" for one the daemon drives over ACP (spec 496).
 	Kind string `json:"kind"`
+	// Orchestrator grants the new session leave to message its siblings
+	// (spec 389): the launcher's "May direct other sessions".
+	Orchestrator bool `json:"orchestrator"`
 }
 
 // CreateSession asks the daemon to create a new session. The daemon
@@ -332,6 +335,7 @@ func (a *App) CreateSession(opts CreateSessionOpts) error {
 		InitialPrompt:        opts.InitialPrompt,
 		IdeaID:               opts.IdeaID,
 		Kind:                 opts.Kind,
+		Orchestrator:         opts.Orchestrator,
 	})
 }
 
@@ -928,6 +932,17 @@ func (a *App) SetSessionNotifyWhenIdle(sessionID string, want bool) error {
 		return err
 	}
 	return cs.WriteJSON(wire.FrameUpdateSession, wire.UpdateSessionReq{SessionID: sessionID, NotifyWhenIdle: &want})
+}
+
+// SetSessionOrchestrator grants or revokes a session's leave to message
+// its siblings (spec 389). The daemon persists it and announces the
+// change as an ordinary session update.
+func (a *App) SetSessionOrchestrator(sessionID string, want bool) error {
+	cs, err := a.requireControl()
+	if err != nil {
+		return err
+	}
+	return cs.WriteJSON(wire.FrameUpdateSession, wire.UpdateSessionReq{SessionID: sessionID, Orchestrator: &want})
 }
 
 // SearchTranscript asks the daemon to search one session's agent

@@ -111,7 +111,8 @@ func (h *commandHub) Close() {
 // disk write for a bell-only request.
 func updatesPersistedFields(req wire.UpdateSessionReq) bool {
 	return req.Name != nil || req.Color != nil ||
-		req.Order != nil || req.ProjectID != nil || req.NotifyWhenIdle != nil
+		req.Order != nil || req.ProjectID != nil || req.NotifyWhenIdle != nil ||
+		req.Orchestrator != nil
 }
 
 // pressure is how full the fullest command listener is, 0 to 1; see

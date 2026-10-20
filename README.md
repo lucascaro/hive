@@ -137,7 +137,13 @@ What works:
   notification for when the session stops working; it clears after
   firing, and a daemon restart disarms it. `hived msg <id-or-name> <text…>`
   does the same from an ordinary shell (exact id or exact name only).
-  Plugins cannot send messages. A Claude Code session receives the note
+  Plugins cannot send messages. A session can message its siblings only
+  if you let it: tick **May direct other sessions** in the launcher, or
+  toggle it on the session's row (or from the command palette). Its agent
+  can then run `hived msg <id-or-name> <text…>` to reach another agent
+  session in the same project; the note arrives marked as coming from
+  that session, is always queued, and a plain shell is refused. Revoking
+  the grant takes effect on the very next message. A Claude Code session receives the note
   through Claude's own inbox, working or idle, and falls back to the typed
   path if that is unavailable; a Pi session takes it through Hive's Pi
   extension the same way (queued behind its current turn), and every other

@@ -28,8 +28,9 @@ const (
 	// running INSIDE a Hive session — `hive idea`, and an ACP session's
 	// `hived mcp-submit`. It reaches the daemon over the events socket
 	// (HIVE_SOCKET), and the daemon serves only the idea verbs on it:
-	// ADD_IDEA and LIST_IDEAS, and SUBMIT_RESULT for its own session,
-	// plus
+	// ADD_IDEA and LIST_IDEAS, SUBMIT_RESULT for its own session, and
+	// SEND_TO_SESSION when the user granted that session the right to
+	// direct its siblings (spec 389), plus
 	// the IDEA_EVENT stream and a SESSIONS snapshot narrowed to the
 	// one session named in Hello.SessionID. Everything else — creating,
 	// attaching to or killing sessions, worktree mutations, shutdown,
@@ -68,6 +69,10 @@ type CreateSpec struct {
 	// makes the daemon create a fresh git worktree under
 	// <gitRoot>/.worktrees/ and run the session inside it.
 	UseWorktree bool `json:"use_worktree,omitempty"`
+	// Orchestrator grants the new session leave to message its siblings
+	// in the same project (spec 389). Honoured only from the user's own
+	// control connection: a plugin's create has it cleared.
+	Orchestrator bool `json:"orchestrator,omitempty"`
 	// Branch is an optional branch name for the worktree. When empty,
 	// a random adjective-noun is generated.
 	Branch string `json:"branch,omitempty"`
@@ -247,6 +252,9 @@ type SessionInfo struct {
 	// user when it next stops working (spec 338). Daemon-owned and
 	// in-memory: a daemon restart disarms every session.
 	NotifyWhenIdle bool `json:"notify_when_idle,omitempty"`
+	// Orchestrator is true when the user granted this session leave to
+	// message its siblings (spec 389). Persisted.
+	Orchestrator bool `json:"orchestrator,omitempty"`
 
 	// State is what the session is doing right now — see the State*
 	// constants. Daemon-owned and in-memory like Phase, Title and
@@ -577,6 +585,10 @@ type UpdateSessionReq struct {
 	// NotifyWhenIdle arms (true) or disarms (false) the one-shot "tell
 	// me when this session stops working" bell (spec 338).
 	NotifyWhenIdle *bool `json:"notify_when_idle,omitempty"`
+	// Orchestrator grants (true) or revokes (false) the session's leave
+	// to message its siblings (spec 389). Control connections only; a
+	// plugin is refused.
+	Orchestrator *bool `json:"orchestrator,omitempty"`
 }
 
 // SessionEventKind enumerates the kinds carried by SESSION_EVENT.
@@ -1419,6 +1431,10 @@ const (
 	// ask to queue. Queueing is unsupported for ACP sessions, so a busy
 	// ACP session answers this regardless of Queue.
 	ErrCodeSessionBusy = "session_busy"
+	// ErrCodeNotOrchestrator is SEND_TO_SESSION's answer to a session
+	// connection whose session has not been granted leave to message
+	// its siblings (spec 389).
+	ErrCodeNotOrchestrator = "not_orchestrator"
 	// ErrCodeSessionDead is returned when the target has no live process.
 	ErrCodeSessionDead = "session_dead"
 	// ErrCodeDeliveryFailed is returned when the write to the target

@@ -624,6 +624,9 @@ func (r *Registry) insertEntry(spec wire.CreateSpec, p createPlan) (*Entry, erro
 		Kind:      acpKind(spec.Kind),
 		SpawnedBy: spec.SpawnedBy,
 		ACPMode:   spec.ACPMode,
+		// Set by the user's launcher; the daemon clears it on a plugin's
+		// create (daemon.go), so a spawned session never self-grants.
+		Orchestrator: spec.Orchestrator,
 	}
 	r.entries[p.id] = e
 	// Place the new session right after its anchor when the anchor is a

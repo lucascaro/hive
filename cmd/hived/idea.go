@@ -351,5 +351,11 @@ func ideaFrameError(payload []byte) error {
 	if err := json.Unmarshal(payload, &e); err != nil {
 		return err
 	}
-	return fmt.Errorf("%s: %s", e.Code, e.Message)
+	return &wireCodeError{code: e.Code, msg: fmt.Sprintf("%s: %s", e.Code, e.Message)}
 }
+
+// wireCodeError is a daemon ERROR frame as a Go error, keeping the code
+// so a caller can word a particular refusal for its own user.
+type wireCodeError struct{ code, msg string }
+
+func (e *wireCodeError) Error() string { return e.msg }

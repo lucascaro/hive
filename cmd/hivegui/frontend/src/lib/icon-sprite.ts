@@ -36,6 +36,7 @@ export const ICON_NAMES = [
   'gift',
   'idea',
   'bell',
+  'orchestrator',
   'state-running',
   'state-working',
   'state-attention',

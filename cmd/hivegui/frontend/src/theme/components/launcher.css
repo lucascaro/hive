@@ -41,7 +41,8 @@
 .launcher-search::placeholder { color: var(--fg-subtle); }
 
 
-.launcher-worktree {
+.launcher-worktree,
+.launcher-orchestrator {
   display: flex;
   align-items: center;
   gap: 8px;
@@ -53,7 +54,8 @@
   user-select: none;
   cursor: pointer;
 }
-.launcher-worktree input[type=checkbox] {
+.launcher-worktree input[type=checkbox],
+.launcher-orchestrator input[type=checkbox] {
   margin: 0;
 }
 .launcher-worktree.disabled {
