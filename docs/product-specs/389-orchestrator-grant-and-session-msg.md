@@ -4,7 +4,8 @@ title: "Orchestrator grant: a session you name can message its siblings"
 type: enhancement
 complexity: M
 priority: P2
-stage: IMPLEMENT
+stage: REVIEW
+pr: 524
 ---
 
 # Orchestrator grant: a session you name can message its siblings

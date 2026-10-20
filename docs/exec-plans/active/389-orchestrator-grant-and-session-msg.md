@@ -4,7 +4,7 @@
 - **Design:** [docs/design-docs/agent-orchestration.md](../../design-docs/agent-orchestration.md)
 - **Issue:** —
 - **Branch:** `feature/389-orchestrator-grant`
-- **PR:** —
+- **PR:** [#524](https://github.com/lucascaro/hive/pull/524)
 - **Status:** active
 
 ## Summary
