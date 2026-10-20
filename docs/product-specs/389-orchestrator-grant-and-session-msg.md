@@ -4,8 +4,9 @@ title: "Orchestrator grant: a session you name can message its siblings"
 type: enhancement
 complexity: M
 priority: P2
-stage: GATE
+stage: DONE
 pr: 524
+shipped: 2026-10-20
 ---
 
 # Orchestrator grant: a session you name can message its siblings
@@ -14,7 +15,7 @@ pr: 524
 - **Type:** enhancement
 - **Complexity:** M
 - **Priority:** P2
-- **Exec plan:** [docs/exec-plans/active/389-orchestrator-grant-and-session-msg.md](../exec-plans/active/389-orchestrator-grant-and-session-msg.md)
+- **Exec plan:** [docs/exec-plans/completed/389-orchestrator-grant-and-session-msg.md](../exec-plans/completed/389-orchestrator-grant-and-session-msg.md)
 - **Design:** [docs/design-docs/agent-orchestration.md](../design-docs/agent-orchestration.md)
 - **Depends on:** [338 — session messaging](338-session-messaging.md)
 

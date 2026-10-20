@@ -5,7 +5,7 @@
 - **Issue:** —
 - **Branch:** `feature/389-orchestrator-grant`
 - **PR:** [#524](https://github.com/lucascaro/hive/pull/524)
-- **Status:** active
+- **Status:** completed
 
 ## Summary
 
@@ -135,3 +135,11 @@ Independent reviewer, 2 rounds. Round 1: revise (8/10) — 5 must-fix applied (e
 
 ## PR convergence ledger
 - **2026-10-20 iter 1** — verdict: APPROVE; mergeable: MERGEABLE; findings_hash: empty; threads_open: 0; action: stop; head_sha: a4e1d07 (minor usage note applied after).
+
+## Gate verdict
+
+- **2026-10-20** — verdict: PASS; phase: —; checks: 6 passed / 0 failed / 0 followups; followups: none; one-line: every success criterion has a named passing test or doc; non-goals untouched.
+  - 2026-10-20 dimensions:
+    - acceptance — PASS — wire fields+MetaFile (`TestMetaFileRoundTripsOrchestrator`); grant/other-project/self (`TestSessionModeSend*`, error codes per amended spec); revoke mid-connection (`TestSessionModeSendRevokedMidConnection`); provenance on claude/typed/queued/ACP (`TestSendFromSessionPrefixes*`); GUI launcher checkbox + palette toggle + glyph (`launcher.test`, `toggle-orchestrator.test`, `session-row-orchestrator.test`); log line both callers (`TestSessionModeSendLogLines`)
+    - non-goals — PASS — no list/wait/spawn, cross-project, broadcast or remembered checkbox (`is not remembered across openings`)
+    - doc accuracy — PASS — README, changeset, site/features.json, control-plane.md, agent-orchestration.md, icons.md updated; no `type: fixed` changeset so no regression_of check. Note: full CI on the final push was still pending at gate time.
