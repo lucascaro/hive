@@ -2,6 +2,7 @@ package registry
 
 import (
 	"errors"
+	"fmt"
 	"log"
 	"strings"
 	"time"
@@ -328,4 +329,111 @@ func (r *Registry) stopDrainTimers() {
 			e.drainTimer = nil
 		}
 	}
+}
+
+var (
+	// ErrNotOrchestrator is returned when the sending session has not
+	// been granted leave to message its siblings (spec 389), or no longer
+	// exists.
+	ErrNotOrchestrator = errors.New("registry: session may not direct other sessions")
+	// ErrSelfMessage is returned when a session addresses itself.
+	ErrSelfMessage = errors.New("registry: a session cannot message itself")
+	// ErrAmbiguousTarget is returned when a name matches several sessions
+	// in the sender's project. The wrapped message lists their ids.
+	ErrAmbiguousTarget = errors.New("registry: several sessions have that name")
+	// ErrTargetNotAgent is returned for a plain shell target: typing an
+	// agent's words into a shell would run them as commands.
+	ErrTargetNotAgent = errors.New("registry: target is not an agent session")
+)
+
+// maxSenderNameRunes bounds the sender name in the provenance prefix, so
+// a long session name cannot eat the message budget.
+const maxSenderNameRunes = 64
+
+// provenancePrefix is the daemon-built lead of every message one session
+// sends another. The name is the sender's, cleaned so it cannot carry a
+// newline (a forged second "Message from…" line), a quote or a control
+// character; the short id tells apart two sessions with one name.
+func provenancePrefix(name, id string) string {
+	clean := strings.Map(func(r rune) rune {
+		switch {
+		case r == '"':
+			return '\''
+		case r < 0x20 || r == 0x7f || (r >= 0x80 && r < 0xa0):
+			return ' '
+		}
+		return r
+	}, name)
+	clean = strings.Join(strings.Fields(clean), " ")
+	if rs := []rune(clean); len(rs) > maxSenderNameRunes {
+		clean = string(rs[:maxSenderNameRunes])
+	}
+	if clean == "" {
+		clean = "unnamed"
+	}
+	short := id
+	if len(short) > 8 {
+		short = short[:8]
+	}
+	return `Message from Hive session "` + clean + `" (` + short + `): `
+}
+
+// SendFromSession delivers text from one session to a sibling in its own
+// project, on behalf of a ModeSession connection (spec 389). It returns
+// the resolved target id and the wire.Delivery* kind.
+//
+// The grant, the sender's CURRENT project (a session can be moved while
+// its connection stays open) and the target are all read under one hold
+// of r.mu, so a revocation or move cannot slip between the check and the
+// resolution. Delivery itself happens after, as for any send: a revoke
+// that lands during it is ordered after the send.
+//
+// Always queued (a busy target holds the note until it idles), only to
+// agent sessions, and always prefixed with provenance the caller cannot
+// influence.
+func (r *Registry) SendFromSession(callerID, ref, text string) (targetID, delivery string, err error) {
+	r.mu.Lock()
+	caller, ok := r.entries[callerID]
+	if !ok || !caller.Orchestrator {
+		r.mu.Unlock()
+		return "", "", ErrNotOrchestrator
+	}
+	var target *Entry
+	var named []string
+	if e, ok := r.entries[ref]; ok && e.ProjectID == caller.ProjectID {
+		target = e
+	} else {
+		for _, id := range r.order {
+			if e := r.entries[id]; e != nil && e.ProjectID == caller.ProjectID && e.Name == ref {
+				target = e
+				named = append(named, e.ID)
+			}
+		}
+	}
+	switch {
+	case target == nil:
+		r.mu.Unlock()
+		return "", "", ErrNotFound
+	case len(named) > 1:
+		r.mu.Unlock()
+		return "", "", fmt.Errorf("%w: %s", ErrAmbiguousTarget, strings.Join(named, ", "))
+	case target.ID == callerID:
+		r.mu.Unlock()
+		return "", "", ErrSelfMessage
+	case target.Agent == "" || target.Agent == string(agent.IDShell):
+		r.mu.Unlock()
+		return "", "", ErrTargetNotAgent
+	}
+	prefix := provenancePrefix(caller.Name, caller.ID)
+	targetID = target.ID
+	r.mu.Unlock()
+
+	// The body alone is validated first: prefix + nothing must never
+	// pass as a message.
+	body, err := sanitizeInput(text)
+	if err != nil {
+		return targetID, "", err
+	}
+	delivery, err = r.SendToSession(targetID, prefix+body, true, wire.OriginUser)
+	return targetID, delivery, err
 }

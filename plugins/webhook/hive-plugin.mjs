@@ -163,6 +163,7 @@ const MAX_PAYLOAD = 1 << 20;
  * @property {string} [title]
  * @property {boolean} [needs_attention]
  * @property {boolean} [notify_when_idle]
+ * @property {boolean} [orchestrator] the user let this session message its siblings (spec 389)
  * @property {''|'working'|'waiting_input'|'waiting_permission'|'exited'|'error'} [state]
  * @property {string} [state_source]
  * @property {string} [last_prompt]

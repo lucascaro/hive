@@ -800,6 +800,9 @@ func (d *Daemon) serveConn(ctx context.Context, conn net.Conn, tag *pluginTag) {
 			return
 		}
 		spec.SpawnedBy = principalOf(tag)
+		if tag != nil {
+			spec.Orchestrator = false // the grant is the user's alone (spec 389)
+		}
 		e, err := d.createSession(ctx, spec)
 		if err != nil {
 			_ = writeBounded(conn, writeTimeout(), wire.FrameError, wire.Error{Code: createErrCode(err), Message: err.Error()})
@@ -1344,6 +1347,9 @@ var sessionModeFrames = map[wire.FrameType]bool{
 	wire.FrameAddIdea:      true,
 	wire.FrameListIdeas:    true,
 	wire.FrameSubmitResult: true,
+	// Served only to a session the user granted (spec 389); the check
+	// lives in the FrameSendToSession arm.
+	wire.FrameSendToSession: true,
 }
 
 // projectOfSession resolves the project a session belongs to, or "" if
@@ -1485,7 +1491,7 @@ func (d *Daemon) handleControlFrame(ctx context.Context, ops controlOps, ft wire
 	// which is the direction a mistake here should fail in.
 	if ops.restricted && !sessionModeFrames[ft] {
 		ops.sendError(wire.ErrCodeModeNotAllowed,
-			fmt.Sprintf("%s is not served on a session connection; want ADD_IDEA, LIST_IDEAS or SUBMIT_RESULT", ft))
+			fmt.Sprintf("%s is not served on a session connection; want ADD_IDEA, LIST_IDEAS, SUBMIT_RESULT or SEND_TO_SESSION", ft))
 		return false
 	}
 	switch ft {
@@ -1504,6 +1510,11 @@ func (d *Daemon) handleControlFrame(ctx context.Context, ops controlOps, ft wire
 			return false
 		}
 		spec.SpawnedBy = ops.principal
+		// The grant is the user's alone (spec 389): a session a plugin
+		// starts must not be able to arrive already empowered.
+		if ops.principal != "" {
+			spec.Orchestrator = false
+		}
 		d.runOp(func() {
 			// ErrNotFound here means the user killed the session
 			// while it was still being created — an ordinary
@@ -1800,25 +1811,45 @@ func (d *Daemon) handleControlFrame(ctx context.Context, ops controlOps, ft wire
 		// Off the read loop: the PTY write can block on a full pipe and
 		// must not stall this client's other requests.
 		d.runOp(func() {
-			delivery, err := d.reg.SendToSession(req.SessionID, req.Text, req.Queue, wire.OriginUser)
+			caller, from, to := "control", wire.OriginUser, req.SessionID
+			var delivery string
+			var err error
+			if ops.restricted {
+				// A session connection: the registry checks the grant and
+				// the sender's project on this very frame, resolves the
+				// target inside that project, and stamps the provenance.
+				// Nothing the client sent can name the sender or widen the
+				// scope.
+				caller, from = "session", ops.ownSessionID
+				to, delivery, err = d.reg.SendFromSession(ops.ownSessionID, req.SessionID, req.Text)
+				if to == "" {
+					to = req.SessionID
+				}
+			} else {
+				delivery, err = d.reg.SendToSession(req.SessionID, req.Text, req.Queue, wire.OriginUser)
+			}
 			outcome := delivery
 			if err != nil {
 				outcome = sendErrCode(err)
 			}
 			// One greppable line per send: the evidence that gates the
 			// orchestration phases (agent-orchestration.md).
-			log.Printf("daemon: send_to_session caller=control from=%s to=%q delivery=%s",
-				wire.OriginUser, req.SessionID, outcome)
+			log.Printf("daemon: send_to_session caller=%s from=%s to=%q delivery=%s",
+				caller, from, to, outcome)
 			if err != nil {
 				_ = ops.writeJSON(wire.FrameError, wire.Error{
 					Code: sendErrCode(err), Message: sendErrMessage(err), SessionID: req.SessionID})
 				return
 			}
-			_ = ops.writeJSON(wire.FrameSent, wire.SentResp{SessionID: req.SessionID, Delivery: delivery})
+			_ = ops.writeJSON(wire.FrameSent, wire.SentResp{SessionID: to, Delivery: delivery})
 		})
 	case wire.FrameUpdateSession:
 		req, ok := decodeReq[wire.UpdateSessionReq](payload, ops.sendError)
 		if !ok {
+			return false
+		}
+		if req.Orchestrator != nil && ops.principal != "" {
+			ops.sendError(wire.ErrCodeModeNotAllowed, "granting orchestration is not available to plugins")
 			return false
 		}
 		// The attention flag is handled apart from the rest of the
@@ -2241,7 +2272,10 @@ func sendErrCode(err error) string {
 	switch {
 	case errors.Is(err, registry.ErrNotFound):
 		return "no_such_session"
-	case errors.Is(err, registry.ErrMessageInvalid):
+	case errors.Is(err, registry.ErrNotOrchestrator):
+		return wire.ErrCodeNotOrchestrator
+	case errors.Is(err, registry.ErrMessageInvalid), errors.Is(err, registry.ErrSelfMessage),
+		errors.Is(err, registry.ErrAmbiguousTarget), errors.Is(err, registry.ErrTargetNotAgent):
 		return "bad_payload"
 	case errors.Is(err, registry.ErrSessionBusy):
 		return wire.ErrCodeSessionBusy
@@ -2255,6 +2289,12 @@ func sendErrMessage(err error) string {
 	switch {
 	case errors.Is(err, registry.ErrNotFound):
 		return "that session is not open"
+	case errors.Is(err, registry.ErrNotOrchestrator):
+		return "this session may not direct other sessions"
+	case errors.Is(err, registry.ErrSelfMessage):
+		return "a session cannot message itself"
+	case errors.Is(err, registry.ErrTargetNotAgent):
+		return "that session is a plain shell, not an agent"
 	case errors.Is(err, registry.ErrSessionBusy):
 		return "the session is busy"
 	case errors.Is(err, registry.ErrNoLiveSession):

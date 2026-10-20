@@ -4,7 +4,9 @@ title: "Orchestrator grant: a session you name can message its siblings"
 type: enhancement
 complexity: M
 priority: P2
-stage: PLAN
+stage: DONE
+pr: 524
+shipped: 2026-10-20
 ---
 
 # Orchestrator grant: a session you name can message its siblings
@@ -13,7 +15,7 @@ stage: PLAN
 - **Type:** enhancement
 - **Complexity:** M
 - **Priority:** P2
-- **Exec plan:** [docs/exec-plans/active/389-orchestrator-grant-and-session-msg.md](../exec-plans/active/389-orchestrator-grant-and-session-msg.md)
+- **Exec plan:** [docs/exec-plans/completed/389-orchestrator-grant-and-session-msg.md](../exec-plans/completed/389-orchestrator-grant-and-session-msg.md)
 - **Design:** [docs/design-docs/agent-orchestration.md](../design-docs/agent-orchestration.md)
 - **Depends on:** [338 — session messaging](338-session-messaging.md)
 
@@ -29,8 +31,10 @@ wants an agent to do for them, and today it is the user who relays it.
 ## Desired behavior
 
 **Grant.** The launcher has a checkbox, off by default: *May direct
-other sessions*. A running session's sidebar context menu has the same
-item as a toggle. A granted session shows a small glyph on its row.
+other sessions*. A running session has the same
+toggle in the command palette ("Toggle May Direct Other Sessions"; the
+sidebar has no context menu, and a fourth hover button on the row widens
+the action strip over its click target). A granted session shows a small glyph on its row.
 The grant survives daemon restart.
 
 **`hived msg` from inside a granted session.** `hived msg <session>
@@ -42,7 +46,8 @@ one-line explanation naming the launcher checkbox. Outside any session
 it behaves as 338 specified (control socket, unrestricted).
 
 **Provenance.** The target sees the message as coming from the sending
-session by name — `Message from Hive session "<name>": …` — on every
+session by name and short id — `Message from Hive session "<name>"
+(<id8>): …` (the id tells apart two sessions that share a name) — on every
 delivery path. The sender is set by the daemon from the connection;
 nothing the client sends can change it.
 
@@ -59,13 +64,14 @@ delivery=<kind>`. This is the phase gate.
   `SessionInfo.orchestrator` on the wire; persisted in `MetaFile`.
 - `hived msg` on a `ModeSession` connection: granted ⇒ delivered
   with provenance; not granted ⇒ `ERROR{code: not_orchestrator}`;
-  other project ⇒ `ERROR{code: not_found}`; self ⇒ `ERROR{code:
-  invalid}` (or the existing nearest code).
+  other project ⇒ `ERROR{code: no_such_session}`; self ⇒ `ERROR{code:
+  bad_payload}` (338's existing codes; only `not_orchestrator` is new).
+  Always queued; plain shell targets refused (`bad_payload`).
 - Daemon test: revoking the grant with `UpdateSession` makes the very
   next `SEND_TO_SESSION` on an already-open session connection fail.
 - Registry test: every delivery path receives the provenance prefix;
   a client-supplied sender field, if the wire gains one, is ignored.
-- GUI: launcher checkbox and context-menu toggle round-trip through
+- GUI: launcher checkbox and palette toggle round-trip through
   the daemon; glyph reflects `orchestrator` from the wire.
 - Log line present and greppable for both caller kinds.
 

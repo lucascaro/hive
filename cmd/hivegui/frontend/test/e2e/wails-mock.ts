@@ -345,6 +345,7 @@ export interface MockCreateSessionOpts {
   initialPrompt: string;
   ideaId: string;
   kind: string;
+  orchestrator: boolean;
 }
 export async function CreateSession(o: Partial<MockCreateSessionOpts> = {}) {
   maybeFail('CreateSession');
@@ -377,6 +378,7 @@ export async function CreateSession(o: Partial<MockCreateSessionOpts> = {}) {
     worktree_branch: '',
     last_error: '',
   };
+  if (o.orchestrator) s.orchestrator = true;
   if (o.kind === 'acp') {
     s.kind = 'acp';
     // Daemon-fed and exact on the acp tier (wire.StateSourceACP).
@@ -1745,6 +1747,16 @@ export async function SetSessionNotifyWhenIdle(id: string, want: boolean) {
   const s = state.sessions.find((x) => x.id === id);
   if (s && !!s.notify_when_idle !== want) {
     s.notify_when_idle = want;
+    emit('session:event', JSON.stringify({ kind: 'updated', session: s }));
+  }
+  return '';
+}
+
+export async function SetSessionOrchestrator(id: string, want: boolean) {
+  maybeFail('SetSessionOrchestrator');
+  const s = state.sessions.find((x) => x.id === id);
+  if (s && !!s.orchestrator !== want) {
+    s.orchestrator = want;
     emit('session:event', JSON.stringify({ kind: 'updated', session: s }));
   }
   return '';

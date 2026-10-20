@@ -137,6 +137,14 @@
   color: var(--fg-subtle);
 }
 
+/* The user let this session message its siblings (spec 389). Passive
+   metadata like the bell: the toggle is in the hover actions. */
+.hv-session-row__orchestrator {
+  display: inline-flex;
+  align-items: center;
+  color: var(--fg-subtle);
+}
+
 /* Where the session came from. Not a button: the inbox is reached from
    the project card's badge, and a second route to it on every row would
    put one action in two places. Muted like the other passive metadata —
@@ -492,6 +500,7 @@
 .hv-session-row[data-selected] .hv-session-row__meta,
 .hv-session-row[data-selected] .hv-session-row__idea,
 .hv-session-row[data-selected] .hv-session-row__bell,
+.hv-session-row[data-selected] .hv-session-row__orchestrator,
 .hv-session-row[data-selected] .hv-session-row__worktree-count,
 .hv-session-row[data-selected] .hv-session-row__agent,
 .hv-session-row[data-selected] .hv-kbd,

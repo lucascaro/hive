@@ -1,10 +1,11 @@
 // `hived msg` hands another session a one-line note from a shell — the
 // CLI half of session messaging (spec 338).
 //
-// It speaks to the control socket, so it works from an ordinary
-// terminal. Inside a Hive session HIVE_SOCKET names the narrowed events
-// socket, which does not serve SEND_TO_SESSION: a session may direct its
-// siblings only once it has been granted that (spec 389).
+// From an ordinary terminal it speaks to the control socket. Inside a
+// Hive session it speaks ModeSession on HIVE_SOCKET instead, where the
+// daemon serves SEND_TO_SESSION only to a session the user granted
+// ("May direct other sessions", spec 389), resolves the target within
+// that session's own project, and stamps who the note is from.
 package main
 
 import (
@@ -29,6 +30,10 @@ Claude Code sessions take <text> through Claude's own inbox, and Pi sessions
 through Hive's Pi extension, working or idle. Any other session has it
 typed in; one that is working is queued (typed when it next goes idle)
 unless --no-queue is given.
+
+Inside a Hive session, <session-id-or-name> must be a session in the same
+project, the note is always queued (--no-queue is ignored), and the session must have been granted
+"May direct other sessions" (the launcher checkbox, or the command palette).
 `
 
 // runMsg implements `hived msg`; it returns the process exit code.
@@ -85,9 +90,12 @@ func resolveTarget(sessions []wire.SessionInfo, ref string) (wire.SessionInfo, e
 	return wire.SessionInfo{}, fmt.Errorf("%d sessions are named %q — use an id: %s", len(hits), ref, strings.Join(ids, ", "))
 }
 
+// errNotOrchestrator is what a session without the grant is told.
+var errNotOrchestrator = errors.New(`this session may not direct other sessions — enable "May direct other sessions" in the launcher or the command palette`)
+
 func sendMsg(ref, text string, queue bool, stdout io.Writer) error {
-	if _, _, err := ideaEnv(); err == nil {
-		return errors.New("`hived msg` is not available inside a Hive session yet; run it from an ordinary shell")
+	if sessionID, sock, err := ideaEnv(); err == nil {
+		return sendMsgFromSession(sessionID, sock, ref, text, stdout)
 	}
 	sock := daemon.ActiveSocketPath()
 	if err := daemon.CheckSocketDir(sock); err != nil {
@@ -140,8 +148,36 @@ func sendMsg(ref, text string, queue bool, stdout io.Writer) error {
 	return nil
 }
 
-// awaitSent reads until our send is answered. A control connection also
-// receives every broadcast, which is skipped.
+// sendMsgFromSession is the in-session path: the daemon, not this
+// process, resolves ref (a session connection cannot list sessions) and
+// enforces the grant, the project scope and the queueing.
+func sendMsgFromSession(sessionID, sock, ref, text string, stdout io.Writer) error {
+	c, err := ideaDial(sock, sessionID)
+	if err != nil {
+		return err
+	}
+	defer c.Close()
+	if err := c.WriteJSON(wire.FrameSendToSession, wire.SendToSessionReq{
+		SessionID: ref, Text: text, Queue: true,
+	}); err != nil {
+		return err
+	}
+	// This connection carries one request, so the first SENT is ours.
+	resp, err := awaitSent(c, "")
+	if err != nil {
+		var coded *wireCodeError
+		if errors.As(err, &coded) && coded.code == wire.ErrCodeNotOrchestrator {
+			return errNotOrchestrator
+		}
+		return err
+	}
+	fmt.Fprintln(stdout, resp.Delivery)
+	return nil
+}
+
+// awaitSent reads until our send is answered; sessionID "" accepts any
+// SENT. A control connection also receives every broadcast, which is
+// skipped.
 func awaitSent(c *wire.Client, sessionID string) (wire.SentResp, error) {
 	for {
 		ft, payload, err := c.ReadFrame()
@@ -154,7 +190,7 @@ func awaitSent(c *wire.Client, sessionID string) (wire.SentResp, error) {
 			if err := json.Unmarshal(payload, &resp); err != nil {
 				return wire.SentResp{}, err
 			}
-			if resp.SessionID == sessionID {
+			if sessionID == "" || resp.SessionID == sessionID {
 				return resp, nil
 			}
 		case wire.FrameError:

@@ -458,6 +458,17 @@ func (s *session) dispatch(req rpcReq) {
 		}
 		s.respond(req.ID, "", s.controlWriteJSON(wire.FrameUpdateSession,
 			wire.UpdateSessionReq{SessionID: p.SessionID, NotifyWhenIdle: &p.Want}))
+	case "SetSessionOrchestrator":
+		var p struct {
+			SessionID string `json:"session_id"`
+			Want      bool   `json:"want"`
+		}
+		if err := parseParams(req.Params, &p); err != nil {
+			s.respond(req.ID, nil, err)
+			return
+		}
+		s.respond(req.ID, "", s.controlWriteJSON(wire.FrameUpdateSession,
+			wire.UpdateSessionReq{SessionID: p.SessionID, Orchestrator: &p.Want}))
 	case "SetSessionKind":
 		var p wire.SetSessionKindReq
 		if err := parseParams(req.Params, &p); err != nil {

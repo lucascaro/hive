@@ -337,6 +337,16 @@ export function SessionRow(p: SessionRowProps) {
         </span>
       ) : null}
       <span className="hv-session-row__meta">
+        {s.orchestrator ? (
+          <span
+            className="hv-session-row__orchestrator"
+            role="img"
+            title="May direct other sessions"
+            aria-label="May direct other sessions"
+          >
+            <Icon name="orchestrator" size={12} />
+          </span>
+        ) : null}
         {s.notify_when_idle ? (
           <span
             className="hv-session-row__bell"

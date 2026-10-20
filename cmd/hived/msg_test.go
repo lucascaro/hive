@@ -2,6 +2,8 @@ package main
 
 import (
 	"bytes"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -59,11 +61,21 @@ func TestMsgUsage(t *testing.T) {
 	}
 }
 
-func TestMsgRefusedInsideASession(t *testing.T) {
+// Inside a session `hived msg` takes the session socket (spec 389), not
+// the control socket: with HIVE_SESSION_ID and HIVE_SOCKET set it must
+// dial HIVE_SOCKET. A missing socket in a proper 0700 directory fails at
+// that dial, naming the socket it tried, and not with a refusal.
+func TestMsgInsideASessionDialsHiveSocket(t *testing.T) {
+	dir := t.TempDir()
+	if err := os.Chmod(dir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	sock := filepath.Join(dir, "events.sock")
 	t.Setenv("HIVE_SESSION_ID", "abc")
-	t.Setenv("HIVE_SOCKET", "/tmp/nope.sock")
+	t.Setenv("HIVE_SOCKET", sock)
 	var out, errb bytes.Buffer
-	if code := runMsg([]string{"a", "b"}, &out, &errb); code != 2 || !strings.Contains(errb.String(), "inside a Hive session") {
-		t.Errorf("code=%d stderr=%q, want a refusal naming the session", code, errb.String())
+	code := runMsg([]string{"a", "b"}, &out, &errb)
+	if code != 2 || !strings.Contains(errb.String(), sock) || strings.Contains(errb.String(), "not available") {
+		t.Errorf("code=%d stderr=%q, want a dial failure naming %s", code, errb.String(), sock)
 	}
 }

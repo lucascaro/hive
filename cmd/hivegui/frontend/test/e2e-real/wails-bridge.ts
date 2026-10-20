@@ -167,6 +167,7 @@ export interface CreateSessionOpts {
   initialPrompt: string;
   ideaId: string;
   kind: string;
+  orchestrator: boolean;
 }
 export async function CreateSession(o: Partial<CreateSessionOpts> = {}) {
   // camelCase in, snake_case out: the bridge speaks the wire's
@@ -188,6 +189,7 @@ export async function CreateSession(o: Partial<CreateSessionOpts> = {}) {
     insert_after_session_id: o.insertAfter || '',
     initial_prompt: o.initialPrompt || '',
     idea_id: o.ideaId || '',
+    orchestrator: !!o.orchestrator,
   });
 }
 // Ideas. Forwarded for real — the daemon owns them, and the fan-out
@@ -577,6 +579,9 @@ export async function SetSessionAttention(id: string, want: boolean) {
 }
 export async function SendToSession(id: string, text: string, queue: boolean) {
   return call('SendToSession', { session_id: id, text, queue: !!queue });
+}
+export async function SetSessionOrchestrator(id: string, want: boolean) {
+  return call('SetSessionOrchestrator', { session_id: id, want: !!want });
 }
 export async function SetSessionNotifyWhenIdle(id: string, want: boolean) {
   return call('SetSessionNotifyWhenIdle', { session_id: id, want: !!want });

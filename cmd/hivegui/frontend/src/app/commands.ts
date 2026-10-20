@@ -47,6 +47,7 @@ import {
   toggleAllGrid,
   toggleIdeaInbox,
   toggleNotifyWhenIdle,
+  toggleOrchestrator,
   toggleProjectGrid,
   toggleScrollDebug,
   toggleSidebar,
@@ -172,6 +173,13 @@ const PALETTE: readonly Command[] = [
     id: 'notify-when-idle',
     title: 'Notify When Session Is Idle',
     run: () => toggleNotifyWhenIdle(),
+  },
+  // Spec 389. Palette-only, no chord: granting a session leave to
+  // direct others is deliberate, not a reflex.
+  {
+    id: 'orchestrator',
+    title: 'Toggle May Direct Other Sessions',
+    run: () => toggleOrchestrator(),
   },
   {
     id: 'close-session',

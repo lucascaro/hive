@@ -119,6 +119,9 @@ type Entry struct {
 	SpawnedBy string
 	// ACPMode is CreateSpec.ACPMode, persisted ("" = the ceiling).
 	ACPMode string
+	// Orchestrator is the user's grant letting this session message its
+	// siblings (spec 389). Persisted; read fresh on every send.
+	Orchestrator bool
 	// acp is the running ACP adapter for a KindACP entry, nil when
 	// none runs this lifetime. See acp.go for the rest of its state.
 	acp *acpSession
@@ -327,6 +330,7 @@ func (e *Entry) Info() wire.SessionInfo {
 		LastError:      e.LastError,
 		PendingPrompt:  e.pendingPrompt,
 		NotifyWhenIdle: e.notifyWhenIdle,
+		Orchestrator:   e.Orchestrator,
 		// Copied, not shared: Info snapshots escape r.mu and a caller
 		// must not be able to mutate the entry's own pending choice.
 		PendingWorktreeChoice: e.pendingChoiceCopy(),
@@ -397,9 +401,9 @@ type Registry struct {
 	// piInboxSend hands a note to a Pi session's Hive extension (phase 3),
 	// given the session's inbox socket path. Swapped in tests.
 	piInboxSend func(sockPath, text string) error
-	entries   map[string]*Entry
-	order     []string
-	stateDir  string
+	entries     map[string]*Entry
+	order       []string
+	stateDir    string
 
 	// socketPath is the daemon's EVENTS socket — not its control
 	// socket. Set once by the daemon right after Open (SetSocketPath);
@@ -1304,6 +1308,7 @@ func (r *Registry) load() error {
 			Kind:           meta.Kind,
 			SpawnedBy:      meta.SpawnedBy,
 			ACPMode:        meta.ACPMode,
+			Orchestrator:   meta.Orchestrator,
 		}
 		r.order = append(r.order, meta.ID)
 		seen[meta.ID] = true
@@ -1329,6 +1334,7 @@ func (r *Registry) load() error {
 				Kind:           meta.Kind,
 				SpawnedBy:      meta.SpawnedBy,
 				ACPMode:        meta.ACPMode,
+				Orchestrator:   meta.Orchestrator,
 			}
 			r.order = append(r.order, meta.ID)
 		}
@@ -1994,6 +2000,9 @@ func (r *Registry) Update(req wire.UpdateSessionReq) (*Entry, error) {
 		// rather than leave a bell that looks set.
 		e.notifyWhenIdle = *req.NotifyWhenIdle && e.Alive()
 	}
+	if req.Orchestrator != nil {
+		e.Orchestrator = *req.Orchestrator
+	}
 	orderChanged := req.Order != nil
 	if orderChanged {
 		r.moveLocked(e.ID, *req.Order)
@@ -2001,7 +2010,7 @@ func (r *Registry) Update(req wire.UpdateSessionReq) (*Entry, error) {
 	// The bell lives in memory only: arming it costs no disk write, and
 	// a failing disk must not swallow the broadcast clients wait on.
 	bellOnly := req.NotifyWhenIdle != nil && req.Name == nil && req.Color == nil &&
-		req.Order == nil && req.ProjectID == nil
+		req.Order == nil && req.ProjectID == nil && req.Orchestrator == nil
 	if !bellOnly {
 		if err := r.persistEntryLocked(e); err != nil {
 			return e, err
@@ -2137,6 +2146,7 @@ func (r *Registry) persistEntryLocked(e *Entry) error {
 		Kind:                   e.Kind,
 		SpawnedBy:              e.SpawnedBy,
 		ACPMode:                e.ACPMode,
+		Orchestrator:           e.Orchestrator,
 	})
 }
 

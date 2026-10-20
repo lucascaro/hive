@@ -15,6 +15,7 @@ import {
   SetClipboardText,
   Notify,
   SetSessionNotifyWhenIdle,
+  SetSessionOrchestrator,
 } from '../bridge.js';
 import { readNeedsAttention } from './state.js';
 import { appStore } from '../store/store.js';
@@ -528,6 +529,18 @@ export function toggleNotifyWhenIdle(sessionId?: string): boolean | undefined {
   if (!s || s.alive === false) return false;
   SetSessionNotifyWhenIdle(s.id, !s.notify_when_idle).catch(
     reportFailure('toggle idle bell'),
+  );
+}
+
+// toggleOrchestrator grants or revokes the focused session's leave to
+// message its siblings (spec 389). Palette-reachable and on the row; no
+// chord. The daemon owns the flag and announces the change.
+export function toggleOrchestrator(sessionId?: string): boolean | undefined {
+  const id = sessionId ?? appData().activeId;
+  const s = appData().sessions.find((x) => x.id === id);
+  if (!s) return false;
+  SetSessionOrchestrator(s.id, !s.orchestrator).catch(
+    reportFailure('toggle may direct other sessions'),
   );
 }
 

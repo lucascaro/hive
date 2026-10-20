@@ -129,6 +129,9 @@ function LauncherBody({
   // loading row with "No agents match".
   const [loading, setLoading] = useState(true);
   const [useWorktree, setUseWorktree] = useState(req.useWorktree);
+  // Per-open and never remembered (spec 389): every grant is a fresh,
+  // deliberate choice.
+  const [orchestrator, setOrchestrator] = useState(false);
   const [branch, setBranch] = useState('');
   // The opening prompt, seeded from the idea and editable. Per-open
   // state like every other field here, so reopening the launcher over
@@ -368,6 +371,7 @@ function LauncherBody({
         initialPrompt: prompt.trim(),
         ideaId: req.ideaId,
         kind: acp ? 'acp' : '',
+        orchestrator,
       }).catch(reportFailure('new session'));
     }
     closeLauncher();
@@ -410,8 +414,8 @@ function LauncherBody({
       if (e.key === 'ArrowUp' && !inPrompt)
         return handle(() => moveSelection(-1));
       // Tab CYCLES the popup's own fields: the filter box, the prompt
-      // box, the worktree toggle, the branch box and the Terminal/ACP
-      // choice (spec 496) — every control that would otherwise be
+      // box, the worktree toggle, the branch box, "May direct other
+      // sessions" (spec 389) and the Terminal/ACP choice (spec 496) — every control that would otherwise be
       // mouse-only. The arrows are the list's navigation. Tab is never
       // handed to the browser: nothing traps focus in #launcher, and the
       // focusout handler below closes the popup the moment focus leaves,
@@ -431,6 +435,7 @@ function LauncherBody({
             el === promptRef.current ||
             el === branchRef.current ||
             el.closest('.launcher-worktree') !== null ||
+            el.closest('.launcher-orchestrator') !== null ||
             (el.closest('.launcher-kind') !== null &&
               (el as HTMLInputElement).checked),
         );
@@ -629,6 +634,16 @@ function LauncherBody({
             onChange={(e) => setBranch(e.target.value)}
           />
         </>
+      ) : null}
+      {!loading && !req.duplicateFrom ? (
+        <label className="launcher-orchestrator">
+          <input
+            type="checkbox"
+            checked={orchestrator}
+            onChange={(e) => setOrchestrator(e.target.checked)}
+          />
+          <span>May direct other sessions</span>
+        </label>
       ) : null}
       {offerKind && !loading ? (
         <div

@@ -33,6 +33,7 @@ export {
   SetSessionAttention,
   SendToSession,
   SetSessionNotifyWhenIdle,
+  SetSessionOrchestrator,
   GetActivity,
   GetAcpTranscript,
   PromptAcp,

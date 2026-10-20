@@ -143,6 +143,7 @@ describe('the palette', () => {
       'idea-inbox',
       'message-session',
       'notify-when-idle',
+      'orchestrator',
       'close-session',
       'archive-session',
       'archived-sessions',

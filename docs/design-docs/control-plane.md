@@ -171,11 +171,13 @@ unchanged and stays in core.
 `SEND_TO_SESSION{session_id, text, queue}` is answered with
 `SENT{session_id, delivery}` (`typed`, `queued`, `acp`, `socket` or `extension`) or an `ERROR`
 (`session_busy`, `session_dead`, `delivery_failed`, `no_such_session`,
-`bad_payload`). It is served on control connections only; plugin sockets
-and the narrowed `ModeSession` connection are refused, so what an agent
-inside a session may direct is decided by the orchestrator grant in
-[agent-orchestration.md](agent-orchestration.md), not here. Every send
-logs one `send_to_session caller=… from=… to=… delivery=…` line.
+`bad_payload`, and `not_orchestrator` on a session connection). It is
+served on control connections; plugin sockets are refused, and the
+narrowed `ModeSession` connection is served only for a session the user
+granted (`orchestrator`), with the target resolved inside that session's
+own project and the note stamped with its sender — see
+[agent-orchestration.md](agent-orchestration.md). Every send logs one
+`send_to_session caller=<control|session> from=… to=… delivery=…` line.
 `UPDATE_SESSION{notify_when_idle}` arms a one-shot bell; the daemon
 answers when the session next stops working with `SESSION_EVENT(idle_ping)`
 to every control connection, and each client fires its own notification

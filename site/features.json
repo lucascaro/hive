@@ -1,5 +1,11 @@
 [
   {
+    "title": "Let a session message its siblings",
+    "blurb": "Tick \"May direct other sessions\" when you start a session (or later from the command palette) and its agent can run `hived msg <session> <text>` to hand a sibling in the same project a note — delivered as coming from that session by name.",
+    "status": "shipped",
+    "since": "Unreleased"
+  },
+  {
     "title": "Take an ACP session over in a terminal",
     "blurb": "Open an ACP session's conversation in the agent's own terminal when you want to drive it yourself, then hand it back to the transcript view with every turn intact.",
     "status": "shipped",

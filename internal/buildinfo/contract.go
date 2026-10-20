@@ -24,6 +24,12 @@ package buildinfo
 // History (newest first), so a bump is a decision with a record and
 // not just a number going up:
 //
+//	32 — Orchestrator grant (spec 389). CreateSpec, UpdateSessionReq and
+//	    SessionInfo gain "orchestrator", persisted per session, and a
+//	    ModeSession connection may now send SEND_TO_SESSION when its
+//	    session holds the grant (new ERROR code not_orchestrator). A GUI
+//	    built after this against an older daemon would show a toggle the
+//	    daemon silently ignores; an older GUI cannot grant at all.
 //	31 — Session messaging via Pi's Hive extension (spec 338, phase 3). A
 //	    new SENT delivery value, "extension", and a HIVE_PI_INBOX variable
 //	    in a Pi session's environment. An older daemon never sets it, so a
@@ -265,7 +271,7 @@ package buildinfo
 //	    before this cannot see or clear the flag.
 //	1 — first contract; everything up to and including the
 //	    CLIENT_COMMAND relay.
-const DaemonContract = 31
+const DaemonContract = 32
 
 // Identity is this binary's full build identity. `hived --version
 // --json` prints it, and Welcome carries the same three values, so a
