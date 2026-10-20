@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/lucascaro/hive/internal/acp/acptest"
+	"github.com/lucascaro/hive/internal/agent"
 	"github.com/lucascaro/hive/internal/wire"
 )
 
@@ -159,7 +160,10 @@ func TestSendFromSessionScope(t *testing.T) {
 	setAgent(r, same, "claude")
 	abroad, _ := liveSession(t, r, wire.CreateSpec{Name: "abroad", ProjectID: other.ID})
 	setAgent(r, abroad, "claude")
+	// The launcher's "Shell" row creates agent id "shell", not "".
 	shell, _ := liveSession(t, r, wire.CreateSpec{Name: "sh", ProjectID: home.ID})
+	setAgent(r, shell, string(agent.IDShell))
+	bare, _ := liveSession(t, r, wire.CreateSpec{Name: "bare", ProjectID: home.ID})
 
 	if _, _, err := r.SendFromSession(from.ID, abroad.ID, "x"); !errors.Is(err, ErrNotFound) {
 		t.Errorf("other project by id: %v, want ErrNotFound", err)
@@ -173,7 +177,10 @@ func TestSendFromSessionScope(t *testing.T) {
 	if _, _, err := r.SendFromSession(from.ID, "sh", "x"); !errors.Is(err, ErrTargetNotAgent) {
 		t.Errorf("plain shell: %v, want ErrTargetNotAgent", err)
 	}
-	_ = shell
+	if _, _, err := r.SendFromSession(from.ID, "bare", "x"); !errors.Is(err, ErrTargetNotAgent) {
+		t.Errorf("no agent id: %v, want ErrTargetNotAgent", err)
+	}
+	_, _ = shell, bare
 	if id, _, err := r.SendFromSession(from.ID, "same", "x"); err != nil || id != same.ID {
 		t.Errorf("by name: %q %v, want %s", id, err, same.ID)
 	}

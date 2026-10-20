@@ -420,7 +420,7 @@ func (r *Registry) SendFromSession(callerID, ref, text string) (targetID, delive
 	case target.ID == callerID:
 		r.mu.Unlock()
 		return "", "", ErrSelfMessage
-	case target.Agent == "":
+	case target.Agent == "" || target.Agent == string(agent.IDShell):
 		r.mu.Unlock()
 		return "", "", ErrTargetNotAgent
 	}

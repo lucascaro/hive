@@ -139,7 +139,7 @@ What works:
   does the same from an ordinary shell (exact id or exact name only).
   Plugins cannot send messages. A session can message its siblings only
   if you let it: tick **May direct other sessions** in the launcher, or
-  toggle it on the session's row (or from the command palette). Its agent
+  toggle it from the command palette. Its agent
   can then run `hived msg <id-or-name> <text…>` to reach another agent
   session in the same project; the note arrives marked as coming from
   that session, is always queued, and a plain shell is refused. Revoking

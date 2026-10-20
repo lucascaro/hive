@@ -33,7 +33,7 @@ unless --no-queue is given.
 
 Inside a Hive session, <session-id-or-name> must be a session in the same
 project, the note is always queued, and the session must have been granted
-"May direct other sessions" (launcher checkbox or the session's menu).
+"May direct other sessions" (the launcher checkbox, or the command palette).
 `
 
 // runMsg implements `hived msg`; it returns the process exit code.
@@ -91,7 +91,7 @@ func resolveTarget(sessions []wire.SessionInfo, ref string) (wire.SessionInfo, e
 }
 
 // errNotOrchestrator is what a session without the grant is told.
-var errNotOrchestrator = errors.New(`this session may not direct other sessions — enable "May direct other sessions" in the launcher or the session's menu`)
+var errNotOrchestrator = errors.New(`this session may not direct other sessions — enable "May direct other sessions" in the launcher or the command palette`)
 
 func sendMsg(ref, text string, queue bool, stdout io.Writer) error {
 	if sessionID, sock, err := ideaEnv(); err == nil {

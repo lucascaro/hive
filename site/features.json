@@ -1,7 +1,7 @@
 [
   {
     "title": "Let a session message its siblings",
-    "blurb": "Tick \"May direct other sessions\" when you start a session (or on its row) and its agent can run `hived msg <session> <text>` to hand a sibling in the same project a note — delivered as coming from that session by name.",
+    "blurb": "Tick \"May direct other sessions\" when you start a session (or later from the command palette) and its agent can run `hived msg <session> <text>` to hand a sibling in the same project a note — delivered as coming from that session by name.",
     "status": "shipped",
     "since": "Unreleased"
   },

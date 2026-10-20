@@ -44,7 +44,8 @@ one-line explanation naming the launcher checkbox. Outside any session
 it behaves as 338 specified (control socket, unrestricted).
 
 **Provenance.** The target sees the message as coming from the sending
-session by name — `Message from Hive session "<name>": …` — on every
+session by name and short id — `Message from Hive session "<name>"
+(<id8>): …` (the id tells apart two sessions that share a name) — on every
 delivery path. The sender is set by the daemon from the connection;
 nothing the client sends can change it.
 

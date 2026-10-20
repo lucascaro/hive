@@ -60,8 +60,8 @@ named**, and only within rules the daemon enforces.
 ## Trust model: per-session grant
 
 - **Capability, not ambient.** An entry carries `Orchestrator bool`,
-  set by the user in the launcher or on a running session's context
-  menu, default off, persisted with the entry (it is user intent, like
+  set by the user in the launcher or, for a running session, from the
+  command palette, default off, persisted with the entry (it is user intent, like
   `Agent`). The daemon checks it on every frame that mutates another
   session. It is not an environment token: a child cannot copy it,
   and revoking it takes effect on the next frame.
