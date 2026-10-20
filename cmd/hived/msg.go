@@ -32,7 +32,7 @@ typed in; one that is working is queued (typed when it next goes idle)
 unless --no-queue is given.
 
 Inside a Hive session, <session-id-or-name> must be a session in the same
-project, the note is always queued, and the session must have been granted
+project, the note is always queued (--no-queue is ignored), and the session must have been granted
 "May direct other sessions" (the launcher checkbox, or the command palette).
 `
 

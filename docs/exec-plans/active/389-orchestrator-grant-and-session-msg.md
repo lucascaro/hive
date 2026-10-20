@@ -132,3 +132,6 @@ Independent reviewer, 2 rounds. Round 1: revise (8/10) — 5 must-fix applied (e
 - **2026-09-10** — Plan written.
 - **2026-10-20** — Plan re-verified against main, revised, second-opinion x2, approved.
 - **2026-10-20** — Implemented on `feature/389-orchestrator-grant`. Go: wire fields, `Registry.SendFromSession` (grant + current project + target + sender name under one `r.mu` hold), daemon arm, plugin guards, `hived msg` in-session path, DaemonContract 32. GUI: launcher checkbox, glyph, palette command. Verified: `go test ./...` (daemon, registry, cmd/hived incl. `-tags e2e` msg tests), vitest unit+dom, Playwright e2e (559), typecheck, `biome ci`, staticcheck+vet on darwin/linux/windows, ui-lint, hooks-stripped. e2e-real: 34/35; `glyph-utf8` fails on this Mac (bash 3.2 echo/locale in the harness), unrelated to the diff.
+
+## PR convergence ledger
+- **2026-10-20 iter 1** — verdict: APPROVE; mergeable: MERGEABLE; findings_hash: empty; threads_open: 0; action: stop; head_sha: a4e1d07 (minor usage note applied after).
