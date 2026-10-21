@@ -1,3 +1,7 @@
+// SPDX-License-Identifier: GPL-3.0-only
+// Copyright (C) 2026 Lucas Caro
+// See LICENSE and ADDITIONAL-TERMS.md.
+
 // The single React root's tree. Phase 6 of the React rewrite replaced
 // the fifteen island roots the composition root used to mount with
 // this one component.

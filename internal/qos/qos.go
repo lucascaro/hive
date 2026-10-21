@@ -1,3 +1,7 @@
+// SPDX-License-Identifier: GPL-3.0-only
+// Copyright (C) 2026 Lucas Caro
+// See LICENSE and ADDITIONAL-TERMS.md.
+
 // Package qos opts a process out of OS quality-of-service throttling.
 //
 // This is the sibling of internal/activity, split out for one reason: it must

@@ -1,3 +1,7 @@
+// SPDX-License-Identifier: GPL-3.0-only
+// Copyright (C) 2026 Lucas Caro
+// See LICENSE and ADDITIONAL-TERMS.md.
+
 // Single re-export point for the Wails bridge surface.
 //
 // MUST stay a sibling of main.tsx: the vite plugin in vite.config.js

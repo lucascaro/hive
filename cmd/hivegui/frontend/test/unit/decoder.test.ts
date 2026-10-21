@@ -1,3 +1,7 @@
+// SPDX-License-Identifier: GPL-3.0-only
+// Copyright (C) 2026 Lucas Caro
+// See LICENSE and ADDITIONAL-TERMS.md.
+
 // Regression: each SessionTerm must own its TextDecoder. A shared,
 // streaming decoder buffers a partial multi-byte sequence from one
 // session's chunk into the next session's decode, producing U+FFFD or

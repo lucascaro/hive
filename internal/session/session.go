@@ -1,3 +1,7 @@
+// SPDX-License-Identifier: GPL-3.0-only
+// Copyright (C) 2026 Lucas Caro
+// See LICENSE and ADDITIONAL-TERMS.md.
+
 // Package session models a single hived session: one PTY and the
 // shell running on it. Reattach repaints come from the VT mirror.
 package session

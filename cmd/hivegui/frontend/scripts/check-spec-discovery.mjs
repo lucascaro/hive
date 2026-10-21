@@ -1,4 +1,8 @@
 #!/usr/bin/env node
+// SPDX-License-Identifier: GPL-3.0-only
+// Copyright (C) 2026 Lucas Caro
+// See LICENSE and ADDITIONAL-TERMS.md.
+
 // Fail if a *.spec.* file on disk is not discovered by its Playwright config.
 //
 // The failure this exists for is SILENT. Playwright treats a spec file that

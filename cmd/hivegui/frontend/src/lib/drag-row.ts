@@ -1,3 +1,7 @@
+// SPDX-License-Identifier: GPL-3.0-only
+// Copyright (C) 2026 Lucas Caro
+// See LICENSE and ADDITIONAL-TERMS.md.
+
 // Drag-to-reorder wiring for one row of a list, shared by every list that
 // reorders by drag: sidebar session rows, sidebar project cards and the
 // pinned agents in Settings. The placeholder mechanics live in

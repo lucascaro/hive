@@ -1,3 +1,7 @@
+// SPDX-License-Identifier: GPL-3.0-only
+// Copyright (C) 2026 Lucas Caro
+// See LICENSE and ADDITIONAL-TERMS.md.
+
 // The xterm link provider behind ⌘-click on a file path.
 //
 // xterm asks for links on the hovered line only, so the cost is one

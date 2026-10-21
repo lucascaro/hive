@@ -1,3 +1,7 @@
+// SPDX-License-Identifier: GPL-3.0-only
+// Copyright (C) 2026 Lucas Caro
+// See LICENSE and ADDITIONAL-TERMS.md.
+
 // Scroll/replay tracer. Gated on localStorage `hive.debug` = '1'
 // (same switch as the focus consistency checker). `enabled` is
 // latched once at startup, so to diagnose a scroll-jump bug: set

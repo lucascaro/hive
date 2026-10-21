@@ -1,3 +1,7 @@
+// SPDX-License-Identifier: GPL-3.0-only
+// Copyright (C) 2026 Lucas Caro
+// See LICENSE and ADDITIONAL-TERMS.md.
+
 // The one resolution from a SessionInfo to the state shapes
 // (docs/design-docs/ui/icons.md > State icons). Sidebar row, minimized
 // chip and grid tile header all call this, so they can never disagree.

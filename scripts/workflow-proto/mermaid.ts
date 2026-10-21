@@ -1,3 +1,7 @@
+// SPDX-License-Identifier: GPL-3.0-only
+// Copyright (C) 2026 Lucas Caro
+// See LICENSE and ADDITIONAL-TERMS.md.
+
 // IR → Mermaid flowchart (spec 495). Groups, loops and maps render as
 // labelled subgraphs, so the picture a user reviews has the same nesting the
 // engine runs; edge labels show their conditions. Output is deterministic.

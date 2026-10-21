@@ -1,3 +1,7 @@
+// SPDX-License-Identifier: GPL-3.0-only
+// Copyright (C) 2026 Lucas Caro
+// See LICENSE and ADDITIONAL-TERMS.md.
+
 // The status bar's two slots. Mounted on #status, so React owns the two
 // spans and the container keeps the id, the grid row and the `.error`
 // tint.

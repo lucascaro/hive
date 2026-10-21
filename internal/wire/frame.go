@@ -1,3 +1,7 @@
+// SPDX-License-Identifier: GPL-3.0-only
+// Copyright (C) 2026 Lucas Caro
+// See LICENSE and ADDITIONAL-TERMS.md.
+
 // Package wire is the hived ↔ hive client protocol (v0).
 //
 // Frame layout: 1-byte type, 4-byte big-endian length, payload.

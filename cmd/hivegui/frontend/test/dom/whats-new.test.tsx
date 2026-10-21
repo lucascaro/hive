@@ -1,3 +1,7 @@
+// SPDX-License-Identifier: GPL-3.0-only
+// Copyright (C) 2026 Lucas Caro
+// See LICENSE and ADDITIONAL-TERMS.md.
+
 // The What's New modal and the sidebar gift that opens it.
 // Unit-level grouping/ordering rules live in test/unit/whats-new.test.ts;
 // this suite is about the wiring — button, dot, open, close, read receipt.

@@ -1,3 +1,7 @@
+// SPDX-License-Identifier: GPL-3.0-only
+// Copyright (C) 2026 Lucas Caro
+// See LICENSE and ADDITIONAL-TERMS.md.
+
 // Minimal typing for the `ws` package, used by scroll-codex.spec's Node-side
 // JSON-RPC client on Node < 22 (no global WebSocket).
 //

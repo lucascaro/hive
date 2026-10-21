@@ -1,3 +1,7 @@
+// SPDX-License-Identifier: GPL-3.0-only
+// Copyright (C) 2026 Lucas Caro
+// See LICENSE and ADDITIONAL-TERMS.md.
+
 // Persistence helpers for the sidebar's per-project id sets — the
 // collapsed set and the minimized set. The helpers are key-agnostic:
 // they take the raw string and return a Set, so a second key costs a

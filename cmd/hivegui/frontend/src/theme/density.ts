@@ -1,3 +1,7 @@
+// SPDX-License-Identifier: GPL-3.0-only
+// Copyright (C) 2026 Lucas Caro
+// See LICENSE and ADDITIONAL-TERMS.md.
+
 // Sidebar density. The row is two lines at 40px by default; `tight` keeps
 // both lines in ~34px, `compact` drops to one line at 28px for a long
 // session list.

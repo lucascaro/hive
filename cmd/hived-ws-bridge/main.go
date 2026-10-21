@@ -1,3 +1,7 @@
+// SPDX-License-Identifier: GPL-3.0-only
+// Copyright (C) 2026 Lucas Caro
+// See LICENSE and ADDITIONAL-TERMS.md.
+
 // hived-ws-bridge is the Layer B test harness shim: a localhost-only
 // WebSocket bridge that translates JSON-RPC method calls from the
 // browser-side Playwright runner into native wire-protocol frames
@@ -33,13 +37,20 @@ import (
 	"time"
 
 	"github.com/gorilla/websocket"
+	"github.com/lucascaro/hive/internal/buildinfo"
 	"github.com/lucascaro/hive/internal/plugin/pluginassets"
 	"github.com/lucascaro/hive/internal/wire"
 )
 
 func main() {
 	addr := flag.String("addr", "127.0.0.1:0", "WebSocket listen addr (0 picks a free port)")
+	version := flag.Bool("version", false, "print build identity and exit")
 	flag.Parse()
+	if *version {
+		id := buildinfo.CurrentIdentity()
+		fmt.Printf("hived-ws-bridge %s (build %s)\n%s", id.Release, id.BuildID, buildinfo.LegalNotice())
+		return
+	}
 
 	if err := requireIsolation(); err != nil {
 		log.Fatalf("hived-ws-bridge: %v", err)

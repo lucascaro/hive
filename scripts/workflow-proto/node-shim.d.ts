@@ -1,3 +1,7 @@
+// SPDX-License-Identifier: GPL-3.0-only
+// Copyright (C) 2026 Lucas Caro
+// See LICENSE and ADDITIONAL-TERMS.md.
+
 // Minimal ambient declarations for the few Node APIs this prototype uses, so
 // `tsc` can check it without an @types/node dependency (spec 495). Only what
 // is imported here is declared; widen it when a new import needs it.

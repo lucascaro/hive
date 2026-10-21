@@ -1,3 +1,9 @@
+/*
+ * SPDX-License-Identifier: GPL-3.0-only
+ * Copyright (C) 2026 Lucas Caro
+ * See LICENSE and ADDITIONAL-TERMS.md.
+ */
+
 /* docs/design-docs/ui/components.md > statusBar. 24px, --surface, top
    border, --text-xs --fg-muted. Left slot persistent, right slot the
    current mode's shortcuts. */

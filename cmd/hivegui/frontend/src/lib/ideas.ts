@@ -1,3 +1,7 @@
+// SPDX-License-Identifier: GPL-3.0-only
+// Copyright (C) 2026 Lucas Caro
+// See LICENSE and ADDITIONAL-TERMS.md.
+
 // Pure helpers for the idea inbox. No DOM, unit-testable — the same
 // split lib/worktrees.ts makes for the worktree browser.
 

@@ -1,3 +1,7 @@
+// SPDX-License-Identifier: GPL-3.0-only
+// Copyright (C) 2026 Lucas Caro
+// See LICENSE and ADDITIONAL-TERMS.md.
+
 // Spec 477: plugin chords resolve against core's LIVE chords (the user's
 // keymap), the reserved terminal chords, and the user's plugin overrides.
 import { describe, expect, it } from 'vitest';

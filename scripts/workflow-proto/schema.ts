@@ -1,3 +1,7 @@
+// SPDX-License-Identifier: GPL-3.0-only
+// Copyright (C) 2026 Lucas Caro
+// See LICENSE and ADDITIONAL-TERMS.md.
+
 // Output-schema builder for workflow nodes (spec 495). Each builder returns a
 // JSON Schema value plus a phantom TypeScript type, so `node.out.<field>` is
 // typed in the DSL while the IR carries plain JSON Schema — the same schema a

@@ -1,3 +1,7 @@
+// SPDX-License-Identifier: GPL-3.0-only
+// Copyright (C) 2026 Lucas Caro
+// See LICENSE and ADDITIONAL-TERMS.md.
+
 // The terminal tile's two overlays: the dead-session card and the
 // lifecycle loading panel. Rendered into `.tile-overlays`, the
 // `display: contents` mount app/session-term.ts appends after the body

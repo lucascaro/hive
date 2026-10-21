@@ -1,3 +1,7 @@
+// SPDX-License-Identifier: GPL-3.0-only
+// Copyright (C) 2026 Lucas Caro
+// See LICENSE and ADDITIONAL-TERMS.md.
+
 // Generic workflow constructs (spec 495). Each is a higher-order function: it
 // takes node specs and options and returns a Fragment, which `g.use(id, …)`
 // applies under an id of the caller's choosing. Every node a fragment adds

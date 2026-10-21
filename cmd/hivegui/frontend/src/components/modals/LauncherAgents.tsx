@@ -1,3 +1,7 @@
+// SPDX-License-Identifier: GPL-3.0-only
+// Copyright (C) 2026 Lucas Caro
+// See LICENSE and ADDITIONAL-TERMS.md.
+
 // Settings → Agents → "In the launcher": which agents the new-session
 // launcher shows, and which it pins to the top in a user-chosen order.
 //

@@ -1,4 +1,8 @@
 #!/usr/bin/env node
+// SPDX-License-Identifier: GPL-3.0-only
+// Copyright (C) 2026 Lucas Caro
+// See LICENSE and ADDITIONAL-TERMS.md.
+
 // Prints a worked example's IR JSON and/or Mermaid (spec 495).
 //
 //   node scripts/workflow-proto/emit.ts <example> [--ir | --mermaid]

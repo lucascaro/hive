@@ -1,3 +1,7 @@
+// SPDX-License-Identifier: GPL-3.0-only
+// Copyright (C) 2026 Lucas Caro
+// See LICENSE and ADDITIONAL-TERMS.md.
+
 // Drop placeholder for every drag-to-reorder list: sidebar sessions and
 // project cards, and the pinned agents in Settings. Rows wire up through
 // lib/drag-row.ts and mark themselves with `data-drag-row`. The dragged element leaves the layout flow and a spacer of its

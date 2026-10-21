@@ -1,3 +1,7 @@
+// SPDX-License-Identifier: GPL-3.0-only
+// Copyright (C) 2026 Lucas Caro
+// See LICENSE and ADDITIONAL-TERMS.md.
+
 // Behavioural checks for the Hive Pi extension that only make sense on
 // the TS side. The cross-language frame contract is checked from Go
 // (internal/agent/pi_test.go), which decodes what encodeFrames here

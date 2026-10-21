@@ -1,3 +1,7 @@
+// SPDX-License-Identifier: GPL-3.0-only
+// Copyright (C) 2026 Lucas Caro
+// See LICENSE and ADDITIONAL-TERMS.md.
+
 // Terminal font-size constants + clamp helper.
 
 export const DEFAULT_FONT_SIZE = 14;

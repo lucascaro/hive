@@ -1,3 +1,7 @@
+// SPDX-License-Identifier: GPL-3.0-only
+// Copyright (C) 2026 Lucas Caro
+// See LICENSE and ADDITIONAL-TERMS.md.
+
 // Shared presentation rule for the OSC-set terminal window title.
 //
 // Two surfaces render this string — the grid tile header

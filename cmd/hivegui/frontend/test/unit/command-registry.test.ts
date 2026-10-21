@@ -1,3 +1,7 @@
+// SPDX-License-Identifier: GPL-3.0-only
+// Copyright (C) 2026 Lucas Caro
+// See LICENSE and ADDITIONAL-TERMS.md.
+
 // The real command bus. key-scopes.test.ts mocks runCommand to pin
 // routing, so the "declined key is left unconsumed" contract rests here.
 import { afterEach, describe, expect, it, vi } from 'vitest';

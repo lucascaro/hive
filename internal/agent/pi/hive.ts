@@ -1,3 +1,7 @@
+// SPDX-License-Identifier: GPL-3.0-only
+// Copyright (C) 2026 Lucas Caro
+// See LICENSE and ADDITIONAL-TERMS.md.
+
 // hive.ts is the Hive extension-tier reporter for Pi. hived writes this
 // file to <stateDir>/pi/hive.ts at daemon start (see
 // internal/agent/pi.go) and every Pi session Hive spawns is launched

@@ -1,3 +1,7 @@
+// SPDX-License-Identifier: GPL-3.0-only
+// Copyright (C) 2026 Lucas Caro
+// See LICENSE and ADDITIONAL-TERMS.md.
+
 // Markdown as React elements, for plans an agent wrote (#457).
 //
 // `marked` is used for its lexer ONLY. Its HTML renderer, and every

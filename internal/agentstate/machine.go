@@ -1,3 +1,7 @@
+// SPDX-License-Identifier: GPL-3.0-only
+// Copyright (C) 2026 Lucas Caro
+// See LICENSE and ADDITIONAL-TERMS.md.
+
 // Package agentstate holds the state machine that answers "what is this
 // session doing right now" — working, idle, waiting on the user, dead.
 //

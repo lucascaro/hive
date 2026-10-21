@@ -1,3 +1,7 @@
+// SPDX-License-Identifier: GPL-3.0-only
+// Copyright (C) 2026 Lucas Caro
+// See LICENSE and ADDITIONAL-TERMS.md.
+
 // JSON Schema of the workflow IR (spec 495). `ir.schema.json` is this value,
 // committed; schema.test.ts fails when the two differ, and check-doc keeps
 // the copy in docs/design-docs/workflow-engine.md in step.

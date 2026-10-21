@@ -1,3 +1,9 @@
+/*
+ * SPDX-License-Identifier: GPL-3.0-only
+ * Copyright (C) 2026 Lucas Caro
+ * See LICENSE and ADDITIONAL-TERMS.md.
+ */
+
 /* What UI plugins contribute (spec 471, components/PluginSurfaces.tsx).
    The chrome is the app's; only the bodies inside it are the plugin's,
    and they are styled by the plugin's own stylesheet (docs/plugins.md

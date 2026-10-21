@@ -1,3 +1,9 @@
+/*
+ * SPDX-License-Identifier: GPL-3.0-only
+ * Copyright (C) 2026 Lucas Caro
+ * See LICENSE and ADDITIONAL-TERMS.md.
+ */
+
 /* Drag-to-reorder, shared by every list that wires rows through
    lib/drag-row.ts (sidebar sessions and project cards, Settings' pinned
    agents). Imported late in index.css: the .dragging rule must not lose to a

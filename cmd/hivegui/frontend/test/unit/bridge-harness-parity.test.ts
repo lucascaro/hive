@@ -1,3 +1,7 @@
+// SPDX-License-Identifier: GPL-3.0-only
+// Copyright (C) 2026 Lucas Caro
+// See LICENSE and ADDITIONAL-TERMS.md.
+
 // The two Playwright harnesses (test/e2e/wails-mock.ts and
 // test/e2e-real/wails-bridge.ts) are SUBSTITUTED for the generated
 // wailsjs modules by the resolveId plugin in vite.config.js. So a name

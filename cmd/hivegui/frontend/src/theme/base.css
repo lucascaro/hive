@@ -1,3 +1,9 @@
+/*
+ * SPDX-License-Identifier: GPL-3.0-only
+ * Copyright (C) 2026 Lucas Caro
+ * See LICENSE and ADDITIONAL-TERMS.md.
+ */
+
 /* UA-level ground: document box, typography reset and the global
    scrollbar skin. Everything here is unscoped — one selector per browser
    surface, no component knows about it. Loaded after themes.css and before

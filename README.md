@@ -425,4 +425,18 @@ map, and `CONTRIBUTING.md` for the contribution flow.
 
 ## License
 
-MIT — see `LICENSE`.
+Hive is free software, licensed under the
+[GNU General Public License v3.0 only](LICENSE) (`GPL-3.0-only`) with
+[additional terms under Section 7](ADDITIONAL-TERMS.md). Copyright (C)
+2026 Lucas Caro.
+
+## NOTICE
+
+- License: GNU GPL v3 with additional terms — see [LICENSE](LICENSE) and
+  [ADDITIONAL-TERMS.md](ADDITIONAL-TERMS.md).
+- Attribution (required by ADDITIONAL-TERMS.md, term a): "Based on Hive by
+  Lucas Caro — https://github.com/lucascaro/hive"
+- Releases up to and including v2.9.0 were published under the MIT License
+  and remain available under those terms.
+- Bundled fonts (IBM Plex Sans, JetBrains Mono) keep their own SIL Open Font
+  License 1.1; see `cmd/hivegui/frontend/public/fonts/`.

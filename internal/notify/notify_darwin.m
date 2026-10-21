@@ -1,3 +1,7 @@
+// SPDX-License-Identifier: GPL-3.0-only
+// Copyright (C) 2026 Lucas Caro
+// See LICENSE and ADDITIONAL-TERMS.md.
+
 // Native macOS notifications. Uses NSUserNotification rather than
 // osascript so the toast shows the Hive bundle's icon, supports a
 // subtitle, and lets us route clicks back to Go.

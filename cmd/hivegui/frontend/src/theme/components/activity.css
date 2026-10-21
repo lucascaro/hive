@@ -1,3 +1,9 @@
+/*
+ * SPDX-License-Identifier: GPL-3.0-only
+ * Copyright (C) 2026 Lucas Caro
+ * See LICENSE and ADDITIONAL-TERMS.md.
+ */
+
 /* Agent activity renderers (spec 416): the inspector panel beside the
    terminal and the activity grid's tile body. Existing tokens only, so
    every theme preset works. docs/design-docs/agent-activity.md */

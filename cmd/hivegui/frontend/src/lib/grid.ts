@@ -1,3 +1,7 @@
+// SPDX-License-Identifier: GPL-3.0-only
+// Copyright (C) 2026 Lucas Caro
+// See LICENSE and ADDITIONAL-TERMS.md.
+
 // Pure grid layout math. No DOM, no state. All inputs explicit.
 
 // computeGridDims picks (rows, cols) that fills a w×h container

@@ -1,3 +1,7 @@
+// SPDX-License-Identifier: GPL-3.0-only
+// Copyright (C) 2026 Lucas Caro
+// See LICENSE and ADDITIONAL-TERMS.md.
+
 // ---------- ACP transcript store (spec 496) ----------
 //
 // Per-session ACP transcripts, fed by `acp:transcript`. Its own store,

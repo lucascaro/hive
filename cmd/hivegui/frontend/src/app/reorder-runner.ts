@@ -1,3 +1,7 @@
+// SPDX-License-Identifier: GPL-3.0-only
+// Copyright (C) 2026 Lucas Caro
+// See LICENSE and ADDITIONAL-TERMS.md.
+
 // Applies a reorder as a sequence of daemon moves.
 //
 // A reorder is no longer one call. Sessions sharing a worktree move as a

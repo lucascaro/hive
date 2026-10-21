@@ -1,3 +1,7 @@
+// SPDX-License-Identifier: GPL-3.0-only
+// Copyright (C) 2026 Lucas Caro
+// See LICENSE and ADDITIONAL-TERMS.md.
+
 //go:build !darwin
 
 // hivebar is macOS-only: it is a status-bar agent, and a menu bar is

@@ -1,3 +1,7 @@
+// SPDX-License-Identifier: GPL-3.0-only
+// Copyright (C) 2026 Lucas Caro
+// See LICENSE and ADDITIONAL-TERMS.md.
+
 // Webhook — the reference Hive plugin. POSTs a JSON message to a URL
 // when a session starts waiting for you: its agent is waiting for input,
 // or its terminal rang the bell. See README.md.

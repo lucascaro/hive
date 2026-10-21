@@ -1,3 +1,7 @@
+// SPDX-License-Identifier: GPL-3.0-only
+// Copyright (C) 2026 Lucas Caro
+// See LICENSE and ADDITIONAL-TERMS.md.
+
 // Read-only derivations over the shared state object. No DOM, no
 // bridge calls — pure lookups modules can share without cycles.
 

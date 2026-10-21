@@ -1,3 +1,7 @@
+// SPDX-License-Identifier: GPL-3.0-only
+// Copyright (C) 2026 Lucas Caro
+// See LICENSE and ADDITIONAL-TERMS.md.
+
 // Icon-only button. components.md › iconButton(): 24x24 (rows/bars) or
 // 22x22 (sidebar header), 14px icon, aria-label REQUIRED and mirrored
 // into title. Never build an icon-only <button> by hand.

@@ -1,3 +1,7 @@
+// SPDX-License-Identifier: GPL-3.0-only
+// Copyright (C) 2026 Lucas Caro
+// See LICENSE and ADDITIONAL-TERMS.md.
+
 package main
 
 import (
@@ -27,4 +31,5 @@ func printIdentity(w io.Writer, asJSON bool) {
 	}
 	fmt.Fprintf(w, "hived %s (build %s, daemon contract %d)\n",
 		id.Release, id.BuildID, id.DaemonContract)
+	fmt.Fprint(w, buildinfo.LegalNotice())
 }

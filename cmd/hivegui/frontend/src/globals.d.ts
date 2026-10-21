@@ -1,3 +1,7 @@
+// SPDX-License-Identifier: GPL-3.0-only
+// Copyright (C) 2026 Lucas Caro
+// See LICENSE and ADDITIONAL-TERMS.md.
+
 // Debug/e2e-only globals. None of these exist in a normal production
 // build: `__hive_state` and `__hive_commandLog` (app/command-registry.ts)
 // are gated on the Vite mock/real env vars

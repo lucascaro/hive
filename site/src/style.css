@@ -1,3 +1,9 @@
+/*
+ * SPDX-License-Identifier: GPL-3.0-only
+ * Copyright (C) 2026 Lucas Caro
+ * See LICENSE and ADDITIONAL-TERMS.md.
+ */
+
 :root {
   --bg: #0b0c10; --surface: #13141a; --border: #22242e; --fg: #e6e7ee;
   --fg-muted: #a5a8b8; --fg-subtle: #5f6273; --accent: #ffb454; --on-accent: #15120a;

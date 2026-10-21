@@ -1,3 +1,7 @@
+// SPDX-License-Identifier: GPL-3.0-only
+// Copyright (C) 2026 Lucas Caro
+// See LICENSE and ADDITIONAL-TERMS.md.
+
 // @vitest-environment jsdom
 //
 // The command bus (spec 478): one id per action, shared by the key
@@ -139,6 +143,7 @@ describe('the palette', () => {
       'worktrees',
       'whats-new',
       'help',
+      'about',
       'quick-idea',
       'idea-inbox',
       'message-session',

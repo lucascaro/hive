@@ -1,3 +1,7 @@
+// SPDX-License-Identifier: GPL-3.0-only
+// Copyright (C) 2026 Lucas Caro
+// See LICENSE and ADDITIONAL-TERMS.md.
+
 // ---------- quick idea capture (⌘I): the non-React half ----------
 //
 // The sheet renders from components/modals/QuickIdea.tsx. What stays

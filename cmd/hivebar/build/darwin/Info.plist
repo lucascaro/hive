@@ -34,5 +34,7 @@
              Local Network access. Same string as the GUI's. -->
         <key>NSLocalNetworkUsageDescription</key>
         <string>Hive runs your shells and coding agents. Allow this so commands in a session can reach devices, VMs and dev servers on your local network.</string>
+        <key>NSHumanReadableCopyright</key>
+        <string>Copyright (C) 2026 Lucas Caro. GPL-3.0-only with additional terms.</string>
     </dict>
 </plist>

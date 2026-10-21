@@ -1,3 +1,7 @@
+// SPDX-License-Identifier: GPL-3.0-only
+// Copyright (C) 2026 Lucas Caro
+// See LICENSE and ADDITIONAL-TERMS.md.
+
 // Spec 477 criterion 9: importing a keymap file — parse, preview, settle
 // conflicts, apply. The preview must agree with the real resolver
 // (lib/bindings.ts): whatever it calls conflict-free, the resolver must

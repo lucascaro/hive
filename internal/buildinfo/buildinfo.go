@@ -1,3 +1,7 @@
+// SPDX-License-Identifier: GPL-3.0-only
+// Copyright (C) 2026 Lucas Caro
+// See LICENSE and ADDITIONAL-TERMS.md.
+
 // Package buildinfo holds build identity strings populated at link
 // time via -ldflags. Both hived and hivegui import this so the
 // version-handshake banner can detect a stale daemon (built from a

@@ -1,3 +1,7 @@
+// SPDX-License-Identifier: GPL-3.0-only
+// Copyright (C) 2026 Lucas Caro
+// See LICENSE and ADDITIONAL-TERMS.md.
+
 // The terminal tile's chrome, rendered into a host React must never own.
 //
 // The boundary, and why it is drawn here rather than anywhere else:

@@ -1,3 +1,7 @@
+// SPDX-License-Identifier: GPL-3.0-only
+// Copyright (C) 2026 Lucas Caro
+// See LICENSE and ADDITIONAL-TERMS.md.
+
 // Issue 505: does the pinned Claude ACP adapter run a folder's project hooks,
 // .mcp.json servers and apiKeyHelper, and does settingSources ["user"] stop it?
 //

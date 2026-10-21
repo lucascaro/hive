@@ -1,3 +1,7 @@
+// SPDX-License-Identifier: GPL-3.0-only
+// Copyright (C) 2026 Lucas Caro
+// See LICENSE and ADDITIONAL-TERMS.md.
+
 // Sessions that share one git worktree share one working directory: they
 // step on each other's files, and killing one keeps the worktree alive until
 // the last of them goes (internal/registry: the worktreeShared guard in

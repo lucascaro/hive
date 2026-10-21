@@ -1,3 +1,7 @@
+// SPDX-License-Identifier: GPL-3.0-only
+// Copyright (C) 2026 Lucas Caro
+// See LICENSE and ADDITIONAL-TERMS.md.
+
 // The inspector panel (spec 416): beside the terminal in single view.
 // Plan steps with their calls nested beneath — only the current step open
 // by default — and the whole timeline below, newest first.

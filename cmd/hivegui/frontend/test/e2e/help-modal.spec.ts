@@ -1,3 +1,7 @@
+// SPDX-License-Identifier: GPL-3.0-only
+// Copyright (C) 2026 Lucas Caro
+// See LICENSE and ADDITIONAL-TERMS.md.
+
 import { test, expect, type Page } from '@playwright/test';
 
 // Spec 442. The Help modal: opened from the sidebar button and from the
@@ -61,4 +65,26 @@ test('⌘/ inside Help does the same handoff instead of being swallowed', async 
   await page.keyboard.press(`${mod}+/`);
   await expect(page.locator('#help-modal')).toBeHidden();
   await expect(page.locator('#help-overlay')).toBeVisible();
+});
+
+test('About shows the required attribution and no-warranty notice', async ({
+  page,
+}) => {
+  await boot(page);
+  await page.locator('#help-btn').click();
+  const about = page.locator('#help-modal #help-about');
+  await expect(about).toBeVisible();
+  await expect(about).toContainText(
+    'Based on Hive by Lucas Caro — https://github.com/lucascaro/hive',
+  );
+  await expect(about).toContainText('Copyright (C) 2026 Lucas Caro');
+  await expect(about).toContainText('ABSOLUTELY NO WARRANTY');
+});
+
+test('About Hive is reachable from the command palette', async ({ page }) => {
+  await boot(page);
+  await page.keyboard.press(`${mod}+Shift+k`);
+  await page.locator('#command-palette-input').fill('about');
+  await page.keyboard.press('Enter');
+  await expect(page.locator('#help-modal #help-about')).toBeVisible();
 });

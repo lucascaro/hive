@@ -1,3 +1,7 @@
+// SPDX-License-Identifier: GPL-3.0-only
+// Copyright (C) 2026 Lucas Caro
+// See LICENSE and ADDITIONAL-TERMS.md.
+
 // Pure helpers for the in-session find box (spec 431).
 //
 // ⌘F drives two sources behind one UI. Which one is chosen is decided

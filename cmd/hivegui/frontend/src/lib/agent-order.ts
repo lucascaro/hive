@@ -1,3 +1,7 @@
+// SPDX-License-Identifier: GPL-3.0-only
+// Copyright (C) 2026 Lucas Caro
+// See LICENSE and ADDITIONAL-TERMS.md.
+
 // Launcher agent ordering: which agents the new-session launcher lists, and
 // in what order. The rule is pure and table-testable; load/save at the
 // bottom are the only storage-touching part. The launch counts it sorts by

@@ -1,3 +1,9 @@
+/*
+ * SPDX-License-Identifier: GPL-3.0-only
+ * Copyright (C) 2026 Lucas Caro
+ * See LICENSE and ADDITIONAL-TERMS.md.
+ */
+
 /* Presets. Every block re-values EVERY token; partial presets fall through
    to hive-dark and look broken in light. docs/design-docs/ui/themes.md */
 

@@ -1,3 +1,7 @@
+// SPDX-License-Identifier: GPL-3.0-only
+// Copyright (C) 2026 Lucas Caro
+// See LICENSE and ADDITIONAL-TERMS.md.
+
 // Re-rendering steals the keyboard unless something puts focus back.
 //
 // app/grid-layout.ts's applyGridLayout re-parents tiles with appendChild — which, on

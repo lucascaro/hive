@@ -1,3 +1,7 @@
+// SPDX-License-Identifier: GPL-3.0-only
+// Copyright (C) 2026 Lucas Caro
+// See LICENSE and ADDITIONAL-TERMS.md.
+
 // Real-daemon Wails bridge for Layer B Playwright tests.
 //
 // Mirrors the export surface of test/e2e/wails-mock.ts so the same

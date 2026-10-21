@@ -1,3 +1,7 @@
+// SPDX-License-Identifier: GPL-3.0-only
+// Copyright (C) 2026 Lucas Caro
+// See LICENSE and ADDITIONAL-TERMS.md.
+
 // The activity renderer registry (spec 416). Each placement looks its
 // renderer up here, so a second visualization is a new file plus one
 // entry — an in-repo seam, not a plugin API (see the spec's non-goals).

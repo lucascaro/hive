@@ -1,3 +1,7 @@
+// SPDX-License-Identifier: GPL-3.0-only
+// Copyright (C) 2026 Lucas Caro
+// See LICENSE and ADDITIONAL-TERMS.md.
+
 import { test, expect } from '@playwright/test';
 // `state.terms` is a Map<string, TermTile> — the deliberately narrow structural
 // view app modules use (app/state.ts). These specs poke the concrete tile the

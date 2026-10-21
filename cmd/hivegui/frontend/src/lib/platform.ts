@@ -1,3 +1,7 @@
+// SPDX-License-Identifier: GPL-3.0-only
+// Copyright (C) 2026 Lucas Caro
+// See LICENSE and ADDITIONAL-TERMS.md.
+
 // Platform detection + cross-platform modifier-key helper.
 //
 // Extracted from main.js so it can be unit-tested with a fake

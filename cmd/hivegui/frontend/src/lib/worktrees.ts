@@ -1,3 +1,7 @@
+// SPDX-License-Identifier: GPL-3.0-only
+// Copyright (C) 2026 Lucas Caro
+// See LICENSE and ADDITIONAL-TERMS.md.
+
 // Pure logic for the worktree browser: how a worktree row is
 // classified, whether it can be deleted, and how the two lists sort.
 // DOM-free so it can be unit-tested — the modal in

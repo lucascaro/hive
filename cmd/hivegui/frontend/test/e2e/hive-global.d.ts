@@ -1,3 +1,7 @@
+// SPDX-License-Identifier: GPL-3.0-only
+// Copyright (C) 2026 Lucas Caro
+// See LICENSE and ADDITIONAL-TERMS.md.
+
 // Globals that exist only under Playwright. None of these are declared in
 // src/globals.d.ts on purpose: nothing under src/ reads them, and the types
 // belong beside the harnesses that inject them.

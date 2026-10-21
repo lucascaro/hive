@@ -1,3 +1,7 @@
+// SPDX-License-Identifier: GPL-3.0-only
+// Copyright (C) 2026 Lucas Caro
+// See LICENSE and ADDITIONAL-TERMS.md.
+
 // Playwright-side drag-to-reorder driver, shared by every spec that drags a
 // list row (ordering.spec.ts for sidebar sessions, settings.spec.ts for
 // pinned agents). Both lists run through the same app code
