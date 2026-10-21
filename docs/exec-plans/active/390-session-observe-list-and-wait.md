@@ -191,3 +191,7 @@ Independent reviewer (hs-reviewer), two rounds.
 
 - Whether `last_summary` belongs in the list projection. Left out
   until an implementor or the phase-3 gate shows an agent needing it.
+
+## PR convergence ledger
+
+- **2026-10-21 iter 1** — verdict: COMMENT; mergeable: MERGEABLE; findings_hash: 8a62b346aad57b08e53edf87d59217f75b2adc4a0dad09999354e199d304c6a5; threads_open: 0; action: autofix+push; head_sha: 593e844a.
