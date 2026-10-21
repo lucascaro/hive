@@ -4,7 +4,7 @@
 - **Design:** [docs/design-docs/agent-orchestration.md](../../design-docs/agent-orchestration.md)
 - **Issue:** —
 - **Branch:** `feature/390-session-observe`
-- **PR:** —
+- **PR:** [#525](https://github.com/lucascaro/hive/pull/525)
 - **Status:** active
 
 ## Summary

@@ -4,7 +4,8 @@ title: "Observe from a session: hived session list and hived wait"
 type: enhancement
 complexity: S
 priority: P3
-stage: IMPLEMENT
+stage: REVIEW
+pr: 525
 ---
 
 # Observe from a session: `hived session list` and `hived wait`
