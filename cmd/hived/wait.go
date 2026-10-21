@@ -67,7 +67,9 @@ func runWait(args []string, stdout, stderr io.Writer) int {
 		fmt.Fprint(stderr, waitUsage)
 		return 2
 	}
-	if *timeout <= 0 || *timeout > wire.WaitMaxTimeout {
+	// Under 1s rounds to 0 on the wire, which the daemon reads as "use
+	// the 10m default".
+	if *timeout < time.Second || *timeout > wire.WaitMaxTimeout {
 		fmt.Fprintf(stderr, "hived wait: --timeout must be between 1s and %s\n", wire.WaitMaxTimeout)
 		return 2
 	}

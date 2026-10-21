@@ -22,6 +22,7 @@ func TestRunWaitArguments(t *testing.T) {
 		{"gone is not askable", []string{"a", "--state", "idle,gone"}, `unknown state "gone"`},
 		{"zero timeout", []string{"a", "--timeout", "0"}, "--timeout must be"},
 		{"negative timeout", []string{"--timeout=-5s", "a"}, "--timeout must be"},
+		{"sub-second timeout", []string{"a", "--timeout", "400ms"}, "--timeout must be"},
 		{"over the cap", []string{"a", "--timeout", "31m"}, "--timeout must be"},
 		{"unknown flag", []string{"a", "--bogus"}, "usage:"},
 		{"valid but not in a session", []string{"a", "--state", "idle,exited", "--timeout", "5s", "--after-working"}, "not running inside a Hive session"},
