@@ -81,6 +81,7 @@ had the task tools but rarely used them, so Hive had no progress to show. When
 the Claude task tools setting is on, Hive now tells each session at startup to
 track multi-step work in its task list.
 Pressing Esc to interrupt Claude Code now returns its session to idle right away instead of leaving it "working" until the activity timeout, and a Claude question raises "needs attention" even if its hooks are unavailable. Hive reads the status Claude reports in the terminal (OSC 7501) and answers the query that turns it on.
+Hive is now licensed under the GNU GPL v3 (GPL-3.0-only) with additional terms under Section 7 (see `LICENSE` and `ADDITIONAL-TERMS.md`). Releases up to and including v2.9.0 remain available under the MIT License. Help now has an About section with the copyright, warranty notice and required attribution, and `hived`, `hivegui`, `hivebar` and `hived-ws-bridge` print the copyright and license with `--version`.
 The sidebar drops the gaps around worktree groups and between projects. Hairlines and each project's colour rule are now the only separators, and where two lines meet they draw as one.
 A background update check no longer pops the update banner. When a new version
 is available, the sidebar's ⤓ "Check for updates" button shows a dot instead;
