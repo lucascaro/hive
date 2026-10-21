@@ -44,6 +44,14 @@ func main() {
 	if len(os.Args) > 1 && os.Args[1] == "msg" {
 		os.Exit(runMsg(os.Args[2:], os.Stdout, os.Stderr))
 	}
+	// `hived session list` and `hived wait` observe sibling sessions
+	// from inside a session (spec 390).
+	if len(os.Args) > 1 && os.Args[1] == "session" {
+		os.Exit(runSession(os.Args[2:], os.Stdout, os.Stderr))
+	}
+	if len(os.Args) > 1 && os.Args[1] == "wait" {
+		os.Exit(runWait(os.Args[2:], os.Stdout, os.Stderr))
+	}
 	// `hived mcp-submit` is an ACP session's submit_result MCP server,
 	// started by the agent's adapter over stdio (spec 496).
 	if len(os.Args) > 1 && os.Args[1] == "mcp-submit" {

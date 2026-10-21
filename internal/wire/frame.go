@@ -281,6 +281,13 @@ const (
 	FrameArchived         FrameType = 0x4a // S → C, JSON, control
 	FrameUnarchiveSession FrameType = 0x4b // C → S, JSON, control
 	FrameDeleteArchived   FrameType = 0x4c // C → S, JSON, control
+
+	// Observe (spec 390). WAIT_SESSION blocks the daemon-side until a
+	// sibling session in the caller's project reaches one of the named
+	// states, then answers WAITED. Served to a ModeSession connection
+	// only: it is the in-session half of `hived wait`.
+	FrameWaitSession FrameType = 0x4d // C → S, JSON, control
+	FrameWaited      FrameType = 0x4e // S → C, JSON, control
 )
 
 // ControlRequestFrames lists every frame a control-mode client may send.
@@ -304,6 +311,7 @@ var ControlRequestFrames = []FrameType{
 	FrameGetAcpTranscript, FramePromptAcp, FrameAnswerPermission,
 	FrameSubmitResult, FrameSetSessionKind, FrameSendToSession,
 	FrameArchiveSession, FrameListArchived, FrameUnarchiveSession, FrameDeleteArchived,
+	FrameWaitSession,
 }
 
 // ControlEventFrames lists every frame the daemon sends on a control
@@ -315,7 +323,7 @@ var ControlEventFrames = []FrameType{
 	FrameIdeas, FrameIdeaEvent, FrameActivity,
 	FrameTranscriptMatches, FrameTranscriptLines, FramePlanReview,
 	FramePlugins, FramePluginEvent, FrameAcpTranscript,
-	FrameSubmitResultOK, FrameSent, FrameArchived,
+	FrameSubmitResultOK, FrameSent, FrameArchived, FrameWaited,
 }
 
 // NonControlFrames are the frames that never travel on a control
@@ -442,6 +450,10 @@ func (t FrameType) String() string {
 		return "SEND_TO_SESSION"
 	case FrameSent:
 		return "SENT"
+	case FrameWaitSession:
+		return "WAIT_SESSION"
+	case FrameWaited:
+		return "WAITED"
 	case FrameArchiveSession:
 		return "ARCHIVE_SESSION"
 	case FrameListArchived:

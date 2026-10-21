@@ -11,78 +11,183 @@
 
 Let any `ModeSession` connection list its project's sessions with a
 narrow field set, and add `hived wait` that blocks until a sibling
-reaches a state. Read-only; no grant. **Do not start until 389's gate
-is met** (or 389's decision log records folding this in). Research
-below is a starting point, not a finished survey: verify against
-`main` and fill the gaps.
+reaches a state. Read-only; no grant. 389 shipped (#524).
 
 ## Research
 
-- `internal/daemon/daemon.go` — `ownSessionOnly` narrows
-  `LIST_SESSIONS` for restricted callers to the caller's own id +
-  project, with the comment explaining which fields are withheld and
-  why. This plan widens *which sessions*, not *which fields* beyond
-  `agent`, `alive`, `state`, `state_source`.
-- `internal/agentstate/machine.go` — states; `wire.State*` constants
-  (`control.go:~253`). `waiting_input` / `waiting_permission` are the
-  states that never time out — `wait --state idle` on a session stuck
-  at a permission prompt waits forever, which is correct and should be
-  visible in the help text.
-- How a restricted connection receives `SESSION_EVENT` broadcasts —
-  `serveControl` subscribes every connection before `WELCOME`; check
-  whether restricted ones are filtered. If events already flow,
-  `hived wait` is a subscribe-and-filter loop. If not, either filter
-  broadcasts to `ownProjectID` for restricted callers (preferred — it
-  is the same scoping the list gets) or poll `LIST_SESSIONS` at 1 s.
-- `cmd/hived/idea.go` — client shape to copy for `session.go` and
-  `wait.go`.
+Verified against `main` @ 3b5fc16a, DaemonContract 32.
 
-## Approach
+- `internal/daemon/daemon.go` `serveControl` (~1050): a restricted
+  (`ModeSession`) connection **drops every `SESSION_EVENT`**
+  (`if restricted { continue }`), so "events already flow" is false.
+- Restricted frames are allowlisted in `sessionModeFrames` (~1346);
+  `LIST_SESSIONS` is not in it. The connect-time SESSIONS snapshot is
+  `ownSessionOnly` (own id + project) and `hived idea list` reads its
+  project id from it — it must not change.
+- Every read on a restricted conn has a 30 s idle deadline
+  (`sessionModeIdleDeadline`, ~1318), re-armed per frame. A wait of
+  minutes must not depend on reads. Polling would keep the conn alive
+  but leaves the daemon unable to log the spec's evidence line.
+- `Registry.SendFromSession` (`internal/registry/deliver.go:394`)
+  resolves id-then-exact-name within the caller's project, errors
+  `ErrNotFound` / `ErrAmbiguousTarget`. Reuse, do not re-implement.
+- `watchSessionExit` (`internal/registry/registry.go:~1641`) calls
+  `machine().Exit()` before broadcasting, so `exited` does fire.
+- `Registry.Subscribe` (`events.go:26`): a slow listener (64-slot
+  buffer) is dropped by closing its channel; `Registry.Close()` closes
+  all; Subscribe after Close returns a closed channel.
+- States: `wire.State*` (`control.go:~338`); idle is `""`.
+- CLI shape: `cmd/hived/msg.go` (`sendMsgFromSession`, `ideaEnv`,
+  `ideaDial`, `awaitSent`); dispatch in `cmd/hived/main.go:~40`.
+- 389's doc footprint (the template for this one): `.changesets/`,
+  `README.md`, `docs/design-docs/agent-orchestration.md`,
+  `docs/design-docs/control-plane.md`, `site/features.json`.
 
-- Daemon: on a restricted connection `LIST_SESSIONS` returns every
-  session with `ProjectID == ownProjectID`, projected to `{id, name,
-  agent, alive, state, state_source}`. Replace `ownSessionOnly` with
-  `ownProjectOnly`; keep `hived idea list` working (it reads its
-  project id from the first entry).
-- Daemon: restricted connections receive `SESSION_EVENT` only for
-  sessions in `ownProjectID`, with the same projection.
-- `hived session list` — prints one line per session; `hived wait
-  <session> [--state a,b] [--timeout d]` — resolves the target the way
-  389's `msg` does, then blocks on events (or polls; see research).
-  Exit 0 on state, 1 on timeout, 2 on bad args / not in a session.
-- One log line per wait completion.
-- No wire frame is added if events already reach restricted
-  connections. If a `WAIT_SESSION` frame turns out cleaner, that is
-  the implementor's call; record it.
+### Conventions card
+
+- Build `./build.sh`; tests `scripts/test.sh` (layers go·unit·dom·e2e).
+- Verify under the CI toolchain: `GOTOOLCHAIN=go$(sed -n 's/^go //p' go.mod)`;
+  per-GOOS `staticcheck` + `go vet` for darwin/linux/windows.
+- Wire change: explicit snake_case tags; update `wire/testclient`;
+  new frames do NOT bump `PROTOCOL_VERSION`; daemon-side behaviour
+  change bumps `buildinfo.DaemonContract`
+  (`scripts/check-daemon-contract.sh <base> <head>`).
+- Shell-outs via `internal/proc` only. Verify by exit code, not grep.
+- User-visible change: `.changesets/<slug>.md` + `site/features.json`
+  entry (`since: "Unreleased"`); never edit `CHANGELOG.md`.
+
+### Prior lessons
+
+None matched (not searched beyond the memory index; no hive-brain hit
+was needed for this change).
+
+## Approach (decision: B — daemon-side `WAIT_SESSION`)
+
+Alternative A (client polls `LIST_SESSIONS` at 1 Hz) was rejected: the
+daemon never sees a wait finish, so it cannot emit the evidence line.
+
+1. **wire:** `FrameWaitSession` (C→S) / `FrameWaited` (S→C) with
+   `WaitSessionReq{session_id, states[], timeout_s, after_working}` and
+   `WaitedResp{session_id, state, reached}`; snake_case tags. Add
+   `FrameWaitSession` and `FrameListSessions` to `sessionModeFrames`.
+2. **List:** restricted `LIST_SESSIONS` returns the caller's project
+   sessions as exactly `{id, name, agent, state}` (`ownProjectOnly`).
+   Connect-time snapshot stays `ownSessionOnly`.
+3. **Wait (daemon, restricted only):** resolve the target in the
+   caller's project (shared resolver with `SendFromSession`); reject
+   self, missing, other-project and ambiguous targets immediately.
+   Validate `states` against the known set (`idle` ⇄ `""`; `gone`
+   rejected); default `idle,exited,error`. Order: Subscribe → read
+   current state → loop `select` on listener / timer / `ctx.Done()`;
+   `defer unsub()` on every path. Closed listener: re-subscribe and
+   re-read state via `reg.List()`; a re-subscribe that is immediately
+   closed (bounded retries) means "daemon shutting down". Target
+   removed → `reached=gone`. Timeout default 10 min, clamped to 30 min.
+   Handled inline in the read loop (no `ReadFrame`, so no idle
+   deadline while waiting); the write of `WAITED` gets a fresh write
+   deadline; a failed write logs `reached=disconnect`.
+   `--after-working` (decision b): first wait for the target to leave
+   idle, then for a target state — closes the race where `hived wait`
+   right after `hived msg` returns on the stale idle.
+   Log: `daemon: wait caller=session from=<id> to=<id> reached=<state|timeout|gone|disconnect>`
+   (prefix/order mirrors the send line).
+4. **Throttle:** the wait arm must not hold a plugin throttle slot for
+   its duration — dispatch such that `tag.wait/release` (`daemon.go:~1331`)
+   brackets nothing long-lived, and pin it with a test.
+5. **CLI:** `hived session list` (tab-separated `id name agent state`;
+   exit 2 outside a session); `hived wait <session> [--state a,b]
+   [--timeout d] [--after-working]` — exit 0 reached, 1 timeout/gone,
+   2 bad args / not in a session / unknown or refused target.
+   `--timeout` ≤ 0 or > 30m rejected; `--state gone` rejected. Help
+   text: `waiting_input` / `waiting_permission` never time out, so
+   `--state idle` on a session at a permission prompt waits until
+   `--timeout`. Client conn deadline = timeout + slack.
+6. **Housekeeping:** `buildinfo.DaemonContract` 32 → 33.
 
 ### Files to change
 
-- `internal/daemon/daemon.go` — projection, event filter.
-- `cmd/hived/main.go` — `session`, `wait` subcommands.
+- `internal/wire/frame.go`, `internal/wire/control.go` (+ frame tables,
+  name switch, `ControlFrames`, `ControlEventFrames`),
+  `internal/wire/testclient` helper.
+- `internal/daemon/daemon.go` (allowlist, list arm, wait arm).
+- `internal/registry/deliver.go` (extract the project-scoped resolver).
+- `internal/buildinfo/contract.go`.
+- `cmd/hived/main.go`.
+- Docs: `README.md`, `docs/design-docs/agent-orchestration.md`,
+  `docs/design-docs/control-plane.md`, `site/features.json`.
+- `cmd/hived-ws-bridge` and `cmd/hivegui`: not needed (session-only frame).
 
 ### New files
 
-- `cmd/hived/session.go`, `cmd/hived/wait.go` and tests.
+- `cmd/hived/session.go`, `cmd/hived/wait.go` (+ tests),
+  `.changesets/390-session-observe.md` (added, minor).
 
 ### Tests
 
-- `internal/daemon`: restricted list is project-scoped and projected;
-  restricted connection sees no events from other projects.
-- `cmd/hived`: `wait` returns on first qualifying `AGENT_EVENT`-driven
-  transition; returns immediately when already satisfied; times out.
+- `internal/wire`: frame-name/table tests; `control_frame_test.go`
+  bad-payload list gains `FrameWaitSession` (returns `bad_payload`
+  before blocking); check `plugin.FrameCost`.
+- `internal/daemon`:
+  - `TestRestrictedListSessions_ProjectScopedExactKeys` — other
+    project absent; JSON has exactly `id,name,agent,state`.
+  - `TestWaitSession_ReturnsOnAgentEvent` — working→idle via
+    `AGENT_EVENT`; log line asserted like `TestSessionModeSendLogLines`.
+  - `_AlreadyIdleReturnsImmediately`, `_Timeout`,
+    `_AfterWorkingIgnoresStaleIdle`, `_ExitedState` (real child exit),
+    `_TargetRemovedGone`, `_OtherProjectMissingSelfAmbiguousFailFast`,
+    `_SurvivesPastIdleDeadline` (shrunk deadline),
+    `_ListenerDroppedResyncs` (flood >64 events),
+    `_RegistryCloseMidWait`, `_DisconnectLogged` (closed client conn),
+    `_PluginThrottleSlotNotHeld`, and the existing
+    restricted-gets-no-events test stays green.
+- `cmd/hived` (pattern of `msg_e2e_test.go`): exit codes 0/1/2;
+  `--state idle` matches the empty-string state; in a shell session on
+  an already-idle sibling `hived wait` returns immediately;
+  `--timeout 0` and `--state gone` exit 2.
+
+### Verification
+
+```
+export GOTOOLCHAIN=go$(sed -n 's/^go //p' go.mod)
+go test ./internal/wire/... ./internal/daemon/... ./internal/registry/... ./cmd/hived/... >/dev/null && echo OK
+for os in darwin linux windows; do GOOS=$os go vet ./... || exit 1; done
+scripts/test.sh go >/dev/null && echo OK
+# after the 32→33 bump is committed:
+scripts/check-daemon-contract.sh origin/main HEAD >/dev/null && echo OK
+```
+
+## Second opinion
+
+Independent reviewer (hs-reviewer), two rounds.
+- Round 1: **revise**, confidence 7 — slow-subscriber resync, select on
+  ctx/timer + unsub, throttle check, self-wait, exact-field projection,
+  exit-code-gated verification, frame tables. All applied.
+- Round 2: **revise**, confidence 7 — shutdown-vs-drop detection,
+  stale-idle race after `msg`, throttle test, write deadline. Applied
+  (stale-idle via `--after-working`, per operator approval).
 
 ## Decision log
 
 - **2026-09-10** — No grant for read-only verbs. Why: same-user
   processes can already read this from the control socket; a grant
   would add friction and no safety.
+- **2026-10-21** — Operator approved: B (daemon-side `WAIT_SESSION`,
+  not client polling — the daemon must own the evidence line) and
+  option (b) (`--after-working`, since a bare `wait` after `msg`
+  returns on stale idle).
+- **2026-10-21** — Restricted list projects exactly `{id,name,agent,state}`
+  per the spec; `alive`/`state_source`/`project_id` dropped from the
+  restricted list. `reached=gone` and `reached=disconnect` extend the
+  spec's evidence values — recorded in agent-orchestration.md.
+- **2026-10-21** — Wait capped at 30 min (not 1 h): bounds a goroutine
+  parked on a client that hung up unnoticed.
 
 ## Progress
 
 - **2026-09-10** — Plan written. Gated on 389.
+- **2026-10-21** — 389 shipped; research verified; plan approved.
 
 ## Open questions
 
-- Events vs polling for `wait` (see research).
-- Whether `last_summary` belongs in the projection. Left out until an
-  implementor or the phase-3 gate shows an agent needing it.
+- Whether `last_summary` belongs in the list projection. Left out
+  until an implementor or the phase-3 gate shows an agent needing it.

@@ -378,6 +378,48 @@ func provenancePrefix(name, id string) string {
 	return `Message from Hive session "` + clean + `" (` + short + `): `
 }
 
+// resolveInProjectLocked finds the session ref names inside caller's
+// project: an exact id, else an exact name. named lists every id that
+// carried the name, so len(named) > 1 is an ambiguous target (target is
+// then one of them and must not be used). r.mu must be held.
+func (r *Registry) resolveInProjectLocked(caller *Entry, ref string) (target *Entry, named []string) {
+	if e, ok := r.entries[ref]; ok && e.ProjectID == caller.ProjectID {
+		return e, nil
+	}
+	for _, id := range r.order {
+		if e := r.entries[id]; e != nil && e.ProjectID == caller.ProjectID && e.Name == ref {
+			target = e
+			named = append(named, e.ID)
+		}
+	}
+	return target, named
+}
+
+// ResolveSibling resolves ref to a session in callerID's project, for a
+// read-only verb: no grant, because a same-user process can already
+// read this from the control socket (spec 390). ErrNotFound for a
+// missing or other-project target (including an unknown caller),
+// ErrAmbiguousTarget for a name shared by several, ErrSelfMessage when
+// the target is the caller.
+func (r *Registry) ResolveSibling(callerID, ref string) (wire.SessionInfo, error) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	caller, ok := r.entries[callerID]
+	if !ok {
+		return wire.SessionInfo{}, ErrNotFound
+	}
+	target, named := r.resolveInProjectLocked(caller, ref)
+	switch {
+	case target == nil:
+		return wire.SessionInfo{}, ErrNotFound
+	case len(named) > 1:
+		return wire.SessionInfo{}, fmt.Errorf("%w: %s", ErrAmbiguousTarget, strings.Join(named, ", "))
+	case target.ID == callerID:
+		return wire.SessionInfo{}, ErrSelfMessage
+	}
+	return target.Info(), nil
+}
+
 // SendFromSession delivers text from one session to a sibling in its own
 // project, on behalf of a ModeSession connection (spec 389). It returns
 // the resolved target id and the wire.Delivery* kind.
@@ -398,18 +440,7 @@ func (r *Registry) SendFromSession(callerID, ref, text string) (targetID, delive
 		r.mu.Unlock()
 		return "", "", ErrNotOrchestrator
 	}
-	var target *Entry
-	var named []string
-	if e, ok := r.entries[ref]; ok && e.ProjectID == caller.ProjectID {
-		target = e
-	} else {
-		for _, id := range r.order {
-			if e := r.entries[id]; e != nil && e.ProjectID == caller.ProjectID && e.Name == ref {
-				target = e
-				named = append(named, e.ID)
-			}
-		}
-	}
+	target, named := r.resolveInProjectLocked(caller, ref)
 	switch {
 	case target == nil:
 		r.mu.Unlock()

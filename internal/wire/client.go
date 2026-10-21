@@ -113,6 +113,11 @@ func (c *Client) ReadFrame() (FrameType, []byte, error) {
 // unblock one.
 func (c *Client) Close() error { return c.conn.Close() }
 
+// SetDeadline bounds every later read and write on the connection. A
+// handshake clears the deadline, so a client that wants one for a long
+// request (`hived wait`) re-arms it afterwards.
+func (c *Client) SetDeadline(t time.Time) error { return c.conn.SetDeadline(t) }
+
 // controlEvents and attachEvents are the shared frame → UI-event
 // dispatch tables. The GUI (Wails EventsEmit) and the ws-bridge (WS
 // notifications) emit identical event names; a new fanout frame is
@@ -131,6 +136,8 @@ var controlEvents = map[FrameType]string{
 	// The answer to SEND_TO_SESSION (spec 338); a refusal arrives as
 	// control:error carrying the session id.
 	FrameSent: "session:sent",
+	// The answer to WAIT_SESSION (spec 390).
+	FrameWaited: "session:waited",
 
 	FrameIdeas:     "idea:list",
 	FrameIdeaEvent: "idea:event",

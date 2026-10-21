@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"time"
 )
 
 // Mode is the connection mode chosen by the client in HELLO. It
@@ -1840,6 +1841,71 @@ type SendToSessionReq struct {
 	// Queue asks to hold the text until the session is idle rather than
 	// failing with session_busy. Unsupported for ACP sessions.
 	Queue bool `json:"queue,omitempty"`
+}
+
+// Longest and default WAIT_SESSION timeouts. The cap bounds how long a
+// daemon goroutine can stay parked on a client that hung up unnoticed.
+const (
+	WaitDefaultTimeout = 10 * time.Minute
+	WaitMaxTimeout     = 30 * time.Minute
+)
+
+// WaitStateGone is WaitedResp.State when the target vanished mid-wait;
+// WaitStateTimeout when the timeout elapsed first. Neither is a session
+// state, so neither can be asked for in WaitSessionReq.States.
+const (
+	WaitStateGone    = "gone"
+	WaitStateTimeout = "timeout"
+)
+
+// WaitSessionReq is the WAIT_SESSION payload (spec 390).
+type WaitSessionReq struct {
+	// SessionID is an id or an exact name, resolved within the caller's
+	// project.
+	SessionID string `json:"session_id"`
+	// States are the states that end the wait, by wire name; "idle"
+	// stands for StateIdle (""). Empty means idle, exited and error.
+	States []string `json:"states,omitempty"`
+	// TimeoutSeconds is 0 for WaitDefaultTimeout; above WaitMaxTimeout
+	// it is clamped.
+	TimeoutSeconds int `json:"timeout_s,omitempty"`
+	// AfterWorking holds the wait until the target has been seen to
+	// leave idle first, so a wait issued right after a note was sent
+	// does not return on the idle that predates the agent picking it up.
+	AfterWorking bool `json:"after_working,omitempty"`
+}
+
+// WaitStateNames are the states WaitSessionReq.States may name.
+var WaitStateNames = []string{"idle", StateWorking, StateWaitingInput, StateWaitingPermission, StateExited, StateError}
+
+// StateName is a state's name as the CLI and WaitSessionReq spell it:
+// StateIdle is "idle" rather than the empty string.
+func StateName(state string) string {
+	if state == StateIdle {
+		return "idle"
+	}
+	return state
+}
+
+// ParseStateName is the inverse of StateName; ok is false for a name
+// that is not a session state (including "gone" and "timeout").
+func ParseStateName(name string) (state string, ok bool) {
+	for _, n := range WaitStateNames {
+		if n == name {
+			if n == "idle" {
+				return StateIdle, true
+			}
+			return n, true
+		}
+	}
+	return "", false
+}
+
+// WaitedResp is the WAITED payload. State is the state reached, or
+// WaitStateTimeout / WaitStateGone; "idle" for StateIdle.
+type WaitedResp struct {
+	SessionID string `json:"session_id"`
+	State     string `json:"state"`
 }
 
 // SentResp is the SENT payload: how the text was (or will be) delivered.

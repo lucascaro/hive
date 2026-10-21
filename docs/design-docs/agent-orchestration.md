@@ -86,6 +86,15 @@ named**, and only within rules the daemon enforces.
 - **Read-only is free.** Listing a project's sessions and waiting on a
   state disclose nothing a same-user process cannot already get from
   the control socket, so phase 2 needs no grant.
+  Shipped as `LIST_SESSIONS` (narrowed to the caller's project and to
+  id, name, agent, state) and a session-only `WAIT_SESSION` frame. The
+  daemon, not the CLI, owns the wait: a `ModeSession` connection gets no
+  `SESSION_EVENT` broadcasts and is hung up on after 30 s of silence, so
+  a client-side wait would have to poll and could not log the outcome.
+  The handler runs inline on the read loop (nothing reads the socket
+  while it waits), bounded by a 30 minute cap. `--after-working` exists
+  because a wait issued right after `hived msg` would otherwise return on
+  the idle that predates the agent picking the note up.
 
 ## Why the daemon, again
 
@@ -106,7 +115,11 @@ gets used. Each phase therefore ships with its own evidence:
 - Phase 1: the daemon logs every `SEND_TO_SESSION` with the caller
   kind (`control` for the GUI and shell, `session` for a session
   child). The gate is a count you can grep, not a feeling.
-- Phase 2: the same log line for `WAIT`.
+- Phase 2: one `wait caller=session from=<id> to=<id> reached=<state>`
+  line per `hived wait`, written by the daemon when the wait ends.
+  `reached` is the state, or `timeout`; `gone` (the target was removed
+  while waiting) and `disconnect` (the client had hung up by the time
+  the answer was written) are additions to the spec's values.
 - Phase 3: the entry's `SpawnedBy` is on the wire and in the sidebar,
   so "did an agent actually fan out" is visible without a log.
 
