@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"log"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -200,7 +201,7 @@ func TestWaitSessionTimeout(t *testing.T) {
 	f.report(t, wire.AgentEventPrompt)
 	f.stateIs(t, wire.StateWorking)
 	start := time.Now()
-	r := f.startWait(t, wire.WaitSessionReq{SessionID: f.target.ID, TimeoutSeconds: 1}).get(t, 4*time.Second)
+	r := f.startWait(t, wire.WaitSessionReq{SessionID: f.target.ID, States: []string{wire.StateError}, TimeoutSeconds: 1}).get(t, 4*time.Second)
 	if r.err != nil || r.resp.State != wire.WaitStateTimeout {
 		t.Fatalf("got %+v, want timeout", r)
 	}
@@ -241,7 +242,7 @@ func TestWaitSessionTargetRemovedIsGone(t *testing.T) {
 	f := newOrchFixture(t, false)
 	f.report(t, wire.AgentEventPrompt)
 	f.stateIs(t, wire.StateWorking)
-	c := f.startWait(t, wire.WaitSessionReq{SessionID: f.target.ID})
+	c := f.startWait(t, wire.WaitSessionReq{SessionID: f.target.ID, States: []string{wire.StateError}})
 	c.quiet(t, 100*time.Millisecond)
 	if err := f.d.reg.Kill(f.target.ID, true); err != nil {
 		t.Fatal(err)
@@ -324,13 +325,15 @@ func TestWaitSessionListenerDroppedResyncs(t *testing.T) {
 	f.report(t, wire.AgentEventPrompt)
 	f.stateIs(t, wire.StateWorking)
 
-	held, release := make(chan struct{}), make(chan struct{})
+	// The first event the wait takes parks its consumer in the hook until
+	// released, which is what lets the registry's buffer overflow.
+	taken, release := make(chan struct{}, 1), make(chan struct{})
+	var once sync.Once
 	waitEventHook = func() {
-		select {
-		case held <- struct{}{}:
+		once.Do(func() {
+			taken <- struct{}{}
 			<-release
-		default:
-		}
+		})
 	}
 	t.Cleanup(func() { waitEventHook = nil })
 
@@ -342,17 +345,24 @@ func TestWaitSessionListenerDroppedResyncs(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	time.Sleep(100 * time.Millisecond) // the wait has subscribed
-	rename(0)
-	select {
-	case <-held:
-	case <-time.After(3 * time.Second):
-		t.Fatal("the wait never took an event")
+	// Events sent before the wait subscribed are not delivered to it, so
+	// keep renaming until the consumer takes one and parks.
+	n := 0
+	for parked := false; !parked; n++ {
+		if n > 200 {
+			t.Fatal("the wait never took an event")
+		}
+		rename(n)
+		select {
+		case <-taken:
+			parked = true
+		case <-time.After(20 * time.Millisecond):
+		}
 	}
 	// Overflow the held consumer's 64-slot buffer, then go idle: that
 	// transition is among the events the dropped listener never sees.
-	for i := 1; i <= 100; i++ {
-		rename(i)
+	for i := 0; i < 100; i++ {
+		rename(n + i)
 	}
 	f.report(t, wire.AgentEventIdle)
 	f.stateIs(t, "")
@@ -367,7 +377,9 @@ func TestWaitSessionRegistryCloseMidWait(t *testing.T) {
 	f := newOrchFixture(t, false)
 	f.report(t, wire.AgentEventPrompt)
 	f.stateIs(t, wire.StateWorking)
-	c := f.startWait(t, wire.WaitSessionReq{SessionID: f.target.ID})
+	// Only "error" ends it, which nothing in this test reports, so the
+	// wait stays parked until the registry closes.
+	c := f.startWait(t, wire.WaitSessionReq{SessionID: f.target.ID, States: []string{wire.StateError}})
 	c.quiet(t, 100*time.Millisecond)
 	_ = f.d.reg.Close()
 	r := c.get(t, 5*time.Second)
