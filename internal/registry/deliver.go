@@ -469,21 +469,30 @@ func (r *Registry) SendFromSession(callerID, ref, text string) (targetID, delive
 	return targetID, delivery, err
 }
 
-// StateView reads one session's Info and its state-entry counters in one
-// hold of r.mu, so the counters describe exactly the state returned. The
-// counters (copied, keyed by wire state) say how often the session has
-// moved into each state this run — see Entry.stateEntries. found is false
-// when id names no session.
-func (r *Registry) StateView(id string) (info wire.SessionInfo, entries map[string]int, found bool) {
+// StateSeqNone is the StateView `since` for a first look: no history is
+// wanted, only the current sequence number.
+const StateSeqNone = ^uint64(0)
+
+// StateView reads one session's Info and its state history in one hold of
+// r.mu, so the history ends exactly at the state returned. steps are the
+// wire states the session moved into after sequence number since, oldest
+// first, and seq is the number to pass next time. lost is true when more
+// than stateLogCap steps went by since, so steps is incomplete and only
+// info can be trusted. found is false when id names no session.
+func (r *Registry) StateView(id string, since uint64) (info wire.SessionInfo, steps []string, seq uint64, lost, found bool) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	e, ok := r.entries[id]
 	if !ok {
-		return wire.SessionInfo{}, nil, false
+		return wire.SessionInfo{}, nil, 0, false, false
 	}
-	entries = make(map[string]int, len(e.stateEntries))
-	for st, n := range e.stateEntries {
-		entries[st] = n
+	info, seq = e.Info(), e.stateSeq
+	if since != StateSeqNone && since < seq {
+		n := seq - since
+		if n > uint64(len(e.stateLog)) {
+			return info, nil, seq, true, true
+		}
+		steps = append([]string(nil), e.stateLog[len(e.stateLog)-int(n):]...)
 	}
-	return e.Info(), entries, true
+	return info, steps, seq, false, true
 }

@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/lucascaro/hive/internal/plugin"
+	"github.com/lucascaro/hive/internal/registry"
 	"github.com/lucascaro/hive/internal/wire"
 )
 
@@ -635,4 +636,67 @@ func TestWaitSessionSeesAStateResetReportedByAnUpdatedEvent(t *testing.T) {
 	if r := c.get(t, 3*time.Second); r.err != nil || r.resp.State != "idle" {
 		t.Fatalf("got %+v, want idle", r)
 	}
+}
+
+// Several wanted states between two looks: the first one reached is the
+// answer, not the live one.
+func TestWaitSessionReportsTheFirstWantedStateInOrder(t *testing.T) {
+	f := newOrchFixture(t, false)
+	f.report(t, wire.AgentEventPrompt)
+	f.stateIs(t, wire.StateWorking)
+	taken, release := f.parkConsumer(t)
+	c := f.startWait(t, wire.WaitSessionReq{SessionID: f.target.ID}) // idle, exited, error
+	f.provoke(t, taken)
+	f.report(t, wire.AgentEventIdle)  // working → idle: the first wanted state
+	f.report(t, wire.AgentEventError) // → error, before the wait looks again
+	release()
+	if r := c.get(t, 3*time.Second); r.err != nil || r.resp.State != "idle" {
+		t.Fatalf("got %+v, want idle (the first wanted state), not the later error", r)
+	}
+}
+
+// An exit followed by a revive leaves the session alive and idle again, so
+// only the history shows it exited.
+func TestWaitSessionSeesAnExitThatWasRevivedBeforeItLooked(t *testing.T) {
+	f := newOrchFixture(t, false)
+	taken, release := f.parkConsumer(t)
+	c := f.startWait(t, wire.WaitSessionReq{SessionID: f.target.ID, States: []string{wire.StateExited}})
+	f.provoke(t, taken)
+	if err := f.d.reg.Restart(f.target.ID); err != nil { // exits, then revives
+		t.Fatal(err)
+	}
+	if info, ok := f.d.sessionInfo(f.target.ID); !ok || info.State == wire.StateExited {
+		t.Fatalf("restart left the session %+v (found %v); the test needs it revived", info, ok)
+	}
+	release()
+	if r := c.get(t, 3*time.Second); r.err != nil || r.resp.State != wire.StateExited {
+		t.Fatalf("got %+v, want exited", r)
+	}
+}
+
+// A process that exits on its own is recorded in the state history, which
+// is what lets a wait see an exit a revive has since undone.
+func TestStateHistoryRecordsAnExit(t *testing.T) {
+	f := newOrchFixture(t, false)
+	e, err := f.d.reg.Create(context.Background(), wire.CreateSpec{
+		Name: "short", Agent: "claude", Cmd: []string{"/bin/sh", "-c", "sleep 0.3"}, Cols: 80, Rows: 24,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, _, seq, _, _ := f.d.reg.StateView(e.ID, registry.StateSeqNone)
+	deadline := time.Now().Add(5 * time.Second)
+	for time.Now().Before(deadline) {
+		_, steps, _, lost, _ := f.d.reg.StateView(e.ID, seq)
+		if lost {
+			t.Fatal("history lost")
+		}
+		for _, st := range steps {
+			if st == wire.StateExited {
+				return
+			}
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
+	t.Fatal("the exit never reached the state history") // startup output may add a working step first
 }

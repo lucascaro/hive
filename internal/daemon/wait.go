@@ -106,20 +106,22 @@ func parseWaitStates(names []string) (map[string]bool, error) {
 // state can be older than what the registry already knows. The wait
 // therefore subscribes FIRST (a change after a look is then a wake-up it
 // holds, never lost) and decides from a fresh Registry.StateView each
-// time. The view's per-state entry counters cover what a snapshot cannot
-// show: a wanted state reached and left between two looks, or while the
-// registry had dropped a slow listener.
+// time: the live state, plus the ordered steps the session took since the
+// last look. The steps cover what a snapshot cannot show — a wanted state
+// reached and left between two looks, an exit followed by a revive, or a
+// stretch while the registry had dropped a slow listener — and being in
+// order they make the FIRST wanted state the one reported.
 func (d *Daemon) awaitState(ctx context.Context, id string, want map[string]bool, afterWorking bool, timeout time.Duration) (string, error) {
 	timer := time.NewTimer(timeout)
 	defer timer.Stop()
 
-	var base map[string]int
+	seq, first := registry.StateSeqNone, true
 	sawWorking := !afterWorking
 	retries := 0
 	for {
 		listener, unsub := d.reg.Subscribe()
 		for {
-			info, entries, found := d.reg.StateView(id)
+			info, steps, now, lost, found := d.reg.StateView(id, seq)
 			if !found {
 				// A registry that is closing empties itself and hands out
 				// closed listeners; that is shutdown, not the target going.
@@ -135,16 +137,18 @@ func (d *Daemon) awaitState(ctx context.Context, id string, want map[string]bool
 				}
 				return wire.WaitStateGone, nil
 			}
-			if base == nil {
-				base = entries
-			}
-			// With afterWorking an idle that predates the agent picking up
-			// its work does not count; leaving idle at any look, or entering
-			// any other state since the first one, is that work.
-			if !sawWorking && (info.State != wire.StateIdle || movedOutOfIdle(entries, base)) {
+			seq = now
+			// An idle that predates the agent picking up its work does not
+			// count under afterWorking; leaving idle does. The first look
+			// has no steps, only the live state.
+			if first && info.State != wire.StateIdle {
 				sawWorking = true
 			}
-			if st, ok := reached(info.State, entries, base, want, sawWorking); ok {
+			first = false
+			if lost {
+				steps = nil
+			}
+			if st, ok := firstWanted(append(steps, info.State), want, &sawWorking); ok {
 				unsub()
 				return st, nil
 			}
@@ -171,31 +175,19 @@ func (d *Daemon) awaitState(ctx context.Context, id string, want map[string]bool
 	}
 }
 
-// reached reports whether a wanted state is satisfied: the live state, or
-// one the session entered since the first look (even if it has left it).
-func reached(live string, entries, base map[string]int, want map[string]bool, sawWorking bool) (string, bool) {
-	ok := func(st string) bool { return want[st] && (st != wire.StateIdle || sawWorking) }
-	if ok(live) {
-		return wire.StateName(live), true
-	}
-	for _, name := range wire.WaitStateNames {
-		st, _ := wire.ParseStateName(name)
-		if ok(st) && entries[st] > base[st] {
-			return name, true
+// firstWanted walks states in order and returns the first wanted one.
+// *sawWorking is updated as it goes: leaving idle at any step is the
+// work an afterWorking wait is for, and an idle before it does not count.
+func firstWanted(states []string, want map[string]bool, sawWorking *bool) (string, bool) {
+	for _, st := range states {
+		if st != wire.StateIdle {
+			*sawWorking = true
+		}
+		if want[st] && (st != wire.StateIdle || *sawWorking) {
+			return wire.StateName(st), true
 		}
 	}
 	return "", false
-}
-
-// movedOutOfIdle reports whether the session entered any non-idle state
-// since base.
-func movedOutOfIdle(entries, base map[string]int) bool {
-	for st, n := range entries {
-		if st != wire.StateIdle && n > base[st] {
-			return true
-		}
-	}
-	return false
 }
 
 type wakeKind int

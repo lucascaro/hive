@@ -337,7 +337,11 @@ func (r *Registry) startACP(id, cwd, loadID string) error {
 		return ErrNotFound
 	}
 	e.acp = as
+	prevState := e.stateSnapshot().State
 	e.state = agentstate.New(time.Now())
+	if now := e.stateSnapshot().State; now != prevState {
+		e.recordStateLocked(now)
+	}
 	e.acpTx.Reset()
 	e.acpRes = acpResult{}
 	r.broadcastACPLocked(e, nil, true)
@@ -438,6 +442,9 @@ func (r *Registry) watchACPExit(id string, as *acpSession) {
 	prev := e.stateSnapshot()
 	e.machine().Exit()
 	logStateLocked(e, prev, e.stateSnapshot(), "exit")
+	if now := e.stateSnapshot(); now.State != prev.State {
+		e.recordStateLocked(now.State)
+	}
 	r.settleSendStateLocked(e, prev, e.stateSnapshot())
 	r.broadcastACPLocked(e, nil, false)
 	info := e.Info()
