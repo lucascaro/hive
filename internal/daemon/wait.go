@@ -190,6 +190,17 @@ func (d *Daemon) drainWait(ctx context.Context, listener registry.Listener, time
 			if ev.Kind == wire.SessionEventRemoved {
 				return wire.WaitStateGone, true, true
 			}
+			// Only an event the registry broadcast under its lock carries
+			// state that is ordered against the snapshot: announceStateLocked
+			// emits state and attention events that way. An "updated" or
+			// "added" event is often built from an Info() taken before the
+			// lock was released and published after, so it can be older
+			// than the snapshot. Exited is the exception: it is terminal,
+			// so no older event can claim a later state.
+			if ev.Kind != wire.SessionEventState && ev.Kind != wire.SessionEventAttention &&
+				ev.Session.State != wire.StateExited {
+				continue
+			}
 			if st, ok := settle(ev.Session); ok {
 				return st, true, true
 			}
@@ -199,14 +210,4 @@ func (d *Daemon) drainWait(ctx context.Context, listener registry.Listener, time
 			return "", false, delivered
 		}
 	}
-}
-
-// sessionInfo is the registry's current view of one session.
-func (d *Daemon) sessionInfo(id string) (wire.SessionInfo, bool) {
-	for _, s := range d.reg.List() {
-		if s.ID == id {
-			return s, true
-		}
-	}
-	return wire.SessionInfo{}, false
 }

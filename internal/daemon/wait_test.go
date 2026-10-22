@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/lucascaro/hive/internal/plugin"
+	"github.com/lucascaro/hive/internal/registry"
 	"github.com/lucascaro/hive/internal/wire"
 )
 
@@ -499,8 +500,6 @@ func TestWaitSessionSurvivesPastTheSessionIdleDeadline(t *testing.T) {
 	}
 }
 
-// An idle event queued before a later transition to working must not end
-// a wait for idle: awaitState re-checks the live state before trusting it.
 // parkConsumer holds the wait's event consumer in waitEventHook on its
 // first event, so events (and a full registry buffer) can pile up behind
 // it; the returned func releases it. Pair with provoke, which sends the
@@ -614,5 +613,59 @@ func TestWaitSessionHugeTimeoutIsCapped(t *testing.T) {
 	f.report(t, wire.AgentEventIdle)
 	if r := c.get(t, 3*time.Second); r.err != nil || r.resp.State != "idle" {
 		t.Fatalf("got %+v, want idle", r)
+	}
+}
+
+// sessionInfo is the registry's current view of one session.
+func (d *Daemon) sessionInfo(id string) (wire.SessionInfo, bool) {
+	for _, s := range d.reg.List() {
+		if s.ID == id {
+			return s, true
+		}
+	}
+	return wire.SessionInfo{}, false
+}
+
+// Only events the registry broadcasts under its lock (state, attention)
+// are ordered against the snapshot. An "updated" built from an Info()
+// taken before the lock was released can be older than the snapshot, so a
+// stale idle one must not end a wait; an exited one always may.
+func TestDrainWaitSettlesOnlyOnLockOrderedEvents(t *testing.T) {
+	f := newOrchFixture(t, false)
+	wantIdle := map[string]bool{wire.StateIdle: true, wire.StateExited: true}
+	settle := func(info wire.SessionInfo) (string, bool) {
+		if !wantIdle[info.State] {
+			return "", false
+		}
+		return wire.StateName(info.State), true
+	}
+	run := func(evs ...wire.SessionEvent) (string, bool) {
+		l := make(registry.Listener, len(evs))
+		for _, e := range evs {
+			l <- e
+		}
+		timer := time.NewTimer(150 * time.Millisecond)
+		defer timer.Stop()
+		st, done, _ := f.d.drainWait(context.Background(), l, timer, "t", settle)
+		return st, done && st != wire.WaitStateTimeout
+	}
+	ev := func(kind, state string) wire.SessionEvent {
+		return wire.SessionEvent{Kind: kind, Session: wire.SessionInfo{ID: "t", State: state}}
+	}
+
+	if st, ok := run(ev(wire.SessionEventUpdated, wire.StateIdle)); ok {
+		t.Errorf("a stale updated idle ended the wait: %q", st)
+	}
+	if st, ok := run(ev(wire.SessionEventAdded, wire.StateIdle)); ok {
+		t.Errorf("an added idle ended the wait: %q", st)
+	}
+	if st, ok := run(ev(wire.SessionEventUpdated, wire.StateIdle), ev(wire.SessionEventState, wire.StateIdle)); !ok || st != "idle" {
+		t.Errorf("a lock-ordered state event after a stale one: got %q, %v; want idle", st, ok)
+	}
+	if st, ok := run(ev(wire.SessionEventAttention, wire.StateIdle)); !ok || st != "idle" {
+		t.Errorf("an attention event: got %q, %v; want idle", st, ok)
+	}
+	if st, ok := run(ev(wire.SessionEventUpdated, wire.StateExited)); !ok || st != wire.StateExited {
+		t.Errorf("an updated exited: got %q, %v; want exited", st, ok)
 	}
 }
