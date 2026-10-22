@@ -382,6 +382,48 @@ func provenancePrefix(name, id string) string {
 	return `Message from Hive session "` + clean + `" (` + short + `): `
 }
 
+// resolveInProjectLocked finds the session ref names inside caller's
+// project: an exact id, else an exact name. named lists every id that
+// carried the name, so len(named) > 1 is an ambiguous target (target is
+// then one of them and must not be used). r.mu must be held.
+func (r *Registry) resolveInProjectLocked(caller *Entry, ref string) (target *Entry, named []string) {
+	if e, ok := r.entries[ref]; ok && e.ProjectID == caller.ProjectID {
+		return e, nil
+	}
+	for _, id := range r.order {
+		if e := r.entries[id]; e != nil && e.ProjectID == caller.ProjectID && e.Name == ref {
+			target = e
+			named = append(named, e.ID)
+		}
+	}
+	return target, named
+}
+
+// ResolveSibling resolves ref to a session in callerID's project, for a
+// read-only verb: no grant, because a same-user process can already
+// read this from the control socket (spec 390). ErrNotFound for a
+// missing or other-project target (including an unknown caller),
+// ErrAmbiguousTarget for a name shared by several, ErrSelfMessage when
+// the target is the caller.
+func (r *Registry) ResolveSibling(callerID, ref string) (wire.SessionInfo, error) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	caller, ok := r.entries[callerID]
+	if !ok {
+		return wire.SessionInfo{}, ErrNotFound
+	}
+	target, named := r.resolveInProjectLocked(caller, ref)
+	switch {
+	case target == nil:
+		return wire.SessionInfo{}, ErrNotFound
+	case len(named) > 1:
+		return wire.SessionInfo{}, fmt.Errorf("%w: %s", ErrAmbiguousTarget, strings.Join(named, ", "))
+	case target.ID == callerID:
+		return wire.SessionInfo{}, ErrSelfMessage
+	}
+	return target.Info(), nil
+}
+
 // SendFromSession delivers text from one session to a sibling in its own
 // project, on behalf of a ModeSession connection (spec 389). It returns
 // the resolved target id and the wire.Delivery* kind.
@@ -402,18 +444,7 @@ func (r *Registry) SendFromSession(callerID, ref, text string) (targetID, delive
 		r.mu.Unlock()
 		return "", "", ErrNotOrchestrator
 	}
-	var target *Entry
-	var named []string
-	if e, ok := r.entries[ref]; ok && e.ProjectID == caller.ProjectID {
-		target = e
-	} else {
-		for _, id := range r.order {
-			if e := r.entries[id]; e != nil && e.ProjectID == caller.ProjectID && e.Name == ref {
-				target = e
-				named = append(named, e.ID)
-			}
-		}
-	}
+	target, named := r.resolveInProjectLocked(caller, ref)
 	switch {
 	case target == nil:
 		r.mu.Unlock()
@@ -440,4 +471,32 @@ func (r *Registry) SendFromSession(callerID, ref, text string) (targetID, delive
 	}
 	delivery, err = r.SendToSession(targetID, prefix+body, true, wire.OriginUser)
 	return targetID, delivery, err
+}
+
+// StateSeqNone is the StateView `since` for a first look: no history is
+// wanted, only the current sequence number.
+const StateSeqNone = ^uint64(0)
+
+// StateView reads one session's Info and its state history in one hold of
+// r.mu, so the history ends exactly at the state returned. steps are the
+// wire states the session moved into after sequence number since, oldest
+// first, and seq is the number to pass next time. lost is true when more
+// than stateLogCap steps went by since, so steps is incomplete and only
+// info can be trusted. found is false when id names no session.
+func (r *Registry) StateView(id string, since uint64) (info wire.SessionInfo, steps []string, seq uint64, lost, found bool) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	e, ok := r.entries[id]
+	if !ok {
+		return wire.SessionInfo{}, nil, 0, false, false
+	}
+	info, seq = e.Info(), e.stateSeq
+	if since != StateSeqNone && since < seq {
+		n := seq - since
+		if n > uint64(len(e.stateLog)) {
+			return info, nil, seq, true, true
+		}
+		steps = append([]string(nil), e.stateLog[len(e.stateLog)-int(n):]...)
+	}
+	return info, steps, seq, false, true
 }

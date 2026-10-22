@@ -212,6 +212,7 @@ and reply payloads are the Go structs of the same name in
 | `LIST_ARCHIVED` | `ListArchivedReq` | `ARCHIVED` |
 | `UNARCHIVE_SESSION` | `UnarchiveSessionReq` | `SESSION_RESTORED`, `ARCHIVED` |
 | `DELETE_ARCHIVED` | `DeleteArchivedReq` | `ARCHIVED` |
+| `WAIT_SESSION` | `WaitSessionReq` | `WAITED`, or `ERROR`. Not for plugins: it is served to a session's own connection only (spec 390), so a plugin socket gets `mode_not_allowed`; a plugin already has the event stream |
 | `LIST_PROJECTS` | `ListProjectsReq` | `PROJECTS` |
 | `CREATE_PROJECT` | `CreateProjectReq` | `PROJECT_EVENT` (added) |
 | `KILL_PROJECT` | `KillProjectReq` | `PROJECT_EVENT` (removed) |
@@ -262,6 +263,7 @@ And everything the daemon sends on a control connection:
 | `CLOSED` | The sessions that can be reopened. |
 | `SESSION_RESTORED` | A reopen succeeded. |
 | `ARCHIVED` | The archived sessions (spec 518). |
+| `WAITED` | Answer to `WAIT_SESSION`: the state reached, or `timeout` / `gone`. Never sent to a plugin. |
 | `CLIENT_BROADCAST` | Broadcast: a relayed `CLIENT_COMMAND`. |
 | `IDEAS` | Answer to `LIST_IDEAS`. |
 | `IDEA_EVENT` | Broadcast: an idea was added, removed or updated. |

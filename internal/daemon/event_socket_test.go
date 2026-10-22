@@ -155,7 +155,7 @@ func TestSessionModeRefusesEveryOtherVerb(t *testing.T) {
 	}{
 		{wire.FrameCreateSession, wire.CreateSpec{Cmd: []string{"/bin/sh", "-c", "true"}}},
 		{wire.FrameKillSession, wire.KillSessionReq{SessionID: id}},
-		{wire.FrameListSessions, wire.ListSessionsReq{}},
+		{wire.FrameListProjects, wire.ListProjectsReq{}},
 		{wire.FrameShutdown, struct{}{}},
 	} {
 		if err := wire.WriteJSON(c, tc.frame, tc.body); err != nil {

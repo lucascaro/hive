@@ -147,7 +147,13 @@ What works:
   through Claude's own inbox, working or idle, and falls back to the typed
   path if that is unavailable; a Pi session takes it through Hive's Pi
   extension the same way (queued behind its current turn), and every other
-  agent gets the typed path
+  agent gets the typed path. From inside any session (no grant needed),
+  `hived session list` prints the sessions in its project — id, name,
+  agent, state — and `hived wait <id-or-name> [--state idle,exited,error]
+  [--timeout 10m] [--after-working]` blocks until a sibling reaches one of
+  those states, so an agent can carry on once the note it sent has been
+  dealt with. Use `--after-working` right after `hived msg`, because the
+  target is still idle until its agent picks the note up
 - In-app updates (macOS): pick a release or latest-commit channel in
   Settings, then Update → Reload (or Restart, when the daemon changed)
 - What's new: the gift in the sidebar header opens a list of what has

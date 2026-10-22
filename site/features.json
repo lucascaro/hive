@@ -1,5 +1,11 @@
 [
   {
+    "title": "See and wait on sibling sessions",
+    "blurb": "From inside a session, `hived session list` shows the sessions in its project and `hived wait <session>` blocks until one is idle, so an agent can hand off work and carry on once it is done.",
+    "status": "shipped",
+    "since": "Unreleased"
+  },
+  {
     "title": "Let a session message its siblings",
     "blurb": "Tick \"May direct other sessions\" when you start a session (or later from the command palette) and its agent can run `hived msg <session> <text>` to hand a sibling in the same project a note — delivered as coming from that session by name.",
     "status": "shipped",

@@ -1354,6 +1354,11 @@ var sessionModeFrames = map[wire.FrameType]bool{
 	// Served only to a session the user granted (spec 389); the check
 	// lives in the FrameSendToSession arm.
 	wire.FrameSendToSession: true,
+	// Read-only observation of the caller's own project (spec 390):
+	// LIST_SESSIONS answers a narrowed list, WAIT_SESSION blocks until a
+	// sibling reaches a state. Neither needs the grant.
+	wire.FrameListSessions: true,
+	wire.FrameWaitSession:  true,
 }
 
 // projectOfSession resolves the project a session belongs to, or "" if
@@ -1383,6 +1388,25 @@ func ownSessionOnly(all []wire.SessionInfo, id string) []wire.SessionInfo {
 		}
 	}
 	return nil
+}
+
+// ownProjectOnly narrows a session list to the caller's project, and
+// each entry to the four fields `hived session list` shows. The rest of
+// SessionInfo — worktree path and branch, window title, last prompt —
+// stays withheld for the reason ownSessionOnly gives. An empty project
+// (a stale HIVE_SESSION_ID) yields nothing rather than every unassigned
+// session.
+func ownProjectOnly(all []wire.SessionInfo, projectID string) []wire.SessionBrief {
+	out := []wire.SessionBrief{}
+	if projectID == "" {
+		return out
+	}
+	for _, s := range all {
+		if s.ProjectID == projectID {
+			out = append(out, wire.SessionBrief{ID: s.ID, Name: s.Name, Agent: s.Agent, State: s.State})
+		}
+	}
+	return out
 }
 
 // controlOps bundles the per-connection reply helpers serveControl
@@ -1495,7 +1519,7 @@ func (d *Daemon) handleControlFrame(ctx context.Context, ops controlOps, ft wire
 	// which is the direction a mistake here should fail in.
 	if ops.restricted && !sessionModeFrames[ft] {
 		ops.sendError(wire.ErrCodeModeNotAllowed,
-			fmt.Sprintf("%s is not served on a session connection; want ADD_IDEA, LIST_IDEAS, SUBMIT_RESULT or SEND_TO_SESSION", ft))
+			fmt.Sprintf("%s is not served on a session connection; want ADD_IDEA, LIST_IDEAS, SUBMIT_RESULT, SEND_TO_SESSION, LIST_SESSIONS or WAIT_SESSION", ft))
 		return false
 	}
 	switch ft {
@@ -1507,7 +1531,23 @@ func (d *Daemon) handleControlFrame(ctx context.Context, ops controlOps, ft wire
 		d.Shutdown()
 		return true
 	case wire.FrameListSessions:
+		if ops.restricted {
+			_ = ops.writeJSON(wire.FrameSessions, wire.SessionBriefsResp{Sessions: ownProjectOnly(d.reg.List(), ops.ownProjectID)})
+			return false
+		}
 		_ = ops.writeJSON(wire.FrameSessions, wire.SessionsResp{Sessions: d.reg.List()})
+	case wire.FrameWaitSession:
+		// Not served on the control socket: a control client already
+		// has the event stream and can watch state itself.
+		if !ops.restricted {
+			ops.sendError(wire.ErrCodeModeNotAllowed, "WAIT_SESSION is served to a session connection only")
+			return false
+		}
+		req, ok := decodeReq[wire.WaitSessionReq](payload, ops.sendError)
+		if !ok {
+			return false
+		}
+		d.waitSession(ctx, ops, req)
 	case wire.FrameCreateSession:
 		spec, ok := decodeReq[wire.CreateSpec](payload, ops.sendError)
 		if !ok {

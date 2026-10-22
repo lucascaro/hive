@@ -126,6 +126,15 @@ type Entry struct {
 	// Orchestrator is the user's grant letting this session message its
 	// siblings (spec 389). Persisted; read fresh on every send.
 	Orchestrator bool
+	// stateLog is the last stateLogCap wire states the session moved INTO
+	// this run, oldest first, and stateSeq how many it has moved into in
+	// all. In-memory, guarded by r.mu, written only by recordStateLocked.
+	// A waiter (StateView) reads the steps since its last look, in order,
+	// so a state reached and left between two looks — or while it was not
+	// listening, or an exit followed by a revive — is not lost, and the
+	// first of several matches is the one reported.
+	stateLog []string
+	stateSeq uint64
 	// acp is the running ACP adapter for a KindACP entry, nil when
 	// none runs this lifetime. See acp.go for the rest of its state.
 	acp *acpSession
@@ -273,6 +282,20 @@ func (p *Project) Info() wire.ProjectInfo {
 // own. Read-only callers use stateSnapshot instead, which is why Info()
 // stays safe at the two sites that render an entry after releasing the
 // lock.
+// stateLogCap bounds Entry.stateLog. A wait that falls further behind than
+// this reads the live state only.
+const stateLogCap = 64
+
+// recordStateLocked appends one step to the entry's state history. r.mu
+// must be held.
+func (e *Entry) recordStateLocked(state string) {
+	e.stateLog = append(e.stateLog, state)
+	if len(e.stateLog) > stateLogCap {
+		e.stateLog = append(e.stateLog[:0], e.stateLog[len(e.stateLog)-stateLogCap:]...)
+	}
+	e.stateSeq++
+}
+
 func (e *Entry) machine() *agentstate.Machine {
 	if e.state == nil {
 		e.state = agentstate.New(time.Now())
@@ -570,7 +593,11 @@ func (r *Registry) setPhase(id, phase string) {
 // resulting order is one-way, r.mu → session.mu, matching every other
 // registry→session call.
 func (r *Registry) attachSessionHooks(e *Entry, sess *session.Session) {
+	prevState := e.stateSnapshot().State
 	e.state = agentstate.New(time.Now())
+	if now := e.stateSnapshot().State; now != prevState {
+		e.recordStateLocked(now) // a revive's reset to idle is a step too
+	}
 	// A new process is a new screen history: nothing Laya was asked
 	// about the old one applies (spec 458).
 	e.laya = layaEntry{}
@@ -766,6 +793,9 @@ func (r *Registry) announceStateLocked(e *Entry, prev agentstate.Snapshot, reaso
 		return
 	}
 	logStateLocked(e, prev, cur, reason)
+	if cur.State != prev.State {
+		e.recordStateLocked(cur.State)
+	}
 	// Both kinds when the derived flag moved, attention first: clients
 	// key notifications off "attention" and glyphs off "state", this is
 	// one moment that genuinely is both, and "attention" is the one
@@ -1663,6 +1693,9 @@ func (r *Registry) watchSessionExit(id string, sess *session.Session) {
 	prev := e.stateSnapshot()
 	e.machine().Exit()
 	logStateLocked(e, prev, e.stateSnapshot(), "exit")
+	if now := e.stateSnapshot(); now.State != prev.State {
+		e.recordStateLocked(now.State)
+	}
 	// This path does not go through announceStateLocked, so the
 	// messaging half of the change is settled here: an armed session
 	// that was working pings, and the queue and its timer die with the

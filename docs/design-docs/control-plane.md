@@ -178,6 +178,14 @@ granted (`orchestrator`), with the target resolved inside that session's
 own project and the note stamped with its sender — see
 [agent-orchestration.md](agent-orchestration.md). Every send logs one
 `send_to_session caller=<control|session> from=… to=… delivery=…` line.
+`LIST_SESSIONS` on a `ModeSession` connection answers the caller's own
+project's sessions as `{id, name, agent, state}` only, and
+`WAIT_SESSION{session_id, states, timeout_s, after_working}` — served to
+a session connection and refused everywhere else — blocks until a sibling
+in that project reaches one of the states and answers
+`WAITED{session_id, state}` (`state` is `timeout` or `gone` when it ended
+otherwise). Neither needs the orchestrator grant. Each wait logs one
+`wait caller=session from=… to=… reached=…` line (spec 390).
 `UPDATE_SESSION{notify_when_idle}` arms a one-shot bell; the daemon
 answers when the session next stops working with `SESSION_EVENT(idle_ping)`
 to every control connection, and each client fires its own notification

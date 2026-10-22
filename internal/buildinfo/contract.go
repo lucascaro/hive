@@ -28,6 +28,13 @@ package buildinfo
 // History (newest first), so a bump is a decision with a record and
 // not just a number going up:
 //
+//	33 — Session observation (spec 390). A ModeSession connection may now
+//	    send LIST_SESSIONS (narrowed to its own project) and the new
+//	    WAIT_SESSION, answered with WAITED. The GUI never sends either, but
+//	    the `hived session list` / `hived wait` that ships beside it does:
+//	    reloaded against an older daemon they are refused with
+//	    mode_not_allowed, so an agent's wait silently never works until the
+//	    daemon restarts.
 //	32 — Orchestrator grant (spec 389). CreateSpec, UpdateSessionReq and
 //	    SessionInfo gain "orchestrator", persisted per session, and a
 //	    ModeSession connection may now send SEND_TO_SESSION when its
@@ -275,7 +282,7 @@ package buildinfo
 //	    before this cannot see or clear the flag.
 //	1 — first contract; everything up to and including the
 //	    CLIENT_COMMAND relay.
-const DaemonContract = 32
+const DaemonContract = 33
 
 // Identity is this binary's full build identity. `hived --version
 // --json` prints it, and Welcome carries the same three values, so a
