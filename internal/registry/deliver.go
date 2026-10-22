@@ -468,3 +468,22 @@ func (r *Registry) SendFromSession(callerID, ref, text string) (targetID, delive
 	delivery, err = r.SendToSession(targetID, prefix+body, true, wire.OriginUser)
 	return targetID, delivery, err
 }
+
+// StateView reads one session's Info and its state-entry counters in one
+// hold of r.mu, so the counters describe exactly the state returned. The
+// counters (copied, keyed by wire state) say how often the session has
+// moved into each state this run — see Entry.stateEntries. found is false
+// when id names no session.
+func (r *Registry) StateView(id string) (info wire.SessionInfo, entries map[string]int, found bool) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	e, ok := r.entries[id]
+	if !ok {
+		return wire.SessionInfo{}, nil, false
+	}
+	entries = make(map[string]int, len(e.stateEntries))
+	for st, n := range e.stateEntries {
+		entries[st] = n
+	}
+	return e.Info(), entries, true
+}

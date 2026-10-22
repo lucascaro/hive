@@ -100,114 +100,134 @@ func parseWaitStates(names []string) (map[string]bool, error) {
 // awaitState blocks until id is in a wanted state and returns its wire
 // name, or wire.WaitStateTimeout / wire.WaitStateGone.
 //
-// The snapshot and the subscription are one atomic step
-// (Registry.SubscribeSession), so the listener delivers exactly what
-// happened after the snapshot, in order, and every event is trusted as it
-// comes: a wanted state that was reached is reported even if the session
-// has since moved on. A listener the registry drops (slow reader) is
-// replaced; the fresh snapshot covers the gap, and the registry's work
-// counter says whether a whole working→idle cycle fell into it.
+// Events are only wake-ups. The registry builds many of them from an
+// Info() taken before it released its lock and publishes them after, and
+// some state changes ride an "updated" event, so what an event says about
+// state can be older than what the registry already knows. The wait
+// therefore subscribes FIRST (a change after a look is then a wake-up it
+// holds, never lost) and decides from a fresh Registry.StateView each
+// time. The view's per-state entry counters cover what a snapshot cannot
+// show: a wanted state reached and left between two looks, or while the
+// registry had dropped a slow listener.
 func (d *Daemon) awaitState(ctx context.Context, id string, want map[string]bool, afterWorking bool, timeout time.Duration) (string, error) {
 	timer := time.NewTimer(timeout)
 	defer timer.Stop()
 
+	var base map[string]int
 	sawWorking := !afterWorking
-	// settle reports whether info ends the wait. With afterWorking an
-	// idle that predates the agent picking up its work does not count;
-	// exited and error are terminal and always do.
-	settle := func(info wire.SessionInfo) (string, bool) {
-		if info.State != wire.StateIdle {
-			sawWorking = true
-		}
-		if !want[info.State] || (info.State == wire.StateIdle && !sawWorking) {
-			return "", false
-		}
-		return wire.StateName(info.State), true
-	}
-
-	retries, lastWork := 0, -1
+	retries := 0
 	for {
-		listener, info, work, found, unsub := d.reg.SubscribeSession(id)
-		if !found {
-			// A registry that is closing empties itself and hands out
-			// closed listeners; that is shutdown, not the target going.
-			select {
-			case _, open := <-listener:
+		listener, unsub := d.reg.Subscribe()
+		for {
+			info, entries, found := d.reg.StateView(id)
+			if !found {
+				// A registry that is closing empties itself and hands out
+				// closed listeners; that is shutdown, not the target going.
+				closed := false
+				select {
+				case _, open := <-listener:
+					closed = !open
+				default:
+				}
 				unsub()
-				if !open {
+				if closed {
 					return "", errors.New("daemon shutting down")
 				}
-			default:
-				unsub()
+				return wire.WaitStateGone, nil
 			}
-			return wire.WaitStateGone, nil
-		}
-		// More work than at the last look: a cycle happened unobserved
-		// (first pass: lastWork is -1, nothing to infer).
-		if lastWork >= 0 && work > lastWork {
-			sawWorking = true
-		}
-		lastWork = work
-		if st, ok := settle(info); ok {
+			if base == nil {
+				base = entries
+			}
+			// With afterWorking an idle that predates the agent picking up
+			// its work does not count; leaving idle at any look, or entering
+			// any other state since the first one, is that work.
+			if !sawWorking && (info.State != wire.StateIdle || movedOutOfIdle(entries, base)) {
+				sawWorking = true
+			}
+			if st, ok := reached(info.State, entries, base, want, sawWorking); ok {
+				unsub()
+				return st, nil
+			}
+			st, wake := d.nextWake(ctx, listener, timer, id)
+			if wake == wakeEvent {
+				retries = 0
+				continue
+			}
 			unsub()
-			return st, nil
-		}
-		st, done, delivered := d.drainWait(ctx, listener, timer, id, settle)
-		unsub()
-		if delivered {
-			retries = 0
-		}
-		if done {
-			return st, nil
-		}
-		if ctx.Err() != nil {
-			return "", errors.New("daemon shutting down")
-		}
-		if retries++; retries > waitResubscribeLimit {
-			return "", errors.New("daemon shutting down")
+			switch wake {
+			case wakeTimeout:
+				return st, nil
+			case wakeCtx:
+				return "", errors.New("daemon shutting down")
+			}
+			// wakeClosed: dropped (slow reader) or closing. Resubscribe and
+			// look again; a registry that keeps handing back closed
+			// listeners is closing.
+			if retries++; retries > waitResubscribeLimit {
+				return "", errors.New("daemon shutting down")
+			}
+			break
 		}
 	}
 }
 
-// drainWait consumes events for id until the wait ends (done) or the
-// listener closes (done false: the caller re-subscribes). delivered
-// reports whether any event arrived on this listener.
-func (d *Daemon) drainWait(ctx context.Context, listener registry.Listener, timer *time.Timer, id string,
-	settle func(wire.SessionInfo) (string, bool)) (state string, done, delivered bool) {
+// reached reports whether a wanted state is satisfied: the live state, or
+// one the session entered since the first look (even if it has left it).
+func reached(live string, entries, base map[string]int, want map[string]bool, sawWorking bool) (string, bool) {
+	ok := func(st string) bool { return want[st] && (st != wire.StateIdle || sawWorking) }
+	if ok(live) {
+		return wire.StateName(live), true
+	}
+	for _, name := range wire.WaitStateNames {
+		st, _ := wire.ParseStateName(name)
+		if ok(st) && entries[st] > base[st] {
+			return name, true
+		}
+	}
+	return "", false
+}
+
+// movedOutOfIdle reports whether the session entered any non-idle state
+// since base.
+func movedOutOfIdle(entries, base map[string]int) bool {
+	for st, n := range entries {
+		if st != wire.StateIdle && n > base[st] {
+			return true
+		}
+	}
+	return false
+}
+
+type wakeKind int
+
+const (
+	wakeEvent   wakeKind = iota // an event for the target arrived
+	wakeClosed                  // the listener was closed
+	wakeTimeout                 // the timeout elapsed
+	wakeCtx                     // the daemon is shutting down
+)
+
+// nextWake blocks for the next event about id (any kind: the caller looks
+// at the registry, not at the event), the timeout, or the listener
+// closing. The state is wire.WaitStateTimeout when the timer fired.
+func (d *Daemon) nextWake(ctx context.Context, listener registry.Listener, timer *time.Timer, id string) (string, wakeKind) {
 	for {
 		select {
 		case ev, ok := <-listener:
 			if !ok {
-				return "", false, delivered
+				return "", wakeClosed
 			}
 			if ev.Session.ID != id {
 				continue
 			}
-			delivered = true
 			if waitEventHook != nil {
 				waitEventHook()
 			}
-			if ev.Kind == wire.SessionEventRemoved {
-				return wire.WaitStateGone, true, true
-			}
-			// Only an event the registry broadcast under its lock carries
-			// state that is ordered against the snapshot: announceStateLocked
-			// emits state and attention events that way. An "updated" or
-			// "added" event is often built from an Info() taken before the
-			// lock was released and published after, so it can be older
-			// than the snapshot. Exited is the exception: it is terminal,
-			// so no older event can claim a later state.
-			if ev.Kind != wire.SessionEventState && ev.Kind != wire.SessionEventAttention &&
-				ev.Session.State != wire.StateExited {
-				continue
-			}
-			if st, ok := settle(ev.Session); ok {
-				return st, true, true
-			}
+			return "", wakeEvent
 		case <-timer.C:
-			return wire.WaitStateTimeout, true, delivered
+			return wire.WaitStateTimeout, wakeTimeout
 		case <-ctx.Done():
-			return "", false, delivered
+			return "", wakeCtx
 		}
 	}
 }

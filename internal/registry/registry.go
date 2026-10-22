@@ -122,11 +122,12 @@ type Entry struct {
 	// Orchestrator is the user's grant letting this session message its
 	// siblings (spec 389). Persisted; read fresh on every send.
 	Orchestrator bool
-	// workCount is how many times the session has gone to working this
-	// run. In-memory, guarded by r.mu, written only by announceStateLocked.
-	// It lets a waiter that lost its event stream (SubscribeSession) tell
-	// that a working→idle cycle went by while it was not listening.
-	workCount int
+	// stateEntries counts, per wire state, how many times the session has
+	// moved INTO it this run. In-memory, guarded by r.mu, written only by
+	// announceStateLocked. A waiter (StateView) compares it against what it
+	// saw at the start to learn a state was reached and left again between
+	// two of its looks — a flap no snapshot shows.
+	stateEntries map[string]int
 	// acp is the running ACP adapter for a KindACP entry, nil when
 	// none runs this lifetime. See acp.go for the rest of its state.
 	acp *acpSession
@@ -767,8 +768,11 @@ func (r *Registry) announceStateLocked(e *Entry, prev agentstate.Snapshot, reaso
 		return
 	}
 	logStateLocked(e, prev, cur, reason)
-	if cur.State == wire.StateWorking && prev.State != wire.StateWorking {
-		e.workCount++
+	if cur.State != prev.State {
+		if e.stateEntries == nil {
+			e.stateEntries = map[string]int{}
+		}
+		e.stateEntries[cur.State]++
 	}
 	// Both kinds when the derived flag moved, attention first: clients
 	// key notifications off "attention" and glyphs off "state", this is

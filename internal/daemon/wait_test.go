@@ -12,7 +12,6 @@ import (
 	"time"
 
 	"github.com/lucascaro/hive/internal/plugin"
-	"github.com/lucascaro/hive/internal/registry"
 	"github.com/lucascaro/hive/internal/wire"
 )
 
@@ -544,8 +543,8 @@ func (f *orchFixture) rename(t *testing.T, n int) {
 }
 
 // A state that was reached is reported even when the session has moved
-// on by the time the event is read: the events are in order and all after
-// the snapshot, so the first qualifying one is the answer.
+// on by the time the wait looks again: the registry's per-state entry
+// counters record that it was there.
 func TestWaitSessionReportsAReachedStateThatHasSincePassed(t *testing.T) {
 	f := newOrchFixture(t, false)
 	taken, release := f.parkConsumer(t)
@@ -578,32 +577,6 @@ func TestWaitSessionAfterWorkingSurvivesADroppedListener(t *testing.T) {
 	}
 }
 
-// Nothing that predates the snapshot is delivered after it.
-func TestSubscribeSessionDeliversNothingBeforeItsSnapshot(t *testing.T) {
-	f := newOrchFixture(t, false)
-	f.report(t, wire.AgentEventPrompt)
-	f.stateIs(t, wire.StateWorking)
-	l, info, work, found, unsub := f.d.reg.SubscribeSession(f.target.ID)
-	defer unsub()
-	if !found || info.State != wire.StateWorking || work != 1 {
-		t.Fatalf("snapshot = %+v work %d found %v; want working, 1 cycle", info, work, found)
-	}
-	select {
-	case ev := <-l:
-		t.Fatalf("an event predating the snapshot was delivered: %s %s", ev.Kind, ev.Session.State)
-	default:
-	}
-	f.report(t, wire.AgentEventIdle)
-	select {
-	case ev := <-l:
-		if ev.Session.ID != f.target.ID || ev.Session.State != "" {
-			t.Fatalf("got %+v, want the idle that followed", ev)
-		}
-	case <-time.After(2 * time.Second):
-		t.Fatal("the transition after the snapshot never arrived")
-	}
-}
-
 func TestWaitSessionHugeTimeoutIsCapped(t *testing.T) {
 	f := newOrchFixture(t, false)
 	f.report(t, wire.AgentEventPrompt)
@@ -626,46 +599,40 @@ func (d *Daemon) sessionInfo(id string) (wire.SessionInfo, bool) {
 	return wire.SessionInfo{}, false
 }
 
-// Only events the registry broadcasts under its lock (state, attention)
-// are ordered against the snapshot. An "updated" built from an Info()
-// taken before the lock was released can be older than the snapshot, so a
-// stale idle one must not end a wait; an exited one always may.
-func TestDrainWaitSettlesOnlyOnLockOrderedEvents(t *testing.T) {
+// A stale event must not decide anything: the registry can publish an
+// "updated" built from an Info() older than what it already knows. A
+// wake-up for a session that is still working must leave a wait for idle
+// parked, and the idle that really arrives must end it.
+func TestWaitSessionDecidesFromLiveStateNotFromTheEvent(t *testing.T) {
 	f := newOrchFixture(t, false)
-	wantIdle := map[string]bool{wire.StateIdle: true, wire.StateExited: true}
-	settle := func(info wire.SessionInfo) (string, bool) {
-		if !wantIdle[info.State] {
-			return "", false
-		}
-		return wire.StateName(info.State), true
+	f.report(t, wire.AgentEventPrompt)
+	f.stateIs(t, wire.StateWorking)
+	c := f.startWait(t, wire.WaitSessionReq{SessionID: f.target.ID})
+	c.quiet(t, 100*time.Millisecond)
+	for i := 0; i < 5; i++ { // updated events whose payload is irrelevant
+		f.rename(t, i)
 	}
-	run := func(evs ...wire.SessionEvent) (string, bool) {
-		l := make(registry.Listener, len(evs))
-		for _, e := range evs {
-			l <- e
-		}
-		timer := time.NewTimer(150 * time.Millisecond)
-		defer timer.Stop()
-		st, done, _ := f.d.drainWait(context.Background(), l, timer, "t", settle)
-		return st, done && st != wire.WaitStateTimeout
+	c.quiet(t, 150*time.Millisecond)
+	f.report(t, wire.AgentEventIdle)
+	if r := c.get(t, 3*time.Second); r.err != nil || r.resp.State != "idle" {
+		t.Fatalf("got %+v, want idle", r)
 	}
-	ev := func(kind, state string) wire.SessionEvent {
-		return wire.SessionEvent{Kind: kind, Session: wire.SessionInfo{ID: "t", State: state}}
-	}
+}
 
-	if st, ok := run(ev(wire.SessionEventUpdated, wire.StateIdle)); ok {
-		t.Errorf("a stale updated idle ended the wait: %q", st)
+// A reset to idle that rides an "updated" event (a revive) still ends a
+// wait for idle, because the wait reads the registry on any wake-up.
+func TestWaitSessionSeesAStateResetReportedByAnUpdatedEvent(t *testing.T) {
+	f := newOrchFixture(t, false)
+	f.report(t, wire.AgentEventPrompt)
+	f.stateIs(t, wire.StateWorking)
+	c := f.startWait(t, wire.WaitSessionReq{SessionID: f.target.ID, States: []string{"idle"}}) // not exited: a restart passes through it
+	c.quiet(t, 100*time.Millisecond)
+	// A restart revives the session: its state goes back to idle and the
+	// registry reports that as an "updated" event, not a state event.
+	if err := f.d.reg.Restart(f.target.ID); err != nil {
+		t.Fatal(err)
 	}
-	if st, ok := run(ev(wire.SessionEventAdded, wire.StateIdle)); ok {
-		t.Errorf("an added idle ended the wait: %q", st)
-	}
-	if st, ok := run(ev(wire.SessionEventUpdated, wire.StateIdle), ev(wire.SessionEventState, wire.StateIdle)); !ok || st != "idle" {
-		t.Errorf("a lock-ordered state event after a stale one: got %q, %v; want idle", st, ok)
-	}
-	if st, ok := run(ev(wire.SessionEventAttention, wire.StateIdle)); !ok || st != "idle" {
-		t.Errorf("an attention event: got %q, %v; want idle", st, ok)
-	}
-	if st, ok := run(ev(wire.SessionEventUpdated, wire.StateExited)); !ok || st != wire.StateExited {
-		t.Errorf("an updated exited: got %q, %v; want exited", st, ok)
+	if r := c.get(t, 3*time.Second); r.err != nil || r.resp.State != "idle" {
+		t.Fatalf("got %+v, want idle", r)
 	}
 }
