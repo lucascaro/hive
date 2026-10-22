@@ -181,6 +181,7 @@ Independent reviewer (hs-reviewer), two rounds.
   spec's evidence values — recorded in agent-orchestration.md.
 - **2026-10-21** — Wait capped at 30 min (not 1 h): bounds a goroutine
   parked on a client that hung up unnoticed.
+- **2026-10-22** — Bumped `go` to 1.27.3 (go.mod and tools/staticcheck/go.mod) inside this PR, at the operator's direction. Why: required `govulncheck` gate failed on GO-2026-6809 (crypto/x509 in the 1.27.2 standard library, fixed in 1.27.3; reachable via `wire.ReadFrame`), which reddens every PR, not just this one. Same precedent as 505.
 
 ## Progress
 
