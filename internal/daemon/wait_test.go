@@ -125,11 +125,14 @@ func TestRestrictedListSessionsProjectScopedAndProjected(t *testing.T) {
 		if s.Name == "abroad" {
 			t.Errorf("other project's session leaked: %+v", s)
 		}
-		// Exactly id, name, agent, state: everything else must be the
-		// zero value, which is what withholding it looks like.
-		blank := wire.SessionInfo{ID: s.ID, Name: s.Name, Agent: s.Agent, State: s.State}
+		// Exactly id, name, agent, state, alive: everything else must be
+		// the zero value, which is what withholding it looks like.
+		if !s.Alive {
+			t.Errorf("%s reported not alive though it is running", s.Name)
+		}
+		blank := wire.SessionInfo{ID: s.ID, Name: s.Name, Agent: s.Agent, State: s.State, Alive: s.Alive}
 		if a, b := mustJSON(t, s), mustJSON(t, blank); string(a) != string(b) {
-			t.Errorf("projection carries more than id,name,agent,state: %s", a)
+			t.Errorf("projection carries more than id,name,agent,state,alive: %s", a)
 		}
 		if (s.Name == "boss" || s.Name == "worker") && s.Agent != "claude" {
 			t.Errorf("%s agent = %q, want claude", s.Name, s.Agent)
@@ -482,5 +485,48 @@ func TestWaitSessionSurvivesPastTheSessionIdleDeadline(t *testing.T) {
 			t.Fatalf("got %+v, want idle for %s", resp, e.ID)
 		}
 		return
+	}
+}
+
+// An idle event queued before a later transition to working must not end
+// a wait for idle: awaitState re-checks the live state before trusting it.
+func TestWaitSessionIgnoresEventStaleByDelivery(t *testing.T) {
+	f := newOrchFixture(t, false)
+	f.report(t, wire.AgentEventPrompt)
+	f.stateIs(t, wire.StateWorking)
+	var once sync.Once
+	hooked := make(chan struct{})
+	waitEventHook = func() {
+		once.Do(func() {
+			f.report(t, wire.AgentEventPrompt) // flips back to working before the idle event is judged
+			close(hooked)
+		})
+	}
+	t.Cleanup(func() { waitEventHook = nil })
+	c := f.startWait(t, wire.WaitSessionReq{SessionID: f.target.ID})
+	c.quiet(t, 100*time.Millisecond)
+	f.report(t, wire.AgentEventIdle)
+	select {
+	case <-hooked:
+	case <-time.After(3 * time.Second):
+		t.Fatal("wait never took the idle event")
+	}
+	c.quiet(t, 200*time.Millisecond) // stale idle, session is working again: must not answer
+	f.report(t, wire.AgentEventPrompt)
+	f.report(t, wire.AgentEventIdle)
+	if r := c.get(t, 3*time.Second); r.err != nil || r.resp.State != "idle" {
+		t.Fatalf("got %+v, want idle", r)
+	}
+}
+
+func TestWaitSessionHugeTimeoutIsCapped(t *testing.T) {
+	f := newOrchFixture(t, false)
+	f.report(t, wire.AgentEventPrompt)
+	f.stateIs(t, wire.StateWorking)
+	c := f.startWait(t, wire.WaitSessionReq{SessionID: f.target.ID, TimeoutSeconds: 10000000000})
+	c.quiet(t, 300*time.Millisecond) // overflowed to a negative timer, this would answer "timeout" at once
+	f.report(t, wire.AgentEventIdle)
+	if r := c.get(t, 3*time.Second); r.err != nil || r.resp.State != "idle" {
+		t.Fatalf("got %+v, want idle", r)
 	}
 }

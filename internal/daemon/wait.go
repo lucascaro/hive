@@ -52,15 +52,19 @@ func (d *Daemon) waitSession(ctx context.Context, ops controlOps, req wire.WaitS
 		ops.sendError("bad_payload", err.Error())
 		return
 	}
-	timeout := time.Duration(req.TimeoutSeconds) * time.Second
+	// Compare in seconds before converting: a huge raw value would
+	// overflow time.Duration into a negative, already-expired timer.
+	var timeout time.Duration
 	switch {
 	case req.TimeoutSeconds < 0:
 		ops.sendError("bad_payload", "timeout_s must not be negative")
 		return
-	case timeout == 0:
+	case req.TimeoutSeconds == 0:
 		timeout = wire.WaitDefaultTimeout
-	case timeout > wire.WaitMaxTimeout:
+	case req.TimeoutSeconds > int(wire.WaitMaxTimeout/time.Second):
 		timeout = wire.WaitMaxTimeout
+	default:
+		timeout = time.Duration(req.TimeoutSeconds) * time.Second
 	}
 
 	reached, err := d.awaitState(ctx, target.ID, want, req.AfterWorking, timeout)
@@ -140,7 +144,7 @@ func (d *Daemon) awaitState(ctx context.Context, id string, want map[string]bool
 			unsub()
 			return st, nil
 		}
-		st, done, delivered := d.drainWait(ctx, listener, timer, id, settle)
+		st, done, delivered := d.drainWait(ctx, listener, timer, id, want, settle)
 		unsub()
 		if delivered {
 			retries = 0
@@ -160,7 +164,7 @@ func (d *Daemon) awaitState(ctx context.Context, id string, want map[string]bool
 // drainWait consumes events for id until the wait ends (done) or the
 // listener closes (done false: the caller re-subscribes). delivered
 // reports whether any event arrived on this listener.
-func (d *Daemon) drainWait(ctx context.Context, listener registry.Listener, timer *time.Timer, id string,
+func (d *Daemon) drainWait(ctx context.Context, listener registry.Listener, timer *time.Timer, id string, want map[string]bool,
 	settle func(wire.SessionInfo) (string, bool)) (state string, done, delivered bool) {
 	for {
 		select {
@@ -179,6 +183,12 @@ func (d *Daemon) drainWait(ctx context.Context, listener registry.Listener, time
 				return wire.WaitStateGone, true, true
 			}
 			if st, ok := settle(ev.Session); ok {
+				// The event may predate the snapshot awaitState took
+				// (an idle queued before a later transition to working).
+				// Trust it only if the session is still in a wanted state.
+				if cur, found := d.sessionInfo(id); found && !want[cur.State] {
+					continue
+				}
 				return st, true, true
 			}
 		case <-timer.C:

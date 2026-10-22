@@ -1387,7 +1387,8 @@ func ownSessionOnly(all []wire.SessionInfo, id string) []wire.SessionInfo {
 }
 
 // ownProjectOnly narrows a session list to the caller's project, and
-// each entry to the four fields `hived session list` shows. The rest of
+// each entry to the fields `hived session list` shows (id, name, agent,
+// state, plus alive so a running session is not reported dead). The rest of
 // SessionInfo — worktree path and branch, window title, last prompt —
 // stays withheld for the reason ownSessionOnly gives. An empty project
 // (a stale HIVE_SESSION_ID) yields nothing rather than every unassigned
@@ -1399,7 +1400,7 @@ func ownProjectOnly(all []wire.SessionInfo, projectID string) []wire.SessionInfo
 	var out []wire.SessionInfo
 	for _, s := range all {
 		if s.ProjectID == projectID {
-			out = append(out, wire.SessionInfo{ID: s.ID, Name: s.Name, Agent: s.Agent, State: s.State})
+			out = append(out, wire.SessionInfo{ID: s.ID, Name: s.Name, Agent: s.Agent, State: s.State, Alive: s.Alive})
 		}
 	}
 	return out
