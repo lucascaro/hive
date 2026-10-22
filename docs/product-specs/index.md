@@ -13,7 +13,6 @@ The *what* and *why* of work this project plans to do. Each spec describes user 
 | — | #142 | vt snapshot: CJK / wide-char column misalignment | TRIAGE | [142-vt-snapshot-cjk-wide-char-column-misalignment](142-vt-snapshot-cjk-wide-char-column-misalignment.md) |
 | P3 | #512 | Handoff: an agent passes its work to a new session | RESEARCH | [512-handoff-an-agent-passes-its-work-to-a-new-session](512-handoff-an-agent-passes-its-work-to-a-new-session.md) |
 | P3 | — | Move SocketPath out of internal/daemon so clients stop linking the daemon | TRIAGE | [331-move-socketpath-out-of-internal-daemon](331-move-socketpath-out-of-internal-daemon.md) |
-| P3 | — | Observe from a session: hived session list and hived wait | PLAN | [390-session-observe-list-and-wait](390-session-observe-list-and-wait.md) |
 | P3 | — | Agent-spawned sessions: a granted session can start a sibling | PLAN | [391-agent-spawned-sessions](391-agent-spawned-sessions.md) |
 | P3 | — | Migrate the frontend to CSS Modules | TRIAGE | [frontend-css-modules](frontend-css-modules.md) |
 
@@ -21,6 +20,7 @@ The *what* and *why* of work this project plans to do. Each spec describes user 
 
 | Issue | Title | PR | Shipped | Spec |
 |-------|-------|----|---------|------|
+| — | Observe from a session: hived session list and hived wait | #525 | 2026-10-22 | [390-session-observe-list-and-wait](390-session-observe-list-and-wait.md) |
 | — | Orchestrator grant: a session you name can message its siblings | #524 | 2026-10-20 | [389-orchestrator-grant-and-session-msg](389-orchestrator-grant-and-session-msg.md) |
 | — | Session messaging: hand a session a message, get told when it idles | #516 | 2026-10-15 | [338-session-messaging](338-session-messaging.md) |
 | #517 | Read Claude's terminal status (OSC 7501) to fix stuck "working" after Esc | #520 | 2026-10-15 | [517-read-claude-osc-7501-status-after-esc](517-read-claude-osc-7501-status-after-esc.md) |
