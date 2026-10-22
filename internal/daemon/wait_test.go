@@ -69,10 +69,16 @@ func (c *waitCall) quiet(t *testing.T, for_ time.Duration) {
 	}
 }
 
-// report sends one agent event for the fixture's target, the way a hook does.
+// report applies one agent event to the fixture's target — what an
+// AGENT_EVENT frame does once the daemon has validated it. Applied
+// directly because this fixture's daemon is never Run, so a frame
+// written to its socket would sit unread.
 func (f *orchFixture) report(t *testing.T, kind string) {
 	t.Helper()
-	reportTool(t, f.d, wire.AgentEvent{SessionID: f.target.ID, Kind: kind})
+	ev := wire.AgentEvent{SessionID: f.target.ID, Kind: kind, Source: wire.StateSourceHook}
+	if err := f.d.reg.ApplyAgentEvent(f.target.ID, ev); err != nil {
+		t.Fatalf("apply %s: %v", kind, err)
+	}
 }
 
 func (f *orchFixture) stateIs(t *testing.T, want string) {
