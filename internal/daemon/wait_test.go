@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"log"
+	"math"
 	"strings"
 	"sync"
 	"testing"
@@ -107,48 +108,58 @@ func TestRestrictedListSessionsProjectScopedAndProjected(t *testing.T) {
 	}
 
 	ops := controlOps{restricted: true, ownSessionID: f.sender.ID, ownProjectID: f.sender.ProjectID}
-	var got wire.SessionsResp
+	var wrote any
 	ops.writeJSON = func(ft wire.FrameType, v any) error {
 		if ft != wire.FrameSessions {
 			t.Errorf("wrote %v, want SESSIONS", ft)
 		}
-		got = v.(wire.SessionsResp)
+		wrote = v
 		return nil
 	}
 	f.d.handleControlFrame(context.Background(), ops, wire.FrameListSessions, []byte("{}"))
 
+	// What goes over the wire, not the Go struct: exactly these four
+	// keys, none omitted.
+	var got struct {
+		Sessions []map[string]any `json:"sessions"`
+	}
+	if err := json.Unmarshal(mustJSON(t, wrote), &got); err != nil {
+		t.Fatal(err)
+	}
 	// The caller's project holds the bootstrap shell, boss and worker.
 	if len(got.Sessions) != 3 {
 		t.Fatalf("got %d sessions, want the caller's project's 3: %+v", len(got.Sessions), got.Sessions)
 	}
 	for _, s := range got.Sessions {
-		if s.Name == "abroad" {
+		if len(s) != 4 {
+			t.Errorf("entry has keys %v, want exactly id, name, agent, state", s)
+		}
+		for _, k := range []string{"id", "name", "agent", "state"} {
+			if _, ok := s[k]; !ok {
+				t.Errorf("entry %v lacks %q", s, k)
+			}
+		}
+		name, _ := s["name"].(string)
+		if name == "abroad" {
 			t.Errorf("other project's session leaked: %+v", s)
 		}
-		// Exactly id, name, agent, state, alive: everything else must be
-		// the zero value, which is what withholding it looks like.
-		if !s.Alive {
-			t.Errorf("%s reported not alive though it is running", s.Name)
-		}
-		blank := wire.SessionInfo{ID: s.ID, Name: s.Name, Agent: s.Agent, State: s.State, Alive: s.Alive}
-		if a, b := mustJSON(t, s), mustJSON(t, blank); string(a) != string(b) {
-			t.Errorf("projection carries more than id,name,agent,state,alive: %s", a)
-		}
-		if (s.Name == "boss" || s.Name == "worker") && s.Agent != "claude" {
-			t.Errorf("%s agent = %q, want claude", s.Name, s.Agent)
+		if (name == "boss" || name == "worker") && s["agent"] != "claude" {
+			t.Errorf("%s agent = %v, want claude", name, s["agent"])
 		}
 	}
 
 	// A control (unrestricted) connection still gets everything.
+	var all wire.SessionsResp
 	ops.restricted = false
+	ops.writeJSON = func(ft wire.FrameType, v any) error { all = v.(wire.SessionsResp); return nil }
 	f.d.handleControlFrame(context.Background(), ops, wire.FrameListSessions, []byte("{}"))
-	if len(got.Sessions) != 4 {
-		t.Errorf("control list got %d sessions, want 4", len(got.Sessions))
+	if len(all.Sessions) != 4 {
+		t.Errorf("control list got %d sessions, want 4", len(all.Sessions))
 	}
 }
 
 func TestRestrictedListWithUnknownCallerIsEmpty(t *testing.T) {
-	if got := ownProjectOnly([]wire.SessionInfo{{ID: "a", ProjectID: ""}}, ""); got != nil {
+	if got := ownProjectOnly([]wire.SessionInfo{{ID: "a", ProjectID: ""}}, ""); len(got) != 0 {
 		t.Errorf("an unresolved caller listed %+v", got)
 	}
 }
@@ -490,32 +501,107 @@ func TestWaitSessionSurvivesPastTheSessionIdleDeadline(t *testing.T) {
 
 // An idle event queued before a later transition to working must not end
 // a wait for idle: awaitState re-checks the live state before trusting it.
-func TestWaitSessionIgnoresEventStaleByDelivery(t *testing.T) {
-	f := newOrchFixture(t, false)
-	f.report(t, wire.AgentEventPrompt)
-	f.stateIs(t, wire.StateWorking)
+// parkConsumer holds the wait's event consumer in waitEventHook on its
+// first event, so events (and a full registry buffer) can pile up behind
+// it; the returned func releases it. Pair with provoke, which sends the
+// target events until the consumer parks.
+func (f *orchFixture) parkConsumer(t *testing.T) (taken <-chan struct{}, release func()) {
+	t.Helper()
+	tk, rel := make(chan struct{}, 1), make(chan struct{})
 	var once sync.Once
-	hooked := make(chan struct{})
 	waitEventHook = func() {
 		once.Do(func() {
-			f.report(t, wire.AgentEventPrompt) // flips back to working before the idle event is judged
-			close(hooked)
+			tk <- struct{}{}
+			<-rel
 		})
 	}
 	t.Cleanup(func() { waitEventHook = nil })
-	c := f.startWait(t, wire.WaitSessionReq{SessionID: f.target.ID})
-	c.quiet(t, 100*time.Millisecond)
+	return tk, func() { close(rel) }
+}
+
+// provoke renames the target (an event the wait ignores) until the
+// consumer parks: events sent before the wait subscribed never reach it.
+// It returns how many renames it took, to keep later names unique.
+func (f *orchFixture) provoke(t *testing.T, taken <-chan struct{}) int {
+	t.Helper()
+	for n := 0; n < 200; n++ {
+		f.rename(t, n)
+		select {
+		case <-taken:
+			return n + 1
+		case <-time.After(20 * time.Millisecond):
+		}
+	}
+	t.Fatal("the wait never took an event")
+	return 0
+}
+
+func (f *orchFixture) rename(t *testing.T, n int) {
+	t.Helper()
+	name := fmt.Sprintf("worker-%d", n)
+	if _, err := f.d.reg.Update(wire.UpdateSessionReq{SessionID: f.target.ID, Name: &name}); err != nil {
+		t.Fatal(err)
+	}
+}
+
+// A state that was reached is reported even when the session has moved
+// on by the time the event is read: the events are in order and all after
+// the snapshot, so the first qualifying one is the answer.
+func TestWaitSessionReportsAReachedStateThatHasSincePassed(t *testing.T) {
+	f := newOrchFixture(t, false)
+	taken, release := f.parkConsumer(t)
+	c := f.startWait(t, wire.WaitSessionReq{SessionID: f.target.ID, States: []string{wire.StateWorking}})
+	f.provoke(t, taken)
+	f.report(t, wire.AgentEventPrompt) // idle → working
+	f.report(t, wire.AgentEventIdle)   // → idle again, before the consumer reads any of it
+	release()
+	if r := c.get(t, 3*time.Second); r.err != nil || r.resp.State != wire.StateWorking {
+		t.Fatalf("got %+v, want working", r)
+	}
+}
+
+// --after-working must still see a whole working→idle cycle that fell
+// into the gap while the registry had dropped the wait's listener.
+func TestWaitSessionAfterWorkingSurvivesADroppedListener(t *testing.T) {
+	f := newOrchFixture(t, false)
+	taken, release := f.parkConsumer(t)
+	c := f.startWait(t, wire.WaitSessionReq{SessionID: f.target.ID, AfterWorking: true})
+	n := f.provoke(t, taken)
+	for i := 0; i < 100; i++ { // overflow the parked consumer's buffer: the listener is dropped
+		f.rename(t, n+i)
+	}
+	f.report(t, wire.AgentEventPrompt) // the whole cycle happens
+	f.report(t, wire.AgentEventIdle)   // where the dropped listener cannot hear it
+	f.stateIs(t, "")
+	release()
+	if r := c.get(t, 5*time.Second); r.err != nil || r.resp.State != "idle" {
+		t.Fatalf("got %+v, want idle after the unobserved cycle", r)
+	}
+}
+
+// Nothing that predates the snapshot is delivered after it.
+func TestSubscribeSessionDeliversNothingBeforeItsSnapshot(t *testing.T) {
+	f := newOrchFixture(t, false)
+	f.report(t, wire.AgentEventPrompt)
+	f.stateIs(t, wire.StateWorking)
+	l, info, work, found, unsub := f.d.reg.SubscribeSession(f.target.ID)
+	defer unsub()
+	if !found || info.State != wire.StateWorking || work != 1 {
+		t.Fatalf("snapshot = %+v work %d found %v; want working, 1 cycle", info, work, found)
+	}
+	select {
+	case ev := <-l:
+		t.Fatalf("an event predating the snapshot was delivered: %s %s", ev.Kind, ev.Session.State)
+	default:
+	}
 	f.report(t, wire.AgentEventIdle)
 	select {
-	case <-hooked:
-	case <-time.After(3 * time.Second):
-		t.Fatal("wait never took the idle event")
-	}
-	c.quiet(t, 200*time.Millisecond) // stale idle, session is working again: must not answer
-	f.report(t, wire.AgentEventPrompt)
-	f.report(t, wire.AgentEventIdle)
-	if r := c.get(t, 3*time.Second); r.err != nil || r.resp.State != "idle" {
-		t.Fatalf("got %+v, want idle", r)
+	case ev := <-l:
+		if ev.Session.ID != f.target.ID || ev.Session.State != "" {
+			t.Fatalf("got %+v, want the idle that followed", ev)
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("the transition after the snapshot never arrived")
 	}
 }
 
@@ -523,7 +609,7 @@ func TestWaitSessionHugeTimeoutIsCapped(t *testing.T) {
 	f := newOrchFixture(t, false)
 	f.report(t, wire.AgentEventPrompt)
 	f.stateIs(t, wire.StateWorking)
-	c := f.startWait(t, wire.WaitSessionReq{SessionID: f.target.ID, TimeoutSeconds: 10000000000})
+	c := f.startWait(t, wire.WaitSessionReq{SessionID: f.target.ID, TimeoutSeconds: math.MaxInt})
 	c.quiet(t, 300*time.Millisecond) // overflowed to a negative timer, this would answer "timeout" at once
 	f.report(t, wire.AgentEventIdle)
 	if r := c.get(t, 3*time.Second); r.err != nil || r.resp.State != "idle" {

@@ -1387,20 +1387,19 @@ func ownSessionOnly(all []wire.SessionInfo, id string) []wire.SessionInfo {
 }
 
 // ownProjectOnly narrows a session list to the caller's project, and
-// each entry to the fields `hived session list` shows (id, name, agent,
-// state, plus alive so a running session is not reported dead). The rest of
+// each entry to the four fields `hived session list` shows. The rest of
 // SessionInfo — worktree path and branch, window title, last prompt —
 // stays withheld for the reason ownSessionOnly gives. An empty project
 // (a stale HIVE_SESSION_ID) yields nothing rather than every unassigned
 // session.
-func ownProjectOnly(all []wire.SessionInfo, projectID string) []wire.SessionInfo {
+func ownProjectOnly(all []wire.SessionInfo, projectID string) []wire.SessionBrief {
+	out := []wire.SessionBrief{}
 	if projectID == "" {
-		return nil
+		return out
 	}
-	var out []wire.SessionInfo
 	for _, s := range all {
 		if s.ProjectID == projectID {
-			out = append(out, wire.SessionInfo{ID: s.ID, Name: s.Name, Agent: s.Agent, State: s.State, Alive: s.Alive})
+			out = append(out, wire.SessionBrief{ID: s.ID, Name: s.Name, Agent: s.Agent, State: s.State})
 		}
 	}
 	return out
@@ -1529,7 +1528,7 @@ func (d *Daemon) handleControlFrame(ctx context.Context, ops controlOps, ft wire
 		return true
 	case wire.FrameListSessions:
 		if ops.restricted {
-			_ = ops.writeJSON(wire.FrameSessions, wire.SessionsResp{Sessions: ownProjectOnly(d.reg.List(), ops.ownProjectID)})
+			_ = ops.writeJSON(wire.FrameSessions, wire.SessionBriefsResp{Sessions: ownProjectOnly(d.reg.List(), ops.ownProjectID)})
 			return false
 		}
 		_ = ops.writeJSON(wire.FrameSessions, wire.SessionsResp{Sessions: d.reg.List()})

@@ -100,10 +100,13 @@ func parseWaitStates(names []string) (map[string]bool, error) {
 // awaitState blocks until id is in a wanted state and returns its wire
 // name, or wire.WaitStateTimeout / wire.WaitStateGone.
 //
-// Order matters: subscribe BEFORE reading the current state, so a
-// transition between the two is delivered rather than lost. A listener
-// the registry drops (slow reader) is replaced and the state re-read,
-// so a dropped event costs nothing either.
+// The snapshot and the subscription are one atomic step
+// (Registry.SubscribeSession), so the listener delivers exactly what
+// happened after the snapshot, in order, and every event is trusted as it
+// comes: a wanted state that was reached is reported even if the session
+// has since moved on. A listener the registry drops (slow reader) is
+// replaced; the fresh snapshot covers the gap, and the registry's work
+// counter says whether a whole working→idle cycle fell into it.
 func (d *Daemon) awaitState(ctx context.Context, id string, want map[string]bool, afterWorking bool, timeout time.Duration) (string, error) {
 	timer := time.NewTimer(timeout)
 	defer timer.Stop()
@@ -122,10 +125,9 @@ func (d *Daemon) awaitState(ctx context.Context, id string, want map[string]bool
 		return wire.StateName(info.State), true
 	}
 
-	retries := 0
+	retries, lastWork := 0, -1
 	for {
-		listener, unsub := d.reg.Subscribe()
-		info, found := d.sessionInfo(id)
+		listener, info, work, found, unsub := d.reg.SubscribeSession(id)
 		if !found {
 			// A registry that is closing empties itself and hands out
 			// closed listeners; that is shutdown, not the target going.
@@ -140,11 +142,17 @@ func (d *Daemon) awaitState(ctx context.Context, id string, want map[string]bool
 			}
 			return wire.WaitStateGone, nil
 		}
+		// More work than at the last look: a cycle happened unobserved
+		// (first pass: lastWork is -1, nothing to infer).
+		if lastWork >= 0 && work > lastWork {
+			sawWorking = true
+		}
+		lastWork = work
 		if st, ok := settle(info); ok {
 			unsub()
 			return st, nil
 		}
-		st, done, delivered := d.drainWait(ctx, listener, timer, id, want, settle)
+		st, done, delivered := d.drainWait(ctx, listener, timer, id, settle)
 		unsub()
 		if delivered {
 			retries = 0
@@ -164,7 +172,7 @@ func (d *Daemon) awaitState(ctx context.Context, id string, want map[string]bool
 // drainWait consumes events for id until the wait ends (done) or the
 // listener closes (done false: the caller re-subscribes). delivered
 // reports whether any event arrived on this listener.
-func (d *Daemon) drainWait(ctx context.Context, listener registry.Listener, timer *time.Timer, id string, want map[string]bool,
+func (d *Daemon) drainWait(ctx context.Context, listener registry.Listener, timer *time.Timer, id string,
 	settle func(wire.SessionInfo) (string, bool)) (state string, done, delivered bool) {
 	for {
 		select {
@@ -183,12 +191,6 @@ func (d *Daemon) drainWait(ctx context.Context, listener registry.Listener, time
 				return wire.WaitStateGone, true, true
 			}
 			if st, ok := settle(ev.Session); ok {
-				// The event may predate the snapshot awaitState took
-				// (an idle queued before a later transition to working).
-				// Trust it only if the session is still in a wanted state.
-				if cur, found := d.sessionInfo(id); found && !want[cur.State] {
-					continue
-				}
 				return st, true, true
 			}
 		case <-timer.C:

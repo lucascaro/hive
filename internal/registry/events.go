@@ -24,12 +24,18 @@ type ActivityListener chan wire.ActivityMsg
 // returned cleanup function unsubscribes and closes the channel.
 // Slow consumers are dropped — listeners must drain promptly.
 func (r *Registry) Subscribe() (Listener, func()) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	return r.subscribeLocked()
+}
+
+// subscribeLocked is Subscribe with r.mu held.
+func (r *Registry) subscribeLocked() (Listener, func()) {
 	// 64, not 16: Update with an order change broadcasts one event per
 	// session while holding r.mu (see reindexLocked), so a listener
 	// that's merely a beat behind on a many-session registry could
 	// overflow a small buffer and get dropped.
 	ch := make(Listener, 64)
-	r.mu.Lock()
 	if r.listeners == nil {
 		// Close() ran first — it nils the map after closing every
 		// listener. serve() goroutines are spawned unsynchronized
@@ -39,12 +45,10 @@ func (r *Registry) Subscribe() (Listener, func()) {
 		// Hand back an already-closed channel: the caller's range
 		// loop drains and exits at once, which is what a subscriber
 		// to a dead registry should see.
-		r.mu.Unlock()
 		close(ch)
 		return ch, func() {}
 	}
 	r.listeners[ch] = struct{}{}
-	r.mu.Unlock()
 	return ch, func() {
 		r.mu.Lock()
 		if _, ok := r.listeners[ch]; ok {
@@ -53,6 +57,25 @@ func (r *Registry) Subscribe() (Listener, func()) {
 		}
 		r.mu.Unlock()
 	}
+}
+
+// SubscribeSession subscribes to every SessionEvent and, in the same hold
+// of r.mu, reads one session: its Info and workCount, the number of times
+// it has gone to working. No event can fall between the two, so the
+// listener delivers exactly what happened AFTER info, in order — nothing
+// that predates it. found is false when id names no session.
+//
+// workCount is how a re-subscribe after a dropped listener learns that a
+// whole working→idle cycle went by unobserved.
+func (r *Registry) SubscribeSession(id string) (l Listener, info wire.SessionInfo, workCount int, found bool, unsub func()) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	l, unsub = r.subscribeLocked()
+	e, ok := r.entries[id]
+	if !ok {
+		return l, wire.SessionInfo{}, 0, false, unsub
+	}
+	return l, e.Info(), e.workCount, true, unsub
 }
 
 func (r *Registry) broadcast(kind string, info wire.SessionInfo) {

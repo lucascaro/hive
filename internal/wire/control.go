@@ -1875,6 +1875,24 @@ type WaitSessionReq struct {
 	AfterWorking bool `json:"after_working,omitempty"`
 }
 
+// SessionBrief is one entry of the narrowed session list a ModeSession
+// connection gets from LIST_SESSIONS (spec 390): exactly these four
+// fields, none omitted, so a client can tell an idle session ("state": "")
+// from a field the daemon withheld.
+type SessionBrief struct {
+	ID    string `json:"id"`
+	Name  string `json:"name"`
+	Agent string `json:"agent"`
+	State string `json:"state"`
+}
+
+// SessionBriefsResp is the SESSIONS payload for a ModeSession
+// LIST_SESSIONS. It has SessionsResp's shape, so a client that decodes
+// SessionsResp reads it unchanged.
+type SessionBriefsResp struct {
+	Sessions []SessionBrief `json:"sessions"`
+}
+
 // WaitStateNames are the states WaitSessionReq.States may name.
 var WaitStateNames = []string{"idle", StateWorking, StateWaitingInput, StateWaitingPermission, StateExited, StateError}
 

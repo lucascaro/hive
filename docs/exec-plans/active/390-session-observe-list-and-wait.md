@@ -182,6 +182,7 @@ Independent reviewer (hs-reviewer), two rounds.
 - **2026-10-21** — Wait capped at 30 min (not 1 h): bounds a goroutine
   parked on a client that hung up unnoticed.
 - **2026-10-22** — Bumped `go` to 1.27.3 (go.mod and tools/staticcheck/go.mod) inside this PR, at the operator's direction. Why: required `govulncheck` gate failed on GO-2026-6809 (crypto/x509 in the 1.27.2 standard library, fixed in 1.27.3; reachable via `wire.ReadFrame`), which reddens every PR, not just this one. Same precedent as 505.
+- **2026-10-22** — Review iteration 2 found the live-state re-check (85e9df88) both fixed a stale-idle bug and introduced a missed-state one, because it second-guessed an ordered event stream. Replaced with an atomic snapshot+subscribe (`Registry.SubscribeSession`): the listener delivers only what happened after the snapshot, in order, so every event is trusted. A per-entry `workCount` (in-memory) lets a re-subscribe after a dropped listener learn that a working→idle cycle went by unobserved, so `--after-working` survives a drop; no wire change. The restricted list reply is its own four-field type (`wire.SessionBrief`) rather than a projected `SessionInfo`, so the keys on the wire are exactly id, name, agent, state.
 
 ## Progress
 
