@@ -4,8 +4,9 @@ title: "Observe from a session: hived session list and hived wait"
 type: enhancement
 complexity: S
 priority: P3
-stage: GATE
+stage: DONE
 pr: 525
+shipped: 2026-10-22
 ---
 
 # Observe from a session: `hived session list` and `hived wait`
@@ -14,7 +15,7 @@ pr: 525
 - **Type:** enhancement
 - **Complexity:** S
 - **Priority:** P3
-- **Exec plan:** [docs/exec-plans/active/390-session-observe-list-and-wait.md](../exec-plans/active/390-session-observe-list-and-wait.md)
+- **Exec plan:** [docs/exec-plans/completed/390-session-observe-list-and-wait.md](../exec-plans/completed/390-session-observe-list-and-wait.md)
 - **Design:** [docs/design-docs/agent-orchestration.md](../design-docs/agent-orchestration.md)
 - **Depends on:** [389](389-orchestrator-grant-and-session-msg.md) shipped and its gate met — unless the 389 gate proves unreachable without `wait`, in which case this folds into 389 (record it in 389's decision log).
 

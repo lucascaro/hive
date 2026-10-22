@@ -5,7 +5,7 @@
 - **Issue:** —
 - **Branch:** `feature/390-session-observe`
 - **PR:** [#525](https://github.com/lucascaro/hive/pull/525)
-- **Status:** active
+- **Status:** completed
 
 ## Summary
 
@@ -204,3 +204,12 @@ Independent reviewer (hs-reviewer), two rounds.
 - **2026-10-22 iter 3** — verdict: COMMENT; mergeable: MERGEABLE; findings_hash: d17cc3647fc03be1bcd6ea35e2f67d29b5d7f383dc2071c1d84bda1de2c14545; threads_open: 1; action: autofix+push; head_sha: 726dd465. (Worker escalated the one IMPORTANT finding as a design call; fixed by the orchestrator in the next commit: settle only on lock-ordered state/attention events plus exited.)
 - **2026-10-22 iter 4** — verdict: REQUEST_CHANGES (bot threads: revive reset missed; first-wanted order; exit missed); mergeable: MERGEABLE; findings_hash: empty (orchestrator-fixed, threads resolved); threads_open: 0; action: autofix+push; head_sha: 0dc6e7eb.
 - **2026-10-22 iter 5** — verdict: APPROVE; mergeable: MERGEABLE; findings_hash: empty; threads_open: 0; action: stop; head_sha: 0dc6e7eb.
+
+## Gate verdict
+
+- **2026-10-22** — verdict: PASS; phase: —; checks: 3 passed / 0 failed / 0 followups; followups: none; one-line: all three success criteria are delivered and pinned by tests, no non-goal was touched, docs and changeset match.
+  - 2026-10-22 dimensions:
+    - acceptance — PASS — (1) `TestRestrictedListSessionsProjectScopedAndProjected` asserts the wire keys are exactly id, name, agent, state and the project scope; (2) `TestWaitSessionReturnsOnAgentEvent` (working→idle via agent events, log line asserted) and `TestWaitSessionTimeout`, plus `TestWaitSessionSurvivesPastTheSessionIdleDeadline` over a real socket; (3) `TestE2E_WaitOnAnIdleSiblingReturnsImmediately` (real hived, caller in a session, sibling already idle). Note: most daemon tests apply the event through `Registry.ApplyAgentEvent`, which is what an AGENT_EVENT frame does after validation; the real-socket test uses frames.
+    - non-goals — PASS — no output/summary reading, a single target only, no file under cmd/hivegui, frontend or cmd/hivebar changed.
+    - doc accuracy — PASS — README, docs/plugins.md, control-plane.md, agent-orchestration.md, changeset `390-session-observe.md` (added, minor), `site/features.json` (Unreleased) all describe the shipped behaviour; DaemonContract 33 with its history entry.
+
