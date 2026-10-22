@@ -197,3 +197,4 @@ Independent reviewer (hs-reviewer), two rounds.
 ## PR convergence ledger
 
 - **2026-10-21 iter 1** — verdict: COMMENT; mergeable: MERGEABLE; findings_hash: 8a62b346aad57b08e53edf87d59217f75b2adc4a0dad09999354e199d304c6a5; threads_open: 0; action: autofix+push; head_sha: 593e844a.
+- **2026-10-22 iter 2** — verdict: REQUEST_CHANGES; mergeable: MERGEABLE; findings_hash: e952b41f45636f31a59214f715a580d37abe3c0c3175c6ef15787c43091c51ed; threads_open: 0; action: autofix+push; head_sha: 61cf39c0. (Worker pushed 85e9df88; its live-state re-check was replaced in 61cf39c0 after review threads showed it missed reached states; all six threads replied to and resolved.)
