@@ -387,7 +387,10 @@ func (r *Registry) discardWorktree(p createPlan) {
 		}
 	}
 	r.mu.Unlock()
-	root, err := worktree.Root(p.wtPath)
+	// The repo's own root, never the worktree's: Root(wtPath) is the
+	// worktree itself, which Cleanup deletes, so the prune and branch
+	// delete that follow would run from a directory that is gone.
+	root, err := worktree.Root(p.projectCwd)
 	if err != nil {
 		return
 	}
