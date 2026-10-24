@@ -107,7 +107,7 @@ func PrepareBase(ctx context.Context, repoDir string) (string, error) {
 
 	fetchCtx, fetchCancel := context.WithTimeout(ctx, 10*time.Second)
 	defer fetchCancel()
-	fetchOut, fetchErr := proc.CommandContext(fetchCtx, "git", "-C", repoDir, "fetch", "--quiet", "origin").CombinedOutput()
+	fetchOut, fetchErr := gitCmd(fetchCtx, "-C", repoDir, "fetch", "--quiet", "origin").CombinedOutput()
 	if fetchErr != nil {
 		// Resolve the cached ref anyway: it is what the user will be
 		// offered as the explicit fallback, and the age is what makes
@@ -273,7 +273,7 @@ func gitWorktreeAdd(ctx context.Context, repoDir string, args ...string) ([]byte
 	ctx, cancel := context.WithTimeout(ctx, 30*time.Second)
 	defer cancel()
 	full := append([]string{"-C", repoDir, "worktree", "add"}, args...)
-	cmd := proc.CommandContext(ctx, "git", full...)
+	cmd := gitCmd(ctx, full...)
 	cmd.Env = append(os.Environ(), "LC_ALL=C", "LANG=C")
 	out, err := cmd.CombinedOutput()
 	if err != nil && ctx.Err() == context.DeadlineExceeded {
@@ -306,7 +306,9 @@ func Cleanup(repoDir, worktreePath string) error {
 		"worktree", "remove", "--force", worktreePath)
 	// Always try the FS removal too — `git worktree remove` may have
 	// succeeded but left a stray dir, or it may have skipped it.
-	_ = os.RemoveAll(worktreePath)
+	if err := removeAllBounded(worktreePath, mutateTimeout); err != nil {
+		log.Printf("worktree: %v", err)
+	}
 	// Prune git's admin state regardless of how the above went.
 	if out, err := git(context.Background(), mutateTimeout, repoDir, "worktree", "prune"); err != nil {
 		return fmt.Errorf("git worktree prune: %s", strings.TrimSpace(string(out)))
@@ -317,6 +319,21 @@ func Cleanup(repoDir, worktreePath string) error {
 		return fmt.Errorf("git worktree remove: %s (best-effort completed)", strings.TrimSpace(string(removeOut)))
 	}
 	return nil
+}
+
+// removeAllBounded is os.RemoveAll that gives up after d. Callers hold
+// the registry's git lock, and a wedged mount or a huge node_modules
+// tree must not pin it. On timeout the removal keeps running in the
+// background; the startup orphan reclaim finishes whatever is left.
+func removeAllBounded(path string, d time.Duration) error {
+	done := make(chan error, 1)
+	go func() { done <- os.RemoveAll(path) }()
+	select {
+	case err := <-done:
+		return err
+	case <-time.After(d):
+		return fmt.Errorf("removing %s: still running after %s; continuing in background", path, d)
+	}
 }
 
 // agentConfigDirs are the per-project agent config directories that
