@@ -1038,3 +1038,30 @@ func TestDiscardClearsWorktreeEntryAndBranch(t *testing.T) {
 		t.Errorf("branch survived discard: %q", out)
 	}
 }
+
+// The project can be removed while a create is in flight, leaving the
+// plan with no projectCwd. Discard must still clean the right repo —
+// and must not touch the daemon's own working directory's repo.
+func TestDiscardWithoutProjectCwdStillCleansTheRepo(t *testing.T) {
+	skipNonPosix(t)
+	r, p := freshRegistryWithProject(t)
+	repo := p.Cwd
+
+	wt := filepath.Join(repo, ".worktrees", "orphaned")
+	runGit(t, repo, "worktree", "add", "-q", "-b", "orphaned", wt)
+
+	r.discardWorktree(createPlan{
+		id:              "gone",
+		wtPath:          wt,
+		wtBranch:        "orphaned",
+		wtCreated:       true,
+		wtBranchCreated: true,
+	})
+
+	if out := gitOutput(t, repo, "worktree", "list", "--porcelain"); strings.Contains(out, "orphaned") {
+		t.Errorf("stale worktree entry survived discard:\n%s", out)
+	}
+	if out := gitOutput(t, repo, "branch", "--list", "orphaned"); out != "" {
+		t.Errorf("branch survived discard: %q", out)
+	}
+}
