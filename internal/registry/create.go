@@ -369,7 +369,7 @@ func (r *Registry) discardWorktree(p createPlan) {
 	if !p.wtCreated {
 		// No directory of ours to remove — but the add may still have
 		// created the branch before failing, and that branch is ours.
-		if p.wtBranchCreated {
+		if p.wtBranchCreated && p.projectCwd != "" {
 			if root, err := worktree.Root(p.projectCwd); err == nil {
 				r.gitMu.Lock()
 				r.discardBranchLocked(root, p)
@@ -387,7 +387,13 @@ func (r *Registry) discardWorktree(p createPlan) {
 		}
 	}
 	r.mu.Unlock()
-	root, err := worktree.Root(p.wtPath)
+	// The repo's main checkout, resolved BEFORE Cleanup deletes the
+	// worktree: Root(wtPath) is the worktree itself, so the prune and
+	// branch delete that follow would run from a directory that is gone.
+	// Derived from the worktree rather than projectCwd, which is empty
+	// when the project was removed mid-create — and `git -C ""` would
+	// then act on whatever repo the daemon happens to be running in.
+	root, err := worktree.MainRoot(p.wtPath)
 	if err != nil {
 		return
 	}

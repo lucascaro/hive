@@ -8,7 +8,9 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"regexp"
 	"strconv"
@@ -30,15 +32,41 @@ const (
 	probeConcurrency = 8
 )
 
+// slowGit is how long a git call may take before it is logged. A stall
+// holds the registry's git lock, so the log must show which step ate it.
+const slowGit = 3 * time.Second
+
+// pipeGrace is how long a killed git is given to release its output
+// pipes before Wait gives up on them.
+const pipeGrace = 2 * time.Second
+
+// gitCmd builds a git command that dies with its whole process tree on
+// ctx expiry. `git fetch` forks ssh and credential helpers that inherit
+// its stdout/stderr; killing only git leaves them holding the pipe, and
+// CombinedOutput would block until they exit — forever, if one is hung.
+// Callers hold the registry's git lock across these calls, so one stuck
+// child used to freeze every close and create behind it.
+func gitCmd(ctx context.Context, args ...string) *exec.Cmd {
+	cmd := proc.CommandContext(ctx, "git", args...)
+	proc.OwnGroup(cmd)
+	cmd.Cancel = func() error { return proc.KillTree(cmd.Process) }
+	cmd.WaitDelay = pipeGrace
+	return cmd
+}
+
 // git runs `git -C dir <args…>` with a bounded timeout and a C locale.
 // The locale pin keeps error-text matching meaningful on non-English
 // systems, the same reason gitWorktreeAdd pins it.
 func git(ctx context.Context, timeout time.Duration, dir string, args ...string) ([]byte, error) {
 	ctx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
-	cmd := proc.CommandContext(ctx, "git", append([]string{"-C", dir}, args...)...)
+	cmd := gitCmd(ctx, append([]string{"-C", dir}, args...)...)
 	cmd.Env = append(os.Environ(), "LC_ALL=C", "LANG=C")
+	start := time.Now()
 	out, err := cmd.CombinedOutput()
+	if d := time.Since(start); d > slowGit {
+		log.Printf("worktree: git %s in %s took %s", args[0], dir, d.Round(time.Millisecond))
+	}
 	if err != nil && ctx.Err() == context.DeadlineExceeded {
 		return out, fmt.Errorf("git %s: timed out after %s", args[0], timeout)
 	}
