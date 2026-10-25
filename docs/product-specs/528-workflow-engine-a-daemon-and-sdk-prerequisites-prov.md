@@ -4,7 +4,7 @@ title: "Workflow engine A: daemon and SDK prerequisites (provenance, typed resul
 type: enhancement
 complexity: M
 priority: P1
-stage: RESEARCH
+stage: PLAN
 ---
 
 # Workflow engine A: daemon and SDK prerequisites (provenance, typed results, ACP cancel, plugin request/reply)
@@ -46,6 +46,8 @@ Every wire change moves `internal/wire`, `cmd/hivegui/app_*.go`, `cmd/hived-ws-b
 - The engine itself, its trust sandbox and any GUI beyond the failed-plugin state (B and C).
 - Bumping `wire.PROTOCOL_VERSION` for a new frame; see `DESIGN.md`.
 - Changing 492's trust model or reopening #505 (fixed in #510).
+- A GUI Stop button for ACP sessions. `CANCEL_ACP` is bound in the app for C, but no surface uses it here.
+- Exposing ACP `loadSession` on the wire. B retries through RESTART_SESSION, which already uses `session/load`.
 
 ## Notes
 
