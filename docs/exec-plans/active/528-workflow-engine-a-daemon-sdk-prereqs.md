@@ -3,66 +3,69 @@
 - **Spec:** [docs/product-specs/528-workflow-engine-a-daemon-and-sdk-prerequisites-prov.md](../../product-specs/528-workflow-engine-a-daemon-and-sdk-prerequisites-prov.md)
 - **Design:** [workflow-engine.md](../../design-docs/workflow-engine.md) ("What the engine spec must add"), [acp-workflows.md](../../design-docs/acp-workflows.md)
 - **Issue:** #528
-- **Branch:** `feature/528-daemon-sdk-prereqs` (research/plan); one branch per phase below
+- **Branch:** `feature/528-daemon-sdk-prereqs` (research/plan); one branch per PR below
 - **Status:** active
 
 ## Summary
 
-Give a plugin what the workflow engine (B, #529) and its GUI (C, #530)
-need from `hived`, the wire, and the plugin SDK:
+This plan gives a plugin what the workflow engine (B, #529) and its GUI
+(C, #530) need from `hived`, the wire and the plugin SDK:
 - correlated request/reply;
-- a run-scoped provenance principal;
+- a run-scoped provenance label;
 - a per-session `submit_result` schema validated by `hived`;
 - ACP cancel with a visible stop reason;
+- a two-way plugin ⇄ GUI message channel;
 - worktrees from an arbitrary base, plus a merge worktree;
-- a plugin ⇄ GUI message channel;
 - a Node the plugin can find, with a version floor;
 - a recoverable crash-loop state;
 - the `plugin-data/<id>/` carve-out in `DESIGN.md`.
 
-The work ships as six PRs. Each one is useful to plain `acp` sessions or
-plugins on its own.
+It ships as **three PRs**, each bumping `DaemonContract`.
 
 ## Research
 
-Verified on `origin/main` at `0bf4e725` (2026-10-25). Line numbers are
+Verified on `origin/main` at `0bf4e725` (2026-10-25); line numbers are
 against that commit.
 
 ### Relevant code (the review findings, each checked)
 
 | Claim | Verified at | Note |
 |---|---|---|
-| `principalOf` returns `plugin:<id>` | `internal/daemon/daemon.go:2307` | Holds |
-| `SpawnedBy` stamps | `daemon.go:806` (ModeCreate HELLO), `daemon.go:1556` (CREATE_SESSION) | Holds. `Orchestrator` is forced false for plugins at `:808` / `:1560`, and UPDATE_SESSION refuses it at `:1895` |
-| "nothing a client sends can set principal" | `daemon.go:1431`; `wire.CreateSpec.SpawnedBy` is `json:"-"` (`internal/wire/control.go:141`) | Holds |
-| PROMPT_ACP origin = `ops.principal` | `daemon.go:1706` | **Missed by the spec.** B's re-prompts would read as `plugin:<id>`, not the run |
-| Initial-prompt origin = `spec.SpawnedBy` | `internal/registry/acp.go:266` | Holds |
-| `originLabel` renders `plugin:` | `cmd/hivegui/frontend/src/components/acp/AcpTranscript.tsx:209-212` | A composed principal would render "From plugin engine/workflow:r1" |
-| SDK `send()` has no correlation | `plugins/sdk/hive-plugin.mjs:365` | Holds |
-| `req_id` pattern | `internal/wire/transcript.go:77,102,121,164` | Echoed on its own reply frames only. **`wire.Error` (`control.go:1379`) has no `req_id`** |
-| CREATE_SESSION has no reply | `control.go` (`IdeaID` comment): "nothing correlates the SESSION_EVENT(added) … with the request" | **Spec gap.** A plugin cannot learn the id of the session it created |
-| `resolveCommand` uses the daemon's PATH | `internal/plugin/manager.go:687-701` | Holds. `pluginEnv` (`:704`) passes the daemon env through unchanged |
-| Login-shell PATH helper exists | `internal/proc/loginpath_unix.go:69` `LoginPATH`; `proc.LookPathIn`; used by `internal/agent/acp.go:120,157-171` | Reuse it |
-| `maxCrashes = 5` in 60s → failed | `manager.go:28-31`, `:616-619` | Holds. Status `failed` plus its detail already render in Settings → Plugins (`PluginsPanel.tsx:101-105,292`) |
-| Recovery from `failed` | `SetEnabled(true)` restarts it when `e.run == nil` (`manager.go:396-428`) | **No UI path.** The checkbox is already checked, so the user can't send `enabled=true` |
-| PLUGIN_EVENT is lifecycle only | `control.go:1807-1814` | Holds. **No GUI→plugin path exists either**: `CLIENT_COMMAND` is an allowlist relay (`control.go:1484-1525`), and `SET_PLUGIN_CONFIG` is UI-plugin only |
-| Fixed submit schema | `cmd/hived/mcpsubmit.go:44-57,137-145`; `internal/agent/pi/hive.ts:279-288,688-706` | Holds. The authority is `Registry.SubmitResult` (`internal/registry/acp.go:736`), which only checks "is a JSON object ≤ 64 KiB" |
-| No `session/cancel` | `internal/acp/agent.go` has `Prompt`/`SetMode`/`LoadSession` only. `Conn` (`conn.go:174`) has `Call` but no notification send | Holds. `acp.Cancelled()` exists (`types.go:255`) for answering a pending permission |
-| `stopReason` not on the wire | `registry/acp.go:697-723` folds it into agentstate text only | **Spec gap.** B needs `end_turn` vs `cancelled` |
-| `CreateWorktreeAt(…, base)` | `internal/worktree/worktree.go:220` | Holds. It **checks out an existing branch** when the name exists (`:229`). No merge function exists |
-| Path from branch | `worktree.WorktreePath` / `sanitizeBranch` (`worktree.go:57,553`) maps `/`→`-` | Not injective (`a-b/c` and `a/b-c` collide). `ResolveBranchAndPath` (`:518`) suffixes on collision |
-| Orphan reclaim | `registry/projects.go:157` `ReclaimOrphanWorktrees` | Deletes **pristine, sessionless** worktrees at boot |
-| DESIGN.md plugin-data rule | `DESIGN.md:100` "written only through the plugin Manager" | Holds |
-| Node 18 in docs | `docs/plugins.md:81,317`, **also** `plugins/sdk/hive-plugin.mjs:6`, `plugins/webhook/hive-plugin.mjs:6`, `plugins/sdk/README.md:4` | Five places, not two |
-| Embed is UI-only | `plugins/embed.go:16` embeds `plan-review` only | The mechanism (`internal/plugin/builtin.go`) is content-agnostic. A headless builtin needs no embed change, only a test |
-| Frame numbers | last is `FrameWaited = 0x4e` (`internal/wire/frame.go:294`) | New frames start at `0x4f` |
-| DaemonContract | `internal/buildinfo/contract.go:285` = 33 | Each phase takes main's value +1 at rebase |
-| Plugin rate costs | `internal/plugin/limiter.go` `FrameCost` | New frames need entries |
-| Plugins see every ACP transcript | `registry.SubscribeACP` (`acp.go:861`) is unfiltered per control connection | B reads deltas without subscribing |
-| SDK drift tests | `internal/plugin/sdk_drift_test.go`: frame table, typedefs (`HiveError` = `wire.Error`, …), webhook copy byte-equal | Every SDK change copies to `plugins/webhook/` |
-| Fake ACP adapter | `internal/acp/acptest/fake.go`; each message is handled on its own goroutine (`:194`), so a notification arrives during a `FlagBlock` prompt | A cancel flag is straightforward |
-| IR schema subset | `scripts/workflow-proto/schema.ts`: string(+enum), number, boolean, array(items), object(properties, required = all keys, `additionalProperties: false`) | The validator accepts exactly this shape |
-| IR id grammar | `scripts/workflow-proto/dsl.ts:282` `ID_SEGMENT = /^[a-z][a-z0-9]*(-[a-z0-9]+)*$/`; keys add `[N]` | `_` and `.` never appear in a segment |
+| `principalOf` returns `plugin:<id>` | `internal/daemon/daemon.go:2307` | Holds. |
+| `SpawnedBy` stamps | `daemon.go:806` (ModeCreate HELLO), `daemon.go:1556` (CREATE_SESSION) | Holds. `Orchestrator` is forced false for plugins (`:808`, `:1560`), and UPDATE_SESSION refuses it (`:1895`). |
+| "Nothing a client sends can set principal" | `daemon.go:1431`; `wire.CreateSpec.SpawnedBy` is `json:"-"` (`internal/wire/control.go:141`) | Holds. |
+| PROMPT_ACP origin = `ops.principal` | `daemon.go:1706` | **The spec missed it.** B's re-prompts would read as `plugin:<id>`. |
+| Initial-prompt origin = `spec.SpawnedBy` | `internal/registry/acp.go:266` | Holds. |
+| `originLabel` handles `plugin:` | `cmd/hivegui/frontend/src/components/acp/AcpTranscript.tsx:209-212` | A composed principal would render as "From plugin engine/workflow:r1". |
+| SDK `send()` has no correlation | `plugins/sdk/hive-plugin.mjs:365` | Holds. |
+| `req_id` pattern | `internal/wire/transcript.go:77,102,121,164` | Echoed only on its own reply frames (`TRANSCRIPT_MATCHES`, `TRANSCRIPT_LINES`). **`wire.Error` (`control.go:1379`) has no `req_id`.** |
+| CREATE_SESSION has no reply | `control.go` `IdeaID` comment: "nothing correlates the SESSION_EVENT(added) … with the request" | **Spec gap.** A plugin can't learn the id of the session it created. |
+| `Registry.Create` blocks | `internal/registry/create.go:108` returns `e, r.finishCreate(…)`; covers worktree setup, a possible user prompt, adapter start and opening prompt | The ACK must not wait for it. |
+| `resolveCommand` uses the daemon PATH | `internal/plugin/manager.go:687-701` | Holds. `pluginEnv` (`:704`) passes the daemon env through. |
+| Login-shell PATH helper | `internal/proc/loginpath_unix.go:69` `LoginPATH`; `proc.LookPathIn`; used by `internal/agent/acp.go:120,157-171` | Reuse it. |
+| `maxCrashes = 5` in 60s → failed | `manager.go:28-31`, `:616-619` | Holds. `failed` and its detail already show in Settings → Plugins (`PluginsPanel.tsx:101-105,292`). |
+| Recovery from `failed` | `SetEnabled(true)` starts a fresh runner when `e.run == nil` (`manager.go:396-428`) | **No UI path.** The checkbox is already checked. |
+| PLUGIN_EVENT is lifecycle only | `control.go:1807-1814` | Holds. **No GUI→plugin path exists**: `CLIENT_COMMAND` is an allowlist relay (`control.go:1484-1525`). |
+| Fixed submit schema | `cmd/hived/mcpsubmit.go:44-57,137-145`; `internal/agent/pi/hive.ts:279-288,688-706` | Holds. The authority is `Registry.SubmitResult` (`internal/registry/acp.go:736`). |
+| No `session/cancel` | `internal/acp/agent.go`; `Conn` (`conn.go:174`) has `Call`, no notification send | Holds. `acp.Cancelled()` (`types.go:255`) answers a pending permission. |
+| `stopReason` not on the wire | `registry/acp.go:697-723`, folded into agentstate text only | **Spec gap.** |
+| `CreateWorktreeAt(…, base)` | `internal/worktree/worktree.go:220` | **Falls back to checking out an existing branch** (`:229`, `:256`). No merge function. |
+| Path from branch | `WorktreePath` / `sanitizeBranch` (`worktree.go:57,553`) | Maps `/`→`-`, so it is not injective. `ResolveBranchAndPath` (`:518`) suffixes the branch *and* the path. |
+| Orphan reclaim | `registry/projects.go:157` | Deletes **pristine, sessionless** worktrees at boot. |
+| Cleanup frames exist | `REMOVE_WORKTREE` (0x18), `DELETE_BRANCH` (0x1b); `registry/worktrees.go` honours `ErrWorktreeDirty`, `ErrBranchUnmerged` | B's cleanup uses these. A adds none. |
+| `plugin-data` rule | `DESIGN.md:100`: "written only through the plugin Manager" | Holds. |
+| Plugin trust | `docs/plugins.md:32-40`: "A plugin runs as you, with everything you can do" | Frames scoped to the user's reach add no privilege. |
+| Node 18 in docs | `docs/plugins.md:81,317`, `plugins/sdk/hive-plugin.mjs:6`, `plugins/webhook/hive-plugin.mjs:6`, `plugins/sdk/README.md:4` | Five places, not two. |
+| Embed "UI-only" | `plugins/embed.go:16` embeds `plan-review` | The mechanism (`internal/plugin/builtin.go`) is content-agnostic. A test is enough. |
+| Frames | last is `FrameWaited = 0x4e` (`internal/wire/frame.go:294`) | New frames start at `0x4f`. |
+| DaemonContract | `internal/buildinfo/contract.go:285` = 33 | Each PR takes main's value +1 at rebase. |
+| Plugin costs | `internal/plugin/limiter.go` `FrameCost` | New C→S frames need entries. |
+| Plugins see every ACP transcript | `registry.SubscribeACP` (`acp.go:861`), unfiltered | B reads deltas directly. |
+| SDK drift tests | `internal/plugin/sdk_drift_test.go`: frame table; typedefs (`HiveError` = `wire.Error`); the webhook copy must be byte-equal | Every SDK change is copied to `plugins/webhook/`. |
+| Fake ACP adapter | `internal/acp/acptest/fake.go:194`: one goroutine per message | A cancel notification is seen during a `FlagBlock` prompt. |
+| IR schema subset | `scripts/workflow-proto/schema.ts` | string(+enum), number, boolean, array(items), object(properties, required = all keys, `additionalProperties:false`). |
+| IR id grammar | `scripts/workflow-proto/dsl.ts:282` `ID_SEGMENT`; keys add `[N]` | `_` never appears in a segment. |
+| CI Node | `.github/workflows/ci.yml:113` `node-version: '24'` | A Node 26 leg is needed. |
 
 ### Node facts (criterion 5; B consumes these)
 
@@ -70,33 +73,32 @@ All accessed **2026-10-25**.
 
 | Fact | Value | Source |
 |---|---|---|
-| Permission model stable | v23.5.0 / v22.13.0 ("no longer experimental"); added v20.0.0 | [permissions (v26.12.1 docs)](https://nodejs.org/api/permissions.html) |
-| `--permission` fences the **network** | Only from **v25.0.0** (`--allow-net`, "Added in: v25.0.0", Stability 1.1 Active development). Under `--permission` the network is denied unless `--allow-net` is passed | [cli (v26.12.1)](https://nodejs.org/api/cli.html#--allow-net) |
-| …not in 24.x or 22.x | v24.22.1 and v22.23.4 docs list no `--allow-net`, and their permission pages don't list network among restricted resources | [v24 cli](https://nodejs.org/docs/latest-v24.x/api/cli.html), [v24 permissions](https://nodejs.org/docs/latest-v24.x/api/permissions.html), [v22 permissions](https://nodejs.org/docs/latest-v22.x/api/permissions.html) |
-| `node:sqlite` tier | Unflagged v22.13.0 / v23.4.0, "still experimental". **1.2 Release candidate** from v25.7.0 and v24.15.0 | [sqlite (v26.12.1)](https://nodejs.org/api/sqlite.html), [sqlite (v24.22.1)](https://nodejs.org/docs/latest-v24.x/api/sqlite.html) |
-| Release lines | 22 Maintenance LTS, EOL 2027-04-30. 24 Active LTS until 2026-10-20, EOL 2028-04-30. **25 EOL 2026-06-01.** **26 Current, Active LTS 2026-10-28**, EOL 2029-04-30. From 27 on, one major per year | [nodejs/Release](https://github.com/nodejs/Release) |
+| Permission model | Stable since v23.5.0 / v22.13.0; added v20.0.0 | [permissions (v26.12.1)](https://nodejs.org/api/permissions.html) |
+| `--permission` fences the network | Only from **v25.0.0** (`--allow-net` "Added in: v25.0.0", Stability 1.1) | [cli (v26.12.1)](https://nodejs.org/api/cli.html#--allow-net) |
+| …but not in 24.x or 22.x | v24.22.1 and v22.23.4 docs have no `--allow-net`, and network is not a restricted resource there | [v24 cli](https://nodejs.org/docs/latest-v24.x/api/cli.html), [v24 permissions](https://nodejs.org/docs/latest-v24.x/api/permissions.html), [v22 permissions](https://nodejs.org/docs/latest-v22.x/api/permissions.html) |
+| It is a "seat belt", not a boundary | "It does not provide security guarantees in the presence of malicious code." `process._debugProcess(pid)` "is not gated by the `kInspector` scope or any other Permission Model scope". A sandboxed process can force any same-user Node process to open its inspector. | [permissions (v26.12.1)](https://nodejs.org/api/permissions.html) |
+| `--disable-sigusr1` | "Added in: v23.7.0, v22.14.0"; no longer experimental in v24.8.0 / v22.20.0. It disables starting a debug session via `SIGUSR1`. | [cli (v26.12.1)](https://nodejs.org/api/cli.html#--disable-sigusr1) |
+| `node:sqlite` | Unflagged v22.13.0 / v23.4.0, "still experimental"; **1.2 Release candidate** from v25.7.0 and v24.15.0 | [sqlite (v26.12.1)](https://nodejs.org/api/sqlite.html), [sqlite (v24.22.1)](https://nodejs.org/docs/latest-v24.x/api/sqlite.html) |
+| Release lines | 22 Maintenance LTS, EOL 2027-04-30. 24 LTS, EOL 2028-04-30. 25 EOL 2026-06-01. **26 Active LTS from 2026-10-28**, EOL 2029-04-30. From 27, one major per year. | [nodejs/Release](https://github.com/nodejs/Release) |
 
-Conclusions:
-- **Engine floor: Node ≥ 26.0.0.**
-  - It is the only supported line whose `--permission` fences the network. That is what the design's build sandbox needs ("a Node floor that fences the network").
-  - `node:sqlite` is at RC (1.2) there, so B uses SQLite. JSONL stays the documented fallback only if a future line regresses.
-  - `--allow-net` itself is 1.1. B pins the behaviour with a test (a build that dials the network gets `ERR_ACCESS_DENIED`).
-- **General plugin floor: a supported Node LTS (≥ 22).** Node 18 has been EOL since 2025. The SDK uses only `node:net` / `node:events`, so the docs say "a supported Node.js LTS (22 or newer)", and the engine states its own floor.
+**Conclusions (user decision, final):**
+- **Engine floor: Node ≥ 26.0.0.** `node:sqlite` is RC there, so B uses SQLite; JSONL is only a fallback if a future line regresses.
+- **`--permission` is defence-in-depth, not a security boundary.** It wraps a workflow file the user has explicitly trusted and that is hash-pinned (B's trust model). Node's own docs say it doesn't stop malicious code, and `process._debugProcess` is ungated.
+- **The engine process runs with `--disable-sigusr1`**, so a sandboxed build child can't force it to open an inspector. The flag belongs in B's manifest `main` command (`["node", "--disable-sigusr1", "./main.mjs"]`). A documents it in `docs/plugins.md`. A build child under `--permission` creates no `SIGUSR1` listener anyway.
+- **Other plugins:** "a supported Node.js LTS (22 or newer)". The SDK uses only `node:net` / `node:events`.
 
 ### Constraints
 
-- Lock-step wire rule, `snake_case` tags, no `PROTOCOL_VERSION` bump, a `DaemonContract` bump per daemon-side PR (`scripts/check-daemon-contract.sh`).
-- `proc` only for subprocesses (`git`, `node --version`).
-- `LoginPATH` must never be called under `m.mu` (a first call can take 20s).
-- The registry owns worktrees and session state. The plugin may own only `plugin-data/<id>/` files after the carve-out.
-- `docs/design-docs/slow-client-policy.md` governs any new broadcast.
+- The lock-step wire rule applies; tags are `snake_case`. `PROTOCOL_VERSION` is not bumped. `DaemonContract` is bumped per PR.
+- Subprocesses go through `proc` only. `LoginPATH` is never called under `m.mu`.
+- The registry owns worktrees and session state. After the carve-out, a plugin owns only `plugin-data/<id>/`.
+- New broadcasts follow `docs/design-docs/slow-client-policy.md`.
 
-### Gaps B will hit that this spec does not list
+### Gaps B will hit (not A's scope)
 
-Recorded so B plans for them; neither is in A's scope unless the user says so:
-- `loadSession` capability is not on the wire. B's "retry with `session/load`" can use RESTART_SESSION on the ACP entry, which already does `session/load` (`registry/acp.go:376-379`), and fall back to a fresh session on its `restart_failed` error. No capability bit is needed.
-- CI pins `node-version: '24'` (`.github/workflows/ci.yml:113`). B's network-fence test and its Node 26 floor need a Node 26 CI leg.
-- An ACP mode above the user's ceiling is **refused** (`ErrCodeACPModeAboveCeiling`), not clamped. B must request ≤ ceiling, or omit the mode.
+- `loadSession` isn't on the wire. B retries through RESTART_SESSION, which already does `session/load` (`registry/acp.go:376-379`), and falls back to a fresh session on `restart_failed`.
+- An ACP mode above the user's ceiling is **refused**, not clamped. B must request ≤ ceiling or omit the mode.
+- Cleanup goes through the existing REMOVE_WORKTREE / DELETE_BRANCH.
 
 ### Prior lessons
 
@@ -110,376 +112,313 @@ test:   scripts/test.sh     # all layers: go · unit · dom · e2e
 e2e-real: (cd cmd/hivegui/frontend && npm run test:e2e:real)
 ```
 
-- **TDD.** Every behaviour change lands with the test that proves it. Go tests sit beside the source; frontend tests go under `cmd/hivegui/frontend/test/{unit,dom,e2e}`.
-- **Wire changes** move `internal/wire`, `cmd/hivegui/app_*.go`, `cmd/hived-ws-bridge/main.go`, `internal/wire/testclient`, the SDK `Frame` table and typedefs, and `plugins/webhook/hive-plugin.mjs` (byte copy) together.
-- **Verify under the CI toolchain:** `GOTOOLCHAIN=go$(sed -n 's/^go //p' go.mod)`. Run per-GOOS staticcheck + vet. Run `./scripts/ci-bootstrap.sh` before `npm run typecheck`. Run Playwright with `CI=1`.
-- **E2E isolation:** temp `HIVE_SOCKET` / `HIVE_STATE_DIR` (`testclient.RequireIsolation`).
-- **Docs:** a changeset for each user-visible change (`.changesets/<slug>.md`). Never edit `CHANGELOG.md` or `docs/product-specs/index.md`. `DESIGN.md` changes for the new hard rule and carve-out. `docs/plugins.md` gets every new frame and SDK call.
+- **TDD:** each behaviour change ships with its test. Go tests sit beside their source; frontend tests live under `cmd/hivegui/frontend/test/{unit,dom,e2e}`.
+- **Wire changes** move together: `internal/wire`, `cmd/hivegui/app_*.go`, `cmd/hived-ws-bridge/main.go`, `internal/wire/testclient`, the SDK `Frame` table and typedefs, and `plugins/webhook/hive-plugin.mjs` (a byte copy).
+- **CI toolchain:** use `GOTOOLCHAIN=go$(sed -n 's/^go //p' go.mod)`, run staticcheck and vet per GOOS, and run `./scripts/ci-bootstrap.sh` before `npm run typecheck`. Playwright runs with `CI=1`.
+- **E2E isolation:** temp `HIVE_SOCKET` / `HIVE_STATE_DIR`.
+- **Docs:** a changeset per user-visible change. Never edit `CHANGELOG.md` or `docs/product-specs/index.md`. Update `DESIGN.md` for the carve-out and `docs/plugins.md` for every frame and SDK call.
 
 ## Approach
 
 ### Interface surface (what B and C plan against)
 
-Frame numbers are provisional. Each PR takes the next free number on
-`main` at rebase. Names are final unless review changes them.
+Frame numbers are provisional; each PR takes the next free number on
+`main` at rebase.
 
-**Request correlation (phase 1), all control connections**
+#### PR1: request/reply, provenance, typed results, ACP cancel
 
-- **Any control request may carry `req_id` (int, omitempty).**
-  - The daemon peeks it once per frame (`{"req_id":N}`).
-  - It echoes it on every ERROR it sends while handling that frame, including errors sent later from `runOp`.
+**Request correlation**
+
+- **`req_id`:** any control request may carry an int `req_id` (omitempty).
+  - The daemon peeks it once per frame. Every ERROR sent while handling that frame echoes it, including errors raised later from `runOp`.
   - `wire.Error` gains `ReqID int json:"req_id,omitempty"`.
-- **`ACK` (0x4f, S→C)** `{req_id, session_id?}`.
-  - Sent only when the request carried a non-zero `req_id` and had no other reply.
-  - Covers CREATE_SESSION, PROMPT_ACP (turn started), ANSWER_PERMISSION, KILL_SESSION and CANCEL_ACP.
-  - **CREATE_SESSION ACKs as soon as the entry exists.** `session_id` is the new entry's id, delivered through a new `registry.Create` option callback, `OnEntry(id)`.
-    - It does not wait for `reg.Create` to return. Create blocks through worktree setup, a possible user worktree prompt, the adapter start (a first `npx -y` can take longer than 30s) and the opening prompt.
-    - Any later failure is an ERROR carrying `req_id` and `session_id`. That includes today's silent `ErrNotFound` "killed mid-create" case, which must not leave a request hanging.
-    - B watches readiness through SESSION_EVENT / phase, as the GUI does.
-  - The GUI and today's plugins send no `req_id` and so see nothing new.
-- `CreateSpec` gains `ReqID int json:"req_id,omitempty"`. Requests that gain `req_id` follow the same pattern.
-- **SDK** (`plugins/sdk/hive-plugin.mjs`):
-  - `hive.request(name, payload = {}, { timeoutMs = 30000 } = {}) → Promise<object>`.
+- **`ACK` (0x4f, S→C):** `{req_id, session_id?, was_busy?}`. It is sent only for a non-zero `req_id`, to the requester only. Frames that ACK:
+  - **CREATE_SESSION**, as soon as the entry exists.
+    - `registry.Create` is split into exported `BeginCreate(ctx, spec) (*Entry, createPlan, error)` (entry exists and is broadcast as `added`) and `FinishCreate(ctx, e, spec, plan) error`. The daemon ACKs between the two.
+    - Any later failure is an ERROR with `req_id` and `session_id`, including today's silent `ErrNotFound` "killed mid-create" case.
+    - B watches readiness through SESSION_EVENT / phase.
+  - **PROMPT_ACP**, once the turn has started.
+  - **ANSWER_PERMISSION** and **KILL_SESSION**.
+  - **CANCEL_ACP**, with `was_busy`.
+- **Request fields:** `CreateSpec`, `PromptAcpReq`, `AnswerPermissionReq` and `KillSessionReq` gain `ReqID`.
+- **SDK `hive.request(name, payload = {}, { timeoutMs = 30000 } = {})`:**
   - It assigns `req_id` from a per-connection counter.
-  - It resolves on the first non-ERROR frame carrying that `req_id`, and rejects on an ERROR carrying it. The rejection is an `Error` with `.hive = {code, message, …}`.
-  - It rejects every pending request on timeout or `close`.
-  - `send()` is unchanged.
+  - It resolves **only on a reply frame type**: `ACK`, `PREPARED_WORKTREE`, `TRANSCRIPT_MATCHES` or `TRANSCRIPT_LINES`, carrying that `req_id`. It rejects on `ERROR` carrying it (`err.hive = {code, message, …}`).
+  - Broadcasts (`SESSION_EVENT`, `ACP_TRANSCRIPT`, `PLUGIN_MESSAGE`, …) never settle a request, whatever their payload holds.
+  - Timeout or `close` rejects everything pending. `send()` is unchanged.
 
-**Provenance (phase 2)**
+**Provenance (an integrity label, not a defence)**
 
-- `CreateSpec` and `PromptAcpReq` gain `WorkflowRunID string json:"workflow_run_id,omitempty"`.
-- **Charset:** `^[a-z0-9][a-z0-9-]{0,62}$`. It is ref-safe and contains neither `/` nor `:`.
-- **On a plugin connection** the daemon stamps `SpawnedBy` / origin as `plugin:<id>/workflow:<run-id>`.
-- **From a non-plugin connection:** refused with `mode_not_allowed` ("workflow_run_id is set by plugins only"). It is never silently dropped, because a user claiming a run would be a forged label.
-- **Invalid charset:** `invalid_workflow_run_id`.
-- **ModeCreate HELLO:** gets the same treatment.
-- **PROMPT_ACP without `workflow_run_id`:** origin stays `ops.principal`.
-- `wire.ParsePrincipal(s) (plugin, run string)` is the single parser, mirrored by `parsePrincipal()` in the frontend (`src/lib/principal.ts`).
-- **Transcript label:** "From workflow `<run>` (plugin `<id>`)".
+- `CreateSpec`, `PromptAcpReq` and the ModeCreate HELLO's spec gain `workflow_run_id`, matching `^[a-z0-9][a-z0-9-]{0,62}$`.
+- On a plugin connection the daemon labels `SpawnedBy` / the prompt origin `plugin:<id>/workflow:<run-id>`.
+  - From a non-plugin connection it is refused with `mode_not_allowed`.
+  - A bad charset is refused with `invalid_workflow_run_id`.
+  - `Orchestrator` stays false.
+- The label exists so the transcript and the user see truthfully which plugin and run sent a turn. A plugin can't mislabel itself as the user or as another plugin.
+  - The label is not a boundary. A plugin already runs with the user's full access (`docs/plugins.md:32-40`).
+- `wire.ParsePrincipal(s) (plugin, run string)` is the one parser, mirrored by `src/lib/principal.ts`.
+- The transcript label reads "From workflow `<run>` (plugin `<id>`)".
 
-**Typed results (phase 2)**
+**Typed results**
 
-- `CreateSpec.ResultSchema json.RawMessage json:"result_schema,omitempty"`. ACP sessions only; on a PTY session it is refused with `not_acp_session`.
-- It is validated at create:
+- **Schema field:** `CreateSpec.ResultSchema json.RawMessage json:"result_schema,omitempty"`, ACP only. On a PTY session it is refused with `not_acp_session`.
+- **Checked before `BeginCreate`**, so a refused create leaves no entry. The schema must be:
   - exactly the IR subset;
-  - top level `type:"object"`;
-  - `required` = all property keys;
-  - `additionalProperties:false`;
-  - depth ≤ 8;
-  - ≤ 8 KiB.
-  
-  Failure is refused with `invalid_result_schema`.
-- It is persisted on the entry (`registry/persist.go` meta), so revive and restart keep it.
-- **Envelope kept:** the result is still `{status, summary?, data?}`. With a schema and `status:"ok"`, `data` is **required** and is validated against the schema. `status:"error"` is not validated, so F3 and `result_status` are unchanged.
-- On a validation failure, `Registry.SubmitResult` returns `ErrSubmitRejected` with a path-qualified message, e.g. `data.findings[2].severity: "urgent" is not one of high|low; call submit_result again`. Both tools relay that to the model as a tool error, so the agent retries.
-- The schema reaches the tool definitions through `HIVE_SUBMIT_SCHEMA` (compact JSON), added next to `HIVE_SUBMIT_NONCE` in `acpExtras` (`registry/acp.go:213`):
-  - `mcp-submit` puts it under `data` in `tools/list` and marks `data` required.
-  - Pi's `SUBMIT_PARAMETERS` does the same.
-  - `mcp-submit` also pre-checks with the same Go validator (`internal/acp`), which saves a socket round-trip.
-- **Shared fixtures:** `internal/acp/testdata/resultschema/*.json` holds `{schema, value, ok, error?}` cases. B's TS IR validator reuses them, which stops drift.
+  - an object at the top level;
+  - `required` = all keys and `additionalProperties:false`;
+  - depth ≤ 8 and ≤ 8 KiB.
 
-**ACP cancel (phase 3)**
+  Anything else is refused with `invalid_result_schema`.
+- **Persistence:** it is stored on the entry and its persisted meta, so revive and restart keep it.
+- **What is validated:** the envelope `{status, summary, data}` is kept. With a schema and `status:"ok"`, `data` is required and is validated against it. `status:"error"` is not validated, so F3 is unchanged.
+- **Enforcement:** `Registry.SubmitResult` is the single authority. Its path-qualified error (`data.findings[2].severity: "urgent" is not one of high|low; call submit_result again`) reaches the model as a tool error, so the agent retries.
+- **How the tools see it:** the schema reaches `mcp-submit`'s `tools/list` and Pi's tool parameters through `HIVE_SUBMIT_SCHEMA`, beside `HIVE_SUBMIT_NONCE` in `acpExtras` (`registry/acp.go:213`). `mcp-submit` pre-checks with the same Go validator.
+- **Shared fixtures:** `internal/acp/testdata/resultschema/*.json` (`{schema, value, ok, error?}`). B's TS validator reuses them.
 
-- **`CANCEL_ACP` (0x50, C→S)** `{session_id, req_id?}`.
-  - Same scope as PROMPT_ACP: user or plugin. Refused on session connections, since it's not in `sessionModeFrames`.
-  - It ACKs once the notification is sent.
-  - On a session with no running turn: `acp_not_busy`.
-- **Daemon side:**
-  - It answers any pending permission request with `acp.Cancelled()`, as the ACP spec requires.
-  - It sends the `session/cancel` **notification** ([ACP prompt-turn, Cancellation](https://agentclientprotocol.com/protocol/prompt-turn)).
-  - The turn then ends through the existing path.
-- **`AcpTranscriptMsg.StopReason string json:"stop_reason,omitempty"`**:
-  - the latest prompt's ACP stop reason (`end_turn`, `cancelled`, `max_tokens`, `max_turn_requests`, `refusal`);
-  - carried on every message like `result_status`, and cleared by a new prompt;
-  - set to `error` when the adapter call fails.
+**ACP cancel**
 
-**Plugin messages (phase 4)**
+- **`CANCEL_ACP` (0x50, C→S):** `{session_id, req_id?}`.
+  - Unrestricted, like PROMPT_ACP: the user or any plugin.
+  - Not in `sessionModeFrames`, so a session connection can't send it.
+  - **Idempotent.** With a turn running, it answers any pending permission with `acp.Cancelled()`, sends the `session/cancel` **notification** ([ACP prompt turn, Cancellation](https://agentclientprotocol.com/protocol/prompt-turn)), and ACKs `{was_busy: true}`. With none running it ACKs `{was_busy: false}`. It never errors on "not busy".
+- **`AcpTranscriptMsg.StopReason`** (`stop_reason`): the latest prompt's ACP stop reason (`end_turn`, `cancelled`, `max_tokens`, `max_turn_requests`, `refusal`), or `error` if the adapter call failed.
+  - Carried on every message like `result_status`, and cleared by a new prompt.
 
-- **`PLUGIN_MESSAGE` (0x51, both directions)** `{plugin_id, topic, data, req_id?}`.
-  - `topic`: `^[a-z][a-z0-9._-]{0,63}$`.
-  - `data`: any JSON value, ≤ 256 KiB (`wire.MaxPluginMessage`).
-- **From a plugin connection:**
-  - The daemon **overwrites** `plugin_id` with the sender's tag.
-  - It relays to every *UI-capable non-plugin* control client: the GUI and `hived-ws-bridge`, selected the way `reviewAnnouncer` selects (`tag == nil && canAnswer(hello)`).
-  - It never relays to other plugins, hivebar or session connections.
-- **From a UI-capable user control connection:**
-  - `plugin_id` names the target.
-  - It is delivered to that plugin's live control connection(s) unchanged.
-  - Unknown or not-running target → ERROR `plugin_not_running` (with `req_id`).
+#### PR2: plugin messages and the worktree frame (gets its own security review)
+
+**`PLUGIN_MESSAGE` (0x51, both directions)**
+
+- Payload: `{plugin_id, topic, data}`, with **no `req_id`**. C carries its own nonce in `data` where it needs correlation.
+- `topic` matches `^[a-z][a-z0-9._-]{0,63}$`. The whole payload is ≤ **64 KiB** (`wire.MaxPluginMessage`).
+- **From a plugin connection:** the daemon overwrites `plugin_id` with the sender's tag and relays to every UI-capable user control client (`tag == nil && canAnswer(hello)`, the GUI and `hived-ws-bridge`). It never relays to other plugins, hivebar or session connections.
+- **From a UI-capable user control connection:** `plugin_id` names the target, and the message goes to that plugin's live control connection(s). If none is running: ERROR `plugin_not_running`.
 - **From a session connection:** refused.
-- `req_id` passes through untouched. The daemon does not correlate; the plugin and its GUI agree on reply topics. Two windows can share a counter, so C carries a string nonce in `data` when it needs per-window correlation, as INSTALL_PLUGIN does.
-- **Slow clients:** the relay uses the existing per-connection bounded queue (slow-client policy). A dropped message to a GUI is that GUI's desync, and its recovery is C's replay request.
-- **GUI bindings:**
-  - Wails event `plugin:message` (JSON);
-  - Go binding `App.SendPluginMessage(pluginID, topic string, dataJSON string, reqID int) error`. It is **host-only**: a UI plugin module must not reach it, or it could answer a human node or start a run for the user. A containment test pins this (open question 7);
+- GUI→plugin messages add no privilege: anything the GUI can ask a plugin to do, the user can already do, and the plugin already runs with the user's full access.
+- **Slow clients:** the relay uses the existing bounded per-connection queue. A GUI that overflows is disconnected under the slow-client policy. It reconnects and re-asks the plugin for state (C's replay topic), so a lost message costs a resync, not a stall.
+- **GUI:**
+  - Wails event `plugin:message`;
+  - binding `App.SendPluginMessage(pluginID, topic, dataJSON string) error`;
   - bridge op `send_plugin_message`.
-- **SDK:**
-  - `hive.on('PLUGIN_MESSAGE', …)` (exists generically);
-  - `hive.postMessage(topic, data)` (a broadcast send);
-  - `@typedef PluginMessage`.
+- **SDK:** `hive.postMessage(topic, data)` and `@typedef PluginMessage`.
+- **Cost:** `costFanout`.
 
-**Worktrees (phase 5)**
+**`PREPARE_WORKTREE` (0x52, C→S) → `PREPARED_WORKTREE` (0x53, S→C)**
 
-- **`PREPARE_WORKTREE` (0x52, C→S)** `{req_id, project_id, workflow_run_id, key, base, merge?: [branch…]}`.
-- **The daemon composes the branch** `hive/wf/<run-id>/<encoded key>`. The plugin never names a raw branch, so it cannot check out `main` or anyone's existing branch.
-- If the composed branch already exists, the request is refused with `worktree_branch_exists`.
-  - This is deliberate. The engine reuses an existing node worktree through CreateSpec `worktree_path` (`{of}`, retries), not through this frame.
-- **`base`** is any existing commit-ish. It is validated by `git rev-parse --verify --quiet --end-of-options <base>^{commit}`, and a leading `-` is refused outright. Typically it is the upstream node's branch.
-- **The path is chosen by the daemon** and returned.
-  - It uses a new path-only collision helper that suffixes the *directory* (`-2`, `-3`, …) and never the branch. `ResolveBranchAndPath` suffixes both, which would break the composed name.
-  - The branch is always exactly `hive/wf/<run>/<encoded key>`.
-  - B treats `PREPARED_WORKTREE.branch` and `.path` as authoritative.
-- **`merge`:**
-  - Each named branch (each `rev-parse`-verified) is merged **sequentially** with `git -c core.hooksPath=/dev/null merge --no-ff --no-edit -- <b>`. On Windows the hooks path is an empty temp dir.
-  - On the first conflict, the daemon collects `git diff --name-only --diff-filter=U`, runs `git merge --abort`, and stops.
+Request: `{req_id, project_id, workflow_run_id, branch, base, merge?: [branch…]}`
+
+- **`branch`:**
+  - Composed by the plugin with the SDK's `encodeWorkflowKey`.
+  - The daemon requires the prefix `hive/wf/<workflow_run_id>/` and `git check-ref-format --branch`, and refuses a leading `-`. Otherwise: `invalid_workflow_branch`.
+  - **Namespace decision:** the namespace is `hive/wf/<run>/`, not `hive/wf/<plugin>/<run>/`. Run-id collisions across plugins are accepted: one plugin can already do anything another can, and run ids are random.
+  - The daemon does not encode keys. The SDK is the only encoder:
+    - `encodeWorkflowKey(key)` maps `[N]` to `_N` and keeps `/`;
+    - it is injective, because `_` is not in `ID_SEGMENT`;
+    - `fix[2]/work` → `fix_2/work`, `work/each[3]/do` → `work/each_3/do`.
+- **`base`:** resolved with `git rev-parse --verify --quiet --end-of-options <base>^{commit}`. The daemon passes the **resolved SHA**, never the name, to `worktree add` and to every merge. Any commit-ish is allowed. Unresolvable: `invalid_base`.
+- **New branch:** created with a **strict** `worktree.AddNewBranch(ctx, repo, branch, path, sha)`. It runs `git worktree add -b <branch> -- <path> <sha>`, with **no** existing-branch fallback.
+- **Existing `hive/wf/<run>/…` branch: re-attach.**
+  - If a worktree already has it checked out, return that worktree's path.
+  - Otherwise `git worktree add -- <path> <branch>` (`worktree.AddExistingBranch`) and return the new path.
+  - This is what lets B re-prepare after a boot reclaim removed a pristine worktree, or after a plugin crash.
+  - `base` is then ignored (`reattached: true`).
+- **Path:** chosen by the daemon with a path-only collision helper. It suffixes the directory (`-2`, …), never the branch.
+- **`merge`:** each branch is resolved to a SHA and merged **sequentially** with `merge --no-ff --no-edit <sha>`.
+  - On the first conflict: `diff --name-only --diff-filter=U -z`, then `merge --abort`, then stop.
   - The worktree is **kept**, holding base plus the merges that succeeded, so the user can resolve by hand.
-- **`PREPARED_WORKTREE` (0x53, S→C)** `{req_id, project_id, path, branch, merged: [branch…], conflict?: {branch, files: [path…]}}`. Every other failure is an ERROR with `req_id`.
-- **Key encoding:**
-  - **Go:** `worktree.EncodeWorkflowKey(key) (string, error)`.
-  - **SDK:** `encodeWorkflowKey(key)`, so B can name branches without a round-trip.
-  - Grammar: `seg(\[N\])?(/seg(\[N\])?)*` with `seg` = `ID_SEGMENT`. Each `[N]` becomes `_N`, and `/` is kept.
-  - Injective, because `_` never appears in a segment.
-  - Examples: `fix[2]/work` → `fix_2/work`, and `work/each[3]/do` → `work/each_3/do`. Both pass `git check-ref-format --branch`.
-  - A key outside the grammar → `invalid_workflow_key`.
-- **Refs are hierarchical,** so a branch for `a` and one for `a/b` cannot coexist (git D/F conflict). Only leaf nodes get branches; B names its merge worktrees as leaf keys. A D/F failure surfaces as `worktree_branch_exists`.
-- **Reclaim:** a prepared worktree no session has adopted is "sessionless". Once it holds merges it is not pristine, so boot reclaim keeps it. A pristine one may be reclaimed at boot. That is safe, because B re-prepares an `interrupted` node; **B must not assume a prepared-but-unused worktree survives a `hived` restart.**
+  - A merge already contained in the branch is a no-op ("Already up to date"), so a re-attach can safely repeat `merge`.
+- **Every git call** in this path goes through one `safeGit` argument set: `-c core.hooksPath=<empty temp dir> -c core.fsmonitor=false -c commit.gpgSign=false`, `LC_ALL=C`/`LANG=C`, `-z` on path output, and the existing 30s timeouts. That covers rev-parse, check-ref-format, worktree add and merge.
+  - Merge drivers and filters from the repo's `.git/config` and `.gitattributes` are **trusted like the rest of the repo**: the user opened it, and their agents already run in it.
+- **Merge identity:** merge commits use the user's git identity. A repo with none fails with ERROR `git_identity_missing` and no fallback identity.
 
-**Plugin runtime (phase 6)**
+Reply: `{req_id, project_id, path, branch, reattached, merged: [branch…], conflict?: {branch, files: [path…]}}`
+- Every other failure is an ERROR with `req_id`.
+- B treats `branch` and `path` as authoritative.
+- Refs are hierarchical, so B gives branches only to leaf keys. A D/F ref clash surfaces as git's error.
 
-- **Manifest:** `"node": "<semver>"` (optional, `internal/plugin/manifest.go`), the minimum Node for `main`. It is validated as `MAJOR.MINOR.PATCH` at load.
-- **`resolveCommand`:** `exec.LookPath` on the daemon PATH, then `proc.LookPathIn(proc.LoginPATH(), name)`. The error names both PATHs.
-- **Plugin env PATH:** `PATH` is set to the PATH the command was found on, so the plugin's own children (`node`, `git`, the TS checker) resolve the same way.
-- **Version check:** with `node` set, `spawn` resolves `node` on the chosen PATH (not `argv[0]`, which may be `./run.sh`) and runs `<node> --version` via `proc.CommandContext` (2s timeout) before starting.
-  - Too old: `PluginRefused` with "requires Node.js 26.0.0 or newer (found v24.11.0 at /usr/local/bin/node)".
-  - Not runnable: `PluginRefused`, detail "could not run node --version: …".
-  - The same check runs on every restart, so upgrading Node and pressing Restart recovers.
-- **Restart action:** PluginsPanel shows a **Restart** button on `failed` and `refused` rows when enabled. It calls SET_PLUGIN_ENABLED true; `SetEnabled` already resets `restarts` and starts a fresh runner.
-  - No manager change is needed: `SetEnabled` starts a runner only when `e.run == nil`, and that is always the case for `failed` and `refused`. `TestFailedThenRestart_ResetsRestarts` pins this.
-- **Toast on failure:** a PLUGIN_EVENT moving a plugin to `failed` raises one toast, "Plugin `<name>` stopped after repeated crashes", with a Settings link. It is GUI-only, using the existing `plugin:event` handler (`events.ts:777`).
+#### PR3: plugin runtime and docs
+
+- **Manifest field:** `"node": "<MAJOR.MINOR.PATCH>"` (optional), the minimum Node for `main`.
+- **Command lookup:** `resolveCommand` tries the daemon PATH, then `proc.LookPathIn(proc.LoginPATH(), name)`. It returns the PATH it used, and the plugin's `PATH` is set to it.
+- **Version probe:**
+  - With `node` set, `spawn` resolves `node` on that PATH, not `argv[0]`, and runs `<node> --version` through `proc.CommandContext` (2s timeout).
+  - Too old: `PluginRefused`, "requires Node.js 26.0.0 or newer (found v24.11.0 at /usr/local/bin/node)".
+  - The probe can't run: `PluginRefused`, "could not run node --version: …".
+  - It runs on every start, so upgrading Node and pressing Restart recovers.
+- **Restart button:** PluginsPanel shows **Restart** on enabled `failed` and `refused` rows. It sends SET_PLUGIN_ENABLED true; `SetEnabled` already resets `restarts` and starts a fresh runner.
+- **Toast:** a transition to `failed` raises one toast, "Plugin `<name>` stopped after repeated crashes", from the existing `plugin:event` handler (`events.ts:777`).
 - **`DESIGN.md:100` carve-out:**
-  - A running plugin may create and write its **own** files under `plugin-data/<id>/` (it receives the path as `HIVE_PLUGIN_DATA_DIR`), with atomic (temp + rename) or transactional writes. Mode `0600` is recommended and is required for the engine's `runs.db`.
-  - It may write nothing else under the state dir.
-  - `config.json`, `ui-config.json` and the log stay the Manager's.
-  - Worktree creation and merging, sessions and every registry-owned file stay behind daemon frames. A plugin never runs `git worktree` against a project.
+  - A running plugin may write its **own** files under `plugin-data/<id>/` (`HIVE_PLUGIN_DATA_DIR`), with atomic or transactional writes. Mode 0600 is required for the engine's `runs.db`.
+  - It may write nothing else under the state dir. `config.json`, `ui-config.json` and the log stay the Manager's.
+  - Worktree creation and merging, sessions and registry files stay behind daemon frames; a plugin never runs `git worktree` on a project.
   - The registry remains the only writer of session state.
+- **Docs and CI:**
+  - Node wording at all five sites;
+  - the manifest `node` field;
+  - PATH behaviour;
+  - the `--disable-sigusr1` recommendation;
+  - a Node 26 CI leg in `.github/workflows/ci.yml`, running `node --test 'plugins/sdk/*.test.mjs'` and the Pi/plugin Go tests that shell out to Node.
 
-### Phases (one PR each, in order)
+### PRs (in order, each bumps `DaemonContract` to main's value + 1 at rebase)
 
-Each daemon-side PR bumps `DaemonContract` to *main's value + 1 at
-rebase*, with a contract-history line. Phases 1 and 2 can be combined if
-the user prefers fewer bumps; within one release extra bumps cost
-nothing more.
-
-1. **P1: request correlation.** `wire.Error.req_id`, `ACK`, `CreateSpec.req_id`, the daemon peek/echo, SDK `request()`, `docs/plugins.md` (request/reply section; Node floor wording fixed here for SDK headers). Bump.
-2. **P2: provenance + typed results.** `workflow_run_id` on CreateSpec/PromptAcpReq/HELLO create; `ParsePrincipal`; `originLabel`; `result_schema`, `internal/acp/resultschema.go`, `SubmitResult` validation, persistence, `HIVE_SUBMIT_SCHEMA` in mcp-submit and Pi. Bump. Changeset: none (no user-visible change without a plugin), apply `no-changeset`.
-3. **P3: ACP cancel + stop_reason.** `Conn.Notify`, `Agent.Cancel`, `Registry.CancelACP`, `CANCEL_ACP`, `AcpTranscriptMsg.stop_reason`, fake `session/cancel`. Bump. No GUI button (spec non-goal); the frame is bound in `app_calls.go` and the bridge for lock-step and C.
-4. **P4: plugin messages.** `PLUGIN_MESSAGE` both directions, GUI event + binding, bridge op, SDK `postMessage`, `FrameCost`. Bump.
-5. **P5: worktrees.** `PREPARE_WORKTREE` / `PREPARED_WORKTREE`, `worktree.EncodeWorkflowKey`, `worktree.MergeBranches`, `Registry.PrepareWorktree`, SDK `encodeWorkflowKey`. Bump.
-6. **P6: plugin runtime + docs.** Login-PATH lookup, manifest `node`, the version probe, the Restart button + toast, the headless-builtin test, `DESIGN.md` carve-out, `docs/plugins.md` Node corrections. Bump (the `internal/plugin` behaviour is daemon-side even if the gate script doesn't require it). Changeset (`fixed`: plugins launched from Finder now find Node; `added`: Restart for a failed plugin).
+1. **PR1:** request/reply, provenance, typed results, ACP cancel and `stop_reason`. `no-changeset` label: nothing changes until a plugin uses these.
+2. **PR2:** `PLUGIN_MESSAGE` and `PREPARE_WORKTREE` / `PREPARED_WORKTREE`. Gets its own security review. `no-changeset`.
+3. **PR3:** plugin runtime and docs: Node lookup and floor, Restart and toast, `DESIGN.md` carve-out, Node doc fixes, the Node 26 CI leg. Changeset `.changesets/528-plugin-node-path-restart.md` (`fixed`: plugins started from Finder find Node; `added`: Restart a failed plugin).
 
 ### Files to change
 
-P1
-- `internal/wire/control.go`: `Error.ReqID`, `CreateSpec.ReqID`, `AckMsg{ReqID, SessionID}`.
-- `internal/wire/frame.go`: `FrameAck`, plus `String()`.
-- `internal/wire/acp.go`: `ReqID` on `PromptAcpReq`, `AnswerPermissionReq`.
-- `internal/wire/control.go`: `KillSessionReq.ReqID`.
-- `internal/daemon/daemon.go`: `peekReqID`, a per-frame `ops` copy whose `sendError` stamps `req_id`, `sendACPError` through `ops.sendError`, `ack()` on CREATE_SESSION / PROMPT_ACP / ANSWER_PERMISSION / KILL_SESSION.
-- `internal/plugin/limiter.go`: no change (ACK is S→C).
-- `internal/wire/testclient/client.go`: a `Request` helper.
-- `cmd/hivegui/app_control.go`: ignore `FrameAck` (logged at debug), so it isn't the "unexpected frame" path.
-- `cmd/hived-ws-bridge/main.go`: forward `ACK`.
-- `plugins/sdk/hive-plugin.mjs` and the `plugins/webhook/hive-plugin.mjs` copy: `request()`, `Frame.ACK`, `HiveError.req_id`, `@typedef Ack`; header "Node >= 22".
-- `internal/plugin/sdk_drift_test.go`: add `Ack` to the typedef map.
-- `docs/plugins.md`: request/reply section; frame table rows.
-- `plugins/sdk/README.md`: Node wording.
-- `internal/buildinfo/contract.go`: bump.
-
-P2
-- `internal/wire/control.go`: `CreateSpec.WorkflowRunID`, `CreateSpec.ResultSchema`, error codes `invalid_workflow_run_id`, `invalid_result_schema`; `ParsePrincipal`.
-- `internal/wire/acp.go`: `PromptAcpReq.WorkflowRunID`.
-- `internal/daemon/daemon.go`: `composePrincipal(ops.principal, runID) (string, error)` used at `:806`, `:1556`, `:1706`.
-- `internal/acp/resultschema.go`: `CheckSchema(raw) error`, `CheckResult(schema, result json.RawMessage) error`.
-- `internal/registry/create.go` (P1: `OnEntry` create option) / `acp.go` / `persist.go` / `registry.go`: store `ResultSchema` on Entry + meta; validate at create; enforce in `SubmitResult`; add `HIVE_SUBMIT_SCHEMA` in `acpExtras`.
-- `cmd/hived/mcpsubmit.go`: build the tool from env; pre-check.
+**PR1**
+- `internal/wire/control.go`:
+  - `Error.ReqID`, `CreateSpec.ReqID`, `CreateSpec.WorkflowRunID`, `CreateSpec.ResultSchema`, `KillSessionReq.ReqID`;
+  - `AckMsg{ReqID, SessionID, WasBusy}`;
+  - `ParsePrincipal`;
+  - codes `invalid_workflow_run_id`, `invalid_result_schema`.
+- `internal/wire/acp.go`:
+  - `PromptAcpReq.{ReqID, WorkflowRunID}`, `AnswerPermissionReq.ReqID`;
+  - `CancelAcpReq`;
+  - `AcpTranscriptMsg.StopReason`.
+- `internal/wire/frame.go`: `FrameAck`, `FrameCancelAcp`, plus `String()`.
+- `internal/daemon/daemon.go`:
+  - `peekReqID` and a per-frame `ops` copy whose `sendError` stamps `req_id`;
+  - `sendACPError` routed through it;
+  - `composePrincipal` at `:806`, `:1556`, `:1706`;
+  - the create handler uses `BeginCreate` / ACK / `FinishCreate`;
+  - ACKs, and the CANCEL_ACP handler.
+- `internal/registry/create.go`: split `Create` into exported `BeginCreate` + `FinishCreate`, keeping `Create` as their composition for other callers. Validate `ResultSchema` first.
+- `internal/registry/acp.go`, `persist.go`, `registry.go`:
+  - `ResultSchema` on Entry and meta;
+  - `SubmitResult` validation;
+  - `HIVE_SUBMIT_SCHEMA`;
+  - `CancelACP(id) (wasBusy bool, err error)`;
+  - `acpResult.stopReason`.
+- `internal/acp/conn.go`: `Notify`. `internal/acp/agent.go`: `Cancel`. `internal/acp/types.go`: method const.
+- `internal/acp/acptest/fake.go`: handles `session/cancel`. A blocked prompt, or one with a pending fake permission, ends with `stopReason:"cancelled"`.
+- `cmd/hived/mcpsubmit.go`: the tool built from env, plus a pre-check.
 - `internal/agent/pi/hive.ts`: parameters from env.
-- `cmd/hivegui/frontend/src/components/acp/AcpTranscript.tsx`: `originLabel` via the new `src/lib/principal.ts`.
-- `cmd/hivegui/frontend/src/app/state.ts`: comment.
-- SDK + webhook copy: `CreateSpec` doc mentions `workflow_run_id`, `result_schema`.
-- `docs/plugins.md`, `docs/design-docs/acp-workflows.md` (trust model: composed principal).
+- `cmd/hivegui/app_control.go`: ignore `FrameAck`. `cmd/hivegui/app_calls.go`: `CancelAcp`.
+- `cmd/hived-ws-bridge/main.go`: forward ACK; op `cancel_acp`.
+- `internal/wire/testclient/client.go`: a `Request` helper.
+- `cmd/hivegui/frontend/src/components/acp/AcpTranscript.tsx` (`originLabel`), `src/app/state.ts` (`stop_reason`).
+- `plugins/sdk/hive-plugin.mjs` and its webhook copy:
+  - `request()`, `Frame.ACK`, `Frame.CANCEL_ACP`;
+  - typedefs `Ack`, `HiveError.req_id`;
+  - `CreateSpec` docs for `workflow_run_id`, `result_schema`.
+- `internal/plugin/sdk_drift_test.go`: typedef map (`Ack`).
+- `internal/plugin/limiter.go`: CANCEL_ACP stays cheap (default).
+- `docs/plugins.md`: request/reply, the new frames and fields. `docs/design-docs/acp-workflows.md`: the composed label.
+- `.github/workflows/ci.yml`: `node --test 'plugins/sdk/*.test.mjs'`.
 - `internal/buildinfo/contract.go`.
 
-P3
-- `internal/acp/conn.go`: `Notify(method, params)`.
-- `internal/acp/agent.go`: `Cancel(id)`, `MethodSessionCancel`.
-- `internal/acp/types.go`: method const.
-- `internal/acp/acptest/fake.go`: track cancelled sessions; a `FlagBlock` prompt that sees cancel returns `stopReason:"cancelled"`; a pending fake permission request answered `cancelled` ends the turn the same way.
-- `internal/registry/acp.go`: `CancelACP(id)`, `acpResult.stopReason`, `acpMsgLocked` sets it.
-- `internal/wire/acp.go`: `CancelAcpReq`, `AcpTranscriptMsg.StopReason`, `ErrCodeACPNotBusy`.
-- `internal/wire/frame.go`: `FrameCancelAcp`.
-- `internal/daemon/daemon.go`: handler.
-- `internal/plugin/limiter.go`: cheap (default).
-- `cmd/hivegui/app_calls.go`: `CancelAcp(sessionID)`.
-- `cmd/hived-ws-bridge/main.go`: `cancel_acp`.
-- `internal/wire/testclient`.
-- SDK `Frame`, webhook copy, `docs/plugins.md`.
-- `cmd/hivegui/frontend/src/app/state.ts`: type gets `stop_reason`.
-- contract.
+**PR2**
+- `internal/wire/control.go`: `PluginMessage`, `MaxPluginMessage`, `PrepareWorktreeReq`, `PreparedWorktreeMsg`, `MergeConflict`, error codes.
+- `internal/wire/frame.go`: `FramePluginMessage`, `FramePrepareWorktree`, `FramePreparedWorktree`.
+- `internal/worktree/worktree.go`: `safeGit`, `ResolveCommit`, `CheckBranchName`, `AddNewBranch`, `AddExistingBranch`, `FreePath`, `MergeBranches(ctx, wt string, shas []namedSHA) (merged []string, conflict *MergeConflict, err error)`.
+- `internal/registry/worktrees.go`: `PrepareWorktree` under `gitMu`.
+- `internal/daemon/daemon.go` and plugin routing: the PLUGIN_MESSAGE relay and target lookup; the PREPARE handler in `runOp`.
+- `internal/plugin/limiter.go`: PLUGIN_MESSAGE `costFanout`, PREPARE `costExpense`.
+- `cmd/hivegui/app_control.go`: emit `plugin:message`. `app_calls.go`: `SendPluginMessage`, `PrepareWorktree`.
+- `cmd/hivegui/frontend/src/app/events.ts`: passthrough.
+- `cmd/hived-ws-bridge/main.go`, `internal/wire/testclient`.
+- SDK and webhook copy: `postMessage`, `encodeWorkflowKey`, typedefs.
+- `docs/plugins.md`, `internal/buildinfo/contract.go`.
 
-P4
-- `internal/wire/control.go`: `PluginMessage`, `MaxPluginMessage`, `ErrCodePluginNotRunning`.
-- `internal/wire/frame.go`: `FramePluginMessage`.
-- `internal/daemon/daemon.go` + `internal/daemon/plugin*.go`: route by tag. A registry of plugin connections keyed by id; the UI-client set already exists for `reviewAnnouncer`.
-- `internal/plugin/limiter.go`: `costFanout`.
-- `cmd/hivegui/app_control.go`: emit `plugin:message`.
-- `cmd/hivegui/app_calls.go`: `SendPluginMessage`.
-- `cmd/hivegui/frontend/src/app/events.ts`: typed passthrough (C consumes it).
-- `cmd/hived-ws-bridge/main.go`.
-- `internal/wire/testclient`.
-- SDK `postMessage`, typedef, webhook copy, `docs/plugins.md`.
-- contract.
-
-P5
-- `internal/worktree/worktree.go`: `EncodeWorkflowKey`, `MergeBranches(ctx, wtPath string, branches []string) (merged []string, conflict *MergeConflict, err error)`, `verifyCommitish`.
-- `internal/registry/worktrees.go`: `PrepareWorktree(ctx, req) (wire.PreparedWorktreeMsg, error)` under `gitMu`.
-- `internal/wire/control.go`: `PrepareWorktreeReq`, `PreparedWorktreeMsg`, `MergeConflict`, codes.
-- `internal/wire/frame.go`.
-- `internal/daemon/daemon.go`: handler (`runOp`), `FrameCost` = `costExpense`.
-- `cmd/hivegui/app_calls.go`: binding (C may show conflicts).
-- bridge, testclient.
-- SDK `encodeWorkflowKey`, webhook copy, `docs/plugins.md`.
-- contract.
-
-P6
-- `internal/plugin/manifest.go`: `Node string json:"node,omitempty"` + validation.
-- `internal/plugin/manager.go`: `resolveCommand` login-PATH fallback returning `(bin, pathUsed)`, `pluginEnv` PATH override, the `checkNode` probe in `spawn`.
-- `internal/plugin/doc_test.go`, if it pins the manifest docs.
-- `cmd/hivegui/frontend/src/components/modals/PluginsPanel.tsx`: Restart button (`Button` primitive, no hard-coded key).
-- `cmd/hivegui/frontend/src/app/events.ts` / `plugins.ts`: failed toast.
-- `DESIGN.md:100`: carve-out text.
-- `docs/plugins.md:81,317`: Node wording + manifest `node` field + PATH behaviour.
+**PR3**
+- `internal/plugin/manifest.go`: `Node` field and validation.
+- `internal/plugin/manager.go`: login-PATH fallback, the env PATH, the Node probe.
+- `cmd/hivegui/frontend/src/components/modals/PluginsPanel.tsx`: Restart.
+- `src/app/events.ts` / `plugins.ts`: the toast.
+- `DESIGN.md:100`.
+- `docs/plugins.md:81,317` and the Node/PATH/manifest/`--disable-sigusr1` sections.
+- `plugins/sdk/README.md`, both SDK headers.
+- `.github/workflows/ci.yml`: the Node 26 leg.
 - `internal/buildinfo/contract.go`.
 - `.changesets/528-plugin-node-path-restart.md`.
 
 ### New files
 
-- `internal/acp/resultschema.go`, `internal/acp/resultschema_test.go`, `internal/acp/testdata/resultschema/*.json` (P2).
-- `cmd/hivegui/frontend/src/lib/principal.ts` + `test/unit/principal.test.ts` (P2).
-- `plugins/sdk/hive-plugin.test.mjs`: `node --test`, a fake daemon over a temp unix socket (P1, extended in P4/P5).
-- `internal/daemon/reqid_test.go` (P1), `internal/daemon/plugin_message_test.go` (P4), `internal/daemon/prepare_worktree_test.go` (P5).
-- `.changesets/528-plugin-node-path-restart.md` (P6).
+- `internal/acp/resultschema.go`, `resultschema_test.go`, `testdata/resultschema/*.json` (PR1).
+- `cmd/hivegui/frontend/src/lib/principal.ts`, `test/unit/principal.test.ts` (PR1).
+- `plugins/sdk/hive-plugin.test.mjs`: `node --test` against a fake daemon on a temp unix socket (PR1; extended in PR2).
+- `internal/daemon/reqid_test.go` (PR1), `internal/daemon/plugin_message_test.go` and `internal/daemon/prepare_worktree_test.go` (PR2).
+- `cmd/hivegui/frontend/test/e2e-real/plugin-message.spec.ts` (PR2).
+- `.changesets/528-plugin-node-path-restart.md` (PR3).
 
 ### Tests
 
-P1
+**PR1**
 - `internal/daemon/reqid_test.go`:
-  - `TestReqID_EchoedOnError` (PROMPT_ACP to an unknown session with `req_id:7` → ERROR `req_id:7`);
-  - `TestReqID_CreateSessionAcked` (ACK carries the id that the following SESSION_EVENT(added) names);
-  - `TestReqID_AsyncCreateErrorEchoed` (a create failing inside `runOp` echoes it);
-  - `TestReqID_CreateAckedBeforeAdapterStarts` (FlagBlock adapter: ACK arrives while phase is still spawning);
-  - `TestReqID_KilledMidCreateErrors` (ERROR with `req_id`, never silence);
-  - `TestReqID_AbsentMeansNoAck` (no `req_id` → no ACK; GUI behaviour unchanged).
-- `internal/plugin/sdk_drift_test.go`: typedef map + frame table (existing tests, extended).
-- `plugins/sdk/hive-plugin.test.mjs`:
-  - `request resolves on matching req_id`;
-  - `request rejects on ERROR with req_id`;
-  - `interleaved replies resolve the right promises`;
-  - `timeout rejects`;
-  - `close rejects every pending request`.
-- `cmd/hived/plugin_e2e_test.go`: `TestE2E_SDKRequest_CreateSessionReturnsID` (real hived, real SDK).
-- CI: add `node --test 'plugins/sdk/*.test.mjs'` to the probe step in `.github/workflows/ci.yml`.
-
-P2
+  - `TestReqID_EchoedOnError`;
+  - `TestReqID_AsyncCreateErrorEchoed`;
+  - `TestReqID_CreateAckedBeforeAdapterStarts`: FlagBlock adapter; the ACK arrives while the phase is still spawning.
+  - `TestReqID_CreateAckMatchesAddedEvent`: **order-independent**. It collects frames until both the ACK and SESSION_EVENT(added) have arrived, in either order, and asserts the same id.
+  - `TestReqID_KilledMidCreateErrors`: ERROR with `req_id`, never silence.
+  - `TestReqID_AbsentMeansNoAck`.
+- `internal/registry/create_test.go`: `TestBeginFinishCreate_EqualsCreate`.
 - `internal/daemon/acp_test.go`:
-  - `TestPluginPrincipal_ComposedWithRun` (SpawnedBy = `plugin:p/workflow:r1`);
-  - `TestPluginPrincipal_CannotClaimUser` (a raw `"spawned_by":""` / `"spawned_by":"user"` in JSON is ignored);
-  - `TestPluginPrincipal_CannotClaimOtherPlugin` (`workflow_run_id:"x/../plugin:q"` → `invalid_workflow_run_id`);
-  - `TestWorkflowRunID_RefusedFromUser`;
-  - `TestWorkflowRunID_OrchestratorStaysFalse`;
-  - `TestPromptAcp_OriginCarriesRun`;
-  - `TestCreateHello_WorkflowRunID`.
-- `internal/wire`: `TestParsePrincipal` (user, `plugin:x`, `plugin:x/workflow:r`, malformed).
-- `test/unit/principal.test.ts` + `test/dom/acp-transcript.test.tsx`: `renders workflow origin`.
+  - provenance: `TestPluginPrincipal_ComposedWithRun`, `TestPluginPrincipal_CannotClaimUser` (a raw `spawned_by` is ignored), `TestPluginPrincipal_CannotClaimOtherPlugin` (`x/../plugin:q` refused);
+  - run id: `TestWorkflowRunID_RefusedFromUser`, `TestWorkflowRunID_OrchestratorStaysFalse`;
+  - other entry points: `TestPromptAcp_OriginCarriesRun`, `TestCreateHello_WorkflowRunID`;
+  - cancel: `TestCancelAcp_PluginAndUser`, `TestCancelAcp_RefusedOnSessionConn`.
+- `internal/wire`: `TestParsePrincipal`.
+- `test/unit/principal.test.ts`; `test/dom/acp-transcript.test.tsx` `renders workflow origin`.
 - `internal/acp/resultschema_test.go`:
-  - `TestCheckSchema_Subset` (rejects `$ref`, `oneOf`, missing `required` key, `additionalProperties:true`, depth 9, > 8 KiB);
-  - `TestCheckResult_Fixtures` (table over `testdata/resultschema`);
-  - `TestCheckResult_ErrorPath` (message names `data.findings[2].severity`).
+  - `TestCheckSchema_Subset`: rejects `$ref`, `oneOf`, a partial `required`, `additionalProperties:true`, depth 9, > 8 KiB.
+  - `TestCheckResult_Fixtures`.
+  - `TestCheckResult_ErrorPath`.
 - `internal/registry/acp_test.go`:
-  - `TestSubmitResult_ValidatesAgainstSchema`;
-  - `TestSubmitResult_ErrorStatusSkipsSchema`;
-  - `TestSubmitResult_RetryAfterRejection` (a second valid submit in the same turn is recorded);
-  - `TestResultSchema_SurvivesRestart`;
-  - `TestCreate_InvalidResultSchemaRefused`;
-  - `TestCreate_ResultSchemaOnPTYRefused`.
-- `cmd/hived/mcpsubmit_test.go`:
-  - `TestMCPSubmit_ToolsListCarriesSchema`;
-  - `TestMCPSubmit_PrecheckRejectsBadData`;
-  - `TestMCPSubmit_NoSchemaUnchanged`.
-- `internal/agent/pi/hive.test.ts`:
-  - `submit_result parameters carry HIVE_SUBMIT_SCHEMA`;
-  - `daemon rejection is surfaced as a tool error` (the existing pattern).
-
-P3
-- `internal/acp/agent_test.go`: `TestCancel_SendsNotification` (calls.log shows `session/cancel <sid>` and no id).
-- `internal/registry/acp_test.go`:
-  - `TestCancelACP_StopReasonCancelled` (FlagBlock);
-  - `TestCancelACP_AnswersPendingPermissionCancelled` (FlagPermission);
-  - `TestCancelACP_NotBusy`;
-  - `TestStopReason_EndTurnAndClearedOnPrompt`.
-- `internal/daemon/acp_test.go`: `TestCancelAcpFrame_PluginAndUser`, `TestCancelAcp_RefusedOnSessionConn`.
+  - submit validation: `TestSubmitResult_ValidatesAgainstSchema`, `TestSubmitResult_ErrorStatusSkipsSchema`, `TestSubmitResult_RetryAfterRejection`;
+  - schema lifecycle: `TestResultSchema_SurvivesRestart`, `TestCreate_InvalidResultSchemaRefusedBeforeEntry` (no entry and no `added` event), `TestCreate_ResultSchemaOnPTYRefused`;
+  - cancel: `TestCancelACP_StopReasonCancelled`, `TestCancelACP_AnswersPendingPermissionCancelled`, `TestCancelACP_IdleIsNoopWasBusyFalse`, `TestCancelACP_Twice`;
+  - stop reason: `TestStopReason_EndTurnAndClearedOnPrompt`.
+- `internal/acp/agent_test.go`: `TestCancel_SendsNotification` (calls.log shows `session/cancel` with no id).
+- `cmd/hived/mcpsubmit_test.go`: `TestMCPSubmit_ToolsListCarriesSchema`, `TestMCPSubmit_PrecheckRejectsBadData`, `TestMCPSubmit_NoSchemaUnchanged`.
+- `internal/agent/pi/hive.test.ts`: `submit_result parameters carry HIVE_SUBMIT_SCHEMA`.
+- `plugins/sdk/hive-plugin.test.mjs`:
+  - matching: `request resolves on ACK with req_id`, `request rejects on ERROR with req_id`, `interleaved replies resolve the right promises`;
+  - broadcasts never settle: `request ignores broadcasts carrying the same req_id` (SESSION_EVENT, PLUGIN_MESSAGE, ACP_TRANSCRIPT);
+  - lifecycle: `timeout rejects`, `close rejects every pending request`.
+- `cmd/hived/plugin_e2e_test.go`: `TestE2E_SDKRequest_CreateSessionReturnsID`.
+- `internal/plugin/sdk_drift_test.go`: existing tests, extended.
 - `test/dom/acp-events.test.ts`: `stop_reason passes through state`.
 
-P4
+**PR2**
 - `internal/daemon/plugin_message_test.go`:
-  - `TestPluginMessage_PluginToGUIStampsID` (a forged `plugin_id` is overwritten);
-  - `TestPluginMessage_NotRelayedToOtherPlugins`;
-  - `TestPluginMessage_NotRelayedToHivebarOrSession`;
-  - `TestPluginMessage_GUIToPlugin`;
-  - `TestPluginMessage_TargetNotRunning`;
-  - `TestPluginMessage_RefusedOnSessionConn`;
-  - `TestPluginMessage_SizeCap`;
-  - `TestPluginMessage_SlowGUIDoesNotStallPlugin`.
-- `cmd/hivegui/app_calls_test.go`: `TestSendPluginMessage`.
-- `plugins/sdk/hive-plugin.test.mjs`: `postMessage frames`.
-- e2e-real: `plugin-message.spec.ts`, a round-trip through `hived-ws-bridge` with an isolated state dir (C reuses the harness).
-
-P5
+  - direction and routing: `TestPluginMessage_PluginToGUIStampsID` (a forged `plugin_id` is overwritten), `TestPluginMessage_GUIToPlugin`, `TestPluginMessage_TargetNotRunning`;
+  - who never receives: `TestPluginMessage_NotRelayedToOtherPlugins`, `TestPluginMessage_NotRelayedToHivebarOrSession`, `TestPluginMessage_RefusedOnSessionConn`;
+  - limits and slow clients:
+    - `TestPluginMessage_SizeCap64KiB`;
+    - `TestPluginMessage_SlowGUIDoesNotStallPlugin`;
+    - `TestPluginMessage_GUIRecoversAfterSlowClientDisconnect`: a GUI overflowing its queue is dropped, reconnects, sends a GUI→plugin message, and receives the plugin's next message.
+- `cmd/hivegui/app_calls_test.go`: `TestSendPluginMessage`, `TestPrepareWorktreeBinding`.
 - `internal/worktree/worktree_test.go`:
-  - `TestEncodeWorkflowKey` (`fix[2]/work`→`fix_2/work`, `work/each[3]/do`→`work/each_3/do`, every output passes `git check-ref-format --branch`, injectivity over a generated set, rejects `Fix`, `a..b`, `-x`, `a[b]`);
-  - `TestMergeBranches_Clean`;
-  - `TestMergeBranches_ConflictReportsBranchAndFiles` (the worktree is left clean after abort);
-  - `TestMergeBranches_HooksNotRun` (a `pre-merge-commit` / `post-merge` hook writing a marker never runs);
-  - `TestMergeBranches_NoIdentity` (isolated `GIT_CONFIG_GLOBAL=/dev/null` → typed error).
+  - `TestCheckBranchName`: requires the `hive/wf/<run>/` prefix and `check-ref-format`, refuses a leading `-`.
+  - `TestAddNewBranch_NoExistingFallback`.
+  - `TestAddExistingBranch`.
+  - `TestFreePath_SuffixesDirOnly`.
+  - `TestMergeBranches_Clean`.
+  - `TestMergeBranches_ConflictReportsBranchAndFiles`: the tree is clean after the abort, and `-z` handles a file with a space.
+  - `TestMergeBranches_AlreadyMergedIsNoop`.
+  - `TestSafeGit_HooksAndFsmonitorOff`: a `post-checkout` / `pre-merge-commit` / `post-merge` hook writing a marker never runs.
+  - `TestMergeBranches_NoIdentity`: `GIT_CONFIG_GLOBAL=/dev/null`, `GIT_CONFIG_NOSYSTEM=1`.
 - `internal/daemon/prepare_worktree_test.go`:
-  - `TestPrepareWorktree_FromArbitraryBase`;
-  - `TestPrepareWorktree_ComposesBranch`;
-  - `TestPrepareWorktree_RefusesExistingBranch`;
-  - `TestPrepareWorktree_RefusesOptionLikeBase`;
-  - `TestPrepareWorktree_MergeConflictTyped`;
-  - `TestPrepareWorktree_PathCollisionResolved` (directory suffixed, branch unchanged);
-  - `TestPrepareWorktree_SessionAdoptsPath` (CREATE_SESSION `worktree_path` → entry claims it).
-- `plugins/sdk/hive-plugin.test.mjs`: `encodeWorkflowKey matches Go` (shared fixture `internal/worktree/testdata/workflow-keys.json`).
+  - base: `TestPrepareWorktree_FromArbitraryBase`, `TestPrepareWorktree_PassesResolvedSHA` (`base` moved after resolve → the worktree is at the old SHA), `TestPrepareWorktree_RefusesOptionLikeBase`;
+  - branch and path: `TestPrepareWorktree_BranchOutsideRunPrefixRefused`, `TestPrepareWorktree_PathCollisionResolved`;
+  - re-attach: `TestPrepareWorktree_ReattachesExistingRunBranch`, `TestPrepareWorktree_AfterReclaimSucceeds` (prepare, boot reclaim removes the pristine worktree, prepare again → same branch, new worktree);
+  - merge and adoption: `TestPrepareWorktree_MergeConflictTyped`, `TestPrepareWorktree_SessionAdoptsPath`.
+- `plugins/sdk/hive-plugin.test.mjs`: `encodeWorkflowKey` (`fix[2]/work`→`fix_2/work`, `work/each[3]/do`→`work/each_3/do`, injective over a generated set, every output passes `git check-ref-format --branch` when git is present, rejects keys outside the grammar) and `postMessage frames`.
+- `cmd/hivegui/frontend/test/e2e-real/plugin-message.spec.ts`: a round-trip through `hived-ws-bridge` in an isolated state dir.
 
-P6
+**PR3**
 - `internal/plugin/manager_test.go`:
-  - `TestResolveCommand_LoginPATHFallback` (seam over `proc.LoginPATH`);
-  - `TestPluginEnv_PATHIsResolvedPATH`;
-  - `TestSpawn_NodeTooOldRefused` (a fake `node` script printing `v24.1.0`, detail names the floor and the found version);
-  - `TestSpawn_NodeProbeFails`;
-  - `TestSpawn_NodeOK`;
-  - `TestHeadlessBuiltin_Starts` (injected `Config.Builtin` `fstest.MapFS` with `main`);
-  - `TestFailedThenRestart_ResetsRestarts`.
+  - PATH: `TestResolveCommand_LoginPATHFallback`, `TestPluginEnv_PATHIsResolvedPATH`;
+  - Node probe: `TestSpawn_NodeTooOldRefused` (a fake `node` prints `v24.1.0`), `TestSpawn_NodeProbeUsesNodeNotArgv0` (main is `./run.sh`), `TestSpawn_NodeProbeFails`, `TestSpawn_NodeOK`;
+  - lifecycle: `TestHeadlessBuiltin_Starts` (an injected `fstest.MapFS`), `TestFailedThenRestart_ResetsRestarts`.
 - `internal/plugin/manifest_test.go`: `TestManifest_NodeFieldValidated`.
-- `test/dom/settings-plugins.test.tsx`:
-  - `failed row shows Restart and sends enable`;
-  - `refused row shows Restart`;
-  - `running row has no Restart`.
+- `test/dom/settings-plugins.test.tsx`: `failed row shows Restart and sends enable`, `refused row shows Restart`, `running row has no Restart`.
 - `test/dom/plugin-events.test.ts`: `failed transition toasts once`.
-- `test/e2e/settings-plugins.spec.ts`: `restart a failed plugin` (mock bridge).
+- `test/e2e/settings-plugins.spec.ts`: `restart a failed plugin`.
+- CI: the Node 26 leg runs the SDK tests and the Node-shelling Go tests.
 
 ## Verification
-
-Run for every phase, from the repo root:
 
 ```sh
 GT=go$(sed -n 's/^go //p' go.mod)
@@ -488,58 +427,38 @@ for os in darwin linux windows; do GOOS=$os staticcheck ./... && GOOS=$os GOTOOL
 ./scripts/ci-bootstrap.sh && (cd cmd/hivegui/frontend && npm run typecheck && npx biome ci .)
 CI=1 scripts/test.sh go unit dom e2e
 node --test 'plugins/sdk/*.test.mjs'
-(cd cmd/hivegui/frontend && CI=1 npm run test:e2e:real)        # P1, P4, P5
+(cd cmd/hivegui/frontend && CI=1 npm run test:e2e:real)        # PR1, PR2
 scripts/check-daemon-contract.sh origin/main HEAD
 scripts/check-changeset.sh
-scripts/ui-lint.sh                                             # P2, P6 (GUI touched)
+scripts/ui-lint.sh                                             # PR1, PR3 (GUI touched)
 ```
 
 ## Decision log
 
-- **2026-10-25:** Typed-result validation is a hand-written Go validator for the IR subset, with no new dependency. Why: the user decided it, and `go.mod` has no JSON Schema library.
-- **2026-10-25:** The validator's authority is `Registry.SubmitResult`. The tools only display the schema (`mcp-submit` also pre-checks). Why: one enforcement point covers Pi and MCP alike, and the rejection already reaches the model as a tool error that it can retry.
-- **2026-10-25:** The envelope `{status, summary, data}` is kept; the node schema governs `data` when `status:"ok"`. Rejected: replacing the whole object, which breaks F3's `status:"error"` path and every existing `result` consumer.
-- **2026-10-25:** Provenance is daemon-composed from the tag plus a charset-restricted `workflow_run_id`. It is also applied to PROMPT_ACP and the HELLO create. Rejected: trusting a client-sent principal string. User decision.
-- **2026-10-25:** Correlation is a generic `req_id` peek plus ERROR echo, and an `ACK` for reply-less requests. Rejected: one reply frame per verb (more frames, same information); correlating via SESSION_EVENT(added) (not unique under fan-out).
-- **2026-10-25:** The daemon composes worktree branch names (`hive/wf/<run>/<encoded key>`) and chooses the path. Rejected: a plugin-named branch, since `CreateWorktreeAt` checks out an existing branch, so a plugin could put an agent on `main`.
-- **2026-10-25:** Merges are sequential, run with hooks disabled, and the worktree is kept on conflict. Rejected: an octopus merge (it can't name the conflicting branch).
-- **2026-10-25:** `PLUGIN_MESSAGE` is bidirectional. Why: C needs GUI→engine (start run, answer human node, replay), no path exists today, and adding it later means another daemon PR and contract bump, the same reason the spec gives for criterion 8.
+- **2026-10-25:** A hand-written Go validator for the IR subset, with no new dependency. Why: user decision.
+- **2026-10-25:** `Registry.SubmitResult` is the one authority; the `{status, summary, data}` envelope is kept, and the schema governs `data` on `ok`. Rejected: replacing the whole object, which breaks F3 and existing `result` consumers.
+- **2026-10-25:** Provenance is a daemon-composed integrity label (`plugin:<id>/workflow:<run>`) on create, the create HELLO and PROMPT_ACP. It is not a defence: plugins already have the user's access. Why: user decision.
+- **2026-10-25:** Correlation is a generic `req_id`: peeked, echoed on ERROR, plus an ACK. The SDK settles only on reply frame types. Rejected: correlating through SESSION_EVENT(added), which isn't unique under fan-out.
+- **2026-10-25:** CREATE_SESSION ACKs between exported `BeginCreate` and `FinishCreate`. Rejected: ACK after `Create` returns, which blocks through the adapter start and any user prompt.
+- **2026-10-25:** CANCEL_ACP and the PREPARE_WORKTREE `base` are unrestricted, like existing plugin frames (`docs/plugins.md:32-40`). `base` is resolved to a SHA, and the SHA is what git receives. Why: user decision.
+- **2026-10-25:** CANCEL_ACP is idempotent and ACKs `{was_busy}`. Rejected: an `acp_not_busy` error, which races with the turn ending on its own.
+- **2026-10-25:** The plugin composes the branch with the SDK encoder; the daemon enforces the `hive/wf/<run>/` prefix and `check-ref-format`. Rejected: a Go encoder plus a shared fixture (two encoders for one consumer).
+- **2026-10-25:** The branch namespace is `hive/wf/<run>/`, without a plugin segment, and cross-plugin run-id collisions are accepted. Why: no privilege difference between plugins; run ids are random.
+- **2026-10-25:** PREPARE re-attaches an existing `hive/wf/<run>/…` branch; new branches use a strict add with no fallback. Why: boot reclaim and B's re-prepare must work, and a non-run branch must never be checked out.
+- **2026-10-25:** One `safeGit` argument set for every PREPARE git call. Repo config and attributes are trusted like the repo. Why: hooks and fsmonitor run code on ordinary operations; drivers and filters are the user's own repo config.
+- **2026-10-25:** `PLUGIN_MESSAGE` is two-way, has no `req_id`, and is capped at 64 KiB. Why: user decision; C carries a nonce in `data`.
+- **2026-10-25:** Node floor 26.0.0 for the engine; `--permission` is defence-in-depth; the engine runs with `--disable-sigusr1`; other plugins need a supported LTS (22+). Why: user decision, on the verified facts above.
+- **2026-10-25:** Three PRs, each bumping `DaemonContract`. Why: user decision; PR2 gets its own security review.
 
 ## Progress
 
-- **2026-10-25:** Research complete. Plan drafted. Not approved; open questions below.
+- **2026-10-25:** Research complete; plan drafted.
+- **2026-10-25:** Revised to the user's decisions and the plan-review fixes. Awaiting approval.
 
 ## Open questions
 
-1. **Node floor (security/product).** The recommendation is **26.0.0** for the engine, since it is the only supported line whose `--permission` fences the network.
-   - It excludes users on Node 22/24 LTS, which is most users today. 26 becomes Active LTS on 2026-10-28.
-   - The alternative, 24 without network fencing, contradicts the design's sandbox rule and spec 529 #9.
-   - Blocks: the manifest `node` value B ships, and the C "requires Node X" copy.
-2. **`PLUGIN_MESSAGE` GUI→plugin direction (scope).** It is added to A beyond criterion 6's wording. Approve, or move it to a later daemon PR for C (another contract bump).
-3. **Daemon-run `git merge` (security).** Agent-authored branches are merged by `hived`. Hooks are disabled (`core.hooksPath`), but merge drivers and filters from repo `.gitattributes` with matching user config, and `.git/config` in the main repo, still apply. Accept, or also pass `-c merge.*.driver=` overrides? Merge commits use the user's git identity. A repo with none fails with a typed error and no fallback identity. Confirm.
-4. **Who may CANCEL_ACP (security).** The plan uses the same scope as PROMPT_ACP: any plugin, any ACP session. The alternative restricts a plugin to sessions it spawned (`SpawnedBy` has prefix `plugin:<id>`). PROMPT_ACP is unrestricted today, so restricting only cancel buys little; restricting both changes shipped behaviour.
-5. **Base for `PREPARE_WORKTREE` (security).** Any verified commit-ish, so a plugin can branch from any local ref (read-only exposure of repo content it can already read through sessions). Confirm no allowlist is needed.
-7. **GUI→plugin containment (security).** UI plugin modules run inside the app (`plugin-host.ts`, `test/e2e/plugin-containment.spec.ts`). Confirm that `SendPluginMessage` and the `plugin:message` event stay host-only. If they don't, a third-party UI plugin could answer the engine's human nodes or start runs as the user. P4 adds `plugin-containment.spec.ts: a UI plugin cannot call SendPluginMessage`. If containment can't guarantee it, the GUI→plugin path needs a host-side allowlist or a user-confirmation step. Decide before C.
-6. **Phase count.** Six PRs, each with a contract bump. Combine P1+P2 (and P3) into one PR if fewer review rounds matter more than PR size.
+1. **Proposed Non-goals (not yet in the spec):**
+   - no GUI Stop button for ACP sessions (`CANCEL_ACP` is bound for C, but no surface uses it in A);
+   - no `loadSession` on the wire (B retries through RESTART_SESSION).
 
-## Spec corrections proposed (for the user)
-
-- **Criterion 1:**
-  - PROMPT_ACP origin (`daemon.go:1706`) must also carry the run; the spec names only `registry/acp.go`.
-  - `principalOf` is at `:2307`.
-  - The HELLO create path (`:806`) needs the same handling.
-- **Criterion 2:** validation lives in `Registry.SubmitResult` (one place). `mcpsubmit.go` and `pi/hive.ts` display the schema; they are not the validators. The envelope is kept and the schema applies to `data`.
-- **Criterion 3:** add `stop_reason` to `ACP_TRANSCRIPT`. Without it "reports `stopReason: cancelled`" is not observable by any client, and B can't tell `end_turn` from `cancelled`.
-- **Criterion 4:** an SDK counter alone correlates nothing. It needs `req_id` echoed on ERROR and a reply for CREATE_SESSION (today fire-and-forget, so a plugin can't learn its session's id). This is daemon work, not SDK-only.
-- **Criterion 5:**
-  - Floor findings above.
-  - Node 18 appears in **five** places, not two.
-  - The design doc's "embed is UI-only" is about content, not mechanism. No embed change is needed; a test proves a headless builtin starts.
-- **Criterion 6:** make it bidirectional (open question 2).
-- **Criterion 8:**
-  - The daemon composes the branch and validates `base`; a raw plugin branch name is a hole.
-  - The encoding is `[N]`→`_N`, and the SDK exports it.
-  - A pristine prepared worktree can be reclaimed at boot.
-- **Criterion 9:** the failed state is already visible (Settings row). What's missing is a recovery action that works, because the checkbox can't re-enable an enabled plugin.
-- **Spec 529 #13** cites "A, criterion 8" for the failed plugin; it should be criterion 9.
-- **Success-criteria preamble:** "Each daemon-side PR bumps": P6 touches only `internal/plugin` and the GUI. The gate script doesn't require a bump there, but the plan bumps anyway, because a GUI with Restart against an old daemon is harmless while the PATH/Node behaviour is daemon-side. Optional.
+   Approve to add both to the spec's Non-goals, or move either into scope.
