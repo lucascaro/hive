@@ -8,6 +8,10 @@ The *what* and *why* of work this project plans to do. Each spec describes user 
 
 | Priority | Issue | Title | Stage | Spec |
 |----------|-------|-------|-------|------|
+| P1 | #527 | Build the workflow engine: bundled plugin running typed TS workflows over ACP sessions | RESEARCH | [527-build-the-workflow-engine-bundled-plugin-running-typ](527-build-the-workflow-engine-bundled-plugin-running-typ.md) |
+| P1 | #528 | Workflow engine A: daemon and SDK prerequisites (provenance, typed results, ACP cancel, plugin request/reply) | RESEARCH | [528-workflow-engine-a-daemon-and-sdk-prerequisites-prov](528-workflow-engine-a-daemon-and-sdk-prerequisites-prov.md) |
+| P1 | #529 | Workflow engine B: headless engine core (validator, interpreter, checkpoint log, trust sandbox) | RESEARCH | [529-workflow-engine-b-headless-engine-core-validator-in](529-workflow-engine-b-headless-engine-core-validator-in.md) |
+| P2 | #530 | Workflow engine C: GUI (workflow list, trust dialog, run start, human answers, graph and run overlay) | RESEARCH | [530-workflow-engine-c-gui-workflow-list-trust-dialog-ru](530-workflow-engine-c-gui-workflow-list-trust-dialog-ru.md) |
 | P2 | — | A red CI check name should say which stage failed | TRIAGE | [256-ci-check-names-identify-the-failing-stage](256-ci-check-names-identify-the-failing-stage.md) |
 | P2 | — | In-house VT emulator (replace hinshun/vt10x) | IMPLEMENT | [in-house-vt-emulator](in-house-vt-emulator.md) |
 | — | #142 | vt snapshot: CJK / wide-char column misalignment | TRIAGE | [142-vt-snapshot-cjk-wide-char-column-misalignment](142-vt-snapshot-cjk-wide-char-column-misalignment.md) |
