@@ -20,7 +20,8 @@ plugin:
 - checkpoints every transition to `runs.db` (`node:sqlite`).
 
 A run survives a plugin crash, a `hived` restart and a reboot. B adds no
-daemon, wire or SDK code, and no PR in B touches a DaemonContract-gated path.
+daemon, wire or SDK code. Only B5, which embeds the plugin into `hived`,
+bumps DaemonContract.
 Everything B needs from the daemon comes from A, and the gaps in A's plan are
 listed under **Required changes to A**. C (#530) gets an exact event schema and
 plugin-message topic set (see **Contract for C**).
@@ -53,7 +54,7 @@ from that commit.
 | Plugin budget is 1000/s, burst 2000; CREATE costs 100 | `internal/plugin/limiter.go:21-48` | 16 creates plus 16 PREPAREs is 3,200 tokens, which is over the burst, so about 1.2 s of throttle. Measured, not assumed. |
 | Plugin crash: the Manager kills the plugin's group | `internal/plugin/manager.go:595-597`, `proc.KillTree` (`internal/proc/tree_unix.go`: `kill(-pgid)`; `tree_windows.go`: `taskkill /T /F`) | A check spawned in its **own** group escapes that kill. On Windows a dead parent's tree can't be walked. So the engine records each check's pid, pgid and start time, and kills survivors at startup. |
 | A new builtin is added **disabled** | `internal/plugin/builtin.go:51` | Embedding the engine (B5) makes it appear, off, in Settings → Plugins. |
-| `plugin-data/<id>` is created 0700 | `manager.go:650` | `runs.db` is 0600 under umask 077. |
+| `plugin-data/<id>` is created 0700 | `manager.go:650` | `runs.db` and its WAL files are pre-created at 0600; there is no global umask (see Store). |
 | In-process daemon plus fake adapter from outside the package | `daemon.New` (`internal/daemon/daemon.go:218`) used by `cmd/hived/hook_integration_test.go:36`; `registry.SetACPCommandForTest` (`registry/acp.go:1023`); `registry.ACPNonceForTest` | Engine integration tests live in a new **ungated** package, `internal/workflowe2e/`. |
 | The fake adapter never submits a result itself | `internal/acp/acptest/fake.go:386-420` (permission only) | The test harness plays the submit server through `ACPNonceForTest` plus `SUBMIT_RESULT` on a session connection, as `internal/registry/acp_result_test.go:48` does. |
 | Engine worktrees are trusted folders | `registry/acp_trust_folder.go:42-61` `hiveKnowsFolder`: an entry's own `WorktreePath` in a known project | Claude loads project settings in engine nodes, as the user's project allows. Codex: "codex-acp marks every cwd trusted" (`registry/acp.go:1043-1045`, #510). |
@@ -107,7 +108,8 @@ go:     GOTOOLCHAIN=go$(sed -n 's/^go //p' go.mod) go test ./internal/workflowe2
     `env`. There is no `shell: true` anywhere.
 - **Ungated paths.**
   - B touches only `plugins/workflows/**`, `plugins/embed.go` (B5),
-    `internal/workflowe2e/**`, `internal/agent` (catalog test, if Q3=b),
+    `internal/workflowe2e/**`, `internal/acp/acptest` (`FlagChatty`),
+    `internal/agent` (catalog test, if Q3=b),
     `internal/plugin/sdk_drift_test.go`, `.github/`, `scripts/` and docs.
   - No `daemon-contract-override` label is needed; check with
     `scripts/check-daemon-contract.sh`.
@@ -184,6 +186,8 @@ plugins/workflows/
                      prompt.ts events.ts redact.ts topics.ts trust.ts build.ts typecheck.ts killtree.ts
   build/             runner.mjs import-hook.mjs (the only files the sandbox child may read besides sdk/ and the snapshot)
   tools/             check-doc.ts emit.ts
+  package.json       {"private": true, "type": "module"} (as the prototype's)
+  tsconfig.json      the prototype's options; include sdk/ ir/ engine/ tools/ test/
   test/              *.test.ts, fake-hive.ts, fixtures/
 ```
 
@@ -338,12 +342,20 @@ Decisions.
 
 1. **Turn cap and worktree.** Reserve a turn against the cap, then PREPARE
    the node's worktree, or use the `of` node's path.
-2. **Create.**
-   - `request('CREATE_SESSION', {kind:"acp", agent, acp_mode, project_id, worktree_path, workflow_run_id, result_schema: node.output, name: "<workflow> · <key>", initial_prompt})`.
+2. **Create, with no `initial_prompt`.**
+   - `request('CREATE_SESSION', {kind:"acp", agent, acp_mode, project_id, worktree_path, workflow_run_id, result_schema: node.output, name: "<workflow> · <key>"})`.
    - `acp_mode` is the IR mode, or the catalog's `Modes[0]`.
    - The ACK's `session_id` is written to the row in the transaction that
-     marks it `running`. The row stores `boot_id` (R2) and `prompt_id` /
-     `epoch` from the first transcript user item of our origin.
+     marks it `running`.
+   - The engine waits for `SESSION_EVENT` to show `phase: ready` and the
+     session alive. A `last_error` fails the attempt.
+   - Then **every** turn goes through `request('PROMPT_ACP')`: the first
+     turn, the F3 re-prompt and retries alike.
+     - Each turn's ACK `prompt_id` / `epoch` (R2) and the `boot_id` are
+       stored on the row.
+     - Why not `initial_prompt`: `finishCreateACP` logs and returns nil when
+       the opening prompt fails (`registry/acp.go:266-271`). A node could sit
+       `running` with no turn, and the first turn would get no ACK.
 3. **Prompt.** `prompt.ts` fills `{{ref}}` placeholders, each value wrapped
    as:
 
@@ -418,6 +430,7 @@ Then:
 | Row | Same `boot_id` (plugin crash or reconnect) | New `boot_id` (`hived` restart or reboot) |
 |---|---|---|
 | agent `running` with a session | Its turn's `stop_reason` and result are read from the snapshot. If done: **recorded, attempt unchanged**. If the turn is still running: keep watching. If the session is dead: `interrupted`. | `interrupted` |
+| agent `running` with a session, but no `prompt_id` stored (crash between the create and the PROMPT_ACP ACK) | If the transcript has no user item of our origin: send the turn now (attempt unchanged). Otherwise treat that item's prompt as ours. | `interrupted` |
 | agent `running`, create sent, no session id stored | Adopt the single live session with `spawned_by = plugin:workflows/workflow:<run>` and name `… · <key>` that no row references. Otherwise kill the unreferenced ones and mark the row `interrupted`. | Same |
 | check `running` | Reap (above), then `interrupted` | Reap (the pid is likely gone), then `interrupted` |
 | human `waiting` | unchanged | unchanged |
@@ -447,7 +460,7 @@ continue from `seq`.
     symlink, socket, FIFO or device fails it.
   - It caps the folder at 256 files and 4 MiB.
   - It copies the files into `plugin-data/workflows/snapshots/<sha256>/`
-    (0700 under umask 077), then **hashes the copy**.
+    (`mkdir` mode 0700), then **hashes the copy**.
   - The hash is SHA-256 over sorted relative POSIX paths. Each file
     contributes `u64be(len(path)) path u64be(len(bytes)) bytes`.
 - **Trust.**
@@ -503,14 +516,25 @@ continue from `seq`.
 
 ### Store (`engine/store.ts`)
 
-- **Opening.** `process.umask(0o077)` runs at engine start. `runs.db` is
-  pre-created with `fs.openSync(p, 'a', 0o600)` and then opened with
-  `DatabaseSync`, followed by `PRAGMA journal_mode=WAL; synchronous=FULL;
-  foreign_keys=ON`.
-- **File modes.** SQLite creates `-wal` and `-shm` with the db's mode on
-  Unix; the umask backs that up. A test asserts 0600 on all three. On
-  Windows, POSIX modes don't apply: the files inherit the 0700 data dir's
+- **Opening.** `runs.db`, `runs.db-wal` and `runs.db-shm` are each
+  pre-created with `fs.openSync(p, 'a', 0o600)`, plus a `chmod 0o600` in
+  case one already existed. The db is then opened with `DatabaseSync`,
+  followed by `PRAGMA journal_mode=WAL; synchronous=FULL; foreign_keys=ON`.
+  - There is deliberately **no global `process.umask`**: children inherit
+    it, and it would make files that checks and tsgo create in a worktree
+    0600.
+  - Snapshot directories use `mkdirSync(p, {mode: 0o700})`.
+- **File modes.** A test asserts 0600 on all three files after real writes.
+  On Windows, POSIX modes don't apply: the files inherit the 0700 data dir's
   ACL, so the test is skipped there with that reason.
+- **Write batching.** Transitions (start, finish, wait, output) commit
+  immediately. `agent.*` and `check.output` events are buffered and
+  committed in one transaction per 250 ms flush. `seq` is assigned at
+  commit, so it stays gapless, and FULL fsyncs stay rare, as the design
+  intends.
+- **Clean stop.** The engine has a POSIX `SIGTERM` handler that TERMs the
+  tracked check groups. The Manager gives it 3 s (`manager.go:37`) before
+  KILL, so a normal `hived` stop leaves no `go test` running.
 - **Schema.** The design's `runs`, `nodes` and `events`, plus:
   - `runs.{base_sha, nonce, boot_id, kept_worktrees JSON, error}`;
   - `nodes.{pid, pgid, proc_start, prompt_id, epoch, boot_id, branch, turns}`;
@@ -546,7 +570,21 @@ All of it travels on A's `PLUGIN_MESSAGE` with `plugin_id: "workflows"`.
 - **Requests.** The GUI sends `data.nonce` (a string). The engine answers on
   `<topic>.reply` with `{nonce, ok, error?: {code, message}, …}`.
 - **Pushes.** Pushes carry no nonce.
-- **Size.** Every message is ≤ 48 KiB. Lists are paged.
+- **Size.** Every message is ≤ 48 KiB, under A's 64 KiB cap. That holds by
+  construction:
+  - `shape` caps a stored IR at **32 KiB** of JSON, refusing it with
+    `invalid_ir: too large`.
+  - The `input` of `run.start` is capped at **8 KiB**.
+  - `workflow.build.reply` therefore fits `ir` + `mermaid`. Mermaid is
+    derived from the IR, so it adds about as much again; when the pair
+    exceeds 48 KiB the reply omits `mermaid` (`mermaid_omitted: true`) and C
+    renders from `ir`.
+  - `node.output` and `node.get` outputs are truncated at 16 KiB in
+    messages (`truncated: true`). The full output stays in `runs.db`, and
+    only conditions and prompts read it.
+  - `run.get` returns no outputs, only node states. Per-node detail is
+    `node.get`.
+  - Lists are paged.
 
 ### Topics: GUI → engine
 
@@ -560,7 +598,8 @@ All of it travels on A's `PLUGIN_MESSAGE` with `plugin_id: "workflows"`.
 | `run.cancel` | `{run_id}` | `{}` |
 | `run.retry` (Q5) | `{run_id}` | `{}` — failed or cancelled → running: failed and interrupted nodes reset to `pending`, attempts cleared |
 | `runs.list` | `{project_id, before?: created_at, limit ≤ 50}` | `{runs: [{run_id, workflow, file, state, created_at, updated_at, source_hash, source_changed}]}` |
-| `run.get` | `{run_id}` | `{run: {…as above, input, base_sha, kept_worktrees, error}, ir, nodes: [{key, node_id, state, attempt, session_id?, branch?, worktree?, output?, error?, started_at?, ended_at?}]}` |
+| `run.get` | `{run_id}` | `{run: {…as above, input, base_sha, kept_worktrees, error}, ir, nodes: [{key, node_id, state, attempt, session_id?, branch?, worktree?, error?, started_at?, ended_at?}]}` — no outputs |
+| `node.get` | `{run_id, key}` | `{key, node_id, state, attempt, output?, truncated?, error?, conflict?}` |
 | `run.events` | `{run_id, after_seq, limit ≤ 500}` | `{events: RunEvent[], last_seq, more}` |
 | `human.answer` | `{run_id, key, answer}` | `{}`; `error.code: "invalid_answer"` with a path-qualified message, or `"not_waiting"` |
 
@@ -590,7 +629,7 @@ type RunEvent = {
 | `node.ready` | `{}` |
 | `node.started` | `{kind, session_id?, branch?, worktree?, iteration?, index?}` |
 | `node.waiting` | `{reason: "human", prompt, output_schema}` or `{reason: "permission", session_id, request_id, title, options: [{option_id, name, kind}]}` |
-| `node.output` | `{output}` |
+| `node.output` | `{output, truncated?: true}` — ≤ 16 KiB in the event; full value via `node.get` |
 | `node.finished` | `{state: "done"\|"failed"\|"skipped"\|"interrupted"\|"cancelled", error?, cap?, conflict?: {branch, files, worktree}}` |
 | `loop.iteration` | `{iteration, max_iters}` |
 | `map.expanded` | `{count, concurrency}` |
@@ -611,10 +650,18 @@ the instance (`<map>[<i>]/<node>`, `<loop>[<k>]/<node>`).
 
 ## Phases
 
-Each phase is one PR. **DaemonContract: none for every phase**, since no
-gated path is touched; each PR runs `scripts/check-daemon-contract.sh
-origin/main HEAD` to prove it. Every phase ends green on the Verification
+Each phase is one PR, and every phase ends green on the Verification
 commands.
+
+**DaemonContract.**
+- B1–B4 need no bump. They touch no gated path, and the plugin isn't
+  embedded yet, so `hived`'s behaviour is unchanged. Each PR runs
+  `scripts/check-daemon-contract.sh origin/main HEAD` to prove it.
+- **B5 bumps it.** Embedding `workflows` changes what `hived` serves. A
+  GUI built for C that does a cheap reload into a pre-B5 daemon would get
+  `plugin_not_running` forever. AGENTS.md's rule is about behaviour, not
+  paths, so B5 bumps `internal/buildinfo/contract.go`. That is one line in
+  an otherwise ungated PR.
 
 ### B1: IR package and validator
 
@@ -691,7 +738,8 @@ first if it copies them.*
   - B4: tsgo for the type-check job, if Q1 needs it.
 - `docs/design-docs/workflow-engine.md`: B1 (paths, tsgo sizes), B5
   (decisions).
-- `plugins/embed.go` (B5).
+- `plugins/embed.go` and `internal/buildinfo/contract.go` (B5, the
+  DaemonContract bump).
 - `internal/plugin/sdk_drift_test.go` (B2): the `plugins/workflows/hive-plugin.mjs` copy.
 - `DESIGN.md`, `docs/plugins.md` (B5).
 - `internal/agent/acp_catalog_test.go` (B1, Q3=b only).
@@ -773,6 +821,13 @@ first if it copies them.*
   - `TestDurability_CompletedNeverRerun` (count CREATE and PROMPT per key across both restarts);
   - `TestDurability_CreateInFlight_OrphanAdopted`;
   - `TestDurability_ResultThenHivedRestart_InterruptedByDesign`.
+- `TestDurability_CrashBeforePromptAck_SendsTurnOnce`.
+- `TestDurability_CrashLoopFailedThenRestart_RunsResume` (criterion 13):
+  - kill the engine more than 5 times in 60 s (the test shrinks the
+    window), so the plugin is marked `failed` and the run stays `running`
+    in `runs.db`;
+  - SET_PLUGIN_ENABLED true (A PR3's Restart);
+  - the running nodes recover per the table and the run completes.
 - F3 and permissions:
   - `TestF3_EndTurnWithoutResult_RepromptedOnce`, `TestF3_SecondMissFails`;
   - `TestPermission_BecomesNodeWaiting` (`FlagPermission`; the waiting event carries `session_id` and `request_id`; ANSWER_PERMISSION resumes it).
@@ -845,7 +900,7 @@ node plugins/workflows/tools/check-doc.ts docs/design-docs/workflow-engine.md
 HIVE_REQUIRE_NODE=26 GOTOOLCHAIN=$GT go test ./internal/workflowe2e/... ./internal/plugin/... ./internal/agent/...
 GOTOOLCHAIN=$GT go test ./...
 for os in darwin linux windows; do GOOS=$os staticcheck ./... && GOOS=$os GOTOOLCHAIN=$GT go vet ./...; done
-scripts/check-daemon-contract.sh origin/main HEAD    # must pass with no bump
+scripts/check-daemon-contract.sh origin/main HEAD    # B1–B4: passes with no bump; B5 carries the bump
 scripts/check-changeset.sh
 ```
 
@@ -886,6 +941,8 @@ scripts/check-changeset.sh
 - **C-9, criterion 10.** `agent.usage` needs R5. Without it, drop the event
   from the spec and fix the design's Billing hedge ("usage recorded per
   node").
+- **C-11, criterion 13, wrong citation.** "A failed plugin (A, criterion 8)":
+  crash-loop visibility is A's criterion **9**; 8 is the worktree frame.
 - **C-10, design gaps the spec inherits.**
   - Who commits a node's work (R1).
   - The base for joins, for loop iteration *k > 1*, and for check or human
@@ -924,6 +981,13 @@ scripts/check-changeset.sh
   `SetACPCommandForTest`, and they keep B free of DaemonContract bumps.
 - **2026-10-25:** Embedding the plugin waits until B5. Why: intermediate PRs
   don't ship a half engine into Settings → Plugins.
+- **2026-10-25:** Every turn goes through PROMPT_ACP; CREATE never carries
+  `initial_prompt`. Why: a failed opening prompt is swallowed
+  (`registry/acp.go:266-271`), and only PROMPT_ACP gets an ACK.
+- **2026-10-25:** There is no global umask. The db files are pre-created at
+  0600 and the snapshot dirs made at 0700. Why: children inherit the umask.
+- **2026-10-25:** B5 bumps DaemonContract. Why: embedding the plugin changes
+  what `hived` serves, and a C GUI depends on it.
 - **2026-10-25:** JSONL fallback not built. Why: `node:sqlite` is RC on the
   floor.
 
