@@ -4,7 +4,7 @@
 - **Issue:** #533
 - **PR:** #534
 - **Branch:** feature/533-ad-hoc-grid-select
-- **Status:** active
+- **Status:** completed
 
 ## Summary
 
@@ -168,3 +168,11 @@ None.
 - **2026-10-26 iter 2** — verdict: APPROVE; mergeable: MERGEABLE; findings_hash: empty; threads_open: 5 (Greptile/CodeRabbit); action: autofix+push; head_sha: 6c60fa7b.
 - **2026-10-26 iter 3** — verdict: REQUEST_CHANGES; mergeable: MERGEABLE; findings_hash: 7d1c0a5e3b2f4a96; threads_open: 0; action: autofix+push; head_sha: a7fd56c4.
 - **2026-10-26 iter 4** — verdict: APPROVE; mergeable: MERGEABLE; findings_hash: empty; threads_open: 0; action: stop; head_sha: a7fd56c4.
+
+## Gate verdict
+
+- **2026-10-26** — verdict: PASS; phase: —; checks: 12 passed / 0 failed / 0 followups; followups: none; one-line: all 10 success criteria evidenced by dom/e2e tests, no non-goal touched, docs and changeset match.
+  - 2026-10-26 dimensions (checked inline by the orchestrator against `git diff origin/main-merge-base..HEAD`; not independently delegated):
+    - acceptance — PASS — 1,2,3: `grid-select.test.tsx` (opens cross-project 2-grid, add/remove, <2 → single on survivor) + e2e `modifier-click tiles exactly the selected sessions`; 4: `a plain click clears…`; 5: `⌘G and ⇧⌘G keep their meaning`; 6: `select-then-⌘G mode` dom + e2e; 7: `data-in-selection` rows (dom/e2e) and e2e default-checked/uncheck of `#settings-grid-select-auto`; 8: e2e `a modifier-click starts no drag; a drag leaves the selection alone` + dom native drag; 9: store prune, minimize, daemon `removed` event and snapshot tests; 10: `isSelectToggle` unit (⌘ on mac, Ctrl elsewhere); mock-bridge e2e only, no real `hived` touched.
+    - non-goals — PASS — diff contains no shift-click, broadcast, bulk action or persisted layout; `grid-project`/`grid-all` scope code unchanged (only a new `grid-select` branch added); no Go, wire or daemon file touched.
+    - doc accuracy — PASS — `.changesets/ad-hoc-grid-select.md` (added/minor, issue+pr), `site/features.json` entry (`since: "Unreleased"`), README feature line and Keybinds row, help-overlay row + fixture, Settings hint text. `regression_of`: n/a (type added).

@@ -5,7 +5,8 @@ type: enhancement
 complexity: M
 priority: P2
 pr: 534
-stage: GATE
+shipped: 2026-10-26
+stage: DONE
 ---
 
 # Add sessions to an ad-hoc grid with ⌘/Ctrl-click
