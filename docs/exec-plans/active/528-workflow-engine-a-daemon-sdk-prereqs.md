@@ -220,7 +220,9 @@ Both come from slice B's plan (#529, R1 and R4), approved by the user. PR2 build
 - **GUI:**
   - Wails event `plugin:message`;
   - binding `App.SendPluginMessage(pluginID, topic, dataJSON string) error`;
-  - bridge op `send_plugin_message`.
+  - bridge op `SendPluginMessage` (A-2, approved): CamelCase like every other op in `cmd/hived-ws-bridge/main.go`; the mock (`test/e2e/wails-mock.ts`) and real (`test/e2e-real/wails-bridge.ts`) test bridges export it too;
+  - `ControlEventName` maps `FramePluginMessage` to `plugin:message` (A-3, approved), in the shared table in `internal/wire/client.go`, so the GUI and the bridge both emit it.
+  - GUI→plugin messages carry no `req_id` (A-1, a `req_id` on them, was rejected).
 - **SDK:** `hive.postMessage(topic, data)` and `@typedef PluginMessage`.
 - **Cost:** `costFanout`.
 
