@@ -389,26 +389,33 @@ describe('focus never rests on a session with no tile', () => {
   });
 });
 
+async function daemonEvents() {
+  const bridge = await import('../../src/bridge.js');
+  const { wireDaemonEvents } = await import('../../src/app/events.js');
+  const { createScrollTrace } = await import('../../src/lib/scroll-debug.js');
+  vi.mocked(bridge.EventsOn).mockClear();
+  wireDaemonEvents({
+    switchTo: view.switchTo,
+    enforceViewFloor: view.enforceViewFloor,
+    updateAppTitle: noop,
+    focusActiveTerm: noop,
+    refocusActiveTerm: noop,
+    isDaemonRestarting: () => false,
+    checkForUpdates: () => {},
+    scrollTrace: createScrollTrace({ enabled: false }),
+  });
+  const handlers = new Map<string, (json: string) => void>();
+  for (const [name, fn] of vi.mocked(bridge.EventsOn).mock.calls) {
+    handlers.set(name as string, fn as (json: string) => void);
+  }
+  return handlers;
+}
+
 describe('closing a tile through the daemon event', () => {
   it('hands focus to another tile and keeps the grid', async () => {
-    const bridge = await import('../../src/bridge.js');
-    const { wireDaemonEvents } = await import('../../src/app/events.js');
-    const { createScrollTrace } = await import('../../src/lib/scroll-debug.js');
-    vi.mocked(bridge.EventsOn).mockClear();
-    wireDaemonEvents({
-      switchTo: view.switchTo,
-      enforceViewFloor: view.enforceViewFloor,
-      updateAppTitle: noop,
-      focusActiveTerm: noop,
-      refocusActiveTerm: noop,
-      isDaemonRestarting: () => false,
-      checkForUpdates: () => {},
-      scrollTrace: createScrollTrace({ enabled: false }),
-    });
-    const call = vi
-      .mocked(bridge.EventsOn)
-      .mock.calls.find(([name]) => name === 'session:event');
-    const fire = call?.[1] as (json: string) => void;
+    const fire = (await daemonEvents()).get('session:event') as (
+      json: string,
+    ) => void;
 
     ctrlClick('c');
     ctrlClick('d'); // tiles a, c, d — d is later in sidebar order than b
@@ -424,5 +431,32 @@ describe('closing a tile through the daemon event', () => {
     expect(state.view).toBe('grid-select');
     expect(tiles()).toEqual(['a', 'c']);
     expect(tiles()).toContain(state.activeId);
+  });
+});
+
+describe('session snapshots', () => {
+  it('a snapshot that retires a tile prunes it and returns to single', async () => {
+    const list = (await daemonEvents()).get('session:list') as (
+      json: string,
+    ) => void;
+    ctrlClick('c');
+    expect(state.view).toBe('grid-select');
+    list(
+      JSON.stringify({
+        sessions: state.sessions.filter((s) => s.id !== 'c'),
+      }),
+    );
+    // Auto mode clears the selection on the way back to single.
+    expect(state.gridSelection).toEqual([]);
+    expect(state.view).toBe('single');
+  });
+
+  it('a boot snapshot with too few sessions leaves the saved grid view alone', async () => {
+    const list = (await daemonEvents()).get('session:list') as (
+      json: string,
+    ) => void;
+    store.setView('grid-all'); // what the user saved last run
+    list(JSON.stringify({ sessions: [state.sessions[0]] }));
+    expect(localStorage.getItem('hive.view')).toBe('grid-all');
   });
 });

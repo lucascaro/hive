@@ -953,8 +953,10 @@ export function wireDaemonEvents(injected: EventsDeps) {
     // without a per-session `removed` event.
     pruneToLiveSessions();
     // A snapshot can retire a tile of the ad-hoc grid without a `removed`
-    // event, leaving a one-tile grid-select.
-    deps.enforceViewFloor();
+    // event, leaving a one-tile grid-select. Only that grid: the floor
+    // persists its exit for the others, and a boot or reconnect snapshot
+    // (active session still unset) must not overwrite the saved view.
+    if (appData().view === 'grid-select') deps.enforceViewFloor();
     const liveIds = new Set(appData().sessions.map((s) => s.id));
     // attentionEdge lives here rather than in the store, so
     // pruneToLiveSessions cannot reach it — prune it alongside. A left
