@@ -29,6 +29,11 @@ import { createStore } from 'zustand/vanilla';
 import { useStore } from 'zustand';
 import { DEFAULT_FONT_SIZE, clampFont } from '../lib/font.js';
 import { normalizeView, VIEW_STORAGE_KEY } from '../lib/view.js';
+import {
+  GRID_SELECT_MODE_STORAGE_KEY,
+  normalizeGridSelectMode,
+  type GridSelectMode,
+} from '../lib/grid-select.js';
 import type { ViewMode } from '../lib/view.js';
 import {
   loadCollapsed,
@@ -103,6 +108,10 @@ export interface AppData {
   currentProjectId: string | null;
   view: ViewMode;
   gridProjectId: string | null;
+  // The ad-hoc grid's tiles (spec 533): session ids in click order. Never
+  // persisted — a selection is throwaway.
+  gridSelection: string[];
+  gridSelectMode: GridSelectMode;
   fontSize: number;
   sidebarWidth: number;
   // Agent activity (spec 416). activityPanel: the inspector beside the
@@ -344,6 +353,10 @@ function removeStorage(key: string): void {
   }
 }
 
+export function loadSavedGridSelectMode(): GridSelectMode {
+  return normalizeGridSelectMode(readStorage(GRID_SELECT_MODE_STORAGE_KEY));
+}
+
 export function loadSavedView(): ViewMode {
   return normalizeView(readStorage(VIEW_STORAGE_KEY));
 }
@@ -522,6 +535,8 @@ function initialData(): AppData {
     //   launchable)
     view: loadSavedView(), // 'single' | 'grid-project' | 'grid-all' — persisted
     gridProjectId: null, // project shown in grid-project mode
+    gridSelection: [], // ad-hoc grid tiles; session-only
+    gridSelectMode: loadSavedGridSelectMode(),
     fontSize: loadSavedFontSize(),
     sidebarWidth: loadSavedSidebarWidth(),
     activityPanel: readStorage(ACTIVITY_PANEL_STORAGE_KEY) === '1',
@@ -714,7 +729,16 @@ export function updateSession(s: SessionInfo): void {
 export function removeSession(id: string): void {
   const cur = get().sessions;
   if (!cur.some((s) => s.id === id)) return;
-  set({ sessions: cur.filter((s) => s.id !== id) });
+  set({
+    sessions: cur.filter((s) => s.id !== id),
+    gridSelection: withoutId(get().gridSelection, id),
+  });
+}
+
+// withoutId keeps the same array when `id` is absent, so a store write that
+// does not touch the selection does not notify its subscribers.
+function withoutId(ids: string[], id: string): string[] {
+  return ids.includes(id) ? ids.filter((x) => x !== id) : ids;
 }
 
 export function setAlive(id: string, alive: boolean): void {
@@ -1029,7 +1053,11 @@ export function restoreProject(pid: string): void {
 }
 
 export function minimizeSession(id: string): void {
-  set({ minimized: setWith(get().minimized, id) });
+  // A minimized session has no tile, so it leaves the ad-hoc selection too.
+  set({
+    minimized: setWith(get().minimized, id),
+    gridSelection: withoutId(get().gridSelection, id),
+  });
 }
 
 export function restoreSession(id: string): void {
@@ -1056,6 +1084,15 @@ export function setView(view: ViewMode, persist = true): void {
 
 export function setGridProjectId(pid: string | null): void {
   set({ gridProjectId: pid });
+}
+
+export function setGridSelection(ids: string[]): void {
+  set({ gridSelection: ids });
+}
+
+export function setGridSelectMode(mode: GridSelectMode): void {
+  writeStorage(GRID_SELECT_MODE_STORAGE_KEY, mode);
+  set({ gridSelectMode: mode });
 }
 
 export function setFontSize(n: number): void {
@@ -1579,6 +1616,18 @@ export const hiveStateView: AppState = {
   },
   set gridProjectId(v: string | null) {
     setGridProjectId(v);
+  },
+  get gridSelection() {
+    return appStore.getState().gridSelection;
+  },
+  set gridSelection(v: string[]) {
+    setGridSelection(v);
+  },
+  get gridSelectMode() {
+    return appStore.getState().gridSelectMode;
+  },
+  set gridSelectMode(v: GridSelectMode) {
+    setGridSelectMode(v);
   },
   get fontSize() {
     return appStore.getState().fontSize;

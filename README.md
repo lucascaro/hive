@@ -27,6 +27,7 @@ What works:
   palette) reopens the same conversation in the agent's own CLI, and
   **Hand Back to ACP** returns it to the transcript with every turn
 - Grid view: per-project (⌘G) or all-sessions (⇧⌘G), spatial arrow nav
+- Ad-hoc grid: ⌘-click (Ctrl-click on Windows and Linux) sidebar sessions to tile just those, across projects
 - Multi-window (⇧⌘N) — independent windows share the same daemon
 - BEL → desktop notification + visual pulse on non-focused sessions
 - Per-session state in the sidebar and tile headers — working, idle,
@@ -349,6 +350,7 @@ These are the defaults. Rebind any of them, and any plugin command, under **Sett
 | ⌘Z | Reopen the last closed session |
 | ⇧⌘W | Close this window |
 | ⌘G / ⇧⌘G | Per-project grid / all-sessions grid |
+| ⌘-click | Sidebar: add or remove a session in an ad-hoc grid (Ctrl-click on Windows and Linux) |
 | ⌘⏎ | Grid: focus the active session (single view) |
 | ⌘↑ / ⌘↓ | Previous / next session (focused) / move between tiles vertically (grid) |
 | ⌘← / ⌘→ | Spatial nav between tiles in grid view. In focused mode they move the cursor to the start / end of the line (macOS; ⇧⌘← / ⇧⌘→ do the same). On Windows and Linux use Ctrl+← / Ctrl+→ for word-wise movement, as in any terminal |

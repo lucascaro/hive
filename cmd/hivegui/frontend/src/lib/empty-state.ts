@@ -77,6 +77,9 @@ export function emptyStateModel({
   if (view === 'grid-project') {
     const pid = gridProjectId || currentProjectId;
     scope = sessions.filter((s) => (s.projectId ?? s.project_id) === pid);
+  } else if (view === 'grid-select') {
+    // Needs two selected sessions to exist, so the whole list is a safe
+    // scope here: the nudge below only fires on an empty one.
   } else if (view === 'single') {
     // Single mode always shows the active session when one exists;
     // an empty *project* still leaves the previous tile visible, so

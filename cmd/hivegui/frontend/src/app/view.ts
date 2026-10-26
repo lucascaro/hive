@@ -34,6 +34,7 @@ import {
   spatialTarget,
 } from './grid-layout.js';
 import { resolveView, type ViewMode } from '../lib/view.js';
+import { toggleSelection } from '../lib/grid-select.js';
 import { closeFindForAllSessions } from './find-session.js';
 import { snapVisibleTermsToBottom } from '../lib/view-scroll.js';
 import { readProjectId } from '../lib/wire.js';
@@ -172,6 +173,55 @@ export function switchTo(id: string | null) {
   }
 }
 
+// selectSession is the sidebar's plain click: it ends any ad-hoc selection
+// and leaves its grid, then switches like switchTo. The clear lives here
+// and not in switchTo because kill, ⌘1–9, the palette and nav all call
+// switchTo, and none of them should end the selection.
+export function selectSession(id: string) {
+  if (appData().gridSelection.length > 0 || appData().view === 'grid-select') {
+    withLayout(() => {
+      store.setGridSelection([]);
+      if (appData().view === 'grid-select') {
+        setView('single', { persist: false });
+      }
+    });
+  }
+  switchTo(id);
+}
+
+// toggleGridSelection is the sidebar's ⌘/Ctrl-click: it adds or removes a
+// session from the ad-hoc selection (spec 533). In auto mode two or more
+// selected opens the grid and fewer returns to single; in manual mode it
+// only marks rows, and ⌘G opens them.
+export function toggleGridSelection(id: string) {
+  const s = appData();
+  const active = s.activeId && !isSessionHidden(s.activeId) ? s.activeId : null;
+  const next = toggleSelection(s.gridSelection, id, active);
+  const wasAdHoc = s.view === 'grid-select';
+  const wasGrid = s.view !== 'single';
+  withLayout(() => {
+    store.setGridSelection(next);
+    // Toggling off the tile that holds focus: hand it to a remaining
+    // selected session, so the ring never sits on a tile that is gone
+    // and a drop to single lands on the survivor.
+    if (wasAdHoc && s.activeId === id && !next.includes(id)) {
+      const survivor = next.find((x) => !isSessionHidden(x));
+      if (survivor) deps.setActive(survivor);
+    }
+    if (s.gridSelectMode === 'auto') {
+      if (next.length >= 2) {
+        if (appData().view !== 'grid-select') {
+          setView('grid-select', { persist: false });
+        }
+      } else if (wasAdHoc) {
+        setView('single', { persist: false });
+      }
+    }
+  });
+  enforceViewFloor();
+  if (wasGrid && appData().view !== 'single') rebaselineGridReplayCols();
+}
+
 // updateAppTitle composes "Hive — <session> — <termTitle>" and pushes
 // it to both document.title and the native window title bar. The
 // termTitle slot is whatever the running TUI most recently set via
@@ -245,7 +295,16 @@ function firstVisible(sessions: SessionInfo[]): SessionInfo | undefined {
 function fallBackToSingleIfActiveHidden() {
   if (appData().view === 'single') return;
   const id = appData().activeId;
-  if (!id || !isSessionHidden(id)) return;
+  if (!id) return;
+  // The ad-hoc grid tiles only its selection, so a session outside it is
+  // as invisible as a minimized one — and navigating to it is a deliberate
+  // move elsewhere, so the selection goes with it.
+  const adHoc = appData().view === 'grid-select';
+  const offGrid = adHoc
+    ? !gridScopeSessions().some((s) => s.id === id)
+    : isSessionHidden(id);
+  if (!offGrid) return;
+  if (adHoc) store.setGridSelection([]);
   // persist: false — this is a forced fallback, not a preference. The
   // user's saved grid mode has to survive a detour through a minimized
   // session, or one chip click silently rewrites it.
@@ -358,7 +417,8 @@ export function minimizeSession(id: string | null) {
 export function enforceViewFloor() {
   if (appData().view === 'single') return;
   if (gridScopeSessions().length >= 2) return;
-  setView('single');
+  // A forced exit from the ad-hoc grid must not overwrite the saved view.
+  setView('single', { persist: appData().view !== 'grid-select' });
 }
 
 // restoreSession removes a session from appData().minimized and switches
@@ -439,6 +499,11 @@ export function setView(view: ViewMode, opts: { persist?: boolean } = {}) {
   if (view !== 'single') closeFindForAllSessions();
   withLayout(() => {
     store.setView(view, opts.persist !== false);
+    // Auto mode: the selection only means something while its grid is up.
+    // Manual mode keeps the marks until a plain click (spec 533).
+    if (view !== 'grid-select' && appData().gridSelectMode === 'auto') {
+      store.setGridSelection([]);
+    }
     if (view === 'grid-project') {
       store.setGridProjectId(activeProjectId());
     }

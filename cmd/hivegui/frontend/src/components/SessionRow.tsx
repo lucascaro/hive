@@ -28,6 +28,8 @@ import {
   stateTooltip,
 } from '../lib/session-state.js';
 import { displayTitle } from '../lib/term-title.js';
+import { isMac } from '../lib/platform.js';
+import { isSelectToggle } from '../lib/grid-select.js';
 import { useAppStore } from '../store/store.js';
 import type { SessionInfo } from '../app/state.js';
 import { PluginBadges } from './PluginSurfaces.js';
@@ -86,10 +88,13 @@ export interface SessionRowProps {
   session: SessionInfo;
   state: SessionState;
   selected: boolean;
+  /** In the ⌘-click selection (spec 533); marked beside the active row. */
+  inSelection: boolean;
   minimized: boolean;
   /** The key hint shown as `[…]`: the switch digit, or null. */
   index: number | string | null;
-  onSelect: () => void;
+  /** `toggle` is true for a ⌘ (macOS) or Ctrl (elsewhere) click. */
+  onSelect: (toggle: boolean) => void;
   onMinimize: () => void;
   onRestore: () => void;
   onRestart: () => void;
@@ -207,6 +212,7 @@ export function SessionRow(p: SessionRowProps) {
       data-pid={s.projectId ?? s.project_id ?? ''}
       data-state={p.state}
       data-selected={p.selected ? '' : undefined}
+      data-in-selection={p.inSelection ? '' : undefined}
       data-minimized={p.minimized ? '' : undefined}
       data-wt-shared={shared > 1 ? '' : undefined}
       data-drag-row=""
@@ -221,7 +227,11 @@ export function SessionRow(p: SessionRowProps) {
         ) {
           return;
         }
-        p.onSelect();
+        const toggle = isSelectToggle(e, isMac);
+        // A ⌘-click edits the selection; it must not also start a text
+        // selection or a focus change on the row.
+        if (toggle) e.preventDefault();
+        p.onSelect(toggle);
       }}
       onDoubleClick={p.onDoubleClick}
     >

@@ -106,7 +106,11 @@ export function modeHints(
     const key = labelIn(keymap, command, mac);
     return key ? [{ key, label }] : [];
   };
-  if (view === 'grid-all' || view === 'grid-project') {
+  if (
+    view === 'grid-all' ||
+    view === 'grid-project' ||
+    view === 'grid-select'
+  ) {
     return [
       // Each grid is toggled back to a single pane by the chord that
       // opened it: ⌘G for the project grid, ⇧⌘G for the all-sessions

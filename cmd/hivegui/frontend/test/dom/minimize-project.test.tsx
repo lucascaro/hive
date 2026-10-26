@@ -101,7 +101,8 @@ beforeAll(async () => {
   ({ navSession, reorderActive } = await import('../../src/app/actions.js'));
   ({ Sidebar } = await import('../../src/components/Sidebar.js'));
   sidebarProps = {
-    switchTo: noop,
+    selectSession: noop,
+    toggleGridSelection: noop,
     switchToProject: noop,
     minimizeProject: view.minimizeProject,
     restoreProject: view.restoreProject,

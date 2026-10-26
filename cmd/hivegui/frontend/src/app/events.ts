@@ -86,7 +86,7 @@ import {
 } from '../store/acp.js';
 import { appStore } from '../store/store.js';
 import { setStatus, flashStatus, reportFailure, setBootState } from './dom.js';
-import { orderedSessions } from './selectors.js';
+import { adHocGridSessions, orderedSessions } from './selectors.js';
 import { handleWorktreesPayload } from './modals/worktrees.js';
 import { refreshIdeas } from './modals/idea-inbox.js';
 import {
@@ -577,7 +577,10 @@ function onSessionDeath(info: SessionInfo) {
 // neighbourOf returns the session to focus when `id` goes away: the
 // one before it in display order, or the one after when it's first.
 function neighbourOf(id: string): string | null {
-  const ord = orderedSessions();
+  // In the ad-hoc grid the neighbour must be another tile, or killing one
+  // would hand focus to an unselected session and collapse the grid.
+  const ord =
+    appData().view === 'grid-select' ? adHocGridSessions() : orderedSessions();
   const idx = ord.findIndex((s) => s.id === id);
   if (idx < 0) return null;
   const nb = idx > 0 ? ord[idx - 1] : ord[idx + 1];

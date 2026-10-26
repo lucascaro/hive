@@ -52,7 +52,8 @@ export function mountSidebar(
   over: Partial<SidebarProps> = {},
 ) {
   const props: SidebarProps = {
-    switchTo: noop,
+    selectSession: noop,
+    toggleGridSelection: noop,
     switchToProject: noop,
     minimizeProject: noop,
     restoreProject: noop,

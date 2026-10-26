@@ -23,7 +23,11 @@ import type { SessionInfo, TermTile } from './state.js';
 import { readNeedsAttention } from './state.js';
 import { appStore } from '../store/store.js';
 import { termsHost } from './dom.js';
-import { orderedSessions, activeProjectId } from './selectors.js';
+import {
+  adHocGridSessions,
+  orderedSessions,
+  activeProjectId,
+} from './selectors.js';
 import { clusterSessions } from '../lib/worktree-groups.js';
 import { getTerm, termsMap } from '../store/terms.js';
 import {
@@ -300,6 +304,7 @@ export function gridScopeFor(view: ViewMode, projectId?: string) {
       appData().minimizedProjects,
     );
   }
+  if (view === 'grid-select') return adHocGridSessions();
   if (view === 'grid-project') {
     // clusterSessions, not a plain `.order` sort: grid-all reaches here
     // through orderedSessions(), which clusters, so sorting raw `.order`

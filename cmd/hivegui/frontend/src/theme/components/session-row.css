@@ -218,6 +218,13 @@
   font-weight: 500;
 }
 
+/* In the ⌘-click selection (spec 533), but not the active row. An inset
+   accent ring, not a fill, so the one active row stays the only filled
+   one; the ring is --accent on the row's own ground, no new token. */
+.hv-session-row[data-in-selection]:not([data-selected]) {
+  box-shadow: inset 0 0 0 2px var(--accent);
+}
+
 /* A worktree group's colour is its rail (sidebar.css ›
    .hv-worktree-group__rows); each member keeps its own colour bar. The
    row keeps data-wt-shared for the branch glyph's count and label. */

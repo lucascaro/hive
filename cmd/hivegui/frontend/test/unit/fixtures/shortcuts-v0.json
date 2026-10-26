@@ -123,6 +123,10 @@
             "label": "Toggle all-sessions grid"
           },
           {
+            "keys": "⌘click",
+            "label": "Sidebar: add or remove a session in an ad-hoc grid"
+          },
+          {
             "keys": "⌘↩",
             "label": "Grid: focus the active session (single view)"
           },
@@ -439,6 +443,10 @@
           {
             "keys": "Ctrl+Shift+G",
             "label": "Toggle all-sessions grid"
+          },
+          {
+            "keys": "Ctrl+click",
+            "label": "Sidebar: add or remove a session in an ad-hoc grid"
           },
           {
             "keys": "Ctrl+Enter",

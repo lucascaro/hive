@@ -35,6 +35,15 @@ describe('modeHints', () => {
     });
   });
 
+  // The ad-hoc grid (spec 533) is left by ⌘G, like the project grid.
+  it('names ⌘G as the way out of the ad-hoc grid', () => {
+    expect(modeHints('grid-select', true)[0]).toEqual({
+      key: '⌘G',
+      label: 'focus',
+    });
+    expect(modeHints('grid-select', false)[0].key).toBe('Ctrl+G');
+  });
+
   it('spells modifiers out off macOS', () => {
     expect(modeHints('single', false)[0].key).toBe('Ctrl+G');
     expect(modeHints('single', false)[1].key).toBe('Ctrl+Shift+K');
@@ -45,7 +54,13 @@ describe('modeHints', () => {
   it('never shows more than two hints', () => {
     // 'nonsense' is not a ViewMode; the cast exercises the runtime
     // fall-through that a persisted-but-unknown view would hit.
-    const views = ['single', 'grid-all', 'grid-project', 'nonsense'];
+    const views = [
+      'single',
+      'grid-all',
+      'grid-project',
+      'grid-select',
+      'nonsense',
+    ];
     for (const v of views) {
       expect(modeHints(v as ViewMode, true).length).toBeLessThanOrEqual(2);
     }

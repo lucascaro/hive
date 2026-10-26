@@ -9,6 +9,7 @@ import type { SessionInfo } from './state.js';
 import { readNeedsAttention } from './state.js';
 import { appStore } from '../store/store.js';
 import { clusterSessions } from '../lib/worktree-groups.js';
+import { filterHidden } from '../lib/minimized.js';
 
 // Live read of the store. A function, not a destructured snapshot: this
 // module runs inside event handlers and must never cache a slice across
@@ -126,4 +127,17 @@ export function resolveSessionCwd(
   const pid = sess.projectId ?? sess.project_id;
   const proj = appData().projects.find((p) => p.id === pid);
   return proj?.cwd ?? '';
+}
+
+// adHocGridSessions returns the tiles of the ⌘-click grid (spec 533): the
+// selected sessions that are on screen, in painted order. Here rather than
+// in grid-layout.ts because the kill path (events.ts) needs it too, and
+// grid-layout.ts builds a ResizeObserver at import time.
+export function adHocGridSessions(): SessionInfo[] {
+  const picked = new Set(appData().gridSelection);
+  return filterHidden(
+    orderedSessions().filter((s) => picked.has(s.id)),
+    appData().minimized,
+    appData().minimizedProjects,
+  );
 }

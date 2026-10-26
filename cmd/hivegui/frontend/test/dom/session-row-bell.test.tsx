@@ -22,6 +22,7 @@ function mount(s: Partial<SessionInfo>, onToggleBell = noop, onSelect = noop) {
     session: { id: 's1', name: 'api', alive: true, ...s } as SessionInfo,
     state: 'running',
     selected: false,
+    inSelection: false,
     minimized: false,
     index: null,
     onSelect,
