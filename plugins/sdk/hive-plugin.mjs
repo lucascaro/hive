@@ -118,6 +118,26 @@ export const Frame = Object.freeze({
 const frameName = new Map(Object.entries(Frame).map(([k, v]) => [v, k]));
 
 /**
+ * The verbs request() accepts: the ones the daemon answers with a frame
+ * carrying the req_id on success (an ACK, or the verb's own reply).
+ * Every other verb answers success with a frame that has no id, so a
+ * request() for it could only ever time out; it is refused up front.
+ * Keep in step with internal/daemon (the ops.ack calls and the transcript
+ * replies) and docs/plugins.md.
+ */
+export const REQUEST_VERBS = Object.freeze([
+  'CREATE_SESSION',
+  'KILL_SESSION',
+  'RESTART_SESSION',
+  'PROMPT_ACP',
+  'CANCEL_ACP',
+  'ANSWER_PERMISSION',
+  'SEARCH_TRANSCRIPT',
+  'GET_TRANSCRIPT_LINES',
+  'LIST_ACP_AGENTS',
+]);
+
+/**
  * The frames that answer a request() by carrying its req_id. Anything
  * else with a req_id in its payload (a broadcast, say) is not a reply.
  */
@@ -442,6 +462,16 @@ export class HiveConnection extends EventEmitter {
   request(name, payload = {}, { timeoutMs = 30_000 } = {}) {
     const type = Frame[name];
     if (type === undefined) return Promise.reject(new Error(`hive: unknown frame ${name}`));
+    if (!REQUEST_VERBS.includes(name)) {
+      return Promise.reject(
+        Object.assign(
+          new Error(
+            `hive: ${name} has no reply that carries a req_id; use send() and watch its events (request() supports ${REQUEST_VERBS.join(', ')})`,
+          ),
+          { hive: { code: 'unsupported_request', message: `${name} is not a request() verb` } },
+        ),
+      );
+    }
     const reqId = ++this._reqSeq;
     return new Promise((resolve, reject) => {
       const timer = setTimeout(() => {

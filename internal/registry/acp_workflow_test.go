@@ -91,6 +91,29 @@ func TestCreate_ResultSchemaOnPTYRefused(t *testing.T) {
 	}
 }
 
+// "result_schema": null is no schema: accepted on any kind, nothing stored.
+func TestCreate_NullResultSchemaIsAbsent(t *testing.T) {
+	useFakeACP(t, acptest.FlagBlock)
+	r := freshRegistry(t)
+	for _, null := range []string{`null`, ` null `} {
+		e := createACP(t, r, wire.CreateSpec{Name: "n", ResultSchema: json.RawMessage(null)})
+		if got := r.Get(e.ID).ResultSchema; got != nil {
+			t.Errorf("stored %q, want no schema", got)
+		}
+	}
+	e := createACP(t, r, wire.CreateSpec{Name: "n", ResultSchema: json.RawMessage(`null`)})
+	startBlockedTurn(t, r, e.ID)
+	if err := submitFindings(r, e.ID, `{"status":"ok","data":{"anything":1}}`); err != nil {
+		t.Errorf("a null schema must not constrain data: %v", err)
+	}
+	skipOnWindows(t)
+	p, err := r.Create(context.Background(), wire.CreateSpec{Shell: "/bin/sh", ResultSchema: json.RawMessage(`null`)})
+	if err != nil {
+		t.Fatalf("null schema on a terminal session: %v", err)
+	}
+	defer r.Kill(p.ID, true)
+}
+
 func submitFindings(r *Registry, id, body string) error {
 	return r.SubmitResult(id, nonceOf(r, id), json.RawMessage(body))
 }
@@ -141,6 +164,40 @@ func TestSubmitResult_ErrorStatusSkipsSchema(t *testing.T) {
 	startBlockedTurn(t, r, e.ID)
 	if err := submitFindings(r, e.ID, `{"status":"error","summary":"could not"}`); err != nil {
 		t.Fatalf("error status without data: %v", err)
+	}
+}
+
+// The daemon is the authority on status: only exactly "ok" or "error",
+// with or without a schema. A schema'd session must not be able to skip
+// its data check with a status that is neither.
+func TestSubmitResult_StatusMustBeOkOrError(t *testing.T) {
+	useFakeACP(t, acptest.FlagBlock)
+	r := freshRegistry(t)
+	plain := createACP(t, r, wire.CreateSpec{Name: "plain"})
+	typed := createACP(t, r, wire.CreateSpec{Name: "typed", ResultSchema: json.RawMessage(findingsSchema)})
+	startBlockedTurn(t, r, plain.ID)
+	startBlockedTurn(t, r, typed.ID)
+	for _, id := range []string{plain.ID, typed.ID} {
+		for _, body := range []string{
+			`{"status":"OK"}`, `{"status":"Error"}`, `{"status":"done"}`, `{"status":""}`,
+			`{"status":null}`, `{"status":1}`, `{"summary":"no status"}`, `{"data":{"findings":[]}}`,
+			`{"status":"ok ","data":{"findings":[]}}`,
+		} {
+			err := submitFindings(r, id, body)
+			if !errors.Is(err, ErrSubmitRejected) || !strings.Contains(err.Error(), `"status"`) {
+				t.Errorf("session %s, %s: err = %v, want a status rejection", id, body, err)
+			}
+		}
+		if got := result(t, r, id); got.ResultStatus != "" {
+			t.Errorf("a rejected status recorded %q", got.ResultStatus)
+		}
+	}
+	// The two valid statuses still go through.
+	if err := submitFindings(r, plain.ID, `{"status":"error"}`); err != nil {
+		t.Errorf("error status: %v", err)
+	}
+	if err := submitFindings(r, typed.ID, `{"status":"ok","data":{"findings":[]}}`); err != nil {
+		t.Errorf("ok status: %v", err)
 	}
 }
 
@@ -258,7 +315,7 @@ func TestCancelACP_StopReasonCancelled(t *testing.T) {
 	r := freshRegistry(t)
 	e := createACP(t, r, wire.CreateSpec{Name: "a"})
 	startBlockedTurn(t, r, e.ID)
-	busy, err := r.CancelACP(e.ID)
+	busy, err := r.CancelACP(e.ID, 0, 0)
 	if err != nil || !busy {
 		t.Fatalf("CancelACP = %v, %v; want busy", busy, err)
 	}
@@ -278,7 +335,7 @@ func TestCancelACP_AnswersPendingPermissionCancelled(t *testing.T) {
 		t.Fatal(err)
 	}
 	waitFor(t, "permission card", func() bool { return result(t, r, e.ID).Permission != nil })
-	if busy, err := r.CancelACP(e.ID); err != nil || !busy {
+	if busy, err := r.CancelACP(e.ID, 0, 0); err != nil || !busy {
 		t.Fatalf("CancelACP = %v, %v", busy, err)
 	}
 	waitFor(t, "cancelled stop reason", func() bool { return result(t, r, e.ID).StopReason == "cancelled" })
@@ -291,10 +348,10 @@ func TestCancelACP_IdleIsNoopWasBusyFalse(t *testing.T) {
 	useFakeACP(t)
 	r := freshRegistry(t)
 	e := createACP(t, r, wire.CreateSpec{Name: "a"})
-	if busy, err := r.CancelACP(e.ID); err != nil || busy {
+	if busy, err := r.CancelACP(e.ID, 0, 0); err != nil || busy {
 		t.Errorf("idle CancelACP = %v, %v; want false, nil", busy, err)
 	}
-	if _, err := r.CancelACP("nope"); !errors.Is(err, ErrNotFound) {
+	if _, err := r.CancelACP("nope", 0, 0); !errors.Is(err, ErrNotFound) {
 		t.Errorf("unknown session: err = %v, want ErrNotFound", err)
 	}
 	skipOnWindows(t)
@@ -303,8 +360,66 @@ func TestCancelACP_IdleIsNoopWasBusyFalse(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer r.Kill(p.ID, true)
-	if _, err := r.CancelACP(p.ID); !errors.Is(err, ErrNotACP) {
+	if _, err := r.CancelACP(p.ID, 0, 0); !errors.Is(err, ErrNotACP) {
 		t.Errorf("terminal session: err = %v, want ErrNotACP", err)
+	}
+}
+
+// A cancel aimed at one turn must not stop the next.
+func TestCancelACP_PinnedToTurn(t *testing.T) {
+	dir := useFakeACP(t, acptest.FlagBlock)
+	r := freshRegistry(t)
+	e := createACP(t, r, wire.CreateSpec{Name: "a"})
+	pid, epoch, err := r.PromptACPTurn(e.ID, "work", wire.OriginUser)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Another turn's ids: refused as a no-op, the turn keeps running.
+	for _, c := range [][2]int{{pid + 1, epoch}, {pid, epoch + 1}, {pid + 1, 0}, {0, epoch + 1}} {
+		if busy, err := r.CancelACP(e.ID, c[0], c[1]); err != nil || busy {
+			t.Errorf("CancelACP(%v) = %v, %v; want false, nil", c, busy, err)
+		}
+	}
+	if got := result(t, r, e.ID); got.StopReason != "" {
+		t.Fatalf("a mismatched cancel stopped the turn: %q", got.StopReason)
+	}
+	// This turn's own ids, then zero ids (whatever is running), match.
+	if busy, err := r.CancelACP(e.ID, pid, epoch); err != nil || !busy {
+		t.Fatalf("CancelACP(own turn) = %v, %v; want true", busy, err)
+	}
+	waitFor(t, "cancelled", func() bool { return result(t, r, e.ID).StopReason == "cancelled" })
+	waitFor(t, "turn end", idleAfterTurn(r, e.ID))
+	// The old turn's ids no longer cancel the next one.
+	if _, _, err := r.PromptACPTurn(e.ID, "next", wire.OriginUser); err != nil {
+		t.Fatal(err)
+	}
+	if busy, _ := r.CancelACP(e.ID, pid, epoch); busy {
+		t.Error("a cancel for the finished turn stopped the next one")
+	}
+	acptest.Release(dir)
+}
+
+// The ACK says the turn was asked to stop, not that it is over: until
+// stop_reason arrives the session is still busy.
+func TestCancelACP_StillBusyUntilStopReason(t *testing.T) {
+	dir := useFakeACP(t, acptest.FlagBlock, acptest.FlagSlowCancel)
+	r := freshRegistry(t)
+	e := createACP(t, r, wire.CreateSpec{Name: "a"})
+	startBlockedTurn(t, r, e.ID)
+	if busy, err := r.CancelACP(e.ID, 0, 0); err != nil || !busy {
+		t.Fatalf("CancelACP = %v, %v", busy, err)
+	}
+	if err := r.PromptACP(e.ID, "too soon", wire.OriginUser); !errors.Is(err, ErrACPBusy) {
+		t.Errorf("prompt right after the cancel ACK: err = %v, want ErrACPBusy", err)
+	}
+	if got := result(t, r, e.ID); got.StopReason != "" {
+		t.Errorf("stop_reason %q before the adapter answered", got.StopReason)
+	}
+	acptest.ReleaseCancel(dir)
+	waitFor(t, "cancelled", func() bool { return result(t, r, e.ID).StopReason == "cancelled" })
+	waitFor(t, "turn end", idleAfterTurn(r, e.ID))
+	if err := r.PromptACP(e.ID, "now", wire.OriginUser); err != nil {
+		t.Errorf("prompt after stop_reason: %v", err)
 	}
 }
 
@@ -314,14 +429,14 @@ func TestCancelACP_Twice(t *testing.T) {
 	e := createACP(t, r, wire.CreateSpec{Name: "a"})
 	startBlockedTurn(t, r, e.ID)
 	for range 2 {
-		if _, err := r.CancelACP(e.ID); err != nil {
+		if _, err := r.CancelACP(e.ID, 0, 0); err != nil {
 			t.Fatalf("CancelACP: %v", err)
 		}
 	}
 	waitFor(t, "cancelled stop reason", func() bool { return result(t, r, e.ID).StopReason == "cancelled" })
 	waitFor(t, "turn end", idleAfterTurn(r, e.ID))
 	// After the turn is over a cancel is the idempotent no-op.
-	if busy, err := r.CancelACP(e.ID); err != nil || busy {
+	if busy, err := r.CancelACP(e.ID, 0, 0); err != nil || busy {
 		t.Errorf("late CancelACP = %v, %v; want false, nil", busy, err)
 	}
 	// And the session is usable again.

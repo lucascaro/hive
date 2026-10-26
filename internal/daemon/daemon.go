@@ -1247,58 +1247,6 @@ func (d *Daemon) serveControl(ctx context.Context, conn net.Conn, hello wire.Hel
 	sendError := func(code, msg string) {
 		_ = writeJSON(wire.FrameError, wire.Error{Code: code, Message: msg})
 	}
-	// sendWorktrees answers with the project's current inventory. Every
-	// worktree mutation ends here — including the ones that failed, and
-	// the ones that half succeeded (the local branch went, the remote
-	// push did not). A refusal alone would leave the browser rendering
-	// rows the mutation already invalidated, so the error goes first
-	// and the truth follows it.
-	// An empty failCode means "stay quiet if the listing fails" — used
-	// after a refusal, where the client already has one error and a
-	// second would just be a second toast for the same action.
-	sendWorktrees := func(projectID, failCode string) {
-		resp, err := d.reg.ListWorktrees(projectID)
-		if err != nil {
-			if failCode != "" {
-				sendError(failCode, err.Error())
-			}
-			return
-		}
-		_ = writeJSON(wire.FrameWorktrees, resp)
-	}
-	// sendWorktreeError maps the registry's refusal sentinels onto
-	// wire codes the GUI knows how to confirm against, the same way
-	// KILL_SESSION maps ErrWorktreeDirty. Anything unrecognised falls
-	// through to the generic code.
-	sendWorktreeError := func(err error, genericCode string) {
-		switch {
-		case errors.Is(err, registry.ErrWorktreeInUse):
-			sendError(wire.ErrCodeWorktreeInUse, err.Error())
-		case errors.Is(err, registry.ErrWorktreeDirty):
-			sendError(wire.ErrCodeWorktreeDirty, err.Error())
-		case errors.Is(err, registry.ErrWorktreeUnpushed):
-			sendError(wire.ErrCodeWorktreeUnpushed, err.Error())
-		case errors.Is(err, registry.ErrBranchUnmerged):
-			sendError(wire.ErrCodeBranchUnmerged, err.Error())
-		case errors.Is(err, registry.ErrBranchHasWorktree):
-			sendError(wire.ErrCodeWorktreeInUse, err.Error())
-		default:
-			sendError(genericCode, err.Error())
-		}
-	}
-	// finishMutation is how every worktree mutation ends: the refusal,
-	// if any, and then the inventory it left behind. The two go
-	// together because a mutation can half succeed — the local branch
-	// deleted, the remote push refused — and an error alone would leave
-	// the browser rendering a row that is already gone.
-	finishMutation := func(projectID string, err error, failCode string) {
-		if err != nil {
-			sendWorktreeError(err, failCode)
-			sendWorktrees(projectID, "")
-			return
-		}
-		sendWorktrees(projectID, "list_worktrees_failed")
-	}
 	// Only a client that can show UI may announce plugin UIs: a plugin
 	// socket, hivebar and a session's own events socket are read and
 	// ignored.
@@ -1308,7 +1256,9 @@ func (d *Daemon) serveControl(ctx context.Context, conn net.Conn, hello wire.Hel
 		announceUI, done = d.reviewAnnouncer()
 		defer done()
 	}
+	sendWorktrees, finishMutation := d.worktreeHelpers(writeJSON, sendError)
 	ops := controlOps{
+		bindWorktree:   d.worktreeHelpers,
 		announceUI:     announceUI,
 		restricted:     restricted,
 		ownSessionID:   hello.SessionID,
@@ -1416,6 +1366,69 @@ func ownProjectOnly(all []wire.SessionInfo, projectID string) []wire.SessionBrie
 	return out
 }
 
+// worktreeHelpers builds the two helpers every worktree frame ends in,
+// over a connection's writeJSON and sendError. controlOps.bindWorktree
+// rebuilds them over the per-frame copies withReqID makes, so their ERRORs
+// echo the request's req_id like every other.
+func (d *Daemon) worktreeHelpers(writeJSON func(wire.FrameType, any) error, sendError func(code, msg string)) (
+	sendWorktrees func(projectID, failCode string),
+	finishMutation func(projectID string, err error, failCode string),
+) {
+	// sendWorktrees answers with the project's current inventory. Every
+	// worktree mutation ends here — including the ones that failed, and
+	// the ones that half succeeded (the local branch went, the remote
+	// push did not). A refusal alone would leave the browser rendering
+	// rows the mutation already invalidated, so the error goes first
+	// and the truth follows it.
+	// An empty failCode means "stay quiet if the listing fails" — used
+	// after a refusal, where the client already has one error and a
+	// second would just be a second toast for the same action.
+	sendWorktrees = func(projectID, failCode string) {
+		resp, err := d.reg.ListWorktrees(projectID)
+		if err != nil {
+			if failCode != "" {
+				sendError(failCode, err.Error())
+			}
+			return
+		}
+		_ = writeJSON(wire.FrameWorktrees, resp)
+	}
+	// sendWorktreeError maps the registry's refusal sentinels onto
+	// wire codes the GUI knows how to confirm against, the same way
+	// KILL_SESSION maps ErrWorktreeDirty. Anything unrecognised falls
+	// through to the generic code.
+	sendWorktreeError := func(err error, genericCode string) {
+		switch {
+		case errors.Is(err, registry.ErrWorktreeInUse):
+			sendError(wire.ErrCodeWorktreeInUse, err.Error())
+		case errors.Is(err, registry.ErrWorktreeDirty):
+			sendError(wire.ErrCodeWorktreeDirty, err.Error())
+		case errors.Is(err, registry.ErrWorktreeUnpushed):
+			sendError(wire.ErrCodeWorktreeUnpushed, err.Error())
+		case errors.Is(err, registry.ErrBranchUnmerged):
+			sendError(wire.ErrCodeBranchUnmerged, err.Error())
+		case errors.Is(err, registry.ErrBranchHasWorktree):
+			sendError(wire.ErrCodeWorktreeInUse, err.Error())
+		default:
+			sendError(genericCode, err.Error())
+		}
+	}
+	// finishMutation is how every worktree mutation ends: the refusal,
+	// if any, and then the inventory it left behind. The two go
+	// together because a mutation can half succeed — the local branch
+	// deleted, the remote push refused — and an error alone would leave
+	// the browser rendering a row that is already gone.
+	finishMutation = func(projectID string, err error, failCode string) {
+		if err != nil {
+			sendWorktreeError(err, failCode)
+			sendWorktrees(projectID, "")
+			return
+		}
+		sendWorktrees(projectID, "list_worktrees_failed")
+	}
+	return sendWorktrees, finishMutation
+}
+
 // controlOps bundles the per-connection reply helpers serveControl
 // builds over the socket's write mutex. Passing them as one value is
 // what lets the frame handlers live outside serveControl, which was
@@ -1447,6 +1460,11 @@ type controlOps struct {
 	sendError      func(code, msg string)
 	sendWorktrees  func(projectID, failCode string)
 	finishMutation func(projectID string, err error, failCode string)
+	// bindWorktree rebuilds sendWorktrees and finishMutation over another
+	// writeJSON / sendError pair (see withReqID). Nil in tests that stub
+	// the two directly.
+	bindWorktree func(writeJSON func(wire.FrameType, any) error, sendError func(code, msg string)) (
+		func(projectID, failCode string), func(projectID string, err error, failCode string))
 	// announceUI records this client's SET_CLIENT_UI. Nil for clients
 	// that show no UI, whose announcements are dropped.
 	announceUI func(pluginIDs []string)
@@ -1768,7 +1786,7 @@ func (d *Daemon) handleControlFrame(ctx context.Context, ops controlOps, ft wire
 		if !ok {
 			return false
 		}
-		wasBusy, err := d.reg.CancelACP(req.SessionID)
+		wasBusy, err := d.reg.CancelACP(req.SessionID, req.PromptID, req.Epoch)
 		if err != nil {
 			sendACPError(ops, err, req.SessionID)
 			return false

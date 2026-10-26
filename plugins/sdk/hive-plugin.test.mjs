@@ -12,7 +12,7 @@ import os from 'node:os';
 import path from 'node:path';
 import test from 'node:test';
 
-import { connect, Frame } from './hive-plugin.mjs';
+import { connect, Frame, REQUEST_VERBS } from './hive-plugin.mjs';
 
 const unixOnly = { skip: process.platform === 'win32' ? 'unix sockets' : false };
 
@@ -141,11 +141,16 @@ test('request ignores broadcasts carrying the same req_id', unixOnly, async () =
   });
   try {
     let settled = false;
+    // The ERROR is the last frame the fake sends before holding back its
+    // ACK; frames are handled in order and settling is synchronous, so
+    // once the client has seen it every broadcast before it was seen too.
+    const lastBroadcastSeen = new Promise((r) => d.hive.once('ERROR', r));
     const pending = d.hive.request('KILL_SESSION', { session_id: 'x' }).then((r) => {
       settled = true;
       return r;
     });
-    await new Promise((r) => setTimeout(r, 100));
+    await lastBroadcastSeen;
+    await new Promise((r) => setImmediate(r)); // let any wrongly settled promise run its handler
     assert.equal(settled, false, 'a broadcast settled the request');
     release();
     assert.ok((await pending).req_id > 0);
@@ -169,12 +174,19 @@ test('timeout rejects', unixOnly, async () => {
 });
 
 test('close rejects every pending request', unixOnly, async () => {
-  const d = await fakeDaemon(() => {});
+  let n = 0;
+  let bothArrived;
+  const arrived = new Promise((r) => {
+    bothArrived = r;
+  });
+  const d = await fakeDaemon(() => {
+    if (++n === 2) bothArrived();
+  });
   try {
     const a = d.hive.request('KILL_SESSION', {});
     const b = d.hive.request('KILL_SESSION', {});
     const settled = Promise.allSettled([a, b]);
-    await new Promise((r) => setTimeout(r, 50));
+    await arrived;
     d.dropClients();
     const [ra, rb] = await settled;
     assert.equal(ra.status, 'rejected');
@@ -187,15 +199,52 @@ test('close rejects every pending request', unixOnly, async () => {
 });
 
 test('send is unchanged: no req_id, no promise', unixOnly, async () => {
-  const seen = [];
-  const d = await fakeDaemon((type, p) => seen.push([type, p]));
+  let got;
+  const arrived = new Promise((r) => {
+    got = r;
+  });
+  const d = await fakeDaemon((type, p) => got([type, p]));
   try {
     d.hive.send('LIST_SESSIONS');
-    await new Promise((r) => setTimeout(r, 50));
-    assert.deepEqual(seen, [[Frame.LIST_SESSIONS, {}]]);
+    assert.deepEqual(await arrived, [Frame.LIST_SESSIONS, {}]);
   } finally {
     await d.close();
   }
+});
+
+test('request refuses a verb that has no reply carrying a req_id', unixOnly, async () => {
+  const seen = [];
+  let marker;
+  const markerSeen = new Promise((r) => {
+    marker = r;
+  });
+  const d = await fakeDaemon((type, p) => {
+    seen.push(type);
+    if (p.marker) marker();
+  });
+  try {
+    for (const name of ['LIST_SESSIONS', 'UPDATE_SESSION', 'REMOVE_WORKTREE', 'SET_PLUGIN_ENABLED', 'WAIT_SESSION', 'ACK']) {
+      await assert.rejects(d.hive.request(name, {}), (err) => {
+        assert.equal(err.hive.code, 'unsupported_request');
+        assert.match(err.message, /use send\(\)/);
+        return true;
+      });
+    }
+    // Refused up front: nothing was sent, nothing is pending.
+    assert.equal(d.hive._pending.size, 0);
+    // Frames arrive in order: once a later marker frame has, anything the
+    // refused requests might have sent has too.
+    d.hive.send('LIST_SESSIONS', { marker: true });
+    await markerSeen;
+    assert.deepEqual(seen, [Frame.LIST_SESSIONS]);
+  } finally {
+    await d.close();
+  }
+});
+
+test('every request verb is a real frame and none is a reply frame', () => {
+  for (const v of REQUEST_VERBS) assert.ok(Frame[v] !== undefined, v);
+  for (const v of ['ACK', 'ACP_AGENTS', 'ERROR']) assert.ok(!REQUEST_VERBS.includes(v), v);
 });
 
 test('request on an unknown frame name rejects', unixOnly, async () => {

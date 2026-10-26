@@ -245,7 +245,7 @@ and reply payloads are the Go structs of the same name in
 | `REMOVE_PLUGIN` | `RemovePluginReq` | `PLUGIN_EVENT` (removed) |
 | `GET_ACP_TRANSCRIPT` | `GetAcpTranscriptReq` | `ACP_TRANSCRIPT` (snapshot). Start an ACP session with `CREATE_SESSION` and `"kind": "acp"` (Claude, Codex; Pi only where the user allows unattended tool use; Gemini and Copilot not yet). It runs at the user's mode ceiling for that agent, or at `"acp_mode"` when that is at or below it (`acp_mode_above_ceiling` otherwise). It records `spawned_by: "plugin:<id>"` |
 | `PROMPT_ACP` | `PromptAcpReq` | `ACP_TRANSCRIPT`, `SESSION_EVENT` (state). The turn's origin is recorded as `plugin:<id>`, or `plugin:<id>/workflow:<run>` with `workflow_run_id`. With a `req_id`, also `ACK` once the turn has started, carrying that turn's `prompt_id` and `epoch` |
-| `CANCEL_ACP` | `CancelAcpReq` | Stops the session's running turn; the transcript then reports `stop_reason: "cancelled"`. Idempotent: with no turn running it does nothing. With a `req_id`, `ACK` with `was_busy` (absent = false). Not served on a session connection |
+| `CANCEL_ACP` | `CancelAcpReq` | Asks the session's running turn to stop. Idempotent: with no turn running it does nothing. With a `req_id`, `ACK` with `was_busy`: a turn was running and was *asked* to stop (absent = false). The turn is over when `ACP_TRANSCRIPT` carries its `stop_reason` (`cancelled` normally); until then `PROMPT_ACP` answers `acp_busy`. Pass the `prompt_id` and `epoch` from that turn's `PROMPT_ACP` ACK to aim the cancel at it: if the session has moved on, nothing is stopped and `was_busy` is false. Not served on a session connection |
 | `LIST_ACP_AGENTS` | `ListAcpAgentsReq` | `ACP_AGENTS` |
 | `ANSWER_PERMISSION` | `AnswerPermissionReq` | `ACP_TRANSCRIPT`; with a `req_id`, also `ACK` |
 | `SUBMIT_RESULT` | `SubmitResultReq` | `SUBMIT_RESULT_OK`, `ACP_TRANSCRIPT` (result). Not for plugins: a plugin socket gets `mode_not_allowed`. An ACP session's own submit server (`hived mcp-submit`) sends it on a session connection, with that session's nonce |
@@ -285,12 +285,20 @@ And everything the daemon sends on a control connection:
 ### Correlating replies
 
 Any control request may carry an integer `req_id` of your choosing. The
-daemon then echoes it on every `ERROR` it raises for that request, and
-answers the requests that have no reply frame of their own with an
-`ACK` (`req_id`, plus `session_id`, `was_busy`, `prompt_id`, `epoch`
-where the table says). Frames that already have an answer keep it:
-`TRANSCRIPT_MATCHES`, `TRANSCRIPT_LINES` and `ACP_AGENTS` echo the id
-too. A request with no `req_id` behaves exactly as before.
+daemon then echoes it on every `ERROR` it raises for that request.
+Only these verbs also answer success with a frame carrying the id:
+
+- `CREATE_SESSION`: `ACK` with `session_id`.
+- `KILL_SESSION`, `RESTART_SESSION`, `ANSWER_PERMISSION`: `ACK` with `session_id`.
+- `PROMPT_ACP`: `ACK` with `session_id`, `prompt_id`, `epoch`.
+- `CANCEL_ACP`: `ACK` with `session_id`, `was_busy`.
+- `SEARCH_TRANSCRIPT`, `GET_TRANSCRIPT_LINES`: their own reply, `TRANSCRIPT_MATCHES` / `TRANSCRIPT_LINES`.
+- `LIST_ACP_AGENTS`: `ACP_AGENTS`.
+
+Every other verb (`LIST_SESSIONS`, `UPDATE_SESSION`, the worktree and
+project verbs, …) still answers success the way the table above says,
+with no id: its failures echo the `req_id`, but a success cannot be
+matched to it. A request with no `req_id` behaves exactly as before.
 
 - `CREATE_SESSION`'s `ACK` comes as soon as the session exists, before
   its worktree is set up and its adapter starts: watch `SESSION_EVENT`
@@ -325,7 +333,8 @@ schema in the tool; the daemon checks the result when it is submitted,
 and a result that does not match is refused with the failing path
 (`data.findings[2].severity: "urgent" is not one of high|low`) so the
 agent can call `submit_result` again. `status: "error"` carries no data
-and is not checked. The `{status, summary, data}` envelope is unchanged.
+and is not checked. The `{status, summary, data}` envelope is unchanged,
+and the daemon refuses any `status` other than exactly `ok` or `error`.
 
 The two things to watch most plugins need are `SESSION_EVENT`'s `state`
 (`working`, `waiting_input`, `waiting_permission`, `exited`, `error`,
@@ -390,7 +399,10 @@ term.on('data', (buf) => process.stdout.write(buf));
 `send(name, payload)` sends any request in the table above.
 `request(name, payload, { timeoutMs })` sends it with a fresh `req_id`
 and returns a promise of the reply (`ACK`, `ACP_AGENTS`,
-`TRANSCRIPT_MATCHES` or `TRANSCRIPT_LINES` payload); it rejects with an
+`TRANSCRIPT_MATCHES` or `TRANSCRIPT_LINES` payload). It accepts only the
+verbs in the **Correlating replies** list (`REQUEST_VERBS` in the SDK);
+any other rejects at once with `.hive.code` `unsupported_request`,
+because a success could never be matched. It rejects with an
 `Error` whose `.hive` is the daemon's `ERROR` payload, on timeout (30 s
 by default) and when the connection closes. Only those reply frames
 settle it — a broadcast never does, whatever its payload holds. Under Hive

@@ -260,6 +260,25 @@ func TestCancelAcp_PluginAndUser(t *testing.T) {
 	}
 }
 
+func TestCancelAcp_PinnedToPrompt(t *testing.T) {
+	fakeACPDir(t, acptest.FlagBlock)
+	d := startTestDaemon(t)
+	c := guiConn(t, d)
+	e := createACPVia(t, d, (&recordOps{}).ops(), `{"kind":"acp","agent":"claude"}`)
+	waitReady(t, d, e.ID)
+	send(t, c, wire.FramePromptAcp, wire.PromptAcpReq{SessionID: e.ID, Text: "work", ReqID: 1})
+	turn := readFrameWhere(t, c, "prompt ACK", isFrame(wire.FrameAck)).ack(t)
+
+	send(t, c, wire.FrameCancelAcp, wire.CancelAcpReq{SessionID: e.ID, ReqID: 2, PromptID: turn.PromptID + 1, Epoch: turn.Epoch})
+	if a := readFrameWhere(t, c, "ACK", isFrame(wire.FrameAck)).ack(t); a.ReqID != 2 || a.WasBusy {
+		t.Errorf("cancel for another turn: ack = %+v, want was_busy false", a)
+	}
+	send(t, c, wire.FrameCancelAcp, wire.CancelAcpReq{SessionID: e.ID, ReqID: 3, PromptID: turn.PromptID, Epoch: turn.Epoch})
+	if a := readFrameWhere(t, c, "ACK", isFrame(wire.FrameAck)).ack(t); a.ReqID != 3 || !a.WasBusy {
+		t.Errorf("cancel for this turn: ack = %+v, want was_busy", a)
+	}
+}
+
 func TestCancelAcp_RefusedOnSessionConn(t *testing.T) {
 	d := newFrameTestDaemon(t)
 	rec := &recordOps{}

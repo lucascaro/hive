@@ -20,8 +20,10 @@ import (
 type AckMsg struct {
 	ReqID     int    `json:"req_id"`
 	SessionID string `json:"session_id,omitempty"`
-	// WasBusy, on a CANCEL_ACP ack, says a turn was running and has been
-	// cancelled. Absent means false: the cancel was a no-op.
+	// WasBusy, on a CANCEL_ACP ack, says a turn was running and was asked
+	// to stop. The turn is not over yet: it is over when ACP_TRANSCRIPT
+	// carries its stop_reason (and PROMPT_ACP answers acp_busy until
+	// then). Absent means false: the cancel was a no-op.
 	WasBusy bool `json:"was_busy,omitempty"`
 	// PromptID and Epoch, on a PROMPT_ACP ack, name the transcript item
 	// of the turn just started and the transcript epoch it is in. Pair

@@ -85,6 +85,10 @@ const (
 	// FlagSlowInit makes initialize wait until <dir>/release exists, so a
 	// test sees a session while its adapter is still starting.
 	FlagSlowInit = "slow-init"
+	// FlagSlowCancel makes a cancelled prompt wait until
+	// <dir>/release-cancel exists before it replies, so a test can act
+	// between "cancel was sent" and "the turn is over".
+	FlagSlowCancel = "slow-cancel"
 )
 
 // Modes is what the fake advertises, least permissive first: Claude's
@@ -126,6 +130,11 @@ func Calls(dir string) []string {
 		return strings.Split(s, "\n")
 	}
 	return nil
+}
+
+// ReleaseCancel lets a cancelled prompt held by FlagSlowCancel reply.
+func ReleaseCancel(dir string) error {
+	return os.WriteFile(filepath.Join(dir, "release-cancel"), nil, 0o600)
 }
 
 // Release unblocks prompts started with FlagBlock.
@@ -484,6 +493,13 @@ func (f *fake) handle(id json.RawMessage, method string, params json.RawMessage)
 		}
 		if f.cancelled(p.SessionID) {
 			f.setCancelled(p.SessionID, false)
+			if f.flags[FlagSlowCancel] {
+				for deadline := time.Now().Add(10 * time.Second); time.Now().Before(deadline); time.Sleep(10 * time.Millisecond) {
+					if _, err := os.Stat(filepath.Join(f.dir, "release-cancel")); err == nil {
+						break
+					}
+				}
+			}
 			reply(map[string]any{"stopReason": "cancelled"})
 			return
 		}

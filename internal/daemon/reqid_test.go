@@ -141,6 +141,39 @@ func TestReqID_EchoedOnError(t *testing.T) {
 	}
 }
 
+// The worktree frames build their errors from helpers made once per
+// connection; they must echo the id too.
+func TestReqID_EchoedOnWorktreeError(t *testing.T) {
+	skipOnWindows(t)
+	d := startTestDaemon(t)
+	c := guiConn(t, d)
+	// No request struct carries req_id: it is read off the raw payload.
+	p := func(extra map[string]any) map[string]any {
+		m := map[string]any{"project_id": "nope", "req_id": 5}
+		for k, v := range extra {
+			m[k] = v
+		}
+		return m
+	}
+	for i, tc := range []struct {
+		ft  wire.FrameType
+		req map[string]any
+	}{
+		{wire.FrameListWorktrees, p(nil)},
+		{wire.FrameRemoveWorktree, p(map[string]any{"path": "/x"})},
+		{wire.FrameCreateWorktree, p(map[string]any{"branch": "b"})},
+		{wire.FrameDeleteBranch, p(map[string]any{"branch": "b"})},
+		{wire.FrameRenameWorktree, p(map[string]any{"path": "/x", "new_branch": "y"})},
+		{wire.FrameSetWorktreeLabel, p(map[string]any{"path": "/x", "label": "l"})},
+	} {
+		send(t, c, tc.ft, tc.req)
+		e := readFrameWhere(t, c, "ERROR", isFrame(wire.FrameError)).err(t)
+		if e.ReqID != 5 {
+			t.Errorf("case %d (%s): error = %+v, want req_id 5", i, tc.ft, e)
+		}
+	}
+}
+
 func TestReqID_AsyncCreateErrorEchoed(t *testing.T) {
 	fakeACPDir(t)
 	d := startTestDaemon(t)

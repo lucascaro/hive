@@ -228,6 +228,11 @@ func (e *RequestError) Error() string { return e.Err.Code + ": " + e.Err.Message
 // carrying that id (returned as its type and raw payload), or an ERROR
 // carrying it (returned as a *RequestError). Broadcasts and other
 // requests' replies are skipped, as the plugin SDK's request() does.
+//
+// Skipped frames are discarded: Request reads the same snaps channel
+// the Await* helpers do, so a snapshot (SESSIONS, WORKTREES, …) that
+// arrives while it waits is consumed and lost. Don't interleave it with
+// an Await for a frame that may already be in flight.
 // payload must marshal to a JSON object.
 func (c *Client) Request(ft wire.FrameType, payload any, timeout time.Duration) (wire.FrameType, []byte, error) {
 	raw, err := json.Marshal(payload)

@@ -37,7 +37,7 @@ package buildinfo
 //	    is persisted. New CANCEL_ACP (0x50), LIST_ACP_AGENTS (0x51) and
 //	    ACP_AGENTS (0x52); ACP_TRANSCRIPT gains stop_reason and usage;
 //	    WELCOME gains boot_id. A plugin built against this tree and run
-//	    on an older daemon would wait forever on an ACK that never comes.
+//	    on an older daemon times out waiting for an ACK that never comes.
 //	33 — Session observation (spec 390). A ModeSession connection may now
 //	    send LIST_SESSIONS (narrowed to its own project) and the new
 //	    WAIT_SESSION, answered with WAITED. The GUI never sends either, but

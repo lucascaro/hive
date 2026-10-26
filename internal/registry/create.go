@@ -5,6 +5,7 @@
 package registry
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"fmt"
@@ -114,6 +115,10 @@ type CreatePlan = createPlan
 // calls it apart from FinishCreate so it can ACK a CREATE_SESSION as
 // soon as the session exists, before the slow worktree and adapter start.
 func (r *Registry) BeginCreate(spec wire.CreateSpec) (*Entry, CreatePlan, error) {
+	// An explicit "result_schema": null is no schema, not a schema "null".
+	if bytes.Equal(bytes.TrimSpace(spec.ResultSchema), []byte("null")) {
+		spec.ResultSchema = nil
+	}
 	if err := validateKind(spec); err != nil {
 		return nil, CreatePlan{}, err
 	}

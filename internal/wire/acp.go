@@ -171,9 +171,16 @@ type PromptAcpReq struct {
 
 // CancelAcpReq is the CANCEL_ACP payload. It is idempotent: with a turn
 // running it is cancelled, with none the ACK says was_busy false.
+//
+// PromptID and Epoch, from the PROMPT_ACP ACK, pin the cancel to that
+// turn: if the session has moved on to another one, the cancel is a
+// no-op (was_busy false) rather than stopping the next turn. Zero means
+// "whatever turn is running".
 type CancelAcpReq struct {
 	SessionID string `json:"session_id"`
 	ReqID     int    `json:"req_id,omitempty"`
+	PromptID  int    `json:"prompt_id,omitempty"`
+	Epoch     int    `json:"epoch,omitempty"`
 }
 
 // AnswerPermissionReq is the ANSWER_PERMISSION payload.

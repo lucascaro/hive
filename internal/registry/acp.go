@@ -789,7 +789,11 @@ func (r *Registry) PromptACPTurn(id, text, origin string) (promptID, epoch int, 
 // the turn ends with stop reason "cancelled". Idempotent: with no turn
 // running it does nothing and reports wasBusy false, so a cancel racing
 // the turn's own end is not an error.
-func (r *Registry) CancelACP(id string) (wasBusy bool, err error) {
+//
+// promptID and epoch, when non-zero (from PromptACPTurn), pin the cancel
+// to that turn: a session that has moved on to another one is left alone
+// and reports wasBusy false.
+func (r *Registry) CancelACP(id string, promptID, epoch int) (wasBusy bool, err error) {
 	r.mu.Lock()
 	e, ok := r.entries[id]
 	if !ok {
@@ -801,7 +805,8 @@ func (r *Registry) CancelACP(id string) (wasBusy bool, err error) {
 		return false, ErrNotACP
 	}
 	as := e.acp
-	if as == nil || !as.busy {
+	if as == nil || !as.busy ||
+		(promptID != 0 && e.acpRes.promptID != promptID) || (epoch != 0 && e.acpRes.epoch != epoch) {
 		r.mu.Unlock()
 		return false, nil
 	}
@@ -848,6 +853,14 @@ func (r *Registry) SubmitResult(id, nonce string, result json.RawMessage) error 
 	}
 	if !as.busy || e.acpRes.promptID == 0 {
 		return fmt.Errorf("%w: no turn is running", ErrSubmitRejected)
+	}
+	// The daemon is the authority on status, not the tool in front of it:
+	// anything but exactly "ok" or "error" is refused, schema or not.
+	var env struct {
+		Status any `json:"status"`
+	}
+	if json.Unmarshal(buf.Bytes(), &env) != nil || (env.Status != "ok" && env.Status != "error") {
+		return fmt.Errorf(`%w: "status" must be exactly "ok" or "error"; call %s again`, ErrSubmitRejected, acp.SubmitToolName)
 	}
 	if err := checkResultAgainstSchema(e.ResultSchema, buf.Bytes()); err != nil {
 		return fmt.Errorf("%w: %v; call %s again", ErrSubmitRejected, err, acp.SubmitToolName)

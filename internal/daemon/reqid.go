@@ -58,6 +58,9 @@ func (o controlOps) withReqID(id int) controlOps {
 	o.sendError = func(code, msg string) {
 		_ = o.writeJSON(wire.FrameError, wire.Error{Code: code, Message: msg})
 	}
+	if o.bindWorktree != nil {
+		o.sendWorktrees, o.finishMutation = o.bindWorktree(o.writeJSON, o.sendError)
+	}
 	return o
 }
 
