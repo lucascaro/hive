@@ -160,6 +160,30 @@ describe('AcpTranscript', () => {
     expect(origins).toEqual(['From plugin ci', 'Earlier turn']);
   });
 
+  it('renders workflow origin', () => {
+    const { container } = render(<AcpTranscript sessionId={SID} />);
+    frame({
+      reset: true,
+      items: [
+        {
+          id: 1,
+          kind: 'user',
+          text: 'a',
+          origin: 'plugin:engine/workflow:r-1',
+        },
+        // A forged-looking principal is shown verbatim, never parsed.
+        { id: 2, kind: 'user', text: 'b', origin: 'plugin:x/../plugin:q' },
+      ],
+    });
+    const origins = [...container.querySelectorAll('.acp-item__origin')].map(
+      (e) => e.textContent,
+    );
+    expect(origins).toEqual([
+      'From workflow r-1 (plugin engine)',
+      'From plugin:x/../plugin:q',
+    ]);
+  });
+
   it('answers a permission request with the option it offered', () => {
     const { getByText, container } = render(<AcpTranscript sessionId={SID} />);
     frame({ reset: true, items: [], permission: PERM });

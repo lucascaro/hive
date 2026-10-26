@@ -139,8 +139,11 @@ Frame numbers are provisional; each PR takes the next free number on
     - B watches readiness through SESSION_EVENT / phase.
   - **PROMPT_ACP**, once the turn has started.
   - **ANSWER_PERMISSION** and **KILL_SESSION**.
-  - **CANCEL_ACP**, with `was_busy`.
-- **Request fields:** `CreateSpec`, `PromptAcpReq`, `AnswerPermissionReq` and `KillSessionReq` gain `ReqID`.
+  - **CANCEL_ACP**, with `was_busy` (absent = false on the wire).
+  - **RESTART_SESSION** (R3), `{req_id, session_id}` once `Registry.Restart` returns nil. A failure is `restart_failed` carrying the `req_id`.
+- **PROMPT_ACP's ACK also carries `prompt_id` and `epoch`** (R2): the transcript item id of the turn just started and the transcript epoch it is in. Item ids and epochs restart with the daemon, so:
+  - **`WELCOME.boot_id`** (R2) is 16 random bytes in hex, chosen once per `hived` process and sent on every WELCOME. A plugin pairs `(boot_id, epoch, prompt_id)` to tie a result to its turn and to tell "the daemon restarted" from "the plugin crashed".
+- **Request fields:** `CreateSpec`, `PromptAcpReq`, `AnswerPermissionReq`, `KillSessionReq` and `RestartSessionReq` gain `ReqID`.
 - **SDK `hive.request(name, payload = {}, { timeoutMs = 30000 } = {})`:**
   - It assigns `req_id` from a per-connection counter.
   - It resolves **only on a reply frame type**: `ACK`, `PREPARED_WORKTREE`, `TRANSCRIPT_MATCHES` or `TRANSCRIPT_LINES`, carrying that `req_id`. It rejects on `ERROR` carrying it (`err.hive = {code, message, …}`).
@@ -183,6 +186,25 @@ Frame numbers are provisional; each PR takes the next free number on
   - **Idempotent.** With a turn running, it answers any pending permission with `acp.Cancelled()`, sends the `session/cancel` **notification** ([ACP prompt turn, Cancellation](https://agentclientprotocol.com/protocol/prompt-turn)), and ACKs `{was_busy: true}`. With none running it ACKs `{was_busy: false}`. It never errors on "not busy".
 - **`AcpTranscriptMsg.StopReason`** (`stop_reason`): the latest prompt's ACP stop reason (`end_turn`, `cancelled`, `max_tokens`, `max_turn_requests`, `refusal`), or `error` if the adapter call failed.
   - Carried on every message like `result_status`, and cleared by a new prompt.
+- **`AcpTranscriptMsg.Usage`** (`usage`, R5, `json.RawMessage`, omitempty): the latest `usage_update` payload of the current prompt, verbatim from the adapter, cleared by a new prompt like `stop_reason`. `acp.Update` keeps the raw update (`Raw`) and the registry stores it only while a prompt runs.
+
+**ACP catalog for plugins (R6)**
+
+- **`LIST_ACP_AGENTS` (0x51, C→S) → `ACP_AGENTS` (0x52, S→C)** `{req_id, agents: [{id, name, modes: [{id, label}], default_mode, ceiling, no_approval_gate, experimental, available, reason}]}`, built from `agent.Def.ACP()`, `Settings.ACPCeiling` and `ACPAvailable`.
+  - Only agents that can run as ACP are listed.
+  - It runs off the read loop (`ACPAvailable` probes the login-shell PATH), is read-only, costs `costCheap`, and is not in `sessionModeFrames`.
+  - `ACP_AGENTS` joins `request()`'s reply types.
+
+#### Recorded for PR2 (not built in PR1)
+
+Both come from slice B's plan (#529, R1 and R4), approved by the user. PR2 builds them.
+
+- **`COMMIT_WORKTREE` (R1, C→S)** `{req_id, project_id, workflow_run_id, branch, message}`.
+  - The daemon finds the worktree that has `branch` checked out and requires the `hive/wf/<workflow_run_id>/` prefix (`invalid_workflow_branch`).
+  - It runs, through `safeGit`, `add -A` then `commit --no-verify -m <message>` with the user's identity (`git_identity_missing`, no fallback).
+  - It replies `ACK {req_id, committed, head}`: `committed:false` on a clean tree, a no-op, so the frame is idempotent. `AckMsg` gains `committed` and `head`.
+  - Cost `costExpense`. Tests: `TestCommitWorktree_CommitsAll`, `TestCommitWorktree_CleanIsNoop`, `TestCommitWorktree_HooksDoNotRun`, `TestCommitWorktree_RefusesNonRunBranch`.
+- **`PREPARED_WORKTREE` gains `base_sha` and `head_sha`** (R4). `base_sha` is the SHA `base` resolved to (empty when `reattached`); `head_sha` is the worktree's HEAD after any merges. B pins every root worktree of a run to the first `base_sha`.
 
 #### PR2: plugin messages and the worktree frame (gets its own security review)
 
@@ -268,39 +290,43 @@ Reply: `{req_id, project_id, path, branch, reattached, merged: [branch…], conf
 
 **PR1**
 - `internal/wire/control.go`:
-  - `Error.ReqID`, `CreateSpec.ReqID`, `CreateSpec.WorkflowRunID`, `CreateSpec.ResultSchema`, `KillSessionReq.ReqID`;
-  - `AckMsg{ReqID, SessionID, WasBusy}`;
-  - `ParsePrincipal`;
-  - codes `invalid_workflow_run_id`, `invalid_result_schema`.
+  - `Error.ReqID`, `CreateSpec.ReqID`, `CreateSpec.WorkflowRunID`, `CreateSpec.ResultSchema`, `KillSessionReq.ReqID`, `RestartSessionReq.ReqID`, `Welcome.BootID`.
+- `internal/wire/request.go` (new):
+  - `AckMsg{ReqID, SessionID, WasBusy, PromptID, Epoch}`;
+  - `ParsePrincipal`, `ValidWorkflowRunID`;
+  - codes `invalid_workflow_run_id`, `invalid_result_schema`;
+  - `ListAcpAgentsReq`, `AcpAgentsMsg`, `AcpAgentInfo`.
+- `internal/wire/client.go`: `control:ack` / `acp:agents` event names, so the ws-bridge forwards them.
 - `internal/wire/acp.go`:
   - `PromptAcpReq.{ReqID, WorkflowRunID}`, `AnswerPermissionReq.ReqID`;
   - `CancelAcpReq`;
-  - `AcpTranscriptMsg.StopReason`.
-- `internal/wire/frame.go`: `FrameAck`, `FrameCancelAcp`, plus `String()`.
+  - `AcpTranscriptMsg.StopReason`, `AcpTranscriptMsg.Usage`.
+- `internal/wire/frame.go`: `FrameAck`, `FrameCancelAcp`, `FrameListAcpAgents`, `FrameAcpAgents`, plus `String()`.
 - `internal/daemon/daemon.go`:
   - `peekReqID` and a per-frame `ops` copy whose `sendError` stamps `req_id`;
   - `sendACPError` routed through it;
   - `composePrincipal` at `:806`, `:1556`, `:1706`;
   - the create handler uses `BeginCreate` / ACK / `FinishCreate`;
-  - ACKs, and the CANCEL_ACP handler.
-- `internal/registry/create.go`: split `Create` into exported `BeginCreate` + `FinishCreate`, keeping `Create` as their composition for other callers. Validate `ResultSchema` first.
+  - ACKs (create, prompt with `prompt_id`/`epoch`, answer, kill, restart), and the CANCEL_ACP and LIST_ACP_AGENTS handlers;
+  - `bootID` on every WELCOME.
+- `internal/registry/create.go`: split `Create` into exported `BeginCreate(spec)` + `FinishCreate(ctx, e, spec, plan)`, keeping `Create` as their composition for other callers. `BeginCreate` validates the kind and `ResultSchema` first. (`BeginCreate` takes no `ctx`: it does no I/O that needs one.)
 - `internal/registry/acp.go`, `persist.go`, `registry.go`:
   - `ResultSchema` on Entry and meta;
   - `SubmitResult` validation;
   - `HIVE_SUBMIT_SCHEMA`;
-  - `CancelACP(id) (wasBusy bool, err error)`;
-  - `acpResult.stopReason`.
+  - `CancelACP(id) (wasBusy bool, err error)`, `PromptACPTurn` (PromptACP that also returns the turn's `prompt_id` and `epoch`);
+  - `acpResult.stopReason` and `.usage`.
 - `internal/acp/conn.go`: `Notify`. `internal/acp/agent.go`: `Cancel`. `internal/acp/types.go`: method const.
 - `internal/acp/acptest/fake.go`: handles `session/cancel`. A blocked prompt, or one with a pending fake permission, ends with `stopReason:"cancelled"`.
 - `cmd/hived/mcpsubmit.go`: the tool built from env, plus a pre-check.
 - `internal/agent/pi/hive.ts`: parameters from env.
-- `cmd/hivegui/app_control.go`: ignore `FrameAck`. `cmd/hivegui/app_calls.go`: `CancelAcp`.
-- `cmd/hived-ws-bridge/main.go`: forward ACK; op `cancel_acp`.
+- `cmd/hivegui/app_calls.go`: `CancelAcp`. (`app_control.go` needs no change: the shared event table maps `ACK` / `ACP_AGENTS`.)
+- `cmd/hived-ws-bridge/main.go`: forwards ACK and ACP_AGENTS; ops `CancelAcp` and `ListAcpAgents` (CamelCase like every other op).
 - `internal/wire/testclient/client.go`: a `Request` helper.
-- `cmd/hivegui/frontend/src/components/acp/AcpTranscript.tsx` (`originLabel`), `src/app/state.ts` (`stop_reason`).
+- `cmd/hivegui/frontend/src/components/acp/AcpTranscript.tsx` (`originLabel`), `src/lib/principal.ts`, `src/lib/acp.ts` (`stop_reason` into the transcript state).
 - `plugins/sdk/hive-plugin.mjs` and its webhook copy:
-  - `request()`, `Frame.ACK`, `Frame.CANCEL_ACP`;
-  - typedefs `Ack`, `HiveError.req_id`;
+  - `request()`, `Frame.ACK`, `Frame.CANCEL_ACP`, `Frame.LIST_ACP_AGENTS`, `Frame.ACP_AGENTS`;
+  - typedefs `Ack`, `AcpAgentInfo`, `AcpAgents`, `HiveError.req_id`, `Welcome.boot_id`;
   - `CreateSpec` docs for `workflow_run_id`, `result_schema`.
 - `internal/plugin/sdk_drift_test.go`: typedef map (`Ack`).
 - `internal/plugin/limiter.go`: CANCEL_ACP stays cheap (default).
@@ -309,8 +335,8 @@ Reply: `{req_id, project_id, path, branch, reattached, merged: [branch…], conf
 - `internal/buildinfo/contract.go`.
 
 **PR2**
-- `internal/wire/control.go`: `PluginMessage`, `MaxPluginMessage`, `PrepareWorktreeReq`, `PreparedWorktreeMsg`, `MergeConflict`, error codes.
-- `internal/wire/frame.go`: `FramePluginMessage`, `FramePrepareWorktree`, `FramePreparedWorktree`.
+- `internal/wire/control.go`: `PluginMessage`, `MaxPluginMessage`, `PrepareWorktreeReq`, `PreparedWorktreeMsg` (with `base_sha`, `head_sha`: R4), `CommitWorktreeReq` (R1), `AckMsg.Committed` / `.Head`, `MergeConflict`, error codes.
+- `internal/wire/frame.go`: `FramePluginMessage`, `FramePrepareWorktree`, `FramePreparedWorktree`, `FrameCommitWorktree` (R1; numbers from `0x53`, since PR1 took `0x4f`–`0x52`).
 - `internal/worktree/worktree.go`: `safeGit`, `ResolveCommit`, `CheckBranchName`, `AddNewBranch`, `AddExistingBranch`, `FreePath`, `MergeBranches(ctx, wt string, shas []namedSHA) (merged []string, conflict *MergeConflict, err error)`.
 - `internal/registry/worktrees.go`: `PrepareWorktree` under `gitMu`.
 - `internal/daemon/daemon.go` and plugin routing: the PLUGIN_MESSAGE relay and target lookup; the PREPARE handler in `runOp`.
@@ -379,6 +405,7 @@ Reply: `{req_id, project_id, path, branch, reattached, merged: [branch…], conf
 - `cmd/hived/plugin_e2e_test.go`: `TestE2E_SDKRequest_CreateSessionReturnsID`.
 - `internal/plugin/sdk_drift_test.go`: existing tests, extended.
 - `test/dom/acp-events.test.ts`: `stop_reason passes through state`.
+- R2/R3/R5/R6: `TestReqID_PromptAckCarriesPromptID`, `TestWelcome_BootIDStablePerProcess`, `TestReqID_RestartAcked`, `TestUsage_ForwardedForTheTurn` (registry), `TestUpdateRawKeptForUsage` (acp), `TestListAcpAgents`, `TestCreateWithResultSchema`, and the SDK test `request resolves on the frame a request has of its own`.
 
 **PR2**
 - `internal/daemon/plugin_message_test.go`:
@@ -449,6 +476,9 @@ scripts/ui-lint.sh                                             # PR1, PR3 (GUI t
 - **2026-10-25:** `PLUGIN_MESSAGE` is two-way, has no `req_id`, and is capped at 64 KiB. Why: user decision; C carries a nonce in `data`.
 - **2026-10-25:** Node floor 26.0.0 for the engine; `--permission` is defence-in-depth; the engine runs with `--disable-sigusr1`; other plugins need a supported LTS (22+). Why: user decision, on the verified facts above.
 - **2026-10-25:** Three PRs, each bumping `DaemonContract`. Why: user decision; PR2 gets its own security review.
+
+- **2026-10-25:** Slice B's required changes, approved by the user. PR1 adds R2 (`WELCOME.boot_id`; PROMPT_ACP's ACK carries `prompt_id` and `epoch`), R3 (RESTART_SESSION ACK), R5 (`AcpTranscriptMsg.usage`) and R6 (`LIST_ACP_AGENTS` → `ACP_AGENTS`). PR2 gains R1 (`COMMIT_WORKTREE`) and R4 (`base_sha`, `head_sha` on `PREPARED_WORKTREE`). Why: B (#529) cannot tie a result to its turn, retry a dead adapter, bill, or refuse a bad agent/mode before a run without them, and a plugin may not run `git commit` itself (carve-out).
+- **2026-10-25 (PR1 implementation):** Small consistent choices, none changing the design. `ACK.was_busy` is `omitempty` (absent = false). `BeginCreate` takes no `ctx`. Late create failures carry `session_id` only when the request had a `req_id`, so the GUI's own creates see errors exactly as before. The bridge ops are CamelCase (`CancelAcp`, `ListAcpAgents`) like the rest. `ACK` and `ACP_AGENTS` are in the shared event table (`control:ack`, `acp:agents`), so the bridge forwards them.
 
 ## Progress
 

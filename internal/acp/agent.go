@@ -169,6 +169,7 @@ func Start(spec Spec, h Handler) (*Agent, error) {
 			log.Printf("acp: dropping undecodable session/update: %v", err)
 			return
 		}
+		u.Raw = n.Update
 		h.Update(n.SessionID, u)
 	}, func(ctx context.Context, method string, params json.RawMessage) (any, *RPCError) {
 		if method != MethodRequestPermission || h.Permission == nil {
@@ -281,6 +282,14 @@ func (a *Agent) Prompt(ctx context.Context, id, text string) (string, error) {
 		Prompt:    []ContentBlock{{Type: "text", Text: text}},
 	}, &res)
 	return res.StopReason, err
+}
+
+// Cancel asks the agent to stop conversation id's running turn
+// (session/cancel, a notification). The turn then ends through
+// Prompt's reply with stopReason "cancelled". A cancel with no turn
+// running is ignored by the agent.
+func (a *Agent) Cancel(id string) error {
+	return a.conn.Notify(MethodSessionCancel, cancelParams{SessionID: id})
 }
 
 // envPATH returns the PATH entry of env.

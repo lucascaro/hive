@@ -287,6 +287,24 @@ const SUBMIT_PARAMETERS = {
   additionalProperties: false,
 };
 
+// A workflow node's result schema (spec 528), set by hived beside the
+// nonce: the schema of `data`. The daemon enforces it
+// (Registry.SubmitResult); showing it here lets the model write the right
+// shape first time. A value that does not parse is ignored, as the daemon
+// still enforces the real one.
+export const SUBMIT_SCHEMA_ENV = "HIVE_SUBMIT_SCHEMA";
+
+export function submitParameters(rawSchema: string | undefined): typeof SUBMIT_PARAMETERS {
+  if (!rawSchema) return SUBMIT_PARAMETERS;
+  try {
+    const data = JSON.parse(rawSchema);
+    if (data === null || typeof data !== "object" || Array.isArray(data)) return SUBMIT_PARAMETERS;
+    return { ...SUBMIT_PARAMETERS, properties: { ...SUBMIT_PARAMETERS.properties, data } } as typeof SUBMIT_PARAMETERS;
+  } catch {
+    return SUBMIT_PARAMETERS;
+  }
+}
+
 // submitResult sends one SUBMIT_RESULT on a session connection and
 // resolves once the daemon has recorded it — so the tool returns only
 // after that, and the turn cannot end first and be reported as having
@@ -689,7 +707,7 @@ export default function (pi: ExtensionAPI) {
       label: "Submit result",
       description:
         "Submit the typed result of this task to Hive. Call it exactly once, when the task is done (status ok) or cannot be done (status error).",
-      parameters: SUBMIT_PARAMETERS as any,
+      parameters: submitParameters(process.env[SUBMIT_SCHEMA_ENV]) as any,
       async execute(_toolCallId: string, params: any) {
         const status = params?.status;
         if (status !== "ok" && status !== "error") {

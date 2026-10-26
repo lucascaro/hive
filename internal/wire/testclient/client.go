@@ -59,6 +59,9 @@ type Client struct {
 
 	closeOnce sync.Once
 	closed    chan struct{}
+
+	mu      sync.Mutex // guards nextReq
+	nextReq int
 }
 
 type frameMsg struct {
@@ -211,6 +214,64 @@ func (c *Client) awaitSnapshot(want wire.FrameType, name string, timeout time.Du
 			return err
 		case <-time.After(remaining):
 			return fmt.Errorf("testclient: timeout waiting for %s", name)
+		}
+	}
+}
+
+// RequestError is the ERROR that answered a Request.
+type RequestError struct{ Err wire.Error }
+
+func (e *RequestError) Error() string { return e.Err.Code + ": " + e.Err.Message }
+
+// Request sends a control frame with a fresh req_id and waits for its
+// reply: an ACK, ACP_AGENTS, TRANSCRIPT_MATCHES or TRANSCRIPT_LINES
+// carrying that id (returned as its type and raw payload), or an ERROR
+// carrying it (returned as a *RequestError). Broadcasts and other
+// requests' replies are skipped, as the plugin SDK's request() does.
+// payload must marshal to a JSON object.
+func (c *Client) Request(ft wire.FrameType, payload any, timeout time.Duration) (wire.FrameType, []byte, error) {
+	raw, err := json.Marshal(payload)
+	if err != nil {
+		return 0, nil, err
+	}
+	var obj map[string]any
+	if err := json.Unmarshal(raw, &obj); err != nil {
+		return 0, nil, fmt.Errorf("testclient: request payload must be an object: %w", err)
+	}
+	c.mu.Lock()
+	c.nextReq++
+	id := c.nextReq
+	c.mu.Unlock()
+	obj["req_id"] = id
+	if err := c.cli.WriteJSON(ft, obj); err != nil {
+		return 0, nil, err
+	}
+	deadline := time.Now().Add(timeout)
+	for {
+		remaining := time.Until(deadline)
+		if remaining <= 0 {
+			return 0, nil, fmt.Errorf("testclient: timeout waiting for the reply to %s (req_id %d)", ft, id)
+		}
+		select {
+		case msg := <-c.snaps:
+			var echo struct {
+				ReqID int `json:"req_id"`
+			}
+			if json.Unmarshal(msg.payload, &echo) != nil || echo.ReqID != id {
+				continue
+			}
+			switch msg.t {
+			case wire.FrameAck, wire.FrameAcpAgents, wire.FrameTranscriptMatches, wire.FrameTranscriptLines:
+				return msg.t, msg.payload, nil
+			case wire.FrameError:
+				var e wire.Error
+				_ = json.Unmarshal(msg.payload, &e)
+				return msg.t, msg.payload, &RequestError{e}
+			}
+		case err := <-c.errs:
+			return 0, nil, err
+		case <-time.After(remaining):
+			return 0, nil, fmt.Errorf("testclient: timeout waiting for the reply to %s (req_id %d)", ft, id)
 		}
 	}
 }

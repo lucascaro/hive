@@ -1101,6 +1101,29 @@ test("submit_result's schema never carries the nonce", () => {
   });
 });
 
+test("submit_result parameters carry HIVE_SUBMIT_SCHEMA as the schema of data", () => {
+  const schema = {
+    type: "object",
+    properties: { n: { type: "number" } },
+    required: ["n"],
+    additionalProperties: false,
+  };
+  const params = (env: Record<string, string | undefined>) =>
+    withEnv({ HIVE_SESSION_ID: "s1", HIVE_SOCKET: "/tmp/x.sock", HIVE_SUBMIT_NONCE: "n", ...env }, () => {
+      const pi = fakePi();
+      mod.default(pi as never);
+      return pi.tools.find((t: any) => t.name === "submit_result").parameters;
+    });
+  const withSchema = params({ HIVE_SUBMIT_SCHEMA: JSON.stringify(schema) });
+  assert.deepEqual(withSchema.properties.data, schema);
+  assert.deepEqual(withSchema.required, ["status"]);
+  // Without a schema, or with one that does not parse, the plain tool.
+  assert.equal(params({ HIVE_SUBMIT_SCHEMA: undefined }).properties.data.type, "object");
+  assert.equal(params({ HIVE_SUBMIT_SCHEMA: undefined }).properties.data.properties, undefined);
+  assert.equal(params({ HIVE_SUBMIT_SCHEMA: "{nope" }).properties.data.properties, undefined);
+  assert.equal(params({ HIVE_SUBMIT_SCHEMA: "[1]" }).properties.data.properties, undefined);
+});
+
 // fakeDaemon answers one session connection: it skips HELLO, records
 // SUBMIT_RESULT's payload, sends an unrelated frame first and then reply.
 async function fakeSubmitDaemon(reply: (conn: net.Socket) => void) {

@@ -893,6 +893,17 @@ func (a *App) PromptAcp(sessionID, text string) error {
 	return cs.WriteJSON(wire.FramePromptAcp, wire.PromptAcpReq{SessionID: sessionID, Text: text})
 }
 
+// CancelAcp stops an ACP session's running turn (idempotent: a session
+// with no turn running is a no-op). No GUI surface uses it yet; it is
+// bound for the workflow UI.
+func (a *App) CancelAcp(sessionID string) error {
+	cs, err := a.requireControl()
+	if err != nil {
+		return err
+	}
+	return cs.WriteJSON(wire.FrameCancelAcp, wire.CancelAcpReq{SessionID: sessionID})
+}
+
 // AnswerPermission answers the permission request an ACP session is
 // blocked on with one of the options it offered.
 func (a *App) AnswerPermission(sessionID, requestID, optionID string) error {

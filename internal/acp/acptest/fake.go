@@ -82,6 +82,9 @@ const (
 	FlagWriterLocked = "writer-locked"
 	// FlagLoadFails makes session/load fail with a generic error.
 	FlagLoadFails = "load-fails"
+	// FlagSlowInit makes initialize wait until <dir>/release exists, so a
+	// test sees a session while its adapter is still starting.
+	FlagSlowInit = "slow-init"
 )
 
 // Modes is what the fake advertises, least permissive first: Claude's
@@ -152,6 +155,19 @@ type fake struct {
 	servers map[string]string // sessionId -> first MCP server name
 	prompts map[string]int    // sessionId -> prompts so far
 	setMode int               // set_mode calls so far
+	cancel  map[string]bool   // sessionId -> session/cancel seen during the running prompt
+}
+
+func (f *fake) setCancelled(sid string, v bool) {
+	f.mu.Lock()
+	f.cancel[sid] = v
+	f.mu.Unlock()
+}
+
+func (f *fake) cancelled(sid string) bool {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return f.cancel[sid]
 }
 
 // Main runs the fake agent on stdin/stdout until stdin closes.
@@ -163,6 +179,7 @@ func Main() {
 		pending: map[string]chan json.RawMessage{},
 		servers: map[string]string{},
 		prompts: map[string]int{},
+		cancel:  map[string]bool{},
 	}
 	for fl := range strings.SplitSeq(os.Getenv("HIVE_FAKE_ACP_FLAGS"), ",") {
 		f.flags[fl] = true
@@ -325,6 +342,13 @@ func (f *fake) handle(id json.RawMessage, method string, params json.RawMessage)
 		}
 		slices.Sort(names)
 		f.log("env", strings.Join(names, " "))
+		if f.flags[FlagSlowInit] {
+			for deadline := time.Now().Add(10 * time.Second); time.Now().Before(deadline); time.Sleep(10 * time.Millisecond) {
+				if _, err := os.Stat(filepath.Join(f.dir, "release")); err == nil {
+					break
+				}
+			}
+		}
 		reply(map[string]any{"protocolVersion": 1, "agentCapabilities": map[string]any{"loadSession": !f.flags[FlagNoLoad]}})
 	case "session/new":
 		sid := fmt.Sprintf("fake-%d", time.Now().UnixNano())
@@ -371,7 +395,13 @@ func (f *fake) handle(id json.RawMessage, method string, params json.RawMessage)
 			return
 		}
 		reply(map[string]any{})
+	case "session/cancel":
+		// A notification: no reply. Logged above as "session/cancel <id>".
+		f.setCancelled(p.SessionID, true)
 	case "session/prompt":
+		// The cancel flag is consumed when a turn ends cancelled, not
+		// cleared here: a session/cancel can overtake the prompt it is
+		// for, since each message is handled on its own goroutine.
 		text := ""
 		for _, b := range p.Prompt {
 			text += b.Text
@@ -435,18 +465,29 @@ func (f *fake) handle(id json.RawMessage, method string, params json.RawMessage)
 				"options":   options,
 			})
 			o := outcome(res)
+			if strings.HasPrefix(o, "cancelled") {
+				// A client cancels a turn by answering its pending
+				// permission "cancelled" (and sending session/cancel).
+				f.setCancelled(p.SessionID, true)
+			}
 			answer += " [" + o + "]"
 			if f.flags[FlagEscalateAfterAnswer] {
 				f.update(p.SessionID, map[string]any{"sessionUpdate": "current_mode_update", "currentModeId": "acceptEdits"})
 			}
 		}
 		if f.flags[FlagBlock] {
-			for deadline := time.Now().Add(10 * time.Second); time.Now().Before(deadline); time.Sleep(10 * time.Millisecond) {
+			for deadline := time.Now().Add(10 * time.Second); time.Now().Before(deadline) && !f.cancelled(p.SessionID); time.Sleep(10 * time.Millisecond) {
 				if _, err := os.Stat(filepath.Join(f.dir, "release")); err == nil {
 					break
 				}
 			}
 		}
+		if f.cancelled(p.SessionID) {
+			f.setCancelled(p.SessionID, false)
+			reply(map[string]any{"stopReason": "cancelled"})
+			return
+		}
+		f.update(p.SessionID, map[string]any{"sessionUpdate": "usage_update", "used": len(text), "size": 1000})
 		f.update(p.SessionID, map[string]any{"sessionUpdate": "tool_call_update", "toolCallId": "t1", "status": "completed",
 			"content": []any{map[string]any{"type": "content", "content": map[string]any{"type": "text", "text": "done"}}}})
 		agent := "echo: " + text + answer

@@ -292,6 +292,16 @@ const (
 	// only: it is the in-session half of `hived wait`.
 	FrameWaitSession FrameType = 0x4d // C → S, JSON, control
 	FrameWaited      FrameType = 0x4e // S → C, JSON, control
+
+	// Workflow-engine prerequisites (spec 528). ACK answers a control
+	// request that carried a non-zero req_id and has no reply frame of
+	// its own; CANCEL_ACP stops an ACP session's running turn;
+	// LIST_ACP_AGENTS / ACP_AGENTS is the ACP catalog with the user's
+	// ceilings, for a plugin that has no Wails binding to ask.
+	FrameAck           FrameType = 0x4f // S → C, JSON, control
+	FrameCancelAcp     FrameType = 0x50 // C → S, JSON, control
+	FrameListAcpAgents FrameType = 0x51 // C → S, JSON, control
+	FrameAcpAgents     FrameType = 0x52 // S → C, JSON, control
 )
 
 // ControlRequestFrames lists every frame a control-mode client may send.
@@ -315,7 +325,7 @@ var ControlRequestFrames = []FrameType{
 	FrameGetAcpTranscript, FramePromptAcp, FrameAnswerPermission,
 	FrameSubmitResult, FrameSetSessionKind, FrameSendToSession,
 	FrameArchiveSession, FrameListArchived, FrameUnarchiveSession, FrameDeleteArchived,
-	FrameWaitSession,
+	FrameWaitSession, FrameCancelAcp, FrameListAcpAgents,
 }
 
 // ControlEventFrames lists every frame the daemon sends on a control
@@ -328,6 +338,7 @@ var ControlEventFrames = []FrameType{
 	FrameTranscriptMatches, FrameTranscriptLines, FramePlanReview,
 	FramePlugins, FramePluginEvent, FrameAcpTranscript,
 	FrameSubmitResultOK, FrameSent, FrameArchived, FrameWaited,
+	FrameAck, FrameAcpAgents,
 }
 
 // NonControlFrames are the frames that never travel on a control
@@ -458,6 +469,14 @@ func (t FrameType) String() string {
 		return "WAIT_SESSION"
 	case FrameWaited:
 		return "WAITED"
+	case FrameAck:
+		return "ACK"
+	case FrameCancelAcp:
+		return "CANCEL_ACP"
+	case FrameListAcpAgents:
+		return "LIST_ACP_AGENTS"
+	case FrameAcpAgents:
+		return "ACP_AGENTS"
 	case FrameArchiveSession:
 		return "ARCHIVE_SESSION"
 	case FrameListArchived:

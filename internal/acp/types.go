@@ -18,6 +18,7 @@ const (
 	MethodSessionUpdate     = "session/update"
 	MethodRequestPermission = "session/request_permission"
 	MethodSessionSetMode    = "session/set_mode"
+	MethodSessionCancel     = "session/cancel"
 )
 
 type fsCapability struct {
@@ -143,6 +144,10 @@ type promptParams struct {
 	Prompt    []ContentBlock `json:"prompt"`
 }
 
+type cancelParams struct {
+	SessionID string `json:"sessionId"`
+}
+
 type promptResult struct {
 	StopReason string `json:"stopReason"`
 }
@@ -177,6 +182,9 @@ type Update struct {
 	Entries []PlanEntry `json:"entries,omitempty"`
 	// current_mode_update
 	CurrentModeID string `json:"currentModeId,omitempty"`
+	// Raw is the whole update object as the adapter sent it, kept for
+	// kinds Hive forwards verbatim (usage_update).
+	Raw json.RawMessage `json:"-"`
 }
 
 // TextChunk returns the text of a message or thought chunk's content
@@ -196,9 +204,10 @@ type PlanEntry struct {
 	Status   string `json:"status,omitempty"`
 }
 
-// session/update kinds Hive renders. Others (usage_update,
-// available_commands_update, …) are ignored.
+// session/update kinds Hive renders or forwards. Others
+// (available_commands_update, …) are ignored.
 const (
+	UpdateUsage         = "usage_update"
 	UpdateUserMessage   = "user_message_chunk"
 	UpdateAgentMessage  = "agent_message_chunk"
 	UpdateAgentThought  = "agent_thought_chunk"

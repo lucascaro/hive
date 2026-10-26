@@ -28,6 +28,16 @@ package buildinfo
 // History (newest first), so a bump is a decision with a record and
 // not just a number going up:
 //
+//	34 — Workflow-engine prerequisites, part 1 (spec 528). Any control
+//	    request may carry req_id, echoed on ERROR, with a new ACK frame
+//	    (0x4f) for requests with no reply of their own; CREATE_SESSION is
+//	    ACKed as soon as its entry exists. CreateSpec gains
+//	    workflow_run_id (a composed plugin:<id>/workflow:<run> principal)
+//	    and result_schema, which Registry.SubmitResult enforces and which
+//	    is persisted. New CANCEL_ACP (0x50), LIST_ACP_AGENTS (0x51) and
+//	    ACP_AGENTS (0x52); ACP_TRANSCRIPT gains stop_reason and usage;
+//	    WELCOME gains boot_id. A plugin built against this tree and run
+//	    on an older daemon would wait forever on an ACK that never comes.
 //	33 — Session observation (spec 390). A ModeSession connection may now
 //	    send LIST_SESSIONS (narrowed to its own project) and the new
 //	    WAIT_SESSION, answered with WAITED. The GUI never sends either, but
@@ -282,7 +292,7 @@ package buildinfo
 //	    before this cannot see or clear the flag.
 //	1 — first contract; everything up to and including the
 //	    CLIENT_COMMAND relay.
-const DaemonContract = 33
+const DaemonContract = 34
 
 // Identity is this binary's full build identity. `hived --version
 // --json` prints it, and Welcome carries the same three values, so a

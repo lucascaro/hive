@@ -168,6 +168,22 @@ func (c *Conn) write(m message) error {
 	return err
 }
 
+// Notify sends a notification: a message with no id, which the peer
+// does not answer.
+func (c *Conn) Notify(method string, params any) error {
+	p, err := json.Marshal(params)
+	if err != nil {
+		return err
+	}
+	c.mu.Lock()
+	closed := c.err != nil
+	c.mu.Unlock()
+	if closed {
+		return ErrClosed
+	}
+	return c.write(message{JSONRPC: "2.0", Method: method, Params: p})
+}
+
 // Call sends a request and decodes its result into out (which may be
 // nil). It returns when the reply arrives, ctx ends, or the connection
 // closes.

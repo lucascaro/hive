@@ -10,6 +10,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"maps"
 	"net"
 	"os"
 	"time"
@@ -70,9 +71,33 @@ type rpcError struct {
 	Message string `json:"message"`
 }
 
+// toolFor is submitTool, with the session's result schema (when it has
+// one) as the schema of `data`. The daemon's Registry.SubmitResult is the
+// authority; showing it here lets the model write the right shape first
+// time.
+func toolFor(schema *acp.Schema) map[string]any {
+	if schema == nil {
+		return submitTool
+	}
+	tool := maps.Clone(submitTool)
+	in := maps.Clone(submitTool["inputSchema"].(map[string]any))
+	props := maps.Clone(in["properties"].(map[string]any))
+	props["data"] = schema.JSON()
+	in["properties"] = props
+	tool["inputSchema"] = in
+	tool["description"] = submitTool["description"].(string) + " With status ok, data is required and must match its schema."
+	return tool
+}
+
 // runMCPSubmit serves MCP on in/out until in closes. submit delivers one
 // result; it is submitOverSocket outside tests.
 func runMCPSubmit(in io.Reader, out io.Writer, submit func(json.RawMessage) error) int {
+	return runMCPSubmitSchema(in, out, submit, nil)
+}
+
+// runMCPSubmitSchema is runMCPSubmit for a session with a result schema
+// (HIVE_SUBMIT_SCHEMA): nil means the plain tool.
+func runMCPSubmitSchema(in io.Reader, out io.Writer, submit func(json.RawMessage) error, schema *acp.Schema) int {
 	w := bufio.NewWriter(out)
 	send := func(m rpcMsg) {
 		m.JSONRPC = "2.0"
@@ -104,7 +129,7 @@ func runMCPSubmit(in io.Reader, out io.Writer, submit func(json.RawMessage) erro
 		case "ping":
 			send(rpcMsg{ID: m.ID, Result: map[string]any{}})
 		case "tools/list":
-			send(rpcMsg{ID: m.ID, Result: map[string]any{"tools": []any{submitTool}}})
+			send(rpcMsg{ID: m.ID, Result: map[string]any{"tools": []any{toolFor(schema)}}})
 		case "tools/call":
 			var p struct {
 				Name      string          `json:"name"`
@@ -116,7 +141,7 @@ func runMCPSubmit(in io.Reader, out io.Writer, submit func(json.RawMessage) erro
 				continue
 			}
 			text, isErr := "Result recorded.", false
-			if err := checkSubmitArgs(p.Arguments); err != nil {
+			if err := checkSubmitArgs(p.Arguments, schema); err != nil {
 				text, isErr = err.Error(), true
 			} else if err := submit(p.Arguments); err != nil {
 				text, isErr = "Hive did not record the result: "+err.Error(), true
@@ -132,14 +157,20 @@ func runMCPSubmit(in io.Reader, out io.Writer, submit func(json.RawMessage) erro
 	return 0
 }
 
-// checkSubmitArgs enforces the schema's one hard rule, so a model that
-// ignores the schema is told so and can call again.
-func checkSubmitArgs(args json.RawMessage) error {
+// checkSubmitArgs enforces the schema's one hard rule — and, for a
+// session with a result schema, the same data check the daemon makes — so
+// a model that ignores the schema is told so and can call again.
+func checkSubmitArgs(args json.RawMessage, schema *acp.Schema) error {
 	var a struct {
 		Status string `json:"status"`
 	}
 	if json.Unmarshal(args, &a) != nil || (a.Status != "ok" && a.Status != "error") {
 		return errors.New(`submit_result needs "status": "ok" or "error"; call it again`)
+	}
+	if schema != nil {
+		if err := schema.CheckEnvelope(args); err != nil {
+			return fmt.Errorf("%v; call %s again", err, acp.SubmitToolName)
+		}
 	}
 	return nil
 }
@@ -192,5 +223,15 @@ func submitOverSocket(env func(string) string) func(json.RawMessage) error {
 }
 
 func runMCPSubmitMain() int {
-	return runMCPSubmit(os.Stdin, os.Stdout, submitOverSocket(os.Getenv))
+	var schema *acp.Schema
+	if raw := os.Getenv("HIVE_SUBMIT_SCHEMA"); raw != "" {
+		s, err := acp.ParseSchema(json.RawMessage(raw))
+		if err != nil {
+			// The daemon checked it at create; running without it only
+			// loses the pre-check, and the daemon still enforces it.
+			fmt.Fprintf(os.Stderr, "hived mcp-submit: ignoring HIVE_SUBMIT_SCHEMA: %v\n", err)
+		}
+		schema = s
+	}
+	return runMCPSubmitSchema(os.Stdin, os.Stdout, submitOverSocket(os.Getenv), schema)
 }

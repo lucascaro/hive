@@ -51,12 +51,17 @@ export interface AcpTranscriptMsg {
   reset?: boolean;
   items?: AcpItem[];
   permission?: AcpPermission | null;
+  // How the latest prompt ended (ACP stop reason, or "error"); absent
+  // while it runs. Carried on every message and cleared by a new prompt.
+  stop_reason?: string;
 }
 
 export interface AcpTranscript {
   epoch: number;
   items: readonly AcpItem[];
   permission: AcpPermission | null;
+  // The latest prompt's stop reason; '' while it runs.
+  stopReason: string;
   // A snapshot has been applied and the deltas since are current.
   loaded: boolean;
 }
@@ -73,6 +78,7 @@ export const emptyAcp = (): AcpTranscript => ({
   epoch: 0,
   items: [],
   permission: null,
+  stopReason: '',
   loaded: false,
 });
 
@@ -99,6 +105,7 @@ export function applyAcp(
       epoch: msg.epoch,
       items: (msg.items ?? []).map((it) => ({ ...it, append: undefined })),
       permission: msg.permission ?? null,
+      stopReason: msg.stop_reason ?? '',
       loaded: true,
     };
   }
@@ -129,8 +136,14 @@ export function applyAcp(
     items = next;
   }
   const permission = msg.permission ?? null;
-  if (items === t.items && samePermission(permission, t.permission)) return t;
-  return { ...t, items, permission };
+  const stopReason = msg.stop_reason ?? '';
+  if (
+    items === t.items &&
+    samePermission(permission, t.permission) &&
+    stopReason === t.stopReason
+  )
+    return t;
+  return { ...t, items, permission, stopReason };
 }
 
 function samePermission(

@@ -1,0 +1,1 @@
+{"schema":{"type":"object","properties":{"summary":{"type":"string"},"n":{"type":"number"}},"required":["summary","n"],"additionalProperties":false},"value":{"summary":1,"n":2},"ok":false,"error":"data.summary: expected string, got number"}

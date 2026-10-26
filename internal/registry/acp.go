@@ -121,6 +121,10 @@ type acpResult struct {
 	promptID int
 	status   string
 	value    json.RawMessage
+	// stopReason is how the prompt ended ("" while it runs); usage is
+	// the latest usage_update seen during it.
+	stopReason string
+	usage      json.RawMessage
 }
 
 // maxACPToolRefs bounds acpSession.tools within one turn.
@@ -180,6 +184,34 @@ func validateKind(spec wire.CreateSpec) error {
 	return nil
 }
 
+// validateResultSchema refuses a result_schema the session cannot use:
+// on a terminal session (nothing there validates it), or one outside the
+// IR subset. Runs before anything is registered.
+func validateResultSchema(spec wire.CreateSpec) error {
+	if len(spec.ResultSchema) == 0 {
+		return nil
+	}
+	if spec.Kind != wire.KindACP {
+		return fmt.Errorf("%w: result_schema applies to ACP sessions only", ErrNotACP)
+	}
+	return acp.CheckSchema(spec.ResultSchema)
+}
+
+// checkResultAgainstSchema validates a compacted {status, summary, data}
+// envelope against the session's result schema. Without a schema, or
+// with status "error" (a task that could not be done reports no data),
+// everything passes; with status "ok", data is required and must match.
+func checkResultAgainstSchema(schema, envelope json.RawMessage) error {
+	if len(schema) == 0 {
+		return nil
+	}
+	s, err := acp.ParseSchema(schema)
+	if err != nil {
+		return err // persisted schemas were checked at create; fail closed
+	}
+	return s.CheckEnvelope(envelope)
+}
+
 // acpModeFor is the mode an ACP session starts in: the one it asked for
 // at create when that is still at or below the user's ceiling, and the
 // ceiling otherwise — the user may have lowered it since (revive,
@@ -206,11 +238,16 @@ func newNonce(n int) string {
 // pi-acp shim instead, and the extension registers the same tool. The
 // session's own HIVE_* values reach only these two places: AdapterEnv
 // stripped every inherited one from the adapter.
-func (r *Registry) acpExtras(id string, spec *agent.ACPSpec, as *acpSession) (env []string, mcp []acp.MCPServer) {
+func (r *Registry) acpExtras(id string, spec *agent.ACPSpec, as *acpSession, schema json.RawMessage) (env []string, mcp []acp.MCPServer) {
 	r.mu.Lock()
 	hived, stateDir := r.hivedPath, r.stateDir
 	r.mu.Unlock()
 	hive := append(r.hiveEnv(id), "HIVE_SUBMIT_NONCE="+as.nonce)
+	if len(schema) > 0 {
+		// The tools show it to the model (and mcp-submit pre-checks with
+		// the same validator); SubmitResult is the authority.
+		hive = append(hive, "HIVE_SUBMIT_SCHEMA="+string(schema))
+	}
 	if spec.NoApprovalGate {
 		shim, err := agent.PiACPShim(stateDir)
 		if err != nil {
@@ -287,7 +324,7 @@ func (r *Registry) startACP(id, cwd, loadID string) error {
 		r.mu.Unlock()
 		return ErrNotFound
 	}
-	agentID, requested := e.Agent, e.ACPMode
+	agentID, requested, schema := e.Agent, e.ACPMode, e.ResultSchema
 	r.mu.Unlock()
 
 	fail := func(err error) error {
@@ -318,7 +355,7 @@ func (r *Registry) startACP(id, cwd, loadID string) error {
 	as := &acpSession{spec: spec, nonce: newNonce(32), server: "hive-" + newNonce(6), tools: map[string]acp.Update{}}
 	as.mode, as.ceiling = acpModeFor(spec, st.ACPCeiling(def.ID), requested)
 	argv, env := acpCommand(def)
-	extraEnv, mcp := r.acpExtras(id, spec, as)
+	extraEnv, mcp := r.acpExtras(id, spec, as, schema)
 	env = append(env, extraEnv...)
 	a, err := acp.Start(acp.Spec{Argv: argv, Env: env, Cwd: cwd}, acp.Handler{
 		Update: func(_ string, u acp.Update) { r.onACPUpdate(id, as, u) },
@@ -496,6 +533,13 @@ func (r *Registry) onACPUpdate(id string, as *acpSession, u acp.Update) {
 				ok := u.Status == "completed"
 				r.applyACPLocked(e, agentstate.Event{Kind: agentstate.KindToolEnd, Tool: toolLabel(u), CallID: u.ToolCallID, OK: &ok})
 			}
+		case acp.UpdateUsage:
+			// Only while a prompt is running: its usage belongs to that
+			// prompt and is cleared by the next one.
+			if as.busy && e.acpRes.promptID != 0 {
+				e.acpRes.usage = slices.Clone(u.Raw)
+				r.broadcastACPLocked(e, nil, false)
+			}
 		case acp.UpdatePlan:
 			plan := make([]wire.PlanItem, len(u.Entries))
 			for i, p := range u.Entries {
@@ -660,27 +704,35 @@ func (r *Registry) AnswerPermission(id, requestID, optionID string) error {
 // origin is who sent it (wire.OriginUser, or a principal), recorded on
 // the transcript item.
 func (r *Registry) PromptACP(id, text, origin string) error {
+	_, _, err := r.PromptACPTurn(id, text, origin)
+	return err
+}
+
+// PromptACPTurn is PromptACP that also says which turn it started: the
+// transcript item id of the prompt and the transcript epoch it is in
+// (item ids restart with each adapter process).
+func (r *Registry) PromptACPTurn(id, text, origin string) (promptID, epoch int, err error) {
 	if text == "" {
-		return errors.New("registry: empty prompt")
+		return 0, 0, errors.New("registry: empty prompt")
 	}
 	r.mu.Lock()
 	e, ok := r.entries[id]
 	if !ok {
 		r.mu.Unlock()
-		return ErrNotFound
+		return 0, 0, ErrNotFound
 	}
 	if !e.isACP() {
 		r.mu.Unlock()
-		return ErrNotACP
+		return 0, 0, ErrNotACP
 	}
 	as := e.acp
 	if as == nil || !as.ready {
 		r.mu.Unlock()
-		return ErrNoLiveSession
+		return 0, 0, ErrNoLiveSession
 	}
 	if as.busy || e.switching {
 		r.mu.Unlock()
-		return ErrACPBusy
+		return 0, 0, ErrACPBusy
 	}
 	as.busy = true
 	as.userMode = ""
@@ -688,7 +740,7 @@ func (r *Registry) PromptACP(id, text, origin string) error {
 	sid := e.AgentSessionID
 	item := e.acpTx.AddUser(text, origin)
 	e.acpRes = acpResult{epoch: e.acpTx.Epoch(), promptID: item.ID}
-	epoch := e.acpRes.epoch
+	epoch = e.acpRes.epoch
 	r.applyACPLocked(e, agentstate.Event{Kind: agentstate.KindPrompt, Text: text})
 	r.broadcastACPLocked(e, []wire.AcpItem{item}, false)
 	r.mu.Unlock()
@@ -706,8 +758,14 @@ func (r *Registry) PromptACP(id, text, origin string) error {
 		// A turn that ends — however it ends, the adapter dying with it
 		// included — with nothing submitted has no result. Never read
 		// as success (F3).
-		if res := &cur.acpRes; res.epoch == epoch && res.promptID == item.ID && res.status == "" {
-			res.status = wire.AcpResultNone
+		if res := &cur.acpRes; res.epoch == epoch && res.promptID == item.ID {
+			if res.status == "" {
+				res.status = wire.AcpResultNone
+			}
+			res.stopReason = stop
+			if err != nil {
+				res.stopReason = "error"
+			}
 			r.broadcastACPLocked(cur, nil, false)
 		}
 		if cur.acp != as {
@@ -723,7 +781,44 @@ func (r *Registry) PromptACP(id, text, origin string) error {
 		}
 		r.applyACPLocked(cur, ev)
 	}()
-	return nil
+	return item.ID, epoch, nil
+}
+
+// CancelACP stops session id's running turn: it answers a pending
+// permission request "cancelled" and sends the agent session/cancel, so
+// the turn ends with stop reason "cancelled". Idempotent: with no turn
+// running it does nothing and reports wasBusy false, so a cancel racing
+// the turn's own end is not an error.
+func (r *Registry) CancelACP(id string) (wasBusy bool, err error) {
+	r.mu.Lock()
+	e, ok := r.entries[id]
+	if !ok {
+		r.mu.Unlock()
+		return false, ErrNotFound
+	}
+	if !e.isACP() {
+		r.mu.Unlock()
+		return false, ErrNotACP
+	}
+	as := e.acp
+	if as == nil || !as.busy {
+		r.mu.Unlock()
+		return false, nil
+	}
+	// Answered under the lock, exactly as AnswerPermission does: the
+	// answer channel is buffered and written once.
+	if p := as.perm; p != nil && !p.answered {
+		p.answered = true
+		p.answer <- acp.Cancelled()
+	}
+	sid := e.AgentSessionID
+	r.mu.Unlock()
+	// A failed notify means the adapter is already gone, and the turn
+	// ends with an error through Prompt; either way it is over.
+	if err := as.agent.Cancel(sid); err != nil {
+		log.Printf("registry: acp %s: session/cancel: %v", id, err)
+	}
+	return true, nil
 }
 
 // SubmitResult records the typed result of session id's running turn,
@@ -753,6 +848,9 @@ func (r *Registry) SubmitResult(id, nonce string, result json.RawMessage) error 
 	}
 	if !as.busy || e.acpRes.promptID == 0 {
 		return fmt.Errorf("%w: no turn is running", ErrSubmitRejected)
+	}
+	if err := checkResultAgainstSchema(e.ResultSchema, buf.Bytes()); err != nil {
+		return fmt.Errorf("%w: %v; call %s again", ErrSubmitRejected, err, acp.SubmitToolName)
 	}
 	e.acpRes.status, e.acpRes.value = wire.AcpResultSubmitted, json.RawMessage(buf.Bytes())
 	r.broadcastACPLocked(e, nil, false)
@@ -822,7 +920,8 @@ func (r *Registry) applyACPLocked(e *Entry, ev agentstate.Event) {
 
 func acpMsgLocked(e *Entry, items []wire.AcpItem, reset bool) wire.AcpTranscriptMsg {
 	msg := wire.AcpTranscriptMsg{SessionID: e.ID, Epoch: e.acpTx.Epoch(), Reset: reset, Items: items,
-		PromptID: e.acpRes.promptID, ResultStatus: e.acpRes.status, Result: e.acpRes.value}
+		PromptID: e.acpRes.promptID, ResultStatus: e.acpRes.status, Result: e.acpRes.value,
+		StopReason: e.acpRes.stopReason, Usage: e.acpRes.usage}
 	if e.acp != nil && e.acp.perm != nil {
 		p := e.acp.perm.info
 		p.Options = append([]wire.AcpPermissionOption(nil), p.Options...)
