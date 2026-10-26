@@ -24,7 +24,11 @@ import type { ProjectInfo, SessionInfo, TermTile } from './state.js';
 import { termsMap } from '../store/terms.js';
 import * as store from '../store/store.js';
 import { setStatus, flashStatus, setModeHint } from './dom.js';
-import { orderedSessions, activeProjectId } from './selectors.js';
+import {
+  adHocGridSessions,
+  orderedSessions,
+  activeProjectId,
+} from './selectors.js';
 import {
   currentGridLayout,
   gridScopeFor,
@@ -506,6 +510,17 @@ export function setView(view: ViewMode, opts: { persist?: boolean } = {}) {
     }
     if (view === 'grid-project') {
       store.setGridProjectId(activeProjectId());
+    }
+    // The ad-hoc grid tiles only its selection, which the active session
+    // may not be in (marks survive a switch in manual mode; a minimized
+    // session can be active in single view). Hand focus to a tile rather
+    // than leave the ring, and the keystrokes, on a session with none.
+    if (view === 'grid-select') {
+      const tiles = adHocGridSessions();
+      const active = appData().activeId;
+      if (tiles.length > 0 && !tiles.some((s) => s.id === active)) {
+        deps.setActive(tiles[0].id);
+      }
     }
   });
   // Toggling grid/fullscreen via the menu blurs the xterm; restore

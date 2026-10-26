@@ -317,7 +317,7 @@ describe('select-then-⌘G mode', () => {
 });
 
 describe('the toggle click', () => {
-  it('does not start a drag: the row is prevented on a toggle click', () => {
+  it('prevents the default of a toggle click (no text selection or focus shift)', () => {
     const ev = new MouseEvent('click', {
       bubbles: true,
       cancelable: true,
@@ -331,5 +331,89 @@ describe('the toggle click', () => {
     const ev = new MouseEvent('click', { bubbles: true, cancelable: true });
     rowEl('c').dispatchEvent(ev);
     expect(ev.defaultPrevented).toBe(false);
+  });
+
+  it('a native drag of a row leaves the selection untouched', () => {
+    ctrlClick('c');
+    fireEvent.dragStart(rowEl('b'));
+    fireEvent.dragEnd(rowEl('b'));
+    expect(state.gridSelection).toEqual(['a', 'c']);
+    expect(state.view).toBe('grid-select');
+  });
+});
+
+describe('focus never rests on a session with no tile', () => {
+  it('manual ⌘G with marks the active session is not in focuses a tile', () => {
+    state.gridSelectMode = 'manual';
+    ctrlClick('c'); // marks a, c
+    view.switchTo('b'); // marks survive in manual mode
+    expect(state.gridSelection).toEqual(['a', 'c']);
+    actions.toggleProjectGrid();
+    expect(state.view).toBe('grid-select');
+    expect(tiles()).toContain(state.activeId);
+  });
+
+  it('auto mode with a minimized active session focuses a tile', () => {
+    view.minimizeSession('a'); // a stays active in single view
+    expect(state.activeId).toBe('a');
+    ctrlClick('c');
+    ctrlClick('d');
+    expect(state.view).toBe('grid-select');
+    expect(tiles()).toEqual(['c', 'd']);
+    expect(tiles()).toContain(state.activeId);
+  });
+
+  it('⌘G falls through to the project grid when a marked project is minimized', () => {
+    state.gridSelectMode = 'manual';
+    ctrlClick('c'); // marks a, c
+    view.minimizeProject('p2');
+    actions.toggleProjectGrid();
+    expect(state.view).toBe('grid-project');
+  });
+
+  it('⌘G out of the ad-hoc grid keeps the saved view', () => {
+    store.setView('grid-project');
+    ctrlClick('c');
+    actions.toggleProjectGrid();
+    expect(state.view).toBe('single');
+    expect(localStorage.getItem('hive.view')).toBe('grid-project');
+  });
+});
+
+describe('closing a tile through the daemon event', () => {
+  it('hands focus to another tile and keeps the grid', async () => {
+    const bridge = await import('../../src/bridge.js');
+    const { wireDaemonEvents } = await import('../../src/app/events.js');
+    const { createScrollTrace } = await import('../../src/lib/scroll-debug.js');
+    vi.mocked(bridge.EventsOn).mockClear();
+    wireDaemonEvents({
+      switchTo: view.switchTo,
+      enforceViewFloor: view.enforceViewFloor,
+      updateAppTitle: noop,
+      focusActiveTerm: noop,
+      refocusActiveTerm: noop,
+      isDaemonRestarting: () => false,
+      checkForUpdates: () => {},
+      scrollTrace: createScrollTrace({ enabled: false }),
+    });
+    const call = vi
+      .mocked(bridge.EventsOn)
+      .mock.calls.find(([name]) => name === 'session:event');
+    const fire = call?.[1] as (json: string) => void;
+
+    ctrlClick('c');
+    ctrlClick('d'); // tiles a, c, d — d is later in sidebar order than b
+    view.switchTo('d');
+    fire(
+      JSON.stringify({
+        kind: 'removed',
+        session: state.sessions.find((s) => s.id === 'd'),
+      }),
+    );
+    // b is the sidebar neighbour of c but is not a tile: focus must land on
+    // a tile and the grid must survive.
+    expect(state.view).toBe('grid-select');
+    expect(tiles()).toEqual(['a', 'c']);
+    expect(tiles()).toContain(state.activeId);
   });
 });

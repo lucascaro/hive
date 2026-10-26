@@ -35,6 +35,7 @@ import {
 import { blurTerminals } from './focus.js';
 import { flashStatus, reportFailure } from './dom.js';
 import {
+  adHocGridSessions,
   orderedSessions,
   activeProjectId,
   nextAttentionId,
@@ -138,14 +139,14 @@ export function toggleProjectGrid() {
   const s = appData();
   // ⌘G leaves the ad-hoc grid like it leaves the project grid.
   if (s.view === 'grid-select') {
-    setView('single');
+    setView('single', { persist: false });
     return;
   }
   // Select-then-⌘G mode: ⌘-click only marked rows, ⌘G tiles the marked ones.
   if (
     s.view === 'single' &&
     s.gridSelectMode === 'manual' &&
-    s.gridSelection.length >= 2
+    adHocGridSessions().length >= 2
   ) {
     setView('grid-select', { persist: false });
     return;
