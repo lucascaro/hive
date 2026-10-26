@@ -5,7 +5,11 @@
 - **Depends on:** A (#528), planned against `origin/feature/528-daemon-sdk-prereqs:docs/exec-plans/active/528-workflow-engine-a-daemon-sdk-prereqs.md` at `7410f6b7`
 - **Issue:** #529
 - **Branch:** `feature/529-engine-core` (research and plan); one branch per phase PR
-- **Status:** active. Drafted, **not handoff-ready**: see Open questions and Required changes to A.
+- **Status:** active. The final plan is presented for user approval.
+  - All open questions are decided (see Decision log, 2026-10-25 user
+    decisions).
+  - R1–R6 are approved as A changes: R2, R3, R5 and R6 go to A PR1; R1 and
+    R4 to A PR2.
 
 ## Summary
 
@@ -39,16 +43,16 @@ from that commit.
 | The doc-drift CI step exists | `.github/workflows/ci.yml:363-373` (matrix.biome leg, Node 24) | Repointed to the new paths. Engine tests need Node 26 (A's PR3 leg). |
 | The IR has no `max_attempts` | `dsl.ts:65-118` | B uses `MAX_ATTEMPTS = 2` as an engine constant. No IR change. |
 | An agent's `mode` is optional in the IR | `dsl.ts:69` | See "an empty `acp_mode` means the ceiling" below. |
-| Mode above the ceiling is **refused**, not clamped | `internal/registry/acp.go:170-178` (`ErrACPModeAboveCeiling`) | Spec 6's "capped" is enforced as a refusal (Q3). |
+| Mode above the ceiling is **refused**, not clamped | `internal/registry/acp.go:170-178` (`ErrACPModeAboveCeiling`) | Spec 6 is reworded to "refused, checked before the run through R6". |
 | An empty `acp_mode` means **the ceiling** | `internal/wire/control.go:132-136`, `registry/acp.go:186-193` `acpModeFor` | The engine **always sends an explicit mode**. When the IR omits one it sends the catalog's `Modes[0]` (least permissive), never "". |
-| The catalog and ceilings are unreachable from a plugin | `internal/agent/acp.go:81-104` (`acpSpecs`), `agent/settings.go:86-91`. The GUI reads them through a Wails binding (`cmd/hivegui/app_calls.go:51-92`), and no frame carries them (`internal/wire/frame.go:44-294`). | Criterion 2's catalog check needs a source (Q3, R6). |
+| The catalog and ceilings are unreachable from a plugin | `internal/agent/acp.go:81-104` (`acpSpecs`), `agent/settings.go:86-91`. The GUI reads them through a Wails binding (`cmd/hivegui/app_calls.go:51-92`), and no frame carries them (`internal/wire/frame.go:44-294`). | Criterion 2's catalog check gets its source from R6 (`LIST_ACP_AGENTS`). |
 | The `initialize` capabilities (`loadSession`) are not on the wire | `registry/acp.go:374-376` (used only internally) | B infers load support from the outcome of RESTART or boot revive. |
 | Boot revives ACP entries through `session/load` | `internal/daemon/daemon.go:520` → `registry.go:1413` → `:1509-1512` `startACP(id, cwd, AgentSessionID)` | After a `hived` restart the session is often already reloaded. B re-prompts it (attempt+1). If revive failed (no `loadSession`), the entry is dead with `last_error`, and B starts a fresh session in the same worktree. |
 | `startACP` resets the transcript **and the result** | `registry/acp.go:349-350` (`acpTx.Reset()`, `acpRes = acpResult{}`) | A result submitted while the plugin was down is lost if `hived` restarts before the plugin reads it. That node becomes `interrupted` and goes to attempt+1, by design. |
 | Transcript epoch and item ids are per process, from 0 | `internal/acp/transcript.go:45-63`; `Welcome` has no boot id (`wire/control.go:163-186`) | B cannot tell "plugin crashed" from "`hived` restarted" by (epoch, prompt_id) alone (R2). |
 | A turn's end and its result are in the transcript | `wire/acp.go` `AcpTranscriptMsg.{PromptID, ResultStatus, Result, Permission}`; `registry/acp.go:709-712` sets `none` at a turn end with no submit | Ends F3 detection. A adds `stop_reason`. |
 | A pending permission is on every message | `registry/acp.go:826-830` | It becomes `node.waiting{reason:"permission", session_id, request_id, options}`. C answers with the existing ANSWER_PERMISSION. |
-| `usage_update` is dropped | `internal/acp/types.go:199` | `agent.usage` can't be emitted (R5 / Q4). |
+| `usage_update` is dropped | `internal/acp/types.go:199` | `agent.usage` comes from R5 (`AcpTranscriptMsg.usage`). |
 | Message chunks append to one item | `wire/acp.go:48-69` (`ID`, `Append`) | Coalesce one `agent.message` per item id, at item close or turn end. |
 | Plugins see every ACP transcript, with a buffer of 256 | `daemon.go:1086`, `registry/acp.go:861-878`. Overflow closes the connection: `:845-852`. | The engine must reconnect and resync. Fan-out overflow is the risk to measure (criterion 13). |
 | Plugin budget is 1000/s, burst 2000; CREATE costs 100 | `internal/plugin/limiter.go:21-48` | 16 creates plus 16 PREPAREs is 3,200 tokens, which is over the burst, so about 1.2 s of throttle. Measured, not assumed. |
@@ -109,7 +113,6 @@ go:     GOTOOLCHAIN=go$(sed -n 's/^go //p' go.mod) go test ./internal/workflowe2
 - **Ungated paths.**
   - B touches only `plugins/workflows/**`, `plugins/embed.go` (B5),
     `internal/workflowe2e/**`, `internal/acp/acptest` (`FlagChatty`),
-    `internal/agent` (catalog test, if Q3=b),
     `internal/plugin/sdk_drift_test.go`, `.github/`, `scripts/` and docs.
   - No `daemon-contract-override` label is needed; check with
     `scripts/check-daemon-contract.sh`.
@@ -157,19 +160,21 @@ security posture.
 
   B pins every root worktree of a run to the first `base_sha`, so a commit
   the user makes mid-run doesn't split one run across two bases.
-- **R5: usage (A PR1). Conditional on Q4.**
+- **R5: usage (A PR1). Approved.**
 
   Wording:
   > `AcpTranscriptMsg` gains `usage` (`json.RawMessage`, `omitempty`): the latest `usage_update` payload of the current prompt, cleared by a new prompt, like `stop_reason`.
 
-  Without R5, B drops `agent.usage`, and the spec and design Billing section
-  are corrected.
-- **R6: catalog and ceiling for plugins (A PR1). Conditional on Q3.**
+  B emits one `agent.usage` per change and keeps the latest per node, which
+  is the design's Billing hedge.
+- **R6: catalog and ceiling for plugins (A PR1). Approved.**
 
   Wording:
   > `LIST_ACP_AGENTS` (C→S) → `ACP_AGENTS` (S→C) `{req_id, agents: [{id, name, modes: [{id, label}], default_mode, ceiling, no_approval_gate, experimental, available, reason}]}`, built from `agent.Def.ACP()`, `Settings.ACPCeiling` and `ACPAvailable`. `ACP_AGENTS` joins `request()`'s reply types. Read-only, `costCheap`.
 
-  Not needed if Q3 picks the generated catalog.
+  B calls `LIST_ACP_AGENTS` at build time and again before each run start
+  or resume, so a ceiling the user lowered applies. The daemon's refusal
+  remains the backstop.
 
 ## Approach
 
@@ -183,7 +188,7 @@ plugins/workflows/
   sdk/               @hive/workflow and @hive/workflow/library: dsl.ts schema.ts library.ts index.ts library-index.ts
   ir/                shape.ts validate.ts catalog.ts mermaid.ts ir-schema.ts ir.schema.json resultschema.ts
   engine/            main.ts store.ts interp.ts keys.ts worktrees.ts agent.ts check.ts human.ts
-                     prompt.ts events.ts redact.ts topics.ts trust.ts build.ts typecheck.ts killtree.ts
+                     prompt.ts events.ts redact.ts topics.ts trust.ts build.ts typecheck.ts tsgo.ts killtree.ts
   build/             runner.mjs import-hook.mjs (the only files the sandbox child may read besides sdk/ and the snapshot)
   tools/             check-doc.ts emit.ts
   package.json       {"private": true, "type": "module"} (as the prototype's)
@@ -241,7 +246,7 @@ which a crash loses.
 - **Failure.**
   - A node that is `failed` after its attempts fails the run.
   - Running siblings are cancelled (agents: CANCEL_ACP; checks: kill tree).
-  - Pending nodes stay `pending`, so a resume (Q5) can continue.
+  - Pending nodes stay `pending`, so `run.retry` can resume the run.
 - **Caps.**
   - Map copies over 32, or agent turns over 50 (every PROMPT_ACP, re-prompts
     and retries included), fail the node with `cap: "map_copies"` or
@@ -278,7 +283,7 @@ before every run start and resume (criterion 2):
    - exactly one map sink;
    - no reference into a map from outside it.
 3. **`catalog(ir, agents)`.** Refuses an agent with no ACP route, an
-   experimental one, or a mode its entry doesn't list. With R6 it also
+   experimental one, or a mode its entry doesn't list. Through R6 it also
    refuses a mode above the user's ceiling, and an agent that is unavailable
    (with the daemon's `reason`, e.g. Pi needing "unattended").
 
@@ -325,8 +330,12 @@ Decisions.
   > `<path>` with the other branches merged. Resolve and commit there, then
   > resume the run.
 
-  The resume path is `run.retry` (Q5). Re-preparing re-attaches, and the
+  The resume path is `run.retry`. Re-preparing re-attaches, and the
   merges already done are no-ops (A).
+- **Sessions at run end** (user decision). When a run reaches `done`,
+  `failed` or `cancelled`, every session it created is archived with
+  ARCHIVE_SESSION, so they leave the sidebar but can be restored.
+  `run.retry` creates fresh sessions in the same worktrees.
 - **Cleanup** (criterion 13). When a run reaches `done`, `failed` or
   `cancelled`, the engine sends REMOVE_WORKTREE without force for every
   worktree of the run, **except** the failing node's and a conflicted merge.
@@ -503,7 +512,37 @@ continue from `seq`.
     `verbatimModuleSyntax`, `types: []`.
   - Env as in the build, `windowsHide`.
   - Diagnostics block the run and are returned in `workflow.build.reply.type_errors`.
-  - How tsgo is obtained is **Q1**.
+  - **How tsgo is obtained (`engine/tsgo.ts`, user decision): a one-time,
+    integrity-pinned download.**
+    - Source pins a table `{platform: {url, integrity}}` for
+      `@typescript/typescript-<platform>@7.0.2`, with the npm `dist.integrity`
+      values read on 2026-10-25:
+
+      | Platform | `integrity` (sha512) |
+      |---|---|
+      | darwin-arm64 | `gowzar9MwS/aRWp6f3a4KUqzRjAZjOsmGNCM6LcTgXum+dBfgsBVMN+AgvOCCbguXyick6LJhpBszxMebJ8syA==` |
+      | darwin-x64 | `SZ9xZInqApNlNGc9s0W1VSsktYSOe9cFqNOIqmN1Gs8SmkjKZYFt017G4VwPxASInODuAdbTW7sXiFUf893RgA==` |
+      | linux-x64 | `EYdf2cNg7rgCWJnxCdJ+F3V39O8ihb37eHAu1LK8oAFizgTQbPOK7zHHXbPt8rX24COqODXeI3sIf0fCXG7H/A==` |
+      | linux-arm64 | `Qh4eU4/y3yDjnfjjyPYihMj5/ODIlmt+Bzu17OI+fiSRDW57QmU5SiN63exPRNJPKUzcc1INa1NXdrJ+MqHjUQ==` |
+      | win32-x64 | `0BQ3HkAHHlKLSp1qRvf3SUhGpGsDuhB/jgFw75guyqbxJqEaS0Cw/VFO8i2nHglJUzQCRtMMR/IBAKE3ETMC4g==` |
+      | win32-arm64 | `Gyl1Vy6OsWesLzmq+EP0Fb7b4Nid5232AvcA2SFcdYreldpNtYFFofPjnt62y9hQy7VTaZp65ICJjuAQRaVcIQ==` |
+
+      The implementer re-reads these with `npm view … dist.integrity` and
+      a test pins them.
+    - On first need, the engine `fetch`es the tarball and verifies its
+      SHA-512 against the pinned value **before** unpacking. A mismatch is
+      refused, with no fallback.
+    - It gunzips with `node:zlib` and unpacks with a minimal ustar reader
+      that refuses absolute paths, `..`, links and anything outside
+      `package/`. The result lands in
+      `plugin-data/workflows/tsgo/7.0.2-<platform>/` (dirs 0700, binary
+      0700).
+    - It writes a `.verified` marker holding the integrity, and checks the
+      marker on every start.
+    - Downloads are serialized, and a partial download is discarded.
+    - An unsupported platform fails `workflow.build` with
+      `typecheck_unavailable`, naming the platform.
+    - The CI type-check keeps using the frontend's npm-installed tsgo.
 - **Rerun semantics.** `run.start` builds, stores `{ir, source_hash}` and
   runs **only** the stored IR. `runs.list` marks `source_changed` when the
   current snapshot hash differs. That hash is computed on request, never
@@ -596,7 +635,7 @@ All of it travels on A's `PLUGIN_MESSAGE` with `plugin_id: "workflows"`.
 | `workflow.build` | `{project_id, file}` | `{name, ir, mermaid, source_hash, input_schema}` or `error.code: "untrusted"\|"changed"\|"type_errors"\|"build_failed"\|"invalid_ir"\|"sandbox_unavailable"` with `type_errors?: [{file, line, col, message}]`, `errors?: string[]` |
 | `run.start` | `{project_id, file, input, source_hash}` | `{run_id}` — refuses `changed` if `source_hash` is not the current one, so the user runs what they reviewed |
 | `run.cancel` | `{run_id}` | `{}` |
-| `run.retry` (Q5) | `{run_id}` | `{}` — failed or cancelled → running: failed and interrupted nodes reset to `pending`, attempts cleared |
+| `run.retry` | `{run_id}` | `{}` — failed or cancelled → running: failed and interrupted nodes reset to `pending`, attempts cleared |
 | `runs.list` | `{project_id, before?: created_at, limit ≤ 50}` | `{runs: [{run_id, workflow, file, state, created_at, updated_at, source_hash, source_changed}]}` |
 | `run.get` | `{run_id}` | `{run: {…as above, input, base_sha, kept_worktrees, error}, ir, nodes: [{key, node_id, state, attempt, session_id?, branch?, worktree?, error?, started_at?, ended_at?}]}` — no outputs |
 | `node.get` | `{run_id, key}` | `{key, node_id, state, attempt, output?, truncated?, error?, conflict?}` |
@@ -638,7 +677,7 @@ type RunEvent = {
 | `agent.message` | `{session_id, item_id, text, truncated?: true}` — one per transcript item; text ≤ 16 KiB |
 | `agent.tool` | `{session_id, tool_call_id, title, tool_kind, status}` — one per status change |
 | `agent.plan` | `{session_id, entries: [{content, status, priority?}]}` |
-| `agent.usage` | `{session_id, usage}` — only with R5 |
+| `agent.usage` | `{session_id, usage}` — the ACP `usage_update` payload, from R5 |
 | `check.output` | `{stream: "stdout"\|"stderr", text, truncated?: true}` |
 
 **Node states** are `pending | running | waiting | done | failed | skipped |
@@ -670,10 +709,9 @@ first if it copies them.*
 
 - `git mv scripts/workflow-proto/{dsl,schema,library}.ts plugins/workflows/sdk/` and `{mermaid,ir-schema,ir.schema.json}` → `ir/`, `{check-doc,emit}.ts` → `tools/`. Tests follow into `test/`.
 - Split `validate` into `ir/validate.ts`. Add `shape.ts`, `catalog.ts` and `resultschema.ts`.
-- Catalog source per Q3:
-  - (a) the R6 frame, with a static test fixture;
-  - (b) `plugins/workflows/ir/agents.json`, generated from `internal/agent`
-    and pinned by `TestWorkflowCatalogUpToDate` (`internal/agent/acp_catalog_test.go`, `-update`).
+- The catalog comes from R6 (`LIST_ACP_AGENTS`). `catalog.ts` takes the
+  `agents` array as a parameter; tests use a static fixture captured from
+  A's reply shape.
 - Repoint `ci.yml:371-373` and every `scripts/workflow-proto` mention in
   `workflow-engine.md` (lines 17, 161, 696, 702, 1216, 1704-1708). Delete
   `scripts/workflow-proto/`.
@@ -705,7 +743,7 @@ first if it copies them.*
 
 ### B4: trust, sandbox, build and type check (own security review)
 
-- `trust.ts`, `build.ts`, `typecheck.ts`, `build/*`, `redact.ts`.
+- `trust.ts`, `build.ts`, `typecheck.ts`, `tsgo.ts`, `build/*`, `redact.ts`.
 - The topics `workflows.list`, `workflow.trust.*`, `workflow.build` and
   `run.start`.
 - Run `/security-review` on this PR alone. The reviewer gets the code, not
@@ -714,7 +752,7 @@ first if it copies them.*
 ### B5: events contract, embedding and docs
 
 - Batching ≤ 48 KiB, coalescing, the `seq` replay contract test, and the
-  `agent.usage` wiring (R5) or its removal.
+  the `agent.usage` wiring (R5).
 - `//go:embed all:plan-review all:workflows` in `plugins/embed.go`. The
   builtin arrives disabled.
 - Docs:
@@ -735,14 +773,14 @@ first if it copies them.*
   - B2: add `node --test 'plugins/workflows/**/*.test.ts'` and
     `go test ./internal/workflowe2e/...` with `HIVE_REQUIRE_NODE=26` on A's
     Node 26 leg (a missing Node fails there instead of skipping);
-  - B4: tsgo for the type-check job, if Q1 needs it.
+  - B4: nothing extra. The tsgo download is unit-tested against a local
+    fixture tarball, never the network.
 - `docs/design-docs/workflow-engine.md`: B1 (paths, tsgo sizes), B5
   (decisions).
 - `plugins/embed.go` and `internal/buildinfo/contract.go` (B5, the
   DaemonContract bump).
 - `internal/plugin/sdk_drift_test.go` (B2): the `plugins/workflows/hive-plugin.mjs` copy.
 - `DESIGN.md`, `docs/plugins.md` (B5).
-- `internal/agent/acp_catalog_test.go` (B1, Q3=b only).
 
 ### New files
 
@@ -776,7 +814,7 @@ first if it copies them.*
 - `catalog.test.ts`:
   - `rejects agent with no ACP route (aider)`, `rejects experimental (gemini)`;
   - `rejects mode not in catalog`;
-  - with R6: `rejects mode above ceiling`, `rejects unavailable agent with reason`.
+  - `rejects mode above ceiling`, `rejects unavailable agent with reason`.
 - `check-doc.test.ts`, `emit.test.ts`, `mermaid.test.ts` and
   `library.test.ts`: moved and green.
 - `tsc -p plugins/workflows` covers `types.check.ts`.
@@ -845,7 +883,14 @@ first if it copies them.*
   - `TestBranchNames_EncodedKeys` (`hive/wf/<run>/fix_2/work`, `…/work/each_3/do`).
 - Cleanup:
   - `TestCleanup_RemovesCleanKeepsDirty` (`ErrWorktreeDirty` → `kept_worktrees`);
-  - `TestCleanup_FailedRunKeepsFailingWorktree`.
+  - `TestCleanup_FailedRunKeepsFailingWorktree`;
+  - `TestRunEnd_ArchivesNodeSessions` (sessions are archived, and restoring
+    one works for ACP).
+- `TestRunRetry_ResumesFailedRunAfterConflictResolved`: conflict → commit in
+  the kept worktree → `run.retry` → the merge re-attaches and is a no-op,
+  and the run completes.
+- `TestCatalog_CeilingLoweredBetweenBuildAndStartRefusedBeforeRun` (R6).
+- `TestUsage_AgentUsageEventsPerNode` (R5).
 - Provenance and trust:
   - `TestProvenance_SessionsCarryRunLabel`;
   - `TestNodesOnlyRunInProjectWorktrees` (the #505 follow-through: every engine session's cwd is a PREPARE'd worktree of the run's project, so `hiveKnowsFolder` holds and no untrusted notice appears).
@@ -874,6 +919,14 @@ first if it copies them.*
   - `project tsconfig in folder is ignored`;
   - `no tsgo → workflow.build error names how to get it`.
 - `redact.test.ts`: one case per pattern, plus `redaction count recorded on event`.
+- `tsgo.test.ts`, all against a local fixture tarball and a stubbed
+  `fetch`:
+  - `integrity mismatch refused before unpack`;
+  - `unpack refuses absolute, dot-dot, link and out-of-package entries`;
+  - `verified marker skips download`;
+  - `partial download discarded`;
+  - `unsupported platform → typecheck_unavailable`;
+  - `pinned table matches npm dist.integrity values`.
 - `rerun.test.ts`:
   - `run interprets stored IR after source edit`;
   - `source_changed set when hash differs`;
@@ -904,50 +957,45 @@ scripts/check-daemon-contract.sh origin/main HEAD    # B1–B4: passes with no b
 scripts/check-changeset.sh
 ```
 
-## Spec corrections (proposed for 529)
+## Spec corrections (applied to 529 on 2026-10-25)
 
-- **C-1, criterion 7.** "4 live agent nodes" can't fail the run, because a map
-  allows `concurrency` up to 16. It is a scheduler throttle. Map copies and
-  turns fail the run, naming the cap. (The design says the cap fails the
-  *node*, and a failed node fails the run, so the two agree.)
-- **C-2, criterion 6.** "Mode is capped": the daemon **refuses** a mode above
-  the ceiling (`registry/acp.go:176`). It never clamps. Reword to "never
-  above the user's ceiling: checked before the run (R6) and refused by the
-  daemon", or adopt a clamp in A.
-- **C-3, criterion 5.** "When the agent reports `loadSession`": the
-  capability isn't on the wire. The daemon's boot revive and RESTART do the
-  `session/load`, and B acts on their outcome. Also, a result submitted while
-  the plugin was down and *then* lost to a `hived` restart is retried
-  (attempt+1). That is the design's rule, not a re-run of a completed node.
-- **C-4, criterion 5.** "`max_attempts` (default 2)": the IR has no such
-  field. It is an engine constant of 2. Say so, or add an IR field (that
-  needs a design change and a doc-drift regeneration).
-- **C-5, criterion 9, "refused when `--permission` is unavailable".** It can't
-  happen on the 26 floor. It is testable only through a seam (fake
-  `execPath`).
-- **C-6, criterion 9, codex-acp never-trusted path.** This is not a
-  fake-adapter test. #510 already found that "codex-acp marks every cwd
-  trusted" (`registry/acp.go:1043-1045`). B's check is that engine sessions
-  only ever run in the run project's own worktrees
-  (`TestNodesOnlyRunInProjectWorktrees`). Re-probing the pinned adapter needs
-  a real run, which spends the user's subscription, so it needs their
-  approval.
-- **C-7, criterion 11, second half.** "No usable Node → refused with the
-  version" is A PR3's Manager refusal (manifest `node`). The engine never
-  starts on an old Node, so B can only pin the manifest value.
-- **C-8, criterion 13, "measured".** This is a bench with a stated
-  threshold, not pass/fail. The real fan-out risk is the 256-deep transcript
-  listener overflowing (`registry/acp.go:862`), not the token bucket.
-- **C-9, criterion 10.** `agent.usage` needs R5. Without it, drop the event
-  from the spec and fix the design's Billing hedge ("usage recorded per
-  node").
-- **C-11, criterion 13, wrong citation.** "A failed plugin (A, criterion 8)":
-  crash-loop visibility is A's criterion **9**; 8 is the worktree frame.
-- **C-10, design gaps the spec inherits.**
-  - Who commits a node's work (R1).
-  - The base for joins, for loop iteration *k > 1*, and for check or human
-    upstreams. Decided above.
-  - "Hitting a cap fails the node" vs the run.
+- **C-1, criterion 7.** The live-agent cap (4) is a scheduler throttle.
+  32 map copies and 50 agent turns fail the run, naming the cap.
+- **C-2, criterion 6.** A mode is never above the ceiling. The daemon
+  refuses it and never clamps (`registry/acp.go:176`). B checks the ceiling
+  before the run through R6, and always sends an explicit mode.
+- **C-3, criterion 5.** `loadSession` is not on the wire. The daemon's boot
+  revive or RESTART does the `session/load`, and B acts on the outcome. A
+  result submitted while the plugin was down and then lost to a `hived`
+  restart is retried. It was never `done`, so this is not a re-run.
+- **C-4, criterion 5.** Retries use a fixed limit of 2 attempts, an engine
+  constant. The IR has no `max_attempts` field; that is now a spec non-goal.
+- **C-5, criterion 9.** "Refused when `--permission` is unavailable" cannot
+  occur on the Node 26 floor in production. It is tested through a seam: a
+  fake build `node` whose runner reports no permission model.
+- **C-6, criterion 9.** The codex-acp never-trusted-path check is not a
+  fake-adapter test. It is satisfied by two things:
+  - #510's finding that codex-acp marks every cwd trusted
+    (`registry/acp.go:1043-1045`);
+  - `TestNodesOnlyRunInProjectWorktrees`: the engine only hands agents
+    worktrees of the run's own project, which Hive treats as trusted.
+
+  Re-probing the pinned adapter would be a real run, so it happens only with
+  the user's approval.
+- **C-7, criterion 11.** "No usable Node → refused, naming the version" is
+  A's criterion 5 (the PR3 Manager refusal). B pins the manifest's
+  `node: "26.0.0"` and tests that.
+- **C-8, criterion 13.** Fan-out is a benchmark with a stated threshold:
+  throttle under 10 s, no failed node. It covers both the token bucket and
+  the transcript listener's overflow and resync.
+- **C-9, criterion 10.** `agent.usage` comes from R5.
+- **C-10.** The spec now records the commit step (R1), the base for joins,
+  the base for loop iteration *k > 1*, archiving at run end, and
+  `run.retry`.
+- **C-11, criterion 13.** The citation is corrected to A's criterion 9.
+
+The spec also records the user's decisions: the integrity-pinned tsgo
+download, the accepted sandbox gap, and `LIST_ACP_AGENTS`.
 
 ## Decision log
 
@@ -991,61 +1039,28 @@ scripts/check-changeset.sh
 - **2026-10-25:** JSONL fallback not built. Why: `node:sqlite` is RC on the
   floor.
 
+- **2026-10-25, user decisions on the drafted plan.**
+  - **tsgo** arrives through a one-time download, verified against an
+    integrity hash pinned in source (`engine/tsgo.ts`). Rejected: `npx`
+    (it trusts the registry at run time) and embedding in `hived` (it costs
+    about 27–56 MB).
+  - **The sandbox gap is accepted and documented.** The build child can
+    signal, or `_debugProcess`, same-user Node processes.
+  - **The catalog and ceiling come from R6 (`LIST_ACP_AGENTS`).** Rejected:
+    a generated `agents.json`, under which a run could fail mid-way.
+  - **`agent.usage` comes from R5.**
+  - **`run.retry` is in B2.**
+  - **Node sessions are archived when a run ends** (ARCHIVE_SESSION, B3).
+  - **R1–R6 are approved as A changes.** R2, R3, R5 and R6 go to A PR1; R1
+    and R4 to A PR2.
+
 ## Progress
 
-- **2026-10-25:** Research complete. Plan drafted against A at `7410f6b7`. It
-  is blocked on Required changes R1–R4 and Open questions Q1–Q6.
+- **2026-10-25:** Research complete. Plan drafted against A at `7410f6b7`.
+- **2026-10-25:** User decisions folded in. Spec corrections C-1 to C-11
+  applied to the spec. The final plan is presented for approval.
 
 ## Open questions
 
-Security-sensitive first. Each one names what it blocks.
-
-1. **Q1, how tsgo reaches the user (supply chain; blocks B4's file list).**
-   - (a) **Pinned `npx -y @typescript/typescript-<platform>@7.0.2`**, run by
-     its binary path. It costs nothing to bundle and has the same trust as
-     the pinned ACP adapters, which already require `npx`. The first build
-     needs the network.
-   - (b) **Embed per GOOS/GOARCH in `hived`.** That adds about 27–29 MB per
-     platform, about 56 MB for the universal darwin binary. It also
-     re-materializes on every start.
-   - (c) **Fetch the tarball once by its npm `integrity` (sha512), pinned in
-     source.**
-
-   *Recommendation: (c).* It is (a)'s cost with a hash pinned in Hive rather
-   than trusting the registry at run time. It is about 60 lines (download,
-   verify, untar one file).
-2. **Q2, the residual sandbox risk (accept, or add OS isolation).**
-   - The build child can signal or `_debugProcess` same-user Node processes,
-     ACP adapters included (Research, External facts).
-   - It is accepted under your "defence-in-depth around a trusted
-     hash-pinned file" decision, and documented in `docs/plugins.md`.
-   - Confirm acceptance. The alternative is a separate OS user or a
-     container, which is out of scope.
-3. **Q3, the catalog and ceiling source (blocks B1/B3 files; permission
-   capping).**
-   - (a) **R6 frame in A.** Pre-run refusal of ceiling and availability
-     problems. Clamp nothing.
-   - (b) **Generated `agents.json` plus the daemon's refusal at node start.**
-     A run can fail mid-way after spending tokens.
-
-   *Recommendation: (a).*
-4. **Q4, `agent.usage`: take R5, or drop the event and correct the
-   spec/design?** *Recommendation: R5.* It is a few lines in A PR1, and the
-   Billing hedge depends on it.
-5. **Q5, `run.retry` (resume a failed or cancelled run).**
-   - It is needed for the merge-conflict "recovery path" (criterion 6) and
-     makes criterion 13's "resumable" concrete.
-   - It adds one topic for C.
-
-   *Recommendation: include it in B2.*
-6. **Q6, what happens to a node's session after the run.**
-   - (a) Keep it.
-   - (b) Archive every run session at run end with ARCHIVE_SESSION.
-   - (c) Kill it.
-
-   *Recommendation: (b).* It keeps 16-way fan-out from flooding the sidebar
-   while staying restorable, but ACP archive and restore must be verified in
-   B3.
-7. **Required changes R1–R4 need A's owner to accept them** before A PR1/PR2
-   merge. R1 and R4 are PR2 and R2 and R3 are PR1, and A PR1 is being built
-   now.
+None. Execution order still depends on A: B1 needs A PR1's fixtures; B2
+needs A PR1–3; B3 needs R1–R4 merged in A.
