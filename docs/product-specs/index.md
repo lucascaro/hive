@@ -24,6 +24,7 @@ The *what* and *why* of work this project plans to do. Each spec describes user 
 
 | Issue | Title | PR | Shipped | Spec |
 |-------|-------|----|---------|------|
+| #533 | Add sessions to an ad-hoc grid with ⌘/Ctrl-click | #534 | 2026-10-26 | [533-add-sessions-to-an-ad-hoc-grid-with-cmd-ctrl-click](533-add-sessions-to-an-ad-hoc-grid-with-cmd-ctrl-click.md) |
 | — | Observe from a session: hived session list and hived wait | #525 | 2026-10-22 | [390-session-observe-list-and-wait](390-session-observe-list-and-wait.md) |
 | — | Orchestrator grant: a session you name can message its siblings | #524 | 2026-10-20 | [389-orchestrator-grant-and-session-msg](389-orchestrator-grant-and-session-msg.md) |
 | — | Session messaging: hand a session a message, get told when it idles | #516 | 2026-10-15 | [338-session-messaging](338-session-messaging.md) |
