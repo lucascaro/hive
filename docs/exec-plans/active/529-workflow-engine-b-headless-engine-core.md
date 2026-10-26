@@ -297,14 +297,16 @@ Decisions.
 
 - **Branch.**
   - `hive/wf/<run>/` + `encodeWorkflowKey(key)`, using A's SDK encoder.
-  - Only leaf instances (agent nodes, and checks that need a merge) get
-    branches, so there are no D/F ref clashes.
+  - Only leaf instances (agent nodes, checks that need a merge, and checks
+    with no upstream head) get branches, so there are no D/F ref clashes.
   - The run id matches `^[a-z0-9][a-z0-9-]{0,62}$`: `r` + 12 random base32
     lowercase characters.
 - **Head of an instance** (the branch its work lives on):
   - agent `own`: its branch;
   - agent `{of}`: the `of` node's head;
-  - check or human: its input head;
+  - check with its own worktree (a merge, or a base worktree; see Check
+    worktree): that worktree's branch;
+  - other checks, and humans: its input head;
   - loop: the head of its last iteration's sink(s);
   - map: its merge;
   - group: its sinks' head.
@@ -323,6 +325,24 @@ Decisions.
 - **Check worktree.** A check runs in its input head's worktree, re-attached
   through PREPARE when needed. After a map or join it runs in its own merge
   worktree.
+  - **No upstream head** (B-4): a check with no agent anywhere upstream
+    (a root check, or `human → check`) runs in a clean worktree of its own,
+    on `hive/wf/<run>/` + `encodeWorkflowKey(key)`, PREPAREd from the run's
+    pinned base SHA. It is never the project's main checkout and never
+    rejected by `validate`.
+    - Why: the design says a check runs "in the worktree of its upstream
+      node" (`workflow-engine.md:61`) and is silent when there is none. The
+      worktree model above already gives such a node the pinned base as its
+      input head, but a SHA is not a worktree. Running in the project's main
+      checkout would test the user's uncommitted edits instead of the
+      pinned base (the reason R4 pins it), would let a check's build output
+      land in the user's tree, and would be the only engine process outside
+      a run worktree. Rejecting
+      it in `validate` would forbid ordinary workflows (lint first, a human
+      gate before a test run), and C's e2e-real fixture needs `human → check`.
+    - When no agent ran before it, this PREPARE is the run's first, so its
+      `base_sha` is the one the run pins (R4).
+    - Cleanup treats it like any other run worktree.
 - **Conflict.** PREPARED_WORKTREE `conflict` fails the node with this
   message:
 
@@ -379,8 +399,10 @@ Decisions.
    - Values only ever reach prompt text. Agent id, mode, argv, paths and
      worktree fields are read from the IR, never interpolated.
 4. **Transcript.** It is watched by `session_id`.
-   - A `permission` maps to `node.waiting{reason:"permission"}`; it clears
-     when the permission goes away.
+   - A `permission` maps to `node.waiting{reason:"permission"}`. When the
+     transcript's pending permission clears and the node is still running,
+     the engine emits `node.resumed{reason:"permission"}` (B-1), in the
+     transaction that moves the row back to `running`.
    - The turn's end is `stop_reason` set for our `prompt_id`.
    - `end_turn` with a submitted result: commit, then
      `node.output` + `node.finished` (done) in one transaction.
@@ -539,6 +561,16 @@ continue from `seq`.
       0700).
     - It writes a `.verified` marker holding the integrity, and checks the
       marker on every start.
+    - **Seeded tarball** (B-3). Before fetching, the engine looks for
+      `plugin-data/workflows/tsgo/cache/typescript-<platform>-7.0.2.tgz`.
+      A seed goes through the **same** SHA-512 check against the pinned
+      value before unpacking; verification is never skipped. A seed that
+      fails it is refused: it is never unpacked, it is deleted, and the
+      engine falls back to the normal verified download. The seed adds no
+      trust, since it passes exactly the check a download does. C's
+      e2e-real `globalSetup` fills it with
+      `npm pack @typescript/typescript-<platform>@7.0.2`, so a fresh state
+      dir does not download about 10 MB per run.
     - Downloads are serialized, and a partial download is discarded.
     - An unsupported platform fails `workflow.build` with
       `typecheck_unavailable`, naming the platform.
@@ -636,7 +668,7 @@ All of it travels on A's `PLUGIN_MESSAGE` with `plugin_id: "workflows"`.
 | `run.start` | `{project_id, file, input, source_hash}` | `{run_id}` — refuses `changed` if `source_hash` is not the current one, so the user runs what they reviewed |
 | `run.cancel` | `{run_id}` | `{}` |
 | `run.retry` | `{run_id}` | `{}` — failed or cancelled → running: failed and interrupted nodes reset to `pending`, attempts cleared |
-| `runs.list` | `{project_id, before?: created_at, limit ≤ 50}` | `{runs: [{run_id, workflow, file, state, created_at, updated_at, source_hash, source_changed}]}` |
+| `runs.list` | `{project_id?, state?: <a run state, below>, before?: created_at, limit ≤ 50}` — `project_id` omitted means every project (B-2), so the GUI finds waiting runs at boot with one call (`state: "waiting"`) | `{runs: [{run_id, project_id, workflow, file, state, created_at, updated_at, source_hash, source_changed}]}` |
 | `run.get` | `{run_id}` | `{run: {…as above, input, base_sha, kept_worktrees, error}, ir, nodes: [{key, node_id, state, attempt, session_id?, branch?, worktree?, error?, started_at?, ended_at?}]}` — no outputs |
 | `node.get` | `{run_id, key}` | `{key, node_id, state, attempt, output?, truncated?, error?, conflict?}` |
 | `run.events` | `{run_id, after_seq, limit ≤ 500}` | `{events: RunEvent[], last_seq, more}` |
@@ -668,6 +700,7 @@ type RunEvent = {
 | `node.ready` | `{}` |
 | `node.started` | `{kind, session_id?, branch?, worktree?, iteration?, index?}` |
 | `node.waiting` | `{reason: "human", prompt, output_schema}` or `{reason: "permission", session_id, request_id, title, options: [{option_id, name, kind}]}` |
+| `node.resumed` | `{reason: "permission" \| "human"}` — a `node.waiting` ended without the node finishing. B emits it only for a cleared permission; a human answer ends with `node.output` + `node.finished` in one transaction, so it emits none (B-1) |
 | `node.output` | `{output, truncated?: true}` — ≤ 16 KiB in the event; full value via `node.get` |
 | `node.finished` | `{state: "done"\|"failed"\|"skipped"\|"interrupted"\|"cancelled", error?, cap?, conflict?: {branch, files, worktree}}` |
 | `loop.iteration` | `{iteration, max_iters}` |
@@ -726,8 +759,10 @@ first if it copies them.*
 
 - Plugin skeleton: manifest with `node: "26.0.0"`, SDK copy, `main.mjs`.
 - `store.ts`, `interp.ts`, `keys.ts`, `check.ts`, `human.ts`, `killtree.ts`,
-  `events.ts`, and the topics `runs.list`, `run.get`, `run.events`,
-  `run.cancel` and `human.answer`.
+  `events.ts`, and the topics `runs.list` (with the optional `project_id`
+  and `state` filters, B-2), `run.get`, `run.events`, `run.cancel` and
+  `human.answer`.
+- A check with no upstream head gets its own base worktree (B-4).
 - A test-only `startRunFromIR` seam; `run.start` arrives in B4.
 - Not embedded yet: tests install it as a local plugin.
 - `internal/plugin/sdk_drift_test.go` adds the byte-equality check for the
@@ -738,12 +773,14 @@ first if it copies them.*
 *Needs R1–R4.*
 
 - `agent.ts`, `worktrees.ts` and `prompt.ts`.
+- `node.resumed` when a permission wait clears (B-1).
 - The durability startup routine and reconnect.
 - Caps, cleanup, and the fan-out bench.
 
 ### B4: trust, sandbox, build and type check (own security review)
 
-- `trust.ts`, `build.ts`, `typecheck.ts`, `tsgo.ts`, `build/*`, `redact.ts`.
+- `trust.ts`, `build.ts`, `typecheck.ts`, `tsgo.ts` (with the seeded
+  tarball path, B-3), `build/*`, `redact.ts`.
 - The topics `workflows.list`, `workflow.trust.*`, `workflow.build` and
   `run.start`.
 - Run `/security-review` on this PR alone. The reviewer gets the code, not
@@ -836,6 +873,10 @@ first if it copies them.*
   - `done row always has output`;
   - `runs.db wal shm are 0600` (POSIX);
   - `crash between transitions leaves last committed state` (child process killed mid-run).
+- `topics.test.ts` (B-2):
+  - `runs.list without project_id returns every project's runs, each with project_id`;
+  - `runs.list state waiting returns only waiting runs`;
+  - `runs.list project_id and state combine`.
 - `check.test.ts`:
   - `ok and exit_code`;
   - `timeout sends TERM to group then KILL after grace` (POSIX; a grandchild `sleep` dies too);
@@ -845,7 +886,11 @@ first if it copies them.*
 - Go `internal/workflowe2e/check_test.go`:
   - `TestCheckNode_PluginCrash_InterruptedAndRetried`;
   - `TestCheckNode_HivedRestart_InterruptedAndRetried`;
-  - `TestHumanNode_SurvivesRestart`.
+  - `TestHumanNode_SurvivesRestart`;
+  - `TestCheckNode_NoUpstreamHead_RunsInBaseWorktree` (B-4): a root check and
+    a `human → check` each run with cwd = a fresh worktree on
+    `hive/wf/<run>/<key>` at the pinned base, never the project's main
+    checkout; an uncommitted file in the main checkout is absent there.
 
 **B3** (Go `internal/workflowe2e/`, fake adapter)
 - `TestAgentNode_ResultRecorded` (typed result through A's schema).
@@ -868,7 +913,8 @@ first if it copies them.*
   - the running nodes recover per the table and the run completes.
 - F3 and permissions:
   - `TestF3_EndTurnWithoutResult_RepromptedOnce`, `TestF3_SecondMissFails`;
-  - `TestPermission_BecomesNodeWaiting` (`FlagPermission`; the waiting event carries `session_id` and `request_id`; ANSWER_PERMISSION resumes it).
+  - `TestPermission_BecomesNodeWaiting` (`FlagPermission`; the waiting event carries `session_id` and `request_id`; ANSWER_PERMISSION resumes it);
+  - `TestPermission_WaitEmitsNodeResumedAfterAnswer` (B-1: after ANSWER_PERMISSION, `node.resumed{reason:"permission"}` follows the `node.waiting`, before `node.finished`).
 - Cancel and timeout:
   - `TestCancel_WaitsForCancelledThenKills` (`FlagBlock`; the fake ignores the cancel → killed after 10 s; a test var shrinks it);
   - `TestTimeout_FailsNodeNamingTimeout`.
@@ -924,6 +970,8 @@ first if it copies them.*
   - `integrity mismatch refused before unpack`;
   - `unpack refuses absolute, dot-dot, link and out-of-package entries`;
   - `verified marker skips download`;
+  - `seeded tarball with matching hash is used without fetch` (B-3);
+  - `seeded tarball with wrong hash is refused, never unpacked, and deleted; the download proceeds verified` (B-3);
   - `partial download discarded`;
   - `unsupported platform → typecheck_unavailable`;
   - `pinned table matches npm dist.integrity values`.
@@ -1054,11 +1102,26 @@ download, the accepted sandbox gap, and `LIST_ACP_AGENTS`.
   - **R1–R6 are approved as A changes.** R2, R3, R5 and R6 go to A PR1; R1
     and R4 to A PR2.
 
+- **2026-10-25, user-approved changes requested by C (#530).**
+  - **B-1:** `node.resumed {reason}` ends a permission wait, so C's overlay
+    doesn't show "waiting" until the turn ends.
+  - **B-2:** `runs.list` takes an optional `project_id` and `state`, so
+    the GUI finds waiting human nodes across projects at boot in one call.
+  - **B-3:** a seeded tsgo tarball, verified against the same pinned
+    SHA-512, so e2e-real avoids a ~10 MB download per run. A bad seed is
+    refused and the normal verified download runs.
+  - **B-4:** a check with no upstream head runs in its own clean worktree
+    at the run's pinned base. Rejected: the project's main checkout (tests
+    uncommitted edits, writes into the user's tree) and refusing it in
+    `validate` (forbids root checks and `human → check`).
+
 ## Progress
 
 - **2026-10-25:** Research complete. Plan drafted against A at `7410f6b7`.
 - **2026-10-25:** User decisions folded in. Spec corrections C-1 to C-11
   applied to the spec. The final plan is presented for approval.
+- **2026-10-25:** C's B-1 to B-4 folded in (user-approved); spec criteria
+  6, 9, 10 and 4 updated.
 
 ## Open questions
 

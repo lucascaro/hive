@@ -39,6 +39,7 @@ Tests use the `internal/acp/acptest` fake adapter, never a real agent.
    - and runs again on the stored IR before every run.
 3. **Interpreter.** Ready, run-or-skip, subgraph, loop and failure rules behave as the design's Run semantics state. Loops respect `max_iters`; `map` respects its concurrency.
 4. **Node kinds.** `agent`, `check`, `human`, `group`, `loop` and `map` run end to end, including `reviewLoop`, `fanOutThenVerify` and `planImplementVerify`.
+   - A check with no agent upstream (a root check, or `human → check`) runs in a clean worktree of its own at the run's pinned base (`hive/wf/<run>/<key>`), never in the project's main checkout.
 5. **Durability, two tests.**
    - *Plugin crash:* an agent node that finished while the plugin was down is recorded from the ACP transcript and its attempt count is unchanged. A check node is marked `interrupted` and retried.
    - *`hived` restart or reboot:* every running node becomes `interrupted`. It is retried with a fixed limit of 2 attempts, an engine constant; the IR has no `max_attempts` field.
@@ -54,7 +55,7 @@ Tests use the `internal/acp/acptest` fake adapter, never a real agent.
    - A loop's iteration *k > 1* branches from the same node's iteration *k−1*.
    - A merge conflict fails the node. The failure states the recovery path: resolve in the kept worktree, then `run.retry`.
    - A turn that ends (`end_turn`) without `submit_result` is re-prompted once; a second miss fails the node.
-   - `session/request_permission` becomes `node.waiting` with reason `permission`.
+   - `session/request_permission` becomes `node.waiting` with reason `permission`. When the permission is answered and the node keeps running, a `node.resumed` event ends the wait.
    - A mode is never above the user's per-agent ceiling.
      - The daemon **refuses** a mode above it; it never clamps.
      - The engine checks the ceiling before the run, and always sends an explicit mode: the node's, or the least permissive one when the node names none.
@@ -78,8 +79,8 @@ Tests use the `internal/acp/acptest` fake adapter, never a real agent.
      - The test is that every engine session runs only in a worktree of the run's own project, which Hive treats as trusted, so the engine never hands Codex a never-trusted path.
      - Re-probing the pinned adapter needs a real run, which spends the user's subscription, and is only done with their approval.
    - The sandbox's remaining gap is accepted and documented in `docs/plugins.md`: a build child can still signal, or open the inspector of, other same-user Node processes.
-   - tsgo is fetched once, as a tarball, and verified against an integrity hash pinned in Hive's source.
-10. **Events.** Run events are keyed by IR node id with a gapless `seq`, `agent.message` coalesced, as the design specifies. `agent.usage` comes from the usage A adds to the ACP transcript.
+   - tsgo is fetched once, as a tarball, and verified against an integrity hash pinned in Hive's source. A pre-seeded tarball in the plugin's data dir is used instead of a download only after passing the same check; a seed with the wrong hash is refused.
+10. **Events.** Run events are keyed by IR node id with a gapless `seq`, `agent.message` coalesced, as the design specifies. `agent.usage` comes from the usage A adds to the ACP transcript. `runs.list` filters by an optional project and run state, so a client finds every waiting run across projects in one call after a restart.
 11. **Type check.** A type error blocks the run.
     - "No usable Node is refused, naming the version" is A's criterion 5: the Manager refuses the plugin before the engine starts.
     - B's share is the manifest's `node: "26.0.0"`, and a test that pins it.
