@@ -94,6 +94,17 @@ func TestMCPSubmit_PrecheckRejectsBadData(t *testing.T) {
 	}
 }
 
+// An empty object schema is valid and must reach tools/list as one MCP
+// clients accept: "required" an array, not null.
+func TestMCPSubmit_EmptyObjectSchemaListsArrayRequired(t *testing.T) {
+	r := schemaRoundTrip(t, `{"type":"object","properties":{},"required":[],"additionalProperties":false}`, noSubmit,
+		`{"jsonrpc":"2.0","id":1,"method":"tools/list"}`)
+	tool := r[0]["result"].(map[string]any)["tools"].([]any)[0]
+	if s := mustJSON(t, tool); strings.Contains(s, `"required":null`) {
+		t.Errorf("tool = %s", s)
+	}
+}
+
 func TestMCPSubmit_NoSchemaUnchanged(t *testing.T) {
 	r := schemaRoundTrip(t, "", noSubmit, `{"jsonrpc":"2.0","id":1,"method":"tools/list"}`)
 	tool := r[0]["result"].(map[string]any)["tools"].([]any)[0].(map[string]any)

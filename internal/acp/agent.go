@@ -276,11 +276,17 @@ func (a *Agent) SetMode(ctx context.Context, id, mode string) error {
 // Prompt sends one user turn and blocks until the turn ends, returning
 // ACP's stopReason (end_turn, cancelled, …).
 func (a *Agent) Prompt(ctx context.Context, id, text string) (string, error) {
+	return a.PromptSent(ctx, id, text, nil)
+}
+
+// PromptSent is Prompt that runs sent once session/prompt has been
+// written, so a caller can order a later session/cancel after it.
+func (a *Agent) PromptSent(ctx context.Context, id, text string, sent func()) (string, error) {
 	var res promptResult
-	err := a.conn.Call(ctx, MethodSessionPrompt, promptParams{
+	err := a.conn.CallSent(ctx, MethodSessionPrompt, promptParams{
 		SessionID: id,
 		Prompt:    []ContentBlock{{Type: "text", Text: text}},
-	}, &res)
+	}, &res, sent)
 	return res.StopReason, err
 }
 

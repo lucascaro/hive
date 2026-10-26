@@ -18,6 +18,7 @@ import (
 	"slices"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/lucascaro/hive/internal/acp"
@@ -66,6 +67,10 @@ var (
 // Generous because the first `npx -y <adapter>` downloads the package.
 var acpStartTimeout = 2 * time.Minute
 
+// beforePromptSendForTest runs on the turn goroutine just before
+// session/prompt is written, so a test can make a cancel race it.
+var beforePromptSendForTest func()
+
 // acpCommand returns the adapter argv and its complete environment for
 // def. The seam tests use to run the fake agent; the default reads the
 // login-shell PATH, which must never run under r.mu.
@@ -110,6 +115,16 @@ type acpSession struct {
 	// perm is the permission request the agent is blocked on, or nil.
 	perm   *acpPending
 	nextRq int
+	// promptSent is closed once the running turn's session/prompt has
+	// been written (or could not be). A cancel waits on it, so the
+	// session/cancel it sends can never overtake the prompt it is for.
+	promptSent chan struct{}
+	// turnMu is held by a cancel from "is this turn still the one" until
+	// session/cancel is written, and by the turn goroutine before it frees
+	// the session (busy = false): the next prompt cannot start until a
+	// cancel aimed at this turn has been written. Lock order: turnMu, then
+	// r.mu. Nothing holding r.mu may take it.
+	turnMu sync.Mutex
 }
 
 // acpResult is the typed result of the latest prompt; see the result
@@ -737,6 +752,8 @@ func (r *Registry) PromptACPTurn(id, text, origin string) (promptID, epoch int, 
 	as.busy = true
 	as.userMode = ""
 	clear(as.tools)
+	sent := make(chan struct{})
+	as.promptSent = sent
 	sid := e.AgentSessionID
 	item := e.acpTx.AddUser(text, origin)
 	e.acpRes = acpResult{epoch: e.acpTx.Epoch(), promptID: item.ID}
@@ -746,7 +763,16 @@ func (r *Registry) PromptACPTurn(id, text, origin string) (promptID, epoch int, 
 	r.mu.Unlock()
 
 	go func() {
-		stop, err := as.agent.Prompt(context.Background(), sid, text)
+		if beforePromptSendForTest != nil {
+			beforePromptSendForTest()
+		}
+		var once sync.Once
+		markSent := func() { once.Do(func() { close(sent) }) }
+		stop, err := as.agent.PromptSent(context.Background(), sid, text, markSent)
+		markSent() // the write failed, or the reply beat the hook: never leave a cancel waiting
+		// A cancel in progress finishes writing before the session is freed.
+		as.turnMu.Lock()
+		defer as.turnMu.Unlock()
 		r.mu.Lock()
 		defer r.mu.Unlock()
 		as.busy = false
@@ -816,12 +842,32 @@ func (r *Registry) CancelACP(id string, promptID, epoch int) (wasBusy bool, err 
 		p.answered = true
 		p.answer <- acp.Cancelled()
 	}
-	sid := e.AgentSessionID
+	sid, sent, turn, ep := e.AgentSessionID, as.promptSent, e.acpRes.promptID, e.acpRes.epoch
 	r.mu.Unlock()
-	// A failed notify means the adapter is already gone, and the turn
-	// ends with an error through Prompt; either way it is over.
+
+	// session/cancel must be written after the session/prompt it is for,
+	// or an adapter with no turn running ignores it and the turn runs on.
+	// Then turnMu keeps the turn from being freed (and the next one from
+	// starting) until the cancel is on the wire. r.mu is never held across
+	// either wait or the write.
+	<-sent
+	as.turnMu.Lock()
+	defer as.turnMu.Unlock()
+	r.mu.Lock()
+	gone := r.entries[id] != e || e.acp != as // adapter exited or was replaced under us
+	still := !gone && as.busy && e.acpRes.promptID == turn && e.acpRes.epoch == ep
+	r.mu.Unlock()
+	if gone {
+		return false, ErrNoLiveSession
+	}
+	if !still {
+		return false, nil // the turn ended first
+	}
 	if err := as.agent.Cancel(sid); err != nil {
+		// The adapter is gone: the turn ends with an error, not a
+		// cancellation, so do not report the cancel as delivered.
 		log.Printf("registry: acp %s: session/cancel: %v", id, err)
+		return false, fmt.Errorf("%w: %v", ErrNoLiveSession, err)
 	}
 	return true, nil
 }

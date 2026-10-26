@@ -54,6 +54,27 @@ func TestCancel_SendsNotification(t *testing.T) {
 	}
 }
 
+// Like a real adapter, the fake ignores a session/cancel with no turn
+// running: a cancel that missed its turn must not cancel the next one.
+func TestCancel_LateCancelDoesNotLeakIntoNextPrompt(t *testing.T) {
+	dir := t.TempDir()
+	rec := &recorder{}
+	a := startFake(t, dir, rec.handler(func(PermissionRequest) any { return Cancelled() }))
+	if _, err := a.Initialize(ctx(t)); err != nil {
+		t.Fatal(err)
+	}
+	ns, _ := a.NewSession(ctx(t), dir, nil, nil)
+	if stop, err := a.Prompt(ctx(t), ns.SessionID, "one"); err != nil || stop != "end_turn" {
+		t.Fatalf("first prompt = %q, %v", stop, err)
+	}
+	if err := a.Cancel(ns.SessionID); err != nil { // no turn running
+		t.Fatal(err)
+	}
+	if stop, err := a.Prompt(ctx(t), ns.SessionID, "two"); err != nil || stop != "end_turn" {
+		t.Fatalf("second prompt = %q, %v; want end_turn (the late cancel must be dropped)", stop, err)
+	}
+}
+
 func TestUpdateRawKeptForUsage(t *testing.T) {
 	dir := t.TempDir()
 	rec := &recorder{}

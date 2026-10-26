@@ -165,6 +165,35 @@ type fake struct {
 	prompts map[string]int    // sessionId -> prompts so far
 	setMode int               // set_mode calls so far
 	cancel  map[string]bool   // sessionId -> session/cancel seen during the running prompt
+	// inflight is the sessions with a prompt received and not yet
+	// answered. A real adapter ignores a session/cancel with no turn
+	// running, so the fake does too; both are marked in wire order on the
+	// read loop, not on the per-message goroutines, so a cancel the client
+	// wrote before its prompt is really ignored.
+	inflight map[string]bool
+}
+
+func (f *fake) begin(sid string) {
+	f.mu.Lock()
+	f.inflight[sid] = true
+	f.mu.Unlock()
+}
+
+// end closes the prompt's turn: a cancel that raced its end is dropped
+// here rather than carried into the next prompt.
+func (f *fake) end(sid string) {
+	f.mu.Lock()
+	delete(f.inflight, sid)
+	delete(f.cancel, sid)
+	f.mu.Unlock()
+}
+
+func (f *fake) cancelIfInflight(sid string) {
+	f.mu.Lock()
+	if f.inflight[sid] {
+		f.cancel[sid] = true
+	}
+	f.mu.Unlock()
 }
 
 func (f *fake) setCancelled(sid string, v bool) {
@@ -182,13 +211,14 @@ func (f *fake) cancelled(sid string) bool {
 // Main runs the fake agent on stdin/stdout until stdin closes.
 func Main() {
 	f := &fake{
-		dir:     os.Getenv("HIVE_FAKE_ACP_DIR"),
-		flags:   map[string]bool{},
-		out:     bufio.NewWriter(os.Stdout),
-		pending: map[string]chan json.RawMessage{},
-		servers: map[string]string{},
-		prompts: map[string]int{},
-		cancel:  map[string]bool{},
+		dir:      os.Getenv("HIVE_FAKE_ACP_DIR"),
+		flags:    map[string]bool{},
+		out:      bufio.NewWriter(os.Stdout),
+		pending:  map[string]chan json.RawMessage{},
+		servers:  map[string]string{},
+		prompts:  map[string]int{},
+		cancel:   map[string]bool{},
+		inflight: map[string]bool{},
 	}
 	for fl := range strings.SplitSeq(os.Getenv("HIVE_FAKE_ACP_FLAGS"), ",") {
 		f.flags[fl] = true
@@ -215,6 +245,19 @@ func Main() {
 			if ch != nil {
 				ch <- m.Result
 			}
+			continue
+		}
+		var sp struct {
+			SessionID string `json:"sessionId"`
+		}
+		_ = json.Unmarshal(m.Params, &sp)
+		switch m.Method {
+		case "session/prompt":
+			f.begin(sp.SessionID)
+		case "session/cancel":
+			// A notification: no reply. Handled in wire order, here.
+			f.log(m.Method, sp.SessionID)
+			f.cancelIfInflight(sp.SessionID)
 			continue
 		}
 		go f.handle(m.ID, m.Method, m.Params)
@@ -404,13 +447,8 @@ func (f *fake) handle(id json.RawMessage, method string, params json.RawMessage)
 			return
 		}
 		reply(map[string]any{})
-	case "session/cancel":
-		// A notification: no reply. Logged above as "session/cancel <id>".
-		f.setCancelled(p.SessionID, true)
 	case "session/prompt":
-		// The cancel flag is consumed when a turn ends cancelled, not
-		// cleared here: a session/cancel can overtake the prompt it is
-		// for, since each message is handled on its own goroutine.
+		defer f.end(p.SessionID)
 		text := ""
 		for _, b := range p.Prompt {
 			text += b.Text
@@ -492,7 +530,6 @@ func (f *fake) handle(id json.RawMessage, method string, params json.RawMessage)
 			}
 		}
 		if f.cancelled(p.SessionID) {
-			f.setCancelled(p.SessionID, false)
 			if f.flags[FlagSlowCancel] {
 				for deadline := time.Now().Add(10 * time.Second); time.Now().Before(deadline); time.Sleep(10 * time.Millisecond) {
 					if _, err := os.Stat(filepath.Join(f.dir, "release-cancel")); err == nil {

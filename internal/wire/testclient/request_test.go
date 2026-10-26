@@ -14,6 +14,79 @@ import (
 	"github.com/lucascaro/hive/internal/wire"
 )
 
+// Two requests in flight at once, answered in the opposite order: each
+// gets its own reply, and neither consumes the other's.
+func TestClient_Request_ConcurrentOutOfOrder(t *testing.T) {
+	fd := newFakeDaemon(t)
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	cli, err := Dial(ctx, fd.sockPath())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer cli.Close()
+	fd.waitAccept(t)
+
+	go func() {
+		var hello wire.Hello
+		_, _ = wire.ReadJSON(fd.conn, &hello)
+		_ = wire.WriteJSON(fd.conn, wire.FrameWelcome, wire.Welcome{Version: wire.PROTOCOL_VERSION})
+		var first, second wire.AckMsg
+		read := func(into *wire.AckMsg) {
+			_, p, err := wire.ReadFrame(fd.conn)
+			if err != nil {
+				return
+			}
+			var req struct {
+				ReqID     int    `json:"req_id"`
+				SessionID string `json:"session_id"`
+			}
+			_ = json.Unmarshal(p, &req)
+			*into = wire.AckMsg{ReqID: req.ReqID, SessionID: req.SessionID}
+		}
+		read(&first)
+		read(&second)
+		_ = wire.WriteJSON(fd.conn, wire.FrameAck, second) // the later request first
+		_ = wire.WriteJSON(fd.conn, wire.FrameAck, first)
+	}()
+	if _, err := cli.Handshake(wire.Hello{Mode: wire.ModeControl}); err != nil {
+		t.Fatal(err)
+	}
+
+	type res struct {
+		want string
+		got  wire.AckMsg
+		err  error
+	}
+	out := make(chan res, 2)
+	ask := func(sid string) {
+		_, p, err := cli.Request(wire.FrameKillSession, wire.KillSessionReq{SessionID: sid}, 3*time.Second)
+		var a wire.AckMsg
+		_ = json.Unmarshal(p, &a)
+		out <- res{sid, a, err}
+	}
+	go ask("A")
+	// Make B's request reach the daemon second.
+	deadline := time.Now().Add(3 * time.Second)
+	for {
+		cli.mu.Lock()
+		n := cli.nextReq
+		cli.mu.Unlock()
+		if n >= 1 || time.Now().After(deadline) {
+			break
+		}
+		time.Sleep(time.Millisecond)
+	}
+	time.Sleep(50 * time.Millisecond)
+	go ask("B")
+	for range 2 {
+		r := <-out
+		if r.err != nil || r.got.SessionID != r.want {
+			t.Errorf("request %s: ack %+v, err %v; want its own reply", r.want, r.got, r.err)
+		}
+	}
+}
+
 func TestClient_Request_MatchesReqID(t *testing.T) {
 	fd := newFakeDaemon(t)
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)

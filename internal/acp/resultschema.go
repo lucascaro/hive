@@ -152,6 +152,7 @@ func parseSchemaNode(v any, path string, depth int) (*Schema, error) {
 			req[name] = true
 		}
 		s.props = make(map[string]*Schema, len(props))
+		s.propOrder = []string{} // never nil: JSON() must emit "required": []
 		for name := range props {
 			if !req[name] {
 				return nil, fmt.Errorf("%s.required: must list every property (%q is missing)", path, name)

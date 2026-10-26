@@ -26,7 +26,7 @@ A plugin can start `acp` sessions that carry a run's provenance and a per-node r
 
 ## Success criteria
 
-Every wire change moves `internal/wire`, `cmd/hivegui/app_*.go`, `cmd/hived-ws-bridge/main.go` and `internal/wire/testclient` in lock-step, with `snake_case` tags. The work ships as three PRs, each bumping `buildinfo.DaemonContract` (see the exec plan).
+Every wire change moves `internal/wire`, `cmd/hivegui/app_*.go`, `cmd/hived-ws-bridge/main.go` and `internal/wire/testclient` in lock-step, with `snake_case` tags. The work ships as three PRs (see the exec plan). Each bumps `buildinfo.DaemonContract` only if a GUI built against it could not correctly drive an older daemon ([daemon-contract.md](../design-docs/daemon-contract.md)); PR1 and PR2 do, and PR3 decides by the same rule.
 
 1. **Provenance.** The daemon labels a plugin's sessions and prompts with a composed principal, `plugin:<id>/workflow:<run-id>`. It builds it from its own principal (`principalOf`, `internal/daemon/daemon.go:2307`) plus a run id the plugin sends. The composition covers CREATE_SESSION, the create HELLO and PROMPT_ACP.
 

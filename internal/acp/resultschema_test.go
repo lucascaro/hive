@@ -106,6 +106,32 @@ func TestCheckResult_Fixtures(t *testing.T) {
 	}
 }
 
+// JSON() feeds tools/list: an empty object must come out with
+// "required": [] (an array), never null, at any depth.
+func TestSchemaJSON_EmptyObjectsHaveArrayRequired(t *testing.T) {
+	for _, in := range []string{
+		`{"type":"object","properties":{},"required":[],"additionalProperties":false}`,
+		`{"type":"object","properties":{"a":{"type":"object","properties":{},"required":[],"additionalProperties":false},` +
+			`"l":{"type":"array","items":{"type":"object","properties":{},"required":[],"additionalProperties":false}}},"required":["a","l"],"additionalProperties":false}`,
+	} {
+		s, err := ParseSchema(json.RawMessage(in))
+		if err != nil {
+			t.Fatal(err)
+		}
+		b, err := json.Marshal(s.JSON())
+		if err != nil {
+			t.Fatal(err)
+		}
+		if strings.Contains(string(b), `"required":null`) {
+			t.Errorf("JSON() = %s: required is null", b)
+		}
+		// The round trip is the same schema.
+		if _, err := ParseSchema(b); err != nil {
+			t.Errorf("JSON() = %s does not parse back: %v", b, err)
+		}
+	}
+}
+
 func TestCheckResult_ErrorPath(t *testing.T) {
 	s, err := ParseSchema(json.RawMessage(`{"type":"object","properties":{"a":{"type":"array","items":{"type":"array","items":{"type":"boolean"}}}},"required":["a"],"additionalProperties":false}`))
 	if err != nil {

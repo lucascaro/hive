@@ -20,7 +20,7 @@ This plan gives a plugin what the workflow engine (B, #529) and its GUI
 - a recoverable crash-loop state;
 - the `plugin-data/<id>/` carve-out in `DESIGN.md`.
 
-It ships as **three PRs**, each bumping `DaemonContract`.
+It ships as **three PRs**. Each bumps `DaemonContract` when a GUI built against it could not drive an older daemon (PR1 and PR2 do; PR3 decides by the same rule).
 
 ## Research
 
@@ -89,7 +89,7 @@ All accessed **2026-10-25**.
 
 ### Constraints
 
-- The lock-step wire rule applies; tags are `snake_case`. `PROTOCOL_VERSION` is not bumped. `DaemonContract` is bumped per PR.
+- The lock-step wire rule applies; tags are `snake_case`. `PROTOCOL_VERSION` is not bumped. `DaemonContract` is bumped by every PR that meets that rule.
 - Subprocesses go through `proc` only. `LoginPATH` is never called under `m.mu`.
 - The registry owns worktrees and session state. After the carve-out, a plugin owns only `plugin-data/<id>/`.
 - New broadcasts follow `docs/design-docs/slow-client-policy.md`.
@@ -208,7 +208,7 @@ Both come from slice B's plan (#529, R1 and R4), approved by the user. PR2 build
 
 #### PR2: plugin messages and the worktree frame (gets its own security review)
 
-**`PLUGIN_MESSAGE` (0x51, both directions)**
+**`PLUGIN_MESSAGE` (0x53, both directions)**
 
 - Payload: `{plugin_id, topic, data}`, with **no `req_id`**. C carries its own nonce in `data` where it needs correlation.
 - `topic` matches `^[a-z][a-z0-9._-]{0,63}$`. The whole payload is ≤ **64 KiB** (`wire.MaxPluginMessage`).
@@ -226,7 +226,7 @@ Both come from slice B's plan (#529, R1 and R4), approved by the user. PR2 build
 - **SDK:** `hive.postMessage(topic, data)` and `@typedef PluginMessage`.
 - **Cost:** `costFanout`.
 
-**`PREPARE_WORKTREE` (0x52, C→S) → `PREPARED_WORKTREE` (0x53, S→C)**
+**`PREPARE_WORKTREE` (0x54, C→S) → `PREPARED_WORKTREE` (0x55, S→C)**
 
 Request: `{req_id, project_id, workflow_run_id, branch, base, merge?: [branch…]}`
 
@@ -282,7 +282,7 @@ Reply: `{req_id, project_id, path, branch, reattached, merged: [branch…], conf
   - the `--disable-sigusr1` recommendation;
   - a Node 26 CI leg in `.github/workflows/ci.yml`, running `node --test 'plugins/sdk/*.test.mjs'` and the Pi/plugin Go tests that shell out to Node.
 
-### PRs (in order, each bumps `DaemonContract` to main's value + 1 at rebase)
+### PRs (in order; each that bumps `DaemonContract` takes main's value + 1 at rebase)
 
 1. **PR1:** request/reply, provenance, typed results, ACP cancel and `stop_reason`. `no-changeset` label: nothing changes until a plugin uses these.
 2. **PR2:** `PLUGIN_MESSAGE` and `PREPARE_WORKTREE` / `PREPARED_WORKTREE`. Gets its own security review. `no-changeset`.
@@ -338,7 +338,7 @@ Reply: `{req_id, project_id, path, branch, reattached, merged: [branch…], conf
 
 **PR2**
 - `internal/wire/control.go`: `PluginMessage`, `MaxPluginMessage`, `PrepareWorktreeReq`, `PreparedWorktreeMsg` (with `base_sha`, `head_sha`: R4), `CommitWorktreeReq` (R1), `AckMsg.Committed` / `.Head`, `MergeConflict`, error codes.
-- `internal/wire/frame.go`: `FramePluginMessage`, `FramePrepareWorktree`, `FramePreparedWorktree`, `FrameCommitWorktree` (R1; numbers from `0x53`, since PR1 took `0x4f`–`0x52`).
+- `internal/wire/frame.go`: `FramePluginMessage`, `FramePrepareWorktree`, `FramePreparedWorktree`, `FrameCommitWorktree` (R1, 0x56; PR2 numbers start at `0x53`, since PR1 took `0x4f`–`0x52`).
 - `internal/worktree/worktree.go`: `safeGit`, `ResolveCommit`, `CheckBranchName`, `AddNewBranch`, `AddExistingBranch`, `FreePath`, `MergeBranches(ctx, wt string, shas []namedSHA) (merged []string, conflict *MergeConflict, err error)`.
 - `internal/registry/worktrees.go`: `PrepareWorktree` under `gitMu`.
 - `internal/daemon/daemon.go` and plugin routing: the PLUGIN_MESSAGE relay and target lookup; the PREPARE handler in `runOp`.

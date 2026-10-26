@@ -60,8 +60,40 @@ type Client struct {
 	closeOnce sync.Once
 	closed    chan struct{}
 
-	mu      sync.Mutex // guards nextReq
+	mu      sync.Mutex // guards nextReq and waiters
 	nextReq int
+	// waiters are the Requests in flight, by req_id. The read loop hands a
+	// matching reply straight to its waiter, so concurrent Requests never
+	// consume each other's replies and the shared snaps channel never
+	// sees them.
+	waiters map[int]chan frameMsg
+}
+
+// routeReply delivers a reply frame to the Request waiting on its req_id.
+// It reports false for anything else, which then goes to snaps.
+func (c *Client) routeReply(m frameMsg) bool {
+	switch m.t {
+	case wire.FrameAck, wire.FrameAcpAgents, wire.FrameTranscriptMatches, wire.FrameTranscriptLines, wire.FrameError:
+	default:
+		return false
+	}
+	var echo struct {
+		ReqID int `json:"req_id"`
+	}
+	if json.Unmarshal(m.payload, &echo) != nil || echo.ReqID == 0 {
+		return false
+	}
+	c.mu.Lock()
+	ch, ok := c.waiters[echo.ReqID]
+	c.mu.Unlock()
+	if !ok {
+		return false
+	}
+	select {
+	case ch <- m:
+	default: // a second reply for the same id: keep the first
+	}
+	return true
 }
 
 type frameMsg struct {
@@ -229,10 +261,10 @@ func (e *RequestError) Error() string { return e.Err.Code + ": " + e.Err.Message
 // carrying it (returned as a *RequestError). Broadcasts and other
 // requests' replies are skipped, as the plugin SDK's request() does.
 //
-// Skipped frames are discarded: Request reads the same snaps channel
-// the Await* helpers do, so a snapshot (SESSIONS, WORKTREES, …) that
-// arrives while it waits is consumed and lost. Don't interleave it with
-// an Await for a frame that may already be in flight.
+// Request is safe to call concurrently: the read loop hands each reply
+// to the Request waiting on its req_id. Frames that are not replies to an
+// outstanding Request still go to the snapshot channel the Await*
+// helpers read, so they are not lost.
 // payload must marshal to a JSON object.
 func (c *Client) Request(ft wire.FrameType, payload any, timeout time.Duration) (wire.FrameType, []byte, error) {
 	raw, err := json.Marshal(payload)
@@ -243,41 +275,36 @@ func (c *Client) Request(ft wire.FrameType, payload any, timeout time.Duration) 
 	if err := json.Unmarshal(raw, &obj); err != nil {
 		return 0, nil, fmt.Errorf("testclient: request payload must be an object: %w", err)
 	}
+	ch := make(chan frameMsg, 1)
 	c.mu.Lock()
 	c.nextReq++
 	id := c.nextReq
+	if c.waiters == nil {
+		c.waiters = map[int]chan frameMsg{}
+	}
+	c.waiters[id] = ch
 	c.mu.Unlock()
+	defer func() {
+		c.mu.Lock()
+		delete(c.waiters, id)
+		c.mu.Unlock()
+	}()
 	obj["req_id"] = id
 	if err := c.cli.WriteJSON(ft, obj); err != nil {
 		return 0, nil, err
 	}
-	deadline := time.Now().Add(timeout)
-	for {
-		remaining := time.Until(deadline)
-		if remaining <= 0 {
-			return 0, nil, fmt.Errorf("testclient: timeout waiting for the reply to %s (req_id %d)", ft, id)
+	select {
+	case msg := <-ch:
+		if msg.t == wire.FrameError {
+			var e wire.Error
+			_ = json.Unmarshal(msg.payload, &e)
+			return msg.t, msg.payload, &RequestError{e}
 		}
-		select {
-		case msg := <-c.snaps:
-			var echo struct {
-				ReqID int `json:"req_id"`
-			}
-			if json.Unmarshal(msg.payload, &echo) != nil || echo.ReqID != id {
-				continue
-			}
-			switch msg.t {
-			case wire.FrameAck, wire.FrameAcpAgents, wire.FrameTranscriptMatches, wire.FrameTranscriptLines:
-				return msg.t, msg.payload, nil
-			case wire.FrameError:
-				var e wire.Error
-				_ = json.Unmarshal(msg.payload, &e)
-				return msg.t, msg.payload, &RequestError{e}
-			}
-		case err := <-c.errs:
-			return 0, nil, err
-		case <-time.After(remaining):
-			return 0, nil, fmt.Errorf("testclient: timeout waiting for the reply to %s (req_id %d)", ft, id)
-		}
+		return msg.t, msg.payload, nil
+	case err := <-c.errs:
+		return 0, nil, err
+	case <-time.After(timeout):
+		return 0, nil, fmt.Errorf("testclient: timeout waiting for the reply to %s (req_id %d)", ft, id)
 	}
 }
 
@@ -855,7 +882,11 @@ func (c *Client) readLoop() {
 				}
 			}
 		default:
-			c.sendSnapshot(frameMsg{t: ft, payload: payload})
+			m := frameMsg{t: ft, payload: payload}
+			if c.routeReply(m) {
+				continue
+			}
+			c.sendSnapshot(m)
 		}
 	}
 }

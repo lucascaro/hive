@@ -399,6 +399,45 @@ func TestCancelACP_PinnedToTurn(t *testing.T) {
 	acptest.Release(dir)
 }
 
+// session/cancel must reach the adapter after the session/prompt it is
+// for: a cancel written first is ignored by an adapter with no turn
+// running, and the "cancelled" turn would then run to completion.
+func TestCancelACP_NeverOvertakesItsPrompt(t *testing.T) {
+	useFakeACP(t, acptest.FlagBlock)
+	r := freshRegistry(t)
+	e := createACP(t, r, wire.CreateSpec{Name: "a"})
+	beforePromptSendForTest = func() { time.Sleep(300 * time.Millisecond) }
+	t.Cleanup(func() { beforePromptSendForTest = nil })
+	startBlockedTurn(t, r, e.ID)
+	if busy, err := r.CancelACP(e.ID, 0, 0); err != nil || !busy {
+		t.Fatalf("CancelACP = %v, %v", busy, err)
+	}
+	waitFor(t, "cancelled", func() bool { return result(t, r, e.ID).StopReason == "cancelled" })
+}
+
+// A cancel that cannot be delivered because the adapter is gone is an
+// error, not an ACK claiming the turn was asked to stop.
+func TestCancelACP_UndeliverableIsAnError(t *testing.T) {
+	useFakeACP(t, acptest.FlagBlock)
+	r := freshRegistry(t)
+	e := createACP(t, r, wire.CreateSpec{Name: "a"})
+	agentOf := func() *acp.Agent {
+		r.mu.Lock()
+		defer r.mu.Unlock()
+		return r.entries[e.ID].acp.agent
+	}
+	beforePromptSendForTest = func() {
+		a := agentOf()
+		a.Close()
+		<-a.Done()
+	}
+	t.Cleanup(func() { beforePromptSendForTest = nil })
+	startBlockedTurn(t, r, e.ID)
+	if busy, err := r.CancelACP(e.ID, 0, 0); err == nil || busy {
+		t.Errorf("CancelACP = %v, %v; want an error and not busy", busy, err)
+	}
+}
+
 // The ACK says the turn was asked to stop, not that it is over: until
 // stop_reason arrives the session is still busy.
 func TestCancelACP_StillBusyUntilStopReason(t *testing.T) {
