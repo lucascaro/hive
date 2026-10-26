@@ -115,6 +115,7 @@ func acpSpec(extra string) json.RawMessage {
 }
 
 func TestReqID_EchoedOnError(t *testing.T) {
+	skipOnWindows(t)
 	d := startTestDaemon(t)
 	c := guiConn(t, d)
 
@@ -308,6 +309,7 @@ func TestReqID_KillAndAnswerPermissionAcked(t *testing.T) {
 var hex32 = regexp.MustCompile(`^[0-9a-f]{32}$`)
 
 func TestWelcome_BootIDStablePerProcess(t *testing.T) {
+	skipOnWindows(t)
 	d := startTestDaemon(t)
 	w1 := handshake(t, dial(t, d), wire.Hello{Mode: wire.ModeControl})
 	w2 := handshake(t, dial(t, d), wire.Hello{Mode: wire.ModeControl})
@@ -322,6 +324,7 @@ func TestWelcome_BootIDStablePerProcess(t *testing.T) {
 }
 
 func TestListAcpAgents(t *testing.T) {
+	skipOnWindows(t)
 	d := startTestDaemon(t)
 	c := guiConn(t, d)
 	send(t, c, wire.FrameListAcpAgents, wire.ListAcpAgentsReq{ReqID: 50})
