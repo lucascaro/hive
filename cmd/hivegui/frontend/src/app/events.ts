@@ -86,7 +86,7 @@ import {
 } from '../store/acp.js';
 import { appStore } from '../store/store.js';
 import { setStatus, flashStatus, reportFailure, setBootState } from './dom.js';
-import { orderedSessions } from './selectors.js';
+import { adHocGridSessions, orderedSessions } from './selectors.js';
 import { handleWorktreesPayload } from './modals/worktrees.js';
 import { refreshIdeas } from './modals/idea-inbox.js';
 import {
@@ -577,7 +577,10 @@ function onSessionDeath(info: SessionInfo) {
 // neighbourOf returns the session to focus when `id` goes away: the
 // one before it in display order, or the one after when it's first.
 function neighbourOf(id: string): string | null {
-  const ord = orderedSessions();
+  // In the ad-hoc grid the neighbour must be another tile, or killing one
+  // would hand focus to an unselected session and collapse the grid.
+  const ord =
+    appData().view === 'grid-select' ? adHocGridSessions() : orderedSessions();
   const idx = ord.findIndex((s) => s.id === id);
   if (idx < 0) return null;
   const nb = idx > 0 ? ord[idx - 1] : ord[idx + 1];
@@ -949,6 +952,11 @@ export function wireDaemonEvents(injected: EventsDeps) {
     // process. A snapshot is the only path that can retire a session
     // without a per-session `removed` event.
     pruneToLiveSessions();
+    // A snapshot can retire a tile of the ad-hoc grid without a `removed`
+    // event, leaving a one-tile grid-select. Only that grid: the floor
+    // persists its exit for the others, and a boot or reconnect snapshot
+    // (active session still unset) must not overwrite the saved view.
+    if (appData().view === 'grid-select') deps.enforceViewFloor();
     const liveIds = new Set(appData().sessions.map((s) => s.id));
     // attentionEdge lives here rather than in the store, so
     // pruneToLiveSessions cannot reach it — prune it alongside. A left

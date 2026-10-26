@@ -86,7 +86,10 @@ import {
 // refocusActiveTerm where view wants focusActiveTerm, and one union type
 // would loosen both.
 export interface SidebarProps {
-  switchTo: (id: string) => void;
+  /** Plain click on a row: switch, ending any ad-hoc selection. */
+  selectSession: (id: string) => void;
+  /** ⌘/Ctrl-click on a row: add or remove it from the ad-hoc grid. */
+  toggleGridSelection: (id: string) => void;
   switchToProject: (pid: string) => void;
   // Owned by view.ts: minimizing repaints the grid and can move focus.
   minimizeProject: (pid: string) => void;
@@ -213,6 +216,8 @@ interface SessionItemProps {
   session: SessionInfo;
   index: string | null;
   selected: boolean;
+  /** In the ⌘-click selection (the ad-hoc grid's tiles). */
+  inSelection: boolean;
   minimized: boolean;
   // The whole prop bag rather than three bound callbacks: main.tsx builds
   // it once for the life of the app, so it is a referentially stable
@@ -280,12 +285,15 @@ const SessionItem = memo(function SessionItem(p: SessionItemProps) {
       ideaText={p.ideaText}
       state={sessionState(p.session)}
       selected={p.selected}
+      inSelection={p.inSelection}
       minimized={p.minimized}
       index={p.index}
       worktreeShared={p.worktreeShared}
       titleOnly={p.titleOnly}
       nameRef={nameRef}
-      onSelect={() => p.sidebar.switchTo(id)}
+      onSelect={(toggle) =>
+        toggle ? p.sidebar.toggleGridSelection(id) : p.sidebar.selectSession(id)
+      }
       onMinimize={() => p.sidebar.minimizeSession(id)}
       onRestore={() => p.sidebar.restoreSession(id)}
       onRestart={() =>
@@ -336,6 +344,8 @@ interface ProjectItemProps {
   hints: Map<string, string>;
   minimizedSessions: ReadonlySet<string>;
   activeId: string | null;
+  /** The ad-hoc grid's selection (spec 533). */
+  gridSelection: readonly string[];
   /** Open ideas for this project — the header badge's count. */
   ideaCount: number;
   /** Every idea, for the per-row "started from an idea" glyph. */
@@ -363,6 +373,7 @@ function renderRows(o: ProjectItemProps, rows: SessionInfo[]): ReactNode[] {
       session={s}
       index={o.hints.get(s.id) ?? null}
       selected={s.id === o.activeId}
+      inSelection={o.gridSelection.includes(s.id)}
       minimized={o.minimizedSessions.has(s.id)}
       // A string, not the IdeaInfo: SessionItem is memoized on
       // primitives, and a fresh object here would re-render every
@@ -549,6 +560,7 @@ export function Sidebar(props: SidebarProps) {
   const projects = useAppStore((s) => s.projects);
   const sessions = useAppStore((s) => s.sessions);
   const activeId = useAppStore((s) => s.activeId);
+  const gridSelection = useAppStore((s) => s.gridSelection);
   const collapsed = useAppStore((s) => s.collapsed);
   const minimizedProjects = useAppStore((s) => s.minimizedProjects);
   const minimized = useAppStore((s) => s.minimized);
@@ -595,6 +607,7 @@ export function Sidebar(props: SidebarProps) {
           hints={hints}
           minimizedSessions={minimized}
           activeId={activeId}
+          gridSelection={gridSelection}
           ideaCount={openIdeasOf(ideas, p.id).length}
           ideas={ideas}
         />

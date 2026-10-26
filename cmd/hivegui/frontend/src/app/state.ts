@@ -21,6 +21,7 @@
 
 import type { NavHistory } from '../lib/nav-history.js';
 import type { ViewMode } from '../lib/view.js';
+import type { GridSelectMode } from '../lib/grid-select.js';
 import type { ReplayFlags, ReplayXterm } from '../lib/scrollback.js';
 import type { xtermTheme } from '../theme/theme.js';
 
@@ -390,6 +391,8 @@ export interface AppState {
   currentProjectId: string | null;
   view: ViewMode;
   gridProjectId: string | null;
+  gridSelection: string[];
+  gridSelectMode: GridSelectMode;
   fontSize: number;
 }
 

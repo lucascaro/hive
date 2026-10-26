@@ -46,7 +46,8 @@ import {
   minimizeSession,
   restoreProject,
   restoreSession,
-  switchTo,
+  selectSession,
+  toggleGridSelection,
   switchToProject,
 } from '../app/view.js';
 import { Banners } from './Banners.js';
@@ -81,7 +82,8 @@ import { BuildLog } from './modals/BuildLog.js';
 // this object's identity, so a fresh bag each render would defeat the
 // memo that is where the phase's performance goal is collected.
 const sidebarCallbacks: Omit<SidebarProps, 'trayEl'> = {
-  switchTo,
+  selectSession,
+  toggleGridSelection,
   switchToProject,
   minimizeProject,
   restoreProject,

@@ -9,13 +9,19 @@
 export const VIEW_SINGLE = 'single';
 export const VIEW_GRID_PROJECT = 'grid-project';
 export const VIEW_GRID_ALL = 'grid-all';
+// The ad-hoc grid (spec 533): tiles are a throwaway ⌘-click selection, so
+// it is never persisted or restored — see normalizeView.
+export const VIEW_GRID_SELECT = 'grid-select';
 export const VIEW_STORAGE_KEY = 'hive.view';
 
 export type ViewMode =
   | typeof VIEW_SINGLE
   | typeof VIEW_GRID_PROJECT
-  | typeof VIEW_GRID_ALL;
+  | typeof VIEW_GRID_ALL
+  | typeof VIEW_GRID_SELECT;
 
+// The restorable views. VIEW_GRID_SELECT is deliberately absent: its id
+// set does not survive a restart, so a saved one would restore an empty grid.
 const VALID_VIEWS = new Set<string>([
   VIEW_SINGLE,
   VIEW_GRID_PROJECT,

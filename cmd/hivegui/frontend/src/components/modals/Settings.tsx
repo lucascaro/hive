@@ -109,7 +109,12 @@ import {
 import { LauncherAgents } from './LauncherAgents.js';
 import { PluginsPanel } from './PluginsPanel.js';
 import { type ShortcutsBlock, ShortcutsPanel } from './ShortcutsPanel.js';
-import { setKeymap, useAppStore } from '../../store/store.js';
+import {
+  setGridSelectMode,
+  setKeymap,
+  useAppStore,
+} from '../../store/store.js';
+import { useShortcutLabel } from '../../app/bindings.js';
 import { Button } from '../Button.js';
 import { Tabs } from '../Tabs.js';
 import { Icon } from '../Icon.js';
@@ -273,6 +278,9 @@ function SettingsDialog({ root }: { root: HTMLElement }): ReactNode {
   const [theme, setTheme] = useState<ThemeName>(() => readTheme());
   const [pair, setPair] = useState<SystemPair>(() => readPair());
   const [density, setDensity] = useState<Density>(() => readDensity());
+  // Applies on change, like density: it is a view preference, not a draft.
+  const gridSelectMode = useAppStore((s) => s.gridSelectMode);
+  const projectGridKey = useShortcutLabel('toggle-project-grid');
   const [overrides, setOverrides] = useState(() =>
     readOverrides().replace(/\n\s*/g, '\n'),
   );
@@ -1241,6 +1249,24 @@ function SettingsDialog({ root }: { root: HTMLElement }): ReactNode {
             ))}
           </select>
         </label>
+        <label className="settings-check">
+          <input
+            id="settings-grid-select-auto"
+            type="checkbox"
+            checked={gridSelectMode === 'auto'}
+            aria-describedby="settings-grid-select-auto-hint"
+            onChange={(e) =>
+              setGridSelectMode(e.target.checked ? 'auto' : 'manual')
+            }
+          />
+          <span>Open a grid as soon as I select a second session</span>
+        </label>
+        <p id="settings-grid-select-auto-hint" className="settings-hint">
+          {isMac ? '⌘' : 'Ctrl'}-click sidebar sessions to tile just those.
+          {projectGridKey
+            ? ` Turn this off to only mark them, then press ${projectGridKey} to open the grid — with two or more marked, that key opens them until you click a session normally.`
+            : ' Turn this off to only mark them and open the grid yourself.'}
+        </p>
         <p className="settings-hint">
           Override any design token, one declaration per line. Fonts must
           already be installed on this machine.

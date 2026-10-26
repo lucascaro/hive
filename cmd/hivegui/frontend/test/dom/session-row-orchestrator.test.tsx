@@ -18,6 +18,7 @@ function mount(s: Partial<SessionInfo>, onSelect = noop) {
     session: { id: 's1', name: 'api', alive: true, ...s } as SessionInfo,
     state: 'running',
     selected: false,
+    inSelection: false,
     minimized: false,
     index: null,
     onSelect,

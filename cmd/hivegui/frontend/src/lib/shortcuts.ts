@@ -319,6 +319,10 @@ function rawGroups(isMac: boolean): { title: string; items: Row[] }[] {
         { command: 'toggle-project-grid', label: 'Toggle project grid' },
         { command: 'toggle-all-grid', label: 'Toggle all-sessions grid' },
         {
+          keys: `${isMac ? '⌘' : 'Ctrl+'}click`,
+          label: 'Sidebar: add or remove a session in an ad-hoc grid',
+        },
+        {
           command: 'focus-active-session',
           label: 'Grid: focus the active session (single view)',
         },

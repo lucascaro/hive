@@ -1,5 +1,11 @@
 [
   {
+    "title": "Pick your own grid",
+    "blurb": "⌘-click (Ctrl-click on Windows and Linux) sessions in the sidebar to tile just those, across projects, then ⌘-click (Ctrl-click) more to add or remove tiles; a plain click leaves the grid.",
+    "status": "shipped",
+    "since": "Unreleased"
+  },
+  {
     "title": "See and wait on sibling sessions",
     "blurb": "From inside a session, `hived session list` shows the sessions in its project and `hived wait <session>` blocks until one is idle, so an agent can hand off work and carry on once it is done.",
     "status": "shipped",

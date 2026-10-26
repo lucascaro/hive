@@ -35,6 +35,7 @@ import {
 import { blurTerminals } from './focus.js';
 import { flashStatus, reportFailure } from './dom.js';
 import {
+  adHocGridSessions,
   orderedSessions,
   activeProjectId,
   nextAttentionId,
@@ -135,7 +136,22 @@ export function focusActiveSession() {
 }
 
 export function toggleProjectGrid() {
-  setView(appData().view === 'grid-project' ? 'single' : 'grid-project');
+  const s = appData();
+  // ⌘G leaves the ad-hoc grid like it leaves the project grid.
+  if (s.view === 'grid-select') {
+    setView('single', { persist: false });
+    return;
+  }
+  // Select-then-⌘G mode: ⌘-click only marked rows, ⌘G tiles the marked ones.
+  if (
+    s.view === 'single' &&
+    s.gridSelectMode === 'manual' &&
+    adHocGridSessions().length >= 2
+  ) {
+    setView('grid-select', { persist: false });
+    return;
+  }
+  setView(s.view === 'grid-project' ? 'single' : 'grid-project');
 }
 
 // ⌘J. In single view it opens or closes the inspector panel; in a grid

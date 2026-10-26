@@ -547,3 +547,73 @@ describe('window.__hive_state', () => {
     expect(state.nav).toBe(nav);
   });
 });
+
+describe('ad-hoc grid selection (spec 533)', () => {
+  it('removeSession prunes the id from the selection', () => {
+    resetStore({
+      sessions: [{ id: 'a' }, { id: 'b' }, { id: 'c' }] as never,
+      gridSelection: ['a', 'b', 'c'],
+    });
+    removeSession('b');
+    expect(appStore.getState().gridSelection).toEqual(['a', 'c']);
+  });
+
+  it('minimizeSession prunes the id from the selection', () => {
+    resetStore({ gridSelection: ['a', 'b'] });
+    minimizeSession('a');
+    expect(appStore.getState().gridSelection).toEqual(['b']);
+  });
+
+  it('leaves the selection reference alone when the id is not in it', () => {
+    resetStore({ gridSelection: ['a', 'b'] });
+    const before = appStore.getState().gridSelection;
+    minimizeSession('zzz');
+    expect(appStore.getState().gridSelection).toBe(before);
+  });
+
+  it('gridSelectMode defaults to auto and round-trips through storage', async () => {
+    store.clear();
+    resetStore();
+    expect(appStore.getState().gridSelectMode).toBe('auto');
+    const { setGridSelectMode, loadSavedGridSelectMode } = await import(
+      '../../src/store/store.js'
+    );
+    setGridSelectMode('manual');
+    expect(loadSavedGridSelectMode()).toBe('manual');
+    setGridSelectMode('auto');
+    expect(loadSavedGridSelectMode()).toBe('auto');
+  });
+});
+
+describe('ad-hoc grid selection: snapshots and no-op writes', () => {
+  it('pruneToLiveSessions drops selected ids a snapshot retired', () => {
+    resetStore({
+      sessions: [{ id: 'a' }, { id: 'b' }] as never,
+      gridSelection: ['a', 'b', 'gone'],
+    });
+    pruneToLiveSessions();
+    expect(appStore.getState().gridSelection).toEqual(['a', 'b']);
+  });
+
+  it('pruneToLiveSessions keeps the selection reference when nothing is retired', () => {
+    resetStore({
+      sessions: [{ id: 'a' }] as never,
+      gridSelection: ['a'],
+    });
+    const before = appStore.getState().gridSelection;
+    pruneToLiveSessions();
+    expect(appStore.getState().gridSelection).toBe(before);
+  });
+
+  it('clearing an already-empty selection does not notify', async () => {
+    const { setGridSelection } = await import('../../src/store/store.js');
+    resetStore({ gridSelection: [] });
+    let notified = 0;
+    const off = appStore.subscribe(() => {
+      notified++;
+    });
+    setGridSelection([]);
+    off();
+    expect(notified).toBe(0);
+  });
+});

@@ -17,6 +17,9 @@ describe('normalizeView', () => {
     expect(normalizeView('grid-project')).toBe(VIEW_GRID_PROJECT);
     expect(normalizeView('grid-all')).toBe(VIEW_GRID_ALL);
   });
+  it('never restores the ad-hoc grid', () => {
+    expect(normalizeView('grid-select')).toBe(VIEW_SINGLE);
+  });
   it('falls back to single for unknown values', () => {
     expect(normalizeView('zoomed')).toBe(VIEW_SINGLE);
     expect(normalizeView('')).toBe(VIEW_SINGLE);
@@ -35,6 +38,10 @@ describe('resolveView', () => {
     expect(resolveView(VIEW_GRID_ALL, 1)).toBe(VIEW_SINGLE);
     expect(resolveView(VIEW_GRID_PROJECT, 0)).toBe(VIEW_SINGLE);
     expect(resolveView(VIEW_GRID_PROJECT, 1)).toBe(VIEW_SINGLE);
+  });
+  it('downgrades the ad-hoc grid below two tiles', () => {
+    expect(resolveView('grid-select', 1)).toBe(VIEW_SINGLE);
+    expect(resolveView('grid-select', 2)).toBe('grid-select');
   });
   it('permits grid at 2 or more sessions', () => {
     expect(resolveView(VIEW_GRID_ALL, 2)).toBe(VIEW_GRID_ALL);
