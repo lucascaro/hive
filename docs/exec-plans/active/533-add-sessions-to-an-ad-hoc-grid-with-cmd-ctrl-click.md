@@ -97,6 +97,14 @@ scripts/ui-lint.sh >/dev/null && echo UILINT_OK
 ```
 Each new test is written first and shown failing (red) before the change.
 
+### Manual smoke rows
+
+Per `docs/verifying-the-gui-by-hand.md`, driven without a human by `test/e2e/grid-select.spec.ts` against the Wails mock bridge (the real frontend, mock daemon). Not run against a real `hived` (no daemon change).
+
+- Modifier-click sessions to open a grid of exactly those, then add and remove tiles — `modifier-click tiles exactly the selected sessions`. Cross-project selection is covered in `test/dom/grid-select.test.tsx` (the mock boots a single project).
+- Remove the active tile and confirm focus lands on a remaining tile — dom tests in `focus never rests on a session with no tile` and `closing a tile through the daemon event`.
+- Drag a row after selecting — `a modifier-click starts no drag; a drag leaves the selection alone`.
+
 ### Open questions / risks
 
 - `modeHints` and `shortcuts.ts` exhaustiveness: a new `ViewMode` may fail typecheck in switch sites — the typecheck run finds them all.
@@ -153,3 +161,7 @@ Independent reviewer (Opus subagent), two rounds. Round 1: revise, confidence 8,
 ## Open questions
 
 None.
+
+## PR convergence ledger
+
+- **2026-10-26 iter 1** — verdict: REQUEST_CHANGES; mergeable: MERGEABLE; findings_hash: 7da2080447a1e9b3b5ebb1dbadc2da7c2782e53ae6575ecf00b1f8526ce60ba4; threads_open: 0; action: autofix+push; head_sha: 34787ed9.

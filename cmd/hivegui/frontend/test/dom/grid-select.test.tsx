@@ -170,6 +170,15 @@ describe('⌘/Ctrl-click opens and edits the ad-hoc grid', () => {
     expect(['b', 'c']).toContain(state.activeId);
   });
 
+  it('names the survivor in the status bar after the active tile leaves a 3-grid', () => {
+    ctrlClick('c');
+    ctrlClick('b');
+    ctrlClick('a'); // a was active
+    // Session names equal their ids in this fixture.
+    expect(store.appStore.getState().status.text).toBe(state.activeId);
+    expect(state.activeId).not.toBe('a');
+  });
+
   it('treats Meta-click off macOS as a plain click', () => {
     fireEvent.click(rowEl('c'), { metaKey: true });
     expect(state.view).toBe('single');

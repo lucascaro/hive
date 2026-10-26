@@ -584,3 +584,36 @@ describe('ad-hoc grid selection (spec 533)', () => {
     expect(loadSavedGridSelectMode()).toBe('auto');
   });
 });
+
+describe('ad-hoc grid selection: snapshots and no-op writes', () => {
+  it('pruneToLiveSessions drops selected ids a snapshot retired', () => {
+    resetStore({
+      sessions: [{ id: 'a' }, { id: 'b' }] as never,
+      gridSelection: ['a', 'b', 'gone'],
+    });
+    pruneToLiveSessions();
+    expect(appStore.getState().gridSelection).toEqual(['a', 'b']);
+  });
+
+  it('pruneToLiveSessions keeps the selection reference when nothing is retired', () => {
+    resetStore({
+      sessions: [{ id: 'a' }] as never,
+      gridSelection: ['a'],
+    });
+    const before = appStore.getState().gridSelection;
+    pruneToLiveSessions();
+    expect(appStore.getState().gridSelection).toBe(before);
+  });
+
+  it('clearing an already-empty selection does not notify', async () => {
+    const { setGridSelection } = await import('../../src/store/store.js');
+    resetStore({ gridSelection: [] });
+    let notified = 0;
+    const off = appStore.subscribe(() => {
+      notified++;
+    });
+    setGridSelection([]);
+    off();
+    expect(notified).toBe(0);
+  });
+});

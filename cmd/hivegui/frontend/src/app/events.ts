@@ -952,6 +952,9 @@ export function wireDaemonEvents(injected: EventsDeps) {
     // process. A snapshot is the only path that can retire a session
     // without a per-session `removed` event.
     pruneToLiveSessions();
+    // A snapshot can retire a tile of the ad-hoc grid without a `removed`
+    // event, leaving a one-tile grid-select.
+    deps.enforceViewFloor();
     const liveIds = new Set(appData().sessions.map((s) => s.id));
     // attentionEdge lives here rather than in the store, so
     // pruneToLiveSessions cannot reach it — prune it alongside. A left

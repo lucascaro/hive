@@ -5,4 +5,4 @@ issue: 533
 pr: 534
 ---
 
-⌘-click (Ctrl-click on Windows and Linux) sessions in the sidebar to tile just those in a grid, across projects. Click more to add or remove tiles; a normal click leaves the grid. A setting under Appearance switches this to mark-then-⌘G if you'd rather open the grid yourself.
+⌘-click (Ctrl-click on Windows and Linux) sessions in the sidebar to tile just those in a grid, across projects. ⌘-click (Ctrl-click) more sessions to add or remove tiles; a plain click leaves the grid. A setting under Appearance switches this to mark-then-⌘G if you'd rather open the grid yourself.

@@ -210,7 +210,15 @@ export function toggleGridSelection(id: string) {
     // and a drop to single lands on the survivor.
     if (wasAdHoc && s.activeId === id && !next.includes(id)) {
       const survivor = next.find((x) => !isSessionHidden(x));
-      if (survivor) deps.setActive(survivor);
+      if (survivor) {
+        deps.setActive(survivor);
+        // No switchTo or setView runs when the grid stays up, so the status
+        // bar and window title would keep naming the tile that left.
+        setStatus(
+          appData().sessions.find((x) => x.id === survivor)?.name ?? '',
+        );
+        updateAppTitle();
+      }
     }
     if (s.gridSelectMode === 'auto') {
       if (next.length >= 2) {

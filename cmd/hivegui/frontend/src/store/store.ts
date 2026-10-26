@@ -706,10 +706,15 @@ export function pruneToLiveSessions(): void {
   const minimized = new Set([...s.minimized].filter(keep));
   const aliveById = new Map([...s.aliveById].filter(([id]) => keep(id)));
   const phaseById = new Map([...s.phaseById].filter(([id]) => keep(id)));
+  const gridSelection = s.gridSelection.filter(keep);
   set({
     minimized: minimized.size === s.minimized.size ? s.minimized : minimized,
     aliveById: aliveById.size === s.aliveById.size ? s.aliveById : aliveById,
     phaseById: phaseById.size === s.phaseById.size ? s.phaseById : phaseById,
+    gridSelection:
+      gridSelection.length === s.gridSelection.length
+        ? s.gridSelection
+        : gridSelection,
   });
 }
 
@@ -1087,6 +1092,9 @@ export function setGridProjectId(pid: string | null): void {
 }
 
 export function setGridSelection(ids: string[]): void {
+  // A no-op write must stay silent: view changes clear an already-empty
+  // selection all the time.
+  if (ids.length === 0 && get().gridSelection.length === 0) return;
   set({ gridSelection: ids });
 }
 
