@@ -7,7 +7,9 @@
   - B (#529), planned at `origin/feature/529-engine-core:docs/exec-plans/active/529-workflow-engine-b-headless-engine-core.md`, section "Contract for C".
 - **Issue:** #530
 - **Branch:** `feature/530-workflow-gui` (research and plan). Each phase PR gets its own branch.
-- **Status:** active. Drafted, but **not handoff-ready**: Open questions is non-empty and the required changes to A and B are unapproved.
+- **Status:** active. All design questions are decided (2026-10-25 user decisions). The plan waits for its approval gate.
+  - One clarification request to B is outstanding: B-4. It doesn't change C's file or test lists.
+  - Before execution, A's and B's plans must absorb the approved A-2, A-3, B-1, B-2 and B-3.
 
 ## Summary
 
@@ -39,7 +41,7 @@ Verified against `origin/main` at `0bf4e725` on 2026-10-25. Line numbers are fro
 | Commands, palette and menu table | `src/app/commands.ts` (`PALETTE`, `MENU_COMMANDS` at `:387`) | Add one command id, `workflows`. |
 | Help rows | `src/lib/shortcuts.ts:306` (the Worktrees row is the template) | One row. |
 | ModalShell renders the footer hints, which every overlay must show | `src/components/modals/ModalShell.tsx:53-54`; precedent `Worktrees.tsx:132-135` | Hints use the `[key]` / `(key)` format. |
-| Dialog widths top out at 720px | `src/theme/components/dialog.css:30-32` | Too narrow for a graph plus node detail. Add `data-size='xl'` (see open question 1). |
+| Dialog widths top out at 720px | `src/theme/components/dialog.css:30-32` | Too narrow for a graph plus node detail. Add `data-size='xl'` (user decision: one wider blocking modal). |
 | The choice dialog is the confirm overlay; its first choice is the safe one | `src/app/modals/choice-dialog.ts:94-108` | Cancelling a run goes through it. It shows **no key hints**, which is an existing AGENTS.md gap, noted and not fixed here. |
 | ACP permission card | `src/components/acp/AcpTranscript.tsx:215-250` (`AnswerPermission(sessionId, request_id, option_id)`) | Permission waits reuse the existing `AnswerPermission` binding (`src/bridge.ts`). The node's session also shows `waiting_permission` in the sidebar already. |
 | Nonce correlation pattern | `src/app/plugins.ts:30-35` (`newNonce`), `:95-105` (`relistPluginsIfWanted` after a reconnect) | Reused for requests, and for resync after a reconnect. |
@@ -98,41 +100,43 @@ ui:     scripts/ui-lint.sh --strict && scripts/ui-lint.sh --contrast
 
 ## Required changes to A
 
-- **A-1: `req_id` on GUI→plugin `PLUGIN_MESSAGE` (A PR2). Optional.**
-  - **This reverses a user decision.** A's decision log records that PLUGIN_MESSAGE "has no `req_id`", with "Why: user decision". C does not need it:
+Status (2026-10-25): **A-2 and A-3 approved. A-1 rejected**: PLUGIN_MESSAGE keeps no `req_id`, the user decision stands.
+
+- **A-1 (rejected): `req_id` on PLUGIN_MESSAGE.**
+  - C works without it:
     - the plugin-state gate sends only while the plugin is `running`;
     - every request has a timeout;
-    - a `control:error` with code `plugin_not_running` rejects **every** pending `workflows` request. C is the only sender to that plugin, so nothing is misattributed.
-  - What it would buy: an oversize or bad-topic refusal names its request, instead of surfacing on the generic error line until the timeout.
-  - Wording, if approved:
-    > A GUI→plugin `PLUGIN_MESSAGE` may carry `req_id` (`json:"req_id,omitempty"`). The daemon echoes it, through the existing `req_id` peek, on any ERROR it raises for that message (`plugin_not_running`, `plugin_message_too_large`, `invalid_topic`). It is not forwarded to the plugin. The binding is `App.SendPluginMessage(pluginID, topic, dataJSON, reqID string) error`. Test: `TestPluginMessage_ErrorEchoesReqID`.
-- **A-2: name the bridge op after the binding (A PR2). Blocking.**
+    - a `control:error` with code `plugin_not_running` rejects every pending `workflows` request. C is the only sender to that plugin.
+  - An oversize or bad-topic refusal surfaces on the generic error line, and its request times out. That is accepted.
+- **A-2 (approved): name the bridge op after the binding (A PR2).**
   - Wording:
     > `cmd/hived-ws-bridge/main.go` handles `case "SendPluginMessage"`, like every other op (`main.go:353-692`). `test/e2e-real/wails-bridge.ts` and `test/e2e/wails-mock.ts` export `SendPluginMessage`, and `src/bridge.ts` re-exports it, so `bridge-harness-parity.test.ts` holds.
-- **A-3: the event name through `ControlEventName` (A PR2). Confirm only.**
+- **A-3 (approved): the event name through `ControlEventName` (A PR2).**
   - Wording:
     > `internal/wire/client.go` `ControlEventName` maps `FramePluginMessage` to `"plugin:message"`, so the GUI and `hived-ws-bridge` emit it from one table.
 
 ## Required changes to B
 
-- **B-1: an event that ends a permission wait (B3). Blocking.**
+Status (2026-10-25): **B-1, B-2 and B-3 approved. B-4 is an open clarification request to B**; it changes only C's e2e-real fixture.
+
+- **B-1 (approved): an event that ends a permission wait (B3).**
   - B says the wait "clears when the permission goes away" (B plan, Agent nodes, item 4), but no `RunEvent` type says so. Without one, the overlay would show "waiting" until the turn ends.
   - Wording:
     > Add `node.resumed` `{reason: "permission" | "human"}`, emitted when a `node.waiting` ends without the node finishing. For a permission wait that is when the transcript's pending permission clears; a human answer ends with `node.output` + `node.finished` in one transaction, so it emits none. Test: `permission wait emits node.resumed after ANSWER_PERMISSION`.
-- **B-2: find waiting runs across projects (B2). Blocking for criterion 5 after a restart.**
+- **B-2 (approved): find waiting runs across projects (B2).**
   - The design says a waiting human node "shows in the GUI after any restart" (`workflow-engine.md:1338`). The GUI must find those runs at boot without one `runs.list` per project.
   - Wording:
     > `runs.list` takes an optional `project_id` (omitted means every project) and an optional `state` filter (`"waiting"`, …). Each run in the reply carries `project_id`.
-- **B-3: a seeded tsgo tarball for tests (B4). Recommended, not blocking.**
+- **B-3 (approved): a seeded tsgo tarball for tests (B4).**
   - Without it, e2e-real downloads about 10 MB from npm on every fresh state dir. That works in CI, but it is a flake source.
   - Wording:
     > Before fetching, `tsgo.ts` looks for `plugin-data/workflows/tsgo/cache/typescript-<platform>-7.0.2.tgz` and verifies it against the same pinned integrity. It adds no new trust, because a seeded tarball passes the same check as a download. The e2e-real `globalSetup` fills it with `npm pack @typescript/typescript-<platform>@7.0.2`.
-- **B-4: where a check runs with no agent upstream (B2). Clarification.**
-  - The design says "in the worktree of its upstream node" (`workflow-engine.md:60`). C's e2e-real fixture needs a check with no agent upstream (human → check).
-  - Wording:
-    > A check with no agent upstream runs in a clean worktree of the run's pinned base (`hive/wf/<run>/<key>`).
-
-    The other answer is "it is rejected by `validate`". In that case the e2e-real fixture is human-only.
+- **B-4 (clarification request to B, open): where does a check with no agent upstream run?**
+  - The design says "in the worktree of its upstream node" (`workflow-engine.md:60`), but doesn't cover a check whose only upstream is a human node, or nothing.
+  - B's plan should state one of:
+    - (a) it runs in a clean worktree of the run's pinned base (`hive/wf/<run>/<key>`); or
+    - (b) `validate` rejects it.
+  - Effect on C: with (a), the e2e-real fixture is human → check `["git","rev-parse","HEAD"]`; with (b), it is human-only. Either answer leaves C's file and test lists unchanged; only the fixture file's contents differ.
 
 ## Approach
 
@@ -150,7 +154,7 @@ Rejected: a UI half on B's plugin. **Cost of the choice:** the app knows the plu
 
 - **`request(topic, data, {timeoutMs})`.** It sends a nonce from `newNonce()` (`plugins.ts`, now exported) as `data.nonce`, calls `SendPluginMessage('workflows', topic, JSON.stringify(data))`, and resolves on the `plugin:message` whose topic is `<topic>.reply` and whose `data.nonce` matches.
   - It rejects on `ok:false` with `{code, message}`, or on a timeout.
-  - A `control:error` with code `plugin_not_running` rejects every pending request and re-reads the plugin state. If A-1 lands, a `req_id` echo rejects just its own request.
+  - A `control:error` with code `plugin_not_running` rejects every pending request and re-reads the plugin state.
   - Timeouts: 15 s, except `workflow.build` at 180 s. The first build may download tsgo, and the UI says so.
   - Replies to other windows' nonces are ignored. A reply reaches every UI client (A plan, PLUGIN_MESSAGE), so this is the multi-window rule.
 - **Envelope reader.** `plugin_id ?? pluginId`, `topic`, `data` (snake_case ?? camelCase at the Go boundary). `data` is plugin JSON relayed verbatim, so it is read as B's snake_case only.
@@ -159,6 +163,18 @@ Rejected: a UI half on B's plugin. **Cost of the choice:** the app knows the plu
 - **Reconnect.** The control-reconnect path in `events.ts` (beside `relistPluginsIfWanted()`, `:219`) calls `resyncWorkflows()`. That re-pages every open run from its `last_seq` and re-runs the waiting scan.
 - **Waiting scan.** At boot and after a reconnect, while the plugin is `running`, the app calls `runs.list {state: "waiting"}` (B-2). Live `node.waiting` / `node.resumed` / `node.finished` / `run.finished` events keep the set current.
   - A non-empty set raises the `workflow` banner: "Workflow <name> is waiting on you" with **Open**, which opens the run view.
+- **Desktop notification** (user decision).
+  - A **live** `node.waiting` (human or permission) also calls the existing `Notify(title, subtitle, body, tag)` binding (`cmd/hivegui/app.go:203`, `internal/notify`).
+    - Title: the workflow name. Subtitle: the project name.
+    - Body: "Waiting for your answer — click to open." or "Waiting for permission — click to open."
+  - The boot/reconnect scan never notifies, so a restart doesn't re-announce old waits.
+  - **Tag.**
+    - A human wait uses `wf:<run_id>:<key>`.
+    - A permission wait uses the node's `session_id`, so the OS collapses it with the ACP session's own attention notification (`events.ts:339`) instead of showing two.
+    - Every window receives the event, and the shared tag collapses those duplicates too, as the idle notification already relies on (`events.ts:345-349`).
+  - **Click.**
+    - The existing `bell-click` handler (`events.ts:1291`) gains one branch: a tag starting `wf:` opens the Workflows modal on that run with that key selected.
+    - A session-id tag keeps today's behaviour, switching to the session, where `AcpTranscript`'s permission card answers it.
 
 ### Plugin state gate
 
@@ -266,7 +282,7 @@ The aggregate state ranks as `waiting > running > failed > interrupted > pending
   - Title "Workflows…", in `PALETTE`. It **toggles** the modal for the active project, from any view, trust included.
     - On macOS the native ⇧⌘R accelerator takes the key before the webview, so the scope's `mirror` close never fires there. `menu:workflows` runs the command unconditionally (`commands.ts:435-439`).
     - The command itself must therefore close an open modal, as `openSettings` does for ⌘, (`modals/settings.ts:60-68`).
-  - Default chord `{mac: 'Mod+Shift+R', other: 'Ctrl+Shift+R'}` (open question 2). It is free: it is not in `DEFAULT_APP_BINDINGS` or `RESERVED_CHORDS`, and `session-notes` uses ⇧⌘O.
+  - Default chord `{mac: 'Mod+Shift+R', other: 'Ctrl+Shift+R'}` (user decision). It is free: it is not in `DEFAULT_APP_BINDINGS` or `RESERVED_CHORDS`, and `session-notes` uses ⇧⌘O.
   - It has a help row in `shortcuts.ts`, beside the Worktrees row (`:306`).
   - `menu:workflows` is a File menu item, "Workflows…", with `accel("workflows", keys.Combo("r", keys.ShiftKey, keys.CmdOrCtrlKey))`. The fixture gets `"workflows": "cmdorctrl+shift+r"`.
   - README gets a Keybinds row.
@@ -275,7 +291,7 @@ The aggregate state ranks as `waiting > running > failed > interrupted > pending
   - Bindings:
     - `Shift?+Y` and `Enter` → `workflow-trust.confirm`;
     - `Shift?+N` and `Any+Escape` → `workflow-trust.cancel`.
-  - `Enter` on a focused **Cancel** cancels (the confirm command reads `document.activeElement`). Initial focus is on **Trust** (open question 3).
+  - `Enter` on a focused **Cancel** cancels (the confirm command reads `document.activeElement`). Initial focus is on **Trust** (user decision).
 - **Scope `workflows`.**
   - Exclusive, trap `workflows`. Bindings: `Any+Escape` → `workflows.close` (in the run or review view it goes back one view first), and `mirror('workflows', 'workflows.close')`.
   - No bare letters, because the views contain text inputs.
@@ -324,7 +340,7 @@ The aggregate state ranks as `waiting > running > failed > interrupted > pending
 |---|---|---|
 | **C1** | Transport, plugin gate, the list, the trust view, the command, the two scopes, the menu, the help row, the README row, the mock engine | `added` / `minor`: "Workflows panel lists a project's workflows and asks before trusting them" |
 | **C2** | Graph layout and rendering, schema form, build, review and start | `added` / `minor` |
-| **C3** | Run view: overlay, replay, gap and reconnect resync, node detail, human and permission answers, cancel and retry, the waiting banner. e2e-real, the CI Node 26 move, the `site/features.json` entry, the README Workflows section, the design-system docs. | `added` / `minor` |
+| **C3** | Run view: overlay, replay, gap and reconnect resync, node detail, human and permission answers, cancel and retry, the waiting banner, the desktop notification for live waits (`Notify` with a `wf:` tag) and its `bell-click` routing. e2e-real, the CI Node 26 move, the `site/features.json` entry, the README Workflows section, the design-system docs. | `added` / `minor` |
 
 ### Files to change
 
@@ -342,7 +358,7 @@ The aggregate state ranks as `waiting > running > failed > interrupted > pending
 - `cmd/hivegui/frontend/src/theme/components/dialog.css`: `xl` (C1).
 - `cmd/hivegui/frontend/src/app/events.ts`:
   - C1: subscribe to `plugin:message`; route a matching `control:error` `req_id` to `workflows.ts`; call the reconnect resync;
-  - C3: the waiting scan on boot.
+  - C3: the waiting scan on boot, `Notify` on a live `node.waiting`, and the `wf:` branch in the `bell-click` handler (`:1291`).
 - `cmd/hivegui/frontend/src/app/plugins.ts`: export `newNonce` (C1).
 - `cmd/hivegui/frontend/src/lib/icons.svg`: three state icons (C2).
 - `cmd/hivegui/menu_darwin.go`: the File › "Workflows…" item (C1).
@@ -352,7 +368,7 @@ The aggregate state ranks as `waiting > running > failed > interrupted > pending
   - C2, C3: further topics.
 - `cmd/hivegui/frontend/test/e2e/every-shortcut.spec.ts`: the `workflows` and `workflow-trust` `FIXTURES`, and `OPENS.workflows` (C1).
 - `.github/workflows/ci.yml`: the e2e-real leg's `node-version` becomes `'26'`, or the leg moves onto A PR3's Node 26 leg (C3).
-- `cmd/hivegui/frontend/test/e2e-real/globalSetup.mjs`: seed tsgo if B-3 lands (C3).
+- `cmd/hivegui/frontend/test/e2e-real/globalSetup.mjs`: `npm pack @typescript/typescript-<platform>@7.0.2` into `plugin-data/workflows/tsgo/cache/` (B-3, approved) (C3).
 - `README.md`: the Keybinds row (C1) and a "Workflows" paragraph under Plugins (C3).
 - `site/features.json`: "Run multi-agent workflows", `status: shipped`, `since: "Unreleased"` (C3).
 - `docs/design-docs/ui/README.md`, `components.md`, `icons.md` (C2, C3).
@@ -404,7 +420,12 @@ The aggregate state ranks as `waiting > running > failed > interrupted > pending
   - `a reply for another window is ignored`
   - `timeout rejects`
   - `plugin_not_running control:error rejects every pending request`
-  - (only if A-1 lands) `control:error with matching req_id rejects only that request`
+- `test/dom/workflows-notify.test.ts`:
+  - `live human node.waiting calls Notify with tag wf:<run_id>:<key>`
+  - `live permission node.waiting calls Notify tagged with the session_id`
+  - `the boot waiting scan raises the banner but never notifies`
+  - `bell-click with a wf: tag opens the run with that key selected`
+  - `bell-click with a session id still switches to the session`
   - `gap triggers run.events paging and dedupes seq`
   - `reconnect re-pages open runs from last_seq`
 - `test/dom/workflows-modal.test.tsx`:
@@ -467,14 +488,15 @@ scripts/check-daemon-contract.sh origin/main HEAD                          # exp
 scripts/check-changeset.sh
 ```
 
-## Spec corrections (proposed; not yet applied to 530)
+## Spec corrections (applied to 530 on 2026-10-25)
 
 - **SC-1, criterion 1.** "No usable Node" is the plugin's `refused` state with A PR3's `status_detail`, not a topic reply. Proposed: "the panel shows the plugin's state: off (with Turn on), refused with the required Node version, failed (with Restart)". The plugin ships **disabled** (B5), which the spec doesn't mention.
 - **SC-2, criterion 4.** "Mermaid or equivalent" is decided: native React (see the evidence above).
 - **SC-3, criterion 6.** e2e-real can't produce a permission wait: real `hived` has no fake adapter reachable from a browser test. Permission waits are covered at the mock layer here, and daemon-side by B's `TestPermission_BecomesNodeWaiting`. They also depend on B-1.
 - **SC-4, criterion 7.** Modal-local `y` / `Enter` / `n` / `Esc` are the AGENTS.md "dialog confirm/cancel" exception. They are not rebindable app commands and get no README row. Only `workflows` takes all five Keybindings Policy updates.
 - **SC-5, criterion 8.** "All new frames work under the lock-step wire rule" is A's obligation. C adds no frame. Proposed: "C's e2e-real run exercises A's `PLUGIN_MESSAGE` through `hived-ws-bridge`". The e2e-real workflow uses human and check nodes only.
-- **SC-6, criterion 4.** The design's "a run can be scrubbed after the fact" (`workflow-engine.md:1396`) isn't in the criteria. Replay shows the final state; a scrubber is open question 5.
+- **SC-6, criterion 4.** The design's "a run can be scrubbed after the fact" (`workflow-engine.md:1396`) isn't in the criteria. Replay shows the final state. A scrubber is a spec non-goal (user decision).
+- **SC-7, criteria 5 and 6 (user decision).** Human and permission waits raise a banner **and** a desktop notification.
 
 ## Decision log
 
@@ -484,6 +506,17 @@ scripts/check-changeset.sh
 - **2026-10-25:** Engine text is plain text. Why: it is untrusted (agent outputs, workflow files) and runs in the app's origin.
 - **2026-10-25:** No client-side schema validator beyond native constraints. Why: the engine validates authoritatively and returns path-qualified errors; a second validator would drift.
 - **2026-10-25:** IR fixtures are copied JSON, regenerated with B's `emit.ts`. Why: the frontend doesn't import plugin source across trees.
+- **2026-10-25, user decisions.**
+  - **Surface:** one wider blocking modal (`xl`). Rejected: a non-modal run tile.
+  - **Graph:** native React (SC-2).
+  - **Command:** `workflows` on ⇧⌘R / Ctrl+Shift+R, with File › Workflows…
+  - **Trust view:** opens focused on **Trust**.
+  - **Waits:** human and permission waits raise the banner **plus** a desktop notification through the existing `Notify` layer.
+  - **Replay:** no scrubber (spec non-goal).
+  - **Required changes:**
+    - A-2, A-3, B-1, B-2 and B-3 approved.
+    - A-1 rejected: PLUGIN_MESSAGE keeps no `req_id`, and `plugin_not_running` rejects all pending requests.
+- **2026-10-25:** A permission-wait notification is tagged with the node's `session_id`. Why: the OS collapses it with the ACP session's own attention notification instead of showing two. A human-wait tag is `wf:<run_id>:<key>`, and `bell-click` routes it to the run. Only live events notify, never the boot scan.
 
 ## Progress
 
@@ -493,16 +526,14 @@ scripts/check-changeset.sh
   - the menu path toggles the modal;
   - the sweep's `OPENS` entry is added;
   - `×` is avoided because it is on the glyph denylist.
+- **2026-10-25:** User decisions folded in:
+  - SC-1 to SC-7 applied to the spec;
+  - notification work added to C3;
+  - B-4 is left as a clarification request to B;
+  - open questions closed.
 
 ## Open questions
 
-UX and design first.
+None. All six questions were decided by the user on 2026-10-25 (Decision log).
 
-1. **Surface.** One exclusive `xl` modal (recommended) blocks the terminals while someone watches a live run. It ships with the least new chrome, and agent nodes are ordinary ACP sessions in the sidebar anyway. The alternative is a modal for list/trust/start plus a **non-modal run view**: a grid tile or main-area view, like the ACP tile. That costs new layout code and its own scope. Which?
-2. **Default chord and menu.** Is ⇧⌘R / Ctrl+Shift+R and File › "Workflows…" right?
-3. **Trust Enter semantics.** With initial focus on **Trust**, a stray Enter trusts, but the spec's `[enter] trust` hint is true. Recommended: initial focus on Trust, and Enter on a focused Cancel cancels. The alternative, focus on Cancel, makes the hint wrong until the user tabs.
-4. **Human-wait attention.** Recommended: the `workflow` banner. Should a desktop notification (`Notify`) also fire when a node starts waiting?
-5. **Replay scrubber.** Should C include one? Recommended no: final-state replay only, scrubber deferred to monitoring (follow-up 3).
-6. **Approve A-2, B-1, B-2** as worded, so the A and B plans can absorb them.
-   - A-1 (`req_id` on PLUGIN_MESSAGE) would reverse your earlier decision. C works without it. Do you want to reverse it?
-   - Should B-3 (tsgo seed) be required or optional?
+One item stays outside this plan: **B-4** is a clarification request to B's plan. It changes only the contents of C's e2e-real fixture, not a file, a test or an interface.
