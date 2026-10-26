@@ -550,6 +550,8 @@ export function setView(view: ViewMode, opts: { persist?: boolean } = {}) {
   // The left slot names the session; the mode moved to the right slot,
   // where it is spelled as the shortcut that leaves it.
   setStatus(active ? (active.name ?? '') : '');
+  // A focus handoff above can change the active session without a switchTo.
+  updateAppTitle();
   refreshModeHint(view);
 }
 
