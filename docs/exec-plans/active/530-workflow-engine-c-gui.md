@@ -98,9 +98,13 @@ ui:     scripts/ui-lint.sh --strict && scripts/ui-lint.sh --contrast
 
 ## Required changes to A
 
-- **A-1: `req_id` on GUI→plugin `PLUGIN_MESSAGE` (A PR2). Blocking.**
-  - Without it, ERROR `plugin_not_running` (and an oversize or bad-topic refusal) can't be tied to the request that caused it. The request hangs until its timeout, and the error lands on the generic error line.
-  - Wording:
+- **A-1: `req_id` on GUI→plugin `PLUGIN_MESSAGE` (A PR2). Optional.**
+  - **This reverses a user decision.** A's decision log records that PLUGIN_MESSAGE "has no `req_id`", with "Why: user decision". C does not need it:
+    - the plugin-state gate sends only while the plugin is `running`;
+    - every request has a timeout;
+    - a `control:error` with code `plugin_not_running` rejects **every** pending `workflows` request. C is the only sender to that plugin, so nothing is misattributed.
+  - What it would buy: an oversize or bad-topic refusal names its request, instead of surfacing on the generic error line until the timeout.
+  - Wording, if approved:
     > A GUI→plugin `PLUGIN_MESSAGE` may carry `req_id` (`json:"req_id,omitempty"`). The daemon echoes it, through the existing `req_id` peek, on any ERROR it raises for that message (`plugin_not_running`, `plugin_message_too_large`, `invalid_topic`). It is not forwarded to the plugin. The binding is `App.SendPluginMessage(pluginID, topic, dataJSON, reqID string) error`. Test: `TestPluginMessage_ErrorEchoesReqID`.
 - **A-2: name the bridge op after the binding (A PR2). Blocking.**
   - Wording:
@@ -144,8 +148,9 @@ Rejected: a UI half on B's plugin. **Cost of the choice:** the app knows the plu
 
 ### Transport (`src/app/workflows.ts`)
 
-- **`request(topic, data, {timeoutMs})`.** It sends a nonce from `newNonce()` (`plugins.ts`, now exported) as `data.nonce` and as A-1's `req_id`, calls `SendPluginMessage('workflows', topic, JSON.stringify(data), nonce)`, and resolves on the `plugin:message` whose topic is `<topic>.reply` and whose `data.nonce` matches.
-  - It rejects on `ok:false` with `{code, message}`, on a `control:error` whose `req_id` matches, or on a timeout.
+- **`request(topic, data, {timeoutMs})`.** It sends a nonce from `newNonce()` (`plugins.ts`, now exported) as `data.nonce`, calls `SendPluginMessage('workflows', topic, JSON.stringify(data))`, and resolves on the `plugin:message` whose topic is `<topic>.reply` and whose `data.nonce` matches.
+  - It rejects on `ok:false` with `{code, message}`, or on a timeout.
+  - A `control:error` with code `plugin_not_running` rejects every pending request and re-reads the plugin state. If A-1 lands, a `req_id` echo rejects just its own request.
   - Timeouts: 15 s, except `workflow.build` at 180 s. The first build may download tsgo, and the UI says so.
   - Replies to other windows' nonces are ignored. A reply reaches every UI client (A plan, PLUGIN_MESSAGE), so this is the multi-window rule.
 - **Envelope reader.** `plugin_id ?? pluginId`, `topic`, `data` (snake_case ?? camelCase at the Go boundary). `data` is plugin JSON relayed verbatim, so it is read as B's snake_case only.
@@ -208,7 +213,8 @@ The modal is `#workflows` with `data-size='xl'`. It is opened by the `workflows`
 - **Rendering.**
   - Each body is a `.hv-wf-body` (CSS grid, one row per rank). A subgraph is a bordered `.hv-wf-sub` box with a header:
     - `loop`: "≤3× until review.verdict = approve", plus the live "iteration 2 / 3";
-    - `map`: "for each split.tasks, ≤4 at once", plus the live "3 of 5 done".
+    - `map`: "for each split.tasks, 4 at once", plus the live "3 of 5 done".
+    - The `loop` header likewise reads "at most 3 rounds until review.verdict = approve", without `≤` or `×` (see Glyphs).
   - Nodes are `<button class="hv-wf-node" data-node-id data-state>` showing `local id · agent` / `· check` / `· human`, a state icon and a state word.
   - Edges are drawn in one `aria-hidden` SVG per body. Its paths are computed from `getBoundingClientRect` in `useLayoutEffect`, plus a `ResizeObserver`. Condition labels are `.hv-wf-edge-label` chips at the midpoint.
 - **Map copies.** The template node shows the aggregate state and a disclosure, "5 copies". Expanding it lists one row per key (`work/each[2]/do`) with its state icon. Selecting a row selects that key.
@@ -257,7 +263,9 @@ The aggregate state ranks as `waiting > running > failed > interrupted > pending
 ### Keys and commands
 
 - **Command `workflows`.**
-  - Title "Workflows…", in `PALETTE`. It toggles the modal for the active project.
+  - Title "Workflows…", in `PALETTE`. It **toggles** the modal for the active project, from any view, trust included.
+    - On macOS the native ⇧⌘R accelerator takes the key before the webview, so the scope's `mirror` close never fires there. `menu:workflows` runs the command unconditionally (`commands.ts:435-439`).
+    - The command itself must therefore close an open modal, as `openSettings` does for ⌘, (`modals/settings.ts:60-68`).
   - Default chord `{mac: 'Mod+Shift+R', other: 'Ctrl+Shift+R'}` (open question 2). It is free: it is not in `DEFAULT_APP_BINDINGS` or `RESERVED_CHORDS`, and `session-notes` uses ⇧⌘O.
   - It has a help row in `shortcuts.ts`, beside the Worktrees row (`:306`).
   - `menu:workflows` is a File menu item, "Workflows…", with `accel("workflows", keys.Combo("r", keys.ShiftKey, keys.CmdOrCtrlKey))`. The fixture gets `"workflows": "cmdorctrl+shift+r"`.
@@ -274,7 +282,14 @@ The aggregate state ranks as `waiting > running > failed > interrupted > pending
 - **Labels.**
   - The modal title suffix and the banner's Open hint use `useShortcutLabel('workflows')`.
   - Modal-local hints are the dialog confirm/cancel exception and follow the `Worktrees.tsx:132` pattern.
-- **Sweep fixtures.** Add `workflows: (page) => run(page, 'workflows')` and a `workflow-trust` fixture that opens the modal on a mock project whose trust is `none` and clicks **Review & trust…**.
+- **Sweep fixtures** (`every-shortcut.spec.ts`).
+  - `FIXTURES` (`:61`): `workflows: (page) => run(page, 'workflows')`, plus a `workflow-trust` fixture that opens the modal on a mock project whose trust is `none` and clicks **Review & trust…**.
+  - `OPENS` (`:128`): `workflows: 'workflows'`.
+  - `workflows.close` and `workflow-trust.cancel` match the `.close` / `.cancel` closers rule in `expectEffect` (`:144`), so no other table needs an entry.
+  - `workflow-trust.confirm` is dispatch-only there. Its effect is proven in the dom test.
+- **Glyphs.** `×` is on `ui-lint.sh`'s glyph denylist (`scripts/ui-lint.sh:143`), and that rule scans `src/components`.
+  - Headers say "at most 3 rounds", not "≤3×".
+  - Every label is built in `src/lib/workflow-graph.ts`, which is outside the glyph rule's targets (`:85`).
 
 ### UI system
 
@@ -302,7 +317,7 @@ The aggregate state ranks as `waiting > running > failed > interrupted > pending
 - `scripts/check-daemon-contract.sh origin/main HEAD` proves it in each PR.
 
 **Merge order.**
-- Every phase needs A PR2 merged (A-1, A-2), and B5 merged so the plugin exists.
+- Every phase needs A PR2 merged (with A-2), and B5 merged so the plugin exists.
 - C phases merge **after B5**. Otherwise a release between them shows a Workflows command whose panel says "no workflow engine".
 
 | Phase | Scope | Changeset |
@@ -335,7 +350,7 @@ The aggregate state ranks as `waiting > running > failed > interrupted > pending
 - `cmd/hivegui/frontend/test/e2e/wails-mock.ts`:
   - C1: the scripted engine behind `SendPluginMessage` (topics answered from `window.__hive.seedWorkflows(spec)`), the `workflows` builtin in the plugin list, and `__hive.pushRunEvents(run_id, events)`;
   - C2, C3: further topics.
-- `cmd/hivegui/frontend/test/e2e/every-shortcut.spec.ts`: the `workflows` and `workflow-trust` FIXTURES (C1).
+- `cmd/hivegui/frontend/test/e2e/every-shortcut.spec.ts`: the `workflows` and `workflow-trust` `FIXTURES`, and `OPENS.workflows` (C1).
 - `.github/workflows/ci.yml`: the e2e-real leg's `node-version` becomes `'26'`, or the leg moves onto A PR3's Node 26 leg (C3).
 - `cmd/hivegui/frontend/test/e2e-real/globalSetup.mjs`: seed tsgo if B-3 lands (C3).
 - `README.md`: the Keybinds row (C1) and a "Workflows" paragraph under Plugins (C3).
@@ -388,7 +403,8 @@ The aggregate state ranks as `waiting > running > failed > interrupted > pending
   - `reply settles only its own nonce`
   - `a reply for another window is ignored`
   - `timeout rejects`
-  - `control:error with matching req_id rejects with its code`
+  - `plugin_not_running control:error rejects every pending request`
+  - (only if A-1 lands) `control:error with matching req_id rejects only that request`
   - `gap triggers run.events paging and dedupes seq`
   - `reconnect re-pages open runs from last_seq`
 - `test/dom/workflows-modal.test.tsx`:
@@ -414,6 +430,7 @@ The aggregate state ranks as `waiting > running > failed > interrupted > pending
   - `invalid_answer shows the path message`
   - `permission options call AnswerPermission with session_id request_id option_id`
   - `Open session switches to the node session`
+- `test/dom/workflows-modal.test.tsx` (also): `menu:workflows while the modal is open closes it, from the trust view too`.
 - `test/dom/key-scopes.test.ts` (extend):
   - `workflow-trust is inactive outside the trust view`
   - `workflow-trust precedes workflows`
@@ -470,7 +487,12 @@ scripts/check-changeset.sh
 
 ## Progress
 
-- **2026-10-25:** Research complete. Plan drafted against A at `origin/feature/528-daemon-sdk-prereqs` and B at `origin/feature/529-engine-core`. Awaiting the user's answers and approval of A-1, A-2, B-1, B-2 (B-3 and B-4 optional or clarifying).
+- **2026-10-25:** Research complete. Plan drafted against A at `origin/feature/528-daemon-sdk-prereqs` and B at `origin/feature/529-engine-core`. Awaiting the user's answers and approval of A-2, B-1 and B-2. A-1 and B-3 are optional; B-4 is a clarification.
+- **2026-10-25:** Revised after review:
+  - A-1 is now optional, because it would reverse a user decision;
+  - the menu path toggles the modal;
+  - the sweep's `OPENS` entry is added;
+  - `×` is avoided because it is on the glyph denylist.
 
 ## Open questions
 
@@ -481,4 +503,6 @@ UX and design first.
 3. **Trust Enter semantics.** With initial focus on **Trust**, a stray Enter trusts, but the spec's `[enter] trust` hint is true. Recommended: initial focus on Trust, and Enter on a focused Cancel cancels. The alternative, focus on Cancel, makes the hint wrong until the user tabs.
 4. **Human-wait attention.** Recommended: the `workflow` banner. Should a desktop notification (`Notify`) also fire when a node starts waiting?
 5. **Replay scrubber.** Should C include one? Recommended no: final-state replay only, scrubber deferred to monitoring (follow-up 3).
-6. **Approve A-1, A-2, B-1, B-2** as worded, so the A and B plans can absorb them. Should B-3 (tsgo seed) be required or optional?
+6. **Approve A-2, B-1, B-2** as worded, so the A and B plans can absorb them.
+   - A-1 (`req_id` on PLUGIN_MESSAGE) would reverse your earlier decision. C works without it. Do you want to reverse it?
+   - Should B-3 (tsgo seed) be required or optional?
