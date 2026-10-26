@@ -2,6 +2,8 @@
 
 - **Spec:** [docs/product-specs/533-add-sessions-to-an-ad-hoc-grid-with-cmd-ctrl-click.md](../../product-specs/533-add-sessions-to-an-ad-hoc-grid-with-cmd-ctrl-click.md)
 - **Issue:** #533
+- **PR:** #534
+- **Branch:** feature/533-ad-hoc-grid-select
 - **Status:** active
 
 ## Summary

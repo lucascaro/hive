@@ -4,7 +4,8 @@ title: Add sessions to an ad-hoc grid with ⌘/Ctrl-click
 type: enhancement
 complexity: M
 priority: P2
-stage: IMPLEMENT
+pr: 534
+stage: REVIEW
 ---
 
 # Add sessions to an ad-hoc grid with ⌘/Ctrl-click
