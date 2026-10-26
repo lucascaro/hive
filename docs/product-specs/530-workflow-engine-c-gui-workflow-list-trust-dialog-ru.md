@@ -4,7 +4,7 @@ title: "Workflow engine C: GUI (workflow list, trust dialog, run start, human an
 type: enhancement
 complexity: M
 priority: P2
-stage: RESEARCH
+stage: PLAN
 ---
 
 # Workflow engine C: GUI (workflow list, trust dialog, run start, human answers, graph and run overlay)
