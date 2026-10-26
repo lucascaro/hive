@@ -165,3 +165,6 @@ None.
 ## PR convergence ledger
 
 - **2026-10-26 iter 1** — verdict: REQUEST_CHANGES; mergeable: MERGEABLE; findings_hash: 7da2080447a1e9b3b5ebb1dbadc2da7c2782e53ae6575ecf00b1f8526ce60ba4; threads_open: 0; action: autofix+push; head_sha: 34787ed9.
+- **2026-10-26 iter 2** — verdict: APPROVE; mergeable: MERGEABLE; findings_hash: empty; threads_open: 5 (Greptile/CodeRabbit); action: autofix+push; head_sha: 6c60fa7b.
+- **2026-10-26 iter 3** — verdict: REQUEST_CHANGES; mergeable: MERGEABLE; findings_hash: 7d1c0a5e3b2f4a96; threads_open: 0; action: autofix+push; head_sha: a7fd56c4.
+- **2026-10-26 iter 4** — verdict: APPROVE; mergeable: MERGEABLE; findings_hash: empty; threads_open: 0; action: stop; head_sha: a7fd56c4.
