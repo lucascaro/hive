@@ -494,3 +494,7 @@ scripts/ui-lint.sh                                             # PR1, PR3 (GUI t
    - no `loadSession` on the wire (B retries through RESTART_SESSION).
 
    Approve to add both to the spec's Non-goals, or move either into scope.
+
+## PR convergence ledger
+
+- **2026-10-26 iter 1** — verdict: REQUEST_CHANGES; mergeable: MERGEABLE; findings_hash: 0c6f0a1f0a3c2c1c4c8e2f7f4b1d3a52b0b0f9a8f0c7a5d3b1e9c8d7a6f5e4d3; threads_open: 0; action: autofix+push; head_sha: pending. Findings: testclient snaps could block ACK delivery (Greptile P2, fixed cab192b6); CancelACP inline on the control read loop (IMPORTANT, moved under runOp). Skipped, by plan: status:"error" data unvalidated (plan line 176, documented in docs/plugins.md); minors (schema compaction, was_busy wording, test-bridge CancelAcp mirror, acp.ts usage type).

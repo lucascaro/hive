@@ -1786,12 +1786,17 @@ func (d *Daemon) handleControlFrame(ctx context.Context, ops controlOps, ft wire
 		if !ok {
 			return false
 		}
-		wasBusy, err := d.reg.CancelACP(req.SessionID, req.PromptID, req.Epoch)
-		if err != nil {
-			sendACPError(ops, err, req.SessionID)
-			return false
-		}
-		ops.ack(wire.AckMsg{SessionID: req.SessionID, WasBusy: wasBusy})
+		// Off the read loop: CancelACP waits for the prompt to be sent and
+		// for the adapter's stdin, so a stalled adapter must not freeze
+		// this connection's other requests.
+		d.runOp(func() {
+			wasBusy, err := d.reg.CancelACP(req.SessionID, req.PromptID, req.Epoch)
+			if err != nil {
+				sendACPError(ops, err, req.SessionID)
+				return
+			}
+			ops.ack(wire.AckMsg{SessionID: req.SessionID, WasBusy: wasBusy})
+		})
 	case wire.FrameListAcpAgents:
 		// Off the read loop: availability probes the login shell's PATH.
 		d.runOp(func() {
