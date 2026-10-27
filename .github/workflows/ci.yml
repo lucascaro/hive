@@ -360,6 +360,12 @@ jobs:
           node --test 'scripts/acp-probe/*.test.mjs'
           node scripts/acp-probe/check-doc.mjs docs/design-docs/acp-workflows.md
 
+      - name: Plugin SDK tests (spec 528)
+        if: matrix.biome
+        # A fake daemon on a temp unix socket; no network, no hived binary.
+        # Repo root, like the steps around it.
+        run: node --test 'plugins/sdk/*.test.mjs'
+
       - name: Workflow prototype tests + design-doc drift check (spec 495)
         if: matrix.biome
         # Repo root, like the probe step above. Runs the prototype's .ts files

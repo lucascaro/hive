@@ -444,6 +444,20 @@ func (s *session) dispatch(req rpcReq) {
 			return
 		}
 		s.respond(req.ID, "", s.controlWriteJSON(wire.FramePromptAcp, p))
+	case "CancelAcp":
+		var p wire.CancelAcpReq
+		if err := parseParams(req.Params, &p); err != nil {
+			s.respond(req.ID, nil, err)
+			return
+		}
+		s.respond(req.ID, "", s.controlWriteJSON(wire.FrameCancelAcp, p))
+	case "ListAcpAgents":
+		var p wire.ListAcpAgentsReq
+		if err := parseParams(req.Params, &p); err != nil {
+			s.respond(req.ID, nil, err)
+			return
+		}
+		s.respond(req.ID, "", s.controlWriteJSON(wire.FrameListAcpAgents, p))
 	case "AnswerPermission":
 		var p wire.AnswerPermissionReq
 		if err := parseParams(req.Params, &p); err != nil {

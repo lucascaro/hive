@@ -168,10 +168,34 @@ func (c *Conn) write(m message) error {
 	return err
 }
 
+// Notify sends a notification: a message with no id, which the peer
+// does not answer.
+func (c *Conn) Notify(method string, params any) error {
+	p, err := json.Marshal(params)
+	if err != nil {
+		return err
+	}
+	c.mu.Lock()
+	closed := c.err != nil
+	c.mu.Unlock()
+	if closed {
+		return ErrClosed
+	}
+	return c.write(message{JSONRPC: "2.0", Method: method, Params: p})
+}
+
 // Call sends a request and decodes its result into out (which may be
 // nil). It returns when the reply arrives, ctx ends, or the connection
 // closes.
 func (c *Conn) Call(ctx context.Context, method string, params, out any) error {
+	return c.CallSent(ctx, method, params, out, nil)
+}
+
+// CallSent is Call that also runs sent, on the caller's goroutine, once
+// the request has been written (not if the write fails). Writes are
+// serialized, so anything written after sent returns is ordered after
+// this request on the wire.
+func (c *Conn) CallSent(ctx context.Context, method string, params, out any, sent func()) error {
 	p, err := json.Marshal(params)
 	if err != nil {
 		return err
@@ -192,6 +216,9 @@ func (c *Conn) Call(ctx context.Context, method string, params, out any) error {
 		delete(c.pending, id)
 		c.mu.Unlock()
 		return err
+	}
+	if sent != nil {
+		sent()
 	}
 	select {
 	case m, ok := <-ch:

@@ -122,6 +122,15 @@ type AcpTranscriptMsg struct {
 	PromptID     int             `json:"prompt_id,omitempty"`
 	ResultStatus string          `json:"result_status,omitempty"`
 	Result       json.RawMessage `json:"result,omitempty"`
+	// StopReason is how the latest prompt ended, as ACP reports it
+	// (end_turn, cancelled, max_tokens, max_turn_requests, refusal), or
+	// "error" when the adapter call itself failed. "" while the turn
+	// runs; carried like ResultStatus and cleared by every prompt.
+	StopReason string `json:"stop_reason,omitempty"`
+	// Usage is the latest usage_update of the current prompt, verbatim
+	// from the adapter (its shape is the adapter's). Cleared by every
+	// prompt.
+	Usage json.RawMessage `json:"usage,omitempty"`
 }
 
 // ResultStatus values.
@@ -152,6 +161,26 @@ type GetAcpTranscriptReq struct {
 type PromptAcpReq struct {
 	SessionID string `json:"session_id"`
 	Text      string `json:"text"`
+	// ReqID asks for an ACK{req_id, session_id, prompt_id, epoch} once
+	// the turn has started.
+	ReqID int `json:"req_id,omitempty"`
+	// WorkflowRunID labels the turn's origin
+	// "plugin:<id>/workflow:<run>". Plugin connections only.
+	WorkflowRunID string `json:"workflow_run_id,omitempty"`
+}
+
+// CancelAcpReq is the CANCEL_ACP payload. It is idempotent: with a turn
+// running it is cancelled, with none the ACK says was_busy false.
+//
+// PromptID and Epoch, from the PROMPT_ACP ACK, pin the cancel to that
+// turn: if the session has moved on to another one, the cancel is a
+// no-op (was_busy false) rather than stopping the next turn. Zero means
+// "whatever turn is running".
+type CancelAcpReq struct {
+	SessionID string `json:"session_id"`
+	ReqID     int    `json:"req_id,omitempty"`
+	PromptID  int    `json:"prompt_id,omitempty"`
+	Epoch     int    `json:"epoch,omitempty"`
 }
 
 // AnswerPermissionReq is the ANSWER_PERMISSION payload.
@@ -159,6 +188,7 @@ type AnswerPermissionReq struct {
 	SessionID string `json:"session_id"`
 	RequestID string `json:"request_id"`
 	OptionID  string `json:"option_id"`
+	ReqID     int    `json:"req_id,omitempty"`
 }
 
 // SetSessionKindReq is the SET_SESSION_KIND payload. Kind is KindPTY

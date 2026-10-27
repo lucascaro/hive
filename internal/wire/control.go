@@ -139,6 +139,21 @@ type CreateSpec struct {
 	// is the point: a client can never claim it, because it is never
 	// decoded. See docs/design-docs/acp-workflows.md (trust model).
 	SpawnedBy string `json:"-"`
+
+	// ReqID, when non-zero, asks for an ACK{req_id, session_id} as soon
+	// as the session entry exists (before the worktree and adapter
+	// start), and has any later failure answered by an ERROR carrying it.
+	ReqID int `json:"req_id,omitempty"`
+	// WorkflowRunID is the workflow run this session belongs to. Plugin
+	// connections only: the daemon labels the session's principal
+	// "plugin:<id>/workflow:<run>". An integrity label, not a boundary
+	// (docs/design-docs/acp-workflows.md).
+	WorkflowRunID string `json:"workflow_run_id,omitempty"`
+	// ResultSchema, ACP sessions only, is the JSON schema the data of
+	// the session's submit_result must satisfy (the workflow IR subset;
+	// see internal/acp.CheckSchema). Refused with
+	// ErrCodeInvalidResultSchema before any entry exists.
+	ResultSchema json.RawMessage `json:"result_schema,omitempty"`
 }
 
 // Hello is the first frame the client sends after connecting.
@@ -178,11 +193,15 @@ type Welcome struct {
 	// full daemon restart is required. Omitempty so a daemon
 	// predating this field still parses; 0 means "unknown", which
 	// clients must treat as "restart required" — never as a match.
-	DaemonContract int    `json:"daemon_contract,omitempty"`
-	Mode           Mode   `json:"mode,omitempty"`
-	SessionID      string `json:"session_id,omitempty"`
-	Cols           int    `json:"cols,omitempty"`
-	Rows           int    `json:"rows,omitempty"`
+	DaemonContract int `json:"daemon_contract,omitempty"`
+	// BootID is random, chosen once per hived process. A client that
+	// remembers (epoch, prompt_id) pairs compares it to tell "the
+	// daemon restarted" (ids restart from zero) from anything else.
+	BootID    string `json:"boot_id,omitempty"`
+	Mode      Mode   `json:"mode,omitempty"`
+	SessionID string `json:"session_id,omitempty"`
+	Cols      int    `json:"cols,omitempty"`
+	Rows      int    `json:"rows,omitempty"`
 }
 
 // SessionInfo is the public-facing description of one daemon session.
@@ -451,6 +470,8 @@ type KillSessionReq struct {
 	// gone, so a second round trip would race its own teardown and be
 	// refused as in-use.
 	RemoveWorktree bool `json:"remove_worktree,omitempty"`
+	// ReqID asks for an ACK once the session is gone.
+	ReqID int `json:"req_id,omitempty"`
 }
 
 // RestoreSessionReq is the RESTORE_SESSION payload. SessionID is the
@@ -571,6 +592,9 @@ type RestoredResp struct {
 // agent's ResumeCmd if defined, otherwise its Cmd.
 type RestartSessionReq struct {
 	SessionID string `json:"session_id"`
+	// ReqID asks for an ACK{req_id, session_id} once the restart
+	// succeeded; a failure is restart_failed carrying it.
+	ReqID int `json:"req_id,omitempty"`
 }
 
 // UpdateSessionReq mutates session metadata. Pointer fields are
@@ -1392,6 +1416,10 @@ type Error struct {
 	// client that asked can tell its own failure apart from another
 	// window's.
 	Nonce string `json:"nonce,omitempty"`
+	// ReqID echoes the req_id of the request this error answers, so a
+	// client with several requests in flight can tell whose it is.
+	// Zero when the request carried none.
+	ReqID int `json:"req_id,omitempty"`
 }
 
 // Well-known error codes.

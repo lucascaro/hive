@@ -35,6 +35,7 @@ import (
 	"time"
 	"unicode/utf8"
 
+	"github.com/lucascaro/hive/internal/acp"
 	"github.com/lucascaro/hive/internal/buildinfo"
 	"github.com/lucascaro/hive/internal/plugin"
 	"github.com/lucascaro/hive/internal/registry"
@@ -803,7 +804,12 @@ func (d *Daemon) serveConn(ctx context.Context, conn net.Conn, tag *pluginTag) {
 			})
 			return
 		}
-		spec.SpawnedBy = principalOf(tag)
+		label, code, msg := composePrincipal(principalOf(tag), spec.WorkflowRunID)
+		if code != "" {
+			_ = writeBounded(conn, writeTimeout(), wire.FrameError, wire.Error{Code: code, Message: msg})
+			return
+		}
+		spec.SpawnedBy = label
 		if tag != nil {
 			spec.Orchestrator = false // the grant is the user's alone (spec 389)
 		}
@@ -1104,6 +1110,7 @@ func (d *Daemon) serveControl(ctx context.Context, conn net.Conn, hello wire.Hel
 		BuildID:        buildinfo.BuildID(),
 		Release:        buildinfo.Version(),
 		DaemonContract: buildinfo.DaemonContract,
+		BootID:         bootID(),
 		Mode:           hello.Mode,
 	}); err != nil {
 		return
@@ -1240,58 +1247,6 @@ func (d *Daemon) serveControl(ctx context.Context, conn net.Conn, hello wire.Hel
 	sendError := func(code, msg string) {
 		_ = writeJSON(wire.FrameError, wire.Error{Code: code, Message: msg})
 	}
-	// sendWorktrees answers with the project's current inventory. Every
-	// worktree mutation ends here — including the ones that failed, and
-	// the ones that half succeeded (the local branch went, the remote
-	// push did not). A refusal alone would leave the browser rendering
-	// rows the mutation already invalidated, so the error goes first
-	// and the truth follows it.
-	// An empty failCode means "stay quiet if the listing fails" — used
-	// after a refusal, where the client already has one error and a
-	// second would just be a second toast for the same action.
-	sendWorktrees := func(projectID, failCode string) {
-		resp, err := d.reg.ListWorktrees(projectID)
-		if err != nil {
-			if failCode != "" {
-				sendError(failCode, err.Error())
-			}
-			return
-		}
-		_ = writeJSON(wire.FrameWorktrees, resp)
-	}
-	// sendWorktreeError maps the registry's refusal sentinels onto
-	// wire codes the GUI knows how to confirm against, the same way
-	// KILL_SESSION maps ErrWorktreeDirty. Anything unrecognised falls
-	// through to the generic code.
-	sendWorktreeError := func(err error, genericCode string) {
-		switch {
-		case errors.Is(err, registry.ErrWorktreeInUse):
-			sendError(wire.ErrCodeWorktreeInUse, err.Error())
-		case errors.Is(err, registry.ErrWorktreeDirty):
-			sendError(wire.ErrCodeWorktreeDirty, err.Error())
-		case errors.Is(err, registry.ErrWorktreeUnpushed):
-			sendError(wire.ErrCodeWorktreeUnpushed, err.Error())
-		case errors.Is(err, registry.ErrBranchUnmerged):
-			sendError(wire.ErrCodeBranchUnmerged, err.Error())
-		case errors.Is(err, registry.ErrBranchHasWorktree):
-			sendError(wire.ErrCodeWorktreeInUse, err.Error())
-		default:
-			sendError(genericCode, err.Error())
-		}
-	}
-	// finishMutation is how every worktree mutation ends: the refusal,
-	// if any, and then the inventory it left behind. The two go
-	// together because a mutation can half succeed — the local branch
-	// deleted, the remote push refused — and an error alone would leave
-	// the browser rendering a row that is already gone.
-	finishMutation := func(projectID string, err error, failCode string) {
-		if err != nil {
-			sendWorktreeError(err, failCode)
-			sendWorktrees(projectID, "")
-			return
-		}
-		sendWorktrees(projectID, "list_worktrees_failed")
-	}
 	// Only a client that can show UI may announce plugin UIs: a plugin
 	// socket, hivebar and a session's own events socket are read and
 	// ignored.
@@ -1301,7 +1256,9 @@ func (d *Daemon) serveControl(ctx context.Context, conn net.Conn, hello wire.Hel
 		announceUI, done = d.reviewAnnouncer()
 		defer done()
 	}
+	sendWorktrees, finishMutation := d.worktreeHelpers(writeJSON, sendError)
 	ops := controlOps{
+		bindWorktree:   d.worktreeHelpers,
 		announceUI:     announceUI,
 		restricted:     restricted,
 		ownSessionID:   hello.SessionID,
@@ -1409,6 +1366,69 @@ func ownProjectOnly(all []wire.SessionInfo, projectID string) []wire.SessionBrie
 	return out
 }
 
+// worktreeHelpers builds the two helpers every worktree frame ends in,
+// over a connection's writeJSON and sendError. controlOps.bindWorktree
+// rebuilds them over the per-frame copies withReqID makes, so their ERRORs
+// echo the request's req_id like every other.
+func (d *Daemon) worktreeHelpers(writeJSON func(wire.FrameType, any) error, sendError func(code, msg string)) (
+	sendWorktrees func(projectID, failCode string),
+	finishMutation func(projectID string, err error, failCode string),
+) {
+	// sendWorktrees answers with the project's current inventory. Every
+	// worktree mutation ends here — including the ones that failed, and
+	// the ones that half succeeded (the local branch went, the remote
+	// push did not). A refusal alone would leave the browser rendering
+	// rows the mutation already invalidated, so the error goes first
+	// and the truth follows it.
+	// An empty failCode means "stay quiet if the listing fails" — used
+	// after a refusal, where the client already has one error and a
+	// second would just be a second toast for the same action.
+	sendWorktrees = func(projectID, failCode string) {
+		resp, err := d.reg.ListWorktrees(projectID)
+		if err != nil {
+			if failCode != "" {
+				sendError(failCode, err.Error())
+			}
+			return
+		}
+		_ = writeJSON(wire.FrameWorktrees, resp)
+	}
+	// sendWorktreeError maps the registry's refusal sentinels onto
+	// wire codes the GUI knows how to confirm against, the same way
+	// KILL_SESSION maps ErrWorktreeDirty. Anything unrecognised falls
+	// through to the generic code.
+	sendWorktreeError := func(err error, genericCode string) {
+		switch {
+		case errors.Is(err, registry.ErrWorktreeInUse):
+			sendError(wire.ErrCodeWorktreeInUse, err.Error())
+		case errors.Is(err, registry.ErrWorktreeDirty):
+			sendError(wire.ErrCodeWorktreeDirty, err.Error())
+		case errors.Is(err, registry.ErrWorktreeUnpushed):
+			sendError(wire.ErrCodeWorktreeUnpushed, err.Error())
+		case errors.Is(err, registry.ErrBranchUnmerged):
+			sendError(wire.ErrCodeBranchUnmerged, err.Error())
+		case errors.Is(err, registry.ErrBranchHasWorktree):
+			sendError(wire.ErrCodeWorktreeInUse, err.Error())
+		default:
+			sendError(genericCode, err.Error())
+		}
+	}
+	// finishMutation is how every worktree mutation ends: the refusal,
+	// if any, and then the inventory it left behind. The two go
+	// together because a mutation can half succeed — the local branch
+	// deleted, the remote push refused — and an error alone would leave
+	// the browser rendering a row that is already gone.
+	finishMutation = func(projectID string, err error, failCode string) {
+		if err != nil {
+			sendWorktreeError(err, failCode)
+			sendWorktrees(projectID, "")
+			return
+		}
+		sendWorktrees(projectID, "list_worktrees_failed")
+	}
+	return sendWorktrees, finishMutation
+}
+
 // controlOps bundles the per-connection reply helpers serveControl
 // builds over the socket's write mutex. Passing them as one value is
 // what lets the frame handlers live outside serveControl, which was
@@ -1430,6 +1450,9 @@ type controlOps struct {
 	// "plugin:<id>" on a plugin's socket, "" (the user) otherwise. The
 	// daemon derives it; nothing a client sends can set it.
 	principal string
+	// reqID is the req_id of the frame being handled (0 = none); set on
+	// the per-frame copy withReqID returns.
+	reqID int
 	// acpListener is this connection's ACP_TRANSCRIPT fan-out, which
 	// GET_ACP_TRANSCRIPT answers through.
 	acpListener    registry.AcpListener
@@ -1437,6 +1460,11 @@ type controlOps struct {
 	sendError      func(code, msg string)
 	sendWorktrees  func(projectID, failCode string)
 	finishMutation func(projectID string, err error, failCode string)
+	// bindWorktree rebuilds sendWorktrees and finishMutation over another
+	// writeJSON / sendError pair (see withReqID). Nil in tests that stub
+	// the two directly.
+	bindWorktree func(writeJSON func(wire.FrameType, any) error, sendError func(code, msg string)) (
+		func(projectID, failCode string), func(projectID string, err error, failCode string))
 	// announceUI records this client's SET_CLIENT_UI. Nil for clients
 	// that show no UI, whose announcements are dropped.
 	announceUI func(pluginIDs []string)
@@ -1514,6 +1542,9 @@ func resolvePromptErrorCode(err error) string {
 }
 
 func (d *Daemon) handleControlFrame(ctx context.Context, ops controlOps, ft wire.FrameType, payload []byte) bool {
+	// A request that carries a req_id has every ERROR it raises echo it
+	// and may be answered with an ACK; see withReqID.
+	ops = ops.withReqID(peekReqID(payload))
 	// One gate for the whole verb set rather than a check per case: a
 	// verb added later is refused for a restricted client by default,
 	// which is the direction a mistake here should fail in.
@@ -1553,19 +1584,46 @@ func (d *Daemon) handleControlFrame(ctx context.Context, ops controlOps, ft wire
 		if !ok {
 			return false
 		}
-		spec.SpawnedBy = ops.principal
+		label, code, msg := composePrincipal(ops.principal, spec.WorkflowRunID)
+		if code != "" {
+			ops.sendError(code, msg)
+			return false
+		}
+		spec.SpawnedBy = label
 		// The grant is the user's alone (spec 389): a session a plugin
 		// starts must not be able to arrive already empowered.
 		if ops.principal != "" {
 			spec.Orchestrator = false
 		}
 		d.runOp(func() {
-			// ErrNotFound here means the user killed the session
-			// while it was still being created — an ordinary
-			// outcome, not something to flash at them.
-			if _, err := d.reg.Create(ctx, spec); err != nil &&
-				!errors.Is(err, registry.ErrNotFound) {
+			e, plan, err := d.reg.BeginCreate(spec)
+			if err != nil {
 				ops.sendError(createErrCode(err), err.Error())
+				return
+			}
+			// The entry exists and `added` is out: tell the requester its
+			// id now, before the worktree and adapter start.
+			ops.ack(wire.AckMsg{SessionID: e.ID})
+			err = d.reg.FinishCreate(ctx, e, spec, plan)
+			// session_id on a late failure is for a requester that asked
+			// for an ACK and so knows the session; the GUI's own creates
+			// get the error exactly as before.
+			sid := ""
+			if ops.reqID != 0 {
+				sid = e.ID
+			}
+			switch {
+			case err == nil:
+			case errors.Is(err, registry.ErrNotFound):
+				// The user killed the session while it was still being
+				// created — an ordinary outcome, nothing to flash at
+				// them. A requester waiting on an ACK hears about it.
+				if ops.reqID != 0 {
+					_ = ops.writeJSON(wire.FrameError, wire.Error{
+						Code: "no_such_session", Message: "the session was closed while it was being created", SessionID: sid})
+				}
+			default:
+				_ = ops.writeJSON(wire.FrameError, wire.Error{Code: createErrCode(err), Message: err.Error(), SessionID: sid})
 			}
 		})
 	case wire.FrameKillSession:
@@ -1584,7 +1642,9 @@ func (d *Daemon) handleControlFrame(ctx context.Context, ops controlOps, ft wire
 				} else {
 					ops.sendError("kill_failed", err.Error())
 				}
+				return
 			}
+			ops.ack(wire.AckMsg{SessionID: req.SessionID})
 		})
 	case wire.FrameListClosed:
 		_ = ops.writeJSON(wire.FrameClosed, wire.ClosedResp{Closed: d.reg.ListClosed()})
@@ -1703,15 +1763,45 @@ func (d *Daemon) handleControlFrame(ctx context.Context, ops controlOps, ft wire
 		if !ok {
 			return false
 		}
-		origin := ops.principal
+		origin, code, msg := composePrincipal(ops.principal, req.WorkflowRunID)
+		if code != "" {
+			ops.sendError(code, msg)
+			return false
+		}
 		if origin == "" {
 			origin = wire.OriginUser
 		}
 		// Returns once the turn has started; the turn itself reports
 		// through ACP_TRANSCRIPT and the session's state.
-		if err := d.reg.PromptACP(req.SessionID, req.Text, origin); err != nil {
+		promptID, epoch, err := d.reg.PromptACPTurn(req.SessionID, req.Text, origin)
+		if err != nil {
 			sendACPError(ops, err, req.SessionID)
+			return false
 		}
+		ops.ack(wire.AckMsg{SessionID: req.SessionID, PromptID: promptID, Epoch: epoch})
+	case wire.FrameCancelAcp:
+		// Unrestricted like PROMPT_ACP, and absent from sessionModeFrames
+		// so a session's own connection cannot stop its siblings.
+		req, ok := decodeReq[wire.CancelAcpReq](payload, ops.sendError)
+		if !ok {
+			return false
+		}
+		// Off the read loop: CancelACP waits for the prompt to be sent and
+		// for the adapter's stdin, so a stalled adapter must not freeze
+		// this connection's other requests.
+		d.runOp(func() {
+			wasBusy, err := d.reg.CancelACP(req.SessionID, req.PromptID, req.Epoch)
+			if err != nil {
+				sendACPError(ops, err, req.SessionID)
+				return
+			}
+			ops.ack(wire.AckMsg{SessionID: req.SessionID, WasBusy: wasBusy})
+		})
+	case wire.FrameListAcpAgents:
+		// Off the read loop: availability probes the login shell's PATH.
+		d.runOp(func() {
+			_ = ops.writeJSON(wire.FrameAcpAgents, wire.AcpAgentsMsg{ReqID: ops.reqID, Agents: acpAgents()})
+		})
 	case wire.FrameAnswerPermission:
 		req, ok := decodeReq[wire.AnswerPermissionReq](payload, ops.sendError)
 		if !ok {
@@ -1719,7 +1809,9 @@ func (d *Daemon) handleControlFrame(ctx context.Context, ops controlOps, ft wire
 		}
 		if err := d.reg.AnswerPermission(req.SessionID, req.RequestID, req.OptionID); err != nil {
 			sendACPError(ops, err, req.SessionID)
+			return false
 		}
+		ops.ack(wire.AckMsg{SessionID: req.SessionID})
 	case wire.FrameSubmitResult:
 		// Only from a session connection, and only for the session its
 		// HELLO named: the payload names no session, so a submit server
@@ -1838,7 +1930,9 @@ func (d *Daemon) handleControlFrame(ctx context.Context, ops controlOps, ft wire
 		d.runOp(func() {
 			if err := d.reg.Restart(req.SessionID); err != nil {
 				ops.sendError("restart_failed", err.Error())
+				return
 			}
+			ops.ack(wire.AckMsg{SessionID: req.SessionID})
 		})
 	case wire.FrameSendToSession:
 		req, ok := decodeReq[wire.SendToSessionReq](payload, ops.sendError)
@@ -2228,6 +2322,7 @@ func (d *Daemon) serveAttach(conn net.Conn, sessionID string, tag *pluginTag) {
 		BuildID:        buildinfo.BuildID(),
 		Release:        buildinfo.Version(),
 		DaemonContract: buildinfo.DaemonContract,
+		BootID:         bootID(),
 		Mode:           wire.ModeAttach,
 		SessionID:      entry.ID,
 		Cols:           cols,
@@ -2350,8 +2445,13 @@ func sendErrMessage(err error) string {
 // createErrCode is the ERROR code for a failed create: the general
 // create_failed, or one a client can act on.
 func createErrCode(err error) string {
-	if errors.Is(err, registry.ErrACPModeAboveCeiling) {
+	switch {
+	case errors.Is(err, registry.ErrACPModeAboveCeiling):
 		return wire.ErrCodeACPModeAboveCeiling
+	case errors.Is(err, acp.ErrResultSchema):
+		return wire.ErrCodeInvalidResultSchema
+	case errors.Is(err, registry.ErrNotACP):
+		return wire.ErrCodeNotACP
 	}
 	return "create_failed"
 }

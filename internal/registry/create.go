@@ -5,6 +5,7 @@
 package registry
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"fmt"
@@ -98,14 +99,39 @@ type createPlan struct {
 // daemon-scoped, not per-connection (see
 // startAgentSessionIDCaptureLocked).
 func (r *Registry) Create(ctx context.Context, spec wire.CreateSpec) (*Entry, error) {
-	if err := validateKind(spec); err != nil {
-		return nil, err
-	}
-	e, p, err := r.beginCreate(spec)
+	e, p, err := r.BeginCreate(spec)
 	if err != nil {
 		return nil, err
 	}
-	return e, r.finishCreate(ctx, e, spec, p)
+	return e, r.FinishCreate(ctx, e, spec, p)
+}
+
+// CreatePlan is the opaque state BeginCreate hands to FinishCreate.
+type CreatePlan = createPlan
+
+// BeginCreate is Create's synchronous half: it validates the spec,
+// registers and persists the entry and broadcasts SESSION_EVENT(added).
+// A refused spec leaves no entry and broadcasts nothing. The daemon
+// calls it apart from FinishCreate so it can ACK a CREATE_SESSION as
+// soon as the session exists, before the slow worktree and adapter start.
+func (r *Registry) BeginCreate(spec wire.CreateSpec) (*Entry, CreatePlan, error) {
+	// An explicit "result_schema": null is no schema, not a schema "null".
+	if bytes.Equal(bytes.TrimSpace(spec.ResultSchema), []byte("null")) {
+		spec.ResultSchema = nil
+	}
+	if err := validateKind(spec); err != nil {
+		return nil, CreatePlan{}, err
+	}
+	if err := validateResultSchema(spec); err != nil {
+		return nil, CreatePlan{}, err
+	}
+	return r.beginCreate(spec)
+}
+
+// FinishCreate is Create's slow half: worktree setup, the adapter or PTY
+// start and the opening prompt. Pass it what BeginCreate returned.
+func (r *Registry) FinishCreate(ctx context.Context, e *Entry, spec wire.CreateSpec, p CreatePlan) error {
+	return r.finishCreate(ctx, e, spec, p)
 }
 
 // beginCreate is Create's synchronous prefix: it resolves the plan,
@@ -625,9 +651,10 @@ func (r *Registry) insertEntry(spec wire.CreateSpec, p createPlan) (*Entry, erro
 		ID: p.id, Name: p.name, Color: p.color,
 		Created: time.Now().UTC(),
 		Agent:   spec.Agent, ProjectID: projectID,
-		Kind:      acpKind(spec.Kind),
-		SpawnedBy: spec.SpawnedBy,
-		ACPMode:   spec.ACPMode,
+		Kind:         acpKind(spec.Kind),
+		SpawnedBy:    spec.SpawnedBy,
+		ACPMode:      spec.ACPMode,
+		ResultSchema: spec.ResultSchema,
 		// Set by the user's launcher; the daemon clears it on a plugin's
 		// create (daemon.go), so a spawned session never self-grants.
 		Orchestrator: spec.Orchestrator,

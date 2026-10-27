@@ -185,8 +185,9 @@ on a plugin socket:
 
 - **`control`** — the management connection. Right after `WELCOME` the
   daemon sends a `PROJECTS` and a `SESSIONS` snapshot, then every
-  broadcast below as it happens. Requests have no ids: a reply is the
-  next frame of its type, and a failure is an `ERROR`.
+  broadcast below as it happens. A reply is the next frame of its type,
+  and a failure is an `ERROR`; to tell your requests' answers apart, see
+  **Correlating replies** below.
 - **`attach`** (`"session_id": "…"`) — one session's terminal. The
   daemon replays the scrollback, then streams output as `DATA`; send
   `DATA` to type and `RESIZE` (`{ "cols", "rows" }`) to resize.
@@ -202,10 +203,10 @@ and reply payloads are the Go structs of the same name in
 | Request | Payload | Answered by |
 |---------|---------|-------------|
 | `LIST_SESSIONS` | `ListSessionsReq` | `SESSIONS` |
-| `CREATE_SESSION` | `CreateSpec` | `SESSION_EVENT` (added) |
-| `KILL_SESSION` | `KillSessionReq` | `SESSION_EVENT` (removed) |
+| `CREATE_SESSION` | `CreateSpec` | `SESSION_EVENT` (added); with a `req_id`, also `ACK` carrying the new `session_id` as soon as the session exists. `workflow_run_id` labels it `plugin:<id>/workflow:<run>`; `result_schema` (ACP only) types its `submit_result`. See below |
+| `KILL_SESSION` | `KillSessionReq` | `SESSION_EVENT` (removed); with a `req_id`, also `ACK` |
 | `UPDATE_SESSION` | `UpdateSessionReq` | `SESSION_EVENT` |
-| `RESTART_SESSION` | `RestartSessionReq` | `SESSION_EVENT` |
+| `RESTART_SESSION` | `RestartSessionReq` | `SESSION_EVENT`; with a `req_id`, also `ACK` once the restart succeeded |
 | `RESTORE_SESSION` | `RestoreSessionReq` | `SESSION_RESTORED`, `CLOSED` |
 | `LIST_CLOSED` | `ListClosedReq` | `CLOSED` |
 | `ARCHIVE_SESSION` | `ArchiveSessionReq` | `SESSION_EVENT` (removed), `ARCHIVED` |
@@ -243,8 +244,10 @@ and reply payloads are the Go structs of the same name in
 | `SET_CLIENT_UI` | `SetClientUIReq` | nothing. The Hive app's own announcement of which plugin UIs it runs; ignored from a plugin |
 | `REMOVE_PLUGIN` | `RemovePluginReq` | `PLUGIN_EVENT` (removed) |
 | `GET_ACP_TRANSCRIPT` | `GetAcpTranscriptReq` | `ACP_TRANSCRIPT` (snapshot). Start an ACP session with `CREATE_SESSION` and `"kind": "acp"` (Claude, Codex; Pi only where the user allows unattended tool use; Gemini and Copilot not yet). It runs at the user's mode ceiling for that agent, or at `"acp_mode"` when that is at or below it (`acp_mode_above_ceiling` otherwise). It records `spawned_by: "plugin:<id>"` |
-| `PROMPT_ACP` | `PromptAcpReq` | `ACP_TRANSCRIPT`, `SESSION_EVENT` (state). The turn's origin is recorded as `plugin:<id>` |
-| `ANSWER_PERMISSION` | `AnswerPermissionReq` | `ACP_TRANSCRIPT` |
+| `PROMPT_ACP` | `PromptAcpReq` | `ACP_TRANSCRIPT`, `SESSION_EVENT` (state). The turn's origin is recorded as `plugin:<id>`, or `plugin:<id>/workflow:<run>` with `workflow_run_id`. With a `req_id`, also `ACK` once the turn has started, carrying that turn's `prompt_id` and `epoch` |
+| `CANCEL_ACP` | `CancelAcpReq` | Asks the session's running turn to stop. Idempotent: with no turn running it does nothing. With a `req_id`, `ACK` with `was_busy`: a turn was running and was *asked* to stop (absent = false). The turn is over when `ACP_TRANSCRIPT` carries its `stop_reason` (`cancelled` normally); until then `PROMPT_ACP` answers `acp_busy`. Pass the `prompt_id` and `epoch` from that turn's `PROMPT_ACP` ACK to aim the cancel at it: if the session has moved on, nothing is stopped and `was_busy` is false. Not served on a session connection |
+| `LIST_ACP_AGENTS` | `ListAcpAgentsReq` | `ACP_AGENTS` |
+| `ANSWER_PERMISSION` | `AnswerPermissionReq` | `ACP_TRANSCRIPT`; with a `req_id`, also `ACK` |
 | `SUBMIT_RESULT` | `SubmitResultReq` | `SUBMIT_RESULT_OK`, `ACP_TRANSCRIPT` (result). Not for plugins: a plugin socket gets `mode_not_allowed`. An ACP session's own submit server (`hived mcp-submit`) sends it on a session connection, with that session's nonce |
 | `SEND_TO_SESSION` | `SendToSessionReq` | `SENT`, or `ERROR`. Not for plugins: a plugin socket gets `mode_not_allowed`, because typing into another session's terminal is the confused-deputy case until a plugin can be granted it explicitly |
 | `SET_SESSION_KIND` | `SetSessionKindReq` | `SESSION_EVENT` (updated, with the new `kind`). `"kind": "pty"` takes an ACP session over in a terminal in the same conversation; `"acp"` hands it back. Refused with `takeover_refused` when the agent's CLI might start a fresh conversation instead, `acp_busy` mid-turn, and `acp_writer_locked` when Codex still holds the conversation (the session is then back in a terminal) |
@@ -253,8 +256,10 @@ And everything the daemon sends on a control connection:
 
 | Frame | When |
 |-------|------|
-| `WELCOME` | Handshake accepted. |
-| `ERROR` | A request failed (`code`, `message`). |
+| `WELCOME` | Handshake accepted. Carries `boot_id`, random and fixed for one `hived` process: a different one after a reconnect means the daemon restarted, and the transcript `epoch`s and item ids restarted with it. |
+| `ERROR` | A request failed (`code`, `message`). Echoes the `req_id` of the request it answers. |
+| `ACK` | The success reply to a request that carried a `req_id` and has no reply frame of its own (see the table). |
+| `ACP_AGENTS` | Answer to `LIST_ACP_AGENTS`: each ACP-capable agent with its permission `modes` (least permissive first), `default_mode`, the user's `ceiling`, `no_approval_gate`, `experimental`, and whether it is `available` now (`reason` when not). |
 | `SESSIONS` | Snapshot after `WELCOME`; answer to `LIST_SESSIONS`. |
 | `SESSION_EVENT` | Broadcast. `kind` is `added`, `removed`, `updated`, `title`, `attention` or `state`; `session` is the whole `SessionInfo`. |
 | `PROJECTS` | Snapshot after `WELCOME`; answer to `LIST_PROJECTS`. |
@@ -273,9 +278,67 @@ And everything the daemon sends on a control connection:
 | `PLAN_REVIEW` | Answer to `GET_PLAN_REVIEW`. |
 | `PLUGINS` | Answer to `LIST_PLUGINS`. |
 | `PLUGIN_EVENT` | Broadcast: a plugin was installed, removed, or changed status. |
-| `ACP_TRANSCRIPT` | Answer to `GET_ACP_TRANSCRIPT` (`reset`), and broadcast as an ACP session's transcript changes. Every message also carries the latest prompt's typed result: `prompt_id` (that prompt's user item), `result_status` (`submitted`, `none` once the turn ended without one, or absent while it runs) and `result` (the `submit_result` arguments). |
+| `ACP_TRANSCRIPT` | Answer to `GET_ACP_TRANSCRIPT` (`reset`), and broadcast as an ACP session's transcript changes. Every message also carries the latest prompt's typed result: `prompt_id` (that prompt's user item), `result_status` (`submitted`, `none` once the turn ended without one, or absent while it runs) and `result` (the `submit_result` arguments). It also carries `stop_reason` (how the latest prompt ended: `end_turn`, `cancelled`, `max_tokens`, `max_turn_requests`, `refusal`, or `error` if the adapter call failed; absent while it runs) and `usage` (the adapter's latest `usage_update` for that prompt). A new prompt clears both. |
 | `SUBMIT_RESULT_OK` | Answer to `SUBMIT_RESULT`: the result is recorded. |
 | `SENT` | Answer to `SEND_TO_SESSION`: how the note was delivered (`typed`, `queued` or `acp`). Never sent to a plugin, which is refused. |
+
+### Correlating replies
+
+Any control request may carry an integer `req_id` of your choosing. The
+daemon then echoes it on every `ERROR` it raises for that request.
+Only these verbs also answer success with a frame carrying the id:
+
+- `CREATE_SESSION`: `ACK` with `session_id`.
+- `KILL_SESSION`, `RESTART_SESSION`, `ANSWER_PERMISSION`: `ACK` with `session_id`.
+- `PROMPT_ACP`: `ACK` with `session_id`, `prompt_id`, `epoch`.
+- `CANCEL_ACP`: `ACK` with `session_id`, `was_busy`.
+- `SEARCH_TRANSCRIPT`, `GET_TRANSCRIPT_LINES`: their own reply, `TRANSCRIPT_MATCHES` / `TRANSCRIPT_LINES`.
+- `LIST_ACP_AGENTS`: `ACP_AGENTS`.
+
+Every other verb (`LIST_SESSIONS`, `UPDATE_SESSION`, the worktree and
+project verbs, …) still answers success the way the table above says,
+with no id: its failures echo the `req_id`, but a success cannot be
+matched to it. A request with no `req_id` behaves exactly as before.
+
+- `CREATE_SESSION`'s `ACK` comes as soon as the session exists, before
+  its worktree is set up and its adapter starts: watch `SESSION_EVENT`
+  (the `phase`) for readiness. If that later fails, you get an `ERROR`
+  carrying the `req_id` and the `session_id`, including when the user
+  closed the session mid-create. That `ERROR` arrives *after* the `ACK`
+  settled `request()`, so it only reaches you as an `ERROR` event: listen
+  for `ERROR` and filter on `session_id`.
+- `PROMPT_ACP`'s `ACK` carries the transcript item id of the turn
+  (`prompt_id`) and the transcript `epoch` it is in. The transcript's
+  `result` belongs to that turn when its `prompt_id` matches. Item ids
+  and epochs restart with the daemon; compare `WELCOME.boot_id`.
+
+### Workflow runs and typed results
+
+`workflow_run_id` (`[a-z0-9][a-z0-9-]{0,62}`) on `CREATE_SESSION`, on a
+create-mode `HELLO` and on `PROMPT_ACP` tags the work with a run. The
+daemon records `plugin:<id>/workflow:<run>` as the session's
+`spawned_by` and the turn's origin, which the Hive app shows as "From
+workflow `<run>` (plugin `<id>`)". It is a label so the user sees which
+plugin and run sent a turn, not a defence: a plugin runs with your full
+access (see **Trust**). A bad id is `invalid_workflow_run_id`, and a run
+id from anything but a plugin is `mode_not_allowed`. The orchestrator
+grant is never given to a plugin's session.
+
+`result_schema` on an ACP `CREATE_SESSION` types the session's
+`submit_result`: a JSON schema for `data`, limited to `string` (with an
+optional `enum`), `number`, `boolean`, `array` (with `items`) and
+`object` (every property listed in `required`, `additionalProperties:
+false`), an object at the top, nested at most 8 deep, in at most 8 KiB.
+Anything else is `invalid_result_schema`, and on a terminal session
+`not_acp_session`; nothing is created either way. The agent sees the
+schema in the tool; the daemon checks the result when it is submitted,
+and a result that does not match is refused with the failing path
+(`data.findings[2].severity: "urgent" is not one of high|low`) so the
+agent can call `submit_result` again. `status: "error"` carries no data:
+it is not checked and any `data` is dropped. The envelope's keys are matched
+exactly (a stray `Status` or `DATA` is refused, as is any key but `status`,
+`summary`, `data`), and a number outside float64 range is refused. The `{status, summary, data}` envelope is unchanged,
+and the daemon refuses any `status` other than exactly `ok` or `error`.
 
 The two things to watch most plugins need are `SESSION_EVENT`'s `state`
 (`working`, `waiting_input`, `waiting_permission`, `exited`, `error`,
@@ -337,7 +400,18 @@ term.on('data', (buf) => process.stdout.write(buf));
 ```
 
 `connect()` emits every frame by name with its decoded payload, and
-`send(name, payload)` sends any request in the table above. Under Hive
+`send(name, payload)` sends any request in the table above.
+`request(name, payload, { timeoutMs })` sends it with a fresh `req_id`
+and returns a promise of the reply (`ACK`, `ACP_AGENTS`,
+`TRANSCRIPT_MATCHES` or `TRANSCRIPT_LINES` payload). It accepts only the
+verbs in the **Correlating replies** list (`REQUEST_VERBS` in the SDK);
+any other rejects at once with `.hive.code` `unsupported_request`,
+because a success could never be matched. It rejects with an
+`Error` whose `.hive` is the daemon's `ERROR` payload, on timeout (30 s
+by default) and when the connection closes. `request()` numbers its requests
+from 2^30, so a small `req_id` you pick yourself on `send()` never collides
+with one. Only those reply frames
+settle it — a broadcast never does, whatever its payload holds. Under Hive
 it exits the process when the connection closes, as required above.
 Typed shapes for the main payloads are in the file's JSDoc.
 

@@ -9,6 +9,7 @@ package registry
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"log"
@@ -123,6 +124,9 @@ type Entry struct {
 	SpawnedBy string
 	// ACPMode is CreateSpec.ACPMode, persisted ("" = the ceiling).
 	ACPMode string
+	// ResultSchema is CreateSpec.ResultSchema, persisted: the schema an
+	// ACP session's submit_result data must satisfy. nil = none.
+	ResultSchema json.RawMessage
 	// Orchestrator is the user's grant letting this session message its
 	// siblings (spec 389). Persisted; read fresh on every send.
 	Orchestrator bool
@@ -1342,6 +1346,7 @@ func (r *Registry) load() error {
 			Kind:           meta.Kind,
 			SpawnedBy:      meta.SpawnedBy,
 			ACPMode:        meta.ACPMode,
+			ResultSchema:   meta.ResultSchema,
 			Orchestrator:   meta.Orchestrator,
 		}
 		r.order = append(r.order, meta.ID)
@@ -1368,6 +1373,7 @@ func (r *Registry) load() error {
 				Kind:           meta.Kind,
 				SpawnedBy:      meta.SpawnedBy,
 				ACPMode:        meta.ACPMode,
+				ResultSchema:   meta.ResultSchema,
 				Orchestrator:   meta.Orchestrator,
 			}
 			r.order = append(r.order, meta.ID)
@@ -2183,6 +2189,7 @@ func (r *Registry) persistEntryLocked(e *Entry) error {
 		Kind:                   e.Kind,
 		SpawnedBy:              e.SpawnedBy,
 		ACPMode:                e.ACPMode,
+		ResultSchema:           e.ResultSchema,
 		Orchestrator:           e.Orchestrator,
 	})
 }

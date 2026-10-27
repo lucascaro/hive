@@ -50,6 +50,9 @@ type MetaFile struct {
 	// ACPMode is the ACP mode CreateSpec.ACPMode asked for; "" = the
 	// ceiling. Meaningful only for Kind "acp".
 	ACPMode string `json:"acp_mode,omitempty"`
+	// ResultSchema is CreateSpec.ResultSchema; nil = none. Meaningful
+	// only for Kind "acp".
+	ResultSchema json.RawMessage `json:"result_schema,omitempty"`
 	// Orchestrator is the user's grant (spec 389) letting this session
 	// message its siblings. Persisted because it is intent, not derived
 	// state: losing it on a restart would silently break a setup.
