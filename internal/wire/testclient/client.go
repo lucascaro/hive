@@ -250,6 +250,10 @@ func (c *Client) awaitSnapshot(want wire.FrameType, name string, timeout time.Du
 	}
 }
 
+// requestIDBase keeps Request's ids disjoint from the small req_ids a test
+// picks itself on the typed senders (GetTranscriptLines and friends).
+const requestIDBase = 1 << 30
+
 // RequestError is the ERROR that answered a Request.
 type RequestError struct{ Err wire.Error }
 
@@ -277,6 +281,9 @@ func (c *Client) Request(ft wire.FrameType, payload any, timeout time.Duration) 
 	}
 	ch := make(chan frameMsg, 1)
 	c.mu.Lock()
+	if c.nextReq == 0 {
+		c.nextReq = requestIDBase
+	}
 	c.nextReq++
 	id := c.nextReq
 	if c.waiters == nil {

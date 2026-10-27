@@ -137,6 +137,9 @@ export const REQUEST_VERBS = Object.freeze([
   'LIST_ACP_AGENTS',
 ]);
 
+// request() ids are REQUEST_ID_BASE + n, disjoint from small caller-chosen ids.
+const REQUEST_ID_BASE = 2 ** 30;
+
 /**
  * The frames that answer a request() by carrying its req_id. Anything
  * else with a req_id in its payload (a broadcast, say) is not a reply.
@@ -423,7 +426,9 @@ export class HiveConnection extends EventEmitter {
     this.path = path;
     /** req_id -> {resolve, reject, timer}, for request(). */
     this._pending = new Map();
-    this._reqSeq = 0;
+    // request() ids start high so they cannot collide with a req_id a caller
+    // picks itself on send() (the GET_TRANSCRIPT_LINES-style verbs take one).
+    this._reqSeq = REQUEST_ID_BASE;
   }
 
   /**
@@ -437,6 +442,11 @@ export class HiveConnection extends EventEmitter {
    * Only a reply frame type carrying the id settles a request.
    * Broadcasts (SESSION_EVENT, ACP_TRANSCRIPT, PLUGIN_EVENT, …) never do,
    * whatever their payload holds. `send()` is unchanged.
+   *
+   * CREATE_SESSION settles on its ACK, as soon as the session exists. If
+   * its worktree or adapter then fails, the ERROR (with the same req_id
+   * and the session_id) reaches only your `'ERROR'` listener: filter it by
+   * `session_id`.
    *
    * Which frames reply is in docs/plugins.md; a frame that gets no
    * reply for the id would run into the timeout.

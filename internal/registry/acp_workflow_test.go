@@ -201,6 +201,34 @@ func TestSubmitResult_StatusMustBeOkOrError(t *testing.T) {
 	}
 }
 
+// Envelope keys match exactly: a differently-cased twin of status or data
+// must not be readable one way by the daemon and another by a consumer.
+func TestSubmitResult_EnvelopeKeysAreExact(t *testing.T) {
+	useFakeACP(t, acptest.FlagBlock)
+	r := freshRegistry(t)
+	e := createACP(t, r, wire.CreateSpec{Name: "typed", ResultSchema: json.RawMessage(findingsSchema)})
+	startBlockedTurn(t, r, e.ID)
+	for _, body := range []string{
+		`{"status":"ok","Status":"error","data":{"findings":[{"severity":"bogus"}]}}`,
+		`{"status":"ok","DATA":{"findings":[]}}`,
+		`{"status":"ok","data":{"findings":[]},"extra":1}`,
+	} {
+		if err := submitFindings(r, e.ID, body); !errors.Is(err, ErrSubmitRejected) {
+			t.Errorf("%s: err = %v, want a rejection", body, err)
+		}
+	}
+	if got := result(t, r, e.ID); got.ResultStatus != "" {
+		t.Errorf("a rejected envelope recorded %q", got.ResultStatus)
+	}
+	// An error result carries no data: it is dropped, not stored.
+	if err := submitFindings(r, e.ID, `{"status":"error","summary":"no","data":{"big":[1,2,3]}}`); err != nil {
+		t.Fatal(err)
+	}
+	if got := result(t, r, e.ID); string(got.Result) != `{"status":"error","summary":"no"}` {
+		t.Errorf("stored %s, want the envelope without data", got.Result)
+	}
+}
+
 func TestSubmitResult_NoSchemaUnchanged(t *testing.T) {
 	useFakeACP(t, acptest.FlagBlock)
 	r := freshRegistry(t)

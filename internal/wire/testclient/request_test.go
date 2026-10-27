@@ -72,7 +72,7 @@ func TestClient_Request_ConcurrentOutOfOrder(t *testing.T) {
 		cli.mu.Lock()
 		n := cli.nextReq
 		cli.mu.Unlock()
-		if n >= 1 || time.Now().After(deadline) {
+		if n > requestIDBase || time.Now().After(deadline) {
 			break
 		}
 		time.Sleep(time.Millisecond)
@@ -138,6 +138,43 @@ func TestClient_Request_MatchesReqID(t *testing.T) {
 	var re *RequestError
 	if !errors.As(err, &re) || re.Err.Code != "kill_failed" {
 		t.Fatalf("err = %v, want a RequestError kill_failed", err)
+	}
+}
+
+// A req_id the test picks itself must not be taken for the reply to a
+// Request in flight.
+func TestClient_Request_CallerReqIDDoesNotCollide(t *testing.T) {
+	fd := newFakeDaemon(t)
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	cli, err := Dial(ctx, fd.sockPath())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer cli.Close()
+	fd.waitAccept(t)
+
+	go func() {
+		var hello wire.Hello
+		_, _ = wire.ReadJSON(fd.conn, &hello)
+		_ = wire.WriteJSON(fd.conn, wire.FrameWelcome, wire.Welcome{Version: wire.PROTOCOL_VERSION})
+		_, p, err := wire.ReadFrame(fd.conn)
+		if err != nil {
+			return
+		}
+		var req struct {
+			ReqID int `json:"req_id"`
+		}
+		_ = json.Unmarshal(p, &req)
+		// The reply to a typed sender's own small id, then the real ACK.
+		_ = wire.WriteJSON(fd.conn, wire.FrameTranscriptLines, wire.TranscriptLinesMsg{ReqID: 1})
+		_ = wire.WriteJSON(fd.conn, wire.FrameAck, wire.AckMsg{ReqID: req.ReqID})
+	}()
+	if _, err := cli.Handshake(wire.Hello{Mode: wire.ModeControl}); err != nil {
+		t.Fatal(err)
+	}
+	if ft, p, err := cli.Request(wire.FrameKillSession, wire.KillSessionReq{SessionID: "s"}, 3*time.Second); err != nil || ft != wire.FrameAck {
+		t.Fatalf("Request = %s %s %v, want the ACK, not the TRANSCRIPT_LINES for req_id 1", ft, p, err)
 	}
 }
 

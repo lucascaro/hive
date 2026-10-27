@@ -161,16 +161,8 @@ func runMCPSubmitSchema(in io.Reader, out io.Writer, submit func(json.RawMessage
 // session with a result schema, the same data check the daemon makes — so
 // a model that ignores the schema is told so and can call again.
 func checkSubmitArgs(args json.RawMessage, schema *acp.Schema) error {
-	var a struct {
-		Status string `json:"status"`
-	}
-	if json.Unmarshal(args, &a) != nil || (a.Status != "ok" && a.Status != "error") {
-		return errors.New(`submit_result needs "status": "ok" or "error"; call it again`)
-	}
-	if schema != nil {
-		if err := schema.CheckEnvelope(args); err != nil {
-			return fmt.Errorf("%v; call %s again", err, acp.SubmitToolName)
-		}
+	if _, err := acp.CanonicalEnvelope(schema, args); err != nil {
+		return fmt.Errorf("%v; call %s again", err, acp.SubmitToolName)
 	}
 	return nil
 }

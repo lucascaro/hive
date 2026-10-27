@@ -1,0 +1,1 @@
+{"schema":{"type":"object","properties":{"n":{"type":"number"}},"required":["n"],"additionalProperties":false},"envelope":{"status":"ok","DATA":{"n":1}},"ok":false,"error":"\"DATA\": unexpected field"}

@@ -146,7 +146,7 @@ Frame numbers are provisional; each PR takes the next free number on
 - **Request fields:** `CreateSpec`, `PromptAcpReq`, `AnswerPermissionReq`, `KillSessionReq` and `RestartSessionReq` gain `ReqID`.
 - **SDK `hive.request(name, payload = {}, { timeoutMs = 30000 } = {})`:**
   - It assigns `req_id` from a per-connection counter.
-  - It resolves **only on a reply frame type**: `ACK`, `PREPARED_WORKTREE`, `TRANSCRIPT_MATCHES` or `TRANSCRIPT_LINES`, carrying that `req_id`. It rejects on `ERROR` carrying it (`err.hive = {code, message, …}`).
+  - It resolves **only on a reply frame type**: `ACK`, `ACP_AGENTS`, `TRANSCRIPT_MATCHES` or `TRANSCRIPT_LINES` (`PREPARED_WORKTREE` joins in PR2), carrying that `req_id`. It rejects on `ERROR` carrying it (`err.hive = {code, message, …}`).
   - Broadcasts (`SESSION_EVENT`, `ACP_TRANSCRIPT`, `PLUGIN_MESSAGE`, …) never settle a request, whatever their payload holds.
   - Timeout or `close` rejects everything pending. `send()` is unchanged.
 
@@ -173,7 +173,7 @@ Frame numbers are provisional; each PR takes the next free number on
 
   Anything else is refused with `invalid_result_schema`.
 - **Persistence:** it is stored on the entry and its persisted meta, so revive and restart keep it.
-- **What is validated:** the envelope `{status, summary, data}` is kept. With a schema and `status:"ok"`, `data` is required and is validated against it. `status:"error"` is not validated, so F3 is unchanged.
+- **What is validated:** the envelope `{status, summary, data}` is kept. With a schema and `status:"ok"`, `data` is required and is validated against it. The envelope is parsed with **exact keys** (a `map[string]json.RawMessage`, never a struct, which matches `Status`/`DATA` case-insensitively): any key other than `status`, `summary`, `data` is refused, `status` must be exactly `ok`/`error`, `summary` a string. `status:"error"` skips the data check and its `data` is dropped from the stored canonical envelope. Numbers outside float64 range (`1e400`) are rejected.
 - **Enforcement:** `Registry.SubmitResult` is the single authority. Its path-qualified error (`data.findings[2].severity: "urgent" is not one of high|low; call submit_result again`) reaches the model as a tool error, so the agent retries.
 - **How the tools see it:** the schema reaches `mcp-submit`'s `tools/list` and Pi's tool parameters through `HIVE_SUBMIT_SCHEMA`, beside `HIVE_SUBMIT_NONCE` in `acpExtras` (`registry/acp.go:213`). `mcp-submit` pre-checks with the same Go validator.
 - **Shared fixtures:** `internal/acp/testdata/resultschema/*.json` (`{schema, value, ok, error?}`). B's TS validator reuses them.
@@ -183,7 +183,7 @@ Frame numbers are provisional; each PR takes the next free number on
 - **`CANCEL_ACP` (0x50, C→S):** `{session_id, req_id?}`.
   - Unrestricted, like PROMPT_ACP: the user or any plugin.
   - Not in `sessionModeFrames`, so a session connection can't send it.
-  - **Idempotent.** With a turn running, it answers any pending permission with `acp.Cancelled()`, sends the `session/cancel` **notification** ([ACP prompt turn, Cancellation](https://agentclientprotocol.com/protocol/prompt-turn)), and ACKs `{was_busy: true}`. With none running it ACKs `{was_busy: false}`. It never errors on "not busy".
+  - **Idempotent.** With a turn running, it answers any pending permission with `acp.Cancelled()`, sends the `session/cancel` **notification** ([ACP prompt turn, Cancellation](https://agentclientprotocol.com/protocol/prompt-turn)), and ACKs `{was_busy: true}`. With none running it ACKs `{was_busy: false}`. It never errors on "not busy", but it can return `ErrNoLiveSession` if the adapter vanishes or the notify write fails. It runs under `d.runOp`, off the control read loop.
 - **`AcpTranscriptMsg.StopReason`** (`stop_reason`): the latest prompt's ACP stop reason (`end_turn`, `cancelled`, `max_tokens`, `max_turn_requests`, `refusal`), or `error` if the adapter call failed.
   - Carried on every message like `result_status`, and cleared by a new prompt.
 - **`AcpTranscriptMsg.Usage`** (`usage`, R5, `json.RawMessage`, omitempty): the latest `usage_update` payload of the current prompt, verbatim from the adapter, cleared by a new prompt like `stop_reason`. `acp.Update` keeps the raw update (`Raw`) and the registry stores it only while a prompt runs.
@@ -192,7 +192,7 @@ Frame numbers are provisional; each PR takes the next free number on
 
 - **`LIST_ACP_AGENTS` (0x51, C→S) → `ACP_AGENTS` (0x52, S→C)** `{req_id, agents: [{id, name, modes: [{id, label}], default_mode, ceiling, no_approval_gate, experimental, available, reason}]}`, built from `agent.Def.ACP()`, `Settings.ACPCeiling` and `ACPAvailable`.
   - Only agents that can run as ACP are listed.
-  - It runs off the read loop (`ACPAvailable` probes the login-shell PATH), is read-only, costs `costCheap`, and is not in `sessionModeFrames`.
+  - It runs off the read loop (`ACPAvailable` probes the login-shell PATH), is read-only, costs `costFanout` (`internal/plugin/limiter.go`), and is not in `sessionModeFrames`.
   - `ACP_AGENTS` joins `request()`'s reply types.
 
 #### Recorded for PR2 (not built in PR1)
@@ -499,3 +499,4 @@ scripts/ui-lint.sh                                             # PR1, PR3 (GUI t
 
 - **2026-10-26 iter 1** — verdict: REQUEST_CHANGES; mergeable: MERGEABLE; findings_hash: dedae87dae692f7b9593eea206eb18ee3db35de217c31792b7ad4ee18c49c354; threads_open: 0; action: autofix+push; head_sha: 82e84cce. Findings: testclient snaps could block ACK delivery (Greptile P2, fixed cab192b6); CancelACP inline on the control read loop (IMPORTANT, moved under runOp). Skipped, by plan: status:"error" data unvalidated (plan line 176, documented in docs/plugins.md); minors (schema compaction, was_busy wording, test-bridge CancelAcp mirror, acp.ts usage type).
 - **2026-10-26 iter 2** — verdict: APPROVE; mergeable: MERGEABLE; findings_hash: empty; threads_open: 0; action: stop; head_sha: 82e84cce. Re-review was a direct check of the two small fixes (diff of 10 lines in daemon.go plus the testclient change; race tests green), not a full three-dimension re-run.
+- **2026-10-27 iter 3** — verdict: REQUEST_CHANGES (supersedes iter 2's stop; independent Opus review found six items iter 1-2 missed); mergeable: MERGEABLE; findings_hash: see list; threads_open: 0; action: autofix+push; head_sha: see PR head. Fixed with tests: (1) MEDIUM envelope key-case bypass, now `acp.CanonicalEnvelope` with exact keys, canonical stored form, fixtures in `internal/acp/testdata/resultschema/envelope/`; (2) CANCEL_ACP under `d.runOp` (a wedged-adapter stall is not reproducible with the fake adapter, so covered by the existing CancelAcp daemon tests only); (3) late CREATE ERROR documented in docs/plugins.md and SDK `request()` JSDoc; (4) caller-chosen req_id collision, `request()` ids now start at 2^30 in both SDK copies and the testclient; (5) `status:"error"` data dropped; (6) `1e400` rejected, verified real (UseNumber kept the literal). Plan text corrected (costFanout, SDK reply frames, ErrNoLiveSession, exact-key parsing).

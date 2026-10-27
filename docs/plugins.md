@@ -304,7 +304,9 @@ matched to it. A request with no `req_id` behaves exactly as before.
   its worktree is set up and its adapter starts: watch `SESSION_EVENT`
   (the `phase`) for readiness. If that later fails, you get an `ERROR`
   carrying the `req_id` and the `session_id`, including when the user
-  closed the session mid-create.
+  closed the session mid-create. That `ERROR` arrives *after* the `ACK`
+  settled `request()`, so it only reaches you as an `ERROR` event: listen
+  for `ERROR` and filter on `session_id`.
 - `PROMPT_ACP`'s `ACK` carries the transcript item id of the turn
   (`prompt_id`) and the transcript `epoch` it is in. The transcript's
   `result` belongs to that turn when its `prompt_id` matches. Item ids
@@ -332,8 +334,10 @@ Anything else is `invalid_result_schema`, and on a terminal session
 schema in the tool; the daemon checks the result when it is submitted,
 and a result that does not match is refused with the failing path
 (`data.findings[2].severity: "urgent" is not one of high|low`) so the
-agent can call `submit_result` again. `status: "error"` carries no data
-and is not checked. The `{status, summary, data}` envelope is unchanged,
+agent can call `submit_result` again. `status: "error"` carries no data:
+it is not checked and any `data` is dropped. The envelope's keys are matched
+exactly (a stray `Status` or `DATA` is refused, as is any key but `status`,
+`summary`, `data`), and a number outside float64 range is refused. The `{status, summary, data}` envelope is unchanged,
 and the daemon refuses any `status` other than exactly `ok` or `error`.
 
 The two things to watch most plugins need are `SESSION_EVENT`'s `state`
@@ -404,7 +408,9 @@ verbs in the **Correlating replies** list (`REQUEST_VERBS` in the SDK);
 any other rejects at once with `.hive.code` `unsupported_request`,
 because a success could never be matched. It rejects with an
 `Error` whose `.hive` is the daemon's `ERROR` payload, on timeout (30 s
-by default) and when the connection closes. Only those reply frames
+by default) and when the connection closes. `request()` numbers its requests
+from 2^30, so a small `req_id` you pick yourself on `send()` never collides
+with one. Only those reply frames
 settle it — a broadcast never does, whatever its payload holds. Under Hive
 it exits the process when the connection closes, as required above.
 Typed shapes for the main payloads are in the file's JSDoc.

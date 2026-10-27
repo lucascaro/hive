@@ -212,19 +212,18 @@ func validateResultSchema(spec wire.CreateSpec) error {
 	return acp.CheckSchema(spec.ResultSchema)
 }
 
-// checkResultAgainstSchema validates a compacted {status, summary, data}
-// envelope against the session's result schema. Without a schema, or
-// with status "error" (a task that could not be done reports no data),
-// everything passes; with status "ok", data is required and must match.
-func checkResultAgainstSchema(schema, envelope json.RawMessage) error {
-	if len(schema) == 0 {
-		return nil
+// canonicalResult validates a {status, summary, data} envelope against the
+// session's result schema (none: only the envelope itself) and returns the
+// canonical form to store; see acp.CanonicalEnvelope.
+func canonicalResult(schema, envelope json.RawMessage) (json.RawMessage, error) {
+	var s *acp.Schema
+	if len(schema) > 0 {
+		var err error
+		if s, err = acp.ParseSchema(schema); err != nil {
+			return nil, err // persisted schemas were checked at create; fail closed
+		}
 	}
-	s, err := acp.ParseSchema(schema)
-	if err != nil {
-		return err // persisted schemas were checked at create; fail closed
-	}
-	return s.CheckEnvelope(envelope)
+	return acp.CanonicalEnvelope(s, envelope)
 }
 
 // acpModeFor is the mode an ACP session starts in: the one it asked for
@@ -900,18 +899,14 @@ func (r *Registry) SubmitResult(id, nonce string, result json.RawMessage) error 
 	if !as.busy || e.acpRes.promptID == 0 {
 		return fmt.Errorf("%w: no turn is running", ErrSubmitRejected)
 	}
-	// The daemon is the authority on status, not the tool in front of it:
-	// anything but exactly "ok" or "error" is refused, schema or not.
-	var env struct {
-		Status any `json:"status"`
-	}
-	if json.Unmarshal(buf.Bytes(), &env) != nil || (env.Status != "ok" && env.Status != "error") {
-		return fmt.Errorf(`%w: "status" must be exactly "ok" or "error"; call %s again`, ErrSubmitRejected, acp.SubmitToolName)
-	}
-	if err := checkResultAgainstSchema(e.ResultSchema, buf.Bytes()); err != nil {
+	// The daemon is the authority on the envelope, not the tool in front of
+	// it: exact keys, status exactly "ok" or "error", data checked against
+	// the schema. What is stored is the canonical form it validated.
+	canon, err := canonicalResult(e.ResultSchema, buf.Bytes())
+	if err != nil {
 		return fmt.Errorf("%w: %v; call %s again", ErrSubmitRejected, err, acp.SubmitToolName)
 	}
-	e.acpRes.status, e.acpRes.value = wire.AcpResultSubmitted, json.RawMessage(buf.Bytes())
+	e.acpRes.status, e.acpRes.value = wire.AcpResultSubmitted, canon
 	r.broadcastACPLocked(e, nil, false)
 	return nil
 }

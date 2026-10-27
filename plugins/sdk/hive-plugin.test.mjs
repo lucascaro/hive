@@ -128,6 +128,33 @@ test('interleaved replies resolve the right promises', unixOnly, async () => {
   }
 });
 
+test('a req_id chosen by the caller on send() cannot settle a request()', unixOnly, async () => {
+  let release;
+  const d = await fakeDaemon((type, p, reply) => {
+    if (type === Frame.GET_TRANSCRIPT_LINES) {
+      reply(Frame.TRANSCRIPT_LINES, { req_id: p.req_id, lines: [] }); // answers the caller's own id
+    } else {
+      release = () => reply(Frame.ACK, { req_id: p.req_id });
+    }
+  });
+  try {
+    let settled = false;
+    const pending = d.hive.request('KILL_SESSION', { session_id: 'x' }).then((r) => {
+      settled = true;
+      return r;
+    });
+    const seen = new Promise((r) => d.hive.once('TRANSCRIPT_LINES', r));
+    d.hive.send('GET_TRANSCRIPT_LINES', { session_id: 'x', req_id: 1 });
+    await seen;
+    await new Promise((r) => setImmediate(r));
+    assert.equal(settled, false, "a caller's req_id settled a request()");
+    release();
+    await pending;
+  } finally {
+    await d.close();
+  }
+});
+
 test('request ignores broadcasts carrying the same req_id', unixOnly, async () => {
   let release;
   const d = await fakeDaemon((_type, p, reply) => {

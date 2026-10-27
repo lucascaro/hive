@@ -9,6 +9,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"math"
 	"slices"
 	"sort"
 	"strconv"
@@ -176,25 +177,63 @@ func parseSchemaNode(v any, path string, depth int) (*Schema, error) {
 	return s, nil
 }
 
-// CheckEnvelope validates a submit_result {status, summary, data}
-// envelope against s, the schema of its data. With status "error" (a
-// task that could not be done reports no data) everything passes; with
-// status "ok", data is required and must match.
-func (s *Schema) CheckEnvelope(envelope json.RawMessage) error {
-	var env struct {
-		Status string          `json:"status"`
-		Data   json.RawMessage `json:"data"`
+// CanonicalEnvelope validates a submit_result {status, summary, data}
+// envelope and returns the canonical form to store and broadcast. s is the
+// schema of data, or nil for a session without one.
+//
+// Keys are matched exactly, never case-insensitively (as encoding/json's
+// struct decoding does), so {"status":"ok","Status":"error"} cannot be read
+// one way here and another by a consumer: any key other than status,
+// summary and data is refused. status must be exactly "ok" or "error";
+// summary, when present, a string. With status "error" (a task that could
+// not be done reports no data) any data is dropped; with "ok", data is
+// required when s is set and must match it.
+func CanonicalEnvelope(s *Schema, envelope json.RawMessage) (json.RawMessage, error) {
+	var env map[string]json.RawMessage
+	if err := json.Unmarshal(envelope, &env); err != nil || env == nil {
+		return nil, errors.New("the result must be a JSON object")
 	}
-	if err := json.Unmarshal(envelope, &env); err != nil {
-		return err
+	for k := range env {
+		if k != "status" && k != "summary" && k != "data" {
+			return nil, fmt.Errorf("%s: unexpected field", strconv.Quote(k))
+		}
 	}
-	if env.Status != "ok" {
-		return nil
+	var status string
+	if json.Unmarshal(env["status"], &status) != nil || (status != "ok" && status != "error") {
+		return nil, errors.New(`"status" must be exactly "ok" or "error"`)
 	}
-	if len(env.Data) == 0 {
-		return errors.New("data: required when status is ok")
+	// Built key by key, in the order status, summary, data, so the stored
+	// form is stable and compact.
+	var out bytes.Buffer
+	out.WriteString(`{"status":` + strconv.Quote(status))
+	if raw, ok := env["summary"]; ok {
+		var sum string
+		if json.Unmarshal(raw, &sum) != nil {
+			return nil, errors.New(`"summary" must be a string`)
+		}
+		b, _ := json.Marshal(sum)
+		out.WriteString(`,"summary":`)
+		out.Write(b)
 	}
-	return s.CheckValue("data", env.Data)
+	if status == "ok" {
+		data, has := env["data"]
+		if s != nil {
+			if !has {
+				return nil, errors.New("data: required when status is ok")
+			}
+			if err := s.CheckValue("data", data); err != nil {
+				return nil, err
+			}
+		}
+		if has {
+			out.WriteString(`,"data":`)
+			if err := json.Compact(&out, data); err != nil {
+				return nil, err
+			}
+		}
+	}
+	out.WriteByte('}')
+	return out.Bytes(), nil
 }
 
 // JSON returns the schema as a decoded JSON value, for embedding in a
@@ -256,6 +295,12 @@ func (s *Schema) check(v any, path string) error {
 		return fmt.Errorf("%s: expected %s, got %s", path, s.typ, got)
 	}
 	switch s.typ {
+	case "number":
+		// UseNumber keeps the literal; 1e400 is valid JSON but not a number
+		// a JS consumer can hold (it becomes Infinity).
+		if f, err := strconv.ParseFloat(v.(json.Number).String(), 64); err != nil || math.IsInf(f, 0) {
+			return fmt.Errorf("%s: %s is out of range", path, v)
+		}
 	case "string":
 		if s.hasEnumSet && !slices.Contains(s.enum, v.(string)) {
 			return fmt.Errorf("%s: %s is not one of %s", path, strconv.Quote(v.(string)), strings.Join(s.enum, "|"))
