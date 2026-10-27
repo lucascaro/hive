@@ -140,3 +140,41 @@ func TestClient_Request_MatchesReqID(t *testing.T) {
 		t.Fatalf("err = %v, want a RequestError kill_failed", err)
 	}
 }
+
+// Unrelated frames piling up in the snapshot channel must not stop the read
+// loop from delivering the reply: a Request does not drain that channel.
+func TestClient_Request_ManyUnrelatedFramesBeforeAck(t *testing.T) {
+	fd := newFakeDaemon(t)
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	cli, err := Dial(ctx, fd.sockPath())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer cli.Close()
+	fd.waitAccept(t)
+
+	go func() {
+		var hello wire.Hello
+		_, _ = wire.ReadJSON(fd.conn, &hello)
+		_ = wire.WriteJSON(fd.conn, wire.FrameWelcome, wire.Welcome{Version: wire.PROTOCOL_VERSION})
+		_, p, err := wire.ReadFrame(fd.conn)
+		if err != nil {
+			return
+		}
+		var req struct {
+			ReqID int `json:"req_id"`
+		}
+		_ = json.Unmarshal(p, &req)
+		for range 300 { // past the snapshot channel's capacity
+			_ = wire.WriteJSON(fd.conn, wire.FrameSessions, wire.SessionsResp{})
+		}
+		_ = wire.WriteJSON(fd.conn, wire.FrameAck, wire.AckMsg{ReqID: req.ReqID})
+	}()
+	if _, err := cli.Handshake(wire.Hello{Mode: wire.ModeControl}); err != nil {
+		t.Fatal(err)
+	}
+	if ft, p, err := cli.Request(wire.FrameKillSession, wire.KillSessionReq{SessionID: "s"}, 3*time.Second); err != nil || ft != wire.FrameAck {
+		t.Fatalf("Request = %s %s %v, want the ACK", ft, p, err)
+	}
+}

@@ -117,7 +117,7 @@ func Dial(ctx context.Context, sockPath string) (*Client, error) {
 		projects: make(chan wire.ProjectEvent, 32),
 		ideas:    make(chan wire.IdeaEvent, 32),
 		plugins:  make(chan wire.PluginEvent, 32),
-		snaps:    make(chan frameMsg, 8),
+		snaps:    make(chan frameMsg, 256),
 		errs:     make(chan error, 1),
 		closed:   make(chan struct{}),
 	}, nil
@@ -916,10 +916,23 @@ func (c *Client) sendIdeaEvent(v wire.IdeaEvent) {
 	case <-c.closed:
 	}
 }
+
+// sendSnapshot never blocks the read loop: a Request does not drain snaps, so
+// blocking here would keep a reply queued behind unrelated frames from ever
+// being read. When full, the oldest frame is dropped.
 func (c *Client) sendSnapshot(m frameMsg) {
-	select {
-	case c.snaps <- m:
-	case <-c.closed:
+	for {
+		select {
+		case c.snaps <- m:
+			return
+		case <-c.closed:
+			return
+		default:
+		}
+		select {
+		case <-c.snaps:
+		default:
+		}
 	}
 }
 
