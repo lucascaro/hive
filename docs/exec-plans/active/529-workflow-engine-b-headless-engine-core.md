@@ -4,7 +4,8 @@
 - **Design:** [workflow-engine.md](../../design-docs/workflow-engine.md), [acp-workflows.md](../../design-docs/acp-workflows.md)
 - **Depends on:** A (#528), planned against `origin/feature/528-daemon-sdk-prereqs:docs/exec-plans/active/528-workflow-engine-a-daemon-sdk-prereqs.md` at `7410f6b7`
 - **Issue:** #529
-- **Branch:** `feature/529-engine-core` (research and plan); one branch per phase PR
+- **Branch:** `feature/529-engine-core` (research and plan); one branch per phase PR (B1: `feature/529-b1-validator`)
+- **Phase:** 1 of 5
 - **Status:** active. The final plan is presented for user approval.
   - All open questions are decided (see Decision log, 2026-10-25 user
     decisions).
@@ -1063,6 +1064,31 @@ download, the accepted sandbox gap, and `LIST_ACP_AGENTS`.
   iteration *k−1*. Several upstream heads get a merge worktree; none gets the
   pinned run base. Why: `reviewLoop` must revise its own change. The design
   is silent on this.
+- **2026-11-06 (B1):** Moves done with `git mv`; `validate` split out of
+  `dsl.ts` into `ir/validate.ts`, so the SDK the build child imports carries
+  no validator. `examples.ts` went to `tools/` (it only feeds check-doc, the
+  tests and emit). `sdk/index.ts` and `sdk/library-index.ts` are left to B4,
+  the first phase that has an import hook to point at them.
+- **2026-11-06 (B1):** `shape.ts` applies A's result-schema limits to every
+  agent `output`, as the plan says, and also to human `output` and the run
+  `input`. Why: `resultschema.ts` is shared by human answers and `input`
+  (plan, Validation), and a human or input schema that violates them would
+  fail only at runtime. The builder cannot produce one, so no valid IR is
+  newly rejected. Also: nodes and conditions may nest 32 deep
+  (`MAX_NESTING`), so a hostile stored IR cannot overflow `validate`'s
+  recursion; the plan says "a depth bound" without a number.
+- **2026-11-06 (B1):** `catalog.ts` treats an omitted mode as always valid
+  (the engine sends `Modes[0]`), and checks `experimental`, then
+  `available` (with the daemon's `reason`), then mode membership, then the
+  ceiling. Experimental is checked first because the daemon also marks those
+  agents unavailable with a "can't cap its mode" reason that would hide it.
+  A reply without `ceiling` falls back to `default_mode`, then `modes[0]`,
+  as `Settings.ACPCeiling` does.
+- **2026-11-06 (B1):** `test/fixtures/acp-agents.json` is hand-written from
+  `agent.acpSpecs` and the shape of `wire.AcpAgentInfo`, with the ceilings the
+  library examples need (claude `acceptEdits`, codex `workspace-write`, pi
+  `unattended`). It is not captured from a live daemon, so it can drift;
+  B2's `internal/workflowe2e` harness is the place to pin it to a real reply.
 - **2026-10-25:** Checks run in their own process group with
   pid/pgid/start-time checkpointed, and are reaped at startup only on a
   start-time match. Why: an own group escapes the Manager's tree kill, and
@@ -1123,7 +1149,18 @@ download, the accepted sandbox gap, and `LIST_ACP_AGENTS`.
 - **2026-10-25:** C's B-1 to B-4 folded in (user-approved); spec criteria
   6, 9, 10 and 4 updated.
 
+- **2026-11-06 (B1):** Implemented on `feature/529-b1-validator`, based on
+  `origin/main` at `ee6dd0e2` (A PR1, #532, merged). R6 (`LIST_ACP_AGENTS`)
+  and the result-schema fixtures are both in PR1, so B1 needed nothing
+  from A's PR2 or PR3. Node 26 is not installed locally and B1 needs none:
+  its tests run on the CI leg's Node 24 (type stripping), as the prototype's
+  did. The `**/*.test.ts` glob is the plan's own conventions-card form.
+
 ## Open questions
 
 None. Execution order still depends on A: B1 needs A PR1's fixtures; B2
 needs A PR1–3; B3 needs R1–R4 merged in A.
+
+## PR convergence ledger
+
+<!-- /hs-review-loop appends one line per iteration here (append-only). -->

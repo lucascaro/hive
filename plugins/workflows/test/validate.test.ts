@@ -235,7 +235,7 @@ test('validate rejects each malformed node, edge, ref and condition', () => {
   }
 });
 
-test('validate rejects a ref to a node that has not run yet', () => {
+test('rejects a ref to a non-upstream node (has not run yet)', () => {
   const ir = workflow('order', s.object({}), (g) => {
     const a = g.agent('a', { agent: 'claude', prompt: 'Read {{b.summary}}', output: summary });
     const b = g.agent('b', { agent: 'codex', prompt: 'y', output: summary });
@@ -362,7 +362,7 @@ test("a loop's until cannot read the loop's own converged or iterations", () => 
   assert.match(validate(ir).join('\n'), /lp\.until: ref "lp\.iterations" is not upstream of lp/);
 });
 
-test('ref order: the loop exception does not cover a parallel sibling', () => {
+test('rejects a parallel sibling ref (the loop exception does not cover it)', () => {
   const ir = workflow('loop-sibling', s.object({}), (g) => {
     g.loop('lp', { maxIters: 2 }, (b) => {
       b.agent('a', { agent: 'claude', prompt: 'Peek {{lp/b.summary}}', output: summary });
@@ -373,7 +373,7 @@ test('ref order: the loop exception does not cover a parallel sibling', () => {
   assert.match(validate(ir).join('\n'), /lp\/a: ref "lp\/b\.summary" is not upstream of lp\/a/);
 });
 
-test('worktree.of and map.over take no loop back-refs', () => {
+test('rejects worktree.of back-ref on first iteration (worktree.of and map.over take no loop back-refs)', () => {
   const ir = workflow('resource-backref', s.object({}), (g) => {
     g.loop('lp', { maxIters: 2 }, (b) => {
       let later: { id: string } = { id: 'lp/later' };

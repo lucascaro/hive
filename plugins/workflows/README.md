@@ -1,33 +1,33 @@
-# Workflow prototype
+# Workflows plugin (headless engine, in progress)
 
 This folder backs the design in
 [docs/design-docs/workflow-engine.md](../../docs/design-docs/workflow-engine.md)
-(spec 495). It contains:
-- a typed TypeScript workflow builder (`dsl.ts`, `schema.ts`);
-- the generic constructs `reviewLoop`, `fanOutThenVerify` and
-  `planImplementVerify` (`library.ts`);
-- the IR's JSON Schema (`ir-schema.ts`, committed as `ir.schema.json`);
-- a Mermaid renderer (`mermaid.ts`).
+(specs 495 and 529). It holds the typed workflow builder, the IR and its
+validator today; the interpreter and run log arrive in later phases of
+spec 529. It is not embedded in `hived` yet.
 
-It **executes no agents**, has no interpreter and no run log. It builds graphs
-and checks them.
-
-**No dependencies.** It needs Node 24, or Node 22.18 or later, which runs `.ts`
-files natively by stripping the types. The `package.json` here only marks the
-folder as ES modules; there is nothing to install.
+- `sdk/`: the builder (`dsl.ts`, `schema.ts`) and the generic constructs
+  `reviewLoop`, `fanOutThenVerify` and `planImplementVerify` (`library.ts`).
+- `ir/`: the IR's JSON Schema (`ir-schema.ts`, committed as
+  `ir.schema.json`), the Mermaid renderer, and the three validation passes:
+  `shape.ts` (structure of unknown JSON), `validate.ts` (semantics) and
+  `catalog.ts` (agents and modes against the daemon's `ACP_AGENTS`).
+  `resultschema.ts` is the TypeScript twin of `internal/acp/resultschema.go`.
+- `tools/`: `emit.ts`, `check-doc.ts` and the worked `examples.ts`.
+- `test/`: the tests and the type-level checks (`types.check.ts`).
 
 ## Run it
 
 ```bash
-node scripts/workflow-proto/emit.ts reviewLoop            # IR JSON, then Mermaid
-node scripts/workflow-proto/emit.ts fanOutThenVerify --mermaid
-node scripts/workflow-proto/emit.ts --schema >| scripts/workflow-proto/ir.schema.json
+node plugins/workflows/tools/emit.ts reviewLoop            # IR JSON, then Mermaid
+node plugins/workflows/tools/emit.ts fanOutThenVerify --mermaid
+node plugins/workflows/tools/emit.ts --schema >| plugins/workflows/ir/ir.schema.json
 
-node --test 'scripts/workflow-proto/*.test.ts'
-node scripts/workflow-proto/check-doc.ts docs/design-docs/workflow-engine.md          # CI gate
-node scripts/workflow-proto/check-doc.ts docs/design-docs/workflow-engine.md --write  # regenerate blocks
+node --test 'plugins/workflows/**/*.test.ts'
+node plugins/workflows/tools/check-doc.ts docs/design-docs/workflow-engine.md          # CI gate
+node plugins/workflows/tools/check-doc.ts docs/design-docs/workflow-engine.md --write  # regenerate blocks
 
-cmd/hivegui/frontend/node_modules/.bin/tsc -p scripts/workflow-proto   # type-check, incl. types.check.ts
+cmd/hivegui/frontend/node_modules/.bin/tsc -p plugins/workflows   # type-check, incl. types.check.ts
 ```
 
 `check-doc.ts` regenerates every `<!-- wf:…:start/end -->` block in the design
