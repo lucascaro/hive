@@ -32,6 +32,7 @@ import (
 	"os"
 	"path/filepath"
 	"sync"
+	"sync/atomic"
 	"time"
 	"unicode/utf8"
 
@@ -161,6 +162,11 @@ type Daemon struct {
 	opsMu     sync.Mutex
 	opsClosed bool
 
+	// pendingCancels counts CANCEL_ACP handlers still waiting on a prompt
+	// write; they are untracked by ops (see the CANCEL_ACP arm), so this
+	// is what bounds them.
+	pendingCancels atomic.Int32
+
 	// plugins supervises user-installed plugin processes (see
 	// internal/plugin). nil when plugins.json could not be read: the
 	// daemon still runs, and the plugin verbs answer plugins_unavailable.
@@ -174,6 +180,9 @@ type Daemon struct {
 	runCtx    context.Context
 	runCancel context.CancelFunc
 }
+
+// maxPendingCancels bounds the CANCEL_ACP handlers waiting on a prompt write.
+const maxPendingCancels = 64
 
 // runOp runs one session lifecycle operation off the control read
 // loop. Create/Kill/Restart shell out to git, which used to block
@@ -1794,7 +1803,13 @@ func (d *Daemon) handleControlFrame(ctx context.Context, ops controlOps, ft wire
 		// wedged stdin write, so a tracked cancel would block shutdown.
 		// CancelACP returns once the registry closes; the reply then goes
 		// to a connection Close has already shut, which is harmless.
+		if d.pendingCancels.Add(1) > maxPendingCancels {
+			d.pendingCancels.Add(-1)
+			ops.sendError(wire.ErrCodeACPBusy, "too many cancels are waiting on their prompts; retry shortly")
+			return false
+		}
 		go func() {
+			defer d.pendingCancels.Add(-1)
 			wasBusy, err := d.reg.CancelACP(req.SessionID, req.PromptID, req.Epoch)
 			if err != nil {
 				sendACPError(ops, err, req.SessionID)

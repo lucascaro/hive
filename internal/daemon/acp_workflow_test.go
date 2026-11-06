@@ -290,3 +290,19 @@ func TestCancelAcp_RefusedOnSessionConn(t *testing.T) {
 		t.Errorf("errors = %+v, want mode_not_allowed twice", rec.errs)
 	}
 }
+
+// Cancels waiting on a prompt write are untracked by ops, so their number
+// is capped: past the cap a cancel is refused, not queued without bound.
+func TestCancelAcp_PendingCancelsAreBounded(t *testing.T) {
+	d := startTestDaemon(t)
+	rec := &recordOps{}
+	d.pendingCancels.Store(maxPendingCancels)
+	defer d.pendingCancels.Store(0)
+	d.handleControlFrame(t.Context(), rec.ops(), wire.FrameCancelAcp, []byte(`{"session_id":"s1","req_id":1}`))
+	if len(rec.errs) != 1 || rec.errs[0].Code != wire.ErrCodeACPBusy {
+		t.Fatalf("errors = %+v, want one acp_busy", rec.errs)
+	}
+	if got := d.pendingCancels.Load(); got != maxPendingCancels {
+		t.Errorf("pendingCancels = %d, want it unchanged at %d", got, maxPendingCancels)
+	}
+}

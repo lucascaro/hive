@@ -478,7 +478,10 @@ func TestCancelACP_ReturnsWhenRegistryCloses(t *testing.T) {
 	beforePromptSendForTest = func() { <-hold; close(released) } // the prompt is never written: sent never closes
 	t.Cleanup(func() {
 		close(hold)
-		<-released // the turn goroutine is past its read of the hook
+		select {
+		case <-released: // the turn goroutine is past its read of the hook
+		case <-time.After(5 * time.Second): // the turn never started; nothing reads the hook
+		}
 		beforePromptSendForTest = nil
 	})
 	startBlockedTurn(t, r, e.ID)
