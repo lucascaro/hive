@@ -466,6 +466,44 @@ func TestCancelACP_UndeliverableIsAnError(t *testing.T) {
 	}
 }
 
+// A prompt write that never finishes (an adapter that stopped reading
+// stdin) holds `sent` open for good. Closing the registry is what kills
+// that adapter, so a CancelACP waiting on it must return when the
+// registry closes, or nothing waiting on the cancel can ever shut down.
+func TestCancelACP_ReturnsWhenRegistryCloses(t *testing.T) {
+	useFakeACP(t, acptest.FlagBlock)
+	r := freshRegistry(t)
+	e := createACP(t, r, wire.CreateSpec{Name: "a"})
+	hold, released := make(chan struct{}), make(chan struct{})
+	beforePromptSendForTest = func() { <-hold; close(released) } // the prompt is never written: sent never closes
+	t.Cleanup(func() {
+		close(hold)
+		<-released // the turn goroutine is past its read of the hook
+		beforePromptSendForTest = nil
+	})
+	startBlockedTurn(t, r, e.ID)
+
+	done := make(chan error, 1)
+	go func() {
+		_, err := r.CancelACP(e.ID, 0, 0)
+		done <- err
+	}()
+	select {
+	case err := <-done:
+		t.Fatalf("CancelACP returned early: %v", err)
+	case <-time.After(200 * time.Millisecond):
+	}
+	_ = r.Close()
+	select {
+	case err := <-done:
+		if !errors.Is(err, ErrNoLiveSession) {
+			t.Errorf("CancelACP = %v, want ErrNoLiveSession", err)
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("CancelACP still blocked after the registry closed")
+	}
+}
+
 // The ACK says the turn was asked to stop, not that it is over: until
 // stop_reason arrives the session is still busy.
 func TestCancelACP_StillBusyUntilStopReason(t *testing.T) {

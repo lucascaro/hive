@@ -278,7 +278,7 @@ And everything the daemon sends on a control connection:
 | `PLAN_REVIEW` | Answer to `GET_PLAN_REVIEW`. |
 | `PLUGINS` | Answer to `LIST_PLUGINS`. |
 | `PLUGIN_EVENT` | Broadcast: a plugin was installed, removed, or changed status. |
-| `ACP_TRANSCRIPT` | Answer to `GET_ACP_TRANSCRIPT` (`reset`), and broadcast as an ACP session's transcript changes. Every message also carries the latest prompt's typed result: `prompt_id` (that prompt's user item), `result_status` (`submitted`, `none` once the turn ended without one, or absent while it runs) and `result` (the `submit_result` arguments). It also carries `stop_reason` (how the latest prompt ended: `end_turn`, `cancelled`, `max_tokens`, `max_turn_requests`, `refusal`, or `error` if the adapter call failed; absent while it runs) and `usage` (the adapter's latest `usage_update` for that prompt). A new prompt clears both. |
+| `ACP_TRANSCRIPT` | Answer to `GET_ACP_TRANSCRIPT` (`reset`), and broadcast as an ACP session's transcript changes. Every message also carries the latest prompt's typed result: `prompt_id` (that prompt's user item), `result_status` (`submitted`, `none` once the turn ended without one, or absent while it runs) and `result` (the canonical `{status, summary, data}` envelope the daemon validated and stored: keys in that order, `data` dropped when `status` is `error`). It also carries `stop_reason` (how the latest prompt ended: `end_turn`, `cancelled`, `max_tokens`, `max_turn_requests`, `refusal`, or `error` if the adapter call failed; absent while it runs) and `usage` (the adapter's latest `usage_update` for that prompt). A new prompt clears both. |
 | `SUBMIT_RESULT_OK` | Answer to `SUBMIT_RESULT`: the result is recorded. |
 | `SENT` | Answer to `SEND_TO_SESSION`: how the note was delivered (`typed`, `queued` or `acp`). Never sent to a plugin, which is refused. |
 
@@ -337,7 +337,9 @@ and a result that does not match is refused with the failing path
 agent can call `submit_result` again. `status: "error"` carries no data:
 it is not checked and any `data` is dropped. The envelope's keys are matched
 exactly (a stray `Status` or `DATA` is refused, as is any key but `status`,
-`summary`, `data`), and a number outside float64 range is refused. The `{status, summary, data}` envelope is unchanged,
+`summary`, `data`), and, in a session with a `result_schema`, a `number` outside float64 range is refused. (A session without a schema has no data check at all; its `data` is stored as sent.) `summary` must be a string when present, never `null`.
+
+`CANCEL_ACP` without the `prompt_id` and `epoch` of the turn it is for is a race: the cancel stops whichever turn is running when it is handled, so one issued just as that turn ends can cancel the *next* prompt. Pass both from the `PROMPT_ACP` ACK. The `{status, summary, data}` envelope is unchanged,
 and the daemon refuses any `status` other than exactly `ok` or `error`.
 
 The two things to watch most plugins need are `SESSION_EVENT`'s `state`

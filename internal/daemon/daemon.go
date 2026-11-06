@@ -1788,15 +1788,20 @@ func (d *Daemon) handleControlFrame(ctx context.Context, ops controlOps, ft wire
 		}
 		// Off the read loop: CancelACP waits for the prompt to be sent and
 		// for the adapter's stdin, so a stalled adapter must not freeze
-		// this connection's other requests.
-		d.runOp(func() {
+		// this connection's other requests. Deliberately not d.runOp: Close
+		// waits for ops before it closes the registry, and closing the
+		// registry (killing the adapter) is the only thing that unblocks a
+		// wedged stdin write, so a tracked cancel would block shutdown.
+		// CancelACP returns once the registry closes; the reply then goes
+		// to a connection Close has already shut, which is harmless.
+		go func() {
 			wasBusy, err := d.reg.CancelACP(req.SessionID, req.PromptID, req.Epoch)
 			if err != nil {
 				sendACPError(ops, err, req.SessionID)
 				return
 			}
 			ops.ack(wire.AckMsg{SessionID: req.SessionID, WasBusy: wasBusy})
-		})
+		}()
 	case wire.FrameListAcpAgents:
 		// Off the read loop: availability probes the login shell's PATH.
 		d.runOp(func() {

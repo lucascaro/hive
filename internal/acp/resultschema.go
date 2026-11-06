@@ -208,7 +208,7 @@ func CanonicalEnvelope(s *Schema, envelope json.RawMessage) (json.RawMessage, er
 	out.WriteString(`{"status":` + strconv.Quote(status))
 	if raw, ok := env["summary"]; ok {
 		var sum string
-		if json.Unmarshal(raw, &sum) != nil {
+		if string(raw) == "null" || json.Unmarshal(raw, &sum) != nil { // null would decode to ""
 			return nil, errors.New(`"summary" must be a string`)
 		}
 		b, _ := json.Marshal(sum)

@@ -849,7 +849,14 @@ func (r *Registry) CancelACP(id string, promptID, epoch int) (wasBusy bool, err 
 	// Then turnMu keeps the turn from being freed (and the next one from
 	// starting) until the cancel is on the wire. r.mu is never held across
 	// either wait or the write.
-	<-sent
+	// The wait also ends when the registry closes: a prompt write that never
+	// finishes (an adapter that stopped reading stdin) is only unblocked by
+	// Close killing the adapter, so a cancel must not outlive it.
+	select {
+	case <-sent:
+	case <-r.tickStop: // closed by Close; nil (a literal Registry) never fires
+		return false, ErrNoLiveSession
+	}
 	as.turnMu.Lock()
 	defer as.turnMu.Unlock()
 	r.mu.Lock()
