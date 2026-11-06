@@ -508,3 +508,10 @@ scripts/ui-lint.sh                                             # PR1, PR3 (GUI t
 ## Gate verdict
 
 <!-- /hs-merge-gate appends one line per run here (append-only). -->
+- **2026-11-06** — verdict: FAIL; phase: 1/3; checks: 4 passed / 1 failed / 0 followups / 5 deferred; followups: none; one-line: independent gate at 6884e424; code passed every PR 1 criterion, failed on doc accuracy (docs/plugins.md CANCEL_ACP row lacked `acp_busy`/`session_dead`) and missing Phase/Gate-verdict bookkeeping. Recorded retroactively by the 17c3d1cd gate.
+- **2026-11-06** — verdict: PASS; phase: 1/3; checks: 6 passed / 0 failed / 0 followups / 5 deferred; followups: none; one-line: phase 1 of 3 gated at 17c3d1cd; the delta from 6884e424 is docs-only and fixes both prior findings; spec stays at GATE, plan stays in active/.
+  - 2026-11-06 dimensions:
+    - acceptance — PASS — criteria 1-4 (provenance, typed results, ACP cancel, request/reply) pass on code unchanged since 6884e424 (`git diff 6884e424..17c3d1cd` touches only docs/plugins.md, this plan and the spec frontmatter); `DaemonContract` 33 → 34; criteria 5-9 DEFERRED (phase > 1: PR2/PR3 per ## Approach).
+    - non-goals — PASS
+    - doc accuracy — PASS — CANCEL_ACP row matches `internal/daemon/daemon.go` (`maxPendingCancels = 64`, `pendingCancels` shared daemon-wide → `acp_busy`) and `Registry.CancelACP` (`ErrNoLiveSession` on gone adapter, failed `session/cancel` write, or registry close → `session_dead`); "drains when the stuck session is killed" holds since `PromptACPTurn`'s goroutine always closes `promptSent` after the write returns. No changeset (`no-changeset` label), so `regression_of` n/a.
+    - PR state — 18/18 review threads resolved; `gh pr checks 532` all pass (CodeRabbit, regenerate-generated skipping).
