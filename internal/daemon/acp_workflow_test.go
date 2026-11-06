@@ -294,7 +294,7 @@ func TestCancelAcp_RefusedOnSessionConn(t *testing.T) {
 // Cancels waiting on a prompt write are untracked by ops, so their number
 // is capped: past the cap a cancel is refused, not queued without bound.
 func TestCancelAcp_PendingCancelsAreBounded(t *testing.T) {
-	d := startTestDaemon(t)
+	d := newFrameTestDaemon(t)
 	rec := &recordOps{}
 	d.pendingCancels.Store(maxPendingCancels)
 	defer d.pendingCancels.Store(0)
