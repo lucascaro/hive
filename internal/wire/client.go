@@ -147,6 +147,10 @@ var controlEvents = map[FrameType]string{
 	// browser tests that do.
 	FrameAck:       "control:ack",
 	FrameAcpAgents: "acp:agents",
+	// Spec 528: a plugin's message to the GUI, and the answer to
+	// PREPARE_WORKTREE.
+	FramePluginMessage:    "plugin:message",
+	FramePreparedWorktree: "worktree:prepared",
 
 	FrameIdeas:     "idea:list",
 	FrameIdeaEvent: "idea:event",

@@ -28,6 +28,13 @@ package buildinfo
 // History (newest first), so a bump is a decision with a record and
 // not just a number going up:
 //
+//	35 — Workflow-engine prerequisites, part 2 (spec 528). New
+//	    PLUGIN_MESSAGE (0x53, both ways: a plugin to every UI client, a
+//	    UI client to a named plugin), PREPARE_WORKTREE (0x54) answered by
+//	    PREPARED_WORKTREE (0x55), and COMMIT_WORKTREE (0x56) answered by an
+//	    ACK that gains committed and head. A workflow plugin or GUI built
+//	    against this tree and run on an older daemon gets an unknown-frame
+//	    refusal, or no answer, for all four.
 //	34 — Workflow-engine prerequisites, part 1 (spec 528). Any control
 //	    request may carry req_id, echoed on ERROR, with a new ACK frame
 //	    (0x4f) for requests with no reply of their own; CREATE_SESSION is
@@ -292,7 +299,7 @@ package buildinfo
 //	    before this cannot see or clear the flag.
 //	1 — first contract; everything up to and including the
 //	    CLIENT_COMMAND relay.
-const DaemonContract = 34
+const DaemonContract = 35
 
 // Identity is this binary's full build identity. `hived --version
 // --json` prints it, and Welcome carries the same three values, so a

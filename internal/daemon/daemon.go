@@ -97,6 +97,9 @@ type Daemon struct {
 	// commands relays client-to-client verbs (see commands.go). Not
 	// state, so it is not in the registry.
 	commands *commandHub
+	// pluginMsgs relays PLUGIN_MESSAGE between plugins and UI clients
+	// (pluginmsg.go). Not state either.
+	pluginMsgs *pluginMsgHub
 
 	// transcripts caches the projection of exactly one session's agent
 	// transcript — the most recently searched. One, not many, because
@@ -381,6 +384,7 @@ func New(cfg Config) (*Daemon, error) {
 		orphanCandidates: orphanCandidates,
 		clients:          make(map[net.Conn]struct{}),
 		commands:         newCommandHub(),
+		pluginMsgs:       newPluginMsgHub(),
 		pluginFanout:     make(chan struct{}, 1),
 		shutdown:         make(chan struct{}),
 		stop:             make(chan struct{}),
@@ -640,6 +644,9 @@ func (d *Daemon) Close() error {
 	d.ops.Wait()
 	if d.commands != nil {
 		d.commands.Close()
+	}
+	if d.pluginMsgs != nil {
+		d.pluginMsgs.Close()
 	}
 	if d.ln != nil {
 		_ = d.ln.Close()
@@ -1111,6 +1118,26 @@ func (d *Daemon) serveControl(ctx context.Context, conn net.Conn, hello wire.Hel
 		defer plUnsub()
 	}
 
+	// PLUGIN_MESSAGE queues (pluginmsg.go): a UI-capable client receives
+	// every plugin's messages, a plugin its own UI's. Nil otherwise,
+	// which blocks forever in the select below. Subscribed before
+	// WELCOME like the rest, so a message sent the moment the client
+	// learns it is connected is not lost.
+	isUI := hello.Mode == wire.ModeControl && tag == nil && canAnswer(hello)
+	var uiMsgs, plMsgs chan wire.PluginMessage
+	pluginID := ""
+	switch {
+	case isUI:
+		var unsub func()
+		uiMsgs, unsub = d.pluginMsgs.subscribeUI()
+		defer unsub()
+	case tag != nil && hello.Mode == wire.ModeControl:
+		var unsub func()
+		plMsgs, unsub = d.pluginMsgs.subscribePlugin(tag.id)
+		defer unsub()
+		pluginID = tag.id
+	}
+
 	// Captured once, so a test shrinking the var cannot race this
 	// connection's writers.
 	connTimeout := writeTimeout()
@@ -1246,6 +1273,20 @@ func (d *Daemon) serveControl(ctx context.Context, conn net.Conn, hello wire.Hel
 				if err := writeJSON(wire.FramePluginEvent, ev); err != nil {
 					return
 				}
+			case m, ok := <-uiMsgs:
+				if !ok {
+					return
+				}
+				if err := writeJSON(wire.FramePluginMessage, m); err != nil {
+					return
+				}
+			case m, ok := <-plMsgs:
+				if !ok {
+					return
+				}
+				if err := writeJSON(wire.FramePluginMessage, m); err != nil {
+					return
+				}
 			case <-stop:
 				return
 			}
@@ -1273,6 +1314,8 @@ func (d *Daemon) serveControl(ctx context.Context, conn net.Conn, hello wire.Hel
 		ownSessionID:   hello.SessionID,
 		ownProjectID:   ownProjectID,
 		principal:      principalOf(tag),
+		uiCapable:      isUI,
+		pluginID:       pluginID,
 		acpListener:    acpListener,
 		writeJSON:      writeJSON,
 		sendError:      sendError,
@@ -1464,7 +1507,13 @@ type controlOps struct {
 	reqID int
 	// acpListener is this connection's ACP_TRANSCRIPT fan-out, which
 	// GET_ACP_TRANSCRIPT answers through.
-	acpListener    registry.AcpListener
+	acpListener registry.AcpListener
+	// pluginID is the plugin this control connection belongs to ("" for
+	// everyone else); uiCapable marks a user control client that shows
+	// UI (the GUI, the ws-bridge). Together they decide who a
+	// PLUGIN_MESSAGE comes from and where it goes.
+	pluginID       string
+	uiCapable      bool
 	writeJSON      func(wire.FrameType, any) error
 	sendError      func(code, msg string)
 	sendWorktrees  func(projectID, failCode string)
@@ -1817,6 +1866,12 @@ func (d *Daemon) handleControlFrame(ctx context.Context, ops controlOps, ft wire
 			}
 			ops.ack(wire.AckMsg{SessionID: req.SessionID, WasBusy: wasBusy})
 		}()
+	case wire.FramePluginMessage:
+		d.relayPluginMessage(ops, payload)
+	case wire.FramePrepareWorktree:
+		d.prepareWorktree(ctx, ops, payload)
+	case wire.FrameCommitWorktree:
+		d.commitWorktree(ctx, ops, payload)
 	case wire.FrameListAcpAgents:
 		// Off the read loop: availability probes the login shell's PATH.
 		d.runOp(func() {

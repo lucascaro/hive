@@ -79,6 +79,10 @@ func TestSDKTypedefsMatchWireStructs(t *testing.T) {
 		"Ack":           wire.AckMsg{},
 		"AcpAgentInfo":  wire.AcpAgentInfo{},
 		"AcpAgents":     wire.AcpAgentsMsg{},
+		// Spec 528 part two.
+		"PluginMessage":    wire.PluginMessage{},
+		"MergeConflict":    wire.MergeConflict{},
+		"PreparedWorktree": wire.PreparedWorktreeMsg{},
 	} {
 		block := typedefBlock(sdk, typedef)
 		if block == "" {

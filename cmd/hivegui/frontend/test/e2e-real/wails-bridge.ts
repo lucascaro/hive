@@ -279,6 +279,17 @@ export async function SetPluginConfig(
 ) {
   return call('SetPluginConfig', { id, config });
 }
+export async function SendPluginMessage(
+  pluginId: string,
+  topic: string,
+  dataJSON: string,
+) {
+  return call('SendPluginMessage', {
+    plugin_id: pluginId,
+    topic,
+    ...(dataJSON ? { data: JSON.parse(dataJSON) } : {}),
+  });
+}
 export async function SetClientUI(ids: string[]) {
   return call('SetClientUI', { plugin_uis: ids ?? [] });
 }

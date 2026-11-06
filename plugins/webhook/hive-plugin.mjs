@@ -113,6 +113,10 @@ export const Frame = Object.freeze({
   CANCEL_ACP: 0x50,
   LIST_ACP_AGENTS: 0x51,
   ACP_AGENTS: 0x52,
+  PLUGIN_MESSAGE: 0x53,
+  PREPARE_WORKTREE: 0x54,
+  PREPARED_WORKTREE: 0x55,
+  COMMIT_WORKTREE: 0x56,
 });
 
 const frameName = new Map(Object.entries(Frame).map(([k, v]) => [v, k]));
@@ -135,6 +139,8 @@ export const REQUEST_VERBS = Object.freeze([
   'SEARCH_TRANSCRIPT',
   'GET_TRANSCRIPT_LINES',
   'LIST_ACP_AGENTS',
+  'PREPARE_WORKTREE',
+  'COMMIT_WORKTREE',
 ]);
 
 // request() ids are REQUEST_ID_BASE + n, disjoint from small caller-chosen ids.
@@ -147,6 +153,7 @@ const REQUEST_ID_BASE = 2 ** 30;
 const REPLY_FRAMES = new Set([
   Frame.ACK,
   Frame.ACP_AGENTS,
+  Frame.PREPARED_WORKTREE,
   Frame.TRANSCRIPT_MATCHES,
   Frame.TRANSCRIPT_LINES,
 ]);
@@ -198,6 +205,38 @@ const MAX_PAYLOAD = 1 << 20;
  * @property {boolean} [was_busy] CANCEL_ACP: a turn was running and was cancelled (absent = false)
  * @property {number} [prompt_id] PROMPT_ACP: the transcript item id of the turn just started
  * @property {number} [epoch] PROMPT_ACP: the transcript epoch that prompt_id belongs to
+ * @property {boolean} [committed] COMMIT_WORKTREE: a commit was made (absent = false: the tree was clean, nothing changed)
+ * @property {string} [head] COMMIT_WORKTREE: the worktree's HEAD afterwards
+ */
+
+/**
+ * A PLUGIN_MESSAGE, in either direction: what {@link HiveConnection#postMessage}
+ * sends and what the `'PLUGIN_MESSAGE'` event delivers. There is no req_id;
+ * a sender that needs an answer puts its own nonce in `data`.
+ * @typedef {object} PluginMessage
+ * @property {string} plugin_id the sending plugin (the daemon sets it, whatever a plugin claims); from the GUI, the target plugin
+ * @property {string} topic matches ^[a-z][a-z0-9._-]{0,63}$
+ * @property {*} [data] any JSON; the whole frame is capped at 64 KiB
+ */
+
+/**
+ * @typedef {object} MergeConflict
+ * @property {string} branch the branch that did not merge
+ * @property {string[]} files the files in conflict
+ */
+
+/**
+ * The reply to PREPARE_WORKTREE (`request('PREPARE_WORKTREE', …)`).
+ * @typedef {object} PreparedWorktree
+ * @property {number} [req_id]
+ * @property {string} project_id
+ * @property {string} path the worktree directory: authoritative
+ * @property {string} branch the branch it is on: authoritative
+ * @property {boolean} reattached the branch already existed, so `base` was ignored
+ * @property {string} [base_sha] the commit `base` resolved to; absent when reattached
+ * @property {string} head_sha the worktree's HEAD after any merges
+ * @property {string[]} merged the branches merged, in order
+ * @property {MergeConflict} [conflict] a merge stopped here; the worktree is kept at base plus `merged`
  */
 
 /**
@@ -306,6 +345,30 @@ const MAX_PAYLOAD = 1 << 20;
  * @property {string} cmd
  * @property {string} [session_id]
  */
+
+// ---- workflow branch keys ----
+
+// A workflow node key: slash-joined IR id segments, each optionally
+// followed by a map index. See scripts/workflow-proto/dsl.ts (ID_SEGMENT).
+const KEY_SEGMENT = '[a-z][a-z0-9]*(?:-[a-z0-9]+)*(?:\\[\\d+\\])?';
+const KEY_RE = new RegExp(`^${KEY_SEGMENT}(?:/${KEY_SEGMENT})*$`);
+
+/**
+ * Encodes a workflow node key for use in a branch name under
+ * `hive/wf/<run>/`: `[N]` becomes `_N` and `/` stays. Injective, since
+ * `_` never appears in an id segment: `fix[2]/work` is `fix_2/work`,
+ * `work/each[3]/do` is `work/each_3/do`. The daemon does not encode keys
+ * (it checks the branch with `git check-ref-format`); this is the one
+ * encoder. Throws on a key outside the grammar.
+ * @param {string} key
+ * @returns {string}
+ */
+export function encodeWorkflowKey(key) {
+  if (typeof key !== 'string' || !KEY_RE.test(key)) {
+    throw new Error(`hive: ${JSON.stringify(key)} is not a workflow node key`);
+  }
+  return key.replace(/\[(\d+)\]/g, '_$1');
+}
 
 // ---- framing ----
 
@@ -538,6 +601,20 @@ export class HiveConnection extends EventEmitter {
     const type = Frame[name];
     if (type === undefined) throw new Error(`hive: unknown frame ${name}`);
     this.sock.write(encode(type, payload));
+  }
+
+  /**
+   * Sends a PLUGIN_MESSAGE to the GUI: every UI-capable client receives
+   * it as a `plugin:message` event stamped with this plugin's id. There
+   * is no reply and no req_id; if you need an answer, put a nonce in
+   * `data` and watch for the GUI's own PLUGIN_MESSAGE back (`'PLUGIN_MESSAGE'`
+   * events, see the PluginMessage typedef). The frame is capped at 64 KiB;
+   * the daemon refuses a bigger one with `plugin_message_too_large`.
+   * @param {string} topic matches ^[a-z][a-z0-9._-]{0,63}$
+   * @param {*} [data] any JSON
+   */
+  postMessage(topic, data) {
+    this.send('PLUGIN_MESSAGE', data === undefined ? { topic } : { topic, data });
   }
 
   /**

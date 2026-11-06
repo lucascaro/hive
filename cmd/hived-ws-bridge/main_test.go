@@ -456,6 +456,22 @@ func TestBridge_ListAcpAgentsAndCancelAcpDecodeParams(t *testing.T) {
 	}
 }
 
+// The spec 528 ops decode their params (a malformed body is refused,
+// not dropped) and otherwise reach the control connection.
+func TestBridge_WorkflowOpsDecodeAndForward(t *testing.T) {
+	ws := dialTestBridge(t)
+	for i, op := range []string{"PrepareWorktree", "CommitWorktree", "SendPluginMessage"} {
+		if resp := roundTrip(t, ws, 10+i, op, `{"req_id":"not a number","topic":5}`); strings.Contains(resp.Error, "no control connection") || resp.Error == "" {
+			t.Errorf("%s with malformed params: error = %q, want a decode error", op, resp.Error)
+		}
+	}
+	for i, op := range []string{"PrepareWorktree", "CommitWorktree", "SendPluginMessage"} {
+		if resp := roundTrip(t, ws, 20+i, op, `{"project_id":"p","topic":"t","data":{"a":1}}`); !strings.Contains(resp.Error, "no control connection") {
+			t.Errorf("%s: error = %q, want %q", op, resp.Error, "no control connection")
+		}
+	}
+}
+
 // SetClientUI reaches the control connection like any other verb.
 func TestBridge_SetClientUIForwarded(t *testing.T) {
 	ws := dialTestBridge(t)

@@ -384,6 +384,54 @@ func (a *App) CreateWorktree(projectID, branch string) error {
 	})
 }
 
+// PrepareWorktree asks the daemon for a worktree on a workflow run's
+// branch (spec 528). The answer is the "worktree:prepared" event, or a
+// "control:error" carrying reqID. No GUI surface uses it yet; it is
+// bound for the workflow UI.
+func (a *App) PrepareWorktree(reqID int, projectID, runID, branch, base string, merge []string) error {
+	cs, err := a.requireControl()
+	if err != nil {
+		return err
+	}
+	return cs.WriteJSON(wire.FramePrepareWorktree, wire.PrepareWorktreeReq{
+		ReqID: reqID, ProjectID: projectID, WorkflowRunID: runID,
+		Branch: branch, Base: base, Merge: merge,
+	})
+}
+
+// CommitWorktree commits everything in a workflow run's worktree (spec
+// 528). The answer is the "control:ack" event carrying reqID.
+func (a *App) CommitWorktree(reqID int, projectID, runID, branch, message string) error {
+	cs, err := a.requireControl()
+	if err != nil {
+		return err
+	}
+	return cs.WriteJSON(wire.FrameCommitWorktree, wire.CommitWorktreeReq{
+		ReqID: reqID, ProjectID: projectID, WorkflowRunID: runID,
+		Branch: branch, Message: message,
+	})
+}
+
+// SendPluginMessage sends a message to a running plugin (spec 528). The
+// plugin's own messages arrive as the "plugin:message" event. dataJSON is
+// any JSON document, or empty for none; the daemon refuses a topic that
+// is not [a-z][a-z0-9._-]{0,63}, a frame over 64 KiB, and a plugin that
+// is not running.
+func (a *App) SendPluginMessage(pluginID, topic, dataJSON string) error {
+	var data json.RawMessage
+	if strings.TrimSpace(dataJSON) != "" {
+		if !json.Valid([]byte(dataJSON)) {
+			return errors.New("plugin message data is not valid JSON")
+		}
+		data = json.RawMessage(dataJSON)
+	}
+	cs, err := a.requireControl()
+	if err != nil {
+		return err
+	}
+	return cs.WriteJSON(wire.FramePluginMessage, wire.PluginMessage{PluginID: pluginID, Topic: topic, Data: data})
+}
+
 // DeleteBranch removes a local branch that has no worktree. The daemon
 // refuses with "branch_unmerged" when the branch holds commits that are
 // not merged; the GUI confirms and retries with force.

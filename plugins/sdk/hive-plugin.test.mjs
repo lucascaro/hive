@@ -6,13 +6,14 @@
 // A fake daemon on a temp unix socket stands in for hived.
 
 import assert from 'node:assert/strict';
+import { spawnSync } from 'node:child_process';
 import fs from 'node:fs';
 import net from 'node:net';
 import os from 'node:os';
 import path from 'node:path';
 import test from 'node:test';
 
-import { connect, Frame, REQUEST_VERBS } from './hive-plugin.mjs';
+import { connect, encodeWorkflowKey, Frame, REQUEST_VERBS } from './hive-plugin.mjs';
 
 const unixOnly = { skip: process.platform === 'win32' ? 'unix sockets' : false };
 
@@ -280,5 +281,113 @@ test('request on an unknown frame name rejects', unixOnly, async () => {
     await assert.rejects(d.hive.request('NOPE'), /unknown frame/);
   } finally {
     await d.close();
+  }
+});
+
+// ---- spec 528 PR 2: plugin messages, worktree frames, branch keys ----
+
+test('postMessage sends PLUGIN_MESSAGE with topic and data, and no req_id', unixOnly, async () => {
+  const seen = [];
+  const d = await fakeDaemon((type, p) => seen.push([type, p]));
+  try {
+    d.hive.postMessage('run.state', { n: 1, items: [true, null] });
+    d.hive.postMessage('ping');
+    await new Promise((r) => setTimeout(r, 50));
+    assert.deepEqual(seen, [
+      [Frame.PLUGIN_MESSAGE, { topic: 'run.state', data: { n: 1, items: [true, null] } }],
+      [Frame.PLUGIN_MESSAGE, { topic: 'ping' }],
+    ]);
+  } finally {
+    await d.close();
+  }
+});
+
+test('a PLUGIN_MESSAGE from the GUI is an event, and never settles a request', unixOnly, async () => {
+  const d = await fakeDaemon((type, p, reply) => {
+    // The GUI's message carries the same number as the pending request.
+    if (type === Frame.PREPARE_WORKTREE) reply(Frame.PLUGIN_MESSAGE, { plugin_id: 'wf', topic: 't', data: { req_id: p.req_id } });
+  });
+  try {
+    const got = new Promise((r) => d.hive.once('PLUGIN_MESSAGE', r));
+    const pending = d.hive.request('PREPARE_WORKTREE', {}, { timeoutMs: 150 });
+    const msg = await got;
+    assert.equal(msg.plugin_id, 'wf');
+    assert.equal(msg.topic, 't');
+    await assert.rejects(pending, /timed out/);
+  } finally {
+    await d.close();
+  }
+});
+
+test('request resolves PREPARE_WORKTREE on PREPARED_WORKTREE and COMMIT_WORKTREE on ACK', unixOnly, async () => {
+  const d = await fakeDaemon((type, p, reply) => {
+    if (type === Frame.PREPARE_WORKTREE) {
+      reply(Frame.PREPARED_WORKTREE, {
+        req_id: p.req_id, project_id: p.project_id, path: '/w', branch: p.branch, reattached: false,
+        base_sha: 'a'.repeat(40), head_sha: 'b'.repeat(40), merged: [],
+      });
+    }
+    if (type === Frame.COMMIT_WORKTREE) reply(Frame.ACK, { req_id: p.req_id, committed: true, head: 'c'.repeat(40) });
+  });
+  try {
+    const prep = await d.hive.request('PREPARE_WORKTREE', {
+      project_id: 'p1', workflow_run_id: 'r1', branch: 'hive/wf/r1/a', base: 'main',
+    });
+    assert.equal(prep.path, '/w');
+    assert.equal(prep.branch, 'hive/wf/r1/a');
+    const ack = await d.hive.request('COMMIT_WORKTREE', {
+      project_id: 'p1', workflow_run_id: 'r1', branch: 'hive/wf/r1/a', message: 'm',
+    });
+    assert.deepEqual([ack.committed, ack.head], [true, 'c'.repeat(40)]);
+  } finally {
+    await d.close();
+  }
+});
+
+test('PREPARE_WORKTREE rejects on the daemon refusal', unixOnly, async () => {
+  const d = await fakeDaemon((type, p, reply) => {
+    reply(Frame.ERROR, { req_id: p.req_id, code: 'invalid_base', message: 'nope' });
+  });
+  try {
+    await assert.rejects(d.hive.request('PREPARE_WORKTREE', { base: '--x' }), (e) => e.hive.code === 'invalid_base');
+  } finally {
+    await d.close();
+  }
+});
+
+test('encodeWorkflowKey maps [N] to _N and keeps /', () => {
+  assert.equal(encodeWorkflowKey('fix[2]/work'), 'fix_2/work');
+  assert.equal(encodeWorkflowKey('work/each[3]/do'), 'work/each_3/do');
+  assert.equal(encodeWorkflowKey('outer[1]/inner[22]/do'), 'outer_1/inner_22/do');
+  assert.equal(encodeWorkflowKey('plan'), 'plan');
+  assert.equal(encodeWorkflowKey('a-b/c-d2'), 'a-b/c-d2');
+});
+
+test('encodeWorkflowKey rejects keys outside the grammar', () => {
+  for (const bad of ['', 'A', '1a', 'a b', 'a//b', '/a', 'a/', 'a[]', 'a[x]', 'a[1', 'a[1][2]', 'a_1', 'a.b', 'a-', '-a', 'a--b', '../x', 'a\n', null, undefined, 5]) {
+    assert.throws(() => encodeWorkflowKey(bad), /not a workflow node key/, JSON.stringify(bad));
+  }
+});
+
+test('encodeWorkflowKey is injective and its output is a legal ref name', () => {
+  const segs = ['a', 'ab', 'a-b', 'a1', 'fix', 'work'];
+  const keys = new Set();
+  for (const s of segs) {
+    keys.add(s);
+    for (const n of [0, 1, 2, 10, 11]) keys.add(`${s}[${n}]`);
+  }
+  const single = [...keys];
+  for (const a of single) for (const b of single) keys.add(`${a}/${b}`);
+  const seen = new Map();
+  for (const k of keys) {
+    const enc = encodeWorkflowKey(k);
+    assert.ok(!seen.has(enc), `${k} and ${seen.get(enc)} both encode to ${enc}`);
+    seen.set(enc, k);
+  }
+  assert.ok(seen.size > 100);
+  if (spawnSync('git', ['--version']).status !== 0) return;
+  for (const enc of [...seen.keys()].filter((_, i) => i % 7 === 0)) {
+    const r = spawnSync('git', ['check-ref-format', '--branch', `hive/wf/r1/${enc}`]);
+    assert.equal(r.status, 0, `${enc}: ${r.stderr}`);
   }
 });

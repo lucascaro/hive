@@ -640,6 +640,27 @@ func (s *session) dispatch(req rpcReq) {
 			return
 		}
 		s.respond(req.ID, "", s.controlWriteJSON(wire.FrameCreateWorktree, p))
+	case "PrepareWorktree":
+		var p wire.PrepareWorktreeReq
+		if err := parseParams(req.Params, &p); err != nil {
+			s.respond(req.ID, nil, err)
+			return
+		}
+		s.respond(req.ID, "", s.controlWriteJSON(wire.FramePrepareWorktree, p))
+	case "CommitWorktree":
+		var p wire.CommitWorktreeReq
+		if err := parseParams(req.Params, &p); err != nil {
+			s.respond(req.ID, nil, err)
+			return
+		}
+		s.respond(req.ID, "", s.controlWriteJSON(wire.FrameCommitWorktree, p))
+	case "SendPluginMessage":
+		var p wire.PluginMessage
+		if err := parseParams(req.Params, &p); err != nil {
+			s.respond(req.ID, nil, err)
+			return
+		}
+		s.respond(req.ID, "", s.controlWriteJSON(wire.FramePluginMessage, p))
 	case "DeleteBranch":
 		var p wire.DeleteBranchReq
 		if err := parseParams(req.Params, &p); err != nil {

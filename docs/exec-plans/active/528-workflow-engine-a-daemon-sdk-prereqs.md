@@ -3,10 +3,10 @@
 - **Spec:** [docs/product-specs/528-workflow-engine-a-daemon-and-sdk-prerequisites-prov.md](../../product-specs/528-workflow-engine-a-daemon-and-sdk-prerequisites-prov.md)
 - **Design:** [workflow-engine.md](../../design-docs/workflow-engine.md) ("What the engine spec must add"), [acp-workflows.md](../../design-docs/acp-workflows.md)
 - **Issue:** #528
-- **Branch:** `feature/528-daemon-sdk-prereqs` (research/plan); one branch per PR below
+- **Branch:**
 - **Status:** active
-- **PR:** #532
-- **Phase:** 1 of 3
+- **PR:**
+- **Phase:** 2 of 3
 
 ## Summary
 

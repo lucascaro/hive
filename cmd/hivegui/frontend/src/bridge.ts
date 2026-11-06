@@ -63,6 +63,7 @@ export {
   SetPluginEnabled,
   RemovePlugin,
   SetPluginConfig,
+  SendPluginMessage,
   SetClientUI,
   PluginAssetBase,
   ResolvePrompt,

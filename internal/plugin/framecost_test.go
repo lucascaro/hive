@@ -20,4 +20,15 @@ func TestFrameCost_WorkflowFrames(t *testing.T) {
 	if got := FrameCost(wire.FrameCancelAcp); got != costCheap {
 		t.Errorf("CANCEL_ACP costs %v, want %v", got, float64(costCheap))
 	}
+	// A prepare or commit runs child processes; a plugin message fans out
+	// to every UI client.
+	for ft, want := range map[wire.FrameType]float64{
+		wire.FramePrepareWorktree: costExpense,
+		wire.FrameCommitWorktree:  costExpense,
+		wire.FramePluginMessage:   costFanout,
+	} {
+		if got := FrameCost(ft); got != want {
+			t.Errorf("%s costs %v, want %v", ft, got, want)
+		}
+	}
 }

@@ -411,6 +411,29 @@ func copyEntry(src, dst string) error {
 	return os.WriteFile(dst, body, st.Mode().Perm())
 }
 
+// agentConfigExcludes returns git pathspecs that exclude the agent
+// config LinkAgentConfig planted in worktreePath.
+func agentConfigExcludes(worktreePath string) []string {
+	var out []string
+	for _, dir := range agentConfigDirs {
+		for _, name := range agentConfigEntries {
+			rel := dir + "/" + name
+			// Only exclude what is still a symlink. Excluding these paths
+			// by name would hide real work: a project that COMMITS
+			// .claude/commands sees LinkAgentConfig skip it (destination
+			// exists), so the path is not ours at all, and an edit to it
+			// must still count. Same if the user replaces a link with real
+			// local content.
+			fi, err := os.Lstat(filepath.Join(worktreePath, rel))
+			if err != nil || fi.Mode()&os.ModeSymlink == 0 {
+				continue
+			}
+			out = append(out, ":(exclude)"+rel)
+		}
+	}
+	return out
+}
+
 // HasUncommitted reports whether the worktree has tracked changes,
 // untracked files, or staged-but-uncommitted changes. Returns
 // (false, nil) when worktreePath is missing — a missing worktree
@@ -433,23 +456,8 @@ func HasUncommitted(worktreePath string) (bool, error) {
 	// -uall is load-bearing: without it git collapses an untracked
 	// directory to a single "?? .claude/" entry and never descends far
 	// enough for the pathspec exclusions below to match.
-	args := []string{"-C", worktreePath, "status", "--porcelain", "-uall", "--", "."}
-	for _, dir := range agentConfigDirs {
-		for _, name := range agentConfigEntries {
-			rel := dir + "/" + name
-			// Only exclude what is still a symlink. Excluding these paths
-			// by name would hide real work: a project that COMMITS
-			// .claude/commands sees LinkAgentConfig skip it (destination
-			// exists), so the path is not ours at all, and an edit to it
-			// must still count. Same if the user replaces a link with real
-			// local content.
-			fi, err := os.Lstat(filepath.Join(worktreePath, rel))
-			if err != nil || fi.Mode()&os.ModeSymlink == 0 {
-				continue
-			}
-			args = append(args, ":(exclude)"+rel)
-		}
-	}
+	args := append([]string{"-C", worktreePath, "status", "--porcelain", "-uall", "--", "."},
+		agentConfigExcludes(worktreePath)...)
 	// Bounded like the rest of the read path: this runs once per
 	// candidate in the daemon's orphan-worktree scan, and a `git
 	// status` on a wedged repo must not hang it.
