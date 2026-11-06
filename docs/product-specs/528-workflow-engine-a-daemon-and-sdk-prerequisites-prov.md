@@ -4,7 +4,7 @@ title: "Workflow engine A: daemon and SDK prerequisites (provenance, typed resul
 type: enhancement
 complexity: M
 priority: P1
-stage: PLAN
+stage: GATE
 ---
 
 # Workflow engine A: daemon and SDK prerequisites (provenance, typed results, ACP cancel, plugin request/reply)
