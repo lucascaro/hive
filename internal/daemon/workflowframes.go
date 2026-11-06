@@ -31,6 +31,8 @@ func workflowWorktreeError(err error, generic string) (code string) {
 		return wire.ErrCodeInvalidBase
 	case errors.Is(err, worktree.ErrIdentityMissing):
 		return wire.ErrCodeGitIdentityMissing
+	case errors.Is(err, worktree.ErrDirty):
+		return wire.ErrCodeWorktreeDirty
 	case errors.Is(err, registry.ErrProjectNotFound):
 		return "no_such_project"
 	}

@@ -13,7 +13,6 @@ import (
 	"path/filepath"
 	"regexp"
 	"strings"
-	"sync"
 
 	"github.com/lucascaro/hive/internal/proc"
 	"github.com/lucascaro/hive/internal/wire"
@@ -41,6 +40,9 @@ var (
 	ErrIdentityMissing = errors.New("worktree: git identity (user.name, user.email) is not configured")
 	// ErrNotManaged: the worktree is outside <root>/.worktrees.
 	ErrNotManaged = errors.New("worktree: not a hive-managed worktree")
+	// ErrDirty: a merge was refused because the worktree holds
+	// uncommitted work that a failed merge could not give back.
+	ErrDirty = errors.New("worktree: worktree has uncommitted changes")
 )
 
 // RunBranchPrefix is the namespace a workflow run owns: every branch it
@@ -89,6 +91,8 @@ func ResolveCommit(ctx context.Context, repoDir, rev string) (string, error) {
 	switch {
 	case rev == "" || len(rev) > 256:
 		return "", fmt.Errorf("%w: empty or too long", ErrNoCommit)
+	case strings.HasPrefix(rev, ":/"):
+		return "", fmt.Errorf("%w: %q would search all of history", ErrNoCommit, rev)
 	case strings.HasPrefix(rev, "-"):
 		return "", fmt.Errorf("%w: %q looks like an option", ErrNoCommit, rev)
 	case strings.ContainsFunc(rev, func(r rune) bool { return r < 0x20 || r == 0x7f }):
@@ -112,11 +116,12 @@ func localBranchExists(ctx context.Context, repoDir, branch string) bool {
 // checked out, if any. A prunable entry (its directory is gone) is
 // reported as such so the caller can prune it before re-adding.
 func FindBranchWorktree(ctx context.Context, repoDir, branch string) (info Info, found bool, err error) {
-	out, err := safeGit(ctx, repoDir, "worktree", "list", "--porcelain")
+	// -z: a path may hold a newline, which must not read as more fields.
+	out, err := safeGit(ctx, repoDir, "worktree", "list", "--porcelain", "-z")
 	if err != nil {
 		return Info{}, false, err
 	}
-	for _, wt := range parseWorktreeList(string(out)) {
+	for _, wt := range parseWorktreeListZ(string(out)) {
 		if wt.Branch == branch {
 			return wt, true, nil
 		}
@@ -212,8 +217,19 @@ func PrepareRun(ctx context.Context, root, runID, branch, base string, merge []s
 	if err := CheckBranchName(ctx, root, runID, branch); err != nil {
 		return Prepared{}, err
 	}
+	if len(merge) > maxMergeBranches {
+		return Prepared{}, fmt.Errorf("%w: %d merge branches; the limit is %d", ErrInvalidWorkflowBranch, len(merge), maxMergeBranches)
+	}
 	shas := make([]NamedSHA, 0, len(merge))
+	seen := map[string]bool{}
 	for _, m := range merge {
+		if seen[m] {
+			continue
+		}
+		seen[m] = true
+		if err := ctx.Err(); err != nil {
+			return Prepared{}, err
+		}
 		if err := CheckBranchName(ctx, root, runID, m); err != nil {
 			return Prepared{}, fmt.Errorf("merge: %w", err)
 		}
@@ -265,6 +281,9 @@ func PrepareRun(ctx context.Context, root, runID, branch, base string, merge []s
 		}
 	}
 
+	if err := verifyWorktreeLink(ctx, root, out.Path); err != nil {
+		return Prepared{}, err
+	}
 	if out.Merged, out.Conflict, err = MergeBranches(ctx, out.Path, shas); err != nil {
 		return Prepared{}, err
 	}
@@ -290,10 +309,62 @@ func CommitRun(ctx context.Context, root, runID, branch, message string) (commit
 	if !found || wt.Prunable || !IsManaged(root, wt.Path) {
 		return false, "", fmt.Errorf("%w: no managed worktree has %s checked out", ErrNotManaged, branch)
 	}
+	if err := verifyWorktreeLink(ctx, root, wt.Path); err != nil {
+		return false, "", err
+	}
 	return CommitAll(ctx, wt.Path, message)
 }
 
-const maxCommitMessage = 16 << 10
+// verifyWorktreeLink checks that path/.git is the gitfile git itself
+// wrote for a worktree of root's repository: a regular file naming an
+// admin dir under root's common dir, which in turn names path/.git
+// back. The gitfile sits inside the working directory, where an agent
+// can rewrite it; pointing it at a gitdir of its own would make every
+// later git call there read that dir's config (filters, hooks) instead
+// of the repository's.
+func verifyWorktreeLink(ctx context.Context, root, path string) error {
+	bad := func(why string) error {
+		return fmt.Errorf("%w: %s: %s", ErrNotManaged, path, why)
+	}
+	gitfile := filepath.Join(path, ".git")
+	fi, err := os.Lstat(gitfile)
+	if err != nil || !fi.Mode().IsRegular() {
+		return bad(".git is not a regular file")
+	}
+	body, err := os.ReadFile(gitfile)
+	if err != nil {
+		return bad("cannot read .git")
+	}
+	line, _, _ := strings.Cut(string(body), "\n")
+	admin, ok := strings.CutPrefix(strings.TrimRight(line, "\r"), "gitdir: ")
+	if !ok || admin == "" {
+		return bad(".git is not a gitdir file")
+	}
+	if !filepath.IsAbs(admin) {
+		admin = filepath.Join(path, admin)
+	}
+	out, err := safeGit(ctx, root, "rev-parse", "--path-format=absolute", "--git-common-dir")
+	if err != nil {
+		return err
+	}
+	common := ResolvePath(strings.TrimSpace(string(out)))
+	admin = ResolvePath(admin)
+	if filepath.Dir(admin) != filepath.Join(common, "worktrees") {
+		return bad(".git points outside the repository's worktree admin dir")
+	}
+	back, err := os.ReadFile(filepath.Join(admin, "gitdir"))
+	if err != nil || ResolvePath(strings.TrimSpace(string(back))) != ResolvePath(gitfile) {
+		return bad("the admin dir does not point back at this .git")
+	}
+	return nil
+}
+
+const (
+	maxCommitMessage = 16 << 10
+	// maxMergeBranches bounds the git calls one PREPARE_WORKTREE makes
+	// while holding the registry's git lock.
+	maxMergeBranches = 64
+)
 
 // Head returns the SHA HEAD points at in dir.
 func Head(ctx context.Context, dir string) (string, error) {
@@ -328,6 +399,14 @@ func MergeBranches(ctx context.Context, wt string, shas []NamedSHA) (merged []st
 	if err := checkIdentity(ctx, wt); err != nil {
 		return nil, nil, err
 	}
+	// A merge that conflicts is aborted, and git cannot always restore
+	// local changes it had to stash for it: refuse rather than risk work
+	// (a re-attached worktree may hold the user's or an agent's edits).
+	if dirty, err := worktreeDirty(ctx, wt); err != nil {
+		return nil, nil, err
+	} else if dirty {
+		return nil, nil, fmt.Errorf("%w: commit or discard it before merging into %s", ErrDirty, wt)
+	}
 	for _, nb := range shas {
 		if !shaRe.MatchString(nb.SHA) {
 			return merged, nil, fmt.Errorf("worktree: %q is not a commit SHA", nb.SHA)
@@ -338,7 +417,7 @@ func MergeBranches(ctx context.Context, wt string, shas []NamedSHA) (merged []st
 			merged = append(merged, nb.Name)
 			continue
 		}
-		out, listErr := safeGit(ctx, wt, "diff", "--name-only", "--diff-filter=U", "-z")
+		out, listErr := safeGit(ctx, wt, "diff", "--no-ext-diff", "--name-only", "--diff-filter=U", "-z")
 		var files []string
 		if listErr == nil {
 			for _, f := range strings.Split(string(out), "\x00") {
@@ -372,7 +451,7 @@ func CommitAll(ctx context.Context, wt, message string) (committed bool, head st
 	if _, err := safeGit(ctx, wt, add...); err != nil {
 		return false, "", err
 	}
-	out, err := safeGit(ctx, wt, "diff", "--cached", "--name-only", "-z")
+	out, err := safeGit(ctx, wt, "diff", "--no-ext-diff", "--cached", "--name-only", "-z")
 	if err != nil {
 		return false, "", err
 	}
@@ -386,6 +465,15 @@ func CommitAll(ctx context.Context, wt, message string) (committed bool, head st
 	return committed, head, err
 }
 
+// worktreeDirty reports uncommitted work in wt: tracked changes or
+// untracked files, ignoring the agent config Hive itself linked in. It
+// is HasUncommitted through safeGit.
+func worktreeDirty(ctx context.Context, wt string) (bool, error) {
+	args := append([]string{"status", "--porcelain", "-uall", "-z", "--", "."}, agentConfigExcludes(wt)...)
+	out, err := safeGit(ctx, wt, args...)
+	return len(out) > 0, err
+}
+
 // checkIdentity fails with ErrIdentityMissing when git cannot name an
 // author and committer from configuration alone. There is no fallback
 // identity: a commit by someone else would be a lie in the history.
@@ -397,13 +485,6 @@ func checkIdentity(ctx context.Context, dir string) error {
 	}
 	return nil
 }
-
-// noHooksDir is an empty directory handed to core.hooksPath so no hook
-// of the repo (or of the user's global config) runs. Made once per
-// process, private to the user.
-var noHooksDir = sync.OnceValues(func() (string, error) {
-	return os.MkdirTemp("", "hive-nohooks-")
-})
 
 // scrubbedEnv names the variables that would redirect git at another
 // repository or index, whatever the repo itself says.
@@ -421,9 +502,9 @@ var scrubbedEnv = []string{
 // with a warning. Merge drivers and filters from the repo's config and
 // attributes still apply: they are the user's own repo.
 func safeGit(ctx context.Context, dir string, args ...string) ([]byte, error) {
-	hooks, err := noHooksDir()
+	hooks, err := noHooksPath()
 	if err != nil {
-		return nil, fmt.Errorf("worktree: no-hooks dir: %w", err)
+		return nil, fmt.Errorf("worktree: no-hooks path: %w", err)
 	}
 	ctx, cancel := context.WithTimeout(ctx, mutateTimeout)
 	defer cancel()
@@ -431,6 +512,18 @@ func safeGit(ctx context.Context, dir string, args ...string) ([]byte, error) {
 		"-C", dir,
 		"-c", "core.hooksPath=" + hooks,
 		"-c", "core.fsmonitor=false",
+		// Config-defined hooks (git 2.54+) run beside the hook directory;
+		// older git ignores these keys.
+		"-c", "hook.pre-commit.enabled=false",
+		"-c", "hook.prepare-commit-msg.enabled=false",
+		"-c", "hook.commit-msg.enabled=false",
+		"-c", "hook.post-commit.enabled=false",
+		"-c", "hook.pre-merge-commit.enabled=false",
+		"-c", "hook.post-merge.enabled=false",
+		"-c", "hook.post-checkout.enabled=false",
+		"-c", "hook.reference-transaction.enabled=false",
+		"-c", "hook.post-index-change.enabled=false",
+		"-c", "hook.post-rewrite.enabled=false",
 		"-c", "commit.gpgSign=false",
 		"-c", "user.useConfigOnly=true",
 	}, args...)

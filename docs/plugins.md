@@ -373,7 +373,12 @@ plugin and the Hive app, in both directions. `topic` matches
   arriving.
 
 It adds no privilege. Anything the app can ask of a plugin the user can
-already do, and a plugin already runs with the user's full access.
+already do, and a plugin already runs with the user's full access. The
+stamped `plugin_id` is an integrity label, not a boundary: it keeps one
+plugin from speaking as another through its own socket, but a plugin can
+find the main socket from `HIVE_SOCKET` and connect as any client, as it
+could always do (see **Trust**). So never treat a `PLUGIN_MESSAGE` from
+the app as the user's approval of anything.
 
 ### Workflow worktrees
 
@@ -409,8 +414,11 @@ merge?}` makes a git worktree for a workflow run. A plugin never runs
   merges that succeeded (`merged`), and the reply carries `conflict:
   {branch, files}`, so the user can resolve it by hand. Merging what is
   already merged does nothing, so repeating `merge` on a re-attached
-  branch is safe. A repo with no `user.name`/`user.email` fails with
-  `git_identity_missing`: there is no fallback identity.
+  branch is safe. At most 64 branches. A worktree with uncommitted
+  changes is not merged into (`worktree_dirty`), because aborting a
+  conflicting merge could not give those changes back. A repo with no
+  `user.name`/`user.email` fails with `git_identity_missing`: there is no
+  fallback identity.
 
 `COMMIT_WORKTREE` `{req_id, project_id, workflow_run_id, branch,
 message}` stages everything in the worktree that has `branch` checked

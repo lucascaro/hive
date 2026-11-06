@@ -164,7 +164,7 @@ func TestFreePath_RefusesSymlinkedManagedDir(t *testing.T) {
 	}
 }
 
-func TestPrepareRun_PassesResolvedSHA(t *testing.T) {
+func TestPrepareWorktree_PassesResolvedSHA(t *testing.T) {
 	repo := workflowRepo(t)
 	ctx := context.Background()
 	old := revParse(t, repo, "HEAD")
@@ -283,11 +283,164 @@ func TestMergeBranches_Clean(t *testing.T) {
 	if who := strings.TrimSpace(gitOut(t, p.Path, "log", "-1", "--format=%an <%ae>")); who != "Test User <test@example.com>" {
 		t.Errorf("merge author = %q", who)
 	}
-	// Repeating the same merge on the re-attached branch is a no-op.
-	before := p.HeadSHA
-	p2, err := PrepareRun(ctx, repo, run, runBranch("merge"), "main", []string{runBranch("n1"), runBranch("n2")})
-	if err != nil || p2.Conflict != nil || len(p2.Merged) != 2 || p2.HeadSHA != before {
-		t.Errorf("repeat: %+v, %v (head was %s)", p2, err, before)
+}
+
+// Repeating the same merge on the re-attached branch is a no-op.
+func TestMergeBranches_AlreadyMergedIsNoop(t *testing.T) {
+	repo := workflowRepo(t)
+	ctx := context.Background()
+	branchWith(t, repo, runBranch("n1"), "main", "a.txt", "a\n")
+	branchWith(t, repo, runBranch("n2"), "main", "b.txt", "b\n")
+	list := []string{runBranch("n1"), runBranch("n2")}
+	p, err := PrepareRun(ctx, repo, run, runBranch("merge"), "main", list)
+	if err != nil {
+		t.Fatal(err)
+	}
+	p2, err := PrepareRun(ctx, repo, run, runBranch("merge"), "main", list)
+	if err != nil || !p2.Reattached || p2.Conflict != nil || len(p2.Merged) != 2 || p2.HeadSHA != p.HeadSHA {
+		t.Errorf("repeat: %+v, %v (head was %s)", p2, err, p.HeadSHA)
+	}
+	if n := strings.TrimSpace(gitOut(t, p.Path, "rev-list", "--count", "main..HEAD")); n != "4" {
+		t.Errorf("%s commits past main after the repeat, want the original 4 (two nodes, two merges)", n)
+	}
+}
+
+// A conflicting merge is aborted, and git cannot always give back local
+// changes it set aside for it: a dirty tree is refused up front.
+func TestMergeBranches_RefusesDirtyWorktree(t *testing.T) {
+	repo := workflowRepo(t)
+	ctx := context.Background()
+	branchWith(t, repo, runBranch("n1"), "main", "same.txt", "one\n")
+	p, err := PrepareRun(ctx, repo, run, runBranch("merge"), "main", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	mustWrite(t, filepath.Join(p.Path, "same.txt"), "my hand edit\n")
+	_, err = PrepareRun(ctx, repo, run, runBranch("merge"), "main", []string{runBranch("n1")})
+	if !errors.Is(err, ErrDirty) {
+		t.Fatalf("err = %v, want ErrDirty", err)
+	}
+	if b, _ := os.ReadFile(filepath.Join(p.Path, "same.txt")); string(b) != "my hand edit\n" {
+		t.Errorf("the edit was lost: %q", b)
+	}
+	// Hive's own agent-config links are not the user's work.
+	mustMkdir(t, filepath.Join(repo, ".claude", "skills"))
+	clean, err := PrepareRun(ctx, repo, run, runBranch("m2"), "main", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	LinkAgentConfig(repo, clean.Path)
+	if _, err := PrepareRun(ctx, repo, run, runBranch("m2"), "main", []string{runBranch("n1")}); err != nil {
+		t.Errorf("linked agent config counted as dirty: %v", err)
+	}
+}
+
+func TestPrepareWorktree_MergeListIsBounded(t *testing.T) {
+	repo := workflowRepo(t)
+	many := make([]string, maxMergeBranches+1)
+	for i := range many {
+		many[i] = runBranch("n")
+	}
+	if _, err := PrepareRun(context.Background(), repo, run, runBranch("m"), "main", many); !errors.Is(err, ErrInvalidWorkflowBranch) {
+		t.Errorf("err = %v, want a refusal", err)
+	}
+}
+
+// A worktree path is attacker-chosen text to the parser: a newline in it
+// must not read as a forged `branch` line.
+func TestFindBranchWorktree_PathWithNewlineCannotForgeABranch(t *testing.T) {
+	repo := workflowRepo(t)
+	ctx := context.Background()
+	sha := revParse(t, repo, "HEAD")
+	evil := filepath.Join(t.TempDir(), "evil\nbranch refs/heads/"+runBranch("forged"))
+	if err := AddNewBranch(ctx, repo, runBranch("real"), evil, sha); err != nil {
+		t.Skipf("this filesystem or git refuses a newline in a path: %v", err)
+	}
+	if _, found, err := FindBranchWorktree(ctx, repo, runBranch("forged")); err != nil || found {
+		t.Errorf("forged branch found=%v err=%v", found, err)
+	}
+	wt, found, err := FindBranchWorktree(ctx, repo, runBranch("real"))
+	if err != nil || !found || wt.Path != ResolvePath(evil) {
+		t.Errorf("real branch: %+v found=%v err=%v", wt, found, err)
+	}
+}
+
+func TestParseWorktreeListZ(t *testing.T) {
+	out := "worktree /a\x00HEAD aaa\x00branch refs/heads/main\x00\x00" +
+		"worktree /b\nbranch refs/heads/x\x00HEAD bbb\x00detached\x00prunable gone\x00\x00"
+	got := parseWorktreeListZ(out)
+	if len(got) != 2 || got[0].Branch != "main" || got[1].Branch != "" || !got[1].Detached || !got[1].Prunable {
+		t.Fatalf("%+v", got)
+	}
+	if got[1].Path != "/b\nbranch refs/heads/x" {
+		t.Errorf("path = %q", got[1].Path)
+	}
+}
+
+// An agent can rewrite the .git file in its own worktree to point at a
+// gitdir it controls (filters, hooks). It must be refused, not followed.
+func TestCommitWorktree_RefusesRedirectedGitfile(t *testing.T) {
+	repo := workflowRepo(t)
+	ctx := context.Background()
+	p, err := PrepareRun(ctx, repo, run, runBranch("a"), "main", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	marker := filepath.Join(t.TempDir(), "pwned")
+	evil := filepath.Join(p.Path, ".evil")
+	mustGit(t, p.Path, "init", "-q", evil)
+	mustGit(t, evil, "config", "filter.x.clean", "sh -c 'touch "+marker+"; cat'")
+	mustWrite(t, filepath.Join(p.Path, ".gitattributes"), "* filter=x\n")
+	mustWrite(t, filepath.Join(p.Path, "f"), "f")
+	mustWrite(t, filepath.Join(p.Path, ".git"), "gitdir: "+filepath.Join(evil, ".git")+"\n")
+	if _, _, err := CommitRun(ctx, repo, run, runBranch("a"), "m"); !errors.Is(err, ErrNotManaged) {
+		t.Errorf("err = %v, want ErrNotManaged", err)
+	}
+	if _, err := os.Stat(marker); err == nil {
+		t.Error("a filter from the redirected gitdir ran")
+	}
+}
+
+// Config-defined hooks (git 2.54+) run beside the hooks directory.
+func TestSafeGit_ConfigHooksDoNotRun(t *testing.T) {
+	repo := workflowRepo(t)
+	ctx := context.Background()
+	marker := filepath.Join(t.TempDir(), "hook-ran")
+	mustGit(t, repo, "config", "hook.x.event", "post-commit")
+	mustGit(t, repo, "config", "hook.x.command", "touch '"+marker+"'")
+	p, err := PrepareRun(ctx, repo, run, runBranch("a"), "main", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	mustWrite(t, filepath.Join(p.Path, "f"), "f")
+	if _, _, err := CommitRun(ctx, repo, run, runBranch("a"), "m"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(marker); err == nil {
+		t.Error("a config-defined hook ran")
+	}
+}
+
+func TestCommitWorktree_HooksDoNotRun(t *testing.T) {
+	repo := workflowRepo(t)
+	ctx := context.Background()
+	markers := t.TempDir()
+	for _, h := range []string{"pre-commit", "commit-msg", "post-commit", "prepare-commit-msg", "post-checkout"} {
+		script := "#!/bin/sh\ntouch '" + filepath.Join(markers, h) + "'\nexit 1\n"
+		if err := os.WriteFile(filepath.Join(repo, ".git", "hooks", h), []byte(script), 0o755); err != nil {
+			t.Fatal(err)
+		}
+	}
+	p, err := PrepareRun(ctx, repo, run, runBranch("a"), "main", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	mustWrite(t, filepath.Join(p.Path, "f"), "f")
+	if committed, _, err := CommitRun(ctx, repo, run, runBranch("a"), "m"); err != nil || !committed {
+		t.Fatalf("committed=%v err=%v (a failing hook must not matter)", committed, err)
+	}
+	if entries, _ := os.ReadDir(markers); len(entries) != 0 {
+		t.Errorf("hooks ran: %v", entries)
 	}
 }
 
@@ -381,7 +534,7 @@ func TestSafeGit_HooksAndFsmonitorOff(t *testing.T) {
 	}
 }
 
-func TestCommitAll_CommitsAll(t *testing.T) {
+func TestCommitWorktree_CommitsAll(t *testing.T) {
 	repo := workflowRepo(t)
 	ctx := context.Background()
 	p, err := PrepareRun(ctx, repo, run, runBranch("a"), "main", nil)
@@ -409,7 +562,7 @@ func TestCommitAll_CommitsAll(t *testing.T) {
 	}
 }
 
-func TestCommitAll_CleanIsNoop(t *testing.T) {
+func TestCommitWorktree_CleanIsNoop(t *testing.T) {
 	repo := workflowRepo(t)
 	ctx := context.Background()
 	p, err := PrepareRun(ctx, repo, run, runBranch("a"), "main", nil)
@@ -422,7 +575,7 @@ func TestCommitAll_CleanIsNoop(t *testing.T) {
 	}
 }
 
-func TestCommitAll_SkipsLinkedAgentConfig(t *testing.T) {
+func TestCommitWorktree_SkipsLinkedAgentConfig(t *testing.T) {
 	repo := workflowRepo(t)
 	ctx := context.Background()
 	mustMkdir(t, filepath.Join(repo, ".claude", "skills"))
@@ -440,7 +593,7 @@ func TestCommitAll_SkipsLinkedAgentConfig(t *testing.T) {
 	}
 }
 
-func TestCommitRun_Refusals(t *testing.T) {
+func TestCommitWorktree_RefusesNonRunBranch(t *testing.T) {
 	repo := workflowRepo(t)
 	ctx := context.Background()
 	if _, _, err := CommitRun(ctx, repo, run, "main", "m"); !errors.Is(err, ErrInvalidWorkflowBranch) {
@@ -459,7 +612,7 @@ func TestCommitRun_Refusals(t *testing.T) {
 	}
 }
 
-func TestCommitAll_NoIdentity(t *testing.T) {
+func TestCommitWorktree_NoIdentity(t *testing.T) {
 	repo := workflowRepo(t)
 	ctx := context.Background()
 	p, err := PrepareRun(ctx, repo, run, runBranch("a"), "main", nil)
