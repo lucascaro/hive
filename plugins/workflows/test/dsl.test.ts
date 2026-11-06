@@ -4,9 +4,10 @@
 
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { type Cond, type IR, type Ref, all, not, validate, when, workflow } from './dsl.ts';
-import { examples } from './examples.ts';
-import { s } from './schema.ts';
+import { type Cond, type IR, type Ref, all, not, when, workflow } from '../sdk/dsl.ts';
+import { validate } from '../ir/validate.ts';
+import { examples } from '../tools/examples.ts';
+import { s } from '../sdk/schema.ts';
 
 const verdict = s.object({ verdict: s.enum('approve', 'revise'), feedback: s.string() });
 const summary = s.object({ summary: s.string() });

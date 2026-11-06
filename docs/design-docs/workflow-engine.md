@@ -699,7 +699,7 @@ whatever was stored, not what the types once checked.
 ```json
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://github.com/lucascaro/hive/scripts/workflow-proto/ir.schema.json",
+  "$id": "https://github.com/lucascaro/hive/plugins/workflows/ir/ir.schema.json",
   "title": "Hive workflow IR",
   "type": "object",
   "properties": {

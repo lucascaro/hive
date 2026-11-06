@@ -4,10 +4,11 @@
 
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { type GroupNode, type LoopNode, type MapNode, validate, workflow } from './dsl.ts';
-import { examples } from './examples.ts';
-import { reviewLoop } from './library.ts';
-import { s } from './schema.ts';
+import { type GroupNode, type LoopNode, type MapNode, workflow } from '../sdk/dsl.ts';
+import { validate } from '../ir/validate.ts';
+import { examples } from '../tools/examples.ts';
+import { reviewLoop } from '../sdk/library.ts';
+import { s } from '../sdk/schema.ts';
 
 test('reviewLoop builds worker→reviewer with a bounded back-edge on revise', () => {
   const loop = examples.reviewLoop().nodes[0] as LoopNode;
