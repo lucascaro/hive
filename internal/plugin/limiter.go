@@ -46,7 +46,9 @@ func FrameCost(ft wire.FrameType) float64 {
 		wire.FrameAddIdea, wire.FrameUpdateIdea, wire.FrameRemoveIdea,
 		wire.FrameResolvePrompt, wire.FrameResolveWorktreeChoice, wire.FrameResolvePlanReview,
 		wire.FrameClientCommand, wire.FrameSetPluginEnabled, wire.FrameRemovePlugin,
-		wire.FrameSetPluginConfig:
+		wire.FrameSetPluginConfig,
+		// Probes the login shell's PATH for each agent.
+		wire.FrameListAcpAgents:
 		return costFanout
 	default:
 		return costCheap

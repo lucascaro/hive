@@ -151,6 +151,7 @@ func recordMeta(e *Entry) MetaFile {
 		Kind:           e.Kind,
 		SpawnedBy:      e.SpawnedBy,
 		ACPMode:        e.ACPMode,
+		ResultSchema:   e.ResultSchema,
 		Orchestrator:   e.Orchestrator,
 	}
 }
@@ -444,6 +445,7 @@ func (r *Registry) restoreEntry(dir, id string, check func(t Tombstone, cwd stri
 		Kind:           t.Meta.Kind,
 		SpawnedBy:      t.Meta.SpawnedBy,
 		ACPMode:        t.Meta.ACPMode,
+		ResultSchema:   t.Meta.ResultSchema,
 		Orchestrator:   t.Meta.Orchestrator,
 	}
 

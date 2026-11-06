@@ -1,0 +1,1 @@
+{"schema":{"type":"object","properties":{"n":{"type":"number"}},"required":["n"],"additionalProperties":false},"envelope":{"status":"ok","data":{"n":1e400}},"ok":false,"error":"data.n: 1e400 is out of range"}

@@ -108,6 +108,24 @@ beforeEach(() => {
 });
 
 describe('ACP transcripts across daemon events', () => {
+  it('stop_reason passes through state', () => {
+    const emit = wire();
+    const send = (extra: object) =>
+      emit(
+        'acp:transcript',
+        JSON.stringify({ session_id: 'a', epoch: 1, ...extra }),
+      );
+    const stop = () => acpStore.getState().byId.get('a')?.tx.stopReason;
+    send({ reset: true, items: [] });
+    expect(stop()).toBe('');
+    send({ stop_reason: 'cancelled' });
+    expect(stop()).toBe('cancelled');
+    // Every message carries it, so a delta without one clears it (a new
+    // prompt started).
+    send({ items: [{ id: 1, kind: 'user', text: 'again' }] });
+    expect(stop()).toBe('');
+  });
+
   it('acp:transcript folds a frame and drops a malformed one', () => {
     const emit = wire();
     emit(

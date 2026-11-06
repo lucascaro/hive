@@ -63,7 +63,7 @@ Tests use the `internal/acp/acptest` fake adapter, never a real agent.
 10. **Events.** Run events are keyed by IR node id with a gapless `seq`, `agent.message` coalesced, as the design specifies.
 11. **Type check.** A type error blocks the run. With no usable Node, the run is refused with the required version.
 12. **Rerun semantics.** A run interprets only its stored IR; a changed source is detectable by its hash.
-13. **Risks handled.** Worktrees created per loop iteration and map copy have a cleanup policy that respects the `ErrWorktreeDirty` refusal. A failed plugin (A, criterion 8) leaves runs in a defined, resumable state. Plugin rate limiting under 16-way fan-out is measured, not assumed.
+13. **Risks handled.** Worktrees created per loop iteration and map copy have a cleanup policy that respects the `ErrWorktreeDirty` refusal. A failed plugin (A, criterion 9) leaves runs in a defined, resumable state. Plugin rate limiting under 16-way fan-out is measured, not assumed.
 14. **Docs.** `DESIGN.md` for the new plugin and its data, and `docs/plugins.md`.
 
 ## Non-goals

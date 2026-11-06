@@ -142,6 +142,11 @@ var controlEvents = map[FrameType]string{
 	FrameSent: "session:sent",
 	// The answer to WAIT_SESSION (spec 390).
 	FrameWaited: "session:waited",
+	// Replies to a request that carried a req_id (spec 528). The GUI
+	// sends none today; the ws-bridge forwards them to the e2e-real
+	// browser tests that do.
+	FrameAck:       "control:ack",
+	FrameAcpAgents: "acp:agents",
 
 	FrameIdeas:     "idea:list",
 	FrameIdeaEvent: "idea:event",

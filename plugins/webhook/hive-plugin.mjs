@@ -109,9 +109,47 @@ export const Frame = Object.freeze({
   DELETE_ARCHIVED: 0x4c,
   WAIT_SESSION: 0x4d,
   WAITED: 0x4e,
+  ACK: 0x4f,
+  CANCEL_ACP: 0x50,
+  LIST_ACP_AGENTS: 0x51,
+  ACP_AGENTS: 0x52,
 });
 
 const frameName = new Map(Object.entries(Frame).map(([k, v]) => [v, k]));
+
+/**
+ * The verbs request() accepts: the ones the daemon answers with a frame
+ * carrying the req_id on success (an ACK, or the verb's own reply).
+ * Every other verb answers success with a frame that has no id, so a
+ * request() for it could only ever time out; it is refused up front.
+ * Keep in step with internal/daemon (the ops.ack calls and the transcript
+ * replies) and docs/plugins.md.
+ */
+export const REQUEST_VERBS = Object.freeze([
+  'CREATE_SESSION',
+  'KILL_SESSION',
+  'RESTART_SESSION',
+  'PROMPT_ACP',
+  'CANCEL_ACP',
+  'ANSWER_PERMISSION',
+  'SEARCH_TRANSCRIPT',
+  'GET_TRANSCRIPT_LINES',
+  'LIST_ACP_AGENTS',
+]);
+
+// request() ids are REQUEST_ID_BASE + n, disjoint from small caller-chosen ids.
+const REQUEST_ID_BASE = 2 ** 30;
+
+/**
+ * The frames that answer a request() by carrying its req_id. Anything
+ * else with a req_id in its payload (a broadcast, say) is not a reply.
+ */
+const REPLY_FRAMES = new Set([
+  Frame.ACK,
+  Frame.ACP_AGENTS,
+  Frame.TRANSCRIPT_MATCHES,
+  Frame.TRANSCRIPT_LINES,
+]);
 
 /** Frames are capped at 1 MiB, like the daemon's. */
 const MAX_PAYLOAD = 1 << 20;
@@ -134,6 +172,7 @@ const MAX_PAYLOAD = 1 << 20;
  * @property {string} [build_id]
  * @property {string} [release]
  * @property {number} [daemon_contract]
+ * @property {string} [boot_id] random, fixed per hived process: a changed id means the daemon restarted
  * @property {string} [mode]
  * @property {string} [session_id]
  * @property {number} [cols]
@@ -147,6 +186,37 @@ const MAX_PAYLOAD = 1 << 20;
  * @property {string} [session_id]
  * @property {string} [project_id]
  * @property {string} [nonce]
+ * @property {number} [req_id] echoes the req_id of the request this answers
+ */
+
+/**
+ * The reply to a request that has no reply frame of its own: what
+ * {@link HiveConnection#request} resolves with.
+ * @typedef {object} Ack
+ * @property {number} req_id
+ * @property {string} [session_id] CREATE_SESSION: the new session (it exists, but its worktree and adapter may still be starting)
+ * @property {boolean} [was_busy] CANCEL_ACP: a turn was running and was cancelled (absent = false)
+ * @property {number} [prompt_id] PROMPT_ACP: the transcript item id of the turn just started
+ * @property {number} [epoch] PROMPT_ACP: the transcript epoch that prompt_id belongs to
+ */
+
+/**
+ * @typedef {object} AcpAgentInfo
+ * @property {string} id
+ * @property {string} name
+ * @property {object[]} modes {id, label} of each permission mode, least permissive first
+ * @property {string} [default_mode]
+ * @property {string} [ceiling] the most permissive mode the user allows
+ * @property {boolean} [no_approval_gate]
+ * @property {boolean} [experimental]
+ * @property {boolean} available
+ * @property {string} [reason] why not, when not available
+ */
+
+/**
+ * @typedef {object} AcpAgents
+ * @property {number} [req_id]
+ * @property {AcpAgentInfo[]} agents
  */
 
 /**
@@ -354,6 +424,108 @@ export class HiveConnection extends EventEmitter {
     this.sock = sock;
     this.welcome = welcome;
     this.path = path;
+    /** req_id -> {resolve, reject, timer}, for request(). */
+    this._pending = new Map();
+    // request() ids start high so they cannot collide with a req_id a caller
+    // picks itself on send() (the GET_TRANSCRIPT_LINES-style verbs take one).
+    this._reqSeq = REQUEST_ID_BASE;
+  }
+
+  /**
+   * Sends a control frame carrying a fresh `req_id` and resolves with
+   * the daemon's reply to it: an `ACK` (see the Ack typedef) or the
+   * frame the request has of its own (`ACP_AGENTS`, `TRANSCRIPT_MATCHES`,
+   * `TRANSCRIPT_LINES`), the decoded JSON payload. Rejects with an Error
+   * whose `.hive` is the daemon's ERROR payload ({code, message, …}) if
+   * it refused the request, on timeout, and when the connection closes.
+   *
+   * Only a reply frame type carrying the id settles a request.
+   * Broadcasts (SESSION_EVENT, ACP_TRANSCRIPT, PLUGIN_EVENT, …) never do,
+   * whatever their payload holds. `send()` is unchanged.
+   *
+   * CREATE_SESSION settles on its ACK, as soon as the session exists. If
+   * its worktree or adapter then fails, the ERROR (with the same req_id
+   * and the session_id) reaches only your `'ERROR'` listener: filter it by
+   * `session_id`.
+   *
+   * Which frames reply is in docs/plugins.md; a frame that gets no
+   * reply for the id would run into the timeout.
+   *
+   * @example
+   * // CREATE_SESSION is acked as soon as the session exists; its
+   * // worktree and adapter start afterwards (watch SESSION_EVENT).
+   * const { session_id } = await hive.request('CREATE_SESSION', {
+   *   kind: 'acp',
+   *   agent: 'claude',
+   *   workflow_run_id: 'run-1', // labels the session "plugin:<id>/workflow:run-1"
+   *   result_schema: { type: 'object', properties: { ok: { type: 'boolean' } },
+   *                    required: ['ok'], additionalProperties: false },
+   * });
+   * const { prompt_id, epoch } = await hive.request('PROMPT_ACP', { session_id, text: 'go', workflow_run_id: 'run-1' });
+   * const { was_busy } = await hive.request('CANCEL_ACP', { session_id });
+   *
+   * @param {keyof typeof Frame} name
+   * @param {object} [payload]
+   * @param {{timeoutMs?: number}} [opts]
+   * @returns {Promise<any>}
+   */
+  request(name, payload = {}, { timeoutMs = 30_000 } = {}) {
+    const type = Frame[name];
+    if (type === undefined) return Promise.reject(new Error(`hive: unknown frame ${name}`));
+    if (!REQUEST_VERBS.includes(name)) {
+      return Promise.reject(
+        Object.assign(
+          new Error(
+            `hive: ${name} has no reply that carries a req_id; use send() and watch its events (request() supports ${REQUEST_VERBS.join(', ')})`,
+          ),
+          { hive: { code: 'unsupported_request', message: `${name} is not a request() verb` } },
+        ),
+      );
+    }
+    const reqId = ++this._reqSeq;
+    return new Promise((resolve, reject) => {
+      const timer = setTimeout(() => {
+        this._pending.delete(reqId);
+        reject(
+          Object.assign(new Error(`hive: ${name} timed out after ${timeoutMs}ms`), {
+            hive: { code: 'timeout', message: `no reply within ${timeoutMs}ms`, req_id: reqId },
+          }),
+        );
+      }, timeoutMs);
+      this._pending.set(reqId, { resolve, reject, timer });
+      try {
+        this.sock.write(encode(type, { ...payload, req_id: reqId }));
+      } catch (err) {
+        clearTimeout(timer);
+        this._pending.delete(reqId);
+        reject(err);
+      }
+    });
+  }
+
+  /** Settles the pending request a decoded frame answers, if any. */
+  _settle(type, msg) {
+    const id = msg?.req_id;
+    const p = typeof id === 'number' ? this._pending.get(id) : undefined;
+    if (!p) return;
+    if (type === Frame.ERROR) {
+      this._pending.delete(id);
+      clearTimeout(p.timer);
+      p.reject(Object.assign(new Error(`hive: ${msg.code}: ${msg.message}`), { hive: msg }));
+    } else if (REPLY_FRAMES.has(type)) {
+      this._pending.delete(id);
+      clearTimeout(p.timer);
+      p.resolve(msg);
+    }
+  }
+
+  /** Rejects every pending request, when the connection is gone. */
+  _rejectAll(err) {
+    for (const [id, p] of this._pending) {
+      clearTimeout(p.timer);
+      p.reject(err);
+      this._pending.delete(id);
+    }
   }
 
   /**
@@ -463,9 +635,12 @@ export async function connect(opts = {}) {
       rest,
       (type, body) => {
         const name = frameName.get(type) ?? 'frame';
-        conn.emit(name, JSON.parse(body.toString('utf8') || '{}'));
+        const msg = JSON.parse(body.toString('utf8') || '{}');
+        conn._settle(type, msg);
+        conn.emit(name, msg);
       },
       () => {
+        conn._rejectAll(new Error('hive: connection closed'));
         conn.emit('close');
         if (exitOnClose) process.exit(0);
       },

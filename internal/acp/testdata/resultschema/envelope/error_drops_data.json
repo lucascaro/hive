@@ -1,0 +1,1 @@
+{"schema":{"type":"object","properties":{"n":{"type":"number"}},"required":["n"],"additionalProperties":false},"envelope":{"status":"error","summary":"no","data":{"anything":[1,2]}},"ok":true,"canonical":"{\"status\":\"error\",\"summary\":\"no\"}"}

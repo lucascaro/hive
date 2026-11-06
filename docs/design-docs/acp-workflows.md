@@ -228,9 +228,20 @@ or the engine plugin, which `hived` identifies by its plugin socket.
      `workflow:<run-id>`, or `plugin:<id>` for a create sent on a plugin's
      own socket (spec 496, phase 1); empty means the user. It is shown on
      every row the principal creates.
+   - **Workflow runs (spec 528).** The engine is a plugin, so its work is
+     labelled `plugin:<id>/workflow:<run-id>`: the daemon composes it from
+     its own principal for the connection plus the run id the plugin sends
+     (`workflow_run_id`, `[a-z0-9][a-z0-9-]{0,62}`) on `CREATE_SESSION`, a
+     create `HELLO` and `PROMPT_ACP`, so a prompt's transcript origin names
+     the run too. `wire.ParsePrincipal` is the one parser; the transcript
+     shows "From workflow `<run>` (plugin `<id>`)". The user's connection
+     cannot send a run id (`mode_not_allowed`), and the id's charset has no
+     `/` or `:`, so a plugin cannot pose as the user or another plugin. It is
+     an integrity label, not a defence: a plugin already runs with the
+     user's access.
    - **Prompts.** Every engine prompt records its origin (run and node) in the
      registry's activity for that session.
-   - The caller never supplies either value.
+   - The caller never supplies the principal itself, only the run id.
 3. **Nothing is inherited, and nothing escalates.**
    - A spawned node never holds the orchestrator grant.
    - Its ACP mode is set explicitly and capped at the user's per-agent setting.

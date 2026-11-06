@@ -440,6 +440,22 @@ func TestBridge_SetPluginConfigForwarded(t *testing.T) {
 	}
 }
 
+// ListAcpAgents decodes its params, so the req_id a browser test sends is
+// forwarded (a malformed one is refused instead of silently dropped), and
+// CancelAcp reaches the control connection.
+func TestBridge_ListAcpAgentsAndCancelAcpDecodeParams(t *testing.T) {
+	ws := dialTestBridge(t)
+	if resp := roundTrip(t, ws, 1, "ListAcpAgents", `{"req_id":"not a number"}`); strings.Contains(resp.Error, "no control connection") || resp.Error == "" {
+		t.Errorf("malformed ListAcpAgents params: error = %q, want a decode error", resp.Error)
+	}
+	if resp := roundTrip(t, ws, 2, "ListAcpAgents", `{"req_id":7}`); !strings.Contains(resp.Error, "no control connection") {
+		t.Errorf("ListAcpAgents: error = %q, want %q", resp.Error, "no control connection")
+	}
+	if resp := roundTrip(t, ws, 3, "CancelAcp", `{"session_id":"s","prompt_id":1}`); !strings.Contains(resp.Error, "no control connection") {
+		t.Errorf("CancelAcp: error = %q, want %q", resp.Error, "no control connection")
+	}
+}
+
 // SetClientUI reaches the control connection like any other verb.
 func TestBridge_SetClientUIForwarded(t *testing.T) {
 	ws := dialTestBridge(t)

@@ -23,6 +23,7 @@ import {
 
 import { AnswerPermission, PromptAcp } from '../../bridge.js';
 import { reportFailure } from '../../app/dom.js';
+import { parsePrincipal } from '../../lib/principal.js';
 import {
   isAllowOption,
   type AcpItem,
@@ -208,7 +209,9 @@ function planStatus(s?: string): string {
 // Who sent a prompt that the user did not type here.
 function originLabel(origin: string): string {
   if (origin === 'replayed') return 'Earlier turn';
-  if (origin.startsWith('plugin:')) return `From plugin ${origin.slice(7)}`;
+  const { plugin, run } = parsePrincipal(origin);
+  if (plugin && run) return `From workflow ${run} (plugin ${plugin})`;
+  if (plugin) return `From plugin ${plugin}`;
   return `From ${origin}`;
 }
 

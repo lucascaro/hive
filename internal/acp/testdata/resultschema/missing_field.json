@@ -1,0 +1,1 @@
+{"schema":{"type":"object","properties":{"summary":{"type":"string"},"clean":{"type":"boolean"}},"required":["summary","clean"],"additionalProperties":false},"value":{"summary":"s"},"ok":false,"error":"data.clean: required field is missing"}

@@ -82,6 +82,13 @@ const (
 	FlagWriterLocked = "writer-locked"
 	// FlagLoadFails makes session/load fail with a generic error.
 	FlagLoadFails = "load-fails"
+	// FlagSlowInit makes initialize wait until <dir>/release exists, so a
+	// test sees a session while its adapter is still starting.
+	FlagSlowInit = "slow-init"
+	// FlagSlowCancel makes a cancelled prompt wait until
+	// <dir>/release-cancel exists before it replies, so a test can act
+	// between "cancel was sent" and "the turn is over".
+	FlagSlowCancel = "slow-cancel"
 )
 
 // Modes is what the fake advertises, least permissive first: Claude's
@@ -125,6 +132,11 @@ func Calls(dir string) []string {
 	return nil
 }
 
+// ReleaseCancel lets a cancelled prompt held by FlagSlowCancel reply.
+func ReleaseCancel(dir string) error {
+	return os.WriteFile(filepath.Join(dir, "release-cancel"), nil, 0o600)
+}
+
 // Release unblocks prompts started with FlagBlock.
 func Release(dir string) error {
 	return os.WriteFile(filepath.Join(dir, "release"), nil, 0o600)
@@ -152,17 +164,61 @@ type fake struct {
 	servers map[string]string // sessionId -> first MCP server name
 	prompts map[string]int    // sessionId -> prompts so far
 	setMode int               // set_mode calls so far
+	cancel  map[string]bool   // sessionId -> session/cancel seen during the running prompt
+	// inflight is the sessions with a prompt received and not yet
+	// answered. A real adapter ignores a session/cancel with no turn
+	// running, so the fake does too; both are marked in wire order on the
+	// read loop, not on the per-message goroutines, so a cancel the client
+	// wrote before its prompt is really ignored.
+	inflight map[string]bool
+}
+
+func (f *fake) begin(sid string) {
+	f.mu.Lock()
+	f.inflight[sid] = true
+	f.mu.Unlock()
+}
+
+// end closes the prompt's turn: a cancel that raced its end is dropped
+// here rather than carried into the next prompt.
+func (f *fake) end(sid string) {
+	f.mu.Lock()
+	delete(f.inflight, sid)
+	delete(f.cancel, sid)
+	f.mu.Unlock()
+}
+
+func (f *fake) cancelIfInflight(sid string) {
+	f.mu.Lock()
+	if f.inflight[sid] {
+		f.cancel[sid] = true
+	}
+	f.mu.Unlock()
+}
+
+func (f *fake) setCancelled(sid string, v bool) {
+	f.mu.Lock()
+	f.cancel[sid] = v
+	f.mu.Unlock()
+}
+
+func (f *fake) cancelled(sid string) bool {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return f.cancel[sid]
 }
 
 // Main runs the fake agent on stdin/stdout until stdin closes.
 func Main() {
 	f := &fake{
-		dir:     os.Getenv("HIVE_FAKE_ACP_DIR"),
-		flags:   map[string]bool{},
-		out:     bufio.NewWriter(os.Stdout),
-		pending: map[string]chan json.RawMessage{},
-		servers: map[string]string{},
-		prompts: map[string]int{},
+		dir:      os.Getenv("HIVE_FAKE_ACP_DIR"),
+		flags:    map[string]bool{},
+		out:      bufio.NewWriter(os.Stdout),
+		pending:  map[string]chan json.RawMessage{},
+		servers:  map[string]string{},
+		prompts:  map[string]int{},
+		cancel:   map[string]bool{},
+		inflight: map[string]bool{},
 	}
 	for fl := range strings.SplitSeq(os.Getenv("HIVE_FAKE_ACP_FLAGS"), ",") {
 		f.flags[fl] = true
@@ -189,6 +245,19 @@ func Main() {
 			if ch != nil {
 				ch <- m.Result
 			}
+			continue
+		}
+		var sp struct {
+			SessionID string `json:"sessionId"`
+		}
+		_ = json.Unmarshal(m.Params, &sp)
+		switch m.Method {
+		case "session/prompt":
+			f.begin(sp.SessionID)
+		case "session/cancel":
+			// A notification: no reply. Handled in wire order, here.
+			f.log(m.Method, sp.SessionID)
+			f.cancelIfInflight(sp.SessionID)
 			continue
 		}
 		go f.handle(m.ID, m.Method, m.Params)
@@ -325,6 +394,13 @@ func (f *fake) handle(id json.RawMessage, method string, params json.RawMessage)
 		}
 		slices.Sort(names)
 		f.log("env", strings.Join(names, " "))
+		if f.flags[FlagSlowInit] {
+			for deadline := time.Now().Add(10 * time.Second); time.Now().Before(deadline); time.Sleep(10 * time.Millisecond) {
+				if _, err := os.Stat(filepath.Join(f.dir, "release")); err == nil {
+					break
+				}
+			}
+		}
 		reply(map[string]any{"protocolVersion": 1, "agentCapabilities": map[string]any{"loadSession": !f.flags[FlagNoLoad]}})
 	case "session/new":
 		sid := fmt.Sprintf("fake-%d", time.Now().UnixNano())
@@ -372,6 +448,7 @@ func (f *fake) handle(id json.RawMessage, method string, params json.RawMessage)
 		}
 		reply(map[string]any{})
 	case "session/prompt":
+		defer f.end(p.SessionID)
 		text := ""
 		for _, b := range p.Prompt {
 			text += b.Text
@@ -435,18 +512,35 @@ func (f *fake) handle(id json.RawMessage, method string, params json.RawMessage)
 				"options":   options,
 			})
 			o := outcome(res)
+			if strings.HasPrefix(o, "cancelled") {
+				// A client cancels a turn by answering its pending
+				// permission "cancelled" (and sending session/cancel).
+				f.setCancelled(p.SessionID, true)
+			}
 			answer += " [" + o + "]"
 			if f.flags[FlagEscalateAfterAnswer] {
 				f.update(p.SessionID, map[string]any{"sessionUpdate": "current_mode_update", "currentModeId": "acceptEdits"})
 			}
 		}
 		if f.flags[FlagBlock] {
-			for deadline := time.Now().Add(10 * time.Second); time.Now().Before(deadline); time.Sleep(10 * time.Millisecond) {
+			for deadline := time.Now().Add(10 * time.Second); time.Now().Before(deadline) && !f.cancelled(p.SessionID); time.Sleep(10 * time.Millisecond) {
 				if _, err := os.Stat(filepath.Join(f.dir, "release")); err == nil {
 					break
 				}
 			}
 		}
+		if f.cancelled(p.SessionID) {
+			if f.flags[FlagSlowCancel] {
+				for deadline := time.Now().Add(10 * time.Second); time.Now().Before(deadline); time.Sleep(10 * time.Millisecond) {
+					if _, err := os.Stat(filepath.Join(f.dir, "release-cancel")); err == nil {
+						break
+					}
+				}
+			}
+			reply(map[string]any{"stopReason": "cancelled"})
+			return
+		}
+		f.update(p.SessionID, map[string]any{"sessionUpdate": "usage_update", "used": len(text), "size": 1000})
 		f.update(p.SessionID, map[string]any{"sessionUpdate": "tool_call_update", "toolCallId": "t1", "status": "completed",
 			"content": []any{map[string]any{"type": "content", "content": map[string]any{"type": "text", "text": "done"}}}})
 		agent := "echo: " + text + answer
