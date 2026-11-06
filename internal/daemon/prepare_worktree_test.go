@@ -345,6 +345,33 @@ func TestPrepareWorktree_SessionAdoptsPath(t *testing.T) {
 	}
 }
 
+// A plugin uses the frames like any control client; a session's own
+// connection (an agent in a terminal) is refused both.
+func TestWorkflowWorktreeFrames_PluginServedSessionRefused(t *testing.T) {
+	skipOnWindows(t)
+	d := startTestDaemon(t)
+	pid, _, _, _ := wfProject(t, d)
+	pc, _ := pluginConn(t, d, "wf", "p")
+	m, e := prepare(t, pc, wire.PrepareWorktreeReq{ProjectID: pid, WorkflowRunID: "run-1", Branch: "hive/wf/run-1/a", Base: "main"})
+	if e != nil || m.Path == "" {
+		t.Fatalf("plugin prepare: %+v, %+v", m, e)
+	}
+	send(t, pc, wire.FrameCommitWorktree, wire.CommitWorktreeReq{ReqID: 5, ProjectID: pid, WorkflowRunID: "run-1", Branch: m.Branch, Message: "m"})
+	if ack := readFrameWhere(t, pc, "ACK", isFrame(wire.FrameAck)).ack(t); ack.ReqID != 5 || ack.Committed {
+		t.Errorf("plugin commit ack = %+v", ack)
+	}
+
+	sess := sessionConn(t, d, bootstrapSessionID(t, d))
+	send(t, sess, wire.FramePrepareWorktree, wire.PrepareWorktreeReq{ReqID: 6, ProjectID: pid, WorkflowRunID: "run-1", Branch: "hive/wf/run-1/b", Base: "main"})
+	if er := readFrameWhere(t, sess, "ERROR", isFrame(wire.FrameError)).err(t); er.Code != wire.ErrCodeModeNotAllowed || er.ReqID != 6 {
+		t.Errorf("session PREPARE_WORKTREE: %+v, want mode_not_allowed", er)
+	}
+	send(t, sess, wire.FrameCommitWorktree, wire.CommitWorktreeReq{ReqID: 7, ProjectID: pid, WorkflowRunID: "run-1", Branch: m.Branch, Message: "m"})
+	if er := readFrameWhere(t, sess, "ERROR", isFrame(wire.FrameError)).err(t); er.Code != wire.ErrCodeModeNotAllowed {
+		t.Errorf("session COMMIT_WORKTREE: %+v, want mode_not_allowed", er)
+	}
+}
+
 func TestCommitWorktree_Frame(t *testing.T) {
 	skipOnWindows(t)
 	d := startTestDaemon(t)
