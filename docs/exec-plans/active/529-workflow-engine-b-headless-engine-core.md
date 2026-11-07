@@ -1207,3 +1207,5 @@ needs A PR1–3; B3 needs R1–R4 merged in A.
 ## PR convergence ledger
 
 <!-- /hs-review-loop appends one line per iteration here (append-only). -->
+- **2026-11-07 iter 1** — verdict: REQUEST_CHANGES; mergeable: MERGEABLE; findings_hash: see list; threads_open: 10 -> 0; action: autofix+push; head_sha: cc3c7efa. Fixed with tests: shape missing the plan's 32 KiB IR cap (Greptile); validate crashed (Invalid array length) on a node whose id repeats its container's (CodeRabbit); s.object accepted dotted and `__proto__` field names; map() accepted a non-sink handle. Plan wording fixed (map admission, node.output). Six plan-design comments for B2/B3/B5 parked under Open questions with replies.
+- **2026-11-07 iter 2** — verdict: APPROVE; mergeable: MERGEABLE; findings_hash: empty; threads_open: 0; action: stop; head_sha: cc3c7efa. Greptile re-review of the fix commit raised nothing; CodeRabbit is rate-limited (skipping) until about an hour after its first review; CI green on Linux, macOS and Windows.
