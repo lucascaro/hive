@@ -4,7 +4,8 @@ title: "Workflow engine B: headless engine core (validator, interpreter, checkpo
 type: enhancement
 complexity: L
 priority: P1
-stage: IMPLEMENT
+pr: 538
+stage: REVIEW
 ---
 
 # Workflow engine B: headless engine core (validator, interpreter, checkpoint log, trust sandbox)

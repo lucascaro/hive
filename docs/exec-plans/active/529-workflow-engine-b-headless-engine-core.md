@@ -5,6 +5,7 @@
 - **Depends on:** A (#528), planned against `origin/feature/528-daemon-sdk-prereqs:docs/exec-plans/active/528-workflow-engine-a-daemon-sdk-prereqs.md` at `7410f6b7`
 - **Issue:** #529
 - **Branch:** `feature/529-engine-core` (research and plan); one branch per phase PR (B1: `feature/529-b1-validator`)
+- **PR:** #538 (B1)
 - **Phase:** 1 of 5
 - **Status:** active. The final plan is presented for user approval.
   - All open questions are decided (see Decision log, 2026-10-25 user
