@@ -59,20 +59,25 @@ export function validate(ir: IR): string[] {
   const list: Placed[] = [];
   walk(ir, '', null, list);
   const placed = new Map<string, Placed>();
+  let badIds = false;
 
   for (const p of list) {
     const { node, parent } = p;
     const local = parent ? node.id.slice(parent.length + 1) : node.id;
     if ((parent && !node.id.startsWith(`${parent}/`)) || !ID_SEGMENT.test(local)) {
+      badIds = true;
       errors.push(`${node.id}: id must be ${parent ? `"${parent}/<segment>"` : 'one segment'} of [a-z0-9] words joined by single hyphens`);
     }
     if (node.id === 'input') errors.push('input: reserved id');
-    if (placed.has(node.id)) errors.push(`${node.id}: duplicate id`);
+    if (placed.has(node.id)) {
+      badIds = true;
+      errors.push(`${node.id}: duplicate id`);
+    }
     placed.set(node.id, p);
   }
   // Everything below walks parent links by id. A bad or duplicate id (a
   // group "g" holding a node "g") makes those links loop, so stop here.
-  if (errors.length > 0) return errors;
+  if (badIds) return errors;
 
   const parentOf = (id: string): string => placed.get(id)?.parent ?? '';
   // id, its container, that container's container, … up to a top-level node.

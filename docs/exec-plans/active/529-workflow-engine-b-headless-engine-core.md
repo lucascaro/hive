@@ -1193,8 +1193,10 @@ needs a decision before that phase starts:
   find. Candidates: write an intent row first and make the check discoverable
   by an env marker (`HIVE_WF_CHECK=<run>/<key>/<attempt>`, Linux
   `/proc/<pid>/environ`, macOS `ps eww`), or fence by refusing to restart a
-  check whose intent row has no pid until the user acknowledges. Needs tests
-  at the launch and recovery boundaries.
+  check whose intent row has no pid. A user acknowledgement is not proof the
+  child exited, so the fence lifts only when the child is confirmed stopped
+  (marker scan finds nothing); otherwise the node stays `failed` and the
+  worktree is kept. Needs tests at the launch and recovery boundaries.
 - **B3, group survivors after the leader exits.** The pid + start-time match
   only proves the leader. Once the leader is gone, killing `-pgid` risks a
   reused group. Candidate: only signal the group while the leader (or a
@@ -1209,3 +1211,4 @@ needs A PR1–3; B3 needs R1–R4 merged in A.
 <!-- /hs-review-loop appends one line per iteration here (append-only). -->
 - **2026-11-07 iter 1** — verdict: REQUEST_CHANGES; mergeable: MERGEABLE; findings_hash: see list; threads_open: 10 -> 0; action: autofix+push; head_sha: cc3c7efa. Fixed with tests: shape missing the plan's 32 KiB IR cap (Greptile); validate crashed (Invalid array length) on a node whose id repeats its container's (CodeRabbit); s.object accepted dotted and `__proto__` field names; map() accepted a non-sink handle. Plan wording fixed (map admission, node.output). Six plan-design comments for B2/B3/B5 parked under Open questions with replies.
 - **2026-11-07 iter 2** — verdict: APPROVE; mergeable: MERGEABLE; findings_hash: empty; threads_open: 0; action: stop; head_sha: cc3c7efa. Greptile re-review of the fix commit raised nothing; CodeRabbit is rate-limited (skipping) until about an hour after its first review; CI green on Linux, macOS and Windows.
+- **2026-11-07 iter 3** — supersedes iter 2's stop (CodeRabbit's rate limit lifted and it reviewed 62d5eb3a); verdict: REQUEST_CHANGES; mergeable: MERGEABLE; findings_hash: see list; threads_open: 4 -> 0; action: autofix+push; head_sha: see PR head. Fixed with a test: validate's early return was too broad (now only malformed or duplicate ids). Plan wording: the B3 fence lifts only when the child is confirmed stopped. Declined with reasons: lifecycle-checker note (plan correctly stays in active/ until B5); shape's stringify-before-walk (input is already-parsed JSON, bounded by the transport and the 1 MiB runner cap; a too-deep value fails closed as "not JSON").

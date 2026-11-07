@@ -434,3 +434,16 @@ test('a map body must return its sink, and field names must be plain identifiers
     assert.throws(() => s.object({ [bad]: s.string() }), /field name .* must match/, bad);
   }
 });
+
+test('a reserved id or an empty workflow does not hide a cycle', () => {
+  const ir = workflow('mixed', s.object({}), (g) => {
+    const a = g.agent('a', { agent: 'claude', prompt: 'x', output: summary });
+    const b = g.agent('b', { agent: 'codex', prompt: 'y', output: summary });
+    g.edge(a, b);
+    g.edge(b, a);
+    g.agent('input', { agent: 'claude', prompt: 'z', output: summary });
+  });
+  const errors = validate(ir).join('\n');
+  assert.match(errors, /input: reserved id/);
+  assert.match(errors, /cycle a -> b -> a/);
+});
