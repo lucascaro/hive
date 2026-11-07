@@ -3,9 +3,9 @@
 - **Spec:** [docs/product-specs/528-workflow-engine-a-daemon-and-sdk-prerequisites-prov.md](../../product-specs/528-workflow-engine-a-daemon-and-sdk-prerequisites-prov.md)
 - **Design:** [workflow-engine.md](../../design-docs/workflow-engine.md) ("What the engine spec must add"), [acp-workflows.md](../../design-docs/acp-workflows.md)
 - **Issue:** #528
-- **Branch:**
+- **Branch:** `feature/528-pr2-plugin-message-worktree`
 - **Status:** active
-- **PR:**
+- **PR:** #539
 - **Phase:** 2 of 3
 
 ## Summary
@@ -509,6 +509,7 @@ scripts/ui-lint.sh                                             # PR1, PR3 (GUI t
 - **2026-10-27 iter 3** — verdict: REQUEST_CHANGES (supersedes iter 2's stop; independent Opus review found six items iter 1-2 missed); mergeable: MERGEABLE; findings_hash: see list; threads_open: 0; action: autofix+push; head_sha: see PR head. Fixed with tests: (1) MEDIUM envelope key-case bypass, now `acp.CanonicalEnvelope` with exact keys, canonical stored form, fixtures in `internal/acp/testdata/resultschema/envelope/`; (2) CANCEL_ACP under `d.runOp` (a wedged-adapter stall is not reproducible with the fake adapter, so covered by the existing CancelAcp daemon tests only); (3) late CREATE ERROR documented in docs/plugins.md and SDK `request()` JSDoc; (4) caller-chosen req_id collision, `request()` ids now start at 2^30 in both SDK copies and the testclient; (5) `status:"error"` data dropped; (6) `1e400` rejected, verified real (UseNumber kept the literal). Plan text corrected (costFanout, SDK reply frames, ErrNoLiveSession, exact-key parsing).
 - **2026-11-06 iter 4** — verdict: REQUEST_CHANGES (merge gate FAILED at ee493ed2; not converged until the gate re-runs); mergeable: MERGEABLE; findings_hash: see list; threads_open: see PR; action: autofix+push; head_sha: see PR head. Fixed with tests: BLOCKER CANCEL_ACP under runOp blocked Daemon.Close (ops.Wait precedes registry.Close, the only thing that kills a wedged adapter): CancelACP's `<-sent` now also ends on registry close, and the daemon runs the cancel untracked (`TestCancelACP_ReturnsWhenRegistryCloses`; no daemon-level test, the seam is package-private); `summary:null` rejected (fixture `summary_null.json`); docs: ACP_TRANSCRIPT `result` is the canonical envelope, 1e400 rejection applies only with a schema, CANCEL_ACP-without-prompt_id race. Follow-up in the same iteration after CodeRabbit's re-review of 95e9a02b: untracked cancel goroutines are capped at 64 (acp_busy beyond; `TestCancelAcp_PendingCancelsAreBounded`), and the new test's cleanup waits at most 5s. A Linux CI failure on 95e9a02b, `scripts/acp-probe/probe.test.mjs` 'hung agent ... process group is gone' (a file this PR does not touch; passes locally), looks like a runner flake and is re-run, not fixed.
 - **2026-11-06 iter 5** — verdict: APPROVE; mergeable: MERGEABLE; findings_hash: empty; threads_open: 0; action: stop; head_sha: see PR head. Converged for PR 1 of 3 (phase 1 of 3 only; PRs 2 and 3 remain). The merge gate's code pass is recorded; its doc-accuracy findings (CANCEL_ACP error codes, phase bookkeeping) are fixed in this iteration.
+- **PR 2 (#539) 2026-11-06 iter 1** — verdict: REQUEST_CHANGES (CI red on Linux and Windows); mergeable: MERGEABLE; findings_hash: ci-only; threads_open: 0; action: autofix+push; head_sha: see PR head. Fixed: `TestMergeBranches_NoIdentity` built its node branch with a commit that needs an identity (the CI runner has none); `TestParseWorktreeListZ` compared a raw path on Windows.
 
 ## Gate verdict
 

@@ -41,7 +41,7 @@ func branchWith(t *testing.T, repo, branch, base, file, body string) {
 	}
 	mustWrite(t, filepath.Join(tmp, file), body)
 	mustGit(t, tmp, "add", "-A")
-	mustGit(t, tmp, "commit", "-q", "-m", "add "+file)
+	mustGit(t, tmp, "-c", "user.name=t", "-c", "user.email=t@t", "commit", "-q", "-m", "add "+file)
 	mustGit(t, repo, "worktree", "remove", "--force", tmp)
 }
 
@@ -372,7 +372,7 @@ func TestParseWorktreeListZ(t *testing.T) {
 	if len(got) != 2 || got[0].Branch != "main" || got[1].Branch != "" || !got[1].Detached || !got[1].Prunable {
 		t.Fatalf("%+v", got)
 	}
-	if got[1].Path != "/b\nbranch refs/heads/x" {
+	if got[1].Path != ResolvePath("/b\nbranch refs/heads/x") {
 		t.Errorf("path = %q", got[1].Path)
 	}
 }
