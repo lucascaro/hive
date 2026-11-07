@@ -247,6 +247,9 @@ and reply payloads are the Go structs of the same name in
 | `PROMPT_ACP` | `PromptAcpReq` | `ACP_TRANSCRIPT`, `SESSION_EVENT` (state). The turn's origin is recorded as `plugin:<id>`, or `plugin:<id>/workflow:<run>` with `workflow_run_id`. With a `req_id`, also `ACK` once the turn has started, carrying that turn's `prompt_id` and `epoch` |
 | `CANCEL_ACP` | `CancelAcpReq` | Asks the session's running turn to stop. Idempotent: with no turn running it does nothing. With a `req_id`, `ACK` with `was_busy`: a turn was running and was *asked* to stop (absent = false). The turn is over when `ACP_TRANSCRIPT` carries its `stop_reason` (`cancelled` normally); until then `PROMPT_ACP` answers `acp_busy`. Pass the `prompt_id` and `epoch` from that turn's `PROMPT_ACP` ACK to aim the cancel at it: if the session has moved on, nothing is stopped and `was_busy` is false. Errors: `session_dead` means the adapter is gone or the cancel could not be written; `acp_busy` here means the daemon-wide cap of 64 cancels still waiting on their prompt write is reached (unlike `PROMPT_ACP`, where it means a turn is running). That cap is shared by every connection, and it drains when the stuck session is killed. Not served on a session connection |
 | `LIST_ACP_AGENTS` | `ListAcpAgentsReq` | `ACP_AGENTS` |
+| `PLUGIN_MESSAGE` | `PluginMessage` | Nothing: no `req_id`, no reply. The daemon stamps your plugin id and relays it to every client that shows UI (the Hive app); a client sends one back to a plugin the same way. A bad `topic` is `invalid_plugin_message`, a frame over 64 KiB `plugin_message_too_large`, and a client message to a plugin that is not running `plugin_not_running`. Not served on a session connection. See below |
+| `PREPARE_WORKTREE` | `PrepareWorktreeReq` | `PREPARED_WORKTREE` (`request()` resolves on it): a worktree on a run-owned branch, optionally with other run branches merged in. See below |
+| `COMMIT_WORKTREE` | `CommitWorktreeReq` | `ACK` with `committed` and `head`: everything in the run branch's worktree is committed (`committed` absent when the tree was clean). See below |
 | `ANSWER_PERMISSION` | `AnswerPermissionReq` | `ACP_TRANSCRIPT`; with a `req_id`, also `ACK` |
 | `SUBMIT_RESULT` | `SubmitResultReq` | `SUBMIT_RESULT_OK`, `ACP_TRANSCRIPT` (result). Not for plugins: a plugin socket gets `mode_not_allowed`. An ACP session's own submit server (`hived mcp-submit`) sends it on a session connection, with that session's nonce |
 | `SEND_TO_SESSION` | `SendToSessionReq` | `SENT`, or `ERROR`. Not for plugins: a plugin socket gets `mode_not_allowed`, because typing into another session's terminal is the confused-deputy case until a plugin can be granted it explicitly |
@@ -259,6 +262,7 @@ And everything the daemon sends on a control connection:
 | `WELCOME` | Handshake accepted. Carries `boot_id`, random and fixed for one `hived` process: a different one after a reconnect means the daemon restarted, and the transcript `epoch`s and item ids restarted with it. |
 | `ERROR` | A request failed (`code`, `message`). Echoes the `req_id` of the request it answers. |
 | `ACK` | The success reply to a request that carried a `req_id` and has no reply frame of its own (see the table). |
+| `PREPARED_WORKTREE` | Answer to `PREPARE_WORKTREE`: the worktree's `path` and `branch` (authoritative), whether it was `reattached`, the `base_sha` it started from, its `head_sha`, the branches `merged`, and a `conflict` if a merge stopped. |
 | `ACP_AGENTS` | Answer to `LIST_ACP_AGENTS`: each ACP-capable agent with its permission `modes` (least permissive first), `default_mode`, the user's `ceiling`, `no_approval_gate`, `experimental`, and whether it is `available` now (`reason` when not). |
 | `SESSIONS` | Snapshot after `WELCOME`; answer to `LIST_SESSIONS`. |
 | `SESSION_EVENT` | Broadcast. `kind` is `added`, `removed`, `updated`, `title`, `attention` or `state`; `session` is the whole `SessionInfo`. |
@@ -294,6 +298,10 @@ Only these verbs also answer success with a frame carrying the id:
 - `CANCEL_ACP`: `ACK` with `session_id`, `was_busy`.
 - `SEARCH_TRANSCRIPT`, `GET_TRANSCRIPT_LINES`: their own reply, `TRANSCRIPT_MATCHES` / `TRANSCRIPT_LINES`.
 - `LIST_ACP_AGENTS`: `ACP_AGENTS`.
+- `PREPARE_WORKTREE`: `PREPARED_WORKTREE`.
+- `COMMIT_WORKTREE`: `ACK` with `committed`, `head`.
+
+`PLUGIN_MESSAGE` takes no `req_id`; correlate through a nonce in its `data`.
 
 Every other verb (`LIST_SESSIONS`, `UPDATE_SESSION`, the worktree and
 project verbs, …) still answers success the way the table above says,
@@ -341,6 +349,89 @@ exactly (a stray `Status` or `DATA` is refused, as is any key but `status`,
 
 `CANCEL_ACP` without the `prompt_id` and `epoch` of the turn it is for is a race: the cancel stops whichever turn is running when it is handled, so one issued just as that turn ends can cancel the *next* prompt. Pass both from the `PROMPT_ACP` ACK. The `{status, summary, data}` envelope is unchanged,
 and the daemon refuses any `status` other than exactly `ok` or `error`.
+
+### Plugin messages
+
+`PLUGIN_MESSAGE` `{plugin_id, topic, data}` is a side channel between a
+plugin and the Hive app, in both directions. `topic` matches
+`[a-z][a-z0-9._-]{0,63}`; `data` is any JSON; the whole frame is at most
+64 KiB. There is no `req_id` and no reply.
+
+- **Plugin to app.** Whatever `plugin_id` you send, the daemon replaces
+  it with yours, then relays the frame to every client that shows UI (the
+  Hive app, the browser bridge). It reaches no other plugin, no menu-bar
+  client and no session. In the app it arrives as the `plugin:message`
+  event. The SDK sends it with `hive.postMessage(topic, data)`.
+- **App to plugin.** `plugin_id` names the target; the frame goes to that
+  plugin's live control connections, and `plugin_not_running` comes back
+  when it has none. It arrives as a `'PLUGIN_MESSAGE'` event on the SDK
+  connection.
+- **Slow readers.** A client that stops reading is disconnected, like
+  any other fan-out (see `docs/design-docs/slow-client-policy.md`), and
+  reconnects. Make state recoverable: have the app ask you for it on
+  connect (a topic of your own) rather than relying on every message
+  arriving.
+
+It adds no privilege. Anything the app can ask of a plugin the user can
+already do, and a plugin already runs with the user's full access. The
+stamped `plugin_id` is an integrity label, not a boundary: it keeps one
+plugin from speaking as another through its own socket, but a plugin can
+find the main socket from `HIVE_SOCKET` and connect as any client, as it
+could always do (see **Trust**). So never treat a `PLUGIN_MESSAGE` from
+the app as the user's approval of anything.
+
+### Workflow worktrees
+
+`PREPARE_WORKTREE` `{req_id, project_id, workflow_run_id, branch, base,
+merge?}` makes a git worktree for a workflow run. A plugin never runs
+`git worktree` or `git commit` on a project itself: it asks the daemon.
+
+- **`branch`** must be `hive/wf/<workflow_run_id>/<name>`, ASCII
+  `[A-Za-z0-9._/-]`, a valid ref name, and not start with `-`; otherwise
+  `invalid_workflow_branch`. Compose `<name>` from a workflow node key
+  with the SDK's `encodeWorkflowKey(key)` (`fix[2]/work` becomes
+  `fix_2/work`): it is injective, and the daemon does not encode.
+  Namespaces are by run id, not plugin; ids are random, so a collision
+  between plugins is accepted.
+- **`base`** is any commit-ish (a branch, tag or SHA). The daemon
+  resolves it to a SHA with `rev-parse --verify` and hands git *that
+  SHA*, never the name, so a ref that moves later changes nothing. One
+  that does not resolve, or that looks like an option, is `invalid_base`.
+  The reply's `base_sha` is the SHA used.
+- **A new branch is created strictly**; an existing one is never
+  clobbered. If the run branch **already exists**, it is *re-attached*:
+  the worktree that has it checked out, or a new worktree on it, comes
+  back with `reattached: true`, `base` is ignored and `base_sha` is
+  absent. That is how a plugin recovers after a crash, or after Hive
+  removed a pristine worktree at boot. Only `hive/wf/<run>/` branches are
+  ever re-attached.
+- **`path`** is chosen by the daemon under the project's `.worktrees/`; a
+  taken directory gets a `-2`, `-3` suffix, never the branch. Use the
+  `path` and `branch` of the reply as given.
+- **`merge`** lists run branches (same `hive/wf/<run>/` rule) merged
+  into the worktree in order with `--no-ff`, as the user. On the first
+  conflict the merge is aborted, the worktree is kept at `base` plus the
+  merges that succeeded (`merged`), and the reply carries `conflict:
+  {branch, files}`, so the user can resolve it by hand. Merging what is
+  already merged does nothing, so repeating `merge` on a re-attached
+  branch is safe. At most 64 branches. A worktree with uncommitted
+  changes is not merged into (`worktree_dirty`), because aborting a
+  conflicting merge could not give those changes back. A repo with no
+  `user.name`/`user.email` fails with `git_identity_missing`: there is no
+  fallback identity.
+
+`COMMIT_WORKTREE` `{req_id, project_id, workflow_run_id, branch,
+message}` stages everything in the worktree that has `branch` checked
+out (`git add -A`) and commits it as the user, without hooks.
+`ACK {committed, head}`; a clean tree is a no-op with `committed`
+absent, so it is safe to repeat. Anything outside `hive/wf/<run>/`
+is `invalid_workflow_branch`, and a branch with no worktree
+`worktree_not_found`.
+
+Every git command in both runs with the repo's hooks and `fsmonitor`
+turned off and without signing, so a hook cannot run code on your behalf.
+Merge drivers and filters from the repo's own configuration still apply:
+that is the user's repo.
 
 The two things to watch most plugins need are `SESSION_EVENT`'s `state`
 (`working`, `waiting_input`, `waiting_permission`, `exited`, `error`,
@@ -405,7 +496,10 @@ term.on('data', (buf) => process.stdout.write(buf));
 `send(name, payload)` sends any request in the table above.
 `request(name, payload, { timeoutMs })` sends it with a fresh `req_id`
 and returns a promise of the reply (`ACK`, `ACP_AGENTS`,
-`TRANSCRIPT_MATCHES` or `TRANSCRIPT_LINES` payload). It accepts only the
+`PREPARED_WORKTREE`, `TRANSCRIPT_MATCHES` or `TRANSCRIPT_LINES` payload).
+`postMessage(topic, data)` sends a `PLUGIN_MESSAGE` to the app, and
+`encodeWorkflowKey(key)` turns a workflow node key into a branch-name
+segment (see **Workflow worktrees**). It accepts only the
 verbs in the **Correlating replies** list (`REQUEST_VERBS` in the SDK);
 any other rejects at once with `.hive.code` `unsupported_request`,
 because a success could never be matched. It rejects with an

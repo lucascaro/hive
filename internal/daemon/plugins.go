@@ -265,7 +265,7 @@ func pluginErrorCode(err error, generic string) string {
 // across every kind the daemon fans out: registry session, project,
 // idea and activity events, PLUGIN_EVENT, and client commands.
 func (d *Daemon) fanoutPressure() float64 {
-	p := max(d.reg.Pressure(), d.commands.pressure())
+	p := max(d.reg.Pressure(), d.commands.pressure(), d.pluginMsgs.pressure())
 	if d.plugins != nil {
 		p = max(p, d.plugins.Pressure())
 	}

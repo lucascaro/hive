@@ -376,6 +376,57 @@ func (r *Registry) CreateWorktreeForBranch(ctx context.Context, projectID, branc
 	return path, nil
 }
 
+// PrepareWorktree is PREPARE_WORKTREE (spec 528): a worktree on the
+// run-owned branch req.Branch, from req.Base, with req.Merge merged in.
+// The git work and its validation live in worktree.PrepareRun; this
+// holds the project lookup and the git lock around it. Errors wrap the
+// worktree package's sentinels (ErrInvalidWorkflowBranch, ErrNoCommit,
+// ErrIdentityMissing, …) so the daemon can name them on the wire.
+func (r *Registry) PrepareWorktree(ctx context.Context, req wire.PrepareWorktreeReq) (wire.PreparedWorktreeMsg, error) {
+	root, err := r.projectRoot(req.ProjectID)
+	if err != nil {
+		return wire.PreparedWorktreeMsg{}, err
+	}
+	r.gitMu.Lock()
+	defer r.gitMu.Unlock()
+
+	p, err := worktree.PrepareRun(ctx, root, req.WorkflowRunID, req.Branch, req.Base, req.Merge)
+	if err != nil {
+		return wire.PreparedWorktreeMsg{}, err
+	}
+	msg := wire.PreparedWorktreeMsg{
+		ProjectID:  req.ProjectID,
+		Path:       p.Path,
+		Branch:     req.Branch,
+		Reattached: p.Reattached,
+		BaseSHA:    p.BaseSHA,
+		HeadSHA:    p.HeadSHA,
+		Merged:     p.Merged,
+	}
+	if msg.Merged == nil {
+		msg.Merged = []string{}
+	}
+	if p.Conflict != nil {
+		msg.Conflict = &wire.MergeConflict{Branch: p.Conflict.Branch, Files: p.Conflict.Files}
+	}
+	log.Printf("registry: prepared worktree %s on %s (reattached=%v, merged=%d, conflict=%v)",
+		p.Path, req.Branch, p.Reattached, len(p.Merged), p.Conflict != nil)
+	return msg, nil
+}
+
+// CommitWorktree is COMMIT_WORKTREE (spec 528): commit everything in the
+// worktree that has the run's branch checked out. committed is false on
+// a clean tree.
+func (r *Registry) CommitWorktree(ctx context.Context, req wire.CommitWorktreeReq) (committed bool, head string, err error) {
+	root, err := r.projectRoot(req.ProjectID)
+	if err != nil {
+		return false, "", err
+	}
+	r.gitMu.Lock()
+	defer r.gitMu.Unlock()
+	return worktree.CommitRun(ctx, root, req.WorkflowRunID, req.Branch, req.Message)
+}
+
 // ErrBranchUnmerged is returned when deleting a branch would discard
 // commits that are not reachable from the repo's default ref.
 // Overridable by force once the user has confirmed.

@@ -49,13 +49,14 @@ type Client struct {
 	conn net.Conn     // raw conn; owned by cli after Handshake
 	cli  *wire.Client // shared protocol client; nil until Handshake
 
-	stream   chan frameMsg
-	sessions chan wire.SessionEvent
-	projects chan wire.ProjectEvent
-	ideas    chan wire.IdeaEvent
-	plugins  chan wire.PluginEvent
-	snaps    chan frameMsg
-	errs     chan error
+	stream     chan frameMsg
+	sessions   chan wire.SessionEvent
+	projects   chan wire.ProjectEvent
+	ideas      chan wire.IdeaEvent
+	plugins    chan wire.PluginEvent
+	pluginMsgs chan wire.PluginMessage
+	snaps      chan frameMsg
+	errs       chan error
 
 	closeOnce sync.Once
 	closed    chan struct{}
@@ -73,7 +74,8 @@ type Client struct {
 // It reports false for anything else, which then goes to snaps.
 func (c *Client) routeReply(m frameMsg) bool {
 	switch m.t {
-	case wire.FrameAck, wire.FrameAcpAgents, wire.FrameTranscriptMatches, wire.FrameTranscriptLines, wire.FrameError:
+	case wire.FrameAck, wire.FrameAcpAgents, wire.FrameTranscriptMatches, wire.FrameTranscriptLines,
+		wire.FramePreparedWorktree, wire.FrameError:
 	default:
 		return false
 	}
@@ -111,15 +113,16 @@ func Dial(ctx context.Context, sockPath string) (*Client, error) {
 		return nil, fmt.Errorf("testclient: dial %s: %w", sockPath, err)
 	}
 	return &Client{
-		conn:     conn,
-		stream:   make(chan frameMsg, 256),
-		sessions: make(chan wire.SessionEvent, 32),
-		projects: make(chan wire.ProjectEvent, 32),
-		ideas:    make(chan wire.IdeaEvent, 32),
-		plugins:  make(chan wire.PluginEvent, 32),
-		snaps:    make(chan frameMsg, 256),
-		errs:     make(chan error, 1),
-		closed:   make(chan struct{}),
+		conn:       conn,
+		stream:     make(chan frameMsg, 256),
+		sessions:   make(chan wire.SessionEvent, 32),
+		projects:   make(chan wire.ProjectEvent, 32),
+		ideas:      make(chan wire.IdeaEvent, 32),
+		plugins:    make(chan wire.PluginEvent, 32),
+		pluginMsgs: make(chan wire.PluginMessage, 64),
+		snaps:      make(chan frameMsg, 256),
+		errs:       make(chan error, 1),
+		closed:     make(chan struct{}),
 	}, nil
 }
 
@@ -260,8 +263,8 @@ type RequestError struct{ Err wire.Error }
 func (e *RequestError) Error() string { return e.Err.Code + ": " + e.Err.Message }
 
 // Request sends a control frame with a fresh req_id and waits for its
-// reply: an ACK, ACP_AGENTS, TRANSCRIPT_MATCHES or TRANSCRIPT_LINES
-// carrying that id (returned as its type and raw payload), or an ERROR
+// reply: an ACK, ACP_AGENTS, TRANSCRIPT_MATCHES, TRANSCRIPT_LINES or
+// PREPARED_WORKTREE carrying that id (returned as its type and raw payload), or an ERROR
 // carrying it (returned as a *RequestError). Broadcasts and other
 // requests' replies are skipped, as the plugin SDK's request() does.
 //
@@ -544,6 +547,46 @@ func (c *Client) AwaitPluginEvent(pred func(wire.PluginEvent) bool, timeout time
 			return wire.PluginEvent{}, errors.New("testclient: timeout waiting for PLUGIN_EVENT")
 		}
 	}
+}
+
+// SendPluginMessage sends PLUGIN_MESSAGE. From a UI client pluginID
+// names the target plugin; a plugin's is overwritten by the daemon.
+// data must be valid JSON (or empty).
+func (c *Client) SendPluginMessage(pluginID, topic string, data json.RawMessage) error {
+	return c.cli.WriteJSON(wire.FramePluginMessage, wire.PluginMessage{PluginID: pluginID, Topic: topic, Data: data})
+}
+
+// AwaitPluginMessage returns the next PLUGIN_MESSAGE the daemon relayed.
+func (c *Client) AwaitPluginMessage(timeout time.Duration) (wire.PluginMessage, error) {
+	select {
+	case m := <-c.pluginMsgs:
+		return m, nil
+	case err := <-c.errs:
+		return wire.PluginMessage{}, err
+	case <-time.After(timeout):
+		return wire.PluginMessage{}, errors.New("testclient: timeout waiting for PLUGIN_MESSAGE")
+	}
+}
+
+// PrepareWorktree sends PREPARE_WORKTREE as a Request and returns the
+// PREPARED_WORKTREE; a refusal is a *RequestError.
+func (c *Client) PrepareWorktree(req wire.PrepareWorktreeReq, timeout time.Duration) (wire.PreparedWorktreeMsg, error) {
+	var out wire.PreparedWorktreeMsg
+	_, payload, err := c.Request(wire.FramePrepareWorktree, req, timeout)
+	if err != nil {
+		return out, err
+	}
+	return out, json.Unmarshal(payload, &out)
+}
+
+// CommitWorktree sends COMMIT_WORKTREE as a Request and returns its ACK.
+func (c *Client) CommitWorktree(req wire.CommitWorktreeReq, timeout time.Duration) (wire.AckMsg, error) {
+	var out wire.AckMsg
+	_, payload, err := c.Request(wire.FrameCommitWorktree, req, timeout)
+	if err != nil {
+		return out, err
+	}
+	return out, json.Unmarshal(payload, &out)
 }
 
 // ListWorktrees sends LIST_WORKTREES. Use AwaitWorktrees to consume
@@ -885,6 +928,14 @@ func (c *Client) readLoop() {
 			if err := json.Unmarshal(payload, &ev); err == nil {
 				select {
 				case c.plugins <- ev:
+				case <-c.closed:
+				}
+			}
+		case wire.FramePluginMessage:
+			var m wire.PluginMessage
+			if err := json.Unmarshal(payload, &m); err == nil {
+				select {
+				case c.pluginMsgs <- m:
 				case <-c.closed:
 				}
 			}

@@ -2132,6 +2132,21 @@ export async function SetPluginEnabled(id: string, enabled: boolean) {
   emit('plugin:event', JSON.stringify({ kind: 'updated', plugin: p }));
   return '';
 }
+// Spec 528: records what the page sent, for the specs that check it.
+export const sentPluginMessages: Array<{
+  plugin_id: string;
+  topic: string;
+  data: string;
+}> = [];
+export async function SendPluginMessage(
+  pluginId: string,
+  topic: string,
+  dataJSON: string,
+) {
+  maybeFail('SendPluginMessage');
+  sentPluginMessages.push({ plugin_id: pluginId, topic, data: dataJSON });
+  return '';
+}
 export async function RemovePlugin(id: string) {
   maybeFail('RemovePlugin');
   const i = mockPlugins.findIndex((x) => x.id === id);

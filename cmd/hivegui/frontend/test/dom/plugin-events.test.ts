@@ -56,6 +56,7 @@ vi.mock('../../src/bridge.js', () => {
     InstallPlugin: fn(),
     SetPluginEnabled: fn(),
     RemovePlugin: fn(),
+    SendPluginMessage: fn(),
     ListWorktrees: fn(),
     RemoveWorktree: fn(),
     CreateWorktree: fn(),
@@ -196,5 +197,61 @@ describe('plugin_install_failed', () => {
     });
     await flush();
     expect(statusText()).toContain('plugin_install_failed: boom');
+  });
+});
+
+describe('plugin:message (spec 528)', () => {
+  it('hands each decoded message to every subscriber, untouched', () => {
+    const a = vi.fn();
+    const b = vi.fn();
+    const offA = plugins.onPluginMessage(a);
+    const offB = plugins.onPluginMessage(b);
+    const msg = {
+      plugin_id: 'wf',
+      topic: 'run.state',
+      data: { n: 1, nested: [true, null] },
+    };
+    deliver('plugin:message', msg);
+    expect(a).toHaveBeenCalledWith(msg);
+    expect(b).toHaveBeenCalledWith(msg);
+    offA();
+    deliver('plugin:message', { plugin_id: 'wf', topic: 'again' });
+    expect(a).toHaveBeenCalledTimes(1);
+    expect(b).toHaveBeenCalledTimes(2);
+    offB();
+  });
+
+  it('drops a malformed or incomplete frame without telling anyone', () => {
+    const a = vi.fn();
+    const off = plugins.onPluginMessage(a);
+    deliver('plugin:message', 'not json');
+    deliver('plugin:message', { topic: 'no-plugin' });
+    deliver('plugin:message', { plugin_id: 'wf' });
+    deliver('plugin:message', 'null');
+    expect(a).not.toHaveBeenCalled();
+    expect(flashStatus).not.toHaveBeenCalled();
+    off();
+  });
+
+  it('a throwing subscriber does not cost the others the message', () => {
+    const spy = vi.spyOn(console, 'error').mockImplementation(() => {});
+    const bad = plugins.onPluginMessage(() => {
+      throw new Error('boom');
+    });
+    const good = vi.fn();
+    const off = plugins.onPluginMessage(good);
+    deliver('plugin:message', { plugin_id: 'wf', topic: 't' });
+    expect(good).toHaveBeenCalledTimes(1);
+    bad();
+    off();
+    spy.mockRestore();
+  });
+
+  it('sendPluginMessage passes data as a JSON string, and none as empty', async () => {
+    await plugins.sendPluginMessage('wf', 'ui.cancel', { nonce: 'abc' });
+    await plugins.sendPluginMessage('wf', 'ping');
+    const calls = vi.mocked(bridge.SendPluginMessage).mock.calls;
+    expect(calls.at(-2)).toEqual(['wf', 'ui.cancel', '{"nonce":"abc"}']);
+    expect(calls.at(-1)).toEqual(['wf', 'ping', '']);
   });
 });

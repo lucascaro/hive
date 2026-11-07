@@ -302,9 +302,21 @@ const (
 	FrameCancelAcp     FrameType = 0x50 // C → S, JSON, control
 	FrameListAcpAgents FrameType = 0x51 // C → S, JSON, control
 	FrameAcpAgents     FrameType = 0x52 // S → C, JSON, control
+
+	// Workflow-engine prerequisites, part two (spec 528). PLUGIN_MESSAGE
+	// is the plugin ⇄ GUI side channel and travels both ways. PREPARE_
+	// WORKTREE builds (and optionally merges into) a worktree on a
+	// run-owned branch; COMMIT_WORKTREE commits everything in one.
+	FramePluginMessage    FrameType = 0x53 // C ⇄ S, JSON, control
+	FramePrepareWorktree  FrameType = 0x54 // C → S, JSON, control
+	FramePreparedWorktree FrameType = 0x55 // S → C, JSON, control
+	FrameCommitWorktree   FrameType = 0x56 // C → S, JSON, control
 )
 
 // ControlRequestFrames lists every frame a control-mode client may send.
+// FramePluginMessage travels both ways but is classified here, once: the
+// classification test wants each frame in exactly one list, and the
+// client-to-daemon direction is the one that needs a gate.
 // It is the parity contract for plugins: a plugin is a control client,
 // so this is exactly what it can do (docs/plugins.md tabulates it and a
 // test keeps the two in step). TestEveryFrameClassified fails when a new
@@ -326,6 +338,7 @@ var ControlRequestFrames = []FrameType{
 	FrameSubmitResult, FrameSetSessionKind, FrameSendToSession,
 	FrameArchiveSession, FrameListArchived, FrameUnarchiveSession, FrameDeleteArchived,
 	FrameWaitSession, FrameCancelAcp, FrameListAcpAgents,
+	FramePluginMessage, FramePrepareWorktree, FrameCommitWorktree,
 }
 
 // ControlEventFrames lists every frame the daemon sends on a control
@@ -338,7 +351,7 @@ var ControlEventFrames = []FrameType{
 	FrameTranscriptMatches, FrameTranscriptLines, FramePlanReview,
 	FramePlugins, FramePluginEvent, FrameAcpTranscript,
 	FrameSubmitResultOK, FrameSent, FrameArchived, FrameWaited,
-	FrameAck, FrameAcpAgents,
+	FrameAck, FrameAcpAgents, FramePreparedWorktree,
 }
 
 // NonControlFrames are the frames that never travel on a control
@@ -477,6 +490,14 @@ func (t FrameType) String() string {
 		return "LIST_ACP_AGENTS"
 	case FrameAcpAgents:
 		return "ACP_AGENTS"
+	case FramePluginMessage:
+		return "PLUGIN_MESSAGE"
+	case FramePrepareWorktree:
+		return "PREPARE_WORKTREE"
+	case FramePreparedWorktree:
+		return "PREPARED_WORKTREE"
+	case FrameCommitWorktree:
+		return "COMMIT_WORKTREE"
 	case FrameArchiveSession:
 		return "ARCHIVE_SESSION"
 	case FrameListArchived:
