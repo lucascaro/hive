@@ -4,7 +4,7 @@
 
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { MAX_NESTING, shape } from '../ir/shape.ts';
+import { MAX_IR_BYTES, MAX_NESTING, shape } from '../ir/shape.ts';
 import { examples } from '../tools/examples.ts';
 
 // biome-ignore lint/suspicious/noExplicitAny: tests mutate a parsed IR freely
@@ -136,4 +136,19 @@ test('bounds nesting of nodes and conditions', () => {
   const ir2 = fresh();
   findKind(ir2.nodes, 'loop').until = c;
   assert.match(text(ir2), /condition nested deeper than 32 levels/);
+});
+
+test('caps the whole IR at 32 KiB of JSON', () => {
+  const at = (n: number) => {
+    const ir = fresh();
+    agentOf(ir).prompt = '';
+    const room = n - new TextEncoder().encode(JSON.stringify(ir)).length;
+    agentOf(ir).prompt = 'é'.repeat(Math.floor(room / 2)) + (room % 2 ? 'x' : '');
+    return ir;
+  };
+  const exact = at(MAX_IR_BYTES);
+  assert.equal(new TextEncoder().encode(JSON.stringify(exact)).length, MAX_IR_BYTES);
+  assert.deepEqual(shape(exact), [], 'exactly at the limit passes');
+  agentOf(exact).prompt += 'x';
+  assert.deepEqual(shape(exact), [`ir: too large (${MAX_IR_BYTES + 1} bytes of JSON, the limit is ${MAX_IR_BYTES})`]);
 });

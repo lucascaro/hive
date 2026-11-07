@@ -29,6 +29,8 @@ export type Infer<X> = X extends S<infer T> ? T : never;
 
 export type ObjectSchema = Extract<JsonSchema, { type: 'object' }>;
 
+const FIELD_NAME = /^[A-Za-z_][A-Za-z0-9_]*$/;
+
 export const s = {
   string: (): S<string> => ({ json: { type: 'string' } }),
   number: (): S<number> => ({ json: { type: 'number' } }),
@@ -39,7 +41,12 @@ export const s = {
   array: <T>(items: S<T>): S<T[]> => ({ json: { type: 'array', items: items.json } }),
   object: <P extends Record<string, S<unknown>>>(props: P): S<{ [K in keyof P]: Infer<P[K]> }> => {
     const properties: Record<string, JsonSchema> = {};
-    for (const [k, v] of Object.entries(props)) properties[k] = v.json;
+    for (const [k, v] of Object.entries(props)) {
+      // A ref is "<node>.<field>" split at the last dot, and a "__proto__" key
+      // would set the prototype instead of a property.
+      if (!FIELD_NAME.test(k) || k === '__proto__') throw new Error(`s.object: field name "${k}" must match ${FIELD_NAME} and not be __proto__`);
+      properties[k] = v.json;
+    }
     return { json: { type: 'object', properties, required: Object.keys(props), additionalProperties: false } };
   },
 };

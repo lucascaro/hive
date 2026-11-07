@@ -70,6 +70,9 @@ export function validate(ir: IR): string[] {
     if (placed.has(node.id)) errors.push(`${node.id}: duplicate id`);
     placed.set(node.id, p);
   }
+  // Everything below walks parent links by id. A bad or duplicate id (a
+  // group "g" holding a node "g") makes those links loop, so stop here.
+  if (errors.length > 0) return errors;
 
   const parentOf = (id: string): string => placed.get(id)?.parent ?? '';
   // id, its container, that container's container, … up to a top-level node.

@@ -7,12 +7,15 @@
 // returns but not for a stored IR or one a build child printed. This is the
 // same set of rules as ir.schema.json (kinds, required keys, no extra keys,
 // types, id grammar) plus the limits the schema cannot say: result-schema
-// size and depth, and a bound on how deeply nodes and conditions nest.
+// size and depth, a bound on how deeply nodes and conditions nest, and a
+// cap on the whole IR so it fits one plugin message.
 
 import { MAX_CONCURRENCY, MAX_ITERS } from '../sdk/dsl.ts';
 import { checkSchema } from './resultschema.ts';
 
 export const MAX_NESTING = 32;
+/** A stored IR is at most this much JSON, so one plugin message can carry it (spec 529, Contract for C). */
+export const MAX_IR_BYTES = 32 << 10;
 
 const ID = /^[a-z][a-z0-9]*(-[a-z0-9]+)*(\/[a-z][a-z0-9]*(-[a-z0-9]+)*)*$/;
 const OPS = ['eq', 'ne', 'in', 'truthy', 'lt', 'gt'];
@@ -145,6 +148,14 @@ export function shape(json: unknown): string[] {
   };
 
   if (!isRecord(json)) return ['ir: must be an object'];
+  // Measured on the JSON, before any walk, so an oversized IR costs one stringify.
+  let size = 0;
+  try {
+    size = new TextEncoder().encode(JSON.stringify(json)).length;
+  } catch {
+    return ['ir: not JSON'];
+  }
+  if (size > MAX_IR_BYTES) return [`ir: too large (${size} bytes of JSON, the limit is ${MAX_IR_BYTES})`];
   exactKeys(json, 'ir', ['ir', 'name', 'input', 'nodes', 'edges'], ['ir', 'name', 'input', 'nodes', 'edges']);
   if (json.ir !== 1) err('ir.ir', 'must be 1');
   if (typeof json.name !== 'string') err('ir.name', 'must be a string');

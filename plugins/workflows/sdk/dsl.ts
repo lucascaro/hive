@@ -251,7 +251,14 @@ export class Scope {
       edges: [],
     };
     this.#body.nodes.push(node);
-    body(new Scope(node.id, node), { ref: '$item' });
+    const sink = body(new Scope(node.id, node), { ref: '$item' });
+    // validate() types the map's results from the template's one sink, so the
+    // handle the body returns has to be that sink (zero or several sinks are
+    // reported by validate()).
+    const sinkIds = node.nodes.map((n) => n.id).filter((id) => !node.edges.some((e) => e.from === id));
+    if (sinkIds.length === 1 && sink.id !== sinkIds[0]) {
+      throw new Error(`map ${node.id}: the body must return its sink "${sinkIds[0]}", not "${sink.id}"`);
+    }
     return { id: node.id, out: { results: { ref: `${node.id}.results` } } as Refs<{ results: U[] }> };
   }
 

@@ -243,7 +243,10 @@ which a crash loses.
 - **Map.**
   - `over` is resolved, and the copy count is checked against the run cap
     (32).
-  - At most `min(concurrency, live-agent headroom)` copies run at once.
+  - At most `concurrency` copies are admitted at once. The live-agent cap (4)
+    is a scheduler throttle on starting an *agent* node, not on admitting a
+    copy, so an admitted copy whose agent has no headroom waits `pending`,
+    and a check or human node inside a copy needs no headroom.
   - Output `{results}` is the template sink's outputs, in index order.
 - **Failure.**
   - A node that is `failed` after its attempts fails the run.
@@ -703,7 +706,7 @@ type RunEvent = {
 | `node.started` | `{kind, session_id?, branch?, worktree?, iteration?, index?}` |
 | `node.waiting` | `{reason: "human", prompt, output_schema}` or `{reason: "permission", session_id, request_id, title, options: [{option_id, name, kind}]}` |
 | `node.resumed` | `{reason: "permission" \| "human"}` — a `node.waiting` ended without the node finishing. B emits it only for a cleared permission; a human answer ends with `node.output` + `node.finished` in one transaction, so it emits none (B-1) |
-| `node.output` | `{output, truncated?: true}` — ≤ 16 KiB in the event; full value via `node.get` |
+| `node.output` | `{output, truncated?: true}` — ≤ 16 KiB in the event and in `node.get`; the full value stays in `runs.db` (no retrieval path yet, see Open questions) |
 | `node.finished` | `{state: "done"\|"failed"\|"skipped"\|"interrupted"\|"cancelled", error?, cap?, conflict?: {branch, files, worktree}}` |
 | `loop.iteration` | `{iteration, max_iters}` |
 | `map.expanded` | `{count, concurrency}` |
@@ -1085,6 +1088,16 @@ download, the accepted sandbox gap, and `LIST_ACP_AGENTS`.
   agents unavailable with a "can't cap its mode" reason that would hide it.
   A reply without `ceiling` falls back to `default_mode`, then `modes[0]`,
   as `Settings.ACPCeiling` does.
+- **2026-11-06 (B1 review):** Fixed from the PR #538 review: `shape` now caps
+  the IR at 32 KiB (`MAX_IR_BYTES`, the plan's own rule, missed in the first
+  push); `validate` returns right after the id pass, because a node whose id
+  repeats its container's (`g` inside `g`) made the parent walk loop until it
+  threw `Invalid array length`, on an IR `shape` accepts; `s.object` rejects
+  field names outside `[A-Za-z_][A-Za-z0-9_]*` and `__proto__` (a dotted name
+  cannot be referenced, and `__proto__` silently dropped the field); `map()`
+  throws when its body returns a handle other than the template's one sink.
+  Plan wording fixed for map admission vs the live-agent throttle and for
+  `node.output`/`node.get`. The rest are parked under Open questions.
 - **2026-11-06 (B1):** `test/fixtures/acp-agents.json` is hand-written from
   `agent.acpSpecs` and the shape of `wire.AcpAgentInfo`, with the ceilings the
   library examples need (claude `acceptEdits`, codex `workspace-write`, pi
@@ -1159,7 +1172,36 @@ download, the accepted sandbox gap, and `LIST_ACP_AGENTS`.
 
 ## Open questions
 
-None. Execution order still depends on A: B1 needs A PR1's fixtures; B2
+Raised by the B1 review (CodeRabbit, PR #538). They concern design that B2 to
+B5 implement, not B1's diff, so each is parked on the phase that owns it and
+needs a decision before that phase starts:
+
+- **B2/B5, outputs vs `redact()`.** The reducer evaluates conditions against
+  stored `outputs`, and `redact()` runs on outputs before insert. A value that
+  matches a redaction pattern would change which edge is taken. Options:
+  (a) redact only events and keep outputs raw in `runs.db` (0600), or
+  (b) store raw outputs in a separate column the reducer reads and the topics
+  never serve. Needs a decision, because (a) persists secrets in plaintext.
+- **B2, `run.get` size.** A run with 32 map copies of many nodes can exceed the
+  64 KiB message cap in `nodes`. Needs a byte-budgeted page contract
+  (`nodes_after`, `more`) before C depends on the reply.
+- **B2/B5, full output retrieval.** `node.get` truncates at 16 KiB, so the
+  full value is unreachable from the GUI. Either add `offset`/`limit` paging
+  to `node.get` or accept truncation as final.
+- **B3, spawn-to-record gap for checks.** A crash after `spawn` and before the
+  `pid`/`pgid`/start-time row write leaves a child that startup reaping cannot
+  find. Candidates: write an intent row first and make the check discoverable
+  by an env marker (`HIVE_WF_CHECK=<run>/<key>/<attempt>`, Linux
+  `/proc/<pid>/environ`, macOS `ps eww`), or fence by refusing to restart a
+  check whose intent row has no pid until the user acknowledges. Needs tests
+  at the launch and recovery boundaries.
+- **B3, group survivors after the leader exits.** The pid + start-time match
+  only proves the leader. Once the leader is gone, killing `-pgid` risks a
+  reused group. Candidate: only signal the group while the leader (or a
+  recorded member) still matches; otherwise leave survivors and record
+  `kept_pids` for the user, never signalling an unverified group.
+
+Execution order still depends on A: B1 needs A PR1's fixtures; B2
 needs A PR1–3; B3 needs R1–R4 merged in A.
 
 ## PR convergence ledger
