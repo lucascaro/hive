@@ -5,6 +5,7 @@
 package daemon
 
 import (
+	"encoding/json"
 	"fmt"
 	"log"
 	"sync"
@@ -157,11 +158,24 @@ func (h *pluginMsgHub) Close() {
 	}
 }
 
+// pluginMessageFits enforces the cap on the frame as it will be relayed:
+// stamped, and re-encoded (JSON escaping can grow it), not as received.
+func pluginMessageFits(ops controlOps, m wire.PluginMessage) bool {
+	b, err := json.Marshal(m)
+	if err != nil || len(b) > wire.MaxPluginMessage {
+		ops.sendError(wire.ErrCodePluginMessageTooLarge,
+			fmt.Sprintf("PLUGIN_MESSAGE is %d bytes as relayed; the cap is %d", len(b), wire.MaxPluginMessage))
+		return false
+	}
+	return true
+}
+
 // relayPluginMessage handles one PLUGIN_MESSAGE frame from ops's
 // connection. A session connection never gets here (it is not in
 // sessionModeFrames).
 func (d *Daemon) relayPluginMessage(ops controlOps, payload []byte) {
-	if len(payload) > wire.MaxPluginMessage {
+	// Cheap bound before decoding anything.
+	if len(payload) > wire.MaxPluginMessage+1024 {
 		ops.sendError(wire.ErrCodePluginMessageTooLarge,
 			fmt.Sprintf("PLUGIN_MESSAGE is %d bytes; the cap is %d", len(payload), wire.MaxPluginMessage))
 		return
@@ -178,8 +192,14 @@ func (d *Daemon) relayPluginMessage(ops controlOps, payload []byte) {
 	case ops.pluginID != "":
 		// Whatever it claimed, it is who it is.
 		m.PluginID = ops.pluginID
+		if !pluginMessageFits(ops, m) {
+			return
+		}
 		d.pluginMsgs.publishUI(m)
 	case ops.uiCapable:
+		if !pluginMessageFits(ops, m) {
+			return
+		}
 		if !d.pluginMsgs.publishPlugin(m.PluginID, m) {
 			ops.sendError(wire.ErrCodePluginNotRunning, fmt.Sprintf("plugin %q has no live connection", m.PluginID))
 		}

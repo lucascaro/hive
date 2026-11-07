@@ -174,17 +174,24 @@ func TestPluginMessage_SizeCap64KiB(t *testing.T) {
 		}
 		return b
 	}
-	if err := wire.WriteFrame(pc, wire.FramePluginMessage, payloadOf(wire.MaxPluginMessage)); err != nil {
+	// The cap is on the frame as relayed, with the stamped plugin id.
+	if err := wire.WriteFrame(pc, wire.FramePluginMessage, payloadOf(wire.MaxPluginMessage-len(`wf`))); err != nil {
 		t.Fatal(err)
 	}
 	if m := readPluginMessage(t, gui); m.PluginID != "wf" || len(m.Data) < wire.MaxPluginMessage-100 {
 		t.Errorf("a payload at the cap was not relayed intact: plugin %q, %d bytes of data", m.PluginID, len(m.Data))
 	}
-	if err := wire.WriteFrame(pc, wire.FramePluginMessage, payloadOf(wire.MaxPluginMessage+1)); err != nil {
+	if err := wire.WriteFrame(pc, wire.FramePluginMessage, payloadOf(wire.MaxPluginMessage-len(`wf`)+1)); err != nil {
 		t.Fatal(err)
 	}
 	if e := readFrameWhere(t, pc, "ERROR", isFrame(wire.FrameError)).err(t); e.Code != wire.ErrCodePluginMessageTooLarge {
 		t.Errorf("error = %+v, want plugin_message_too_large", e)
+	}
+	// Escaping grows a payload: 20000 "<" is 20000 bytes in, 120000 out.
+	big := json.RawMessage(`"` + strings.Repeat("<", 20000) + `"`)
+	send(t, pc, wire.FramePluginMessage, wire.PluginMessage{Topic: "t", Data: big})
+	if e := readFrameWhere(t, pc, "ERROR", isFrame(wire.FrameError)).err(t); e.Code != wire.ErrCodePluginMessageTooLarge {
+		t.Errorf("escaped growth: error = %+v, want plugin_message_too_large", e)
 	}
 	assertNoPluginMessage(t, gui, "gui, after an oversize message")
 }

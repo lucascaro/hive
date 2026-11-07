@@ -284,6 +284,12 @@ func PrepareRun(ctx context.Context, root, runID, branch, base string, merge []s
 	if err := verifyWorktreeLink(ctx, root, out.Path); err != nil {
 		return Prepared{}, err
 	}
+	// Agents in the worktree get the project's untracked skills, commands
+	// and local settings, as in any Hive worktree. Never clobbers, so
+	// repeating it on a re-attach is a no-op; commit and the dirty check
+	// both leave these links out.
+	EnsureGitignore(root)
+	LinkAgentConfig(root, out.Path)
 	if out.Merged, out.Conflict, err = MergeBranches(ctx, out.Path, shas); err != nil {
 		return Prepared{}, err
 	}

@@ -335,6 +335,28 @@ func TestMergeBranches_RefusesDirtyWorktree(t *testing.T) {
 	}
 }
 
+// Agents in a prepared worktree see the project's untracked agent config.
+func TestPrepareWorktree_LinksAgentConfig(t *testing.T) {
+	repo := workflowRepo(t)
+	ctx := context.Background()
+	mustMkdir(t, filepath.Join(repo, ".claude", "skills"))
+	p, err := PrepareRun(ctx, repo, run, runBranch("a"), "main", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	fi, err := os.Lstat(filepath.Join(p.Path, ".claude", "skills"))
+	if err != nil || fi.Mode()&os.ModeSymlink == 0 {
+		t.Skipf("no symlink on this platform: %v", err)
+	}
+	// Re-attach keeps it, and the link never counts as work.
+	if p2, err := PrepareRun(ctx, repo, run, runBranch("a"), "main", nil); err != nil || ResolvePath(p2.Path) != ResolvePath(p.Path) {
+		t.Fatalf("re-attach: %+v %v", p2, err)
+	}
+	if dirty, err := worktreeDirty(ctx, p.Path); err != nil || dirty {
+		t.Errorf("dirty=%v err=%v", dirty, err)
+	}
+}
+
 func TestPrepareWorktree_MergeListIsBounded(t *testing.T) {
 	repo := workflowRepo(t)
 	many := make([]string, maxMergeBranches+1)
