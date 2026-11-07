@@ -4,9 +4,10 @@
 
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { type Cond, type IR, type Ref, all, not, validate, when, workflow } from './dsl.ts';
-import { examples } from './examples.ts';
-import { s } from './schema.ts';
+import { type Cond, type IR, type Ref, all, not, when, workflow } from '../sdk/dsl.ts';
+import { validate } from '../ir/validate.ts';
+import { examples } from '../tools/examples.ts';
+import { s } from '../sdk/schema.ts';
 
 const verdict = s.object({ verdict: s.enum('approve', 'revise'), feedback: s.string() });
 const summary = s.object({ summary: s.string() });
@@ -234,7 +235,7 @@ test('validate rejects each malformed node, edge, ref and condition', () => {
   }
 });
 
-test('validate rejects a ref to a node that has not run yet', () => {
+test('rejects a ref to a non-upstream node (has not run yet)', () => {
   const ir = workflow('order', s.object({}), (g) => {
     const a = g.agent('a', { agent: 'claude', prompt: 'Read {{b.summary}}', output: summary });
     const b = g.agent('b', { agent: 'codex', prompt: 'y', output: summary });
@@ -361,7 +362,7 @@ test("a loop's until cannot read the loop's own converged or iterations", () => 
   assert.match(validate(ir).join('\n'), /lp\.until: ref "lp\.iterations" is not upstream of lp/);
 });
 
-test('ref order: the loop exception does not cover a parallel sibling', () => {
+test('rejects a parallel sibling ref (the loop exception does not cover it)', () => {
   const ir = workflow('loop-sibling', s.object({}), (g) => {
     g.loop('lp', { maxIters: 2 }, (b) => {
       b.agent('a', { agent: 'claude', prompt: 'Peek {{lp/b.summary}}', output: summary });
@@ -372,7 +373,7 @@ test('ref order: the loop exception does not cover a parallel sibling', () => {
   assert.match(validate(ir).join('\n'), /lp\/a: ref "lp\/b\.summary" is not upstream of lp\/a/);
 });
 
-test('worktree.of and map.over take no loop back-refs', () => {
+test('rejects worktree.of back-ref on first iteration (worktree.of and map.over take no loop back-refs)', () => {
   const ir = workflow('resource-backref', s.object({}), (g) => {
     g.loop('lp', { maxIters: 2 }, (b) => {
       let later: { id: string } = { id: 'lp/later' };
@@ -391,4 +392,45 @@ test('worktree.of and map.over take no loop back-refs', () => {
   const errors = validate(ir).join('\n');
   assert.match(errors, /lp\/first: worktree\.of "lp\/later" is not upstream of it/);
   assert.match(errors, /lp\/each\.over: ref "lp\/later\.items" is not upstream of lp\/each/);
+});
+
+test('rejects a node whose id repeats its container, without walking parent links', () => {
+  // A group "g" holding an agent "g": the later one replaces the earlier in the
+  // id table, which made the parent chain loop until validate() ran out of memory.
+  const out = { type: 'object', properties: { x: { type: 'string' } }, required: ['x'], additionalProperties: false } as const;
+  const ir = {
+    ir: 1,
+    name: 'dup',
+    input: out,
+    edges: [],
+    nodes: [
+      {
+        id: 'g',
+        kind: 'group',
+        edges: [],
+        nodes: [{ id: 'g', kind: 'agent', agent: 'claude', worktree: 'own', timeout_s: 1, prompt: '{{g.x}}', output: out }],
+      },
+    ],
+  } as unknown as IR;
+  const errors = validate(ir).join('\n');
+  assert.match(errors, /^g: duplicate id$/m);
+  assert.match(errors, /^g: id must be "g\/<segment>"/m);
+});
+
+test('a map body must return its sink, and field names must be plain identifiers', () => {
+  assert.throws(
+    () =>
+      workflow('sink', s.object({ xs: s.array(s.string()) }), (g, input) => {
+        g.map('m', { over: input.xs }, (b) => {
+          const first = b.agent('first', { agent: 'claude', prompt: 'x', output: summary });
+          const last = b.agent('last', { agent: 'codex', prompt: 'y', output: verdict });
+          b.edge(first, last);
+          return first;
+        });
+      }),
+    /the body must return its sink "m\/last", not "m\/first"/,
+  );
+  for (const bad of ['a.b', '__proto__', '1x', '']) {
+    assert.throws(() => s.object({ [bad]: s.string() }), /field name .* must match/, bad);
+  }
 });

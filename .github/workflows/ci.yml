@@ -366,17 +366,17 @@ jobs:
         # Repo root, like the steps around it.
         run: node --test 'plugins/sdk/*.test.mjs'
 
-      - name: Workflow prototype tests + design-doc drift check (spec 495)
+      - name: Workflow plugin tests + design-doc drift check (specs 495, 529)
         if: matrix.biome
-        # Repo root, like the probe step above. Runs the prototype's .ts files
+        # Repo root, like the probe step above. Runs the plugin's .ts files
         # on Node's native type stripping (no build, no install), type-checks
         # them with the frontend's pinned tsc (node_modules installed by the
         # bootstrap step above), and fails when the IR / Mermaid / schema
-        # blocks in workflow-engine.md differ from what the prototype builds.
+        # blocks in workflow-engine.md differ from what the plugin builds.
         run: |
-          node --test 'scripts/workflow-proto/*.test.ts'
-          node scripts/workflow-proto/check-doc.ts docs/design-docs/workflow-engine.md
-          cmd/hivegui/frontend/node_modules/.bin/tsc -p scripts/workflow-proto/tsconfig.json
+          node --test 'plugins/workflows/**/*.test.ts'
+          node plugins/workflows/tools/check-doc.ts docs/design-docs/workflow-engine.md
+          cmd/hivegui/frontend/node_modules/.bin/tsc -p plugins/workflows/tsconfig.json
 
       - name: Test (frontend E2E — mock Wails)
         if: matrix.e2e_mock

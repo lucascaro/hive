@@ -4,10 +4,10 @@
 
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { workflow } from './dsl.ts';
-import { examples } from './examples.ts';
-import { toMermaid } from './mermaid.ts';
-import { s } from './schema.ts';
+import { workflow } from '../sdk/dsl.ts';
+import { examples } from '../tools/examples.ts';
+import { toMermaid } from '../ir/mermaid.ts';
+import { s } from '../sdk/schema.ts';
 
 test('renders condition labels on edges', () => {
   const out = toMermaid(examples.planImplementVerify());

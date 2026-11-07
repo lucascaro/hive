@@ -7,8 +7,8 @@ import { readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { test } from 'node:test';
 import { fileURLToPath } from 'node:url';
-import { examples } from './examples.ts';
-import { irSchema } from './ir-schema.ts';
+import { examples } from '../tools/examples.ts';
+import { irSchema } from '../ir/ir-schema.ts';
 
 const here = dirname(fileURLToPath(import.meta.url));
 
@@ -70,8 +70,8 @@ function errorsOf(v: unknown): string[] {
 }
 
 test('the committed ir.schema.json equals irSchema()', () => {
-  const committed = readFileSync(join(here, 'ir.schema.json'), 'utf8');
-  assert.equal(committed, `${JSON.stringify(irSchema(), null, 2)}\n`, 'regenerate: node emit.ts --schema > ir.schema.json');
+  const committed = readFileSync(join(here, '../ir/ir.schema.json'), 'utf8');
+  assert.equal(committed, `${JSON.stringify(irSchema(), null, 2)}\n`, 'regenerate: node tools/emit.ts --schema > ir/ir.schema.json');
 });
 
 test('every example IR validates against ir.schema.json', () => {

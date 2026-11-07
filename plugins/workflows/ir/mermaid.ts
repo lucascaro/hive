@@ -6,7 +6,7 @@
 // labelled subgraphs, so the picture a user reviews has the same nesting the
 // engine runs; edge labels show their conditions. Output is deterministic.
 
-import type { Body, Cond, IR, Node } from './dsl.ts';
+import type { Body, Cond, IR, Node } from '../sdk/dsl.ts';
 
 // Ids are lowercase words joined by single hyphens, nested with `/` (see
 // dsl.ts), so this mapping cannot collide.
