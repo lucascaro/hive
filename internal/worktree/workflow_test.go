@@ -637,7 +637,7 @@ func TestMergeBranches_IgnoresNoCommitConfig(t *testing.T) {
 	repo := workflowRepo(t)
 	ctx := context.Background()
 	branchWith(t, repo, runBranch("n1"), "main", "a.txt", "a\n")
-	mustGit(t, repo, "config", "branch.main.mergeOptions", "--no-commit")
+	mustGit(t, repo, "config", "branch.hive/wf/r1/m.mergeOptions", "--no-commit")
 	mustGit(t, repo, "config", "merge.ff", "only")
 	p, err := PrepareRun(ctx, repo, run, runBranch("m"), "main", []string{runBranch("n1")})
 	if err != nil || p.Conflict != nil {
