@@ -405,6 +405,9 @@ merge?}` makes a git worktree for a workflow run. A plugin never runs
   absent. That is how a plugin recovers after a crash, or after Hive
   removed a pristine worktree at boot. Only `hive/wf/<run>/` branches are
   ever re-attached.
+- **Agent config** (untracked `.claude/` and similar) is **not** linked into
+  a prepared worktree; it is a plain checkout of the branch. Linking is
+  planned for session adoption.
 - **`path`** is chosen by the daemon under the project's `.worktrees/`; a
   taken directory gets a `-2`, `-3` suffix, never the branch. Use the
   `path` and `branch` of the reply as given.
