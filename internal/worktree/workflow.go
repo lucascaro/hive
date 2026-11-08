@@ -215,6 +215,9 @@ type Prepared struct {
 // the SHA base resolves to. Every name is validated before any git
 // mutation, so a bad request leaves nothing behind.
 func PrepareRun(ctx context.Context, root, runID, branch, base string, merge []string) (Prepared, error) {
+	if err := requireSupportedGit(ctx); err != nil {
+		return Prepared{}, err
+	}
 	if err := CheckBranchName(ctx, root, runID, branch); err != nil {
 		return Prepared{}, err
 	}
@@ -297,6 +300,9 @@ func PrepareRun(ctx context.Context, root, runID, branch, base string, merge []s
 // CommitRun commits everything in the worktree that has branch checked
 // out (see CommitAll). branch must be under the run's namespace.
 func CommitRun(ctx context.Context, root, runID, branch, message string) (committed bool, head string, err error) {
+	if err := requireSupportedGit(ctx); err != nil {
+		return false, "", err
+	}
 	if err := CheckBranchName(ctx, root, runID, branch); err != nil {
 		return false, "", err
 	}

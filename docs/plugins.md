@@ -428,7 +428,8 @@ absent, so it is safe to repeat. Anything outside `hive/wf/<run>/`
 is `invalid_workflow_branch`, and a branch with no worktree
 `worktree_not_found`.
 
-Every git command in both runs with the repo's hooks and `fsmonitor`
+Both refuse with `git_unsupported` on git 2.54 (the one release whose
+config-defined hooks cannot be turned off here). Every git command in both runs with the repo's hooks and `fsmonitor`
 turned off and without signing, so a hook cannot run code on your behalf.
 Merge drivers and filters from the repo's own configuration still apply:
 that is the user's repo.

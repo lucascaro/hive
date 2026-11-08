@@ -68,6 +68,9 @@ const (
 	// ErrCodeWorktreeNotFound: COMMIT_WORKTREE named a branch no
 	// hive-managed worktree has checked out.
 	ErrCodeWorktreeNotFound = "worktree_not_found"
+	// ErrCodeGitUnsupported: the installed git is a release whose hook
+	// suppression cannot be proven (2.54); workflow worktrees refuse it.
+	ErrCodeGitUnsupported = "git_unsupported"
 )
 
 // MaxPluginMessage caps a PLUGIN_MESSAGE payload, in bytes of JSON. A
