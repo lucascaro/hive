@@ -1195,9 +1195,10 @@ needs a decision before that phase starts:
   by an env marker (`HIVE_WF_CHECK=<run>/<key>/<attempt>`, Linux
   `/proc/<pid>/environ`, macOS `ps eww`), or fence by refusing to restart a
   check whose intent row has no pid. A user acknowledgement is not proof the
-  child exited, so the fence lifts only when the child is confirmed stopped
-  (marker scan finds nothing); otherwise the node stays `failed` and the
-  worktree is kept. Needs tests at the launch and recovery boundaries.
+  child exited, so an empty marker scan never lifts the fence (the
+  child may have exec'd a long-running program without the marker). With no
+  recorded pid the node stays `failed`, the worktree is kept, and the engine
+  does not retry in it; a retry gets a fresh worktree from the same branch. Needs tests at the launch and recovery boundaries.
 - **B3, group survivors after the leader exits.** The pid + start-time match
   only proves the leader. Once the leader is gone, killing `-pgid` risks a
   reused group. Candidate: only signal the group while the leader (or a
@@ -1215,6 +1216,7 @@ needs A PR1–3; B3 needs R1–R4 merged in A.
 - **2026-11-07 iter 3** — supersedes iter 2's stop (CodeRabbit's rate limit lifted and it reviewed 62d5eb3a); verdict: REQUEST_CHANGES; mergeable: MERGEABLE; findings_hash: see list; threads_open: 4 -> 0; action: autofix+push; head_sha: see PR head. Fixed with a test: validate's early return was too broad (now only malformed or duplicate ids). Plan wording: the B3 fence lifts only when the child is confirmed stopped. Declined with reasons: lifecycle-checker note (plan correctly stays in active/ until B5); shape's stringify-before-walk (input is already-parsed JSON, bounded by the transport and the 1 MiB runner cap; a too-deep value fails closed as "not JSON").
 - **2026-11-07 iter 4** — verdict: APPROVE; mergeable: MERGEABLE; findings_hash: empty; threads_open: 0; action: stop; head_sha: 778131da. Converged for PR 1 of 5 (phase 1 of 5 only; B2 to B5 remain). Greptile re-reviewed 778131da with no findings; CodeRabbit was rate-limited on it (its last review covered 62d5eb3a, whose 4 threads are fixed or declined with reasons); CI green on Linux, macOS and Windows.
 - **2026-11-07 iter 5** — verdict: APPROVE; mergeable: MERGEABLE; findings_hash: empty; threads_open: 0; action: stop; head_sha: see PR head. Converged for PR 1 of 5 (phase 1 of 5 only; B2 to B5 remain). Re-converged after the gate's doc-accuracy fix (a stale comment in internal/acp/resultschema.go; comment-only, no behaviour change).
+- **2026-11-07 iter 6** — verdict: REQUEST_CHANGES (CodeRabbit re-review of a0df0db8: one plan-wording thread); mergeable: MERGEABLE; findings_hash: see list; threads_open: 1 -> 0; action: autofix+push; head_sha: see PR head. Fixed: the B3 fence wording no longer lets an empty marker scan lift the fence. Docs only; the iter 5 convergence stands once this head is green.
 
 ## Gate verdict
 
