@@ -387,6 +387,10 @@ func (r *Registry) PrepareWorktree(ctx context.Context, req wire.PrepareWorktree
 	if err != nil {
 		return wire.PreparedWorktreeMsg{}, err
 	}
+	// Probe git before the lock: a stalled probe must not hold gitMu.
+	if err := worktree.EnsureSupportedGit(ctx); err != nil {
+		return wire.PreparedWorktreeMsg{}, err
+	}
 	r.gitMu.Lock()
 	defer r.gitMu.Unlock()
 
@@ -420,6 +424,10 @@ func (r *Registry) PrepareWorktree(ctx context.Context, req wire.PrepareWorktree
 func (r *Registry) CommitWorktree(ctx context.Context, req wire.CommitWorktreeReq) (committed bool, head string, err error) {
 	root, err := r.projectRoot(req.ProjectID)
 	if err != nil {
+		return false, "", err
+	}
+	// Probe git before the lock: a stalled probe must not hold gitMu.
+	if err := worktree.EnsureSupportedGit(ctx); err != nil {
 		return false, "", err
 	}
 	r.gitMu.Lock()

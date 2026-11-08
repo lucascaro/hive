@@ -54,3 +54,18 @@ func TestGitSupported_CancelledContextNotCached(t *testing.T) {
 		t.Errorf("failure was cached: %v", err)
 	}
 }
+
+func TestCheckGitVersionOutput(t *testing.T) {
+	for out, bad := range map[string]bool{
+		"git version 2.53.0":                 false,
+		"git version 2.54.1":                 true,
+		"git version 2.39.5 (Apple Git-154)": false,
+		"git version 2.55.0.windows.1":       false,
+		"git version nonsense":               true,
+		"":                                   true,
+	} {
+		if err := checkGitVersionOutput(out); bad != errors.Is(err, ErrGitUnsupported) {
+			t.Errorf("%q: err = %v, want refusal=%v", out, err, bad)
+		}
+	}
+}

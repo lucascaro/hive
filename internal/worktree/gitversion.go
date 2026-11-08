@@ -67,14 +67,25 @@ func gitSupportedCtx(ctx context.Context) error {
 		return fmt.Errorf("git version: %w", err)
 	}
 	gitProbeDone = true
-	m := gitVersionRe.FindStringSubmatch(strings.TrimSpace(string(out)))
-	if m == nil {
-		return nil // unparseable (a vendor build): do not block
-	}
-	major, _ := strconv.Atoi(m[1])
-	minor, _ := strconv.Atoi(m[2])
-	gitProbeErr = checkGitVersion(major, minor)
+	gitProbeErr = checkGitVersionOutput(string(out))
 	return gitProbeErr
 }
 
+// checkGitVersionOutput judges `git version` output; unparseable output is
+// refused (fail closed) because it might be the unsupported release.
+func checkGitVersionOutput(out string) error {
+	out = strings.TrimSpace(out)
+	m := gitVersionRe.FindStringSubmatch(out)
+	if m == nil {
+		return fmt.Errorf("%w: cannot parse %q", ErrGitUnsupported, out)
+	}
+	major, _ := strconv.Atoi(m[1])
+	minor, _ := strconv.Atoi(m[2])
+	return checkGitVersion(major, minor)
+}
+
 func requireSupportedGit(ctx context.Context) error { return gitSupportedCtx(ctx) }
+
+// EnsureSupportedGit warms the version probe. Callers run it before
+// taking the repo's git lock, so a stalled probe never holds that lock.
+func EnsureSupportedGit(ctx context.Context) error { return gitSupportedCtx(ctx) }
