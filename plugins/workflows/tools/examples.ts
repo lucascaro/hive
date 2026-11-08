@@ -12,9 +12,9 @@
 //   planImplementVerify  — a conditional edge on a typed human decision, and
 //                          subgraph composition (it nests reviewLoop)
 
-import { type IR, p, workflow } from './dsl.ts';
-import { fanOutThenVerify, planImplementVerify, reviewLoop } from './library.ts';
-import { s } from './schema.ts';
+import { type IR, p, workflow } from '../sdk/dsl.ts';
+import { fanOutThenVerify, planImplementVerify, reviewLoop } from '../sdk/library.ts';
+import { s } from '../sdk/schema.ts';
 
 const reviewer = {
   agent: 'codex',

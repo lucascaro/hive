@@ -9,9 +9,9 @@ import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { test } from 'node:test';
 import { fileURLToPath } from 'node:url';
-import { checkDoc, expectedKeys, render, writeDoc } from './check-doc.ts';
+import { checkDoc, expectedKeys, render, writeDoc } from '../tools/check-doc.ts';
 
-const doc = join(dirname(fileURLToPath(import.meta.url)), '../../docs/design-docs/workflow-engine.md');
+const doc = join(dirname(fileURLToPath(import.meta.url)), '../../../docs/design-docs/workflow-engine.md');
 
 const block = (key: string, body = render(key)) => `<!-- wf:${key}:start -->${body}<!-- wf:${key}:end -->`;
 // A minimal doc that is fully in step: every expected block, in order.
@@ -88,7 +88,7 @@ test('--write regenerates blocks', () => {
 });
 
 test('the CLI exits 0 in step, 1 on drift and 2 without a doc', () => {
-  const cli = join(dirname(fileURLToPath(import.meta.url)), 'check-doc.ts');
+  const cli = join(dirname(fileURLToPath(import.meta.url)), '../tools/check-doc.ts');
   const run = (...args: string[]) => spawnSync(process.execPath, [cli, ...args], { encoding: 'utf8' });
   const dir = mkdtempSync(join(tmpdir(), 'check-doc-'));
   try {

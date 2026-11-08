@@ -1,0 +1,49 @@
+[
+  {
+    "id": "claude",
+    "name": "Claude Code",
+    "modes": [
+      { "id": "plan", "label": "Plan" },
+      { "id": "default", "label": "Manual" },
+      { "id": "acceptEdits", "label": "Accept edits" },
+      { "id": "auto", "label": "Auto" },
+      { "id": "bypassPermissions", "label": "Bypass permissions" }
+    ],
+    "default_mode": "default",
+    "ceiling": "acceptEdits",
+    "available": true
+  },
+  {
+    "id": "codex",
+    "name": "Codex",
+    "modes": [
+      { "id": "read-only", "label": "Read-only" },
+      { "id": "workspace-write", "label": "Workspace access" },
+      { "id": "agent", "label": "Auto review" },
+      { "id": "agent-full-access", "label": "Full access" }
+    ],
+    "default_mode": "read-only",
+    "ceiling": "workspace-write",
+    "available": true
+  },
+  {
+    "id": "pi",
+    "name": "Pi",
+    "modes": [
+      { "id": "off", "label": "Off" },
+      { "id": "unattended", "label": "Unattended tool use" }
+    ],
+    "default_mode": "off",
+    "ceiling": "unattended",
+    "no_approval_gate": true,
+    "available": true
+  },
+  {
+    "id": "gemini",
+    "name": "Gemini CLI",
+    "modes": [],
+    "experimental": true,
+    "available": false,
+    "reason": "Hive can't cap Gemini CLI's permission mode yet, so ACP is off for it"
+  }
+]

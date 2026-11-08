@@ -13,5 +13,5 @@
     "noUnusedParameters": true,
     "types": []
   },
-  "include": ["*.ts"]
+  "include": ["*.d.ts", "sdk/*.ts", "ir/*.ts", "tools/*.ts", "test/*.ts"]
 }

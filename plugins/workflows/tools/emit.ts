@@ -5,16 +5,16 @@
 
 // Prints a worked example's IR JSON and/or Mermaid (spec 495).
 //
-//   node scripts/workflow-proto/emit.ts <example> [--ir | --mermaid]
-//   node scripts/workflow-proto/emit.ts --schema > scripts/workflow-proto/ir.schema.json
+//   node plugins/workflows/tools/emit.ts <example> [--ir | --mermaid]
+//   node plugins/workflows/tools/emit.ts --schema > plugins/workflows/ir/ir.schema.json
 //
 // With no flag it prints both, IR first. Exits 2 on an unknown example and 1
 // when the example fails validation.
 
-import { validate } from './dsl.ts';
+import { validate } from '../ir/validate.ts';
 import { examples } from './examples.ts';
-import { irSchema } from './ir-schema.ts';
-import { toMermaid } from './mermaid.ts';
+import { irSchema } from '../ir/ir-schema.ts';
+import { toMermaid } from '../ir/mermaid.ts';
 
 const [name, flag] = process.argv.slice(2);
 if (name === '--schema') {

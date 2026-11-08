@@ -7,10 +7,10 @@ import { spawnSync } from 'node:child_process';
 import { dirname, join } from 'node:path';
 import { test } from 'node:test';
 import { fileURLToPath } from 'node:url';
-import { examples } from './examples.ts';
-import { toMermaid } from './mermaid.ts';
+import { examples } from '../tools/examples.ts';
+import { toMermaid } from '../ir/mermaid.ts';
 
-const emit = join(dirname(fileURLToPath(import.meta.url)), 'emit.ts');
+const emit = join(dirname(fileURLToPath(import.meta.url)), '../tools/emit.ts');
 const run = (...args: string[]) => spawnSync(process.execPath, [emit, ...args], { encoding: 'utf8' });
 
 test('emit prints IR and Mermaid for every example', () => {

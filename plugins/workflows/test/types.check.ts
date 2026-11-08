@@ -2,11 +2,11 @@
 // Copyright (C) 2026 Lucas Caro
 // See LICENSE and ADDITIONAL-TERMS.md.
 
-// Type-level tests (spec 495): `tsc -p scripts/workflow-proto` fails if any
+// Type-level tests (spec 495): `tsc -p plugins/workflows` fails if any
 // `@ts-expect-error` line below stops being an error. Never run by node.
 
-import { when, workflow } from './dsl.ts';
-import { s } from './schema.ts';
+import { when, workflow } from '../sdk/dsl.ts';
+import { s } from '../sdk/schema.ts';
 
 workflow('types', s.object({ task: s.string() }), (g, input) => {
   const review = g.agent('review', {

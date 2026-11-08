@@ -16,14 +16,14 @@
 // naming an unknown example or kind, a start with no end, or a duplicated
 // or nested block.
 //
-//   node scripts/workflow-proto/check-doc.ts <doc.md> [--write]
+//   node plugins/workflows/tools/check-doc.ts <doc.md> [--write]
 
 import { readFileSync, writeFileSync } from 'node:fs';
 import { pathToFileURL } from 'node:url';
-import { validate } from './dsl.ts';
+import { validate } from '../ir/validate.ts';
 import { examples } from './examples.ts';
-import { irSchema } from './ir-schema.ts';
-import { toMermaid } from './mermaid.ts';
+import { irSchema } from '../ir/ir-schema.ts';
+import { toMermaid } from '../ir/mermaid.ts';
 
 const KINDS = ['ir', 'mermaid'] as const;
 

@@ -6,7 +6,7 @@
 // committed; schema.test.ts fails when the two differ, and check-doc keeps
 // the copy in docs/design-docs/workflow-engine.md in step.
 
-import { MAX_CONCURRENCY, MAX_ITERS } from './dsl.ts';
+import { MAX_CONCURRENCY, MAX_ITERS } from '../sdk/dsl.ts';
 
 const ref = (name: string) => ({ $ref: `#/$defs/${name}` });
 const obj = (properties: Record<string, unknown>, required: string[]) => ({
@@ -22,7 +22,7 @@ const body = { nodes: { type: 'array', items: ref('node') }, edges: { type: 'arr
 export function irSchema(): Record<string, unknown> {
   return {
     $schema: 'https://json-schema.org/draft/2020-12/schema',
-    $id: 'https://github.com/lucascaro/hive/scripts/workflow-proto/ir.schema.json',
+    $id: 'https://github.com/lucascaro/hive/plugins/workflows/ir/ir.schema.json',
     title: 'Hive workflow IR',
     ...obj({ ir: { const: 1 }, name: { type: 'string' }, input: ref('objectSchema'), ...body }, [
       'ir',
