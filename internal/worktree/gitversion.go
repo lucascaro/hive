@@ -12,6 +12,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/lucascaro/hive/internal/proc"
 )
@@ -35,19 +36,45 @@ func checkGitVersion(major, minor int) error {
 
 var gitVersionRe = regexp.MustCompile(`(\d+)\.(\d+)`)
 
-// gitSupported probes `git version` once per process.
-var gitSupported = sync.OnceValue(func() error {
-	out, err := proc.Command("git", "version").Output()
+// gitProbeTimeout bounds `git version`: a wedged git wrapper must not hold
+// gitMu (and with it daemon shutdown) forever.
+const gitProbeTimeout = 10 * time.Second
+
+var (
+	gitProbeMu   sync.Mutex
+	gitProbeDone bool
+	gitProbeErr  error
+)
+
+// gitSupported probes `git version`. A definitive answer is cached; a
+// probe failure (timeout, missing git) is not, so a later call retries.
+func gitSupported() error {
+	return gitSupportedCtx(context.Background())
+}
+
+func gitSupportedCtx(ctx context.Context) error {
+	gitProbeMu.Lock()
+	defer gitProbeMu.Unlock()
+	if gitProbeDone {
+		return gitProbeErr
+	}
+	ctx, cancel := context.WithTimeout(ctx, gitProbeTimeout)
+	defer cancel()
+	cmd := proc.CommandContext(ctx, "git", "version")
+	cmd.WaitDelay = time.Second
+	out, err := cmd.Output()
 	if err != nil {
 		return fmt.Errorf("git version: %w", err)
 	}
+	gitProbeDone = true
 	m := gitVersionRe.FindStringSubmatch(strings.TrimSpace(string(out)))
 	if m == nil {
 		return nil // unparseable (a vendor build): do not block
 	}
 	major, _ := strconv.Atoi(m[1])
 	minor, _ := strconv.Atoi(m[2])
-	return checkGitVersion(major, minor)
-})
+	gitProbeErr = checkGitVersion(major, minor)
+	return gitProbeErr
+}
 
-func requireSupportedGit(_ context.Context) error { return gitSupported() }
+func requireSupportedGit(ctx context.Context) error { return gitSupportedCtx(ctx) }

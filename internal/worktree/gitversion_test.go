@@ -5,8 +5,10 @@
 package worktree
 
 import (
+	"context"
 	"errors"
 	"testing"
+	"time"
 )
 
 func TestCheckGitVersion(t *testing.T) {
@@ -27,5 +29,28 @@ func TestInstalledGitIsSupported(t *testing.T) {
 	skipNoGit(t)
 	if err := gitSupported(); err != nil {
 		t.Errorf("installed git refused: %v", err)
+	}
+}
+
+// A cancelled caller context bounds the probe and the failure is not cached.
+func TestGitSupported_CancelledContextNotCached(t *testing.T) {
+	skipNoGit(t)
+	gitProbeMu.Lock()
+	done, perr := gitProbeDone, gitProbeErr
+	gitProbeDone = false
+	gitProbeMu.Unlock()
+	t.Cleanup(func() { gitProbeMu.Lock(); gitProbeDone, gitProbeErr = done, perr; gitProbeMu.Unlock() })
+
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	start := time.Now()
+	if err := gitSupportedCtx(ctx); err == nil {
+		t.Fatal("cancelled context: want probe error")
+	}
+	if time.Since(start) > gitProbeTimeout {
+		t.Error("probe not bounded by context")
+	}
+	if err := gitSupported(); err != nil {
+		t.Errorf("failure was cached: %v", err)
 	}
 }
