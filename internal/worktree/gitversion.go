@@ -8,6 +8,8 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"os"
+	"os/exec"
 	"regexp"
 	"strconv"
 	"strings"
@@ -34,7 +36,7 @@ func checkGitVersion(major, minor int) error {
 	return nil
 }
 
-var gitVersionRe = regexp.MustCompile(`(\d+)\.(\d+)`)
+var gitVersionRe = regexp.MustCompile(`^git version (\d+)\.(\d+)(?:[.\s]|$)`)
 
 // gitProbeTimeout bounds `git version`: a wedged git wrapper must not hold
 // gitMu (and with it daemon shutdown) forever.
@@ -44,6 +46,7 @@ var (
 	gitProbeMu   sync.Mutex
 	gitProbeDone bool
 	gitProbeErr  error
+	gitProbeKey  string // identity of the git binary the cached answer is for
 )
 
 // gitSupported probes `git version`. A definitive answer is cached; a
@@ -55,7 +58,8 @@ func gitSupported() error {
 func gitSupportedCtx(ctx context.Context) error {
 	gitProbeMu.Lock()
 	defer gitProbeMu.Unlock()
-	if gitProbeDone {
+	key := gitBinaryKey()
+	if gitProbeDone && gitProbeKey == key {
 		return gitProbeErr
 	}
 	ctx, cancel := context.WithTimeout(ctx, gitProbeTimeout)
@@ -66,13 +70,28 @@ func gitSupportedCtx(ctx context.Context) error {
 	if err != nil {
 		return fmt.Errorf("git version: %w", err)
 	}
-	gitProbeDone = true
+	gitProbeDone, gitProbeKey = true, key
 	gitProbeErr = checkGitVersionOutput(string(out))
 	return gitProbeErr
 }
 
-// checkGitVersionOutput judges `git version` output; unparseable output is
-// refused (fail closed) because it might be the unsupported release.
+// gitBinaryKey identifies the git on PATH (path, size, mtime) so an
+// upgrade or PATH change while the daemon runs re-runs the probe.
+func gitBinaryKey() string {
+	path, err := exec.LookPath("git")
+	if err != nil {
+		return ""
+	}
+	fi, err := os.Stat(path)
+	if err != nil {
+		return path
+	}
+	return fmt.Sprintf("%s|%d|%d", path, fi.Size(), fi.ModTime().UnixNano())
+}
+
+// checkGitVersionOutput judges `git version` output; anything but a
+// plain "git version X.Y..." line is refused (fail closed): a wrapper's
+// banner could hide the unsupported release.
 func checkGitVersionOutput(out string) error {
 	out = strings.TrimSpace(out)
 	m := gitVersionRe.FindStringSubmatch(out)
