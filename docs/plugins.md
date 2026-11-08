@@ -497,9 +497,7 @@ term.on('data', (buf) => process.stdout.write(buf));
 `request(name, payload, { timeoutMs })` sends it with a fresh `req_id`
 and returns a promise of the reply (`ACK`, `ACP_AGENTS`,
 `PREPARED_WORKTREE`, `TRANSCRIPT_MATCHES` or `TRANSCRIPT_LINES` payload).
-`postMessage(topic, data)` sends a `PLUGIN_MESSAGE` to the app, and
-`encodeWorkflowKey(key)` turns a workflow node key into a branch-name
-segment (see **Workflow worktrees**). It accepts only the
+`request()` accepts only the
 verbs in the **Correlating replies** list (`REQUEST_VERBS` in the SDK);
 any other rejects at once with `.hive.code` `unsupported_request`,
 because a success could never be matched. It rejects with an
@@ -509,7 +507,11 @@ from 2^30, so a small `req_id` you pick yourself on `send()` never collides
 with one. Only those reply frames
 settle it — a broadcast never does, whatever its payload holds. Under Hive
 it exits the process when the connection closes, as required above.
-Typed shapes for the main payloads are in the file's JSDoc.
+
+`postMessage(topic, data)` sends a `PLUGIN_MESSAGE` to the app.
+`encodeWorkflowKey(key)` turns a workflow node key into a branch-name
+segment and throws on a key outside the grammar (see **Workflow
+worktrees**). Typed shapes for the main payloads are in the file's JSDoc.
 
 ## App surfaces
 

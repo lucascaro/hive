@@ -13,6 +13,7 @@ import (
 	"path/filepath"
 	"regexp"
 	"strings"
+	"time"
 
 	"github.com/lucascaro/hive/internal/proc"
 	"github.com/lucascaro/hive/internal/wire"
@@ -91,7 +92,7 @@ func ResolveCommit(ctx context.Context, repoDir, rev string) (string, error) {
 	switch {
 	case rev == "" || len(rev) > 256:
 		return "", fmt.Errorf("%w: empty or too long", ErrNoCommit)
-	case strings.HasPrefix(rev, ":/"):
+	case strings.HasPrefix(rev, ":/") || strings.Contains(rev, "^{/"):
 		return "", fmt.Errorf("%w: %q would search all of history", ErrNoCommit, rev)
 	case strings.HasPrefix(rev, "-"):
 		return "", fmt.Errorf("%w: %q looks like an option", ErrNoCommit, rev)
@@ -284,12 +285,6 @@ func PrepareRun(ctx context.Context, root, runID, branch, base string, merge []s
 	if err := verifyWorktreeLink(ctx, root, out.Path); err != nil {
 		return Prepared{}, err
 	}
-	// Agents in the worktree get the project's untracked skills, commands
-	// and local settings, as in any Hive worktree. Never clobbers, so
-	// repeating it on a re-attach is a no-op; commit and the dirty check
-	// both leave these links out.
-	EnsureGitignore(root)
-	LinkAgentConfig(root, out.Path)
 	if out.Merged, out.Conflict, err = MergeBranches(ctx, out.Path, shas); err != nil {
 		return Prepared{}, err
 	}
@@ -417,7 +412,7 @@ func MergeBranches(ctx context.Context, wt string, shas []NamedSHA) (merged []st
 		if !shaRe.MatchString(nb.SHA) {
 			return merged, nil, fmt.Errorf("worktree: %q is not a commit SHA", nb.SHA)
 		}
-		_, mergeErr := safeGit(ctx, wt, "merge", "--no-ff", "--no-edit", "--no-verify", "--no-gpg-sign",
+		_, mergeErr := safeGit(ctx, wt, "merge", "--no-ff", "--commit", "--no-edit", "--no-verify", "--no-gpg-sign",
 			"-m", "Merge branch '"+nb.Name+"'", nb.SHA)
 		if mergeErr == nil {
 			merged = append(merged, nb.Name)
@@ -433,7 +428,11 @@ func MergeBranches(ctx context.Context, wt string, shas []NamedSHA) (merged []st
 			}
 		}
 		// Abort whatever state the failed merge left (harmless when none).
-		_, abortErr := safeGit(ctx, wt, "merge", "--abort")
+		// Cleanup runs on its own bounded context: a canceled request must
+		// not leave the tree mid-merge.
+		cleanCtx, cancelClean := context.WithTimeout(context.WithoutCancel(ctx), mutateTimeout)
+		_, abortErr := safeGit(cleanCtx, wt, "merge", "--abort")
+		cancelClean()
 		if len(files) == 0 {
 			return merged, nil, fmt.Errorf("merge %s: %w", nb.Name, mergeErr)
 		}
@@ -450,9 +449,6 @@ func MergeBranches(ctx context.Context, wt string, shas []NamedSHA) (merged []st
 // user's identity and without running hooks. A clean tree is a no-op
 // (committed false), so the call is idempotent. head is HEAD afterwards.
 func CommitAll(ctx context.Context, wt, message string) (committed bool, head string, err error) {
-	if err := checkIdentity(ctx, wt); err != nil {
-		return false, "", err
-	}
 	add := append([]string{"add", "-A", "--", "."}, agentConfigExcludes(wt)...)
 	if _, err := safeGit(ctx, wt, add...); err != nil {
 		return false, "", err
@@ -462,6 +458,11 @@ func CommitAll(ctx context.Context, wt, message string) (committed bool, head st
 		return false, "", err
 	}
 	if len(out) > 0 {
+		// Identity matters only when there is something to commit: a clean
+		// tree stays a no-op.
+		if err := checkIdentity(ctx, wt); err != nil {
+			return false, "", err
+		}
 		if _, err := safeGit(ctx, wt, "commit", "--no-verify", "--no-gpg-sign", "-m", message); err != nil {
 			return false, "", err
 		}
@@ -547,6 +548,9 @@ envLoop:
 	cmd.Env = append(env, "LC_ALL=C", "LANG=C", "GIT_TERMINAL_PROMPT=0")
 	var stdout, stderr bytes.Buffer
 	cmd.Stdout, cmd.Stderr = &stdout, &stderr
+	// A filter that outlives git and keeps its stderr open must not hold
+	// the git lock: give up on the pipes shortly after the kill.
+	cmd.WaitDelay = 5 * time.Second
 	if err := cmd.Run(); err != nil {
 		if ctx.Err() == context.DeadlineExceeded {
 			return stdout.Bytes(), fmt.Errorf("git %s: timed out after %s", args[0], mutateTimeout)

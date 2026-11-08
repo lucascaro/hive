@@ -91,7 +91,7 @@ func TestResolveCommit(t *testing.T) {
 		}
 	}
 	marker := filepath.Join(t.TempDir(), "marker")
-	for _, rev := range []string{"", "nope", "-h", "--output=" + marker, "--end-of-options", "HEAD\n--help", "main\x00x", "HEAD:nofile"} {
+	for _, rev := range []string{"", "nope", "-h", "--output=" + marker, "--end-of-options", "HEAD\n--help", "main\x00x", "HEAD:nofile", ":/x", "HEAD^{/x}"} {
 		if got, err := ResolveCommit(ctx, repo, rev); !errors.Is(err, ErrNoCommit) {
 			t.Errorf("ResolveCommit(%q) = %q, %v; want ErrNoCommit", rev, got, err)
 		}
@@ -332,28 +332,6 @@ func TestMergeBranches_RefusesDirtyWorktree(t *testing.T) {
 	LinkAgentConfig(repo, clean.Path)
 	if _, err := PrepareRun(ctx, repo, run, runBranch("m2"), "main", []string{runBranch("n1")}); err != nil {
 		t.Errorf("linked agent config counted as dirty: %v", err)
-	}
-}
-
-// Agents in a prepared worktree see the project's untracked agent config.
-func TestPrepareWorktree_LinksAgentConfig(t *testing.T) {
-	repo := workflowRepo(t)
-	ctx := context.Background()
-	mustMkdir(t, filepath.Join(repo, ".claude", "skills"))
-	p, err := PrepareRun(ctx, repo, run, runBranch("a"), "main", nil)
-	if err != nil {
-		t.Fatal(err)
-	}
-	fi, err := os.Lstat(filepath.Join(p.Path, ".claude", "skills"))
-	if err != nil || fi.Mode()&os.ModeSymlink == 0 {
-		t.Skipf("no symlink on this platform: %v", err)
-	}
-	// Re-attach keeps it, and the link never counts as work.
-	if p2, err := PrepareRun(ctx, repo, run, runBranch("a"), "main", nil); err != nil || ResolvePath(p2.Path) != ResolvePath(p.Path) {
-		t.Fatalf("re-attach: %+v %v", p2, err)
-	}
-	if dirty, err := worktreeDirty(ctx, p.Path); err != nil || dirty {
-		t.Errorf("dirty=%v err=%v", dirty, err)
 	}
 }
 
@@ -631,6 +609,45 @@ func TestCommitWorktree_RefusesNonRunBranch(t *testing.T) {
 		if _, _, err := CommitRun(ctx, repo, run, runBranch("a"), msg); err == nil {
 			t.Errorf("message of %d bytes accepted", len(msg))
 		}
+	}
+}
+
+// A clean tree is a no-op even with no identity; only a real commit needs one.
+func TestCommitWorktree_CleanNeedsNoIdentity(t *testing.T) {
+	repo := workflowRepo(t)
+	ctx := context.Background()
+	p, err := PrepareRun(ctx, repo, run, runBranch("a"), "main", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	mustGit(t, repo, "config", "--unset", "user.name")
+	mustGit(t, repo, "config", "--unset", "user.email")
+	for _, v := range []string{"GIT_AUTHOR_NAME", "GIT_AUTHOR_EMAIL", "GIT_COMMITTER_NAME", "GIT_COMMITTER_EMAIL", "EMAIL"} {
+		t.Setenv(v, "")
+		os.Unsetenv(v)
+	}
+	if committed, head, err := CommitRun(ctx, repo, run, runBranch("a"), "m"); err != nil || committed || head != p.HeadSHA {
+		t.Errorf("committed=%v head=%s err=%v", committed, head, err)
+	}
+}
+
+// Merge options in the repo config cannot turn a merge into a staged,
+// uncommitted one.
+func TestMergeBranches_IgnoresNoCommitConfig(t *testing.T) {
+	repo := workflowRepo(t)
+	ctx := context.Background()
+	branchWith(t, repo, runBranch("n1"), "main", "a.txt", "a\n")
+	mustGit(t, repo, "config", "branch.main.mergeOptions", "--no-commit")
+	mustGit(t, repo, "config", "merge.ff", "only")
+	p, err := PrepareRun(ctx, repo, run, runBranch("m"), "main", []string{runBranch("n1")})
+	if err != nil || p.Conflict != nil {
+		t.Fatal(err)
+	}
+	if st := strings.TrimSpace(gitOut(t, p.Path, "status", "--porcelain")); st != "" {
+		t.Errorf("merge left a pending state:\n%s", st)
+	}
+	if parents := strings.Fields(gitOut(t, p.Path, "log", "-1", "--format=%P")); len(parents) != 2 {
+		t.Errorf("not a merge commit: %d parents", len(parents))
 	}
 }
 

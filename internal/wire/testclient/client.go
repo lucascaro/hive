@@ -576,7 +576,8 @@ func (c *Client) PrepareWorktree(req wire.PrepareWorktreeReq, timeout time.Durat
 	if err != nil {
 		return out, err
 	}
-	return out, json.Unmarshal(payload, &out)
+	err = json.Unmarshal(payload, &out)
+	return out, err
 }
 
 // CommitWorktree sends COMMIT_WORKTREE as a Request and returns its ACK.
@@ -586,7 +587,8 @@ func (c *Client) CommitWorktree(req wire.CommitWorktreeReq, timeout time.Duratio
 	if err != nil {
 		return out, err
 	}
-	return out, json.Unmarshal(payload, &out)
+	err = json.Unmarshal(payload, &out)
+	return out, err
 }
 
 // ListWorktrees sends LIST_WORKTREES. Use AwaitWorktrees to consume
@@ -934,9 +936,21 @@ func (c *Client) readLoop() {
 		case wire.FramePluginMessage:
 			var m wire.PluginMessage
 			if err := json.Unmarshal(payload, &m); err == nil {
-				select {
-				case c.pluginMsgs <- m:
-				case <-c.closed:
+				// Never block the read loop: a test that ignores plugin
+				// messages must not stall the replies behind them. Drops
+				// the oldest when full.
+				for sent := false; !sent; {
+					select {
+					case c.pluginMsgs <- m:
+						sent = true
+					case <-c.closed:
+						sent = true
+					default:
+						select {
+						case <-c.pluginMsgs:
+						default:
+						}
+					}
 				}
 			}
 		default:

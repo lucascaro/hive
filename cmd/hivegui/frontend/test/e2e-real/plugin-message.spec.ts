@@ -110,6 +110,12 @@ hive.on('PLUGIN_MESSAGE', (m) => {
   try {
     await call('ConnectControl');
     await call('InstallPlugin', { source: dir, nonce: 'n-1' });
+    // The bridge reply only says the frame was written: enable once the
+    // daemon has announced the install.
+    await awaitPush<{ kind: string; plugin: { id: string } }>(
+      'plugin:event',
+      (e) => e.kind === 'added' && e.plugin.id === 'echo-msg',
+    );
     await call('SetPluginEnabled', { id: 'echo-msg', enabled: true });
 
     // Plugin -> GUI: the daemon stamps the sender.

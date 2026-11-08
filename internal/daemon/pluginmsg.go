@@ -66,6 +66,18 @@ func (h *pluginMsgHub) subscribe(set func() map[chan wire.PluginMessage]struct{}
 			delete(m, ch)
 			close(ch)
 		}
+		h.pruneEmpty()
+	}
+}
+
+// pruneEmpty forgets plugin ids with no subscriber left, so a daemon
+// that sees many plugin ids does not scan dead sets on every pressure
+// check. Callers hold h.mu.
+func (h *pluginMsgHub) pruneEmpty() {
+	for id, set := range h.plugins {
+		if len(set) == 0 {
+			delete(h.plugins, id)
+		}
 	}
 }
 
@@ -97,6 +109,7 @@ func (h *pluginMsgHub) send(set map[chan wire.PluginMessage]struct{}, m wire.Plu
 			close(ch)
 		}
 	}
+	h.pruneEmpty()
 }
 
 // publishUI relays a plugin's message to every UI-capable client.

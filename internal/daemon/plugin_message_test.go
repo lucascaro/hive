@@ -40,6 +40,21 @@ func assertNoPluginMessage(t *testing.T, c net.Conn, why string) {
 		}
 		return f.ft == wire.FrameError
 	})
+	// The ERROR is written by the read loop and a relayed message by the
+	// fan-out goroutine, so the ERROR alone proves nothing about the
+	// message: keep listening a little after it.
+	deadline := time.Now().Add(150 * time.Millisecond)
+	for time.Now().Before(deadline) {
+		_ = c.SetReadDeadline(deadline)
+		ft, p, err := wire.ReadFrame(c)
+		if err != nil {
+			break
+		}
+		if ft == wire.FramePluginMessage {
+			t.Errorf("%s: got PLUGIN_MESSAGE %s", why, p)
+		}
+	}
+	_ = c.SetReadDeadline(time.Time{})
 }
 
 func TestPluginMessage_PluginToGUIStampsID(t *testing.T) {

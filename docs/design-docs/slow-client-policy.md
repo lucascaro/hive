@@ -58,8 +58,9 @@ rare bug.
   The sender only offers a frame to each queue; a queue that is full is
   dropped and its connection hung up, exactly like a registry listener, so
   a stuck GUI never stalls the plugin that talks to it. The hub's fill level
-  counts toward the pressure that slows a plugin's broadcasts, and a
-  reconnected GUI re-asks the plugin for state.
+  counts toward the pressure that slows a plugin's broadcasts. Nothing
+  replays a lost message: the consumer (the plugin and its GUI) must
+  define its own state request and issue it on reconnect.
 - **The fan-out closes the connection when it exits**, whatever the reason:
   a dropped subscription, a write error, or teardown. A dropped client
   therefore reconnects instead of drifting out of sync.
