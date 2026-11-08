@@ -7,7 +7,7 @@
 - **Branch:** `feature/529-engine-core` (research and plan); one branch per phase PR (B1: `feature/529-b1-validator`)
 - **PR:** #538 (B1)
 - **Phase:** 1 of 5
-- **Status:** active. The final plan is presented for user approval.
+- **Status:** active. Plan approved. Phase 1 (B1) implemented and in review (PR #538); B2 to B5 remain.
   - All open questions are decided (see Decision log, 2026-10-25 user
     decisions).
   - R1–R6 are approved as A changes: R2, R3, R5 and R6 go to A PR1; R1 and
@@ -1169,6 +1169,7 @@ download, the accepted sandbox gap, and `LIST_ACP_AGENTS`.
   from A's PR2 or PR3. Node 26 is not installed locally and B1 needs none:
   its tests run on the CI leg's Node 24 (type stripping), as the prototype's
   did. The `**/*.test.ts` glob is the plan's own conventions-card form.
+- **2026-11-07 (B1):** Gate FAIL; doc accuracy: `internal/acp/resultschema.go:21` pointed at the deleted `scripts/workflow-proto/schema.ts`; fixed (comment now names `plugins/workflows/sdk/schema.ts` and the TS port `plugins/workflows/ir/resultschema.ts`).
 
 ## Open questions
 
@@ -1213,6 +1214,7 @@ needs A PR1–3; B3 needs R1–R4 merged in A.
 - **2026-11-07 iter 2** — verdict: APPROVE; mergeable: MERGEABLE; findings_hash: empty; threads_open: 0; action: stop; head_sha: cc3c7efa. Greptile re-review of the fix commit raised nothing; CodeRabbit is rate-limited (skipping) until about an hour after its first review; CI green on Linux, macOS and Windows.
 - **2026-11-07 iter 3** — supersedes iter 2's stop (CodeRabbit's rate limit lifted and it reviewed 62d5eb3a); verdict: REQUEST_CHANGES; mergeable: MERGEABLE; findings_hash: see list; threads_open: 4 -> 0; action: autofix+push; head_sha: see PR head. Fixed with a test: validate's early return was too broad (now only malformed or duplicate ids). Plan wording: the B3 fence lifts only when the child is confirmed stopped. Declined with reasons: lifecycle-checker note (plan correctly stays in active/ until B5); shape's stringify-before-walk (input is already-parsed JSON, bounded by the transport and the 1 MiB runner cap; a too-deep value fails closed as "not JSON").
 - **2026-11-07 iter 4** — verdict: APPROVE; mergeable: MERGEABLE; findings_hash: empty; threads_open: 0; action: stop; head_sha: 778131da. Converged for PR 1 of 5 (phase 1 of 5 only; B2 to B5 remain). Greptile re-reviewed 778131da with no findings; CodeRabbit was rate-limited on it (its last review covered 62d5eb3a, whose 4 threads are fixed or declined with reasons); CI green on Linux, macOS and Windows.
+- **2026-11-07 iter 5** — verdict: APPROVE; mergeable: MERGEABLE; findings_hash: empty; threads_open: 0; action: stop; head_sha: see PR head. Converged for PR 1 of 5 (phase 1 of 5 only; B2 to B5 remain). Re-converged after the gate's doc-accuracy fix (a stale comment in internal/acp/resultschema.go; comment-only, no behaviour change).
 
 ## Gate verdict
 

@@ -18,7 +18,8 @@ import (
 
 // Typed results (spec 528). A workflow node's output schema is a small,
 // closed subset of JSON Schema — exactly what the workflow IR can say
-// (scripts/workflow-proto/schema.ts):
+// (plugins/workflows/sdk/schema.ts; plugins/workflows/ir/resultschema.ts is the
+// TypeScript port of this file):
 //
 //	{"type":"string"[, "enum":["a","b"]]}
 //	{"type":"number"}   {"type":"boolean"}
