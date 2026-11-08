@@ -1221,3 +1221,14 @@ needs A PR1–3; B3 needs R1–R4 merged in A.
 ## Gate verdict
 
 <!-- /hs-merge-gate appends one line per run here (append-only). -->
+
+- **2026-11-07** — verdict: FAIL; phase: 1/5; checks: 2 passed / 1 failed / 0 followups / 7 deferred; followups: none; one-line: (recorded retroactively) head ebb430da; acceptance and non-goals PASS, doc accuracy FAIL on a stale `scripts/workflow-proto/schema.ts` pointer in `internal/acp/resultschema.go:21`; fixed in a0df0db8.
+  - 2026-11-07 dimensions:
+    - acceptance — PASS — criteria 1–2 (B1) met; 3–9 deferred to B2–B5
+    - non-goals — PASS
+    - doc accuracy — FAIL — `internal/acp/resultschema.go:21` named the deleted `scripts/workflow-proto/schema.ts`
+- **2026-11-07** — verdict: PASS; phase: 1/5; checks: 3 passed / 0 failed / 0 followups / 7 deferred; followups: none; one-line: head 889d1354; prior doc-accuracy FAIL fixed (comment now names `plugins/workflows/sdk/schema.ts` and `plugins/workflows/ir/resultschema.ts`, both present); delta since ebb430da is that comment plus plan wording only. Spec stays at GATE; plan stays in active/ for B2–B5.
+  - 2026-11-07 dimensions:
+    - acceptance — PASS — criterion 1: tsgo size per platform recorded in `workflow-engine.md`; criterion 2: prototype moved to `plugins/workflows/` (`scripts/workflow-proto/` deleted), doc-drift check kept in `ci.yml`, catalog/ceiling/unavailable rejections tested in `catalog.test.ts`; `node --test` 88/88, `tsc -p plugins/workflows/tsconfig.json` exit 0, `check-doc.ts` exit 0; criteria 3–9 DEFERRED (phase > 1)
+    - non-goals — PASS — delta adds no code beyond a comment; `check-daemon-contract.sh origin/main HEAD` reports no daemon-side changes
+    - doc accuracy — PASS — no `workflow-proto` pointer outside history except spec 528's active-plan research table (a point-in-time snapshot of another feature, non-blocking); `no-changeset` label applies (scripts/docs/unembedded plugin)
