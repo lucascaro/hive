@@ -5,7 +5,7 @@ type: enhancement
 complexity: L
 priority: P1
 pr: 538
-stage: REVIEW
+stage: GATE
 ---
 
 # Workflow engine B: headless engine core (validator, interpreter, checkpoint log, trust sandbox)
