@@ -495,6 +495,7 @@ scripts/ui-lint.sh                                             # PR1, PR3 (GUI t
 
 - **2026-10-25:** Research complete; plan drafted.
 - **2026-10-25:** Revised to the user's decisions and the plan-review fixes. Awaiting approval.
+- **2026-11-08:** PR 2 gate FAIL fixed: `safeGit` lacked `hook.pre-auto-gc.enabled=false`, so a config-defined `pre-auto-gc` hook ran when `git commit` started auto maintenance. Now `configHookEvents` (incl. `pre-auto-gc`) plus `gc.auto=0` and `maintenance.auto=false`; `TestSafeGit_ConfigHooksDoNotRun` registers a hook on every githooks event, runs PrepareRun (+merges) and CommitRun over 800 files, and a plain-git control run proves the list covers every event git actually fires. Mutation-checked per key; `post-rewrite` dropped (nothing in these commands fires it).
 
 ## Open questions
 
@@ -518,6 +519,7 @@ scripts/ui-lint.sh                                             # PR1, PR3 (GUI t
 - **PR 2 (#539) 2026-11-07 iter 5** — verdict: APPROVE; mergeable: MERGEABLE; findings_hash: empty; threads_open: 0; action: stop; head_sha: see PR head. Converged for phase 2 of 3 only. Last finding (Greptile P1: unbounded `git version` probe could hold `gitMu` and block shutdown) fixed with a 10s bounded `proc.CommandContext`, caller ctx honoured, probe failures not cached; test mutation-checked.
 - **PR 2 (#539) 2026-11-07 iter 6** — verdict: APPROVE; mergeable: MERGEABLE; findings_hash: empty; threads_open: 0; action: stop; head_sha: see PR head. Converged for phase 2 of 3 only. CodeRabbit on the probe: unparseable `git version` output now refused (fail closed, tested); the probe runs in `Registry.PrepareWorktree`/`CommitWorktree` before `gitMu` is taken (`worktree.EnsureSupportedGit`). Declined: validating inputs before the probe (branch-name validation itself needs git).
 - **PR 2 (#539) 2026-11-08 iter 7** — verdict: APPROVE; mergeable: MERGEABLE; findings_hash: empty; threads_open: 0; action: stop; head_sha: see PR head. Converged for phase 2 of 3 only. Fixed with mutation-checked tests: the version line must be exactly `git version X.Y...` (a banner or wrapper text hiding 2.54 is refused); the probe is re-run when the git binary on PATH changes (path, size, mtime), in both directions. Declined (again, reply on thread): boot-sweep race on a re-attached pristine worktree needs a registry claim API; boot-only window, branch survives, `PrepareWorktree` can be re-called.
+- **PR 2 (#539) 2026-11-08 iter 8** — verdict: APPROVE; mergeable: MERGEABLE; findings_hash: gate-fail-pre-auto-gc; threads_open: 0; action: autofix+push; head_sha: see PR head. Independent gate FAILed e429af4b: a config `pre-auto-gc` hook ran during commit. Fixed: `hook.pre-auto-gc.enabled=false`, `gc.auto=0`, `maintenance.auto=false`; table-driven regression over every githooks event with a plain-git control; mutation-checked. Converged for phase 2 of 3 only once CI and bots settle.
 
 ## Gate verdict
 
@@ -529,3 +531,4 @@ scripts/ui-lint.sh                                             # PR1, PR3 (GUI t
     - non-goals — PASS
     - doc accuracy — PASS — CANCEL_ACP row matches `internal/daemon/daemon.go` (`maxPendingCancels = 64`, `pendingCancels` shared daemon-wide → `acp_busy`) and `Registry.CancelACP` (`ErrNoLiveSession` on gone adapter, failed `session/cancel` write, or registry close → `session_dead`); "drains when the stuck session is killed" holds since `PromptACPTurn`'s goroutine always closes `promptSent` after the write returns. No changeset (`no-changeset` label), so `regression_of` n/a.
     - PR state — 18/18 review threads resolved; `gh pr checks 532` all pass (CodeRabbit, regenerate-generated skipping).
+- **2026-11-08** — verdict: FAIL; phase: 2/3; checks: 2 passed / 2 failed / 0 followups / 3 deferred; followups: none; one-line: independent gate at e429af4b; config-defined pre-auto-gc hook runs during COMMIT_WORKTREE/merge (safeGit lacked hook.pre-auto-gc.enabled=false); fixed in FIXSHA

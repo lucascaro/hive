@@ -521,25 +521,18 @@ func safeGit(ctx context.Context, dir string, args ...string) ([]byte, error) {
 	}
 	ctx, cancel := context.WithTimeout(ctx, mutateTimeout)
 	defer cancel()
-	full := append([]string{
-		"-C", dir,
+	full := append([]string{"-C", dir}, safeGitConfig()...)
+	full = append(full, []string{
 		"-c", "core.hooksPath=" + hooks,
 		"-c", "core.fsmonitor=false",
-		// Config-defined hooks (git 2.54+) run beside the hook directory;
-		// older git ignores these keys.
-		"-c", "hook.pre-commit.enabled=false",
-		"-c", "hook.prepare-commit-msg.enabled=false",
-		"-c", "hook.commit-msg.enabled=false",
-		"-c", "hook.post-commit.enabled=false",
-		"-c", "hook.pre-merge-commit.enabled=false",
-		"-c", "hook.post-merge.enabled=false",
-		"-c", "hook.post-checkout.enabled=false",
-		"-c", "hook.reference-transaction.enabled=false",
-		"-c", "hook.post-index-change.enabled=false",
-		"-c", "hook.post-rewrite.enabled=false",
+		// No repo-wide maintenance under the git lock: auto-gc would also
+		// run pre-auto-gc hooks.
+		"-c", "gc.auto=0",
+		"-c", "maintenance.auto=false",
 		"-c", "commit.gpgSign=false",
 		"-c", "user.useConfigOnly=true",
-	}, args...)
+	}...)
+	full = append(full, args...)
 	cmd := proc.CommandContext(ctx, "git", full...)
 	env := make([]string, 0, len(os.Environ())+3)
 envLoop:
@@ -564,4 +557,24 @@ envLoop:
 		return stdout.Bytes(), fmt.Errorf("git %s: %s: %w", args[0], strings.TrimSpace(scrubURLCredentials(stderr.String())), err)
 	}
 	return stdout.Bytes(), nil
+}
+
+// configHookEvents are the hook events the workflow git commands can
+// fire (worktree add, commit, merge, merge --abort, branch, rev-parse,
+// status). Config-defined hooks (git 2.54+) run beside the hooks
+// directory, so each event is disabled by name; older git ignores the
+// keys. TestSafeGit_ConfigHooksDoNotRun proves the list covers every
+// event the real commands fire.
+var configHookEvents = []string{
+	"pre-commit", "prepare-commit-msg", "commit-msg", "post-commit",
+	"pre-merge-commit", "post-merge", "post-checkout", "reference-transaction",
+	"post-index-change", "pre-auto-gc",
+}
+
+func safeGitConfig() []string {
+	var out []string
+	for _, ev := range configHookEvents {
+		out = append(out, "-c", "hook."+ev+".enabled=false")
+	}
+	return out
 }

@@ -10,6 +10,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"testing"
 )
@@ -402,22 +403,116 @@ func TestCommitWorktree_RefusesRedirectedGitfile(t *testing.T) {
 }
 
 // Config-defined hooks (git 2.54+) run beside the hooks directory.
+// Every hook event in `git help githooks`; a config-defined hook is
+// registered for each, so any event the workflow commands fire shows up.
+var allGitHookEvents = []string{
+	"applypatch-msg", "pre-applypatch", "post-applypatch", "pre-commit",
+	"pre-merge-commit", "prepare-commit-msg", "commit-msg", "post-commit",
+	"pre-rebase", "post-checkout", "post-merge", "pre-push", "pre-auto-gc",
+	"post-rewrite", "reference-transaction", "push-to-checkout",
+	"post-index-change", "sendemail-validate",
+}
+
+// hookScenarioRepo has a config hook on every event (each touching its
+// own marker), auto-gc primed to trigger on any commit, and two branches
+// to merge. The branches are made before the hooks exist.
+func hookScenarioRepo(t *testing.T) (repo, markers string) {
+	t.Helper()
+	repo = workflowRepo(t)
+	branchWith(t, repo, runBranch("n1"), "main", "n1.txt", "1\n")
+	branchWith(t, repo, runBranch("n2"), "main", "n2.txt", "2\n")
+	markers = t.TempDir()
+	mustGit(t, repo, "config", "gc.auto", "1")
+	mustGit(t, repo, "config", "gc.autoDetach", "false")
+	mustGit(t, repo, "config", "maintenance.gc.enabled", "true")
+	for _, ev := range allGitHookEvents {
+		mustGit(t, repo, "config", "hook.h-"+ev+".event", ev)
+		mustGit(t, repo, "config", "hook.h-"+ev+".command", "touch '"+filepath.Join(markers, ev)+"'")
+	}
+	return repo, markers
+}
+
+func firedHooks(t *testing.T, markers string) []string {
+	t.Helper()
+	entries, _ := os.ReadDir(markers)
+	var out []string
+	for _, e := range entries {
+		out = append(out, e.Name())
+	}
+	return out
+}
+
+func writeManyFiles(t *testing.T, dir string, n int) {
+	t.Helper()
+	if err := os.MkdirAll(filepath.Join(dir, "bulk"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	for i := 0; i < n; i++ {
+		mustWrite(t, filepath.Join(dir, "bulk", "f"+strconv.Itoa(i)), strconv.Itoa(i))
+	}
+}
+
+// With a config hook on every event, PrepareRun (new worktree + merges)
+// and CommitRun (800 files, auto-gc due) fire none of them. The control
+// run does the same with plain git and must fire the events the
+// workflow code claims to suppress, so the list cannot drift from what
+// git really fires. Config-defined hooks need git 2.54+.
 func TestSafeGit_ConfigHooksDoNotRun(t *testing.T) {
-	repo := workflowRepo(t)
+	skipNoGit(t)
+	if err := gitSupported(); err != nil {
+		t.Skipf("workflow paths refuse this git: %v", err)
+	}
+	if out := gitOut(t, t.TempDir(), "version"); !strings.Contains(out, "git version") {
+		t.Skip("no git")
+	} else if m := gitVersionRe.FindStringSubmatch(strings.TrimSpace(out)); m != nil {
+		if maj, _ := strconv.Atoi(m[1]); maj == 2 {
+			if min, _ := strconv.Atoi(m[2]); min < 55 {
+				t.Skip("config-defined hooks arrived in git 2.54 (2.54 is refused)")
+			}
+		}
+	}
 	ctx := context.Background()
-	marker := filepath.Join(t.TempDir(), "hook-ran")
-	mustGit(t, repo, "config", "hook.x.event", "post-commit")
-	mustGit(t, repo, "config", "hook.x.command", "touch '"+marker+"'")
-	p, err := PrepareRun(ctx, repo, run, runBranch("a"), "main", nil)
+
+	// Control: plain git, no protections.
+	crepo, cmarkers := hookScenarioRepo(t)
+	cwt := filepath.Join(t.TempDir(), "wt")
+	mustGit(t, crepo, "worktree", "add", "-b", runBranch("ctl"), cwt, "main")
+	mustGit(t, cwt, "merge", "--no-ff", "-m", "m", runBranch("n1"))
+	writeManyFiles(t, cwt, 800)
+	mustGit(t, cwt, "add", "-A")
+	mustGit(t, cwt, "commit", "-q", "-m", "bulk")
+	fired := map[string]bool{}
+	for _, ev := range firedHooks(t, cmarkers) {
+		fired[ev] = true
+	}
+	for _, ev := range []string{"pre-commit", "prepare-commit-msg", "commit-msg", "post-commit",
+		"pre-merge-commit", "post-merge", "post-checkout", "reference-transaction", "pre-auto-gc"} {
+		if !fired[ev] {
+			t.Fatalf("control did not fire %s: the scenario does not exercise it (fired %v)", ev, fired)
+		}
+	}
+	listed := map[string]bool{}
+	for _, ev := range configHookEvents {
+		listed[ev] = true
+	}
+	for ev := range fired {
+		if !listed[ev] {
+			t.Errorf("git fires %s in this scenario but configHookEvents does not disable it", ev)
+		}
+	}
+
+	// Under test.
+	repo, markers := hookScenarioRepo(t)
+	p, err := PrepareRun(ctx, repo, run, runBranch("a"), "main", []string{runBranch("n1"), runBranch("n2")})
 	if err != nil {
 		t.Fatal(err)
 	}
-	mustWrite(t, filepath.Join(p.Path, "f"), "f")
-	if _, _, err := CommitRun(ctx, repo, run, runBranch("a"), "m"); err != nil {
-		t.Fatal(err)
+	writeManyFiles(t, p.Path, 800)
+	if committed, _, err := CommitRun(ctx, repo, run, runBranch("a"), "bulk"); err != nil || !committed {
+		t.Fatalf("committed=%v err=%v", committed, err)
 	}
-	if _, err := os.Stat(marker); err == nil {
-		t.Error("a config-defined hook ran")
+	if got := firedHooks(t, markers); len(got) != 0 {
+		t.Errorf("config-defined hooks ran: %v", got)
 	}
 }
 

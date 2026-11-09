@@ -432,8 +432,8 @@ is `invalid_workflow_branch`, and a branch with no worktree
 `worktree_not_found`.
 
 Both refuse with `git_unsupported` on git 2.54 (the one release whose
-config-defined hooks cannot be turned off here). Every git command in both runs with the repo's hooks and `fsmonitor`
-turned off and without signing, so a hook cannot run code on your behalf.
+config-defined hooks cannot be turned off here). Every git command in both runs with the repo's hooks
+(directory and config-defined, including `pre-auto-gc`), `fsmonitor` and auto-gc/maintenance turned off, and without signing, so a hook cannot run code on your behalf.
 Merge drivers and filters from the repo's own configuration still apply:
 that is the user's repo.
 
