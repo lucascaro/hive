@@ -24,6 +24,7 @@ import {
   restartHive,
 } from '../app/banners.js';
 import { openBuildLog } from '../app/modals/build-log.js';
+import { openWaitingWorkflow } from '../app/workflows.js';
 import { dismissUndoBanner, undoLastClose } from '../app/undo-close.js';
 import { useAppStore } from '../store/store.js';
 import { Banner } from './Banner.js';
@@ -65,6 +66,15 @@ export function Banners(): ReactNode {
           { id: 'download', label: 'Download', onClick: openDownloadUrl },
         ]}
         onDismiss={dismissUpdateBanner}
+      />
+      <Banner
+        slot="workflow"
+        kind="info"
+        id="workflow-banner"
+        data={banners.workflow}
+        actions={[
+          { id: 'open', label: 'Open', onClick: openWaitingWorkflow },
+        ]}
       />
     </>
   );

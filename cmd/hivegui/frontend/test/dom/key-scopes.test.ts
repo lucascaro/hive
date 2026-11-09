@@ -192,6 +192,8 @@ describe('KEY_SCOPES', () => {
       'shortcut-capture',
       'settings',
       'worktrees',
+      'workflow-trust',
+      'workflows',
       'quick-idea',
       'message-session',
       'archived-sessions',

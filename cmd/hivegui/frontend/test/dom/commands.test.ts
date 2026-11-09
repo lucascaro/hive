@@ -141,6 +141,7 @@ describe('the palette', () => {
       'hand-back-session',
       'delete-project',
       'worktrees',
+      'workflows',
       'whats-new',
       'help',
       'about',

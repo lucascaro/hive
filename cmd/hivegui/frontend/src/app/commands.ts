@@ -93,6 +93,11 @@ import { archiveActiveSession } from './archive.js';
 import { dismissSettings, openSettings } from './modals/settings.js';
 import { openWhatsNew, closeWhatsNew } from './modals/whats-new.js';
 import { closeWorktrees } from './modals/worktrees.js';
+import {
+  toggleWorkflows,
+  trustConfirmKey,
+  workflowsBack,
+} from './workflows.js';
 import { closeSessionView } from './plugin-host.js';
 import { orderedSessions, activeCwd } from './selectors.js';
 import { isModalOpen } from '../store/store.js';
@@ -156,6 +161,11 @@ const PALETTE: readonly Command[] = [
     id: 'worktrees',
     title: 'Worktrees…',
     run: () => openWorktreesForActiveProject(),
+  },
+  {
+    id: 'workflows',
+    title: 'Workflows…',
+    run: () => toggleWorkflows(),
   },
   { id: 'whats-new', title: "What's New…", run: () => openWhatsNew() },
   { id: 'help', title: 'Help…', run: () => openHelp() },
@@ -350,6 +360,10 @@ const UNLISTED: readonly Command[] = [
   { id: 'command-palette.close', run: () => closeCommandPalette() },
   { id: 'settings.close', run: () => dismissSettings() },
   { id: 'worktrees.close', run: () => closeWorktrees() },
+  // Back one view, or close from the list.
+  { id: 'workflows.close', run: () => workflowsBack() },
+  { id: 'workflow-trust.confirm', run: () => trustConfirmKey() },
+  { id: 'workflow-trust.cancel', run: () => workflowsBack() },
   { id: 'quick-idea.close', run: () => closeQuickIdea() },
   { id: 'message-session.close', run: () => closeMessageSession() },
   { id: 'archived-sessions.close', run: () => closeArchivedSessions() },
@@ -397,6 +411,7 @@ export const MENU_COMMANDS: Readonly<Record<string, string>> = {
   'menu:command-palette': 'command-palette',
   'menu:settings': 'settings',
   'menu:worktrees': 'worktrees',
+  'menu:workflows': 'workflows',
   'menu:quick-idea': 'quick-idea',
   'menu:idea-inbox': 'idea-inbox',
   'menu:close-session': 'close-session',

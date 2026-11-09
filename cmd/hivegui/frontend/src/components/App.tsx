@@ -75,6 +75,7 @@ import { Launcher } from './modals/Launcher.js';
 import { ProjectEditor } from './modals/ProjectEditor.js';
 import { Settings } from './modals/Settings.js';
 import { Worktrees } from './modals/Worktrees.js';
+import { Workflows } from './modals/Workflows.js';
 import { WhatsNew } from './modals/WhatsNew.js';
 import { BuildLog } from './modals/BuildLog.js';
 
@@ -113,6 +114,7 @@ export function App(): ReactNode {
   const launcher = mustEl('launcher');
   const settings = mustEl('settings');
   const worktrees = mustEl('worktrees');
+  const workflows = mustEl('workflows');
   const projectEditor = mustEl('project-editor');
   const helpOverlay = mustEl('help-overlay');
   const helpModal = mustEl('help-modal');
@@ -178,6 +180,7 @@ export function App(): ReactNode {
       )}
       {createPortal(<Settings root={settings} />, settings)}
       {createPortal(<Worktrees root={worktrees} />, worktrees)}
+      {createPortal(<Workflows root={workflows} />, workflows)}
       {createPortal(<ProjectEditor root={projectEditor} />, projectEditor)}
       {createPortal(<HelpOverlay root={helpOverlay} />, helpOverlay)}
       {createPortal(<Help root={helpModal} />, helpModal)}

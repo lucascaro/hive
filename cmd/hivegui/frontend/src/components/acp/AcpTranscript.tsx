@@ -21,14 +21,11 @@ import {
   useState,
 } from 'react';
 
-import { AnswerPermission, PromptAcp } from '../../bridge.js';
+import { PromptAcp } from '../../bridge.js';
 import { reportFailure } from '../../app/dom.js';
 import { parsePrincipal } from '../../lib/principal.js';
-import {
-  isAllowOption,
-  type AcpItem,
-  type AcpPermission,
-} from '../../lib/acp.js';
+import type { AcpItem } from '../../lib/acp.js';
+import { PermissionCard } from './PermissionCard.js';
 import {
   noteSentPrompt,
   returnSentPrompt,
@@ -213,51 +210,6 @@ function originLabel(origin: string): string {
   if (plugin && run) return `From workflow ${run} (plugin ${plugin})`;
   if (plugin) return `From plugin ${plugin}`;
   return `From ${origin}`;
-}
-
-function PermissionCard({
-  sessionId,
-  perm,
-  onAnswered,
-}: {
-  sessionId: string;
-  perm: AcpPermission;
-  onAnswered: () => void;
-}): ReactNode {
-  // One answer per request: a second click would only earn
-  // permission_stale while the daemon's next message is on its way.
-  const [answered, setAnswered] = useState(false);
-  return (
-    <fieldset className="acp-permission" aria-label="Permission request">
-      <div className="acp-permission__title">
-        <Icon name="state-waiting-permission" size={14} />
-        <span>{perm.title || 'The agent asks to use a tool'}</span>
-      </div>
-      <div className="acp-permission__actions">
-        {(perm.options ?? []).map((o) => (
-          <Button
-            key={o.option_id}
-            label={o.name}
-            kind={isAllowOption(o) ? 'primary' : 'default'}
-            extra={{ 'data-option-kind': o.kind }}
-            disabled={answered}
-            onClick={() => {
-              setAnswered(true);
-              AnswerPermission(sessionId, perm.request_id, o.option_id).catch(
-                (err: unknown) => {
-                  // The answer never left: the agent is still waiting,
-                  // so the user must be able to answer again.
-                  setAnswered(false);
-                  reportFailure('answer permission')(err);
-                },
-              );
-              onAnswered();
-            }}
-          />
-        ))}
-      </div>
-    </fieldset>
-  );
 }
 
 function PromptBox({

@@ -293,7 +293,11 @@ const SWEPT = KEY_SCOPES.map((s) => s.id).filter(
     id !== 'find-box' &&
     id !== 'acp-prompt' &&
     id !== 'plugins' &&
-    id !== 'shortcut-capture',
+    id !== 'shortcut-capture' &&
+    // The Workflows scopes (spec 530) postdate the pre-478 matchers too;
+    // key-scopes.test.ts and every-shortcut.spec.ts hold them.
+    id !== 'workflow-trust' &&
+    id !== 'workflows',
 );
 
 // The approved deltas. Each returns true when this cell is one the spec
@@ -327,6 +331,9 @@ const APPROVED_477 = {
         e.altKey &&
         now === 'notify-when-idle' &&
         (mac ? was === 'next-attention' : was === 'jump-back'))),
+  // Spec 530: ⇧⌘R (Ctrl+Shift+R) is new, and opens Workflows.
+  W: (s: string, e: Ev, _mac: boolean, was: string | null, now: string | null) =>
+    s === 'app' && /^r$/i.test(e.key) && was === null && now === 'workflows',
   // D2: macOS ⌘F gains a keydown binding to find-in-session. The native
   // menu's ⌘F still takes the key first; the chord is in the data so the
   // menu accelerator is derived from it.
@@ -355,7 +362,7 @@ describe('key bindings vs the pre-478 matchers', () => {
   const seen: Record<
     keyof typeof APPROVED | keyof typeof APPROVED_477,
     number
-  > = { A: 0, B: 0, D: 0, F: 0, M: 0, N: 0 };
+  > = { A: 0, B: 0, D: 0, F: 0, M: 0, N: 0, W: 0 };
   const unexpected: string[] = [];
 
   for (const mac of [true, false]) {
@@ -392,6 +399,7 @@ describe('key bindings vs the pre-478 matchers', () => {
     expect(seen.F).toBeGreaterThan(0);
     expect(seen.M).toBeGreaterThan(0);
     expect(seen.N).toBeGreaterThan(0);
+    expect(seen.W).toBeGreaterThan(0);
   });
 
   it('pins one representative cell per delta', () => {

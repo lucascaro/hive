@@ -129,6 +129,16 @@ export const DEFAULT_APP_BINDINGS: readonly Binding[] = [
   { keys: 'Mod+Shift+T', command: 'new-session-worktree' },
   { keys: 'Mod+Shift+Backspace', command: 'delete-project' },
   { keys: 'Mod+E', command: 'worktrees' },
+  // Workflows (spec 530). Not plain Ctrl+R off macOS: that is readline's
+  // reverse search. Ctrl+Shift+R would be a hard reload in a browser, but
+  // the app's WebView has its browser accelerators off (window_options.go).
+  {
+    keys: {
+      mac: 'Mod+Shift+R',
+      other: ['Ctrl+Shift+R', 'Ctrl+Shift+[KeyR]'],
+    },
+    command: 'workflows',
+  },
   { keys: 'Mod+I', command: 'quick-idea' },
   { keys: 'Mod+Shift+I', command: 'idea-inbox' },
   // Session messaging (spec 338).

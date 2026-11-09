@@ -194,6 +194,7 @@ export type ModalId =
   | 'project-editor'
   | 'command-palette'
   | 'worktrees'
+  | 'workflows'
   | 'quick-idea'
   | 'idea-inbox'
   | 'message-session'
@@ -214,6 +215,8 @@ export type ModalEntry =
   | { id: 'project-editor'; seq: number; editing: ProjectInfo | null }
   | { id: 'command-palette'; seq: number }
   | { id: 'worktrees'; seq: number; projectId: string; projectName: string }
+  // Spec 530. The view inside it (list, trust, review, run) is store/workflows.ts.
+  | { id: 'workflows'; seq: number; projectId: string; projectName: string }
   // The capture sheet's project is a draft the user can change, so the
   // entry carries only what it opens ON: the project the focused
   // session is in, or the default project when there is none.
@@ -298,7 +301,7 @@ export interface BootStateView {
   onRetry: (() => void) | null;
 }
 
-export type BannerSlot = 'undo-close' | 'daemon' | 'update';
+export type BannerSlot = 'undo-close' | 'daemon' | 'update' | 'workflow';
 
 // Per-action overrides, keyed by the action id the component declares.
 // Only what actually varies at runtime lives here.
@@ -552,6 +555,7 @@ function initialData(): AppData {
     banners: {
       'undo-close': EMPTY_BANNER,
       daemon: EMPTY_BANNER,
+      workflow: EMPTY_BANNER,
       // The primary action starts hidden — same as the old markup's
       // display:none default for a banner with nothing to act on.
       // renderUpdateAction reveals it once there is something to do.

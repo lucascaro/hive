@@ -30,6 +30,7 @@
 .hv-dialog__panel[data-size='sm'] { max-width: 420px; }
 .hv-dialog__panel[data-size='md'] { max-width: 560px; }
 .hv-dialog__panel[data-size='lg'] { max-width: 720px; }
+.hv-dialog__panel[data-size='xl'] { max-width: min(1120px, 94vw); }
 
 .hv-dialog__header {
   display: flex;

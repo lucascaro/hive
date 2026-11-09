@@ -49,7 +49,7 @@ export interface ModalShellProps {
   /** Escape's own handler, when it should not simply close (Settings
    * cancels an open import preview first). Defaults to onClose. */
   onEscape?: () => void;
-  size?: 'sm' | 'md' | 'lg';
+  size?: 'sm' | 'md' | 'lg' | 'xl';
   /** Confirm/cancel key hints. Every overlay must show them (AGENTS.md). */
   hints?: ModalHint[];
   /**

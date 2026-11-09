@@ -35,6 +35,7 @@ import { PHASE, phaseOf } from '../lib/phase-steps.js';
 import { isMac as platformIsMac } from '../lib/platform.js';
 import { appStore, isModalOpen, type ModalId } from '../store/store.js';
 import { termsMap } from '../store/terms.js';
+import { workflowsStore } from '../store/workflows.js';
 import { findBoxActive } from './find-session.js';
 import { inlineRenameActive } from './inline-rename.js';
 import { choiceDialogOpen } from './modals/choice-dialog.js';
@@ -206,6 +207,38 @@ const worktrees = modal(
   'worktrees',
 );
 
+// The trust view's own keys (spec 530): the AGENTS.md dialog confirm/cancel
+// exception, so not in the help overlay and not rebindable. Active only
+// while the Workflows modal shows the trust view, where no text input is
+// on screen, so bare letters are safe. `matched`: any other key (the
+// opener chord, Tab) falls through to the `workflows` scope behind it,
+// which holds the trap and the toggle. There is deliberately no Enter
+// binding: an exclusive scope's unmatched key is left to the browser, so
+// Enter activates the focused button (Cancel, until the user tabs to
+// Trust).
+const workflowTrust: KeyScope = {
+  id: 'workflow-trust',
+  active: () => isModalOpen('workflows') && workflowsStore.getState().view === 'trust',
+  owns: 'matched',
+  bindings: () => [
+    { keys: 'Shift?+Y', command: 'workflow-trust.confirm', repeat: false },
+    { keys: 'Shift?+N', command: 'workflow-trust.cancel', repeat: false },
+    { keys: ESCAPE, command: 'workflow-trust.cancel' },
+  ],
+};
+
+// ⇧⌘R (Ctrl+Shift+R elsewhere) toggles the Workflows modal. Escape goes
+// back one view. No bare letters: its views hold text inputs.
+const workflows = modal(
+  'workflows',
+  'workflows',
+  () => [
+    { keys: ESCAPE, command: 'workflows.close' },
+    mirror('workflows', 'workflows'),
+  ],
+  'workflows',
+);
+
 // ⌘I toggles the capture sheet closed; ⇧⌘I goes to the inbox, closing
 // the sheet on the way. On macOS the native accelerators reach the same
 // commands through the menu, so the chord behaves the same everywhere.
@@ -366,6 +399,8 @@ export const KEY_SCOPES: readonly KeyScope[] = [
   shortcutCapture,
   settings,
   worktrees,
+  workflowTrust,
+  workflows,
   quickIdea,
   messageSession,
   archivedSessions,

@@ -27,6 +27,11 @@ import type {
   MockWorktree,
 } from './wails-mock.js';
 import type { ReflowApi } from './fixtures/xterm-reflow.js';
+import type {
+  MockEvent,
+  MockWorkflowsSpec,
+  WorkflowsEngine,
+} from './workflows-engine.js';
 
 type Handler = (...args: unknown[]) => void;
 type StdinEntry = { id: string; b64: string; text: string };
@@ -117,6 +122,17 @@ interface HiveTestApi {
   ): Promise<string>;
   seedWorktrees?(worktrees: MockWorktree[], branches?: MockBranch[]): void;
   seedIdeas?(ideas: MockIdea[]): void;
+  // Spec 530: the scripted workflow engine behind SendPluginMessage.
+  seedWorkflows?(spec: MockWorkflowsSpec): void;
+  pushRunEvents?(runId: string, events: Partial<MockEvent>[]): MockEvent[];
+  workflowsEngine?: WorkflowsEngine;
+  // What the page asked the OS to announce, in order.
+  notifyCalls?(): {
+    title: string;
+    subtitle: string;
+    body: string;
+    tag: string;
+  }[];
   /** What the UpdateBuildLog binding answers. */
   setBuildLog?(text: string): void;
   replayLog?: { id: string; t: number }[];

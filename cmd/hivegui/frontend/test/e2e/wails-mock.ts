@@ -14,6 +14,11 @@ import type { ProjectInfo, SessionInfo } from '../../src/app/state.js';
 // this module is to stand in for wailsjs at runtime. Using the generated
 // shapes (invariant 3) is what makes the mock drift-detectable.
 import type { main } from '../../wailsjs/go/models';
+import {
+  type MockEvent,
+  type MockWorkflowsSpec,
+  WorkflowsEngine,
+} from './workflows-engine.js';
 
 type AgentInfo = main.AgentInfo;
 type CustomAgent = main.CustomAgent;
@@ -1352,7 +1357,25 @@ export async function OpenTerminalAt(dir: string) {
   bridgeCalls.push({ method: 'OpenTerminalAt', args: [dir] });
   return '';
 }
-export async function Notify(_title: string, _body: string) {
+// What the page asked the OS to announce, for the specs that check it.
+export const notifyCalls: Array<{
+  title: string;
+  subtitle: string;
+  body: string;
+  tag: string;
+}> = [];
+export async function Notify(
+  title: string,
+  subtitle?: string,
+  body?: string,
+  tag?: string,
+) {
+  notifyCalls.push({
+    title,
+    subtitle: subtitle ?? '',
+    body: body ?? '',
+    tag: tag ?? '',
+  });
   return '';
 }
 // Deliberately NOT async when armed: a missing Wails binding fails as a
@@ -2038,6 +2061,21 @@ const mockPlugins: MockPlugin[] = [
     ui: { entry: 'ui.mjs', style: 'ui.css' },
     builtin: true,
   },
+  // hived embeds the workflow engine the same way: installed, disabled
+  // (spec 528 / exec plan 529). The scripted engine behind it is
+  // workflows-engine.ts, seeded per test with window.__hive.seedWorkflows.
+  {
+    id: 'workflows',
+    name: 'Workflows',
+    version: '1.0.0',
+    api_version: '0.2',
+    source: 'builtin',
+    command: [],
+    enabled: false,
+    status: 'stopped',
+    restarts: 0,
+    builtin: true,
+  },
 ];
 // The dev server serves UI plugin files at /plugins/<id>/ in mock mode
 // (vite.config.js), on the page's own origin like the app does.
@@ -2138,6 +2176,12 @@ export const sentPluginMessages: Array<{
   topic: string;
   data: string;
 }> = [];
+const workflowsEngine = new WorkflowsEngine((topic, data) =>
+  emit(
+    'plugin:message',
+    JSON.stringify({ plugin_id: 'workflows', topic, data }),
+  ),
+);
 export async function SendPluginMessage(
   pluginId: string,
   topic: string,
@@ -2145,6 +2189,21 @@ export async function SendPluginMessage(
 ) {
   maybeFail('SendPluginMessage');
   sentPluginMessages.push({ plugin_id: pluginId, topic, data: dataJSON });
+  if (pluginId === 'workflows') {
+    const p = mockPlugins.find((x) => x.id === 'workflows');
+    if (!p || !p.enabled || p.status !== 'running') {
+      // The daemon's refusal: a nonce-less control:error.
+      emit(
+        'control:error',
+        JSON.stringify({
+          code: 'plugin_not_running',
+          message: 'plugin is not running',
+        }),
+      );
+      return '';
+    }
+    workflowsEngine.handle(topic, JSON.parse(dataJSON || '{}'));
+  }
   return '';
 }
 export async function RemovePlugin(id: string) {
@@ -2231,6 +2290,16 @@ if (typeof window !== 'undefined') {
     setBuildLog(text: string) {
       buildLog = text;
     },
+    // Spec 530: seeds the scripted workflow engine and returns nothing; the
+    // plugin still starts disabled, like the real one.
+    seedWorkflows(spec: MockWorkflowsSpec) {
+      workflowsEngine.seed(spec);
+    },
+    pushRunEvents(runId: string, events: Partial<MockEvent>[]) {
+      return workflowsEngine.push(runId, events);
+    },
+    workflowsEngine,
+    notifyCalls: () => notifyCalls.map((c) => ({ ...c })),
     seedIdeas(ideas: MockIdea[]) {
       state.ideas.length = 0;
       state.ideas.push(...ideas);

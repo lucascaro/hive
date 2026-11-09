@@ -49,6 +49,10 @@ export const ICON_NAMES = [
   'state-exited',
   'state-error',
   'state-failed',
+  // Workflow node states that have no session equivalent (spec 530).
+  'state-pending',
+  'state-skipped',
+  'state-interrupted',
 ] as const;
 
 export type IconName = (typeof ICON_NAMES)[number];
