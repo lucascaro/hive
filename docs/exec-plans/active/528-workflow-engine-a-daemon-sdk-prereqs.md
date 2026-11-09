@@ -3,10 +3,10 @@
 - **Spec:** [docs/product-specs/528-workflow-engine-a-daemon-and-sdk-prerequisites-prov.md](../../product-specs/528-workflow-engine-a-daemon-and-sdk-prerequisites-prov.md)
 - **Design:** [workflow-engine.md](../../design-docs/workflow-engine.md) ("What the engine spec must add"), [acp-workflows.md](../../design-docs/acp-workflows.md)
 - **Issue:** #528
-- **Branch:** `feature/528-pr2-plugin-message-worktree`
+- **Branch:** `feature/528-pr3-plugin-runtime`
 - **Status:** active
-- **PR:** #539
-- **Phase:** 2 of 3
+- **PR:**
+- **Phase:** 3 of 3
 
 ## Summary
 

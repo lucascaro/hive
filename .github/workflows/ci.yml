@@ -63,6 +63,38 @@ jobs:
           go install github.com/rhysd/actionlint/cmd/actionlint@v1.7.7
           "$(go env GOPATH)/bin/actionlint" -color
 
+  node26:
+    # The workflow engine's floor is Node 26 (spec 528); the build job's
+    # Node 24 would never notice a plugin that only works there, or one
+    # that broke on it. Only what shells out to Node: the SDK's own tests
+    # and the Go packages that run a real node (plugin SDK drift, the
+    # plugin e2e, the Pi extension).
+    name: Plugins on Node 26
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+
+      - name: Set up Go
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+
+      - name: Set up Node 26
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: '26'
+
+      - name: Node version
+        run: node --version
+
+      - name: Plugin SDK tests
+        run: node --test 'plugins/sdk/*.test.mjs'
+
+      - name: Plugin and Pi Go tests
+        run: go test ./internal/plugin/... ./internal/agent/... ./cmd/hived/
+        env:
+          TERM: dumb
+
   build:
     name: Build, Vet & Test (${{ matrix.label }})
     runs-on: ${{ matrix.os }}

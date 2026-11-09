@@ -474,6 +474,34 @@ describe('UI plugins in Settings (spec 471)', () => {
     expect(both).toContain('Runs inside the Hive app: ui.mjs');
   });
 
+  it('failed row shows Restart and sends enable', () => {
+    setPlugins([
+      plugin({ enabled: true, status: 'failed', status_detail: 'stopped' }),
+    ]);
+    const { container } = mount();
+    fireEvent.click(
+      container.querySelector('.settings-plugin-restart') as Element,
+    );
+    expect(bridge.SetPluginEnabled).toHaveBeenCalledWith('webhook', true);
+    expect(bridge.Confirm).not.toHaveBeenCalled();
+  });
+
+  it('refused row shows Restart', () => {
+    setPlugins([plugin({ enabled: true, status: 'refused' })]);
+    const { container } = mount();
+    expect(container.querySelector('.settings-plugin-restart')).not.toBeNull();
+  });
+
+  it('running, crashed and disabled rows have no Restart', () => {
+    setPlugins([
+      plugin({ id: 'a', enabled: true, status: 'running' }),
+      plugin({ id: 'b', enabled: true, status: 'crashed' }),
+      plugin({ id: 'c', enabled: false, status: 'failed' }),
+    ]);
+    const { container } = mount();
+    expect(container.querySelector('.settings-plugin-restart')).toBeNull();
+  });
+
   it('shows a plugin whose app side failed, with Disable', () => {
     setPlugins([uiOnly()]);
     setPluginUI('notes', { status: 'failed', error: 'render boom' });

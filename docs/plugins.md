@@ -71,15 +71,16 @@ root:
 | `version` | no | Your plugin's own version. |
 | `api_version` | yes | The plugin API you target. Must be `0.2` for this Hive. |
 | `description` | no | One sentence, shown to the user. |
-| `main.command` | one of `main`, `ui` | The program and arguments Hive runs, in the plugin directory. A first element starting with `./` is relative to the plugin; anything else is looked up on Hive's `PATH`. |
+| `main.command` | one of `main`, `ui` | The program and arguments Hive runs, in the plugin directory. A first element starting with `./` is relative to the plugin; anything else is looked up on Hive's `PATH`, then on your login shell's `PATH` (see [Node.js](#nodejs)). |
+| `node` | no | The oldest Node.js `main` needs, as `MAJOR.MINOR.PATCH` (for example `"26.0.0"`). Only valid with `main`. Hive runs `node --version` before every start and refuses the plugin when Node is older or cannot be run. See [Node.js](#nodejs). |
 | `ui.entry` | one of `main`, `ui` | The ES module the app loads (`.js` or `.mjs`), relative to the plugin directory. See [App surfaces](#app-surfaces). |
 | `ui.style` | no | A stylesheet (`.css`) the app links while the plugin is loaded. |
 
 A plugin needs `main`, `ui`, or both. `ui` paths must stay inside the
 plugin directory: no `..`, no leading `/`, no URL.
 
-Any language works. The reference plugin uses Node (18 or newer) and
-the SDK below.
+Any language works. The reference plugin uses Node (a supported LTS,
+22 or newer) and the SDK below.
 
 ## Installing
 
@@ -127,8 +128,8 @@ plugin cannot.
 | `stopped` | Installed and disabled (or enabled but not started yet). Never running. |
 | `running` | The process is alive. A plugin with only a `ui` has no process: it is `running` whenever it is enabled. |
 | `crashed` | The process exited; Hive restarts it after a backoff that doubles from 1s up to 30s. |
-| `failed` | It exited more than 5 times within 60s. Hive stops restarting it until you enable it again. |
-| `refused` | It cannot run as installed: its `api_version` is not this Hive's, or its command is not on `PATH`. `status_detail` says which. |
+| `failed` | It exited more than 5 times within 60s. Hive stops restarting it, shows a notice, and offers **Restart** in Settings → Plugins (on the wire, `SET_PLUGIN_ENABLED` with `enabled: true` on the already enabled plugin starts a fresh run and resets the restart count). |
+| `refused` | It cannot run as installed: its `api_version` is not this Hive's, its command is not on `PATH`, or Node is older than its `node` floor or cannot be run. `status_detail` says which, for example `requires Node.js 26.0.0 or newer (found v24.11.0 at /usr/local/bin/node)`. Hive checks again on every start, so upgrade Node and press **Restart**. |
 
 Any exit while enabled counts as a crash — a plugin is expected to run
 until Hive stops it. On disable, remove or daemon shutdown Hive sends
@@ -151,9 +152,11 @@ would, after a daemon restart, run twice. The SDK does this for you.
 | `HIVE_PLUGIN_DATA_DIR` | Your data directory. Put configuration and state here. It survives removing and reinstalling the plugin. |
 
 Everything else in the environment is inherited from the daemon —
-including `PATH` and anything secret you exported in the shell that
-started Hive — except Hive's own `HIVE_SESSION_ID` and `HIVE_PLUGIN_*`
-variables.
+anything secret you exported in the shell that started Hive included —
+except Hive's own `HIVE_SESSION_ID` and `HIVE_PLUGIN_*` variables, and
+`PATH`, which is the PATH Hive found your command on (the daemon's own,
+or your login shell's when the daemon has none; see
+[Node.js](#nodejs)).
 
 The working directory is `HIVE_PLUGIN_DIR`. Everything the plugin
 writes to stdout and stderr goes to `plugin.log` in its data directory
@@ -162,6 +165,42 @@ writes to stdout and stderr goes to `plugin.log` in its data directory
 Hive's data directory is `plugin-data/<id>/` under its state directory
 (`~/Library/Application Support/Hive` on macOS, `$XDG_STATE_HOME/hive`
 or `~/.local/state/hive` on Linux, `%LOCALAPPDATA%\Hive` on Windows).
+
+You may write your own files there, atomically or transactionally. You
+may not write anything else in the state directory, and you never run
+`git worktree` or merge on a project: ask the daemon for a worktree
+(`PREPARE_WORKTREE`) and it does the git work.
+
+## Node.js
+
+A plugin started from the Finder or Dock gets the minimal `PATH` the
+system gives GUI apps, which has no Node. So Hive looks a `main.command`
+that is not `./`-relative up on its own `PATH` first, then on your login
+shell's (the same probe Hive uses to find ACP adapters; on Windows, the
+process `PATH`). The `PATH` that found it is the `PATH` the plugin gets,
+so a script that runs `node` itself finds the same one.
+
+Set `node` in the manifest to a floor. Hive then looks `node` up the same
+way (not `argv[0]`: your `main` may be a script that runs it), runs
+`node --version` with a 2 second limit before every start, and shows
+`refused` with the reason when the check fails.
+
+- **Engine:** the workflow engine needs Node 26.0.0 or newer (it uses
+  `node:sqlite`, a release candidate from v25.7.0). Node 26 is the Active
+  LTS line from 2026-10-28.
+- **Other plugins:** a supported Node.js LTS, 22 or newer. The SDK uses
+  only `node:net` and `node:events`.
+- **Run a long-lived plugin with `--disable-sigusr1`**, for example
+  `"command": ["node", "--disable-sigusr1", "./main.mjs"]` (added in
+  v23.7.0 and v22.14.0). It stops a `SIGUSR1` from opening Node's
+  inspector, which would otherwise let a sandboxed child of the plugin
+  force it to.
+- **`node --permission` is a seat belt, not a boundary.** It fences the
+  network only from v25.0.0 (`--allow-net`), and Node's docs say it gives
+  no guarantees against malicious code (`process._debugProcess` is not
+  gated by it). Use it to contain mistakes, not to run untrusted code.
+
+Facts checked against nodejs.org's v26 documentation on 2026-11-09.
 
 ## The protocol
 
@@ -474,7 +513,7 @@ the same as any client.
 ## The SDK
 
 [`plugins/sdk/hive-plugin.mjs`](../plugins/sdk/hive-plugin.mjs) is a
-single dependency-free file for Node 18+. **Copy it into your plugin**
+single dependency-free file for a supported Node.js LTS (22 or newer). **Copy it into your plugin**
 next to your entry point — it is deliberately not a package, so an
 install from a git URL needs no build or `npm install`.
 

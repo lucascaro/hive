@@ -8,11 +8,14 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 	"runtime"
+	"slices"
 	"strings"
 	"testing"
+	"testing/fstest"
 	"time"
 
 	"github.com/lucascaro/hive/internal/wire"
@@ -416,4 +419,148 @@ func TestManager_EnableRacingStopNoRunnerAfterStop(t *testing.T) {
 			t.Fatalf("iteration %d: %d runner(s) after Stop returned (sockets %v)", i, n, paths)
 		}
 	}
+}
+
+// fakeNode writes an executable "node" that prints out and exits with
+// code, and returns its directory. Unix only: the Windows probe needs a
+// real .exe.
+func fakeNode(t *testing.T, out string, code int) string {
+	t.Helper()
+	if runtime.GOOS == "windows" {
+		t.Skip("fake node is a shell script")
+	}
+	dir := t.TempDir()
+	script := fmt.Sprintf("#!/bin/sh\necho %q\nexit %d\n", out, code)
+	if err := os.WriteFile(filepath.Join(dir, "node"), []byte(script), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	return dir
+}
+
+// withLoginPATH empties the daemon's own PATH and makes dir the login
+// PATH.
+func withLoginPATH(t *testing.T, dir string) {
+	t.Helper()
+	t.Setenv("PATH", t.TempDir())
+	old := loginPATH
+	loginPATH = func() string { return dir }
+	t.Cleanup(func() { loginPATH = old })
+}
+
+func TestResolveCommand_LoginPATHFallback(t *testing.T) {
+	login := fakeNode(t, "v26.0.0", 0)
+	withLoginPATH(t, login)
+	bin, pathEnv, err := resolveCommand(t.TempDir(), "node")
+	if err != nil || bin != filepath.Join(login, "node") || pathEnv != login {
+		t.Fatalf("resolveCommand = %q, %q, %v; want the login PATH's node", bin, pathEnv, err)
+	}
+	if _, _, err := resolveCommand(t.TempDir(), "hive-no-such-binary-xyz"); err == nil ||
+		!strings.Contains(err.Error(), "login shell's PATH="+login) {
+		t.Fatalf("a miss must name both PATHs, got %v", err)
+	}
+}
+
+func TestResolveCommand_DaemonPATHWins(t *testing.T) {
+	daemon := fakeNode(t, "v26.0.0", 0)
+	login := fakeNode(t, "v26.0.0", 0)
+	withLoginPATH(t, login)
+	t.Setenv("PATH", daemon)
+	bin, pathEnv, err := resolveCommand(t.TempDir(), "node")
+	if err != nil || bin != filepath.Join(daemon, "node") || pathEnv != daemon {
+		t.Fatalf("resolveCommand = %q, %q, %v; want the daemon PATH's node", bin, pathEnv, err)
+	}
+}
+
+func TestPluginEnv_PATHIsResolvedPATH(t *testing.T) {
+	got := pluginEnv([]string{"PATH=/old", "KEEP=1", "HIVE_PLUGIN_ID=x"}, "PATH=/new", "HIVE_PLUGIN_ID=y")
+	var paths []string
+	for _, kv := range got {
+		if strings.HasPrefix(kv, "PATH=") {
+			paths = append(paths, kv)
+		}
+	}
+	if len(paths) != 1 || paths[0] != "PATH=/new" || !slices.Contains(got, "KEEP=1") || slices.Contains(got, "HIVE_PLUGIN_ID=x") {
+		t.Fatalf("env = %v", got)
+	}
+}
+
+// nodePlugin installs and enables a plugin that declares a Node floor;
+// its main is the test binary, so argv[0] is not node.
+func nodePlugin(t *testing.T, m *Manager, id, floor string) {
+	t.Helper()
+	install(t, m, writePlugin(t, id, "run", func(man *Manifest) { man.Node = floor }))
+	if _, err := m.SetEnabled(id, true); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestSpawn_NodeTooOldRefused(t *testing.T) {
+	withLoginPATH(t, fakeNode(t, "v24.1.0", 0))
+	m, fl := newTestManager(t)
+	m.Start()
+	nodePlugin(t, m, "old", "26.0.0")
+	p := waitStatus(t, m, "old", wire.PluginRefused)
+	if !strings.Contains(p.StatusDetail, "requires Node.js 26.0.0 or newer (found v24.1.0 at ") || p.Restarts != 0 {
+		t.Fatalf("detail %q restarts %d", p.StatusDetail, p.Restarts)
+	}
+	if paths, _ := fl.snapshot(); len(paths) != 0 {
+		t.Fatal("a refused plugin got a socket")
+	}
+}
+
+func TestSpawn_NodeProbeFails(t *testing.T) {
+	withLoginPATH(t, fakeNode(t, "boom", 1))
+	m, _ := newTestManager(t)
+	m.Start()
+	nodePlugin(t, m, "broken", "26.0.0")
+	p := waitStatus(t, m, "broken", wire.PluginRefused)
+	if !strings.Contains(p.StatusDetail, "could not run node --version") {
+		t.Fatalf("detail %q", p.StatusDetail)
+	}
+}
+
+func TestSpawn_NodeMissingRefused(t *testing.T) {
+	withLoginPATH(t, t.TempDir())
+	m, _ := newTestManager(t)
+	m.Start()
+	nodePlugin(t, m, "nonode2", "26.0.0")
+	p := waitStatus(t, m, "nonode2", wire.PluginRefused)
+	if !strings.Contains(p.StatusDetail, "node not found on PATH=") {
+		t.Fatalf("detail %q", p.StatusDetail)
+	}
+}
+
+// A refused plugin recovers once Node is upgraded and the user presses
+// Restart (SetEnabled true on an already enabled plugin).
+func TestSpawn_NodeOKAfterUpgradeAndRestart(t *testing.T) {
+	login := fakeNode(t, "v24.1.0", 0)
+	withLoginPATH(t, login)
+	m, _ := newTestManager(t)
+	m.Start()
+	nodePlugin(t, m, "upg", "26.0.0")
+	waitStatus(t, m, "upg", wire.PluginRefused)
+	if err := os.WriteFile(filepath.Join(login, "node"), []byte("#!/bin/sh\necho v26.2.0\n"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := m.SetEnabled("upg", true); err != nil {
+		t.Fatal(err)
+	}
+	waitStatus(t, m, "upg", wire.PluginRunning)
+}
+
+func TestHeadlessBuiltin_Starts(t *testing.T) {
+	exe, err := os.Executable()
+	if err != nil {
+		t.Fatal(err)
+	}
+	man, _ := json.Marshal(Manifest{
+		ID: "hl", Name: "Headless", Version: "1.0.0", APIVersion: APIVersion,
+		Main: &Entry{Command: []string{exe, "-test.run=^TestHelperPlugin$", "--", "run"}},
+	})
+	m := newBuiltinManager(t, t.TempDir(), fstest.MapFS{"hl/hive-plugin.json": {Data: man}})
+	m.Start()
+	if _, err := m.SetEnabled("hl", true); err != nil {
+		t.Fatal(err)
+	}
+	waitStatus(t, m, "hl", wire.PluginRunning)
 }

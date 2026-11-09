@@ -200,6 +200,16 @@ export function PluginsPanel({
     });
   }
 
+  // The plugin is already enabled, so there is nothing new to consent
+  // to: SET_PLUGIN_ENABLED true on an enabled plugin starts a fresh
+  // runner and resets its restart count (the daemon's Manager.SetEnabled).
+  function restart(p: PluginInfo) {
+    SetPluginEnabled(p.id, true).catch((e: unknown) => {
+      if (mounted.current)
+        onError(`could not restart ${p.name}: ${errText(e)}`);
+    });
+  }
+
   async function remove(p: PluginInfo) {
     const ok = await Confirm(
       `Remove plugin “${p.name}”?`,
@@ -296,6 +306,14 @@ export function PluginsPanel({
                     </div>
                   ) : null}
                 </div>
+                {p.enabled &&
+                (p.status === 'failed' || p.status === 'refused') ? (
+                  <Button
+                    label="Restart"
+                    className="settings-plugin-restart"
+                    onClick={() => restart(p)}
+                  />
+                ) : null}
                 {uiError ? (
                   <Button
                     label="Disable"
