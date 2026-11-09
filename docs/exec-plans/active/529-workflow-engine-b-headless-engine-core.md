@@ -440,10 +440,15 @@ Decisions.
     reviewed, not sandboxed.
 - **Kill tree** (`killtree.ts`).
   - POSIX: `process.kill(-pgid, 'SIGTERM')`, then 10 s, then `'SIGKILL'`.
+    The group is signalled only while the leader, or a recorded member, still
+    matches its pid and start time. Otherwise the survivors are left alone
+    and their pids recorded as `kept_pids` for the user; an unverified group
+    is never signalled (B-9).
   - Windows has no graceful signal for a windowless tree, as
-    `proc.TermTree` already notes. The engine runs `taskkill /T /PID <pid>`,
-    then 10 s, then `taskkill /T /F /PID <pid>`, both through `spawn` with
-    `windowsHide: true`.
+    `proc.TermTree` already notes. The check runs inside a Job Object with
+    kill-on-close, so the tree dies with its job (B-9). The engine's
+    graceful path still runs `taskkill /T /PID <pid>`, then 10 s, then
+    `taskkill /T /F /PID <pid>`, both through `spawn` with `windowsHide: true`.
 - **Startup reaping.** For each `running` check row, the engine kills the
   recorded group or tree only when the pid is alive **and** its start time
   matches. The start time comes from `ps -o lstart= -p` on POSIX, and from
@@ -451,6 +456,13 @@ Decisions.
   with `windowsHide` on Windows. The row then becomes `interrupted`.
   - Without the start-time match, a reused pid could kill an unrelated
     process.
+  - **Spawn-to-record gap (B-8).** The engine writes an intent row before
+    `spawn`, and the child env carries `HIVE_WF_CHECK=<run>/<key>/<attempt>`
+    so a scan can find it (Linux `/proc/<pid>/environ`, macOS `ps eww`). An
+    empty scan never lifts the fence: the child may have exec'd a
+    long-running program without the marker. An intent row with no recorded
+    pid leaves the node `failed`, keeps its worktree, and the engine does not
+    retry in it; a retry gets a fresh worktree from the same branch.
 - **Human.** `node.waiting{reason:"human", prompt (interpolated), output_schema}`.
   - The answer comes on topic `human.answer` and is validated against
     `output`.
@@ -613,13 +625,19 @@ continue from `seq`.
   KILL, so a normal `hived` stop leaves no `go test` running.
 - **Schema.** The design's `runs`, `nodes` and `events`, plus:
   - `runs.{base_sha, nonce, boot_id, kept_worktrees JSON, error}`;
-  - `nodes.{pid, pgid, proc_start, prompt_id, epoch, boot_id, branch, turns}`;
+  - `nodes.{pid, pgid, proc_start, prompt_id, epoch, boot_id, branch, turns, output, output_raw}`;
   - `trust(project_id, folder, hash, confirmed_at)`;
   - `meta(schema_version)`.
 - **Writes.** Every transition is one `BEGIN IMMEDIATE … COMMIT`, with its
   events appended in the same transaction. That is where `seq` becomes
   gapless: `seq = max+1` inside the transaction. `redact()` runs on event
-  data and outputs before insert.
+  data before insert.
+- **Outputs.** The raw output goes in `nodes.output_raw`, which only the
+  reducer reads (conditions, prompts). A redacted copy goes in
+  `nodes.output`, which is what `node.get` pages and what `node.output`
+  events carry. No topic, event or log ever serves `output_raw`. `runs.db`
+  stays 0600. Known tradeoff: a secret an agent prints is persisted raw
+  locally (B-5).
 - **JSONL fallback.** Not built. `node:sqlite` is RC on the 26 floor, and
   user and A agree (Decisions).
 
@@ -655,11 +673,12 @@ All of it travels on A's `PLUGIN_MESSAGE` with `plugin_id: "workflows"`.
     derived from the IR, so it adds about as much again; when the pair
     exceeds 48 KiB the reply omits `mermaid` (`mermaid_omitted: true`) and C
     renders from `ir`.
-  - `node.output` and `node.get` outputs are truncated at 16 KiB in
-    messages (`truncated: true`). The full output stays in `runs.db`, and
-    only conditions and prompts read it.
-  - `run.get` returns no outputs, only node states. Per-node detail is
-    `node.get`.
+  - `node.output` events carry at most 16 KiB (`truncated: true`). The full
+    redacted output is reachable through `node.get` paging (B-7); the raw
+    value stays in `runs.db` and only conditions and prompts read it (B-5).
+  - `run.get` returns only `{run, ir}`: `ir` (≤ 32 KiB) plus `input` (≤ 8 KiB)
+    leaves about 8 KiB under the cap, which cannot hold node state. Node,
+    loop and map state is derived by replaying `run.events` (B-6).
   - Lists are paged.
 
 ### Topics: GUI → engine
@@ -674,9 +693,24 @@ All of it travels on A's `PLUGIN_MESSAGE` with `plugin_id: "workflows"`.
 | `run.cancel` | `{run_id}` | `{}` |
 | `run.retry` | `{run_id}` | `{}` — failed or cancelled → running: failed and interrupted nodes reset to `pending`, attempts cleared |
 | `runs.list` | `{project_id?, state?: <a run state, below>, before?: created_at, limit ≤ 50}` — `project_id` omitted means every project (B-2), so the GUI finds waiting runs at boot with one call (`state: "waiting"`) | `{runs: [{run_id, project_id, workflow, file, state, created_at, updated_at, source_hash, source_changed}]}` |
-| `run.get` | `{run_id}` | `{run: {…as above, input, base_sha, kept_worktrees, error}, ir, nodes: [{key, node_id, state, attempt, session_id?, branch?, worktree?, error?, started_at?, ended_at?}]}` — no outputs |
-| `node.get` | `{run_id, key}` | `{key, node_id, state, attempt, output?, truncated?, error?, conflict?}` |
-| `run.events` | `{run_id, after_seq, limit ≤ 500}` | `{events: RunEvent[], last_seq, more}` |
+| `run.get` | `{run_id}` | `{run: {…as above, input, base_sha, kept_worktrees, error}, ir}` — no nodes, no paging (B-6) |
+| `node.get` | `{run_id, key, offset?: 0, limit?: 16384}` | `{key, node_id, state, attempt, output?: string, total_bytes?, offset?, more?, error?, conflict?}` — `output` is a slice of the serialized redacted output (B-7) |
+| `run.events` | `{run_id, after_seq, limit ≤ 500}` | `{events: RunEvent[], last_seq, more}` — also byte-budgeted: a page stops at 48 KiB, so `more` can be true below `limit` |
+
+**State replay (B-6).** `run.get` carries no node state. A client reconstructs
+node, loop and map state by calling `run.events` from `after_seq: 0`,
+following `more` until false, and folding the events in `seq` order. The same
+`last_seq` then seeds the live `run.event` stream, so a snapshot can never race
+it. A client that wants a waiting run at boot calls `runs.list {state:
+"waiting"}`, which reads run-level state only. There is no cap on node or map
+instances beyond the existing map-copy cap. Slice C (branch `feature/530-gui`)
+already assumes this contract.
+
+**Output paging (B-7).** `node.get` pages over the UTF-8 bytes of the
+serialized redacted output: default `limit` 16 KiB, `offset` defaults to 0,
+and `more` says whether bytes remain after the slice. The GUI appends slices
+and never parses a partial page; truncation is not final. A page boundary
+that splits a multi-byte character is moved back to the previous boundary.
 | `human.answer` | `{run_id, key, answer}` | `{}`; `error.code: "invalid_answer"` with a path-qualified message, or `"not_waiting"` |
 
 Permission waits are answered with the **existing** `ANSWER_PERMISSION
@@ -706,7 +740,7 @@ type RunEvent = {
 | `node.started` | `{kind, session_id?, branch?, worktree?, iteration?, index?}` |
 | `node.waiting` | `{reason: "human", prompt, output_schema}` or `{reason: "permission", session_id, request_id, title, options: [{option_id, name, kind}]}` |
 | `node.resumed` | `{reason: "permission" \| "human"}` — a `node.waiting` ended without the node finishing. B emits it only for a cleared permission; a human answer ends with `node.output` + `node.finished` in one transaction, so it emits none (B-1) |
-| `node.output` | `{output, truncated?: true}` — ≤ 16 KiB in the event and in `node.get`; the full value stays in `runs.db` (no retrieval path yet, see Open questions) |
+| `node.output` | `{output, truncated?: true}` — ≤ 16 KiB in the event and in `node.get`; the full redacted value is paged through `node.get` (B-7) |
 | `node.finished` | `{state: "done"\|"failed"\|"skipped"\|"interrupted"\|"cancelled", error?, cap?, conflict?: {branch, files, worktree}}` |
 | `loop.iteration` | `{iteration, max_iters}` |
 | `map.expanded` | `{count, concurrency}` |
@@ -765,8 +799,11 @@ first if it copies them.*
 - Plugin skeleton: manifest with `node: "26.0.0"`, SDK copy, `main.mjs`.
 - `store.ts`, `interp.ts`, `keys.ts`, `check.ts`, `human.ts`, `killtree.ts`,
   `events.ts`, and the topics `runs.list` (with the optional `project_id`
-  and `state` filters, B-2), `run.get`, `run.events`, `run.cancel` and
+  and `state` filters, B-2), `run.get` (`{run, ir}` only, B-6), `run.events`
+  (byte-budgeted pages, B-6), `node.get` (byte paging, B-7), `run.cancel` and
   `human.answer`.
+- The store keeps `nodes.output_raw` for the reducer and a redacted
+  `nodes.output` for everything served (B-5).
 - A check with no upstream head gets its own base worktree (B-4).
 - A test-only `startRunFromIR` seam; `run.start` arrives in B4.
 - Not embedded yet: tests install it as a local plugin.
@@ -781,6 +818,21 @@ first if it copies them.*
 - `node.resumed` when a permission wait clears (B-1).
 - The durability startup routine and reconnect.
 - Caps, cleanup, and the fan-out bench.
+- Check spawn-to-record gap as designed (B-8): intent row first, env marker
+  `HIVE_WF_CHECK`, an empty scan never lifts the fence, no recorded pid
+  fails the node and keeps the worktree, a retry gets a fresh worktree. Tests
+  at the launch and recovery boundaries.
+- Group survivors (B-9): signal the group only while the leader or a recorded
+  member matches pid + start time, otherwise record `kept_pids`; Job Object
+  with kill-on-close on Windows. B3's research must verify pid and pgid
+  reuse semantics on Linux and macOS (verify, do not assume). Marker-verified
+  individual kills (reusing `HIVE_WF_CHECK`) are a follow-up only if B3
+  testing shows orphans are a real problem.
+- **Follow-up (B-10a), not in B3's scope:** linking agent config (untracked
+  skills and settings) at registry session adoption. It needs its own
+  security review: a committed `.claude` symlink, a Windows copy fallback,
+  and an untracked link blocking merges. `PREPARE_WORKTREE` does not link
+  it, and `merge[]` stays restricted to `hive/wf/<run>/` branches.
 
 ### B4: trust, sandbox, build and type check (own security review)
 
@@ -790,11 +842,22 @@ first if it copies them.*
   `run.start`.
 - Run `/security-review` on this PR alone. The reviewer gets the code, not
   this plan's conclusions.
+- **Review item (B-10b): git filter and merge drivers.** `filter.<x>.clean`,
+  `filter.<x>.smudge` and `merge.<x>.driver` configured in the user's git
+  config still run during `PrepareRun` and `CommitRun` merges, and a
+  `.gitattributes` committed on a node branch can select them (it cannot
+  define new ones). `safeGit` does not neutralise this (documented in
+  `docs/plugins.md`). The review must decide whether to restrict it.
+- `redact.ts` covers events and the served `nodes.output` copy only; the
+  reducer's `nodes.output_raw` is never redacted or served (B-5).
 
 ### B5: events contract, embedding and docs
 
-- Batching ≤ 48 KiB, coalescing, the `seq` replay contract test, and the
-  the `agent.usage` wiring (R5).
+- Batching ≤ 48 KiB, coalescing, the `seq` replay contract test (a fold of
+  `run.events` from seq 0 reproduces node state, B-6), and the
+  `agent.usage` wiring (R5).
+- `docs/plugins.md` "Workflows" notes that a secret an agent prints is
+  persisted raw in the 0600 `runs.db` (B-5).
 - `//go:embed all:plan-review all:workflows` in `plugins/embed.go`. The
   builtin arrives disabled.
 - Docs:
@@ -1097,7 +1160,7 @@ download, the accepted sandbox gap, and `LIST_ACP_AGENTS`.
   cannot be referenced, and `__proto__` silently dropped the field); `map()`
   throws when its body returns a handle other than the template's one sink.
   Plan wording fixed for map admission vs the live-agent throttle and for
-  `node.output`/`node.get`. The rest are parked under Open questions.
+  `node.output`/`node.get`. The rest were parked under Open questions (resolved 2026-11-09).
 - **2026-11-06 (B1):** `test/fixtures/acp-agents.json` is hand-written from
   `agent.acpSpecs` and the shape of `wire.AcpAgentInfo`, with the ceilings the
   library examples need (claude `acceptEdits`, codex `workspace-write`, pi
@@ -1155,6 +1218,51 @@ download, the accepted sandbox gap, and `LIST_ACP_AGENTS`.
     uncommitted edits, writes into the user's tree) and refusing it in
     `validate` (forbids root checks and `human → check`).
 
+- **2026-11-09, user decisions on the B1 review's open questions.**
+  - **B-5, outputs vs `redact()`:** option (b). Raw outputs go in a separate
+    column (`nodes.output_raw`) that only the reducer reads; no topic, event
+    or log ever serves it, and everything served is redacted. `runs.db` stays
+    0600. Known tradeoff: a secret an agent prints is persisted raw locally;
+    B5 documents it. Rejected: (a) redacting events only with outputs raw in
+    the served column, and redacting before insert, which could change which
+    edge a condition takes.
+  - **B-6, `run.get` size:** it returns `{run, ir}` only, with no nodes and
+    no paging. Node, loop and map state is derived by replaying `run.events`
+    from seq 0 (paged by seq, byte-budgeted pages ≤ 48 KiB) and folding. The
+    boot waiting scan uses `runs.list {state:'waiting'}`, which reads
+    run-level state only. Why: `run.get` carries `ir` (≤ 32 KiB) plus `input`
+    (≤ 8 KiB), so about 8 KiB is left for nodes under the 48 KiB message cap,
+    and a node snapshot without a `last_seq` races the event stream. No
+    256-instance cap is needed. Slice C (branch `feature/530-gui`) already
+    assumes this. Rejected: a `nodes_after`/`more` page contract on `run.get`.
+  - **B-7, full output retrieval:** `node.get` gets `offset`/`limit` byte
+    paging over the serialized output (default page 16 KiB). The GUI appends
+    slices and never parses partial pages. Truncation is not final.
+  - **B-8, check spawn-to-record gap (B3):** the plan's design stands as
+    written: intent row first, env marker `HIVE_WF_CHECK`, an empty scan
+    never lifts the fence, no recorded pid fails the node, the worktree is
+    kept, a retry gets a fresh worktree, and tests sit at the launch and
+    recovery boundaries.
+  - **B-9, group survivors (B3):** signal the group only while the leader or
+    a recorded member still matches pid + start time; otherwise leave the
+    survivors and record `kept_pids`. On Windows, use a Job Object with
+    kill-on-close. Marker-verified individual kills (reusing `HIVE_WF_CHECK`)
+    are an optional follow-up, only if B3 testing shows orphans are a real
+    problem. B3's research must verify pid and pgid reuse semantics on Linux
+    and macOS (verify, do not assume).
+  - **B-10, recorded follow-ups.**
+    - (a) B3 follow-up: link agent config (untracked skills and settings) at
+      registry session adoption, with its own security review (a committed
+      `.claude` symlink, a Windows copy fallback, an untracked link blocking
+      merges). `PREPARE_WORKTREE` does not link it. `merge[]` stays
+      restricted to `hive/wf/<run>/` branches.
+    - (b) B4 security review item: git `filter.<x>.clean`/`smudge` and
+      `merge.<x>.driver` set in the user's git config still run during
+      `PrepareRun` and `CommitRun` merges, and a `.gitattributes` committed on
+      a node branch can select them (it cannot define new ones). `safeGit`
+      does not neutralise this (documented in `docs/plugins.md`). B4's review
+      must decide whether to restrict it.
+
 ## Progress
 
 - **2026-10-25:** Research complete. Plan drafted against A at `7410f6b7`.
@@ -1173,37 +1281,17 @@ download, the accepted sandbox gap, and `LIST_ACP_AGENTS`.
 
 ## Open questions
 
-Raised by the B1 review (CodeRabbit, PR #538). They concern design that B2 to
-B5 implement, not B1's diff, so each is parked on the phase that owns it and
-needs a decision before that phase starts:
+All resolved on 2026-11-09 (Decision log, "user decisions on the B1 review's
+open questions"). Each was raised by the B1 review (CodeRabbit, PR #538).
 
-- **B2/B5, outputs vs `redact()`.** The reducer evaluates conditions against
-  stored `outputs`, and `redact()` runs on outputs before insert. A value that
-  matches a redaction pattern would change which edge is taken. Options:
-  (a) redact only events and keep outputs raw in `runs.db` (0600), or
-  (b) store raw outputs in a separate column the reducer reads and the topics
-  never serve. Needs a decision, because (a) persists secrets in plaintext.
-- **B2, `run.get` size.** A run with 32 map copies of many nodes can exceed the
-  64 KiB message cap in `nodes`. Needs a byte-budgeted page contract
-  (`nodes_after`, `more`) before C depends on the reply.
-- **B2/B5, full output retrieval.** `node.get` truncates at 16 KiB, so the
-  full value is unreachable from the GUI. Either add `offset`/`limit` paging
-  to `node.get` or accept truncation as final.
-- **B3, spawn-to-record gap for checks.** A crash after `spawn` and before the
-  `pid`/`pgid`/start-time row write leaves a child that startup reaping cannot
-  find. Candidates: write an intent row first and make the check discoverable
-  by an env marker (`HIVE_WF_CHECK=<run>/<key>/<attempt>`, Linux
-  `/proc/<pid>/environ`, macOS `ps eww`), or fence by refusing to restart a
-  check whose intent row has no pid. A user acknowledgement is not proof the
-  child exited, so an empty marker scan never lifts the fence (the
-  child may have exec'd a long-running program without the marker). With no
-  recorded pid the node stays `failed`, the worktree is kept, and the engine
-  does not retry in it; a retry gets a fresh worktree from the same branch. Needs tests at the launch and recovery boundaries.
-- **B3, group survivors after the leader exits.** The pid + start-time match
-  only proves the leader. Once the leader is gone, killing `-pgid` risks a
-  reused group. Candidate: only signal the group while the leader (or a
-  recorded member) still matches; otherwise leave survivors and record
-  `kept_pids` for the user, never signalling an unverified group.
+- **Outputs vs `redact()`:** Resolved, B-5. Raw outputs in a reducer-only
+  column; everything served is redacted.
+- **`run.get` size:** Resolved, B-6. `run.get` returns `{run, ir}`; node state
+  is a replay of `run.events`.
+- **Full output retrieval:** Resolved, B-7. `node.get` pages by byte offset.
+- **Check spawn-to-record gap (B3):** Resolved, B-8. Design stands as written.
+- **Group survivors after the leader exits (B3):** Resolved, B-9. Verified
+  group signalling only; `kept_pids` otherwise; Job Object on Windows.
 
 Execution order still depends on A: B1 needs A PR1's fixtures; B2
 needs A PR1–3; B3 needs R1–R4 merged in A.
