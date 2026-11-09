@@ -218,7 +218,8 @@ const worktrees = modal(
 // Trust).
 const workflowTrust: KeyScope = {
   id: 'workflow-trust',
-  active: () => isModalOpen('workflows') && workflowsStore.getState().view === 'trust',
+  active: () =>
+    isModalOpen('workflows') && workflowsStore.getState().view === 'trust',
   owns: 'matched',
   bindings: () => [
     { keys: 'Shift?+Y', command: 'workflow-trust.confirm', repeat: false },

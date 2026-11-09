@@ -1552,6 +1552,10 @@ export async function AnswerPermission(
   optionId: string,
 ) {
   maybeFail('AnswerPermission');
+  bridgeCalls.push({
+    method: 'AnswerPermission',
+    args: [id, requestId, optionId],
+  });
   const a = acpById.get(id);
   if (!a?.permission || a.permission.request_id !== requestId) return '';
   const toolId = a.permission.tool_call_id;

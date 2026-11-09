@@ -15,7 +15,7 @@
   overflow: hidden;
   padding: var(--space-3) var(--space-4);
 }
-#workflows-panel .hv-dialog__title-suffix { display: inline-flex; align-items: baseline; gap: var(--space-2); }
+#workflows-panel .hv-dialog__title-suffix { display: inline-flex; align-items: baseline; gap: var(--space-2); margin-left: var(--space-1); }
 #workflows-panel .hv-dialog__title-suffix .hv-kbd { margin-left: var(--space-2); }
 
 /* The body of each view scrolls inside itself; the page never scrolls. */
@@ -163,7 +163,8 @@
   position: relative;
   display: flex;
   flex-direction: column;
-  gap: var(--space-5);
+  /* Room for an edge's condition chip without covering its arrowhead. */
+  gap: calc(var(--space-6) + var(--space-2));
   align-items: stretch;
 }
 .hv-wf-edges {
@@ -242,7 +243,7 @@
 .hv-wf-facts { display: grid; grid-template-columns: max-content 1fr; gap: var(--space-1) var(--space-3); margin: 0; font-size: var(--text-sm); }
 .hv-wf-facts dt { color: var(--fg-muted); }
 .hv-wf-facts dd { margin: 0; font-family: var(--font-mono); overflow-wrap: anywhere; }
-.hv-wf-instances { display: flex; flex-wrap: wrap; gap: var(--space-1); }
+.hv-wf-instances { display: flex; flex-wrap: wrap; gap: var(--space-1); margin: 0; padding: 0; border: 0; min-width: 0; }
 .hv-wf-instance { padding: 0 var(--space-2); background: var(--btn); border: 1px solid var(--btn-border); border-radius: var(--radius-sm); color: var(--fg); font-family: var(--font-mono); font-size: var(--text-xs); cursor: pointer; }
 .hv-wf-instance[aria-pressed='true'] { border-color: var(--accent); }
 .hv-wf-prompt { margin: 0 0 var(--space-2); white-space: pre-wrap; overflow-wrap: anywhere; }

@@ -10,6 +10,7 @@
 
 // C0 + DEL + C1, the bidi embeddings/overrides/isolates and marks, line and
 // paragraph separators, zero-width characters and the BOM.
+// biome-ignore lint/complexity/useRegexLiterals: a literal would put raw invisible characters in the source
 const INVISIBLE = new RegExp(
   '[\\u0000-\\u001F\\u007F-\\u009F\\u061C\\u200B-\\u200F\\u2028-\\u202E\\u2060-\\u2069\\uFEFF]',
   'g',
@@ -29,15 +30,17 @@ export function showControls(s: string, keep = ''): string {
  * kept. */
 export const plainText = (s: string): string => showControls(s, '\n\t');
 
-// OSC ends at BEL or ST; CSI is ESC [ params intermediates final; the rest
-// of the two-byte ESC forms follow. The 8-bit CSI (U+009B) is the same.
-// biome-ignore lint/suspicious/noControlCharactersInRegex: matching control characters is the point
+// biome-ignore-start lint/suspicious/noControlCharactersInRegex: matching control characters is the point
+// OSC ends at BEL or ST; CSI is ESC [ params intermediates final; the 8-bit
+// forms (U+009B, U+009D) are the same.
 const OSC =
   /(?:\u001B\]|\u009D)[^\u0007\u001B\u009C]*(?:\u0007|\u001B\\|\u009C)?/g;
-// biome-ignore lint/suspicious/noControlCharactersInRegex: matching control characters is the point
 const CSI = /(?:\u001B\[|\u009B)[0-?]*[ -/]*[@-~]/g;
-// biome-ignore lint/suspicious/noControlCharactersInRegex: matching control characters is the point
-const ESC2 = /\u001B[@-Z\\-_]/g;
+// DCS, SOS, PM and APC strings run to ST; their payload is not text.
+const STRING_ESC = /\u001B[PX^_][^\u001B]*(?:\u001B\\)?/g;
+// Any other ESC form: optional intermediates, then a final byte.
+const ESC2 = /\u001B[ -/]*[0-~]/g;
+// biome-ignore-end lint/suspicious/noControlCharactersInRegex: matching control characters is the point
 
 /** "2 min ago" for an RFC 3339 time; the empty string when unparseable. */
 export function ago(iso: string, now: number = Date.now()): string {
@@ -68,6 +71,7 @@ export function stripCsi(s: string): string {
     s
       .replace(OSC, '')
       .replace(CSI, '')
+      .replace(STRING_ESC, '')
       .replace(ESC2, '')
       .replace(/\r\n/g, '\n')
       .replace(/\r/g, ''),

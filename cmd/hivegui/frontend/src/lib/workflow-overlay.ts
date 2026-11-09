@@ -101,7 +101,7 @@ export function hasGap(
   state: OverlayState,
   events: readonly RunEvent[],
 ): boolean {
-  if (state.maxSeq === 0 || events.length === 0) return false;
+  if (events.length === 0) return false;
   return Math.min(...events.map((e) => e.seq)) > state.maxSeq + 1;
 }
 

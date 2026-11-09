@@ -23,10 +23,13 @@ async function openPluginsTab(page: Page) {
   await expect(page.locator('#settings-panel-plugins')).toBeVisible();
 }
 
-// Every install lists the bundled plan-review plugin (spec 471), so the
-// list is never empty; these count the plugins a test adds beside it.
+// Every install lists the bundled plan-review plugin (spec 471) and the
+// workflow engine (spec 528/530), so the list is never empty; these count
+// the plugins a test adds beside them.
 const added = (page: Page) =>
-  page.locator('.settings-plugin-row:not([data-plugin-id="plan-review"])');
+  page.locator(
+    '.settings-plugin-row:not([data-plugin-id="plan-review"]):not([data-plugin-id="workflows"])',
+  );
 
 test('install, enable, disable and remove a plugin', async ({ page }) => {
   await openPluginsTab(page);

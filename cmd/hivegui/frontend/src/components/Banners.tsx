@@ -72,9 +72,7 @@ export function Banners(): ReactNode {
         kind="info"
         id="workflow-banner"
         data={banners.workflow}
-        actions={[
-          { id: 'open', label: 'Open', onClick: openWaitingWorkflow },
-        ]}
+        actions={[{ id: 'open', label: 'Open', onClick: openWaitingWorkflow }]}
       />
     </>
   );

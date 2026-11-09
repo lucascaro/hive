@@ -76,7 +76,7 @@ export function Workflows({ root }: { root: HTMLElement | null }): ReactNode {
   useLayoutEffect(() => {
     root?.classList.toggle('hidden', !entry);
   }, [root, entry]);
-  if (!entry || entry.id !== 'workflows' || !root) return null;
+  if (entry?.id !== 'workflows' || !root) return null;
   return (
     <WorkflowsPanel
       key={entry.seq}
@@ -251,6 +251,7 @@ function ListView({ projectId }: { projectId: string }): ReactNode {
   const [tick, setTick] = useState(0);
 
   useEffect(() => {
+    void tick; // a Refresh re-runs the load
     let live = true;
     setError(null);
     request<WorkflowsList>('workflows.list', { project_id: projectId })
@@ -391,6 +392,7 @@ function TrustView({ projectId }: { projectId: string }): ReactNode {
   const [tick, setTick] = useState(0);
 
   useEffect(() => {
+    void tick; // a changed-files answer re-describes
     let live = true;
     setLoad({ status: 'loading' });
     request<TrustDescribe>('workflow.trust.describe', { project_id: projectId })
@@ -535,6 +537,7 @@ function ReviewView({ projectId }: { projectId: string }): ReactNode {
   const [starting, setStarting] = useState(false);
 
   useEffect(() => {
+    void tick; // a changed source rebuilds
     let live = true;
     setBuild({ status: 'loading' });
     setSlow(false);

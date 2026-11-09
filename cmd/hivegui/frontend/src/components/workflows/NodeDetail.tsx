@@ -63,13 +63,15 @@ export function NodeDetail({
   const [more, setMore] = useState(false);
   const [next, setNext] = useState(0);
   const [loadingMore, setLoadingMore] = useState(false);
+  const hasInst = inst !== undefined;
   const stamp = inst ? `${inst.state}:${inst.attempt}` : 'none';
 
   // node.get on select, and again when the node's state or attempt moves
   // (a wait ending, a retry): the slim run.nodes rows carry none of this.
   // The first slice replaces the output; Load more appends later ones.
   useEffect(() => {
-    if (!inst) {
+    void stamp; // state or attempt moved: ask again
+    if (!hasInst) {
       setFacts(null);
       setOutput('');
       setMore(false);
@@ -91,7 +93,7 @@ export function NodeDetail({
     return () => {
       live = false;
     };
-  }, [runId, nodeKey, stamp, !!inst]);
+  }, [runId, nodeKey, stamp, hasInst]);
 
   // The activity history is paged lazily, once per opened node.
   useEffect(() => {
@@ -168,11 +170,7 @@ export function NodeDetail({
         ) : null}
       </dl>
       {siblings.length > 1 ? (
-        <div
-          className="hv-wf-instances"
-          role="group"
-          aria-label="Rounds and copies"
-        >
+        <fieldset className="hv-wf-instances" aria-label="Rounds and copies">
           {siblings
             .map(([k]) => k)
             .sort((a, b) => a.localeCompare(b, undefined, { numeric: true }))
@@ -187,7 +185,7 @@ export function NodeDetail({
                 {showControls(k)}
               </button>
             ))}
-        </div>
+        </fieldset>
       ) : null}
       {factsError ? (
         <p className="hv-wf-error" role="alert">

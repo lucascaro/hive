@@ -332,8 +332,13 @@ const APPROVED_477 = {
         now === 'notify-when-idle' &&
         (mac ? was === 'next-attention' : was === 'jump-back'))),
   // Spec 530: ⇧⌘R (Ctrl+Shift+R) is new, and opens Workflows.
-  W: (s: string, e: Ev, _mac: boolean, was: string | null, now: string | null) =>
-    s === 'app' && /^r$/i.test(e.key) && was === null && now === 'workflows',
+  W: (
+    s: string,
+    e: Ev,
+    _mac: boolean,
+    was: string | null,
+    now: string | null,
+  ) => s === 'app' && /^r$/i.test(e.key) && was === null && now === 'workflows',
   // D2: macOS ⌘F gains a keydown binding to find-in-session. The native
   // menu's ⌘F still takes the key first; the chord is in the data so the
   // menu accelerator is derived from it.

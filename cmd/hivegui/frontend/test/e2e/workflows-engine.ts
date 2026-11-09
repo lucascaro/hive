@@ -79,7 +79,8 @@ export interface MockWorkflowsSpec {
   startedRun?: MockRunSpec;
 }
 
-interface Run extends Required<Pick<MockRunSpec, 'run_id' | 'workflow' | 'ir'>> {
+interface Run
+  extends Required<Pick<MockRunSpec, 'run_id' | 'workflow' | 'ir'>> {
   spec: MockRunSpec;
   state: string;
   nodes: Map<string, MockNode>;
@@ -102,6 +103,8 @@ export class WorkflowsEngine {
   private holdNodesAt = 0;
   private nodesCalls = 0;
   private started = 0;
+  /** When set, run.start refuses a source_hash that differs (`changed`). */
+  currentHash: string | null = null;
 
   constructor(private send: Send) {}
 
@@ -211,7 +214,11 @@ export class WorkflowsEngine {
         if (k) Object.assign(row(), { state: 'running', attempt: ev.attempt });
         break;
       case 'node.waiting':
-        if (k) Object.assign(row(), { state: 'waiting', attempt: ev.attempt || row().attempt });
+        if (k)
+          Object.assign(row(), {
+            state: 'waiting',
+            attempt: ev.attempt || row().attempt,
+          });
         break;
       case 'node.resumed':
         if (k) row().state = 'running';
@@ -290,16 +297,27 @@ export class WorkflowsEngine {
         if (this.trust !== 'trusted')
           return this.fail(topic, n, 'untrusted', 'not trusted');
         const b = this.spec.builds?.[String(data.file)];
-        if (!b) return this.fail(topic, n, 'build_failed', 'no such file', { errors: ['no such file'] });
+        if (!b)
+          return this.fail(topic, n, 'build_failed', 'no such file', {
+            errors: ['no such file'],
+          });
         if ('error' in b) {
           const { code, message, ...extra } = b.error as Json;
-          return this.fail(topic, n, String(code), String(message ?? code), extra);
+          return this.fail(
+            topic,
+            n,
+            String(code),
+            String(message ?? code),
+            extra,
+          );
         }
         return this.reply(topic, n, { ...b });
       }
       case 'run.start': {
         const tpl = this.spec.startedRun;
         if (!tpl) return this.fail(topic, n, 'build_failed', 'no run template');
+        if (this.currentHash && data.source_hash !== this.currentHash)
+          return this.fail(topic, n, 'changed', 'changed');
         this.started += 1;
         const run_id = `${tpl.run_id}-${this.started}`;
         this.addRun({ ...tpl, run_id });
@@ -307,10 +325,16 @@ export class WorkflowsEngine {
       }
       case 'runs.list': {
         const all = [...this.runs.values()]
-          .filter((r) => !data.project_id || (r.spec.project_id ?? 'p1') === data.project_id)
+          .filter(
+            (r) =>
+              !data.project_id ||
+              (r.spec.project_id ?? 'p1') === data.project_id,
+          )
           .filter((r) => !data.state || this.displayState(r) === data.state)
           .map((r) => this.summary(r));
-        return this.reply(topic, n, { runs: all.slice(0, Number(data.limit ?? 50)) });
+        return this.reply(topic, n, {
+          runs: all.slice(0, Number(data.limit ?? 50)),
+        });
       }
       case 'run.get': {
         const r = runOf();
@@ -322,14 +346,20 @@ export class WorkflowsEngine {
         if (!r) return this.fail(topic, n, 'not_found', 'no such run');
         const rows = [...r.nodes.values()]
           .sort(byKey)
-          .filter((x) => !data.after || byKey(x, { key: String(data.after) } as MockNode) > 0);
+          .filter(
+            (x) =>
+              !data.after ||
+              byKey(x, { key: String(data.after) } as MockNode) > 0,
+          );
         const per = this.spec.pageRows ?? 100;
         const page = rows.slice(0, per);
         const more = rows.length > per;
         return this.reply(topic, n, {
           nodes: page,
           last_seq: r.seq,
-          ...(more ? { more: true, next_after: page[page.length - 1].key } : {}),
+          ...(more
+            ? { more: true, next_after: page[page.length - 1].key }
+            : {}),
         });
       }
       case 'node.get': {
@@ -348,7 +378,14 @@ export class WorkflowsEngine {
           node_id: row.node_id,
           state: row.state,
           attempt: row.attempt,
-          ...(full ? { output: out, total_bytes: full.length, next_offset: end, more: end < full.length } : {}),
+          ...(full
+            ? {
+                output: out,
+                total_bytes: full.length,
+                next_offset: end,
+                more: end < full.length,
+              }
+            : {}),
           ...facts,
         });
       }
@@ -368,15 +405,31 @@ export class WorkflowsEngine {
       case 'human.answer': {
         const r = runOf();
         const key = String(data.key);
-        if (!r || r.nodes.get(key)?.state !== 'waiting')
+        if (r?.nodes.get(key)?.state !== 'waiting')
           return this.fail(topic, n, 'not_waiting', 'not waiting');
         const ans = data.answer as Json | undefined;
         if (!ans || typeof ans !== 'object' || !('verdict' in ans))
-          return this.fail(topic, n, 'invalid_answer', 'answer.verdict: required');
+          return this.fail(
+            topic,
+            n,
+            'invalid_answer',
+            'answer.verdict: required',
+          );
         this.reply(topic, n, {});
         this.push(r.run_id, [
-          { type: 'node.output', key, node_id: r.nodes.get(key)?.node_id ?? null, data: { output: ans } },
-          { type: 'node.finished', key, node_id: r.nodes.get(key)?.node_id ?? null, attempt: r.nodes.get(key)?.attempt ?? 1, data: { state: 'done' } },
+          {
+            type: 'node.output',
+            key,
+            node_id: r.nodes.get(key)?.node_id ?? null,
+            data: { output: ans },
+          },
+          {
+            type: 'node.finished',
+            key,
+            node_id: r.nodes.get(key)?.node_id ?? null,
+            attempt: r.nodes.get(key)?.attempt ?? 1,
+            data: { state: 'done' },
+          },
           { type: 'run.finished', data: { state: 'done' } },
         ]);
         return;
@@ -385,16 +438,24 @@ export class WorkflowsEngine {
         const r = runOf();
         if (!r) return this.fail(topic, n, 'not_found', 'no such run');
         this.reply(topic, n, {});
-        this.push(r.run_id, [{ type: 'run.finished', data: { state: 'cancelled' } }]);
+        this.push(r.run_id, [
+          { type: 'run.finished', data: { state: 'cancelled' } },
+        ]);
         return;
       }
       case 'run.retry': {
         const r = runOf();
         if (!r) return this.fail(topic, n, 'not_found', 'no such run');
         this.reply(topic, n, {});
-        const failed = [...r.nodes.values()].filter((x) => x.state === 'failed' || x.state === 'interrupted');
+        const failed = [...r.nodes.values()].filter(
+          (x) => x.state === 'failed' || x.state === 'interrupted',
+        );
         this.push(r.run_id, [
-          ...failed.map((x) => ({ type: 'node.reset', key: x.key, node_id: x.node_id })),
+          ...failed.map((x) => ({
+            type: 'node.reset',
+            key: x.key,
+            node_id: x.node_id,
+          })),
           { type: 'run.retried', data: { reset: failed.length } },
         ]);
         return;
@@ -405,7 +466,10 @@ export class WorkflowsEngine {
   }
 
   private displayState(r: Run): string {
-    if (r.state === 'running' && [...r.nodes.values()].some((x) => x.state === 'waiting'))
+    if (
+      r.state === 'running' &&
+      [...r.nodes.values()].some((x) => x.state === 'waiting')
+    )
       return 'waiting';
     return r.state;
   }
@@ -417,7 +481,8 @@ export class WorkflowsEngine {
       workflow: r.workflow,
       file: r.spec.file ?? `${r.workflow}.ts`,
       state: this.displayState(r),
-      created_at: r.spec.created_at ?? new Date(Date.now() - 120_000).toISOString(),
+      created_at:
+        r.spec.created_at ?? new Date(Date.now() - 120_000).toISOString(),
       updated_at: new Date().toISOString(),
       source_hash: 'h',
       source_changed: !!r.spec.source_changed,
@@ -438,7 +503,11 @@ export class WorkflowsEngine {
         for (const f of ['session_id', 'branch', 'worktree'])
           if (e.data[f] !== undefined) out[f] = e.data[f];
       if (e.type === 'node.waiting') waiting = e.data;
-      if (e.type === 'node.resumed' || e.type === 'node.finished' || e.type === 'node.reset')
+      if (
+        e.type === 'node.resumed' ||
+        e.type === 'node.finished' ||
+        e.type === 'node.reset'
+      )
         waiting = undefined;
       if (e.type === 'node.finished') {
         if (e.data.error !== undefined) out.error = e.data.error;

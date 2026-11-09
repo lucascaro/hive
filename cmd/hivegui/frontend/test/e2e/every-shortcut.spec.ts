@@ -22,6 +22,7 @@ import {
   scopeChords,
   scopeIds,
 } from './fixtures/key-sweep.js';
+import { startWorkflows } from './fixtures/workflows.js';
 
 // Spec 481: every keyboard shortcut and every native-menu command,
 // driven end to end through the running app and GENERATED from the
@@ -70,6 +71,24 @@ const FIXTURES: Record<string, (page: Page) => Promise<void>> = {
   'command-palette': (page) => run(page, 'command-palette'),
   settings: (page) => run(page, 'settings'),
   worktrees: (page) => run(page, 'worktrees'),
+  // Spec 530. The workflows scope is the modal itself, the trust scope its
+  // trust view: reach it through the list with the engine running.
+  workflows: async (page) => {
+    await startWorkflows(page, { trust: 'trusted', workflows: [] });
+    await run(page, 'workflows');
+  },
+  'workflow-trust': async (page) => {
+    await startWorkflows(page, {
+      trust: 'none',
+      files: [{ path: 'a.ts', bytes: 10 }],
+      workflows: [{ file: 'a.ts' }],
+    });
+    await run(page, 'workflows');
+    await page.getByRole('button', { name: 'Review & trust…' }).click();
+    await expect(
+      page.getByRole('button', { name: 'Trust and continue' }),
+    ).toBeVisible();
+  },
   'quick-idea': (page) => run(page, 'quick-idea'),
   'message-session': (page) => run(page, 'message-session'),
   'archived-sessions': (page) => run(page, 'archived-sessions'),
@@ -128,6 +147,7 @@ function expectedRan(command: string): boolean {
 const OPENS: Record<string, string> = {
   settings: 'settings',
   worktrees: 'worktrees',
+  workflows: 'workflows',
   'quick-idea': 'quick-idea',
   'message-session': 'message-session',
   'archived-sessions': 'archived-sessions',
@@ -151,11 +171,15 @@ async function expectEffect(page: Page, scopeId: string, command: string) {
   }
   const opens = OPENS[command];
   if (opens) {
+    // An opener chord pressed inside the scope it opens is a toggle: the
+    // workflows modal closes on its own chord (the native accelerator
+    // beats any scope binding on macOS, so the command itself toggles).
+    const want = opens !== scopeId;
     await expect
       .poll(() => scopeActive(page, opens), {
-        message: `${command} should open ${opens}`,
+        message: `${command} should ${want ? 'open' : 'close'} ${opens}`,
       })
-      .toBe(true);
+      .toBe(want);
   }
   if (command === 'dead-session.restart') {
     await expect

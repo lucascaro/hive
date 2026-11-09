@@ -360,6 +360,7 @@ These are the defaults. Rebind any of them, and any plugin command, under **Sett
 | ⇧⌘B | Jump back to where you were before the first ⌘B |
 | ⌘[ / ⌘] | Previous / next project |
 | ⌘E | Worktrees in the active project (browse, resume, delete) |
+| ⇧⌘R | Workflows in the active project (list, trust, run, answer) |
 | ⌘I | Capture an idea for later (note, kind, project) |
 | ⇧⌘I | Ideas captured for the active project |
 | ⇧⌘M | Message the active session: a note sent to it — through the agent's own inbox for Claude Code and Pi, otherwise typed when it is quiet (queued if it is working) |
@@ -421,6 +422,18 @@ rest of the app carries on.
 - The reference plugins: [plugins/webhook/](plugins/webhook/) (in the
   background) and [plugins/session-notes/](plugins/session-notes/) (in
   the app: pin a note to a session)
+
+### Workflows
+
+**Workflows** (⇧⌘R, or File → Workflows…) run several agents on a project as a
+graph, from TypeScript files you keep in the project's `.hive/workflows/`
+folder. Hive asks before it trusts a folder (and again whenever a file in it
+changes), shows the workflow as a graph with a form for its input, and then
+draws the run on that graph live: each step's state, loop rounds and map
+copies, and a banner and desktop notification when a step waits for your
+answer or an agent asks for permission. The engine is a bundled plugin that
+ships turned off; the panel offers **Turn on**, and tells you which Node.js
+version it needs if yours is too old.
 
 Manage them under **Settings → Plugins**: install from a folder or git
 URL, then enable, disable or remove each one without restarting Hive.

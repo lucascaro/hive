@@ -10,6 +10,7 @@
 
 import {
   type ReactNode,
+  useId,
   useLayoutEffect,
   useMemo,
   useRef,
@@ -82,6 +83,9 @@ export function WorkflowGraph({
 }
 
 interface Edge {
+  id: string;
+  from: string;
+  to: string;
   d: string;
   label?: string;
   x: number;
@@ -99,6 +103,8 @@ function BodyView({
 }): ReactNode {
   const layout = useMemo(() => layoutBody(body), [body]);
   const ref = useRef<HTMLDivElement>(null);
+  // One marker per body's SVG, so ids stay unique in the document.
+  const arrow = `hv-wf-arrow-${useId().replace(/:/g, '')}`;
   const [edges, setEdges] = useState<Edge[]>([]);
 
   // Edge paths come from the laid-out boxes. Recomputed after every render
@@ -123,6 +129,9 @@ function BodyView({
         const y2 = b.top - base.top;
         const ym = (y1 + y2) / 2;
         next.push({
+          id: `${e.from}->${e.to}`,
+          from: e.from,
+          to: e.to,
           d: `M${x1} ${y1} C${x1} ${ym} ${x2} ${ym} ${x2} ${y2}`,
           label: e.label,
           x: (x1 + x2) / 2,
@@ -145,7 +154,7 @@ function BodyView({
       <svg className="hv-wf-edges" aria-hidden="true" focusable="false">
         <defs>
           <marker
-            id="hv-wf-arrow"
+            id={arrow}
             viewBox="0 0 8 8"
             refX="7"
             refY="4"
@@ -157,7 +166,13 @@ function BodyView({
           </marker>
         </defs>
         {edges.map((e) => (
-          <path key={e.d} d={e.d} markerEnd="url(#hv-wf-arrow)" />
+          <path
+            key={e.id}
+            data-from={e.from}
+            data-to={e.to}
+            d={e.d}
+            markerEnd={`url(#${arrow})`}
+          />
         ))}
       </svg>
       {layout.rows.map((row, r) => (
@@ -171,7 +186,7 @@ function BodyView({
         (e) =>
           e.label && (
             <span
-              key={`l${e.d}`}
+              key={`l${e.id}`}
               className="hv-wf-edge-label"
               style={{ left: e.x, top: e.y }}
             >
