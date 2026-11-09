@@ -663,6 +663,10 @@ continue from `seq`.
   `agent.*` and `check.output` events (250 ms flush) change no column that
   `run.nodes` serves, so they need no row update; they still take their `seq`
   at commit, so `last_seq` never runs ahead of a committed row.
+- **One row per map copy.** Map expansion writes exactly one `nodes` row per
+  copy (key `<map>[<i>]/<node>`), in the transaction that appends
+  `map.expanded`, so a client derives the map count and loop iteration from
+  the keys plus the IR, with no extra field (B-12).
 - **Outputs.** The raw output goes in `nodes.output_raw`, which only the
   reducer reads (conditions, prompts). A redacted copy goes in
   `nodes.output`, which is what `node.get` pages and what `node.output`
@@ -748,7 +752,7 @@ All of it travels on A's `PLUGIN_MESSAGE` with `plugin_id: "workflows"`.
 | `runs.list` | `{project_id?, state?: <a run state, below>, before?: created_at, limit ≤ 50}` — `project_id` omitted means every project (B-2), so the GUI finds waiting runs at boot with one call (`state: "waiting"`) | `{runs: [{run_id, project_id, workflow, file, state, created_at, updated_at, source_hash, source_changed}]}` |
 | `run.get` | `{run_id}` | `{run: {…as above, input, base_sha, kept_worktrees, kept_worktrees_total, error}, ir}` — no nodes, no paging (B-6). `kept_worktrees` is at most 16 paths of ≤ 256 bytes and `error` ≤ 2 KiB; `kept_worktrees_total` is the real count, and the full list is in the `run.finished` and `node.started`/`node.finished` events, paged through `run.events` |
 | `run.nodes` | `{run_id, after?: key}` | `{nodes: [{key, node_id, state, attempt, started_at?, finished_at?, cap?}], last_seq, more?, next_after?}` — the materialized node, loop and map state (B-12). Slim rows: no `output` or `error` (those come from `node.get`). Ordered by `key`; a page stops once `encodedSize` would pass 48 KiB (always at least one row), and `next_after` is the last key returned. Each page carries its own `last_seq`: the max committed `seq` when that page was read, read in one SQLite read transaction, so the rows reflect exactly the events `seq <= last_seq` |
-| `node.get` | `{run_id, key, offset?: 0, limit?: 16384}` | `{key, node_id, state, attempt, output?: string, total_bytes?, next_offset?, more?, error?, conflict?}` — `output` is a slice of the serialized redacted output (B-7) |
+| `node.get` | `{run_id, key, offset?: 0, limit?: 16384}` | `{key, node_id, state, attempt, output?: string, total_bytes?, next_offset?, more?, session_id?, branch?, worktree?, error?, conflict?, waiting?}` — `output` is a slice of the serialized redacted output (B-7). `waiting` is the data of the node's open `node.waiting` event (rendered prompt, `output_schema`, permission `request_id` and `options`), present only while the node is `waiting`, so a wait raised before the run view opened can be answered from it (B-13, recommended, pending user confirmation). Everything is redacted and counted in the 48 KiB encoded budget |
 | `run.events` | `{run_id, after_seq, limit ≤ 500}` | `{events: RunEvent[], last_seq, more}` — also byte-budgeted: a page stops once `encodedSize` would pass 48 KiB (always at least one event, B-11), so `more` can be true below `limit` |
 | `human.answer` | `{run_id, key, answer}` | `{}`; `error.code: "invalid_answer"` with a path-qualified message, or `"not_waiting"` |
 
@@ -1047,7 +1051,10 @@ first if it copies them.*
   - `runs.list state waiting returns only waiting runs`;
   - `runs.list project_id and state combine`;
   - `run.nodes page always fits 48 KiB encoded` (B-12): worst case, maximal keys and `<`-heavy fields, `encodedSize(reply)` stays under the cap and a page holds at least one row;
-  - `run.nodes pages by key, each page tagged with its own last_seq`, read in one read transaction.
+  - `run.nodes pages by key, each page tagged with its own last_seq`, read in one read transaction;
+  - `map expansion writes exactly one nodes row per copy` (B-12): keys are `<map>[<i>]/<node>`, count equals `map.expanded.count`, written in the same transaction as the event;
+  - `node.get waiting payload only while waiting` (B-13): `waiting` carries the rendered prompt, `output_schema`, permission `request_id` and `options`; absent in every other state;
+  - `node.get carries session_id, branch, worktree, error, conflict` (B-13), all redacted, and the whole reply (output slice plus these) stays under 48 KiB encoded in the worst case.
 - `merge.test.ts` (B-12, pure unit, the client-merge algorithm): events arriving between pages are applied idempotently, with no double-apply and no lost transition; `seq <= page last_seq` dropped; a row created after its page was read is created by the event; `node.reset` and `run.retried` follow the same rule.
 - `check.test.ts`:
   - `ok and exit_code`;
@@ -1429,10 +1436,22 @@ download, the accepted sandbox gap, and `LIST_ACP_AGENTS`.
     - Tradeoff recorded: a corrupted `nodes` table cannot be repaired by
       replay. A debug rebuild-from-events command is optional, built only if
       ever needed.
+    - Invariant: map expansion writes exactly one `nodes` row per copy (key
+      `<map>[<i>]/<node>`); the GUI derives loop iteration and map count from
+      keys plus the IR. Tested in B2.
     - Supersedes B-11a (retry visible to a fold), B-11d's "recoverable from
       replayed events" and B-11f (replay-to-live handoff) in wording only: the
       events and the buffering idea stay, the seq-0 fold goes. B-5..B-11
       otherwise unchanged.
+  - **B-13, `node.get` carries wait and session context. Recommended,
+    pending user confirmation** (proposed default for C's Q-B3). `node.get`
+    also returns `session_id?`, `branch?`, `worktree?`, `error?`, `conflict?`
+    and `waiting?` (the open `node.waiting` event's data: rendered prompt,
+    `output_schema`, permission `request_id` and options), so a wait raised
+    before the run view opened can be answered from it. `waiting` exists only
+    while the node is waiting. Slim `run.nodes` rows stay slim. All fields are
+    redacted and counted in the 48 KiB encoded budget. If the user declines,
+    revert the topics-table row and the three B2 tests.
 
 ## Progress
 
