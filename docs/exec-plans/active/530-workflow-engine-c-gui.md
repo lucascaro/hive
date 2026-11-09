@@ -34,7 +34,7 @@ Verified against `origin/main` at `78ce3ace` on 2026-11-08. Paths are relative t
 | The Wails binding, the bridge op and the event name all landed (A-2, A-3) | `cmd/hivegui/app_calls.go:420` `SendPluginMessage`; `cmd/hived-ws-bridge/main.go:657`; `internal/wire/client.go:152`; `test/e2e-real/wails-bridge.ts:282`; `test/e2e/wails-mock.ts:2141` (records into `sentPluginMessages`, answers nothing) | The mock needs a scripted engine behind `SendPluginMessage`. |
 | `plugin_not_running` is a plain `control:error` with no `req_id` and no plugin id field | `internal/daemon/pluginmsg.go:217`, code at `internal/wire/request.go:58` | C claims it like `claimPluginInstallError` does (`events.ts:1348`): reject every pending `workflows` request, then stop the generic error line. C is the only app code that sends to a plugin. |
 | Reconnect hook | `events.ts:221` calls `relistPluginsIfWanted()` | `resyncWorkflows()` goes beside it. |
-| UI plugin surfaces are per **session**, and UI plugins cannot send | `docs/plugins.md` (UI plugins section) | The workflows UI is app code, not a UI plugin (Decision log). |
+| UI plugin surfaces are per **session**, and UI plugins cannot send | `docs/plugins.md:520-590` (App surfaces: the UI `hive` object has `openSessionView`/`closeSessionView` and `sessionView.*`, no message send; `PLUGIN_MESSAGE` at `:355-370` is sent by the Node SDK's `hive.postMessage`) | The workflows UI is app code, not a UI plugin (Decision log). |
 | Plugin state in the store | `src/app/state.ts:211-219` (`status: 'stopped' \| 'running' \| 'crashed' \| 'failed' \| 'refused'`, `status_detail`, `builtin`) | The plugin gate reads it. `refused` + `status_detail` with the Node version come from **A PR3 (not merged)**. |
 | App chords | `src/lib/bindings.ts:62` `DEFAULT_APP_BINDINGS`; `{mac, other}` pattern at `:89-95`; `RESERVED_CHORDS` at `:182` | `Mod+Shift+R` / `Ctrl+Shift+R` is unbound and not reserved. |
 | Modal scopes | `src/app/key-scopes.ts:70` `modal()`, `:88` `mirror()`, `:199` `worktrees` (the template), `:358` `KEY_SCOPES` | Two new scopes, `workflow-trust` before `workflows`. |
@@ -55,10 +55,10 @@ Verified against `origin/main` at `78ce3ace` on 2026-11-08. Paths are relative t
 | Untrusted text precedent | `AcpTranscript.tsx` renders agent text; `marked` is in `package.json` | Engine text (prompts, outputs, errors, file names) renders as **plain React text**, never Markdown or HTML. |
 | **No CSP** in the app | No `Content-Security-Policy` in `index.html` or `cmd/hivegui/*.go` | Any `innerHTML` of engine-derived markup would rest on a sanitizer alone. Native React text escapes by construction. |
 | IR types and `condLabel` live in B's tree | `plugins/workflows/sdk/dsl.ts:17-125` (`IR`, `Body`, `Node`, `Cond`, …); `plugins/workflows/ir/mermaid.ts:30` `condLabel`; worked examples `plugins/workflows/tools/examples.ts` | Import them; don't copy (Decision log). Probe on 2026-11-08: a frontend-options program (`moduleResolution: bundler`, ES2022 lib) importing `IR`, `Cond` and `condLabel` type-checks with tsc 7.0.2 **once `allowImportingTsExtensions: true` is set** (TS5097 without it). |
-| Cross-tree import precedent | `src/lib/whats-new.ts:19` imports `site/features.json`; `vite.config.*:104-105` `server.fs.allow: [__dirname, site/]`, deliberately not the repo root | Add `plugins/workflows` to `fs.allow` (dev server only; `vite build` is unaffected). |
+| Cross-tree import precedent | `src/lib/whats-new.ts:19` imports `site/features.json`; `vite.config.js:104-105` `server.fs.allow: [__dirname, site/]`, deliberately not the repo root | Add `plugins/workflows` to `fs.allow` (dev server only; `vite build` is unaffected). |
 | WebView2 browser accelerators are off | `cmd/hivegui/window_options.go:115` | `Ctrl+Shift+R` (hard reload in a browser) reaches the app on Windows. Linux WebKitGTK gets a manual check (Verification). |
 | CI e2e Node version | `.github/workflows/ci.yml:111-113` (`node-version: '24'`, one setup step for the whole frontend job, which runs both e2e legs at `:381-397`) | B's floor is Node 26, so on this job the plugin is `refused`. A PR3 adds a Node 26 leg; C's e2e-real needs the frontend job itself on 26. |
-| Mock harness | `test/e2e/wails-mock.ts` (2389 lines; `emit()`, `window.__hive` at `:2165`); parity test `test/unit/bridge-harness-parity.test.ts` | Scripted fake engine, seeded per test. |
+| Mock harness | `test/e2e/wails-mock.ts` (2389 lines; `emit()`, `window.__hive` at `:2164`); parity test `test/unit/bridge-harness-parity.test.ts` | Scripted fake engine, seeded per test. |
 | Glyph denylist | `scripts/ui-lint.sh:143` (`×`, `▶`, `✓`, …), scoped to `src/app`, `src/components`, `src/theme`, `index.html` (`:85`) | Labels with symbols are built in `src/lib/`; headers say "at most 3 rounds", not "≤3×". |
 | Icons | `src/lib/icons.svg:45-52` (`state-running`, `-working`, `-attention`, `-waiting-permission`, `-starting`, `-exited`, `-error`, `-failed`) | Add `state-pending`, `state-skipped`, `state-interrupted`. |
 | Brain lesson (macOS menu vs webview keys, PR #488) | `ModalShell`'s native Escape listener runs before React | Sub-view Escape uses `onEscape`; the trust view adds no key capture, so no menu suspension is needed. |
@@ -426,6 +426,7 @@ Alternative: one PR (≈ the same reviewable surface as C1+C2, but one review lo
 - `README.md` — Keybinds row (C1); Workflows paragraph under Plugins (C2).
 - `site/features.json` — "Run multi-agent workflows", `status: shipped`, `since: "Unreleased"` (C2).
 - `docs/design-docs/ui/README.md`, `components.md`, `icons.md` (C1 icons, C2 rest).
+- `DESIGN.md` — one line in the GUI bullet (`:13`): the frontend imports the workflow IR types and `condLabel` from `plugins/workflows/` at build time (type and pure-function source only, no runtime coupling). DESIGN.md's dependency rules cover Go packages only (`:24-45`) and none bounds this edge, but it is a new cross-tree build dependency, so it is recorded (C1).
 - `docs/plugins.md` — one line in B5's Workflows section: the app's Workflows panel is the client of these topics (C2).
 
 ### New files
@@ -531,6 +532,7 @@ Each blocks the approval gate; none blocks C's mock-layer work.
   - Gaps: `bell-click` returns early on an unknown session, so the `wf:` branch is placed first; `ModalId` moved to C1 (the modal ships there); Escape-goes-back via `onEscape` added with a test; `run.start changed`, `symlink`, `retry visibility` and plain-text-injection tests added; Linux/Windows `Ctrl+Shift+R` manual check added.
   - YAGNI: dropped the `workflow-run.cancel` command (a button suffices; nothing binds it); dropped copied IR fixtures and the copied `condLabel` in favour of importing B's source; dropped the third PR.
   - Open questions left for the user: Q-C1, Q-C2; for B: Q-B1, Q-B2. Not handoff-ready until they are answered.
+  - Follow-up: re-read `docs/plugins.md` App surfaces (the UI `hive` object still has no send) and `DESIGN.md` (no rule bounds a frontend → `plugins/` edge); added a DESIGN.md line to C1 because the import is a new cross-tree build dependency; fixed two line refs.
 
 ## PR convergence ledger
 
