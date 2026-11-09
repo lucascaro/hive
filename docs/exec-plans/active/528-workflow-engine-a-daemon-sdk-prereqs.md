@@ -5,7 +5,7 @@
 - **Issue:** #528
 - **Branch:** `feature/528-pr3-plugin-runtime`
 - **Status:** active
-- **PR:**
+- **PR:** #541
 - **Phase:** 3 of 3
 
 ## Summary
@@ -523,6 +523,8 @@ scripts/ui-lint.sh                                             # PR1, PR3 (GUI t
 - **PR 2 (#539) 2026-11-08 iter 7** — verdict: APPROVE; mergeable: MERGEABLE; findings_hash: empty; threads_open: 0; action: stop; head_sha: see PR head. Converged for phase 2 of 3 only. Fixed with mutation-checked tests: the version line must be exactly `git version X.Y...` (a banner or wrapper text hiding 2.54 is refused); the probe is re-run when the git binary on PATH changes (path, size, mtime), in both directions. Declined (again, reply on thread): boot-sweep race on a re-attached pristine worktree needs a registry claim API; boot-only window, branch survives, `PrepareWorktree` can be re-called.
 - **PR 2 (#539) 2026-11-08 iter 8** — verdict: APPROVE; mergeable: MERGEABLE; findings_hash: gate-fail-pre-auto-gc; threads_open: 0; action: autofix+push; head_sha: see PR head. Independent gate FAILed e429af4b: a config `pre-auto-gc` hook ran during commit. Fixed: `hook.pre-auto-gc.enabled=false`, `gc.auto=0`, `maintenance.auto=false`; table-driven regression over every githooks event with a plain-git control; mutation-checked. Converged for phase 2 of 3 only once CI and bots settle.
 - **PR 2 (#539) 2026-11-08 iter 9** — verdict: COMMENT; mergeable: MERGEABLE; findings_hash: empty; threads_open: 0; action: stop; head_sha: 5a718296. Written by the independent gate validator from evidence, not by /hs-review-loop: CI 13 pass / 2 skipping at 5a718296; Greptile "Base review" at 5a718296 with 0 comments; CodeRabbit check "Review paused" (no review at 6590aae0/5a718296; its e429af4b reviews' threads all resolved); 31/31 review threads resolved. Converged for phase 2 of 3 only.
+- **PR 3 (#541) 2026-11-09 iter 1** — verdict: REQUEST_CHANGES (Greptile: 1 P1, 2 P2); mergeable: MERGEABLE; findings_hash: greptile-3-threads; threads_open: 3; action: autofix+push; head_sha: see PR head. Fixed with a test: the Node probe now runs in the plugin's resolved PATH and directory (`TestSpawn_NodeProbeUsesPluginPATH`); the Node 26 job also runs the `e2e`-tagged `cmd/hived` plugin test; the docs say 5 seconds. Pre-PR Opus security review findings are in the decision log.
+- **PR 3 (#541) 2026-11-09 iter 2** — verdict: APPROVE; mergeable: MERGEABLE; findings_hash: empty; threads_open: 0; action: stop; head_sha: see PR head. Converged for phase 3 of 3. Greptile re-reviewed 949a724f with no new comments; 3/3 threads resolved.
 
 ## Gate verdict
 
