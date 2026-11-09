@@ -95,6 +95,18 @@ jobs:
         env:
           TERM: dumb
 
+      - name: Plugin e2e (real hived starting a real plugin)
+        # Behind the e2e build tag, so the step above skips it. Isolated
+        # like the build job's e2e step; never touches real hive state.
+        run: |
+          HOME="$(mktemp -d)"
+          HIVE_STATE_DIR="$(mktemp -d)"
+          HIVE_SOCKET="$(mktemp -d)/hived.sock"
+          export HOME HIVE_STATE_DIR HIVE_SOCKET
+          go test -tags=e2e -timeout 180s ./cmd/hived/...
+        env:
+          TERM: dumb
+
   build:
     name: Build, Vet & Test (${{ matrix.label }})
     runs-on: ${{ matrix.os }}

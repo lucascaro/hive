@@ -564,3 +564,21 @@ func TestHeadlessBuiltin_Starts(t *testing.T) {
 	}
 	waitStatus(t, m, "hl", wire.PluginRunning)
 }
+
+// The probe runs in the plugin's environment: a wrapper node that needs
+// another tool from the resolved PATH must not be refused for lack of it.
+func TestSpawn_NodeProbeUsesPluginPATH(t *testing.T) {
+	login := fakeNode(t, "", 0)
+	script := "#!/bin/sh\ncommand -v mytool >/dev/null || exit 1\necho v26.0.0\n"
+	if err := os.WriteFile(filepath.Join(login, "node"), []byte(script), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(login, "mytool"), []byte("#!/bin/sh\n"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	withLoginPATH(t, login)
+	m, _ := newTestManager(t)
+	m.Start()
+	nodePlugin(t, m, "wrap", "26.0.0")
+	waitStatus(t, m, "wrap", wire.PluginRunning)
+}

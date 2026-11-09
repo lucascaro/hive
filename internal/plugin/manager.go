@@ -655,7 +655,7 @@ func (m *Manager) spawn(e *entry) (*exec.Cmd, func(), error) {
 		if err != nil {
 			return nil, nil, err
 		}
-		if err := checkNode(nodeBin, man.Node); err != nil {
+		if err := checkNode(nodeBin, man.Node, dir, nodePATH); err != nil {
 			return nil, nil, err
 		}
 		pathEnv = nodePATH
@@ -745,10 +745,14 @@ var nodeProbeTimeout = 5 * time.Second
 // (MAJOR.MINOR.PATCH, validated by the manifest). It runs on every start,
 // so upgrading Node and pressing Restart recovers. A prerelease of the
 // floor itself passes: ponytail: compare numeric parts only.
-func checkNode(node, floor string) error {
+func checkNode(node, floor, dir, pathEnv string) error {
 	ctx, cancel := context.WithTimeout(context.Background(), nodeProbeTimeout)
 	defer cancel()
 	cmd := proc.CommandContext(ctx, node, "--version")
+	// The environment the plugin will get: a wrapper node (a version
+	// manager shim) may need other tools on that PATH.
+	cmd.Dir = dir
+	cmd.Env = pluginEnv(os.Environ(), "PATH="+pathEnv)
 	cmd.WaitDelay = time.Second
 	out, err := cmd.Output()
 	if err != nil {

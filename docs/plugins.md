@@ -184,7 +184,7 @@ first absolute `node` on that `PATH` when Hive starts the plugin.
 
 Set `node` in the manifest to a floor. Hive then looks `node` up the same
 way (not `argv[0]`: your `main` may be a script that runs it), runs
-`node --version` with a 2 second limit before every start, and shows
+`node --version` with a 5 second limit before every start, and shows
 `refused` with the reason when the check fails.
 
 - **Engine:** the workflow engine needs Node 26.0.0 or newer (it uses
