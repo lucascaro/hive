@@ -10,7 +10,7 @@
 // the trust prompt. Every other window just renders the new, disabled
 // row from the fan-out (events.ts).
 
-import { InstallPlugin, ListPlugins } from '../bridge.js';
+import { InstallPlugin, ListPlugins, SendPluginMessage } from '../bridge.js';
 import type { PluginEvent, PluginInfo } from './state.js';
 
 // Outlasts the daemon's own 120s bound on a git clone
@@ -84,6 +84,52 @@ export function claimPluginInstallError(e: {
   if (!p || !settle(e.nonce)) return false;
   p.reject(new Error(e.message || 'install failed'));
   return true;
+}
+
+// PLUGIN_MESSAGE (spec 528): the side channel between a plugin and the
+// GUI. The daemon stamps `plugin_id` on what a plugin sends; events.ts
+// hands each decoded `plugin:message` to whoever subscribed. The workflow
+// UI (#530) is the first subscriber; nothing here interprets a topic.
+export interface PluginMessage {
+  plugin_id: string;
+  topic: string;
+  data?: unknown;
+}
+
+type PluginMessageListener = (m: PluginMessage) => void;
+const messageListeners = new Set<PluginMessageListener>();
+
+/** Subscribes to every plugin's messages; returns the unsubscribe. */
+export function onPluginMessage(fn: PluginMessageListener): () => void {
+  messageListeners.add(fn);
+  return () => messageListeners.delete(fn);
+}
+
+/** Hands one decoded message to the subscribers. A throwing subscriber
+ * costs itself that message, never the others. */
+export function deliverPluginMessage(m: PluginMessage): void {
+  for (const fn of [...messageListeners]) {
+    try {
+      fn(m);
+    } catch (e) {
+      console.error('plugin message listener threw', e);
+    }
+  }
+}
+
+/** Sends a message to a running plugin. `data` is any JSON value. The
+ * daemon refuses a bad topic, a frame over 64 KiB, and a plugin that is
+ * not running (a `control:error`). */
+export function sendPluginMessage(
+  pluginId: string,
+  topic: string,
+  data?: unknown,
+): Promise<void> {
+  return SendPluginMessage(
+    pluginId,
+    topic,
+    data === undefined ? '' : JSON.stringify(data),
+  ).then(() => undefined);
 }
 
 // Whether this window has asked for the plugin list at all. Boot asks

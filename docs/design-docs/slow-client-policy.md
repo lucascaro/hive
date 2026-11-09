@@ -53,6 +53,14 @@ rare bug.
   - A failed or timed-out write may have left half a frame on the wire, so
     the connection is closed. The writers queued on `connMu` behind it then
     fail fast.
+- **PLUGIN_MESSAGE has its own bounded queues** (`pluginMsgHub`, 32 frames
+  each, one per UI-capable client and one per plugin control connection).
+  The sender only offers a frame to each queue; a queue that is full is
+  dropped and its connection hung up, exactly like a registry listener, so
+  a stuck GUI never stalls the plugin that talks to it. The hub's fill level
+  counts toward the pressure that slows a plugin's broadcasts. Nothing
+  replays a lost message: the consumer (the plugin and its GUI) must
+  define its own state request and issue it on reconnect.
 - **The fan-out closes the connection when it exits**, whatever the reason:
   a dropped subscription, a write error, or teardown. A dropped client
   therefore reconnects instead of drifting out of sync.

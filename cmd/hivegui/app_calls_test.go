@@ -202,6 +202,9 @@ func TestRPCsRequireAControlConnection(t *testing.T) {
 		"RemovePlugin":           func() error { return a.RemovePlugin("p") },
 		"SetPluginConfig":        func() error { return a.SetPluginConfig("p", map[string]any{}) },
 		"SetClientUI":            func() error { return a.SetClientUI([]string{"plan-review"}) },
+		"SendPluginMessage":      func() error { return a.SendPluginMessage("p", "t", "") },
+		"PrepareWorktree":        func() error { return a.PrepareWorktree(1, "p", "r", "b", "main", nil) },
+		"CommitWorktree":         func() error { return a.CommitWorktree(1, "p", "r", "b", "m") },
 	}
 	for name, call := range calls {
 		t.Run(name, func(t *testing.T) {
@@ -409,6 +412,72 @@ func TestAddIdeaCall(t *testing.T) {
 	}
 	if err := <-done; err != nil {
 		t.Fatalf("AddIdea: %v", err)
+	}
+}
+
+// TestSendPluginMessage: the data string reaches the wire as JSON (not
+// as a quoted string), and one that is not JSON never leaves the app.
+func TestSendPluginMessage(t *testing.T) {
+	for _, tc := range []struct{ data, want string }{
+		{`{"n":1}`, `{"plugin_id":"wf","topic":"ui.cancel","data":{"n":1}}`},
+		{`"nonce"`, `{"plugin_id":"wf","topic":"ui.cancel","data":"nonce"}`},
+		{``, `{"plugin_id":"wf","topic":"ui.cancel"}`},
+	} {
+		a, next := appWithControl(t)
+		done := make(chan error, 1)
+		go func() { done <- a.SendPluginMessage("wf", "ui.cancel", tc.data) }()
+		ft, payload := next(t)
+		if ft != wire.FramePluginMessage || string(payload) != tc.want {
+			t.Errorf("data %q: frame %s payload %s, want PLUGIN_MESSAGE %s", tc.data, ft, payload, tc.want)
+		}
+		if err := <-done; err != nil {
+			t.Errorf("SendPluginMessage: %v", err)
+		}
+	}
+	a, _ := appWithControl(t)
+	if err := a.SendPluginMessage("wf", "t", `{not json`); err == nil {
+		t.Error("invalid JSON data was sent")
+	}
+}
+
+// TestPrepareWorktreeBinding / commit: every field reaches the wire,
+// req_id included, since the answer is matched on it.
+func TestPrepareWorktreeBinding(t *testing.T) {
+	a, next := appWithControl(t)
+	done := make(chan error, 1)
+	go func() {
+		done <- a.PrepareWorktree(7, "p1", "run-1", "hive/wf/run-1/a", "main", []string{"hive/wf/run-1/b"})
+	}()
+	ft, payload := next(t)
+	want := `{"req_id":7,"project_id":"p1","workflow_run_id":"run-1","branch":"hive/wf/run-1/a","base":"main","merge":["hive/wf/run-1/b"]}`
+	if ft != wire.FramePrepareWorktree || string(payload) != want {
+		t.Errorf("frame %s payload %s, want PREPARE_WORKTREE %s", ft, payload, want)
+	}
+	if err := <-done; err != nil {
+		t.Fatal(err)
+	}
+
+	go func() { done <- a.CommitWorktree(8, "p1", "run-1", "hive/wf/run-1/a", "msg") }()
+	ft, payload = next(t)
+	want = `{"req_id":8,"project_id":"p1","workflow_run_id":"run-1","branch":"hive/wf/run-1/a","message":"msg"}`
+	if ft != wire.FrameCommitWorktree || string(payload) != want {
+		t.Errorf("frame %s payload %s, want COMMIT_WORKTREE %s", ft, payload, want)
+	}
+	if err := <-done; err != nil {
+		t.Fatal(err)
+	}
+}
+
+// The shared event table is what makes the GUI and the bridge emit the
+// same names for the new frames.
+func TestControlEventNames_WorkflowFrames(t *testing.T) {
+	for ft, want := range map[wire.FrameType]string{
+		wire.FramePluginMessage:    "plugin:message",
+		wire.FramePreparedWorktree: "worktree:prepared",
+	} {
+		if got, ok := wire.ControlEventName(ft); !ok || got != want {
+			t.Errorf("ControlEventName(%s) = %q, %v; want %q", ft, got, ok, want)
+		}
 	}
 }
 

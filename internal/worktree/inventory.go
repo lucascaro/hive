@@ -74,6 +74,23 @@ func List(repoRoot string) ([]Info, error) {
 // are separated by a blank line; each starts with a `worktree <path>`
 // line. Split out from List so the parser is testable without a repo.
 func parseWorktreeList(out string) []Info {
+	lines := strings.Split(out, "\n")
+	for i, l := range lines {
+		lines[i] = strings.TrimRight(l, "\r")
+	}
+	return parseWorktreeFields(lines)
+}
+
+// parseWorktreeListZ decodes `git worktree list --porcelain -z`: the
+// same records, but each field ends in NUL, so a path that holds a
+// newline stays one field instead of reading as several.
+func parseWorktreeListZ(out string) []Info {
+	return parseWorktreeFields(strings.Split(out, "\x00"))
+}
+
+// parseWorktreeFields reads porcelain fields, an empty field ending a
+// record.
+func parseWorktreeFields(fields []string) []Info {
 	var list []Info
 	var cur *Info
 	flush := func() {
@@ -82,8 +99,7 @@ func parseWorktreeList(out string) []Info {
 			cur = nil
 		}
 	}
-	for _, line := range strings.Split(out, "\n") {
-		line = strings.TrimRight(line, "\r")
+	for _, line := range fields {
 		if line == "" {
 			flush()
 			continue

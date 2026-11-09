@@ -39,6 +39,8 @@ func FrameCost(ft wire.FrameType) float64 {
 		wire.FrameKillSession, wire.FrameKillProject,
 		wire.FrameArchiveSession, wire.FrameUnarchiveSession, wire.FrameDeleteArchived,
 		wire.FrameCreateWorktree, wire.FrameRemoveWorktree, wire.FrameDeleteBranch,
+		// Spec 528: each runs several child processes.
+		wire.FramePrepareWorktree, wire.FrameCommitWorktree,
 		wire.FrameInstallPlugin, wire.FrameShutdown:
 		return costExpense
 	case wire.FrameUpdateSession, wire.FrameCreateProject, wire.FrameUpdateProject,
@@ -48,7 +50,9 @@ func FrameCost(ft wire.FrameType) float64 {
 		wire.FrameClientCommand, wire.FrameSetPluginEnabled, wire.FrameRemovePlugin,
 		wire.FrameSetPluginConfig,
 		// Probes the login shell's PATH for each agent.
-		wire.FrameListAcpAgents:
+		wire.FrameListAcpAgents,
+		// Fans out to every UI client, up to 64 KiB each.
+		wire.FramePluginMessage:
 		return costFanout
 	default:
 		return costCheap

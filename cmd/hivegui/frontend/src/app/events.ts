@@ -44,6 +44,8 @@ import type {
 import {
   claimPluginEvent,
   claimPluginInstallError,
+  deliverPluginMessage,
+  type PluginMessage,
   relistPluginsIfWanted,
 } from './plugins.js';
 import { readNeedsAttention } from './state.js';
@@ -788,6 +790,20 @@ export function wireDaemonEvents(injected: EventsDeps) {
     if (ev.kind === 'removed') dropPlugin(ev.plugin.id);
     else upsertPlugin(ev.plugin);
     claimPluginEvent(ev);
+  });
+
+  // A plugin's message to the GUI (spec 528). Passed through untouched;
+  // a malformed frame is dropped (it can only come from a daemon bug).
+  EventsOn('plugin:message', (jsonStr: string) => {
+    let m: PluginMessage;
+    try {
+      m = JSON.parse(jsonStr) as PluginMessage;
+    } catch {
+      return;
+    }
+    if (m && typeof m.plugin_id === 'string' && typeof m.topic === 'string') {
+      deliverPluginMessage(m);
+    }
   });
 
   // Agent activity (spec 416): every session's tool calls and plan, plus

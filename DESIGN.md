@@ -145,7 +145,9 @@ Architectural invariants. Each one should ideally be enforceable by `gc-sweep` o
   `CREATE_SESSION`, `KILL_SESSION`, `RESTART_SESSION`, `KILL_PROJECT`,
   `RESOLVE_WORKTREE_CHOICE`, and the
   worktree frames (`LIST_WORKTREES`, `REMOVE_WORKTREE`, `CREATE_WORKTREE`,
-  `RENAME_WORKTREE`, `DELETE_BRANCH`) are
+  `RENAME_WORKTREE`, `DELETE_BRANCH`, and a workflow run's `PREPARE_WORKTREE`
+  and `COMMIT_WORKTREE`, whose git calls all go through
+  `internal/worktree`'s `safeGit`: no hooks, fsmonitor or signing) are
   dispatched to goroutines owned by the daemon (drained in `Close`), so a slow
   `git worktree add`/`remove`/`list` can't stall every other client request. The git
   subprocesses themselves are serialized by the registry, and its lock
