@@ -20,7 +20,7 @@ func TestManifest_NodeFieldValidated(t *testing.T) {
 			t.Errorf("node %q: %v", ok, err)
 		}
 	}
-	for _, bad := range []string{"26", "26.0", "v26.0.0", "26.0.0-rc.1", "26.x.0", "026.0.0", "-1.0.0", "26.0.0.0", " 26.0.0"} {
+	for _, bad := range []string{"26", "26.0", "v26.0.0", "26.0.0-rc.1", "26.x.0", "026.0.0", "-1.0.0", "99999999999999999999.0.0", "26.0.0.0", " 26.0.0"} {
 		if err := base(bad, true).Validate(); err == nil {
 			t.Errorf("node %q accepted", bad)
 		}

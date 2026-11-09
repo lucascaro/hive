@@ -133,7 +133,7 @@ func (m Manifest) Validate() error {
 		if m.Main == nil {
 			return errors.New(`plugin: "node" needs a "main" command`)
 		}
-		if !nodeFloorRE.MatchString(m.Node) {
+		if _, ok := parseNodeVersion(m.Node); !ok || !nodeFloorRE.MatchString(m.Node) {
 			return fmt.Errorf(`plugin: "node" must be MAJOR.MINOR.PATCH, e.g. "26.0.0" (got %q)`, m.Node)
 		}
 	}

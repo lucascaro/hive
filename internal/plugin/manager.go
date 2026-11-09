@@ -659,6 +659,10 @@ func (m *Manager) spawn(e *entry) (*exec.Cmd, func(), error) {
 			return nil, nil, err
 		}
 		pathEnv = nodePATH
+		// The common case, argv[0] == "node": run the binary just checked.
+		if argv[0] == "node" {
+			bin = nodeBin
+		}
 	}
 	data := m.DataPath(e.rec.ID)
 	if err := os.MkdirAll(data, 0o700); err != nil {
@@ -675,14 +679,17 @@ func (m *Manager) spawn(e *entry) (*exec.Cmd, func(), error) {
 	}
 	cmd := proc.Command(bin, argv[1:]...)
 	cmd.Dir = dir
-	cmd.Env = pluginEnv(os.Environ(),
-		"PATH="+pathEnv,
-		"HIVE_SOCKET="+sock,
-		"HIVE_PLUGIN_ID="+e.rec.ID,
-		"HIVE_PLUGIN_API="+APIVersion,
-		"HIVE_PLUGIN_DIR="+dir,
-		"HIVE_PLUGIN_DATA_DIR="+data,
-	)
+	add := []string{
+		"HIVE_SOCKET=" + sock,
+		"HIVE_PLUGIN_ID=" + e.rec.ID,
+		"HIVE_PLUGIN_API=" + APIVersion,
+		"HIVE_PLUGIN_DIR=" + dir,
+		"HIVE_PLUGIN_DATA_DIR=" + data,
+	}
+	if pathEnv != "" { // an explicit empty PATH means "the current directory"
+		add = append(add, "PATH="+pathEnv)
+	}
+	cmd.Env = pluginEnv(os.Environ(), add...)
 	cmd.Stdout, cmd.Stderr = logw, logw
 	// A grandchild that keeps the output pipe open must not pin Wait.
 	cmd.WaitDelay = termGrace
@@ -697,7 +704,9 @@ func (m *Manager) spawn(e *entry) (*exec.Cmd, func(), error) {
 
 // loginPATH is the PATH a command is looked up on when the daemon's own
 // has none: the login shell's. A seam for tests; the real probe runs the
-// user's rc files. It is never called under m.mu (spawn holds no lock).
+// user's rc files. It is never called under m.mu (spawn holds no lock),
+// but the first call can take tens of seconds and a stop waits for it.
+// ponytail: warm it at Start if that ever bites.
 var loginPATH = proc.LoginPATH
 
 // lookCommand finds name on the daemon's PATH, then on the login shell's
@@ -730,7 +739,7 @@ func resolveCommand(dir, name string) (bin, pathEnv string, err error) {
 }
 
 // nodeProbeTimeout bounds `node --version`.
-var nodeProbeTimeout = 2 * time.Second
+var nodeProbeTimeout = 5 * time.Second
 
 // checkNode runs `node --version` and refuses a Node older than floor
 // (MAJOR.MINOR.PATCH, validated by the manifest). It runs on every start,
@@ -746,11 +755,17 @@ func checkNode(node, floor string) error {
 		return fmt.Errorf("could not run node --version: %w", err)
 	}
 	got := strings.TrimSpace(string(out))
+	if len(got) > 64 {
+		got = got[:64] // a shim's chatter must not flood status_detail
+	}
 	v, ok := parseNodeVersion(got)
 	if !ok {
 		return fmt.Errorf("could not run node --version: unexpected output %q", got)
 	}
-	want, _ := parseNodeVersion(floor)
+	want, ok := parseNodeVersion(floor)
+	if !ok {
+		return fmt.Errorf("invalid node floor %q", floor)
+	}
 	if slices.Compare(v[:], want[:]) < 0 {
 		return fmt.Errorf("requires Node.js %s or newer (found %s at %s)", floor, got, node)
 	}

@@ -177,8 +177,10 @@ A plugin started from the Finder or Dock gets the minimal `PATH` the
 system gives GUI apps, which has no Node. So Hive looks a `main.command`
 that is not `./`-relative up on its own `PATH` first, then on your login
 shell's (the same probe Hive uses to find ACP adapters; on Windows, the
-process `PATH`). The `PATH` that found it is the `PATH` the plugin gets,
-so a script that runs `node` itself finds the same one.
+process `PATH`). The `PATH` that found it is the `PATH` the plugin gets
+(with `node` set, the one that found `node`), so a script that runs `node`
+itself finds the same one. The `node` check is advisory: it examines the
+first absolute `node` on that `PATH` when Hive starts the plugin.
 
 Set `node` in the manifest to a floor. Hive then looks `node` up the same
 way (not `argv[0]`: your `main` may be a script that runs it), runs
