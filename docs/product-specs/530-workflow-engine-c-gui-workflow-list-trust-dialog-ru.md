@@ -35,7 +35,7 @@ The GUI lists a project's workflows, asks for trust, starts a run with typed inp
 3. **Run start.** Typed input is collected from the workflow's input schema.
 4. **Graph and overlay.**
    - The IR renders as a graph, natively in React rather than with Mermaid (decided in the plan).
-   - Events keyed by node id overlay live and replayed runs. A replay shows the final state; there is no scrubber.
+   - Node state keyed by node id overlays live and finished (replayed) runs: the engine's stored per-node state, with live events applied on top. A finished run shows its final state; there is no scrubber.
    - A run whose source changed since it started is marked.
    - Loop and map copies appear under their one reviewed template (`<map>[<index>]/<node>`).
 5. **Human nodes.** The user answers a typed question from the GUI. A waiting human node raises a banner and a desktop notification.
