@@ -31,7 +31,7 @@ The GUI lists a project's workflows, asks for trust, starts a run with typed inp
    - off (it ships disabled), with **Turn on**;
    - `refused`, with A's `status_detail`, which names the required Node version;
    - failed, with **Restart**.
-2. **Trust dialog.** Shows what trusting means, with `y/enter` and `esc/n` bindings visible, per the overlay rules.
+2. **Trust dialog.** Shows what trusting means. Focus starts on **Cancel**; **Trust** is styled as a destructive action. `y`, or `Enter` on Trust, trusts; `n`, `Esc`, or `Enter` on Cancel cancels. The footer shows `(y) trust · (n)/[esc] cancel`, per the overlay rules. File paths show control and bidi characters visibly.
 3. **Run start.** Typed input is collected from the workflow's input schema.
 4. **Graph and overlay.**
    - The IR renders as a graph, natively in React rather than with Mermaid (decided in the plan).
@@ -41,7 +41,7 @@ The GUI lists a project's workflows, asks for trust, starts a run with typed inp
 5. **Human nodes.** The user answers a typed question from the GUI. A waiting human node raises a banner and a desktop notification.
 6. **Permission waits.**
    - A `node.waiting` with reason `permission` is visible and answerable with the existing `ANSWER_PERMISSION`.
-   - It raises the same banner and notification as a human wait.
+   - It raises the same banner as a human wait. Its desktop notification is the node's ACP session's own attention notification, not a second one.
    - It is covered by mock-layer tests. e2e-real can't produce one, since real `hived` has no fake ACP adapter reachable from a browser test.
 7. **Keybindings and commands.**
    - The `workflows` command follows the Keybindings Policy: binding data, `commands.ts`, menu default, help row, README table.

@@ -4,8 +4,8 @@
 - **Design:** [workflow-engine.md](../../design-docs/workflow-engine.md) (The overlay, Security), [acp-workflows.md](../../design-docs/acp-workflows.md)
 - **Depends on:** A (#528, [plan](528-workflow-engine-a-daemon-sdk-prereqs.md)) and B (#529, [plan](529-workflow-engine-b-headless-engine-core.md), section "Contract for C"). See **Dependencies on A and B** below.
 - **Issue:** #530
-- **Branch:** `feature/530-gui` (research and plan). Each implementation PR gets its own branch.
-- **Status:** active. Drafted and plan-reviewed on 2026-11-08; **awaiting user approval**. Four open questions (below) must be answered first; two of them belong to B.
+- **Branch:** `feature/530-gui` (research and plan). Implementation is **one PR** on its own branch.
+- **Status:** active. Drafted and plan-reviewed on 2026-11-08; revised 2026-11-09 with the independent Opus review and the user's decisions on Q-C1, Q-C2, Q-B1, Q-B2. **Awaiting user approval of the revised plan.** The two B-side decisions (Q-B1, Q-B2) must be folded into B's plan before B2 starts.
 
 ## Summary
 
@@ -14,7 +14,7 @@ C is the GUI for the workflow engine. In app code under `cmd/hivegui/frontend/`,
 - the trust view;
 - review and start, with the graph and an input form generated from the schema;
 - a run view, with the live or replayed overlay, node detail, human answers and permission answers;
-- a "waiting on you" banner and desktop notification for human and permission waits.
+- a "waiting on you" banner for human and permission waits, a desktop notification for human waits (a permission wait's notification is the node session's own).
 
 Every byte goes over A's `PLUGIN_MESSAGE` to B's `workflows` plugin, through the plugin-message plumbing A already merged (`src/app/plugins.ts`). The graph is rendered natively in React, not with Mermaid. C adds no frame, no daemon code and no DaemonContract bump.
 
@@ -52,7 +52,7 @@ Verified against `origin/main` at `78ce3ace` on 2026-11-08. Paths are relative t
 | Dialog roots | `index.html:139-140` (`#worktrees`), portals in `src/components/App.tsx:115` | Add `#workflows`. |
 | Notifications | `events.ts:341` (attention, tag = session id), `:362` (idle), `Notify(title, subtitle, body, tag)` | A live wait notifies; a permission wait reuses the session-id tag so the OS collapses it with the session's own attention notification. |
 | `bell-click` | `events.ts:1315-1327`; returns early when the tag is not a known session | The `wf:` branch must run **before** the session lookup. |
-| Untrusted text precedent | `AcpTranscript.tsx` renders agent text; `marked` is in `package.json` | Engine text (prompts, outputs, errors, file names) renders as **plain React text**, never Markdown or HTML. |
+| Untrusted text precedent | `src/components/Markdown.tsx:7-17` uses `marked`'s lexer only, never its HTML renderer; ACP agent text already goes through it | `agent.message` reuses `Markdown.tsx`; prompts, outputs, errors and file names render as plain React text; never `innerHTML`. |
 | **No CSP** in the app | No `Content-Security-Policy` in `index.html` or `cmd/hivegui/*.go` | Any `innerHTML` of engine-derived markup would rest on a sanitizer alone. Native React text escapes by construction. |
 | IR types and `condLabel` live in B's tree | `plugins/workflows/sdk/dsl.ts:17-125` (`IR`, `Body`, `Node`, `Cond`, …); `plugins/workflows/ir/mermaid.ts:30` `condLabel`; worked examples `plugins/workflows/tools/examples.ts` | Import them; don't copy (Decision log). Probe on 2026-11-08: a frontend-options program (`moduleResolution: bundler`, ES2022 lib) importing `IR`, `Cond` and `condLabel` type-checks with tsc 7.0.2 **once `allowImportingTsExtensions: true` is set** (TS5097 without it). |
 | Cross-tree import precedent | `src/lib/whats-new.ts:19` imports `site/features.json`; `vite.config.js:104-105` `server.fs.allow: [__dirname, site/]`, deliberately not the repo root | Add `plugins/workflows` to `fs.allow` (dev server only; `vite build` is unaffected). |
@@ -98,7 +98,7 @@ ui:     scripts/ui-lint.sh --strict && scripts/ui-lint.sh --contrast
 - **TDD.** Pure modules (`lib/workflow-*.ts`, `lib/schema-form.ts`) get unit tests; components get dom tests; layout is checked only in real Chromium (Playwright, `CI=1`). vitest is CSS-blind.
 - **Keybindings Policy.** All five updates apply to `workflows`. Every label goes through `shortcutLabel` / `useShortcutLabel`. Modal-local confirm/cancel keys are the AGENTS.md hard-coded exception.
 - **The GUI never opens a PTY.** Everything goes through Wails bindings (`SendPluginMessage`, `AnswerPermission`, `SetPluginEnabled`, `Notify`).
-- **Untrusted text** from the engine renders as plain text.
+- **Untrusted text** from the engine renders as plain text, except `agent.message` through the existing `Markdown.tsx` (no raw HTML); never `innerHTML`.
 - **Docs.** Changeset per user-visible PR; `site/features.json` with `since: "Unreleased"`; README Keybinds row and a Workflows paragraph; never edit `CHANGELOG.md` or `docs/product-specs/index.md`.
 
 ## Dependencies on A and B
@@ -126,10 +126,10 @@ All on `PLUGIN_MESSAGE` with `plugin_id: "workflows"`; requests carry `data.nonc
 | `workflow.build {project_id, file}` → `{name, ir, mermaid?, mermaid_omitted?, source_hash, input_schema}`; errors `untrusted`, `changed`, `type_errors` (`type_errors: [{file, line, col, message}]`), `build_failed`, `invalid_ir` (`errors: string[]`), `sandbox_unavailable`, `typecheck_unavailable` | Review view. C ignores `mermaid`. | B4 |
 | `run.start {project_id, file, input, source_hash}` → `{run_id}`; error `changed` | Review view | B2 |
 | `run.cancel {run_id}`, `run.retry {run_id}` → `{}` | Run view | B2 |
-| `runs.list {project_id?, state?, before?, limit ≤ 50}` → `{runs: [{run_id, project_id, workflow, file, state, created_at, updated_at, source_hash, source_changed}]}` (B-2) | List view (recent runs); waiting scan at boot | B2 |
-| `run.get {run_id}` → `{run: {…, input, base_sha, kept_worktrees, error}, ir, nodes: [{key, node_id, state, attempt, session_id?, branch?, worktree?, error?, started_at?, ended_at?}]}` | Run view | B2 — **shape open, see Q-B1** |
-| `node.get {run_id, key}` → `{key, node_id, state, attempt, output?, truncated?, error?, conflict?}` | Node detail | B2 — **paging open, see Q-B2** |
-| `run.events {run_id, after_seq, limit ≤ 500}` → `{events, last_seq, more}` | Replay, gap fill, reconnect | B2 |
+| `runs.list {project_id?, state?, before?, limit ≤ 50}` → `{runs: [{run_id, project_id, workflow, file, state, created_at, updated_at, source_hash, source_changed}]}` (B-2) | List view (recent runs); the waiting scan at boot is this one call with `state: 'waiting'` | B2 |
+| `run.get {run_id}` → `{run: {…, input, base_sha, kept_worktrees, error}, ir}` — **no `nodes`** (Q-B1, user decision: the B plan changes) | Run view header and graph | B2 |
+| `node.get {run_id, key, offset?, limit?}` → `{key, node_id, state, attempt, output_text?, offset, total, more, error?, conflict?}` — `output_text` is a slice of the output's serialized JSON, byte-budgeted under 48 KiB (Q-B2, user decision; exact field names are B's to fix in its plan) | Node detail, **Load more** | B2 |
+| `run.events {run_id, after_seq, limit ≤ 500}` → `{events, last_seq, more}` | **All** node, loop and map state (replay from seq 0), gap fill, reconnect | B2 |
 | `human.answer {run_id, key, answer}` → `{}`; errors `invalid_answer` (path-qualified), `not_waiting` | Human wait | B2 |
 | Push `run.event {run_id, events: RunEvent[]}`, contiguous `seq` per batch | Live overlay | B5 (embedding) — event schema from B2/B3 |
 | `RunEvent` types: `run.started`, `run.finished`, `node.ready`, `node.started`, `node.waiting` (`human`: `prompt`, `output_schema`; `permission`: `session_id`, `request_id`, `title`, `options`), `node.resumed` (B-1), `node.output`, `node.finished` (incl. `conflict`), `loop.iteration`, `map.expanded`, `agent.*`, `check.output` | Overlay fold, node detail | B2 (core), B3 (`agent.*`, permission waits, `node.resumed`) |
@@ -143,10 +143,10 @@ All on `PLUGIN_MESSAGE` with `plugin_id: "workflows"`; requests carry `data.nonc
 
 From B's plan, `## Open questions`:
 
-- **Q-B1 — `run.get` size (must be settled before C's run view).** A run with 32 map copies of many nodes can exceed the message cap in `nodes`. This changes the reply shape C parses, its transport loop and its tests. C's recommendation: B adds `{nodes_after?: key}` to the request and `{more: boolean, next?: key}` to the reply, byte-budgeted under 48 KiB, with `run` and `ir` only on the first page. C then pages with the same helper it uses for `run.events`. The alternative (C derives node states from `run.events` alone and `run.get` drops `nodes`) also works but costs a full replay on every open.
-- **Q-B2 — full output retrieval (must be settled, or truncation accepted as final).** `node.get` truncates at 16 KiB. If B adds `offset`/`limit`, NodeDetail gets a **Load more** button and one dom test; if not, NodeDetail shows "Output truncated at 16 KiB" and, for agent nodes, **Open session** (the transcript has the full text). C's recommendation: accept truncation for now; the session link covers agents, and check output is a log tail.
+- **Q-B1 — `run.get` size. Decided (user, 2026-11-09):** `run.get` returns `{run, ir}` only, so it always fits (IR ≤ 32 KiB, `run` small). C derives every node, loop and map state by replaying `run.events` from seq 0 through the overlay fold, the same path live events take. No `run.get` paging. **B's plan must drop `nodes` from the `run.get` reply** before B2.
+- **Q-B2 — full output retrieval. Decided (user, 2026-11-09):** `node.get` gains `offset`/`limit` paging over the output's serialized JSON. C's **Load more** appends each returned slice to one `<pre>`; C never parses a partial page as JSON. **B's plan must add the paging** before B2.
 - **Outputs vs `redact()`** — does not change C's files or tests: C displays whatever the topics return.
-- **B3 spawn-to-record gap** and **B3 group survivors** — do not change C. A `failed` node with `kept_worktrees` already renders through `error` and the run header.
+- **B3 spawn-to-record gap** and **B3 group survivors** — B's decisions, no C impact. A `failed` node with `kept_worktrees` already renders through `error` and the run header.
 
 ## Approach
 
@@ -158,20 +158,21 @@ Not the sidebar (it is sessions and projects; a run is neither) and not Settings
 
 ### Transport (`src/app/workflows.ts`)
 
-- **`request<T>(topic, data, {timeoutMs})`.** Adds `nonce: newNonce()` (exported from `plugins.ts`), calls `sendPluginMessage('workflows', topic, {...data, nonce})`, and resolves on the first message from `onPluginMessage` with `plugin_id === 'workflows'`, `topic === `${topic}.reply`` and `data.nonce` equal. Rejects on `ok: false` with a `WorkflowError {code, message, type_errors?, errors?}`, or on timeout.
+- **`request<T>(topic, data, {timeoutMs})`.** Copies the `pending` map + `settle()` pattern of `plugins.ts:23-66` (one `Map<nonce, {resolve, reject, timer}>`; `settle` clears the timer and deletes, returning false when already settled), with `newNonce()` exported from `plugins.ts`. Sends `sendPluginMessage('workflows', topic, {...data, nonce})` and settles on the first `onPluginMessage` message with `plugin_id === 'workflows'`, `topic === `${topic}.reply`` and a pending `data.nonce`. Rejects on `ok: false` with a `WorkflowError {code, message, type_errors?, errors?}`, on timeout, or when `sendPluginMessage` itself rejects.
   - Timeouts: 15 s; `workflow.build` 180 s (the first build may download tsgo — the spinner says so after 5 s).
-  - Replies for other windows' nonces are ignored (every UI client receives every reply).
+  - Replies for other windows' nonces find no pending entry and are ignored (every UI client receives every reply).
+  - **Oversized frames.** Before sending, `request` refuses locally with `WorkflowError {code: 'too_large'}` when `JSON.stringify(payload).length > 48 * 1024` (B's per-message budget, under A's 64 KiB `MaxPluginMessage`, `internal/wire/request.go:76`). The daemon's own refusal carries no nonce, so it would otherwise surface only as a timeout. The run form and human answer show the error inline ("The input is too large to send."). B caps `run.start` input at 8 KiB and says so in its reply too.
 - **`plugin_not_running`.** `claimWorkflowsNotRunning(e)` in `workflows.ts`, called in the `control:error` handler right after `claimPluginInstallError` (`events.ts:1348`): when the code is `plugin_not_running` and requests are pending, reject them all and return true, so the generic error line stays quiet. The plugin gate then shows the real state from the store.
-- **`pageAll(topic, req, more)`.** One helper for `run.events` (and `run.get` if Q-B1 lands as paging).
+- **`fetchEventsAfter(runId, seq)`.** The one paging loop: `run.events {run_id, after_seq: seq, limit: 500}` until `more` is false, returning the events in order. Used for the initial replay (seq 0), gap fill and reconnect. No generic pager.
 - **Pushes.** `run.event` batches go to the subscribers of that `run_id`, and every batch goes to the waiting tracker.
-- **Gaps.** A subscriber keeps `lastSeq`. If a batch starts past `lastSeq + 1`, it pages `run.events {after_seq: lastSeq, limit: 500}` until `more` is false, then applies the buffered batch, dropping `seq ≤ lastSeq`.
-- **Reconnect.** `resyncWorkflows()` beside `relistPluginsIfWanted()` (`events.ts:221`): re-pages every open run from its `lastSeq` and re-runs the waiting scan.
-- **Waiting scan.** At boot (after the plugin list arrives with `workflows` running) and after a reconnect: `runs.list {state: 'waiting'}` (B-2), then `run.get` per run to find which keys wait. Live `node.waiting` / `node.resumed` / `node.finished` / `run.finished` keep the set current. A non-empty set raises the `workflow` banner.
-- **Desktop notification** (user decision). A **live** `node.waiting` calls `Notify(workflow name, project name, body, tag)`:
-  - human: body "Waiting for your answer — click to open.", tag `wf:<run_id>:<key>`;
-  - permission: body "Waiting for permission — click to open.", tag = the node's `session_id`, so the OS collapses it with the ACP session's own attention notification (`events.ts:341`).
+- **Gaps.** A subscriber keeps `lastSeq`. If a batch starts past `lastSeq + 1`, it calls `fetchEventsAfter(runId, lastSeq)`, folds the result, then applies the buffered batch, dropping `seq ≤ lastSeq`.
+- **Reconnect.** `resyncWorkflows()` beside `relistPluginsIfWanted()` (`events.ts:221`): `fetchEventsAfter` for every open run from its `lastSeq`, and re-runs the waiting scan.
+- **Waiting scan.** At boot (after the plugin list arrives with `workflows` running) and after a reconnect: one `runs.list {state: 'waiting'}` call (B-2). The set is **run-level**: `{run_id, project_id, workflow}`. Live `node.waiting` / `node.resumed` / `node.finished` / `run.finished` keep it current. A non-empty set raises the `workflow` banner ("Workflow <name> in <project> is waiting on you" + **Open**). Which key waits is found when the run view replays its events; no per-run `run.get` scan.
+- **Desktop notification** (user decision).
+  - **Human wait:** a **live** `node.waiting {reason: 'human'}` calls `Notify(workflow name, project name, "Waiting for your answer — click to open.", "wf:<run_id>:<key>")`.
+  - **Permission wait: no C notification.** The node's ACP session is an ordinary session in the GUI's list; its `waiting_permission` state sets `needs_attention`, and `syncAttentionClass` (`events.ts:273-287`) already fires `fireBellNotification` (`:322`, body "Waiting for permission — click to switch.", tag = session id). A second Notify would only duplicate it. The banner alone covers criterion 6's visibility. **B3-dependent check** (Tests, e2e mock + a note for B3): this holds only while the node's session is listed (not hidden or archived) during the wait; if B3 hides workflow sessions, C adds the permission Notify back with the session-id tag.
   - The boot/reconnect scan never notifies, so a restart doesn't re-announce old waits.
-  - `bell-click` (`events.ts:1315`): a tag starting `wf:` is handled **before** the session lookup and opens the modal on that run with the key selected; any other tag keeps today's behaviour (switch to the session, where `PermissionCard` answers it).
+  - **`bell-click` routing is macOS-only.** `bell-click` is emitted by `internal/notify`'s macOS activation callback; on Windows and Linux a notification click does not reach the app, so there the banner is the route. `bell-click` (`events.ts:1315`): a tag starting `wf:` is handled **before** the session lookup and opens the modal on that run with the key selected; any other tag keeps today's behaviour (switch to the session, where `PermissionCard` answers it).
 
 ### Plugin state gate
 
@@ -190,12 +191,13 @@ The modal body reads `plugins.find(p => p.id === 'workflows')` from the store.
 
 ### Views (`src/components/modals/Workflows.tsx`)
 
-`#workflows`, `ModalShell size='xl'`, title "Workflows · <project>" with the `workflows` shortcut hint. View state in the store slice `workflows`: `{view: 'list' | 'trust' | 'review' | 'run', projectId, file?, runId?, selectedKey?}`. Escape in `trust`/`review`/`run` goes back to `list` (`onEscape`); in `list` it closes.
+`#workflows`, `ModalShell size='xl'`, title "Workflows · <project>" with the `workflows` shortcut hint. View state in the store slice `workflows`: `{view: 'list' | 'trust' | 'review' | 'run', projectId, file?, runId?, selectedKey?, drafts}`. `drafts` holds the raw values of the run-start form (keyed by `projectId + file + source_hash`) and of each human answer form (keyed by `run_id + key`), so closing and reopening the modal with the toggle never discards typed input; a draft is dropped on a successful submit. Escape in `trust`/`review`/`run` goes back to `list` (`onEscape`); in `list` it closes.
 
 1. **List.** `workflows.list` and `runs.list {project_id, limit: 20}` on open and on **Refresh** (a button only: the `workflows` scope binds no bare letters, because other views hold text inputs). Trust chip (`trusted` / `none` / `changed` / `invalid` + `invalid_reason`). When trust is `none` or `changed`, file rows are inert and **Review & trust…** is the primary action. Otherwise a file row opens Review; a run row opens Run.
-2. **Trust.** `workflow.trust.describe`; folder path, short hash (12 hex), file list with sizes; what trusting means; footer hints; **Trust and continue** and **Cancel**. Confirm sends `workflow.trust.confirm {project_id, hash}`; `changed` re-describes with "The files changed while you were reading — review them again."; `symlink` / `too_large` / `missing` show their reason and no confirm button. Initial focus and button style: **Q-C1**.
+2. **Trust.** `workflow.trust.describe`; folder path, short hash (12 hex), file list with sizes; what trusting means; footer hints `(y) trust · (n)/[esc] cancel`; buttons **Cancel** (first, `kind='default'`, **takes initial focus**) and **Trust and continue** (`kind='danger'`). `Enter` activates whichever button has focus, natively, as in ChoiceDialog; there is no custom `Enter` binding. `y` trusts, `n` and `Escape` cancel (user decision Q-C1). Confirm sends `workflow.trust.confirm {project_id, hash}`; `changed` re-describes with "The files changed while you were reading — review them again."; `symlink` / `too_large` / `missing` show their reason and no confirm button.
+   - **Paths are shown with controls made visible.** `showControls(path)` in `src/lib/workflow-text.ts` replaces C0/C1 controls (`U+0000-001F`, `U+007F-009F`) and bidi overrides/isolates (`U+202A-202E`, `U+2066-2069`) with a visible `\u{XXXX}` escape, so a file name cannot reorder or hide what the user is trusting. Applied to the folder path and every file path in the trust view and in the list.
 3. **Review & start.** `workflow.build` with a spinner; on success `WorkflowGraph(ir)` (no overlay) beside `SchemaForm(input_schema)` and **Start run** → `run.start {project_id, file, input, source_hash}` → Run view. Errors: `type_errors` as `file:line:col  message` rows; `errors[]` for `invalid_ir` / `build_failed`; `sandbox_unavailable` / `typecheck_unavailable` with their message; `untrusted` / `changed` go to Trust; `changed` on `run.start` rebuilds and says "The workflow changed since you reviewed it."
-4. **Run.** `run.get` provides `ir` and node states; `run.events` from seq 0 replays, then the live stream continues. Header: run state icon + word, workflow name, start time, **source changed since this run started** chip when `source_changed`, **Cancel run** (choice dialog, safe first choice "Keep running"), **Retry** only for `failed`/`cancelled`. Body: the overlaid graph and `NodeDetail` for the selected key.
+4. **Run.** `run.get` provides `run` and `ir`; node, loop and map state come only from `fetchEventsAfter(runId, 0)` folded through the overlay, then the live stream continues (Q-B1). Live `run.event` batches that arrive during the replay are buffered and applied after it, dropping `seq ≤ lastSeq`. Header: run state icon + word, workflow name, start time, **source changed since this run started** chip when `source_changed`, **Cancel run** (choice dialog, safe first choice "Keep running"), **Retry** only for `failed`/`cancelled`. Body: the overlaid graph and `NodeDetail` for the selected key.
 
 ### Mockups (ASCII; the real layout is validated in Chromium, see Tests)
 
@@ -249,9 +251,10 @@ Trust:
 │ security boundary. Hive asks again whenever any file here   │
 │ changes. Nothing has been built yet.                        │
 │                                                             │
-│                       [ Cancel ]  [ Trust and continue ]    │
+│                      [*Cancel*]  [ Trust and continue ]     │
+│                      (focused)   (danger style)             │
 ├─────────────────────────────────────────────────────────────┤
-│        (y)/[enter] trust  ·  (n)/[esc] cancel               │
+│              (y) trust  ·  (n)/[esc] cancel                 │
 └─────────────────────────────────────────────────────────────┘
 ```
 
@@ -342,7 +345,12 @@ Banner and cancel confirm:
 
 ### Node detail (`src/components/workflows/NodeDetail.tsx`)
 
-Facts (kind, key, state, attempt, branch, worktree, error, `conflict {branch, files, worktree}` with the recovery text); **Open session** (`switchTo(session_id)`, closes the modal); output via `node.get` on select, with the truncation note per Q-B2; recent `agent.message` / `check.output` as plain text; human wait = prompt (plain text) + `SchemaForm(output_schema)` + **Answer** → `human.answer` (`invalid_answer` inline, `not_waiting` refreshes); permission wait = the extracted `PermissionCard` (`permission_stale` handling unchanged) + **Open session**.
+- **Facts:** kind, key, state, attempt, branch, worktree, error, `conflict {branch, files, worktree}` with the recovery text. **Open session** (`switchTo(session_id)`, closes the modal).
+- **Output** (Q-B2): `node.get {run_id, key, offset: 0}` on select; the slice goes into one `<pre class="hv-wf-output">` as text. While `more`, **Load more** requests the next `offset` and **appends** the slice. C never parses a partial page; the text is the serialized JSON as B sent it.
+- **Activity:** recent `agent.message` text renders through the existing `src/components/Markdown.tsx` (marked's lexer only, no HTML renderer — the same component agent text already uses); `check.output` renders as plain text in a `<pre>` after `stripCsi()` (`src/lib/workflow-text.ts`: removes CSI / OSC escape sequences and other C0 controls except `\n` and `\t`), so a test runner's colour codes don't show as garbage.
+- **Plain text everywhere else:** human prompts, errors, conflict file names, run errors.
+- **Human wait:** prompt (plain text) + `SchemaForm(output_schema)` (draft kept in the slice) + **Answer** → `human.answer` (`invalid_answer` inline, `not_waiting` refreshes, `too_large` inline).
+- **Permission wait:** the extracted `PermissionCard` (`permission_stale` handling unchanged) + **Open session**.
 
 ### Schema form (`src/lib/schema-form.ts`, `src/components/workflows/SchemaForm.tsx`)
 
@@ -356,7 +364,7 @@ Facts (kind, key, state, attempt, branch, worktree, error, `conflict {branch, fi
 | `array` of objects | JSON textarea, parsed on submit |
 | `object` | `<fieldset>`, recursive |
 
-`required` from the schema; `toValue(schema, raw)` coerces. Client checks stop at native validity; the engine is authoritative (`invalid_answer`, `run.start` errors). Fields follow `components.md` › Form fields (label above, 28px input, tokens), as ProjectEditor and Settings do; there is no form-field component to reuse, and C adds none.
+`required` from the schema; `toValue(schema, raw)` coerces. The form is controlled from `workflows.drafts` in the store, not component state, so the toggle can unmount it without losing input. Client checks stop at native validity; the engine is authoritative (`invalid_answer`, `run.start` errors). Fields follow `components.md` › Form fields (label above, 28px input, tokens), as ProjectEditor and Settings do; there is no form-field component to reuse, and C adds none.
 
 ### Keys and commands (Keybindings Policy checklist)
 
@@ -368,9 +376,9 @@ Facts (kind, key, state, attempt, branch, worktree, error, `conflict {branch, fi
 5. **Changeset.** Yes (Phases).
 - **`RESERVED_CHORDS`:** no change. C adds no terminal-owned predicate.
 
-**Scope `workflow-trust`** (exclusive, trap `workflows`), active only while the modal is open and `view === 'trust'` (no text input there, so bare letters are safe): `Shift?+Y`, `Enter` → `workflow-trust.confirm`; `Shift?+N`, `Any+Escape` → `workflow-trust.cancel`. `Enter` on a focused **Cancel** cancels (confirm reads `document.activeElement`). These are the AGENTS.md dialog confirm/cancel exception: not in the help overlay, not rebindable, no README row. Placed before `workflows` in `KEY_SCOPES`.
+**Scope `workflow-trust`** (`owns: 'matched'`), active only while the modal is open and `view === 'trust'` (no text input there, so bare letters are safe): `Shift?+Y` → `workflow-trust.confirm`; `Shift?+N`, `Any+Escape` → `workflow-trust.cancel`. **No `Enter` binding** (user decision Q-C1): `Enter` falls through to the `workflows` scope, which binds no `Enter`, and an exclusive scope's unmatched key is left to the browser (`app/keyboard.ts:63-90`), so it activates the focused button natively, as in ChoiceDialog. Because the scope is `matched`, every other key (⇧⌘R, Tab) falls through to `workflows`, which holds the trap and the toggle. These are the AGENTS.md dialog confirm/cancel exception: not in the help overlay, not rebindable, no README row. Placed before `workflows` in `KEY_SCOPES`.
 
-**Scope `workflows`** (exclusive, trap `workflows`): `Any+Escape` → `workflows.close` (back one view, or close in `list`), `mirror('workflows', 'workflows.close')`. No bare letters (views have inputs). Placed before `whatsNew` in `KEY_SCOPES`.
+**Scope `workflows`** (exclusive, trap `workflows`): `Any+Escape` → `workflows.close` (back one view, or close in `list`); `mirror('workflows', 'workflows')`, i.e. the opener chord runs the **toggle** command itself. On macOS the native accelerator already reaches `toggleWorkflows` through `menu:workflows`; off macOS there is no native menu, so this mirror is the only close path for ⇧⌘R's equivalent `Ctrl+Shift+R`, and pointing it at the same toggle keeps both platforms on one command. No bare letters (views have inputs). Placed before `whatsNew` in `KEY_SCOPES`.
 
 **Unlisted commands** (`commands.ts`, no `title`): `workflows.close`, `workflow-trust.confirm`, `workflow-trust.cancel`. Cancel run is a button that opens the choice dialog, not a command (nothing binds it).
 
@@ -386,18 +394,18 @@ Facts (kind, key, state, attempt, branch, worktree, error, `conflict {branch, fi
 - **Dialog size.** `dialog.css`: `.hv-dialog__panel[data-size='xl'] { max-width: min(1120px, 94vw); }`; `ModalShell` `size` gains `'xl'`. The graph pane scrolls inside itself; the page never scrolls horizontally.
 - **Docs.** `docs/design-docs/ui/README.md` decisions table: "Workflow graph (2026-11-08, spec 530): native React ranked layout, not Mermaid or xyflow — tokens, a11y, overlay ids, no sanitizer dependency; mockups in exec plan 530". `components.md` documents `.hv-wf-*` and `WorkflowGraph`; `icons.md` the three icons.
 
-### Phases (PR split)
+### Delivery: one PR, two commit groups
 
-All C PRs merge **after** A PR3 and B5. Recommended split (Q-C2): **two PRs**.
+**One PR** (user decision Q-C2), which merges **only after A PR3 and B5 are on `main`** (Dependencies). It can be opened as a draft earlier and tested at the mock layer; e2e-real goes green only once B5 is in. One changeset, `.changesets/530-workflows.md` (`added`/`minor`): "Workflows panel (⇧⌘R): list a project's workflows, trust them, start a run from a typed form, watch it live on its graph, and answer its questions."
 
-| PR | Scope | Changeset |
-|---|---|---|
-| **C1** | Transport (`workflows.ts`, `newNonce` export, `plugin_not_running` claim, `pageAll`), plugin gate, list, trust, build/review/start, `WorkflowGraph` (static), `SchemaForm`, `xl` size, the command + both scopes + menu + fixture + help row + README Keybinds row, three icons, mock engine for these topics, `vite.config` / `tsconfig` cross-tree import | `added`/`minor`: "Workflows panel (⇧⌘R) lists a project's workflows, asks before trusting them, and starts a run from a typed form" |
-| **C2** | Run view: overlay fold, replay, gap and reconnect resync, node detail, `PermissionCard` extraction, human and permission answers, cancel/retry, banner, live-wait notifications and `bell-click` routing; e2e-real + CI Node 26; `site/features.json`, README Workflows paragraph, design-system docs, `docs/plugins.md` line | `added`/`minor`: "Watch a workflow run live on its graph and answer its questions" |
+The commit groups below exist only to keep review readable; the `(C1)` / `(C2)` tags in Files to change refer to them.
 
-Alternative: one PR (≈ the same reviewable surface as C1+C2, but one review loop). Three PRs (the 2026-10-25 split) gave no shippable intermediate.
+| Group | Scope |
+|---|---|
+| **C1** | Transport (`workflows.ts`, `newNonce` export, `plugin_not_running` claim, size refusal), plugin gate, list, trust, build/review/start, `WorkflowGraph` (static), `SchemaForm` + drafts, `xl` size, the command + both scopes + menu + fixture + help row + README Keybinds row, three icons, mock engine for these topics, `vite.config.js` / `tsconfig.json` cross-tree import, DESIGN.md line |
+| **C2** | Run view: `fetchEventsAfter`, overlay fold, replay, gap and reconnect resync, node detail with output paging, `PermissionCard` extraction, human and permission answers, cancel/retry, banner, human-wait notification and `bell-click` routing; e2e-real + CI Node 26; `site/features.json`, README Workflows paragraph, design-system docs, `docs/plugins.md` line |
 
-**DaemonContract:** none. C touches `cmd/hivegui/**` (incl. the ungated Go `menu_darwin.go`), `.github/workflows/ci.yml`, `cmd/hivegui/frontend/vite.config.*`/`tsconfig.json` and docs. `scripts/check-daemon-contract.sh origin/main HEAD` proves it per PR.
+**DaemonContract:** none. C touches `cmd/hivegui/**` (incl. the ungated Go `menu_darwin.go`), `.github/workflows/ci.yml`, `cmd/hivegui/frontend/vite.config.js`/`tsconfig.json` and docs. `scripts/check-daemon-contract.sh origin/main HEAD` proves it.
 
 ### Files to change
 
@@ -435,13 +443,14 @@ Alternative: one PR (≈ the same reviewable surface as C1+C2, but one review lo
 - `cmd/hivegui/frontend/src/lib/workflow-types.ts` — reply types and `RunEvent` (B's contract tables); IR types re-exported from `plugins/workflows/sdk/dsl.ts`.
 - `cmd/hivegui/frontend/src/lib/workflow-graph.ts` — pure layout and header labels.
 - `cmd/hivegui/frontend/src/lib/workflow-overlay.ts` — pure fold.
+- `cmd/hivegui/frontend/src/lib/workflow-text.ts` — `showControls` (visible C0/C1/bidi escapes for trusted paths) and `stripCsi` (check output).
 - `cmd/hivegui/frontend/src/lib/schema-form.ts` — field descriptors and coercion.
 - `cmd/hivegui/frontend/src/components/modals/Workflows.tsx` — modal and views.
 - `cmd/hivegui/frontend/src/components/workflows/WorkflowGraph.tsx`, `NodeDetail.tsx`, `SchemaForm.tsx`.
 - `cmd/hivegui/frontend/src/components/acp/PermissionCard.tsx` — extracted from `AcpTranscript.tsx`, unchanged behaviour.
 - `cmd/hivegui/frontend/src/theme/components/workflows.css`.
 - `cmd/hivegui/frontend/test/e2e-real/fixtures/hello-workflow.ts` — human `approve` → check `["git","rev-parse","HEAD"]` (B-4 decided).
-- `.changesets/530-workflows-panel.md` (C1), `.changesets/530-workflows-run-view.md` (C2).
+- `.changesets/530-workflows.md` (one, for the one PR).
 - The tests below.
 
 No IR fixture files: tests build IR from `plugins/workflows/tools/examples.ts` (the same worked examples B's tests use), so the GUI can't drift from B's builder.
@@ -452,20 +461,22 @@ No IR fixture files: tests build IR from `plugins/workflows/tools/examples.ts` (
 - `test/unit/workflow-graph.test.ts`: `ranks entry nodes 0 and joins at 1+max`; `edges never leave their body`; `the three worked examples lay out without throwing and keep IR order within a rank`; `loop and map headers read at most N rounds and for each ref, C at once`.
 - `test/unit/workflow-overlay.test.ts`: `node.* events drive instance state`; `map copies aggregate under the template as k of n done`; `loop.iteration sets round k of N`; `permission node.waiting then node.resumed clears the wait`; `human node.waiting carries prompt and output_schema`; `aggregate ranks waiting over running over failed`; `replay of all events equals incremental live fold`; `events of another run_id are ignored`; `firstGap reports the missing seq`; `node.finished conflict is kept on the instance`.
 - `test/unit/schema-form.test.ts`: `descriptors for string enum number boolean array object`; `coerces numbers and one-per-line arrays`; `array of objects parses JSON and reports a parse error`; `required follows the schema`.
+- `test/unit/workflow-text.test.ts`: `showControls escapes C0, DEL, C1 and bidi U+202A-202E U+2066-2069 visibly and leaves plain paths unchanged`; `stripCsi removes SGR colour, cursor moves and OSC, keeps newlines and tabs`.
 
 **DOM**
-- `test/dom/workflows-transport.test.ts`: `reply settles only its own nonce`; `a reply for another window is ignored`; `ok false rejects with code and type_errors`; `timeout rejects`; `plugin_not_running rejects every pending request and is claimed`; `gap triggers run.events paging and dedupes seq`; `reconnect re-pages open runs from lastSeq`; (if Q-B1 = paging) `run.get pages nodes until more is false`.
-- `test/dom/workflows-notify.test.ts`: `live human node.waiting calls Notify with tag wf:<run_id>:<key>`; `live permission node.waiting calls Notify tagged with the session_id`; `the boot waiting scan raises the banner but never notifies`; `bell-click with a wf: tag opens the run with that key selected`; `bell-click with a session id still switches to the session`.
-- `test/dom/workflows-modal.test.tsx`: `absent plugin says update Hive`; `off plugin offers Turn on and calls SetPluginEnabled`; `refused shows status_detail with the required Node version and Restart`; `failed shows Restart`; `list shows trust chip, files and recent runs`; `untrusted list offers Review & trust and no file opens`; `trust view shows folder, hash, files, consequences and both hints`; `y and Enter confirm; n and Escape cancel; Enter on Cancel cancels`; `confirm changed re-describes`; `symlink error offers no confirm`; `type_errors render file:line:col`; `start sends coerced input and source_hash`; `run.start changed rebuilds`; `source_changed chip on run rows and run header`; `cancel run asks through the choice dialog and keeps running on Escape`; `retry shows only for failed and cancelled`; `engine text renders as plain text` (a prompt containing `<img onerror>` and `**md**` renders literally); `menu:workflows while the modal is open closes it, from the trust view too`; `Escape in review goes back to the list`.
+- `test/dom/workflows-transport.test.ts`: `reply settles only its own nonce`; `a reply for another window is ignored`; `ok false rejects with code and type_errors`; `timeout rejects`; `a rejected SendPluginMessage settles the request`; `payload over 48 KiB is refused locally with too_large and never sent`; `plugin_not_running rejects every pending request and is claimed`; `fetchEventsAfter pages until more is false`; `gap triggers fetchEventsAfter and dedupes seq`; `live batches during the initial replay are buffered then applied once`; `reconnect re-fetches open runs from lastSeq`.
+- `test/dom/workflows-notify.test.ts`: `live human node.waiting calls Notify with tag wf:<run_id>:<key>`; `live permission node.waiting does not call Notify from the workflow layer`; `the boot waiting scan is one runs.list state waiting call and raises the banner without notifying`; `bell-click with a wf: tag opens the run with that key selected`; `bell-click with a session id still switches to the session`.
+- `test/dom/workflows-modal.test.tsx`: `absent plugin says update Hive`; `off plugin offers Turn on and calls SetPluginEnabled`; `refused shows status_detail with the required Node version and Restart`; `failed shows Restart`; `list shows trust chip, files and recent runs`; `untrusted list offers Review & trust and no file opens`; `trust view shows folder, hash, files, consequences and the (y) trust · (n)/[esc] cancel hints`; `trust view opens with focus on Cancel and Trust styled danger`; `y confirms; n and Escape cancel`; `Enter activates the focused button: Cancel by default, Trust after Tab`; `a path with a bidi override shows the escape, not the reordered text`; `confirm changed re-describes`; `symlink error offers no confirm`; `type_errors render file:line:col`; `start sends coerced input and source_hash`; `run.start changed rebuilds`; `source_changed chip on run rows and run header`; `cancel run asks through the choice dialog and keeps running on Escape`; `retry shows only for failed and cancelled`; `engine text renders as plain text` (a human prompt containing `<img onerror>` and `**md**` renders literally); `menu:workflows while the modal is open closes it, from the trust view too`; `off macOS the opener chord in the workflows scope runs the toggle and closes the modal, from the trust view too`; `a run-start draft survives close and reopen`; `Escape in review goes back to the list`; `run view folds node state from run.events, run.get carries no nodes`.
 - `test/dom/workflow-graph.test.tsx`: `every IR node renders once with data-node-id and an aria-label naming its state`; `map template expands to one row per key`; `loop header shows round k of N`.
-- `test/dom/workflow-node-detail.test.tsx`: `human answer submits human.answer`; `invalid_answer shows the path message`; `permission options call AnswerPermission with session_id request_id option_id`; `Open session switches to the node session`; `truncated output shows the truncation note` (or `Load more` per Q-B2).
+- `test/dom/workflow-node-detail.test.tsx`: `human answer submits human.answer`; `invalid_answer shows the path message`; `permission options call AnswerPermission with session_id request_id option_id`; `Open session switches to the node session`; `Load more appends the next offset slice into the same pre and never parses it`; `Load more is hidden when more is false`; `agent.message renders through Markdown without raw HTML`; `check.output strips CSI sequences`; `a human answer draft survives close and reopen`.
 - `test/dom/acp-transcript.test.tsx` (existing permission-card tests keep passing against the extracted component; no new test).
-- `test/dom/key-scopes.test.ts` (extend): `workflow-trust is inactive outside the trust view`; `workflow-trust precedes workflows`.
+- `test/dom/key-scopes.test.ts` (extend): `workflow-trust is inactive outside the trust view`; `workflow-trust precedes workflows`; `workflow-trust is matched, so Enter and the opener chord fall through to workflows`.
 - Existing parity tests cover the new binding: `keymap-parity`, `shortcut-labels-parity`, `bindings.test.ts` (menu fixture), `bridge-harness-parity.test.ts` (no new binding, so unchanged).
 
 **E2E (mock), `test/e2e/workflows.spec.ts`**
 - `turn on, list, trust, review, start, live overlay, human answer, permission answer, finished replay`.
 - `waiting banner opens the run`.
+- `permission wait: the node's session raises its own attention (fireBellNotification) and the workflow layer adds no second Notify` — asserts on the mock's `Notify` calls with a seeded ACP session in `waiting_permission`. This is the B3-dependent check: it must also hold in B3's integration tests (the node session is listed while it waits); if it does not, C restores a session-id-tagged Notify.
 - `layout: graph pane scrolls inside the xl dialog with no page horizontal scroll; every edge endpoint lies inside its source and target rects; elementFromPoint at each node centre hits that node` — on all three worked examples under `hive-dark` and `hive-light`, at 1280×800 and 900×700. This is the CSS validation (vitest is CSS-blind).
 - `every-shortcut.spec.ts`: new fixtures; menu-parity sees `menu:workflows` in `menu_darwin.go`.
 
@@ -487,7 +498,9 @@ scripts/check-daemon-contract.sh origin/main HEAD                          # exp
 scripts/check-changeset.sh
 ```
 
-Manual (per `docs/verifying-the-gui-by-hand.md`, driven by Playwright against `wails dev` at `http://localhost:34115`, not by eye): open with ⇧⌘R, trust, start, answer; confirm the File › Workflows… item fires. On Linux (WebKitGTK) and the Windows VM (`docs/testing-on-windows.md`): `Ctrl+Shift+R` opens the modal and does not reload the page.
+Manual (per `docs/verifying-the-gui-by-hand.md`, driven by Playwright against `wails dev` at `http://localhost:34115`, not by eye): open with ⇧⌘R, trust, start, answer; confirm the File › Workflows… item fires.
+
+`Ctrl+Shift+R` must be checked in the **real built binary**, not through `wails dev` at 34115: that page runs in Chromium, which treats `Ctrl+Shift+R` as a hard reload before the page sees it, so a pass or fail there says nothing about the app. Linux: build `hivegui` (`./build.sh`, README's Linux steps) and press `Ctrl+Shift+R` in the WebKitGTK window. Windows: the VM (`docs/testing-on-windows.md`), where WebView2's browser accelerators are already off (`window_options.go:115`). Expected on both: the modal opens and closes, and the page does not reload.
 
 ## Decision log
 
@@ -496,33 +509,49 @@ Manual (per `docs/verifying-the-gui-by-hand.md`, driven by Playwright against `w
 - **2026-10-25:** Trust is a view inside the Workflows modal, not a stacked dialog. Why: no second root, and the scope gates on the view so `y`/`n` never meet a text input.
 - **2026-10-25:** Engine text is plain text. Why: untrusted, and it runs in the app's origin.
 - **2026-10-25:** No client-side schema validator beyond native constraints. Why: the engine validates authoritatively; a second validator would drift.
-- **2026-10-25, user decisions.** Surface: one `xl` blocking modal. Graph: native React. Command: `workflows` on ⇧⌘R / Ctrl+Shift+R, File › Workflows…. Trust view opens focused on **Trust** (see Q-C1). Waits: banner plus desktop notification. Replay: no scrubber. A-2, A-3, B-1, B-2, B-3 approved; A-1 rejected (no `req_id`; `plugin_not_running` rejects all pending).
+- **2026-10-25, user decisions.** Surface: one `xl` blocking modal. Graph: native React. Command: `workflows` on ⇧⌘R / Ctrl+Shift+R, File › Workflows…. Trust view opens focused on **Trust** (superseded 2026-11-09: focus on Cancel). Waits: banner plus desktop notification. Replay: no scrubber. A-2, A-3, B-1, B-2, B-3 approved; A-1 rejected (no `req_id`; `plugin_not_running` rejects all pending).
 - **2026-10-25:** Permission-wait notification tagged with the node's `session_id`; human wait `wf:<run_id>:<key>`; only live events notify.
 - **2026-11-08:** Re-grounded on `78ce3ace`. A-2/A-3 are merged; the transport reuses `plugins.ts` instead of adding a `plugin:message` subscription. `plugin_not_running` is claimed (no `req_id` routing, consistent with A-1). B-4 is decided (clean worktree at the pinned base), so the e2e-real fixture is human → check.
 - **2026-11-08:** Import `IR`/`Cond` types and `condLabel` from `plugins/workflows/` instead of copying them and IR fixtures. Why: one source, no regeneration step; precedent `whats-new.ts` → `site/features.json`; a tsc 7.0.2 probe compiles with `allowImportingTsExtensions`. Cost: one tsconfig flag and one `fs.allow` entry. Rejected: copied types + `emit.ts` JSON fixtures (drift, a manual regen step).
 - **2026-11-08:** Extract `PermissionCard` from `AcpTranscript.tsx` and reuse it. Rejected: a second permission UI in NodeDetail.
 - **2026-11-08:** Graph evidence refreshed: Mermaid 12.3.0 flowchart path 218 KB gzip; xyflow + dagre ~74 KB gzip; the app has no CSP, which makes Mermaid's sanitizer the only line for untrusted labels. Native stays; xyflow is the recorded fallback.
+- **2026-11-09, user decisions (after the independent Opus review).**
+  - **Q-C1 trust dialog:** focus starts on **Cancel**; **Trust** is `kind='danger'`; no custom `Enter` binding — `Enter` activates the focused button, as in ChoiceDialog; `y` trusts, `n`/`Esc` cancel; footer `(y) trust · (n)/[esc] cancel`. Supersedes the 2026-10-25 "focus on Trust". Spec criterion 2 reworded to match.
+  - **Q-C2 delivery:** **one PR**; C1/C2 are commit groups. It merges only after A PR3 and B5. Rejected: two PRs (no shippable intermediate either way, and two review loops).
+  - **Q-B1:** `run.get` returns `{run, ir}` only; all node/loop/map state comes from replaying `run.events` from seq 0 through the fold; the boot waiting scan is one `runs.list {state: 'waiting'}`. Deleted from the plan: `run.get` paging, the per-run `run.get` scan, the generic `pageAll` (replaced by one `fetchEventsAfter(runId, seq)` loop). Rejected: byte-budgeted `run.get` node paging (a second pager and a second source of node state).
+  - **Q-B2:** `node.get` gets `offset`/`limit` paging; **Load more** appends serialized slices into one `<pre>`; partial pages are never parsed. Rejected: accepting 16 KiB truncation.
+  - **B3 group survivors:** B's decision, no C impact.
+- **2026-11-09 (review minors).**
+  - Non-mac close path: the `workflows` scope mirrors the opener chord to the `workflows` **toggle** (one command on every platform); `workflow-trust` is `owns: 'matched'` so the chord and `Enter` fall through. Rejected: `mirror(…, 'workflows.close')`, which went back one view instead of closing and diverged from the macOS menu path.
+  - Oversized GUI→plugin frames are refused locally (`JSON.stringify(payload).length > 48 KiB` → `too_large`). Why: the daemon's refusal carries no nonce and would surface only as a timeout.
+  - `agent.message` renders through the existing `Markdown.tsx` (lexer only, no HTML renderer); prompts, errors and file names stay plain text; `check.output` is CSI-stripped. Partly supersedes "engine text is plain text" (2026-10-25): agent prose is Markdown the app already renders for ACP transcripts, and `Markdown.tsx` emits no raw HTML.
+  - Trust-view paths show C0/C1 and bidi controls (`U+202A-202E`, `U+2066-2069`) as visible escapes.
+  - `wf:` notification click routing is macOS-only (`notify_linux.go:38`, `notify_windows.go:29` have no click-back); the banner is the route elsewhere.
+  - No workflow-layer Notify for permission waits: the node's ACP session already fires `fireBellNotification` via `syncAttentionClass` (`events.ts:273-287`, `:322`), and the banner covers criterion 6. Re-verified as a B3-dependent check (Tests).
+  - Form drafts live in the store slice, so the toggle does not discard them.
+  - The `Ctrl+Shift+R` check runs in the real Linux binary; `wails dev` at 34115 is Chromium and hard-reloads.
+  - The nonce/timeout layer copies `plugins.ts`'s `pending` + `settle` pattern.
+- **2026-11-09:** Cross-tree import probe recorded: `allowImportingTsExtensions` makes the frontend program type-check `plugins/workflows/sdk/dsl.ts` + `ir/mermaid.ts` with tsc 7.0.2 (TS5097 without it; planner's probe, 2026-11-08); the Opus review's build probe found Vite tree-shakes the import to a **1.3 KB** chunk (only `condLabel` and its helpers ship).
 
 ## Progress
 
 - **2026-10-25:** First research and plan on `feature/530-workflow-gui`; user decisions folded in.
 - **2026-11-08:** Rebased onto fresh `origin/main` (`78ce3ace`) as `feature/530-gui`; spec carried (stage `PLAN`, SC-1..SC-7). Plan re-grounded, mockups and Dependencies on A and B added, graph evidence re-measured, PR split reduced to two. Plan-reviewed (Review log). Awaiting user approval.
+- **2026-11-09:** Revised with the independent Opus review and the user's decisions on Q-C1, Q-C2, Q-B1, Q-B2 (Decision log); spec criterion 2 reworded. Awaiting user approval of the revised plan.
 
 ## Open questions
 
-Each blocks the approval gate; none blocks C's mock-layer work.
+None for C. All four are decided (Decision log, 2026-11-09).
 
-- **Q-C1 — trust confirm style vs focus (user).** The brief asks for a destructive-style confirm; the 2026-10-25 decision put initial focus on **Trust**, while the choice dialog's convention is that the safe choice takes focus. Options: (a) keep focus on Trust and style it `kind="danger"`; (b) focus **Cancel**, Trust `kind="danger"` (an accidental Enter backs out; `y` still confirms); (c) keep focus on Trust, `kind="primary"`. Recommendation: (b) — trusting runs code, so the stray-Enter path should be the safe one, matching `choice-dialog.ts`. Changes one dom test's expectation only.
-- **Q-C2 — PR split (user).** Recommendation: two PRs (C1, C2 above), merged back-to-back after B5. Alternative: one PR. Changes changeset and branch count, not the file list.
-- **Q-B1 — `run.get` paging (B, before C2).** See Dependencies. Changes C's transport and one test.
-- **Q-B2 — `node.get` output paging (B, before C2).** See Dependencies. Changes NodeDetail and one test.
+Carried to B (not C questions, but C's merge depends on them): B's plan must (1) drop `nodes` from the `run.get` reply and (2) add `offset`/`limit` paging to `node.get`, before B2 starts.
 
 ### Risks
 
 - **Cross-tree type-check.** The probe compiled `dsl.ts`, `schema.ts` and `mermaid.ts` under frontend options; `tools/examples.ts` and `sdk/library.ts` (pulled in by the tests) were not probed. If they fail under `lib: ES2022`, the fallback is to import only types + `condLabel` in `src/` and keep the examples import in tests only, where vitest needs no tsconfig change — first step of C1 is `npm run typecheck` with the import in place.
-- **Merge order.** C is mergeable only after A PR3 and B5 (Dependencies). Building against the mock contract earlier risks rework if B2 changes a reply shape; Q-B1 and Q-B2 are the two known ones.
-- **Ctrl+Shift+R on Linux WebKitGTK** is unverified (WebView2's browser accelerators are off on Windows). Manual check in Verification.
-- **Waiting scan cost.** One `run.get` per waiting run at boot; bounded by `runs.list` limit 50.
+- **Merge order.** C is mergeable only after A PR3 and B5 (Dependencies). Building against the mock contract earlier risks rework if B2 changes a reply shape beyond the two changes recorded above.
+- **Replay cost.** Opening a run replays all its events (≤ 500 per page). A long run with chatty `agent.*` events costs several pages on open; acceptable for now, and B can add an event-type filter to `run.events` later if it measures slow.
+- **Ctrl+Shift+R on Linux WebKitGTK** is unverified until the real-binary check (Verification).
+- **Permission-wait notification** relies on the node's ACP session being listed while it waits (B3-dependent check in Tests).
 
 ## Review log
 
@@ -532,7 +561,8 @@ Each blocks the approval gate; none blocks C's mock-layer work.
   - Gaps: `bell-click` returns early on an unknown session, so the `wf:` branch is placed first; `ModalId` moved to C1 (the modal ships there); Escape-goes-back via `onEscape` added with a test; `run.start changed`, `symlink`, `retry visibility` and plain-text-injection tests added; Linux/Windows `Ctrl+Shift+R` manual check added.
   - YAGNI: dropped the `workflow-run.cancel` command (a button suffices; nothing binds it); dropped copied IR fixtures and the copied `condLabel` in favour of importing B's source; dropped the third PR.
   - Open questions left for the user: Q-C1, Q-C2; for B: Q-B1, Q-B2. Not handoff-ready until they are answered.
-  - Follow-up: re-read `docs/plugins.md` App surfaces (the UI `hive` object still has no send) and `DESIGN.md` (no rule bounds a frontend → `plugins/` edge); added a DESIGN.md line to C1 because the import is a new cross-tree build dependency; fixed two line refs.
+  - Follow-up (2026-11-08): re-read `docs/plugins.md` App surfaces (the UI `hive` object still has no send) and `DESIGN.md` (no rule bounds a frontend → `plugins/` edge); added a DESIGN.md line to C1 because the import is a new cross-tree build dependency; fixed two line refs.
+- **2026-11-09** — revision after the independent Opus review and the user's decisions. Changed: trust dialog (Cancel focused, Trust danger, no `Enter` binding, `workflow-trust` → `owns: 'matched'`); one PR; `run.get` `{run, ir}` only + replay-derived state + one `fetchEventsAfter` loop (removed `pageAll`, `run.get` paging, per-run scan); `node.get` paging with append-only **Load more**; opener chord mirrors to the toggle (non-mac close path); local 48 KiB refusal; `Markdown.tsx` for `agent.message`, `stripCsi` for check output, `showControls` for trusted paths (new `src/lib/workflow-text.ts`); permission-wait Notify dropped (verified `syncAttentionClass` → `fireBellNotification` at `events.ts:273-287`/`:322`; B3-dependent check added); `bell-click` stated macOS-only (verified `notify_linux.go:38`, `notify_windows.go:29`); drafts in the slice; `Ctrl+Shift+R` check moved to the real binary; transport copies `plugins.ts` `pending`/`settle`. Tests updated for each. Verified `app/keyboard.ts:63-90`: an exclusive scope's unmatched key is not prevented, so native `Enter` on the focused button works.
 
 ## PR convergence ledger
 
