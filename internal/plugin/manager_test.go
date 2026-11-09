@@ -519,6 +519,32 @@ func TestSpawn_NodeProbeFails(t *testing.T) {
 	}
 }
 
+func TestCheckNode_TimesOut(t *testing.T) {
+	dir := fakeNode(t, "", 0)
+	if err := os.WriteFile(filepath.Join(dir, "node"), []byte("#!/bin/sh\nexec sleep 30\n"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	old := nodeProbeTimeout
+	nodeProbeTimeout = 200 * time.Millisecond
+	t.Cleanup(func() { nodeProbeTimeout = old })
+	start := time.Now()
+	err := checkNode(filepath.Join(dir, "node"), "26.0.0", dir, os.Getenv("PATH"))
+	if err == nil || !strings.Contains(err.Error(), "could not run node --version") {
+		t.Fatalf("err = %v, want a probe failure", err)
+	}
+	if d := time.Since(start); d > 5*time.Second {
+		t.Fatalf("probe took %s, the timeout did not bound it", d)
+	}
+}
+
+func TestCheckNode_CapsOutputInStatusDetail(t *testing.T) {
+	dir := fakeNode(t, "v24.1.0 "+strings.Repeat("x", 5000), 0)
+	err := checkNode(filepath.Join(dir, "node"), "26.0.0", dir, os.Getenv("PATH"))
+	if err == nil || len(err.Error()) > 200 {
+		t.Fatalf("err = %v (%d bytes), want a short error", err, len(fmt.Sprint(err)))
+	}
+}
+
 func TestSpawn_NodeMissingRefused(t *testing.T) {
 	withLoginPATH(t, t.TempDir())
 	m, _ := newTestManager(t)
