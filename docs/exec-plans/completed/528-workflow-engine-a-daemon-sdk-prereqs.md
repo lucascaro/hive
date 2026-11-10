@@ -4,7 +4,7 @@
 - **Design:** [workflow-engine.md](../../design-docs/workflow-engine.md) ("What the engine spec must add"), [acp-workflows.md](../../design-docs/acp-workflows.md)
 - **Issue:** #528
 - **Branch:** `feature/528-pr3-plugin-runtime`
-- **Status:** active
+- **Status:** completed
 - **PR:** #541
 - **Phase:** 3 of 3
 
@@ -543,3 +543,10 @@ scripts/ui-lint.sh                                             # PR1, PR3 (GUI t
     - non-goals — PASS — no engine, no PROTOCOL_VERSION bump, no 492 trust-model change.
     - doc accuracy — PASS — docs/plugins.md hooks paragraph matches safeGit (directory and config hooks incl. pre-auto-gc, fsmonitor, auto gc/maintenance off, no signing; drivers/filters still apply); DESIGN.md "no hooks, fsmonitor or signing" still accurate. No changeset (`no-changeset` label), so `regression_of` n/a.
     - PR state — 31/31 review threads resolved; `gh pr checks 539` 13 pass, CodeRabbit and regenerate-generated skipping.
+- **2026-11-09** — verdict: FAIL; phase: 3/3; checks: 2 passed / 1 failed / 0 followups; followups: none; one-line: independent gate at a94a4afe; criteria 1-9, non-goals, CI and threads passed; doc accuracy failed: `.changesets/528-plugin-restart-failed.md` is `bump: minor` with no `site/features.json` entry (AGENTS.md). Recorded retroactively by the 2554b133 gate.
+- **2026-11-09** — verdict: PASS; phase: 3/3; checks: 3 passed / 0 failed / 0 followups; followups: none; one-line: final phase gated at 2554b133; the delta from a94a4afe adds the features.json entry, two mutation-checked probe tests and a decision-log fix, nothing else; spec 528 DONE.
+  - 2026-11-09 dimensions:
+    - acceptance — PASS — `git diff --stat a94a4afe..2554b133`: features.json (+6), manager_test.go (+26), this plan (1 line); no production code changed, so the a94a4afe pass on criteria 1-9 stands. Spot-checked: 5 (login PATH via `loginPATH`, "requires Node.js %s or newer" in `checkNode`, "22 or newer" at all SDK/doc sites incl. plugins/webhook, `node26` CI job green), 7 (DESIGN.md:100 plugin-data carve-out, worktree/merge stay behind PREPARE_WORKTREE/COMMIT_WORKTREE), 9 (`maxCrashes=5`/`crashWindow=60s`, `SetEnabled` restarts a failed/refused enabled plugin, PluginsPanel Restart, events.ts one `flashStatus` per transition to failed). New tests mutation-checked: replacing the `WithTimeout` with `WithCancel` fails `TestCheckNode_TimesOut` (30.2s), dropping the 64-byte cap fails `TestCheckNode_CapsOutputInStatusDetail` (5058 bytes). `go test -race ./internal/plugin/...` pass (go1.27.3); vet + staticcheck clean darwin/linux/windows; `check-daemon-contract.sh origin/main HEAD` OK (no daemon-side changes).
+    - non-goals — PASS — no engine, no PROTOCOL_VERSION bump, no 492 trust-model change; GUI limited to the failed-plugin state.
+    - doc accuracy — PASS — features.json "Restart a failed plugin" (`shipped`, `since: "Unreleased"`) matches neighbour shape, one-sentence blurb; `test/unit/whats-new.test.ts` 20/20 pass. Changesets: `528-plugin-restart-failed.md` (added, minor), `528-plugin-node-path-restart.md` (fixed, patch) with `regression_of: declared-absent`.
+    - PR state — `gh pr checks 541`: 13 pass, regenerate-generated and CodeRabbit skipping; 3/3 review threads resolved.

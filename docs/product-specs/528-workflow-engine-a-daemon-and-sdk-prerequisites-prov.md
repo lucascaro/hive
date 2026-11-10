@@ -4,7 +4,9 @@ title: "Workflow engine A: daemon and SDK prerequisites (provenance, typed resul
 type: enhancement
 complexity: M
 priority: P1
-stage: GATE
+pr: 541
+shipped: 2026-11-09
+stage: DONE
 ---
 
 # Workflow engine A: daemon and SDK prerequisites (provenance, typed results, ACP cancel, plugin request/reply)
@@ -13,6 +15,7 @@ stage: GATE
 - **Type:** enhancement
 - **Complexity:** M
 - **Priority:** P1
+- **Exec plan:** [docs/exec-plans/completed/528-workflow-engine-a-daemon-sdk-prereqs.md](../exec-plans/completed/528-workflow-engine-a-daemon-sdk-prereqs.md)
 - **Parent:** [527](527-build-the-workflow-engine-bundled-plugin-running-typ.md)
 - **Design:** [workflow-engine.md](../design-docs/workflow-engine.md), "What the engine spec must add"
 
