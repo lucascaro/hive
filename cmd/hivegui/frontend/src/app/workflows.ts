@@ -28,6 +28,7 @@ import {
   hasGap,
 } from '../lib/workflow-overlay.js';
 import {
+  type IR,
   type NodeGet,
   type NodesPage,
   type RunDetail,
@@ -133,7 +134,10 @@ export function request<T>(
   wire();
   const nonce = newNonce();
   const payload = { ...data, nonce };
-  if (JSON.stringify(payload).length > MAX_MESSAGE_BYTES) {
+  // Bytes on the wire, not UTF-16 code units: the budget is A's byte cap.
+  if (
+    new TextEncoder().encode(JSON.stringify(payload)).length > MAX_MESSAGE_BYTES
+  ) {
     return Promise.reject(
       new WorkflowError('too_large', 'The input is too large to send.'),
     );
@@ -372,18 +376,17 @@ export async function loadRunState(
   else beginRun(runId);
   const stale = () => loader !== L || token !== loadToken;
   try {
-    let detail = keep?.detail ?? null;
-    let ir = keep?.ir ?? null;
-    if (!detail || !ir) {
-      const g = await request<{ run: RunDetail; ir: NonNullable<typeof ir> }>(
-        'run.get',
-        { run_id: runId },
-      );
-      if (stale()) return;
-      detail = g.run;
-      ir = g.ir;
-      rememberRun(detail);
-    }
+    // run.nodes carries no run-level state, and a reload happens exactly when
+    // events were lost (a gap, a reconnect): re-read the run so a missed
+    // run.finished or run.retried cannot leave the header stale. The IR does
+    // not change, so a reload keeps it.
+    const g = await request<{ run: RunDetail; ir: IR }>('run.get', {
+      run_id: runId,
+    });
+    if (stale()) return;
+    const detail = g.run;
+    const ir = keep?.ir ?? g.ir;
+    rememberRun(detail);
     let ov = emptyOverlay(runId, detail.state);
     let after: string | undefined;
     for (;;) {

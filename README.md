@@ -423,6 +423,10 @@ rest of the app carries on.
   background) and [plugins/session-notes/](plugins/session-notes/) (in
   the app: pin a note to a session)
 
+Manage them under **Settings → Plugins**: install from a folder or git
+URL, then enable, disable or remove each one without restarting Hive.
+Installing shows what the plugin will run and asks before enabling it.
+
 ### Workflows
 
 **Workflows** (⇧⌘R, or File → Workflows…) run several agents on a project as a
@@ -434,10 +438,6 @@ copies, and a banner and desktop notification when a step waits for your
 answer or an agent asks for permission. The engine is a bundled plugin that
 ships turned off; the panel offers **Turn on**, and tells you which Node.js
 version it needs if yours is too old.
-
-Manage them under **Settings → Plugins**: install from a folder or git
-URL, then enable, disable or remove each one without restarting Hive.
-Installing shows what the plugin will run and asks before enabling it.
 
 ## Contributing
 

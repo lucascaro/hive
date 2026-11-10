@@ -182,6 +182,14 @@ describe('request', () => {
     await expect(request('x', {})).rejects.toThrow('no control');
   });
 
+  it('the budget counts UTF-8 bytes, not code units', async () => {
+    // 20,000 characters, 60,000 bytes.
+    await expect(
+      request('run.start', { input: '\u65e5'.repeat(20_000) }),
+    ).rejects.toMatchObject({ code: 'too_large' });
+    expect(h.send).not.toHaveBeenCalled();
+  });
+
   it('a payload over 48 KiB is refused locally with too_large and never sent', async () => {
     await expect(
       request('run.start', { input: 'x'.repeat(49 * 1024) }),
@@ -316,7 +324,8 @@ describe('loadRunState', () => {
       'verify done',
     );
     expect(requests('run.events')).toHaveLength(0);
-    expect(requests('run.get')).toHaveLength(1);
+    // The reload re-reads the run (a missed run.finished), once more.
+    expect(requests('run.get')).toHaveLength(2);
   });
 
   it('reconnect reloads the open run', async () => {

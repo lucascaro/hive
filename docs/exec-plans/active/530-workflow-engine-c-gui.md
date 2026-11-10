@@ -4,6 +4,7 @@
 - **Design:** [workflow-engine.md](../../design-docs/workflow-engine.md) (The overlay, Security), [acp-workflows.md](../../design-docs/acp-workflows.md)
 - **Depends on:** A (#528, [plan](528-workflow-engine-a-daemon-sdk-prereqs.md)) and B (#529, [plan](529-workflow-engine-b-headless-engine-core.md), section "Contract for C"). See **Dependencies on A and B** below.
 - **Issue:** #530
+- **PR:** #543
 - **Branch:** `feature/530-gui-impl` (implementation, branched from `feature/530-gui` so the plan and spec history come with it). Implementation is **one PR**.
 - **Status:** active. Drafted and plan-reviewed on 2026-11-08; revised 2026-11-09 with the independent Opus review and the user's decisions on Q-C1, Q-C2, Q-B1, Q-B2. Revised again 2026-11-09 for the materialized `run.nodes` decision. **Awaiting user approval of the revised plan**, and one new question, **Q-B3**. The B-side decisions must be folded into B's plan before B2 starts (Open questions).
 
