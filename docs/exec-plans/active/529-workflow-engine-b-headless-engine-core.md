@@ -650,6 +650,30 @@ continue from `seq`.
   events appended in the same transaction. That is where `seq` becomes
   gapless: `seq = max+1` inside the transaction. `redact()` runs on event
   data before insert.
+- **Materialized state (B-12).** The `nodes` table is the running node state
+  clients read; nobody replays events to get it. The invariant: **a
+  transition updates the `nodes` row and appends its event in one
+  transaction**, so any read of node state sees rows and `last_seq` that
+  agree (rows reflect exactly the events `seq <= last_seq`). `run.retry`
+  holds too: the row resets, the `node.reset` events and `run.retried` commit
+  together. `events` stays append-only (live push, history, audit). Tradeoff
+  recorded: a corrupted `nodes` table cannot be repaired by replay, because
+  the engine never derives it from events. A debug rebuild-from-events command
+  is optional and built only if a real corruption ever needs it. Buffered
+  `agent.*` and `check.output` events (250 ms flush) change no column that
+  `run.nodes` serves, so they need no row update; they still take their `seq`
+  at commit, so `last_seq` never runs ahead of a committed row.
+- **One row per node instance.** Map expansion writes one `nodes` row for
+  every node instance in every copy (key `<map>[<i>]/<node>`; a copy whose
+  body has several nodes gets several rows, all `pending`), in the
+  transaction that appends `map.expanded`. A loop iteration likewise writes
+  its rows (`<loop>[<k>]/<node>`) with `loop.iteration`. So a client derives
+  the map count and loop iteration from the keys plus the IR, with no extra
+  field (B-12).
+- **Bounded keys.** B2 caps a node `id` at 128 bytes and a `key` at 512 bytes
+  (encoded), refused at build with `invalid_ir`, so a `run.nodes` row always
+  fits a page. B1's validator has no such cap today; B2 adds it with the
+  other tightened caps.
 - **Outputs.** The raw output goes in `nodes.output_raw`, which only the
   reducer reads (conditions, prompts). A redacted copy goes in
   `nodes.output`, which is what `node.get` pages and what `node.output`
@@ -667,7 +691,8 @@ continue from `seq`.
 
 The exact schema is under Contract for C. Events are pushed live as
 `run.event` batches (≤ 48 KiB per message, leaving headroom under A's
-64 KiB). Replay is `run.events`, paged by `seq`.
+64 KiB). `run.events` pages the history by `seq`; it is not how node state
+is rebuilt (that is `run.nodes`, B-12).
 
 `redact()` replaces these with `[redacted]`, adding `data.redacted = <count>`
 to the event:
@@ -707,11 +732,13 @@ All of it travels on A's `PLUGIN_MESSAGE` with `plugin_id: "workflows"`.
   - `run.get` returns only `{run, ir}`, bounded as a whole (B-6): `ir`
     (≤ 32 KiB) plus `input` (≤ 8 KiB) leaves about 8 KiB under the cap, which
     cannot hold node state, and the rest of `run` is held to a **6 KiB**
-    budget. Node, loop and map state is derived by replaying `run.events`.
+    budget. Node, loop and map state comes from `run.nodes` (B-12), which has
+    a full 48 KiB per page, so the budget argument for dropping nodes from
+    `run.get` no longer applies; `run.get` stays `{run, ir}`.
   - **Every event is capped at write time (B-11).** The engine truncates an
     event whose `encodedSize(data)` exceeds **24 KiB** before it is stored, so
-    a `run.events` page always has room for at least one event and replay can
-    never stall. Text fields are cut and marked `truncated: true`;
+    a `run.events` page always has room for at least one event and history
+    paging can never stall. Text fields are cut and marked `truncated: true`;
     `agent.plan` drops trailing `entries` and sets `entries_omitted: <n>`;
     `agent.tool` and `check.output` cut `title` and `text`. Truncation is
     deterministic and happens before the transaction, so the stored event is
@@ -728,30 +755,56 @@ All of it travels on A's `PLUGIN_MESSAGE` with `plugin_id: "workflows"`.
 | `workflow.build` | `{project_id, file}` | `{name, ir, mermaid, source_hash, input_schema}` or `error.code: "untrusted"\|"changed"\|"type_errors"\|"build_failed"\|"invalid_ir"\|"sandbox_unavailable"` with `type_errors?: [{file, line, col, message}]`, `errors?: string[]` |
 | `run.start` | `{project_id, file, input, source_hash}` | `{run_id}` — refuses `changed` if `source_hash` is not the current one, so the user runs what they reviewed |
 | `run.cancel` | `{run_id}` | `{}` |
-| `run.retry` | `{run_id}` | `{}` — failed or cancelled → running: failed and interrupted nodes reset to `pending`, attempts cleared. One transaction appends a `node.reset` per reset node and then `run.retried` (B-11), so a replay sees it |
+| `run.retry` | `{run_id}` | `{}` — failed or cancelled → running: failed and interrupted nodes reset to `pending`, attempts cleared. One transaction appends a `node.reset` per reset node and then `run.retried` (B-11), so live clients see it, and the reset rows are what `run.nodes` serves afterwards (B-12) |
 | `runs.list` | `{project_id?, state?: <a run state, below>, before?: created_at, limit ≤ 50}` — `project_id` omitted means every project (B-2), so the GUI finds waiting runs at boot with one call (`state: "waiting"`) | `{runs: [{run_id, project_id, workflow, file, state, created_at, updated_at, source_hash, source_changed}]}` |
-| `run.get` | `{run_id}` | `{run: {…as above, input, base_sha, kept_worktrees, kept_worktrees_total, error}, ir}` — no nodes, no paging (B-6). `kept_worktrees` is at most 16 paths of ≤ 256 bytes and `error` ≤ 2 KiB; `kept_worktrees_total` is the real count, and the full list is in the `run.finished` and `node.started`/`node.finished` events of the replay |
-| `node.get` | `{run_id, key, offset?: 0, limit?: 16384}` | `{key, node_id, state, attempt, output?: string, total_bytes?, next_offset?, more?, error?, conflict?}` — `output` is a slice of the serialized redacted output (B-7) |
+| `run.get` | `{run_id}` | `{run: {…as above, input, base_sha, kept_worktrees, kept_worktrees_total, error}, ir}` — no nodes, no paging (B-6). `kept_worktrees` is at most 16 paths of ≤ 256 bytes and `error` ≤ 2 KiB; `kept_worktrees_total` is the real count, and the full list is in the `run.finished` and `node.started`/`node.finished` events, paged through `run.events` |
+| `run.nodes` | `{run_id, after?: key}` | `{nodes: [{key, node_id, state, attempt, started_at?, finished_at?, cap?}], last_seq, more?, next_after?}` — the materialized node, loop and map state (B-12). Slim rows: no `output` or `error` (those come from `node.get`). Ordered by `key`; a page stops once `encodedSize` would pass 48 KiB (always at least one row), and `next_after` is the last key returned. Each page carries its own `last_seq`: the max committed `seq` when that page was read, read in one SQLite read transaction, so the rows reflect exactly the events `seq <= last_seq` |
+| `node.get` | `{run_id, key, offset?: 0, limit?: 16384}` | `{key, node_id, state, attempt, output?: string, total_bytes?, next_offset?, more?, session_id?, branch?, worktree?, error?, conflict?, waiting?}` — `output` is a slice of the serialized redacted output (B-7). `waiting` is the data of the node's open `node.waiting` event (rendered prompt, `output_schema`, permission `request_id` and `options`), present only while the node is `waiting`, so a wait raised before the run view opened can be answered from it (B-13, recommended, pending user confirmation). Everything is redacted and counted in the 48 KiB encoded budget; a prompt cut by the event cap or the budget sets `waiting.truncated: true` with `prompt_total_bytes`, and the GUI must not offer an answer from a truncated prompt (see the open question on paging it) |
 | `run.events` | `{run_id, after_seq, limit ≤ 500}` | `{events: RunEvent[], last_seq, more}` — also byte-budgeted: a page stops once `encodedSize` would pass 48 KiB (always at least one event, B-11), so `more` can be true below `limit` |
 | `human.answer` | `{run_id, key, answer}` | `{}`; `error.code: "invalid_answer"` with a path-qualified message, or `"not_waiting"` |
 
-**State replay (B-6).** `run.get` carries no node state. A client reconstructs
-node, loop and map state by calling `run.events` from `after_seq: 0`,
-following `more` until false, and folding the events in `seq` order. The fold
-covers every state change, including a retry: `node.reset` sets the node to
-`pending` and clears its attempt, and `run.retried` sets the run to `running`
-(B-11). A client that wants a waiting run at boot calls `runs.list {state:
-"waiting"}`, which reads run-level state only. There is no cap on node or map
-instances beyond the existing map-copy cap. Slice C (branch `feature/530-gui`)
-already assumes this contract.
+**Node state (B-12, amends B-6).** `run.get` carries no node state; `run.nodes`
+does. A client never replays `run.events` from seq 0. The engine keeps the
+state materialized in the `nodes` table (Store: a transition updates the row
+and appends the event in one transaction), so every `run.nodes` page is a
+consistent snapshot tagged with its own `last_seq`. Retry is covered: the
+reset rows are what `run.nodes` serves, and `node.reset` / `run.retried` are
+for live clients. A client that wants a waiting run at boot calls `runs.list
+{state: "waiting"}`, which reads run-level state only. There is no cap on node
+or map instances beyond the existing map-copy cap. Slice C (branch
+`feature/530-gui`) must be updated from the replay contract to this one.
 
-**Replay-to-live handoff (B-11).** A push can land between the last replay page
-and the moment a client starts keeping live events. So a client first
-subscribes and **buffers** `run.event` pushes, then replays from seq 0, then
-applies buffered events with `seq > last_seq` (dropping the rest, which the
-replay already covered), then applies live pushes. It treats any `seq` that is
-not `last applied + 1` as a gap and calls `run.events` with `after_seq = last
-applied`. A reconnect restarts from the last applied `seq`.
+**Snapshot-to-live merge (B-12, supersedes the B-11 replay handoff).** Pages
+are read at different moments, so each has its own `last_seq`:
+1. Subscribe to `run.event` and **buffer** pushes before the first request.
+2. Call `run.nodes`, following `next_after` while `more`. A page covers the
+   keys after the previous page's `next_after` up to its own `next_after`
+   (the last page is open-ended).
+3. When all pages are in, apply the buffered events in `seq` order. An event
+   with a `key` applies to the page that covers that key, and only if
+   `seq > that page's last_seq`; `seq <=` means the page's rows already
+   reflect it, so it is dropped. A key with no row yet is created by the
+   event; `map.expanded {count}` and `loop.iteration` carry no per-copy keys,
+   so the client instantiates every instance key they imply from the IR (all
+   `pending`, since the engine wrote those rows in the same transaction) and
+   applies the same watermark check per key's covering page.
+   `node.reset` and `run.retried` apply by the same rule. Events with no
+   `key` are run-level and do not touch node rows.
+4. Then apply live pushes. The cursor starts at the **smallest** page
+   `last_seq`, not the largest. Buffered events must be contiguous from that
+   cursor + 1; a hole (for example a page at 10, event 11 missed, 12
+   buffered) is a gap, so the client first fetches the missing range. A gap
+   is closed by looping `run.events` with `after_seq = last applied` until
+   `more` is false, applying each event once (deduplicating by `seq`, so the
+   live push that exposed the gap is not applied twice) before resuming
+   pushes; one page is not enough when the gap is long. A reconnect restarts
+   the whole procedure (a new `run.nodes` snapshot).
+
+The rule is idempotent (an event is applied at most once per row, and never
+when the row already reflects it) and loses no transition (every event after
+a page's `last_seq` is either buffered or fetched by the gap path). The
+history view (`agent.*`, `check.output`) is not part of this: the client pages
+`run.events` lazily when a node's detail is opened, not at run open.
 
 **Output paging (B-7).** `node.get` pages over the UTF-8 bytes of the
 serialized redacted output (the `JSON.stringify` of the value, so offsets are
@@ -772,8 +825,9 @@ Permission waits are answered with the **existing** `ANSWER_PERMISSION
 ### Topics: engine → GUI
 
 `run.event` `{run_id, events: RunEvent[]}`. Seq is contiguous inside a batch.
-A GUI that sees a gap, or reconnects, calls `run.events` with
-`after_seq = last seen`; the handoff rule is under State replay.
+A GUI that sees a gap calls `run.events` with `after_seq = last seen`; on
+reconnect it takes a fresh `run.nodes` snapshot. The merge rule is under
+Snapshot-to-live merge (B-12).
 
 ### `RunEvent`
 
@@ -855,7 +909,8 @@ first if it copies them.*
 - `store.ts`, `interp.ts`, `keys.ts`, `check.ts`, `human.ts`, `killtree.ts`,
   `events.ts`, and the topics `runs.list` (with the optional `project_id`
   and `state` filters, B-2), `run.get` (`{run, ir}` only, B-6), `run.events`
-  (byte-budgeted pages, B-6), `node.get` (byte paging, B-7), `run.cancel`,
+  (byte-budgeted pages, B-6), `run.nodes` (byte-budgeted snapshot pages
+  tagged with `last_seq`, B-12), `node.get` (byte paging, B-7), `run.cancel`,
   `run.retry` (emitting `node.reset` and `run.retried`, B-11) and
   `human.answer`. Also `engine/size.ts` (`encodedSize`), the write-time event
   cap (B-11) and the tightened IR and input caps.
@@ -916,8 +971,9 @@ first if it copies them.*
 
 ### B5: events contract, embedding and docs
 
-- Batching ≤ 48 KiB, coalescing, the `seq` replay contract test (a fold of
-  `run.events` from seq 0 reproduces node state, B-6), and the
+- Batching ≤ 48 KiB, coalescing, the `seq` contract test (a `run.nodes`
+  snapshot merged with the events after its `last_seq` equals the final node
+  state, B-12), and the
   `agent.usage` wiring (R5).
 - `docs/plugins.md` "Workflows" notes that a secret an agent prints is
   persisted raw in the 0600 `runs.db` (B-5).
@@ -1003,11 +1059,20 @@ first if it copies them.*
   - `seq gapless under concurrent transitions`;
   - `done row always has output`;
   - `runs.db wal shm are 0600` (POSIX);
-  - `crash between transitions leaves last committed state` (child process killed mid-run).
+  - `crash between transitions leaves last committed state` (child process killed mid-run);
+  - `nodes row and event commit together` (B-12): crash injection between the row update and the event append never leaves `last_seq` ahead of the rows, nor rows ahead of `last_seq`;
+  - `run.retry reset visible through run.nodes after restart` (B-12): the `node.reset` rows survive a plugin restart.
 - `topics.test.ts` (B-2):
   - `runs.list without project_id returns every project's runs, each with project_id`;
   - `runs.list state waiting returns only waiting runs`;
-  - `runs.list project_id and state combine`.
+  - `runs.list project_id and state combine`;
+  - `run.nodes page always fits 48 KiB encoded` (B-12): worst case, maximal keys and `<`-heavy fields, `encodedSize(reply)` stays under the cap and a page holds at least one row;
+  - `run.nodes pages by key, each page tagged with its own last_seq`, read in one read transaction;
+  - `map expansion writes one nodes row per node instance` (B-12): a map with a multi-node body gets a row for every body node in every copy, keys `<map>[<i>]/<node>`, distinct copy indices equal `map.expanded.count`, all written in the same transaction as the event;
+  - `ids and keys over the cap are refused with invalid_ir` (a 25,000-byte node id, a deep key), and a maximal key still fits a `run.nodes` page;
+  - `node.get waiting payload only while waiting` (B-13): `waiting` carries the rendered prompt, `output_schema`, permission `request_id` and `options`; absent in every other state;
+  - `node.get carries session_id, branch, worktree, error, conflict` (B-13), all redacted, and the whole reply (output slice plus these) stays under 48 KiB encoded in the worst case.
+- `merge.test.ts` (B-12, pure unit, the client-merge algorithm): events arriving between pages are applied idempotently, with no double-apply and no lost transition; `seq <= page last_seq` dropped; a row created after its page was read is created by the event, including every instance a `map.expanded` or `loop.iteration` implies; the cursor starts at the smallest page `last_seq` and a hole in the buffer (page at 10, event 11 missed, 12 buffered) is recovered; a gap longer than one `run.events` page is closed by looping, with the live push deduplicated; `node.reset` and `run.retried` follow the same rule.
 - `check.test.ts`:
   - `ok and exit_code`;
   - `timeout sends TERM to group then KILL after grace` (POSIX; a grandchild `sleep` dies too);
@@ -1118,7 +1183,7 @@ first if it copies them.*
   - `batches under 48 KiB`;
   - `run.events pages by seq without gaps`;
   - `every event keyed by IR node_id and instance key`.
-- Go `TestEvents_LiveAndReplayIdentical`: a GUI test client collects live `run.event`, then replays `run.events`, and the two sequences are equal.
+- Go `TestEvents_LiveAndHistoryIdentical`: a GUI test client collects live `run.event`, then pages `run.events`, and the two sequences are equal.
 - `TestEmbed_WorkflowsBuiltinDisabledByDefault`.
 
 ## Verification
@@ -1290,8 +1355,10 @@ download, the accepted sandbox gap, and `LIST_ACP_AGENTS`.
     the served column, and redacting before insert, which could change which
     edge a condition takes.
   - **B-6, `run.get` size:** it returns `{run, ir}` only, with no nodes and
-    no paging. Node, loop and map state is derived by replaying `run.events`
-    from seq 0 (paged by seq, byte-budgeted pages ≤ 48 KiB) and folding. The
+    no paging. (Amended by B-12: node state is
+    served by `run.nodes`, not derived by replay; the text below is the
+    original decision.) Node, loop and map state is derived by replaying
+    `run.events` from seq 0 (paged by seq, byte-budgeted pages ≤ 48 KiB) and folding. The
     boot waiting scan uses `runs.list {state:'waiting'}`, which reads
     run-level state only. Why: `run.get` carries `ir` (≤ 32 KiB) plus `input`
     (≤ 8 KiB), so about 8 KiB is left for nodes under the 48 KiB message cap,
@@ -1360,6 +1427,49 @@ download, the accepted sandbox gap, and `LIST_ACP_AGENTS`.
     research item (open question below).
   - Declined: none. The table split (`human.answer` row) is fixed.
 
+- **2026-11-09, user decision ("make it so") on the replay-cost open question.**
+  - **B-12, `run.nodes` snapshot replaces event replay.** Amends B-6 and
+    supersedes the replay-cost candidates (a), (b) `types?` filter and (c)
+    archive table. Clients no longer rebuild node state by replaying
+    `run.events` from seq 0.
+    - The engine keeps the `nodes` table materialized and updates the row and
+      appends the event in **one transaction** (invariant), so every node
+      read carries the `last_seq` it reflects.
+    - New topic `run.nodes {run_id, after?}` -> `{nodes: [{key, node_id,
+      state, attempt, started_at?, finished_at?, cap?}], last_seq, more?,
+      next_after?}`: slim rows (outputs and errors come from `node.get`),
+      pages <= 48 KiB encoded, ordered by key, each page tagged with its own
+      `last_seq` read inside one SQLite read transaction.
+    - `run.get` stays `{run, ir}` (B-6 stands). Its reason for dropping nodes
+      (ir <= 32 KiB plus input <= 8 KiB leave no room) is moot: nodes have
+      their own topic and a full budget.
+    - Client: subscribe and buffer live events before the first request; per
+      page apply buffered events with `seq > that page's last_seq` to that
+      page's rows; `seq <=` is already reflected. `node.reset` and
+      `run.retried` follow the same rule. The history view pages `run.events`
+      lazily when a node's detail opens.
+    - `node.reset` and `run.retried` stay (live clients need them), in the
+      same transaction as the row update. `events` stays append-only.
+    - Tradeoff recorded: a corrupted `nodes` table cannot be repaired by
+      replay. A debug rebuild-from-events command is optional, built only if
+      ever needed.
+    - Invariant: map expansion writes exactly one `nodes` row per copy (key
+      `<map>[<i>]/<node>`); the GUI derives loop iteration and map count from
+      keys plus the IR. Tested in B2.
+    - Supersedes B-11a (retry visible to a fold), B-11d's "recoverable from
+      replayed events" and B-11f (replay-to-live handoff) in wording only: the
+      events and the buffering idea stay, the seq-0 fold goes. B-5..B-11
+      otherwise unchanged.
+  - **B-13, `node.get` carries wait and session context. Recommended,
+    pending user confirmation** (proposed default for C's Q-B3). `node.get`
+    also returns `session_id?`, `branch?`, `worktree?`, `error?`, `conflict?`
+    and `waiting?` (the open `node.waiting` event's data: rendered prompt,
+    `output_schema`, permission `request_id` and options), so a wait raised
+    before the run view opened can be answered from it. `waiting` exists only
+    while the node is waiting. Slim `run.nodes` rows stay slim. All fields are
+    redacted and counted in the 48 KiB encoded budget. If the user declines,
+    revert the topics-table row and the three B2 tests.
+
 ## Progress
 
 - **2026-10-25:** Research complete. Plan drafted against A at `7410f6b7`.
@@ -1383,22 +1493,47 @@ open questions"). Each was raised by the B1 review (CodeRabbit, PR #538).
 
 - **Outputs vs `redact()`:** Resolved, B-5. Raw outputs in a reducer-only
   column; everything served is redacted.
-- **`run.get` size:** Resolved, B-6. `run.get` returns `{run, ir}`; node state
-  is a replay of `run.events`.
+- **`run.get` size:** Resolved, B-6, amended by B-12. `run.get` returns
+  `{run, ir}`; node state is served by `run.nodes`.
 - **Full output retrieval:** Resolved, B-7. `node.get` pages by byte offset.
 - **Check spawn-to-record gap (B3):** Resolved, B-8. Design stands as written.
 - **Group survivors after the leader exits (B3):** Resolved, B-9. Verified
   group signalling only; `kept_pids` otherwise; Job Object on Windows.
 
-Raised by the PR #540 review, consequences of B-6 that need a user decision
-before B2 starts:
+Raised by the PR #540 review, consequences of B-6:
 
-- **B2, replay cost.** A client folds `run.events` from seq 0, and `agent.*`
-  and `check.output` events can make that long (thousands of events of up to
-  24 KiB). The fold needs only lifecycle events. Candidates: (a) accept the
-  cost; (b) a `types?` filter on `run.events` (seq paging unchanged, `last_seq`
-  is the last event scanned); (c) archive `agent.*`/`check.output` rows into a
-  separate table after the run ends. Not decided.
+- **B2, replay cost:** Resolved 2026-11-09, B-12 (user decision). Clients read
+  `run.nodes` snapshots instead of replaying `run.events` from seq 0; the
+  `types?` filter and archive-table candidates are dropped.
+- **B2, run-level state has no `last_seq`.** Raised against B-12; needs a user
+  decision before B2. `run.get` stays `{run, ir}` (B-6), so a client cannot
+  tell which events its `run` object already reflects. Events without a `key`
+  (`run.finished`, `run.retried`) buffered across the `run.get` call could be
+  applied over a newer `run` (for example a stale `run.finished` after a
+  retry). Candidates: (a) add a `last_seq` to `run.get`'s `run` object (the
+  run row is updated in the same transaction as its event, so it is exact);
+  (b) the first `run.nodes` page also carries `run_state`, tagged by its
+  own `last_seq`. Not
+  decided; the contract above leaves `run.get` unchanged.
+- **B-13 waiting prompt, paging (raised by the PR #542 review).** The
+  `node.waiting` event is capped at 24 KiB at write time, so a longer
+  interpolated human prompt is cut in the event and in `node.get.waiting`.
+  For now the reply flags `truncated` and the GUI must not offer an answer
+  blind. Needs a user decision: page the complete redacted prompt through
+  `node.get` (store it whole in the `nodes` row and add a `prompt_offset`),
+  or cap the rendered prompt at build or run time.
+- **B-13 redacted permission ids (PR #542 review).** `redact()` can rewrite a
+  token-shaped permission `option_id` or `request_id` in `node.get.waiting`,
+  and `ANSWER_PERMISSION` then fails with `permission_stale`. Needs a user
+  decision: exempt these identifiers from `redact()` (they come from the
+  adapter and drive a daemon call), or have the engine answer from its own
+  stored ids. This touches the redaction policy (B-5), so it is not decided
+  here.
+- **B-12 per-node history (PR #542 review).** Opening a node's detail pages
+  `run.events` lazily, which for a run with many events can read many pages of
+  unrelated events. A `key?` filter on `run.events` (unfiltered paging kept for
+  gap recovery) would fix it. The user dropped the `types?` filter candidate
+  and specified lazy paging; whether a `key?` filter is wanted is not decided.
 - **B3, Windows launch.** Whether Node's `spawn` already puts a non-detached
   child in a kill-on-close job at creation (libuv), or a `CREATE_SUSPENDED`
   helper is needed, is unverified; B3 research settles it. B-9 (Job Object)
