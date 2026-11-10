@@ -12,7 +12,7 @@
      content-box 24px bar plus its 1px border paints 25px, so the height
      components.md specifies has to include the border. */
   box-sizing: border-box;
-  grid-row: 5;
+  grid-row: 6;
   grid-column: 1 / -1;
   display: flex;
   align-items: center;

@@ -18,6 +18,9 @@ Shapes come from option I3; drawn as SVG so they align and render identically on
 | `state-exited` | ■ square | stroke `--state-exited` | process ended, no `last_error` | no |
 | `state-error` | ✗ cross | stroke `--state-error` | process ended with `last_error` set | no |
 | `state-failed` | ✗ cross | stroke `--state-error` | alive, and the agent reported a failed turn; counts as attention until the user looks (the row takes the attention ground) | no |
+| `state-pending` | ○ hollow circle | stroke | a workflow node that has not started (spec 530; no session equivalent) | no |
+| `state-skipped` | – dash | stroke | a workflow node skipped by a condition (spec 530) | no |
+| `state-interrupted` | broken ring | stroke | a workflow node cut off by a restart (spec 530) | no |
 
 Resolution from `SessionInfo`:
 

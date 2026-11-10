@@ -90,6 +90,9 @@ func buildAppMenuRecorded(a *App, record map[string]string) *menu.Menu {
 	// receives, so binding them takes nothing from the focused agent.
 	file.AddText("Capture Idea…", accel("quick-idea", keys.CmdOrCtrl("i")), emit("menu:quick-idea"))
 	file.AddText("Idea Inbox…", accel("idea-inbox", keys.Combo("i", keys.ShiftKey, keys.CmdOrCtrlKey)), emit("menu:idea-inbox"))
+	// Workflows (spec 530). The native accelerator takes ⇧⌘R before the
+	// webview, so the menu event runs the same toggle command as the key.
+	file.AddText("Workflows…", accel("workflows", keys.Combo("r", keys.ShiftKey, keys.CmdOrCtrlKey)), emit("menu:workflows"))
 	file.AddSeparator()
 	file.AddText("Delete Project…", accel("delete-project", keys.Combo("backspace", keys.ShiftKey, keys.CmdOrCtrlKey)), emit("menu:delete-project"))
 	file.AddSeparator()

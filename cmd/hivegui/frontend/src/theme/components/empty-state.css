@@ -10,7 +10,7 @@
    it; pointer events only on itself so a sliver of terminal behind it
    stays interactive when hidden. */
 #empty-state {
-  grid-row: 3;
+  grid-row: 4;
   grid-column: 2;
   z-index: 5;
   display: flex;
@@ -44,7 +44,7 @@
    whether "No sessions yet" is the truth or just a daemon that has not
    answered. Opaque on purpose. */
 #boot-state {
-  grid-row: 3;
+  grid-row: 4;
   grid-column: 2;
   z-index: 6;
   display: flex;

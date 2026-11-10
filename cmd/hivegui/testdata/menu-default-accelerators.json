@@ -45,6 +45,7 @@
   "toggle-project-grid": "cmdorctrl+g",
   "toggle-scroll-debug": "",
   "toggle-sidebar": "cmdorctrl+s",
+  "workflows": "cmdorctrl+shift+r",
   "zoom-in": "cmdorctrl+=",
   "zoom-out": "cmdorctrl+-",
   "zoom-reset": "cmdorctrl+0"

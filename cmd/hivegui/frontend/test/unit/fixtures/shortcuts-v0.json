@@ -94,6 +94,10 @@
             "label": "Worktrees in the active project"
           },
           {
+            "keys": "⇧⌘R",
+            "label": "Workflows in the active project"
+          },
+          {
             "keys": "⌘I",
             "label": "Capture an idea"
           },
@@ -414,6 +418,10 @@
           {
             "keys": "Ctrl+E",
             "label": "Worktrees in the active project"
+          },
+          {
+            "keys": "Ctrl+Shift+R",
+            "label": "Workflows in the active project"
           },
           {
             "keys": "Ctrl+I",

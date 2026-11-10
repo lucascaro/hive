@@ -80,7 +80,7 @@ Decided in [mocks/sidebar-redesign.html](mocks/sidebar-redesign.html) (G3c).
 
 ## `<ModalShell {...{ id, root, title, size?, hints?, titleSuffix?, showCloseButton?, actions? }}>{children}</ModalShell>` — `src/components/modals/ModalShell.tsx`
 
-- Backdrop `rgba(0,0,0,.5)`, panel `--surface`, `--radius-md`, `--shadow-popover`, max-width `sm` 420 / `md` 560 / `lg` 720px.
+- Backdrop `rgba(0,0,0,.5)`, panel `--surface`, `--radius-md`, `--shadow-popover`, max-width `sm` 420 / `md` 560 / `lg` 720 / `xl` min(1120px, 94vw).
 - Header 44px: title `--text-xl` 600 + `x` icon button. Body padding `var(--space-4)`. Footer: right-aligned `button`s, primary last.
 - Uses `src/lib/focus-trap.ts`; Escape closes; `role="dialog" aria-modal="true" aria-labelledby`.
 - The root element is NOT created by the shell — it is declared in `index.html`, and the island that renders the shell toggles its `hidden` class from a layout effect. That class is the open/closed signal every keyboard gate and e2e assertion reads.
@@ -139,3 +139,14 @@ Decided in [mocks/sidebar-redesign.html](mocks/sidebar-redesign.html) (G3c).
 ## What is *not* a primitive
 
 Empty state, boot/phase panel, help overlay, and the terminal host keep bespoke markup but must use tokens and `icon()`; they're one-off surfaces.
+
+## Workflows — `src/components/modals/Workflows.tsx`, `src/components/workflows/`, `workflows.css` (spec 530)
+
+One blocking `xl` modal (`#workflows`) with four views: list, trust, review-and-start, run. Every string that came from a workflow file, an agent or the engine renders as React text through `lib/workflow-text.ts` (controls and bidi characters shown as `\u{XXXX}`, terminal escapes stripped from check output); only `agent.message` goes through `Markdown.tsx`.
+
+- **`WorkflowGraph`** — each IR body is a `.hv-wf-body` of `.hv-wf-rank` rows (`lib/workflow-graph.ts`). A node is `<button class="hv-wf-node" data-node-id data-kind data-state aria-pressed>` with a state mark (icon + word) and an `aria-label` naming id, kind, state and attempt. A group, loop or map is a bordered `.hv-wf-sub` (`data-node-id`, a header with the loop round or map progress). Edges are one `aria-hidden` SVG per body (`.hv-wf-edges path[data-from][data-to]`) measured from the laid-out boxes; a condition is a `.hv-wf-edge-label` chip on the edge. A node under a map shows its aggregate state and a "Show N copies" disclosure (`.hv-wf-copies`, rows `.hv-wf-copy[data-key]`).
+- **State mark** (`StateMark`) — always icon and word: running `state-working`, waiting `state-attention` (a permission wait `state-waiting-permission`), done `check`, failed `state-failed`, cancelled `state-exited`, pending `state-pending`, skipped `state-skipped`, interrupted `state-interrupted`. Colour from `--state-*`, never a raw hex.
+- **`SchemaForm`** — fields for the engine's JSON Schema subset (string, enum as radios up to four values or a select, number, boolean, one-per-line list, JSON for arrays of objects, nested fieldsets), using the Form fields markup above. Drafts live in the store, so closing the modal never loses typed input.
+- **`NodeDetail`** — facts, the wait (a human prompt plus form, or the shared `PermissionCard`), `Output` as one `<pre>` with **Load more**, and `Activity`.
+- Trust view: **Cancel** takes focus, **Trust and continue** is `kind='danger'`; `y` trusts, `n`/`Esc` cancel, `Enter` is native (key scope `workflow-trust`).
+- A fourth banner slot, `workflow`, sits on `#app` grid row 3 (rows 1 to 3 are the banners; the main area is row 4).

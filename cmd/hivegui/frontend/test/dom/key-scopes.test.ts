@@ -192,6 +192,8 @@ describe('KEY_SCOPES', () => {
       'shortcut-capture',
       'settings',
       'worktrees',
+      'workflow-trust',
+      'workflows',
       'quick-idea',
       'message-session',
       'archived-sessions',
@@ -454,5 +456,86 @@ describe('app chords', () => {
     press('e', { ctrlKey: true });
     press('s', { ctrlKey: true });
     expect(ran()).toEqual(['worktrees', 'toggle-sidebar']);
+  });
+});
+
+describe('the Workflows scopes (spec 530)', () => {
+  const openWorkflows = (view: 'list' | 'trust') => {
+    store.openModal({ id: 'workflows', projectId: 'p1', projectName: 'hive' });
+    wf.setView(view);
+  };
+  let wf: typeof import('../../src/store/workflows.js');
+  beforeAll(async () => {
+    wf = await import('../../src/store/workflows.js');
+  });
+  afterEach(() => {
+    store.closeModal('workflows');
+    wf.resetWorkflowsStore();
+  });
+
+  it('workflow-trust is inactive outside the trust view', () => {
+    const trust = scopes.scopeById('workflow-trust');
+    expect(trust.active()).toBe(false);
+    openWorkflows('list');
+    expect(trust.active()).toBe(false);
+    wf.setView('trust');
+    expect(trust.active()).toBe(true);
+    store.closeModal('workflows');
+    expect(trust.active()).toBe(false);
+  });
+
+  it('workflow-trust precedes workflows', () => {
+    const ids = scopes.KEY_SCOPES.map((x) => x.id);
+    expect(ids.indexOf('workflow-trust')).toBeLessThan(
+      ids.indexOf('workflows'),
+    );
+  });
+
+  it('workflow-trust is matched, so Enter and the opener chord fall through to workflows', () => {
+    expect(scopes.scopeById('workflow-trust').owns).toBe('matched');
+    expect(scopes.scopeById('workflows').owns).toBe('exclusive');
+    openWorkflows('trust');
+    // y / n / Escape are the trust scope's.
+    press('y');
+    press('n');
+    press('Escape');
+    expect(ran()).toEqual([
+      'workflow-trust.confirm',
+      'workflow-trust.cancel',
+      'workflow-trust.cancel',
+    ]);
+    runCommand.mockClear();
+    // The opener chord belongs to the workflows scope behind it (toggle).
+    press('R', { ctrlKey: true, shiftKey: true, code: 'KeyR' });
+    expect(ran()).toEqual(['workflows']);
+    runCommand.mockClear();
+    // Enter binds nowhere: the exclusive scope leaves it to the browser,
+    // so it activates the focused button.
+    const enter = press('Enter');
+    expect(ran()).toEqual([]);
+    expect(enter.defaultPrevented).toBe(false);
+  });
+
+  it('bare y and n do nothing in the list view, where inputs live', () => {
+    openWorkflows('list');
+    press('y');
+    press('n');
+    expect(ran()).toEqual([]);
+    press('Escape');
+    expect(ran()).toEqual(['workflows.close']);
+  });
+
+  it('y typed in a sheet opened over the trust view does not trust', () => {
+    openWorkflows('trust');
+    store.openModal({ id: 'quick-idea', projectId: 'p1' } as never);
+    expect(scopes.scopeById('workflow-trust').active()).toBe(false);
+    store.closeModal('quick-idea');
+    expect(scopes.scopeById('workflow-trust').active()).toBe(true);
+  });
+
+  it('y with a modifier is not the trust key', () => {
+    openWorkflows('trust');
+    press('y', { ctrlKey: true });
+    expect(ran()).toEqual([]);
   });
 });

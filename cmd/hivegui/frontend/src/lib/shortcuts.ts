@@ -304,6 +304,7 @@ function rawGroups(isMac: boolean): { title: string; items: Row[] }[] {
           label: 'Previous / next project',
         },
         { command: 'worktrees', label: 'Worktrees in the active project' },
+        { command: 'workflows', label: 'Workflows in the active project' },
         { command: 'quick-idea', label: 'Capture an idea' },
         { command: 'idea-inbox', label: 'Ideas in the active project' },
         { command: 'message-session', label: 'Message the active session' },

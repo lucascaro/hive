@@ -52,6 +52,7 @@ import { initProjectEditor } from './app/modals/project-editor.js';
 import { initCommandPalette } from './app/modals/command-palette.js';
 import { initSettings, initThemeWatch } from './app/modals/settings.js';
 import { initWorktrees } from './app/modals/worktrees.js';
+import { initWorkflows } from './app/workflows.js';
 import { initQuickIdea } from './app/modals/quick-idea.js';
 import { initArchivedSessions } from './app/modals/archived-sessions.js';
 import { initMessageSession } from './app/modals/message-session.js';
@@ -116,6 +117,7 @@ initWorktrees({
   openSessionIn: (projectId, worktreePath, continueConversation) =>
     openLauncher(projectId, { worktreePath, continueConversation }),
 });
+initWorkflows({ setFocusedTile, refocusActiveTerm, switchTo });
 initHelpOverlay({ setFocusedTile, focusActiveTerm });
 // The find box talks to the daemon through the bridge and to the
 // terminal through SessionTerm; both are injected so find-box.ts stays

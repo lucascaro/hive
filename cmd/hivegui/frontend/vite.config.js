@@ -102,7 +102,13 @@ export default defineConfig({
     // otherwise serve .git and every dotfile above us to anything that can
     // reach the port.
     fs: {
-      allow: [__dirname, path.resolve(__dirname, '../../../site')],
+      allow: [
+        __dirname,
+        path.resolve(__dirname, '../../../site'),
+        // lib/workflow-types.ts imports the IR types and condLabel from the
+        // workflows plugin's source (dev server only; vite build inlines).
+        path.resolve(__dirname, '../../../plugins/workflows'),
+      ],
     },
   },
 });

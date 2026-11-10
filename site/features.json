@@ -233,5 +233,11 @@
     "blurb": "Interrupting Claude Code with Esc returns its session to idle immediately, and a Claude question still lights up \"needs attention\" when its hooks are unavailable.",
     "status": "shipped",
     "since": "Unreleased"
+  },
+  {
+    "title": "Run multi-agent workflows",
+    "blurb": "Open Workflows (⇧⌘R), trust a project's workflow files, start a run from a typed form, watch it on its graph and answer its questions as they come up.",
+    "status": "shipped",
+    "since": "Unreleased"
   }
 ]

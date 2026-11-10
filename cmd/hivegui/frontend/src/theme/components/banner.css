@@ -40,3 +40,4 @@
 .hv-banner__dismiss { flex-shrink: 0; }
 .hv-banner[data-slot='daemon'] { grid-row: 1; }
 .hv-banner[data-slot='update'] { grid-row: 2; }
+.hv-banner[data-slot='workflow'] { grid-row: 3; }

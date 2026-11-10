@@ -29,7 +29,7 @@ interface Pending {
 const pending = new Map<string, Pending>();
 let seq = 0;
 
-function newNonce(): string {
+export function newNonce(): string {
   seq += 1;
   return `${Date.now().toString(36)}-${seq}-${Math.random().toString(36).slice(2, 10)}`;
 }

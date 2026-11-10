@@ -32,6 +32,11 @@
     // by lib/whats-new.ts. `module: ESNext` defaults this to false, which
     // rejects that import outright.
     "resolveJsonModule": true,
+    // lib/workflow-types.ts imports the workflow IR types and condLabel from
+    // plugins/workflows/*.ts by their .ts specifiers (type and pure-function
+    // source only; Vite tree-shakes it to condLabel). Without this tsc
+    // rejects the specifier (TS5097). noEmit is already on.
+    "allowImportingTsExtensions": true,
     "strict": true,
     // The generated wailsjs/** and @xterm/* types are not ours to fix.
     "skipLibCheck": true,

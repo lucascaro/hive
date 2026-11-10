@@ -90,6 +90,12 @@ import { appStore } from '../store/store.js';
 import { setStatus, flashStatus, reportFailure, setBootState } from './dom.js';
 import { adHocGridSessions, orderedSessions } from './selectors.js';
 import { handleWorktreesPayload } from './modals/worktrees.js';
+import {
+  claimWorkflowsNotRunning,
+  resyncWorkflows,
+  routeWorkflowClick,
+  syncWorkflowsPlugin,
+} from './workflows.js';
 import { refreshIdeas } from './modals/idea-inbox.js';
 import {
   openChoiceDialog,
@@ -219,6 +225,7 @@ export async function reconnectControl(
         // same one-shot idea fetch boot does — see main.tsx.
         refreshIdeas();
         relistPluginsIfWanted();
+        resyncWorkflows();
         try {
           LogFrontend('control reconnected');
         } catch {
@@ -774,6 +781,7 @@ export function wireDaemonEvents(injected: EventsDeps) {
       setPlugins(
         (JSON.parse(jsonStr) as { plugins?: PluginInfo[] }).plugins || [],
       );
+      syncWorkflowsPlugin();
     } catch {
       flashStatus('bad plugin payload', true);
     }
@@ -790,6 +798,7 @@ export function wireDaemonEvents(injected: EventsDeps) {
     if (ev.kind === 'removed') dropPlugin(ev.plugin.id);
     else upsertPlugin(ev.plugin);
     claimPluginEvent(ev);
+    syncWorkflowsPlugin();
   });
 
   // A plugin's message to the GUI (spec 528). Passed through untouched;
@@ -1319,6 +1328,8 @@ export function wireDaemonEvents(injected: EventsDeps) {
       /* bridge absent in tests */
     }
     if (!sessionId) return;
+    // A workflow human wait (spec 530) is tagged wf:<run_id>:<key>.
+    if (routeWorkflowClick(sessionId)) return;
     const info = appData().sessions.find((s) => s.id === sessionId);
     if (!info) return;
     deps.switchTo(sessionId);
@@ -1346,6 +1357,9 @@ export function wireDaemonEvents(injected: EventsDeps) {
     }
     // This window's own install failure: the Plugins tab shows it.
     if (claimPluginInstallError(e)) return;
+    // A workflow request to an engine that is not running: the modal shows
+    // the plugin's real state, so the generic error line stays quiet.
+    if (claimWorkflowsNotRunning(e)) return;
     // A refused note: the sheet explains it (busy -> queue offer) or the
     // status line does.
     if (onMessageError(e.code, e.session_id)) return;
