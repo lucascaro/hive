@@ -605,6 +605,8 @@ Deviations from the plan as written, and why:
 ## PR convergence ledger
 
 <!-- /hs-review-loop appends one line per iteration here (append-only). -->
+- **2026-11-09 iter 1** — verdict: COMMENT; mergeable: MERGEABLE; findings_hash: empty; threads_open: 3 (CodeRabbit: UTF-8 byte budget, re-read run.get on reload, README order; plus 6 findings from the pre-PR Opus security review, fixed before opening); action: autofix+push; head_sha: b3f3dbc5.
+- **2026-11-09 iter 2** — verdict: APPROVE; mergeable: MERGEABLE; findings_hash: empty; threads_open: 0; action: stop; head_sha: b3f3dbc5. CI green on all jobs (Linux, macOS, Windows, CodeQL, daemon-contract). Not merged: holds for A PR3 (#541) and B5.
 
 ## Gate verdict
 
