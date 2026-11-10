@@ -43,6 +43,13 @@ describe('showControls', () => {
     );
   });
 
+  it('escapes soft hyphens, variation selectors, tag characters and Hangul fillers', () => {
+    expect(showControls('a\u00ADb\uFE0Fc\u3164d')).toBe(
+      'a\\u{00AD}b\\u{FE0F}c\\u{3164}d',
+    );
+    expect(showControls('x\u{E0041}y')).toBe('x\\u{E0041}y');
+  });
+
   it('keeps the characters it is told to', () => {
     expect(showControls('a\nb\tc', '\n\t')).toBe('a\nb\tc');
     expect(plainText('a\nb\u202Ec')).toBe('a\nb\\u{202E}c');

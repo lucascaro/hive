@@ -525,6 +525,14 @@ describe('the Workflows scopes (spec 530)', () => {
     expect(ran()).toEqual(['workflows.close']);
   });
 
+  it('y typed in a sheet opened over the trust view does not trust', () => {
+    openWorkflows('trust');
+    store.openModal({ id: 'quick-idea', projectId: 'p1' } as never);
+    expect(scopes.scopeById('workflow-trust').active()).toBe(false);
+    store.closeModal('quick-idea');
+    expect(scopes.scopeById('workflow-trust').active()).toBe(true);
+  });
+
   it('y with a modifier is not the trust key', () => {
     openWorkflows('trust');
     press('y', { ctrlKey: true });

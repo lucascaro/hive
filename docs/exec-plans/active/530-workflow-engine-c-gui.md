@@ -4,7 +4,7 @@
 - **Design:** [workflow-engine.md](../../design-docs/workflow-engine.md) (The overlay, Security), [acp-workflows.md](../../design-docs/acp-workflows.md)
 - **Depends on:** A (#528, [plan](528-workflow-engine-a-daemon-sdk-prereqs.md)) and B (#529, [plan](529-workflow-engine-b-headless-engine-core.md), section "Contract for C"). See **Dependencies on A and B** below.
 - **Issue:** #530
-- **Branch:** `feature/530-gui` (research and plan). Implementation is **one PR** on its own branch.
+- **Branch:** `feature/530-gui-impl` (implementation, branched from `feature/530-gui` so the plan and spec history come with it). Implementation is **one PR**.
 - **Status:** active. Drafted and plan-reviewed on 2026-11-08; revised 2026-11-09 with the independent Opus review and the user's decisions on Q-C1, Q-C2, Q-B1, Q-B2. Revised again 2026-11-09 for the materialized `run.nodes` decision. **Awaiting user approval of the revised plan**, and one new question, **Q-B3**. The B-side decisions must be folded into B's plan before B2 starts (Open questions).
 
 ## Summary
@@ -559,6 +559,8 @@ Manual (per `docs/verifying-the-gui-by-hand.md`, driven by Playwright against `w
 - **2026-11-08:** Rebased onto fresh `origin/main` (`78ce3ace`) as `feature/530-gui`; spec carried (stage `PLAN`, SC-1..SC-7). Plan re-grounded, mockups and Dependencies on A and B added, graph evidence re-measured, PR split reduced to two. Plan-reviewed (Review log). Awaiting user approval.
 - **2026-11-09:** Revised with the independent Opus review and the user's decisions on Q-C1, Q-C2, Q-B1, Q-B2 (Decision log); spec criterion 2 reworded. Awaiting user approval of the revised plan.
 
+- **2026-11-09:** Implementation started on `feature/530-gui-impl` (rebased on `origin/main` at `9de27450`). B2-B5 and A PR3 are not merged, so C is built and tested against the mock bridge's scripted engine (`test/e2e/workflows-engine.ts`, shared with the dom suites) and ships dark: with no `workflows` plugin (or one that is off, refused or failed) the modal shows the plugin gate and sends nothing. The real contract is the 529 plan on `origin/main` plus PR #542 (`run.nodes`, B-12; `node.get` `waiting` etc., B-13).
+
 ## Open questions
 
 - **Q-B3 — `node.get` carries `session_id?`, `branch?`, `worktree?`, `error?`, `conflict?` and `waiting?` (user/B).** Raised by the switch to slim `run.nodes` rows (Dependencies). Recommendation: yes, in `node.get`. Alternative: C scans `run.events` back to the key's last `node.waiting`. Changes the `node.get` reply type and two node-detail tests, not the file list.
@@ -574,6 +576,18 @@ Carried to B (C's merge depends on them): B's plan must, before B2, (1) drop `no
 - **History cost.** The detail pane's lazy `run.events` scan is per run, not per key (no filter), so a chatty run costs several pages when a pane opens; it affects only that pane, never the overlay.
 - **Ctrl+Shift+R on Linux WebKitGTK** is unverified until the real-binary check (Verification).
 - **Permission-wait notification** relies on the node's ACP session being listed while it waits (B3-dependent check in Tests).
+
+## Implementation notes (2026-11-09)
+
+Deviations from the plan as written, and why:
+
+- **`node.get` field names follow B's plan (#542), not this plan's table.** B names the output slice `output` and pages it with `total_bytes` / `next_offset` / `more`; this plan said `output_text` / `offset` / `total`. The request still sends `offset`. All of it is read in `lib/workflow-types.ts` `NodeGet` and used in one place (`NodeDetail`, via `getNode`), so a change on B's side is one type and the two node-detail paging tests.
+- **Q-B3 (recommended default) is wired as planned:** `node.get` also returns `session_id?`, `branch?`, `worktree?`, `error?`, `conflict?`, `waiting?`. B's #542 records it as B-13 ("recommended, pending user confirmation"). Switching to scanning `run.events` would change `getNode` and two tests (`a waiting node opened fresh ...`, `permission options from node.get waiting ...`).
+- **Gap rule:** `hasGap` is `first seq > maxSeq + 1` with no special case for `maxSeq === 0`; a page's `last_seq` (0 for a run with no events yet) is a real watermark, and seq starts at 1.
+- **Banner row:** a third banner slot needed a third `#app` grid row, so the main area moved from row 3 to row 4 (layout.css, empty-state.css, status-bar.css).
+- **e2e-real is deferred.** It needs the embedded `workflows` plugin (B5), the seeded tsgo tarball (B4) and Node 26 on the CI frontend job (A PR3's leg); none is on `main`. The spec, fixture, `globalSetup` change and `ci.yml` bump land with the first PR that can run them. The mock-layer specs cover every surface except the real transport.
+- **`docs/plugins.md` line** (the Workflows panel is the client of these topics) waits for B5's Workflows section, which does not exist yet.
+- **Real-binary `Ctrl+Shift+R` check (Linux WebKitGTK, Windows VM)** not run here; the macOS menu path and the keyboard path are covered by the sweep and dom tests.
 
 ## Review log
 

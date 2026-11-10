@@ -218,8 +218,11 @@ const worktrees = modal(
 // Trust).
 const workflowTrust: KeyScope = {
   id: 'workflow-trust',
+  // Top modal only: another sheet opened over this one (the idea sheet, by
+  // the menu or the palette) has text inputs, and its `y` must not trust.
   active: () =>
-    isModalOpen('workflows') && workflowsStore.getState().view === 'trust',
+    appStore.getState().modals.at(-1)?.id === 'workflows' &&
+    workflowsStore.getState().view === 'trust',
   owns: 'matched',
   bindings: () => [
     { keys: 'Shift?+Y', command: 'workflow-trust.confirm', repeat: false },

@@ -217,6 +217,7 @@ export function NodeDetail({
       ) : null}
       {waiting?.reason === 'permission' ? (
         <PermissionCard
+          key={waiting.request_id}
           sessionId={waiting.session_id}
           perm={{
             request_id: waiting.request_id,
@@ -338,6 +339,7 @@ function HumanAnswer({
 
   return (
     <form className="hv-wf-human" onSubmit={submit} aria-label="Answer">
+      <p className="hv-wf-muted">The workflow asks:</p>
       <p className="hv-wf-prompt">{plainText(waiting.prompt)}</p>
       <SchemaForm
         schema={schema}

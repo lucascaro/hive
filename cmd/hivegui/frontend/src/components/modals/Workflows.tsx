@@ -21,6 +21,7 @@ import {
   useCallback,
   useEffect,
   useLayoutEffect,
+  useRef,
   useState,
 } from 'react';
 import { useShortcutLabel } from '../../app/bindings.js';
@@ -416,14 +417,26 @@ function TrustView({ projectId }: { projectId: string }): ReactNode {
   }, []);
 
   const hash = load.status === 'ready' ? load.d.hash : '';
+  // A reply that lands after the view closed (or the modal reopened on
+  // another project) must not navigate the new one.
+  const alive = useRef(true);
+  useEffect(
+    () => () => {
+      alive.current = false;
+    },
+    [],
+  );
   const confirm = useCallback(() => {
     if (!hash || busy) return;
     setBusy(true);
     request('workflow.trust.confirm', { project_id: projectId, hash })
-      .then(() =>
-        file ? setView('review', { file }) : setView('list', { file: null }),
-      )
+      .then(() => {
+        if (!alive.current) return;
+        if (file) setView('review', { file });
+        else setView('list', { file: null });
+      })
       .catch((e: unknown) => {
+        if (!alive.current) return;
         if (e instanceof WorkflowError && e.code === 'changed') {
           setNotice(
             'The files changed while you were reading. Review them again.',
@@ -535,6 +548,13 @@ function ReviewView({ projectId }: { projectId: string }): ReactNode {
   const [tick, setTick] = useState(0);
   const [problem, setProblem] = useState<string | null>(null);
   const [starting, setStarting] = useState(false);
+  const alive = useRef(true);
+  useEffect(
+    () => () => {
+      alive.current = false;
+    },
+    [],
+  );
 
   useEffect(() => {
     void tick; // a changed source rebuilds
@@ -594,6 +614,7 @@ function ReviewView({ projectId }: { projectId: string }): ReactNode {
     })
       .then((r) => {
         dropDraft(draftId);
+        if (!alive.current) return;
         void loadRunState(r.run_id);
         setView('run', { runId: r.run_id, selectedKey: null });
       })
@@ -741,7 +762,7 @@ function RunView(): ReactNode {
   const cancel = async () => {
     const choice = await openChoiceDialog({
       title: 'Cancel this run?',
-      detail: detail.workflow,
+      detail: plainText(detail.workflow),
       note: 'Running agents are stopped. Worktrees with changes are kept.',
       choices: [
         { label: 'Keep running', value: 'keep' },
@@ -804,6 +825,7 @@ function RunView(): ReactNode {
         <div className="hv-wf-run__detail">
           {selectedKey ? (
             <NodeDetail
+              key={`${runId}:${selectedKey}`}
               runId={runId}
               nodeKey={selectedKey}
               ir={ir}

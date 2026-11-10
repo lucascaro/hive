@@ -12,12 +12,12 @@
 // paragraph separators, zero-width characters and the BOM.
 // biome-ignore lint/complexity/useRegexLiterals: a literal would put raw invisible characters in the source
 const INVISIBLE = new RegExp(
-  '[\\u0000-\\u001F\\u007F-\\u009F\\u061C\\u200B-\\u200F\\u2028-\\u202E\\u2060-\\u2069\\uFEFF]',
-  'g',
+  '[\\p{Cc}\\p{Cf}\\p{Zl}\\p{Zp}\\u00AD\\u034F\\u115F\\u1160\\u17B4\\u17B5\\u180E\\u3164\\uFFA0\\uFE00-\\uFE0F\\u{E0100}-\\u{E01EF}]',
+  'gu',
 );
 
 const escapeOf = (ch: string): string =>
-  `\\u{${ch.charCodeAt(0).toString(16).toUpperCase().padStart(4, '0')}}`;
+  `\\u{${(ch.codePointAt(0) ?? 0).toString(16).toUpperCase().padStart(4, '0')}}`;
 
 /** Makes controls and bidi/invisible characters visible as `\u{XXXX}`, so a
  * file name cannot reorder or hide what the user is trusting. `keep` lists

@@ -19,6 +19,7 @@
 import { flushSync } from 'react-dom';
 import { Notify, SetPluginEnabled } from '../bridge.js';
 import { withKey } from '../lib/chord-label.js';
+import { showControls } from '../lib/workflow-text.js';
 import { releaseFocus } from '../lib/focus-trap.js';
 import {
   applyPage,
@@ -584,7 +585,7 @@ function publishWaiting(waiting: WaitingRun[]): void {
     actions: { open: { label: withKey('Open', shortcutLabel('workflows')) } },
     text:
       waiting.length === 1
-        ? `Workflow "${w.workflow}"${where} is waiting on you.`
+        ? `Workflow "${showControls(w.workflow)}"${where} is waiting on you.`
         : `${waiting.length} workflows are waiting on you.`,
   });
 }
@@ -664,7 +665,7 @@ async function noteWait(runId: string, ev: RunEvent): Promise<void> {
     .getState()
     .projects.find((p) => p.id === info?.project_id);
   Notify(
-    info?.workflow ?? 'Workflow',
+    showControls(info?.workflow ?? 'Workflow'),
     project?.name ?? '',
     'Waiting for your answer — click to open.',
     `wf:${runId}:${ev.key ?? ''}`,
