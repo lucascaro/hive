@@ -347,7 +347,10 @@ function endRound({ reminimize }: { reminimize: boolean }) {
 const sessionExists = (id: string) =>
   appData().sessions.some((s) => s.id === id);
 
-// navGo performs the switch a history step resolved to. A minimized
+// goToSession puts the user in a session (spec 544's finder uses it
+// directly, so the jump is recorded as navigation); navGo wraps it for a
+// history step, which must not be. It performs the switch a history step
+// resolved to. A minimized
 // session has to be restored on the way in, exactly as ⌘B does at
 // jumpToAttention: gridScopeSessions filters appData().minimized, so a bare
 // switchTo would make the session active with no tile in the grid — the
@@ -358,12 +361,14 @@ const sessionExists = (id: string) =>
 // that set exists so ⇧⌘B can re-minimize sessions a bell round pulled
 // out on your behalf. Going back here is a deliberate "put me in that
 // session", so it stays restored.
+export function goToSession(id: string) {
+  if (isSessionHidden(id))
+    restoreSession(id); // un-minimize (session and/or project), then switchTo
+  else switchTo(id);
+}
+
 function navGo(id: string) {
-  deps.withoutNavHistory(() => {
-    if (isSessionHidden(id))
-      restoreSession(id); // un-minimize (session and/or project), then switchTo
-    else switchTo(id);
-  });
+  deps.withoutNavHistory(() => goToSession(id));
 }
 
 export function navBack() {

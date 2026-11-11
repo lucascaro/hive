@@ -297,7 +297,7 @@ func TestKill_UnpushedCommits_KeepsWorktree(t *testing.T) {
 }
 
 // TestCreate_ExplicitCwdInsideWorktree_NoNestedWorktree pins the
-// invariants the GUI's ⌘P / ⇧⌘P shortcut relies on: when the caller
+// invariants the GUI's ⌘K / ⇧⌘K shortcut relies on: when the caller
 // passes Cwd pointing inside an existing worktree with UseWorktree=false,
 // the daemon must (a) NOT stack a nested .worktrees/* on top, and
 // (b) ADOPT the existing worktree's path+branch onto the new entry so
@@ -322,7 +322,7 @@ func TestCreate_ExplicitCwdInsideWorktree_NoNestedWorktree(t *testing.T) {
 	time.Sleep(80 * time.Millisecond)
 
 	// Duplicate: explicit cwd inside the existing worktree, UseWorktree
-	// off. This is exactly the wire payload the GUI sends on ⌘P.
+	// off. This is exactly the wire payload the GUI sends on ⌘K.
 	dup, err := r.Create(context.Background(), wire.CreateSpec{
 		ProjectID: p.ID, Shell: "/bin/bash", Agent: "claude",
 		Cwd: wtPath, UseWorktree: false,
@@ -613,7 +613,7 @@ func TestCreate_AdoptedWorktree_InheritsSiblingColor(t *testing.T) {
 	}
 	time.Sleep(80 * time.Millisecond)
 
-	// The ⌘P duplicate payload: explicit cwd inside the sibling's worktree.
+	// The ⌘K duplicate payload: explicit cwd inside the sibling's worktree.
 	dup, err := r.Create(context.Background(), wire.CreateSpec{
 		ProjectID: p.ID, Shell: "/bin/bash", Agent: "claude",
 		Cwd: wtPath, UseWorktree: false,

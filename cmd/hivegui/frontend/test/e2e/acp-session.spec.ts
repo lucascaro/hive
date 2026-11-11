@@ -170,7 +170,7 @@ test('an ACP session is taken over in a terminal and handed back from the palett
   const id = await page.evaluate(() => window.__hive_state?.activeId);
 
   const palette = async (query: string) => {
-    await page.keyboard.press(`${mod}+Shift+k`);
+    await page.keyboard.press(`${mod}+Shift+p`);
     await page.locator('#command-palette-input').fill(query);
     await page.keyboard.press('Enter');
   };

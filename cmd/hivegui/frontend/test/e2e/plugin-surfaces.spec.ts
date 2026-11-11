@@ -28,7 +28,7 @@ test('session-notes uses all four surfaces', async ({ page }) => {
   await closeSettings(page);
 
   // Palette command → the session view modal.
-  await page.keyboard.press(`${MOD}+Shift+K`);
+  await page.keyboard.press(`${MOD}+Shift+P`);
   await page.locator('#command-palette-input').fill('Edit note');
   await expect(page.locator('#command-palette')).toContainText(
     'Edit note for this session',
@@ -52,7 +52,7 @@ test('session-notes uses all four surfaces', async ({ page }) => {
   );
 
   // The key shown in the palette works: toggle the notes panel.
-  await page.keyboard.press(`${MOD}+Shift+K`);
+  await page.keyboard.press(`${MOD}+Shift+P`);
   await page.locator('#command-palette-input').fill('notes panel');
   await expect(page.locator('#command-palette')).toContainText(TOGGLE);
   await page.keyboard.press('Escape');

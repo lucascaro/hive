@@ -110,7 +110,7 @@ export function activeProjectId(): string {
 
 // resolveSessionCwd picks the directory a session is actually running
 // in: its worktree path if any, otherwise the owning project's cwd.
-// Used by ⌘P / ⇧⌘P to fork a session into the same directory.
+// Used by ⌘K / ⇧⌘K to fork a session into the same directory.
 //
 // Wire payloads from the daemon use snake_case (see
 // internal/wire/control.go), so prefer those and fall back to the

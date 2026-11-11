@@ -69,7 +69,7 @@ test.describe('session ordering', () => {
     await boot(page, 3);
     const before = await sidebarIds(page);
     await activate(page, before[0]);
-    // ⌘T opens the launcher; the ⌘P-free path here goes through the
+    // ⌘T opens the launcher; the ⌘K-free path here goes through the
     // mock directly with the same anchor the app passes.
     await page.evaluate(
       (anchor) => window.__hive.addSession?.('inserted', anchor),
@@ -81,11 +81,11 @@ test.describe('session ordering', () => {
     expect(after).toEqual([before[0], after[1], before[1], before[2]]);
   });
 
-  test('a duplicated session appears directly below its source (⌘P)', async ({
+  test('a duplicated session appears directly below its source (⌘K)', async ({
     page,
   }) => {
     await boot(page, 3);
-    // ⌘P refuses when the source session resolves no cwd, and the mock's
+    // ⌘K refuses when the source session resolves no cwd, and the mock's
     // seed project has none — hand it one the way the daemon would.
     await page.evaluate(() => {
       const p = window.__hive.state?.projects?.[0];
@@ -98,7 +98,7 @@ test.describe('session ordering', () => {
     });
     const before = await sidebarIds(page);
     await activate(page, before[1]);
-    await page.keyboard.press(`${MOD}+p`);
+    await page.keyboard.press(`${MOD}+k`);
     await expect.poll(() => sidebarIds(page)).toHaveLength(4);
     const after = await sidebarIds(page);
     expect(after).toEqual([before[0], before[1], after[2], before[2]]);

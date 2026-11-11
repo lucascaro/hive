@@ -167,7 +167,7 @@ test('native menu event opens settings', async ({ page }) => {
 
 test('settings is reachable from the command palette', async ({ page }) => {
   await boot(page);
-  await page.keyboard.press(`${mod}+Shift+k`);
+  await page.keyboard.press(`${mod}+Shift+p`);
   await page.locator('#command-palette-input').fill('settings');
   await page.keyboard.press('Enter');
   await expect(page.locator('#settings')).toBeVisible();
@@ -482,7 +482,7 @@ test('a hidden agent leaves the launcher but its sessions keep working', async (
   page,
 }) => {
   await boot(page);
-  // ⌘P refuses when the source session resolves no cwd, and the mock's
+  // ⌘K refuses when the source session resolves no cwd, and the mock's
   // seed project has none — hand it one the way the daemon would.
   const sid = await page.evaluate(async () => {
     const p = window.__hive.state?.projects?.[0];
@@ -519,7 +519,7 @@ test('a hidden agent leaves the launcher but its sessions keep working', async (
   const count = await page.evaluate(
     () => window.__hive.state?.sessions.length ?? 0,
   );
-  await page.keyboard.press(`${mod}+p`);
+  await page.keyboard.press(`${mod}+k`);
   await expect
     .poll(() => page.evaluate(() => window.__hive.state?.sessions.length ?? 0))
     .toBe(count + 1);

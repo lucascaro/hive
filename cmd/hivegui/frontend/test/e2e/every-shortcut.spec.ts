@@ -68,6 +68,7 @@ const FIXTURES: Record<string, (page: Page) => Promise<void>> = {
     await expect(page.locator('.choice-dialog')).toBeVisible();
   },
   'command-palette': (page) => run(page, 'command-palette'),
+  'session-finder': (page) => run(page, 'session-finder'),
   settings: (page) => run(page, 'settings'),
   worktrees: (page) => run(page, 'worktrees'),
   'quick-idea': (page) => run(page, 'quick-idea'),
@@ -133,6 +134,7 @@ const OPENS: Record<string, string> = {
   'archived-sessions': 'archived-sessions',
   'idea-inbox': 'idea-inbox',
   'command-palette': 'command-palette',
+  'session-finder': 'session-finder',
   'keyboard-shortcuts': 'help-overlay',
   'help-modal.shortcuts': 'help-overlay',
   'session.answer-worktree-question': 'choice-dialog',
@@ -412,7 +414,7 @@ for (const platform of PLATFORMS) {
           JSON.stringify({ kind: 'updated', project: p }),
         );
       });
-      await page.keyboard.press(`${M}+Shift+KeyP`);
+      await page.keyboard.press(`${M}+Shift+KeyK`);
       await expect.poll(() => scopeActive(page, 'launcher')).toBe(true);
     });
 

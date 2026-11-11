@@ -10,7 +10,7 @@ describe('modeHints', () => {
   it('offers grid + palette in single view', () => {
     expect(modeHints('single', true)).toEqual([
       { key: '⌘G', label: 'grid' },
-      { key: '⇧⌘K', label: 'actions' },
+      { key: '⇧⌘P', label: 'actions' },
     ]);
   });
 
@@ -46,7 +46,7 @@ describe('modeHints', () => {
 
   it('spells modifiers out off macOS', () => {
     expect(modeHints('single', false)[0].key).toBe('Ctrl+G');
-    expect(modeHints('single', false)[1].key).toBe('Ctrl+Shift+K');
+    expect(modeHints('single', false)[1].key).toBe('Ctrl+Shift+P');
     expect(modeHints('grid-all', false)[0].key).toBe('Ctrl+Shift+G');
     expect(modeHints('grid-all', false)[1].key).toBe('Ctrl+Arrows');
   });

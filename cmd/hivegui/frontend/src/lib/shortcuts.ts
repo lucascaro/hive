@@ -346,6 +346,7 @@ function rawGroups(isMac: boolean): { title: string; items: Row[] }[] {
           label: 'Zoom in / out / reset',
         },
         { command: 'command-palette', label: 'Command palette' },
+        { command: 'session-finder', label: 'Go to session' },
         { command: 'settings', label: 'Settings (custom agents)' },
         {
           merged: [

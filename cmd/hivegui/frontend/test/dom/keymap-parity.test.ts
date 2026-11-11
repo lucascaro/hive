@@ -293,7 +293,10 @@ const SWEPT = KEY_SCOPES.map((s) => s.id).filter(
     id !== 'find-box' &&
     id !== 'acp-prompt' &&
     id !== 'plugins' &&
-    id !== 'shortcut-capture',
+    id !== 'shortcut-capture' &&
+    // session-finder (spec 544) is post-478: its Escape and mirrored
+    // chord are held by key-scopes.test.ts and every-shortcut.spec.ts.
+    id !== 'session-finder',
 );
 
 // The approved deltas. Each returns true when this cell is one the spec
@@ -339,6 +342,29 @@ const APPROVED_477 = {
   // D1: ⇧⌘↑/↓ (⇧Ctrl↑/↓) run move-forward/backward in every view, as the
   // macOS menu always did; they ran arrow-shift-*, which moved spatially
   // in a grid.
+  // R (spec 544): four default chords are re-keyed, so a legacy chord
+  // runs a different command now. Exactly these cells, on the app scope.
+  R: (
+    s: string,
+    e: Ev,
+    _mac: boolean,
+    was: string | null,
+    now: string | null,
+  ) =>
+    s === 'app' &&
+    /^[pk]$/i.test(e.key) &&
+    ((!e.shiftKey && /^p$/i.test(e.key)
+      ? was === 'duplicate-session' && now === 'session-finder'
+      : false) ||
+      (e.shiftKey && /^p$/i.test(e.key)
+        ? was === 'duplicate-session-choose-tool' && now === 'command-palette'
+        : false) ||
+      (!e.shiftKey && /^k$/i.test(e.key)
+        ? was === null && now === 'duplicate-session'
+        : false) ||
+      (e.shiftKey && /^k$/i.test(e.key)
+        ? was === 'command-palette' && now === 'duplicate-session-choose-tool'
+        : false)),
   M: (
     s: string,
     _e: Ev,
@@ -355,7 +381,7 @@ describe('key bindings vs the pre-478 matchers', () => {
   const seen: Record<
     keyof typeof APPROVED | keyof typeof APPROVED_477,
     number
-  > = { A: 0, B: 0, D: 0, F: 0, M: 0, N: 0 };
+  > = { A: 0, B: 0, D: 0, F: 0, M: 0, N: 0, R: 0 };
   const unexpected: string[] = [];
 
   for (const mac of [true, false]) {
@@ -392,6 +418,7 @@ describe('key bindings vs the pre-478 matchers', () => {
     expect(seen.F).toBeGreaterThan(0);
     expect(seen.M).toBeGreaterThan(0);
     expect(seen.N).toBeGreaterThan(0);
+    expect(seen.R).toBeGreaterThan(0);
   });
 
   it('pins one representative cell per delta', () => {

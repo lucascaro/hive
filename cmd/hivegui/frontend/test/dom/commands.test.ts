@@ -151,6 +151,7 @@ describe('the palette', () => {
       'orchestrator',
       'close-session',
       'archive-session',
+      'session-finder',
       'archived-sessions',
       'reopen-closed-session',
       'new-window',

@@ -239,5 +239,11 @@
     "blurb": "Interrupting Claude Code with Esc returns its session to idle immediately, and a Claude question still lights up \"needs attention\" when its hooks are unavailable.",
     "status": "shipped",
     "since": "Unreleased"
+  },
+  {
+    "title": "Go to session",
+    "blurb": "Press ⌘P to search every session by name, window title, branch or project and jump straight to it — with nothing typed, the one you just left is first.",
+    "status": "shipped",
+    "since": "Unreleased"
   }
 ]

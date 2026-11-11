@@ -1812,7 +1812,7 @@ func (r *Registry) kill(id string, force, removeWorktree, archive bool) error {
 	}
 	// Count siblings sharing this worktree. The worktree is only
 	// cleaned up when the LAST session in it is killed — duplicating
-	// (⌘P) creates extra entries that share the same worktree dir.
+	// (⌘K) creates extra entries that share the same worktree dir.
 	worktreeShared := false
 	if wtPath != "" {
 		for sid, other := range r.entries {

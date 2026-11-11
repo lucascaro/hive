@@ -1,0 +1,61 @@
+/* ---------- session finder (spec 544) ---------- */
+
+#session-finder .hv-dialog__body {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-height: 0;
+  overflow: hidden;
+}
+.finder-list {
+  flex: 1 1 auto;
+  overflow-y: auto;
+  /* Flex items refuse to shrink below their content unless said so. */
+  min-height: 0;
+}
+.finder-empty {
+  color: var(--fg-muted);
+  line-height: 1.5;
+}
+.finder-row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  min-height: 32px;
+  padding: 4px var(--space-3);
+  border: 1px solid transparent;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  color: var(--fg-muted);
+}
+.finder-row:hover { background: var(--hover); }
+.finder-row[data-selected] {
+  background: var(--sel);
+  border-color: var(--accent);
+  color: var(--fg);
+}
+.finder-row__state { flex: 0 0 auto; }
+.finder-row__name {
+  flex: 0 1 auto;
+  min-width: 0;
+  color: var(--fg);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.finder-row__agent {
+  flex: 0 0 auto;
+  font-size: var(--text-xs);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+.finder-row__meta {
+  flex: 1 1 0;
+  min-width: 0;
+  margin-left: auto;
+  text-align: right;
+  font-size: var(--text-xs);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}

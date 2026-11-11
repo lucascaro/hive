@@ -1,6 +1,6 @@
 module github.com/lucascaro/hive
 
-go 1.27.3
+go 1.27.4
 
 require (
 	fyne.io/systray v1.12.2

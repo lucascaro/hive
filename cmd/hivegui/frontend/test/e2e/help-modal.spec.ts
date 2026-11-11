@@ -35,7 +35,7 @@ test('the help button opens Help, and Escape closes it', async ({ page }) => {
 
 test('Help is reachable from the command palette', async ({ page }) => {
   await boot(page);
-  await page.keyboard.press(`${mod}+Shift+k`);
+  await page.keyboard.press(`${mod}+Shift+p`);
   await page.locator('#command-palette-input').fill('help');
   await page.keyboard.press('Enter');
   await expect(page.locator('#help-modal')).toBeVisible();
@@ -83,7 +83,7 @@ test('About shows the required attribution and no-warranty notice', async ({
 
 test('About Hive is reachable from the command palette', async ({ page }) => {
   await boot(page);
-  await page.keyboard.press(`${mod}+Shift+k`);
+  await page.keyboard.press(`${mod}+Shift+p`);
   await page.locator('#command-palette-input').fill('about');
   await page.keyboard.press('Enter');
   await expect(page.locator('#help-modal #help-about')).toBeVisible();

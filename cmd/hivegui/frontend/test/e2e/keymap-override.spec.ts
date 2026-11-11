@@ -52,7 +52,7 @@ test('a keymap loaded at boot moves the shortcut everywhere', async ({
   ).toHaveCount(0);
   await page.keyboard.press('Escape');
 
-  await page.keyboard.press(`${mod}+Shift+k`);
+  await page.keyboard.press(`${mod}+Shift+p`);
   await page.locator('#command-palette-input').fill('new session');
   const palette = page.locator('#command-palette');
   await expect(palette).toContainText(NEW);

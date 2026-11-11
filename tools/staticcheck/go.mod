@@ -1,6 +1,6 @@
 module github.com/lucascaro/hive/tools/staticcheck
 
-go 1.27.3
+go 1.27.4
 
 require honnef.co/go/tools v0.8.1
 
