@@ -66,12 +66,15 @@ function FinderPanel({ root }: { root: HTMLElement }): ReactNode {
   // Keep the keyboard-selected row visible: focus stays in the input, so
   // the browser never scrolls to it.
   const selectedId = rows[active]?.id;
+  // `query` re-runs it: a new query can reorder the list so the same id sits
+  // elsewhere, without selectedId changing.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: see above
   useEffect(() => {
     if (selectedId === undefined) return;
     listRef.current
       ?.querySelector('[data-selected]')
       ?.scrollIntoView?.({ block: 'nearest' });
-  }, [selectedId]);
+  }, [selectedId, query]);
 
   // Re-attached every render so it closes over the current list.
   useEffect(() => {
@@ -118,7 +121,7 @@ function FinderPanel({ root }: { root: HTMLElement }): ReactNode {
         ref={inputRef}
         type="text"
         role="combobox"
-        aria-expanded={rows.length > 0}
+        aria-expanded={true}
         aria-controls="session-finder-list"
         aria-autocomplete="list"
         aria-activedescendant={
