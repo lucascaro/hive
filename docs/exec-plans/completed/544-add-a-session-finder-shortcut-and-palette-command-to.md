@@ -2,7 +2,7 @@
 
 - **Spec:** [docs/product-specs/544-add-a-session-finder-shortcut-and-palette-command-to.md](../../product-specs/544-add-a-session-finder-shortcut-and-palette-command-to.md)
 - **Issue:** #544
-- **Status:** active
+- **Status:** completed
 - **PR:** #545
 - **Branch:** feature/544-session-finder
 
@@ -147,3 +147,12 @@ Independent reviewer, round 1: **revise**, confidence 7. Must-fix applied (4): (
 - **2026-11-11 iter 2** — verdict: REQUEST_CHANGES (3 CodeRabbit threads: scroll selected row into view, Enter only from the search input, combobox/aria-activedescendant); mergeable: MERGEABLE; threads_open: 3; action: autofix+push; head_sha: 638b5e0.
 - **2026-11-11 iter 3** — verdict: REQUEST_CHANGES (2 CodeRabbit threads: effect must re-run on query change; aria-expanded vs always-visible listbox); mergeable: MERGEABLE; threads_open: 2; action: autofix+push; head_sha: afe4570.
 - **2026-11-11 iter 4** — verdict: APPROVE (inline re-review of d565dcd; CI green on all jobs); mergeable: MERGEABLE; findings_hash: empty; threads_open: 0; action: stop; head_sha: d565dcd.
+
+## Gate verdict
+
+- **2026-11-11** — verdict: PASS; phase: —; checks: 8 passed / 0 failed / 0 followups; followups: none; one-line: all 8 success criteria traced to tests/diff, no non-goal bled in, docs and changeset present (inline gate, no sub-agents).
+  - 2026-11-11 dimensions:
+    - acceptance — PASS — c1 e2e collapsed-project jump; c2 per-field unit+e2e; c3 flip-back e2e; c4 Esc e2e; c5 live rename/branch e2e; c6 bindings Mod+P free, every-shortcut sweep green, RESERVED_CHORDS unaffected; c7 unit filter of 100 sessions under 100 ms (e2e UI bound is a generous 1000/1500 ms for CI, noted); c8 palette command, help row, Settings group, README row, 3 changesets, features.json
+    - non-goals — PASS — no transcript search, no result actions, no sidebar filter, archived excluded
+    - doc accuracy — PASS — README, changesets, features.json, menu accelerator fixture updated; no regression_of needed (no type: fixed changeset)
+

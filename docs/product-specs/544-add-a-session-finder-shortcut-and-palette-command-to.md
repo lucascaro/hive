@@ -5,7 +5,8 @@ type: enhancement
 complexity: M
 priority: P2
 pr: 545
-stage: GATE
+shipped: 2026-11-11
+stage: DONE
 ---
 
 # Add a session finder: shortcut and palette command to jump to any session by name, title, branch or project
