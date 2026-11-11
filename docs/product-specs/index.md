@@ -23,6 +23,7 @@ The *what* and *why* of work this project plans to do. Each spec describes user 
 
 | Issue | Title | PR | Shipped | Spec |
 |-------|-------|----|---------|------|
+| #544 | Add a session finder: shortcut and palette command to jump to any session by name, title, branch or project | #545 | 2026-11-11 | [544-add-a-session-finder-shortcut-and-palette-command-to](544-add-a-session-finder-shortcut-and-palette-command-to.md) |
 | #528 | Workflow engine A: daemon and SDK prerequisites (provenance, typed results, ACP cancel, plugin request/reply) | #541 | 2026-11-09 | [528-workflow-engine-a-daemon-and-sdk-prerequisites-prov](528-workflow-engine-a-daemon-and-sdk-prerequisites-prov.md) |
 | #533 | Add sessions to an ad-hoc grid with ⌘/Ctrl-click | #534 | 2026-10-26 | [533-add-sessions-to-an-ad-hoc-grid-with-cmd-ctrl-click](533-add-sessions-to-an-ad-hoc-grid-with-cmd-ctrl-click.md) |
 | — | Observe from a session: hived session list and hived wait | #525 | 2026-10-22 | [390-session-observe-list-and-wait](390-session-observe-list-and-wait.md) |
