@@ -85,7 +85,7 @@ test('session-notes loads from the state dir and saves its settings', async ({
 
   // A note, through the palette and the session view.
   await page.keyboard.press('Escape');
-  await page.keyboard.press(`${mod}+Shift+K`);
+  await page.keyboard.press(`${mod}+Shift+P`);
   await page.locator('#command-palette-input').fill('Edit note');
   await page.keyboard.press('Enter');
   await page.locator('#session-notes-text').fill('real daemon note');

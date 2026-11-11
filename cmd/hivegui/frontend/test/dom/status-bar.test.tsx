@@ -129,12 +129,12 @@ describe('status bar', () => {
   it('setModeHint renders kbd + label pairs into #status-hint and replaces them wholesale', () => {
     setModeHint([
       { key: '⌘G', label: 'grid' },
-      { key: '⇧⌘K', label: 'actions' },
+      { key: '⇧⌘P', label: 'actions' },
     ]);
     let hint = document.getElementById('status-hint') as HTMLElement;
     let kbds = hint.querySelectorAll('kbd.hv-kbd');
     let labels = hint.querySelectorAll('.hv-status__hint-label');
-    expect(Array.from(kbds).map((k) => k.textContent)).toEqual(['⌘G', '⇧⌘K']);
+    expect(Array.from(kbds).map((k) => k.textContent)).toEqual(['⌘G', '⇧⌘P']);
     expect(Array.from(labels).map((l) => l.textContent)).toEqual([
       'grid',
       'actions',

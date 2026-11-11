@@ -66,8 +66,8 @@ func buildAppMenuRecorded(a *App, record map[string]string) *menu.Menu {
 	file.AddText("New Project…", accel("new-project", keys.CmdOrCtrl("n")), emit("menu:new-project"))
 	file.AddText("New Session", accel("new-session", keys.CmdOrCtrl("t")), emit("menu:new-session"))
 	file.AddText("New Session in Worktree", accel("new-session-worktree", keys.Combo("t", keys.ShiftKey, keys.CmdOrCtrlKey)), emit("menu:new-session-worktree"))
-	file.AddText("Duplicate Session", accel("duplicate-session", keys.CmdOrCtrl("p")), emit("menu:duplicate-session"))
-	file.AddText("Duplicate Session (choose tool)…", accel("duplicate-session-choose-tool", keys.Combo("p", keys.ShiftKey, keys.CmdOrCtrlKey)), emit("menu:duplicate-session-choose-tool"))
+	file.AddText("Duplicate Session", accel("duplicate-session", keys.CmdOrCtrl("k")), emit("menu:duplicate-session"))
+	file.AddText("Duplicate Session (choose tool)…", accel("duplicate-session-choose-tool", keys.Combo("k", keys.ShiftKey, keys.CmdOrCtrlKey)), emit("menu:duplicate-session-choose-tool"))
 	file.AddText("Restart Session", accel("restart-session", nil), emit("menu:restart-session"))
 	file.AddText("Take Over in Terminal", accel("take-over-session", nil), emit("menu:take-over-session"))
 	file.AddText("Hand Back to ACP", accel("hand-back-session", nil), emit("menu:hand-back-session"))
@@ -120,7 +120,7 @@ func buildAppMenuRecorded(a *App, record map[string]string) *menu.Menu {
 	m.Append(menu.EditMenu()) // Cut / Copy / Paste / Select All
 
 	view := m.AddSubmenu("View")
-	view.AddText("Command Palette…", accel("command-palette", keys.Combo("k", keys.ShiftKey, keys.CmdOrCtrlKey)), emit("menu:command-palette"))
+	view.AddText("Command Palette…", accel("command-palette", keys.Combo("p", keys.ShiftKey, keys.CmdOrCtrlKey)), emit("menu:command-palette"))
 	view.AddSeparator()
 	view.AddText("Zoom In", accel("zoom-in", keys.CmdOrCtrl("=")), emit("menu:zoom-in"))
 	view.AddText("Zoom Out", accel("zoom-out", keys.CmdOrCtrl("-")), emit("menu:zoom-out"))

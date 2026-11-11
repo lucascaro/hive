@@ -151,11 +151,11 @@ describe('checkContributions', () => {
 describe('refused chords', () => {
   it('lists the keys a plugin asked for and did not get', () => {
     const [palette, free] = resolveCommands(
-      [{ id: 'p', commands: [cmd('pal', 'k', true), cmd('free', 'y')] }],
+      [{ id: 'p', commands: [cmd('pal', 'p', true), cmd('free', 'y')] }],
       coreChords(true),
       true,
     );
-    expect(palette.refused).toEqual(['Mod+Shift+[KeyK]']);
+    expect(palette.refused).toEqual(['Mod+Shift+[KeyP]']);
     expect(palette.bound).toBe(false);
     expect(free.refused).toEqual([]);
     expect(free.chords).toEqual(['Mod+[KeyY]']);

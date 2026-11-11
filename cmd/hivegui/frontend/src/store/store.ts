@@ -193,6 +193,7 @@ export type ModalId =
   | 'settings'
   | 'project-editor'
   | 'command-palette'
+  | 'session-finder'
   | 'worktrees'
   | 'quick-idea'
   | 'idea-inbox'
@@ -213,6 +214,7 @@ export type ModalEntry =
   | { id: 'settings'; seq: number }
   | { id: 'project-editor'; seq: number; editing: ProjectInfo | null }
   | { id: 'command-palette'; seq: number }
+  | { id: 'session-finder'; seq: number }
   | { id: 'worktrees'; seq: number; projectId: string; projectName: string }
   // The capture sheet's project is a draft the user can change, so the
   // entry carries only what it opens ON: the project the focused

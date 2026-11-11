@@ -706,7 +706,7 @@ func TestRetryAfterFailedAddDoesNotReuseTheStaleBranch(t *testing.T) {
 // The ownership guard has two clauses and they defend different
 // things. Assert the live-entry clause on its own: a plan that DID
 // create its path must still not delete it once a live session lives
-// there (⌘P duplicate adopts a sibling's worktree).
+// there (⌘K duplicate adopts a sibling's worktree).
 func TestDiscardRefusesWhileALiveSessionLivesThere(t *testing.T) {
 	skipNonPosix(t)
 	r, p := freshRegistryWithProject(t)

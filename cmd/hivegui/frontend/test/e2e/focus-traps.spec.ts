@@ -406,7 +406,7 @@ test('command palette: Tab moves the selection instead of leaving', async ({
   page,
 }) => {
   await boot(page);
-  await page.keyboard.press(`${mod}+Shift+k`);
+  await page.keyboard.press(`${mod}+Shift+p`);
   await expect(page.locator('#command-palette')).toBeVisible();
   await page.keyboard.press('Tab');
   await expect(page.locator('#command-palette')).toBeVisible();
@@ -460,7 +460,7 @@ const MODALS: ModalCase[] = [
   {
     name: 'command palette',
     selector: '#command-palette',
-    open: (page) => page.keyboard.press(`${mod}+Shift+k`),
+    open: (page) => page.keyboard.press(`${mod}+Shift+p`),
   },
   {
     name: 'settings',

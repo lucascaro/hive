@@ -95,7 +95,7 @@ test('the sidebar project button opens it too', async ({ page }) => {
 test('the command palette opens it', async ({ page }) => {
   await boot(page);
   await seed(page, [CLEAN]);
-  await page.keyboard.press(`${mod}+Shift+k`);
+  await page.keyboard.press(`${mod}+Shift+p`);
   await page.keyboard.type('Worktrees');
   await page.keyboard.press('Enter');
   await expect(panel(page)).toBeVisible();

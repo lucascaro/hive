@@ -38,7 +38,7 @@ type createPlan struct {
 	cwd       string
 
 	// adoptedPath/adoptedBranch are set when cwd already lives in a
-	// worktree owned by a sibling session in the same project (e.g. ⌘P
+	// worktree owned by a sibling session in the same project (e.g. ⌘K
 	// duplicate): the new entry joins that worktree instead of creating
 	// one.
 	adoptedPath   string
@@ -491,7 +491,7 @@ func (r *Registry) resolveCreateTarget(spec wire.CreateSpec) createPlan {
 		p.cwd = spec.WorktreePath
 	}
 	// Detect when cwd already lives in a worktree owned by another
-	// session in the same project (e.g. ⌘P duplicate). The new entry
+	// session in the same project (e.g. ⌘K duplicate). The new entry
 	// adopts that worktree's path+branch so the sidebar shows the
 	// worktree badge and Kill can keep the worktree alive until the
 	// last session in it goes away.

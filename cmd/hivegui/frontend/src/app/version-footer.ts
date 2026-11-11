@@ -6,7 +6,7 @@
 //
 // Shows which build of hive (GUI) and hived (daemon) is running. This
 // replaced the static keyboard-hint line: the shortcuts were already
-// discoverable via the command palette (⇧⌘K) and help overlay (⌘/),
+// discoverable via the command palette (⇧⌘P) and help overlay (⌘/),
 // whereas build identity had no always-visible surface at all — the
 // stale-daemon banner only appears when the two *disagree*.
 //

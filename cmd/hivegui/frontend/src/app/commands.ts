@@ -88,6 +88,10 @@ import {
   closeArchivedSessions,
   toggleArchivedSessions,
 } from './modals/archived-sessions.js';
+import {
+  closeSessionFinder,
+  openSessionFinder,
+} from './modals/session-finder.js';
 import { closeMessageSession } from './modals/message-session.js';
 import { archiveActiveSession } from './archive.js';
 import { dismissSettings, openSettings } from './modals/settings.js';
@@ -201,6 +205,11 @@ const PALETTE: readonly Command[] = [
     id: 'archive-session',
     title: 'Archive Session',
     run: () => archiveActiveSession(),
+  },
+  {
+    id: 'session-finder',
+    title: 'Go to Session…',
+    run: () => openSessionFinder(),
   },
   {
     id: 'archived-sessions',
@@ -348,6 +357,7 @@ const UNLISTED: readonly Command[] = [
   { id: 'inline-rename.cancel', run: () => cancelInlineRename() },
   { id: 'choice-dialog.dismiss', run: () => dismissChoiceDialog() },
   { id: 'command-palette.close', run: () => closeCommandPalette() },
+  { id: 'session-finder.close', run: () => closeSessionFinder() },
   { id: 'settings.close', run: () => dismissSettings() },
   { id: 'worktrees.close', run: () => closeWorktrees() },
   { id: 'quick-idea.close', run: () => closeQuickIdea() },

@@ -83,7 +83,7 @@ test('help overlay is reachable from the command palette and gates other shortcu
   page,
 }) => {
   await boot(page);
-  await page.keyboard.press(`${mod}+Shift+k`);
+  await page.keyboard.press(`${mod}+Shift+p`);
   await page.locator('#command-palette-input').fill('keyboard');
   await page.keyboard.press('Enter');
   await expect(page.locator('#help-overlay')).toBeVisible();

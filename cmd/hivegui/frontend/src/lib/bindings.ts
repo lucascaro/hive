@@ -111,7 +111,7 @@ export const DEFAULT_APP_BINDINGS: readonly Binding[] = [
   { keys: ['Mod+Shift?+=', 'Mod+Shift?++'], command: 'zoom-in' },
   { keys: ['Mod+Shift?+-', 'Mod+Shift?+_'], command: 'zoom-out' },
   { keys: 'Mod+Shift?+0', command: 'zoom-reset' },
-  { keys: 'Mod+Shift+K', command: 'command-palette' },
+  { keys: 'Mod+Shift+P', command: 'command-palette' },
   // ⌘⏎ zooms into the tile you navigated to, from a grid only (the
   // command declines in single view). ONE-WAY on purpose: Claude and
   // Codex bind Cmd+Enter themselves (spec #217), so in single view the
@@ -123,8 +123,9 @@ export const DEFAULT_APP_BINDINGS: readonly Binding[] = [
   // same accelerator; Windows/Linux have no native menu, so this is the
   // only path there.
   { keys: 'Mod+Shift?+,', command: 'settings' },
-  { keys: 'Mod+P', command: 'duplicate-session' },
-  { keys: 'Mod+Shift+P', command: 'duplicate-session-choose-tool' },
+  { keys: 'Mod+P', command: 'session-finder' },
+  { keys: 'Mod+K', command: 'duplicate-session' },
+  { keys: 'Mod+Shift+K', command: 'duplicate-session-choose-tool' },
   { keys: 'Mod+T', command: 'new-session' },
   { keys: 'Mod+Shift+T', command: 'new-session-worktree' },
   { keys: 'Mod+Shift+Backspace', command: 'delete-project' },

@@ -332,22 +332,22 @@ describe('settings: shortcuts tab', () => {
             id: 'open',
             title: 'Open pal',
             run: () => {},
-            keys: { key: 'k', shift: true },
+            keys: { key: 'p', shift: true },
           },
         ],
       },
     });
     await openTab();
     const id = 'plugin:pal:open';
-    expect(row(id).textContent).toContain('⇧⌘K conflicts with Command palette');
+    expect(row(id).textContent).toContain('⇧⌘P conflicts with Command palette');
     expect(keysOf(id)).toEqual([]);
     expect(saveBtn().disabled).toBe(false); // criterion 4: shown, not blocking
     act(() => btn(id, 'give-to-plugin')?.click());
-    expect(keysOf(id)).toEqual(['⇧⌘K']);
+    expect(keysOf(id)).toEqual(['⇧⌘P']);
     expect(keysOf('command-palette')).toEqual([]);
     await save();
     expect(bridge.SaveKeymap).toHaveBeenCalledWith({
-      mac: { 'command-palette': [], [id]: ['Mod+Shift+[KeyK]'] },
+      mac: { 'command-palette': [], [id]: ['Mod+Shift+[KeyP]'] },
     });
   });
 
@@ -401,7 +401,7 @@ describe('settings: shortcuts tab', () => {
     await openTab();
     act(() => {
       fireEvent.change(el('settings-shortcuts-search'), {
-        target: { value: '⇧⌘K' },
+        target: { value: '⇧⌘P' },
       });
     });
     const shown = [

@@ -21,7 +21,7 @@ async function palette(page: Page, query: string) {
   // <body>, and Chromium then delivers no keydown for a ⌘-chord. A real
   // window always has something focused; clicking the app restores that.
   await page.locator('#app').click({ position: { x: 4, y: 4 } });
-  await page.keyboard.press(`${mod}+Shift+k`);
+  await page.keyboard.press(`${mod}+Shift+p`);
   const input = page.locator('#command-palette-input');
   await input.fill(query);
   await page.keyboard.press('Enter');

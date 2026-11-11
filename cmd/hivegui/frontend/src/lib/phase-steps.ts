@@ -183,7 +183,7 @@ export function phasePanel({
   if (at < 0) return null;
 
   // A session with no worktree branch skips the git steps entirely —
-  // that covers plain sessions and ⌘P duplicates, which adopt a
+  // that covers plain sessions and ⌘K duplicates, which adopt a
   // sibling's worktree instead of creating one.
   const planned: { key: string; label: string }[] = [
     { key: 'starting', label: 'Registered session' },

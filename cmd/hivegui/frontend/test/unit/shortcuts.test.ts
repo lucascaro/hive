@@ -118,7 +118,9 @@ describe('paletteShortcuts', () => {
     expect(m['new-project']).toBe('⌘N');
     expect(m['new-session']).toBe('⌘T');
     expect(m['new-session-worktree']).toBe('⇧⌘T');
-    expect(m['duplicate-session']).toBe('⌘P');
+    expect(m['duplicate-session']).toBe('⌘K');
+    expect(m['session-finder']).toBe('⌘P');
+    expect(m['command-palette']).toBe('⇧⌘P');
     expect(m['delete-project']).toBe('⇧⌘⌫');
     expect(m['close-session']).toBe('⌘W');
     expect(m['new-window']).toBe('⇧⌘N');

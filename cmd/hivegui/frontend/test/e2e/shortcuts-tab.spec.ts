@@ -120,7 +120,7 @@ test('rebinding a command in the tab moves its key everywhere', async ({
   await expect(page.locator('#launcher')).toBeVisible();
   await page.keyboard.press('Escape');
 
-  await page.keyboard.press(`${mod}+Shift+k`);
+  await page.keyboard.press(`${mod}+Shift+p`);
   await page.locator('#command-palette-input').fill('new session');
   const palette = page.locator('#command-palette');
   await expect(palette).toContainText(NEW);

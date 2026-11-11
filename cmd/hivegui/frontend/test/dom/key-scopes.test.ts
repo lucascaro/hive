@@ -189,6 +189,7 @@ describe('KEY_SCOPES', () => {
       'launcher',
       'project-editor',
       'command-palette',
+      'session-finder',
       'shortcut-capture',
       'settings',
       'worktrees',
@@ -435,7 +436,7 @@ describe('app chords', () => {
   });
 
   it('an unbound chord runs nothing', () => {
-    const e = press('k', { ctrlKey: true });
+    const e = press('u', { ctrlKey: true });
     expect(e.defaultPrevented).toBe(false);
     expect(runCommand).not.toHaveBeenCalled();
   });

@@ -54,6 +54,7 @@ import { initSettings, initThemeWatch } from './app/modals/settings.js';
 import { initWorktrees } from './app/modals/worktrees.js';
 import { initQuickIdea } from './app/modals/quick-idea.js';
 import { initArchivedSessions } from './app/modals/archived-sessions.js';
+import { initSessionFinder } from './app/modals/session-finder.js';
 import { initMessageSession } from './app/modals/message-session.js';
 import { initIdeaInbox, refreshIdeas } from './app/modals/idea-inbox.js';
 import { initHelpOverlay } from './app/modals/help-overlay.js';
@@ -87,7 +88,7 @@ import {
 } from './app/view.js';
 import { initKeymapSync, loadKeymap } from './app/keymap-sync.js';
 import { MENU_COMMANDS } from './app/commands.js';
-import { initActions } from './app/actions.js';
+import { goToSession, initActions } from './app/actions.js';
 import './app/keyboard.js';
 import { ensureTerm, bumpFontSize, resetFontSize } from './app/session-term.js';
 import {
@@ -131,6 +132,7 @@ initFindBox({
 initQuickIdea({ setFocusedTile, refocusActiveTerm });
 initMessageSession({ setFocusedTile, refocusActiveTerm });
 initArchivedSessions({ setFocusedTile, refocusActiveTerm });
+initSessionFinder({ setFocusedTile, refocusActiveTerm, goToSession });
 initIdeaInbox({ setFocusedTile, refocusActiveTerm });
 initWhatsNew({ setFocusedTile, focusActiveTerm });
 // UI plugins (spec 471). The host acts only on enabled plugins with a
