@@ -1,7 +1,7 @@
 # Hive plugin SDK
 
 `hive-plugin.mjs` is the SDK for a plugin's background process: one
-dependency-free file for Node 18+. Copy it next to your entry point;
+dependency-free file for a supported Node.js LTS (22 or newer). Copy it next to your entry point;
 it is deliberately not a package, so a plugin installed from a git URL
 needs no build or `npm install`.
 

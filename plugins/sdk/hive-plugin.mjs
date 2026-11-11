@@ -3,7 +3,7 @@
 // See LICENSE and ADDITIONAL-TERMS.md.
 
 // hive-plugin.mjs — the Hive plugin SDK. One file, no dependencies,
-// Node >= 18. Copy it into your plugin next to your entry point; it is
+// a supported Node.js LTS (22 or newer). Copy it into your plugin next to your entry point; it is
 // vendored rather than published so a git-URL install needs no build
 // or package install. See docs/plugins.md.
 //

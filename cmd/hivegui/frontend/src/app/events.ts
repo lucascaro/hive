@@ -787,8 +787,19 @@ export function wireDaemonEvents(injected: EventsDeps) {
       flashStatus('bad plugin event', true);
       return;
     }
+    // One notice per transition into failed: the supervisor gave up
+    // (spec 528), and Settings → Plugins may not be open.
+    const wasFailed =
+      appData().plugins.find((p) => p.id === ev.plugin.id)?.status === 'failed';
     if (ev.kind === 'removed') dropPlugin(ev.plugin.id);
-    else upsertPlugin(ev.plugin);
+    else {
+      upsertPlugin(ev.plugin);
+      if (ev.plugin.status === 'failed' && !wasFailed)
+        flashStatus(
+          `Plugin ${ev.plugin.name} stopped after repeated crashes`,
+          true,
+        );
+    }
     claimPluginEvent(ev);
   });
 

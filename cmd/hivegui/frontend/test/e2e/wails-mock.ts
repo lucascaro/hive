@@ -2017,6 +2017,7 @@ type MockPlugin = {
   command: string[];
   enabled: boolean;
   status: string;
+  status_detail?: string;
   restarts: number;
   ui?: { entry: string; style?: string };
   config?: Record<string, unknown>;
@@ -2129,6 +2130,16 @@ export async function SetPluginEnabled(id: string, enabled: boolean) {
   if (!p) return '';
   p.enabled = enabled;
   p.status = enabled ? 'running' : 'stopped';
+  // A plugin named "crashy" fails on its first start, as a crash loop
+  // would; enabling it again (Restart) recovers, as the daemon does.
+  if (enabled && /crashy/.test(id) && p.restarts === 0) {
+    p.status = 'failed';
+    p.restarts = 6;
+    p.status_detail = 'stopped after 6 exits within 1m0s';
+  } else if (enabled) {
+    p.restarts = 0;
+    p.status_detail = '';
+  }
   emit('plugin:event', JSON.stringify({ kind: 'updated', plugin: p }));
   return '';
 }

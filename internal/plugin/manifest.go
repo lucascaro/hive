@@ -24,6 +24,8 @@ import (
 	"os"
 	"path"
 	"path/filepath"
+	"regexp"
+	"strconv"
 	"strings"
 	"unicode"
 
@@ -47,6 +49,10 @@ type Manifest struct {
 	APIVersion  string `json:"api_version"`
 	Description string `json:"description,omitempty"`
 	Main        *Entry `json:"main,omitempty"`
+	// Node is the oldest Node.js, as MAJOR.MINOR.PATCH, that Main needs.
+	// When set the Manager runs `node --version` before every start and
+	// refuses the plugin, visibly, when it is older or cannot be run.
+	Node string `json:"node,omitempty"`
 	// UI is the plugin's part inside the Hive app: an ES module the app
 	// imports, and an optional stylesheet. See docs/plugins.md.
 	UI *UIEntry `json:"ui,omitempty"`
@@ -123,6 +129,14 @@ func (m Manifest) Validate() error {
 			}
 		}
 	}
+	if m.Node != "" {
+		if m.Main == nil {
+			return errors.New(`plugin: "node" needs a "main" command`)
+		}
+		if _, ok := parseNodeVersion(m.Node); !ok || !nodeFloorRE.MatchString(m.Node) {
+			return fmt.Errorf(`plugin: "node" must be MAJOR.MINOR.PATCH, e.g. "26.0.0" (got %q)`, m.Node)
+		}
+	}
 	if m.UI != nil {
 		if err := checkAsset("ui.entry", m.UI.Entry, ".js", ".mjs"); err != nil {
 			return err
@@ -155,4 +169,29 @@ func checkAsset(field, p string, exts ...string) error {
 		}
 	}
 	return fmt.Errorf("plugin: %q must end in %s (got %q)", field, strings.Join(exts, " or "), p)
+}
+
+// nodeFloorRE is the one spelling a manifest may use for a Node floor.
+var nodeFloorRE = regexp.MustCompile(`^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$`)
+
+// parseNodeVersion parses "1.2.3" or Node's "v1.2.3" (a prerelease or
+// build suffix is ignored). Exactly three numeric parts, no leading
+// zeros, so the manifest has one spelling per version.
+func parseNodeVersion(s string) (v [3]int, ok bool) {
+	s = strings.TrimPrefix(strings.TrimSpace(s), "v")
+	if i := strings.IndexAny(s, "-+"); i >= 0 {
+		s = s[:i]
+	}
+	parts := strings.Split(s, ".")
+	if len(parts) != 3 {
+		return v, false
+	}
+	for i, p := range parts {
+		n, err := strconv.Atoi(p)
+		if err != nil || n < 0 || p != strconv.Itoa(n) {
+			return v, false
+		}
+		v[i] = n
+	}
+	return v, true
 }

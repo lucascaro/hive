@@ -15,6 +15,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"slices"
 	"strings"
 	"sync"
 	"time"
@@ -642,9 +643,26 @@ func (m *Manager) spawn(e *entry) (*exec.Cmd, func(), error) {
 		return nil, nil, errors.New(`plugin has no "main" command to run`)
 	}
 	argv := man.Main.Command
-	bin, err := resolveCommand(dir, argv[0])
+	bin, pathEnv, err := resolveCommand(dir, argv[0])
 	if err != nil {
 		return nil, nil, err
+	}
+	if man.Node != "" {
+		// The command may be a script that execs node, so the floor is
+		// checked against the node on the PATH the plugin will get, not
+		// against argv[0].
+		nodeBin, nodePATH, err := lookCommand("node")
+		if err != nil {
+			return nil, nil, err
+		}
+		if err := checkNode(nodeBin, man.Node, dir, nodePATH); err != nil {
+			return nil, nil, err
+		}
+		pathEnv = nodePATH
+		// The common case, argv[0] == "node": run the binary just checked.
+		if argv[0] == "node" {
+			bin = nodeBin
+		}
 	}
 	data := m.DataPath(e.rec.ID)
 	if err := os.MkdirAll(data, 0o700); err != nil {
@@ -661,13 +679,17 @@ func (m *Manager) spawn(e *entry) (*exec.Cmd, func(), error) {
 	}
 	cmd := proc.Command(bin, argv[1:]...)
 	cmd.Dir = dir
-	cmd.Env = pluginEnv(os.Environ(),
-		"HIVE_SOCKET="+sock,
-		"HIVE_PLUGIN_ID="+e.rec.ID,
-		"HIVE_PLUGIN_API="+APIVersion,
-		"HIVE_PLUGIN_DIR="+dir,
-		"HIVE_PLUGIN_DATA_DIR="+data,
-	)
+	add := []string{
+		"HIVE_SOCKET=" + sock,
+		"HIVE_PLUGIN_ID=" + e.rec.ID,
+		"HIVE_PLUGIN_API=" + APIVersion,
+		"HIVE_PLUGIN_DIR=" + dir,
+		"HIVE_PLUGIN_DATA_DIR=" + data,
+	}
+	if pathEnv != "" { // an explicit empty PATH means "the current directory"
+		add = append(add, "PATH="+pathEnv)
+	}
+	cmd.Env = pluginEnv(os.Environ(), add...)
 	cmd.Stdout, cmd.Stderr = logw, logw
 	// A grandchild that keeps the output pipe open must not pin Wait.
 	cmd.WaitDelay = termGrace
@@ -680,32 +702,94 @@ func (m *Manager) spawn(e *entry) (*exec.Cmd, func(), error) {
 	return cmd, func() { closeListener(); logw.Close() }, nil
 }
 
+// loginPATH is the PATH a command is looked up on when the daemon's own
+// has none: the login shell's. A seam for tests; the real probe runs the
+// user's rc files. It is never called under m.mu (spawn holds no lock),
+// but the first call can take tens of seconds and a stop waits for it.
+// ponytail: warm it at Start if that ever bites.
+var loginPATH = proc.LoginPATH
+
+// lookCommand finds name on the daemon's PATH, then on the login shell's
+// (a daemon started from Finder has launchd's minimal PATH, which has no
+// Node). It returns the file and the PATH that found it, which is the
+// PATH the plugin gets. A miss names the PATHs searched.
+func lookCommand(name string) (bin, pathEnv string, err error) {
+	if p, err := exec.LookPath(name); err == nil {
+		return p, os.Getenv("PATH"), nil
+	}
+	login := loginPATH()
+	if p := proc.LookPathIn(login, name); p != "" {
+		return p, login, nil
+	}
+	return "", "", fmt.Errorf("%s not found on PATH=%s or the login shell's PATH=%s", name, os.Getenv("PATH"), login)
+}
+
 // resolveCommand finds argv[0]: "./x" is relative to the plugin dir,
-// anything else is looked up on the daemon's PATH. A missing command is
-// reported with the PATH searched, since a daemon started outside the
-// GUI may not have the login shell's PATH.
-func resolveCommand(dir, name string) (string, error) {
+// anything else goes through lookCommand. It also returns the PATH for
+// the plugin's environment.
+func resolveCommand(dir, name string) (bin, pathEnv string, err error) {
 	if rest, ok := strings.CutPrefix(name, "./"); ok {
 		p := filepath.Join(dir, filepath.FromSlash(rest))
 		if _, err := os.Stat(p); err != nil {
-			return "", fmt.Errorf("command %s not found in the plugin", name)
+			return "", "", fmt.Errorf("command %s not found in the plugin", name)
 		}
-		return p, nil
+		return p, os.Getenv("PATH"), nil
 	}
-	p, err := exec.LookPath(name)
+	return lookCommand(name)
+}
+
+// nodeProbeTimeout bounds `node --version`.
+var nodeProbeTimeout = 5 * time.Second
+
+// checkNode runs `node --version` and refuses a Node older than floor
+// (MAJOR.MINOR.PATCH, validated by the manifest). It runs on every start,
+// so upgrading Node and pressing Restart recovers. A prerelease of the
+// floor itself passes: ponytail: compare numeric parts only.
+func checkNode(node, floor, dir, pathEnv string) error {
+	ctx, cancel := context.WithTimeout(context.Background(), nodeProbeTimeout)
+	defer cancel()
+	cmd := proc.CommandContext(ctx, node, "--version")
+	// The environment the plugin will get: a wrapper node (a version
+	// manager shim) may need other tools on that PATH.
+	cmd.Dir = dir
+	cmd.Env = pluginEnv(os.Environ(), "PATH="+pathEnv)
+	cmd.WaitDelay = time.Second
+	out, err := cmd.Output()
 	if err != nil {
-		return "", fmt.Errorf("%s not found on PATH=%s", name, os.Getenv("PATH"))
+		return fmt.Errorf("could not run node --version: %w", err)
 	}
-	return p, nil
+	got := strings.TrimSpace(string(out))
+	if len(got) > 64 {
+		got = got[:64] // a shim's chatter must not flood status_detail
+	}
+	v, ok := parseNodeVersion(got)
+	if !ok {
+		return fmt.Errorf("could not run node --version: unexpected output %q", got)
+	}
+	want, ok := parseNodeVersion(floor)
+	if !ok {
+		return fmt.Errorf("invalid node floor %q", floor)
+	}
+	if slices.Compare(v[:], want[:]) < 0 {
+		return fmt.Errorf("requires Node.js %s or newer (found %s at %s)", floor, got, node)
+	}
+	return nil
 }
 
 // pluginEnv is the daemon's environment with Hive's own session and
-// plugin variables replaced by the plugin's.
+// plugin variables replaced by the plugin's, and any variable named in
+// add (PATH, say) replaced rather than duplicated.
 func pluginEnv(base []string, add ...string) []string {
+	replaced := map[string]bool{}
+	for _, kv := range add {
+		k, _, _ := strings.Cut(kv, "=")
+		replaced[strings.ToUpper(k)] = true
+	}
 	out := make([]string, 0, len(base)+len(add))
 	for _, kv := range base {
+		k, _, _ := strings.Cut(kv, "=")
 		if strings.HasPrefix(kv, "HIVE_SOCKET=") || strings.HasPrefix(kv, "HIVE_SESSION_ID=") ||
-			strings.HasPrefix(kv, "HIVE_PLUGIN_") {
+			strings.HasPrefix(kv, "HIVE_PLUGIN_") || replaced[strings.ToUpper(k)] {
 			continue
 		}
 		out = append(out, kv)

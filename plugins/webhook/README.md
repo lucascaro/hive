@@ -10,7 +10,7 @@ the SDK file next to it, so it doubles as a worked example.
 
 ## Install
 
-Needs `node` (18 or newer) on the PATH Hive runs with.
+Needs `node` (a supported LTS, 22 or newer) on the PATH Hive runs with.
 
 Install from this directory, or from a git URL of a copy of it. Hive
 installs it disabled and asks before enabling it.

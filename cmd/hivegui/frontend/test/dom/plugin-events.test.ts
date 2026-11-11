@@ -160,6 +160,25 @@ describe('plugin daemon events', () => {
     expect(store.appStore.getState().plugins).toHaveLength(0);
   });
 
+  it('failed transition toasts once', () => {
+    const failed = { ...PLUGIN, enabled: true, status: 'failed' };
+    deliver('plugin:event', { kind: 'added', plugin: PLUGIN });
+    expect(statusText()).not.toContain('repeated crashes');
+    deliver('plugin:event', { kind: 'updated', plugin: failed });
+    expect(statusText()).toContain(
+      'Plugin Webhook stopped after repeated crashes',
+    );
+    deliver('plugin:event', { kind: 'updated', plugin: failed });
+    expect(flashStatus).toHaveBeenCalledTimes(1);
+    // Restart, fail again: a new transition, a new notice.
+    deliver('plugin:event', {
+      kind: 'updated',
+      plugin: { ...failed, status: 'running' },
+    });
+    deliver('plugin:event', { kind: 'updated', plugin: failed });
+    expect(flashStatus).toHaveBeenCalledTimes(2);
+  });
+
   it('survives a malformed plugin:list and says so', () => {
     store.setPlugins([PLUGIN]);
     deliver('plugin:list', 'not json');

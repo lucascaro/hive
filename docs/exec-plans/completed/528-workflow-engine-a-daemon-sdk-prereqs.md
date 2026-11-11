@@ -3,10 +3,10 @@
 - **Spec:** [docs/product-specs/528-workflow-engine-a-daemon-and-sdk-prerequisites-prov.md](../../product-specs/528-workflow-engine-a-daemon-and-sdk-prerequisites-prov.md)
 - **Design:** [workflow-engine.md](../../design-docs/workflow-engine.md) ("What the engine spec must add"), [acp-workflows.md](../../design-docs/acp-workflows.md)
 - **Issue:** #528
-- **Branch:** `feature/528-pr2-plugin-message-worktree`
-- **Status:** active
-- **PR:** #539
-- **Phase:** 2 of 3
+- **Branch:** `feature/528-pr3-plugin-runtime`
+- **Status:** completed
+- **PR:** #541
+- **Phase:** 3 of 3
 
 ## Summary
 
@@ -491,6 +491,8 @@ scripts/ui-lint.sh                                             # PR1, PR3 (GUI t
 - **2026-11-07:** `merge[]` stays narrow: user decision. Only `hive/wf/<run>/` branches, resolved as `refs/heads/<name>`. No code change.
 - **2026-11-06 (PR2 test names):** the plan's worktree tests live in `internal/worktree/workflow_test.go`, exercised through `PrepareRun` / `CommitRun`: `TestCommitWorktree_{CommitsAll,CleanIsNoop,HooksDoNotRun,RefusesNonRunBranch}`, `TestMergeBranches_{Clean,ConflictReportsBranchAndFiles,AlreadyMergedIsNoop,NoIdentity}`, `TestPrepareWorktree_PassesResolvedSHA` (the base moves after the resolve; the worktree is at the old SHA), `TestSafeGit_HooksAndFsmonitorOff`. The daemon-level ones are in `internal/daemon/prepare_worktree_test.go` (`TestPrepareWorktree_{FromArbitraryBase,RefusesOptionLikeBase,BranchOutsideRunPrefixRefused,PathCollisionResolved,ReattachesExistingRunBranch,AfterReclaimSucceeds,MergeConflictTyped,SessionAdoptsPath}`) and `plugin_message_test.go`. `TestAddNewBranch_NoExistingFallback`, `TestAddExistingBranch` and `TestFreePath_SuffixesDirOnly` keep the plan's names.
 
+- **2026-11-09 (PR3 implementation):** Small consistent choices, none changing the design. The "toast" is the status-bar flash (`flashStatus`, error style): the GUI has no separate toast surface. Two changesets (one type each): `528-plugin-node-path-restart.md` (fixed) and `528-plugin-restart-failed.md` (added). No `DaemonContract` bump: PR3 touches nothing under the wire/daemon/session/registry paths, and Restart reuses `SET_PLUGIN_ENABLED`. `site/features.json` gains a "Restart a failed plugin" entry (`shipped`, `since: "Unreleased"`): the gate pointed out that AGENTS.md requires one for a `bump: minor` changeset, which the plan missed. The Node 26 CI leg is its own job (`node26`), running the SDK tests and the Go packages that shell out to Node. A sixth Node 18 site (`plugins/webhook/README.md`) was found and fixed with the five. Node facts re-verified 2026-11-09 against nodejs.org v26.13.0 docs and nodejs/Release `schedule.json` (unchanged from the plan). Opus security review of the PATH lookup and Node probe: nothing blocking; fixed an oversized-floor fail-open, an empty `PATH=` for a non-lookup command, an unbounded `node --version` string in `status_detail`, probe timeout 2s to 5s, and `argv[0] == "node"` now runs the binary that was checked. Declined: a login-PATH warm-up at Start (the first lookup can take tens of seconds and a stop waits for it; noted in a `ponytail:` comment); the check stays advisory (documented).
+
 ## Progress
 
 - **2026-10-25:** Research complete; plan drafted.
@@ -521,6 +523,8 @@ scripts/ui-lint.sh                                             # PR1, PR3 (GUI t
 - **PR 2 (#539) 2026-11-08 iter 7** — verdict: APPROVE; mergeable: MERGEABLE; findings_hash: empty; threads_open: 0; action: stop; head_sha: see PR head. Converged for phase 2 of 3 only. Fixed with mutation-checked tests: the version line must be exactly `git version X.Y...` (a banner or wrapper text hiding 2.54 is refused); the probe is re-run when the git binary on PATH changes (path, size, mtime), in both directions. Declined (again, reply on thread): boot-sweep race on a re-attached pristine worktree needs a registry claim API; boot-only window, branch survives, `PrepareWorktree` can be re-called.
 - **PR 2 (#539) 2026-11-08 iter 8** — verdict: APPROVE; mergeable: MERGEABLE; findings_hash: gate-fail-pre-auto-gc; threads_open: 0; action: autofix+push; head_sha: see PR head. Independent gate FAILed e429af4b: a config `pre-auto-gc` hook ran during commit. Fixed: `hook.pre-auto-gc.enabled=false`, `gc.auto=0`, `maintenance.auto=false`; table-driven regression over every githooks event with a plain-git control; mutation-checked. Converged for phase 2 of 3 only once CI and bots settle.
 - **PR 2 (#539) 2026-11-08 iter 9** — verdict: COMMENT; mergeable: MERGEABLE; findings_hash: empty; threads_open: 0; action: stop; head_sha: 5a718296. Written by the independent gate validator from evidence, not by /hs-review-loop: CI 13 pass / 2 skipping at 5a718296; Greptile "Base review" at 5a718296 with 0 comments; CodeRabbit check "Review paused" (no review at 6590aae0/5a718296; its e429af4b reviews' threads all resolved); 31/31 review threads resolved. Converged for phase 2 of 3 only.
+- **PR 3 (#541) 2026-11-09 iter 1** — verdict: REQUEST_CHANGES (Greptile: 1 P1, 2 P2); mergeable: MERGEABLE; findings_hash: greptile-3-threads; threads_open: 3; action: autofix+push; head_sha: see PR head. Fixed with a test: the Node probe now runs in the plugin's resolved PATH and directory (`TestSpawn_NodeProbeUsesPluginPATH`); the Node 26 job also runs the `e2e`-tagged `cmd/hived` plugin test; the docs say 5 seconds. Pre-PR Opus security review findings are in the decision log.
+- **PR 3 (#541) 2026-11-09 iter 2** — verdict: APPROVE; mergeable: MERGEABLE; findings_hash: empty; threads_open: 0; action: stop; head_sha: see PR head. Converged for phase 3 of 3. Greptile re-reviewed 949a724f with no new comments; 3/3 threads resolved.
 
 ## Gate verdict
 
@@ -539,3 +543,10 @@ scripts/ui-lint.sh                                             # PR1, PR3 (GUI t
     - non-goals — PASS — no engine, no PROTOCOL_VERSION bump, no 492 trust-model change.
     - doc accuracy — PASS — docs/plugins.md hooks paragraph matches safeGit (directory and config hooks incl. pre-auto-gc, fsmonitor, auto gc/maintenance off, no signing; drivers/filters still apply); DESIGN.md "no hooks, fsmonitor or signing" still accurate. No changeset (`no-changeset` label), so `regression_of` n/a.
     - PR state — 31/31 review threads resolved; `gh pr checks 539` 13 pass, CodeRabbit and regenerate-generated skipping.
+- **2026-11-09** — verdict: FAIL; phase: 3/3; checks: 2 passed / 1 failed / 0 followups; followups: none; one-line: independent gate at a94a4afe; criteria 1-9, non-goals, CI and threads passed; doc accuracy failed: `.changesets/528-plugin-restart-failed.md` is `bump: minor` with no `site/features.json` entry (AGENTS.md). Recorded retroactively by the 2554b133 gate.
+- **2026-11-09** — verdict: PASS; phase: 3/3; checks: 3 passed / 0 failed / 0 followups; followups: none; one-line: final phase gated at 2554b133; the delta from a94a4afe adds the features.json entry, two mutation-checked probe tests and a decision-log fix, nothing else; spec 528 DONE.
+  - 2026-11-09 dimensions:
+    - acceptance — PASS — `git diff --stat a94a4afe..2554b133`: features.json (+6), manager_test.go (+26), this plan (1 line); no production code changed, so the a94a4afe pass on criteria 1-9 stands. Spot-checked: 5 (login PATH via `loginPATH`, "requires Node.js %s or newer" in `checkNode`, "22 or newer" at all SDK/doc sites incl. plugins/webhook, `node26` CI job green), 7 (DESIGN.md:100 plugin-data carve-out, worktree/merge stay behind PREPARE_WORKTREE/COMMIT_WORKTREE), 9 (`maxCrashes=5`/`crashWindow=60s`, `SetEnabled` restarts a failed/refused enabled plugin, PluginsPanel Restart, events.ts one `flashStatus` per transition to failed). New tests mutation-checked: replacing the `WithTimeout` with `WithCancel` fails `TestCheckNode_TimesOut` (30.2s), dropping the 64-byte cap fails `TestCheckNode_CapsOutputInStatusDetail` (5058 bytes). `go test -race ./internal/plugin/...` pass (go1.27.3); vet + staticcheck clean darwin/linux/windows; `check-daemon-contract.sh origin/main HEAD` OK (no daemon-side changes).
+    - non-goals — PASS — no engine, no PROTOCOL_VERSION bump, no 492 trust-model change; GUI limited to the failed-plugin state.
+    - doc accuracy — PASS — features.json "Restart a failed plugin" (`shipped`, `since: "Unreleased"`) matches neighbour shape, one-sentence blurb; `test/unit/whats-new.test.ts` 20/20 pass. Changesets: `528-plugin-restart-failed.md` (added, minor), `528-plugin-node-path-restart.md` (fixed, patch) with `regression_of: declared-absent`.
+    - PR state — `gh pr checks 541`: 13 pass, regenerate-generated and CodeRabbit skipping; 3/3 review threads resolved.
