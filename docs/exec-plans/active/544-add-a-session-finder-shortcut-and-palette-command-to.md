@@ -146,3 +146,4 @@ Independent reviewer, round 1: **revise**, confidence 7. Must-fix applied (4): (
 - **2026-11-11 iter 1** — verdict: COMMENT (inline review, no sub-agents); mergeable: MERGEABLE; findings_hash: empty; threads_open: 0; action: escalated:ci-govulncheck-main-red; head_sha: 9014c8d.
 - **2026-11-11 iter 2** — verdict: REQUEST_CHANGES (3 CodeRabbit threads: scroll selected row into view, Enter only from the search input, combobox/aria-activedescendant); mergeable: MERGEABLE; threads_open: 3; action: autofix+push; head_sha: 638b5e0.
 - **2026-11-11 iter 3** — verdict: REQUEST_CHANGES (2 CodeRabbit threads: effect must re-run on query change; aria-expanded vs always-visible listbox); mergeable: MERGEABLE; threads_open: 2; action: autofix+push; head_sha: afe4570.
+- **2026-11-11 iter 4** — verdict: APPROVE (inline re-review of d565dcd; CI green on all jobs); mergeable: MERGEABLE; findings_hash: empty; threads_open: 0; action: stop; head_sha: d565dcd.
