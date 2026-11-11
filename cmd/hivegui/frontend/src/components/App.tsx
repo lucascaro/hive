@@ -70,7 +70,6 @@ import { HelpOverlay } from './modals/HelpOverlay.js';
 import { IdeaInbox } from './modals/IdeaInbox.js';
 import { QuickIdea } from './modals/QuickIdea.js';
 import { ArchivedSessions } from './modals/ArchivedSessions.js';
-import { SessionFinder } from './modals/SessionFinder.js';
 import { MessageSession } from './modals/MessageSession.js';
 import { Launcher } from './modals/Launcher.js';
 import { ProjectEditor } from './modals/ProjectEditor.js';
@@ -120,7 +119,6 @@ export function App(): ReactNode {
   const quickIdea = mustEl('quick-idea');
   const messageSession = mustEl('message-session');
   const archivedSessions = mustEl('archived-sessions');
-  const sessionFinder = mustEl('session-finder');
   const ideaInbox = mustEl('idea-inbox');
   const choiceDialog = mustEl('choice-dialog');
   const commandPalette = mustEl('command-palette');
@@ -189,7 +187,6 @@ export function App(): ReactNode {
         <ArchivedSessions root={archivedSessions} />,
         archivedSessions,
       )}
-      {createPortal(<SessionFinder root={sessionFinder} />, sessionFinder)}
       {createPortal(<IdeaInbox root={ideaInbox} />, ideaInbox)}
       {createPortal(<ChoiceDialog root={choiceDialog} />, choiceDialog)}
       {createPortal(<CommandPalette root={commandPalette} />, commandPalette)}

@@ -105,7 +105,11 @@ beforeAll(async () => {
     () => COMMANDS.map(({ name, ...c }) => ({ ...c, title: name })),
     'core',
   );
-  initCommandPalette({ focusActiveTerm });
+  initCommandPalette({
+    focusActiveTerm,
+    setFocusedTile: () => {},
+    goToSession: () => {},
+  });
 });
 
 beforeEach(() => {

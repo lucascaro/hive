@@ -37,3 +37,38 @@
   overflow-y: auto;
   padding: 4px;
 }
+
+/* Session rows (spec 544): the same list, listing sessions. */
+.palette-state { flex: 0 0 auto; }
+.palette-agent {
+  flex: 0 0 auto;
+  font-size: var(--text-xs);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+.palette-title {
+  flex: 1 1 0;
+  min-width: 0;
+  font-size: var(--text-xs);
+  color: var(--fg-subtle);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.palette-meta {
+  flex: 0 1 auto;
+  max-width: 40%;
+  min-width: 0;
+  margin-left: auto;
+  text-align: right;
+  font-size: var(--text-xs);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.palette-empty {
+  margin: 0;
+  padding: var(--space-3);
+  color: var(--fg-muted);
+  line-height: 1.5;
+}
