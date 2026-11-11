@@ -52,6 +52,7 @@ function FinderPanel({ root }: { root: HTMLElement }): ReactNode {
   const [query, setQuery] = useState('');
   const [selected, setSelected] = useState(0);
   const inputRef = useRef<HTMLInputElement>(null);
+  const listRef = useRef<HTMLDivElement>(null);
 
   const rows = finderRows({ sessions, projects, back, activeId, query });
   const byId = new Map(sessions.map((s) => [s.id, s]));
@@ -62,10 +63,23 @@ function FinderPanel({ root }: { root: HTMLElement }): ReactNode {
     inputRef.current?.focus();
   }, []);
 
+  // Keep the keyboard-selected row visible: focus stays in the input, so
+  // the browser never scrolls to it.
+  const selectedId = rows[active]?.id;
+  useEffect(() => {
+    if (selectedId === undefined) return;
+    listRef.current
+      ?.querySelector('[data-selected]')
+      ?.scrollIntoView?.({ block: 'nearest' });
+  }, [selectedId]);
+
   // Re-attached every render so it closes over the current list.
   useEffect(() => {
     function onKeyDown(e: KeyboardEvent) {
       if (e.isComposing) return;
+      // Only the search box drives the list: Enter on the close button must
+      // keep its own activation.
+      if (e.target !== inputRef.current) return;
       if (e.key === 'ArrowDown') {
         e.preventDefault();
         e.stopPropagation();
@@ -103,6 +117,13 @@ function FinderPanel({ root }: { root: HTMLElement }): ReactNode {
         id="session-finder-input"
         ref={inputRef}
         type="text"
+        role="combobox"
+        aria-expanded={rows.length > 0}
+        aria-controls="session-finder-list"
+        aria-autocomplete="list"
+        aria-activedescendant={
+          rows[active] ? `finder-opt-${rows[active].id}` : undefined
+        }
         className="hv-input"
         placeholder="Search name, title, branch or project…"
         aria-label="Search sessions"
@@ -113,7 +134,13 @@ function FinderPanel({ root }: { root: HTMLElement }): ReactNode {
           setSelected(0);
         }}
       />
-      <div className="finder-list" id="session-finder-list" role="listbox">
+      <div
+        className="finder-list"
+        id="session-finder-list"
+        role="listbox"
+        aria-label="Sessions"
+        ref={listRef}
+      >
         {rows.length === 0 ? (
           <p className="finder-empty" id="session-finder-nomatch">
             {query ? `No session matches “${query}”.` : 'No sessions.'}
@@ -129,6 +156,7 @@ function FinderPanel({ root }: { root: HTMLElement }): ReactNode {
               // biome-ignore lint/a11y/useKeyWithClickEvents: see above
               <div
                 key={r.id}
+                id={`finder-opt-${r.id}`}
                 className="finder-row"
                 role="option"
                 tabIndex={-1}

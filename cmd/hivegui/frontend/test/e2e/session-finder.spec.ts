@@ -229,6 +229,48 @@ test.describe('session finder', () => {
     await termFocused(page);
   });
 
+  test('a11y: the input names the selected option; Enter on the close button cancels', async ({
+    page,
+  }) => {
+    await boot(page, 12);
+    const before = await activeId(page);
+    await openFinder(page);
+    const aria = async () => ({
+      id: await input(page).getAttribute('aria-activedescendant'),
+      sel: await page
+        .locator('#session-finder .finder-row[aria-selected="true"]')
+        .getAttribute('id'),
+    });
+    const a = await aria();
+    expect(a.id).toBeTruthy();
+    expect(a.id).toBe(a.sel);
+    await page.keyboard.press('ArrowDown');
+    const b = await aria();
+    expect(b.id).toBe(b.sel);
+    expect(b.id).not.toBe(a.id);
+    // The selected row stays inside the scrolled list.
+    for (let i = 0; i < 9; i++) await page.keyboard.press('ArrowDown');
+    await expect
+      .poll(() =>
+        page.evaluate(() => {
+          const l = document.querySelector('#session-finder-list');
+          const r = l?.querySelector('[data-selected]');
+          if (!l || !r) return false;
+          const lb = l.getBoundingClientRect();
+          const rb = r.getBoundingClientRect();
+          return rb.top >= lb.top - 1 && rb.bottom <= lb.bottom + 1;
+        }),
+      )
+      .toBe(true);
+    // Enter on the focused close button must cancel, not jump.
+    await page.locator('#session-finder .hv-dialog__close').first().focus();
+    await page.keyboard.press('Enter');
+    await expect(finder(page)).toBeHidden();
+    // activateFinderSession jumps on a later tick; let it land if it fired.
+    await page.waitForTimeout(150);
+    expect(await activeId(page)).toBe(before);
+  });
+
   test('100 sessions: open and filter stay fast', async ({ page }) => {
     await boot(page, 0);
     await page.evaluate(async () => {
