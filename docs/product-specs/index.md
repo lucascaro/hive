@@ -9,7 +9,6 @@ The *what* and *why* of work this project plans to do. Each spec describes user 
 | Priority | Issue | Title | Stage | Spec |
 |----------|-------|-------|-------|------|
 | P1 | #527 | Build the workflow engine: bundled plugin running typed TS workflows over ACP sessions | RESEARCH | [527-build-the-workflow-engine-bundled-plugin-running-typ](527-build-the-workflow-engine-bundled-plugin-running-typ.md) |
-| P1 | #528 | Workflow engine A: daemon and SDK prerequisites (provenance, typed results, ACP cancel, plugin request/reply) | GATE | [528-workflow-engine-a-daemon-and-sdk-prerequisites-prov](528-workflow-engine-a-daemon-and-sdk-prerequisites-prov.md) |
 | P1 | #529 | Workflow engine B: headless engine core (validator, interpreter, checkpoint log, trust sandbox) | GATE | [529-workflow-engine-b-headless-engine-core-validator-in](529-workflow-engine-b-headless-engine-core-validator-in.md) |
 | P2 | #530 | Workflow engine C: GUI (workflow list, trust dialog, run start, human answers, graph and run overlay) | RESEARCH | [530-workflow-engine-c-gui-workflow-list-trust-dialog-ru](530-workflow-engine-c-gui-workflow-list-trust-dialog-ru.md) |
 | P2 | — | A red CI check name should say which stage failed | TRIAGE | [256-ci-check-names-identify-the-failing-stage](256-ci-check-names-identify-the-failing-stage.md) |
@@ -24,6 +23,7 @@ The *what* and *why* of work this project plans to do. Each spec describes user 
 
 | Issue | Title | PR | Shipped | Spec |
 |-------|-------|----|---------|------|
+| #528 | Workflow engine A: daemon and SDK prerequisites (provenance, typed results, ACP cancel, plugin request/reply) | #541 | 2026-11-09 | [528-workflow-engine-a-daemon-and-sdk-prerequisites-prov](528-workflow-engine-a-daemon-and-sdk-prerequisites-prov.md) |
 | #533 | Add sessions to an ad-hoc grid with ⌘/Ctrl-click | #534 | 2026-10-26 | [533-add-sessions-to-an-ad-hoc-grid-with-cmd-ctrl-click](533-add-sessions-to-an-ad-hoc-grid-with-cmd-ctrl-click.md) |
 | — | Observe from a session: hived session list and hived wait | #525 | 2026-10-22 | [390-session-observe-list-and-wait](390-session-observe-list-and-wait.md) |
 | — | Orchestrator grant: a session you name can message its siblings | #524 | 2026-10-20 | [389-orchestrator-grant-and-session-msg](389-orchestrator-grant-and-session-msg.md) |
