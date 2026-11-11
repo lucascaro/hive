@@ -3,6 +3,8 @@
 - **Spec:** [docs/product-specs/544-add-a-session-finder-shortcut-and-palette-command-to.md](../../product-specs/544-add-a-session-finder-shortcut-and-palette-command-to.md)
 - **Issue:** #544
 - **Status:** active
+- **PR:** #545
+- **Branch:** feature/544-session-finder
 
 ## Summary
 
@@ -133,6 +135,7 @@ Independent reviewer, round 1: **revise**, confidence 7. Must-fix applied (4): (
 
 - **2026-11-11** — Spec created from brainstorm (issue #544), triaged enhancement/M/P2. Research done.
 - **2026-11-11** — Plan approved by operator after a chord re-key round. Stage → IMPLEMENT.
+- **2026-11-11** — Implemented; unit/dom/e2e/biome/typecheck/ui-lint green; PR #545 opened. Stage → REVIEW.
 
 ## Open questions
 

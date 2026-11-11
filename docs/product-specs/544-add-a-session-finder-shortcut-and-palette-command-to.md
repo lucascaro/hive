@@ -4,7 +4,8 @@ title: Add a session finder: shortcut and palette command to jump to any session
 type: enhancement
 complexity: M
 priority: P2
-stage: IMPLEMENT
+pr: 545
+stage: REVIEW
 ---
 
 # Add a session finder: shortcut and palette command to jump to any session by name, title, branch or project
