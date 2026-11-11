@@ -140,3 +140,7 @@ Independent reviewer, round 1: **revise**, confidence 7. Must-fix applied (4): (
 ## Open questions
 
 - None.
+
+## PR convergence ledger
+
+- **2026-11-11 iter 1** — verdict: COMMENT (inline review, no sub-agents); mergeable: MERGEABLE; findings_hash: empty; threads_open: 0; action: escalated:ci-govulncheck-main-red; head_sha: 9014c8d.
