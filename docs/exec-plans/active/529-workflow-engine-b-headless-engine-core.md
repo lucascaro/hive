@@ -757,10 +757,10 @@ All of it travels on A's `PLUGIN_MESSAGE` with `plugin_id: "workflows"`.
 | `run.cancel` | `{run_id}` | `{}` |
 | `run.retry` | `{run_id}` | `{}` — failed or cancelled → running: failed and interrupted nodes reset to `pending`, attempts cleared. One transaction appends a `node.reset` per reset node and then `run.retried` (B-11), so live clients see it, and the reset rows are what `run.nodes` serves afterwards (B-12) |
 | `runs.list` | `{project_id?, state?: <a run state, below>, before?: created_at, limit ≤ 50}` — `project_id` omitted means every project (B-2), so the GUI finds waiting runs at boot with one call (`state: "waiting"`) | `{runs: [{run_id, project_id, workflow, file, state, created_at, updated_at, source_hash, source_changed}]}` |
-| `run.get` | `{run_id}` | `{run: {…as above, input, base_sha, kept_worktrees, kept_worktrees_total, error}, ir}` — no nodes, no paging (B-6). `kept_worktrees` is at most 16 paths of ≤ 256 bytes and `error` ≤ 2 KiB; `kept_worktrees_total` is the real count, and the full list is in the `run.finished` and `node.started`/`node.finished` events, paged through `run.events` |
+| `run.get` | `{run_id}` | `{run: {…as above, last_seq (B-14), input, base_sha, kept_worktrees, kept_worktrees_total, error}, ir}` — no nodes, no paging (B-6). `kept_worktrees` is at most 16 paths of ≤ 256 bytes and `error` ≤ 2 KiB; `kept_worktrees_total` is the real count, and the full list is in the `run.finished` and `node.started`/`node.finished` events, paged through `run.events` |
 | `run.nodes` | `{run_id, after?: key}` | `{nodes: [{key, node_id, state, attempt, started_at?, finished_at?, cap?}], last_seq, more?, next_after?}` — the materialized node, loop and map state (B-12). Slim rows: no `output` or `error` (those come from `node.get`). Ordered by `key`; a page stops once `encodedSize` would pass 48 KiB (always at least one row), and `next_after` is the last key returned. Each page carries its own `last_seq`: the max committed `seq` when that page was read, read in one SQLite read transaction, so the rows reflect exactly the events `seq <= last_seq` |
-| `node.get` | `{run_id, key, offset?: 0, limit?: 16384}` | `{key, node_id, state, attempt, output?: string, total_bytes?, next_offset?, more?, session_id?, branch?, worktree?, error?, conflict?, waiting?}` — `output` is a slice of the serialized redacted output (B-7). `waiting` is the data of the node's open `node.waiting` event (rendered prompt, `output_schema`, permission `request_id` and `options`), present only while the node is `waiting`, so a wait raised before the run view opened can be answered from it (B-13, recommended, pending user confirmation). Everything is redacted and counted in the 48 KiB encoded budget; a prompt cut by the event cap or the budget sets `waiting.truncated: true` with `prompt_total_bytes`, and the GUI must not offer an answer from a truncated prompt (see the open question on paging it) |
-| `run.events` | `{run_id, after_seq, limit ≤ 500}` | `{events: RunEvent[], last_seq, more}` — also byte-budgeted: a page stops once `encodedSize` would pass 48 KiB (always at least one event, B-11), so `more` can be true below `limit` |
+| `node.get` | `{run_id, key, offset?: 0, limit?: 16384}` | `{key, node_id, state, attempt, output?: string, total_bytes?, next_offset?, more?, session_id?, branch?, worktree?, error?, conflict?, waiting?}` — `output` is a slice of the serialized redacted output (B-7). `waiting` is the data of the node's open `node.waiting` event (rendered prompt, `output_schema`, permission `request_id` and `options`), present only while the node is `waiting`, so a wait raised before the run view opened can be answered from it (B-13, confirmed). The rendered prompt is capped at 16 KiB at build time, so it is never truncated (B-15: longer fails the node with `prompt_too_large`); `request_id` and `option_id` are exempt from redaction after strict validation (B-16). Everything else is redacted and counted in the 48 KiB encoded budget |
+| `run.events` | `{run_id, after_seq, limit ≤ 500, key?}` | `{events: RunEvent[], last_seq, more}` — also byte-budgeted: a page stops once `encodedSize` would pass 48 KiB (always at least one event, B-11), so `more` can be true below `limit`. `key?` returns only that node's events (B-17); unfiltered paging stays for gap recovery |
 | `human.answer` | `{run_id, key, answer}` | `{}`; `error.code: "invalid_answer"` with a path-qualified message, or `"not_waiting"` |
 
 **Node state (B-12, amends B-6).** `run.get` carries no node state; `run.nodes`
@@ -1460,15 +1460,34 @@ download, the accepted sandbox gap, and `LIST_ACP_AGENTS`.
       replayed events" and B-11f (replay-to-live handoff) in wording only: the
       events and the buffering idea stay, the seq-0 fold goes. B-5..B-11
       otherwise unchanged.
-  - **B-13, `node.get` carries wait and session context. Recommended,
-    pending user confirmation** (proposed default for C's Q-B3). `node.get`
+  - **B-13, `node.get` carries wait and session context. Confirmed by the
+    user 2026-11-12** (default for C's Q-B3). `node.get`
     also returns `session_id?`, `branch?`, `worktree?`, `error?`, `conflict?`
     and `waiting?` (the open `node.waiting` event's data: rendered prompt,
     `output_schema`, permission `request_id` and options), so a wait raised
     before the run view opened can be answered from it. `waiting` exists only
     while the node is waiting. Slim `run.nodes` rows stay slim. All fields are
-    redacted and counted in the 48 KiB encoded budget. If the user declines,
-    revert the topics-table row and the three B2 tests.
+    redacted and counted in the 48 KiB encoded budget.
+  - **B-14, run-level `last_seq` (user: "go with your picks", 2026-11-12).**
+    `run.get`'s `run` object gains `last_seq`: the seq of the last event the run
+    row reflects. The run row is updated in the same transaction as its event,
+    so it is exact. Clients apply buffered events with seq > `last_seq`,
+    including key-less ones (`run.finished`, `run.retried`). Amends B-6/B-12's
+    `{run, ir}` only by this one field.
+  - **B-15, human prompt cap.** The rendered human prompt is capped at 16 KiB
+    at build time (after interpolation); a longer one fails the node with
+    `prompt_too_large`. The `node.waiting` event therefore never truncates, and
+    `waiting.truncated`/`prompt_total_bytes` are dropped from `node.get`.
+    The 24 KiB event cap stays as a defence, unreachable by a prompt.
+  - **B-16, permission ids exempt from `redact()`.** Exactly `request_id` and
+    `option_id` in `waiting` are exempt, but only after strict validation
+    (charset `[A-Za-z0-9._:-]`, length <= 256); a value failing it is replaced
+    by an engine-issued opaque handle that the engine maps back to the real id
+    on answer. Everything else stays redacted (B-5). Tested: token-shaped id
+    round-trips to a successful `ANSWER_PERMISSION`.
+  - **B-17, `run.events` `key?` filter.** `run.events` accepts `key?` and
+    returns only events for that node key (indexed on `(run_id, key, seq)`).
+    Unfiltered paging stays for gap recovery. C's node detail uses it.
 
 ## Progress
 
@@ -1505,35 +1524,10 @@ Raised by the PR #540 review, consequences of B-6:
 - **B2, replay cost:** Resolved 2026-11-09, B-12 (user decision). Clients read
   `run.nodes` snapshots instead of replaying `run.events` from seq 0; the
   `types?` filter and archive-table candidates are dropped.
-- **B2, run-level state has no `last_seq`.** Raised against B-12; needs a user
-  decision before B2. `run.get` stays `{run, ir}` (B-6), so a client cannot
-  tell which events its `run` object already reflects. Events without a `key`
-  (`run.finished`, `run.retried`) buffered across the `run.get` call could be
-  applied over a newer `run` (for example a stale `run.finished` after a
-  retry). Candidates: (a) add a `last_seq` to `run.get`'s `run` object (the
-  run row is updated in the same transaction as its event, so it is exact);
-  (b) the first `run.nodes` page also carries `run_state`, tagged by its
-  own `last_seq`. Not
-  decided; the contract above leaves `run.get` unchanged.
-- **B-13 waiting prompt, paging (raised by the PR #542 review).** The
-  `node.waiting` event is capped at 24 KiB at write time, so a longer
-  interpolated human prompt is cut in the event and in `node.get.waiting`.
-  For now the reply flags `truncated` and the GUI must not offer an answer
-  blind. Needs a user decision: page the complete redacted prompt through
-  `node.get` (store it whole in the `nodes` row and add a `prompt_offset`),
-  or cap the rendered prompt at build or run time.
-- **B-13 redacted permission ids (PR #542 review).** `redact()` can rewrite a
-  token-shaped permission `option_id` or `request_id` in `node.get.waiting`,
-  and `ANSWER_PERMISSION` then fails with `permission_stale`. Needs a user
-  decision: exempt these identifiers from `redact()` (they come from the
-  adapter and drive a daemon call), or have the engine answer from its own
-  stored ids. This touches the redaction policy (B-5), so it is not decided
-  here.
-- **B-12 per-node history (PR #542 review).** Opening a node's detail pages
-  `run.events` lazily, which for a run with many events can read many pages of
-  unrelated events. A `key?` filter on `run.events` (unfiltered paging kept for
-  gap recovery) would fix it. The user dropped the `types?` filter candidate
-  and specified lazy paging; whether a `key?` filter is wanted is not decided.
+- **B2, run-level `last_seq`:** Resolved 2026-11-12, B-14.
+- **B-13 waiting prompt, paging:** Resolved 2026-11-12, B-15 (cap, not paging).
+- **B-13 redacted permission ids:** Resolved 2026-11-12, B-16.
+- **B-12 per-node history:** Resolved 2026-11-12, B-17 (`key?` filter).
 - **B3, Windows launch.** Whether Node's `spawn` already puts a non-detached
   child in a kill-on-close job at creation (libuv), or a `CREATE_SUSPENDED`
   helper is needed, is unverified; B3 research settles it. B-9 (Job Object)
