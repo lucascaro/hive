@@ -5,7 +5,8 @@ type: enhancement
 complexity: S
 priority: P3
 pr: 547
-stage: GATE
+shipped: 2026-11-11
+stage: DONE
 ---
 
 # Sidebar update icon should start the update directly
@@ -14,7 +15,7 @@ stage: GATE
 - **Type:** enhancement
 - **Complexity:** S
 - **Priority:** P3
-- **Exec plan:** [docs/exec-plans/active/548-sidebar-update-icon-starts-the-update-directly.md](../exec-plans/active/548-sidebar-update-icon-starts-the-update-directly.md)
+- **Exec plan:** [docs/exec-plans/completed/548-sidebar-update-icon-starts-the-update-directly.md](../exec-plans/completed/548-sidebar-update-icon-starts-the-update-directly.md)
 
 ## Problem
 

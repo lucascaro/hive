@@ -4,7 +4,7 @@
 - **Issue:** #548
 - **PR:** #547
 - **Branch:** faint-lark
-- **Status:** active
+- **Status:** completed
 
 ## Summary
 
@@ -42,6 +42,14 @@ New `updateOrCheck()` in `banners.ts`: when `updatePending`, re-check (the dot c
 ## PR convergence ledger
 
 - **2026-11-11 iter 1** — verdict: APPROVE; mergeable: MERGEABLE; findings_hash: empty; threads_open: 0; action: stop; head_sha: 0ff0ca4.
+
+## Gate verdict
+
+- **2026-11-11** — verdict: PASS; phase: —; checks: 5 passed / 0 failed / 0 followups; followups: none; one-line: icon click starts update; all criteria evidenced, no non-goal bleed, changeset present.
+  - 2026-11-11 dimensions:
+    - acceptance — PASS — 3 dom tests in check-updates-button.test.tsx; aria-label + changeset in diff
+    - non-goals — PASS — menu/palette still call manualUpdateCheck; ready/Restart flow untouched
+    - doc accuracy — PASS — changeset added; remaining old-label hits are historical specs/plans only
 
 ## Open questions
 
