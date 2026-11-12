@@ -3,67 +3,67 @@
     "title": "Pick your own grid",
     "blurb": "⌘-click (Ctrl-click on Windows and Linux) sessions in the sidebar to tile just those, across projects, then ⌘-click (Ctrl-click) more to add or remove tiles; a plain click leaves the grid.",
     "status": "shipped",
-    "since": "Unreleased"
+    "since": "2.10.0"
   },
   {
     "title": "See and wait on sibling sessions",
     "blurb": "From inside a session, `hived session list` shows the sessions in its project and `hived wait <session>` blocks until one is idle, so an agent can hand off work and carry on once it is done.",
     "status": "shipped",
-    "since": "Unreleased"
+    "since": "2.10.0"
   },
   {
     "title": "Let a session message its siblings",
     "blurb": "Tick \"May direct other sessions\" when you start a session (or later from the command palette) and its agent can run `hived msg <session> <text>` to hand a sibling in the same project a note — delivered as coming from that session by name.",
     "status": "shipped",
-    "since": "Unreleased"
+    "since": "2.10.0"
   },
   {
     "title": "Take an ACP session over in a terminal",
     "blurb": "Open an ACP session's conversation in the agent's own terminal when you want to drive it yourself, then hand it back to the transcript view with every turn intact.",
     "status": "shipped",
-    "since": "Unreleased"
+    "since": "2.10.0"
   },
   {
     "title": "A permission ceiling for ACP sessions",
     "blurb": "Pick, per agent, the most an ACP session may do without asking — Hive starts every session there and switches the agent back if it tries to go further on its own.",
     "status": "shipped",
-    "since": "Unreleased"
+    "since": "2.10.0"
   },
   {
     "title": "ACP sessions with a transcript view",
     "blurb": "Start Claude or Codex (or Pi, if you allow it unattended tool use) as an ACP session and its tile shows the conversation as a transcript, with tool permission requests you answer in place and exact working and waiting states.",
     "status": "shipped",
-    "since": "Unreleased"
+    "since": "2.10.0"
   },
   {
     "title": "Worktree problems ask instead of guessing",
     "blurb": "If Hive can't reach origin when creating a worktree session, it now asks what to do — retry, use the cached state, or cancel — instead of quietly starting you on stale code.",
     "status": "shipped",
-    "since": "Unreleased"
+    "since": "2.10.0"
   },
   {
     "title": "Click a file path to open it",
     "blurb": "⌘-click a file path in a session to open it in the OS default app, or ⇧⌘-click to open it in your editor at the clicked line. Paths are only underlined when the file really exists, and anything the OS would run is revealed in the file manager instead of launched.",
     "status": "shipped",
-    "since": "Unreleased"
+    "since": "2.10.0"
   },
   {
     "title": "Restart an ended session",
     "blurb": "When a session's process exits, the card over it now offers Restart next to Close and Dismiss, so you can bring it back in place with one click or the r key.",
     "status": "shipped",
-    "since": "Unreleased"
+    "since": "2.10.0"
   },
   {
     "title": "Restart a failed plugin",
     "blurb": "Restart a plugin that stopped after repeated crashes, or that needs a newer Node.js, from Settings → Plugins, and get a notice when Hive gives up on one.",
     "status": "shipped",
-    "since": "Unreleased"
+    "since": "2.10.0"
   },
   {
     "title": "Terminal scrollbar",
     "blurb": "Terminals now show a scrollbar, so you can see where you are in the scrollback instead of guessing. It matches the sidebar's and follows whichever theme you are on.",
     "status": "shipped",
-    "since": "Unreleased"
+    "since": "2.10.0"
   },
   {
     "title": "Agent activity view",
@@ -148,7 +148,7 @@
     "title": "Archive a session",
     "blurb": "Put a session away from the command palette and bring it back weeks later — its worktree stays on disk, and a searchable list restores any archived session with its name, project and conversation.",
     "status": "shipped",
-    "since": "Unreleased"
+    "since": "2.10.0"
   },
   {
     "title": "Multi-window",
@@ -172,19 +172,19 @@
     "title": "In-app help",
     "blurb": "A Help panel in the sidebar: what the pieces are, the keyboard shortcuts, and the links out.",
     "status": "shipped",
-    "since": "Unreleased"
+    "since": "2.10.0"
   },
   {
     "title": "Hide and pin agents",
     "blurb": "Tailor the new-session menu in Settings → Agents: untick the agents you never use, and pin favourites to the top in the order you drag them.",
     "status": "shipped",
-    "since": "Unreleased"
+    "since": "2.10.0"
   },
   {
     "title": "Laya state detection",
     "blurb": "Optionally ask a Laya model you run locally what a hook-less session's screen shows, so Aider, Codex and shell sessions say when they are waiting for you.",
     "status": "shipped",
-    "since": "Unreleased"
+    "since": "2.10.0"
   },
   {
     "title": "Scrollback across daemon restart",
@@ -208,42 +208,42 @@
     "title": "Plugins",
     "blurb": "Install automations that react to your sessions — a webhook when an agent needs you, a chat bridge, and more — from Settings → Plugins.",
     "status": "shipped",
-    "since": "Unreleased"
+    "since": "2.10.0"
   },
   {
     "title": "Plugins in the app",
     "blurb": "Plugins can add a session view, palette commands with shortcuts, sidebar badges and a Settings section — try the session-notes example.",
     "status": "shipped",
-    "since": "Unreleased"
+    "since": "2.10.0"
   },
   {
     "title": "Plan review",
     "blurb": "Read, comment on and approve a Claude or Pi plan in Hive before the agent runs it: enable the bundled Plan review plugin under Settings → Plugins.",
     "status": "shipped",
-    "since": "Unreleased"
+    "since": "2.10.0"
   },
   {
     "title": "Your own keyboard shortcuts",
     "blurb": "Rebind any command, plugin ones included, under Settings → Shortcuts, and export or import your keymap; Hive catches clashes and reserved keys before you save.",
     "status": "shipped",
-    "since": "Unreleased"
+    "since": "2.10.0"
   },
   {
     "title": "Message a session",
     "blurb": "Hand a running session a note with ⇧⌘M — delivered straight to Claude Code or Pi when its inbox is available, otherwise queued if a terminal session is working — and get one notification when it stops, with ⌥⌘B or the bell on its row.",
     "status": "shipped",
-    "since": "Unreleased"
+    "since": "2.10.0"
   },
   {
     "title": "Esc ends \"working\" at once",
     "blurb": "Interrupting Claude Code with Esc returns its session to idle immediately, and a Claude question still lights up \"needs attention\" when its hooks are unavailable.",
     "status": "shipped",
-    "since": "Unreleased"
+    "since": "2.10.0"
   },
   {
     "title": "Go to session",
     "blurb": "Press ⌘P to search every session by name, window title, branch or project and jump straight to it — with nothing typed, the one you just left is first.",
     "status": "shipped",
-    "since": "Unreleased"
+    "since": "2.10.0"
   }
 ]

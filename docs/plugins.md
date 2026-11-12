@@ -713,7 +713,7 @@ Each entry names the Hive release that first shipped it.
 
 ### 0.2
 
-Hive: Unreleased.
+Hive: 2.10.0.
 
 - **App plugins.** A manifest may declare `ui` (`entry`, optional
   `style`) instead of, or as well as, `main`. The app loads the module

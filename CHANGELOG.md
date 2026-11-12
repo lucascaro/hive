@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.10.0] — 2026-11-12
+
 ### Added
 Message a session. ⇧⌘M hands the active session a note — typed into its terminal when it is quiet, or queued for when it next settles if it is working (an ACP session takes it as a turn, and refuses it while busy). A Claude Code session receives it through Claude's own inbox, and a Pi session through Hive's Pi extension, when one is available, working or not, without anything being typed; otherwise it is typed or queued as above. ⌥⌘B, or the bell on a session's row, notifies you once when the session stops working. `hived msg <session> <text…>` does the same from a shell.
 A session can now be allowed to message its siblings: tick "May direct other sessions" in the launcher (or toggle it later from the command palette) and that session's agent can run `hived msg <session> <text>` to hand another agent session in the same project a note. The note arrives marked as coming from the sending session by name, is always queued behind whatever the target is doing, and plain shell sessions are refused. The grant is off by default, is yours alone to give, survives a restart, and takes effect or is revoked on the very next message.
@@ -1780,7 +1782,8 @@ own session daemon, replacing the v1 tmux + Bubble Tea architecture.
   sidebar/grid and fire an OS notification.
 - No telemetry in shipped binaries.
 
-[Unreleased]: https://github.com/lucascaro/hive/compare/v2.9.0...HEAD
+[Unreleased]: https://github.com/lucascaro/hive/compare/v2.10.0...HEAD
+[2.10.0]: https://github.com/lucascaro/hive/compare/v2.9.0...v2.10.0
 [2.9.0]: https://github.com/lucascaro/hive/compare/v2.8.0...v2.9.0
 [2.8.0]: https://github.com/lucascaro/hive/compare/v2.7.0...v2.8.0
 [2.7.0]: https://github.com/lucascaro/hive/compare/v2.6.0...v2.7.0
