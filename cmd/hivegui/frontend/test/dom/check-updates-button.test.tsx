@@ -72,6 +72,7 @@ beforeEach(() => {
   vi.resetModules();
   bridge.CheckForUpdate.mockReset().mockResolvedValue(null);
   bridge.EventsOn.mockClear();
+  bridge.StartUpdate.mockClear();
 });
 
 afterEach(() => {
@@ -183,7 +184,7 @@ describe('check-for-updates pip', () => {
     act(() => store.setState({ updatePending: true }));
     expect(btn().classList.contains('hv-unread')).toBe(true);
     expect(btn().getAttribute('aria-label')).toBe(
-      'Check for updates — update available',
+      'Update available — click to install',
     );
     act(() => store.setState({ updatePending: false }));
     expect(btn().classList.contains('hv-unread')).toBe(false);
@@ -218,7 +219,7 @@ describe('check-for-updates pip', () => {
     expect(btn().classList.contains('hv-unread')).toBe(false);
   });
 
-  it('clicking the dotted button shows the available version', async () => {
+  it('clicking the dotted button starts the update directly', async () => {
     await mount(true);
     await initBanners();
     emit('update:available', AVAILABLE);
@@ -227,7 +228,31 @@ describe('check-for-updates pip', () => {
       btn().click();
       await settle();
     });
+    expect(bridge.StartUpdate).toHaveBeenCalledTimes(1);
+  });
+
+  it('does not start when this build cannot apply updates', async () => {
+    await mount(true);
+    await initBanners();
+    emit('update:available', AVAILABLE);
+    bridge.CheckForUpdate.mockResolvedValueOnce({
+      ...AVAILABLE,
+      canApply: false,
+    } as never);
+    await act(async () => {
+      btn().click();
+      await settle();
+    });
+    expect(bridge.StartUpdate).not.toHaveBeenCalled();
     expect(store.getState().banners.update.visible).toBe(true);
-    expect(updateBannerText()).toContain('2.5.0');
+  });
+
+  it('clicking with no update pending only checks', async () => {
+    await mount(true);
+    await act(async () => {
+      btn().click();
+      await settle();
+    });
+    expect(bridge.StartUpdate).not.toHaveBeenCalled();
   });
 });

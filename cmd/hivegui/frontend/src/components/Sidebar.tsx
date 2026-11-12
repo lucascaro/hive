@@ -39,7 +39,7 @@ import {
   UpdateSession,
   SetWorktreeLabel,
 } from '../bridge.js';
-import { manualUpdateCheck } from '../app/banners.js';
+import { updateOrCheck } from '../app/banners.js';
 import { flashStatus, reportFailure } from '../app/dom.js';
 import { beginInlineRename } from '../app/inline-rename.js';
 import { openLauncher } from '../app/modals/launcher.js';
@@ -718,12 +718,12 @@ export function SidebarHeaderControls(): ReactNode {
           // accessible name carries it in words.
           label={
             updatePending
-              ? 'Check for updates — update available'
+              ? 'Update available — click to install'
               : 'Check for updates'
           }
           size={22}
           className={updatePending ? 'hv-unread' : undefined}
-          onClick={() => void manualUpdateCheck()}
+          onClick={() => void updateOrCheck()}
         />,
         header,
       )}

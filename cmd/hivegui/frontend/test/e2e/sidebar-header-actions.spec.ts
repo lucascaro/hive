@@ -184,7 +184,7 @@ test('a background update shows a dot on the check-for-updates button, not a ban
   await expect(btn).toHaveClass(/hv-unread/);
   await expect(btn).toHaveAttribute(
     'aria-label',
-    'Check for updates — update available',
+    'Update available — click to install',
   );
   const after = await dot();
   expect(after.content).not.toBe('none');

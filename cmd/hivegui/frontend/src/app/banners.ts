@@ -462,15 +462,44 @@ export function onUpdateAction() {
     );
     return;
   }
-  if (data.action === 'start') {
-    setBanner('update', { actions: { action: { disabled: true } } });
-    // StartUpdate's refusals return synchronously without emitting an
-    // update:progress event, so nothing would re-render the button —
-    // re-enable it here or the click dead-ends it permanently.
-    StartUpdate().catch((err) => {
-      setBanner('update', { actions: { action: { disabled: false } } });
-      reportFailure('start update')(err);
+  if (data.action === 'start') beginStaging();
+}
+
+// Shared by the banner's Update button and the sidebar icon.
+function beginStaging() {
+  setBanner('update', { actions: { action: { disabled: true } } });
+  // StartUpdate's refusals return synchronously without emitting an
+  // update:progress event, so nothing would re-render the button —
+  // re-enable it here or the click dead-ends it permanently.
+  StartUpdate().catch((err) => {
+    setBanner('update', { actions: { action: { disabled: false } } });
+    reportFailure('start update')(err);
+  });
+}
+
+/** Sidebar icon click. With an update already known to be pending, go
+ * straight to staging instead of raising a banner with a second Update
+ * button. Otherwise it is an ordinary manual check. The menu and
+ * palette keep calling manualUpdateCheck: "Check for Updates…" must not
+ * install anything. */
+export async function updateOrCheck() {
+  if (!appStore.getState().updatePending) return manualUpdateCheck();
+  if (updateCheckInFlight) return;
+  updateCheckInFlight = true;
+  try {
+    // Re-check rather than trust the dot: it can be hours old.
+    const info = await CheckForUpdate();
+    applyUpdateInfo(info, { manual: true });
+    if (updateButtonState(info).action === 'start') {
+      beginStaging();
+    }
+  } catch (err) {
+    showUpdateBanner(`Update check failed: ${err}`, {
+      showDownload: false,
+      autoHideMs: UPDATE_TRANSIENT_MS,
     });
+  } finally {
+    updateCheckInFlight = false;
   }
 }
 
