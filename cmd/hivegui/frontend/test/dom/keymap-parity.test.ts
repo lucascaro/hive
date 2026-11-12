@@ -293,10 +293,7 @@ const SWEPT = KEY_SCOPES.map((s) => s.id).filter(
     id !== 'find-box' &&
     id !== 'acp-prompt' &&
     id !== 'plugins' &&
-    id !== 'shortcut-capture' &&
-    // session-finder (spec 544) is post-478: its Escape and mirrored
-    // chord are held by key-scopes.test.ts and every-shortcut.spec.ts.
-    id !== 'session-finder',
+    id !== 'shortcut-capture',
 );
 
 // The approved deltas. Each returns true when this cell is one the spec
@@ -344,6 +341,8 @@ const APPROVED_477 = {
   // in a grid.
   // R (spec 544): four default chords are re-keyed, so a legacy chord
   // runs a different command now. Exactly these cells, on the app scope.
+  // The palette scope also mirrors both openers (one box, two lists, each
+  // chord swaps or closes), where the legacy palette swallowed them.
   R: (
     s: string,
     e: Ev,
@@ -351,20 +350,24 @@ const APPROVED_477 = {
     was: string | null,
     now: string | null,
   ) =>
-    s === 'app' &&
-    /^[pk]$/i.test(e.key) &&
-    ((!e.shiftKey && /^p$/i.test(e.key)
-      ? was === 'duplicate-session' && now === 'session-finder'
-      : false) ||
-      (e.shiftKey && /^p$/i.test(e.key)
-        ? was === 'duplicate-session-choose-tool' && now === 'command-palette'
+    (s === 'command-palette' &&
+      /^p$/i.test(e.key) &&
+      was === null &&
+      now === (e.shiftKey ? 'command-palette' : 'session-finder')) ||
+    (s === 'app' &&
+      /^[pk]$/i.test(e.key) &&
+      ((!e.shiftKey && /^p$/i.test(e.key)
+        ? was === 'duplicate-session' && now === 'session-finder'
         : false) ||
-      (!e.shiftKey && /^k$/i.test(e.key)
-        ? was === null && now === 'duplicate-session'
-        : false) ||
-      (e.shiftKey && /^k$/i.test(e.key)
-        ? was === 'command-palette' && now === 'duplicate-session-choose-tool'
-        : false)),
+        (e.shiftKey && /^p$/i.test(e.key)
+          ? was === 'duplicate-session-choose-tool' && now === 'command-palette'
+          : false) ||
+        (!e.shiftKey && /^k$/i.test(e.key)
+          ? was === null && now === 'duplicate-session'
+          : false) ||
+        (e.shiftKey && /^k$/i.test(e.key)
+          ? was === 'command-palette' && now === 'duplicate-session-choose-tool'
+          : false))),
   M: (
     s: string,
     _e: Ev,

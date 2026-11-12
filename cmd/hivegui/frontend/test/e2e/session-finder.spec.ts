@@ -12,9 +12,10 @@ const CHORD = isMac ? 'Meta+p' : 'Control+p';
 
 const activeId = (page: Page) =>
   page.evaluate(() => window.__hive_state?.activeId ?? null);
-const finder = (page: Page) => page.locator('#session-finder');
-const rows = (page: Page) => page.locator('#session-finder .finder-row');
-const input = (page: Page) => page.locator('#session-finder-input');
+const finder = (page: Page) => page.locator('#command-palette');
+const rows = (page: Page) =>
+  page.locator('#command-palette .palette-item[data-sid]');
+const input = (page: Page) => page.locator('#command-palette-input');
 
 async function boot(page: Page, extra = 2) {
   await page.goto('/');
@@ -139,9 +140,17 @@ test.describe('session finder', () => {
       await input(page).fill(q);
       await expect(rows(page)).toHaveCount(1);
       await expect(rows(page).first()).toHaveAttribute('data-sid', id);
+      // The matched text is on screen, so the row explains itself.
+      await expect(rows(page).first()).toContainText(q);
     }
     await input(page).fill(projectName);
     await expect(rows(page)).toHaveCount(ids.length);
+    // The session you are in is marked, and the dialog is named by mode.
+    const cur = await activeId(page);
+    await expect(
+      page.locator('#command-palette .palette-item[aria-current="true"]'),
+    ).toHaveAttribute('data-sid', cur ?? '');
+    await expect(finder(page)).toHaveAttribute('aria-label', 'Go to session');
   });
 
   test('empty query: chord then Enter flips back to the previous session', async ({
@@ -229,16 +238,15 @@ test.describe('session finder', () => {
     await termFocused(page);
   });
 
-  test('a11y: the input names the selected option; Enter on the close button cancels', async ({
+  test('a11y: the input names the selected option and the selection stays in view', async ({
     page,
   }) => {
     await boot(page, 12);
-    const before = await activeId(page);
     await openFinder(page);
     const aria = async () => ({
       id: await input(page).getAttribute('aria-activedescendant'),
       sel: await page
-        .locator('#session-finder .finder-row[aria-selected="true"]')
+        .locator('#command-palette .palette-item[aria-selected="true"]')
         .getAttribute('id'),
     });
     const a = await aria();
@@ -253,7 +261,7 @@ test.describe('session finder', () => {
     await expect
       .poll(() =>
         page.evaluate(() => {
-          const l = document.querySelector('#session-finder-list');
+          const l = document.querySelector('#command-palette-list');
           const r = l?.querySelector('[data-selected]');
           if (!l || !r) return false;
           const lb = l.getBoundingClientRect();
@@ -262,13 +270,44 @@ test.describe('session finder', () => {
         }),
       )
       .toBe(true);
-    // Enter on the focused close button must cancel, not jump.
-    await page.locator('#session-finder .hv-dialog__close').first().focus();
-    await page.keyboard.press('Enter');
+  });
+
+  test('one box, two lists: each chord swaps to the other, the same chord closes', async ({
+    page,
+  }) => {
+    await boot(page, 2);
+    const PALETTE = isMac ? 'Meta+Shift+p' : 'Control+Shift+p';
+    const label = (loc: string) => page.locator(loc).getAttribute('aria-label');
+    await openFinder(page);
+    expect(await label('#command-palette-input')).toBe('Search sessions');
+    await input(page).fill('s2');
+    // ⇧⌘P swaps this same box to commands: still open, still focused,
+    // the typed text gone, no session rows.
+    await page.keyboard.press(PALETTE);
+    await expect(finder(page)).toBeVisible();
+    await expect(input(page)).toBeFocused();
+    await expect(input(page)).toHaveValue('');
+    expect(await label('#command-palette-input')).toBe('Search commands');
+    await expect(rows(page)).toHaveCount(0);
+    expect(
+      await page.locator('#command-palette .palette-item').count(),
+    ).toBeGreaterThan(3);
+    // ⌘P swaps back to sessions.
+    await page.keyboard.press(CHORD);
+    await expect(finder(page)).toBeVisible();
+    await expect(input(page)).toBeFocused();
+    expect(await label('#command-palette-input')).toBe('Search sessions');
+    await expect(rows(page)).not.toHaveCount(0);
+    // The chord for the list on screen closes it.
+    await page.keyboard.press(CHORD);
     await expect(finder(page)).toBeHidden();
-    // activateFinderSession jumps on a later tick; let it land if it fired.
-    await page.waitForTimeout(150);
-    expect(await activeId(page)).toBe(before);
+    await termFocused(page);
+    // And the palette chord opens and closes the commands list.
+    await page.keyboard.press(PALETTE);
+    await expect(finder(page)).toBeVisible();
+    expect(await label('#command-palette-input')).toBe('Search commands');
+    await page.keyboard.press(PALETTE);
+    await expect(finder(page)).toBeHidden();
   });
 
   test('100 sessions: open and filter stay fast', async ({ page }) => {

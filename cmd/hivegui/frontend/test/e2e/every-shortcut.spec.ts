@@ -68,7 +68,6 @@ const FIXTURES: Record<string, (page: Page) => Promise<void>> = {
     await expect(page.locator('.choice-dialog')).toBeVisible();
   },
   'command-palette': (page) => run(page, 'command-palette'),
-  'session-finder': (page) => run(page, 'session-finder'),
   settings: (page) => run(page, 'settings'),
   worktrees: (page) => run(page, 'worktrees'),
   'quick-idea': (page) => run(page, 'quick-idea'),
@@ -134,7 +133,7 @@ const OPENS: Record<string, string> = {
   'archived-sessions': 'archived-sessions',
   'idea-inbox': 'idea-inbox',
   'command-palette': 'command-palette',
-  'session-finder': 'session-finder',
+  'session-finder': 'command-palette',
   'keyboard-shortcuts': 'help-overlay',
   'help-modal.shortcuts': 'help-overlay',
   'session.answer-worktree-question': 'choice-dialog',
@@ -152,7 +151,9 @@ async function expectEffect(page: Page, scopeId: string, command: string) {
       .toBe(false);
   }
   const opens = OPENS[command];
-  if (opens) {
+  // A mirrored opener inside its own scope toggles or swaps the list (one
+  // box, two lists); that is held by session-finder.spec.ts.
+  if (opens && opens !== scopeId) {
     await expect
       .poll(() => scopeActive(page, opens), {
         message: `${command} should open ${opens}`,

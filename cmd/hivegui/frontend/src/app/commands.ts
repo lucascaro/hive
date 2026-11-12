@@ -71,6 +71,7 @@ import { dismissChoiceDialog } from './modals/choice-dialog.js';
 import {
   closeCommandPalette,
   openCommandPalette,
+  openSessionFinder,
 } from './modals/command-palette.js';
 import { closeHelp, handOffToShortcuts, openHelp } from './modals/help.js';
 import { closeHelpOverlay, toggleHelpOverlay } from './modals/help-overlay.js';
@@ -88,10 +89,6 @@ import {
   closeArchivedSessions,
   toggleArchivedSessions,
 } from './modals/archived-sessions.js';
-import {
-  closeSessionFinder,
-  openSessionFinder,
-} from './modals/session-finder.js';
 import { closeMessageSession } from './modals/message-session.js';
 import { archiveActiveSession } from './archive.js';
 import { dismissSettings, openSettings } from './modals/settings.js';
@@ -357,7 +354,6 @@ const UNLISTED: readonly Command[] = [
   { id: 'inline-rename.cancel', run: () => cancelInlineRename() },
   { id: 'choice-dialog.dismiss', run: () => dismissChoiceDialog() },
   { id: 'command-palette.close', run: () => closeCommandPalette() },
-  { id: 'session-finder.close', run: () => closeSessionFinder() },
   { id: 'settings.close', run: () => dismissSettings() },
   { id: 'worktrees.close', run: () => closeWorktrees() },
   { id: 'quick-idea.close', run: () => closeQuickIdea() },

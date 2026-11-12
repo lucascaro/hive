@@ -371,7 +371,7 @@ These are the defaults. Rebind any of them, and any plugin command, under **Sett
 | ⌘J / ⇧⌘J | Agent activity: the inspector panel beside the terminal (single view) or the activity grid (grid) / go to the activity grid from any view. Ctrl+Shift+J / Ctrl+Alt+Shift+J on Windows and Linux, where Ctrl+J is the terminal's newline |
 | ⌘F | Find in the active session. On a normal shell it searches the terminal's scrollback and highlights in place; on a full-screen agent (Claude, Pi), where the terminal keeps no scrollback, it searches that session's transcript on disk instead — so it finds text that scrolled away long ago. Search runs bottom-up: the first match is the most recent, Enter steps to older ones, Shift+Enter to newer. Ctrl+Shift+F on Windows and Linux, where Ctrl+F is the shell's forward-char |
 | ⌘-click / ⇧⌘-click | On a file path in a session: open it with the OS default app / open it in the editor set in Settings › Appearance, at the clicked `:line:col`. A file the OS would *run* (an app, a script, an installer) is revealed in the file manager instead of opened. Relative paths resolve against the session's worktree or project directory. Ctrl replaces ⌘ on Windows and Linux |
-| ⇧⌘P / ⌘/ | Command palette / keyboard-shortcuts overlay |
+| ⇧⌘P / ⌘/ | Command palette / keyboard-shortcuts overlay. ⌘P and ⇧⌘P share one box: pressing the other chord swaps its list in place (sessions ↔ commands), pressing the same chord closes it |
 
 Full list in the app: **⌘/**. (Ctrl replaces ⌘ on Windows and Linux.)
 Plugins can add their own shortcuts; they are listed under **Plugins**

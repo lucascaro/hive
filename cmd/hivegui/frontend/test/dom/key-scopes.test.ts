@@ -189,7 +189,6 @@ describe('KEY_SCOPES', () => {
       'launcher',
       'project-editor',
       'command-palette',
-      'session-finder',
       'shortcut-capture',
       'settings',
       'worktrees',

@@ -162,23 +162,15 @@ const projectEditor = modal(
 // is here because that listener only hears keys typed INSIDE the palette:
 // anything that moves focus out (the focus pipeline's retry) would leave
 // it with no way to close and every key swallowed.
-const commandPalette = modal('command-palette', 'command-palette', [
+//
+// Both openers mirror (spec 544): this one box lists commands or sessions,
+// and the chord for the list on screen closes it while the other chord
+// swaps lists in place. The opener commands carry that logic.
+const commandPalette = modal('command-palette', 'command-palette', () => [
   { keys: ESCAPE, command: 'command-palette.close' },
+  mirror('command-palette', 'command-palette'),
+  mirror('session-finder', 'session-finder'),
 ]);
-
-// The finder's own listener owns filtering, selection and Enter. Escape
-// is here for the palette's reason (keys typed outside its input), and the
-// opening chord mirrors so pressing it again closes the finder instead of
-// being swallowed by this exclusive scope.
-const sessionFinder = modal(
-  'session-finder',
-  'session-finder',
-  () => [
-    { keys: ESCAPE, command: 'session-finder.close' },
-    mirror('session-finder', 'session-finder.close'),
-  ],
-  'session-finder',
-);
 
 // Settings › Shortcuts' elements that answer their own keys, marked
 // data-own-keys (ShortcutsPanel.tsx): the capture button takes every key
@@ -377,7 +369,6 @@ export const KEY_SCOPES: readonly KeyScope[] = [
   launcher,
   projectEditor,
   commandPalette,
-  sessionFinder,
   shortcutCapture,
   settings,
   worktrees,
