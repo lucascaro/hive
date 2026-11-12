@@ -36,9 +36,14 @@ export function CommandPalette({
   // #command-palette sits outside React's tree, so its open/closed class
   // is applied here — a passive effect would paint one stale frame with
   // the backdrop up before the class caught up.
+  const mode = entry?.mode ?? 'commands';
   useLayoutEffect(() => {
     root?.classList.toggle('hidden', !entry);
-  }, [root, entry]);
+    root?.setAttribute(
+      'aria-label',
+      mode === 'sessions' ? 'Go to session' : 'Command palette',
+    );
+  }, [root, entry, mode]);
 
   // The outside-click close is attached once and stays live even while
   // the palette is closed, exactly as initCommandPalette() attached it.
@@ -112,7 +117,6 @@ function CommandPaletteBody({
     if (open) inputRef.current?.focus();
   }, [open]);
 
-  const commands = useMemo(() => paletteCommands(), []);
   const filtered: PaletteRow[] = useMemo(() => {
     if (mode === 'sessions') {
       const byId = new Map(sessions.map((s) => [s.id, s]));
@@ -135,6 +139,9 @@ function CommandPaletteBody({
                 <span className="palette-name">
                   {r.name || r.title || r.id}
                 </span>
+                {r.id === activeId ? (
+                  <span className="palette-current">current</span>
+                ) : null}
                 {r.title && r.title !== r.name ? (
                   <span className="palette-title">{r.title}</span>
                 ) : null}
@@ -152,7 +159,7 @@ function CommandPaletteBody({
       );
     }
     const q = query.trim().toLowerCase();
-    return commands
+    return paletteCommands()
       .filter(
         (c) =>
           !q ||
@@ -171,7 +178,7 @@ function CommandPaletteBody({
           </>
         ),
       }));
-  }, [mode, query, commands, sessions, projects, back, activeId]);
+  }, [mode, query, sessions, projects, back, activeId]);
 
   // Derived rather than chased with another effect: whatever `selected`
   // drifted to (a query narrowing the list is the only way it can),
@@ -297,6 +304,9 @@ function CommandPaletteBody({
             tabIndex={-1}
             aria-selected={i === activeIndex}
             data-sid={mode === 'sessions' ? c.key : undefined}
+            aria-current={
+              mode === 'sessions' && c.key === activeId ? 'true' : undefined
+            }
             data-selected={i === activeIndex ? '' : undefined}
             onMouseEnter={() => setSelected(i)}
             onClick={() => activate(i)}

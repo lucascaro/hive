@@ -72,3 +72,8 @@
   color: var(--fg-muted);
   line-height: 1.5;
 }
+.palette-current {
+  flex: 0 0 auto;
+  font-size: var(--text-xs);
+  color: var(--accent);
+}

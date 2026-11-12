@@ -145,6 +145,12 @@ test.describe('session finder', () => {
     }
     await input(page).fill(projectName);
     await expect(rows(page)).toHaveCount(ids.length);
+    // The session you are in is marked, and the dialog is named by mode.
+    const cur = await activeId(page);
+    await expect(
+      page.locator('#command-palette .palette-item[aria-current="true"]'),
+    ).toHaveAttribute('data-sid', cur ?? '');
+    await expect(finder(page)).toHaveAttribute('aria-label', 'Go to session');
   });
 
   test('empty query: chord then Enter flips back to the previous session', async ({
