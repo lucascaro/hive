@@ -7,6 +7,7 @@
 // second. The parent kills this process the way a plugin crash would, and the
 // check, in its own process group, outlives it.
 
+import { existsSync } from 'node:fs';
 import { checkExecutor } from '../engine/nodes.ts';
 import { workflow } from '../sdk/dsl.ts';
 import { s } from '../sdk/schema.ts';
@@ -24,7 +25,8 @@ const id = h.engine.startRunFromIR({ project_id: 'p1', file: 'c.ts', ir, input: 
 
 const timer = setInterval(() => {
   const row = h.store.loadRows(id).find((r) => r.key === 'c');
-  if (row?.state === 'running' && row.pid !== undefined) {
+  // The marker exists once the check's script has run its first lines: only then is it committed to sleeping.
+  if (row?.state === 'running' && row.pid !== undefined && existsSync(marker)) {
     clearInterval(timer);
     console.log(JSON.stringify({ id, pid: row.pid, pgid: row.pgid }));
   }
