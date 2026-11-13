@@ -145,3 +145,27 @@ test('a cancel and retry while a check is being stopped does not fail the retrie
     h.close();
   }
 });
+
+test('output from a cancelled attempt that is still dying is not recorded against the retried node', async () => {
+  let emit: (text: string) => void = () => {};
+  let calls = 0;
+  const fake = (_spec: unknown, onOutput: (stream: 'stdout' | 'stderr', text: string) => void): CheckHandle => {
+    if (calls++ === 0) emit = (t) => onOutput('stdout', t);
+    return { pid: 4242, pgid: 4242, proc_start: 'x', result: new Promise(() => {}), stop: async () => {} };
+  };
+  const hive = new FakeHive();
+  hive.replies.PREPARE_WORKTREE = (req) => ({ path: process.cwd(), branch: req.branch, base_sha: 'sha-1', head_sha: 'sha-1', reattached: false });
+  const h = harness({ agent: never, check: checkExecutor(fake) }, { hive });
+  try {
+    const id = h.engine.startRunFromIR({ project_id: 'p', file: 'c.ts', ir: oneCheck(), input: {} });
+    await waitFor(() => rowOf(h, id, 'c')?.state === 'running', 'attempt 1');
+    h.engine.cancelRun(id);
+    h.engine.retryRun(id);
+    await waitFor(() => calls === 2 && rowOf(h, id, 'c')?.state === 'running', 'the retried attempt');
+    emit('late output from the old process');
+    h.engine.flush();
+    assert.equal(h.store.events(id, 0, 100).filter((e) => e.type === 'check.output').length, 0);
+  } finally {
+    h.close();
+  }
+});

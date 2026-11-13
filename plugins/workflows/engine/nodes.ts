@@ -66,7 +66,7 @@ export function checkExecutor(doLaunch: Launch = launch): (ctx: NodeContext) => 
 
     const attempt = (engine.run(run_id).model.rows.get(key)?.attempt ?? 0) + 1;
     const h = doLaunch({ argv: n.argv, cwd: wt.path, timeout_s: n.timeout_s }, (stream, text) => {
-      engine.buffer(run_id, { key, node_id: n.id, attempt, type: 'check.output', data: { stream, text } });
+      if (engine.current(ctx)) engine.buffer(run_id, { key, node_id: n.id, attempt, type: 'check.output', data: { stream, text } }); // output of a cancelled attempt is not the retry's
     });
     // Every failure below is reported only while this launch still belongs to the live run: a cancel and retry during an await must not fail the new attempt.
     const fail = (why: string): void => {
