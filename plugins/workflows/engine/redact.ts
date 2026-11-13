@@ -19,7 +19,9 @@ const PATTERNS: RegExp[] = [
   /\bgithub_pat_[A-Za-z0-9_]{22,}/g,
   /\bsk-[A-Za-z0-9_-]{20,}/g,
   /\bxox[abpr]-[A-Za-z0-9-]{10,}/g,
-  /Authorization:[ \t]*\S+.*/gi,
+  /Authorization["']?\s*[:=][ \t]*\S+.*/gi,
+  /\b(?:Bearer|Basic)\s+[A-Za-z0-9._~+/=-]{16,}/gi,
+  /["']?\b(?:auth_?token|access_?token|api_?key|secret|token)["']?\s*[:=]\s*["'][^"'\s]{8,}["']/gi,
 ];
 
 export function redactString(s: string): { text: string; count: number } {

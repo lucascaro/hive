@@ -29,7 +29,7 @@ test('seq is gapless across commits and interleaved buffered events', async () =
     const id = h.engine.startRunFromIR({ project_id: 'p', file: 'f.ts', ir: examples.fanOutThenVerify(), input: { goal: 'g' } });
     // Buffered output lines interleave with transitions; seq is assigned at commit.
     for (let i = 0; i < 20; i++) {
-      h.engine.buffer(id, { key: 'work/verify', node_id: 'work/verify', attempt: 1, type: 'check.output', data: { stream: 'stdout', text: `line ${i}` } });
+      h.store.buffer(id, { key: 'work/verify', node_id: 'work/verify', attempt: 1, type: 'check.output', data: { stream: 'stdout', text: `line ${i}` } });
       if (i % 5 === 0) await tick();
     }
     await waitFor(() => runState(h, id) === 'done', 'run to finish');

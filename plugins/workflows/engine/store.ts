@@ -319,12 +319,16 @@ export class Store {
     return d && dbToRun(d);
   }
 
-  listRuns(q: { project_id?: string; state?: string; before?: string; limit: number }): RunRow[] {
+  listRuns(q: { project_id?: string; state?: string; before?: string; before_id?: string; limit: number }): RunRow[] {
     const where: string[] = [];
     const args: Sql[] = [];
     if (q.project_id !== undefined) (where.push('project_id = ?'), args.push(q.project_id));
     if (q.state !== undefined) (where.push('state = ?'), args.push(q.state));
-    if (q.before !== undefined) (where.push('created_at < ?'), args.push(q.before));
+    if (q.before !== undefined) {
+      // The sort is (created_at, run_id), so the cursor is too: runs created in the same millisecond are not skipped between pages.
+      if (q.before_id === undefined) (where.push('created_at < ?'), args.push(q.before));
+      else (where.push('(created_at < ? OR (created_at = ? AND run_id < ?))'), args.push(q.before, q.before, q.before_id));
+    }
     const sql = `SELECT * FROM runs ${where.length ? `WHERE ${where.join(' AND ')}` : ''} ORDER BY created_at DESC, run_id DESC LIMIT ?`;
     return (this.#db.prepare(sql).all(...args, q.limit) as Rec[]).map(dbToRun);
   }

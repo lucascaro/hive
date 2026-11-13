@@ -58,7 +58,7 @@ test('output is coalesced in pieces of at most 8 KiB per stream, and a multi-byt
     assert.equal(r.kind, 'exit');
     const out = got.filter((g) => g.stream === 'stdout');
     assert.equal(out.map((g) => g.text).join(''), `${'é'.repeat(10000)}tail`);
-    assert.ok(out.every((g) => g.text.length <= 8192), 'no piece is over 8 KiB');
+    assert.ok(out.every((g) => new TextEncoder().encode(g.text).length <= 8192), 'no piece is over 8 KiB of UTF-8');
     assert.ok(out.length >= 2);
     assert.equal(got.filter((g) => g.stream === 'stderr').map((g) => g.text).join(''), 'warn');
   } finally {

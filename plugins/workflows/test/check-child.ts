@@ -13,7 +13,7 @@ import { s } from '../sdk/schema.ts';
 import { FakeHive, harness } from './harness.ts';
 
 const [dir, marker, worktree] = process.argv.slice(2);
-const script = `const fs=require('fs');const m=${JSON.stringify(marker)};if(fs.existsSync(m))process.exit(0);fs.writeFileSync(m,'1');setInterval(()=>{},1000)`;
+const script = `const fs=require('fs');const m=${JSON.stringify(marker)};const first=!fs.existsSync(m);if(first)fs.writeFileSync(m,'1');if(!first)process.exit(0);setInterval(()=>{},1000)`;
 
 const hive = new FakeHive();
 hive.replies.PREPARE_WORKTREE = () => ({ path: worktree, branch: 'b', base_sha: 'sha-1', reattached: false });

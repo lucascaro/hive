@@ -20,8 +20,9 @@ import (
 func (f *fixture) sleepOnce(dir string) []string {
 	marker, pidfile := filepath.Join(dir, "ran-once"), filepath.Join(dir, "pid")
 	q := func(s string) string { b, _ := json.Marshal(s); return string(b) }
-	return f.nodeScript("const fs=require('fs');fs.writeFileSync(" + q(pidfile) + ",String(process.pid));" +
-		"if(fs.existsSync(" + q(marker) + "))process.exit(0);fs.writeFileSync(" + q(marker) + ",'1');setInterval(()=>{},1000)")
+	// The marker is made before the pid is published, so a test that sees the pid knows the first attempt is committed to sleeping.
+	return f.nodeScript("const fs=require('fs');const first=!fs.existsSync(" + q(marker) + ");if(first)fs.writeFileSync(" + q(marker) + ",'1');" +
+		"fs.writeFileSync(" + q(pidfile) + ",String(process.pid));if(!first)process.exit(0);setInterval(()=>{},1000)")
 }
 
 func (f *fixture) checkPid(dir string) int {

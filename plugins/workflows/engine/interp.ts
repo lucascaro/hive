@@ -46,7 +46,7 @@ export type Transition =
   | { t: 'ready'; key: string }
   | { t: 'skip'; key: string }
   /** check/agent: after the process or session exists (`patch` records it); containers and humans: at once. */
-  | { t: 'start'; key: string; patch?: Partial<Row>; base_sha?: string }
+  | { t: 'start'; key: string; patch?: Partial<Row> }
   | { t: 'iterate'; key: string }
   | { t: 'finish'; key: string; output?: unknown }
   | { t: 'fail'; key: string; error: string; cap?: string; conflict?: Row['conflict'] }
@@ -382,8 +382,6 @@ export function apply(m: Model, t: Transition, deps: ApplyDeps): Applied {
       const r = get(t.key);
       const n = nodeOf(r);
       const base = { state: 'running' as const, started_at: now, ended_at: undefined, error: undefined, ...t.patch };
-      // The run pins its base with the first node that needed one, in the same commit (spec 529, R4).
-      if (t.base_sha) run = { base_sha: t.base_sha };
       if (n.kind === 'check' || n.kind === 'agent') {
         const next = put(r, { ...base, attempt: r.attempt + 1 });
         ev(next, 'node.started', { kind: n.kind, ...(next.branch ? { branch: next.branch } : {}), ...(next.worktree ? { worktree: next.worktree } : {}), ...(next.session_id ? { session_id: next.session_id } : {}) });

@@ -10,6 +10,7 @@
 // reused pid must never kill a stranger.
 
 import { spawn, spawnSync } from 'node:child_process';
+import { readFileSync } from 'node:fs';
 
 /** How long a polite stop waits before the forceful one. */
 export const KILL_GRACE_MS = 10_000;
@@ -45,10 +46,22 @@ export function alive(pid: number, kill: KillDeps['kill'] = process.kill): boole
 /**
  * When the process started, in whatever form identifies it: the same string
  * every time for the same process, a different one for a reused pid. Undefined
- * when there is no such process.
+ * when there is no such process. Linux reads clock ticks from /proc; elsewhere
+ * `ps` gives whole seconds, so a pid reused inside the same second on macOS is
+ * a known ceiling (B-9 research in B3 decides whether to go further).
  */
 export function procStart(pid: number, deps: KillDeps = {}): string | undefined {
   const run = deps.spawnSync ?? spawnSync;
+  if (deps.spawnSync === undefined && process.platform === 'linux') {
+    // Field 22 of /proc/<pid>/stat is the start time in clock ticks since boot: finer than ps's whole seconds, so a pid reused within a second is told apart.
+    try {
+      const stat = readFileSync(`/proc/${pid}/stat`, 'utf8');
+      const rest = stat.slice(stat.lastIndexOf(')') + 2).split(' ');
+      if (rest[19]) return `proc:${rest[19]}`;
+    } catch {
+      return undefined; // no such process
+    }
+  }
   const win = (deps.platform ?? process.platform) === 'win32';
   const r = win
     ? run('powershell', ['-NoProfile', '-Command', `(Get-Process -Id ${pid}).StartTime.ToFileTimeUtc()`], { encoding: 'utf8', windowsHide: true })
@@ -85,8 +98,9 @@ export async function killTree(t: Tracked, deps: KillDeps = {}): Promise<void> {
     try {
       kill(target, sig);
       return true;
-    } catch {
-      return false; // ESRCH: nothing left in the group
+    } catch (e) {
+      if ((e as { code?: string }).code === 'ESRCH') return false; // nothing left in the group
+      throw e; // EPERM and the rest do not prove the group is gone
     }
   };
   if (!signal('SIGTERM')) return;

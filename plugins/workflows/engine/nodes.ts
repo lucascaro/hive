@@ -16,7 +16,6 @@ type Launch = (spec: CheckSpec, onOutput: (stream: 'stdout' | 'stderr', text: st
 interface Prepared {
   path: string;
   branch: string;
-  base_sha: string;
 }
 
 /**
@@ -38,8 +37,10 @@ async function prepareBase(engine: Engine, runId: string, projectId: string, key
       { timeoutMs: 120_000 },
     );
     if (reply.conflict) throw new Error(`merge conflict in ${reply.conflict.branch}`);
-    // A reattached worktree reports no base_sha; the run keeps the one it pinned first.
-    return { path: reply.path, branch: reply.branch, base_sha: pinned ? '' : (reply.base_sha ?? '') };
+    // A reattached worktree reports no base_sha. A check commits nothing, so its HEAD is still where it was made: the base.
+    const base = reply.base_sha ?? (reply.reattached ? reply.head_sha : undefined) ?? '';
+    if (!pinned) engine.pinBase(runId, base);
+    return { path: reply.path, branch: reply.branch };
   };
   const prev = prepareChains.get(runId) ?? Promise.resolve();
   const next = prev.then(run, run);
@@ -52,7 +53,8 @@ async function prepareBase(engine: Engine, runId: string, projectId: string, key
 }
 
 export function checkExecutor(doLaunch: Launch = launch): (ctx: NodeContext) => Promise<void> {
-  return async ({ engine, run_id, key, node }) => {
+  return async (ctx) => {
+    const { engine, run_id, key, node } = ctx;
     const n = node as CheckNode;
     const startable = (): boolean => {
       const s = engine.run(run_id).model.rows.get(key)?.state;
@@ -60,7 +62,7 @@ export function checkExecutor(doLaunch: Launch = launch): (ctx: NodeContext) => 
     };
     const { project_id } = engine.run(run_id);
     const wt = await prepareBase(engine, run_id, project_id, key);
-    if (!startable()) return; // cancelled while the worktree was being made
+    if (!engine.current(ctx) || !startable()) return; // cancelled, failed or retried while the worktree was being made
 
     const attempt = (engine.run(run_id).model.rows.get(key)?.attempt ?? 0) + 1;
     const h = doLaunch({ argv: n.argv, cwd: wt.path, timeout_s: n.timeout_s }, (stream, text) => {
@@ -72,10 +74,16 @@ export function checkExecutor(doLaunch: Launch = launch): (ctx: NodeContext) => 
       return;
     }
     // The pid, group and start time are written with the node going `running`, so a restart can reap it.
+    if (h.proc_start === undefined) {
+      // Without a start time a restart could not tell this process from a stranger, so it could not reap it: do not run it untracked.
+      await h.stop();
+      engine.failNode(run_id, key, 'could not read the check process start time');
+      return;
+    }
     const patch = { pid: h.pid, ...(h.pgid === undefined ? {} : { pgid: h.pgid }), ...(h.proc_start === undefined ? {} : { proc_start: h.proc_start }), worktree: wt.path, branch: wt.branch };
     let started = false;
     try {
-      started = engine.beginNode(run_id, key, patch, wt.base_sha);
+      started = engine.beginNode(run_id, key, patch);
     } finally {
       if (!started) await h.stop();
     }

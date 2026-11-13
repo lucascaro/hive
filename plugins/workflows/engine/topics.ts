@@ -89,8 +89,10 @@ export class Topics {
       if (wireSize(reply, body) > MAX_MESSAGE_BYTES) throw new TopicError('reply_too_large', `the reply to ${topic} does not fit one message`);
       return { topic: reply, data: body };
     } catch (err) {
-      if (err instanceof TopicError || err instanceof EngineError) return { topic: reply, data: { nonce, ok: false, error: { code: err.code, message: err.message } } };
-      return { topic: reply, data: { nonce, ok: false, error: { code: 'internal', message: err instanceof Error ? err.message : String(err) } } };
+      // A failure reply is bounded like any other: a validator can produce thousands of errors.
+      const fail = (code: string, message: string): Reply => ({ topic: reply, data: { nonce, ok: false, error: { code, message: truncateEncoded(message, 4 << 10).text } } });
+      if (err instanceof TopicError || err instanceof EngineError) return fail(err.code, err.message);
+      return fail('internal', err instanceof Error ? err.message : String(err));
     }
   }
 
@@ -142,6 +144,7 @@ export class Topics {
       ...(optStr(d, 'project_id') === undefined ? {} : { project_id: optStr(d, 'project_id') as string }),
       ...(state === undefined ? {} : { state }),
       ...(optStr(d, 'before') === undefined ? {} : { before: optStr(d, 'before') as string }),
+      ...(optStr(d, 'before_id') === undefined ? {} : { before_id: optStr(d, 'before_id') as string }),
       limit: optInt(d, 'limit', 1, MAX_LIST, MAX_LIST),
     });
     // Fifty summaries are well under the cap, but the rule is the same everywhere: trim by encoded size.

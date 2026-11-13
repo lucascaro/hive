@@ -9,9 +9,30 @@
 import { spawn } from 'node:child_process';
 import { StringDecoder } from 'node:string_decoder';
 import { type KillDeps, killTree, procStart } from './killtree.ts';
+import { redactString } from './redact.ts';
 
 const FLUSH_MS = 250;
 const FLUSH_BYTES = 8 << 10;
+/** A trailing run this short is held back at a timed flush, in case it is the start of a token. */
+const HOLD_CHARS = 256;
+
+const utf8Bytes = (s: string): number => new TextEncoder().encode(s).length;
+
+/** The longest prefix of `s`, in UTF-16 units, that is at most `max` UTF-8 bytes and does not split a surrogate pair. */
+function prefixWithin(s: string, max: number): number {
+  let lo = 0;
+  let hi = s.length;
+  const aligned = (n: number): number => {
+    const c = s.charCodeAt(n - 1);
+    return n > 0 && c >= 0xd800 && c <= 0xdbff ? n - 1 : n;
+  };
+  while (lo < hi) {
+    const mid = (lo + hi + 1) >> 1;
+    if (utf8Bytes(s.slice(0, aligned(mid))) <= max) lo = mid;
+    else hi = mid - 1;
+  }
+  return aligned(lo);
+}
 
 export type CheckResult =
   | { kind: 'exit'; ok: boolean; exit_code: number }
@@ -61,6 +82,7 @@ export function launch(spec: CheckSpec, onOutput: (stream: 'stdout' | 'stderr', 
     stdio: ['ignore', 'pipe', 'pipe'],
   });
   let stopping: 'timeout' | 'stopped' | undefined;
+  let tree: Promise<void> | undefined;
   let settle: (r: CheckResult) => void = () => {};
   const result = new Promise<CheckResult>((r) => {
     settle = r;
@@ -70,23 +92,38 @@ export function launch(spec: CheckSpec, onOutput: (stream: 'stdout' | 'stderr', 
     const dec = new StringDecoder('utf8');
     let buf = '';
     let timer: ReturnType<typeof setTimeout> | undefined;
-    const flush = (): void => {
+    // Redaction runs on everything in hand before it is cut, so a secret that
+    // straddles a cut is not stored in two harmless-looking halves.
+    const emit = (text: string): void => onOutput(stream, redactString(text).text);
+    const flush = (all: boolean): void => {
       if (timer) clearTimeout(timer);
       timer = undefined;
-      if (buf !== '') onOutput(stream, buf);
-      buf = '';
+      let out = buf;
+      if (!all) {
+        // Hold back a trailing unbroken run (a token still arriving) until more output or the end.
+        const ws = Math.max(buf.lastIndexOf('\n'), buf.lastIndexOf(' '), buf.lastIndexOf('\t'));
+        if (ws >= 0 && buf.length - ws <= HOLD_CHARS) out = buf.slice(0, ws + 1);
+      }
+      buf = buf.slice(out.length);
+      if (out !== '') emit(out);
+      if (buf !== '') timer = setTimeout(() => flush(true), FLUSH_MS);
     };
     child[stream]?.on('data', (chunk: Uint8Array) => {
       buf += dec.write(chunk);
-      while (buf.length >= FLUSH_BYTES) {
-        onOutput(stream, buf.slice(0, FLUSH_BYTES));
-        buf = buf.slice(FLUSH_BYTES);
+      while (utf8Bytes(buf) >= FLUSH_BYTES) {
+        const red = redactString(buf).text;
+        let cut = prefixWithin(red, FLUSH_BYTES);
+        // Do not cut through what may be the start of a token: back up to the whitespace before it, when that is near.
+        const ws = Math.max(red.lastIndexOf('\n', cut - 1), red.lastIndexOf(' ', cut - 1), red.lastIndexOf('\t', cut - 1));
+        if (ws > 0 && cut - ws <= HOLD_CHARS && cut < red.length + 1 && !/\s/.test(red[cut - 1])) cut = ws + 1;
+        onOutput(stream, red.slice(0, cut));
+        buf = red.slice(cut);
       }
-      if (buf !== '' && !timer) timer = setTimeout(flush, FLUSH_MS);
+      if (buf !== '' && !timer) timer = setTimeout(() => flush(false), FLUSH_MS);
     });
     return () => {
       buf += dec.end();
-      flush();
+      flush(true);
     };
   });
 
@@ -99,11 +136,13 @@ export function launch(spec: CheckSpec, onOutput: (stream: 'stdout' | 'stderr', 
     stop: async () => {
       if (pid === undefined) return;
       stopping ??= 'stopped';
-      await killTree({ pid, pgid: handle.pgid }, deps);
+      tree ??= killTree({ pid, pgid: handle.pgid }, deps);
+      await tree;
     },
   };
 
   const timeout = setTimeout(() => {
+    if (stopping) return; // a stop is already under way: a cancel stays a cancel
     stopping = 'timeout';
     void handle.stop();
   }, spec.timeout_s * 1000);
@@ -111,9 +150,11 @@ export function launch(spec: CheckSpec, onOutput: (stream: 'stdout' | 'stderr', 
     clearTimeout(timeout);
     settle({ kind: 'error', message: `could not start ${spec.argv[0]}: ${err.message}` });
   });
-  child.on('close', (code: number | null) => {
+  child.on('close', async (code: number | null) => {
     clearTimeout(timeout);
     for (const end of pipes) end();
+    // The leader can exit on TERM while a grandchild with redirected stdio lives on: settle once the whole tree is stopped.
+    if (tree) await tree.catch(() => {});
     if (stopping === 'timeout') settle({ kind: 'timeout' });
     else if (stopping === 'stopped') settle({ kind: 'stopped' });
     else settle({ kind: 'exit', ok: code === 0, exit_code: code ?? -1 });

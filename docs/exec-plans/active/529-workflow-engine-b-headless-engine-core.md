@@ -1537,6 +1537,15 @@ download, the accepted sandbox gap, and `LIST_ACP_AGENTS`.
   - **Reaping survivors of a dead leader is B3** (B-9): `reap` kills a group only
     while the recorded leader's pid and start time still match, and reports
     `gone` otherwise.
+  - **PR #550 review additions.** `runs.list` also takes `before_id` (with
+    `before`) so a page boundary inside one millisecond skips no run; check
+    output is redacted before it is cut and a trailing partial token is held
+    back; a check with no readable start time fails instead of running
+    untracked; the base is pinned right after PREPARE (a reattached worktree
+    supplies it from `head_sha`); Linux uses `/proc` start ticks (macOS keeps
+    whole-second `lstart`, a known ceiling for B3's B-9 research); executors
+    carry an `epoch` so a failure from before a retry cannot fail the retried
+    node; output for a node no longer running is dropped.
   - **The 512-byte key cap holds by construction** (a 128-byte id under at most
     32 nesting levels of `[31]`); `shape.ts` pins the arithmetic in a test
     instead of carrying an unreachable check.

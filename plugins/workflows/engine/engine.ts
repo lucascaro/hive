@@ -32,6 +32,8 @@ export interface Hive {
 
 export interface NodeContext {
   engine: Engine;
+  /** Which in-memory run this launch belongs to: a retry makes a new one, so a stale executor can tell (`engine.current`). */
+  epoch: number;
   run_id: string;
   key: string;
   node: Node;
@@ -54,6 +56,7 @@ export interface EngineOptions {
 
 interface Runtime {
   id: string;
+  epoch: number;
   project_id: string;
   model: Model;
   inflight: Set<string>;
@@ -86,6 +89,7 @@ export class Engine {
   readonly #runs = new Map<string, Runtime>();
   #flusher: ReturnType<typeof setInterval> | undefined;
   #stopping = false;
+  #epochs = 0;
 
   constructor(o: EngineOptions) {
     this.store = o.store;
@@ -143,7 +147,7 @@ export class Engine {
 
   #load(run: RunRow): Runtime {
     const model = modelFor(JSON.parse(run.ir) as IR, JSON.parse(run.input), this.store.loadRows(run.run_id), run.state);
-    const rt: Runtime = { id: run.run_id, project_id: run.project_id, model, inflight: new Set(), stops: new Map(), driving: false, again: false };
+    const rt: Runtime = { id: run.run_id, epoch: ++this.#epochs, project_id: run.project_id, model, inflight: new Set(), stops: new Map(), driving: false, again: false };
     // A finished run is not kept: it is only read, or retried, and a retry reloads it.
     if (run.state === 'running' || run.state === 'waiting') this.#runs.set(run.run_id, rt);
     return rt;
@@ -200,8 +204,20 @@ export class Engine {
     this.#flusher = undefined;
   }
 
+  /** Whether `ctx` still belongs to the run's live runtime (not ended, not replaced by a retry). */
+  current(ctx: { run_id: string; epoch: number }): boolean {
+    return this.#runs.get(ctx.run_id)?.epoch === ctx.epoch;
+  }
+
+  /** Buffers a check.output or agent.* event. Output for a node that is no longer running is dropped: nothing follows `node.finished`. */
   buffer(runId: string, draft: EventDraft): void {
-    this.store.buffer(runId, draft);
+    const s = draft.key === null ? undefined : this.#row(runId, draft.key)?.state;
+    if (s === 'running' || s === 'waiting') this.store.buffer(runId, draft);
+  }
+
+  /** Pins the run's base commit (spec 529, R4), at once, so a restart cannot split a run across two bases. */
+  pinBase(runId: string, sha: string): void {
+    if (sha && !this.store.getRun(runId)?.base_sha) this.store.commit(runId, { rows: [], events: [], run: { base_sha: sha } });
   }
 
   // -------------------------------------------------------------- the loop
@@ -237,8 +253,9 @@ export class Engine {
   #launch(rt: Runtime, a: Action): void {
     const node = rt.model.ix.byId.get(a.node_id)?.node as Node;
     rt.inflight.add(a.key);
-    const ctx: NodeContext = { engine: this, run_id: rt.id, key: a.key, node };
+    const ctx: NodeContext = { engine: this, epoch: rt.epoch, run_id: rt.id, key: a.key, node };
     const fail = (err: unknown): void => {
+      if (this.#runs.get(rt.id) !== rt) return; // the run ended or was retried since: this failure is not the new attempt's
       this.failNode(rt.id, a.key, `${a.a} could not run: ${err instanceof Error ? err.message : String(err)}`);
     };
     let p: Promise<void>;
@@ -251,8 +268,9 @@ export class Engine {
       rt.inflight.delete(a.key);
       // An executor that returns without starting or failing its node would be launched again at once, forever.
       const s = rt.model.rows.get(a.key)?.state;
-      if (this.#runs.has(rt.id) && (s === 'pending' || s === 'interrupted')) this.failNode(rt.id, a.key, `${a.a} executor returned without starting the node`);
-      if (this.#runs.has(rt.id)) this.drive(rt);
+      const live = this.#runs.get(rt.id) === rt;
+      if (live && (s === 'pending' || s === 'interrupted')) this.failNode(rt.id, a.key, `${a.a} executor returned without starting the node`);
+      if (live) this.drive(rt);
     });
   }
 
@@ -263,10 +281,10 @@ export class Engine {
   }
 
   /** The node is starting: its process or session exists (`patch` records it). False when the node is no longer startable, say after a cancel. */
-  beginNode(runId: string, key: string, patch?: Partial<Row>, base_sha?: string): boolean {
+  beginNode(runId: string, key: string, patch?: Partial<Row>): boolean {
     const r = this.#row(runId, key);
     if (this.#stopping || !r || (r.state !== 'pending' && r.state !== 'interrupted')) return false;
-    this.commit(runId, { t: 'start', key, ...(patch ? { patch } : {}), ...(base_sha ? { base_sha } : {}) });
+    this.commit(runId, { t: 'start', key, ...(patch ? { patch } : {}) });
     return true;
   }
 
