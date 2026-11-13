@@ -1480,7 +1480,7 @@ download, the accepted sandbox gap, and `LIST_ACP_AGENTS`.
     `prompt_too_large`. The `node.waiting` event therefore never truncates, and
     `waiting.truncated`/`prompt_total_bytes` are dropped from `node.get`.
     The 24 KiB event cap stays as a defence, unreachable by a prompt.
-  - **B-16, permission ids exempt from `redact()`.** Exactly `request_id` and
+  - **B-16, permission ids exempt from `redact()` (handle part superseded by B-18).** Exactly `request_id` and
     `option_id` in `waiting` are exempt, but only after strict validation
     (charset `[A-Za-z0-9._:-]`, length <= 256); a value failing it is replaced
     by an engine-issued opaque handle that the engine maps back to the real id
@@ -1573,6 +1573,17 @@ download, the accepted sandbox gap, and `LIST_ACP_AGENTS`.
     redacting it would change what the user approved. B-5's "everything served is
     redacted" excludes `ir`. A test pins it.
 
+  - **Redact before cut (round-2 gate).** Every place that shortens a value
+    that might hold a secret goes through `redactCut` (redact, then cut): error
+    texts, permission-id details, conflict fields, kept worktree paths, error
+    replies, the stored-IR refusal. `shrink` and the event caps run after
+    `prepareEvent` has redacted. `killTree` and `reap` never throw: an EPERM is
+    reported as `kept`; `recover()` then fails the node naming the pid instead
+    of retrying it beside a survivor, and `shutdown()` settles every stop and
+    always flushes. `agent.plan` drops a quarter of its entries at a time.
+    `shrink` can drop permission `options` from an oversized wait
+    (`options_omitted`); those options cannot be answered from the GUI.
+
 ## Progress
 
 - **2026-10-25:** Research complete. Plan drafted against A at `7410f6b7`.
@@ -1641,7 +1652,7 @@ needs A PR1–3; B3 needs R1–R4 merged in A.
 - **2026-11-07 iter 6** — verdict: REQUEST_CHANGES (CodeRabbit re-review of a0df0db8: one plan-wording thread); mergeable: MERGEABLE; findings_hash: see list; threads_open: 1 -> 0; action: autofix+push; head_sha: see PR head. Fixed: the B3 fence wording no longer lets an empty marker scan lift the fence. Docs only; the iter 5 convergence stands once this head is green.
 - **2026-11-12 iter 1 (B2, PR #550)** — verdict: REQUEST_CHANGES; mergeable: MERGEABLE; findings_hash: see list; threads_open: 14 -> 0; action: autofix+push; head_sha: a2d5f7fd. CodeRabbit raised 14 threads on 8fef0b01, all valid and fixed with tests: check output cut by UTF-16 length and redacted per event (now bytes, redact-then-cut, partial token held back); a check with no start time ran untracked; timeout overwrote a cancel; result settled before the tree died; stale executor failure could fail a retried node (epoch guard); lstart second resolution (Linux uses /proc ticks; macOS ceiling noted); EPERM treated as gone; reattached worktree lost the base (pinned at once, head_sha fallback); Authorization= / Bearer / quoted-token redaction; late check.output after node.finished; runs.list cursor skipped same-ms runs (before_id); error replies unbounded. Own review (advisor) fixed before bots: per-run permission handles minted under the wrong run, effects launched from a failing step, nodes row read outside a read transaction.
 - **2026-11-12 iter 2 (B2, PR #550)** — verdict: APPROVE; mergeable: MERGEABLE; findings_hash: empty; threads_open: 0; action: stop; head_sha: a2d5f7fd. All CI green (Linux, macOS, Windows, Plugins on Node 26 incl. the unmodified-manifest e2e). Two CI-only failures found and fixed on the way: crash tests killed the engine before the check created its marker, and unreaped zombies counted as alive on Linux.
-- **2026-11-12 iter 3 (B2, PR #550)** — verdict: REQUEST_CHANGES (Opus gate FAIL on f8ebbe8c, plus 2 CodeRabbit threads); mergeable: MERGEABLE; findings_hash: see list; threads_open: 2 -> 0; action: autofix+push; head_sha: e918dff1. Fixed with tests: capData did not bound nested shapes (now trims the biggest array with an exact `*_omitted` count, never cuts state/reason/ids; conflicts keep 32 files); a failing stop (EPERM) escaped as an unhandled rejection; a stale launch could fail a retried attempt after `await stop()`. Plan amended (contract rows, decision log, B3/B5 follow-ups, user decisions B-18 (no permission-id handles: a non-conforming id fails the node with permission_option_invalid) and B-19 (run.get ir unredacted, pinned by a test)). Head after these: see PR.
+- **2026-11-12 iter 3 (B2, PR #550)** — verdict: REQUEST_CHANGES (Opus gate FAIL on f8ebbe8c, plus 2 CodeRabbit threads); mergeable: MERGEABLE; findings_hash: see list; threads_open: 2 -> 0; action: autofix+push; head_sha: e918dff1. Fixed with tests: capData did not bound nested shapes (now trims the biggest array with an exact `*_omitted` count, never cuts the state, reason, request_id, option_id or cap fields (the `options` array itself can be trimmed from the tail, with `options_omitted`); conflicts keep 32 files); a failing stop (EPERM) escaped as an unhandled rejection; a stale launch could fail a retried attempt after `await stop()`. Plan amended (contract rows, decision log, B3/B5 follow-ups, user decisions B-18 (no permission-id handles: a non-conforming id fails the node with permission_option_invalid) and B-19 (run.get ir unredacted, pinned by a test)). Head after these: see PR.
 - **2026-11-13 iter 4 (B2, PR #550)** — verdict: REQUEST_CHANGES (1 CodeRabbit thread on 0ecbf8b6); mergeable: MERGEABLE; findings_hash: see list; threads_open: 1 -> 0; action: autofix+push; head_sha: see PR head. Fixed with a test: check output from a cancelled attempt was recorded against the retried node (now guarded by the run epoch). CI was green on 74724e76 (gate fixes) and the Node 26 leg on 0ecbf8b6 (B-18, B-19).
 
 ## Gate verdict

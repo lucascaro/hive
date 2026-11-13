@@ -79,47 +79,51 @@ async function taskkill(pid: number, force: boolean, deps: KillDeps): Promise<vo
   });
 }
 
+/** What a stop achieved: `stopped` (signalled and gone, or force sent), `gone` (nothing was left), `kept` (the OS refused the signal, EPERM: the process is still there). */
+export type StopResult = 'stopped' | 'gone' | 'kept';
+
 /**
  * TERM, then KILL after the grace period, to the whole group (POSIX) or tree
  * (Windows, which has no graceful signal for a windowless tree: `taskkill /T`
- * asks, `/T /F` forces). Resolves once the leader is gone or the force went out.
+ * asks, `/T /F` forces). Never throws: a signal the OS refuses (EPERM, say a
+ * check started under sudo) is reported as `kept`, because only ESRCH proves
+ * a group is gone and the caller must decide what a surviving process means.
  */
-export async function killTree(t: Tracked, deps: KillDeps = {}): Promise<void> {
+export async function killTree(t: Tracked, deps: KillDeps = {}): Promise<StopResult> {
   const grace = deps.graceMs ?? KILL_GRACE_MS;
   const kill = deps.kill ?? process.kill;
   if ((deps.platform ?? process.platform) === 'win32') {
     await taskkill(t.pid, false, deps);
     await sleep(grace);
     await taskkill(t.pid, true, deps);
-    return;
+    return 'stopped';
   }
   const target = -(t.pgid ?? t.pid);
-  const signal = (sig: string): boolean => {
+  const signal = (sig: string): 'ok' | 'gone' | 'kept' => {
     try {
       kill(target, sig);
-      return true;
+      return 'ok';
     } catch (e) {
-      if ((e as { code?: string }).code === 'ESRCH') return false; // nothing left in the group
-      throw e; // EPERM and the rest do not prove the group is gone
+      return (e as { code?: string }).code === 'ESRCH' ? 'gone' : 'kept';
     }
   };
-  if (!signal('SIGTERM')) return;
+  const term = signal('SIGTERM');
+  if (term !== 'ok') return term === 'gone' ? 'gone' : 'kept';
   const deadline = Date.now() + grace;
   while (Date.now() < deadline) {
     await sleep(Math.min(50, Math.max(1, deadline - Date.now())));
-    if (!alive(target, kill)) return;
+    if (!alive(target, kill)) return 'stopped';
   }
-  signal('SIGKILL');
+  return signal('SIGKILL') === 'kept' ? 'kept' : 'stopped';
 }
 
 /**
  * Startup reaping: kills a recorded check's group only when the pid is alive
  * and its start time is the recorded one. Returns what it found.
  */
-export async function reap(t: Tracked, deps: KillDeps = {}): Promise<'gone' | 'stranger' | 'killed'> {
+export async function reap(t: Tracked, deps: KillDeps = {}): Promise<'gone' | 'stranger' | 'killed' | 'kept'> {
   const now = procStart(t.pid, deps);
   if (now === undefined) return 'gone';
   if (t.proc_start === undefined || now !== t.proc_start) return 'stranger';
-  await killTree(t, { graceMs: 2_000, ...deps });
-  return 'killed';
+  return (await killTree(t, { graceMs: 2_000, ...deps })) === 'kept' ? 'kept' : 'killed';
 }

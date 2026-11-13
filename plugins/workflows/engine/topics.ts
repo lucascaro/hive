@@ -11,7 +11,7 @@
 import { type Engine, EngineError } from './engine.ts';
 import type { RunEvent } from './events.ts';
 import type { Row, RunRow } from './model.ts';
-import { redactString, redactValue } from './redact.ts';
+import { redactCut, redactString, redactValue } from './redact.ts';
 import { encodedSize, MAX_MESSAGE_BYTES, truncateEncoded } from './size.ts';
 import type { Store } from './store.ts';
 
@@ -90,7 +90,7 @@ export class Topics {
       return { topic: reply, data: body };
     } catch (err) {
       // A failure reply is bounded like any other: a validator can produce thousands of errors.
-      const fail = (code: string, message: string): Reply => ({ topic: reply, data: { nonce, ok: false, error: { code, message: truncateEncoded(message, 4 << 10).text } } });
+      const fail = (code: string, message: string): Reply => ({ topic: reply, data: { nonce, ok: false, error: { code, message: redactCut(message, 4 << 10) } } });
       if (err instanceof TopicError || err instanceof EngineError) return fail(err.code, err.message);
       return fail('internal', err instanceof Error ? err.message : String(err));
     }
@@ -162,7 +162,7 @@ export class Topics {
   #runGet(d: Data): Data {
     const r = this.#run(d);
     // `ir` is at most 32 KiB and `input` 8 KiB, so everything else is held to 6 KiB (B-6).
-    const kept = r.kept_worktrees.slice(0, MAX_KEPT_LISTED).map((p) => truncateEncoded(p, MAX_KEPT_PATH_BYTES).text);
+    const kept = r.kept_worktrees.slice(0, MAX_KEPT_LISTED).map((p) => redactCut(p, MAX_KEPT_PATH_BYTES));
     return {
       run: {
         ...this.#summary(r),
@@ -171,7 +171,7 @@ export class Topics {
         base_sha: r.base_sha,
         kept_worktrees: kept,
         kept_worktrees_total: r.kept_worktrees.length,
-        error: r.error === undefined ? undefined : truncateEncoded(redactString(r.error).text, 2 << 10).text,
+        error: r.error === undefined ? undefined : redactCut(r.error, 2 << 10),
       },
       // Served as stored, deliberately (B-19): the IR is the user's own trusted, hash-pinned workflow file, not run output, so B-5's redaction does not apply to it.
       ir: JSON.parse(r.ir),

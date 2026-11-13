@@ -8,6 +8,8 @@
 // removes the credentials an agent or a check is likely to print, and does
 // not promise more.
 
+import { truncateEncoded } from './size.ts';
+
 const MARK = '[redacted]';
 
 const PATTERNS: RegExp[] = [
@@ -54,4 +56,14 @@ export function redactValue<T>(v: T): { value: T; count: number } {
     return x;
   };
   return { value: walk(v) as T, count };
+}
+
+/**
+ * Redacts, then cuts to `max` encoded bytes. The order is the rule: a secret
+ * that straddles the cut must be replaced whole first, or its front half is
+ * stored in the clear. Every place that shortens a value that might hold one
+ * goes through this.
+ */
+export function redactCut(s: string, max: number): string {
+  return truncateEncoded(redactString(s).text, max).text;
 }

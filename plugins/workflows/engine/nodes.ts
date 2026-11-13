@@ -72,7 +72,7 @@ export function checkExecutor(doLaunch: Launch = launch): (ctx: NodeContext) => 
     const fail = (why: string): void => {
       if (engine.current(ctx)) engine.failNode(run_id, key, why);
     };
-    const stopQuietly = async (): Promise<string | undefined> => h.stop().then(() => undefined, (e: Error) => e.message);
+    const stopQuietly = async (): Promise<string | undefined> => h.stop().then((r) => (r === 'kept' ? 'the operating system refused the signal (EPERM)' : undefined), (e: Error) => e.message);
     if (h.pid === undefined) {
       const r = await h.result;
       fail(r.kind === 'error' ? r.message : 'could not start the command');

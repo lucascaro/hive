@@ -89,7 +89,7 @@ test('a timeout whose stop fails with EPERM settles the check as an error instea
   try {
     const r = await h.result;
     assert.equal(r.kind, 'error');
-    assert.match(r.kind === 'error' ? r.message : '', /could not stop .*operation not permitted/);
+    assert.match(r.kind === 'error' ? r.message : '', /could not stop .*refused the signal \(EPERM\)/);
     await tick();
     await tick();
     assert.deepEqual(rejections, [], 'no unhandled rejection');

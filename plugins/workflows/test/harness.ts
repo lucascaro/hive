@@ -12,6 +12,7 @@ import { join } from 'node:path';
 import { Engine, type Executors, type Hive, type NodeContext } from '../engine/engine.ts';
 import type { RunEvent } from '../engine/events.ts';
 import type { Row } from '../engine/model.ts';
+import type { KillDeps } from '../engine/killtree.ts';
 import { Store, type StoreOptions } from '../engine/store.ts';
 import { Topics } from '../engine/topics.ts';
 import type { Node } from '../sdk/dsl.ts';
@@ -76,12 +77,12 @@ export interface Harness {
   close(): void;
 }
 
-export function harness(executors: Executors, opts: { store?: StoreOptions; dir?: string; hive?: FakeHive; testSeam?: boolean } = {}): Harness {
+export function harness(executors: Executors, opts: { store?: StoreOptions; dir?: string; hive?: FakeHive; testSeam?: boolean; kill?: KillDeps } = {}): Harness {
   const dir = opts.dir ?? mkdtempSync(join(tmpdir(), 'wf-'));
   const store = new Store(dir, opts.store);
   const hive = opts.hive ?? new FakeHive();
   const pushed: RunEvent[] = [];
-  const engine = new Engine({ store, hive, executors, onEvents: (_id, evs) => pushed.push(...evs) });
+  const engine = new Engine({ store, hive, executors, ...(opts.kill ? { kill: opts.kill } : {}), onEvents: (_id, evs) => pushed.push(...evs) });
   const topics = new Topics({ engine, testSeam: opts.testSeam ?? true });
   return {
     dir,

@@ -15,7 +15,8 @@ import { checkValue } from '../ir/resultschema.ts';
 import type { IR, Node } from '../sdk/dsl.ts';
 import type { EventDraft, RunEvent } from './events.ts';
 import { initialRows, apply, type Action, type Applied, type Model, modelFor, step, type Transition } from './interp.ts';
-import { killTree, reap } from './killtree.ts';
+import { type KillDeps, killTree, reap } from './killtree.ts';
+import { redactCut } from './redact.ts';
 import type { Row, RunRow } from './model.ts';
 import { encodedSize } from './size.ts';
 import type { Store } from './store.ts';
@@ -50,6 +51,8 @@ export interface EngineOptions {
   hive: Hive;
   executors: Executors;
   now?: () => Date;
+  /** How processes are signalled at startup and shutdown: a seam so a test can make the OS refuse (EPERM) without signalling anything. */
+  kill?: KillDeps;
   /** Called with every batch of events as stored, for the live push. */
   onEvents?: (runId: string, events: RunEvent[]) => void;
 }
@@ -60,7 +63,7 @@ interface Runtime {
   project_id: string;
   model: Model;
   inflight: Set<string>;
-  stops: Map<string, () => Promise<void>>;
+  stops: Map<string, () => Promise<'kept' | void>>;
   driving: boolean;
   again: boolean;
 }
@@ -89,6 +92,7 @@ export class Engine {
   readonly #runs = new Map<string, Runtime>();
   #flusher: ReturnType<typeof setInterval> | undefined;
   #stopping = false;
+  readonly #killDeps: KillDeps;
   #epochs = 0;
 
   constructor(o: EngineOptions) {
@@ -97,6 +101,7 @@ export class Engine {
     this.#executors = o.executors;
     this.#now = o.now ?? (() => new Date());
     this.#onEvents = o.onEvents;
+    this.#killDeps = o.kill ?? {};
   }
 
   // ----------------------------------------------------------------- runs
@@ -141,7 +146,7 @@ export class Engine {
 
   /** Fails a run that cannot be resumed, in one commit, so it is not retried on every start. */
   #refuse(run: RunRow, why: string): void {
-    const error = why.slice(0, 1024);
+    const error = redactCut(why, 1024);
     this.#publish(run.run_id, this.store.commit(run.run_id, { rows: [], events: [{ key: null, node_id: null, attempt: 0, type: 'run.finished', data: { state: 'failed', error } }], run: { state: 'failed', error } }));
   }
 
@@ -180,7 +185,7 @@ export class Engine {
     for (const r of a.cancelled) {
       const stop = rt.stops.get(r.key);
       // The node is already cancelled; a stop that fails (EPERM) is logged, never thrown into the event loop.
-      if (stop) stop().catch((err: Error) => console.error(`workflows: could not stop ${r.key}: ${err.message}`));
+      if (stop) stop().then((res) => res === 'kept' && console.error(`workflows: could not stop ${r.key}: the operating system refused the signal`), (err: Error) => console.error(`workflows: could not stop ${r.key}: ${err.message}`));
     }
     if (rt.model.state === 'done' || rt.model.state === 'failed' || rt.model.state === 'cancelled') this.#runs.delete(runId);
     return a;
@@ -321,7 +326,7 @@ export class Engine {
   }
 
   /** Registers how to stop a node's process, for a cancel or a run failure. */
-  onStop(runId: string, key: string, stop: (() => Promise<void>) | undefined): void {
+  onStop(runId: string, key: string, stop: (() => Promise<'kept' | void>) | undefined): void {
     const rt = this.#runs.get(runId);
     if (!rt) return;
     if (stop) rt.stops.set(key, stop);
@@ -364,13 +369,14 @@ export class Engine {
   async shutdown(graceMs = 1_000): Promise<void> {
     // A check ended by this stop is interrupted, not finished: nothing it reports from here on is recorded.
     this.#stopping = true;
-    const stops: Promise<void>[] = [];
+    const stops: Promise<unknown>[] = [];
     for (const rt of this.#runs.values()) {
       for (const r of rt.model.rows.values()) {
-        if (r.state === 'running' && r.pid !== undefined) stops.push(killTree({ pid: r.pid, pgid: r.pgid }, { graceMs }));
+        if (r.state === 'running' && r.pid !== undefined) stops.push(killTree({ pid: r.pid, pgid: r.pgid }, { ...this.#killDeps, graceMs }));
       }
     }
-    await Promise.all(stops);
+    // One stop that fails must not skip the flush: buffered events are the only record of the output so far.
+    await Promise.allSettled(stops);
     this.stopFlush();
     this.flush();
   }
@@ -395,8 +401,11 @@ export class Engine {
         if (r.state !== 'running') continue;
         const kind = rt.model.ix.byId.get(r.node_id)?.node.kind;
         if (kind !== 'check' && kind !== 'agent') continue;
-        if (r.pid !== undefined) await reap({ pid: r.pid, pgid: r.pgid, proc_start: r.proc_start });
-        this.commit(rt.id, { t: 'interrupt', key: r.key });
+        let reaped: string = 'gone';
+        if (r.pid !== undefined) reaped = await reap({ pid: r.pid, pgid: r.pgid, proc_start: r.proc_start }, this.#killDeps).catch(() => 'kept');
+        // A survivor the OS will not let us stop must not be run twice at once: the node fails, naming the pid, instead of being retried.
+        if (reaped === 'kept') this.commit(rt.id, { t: 'fail', key: r.key, error: `the previous attempt's process ${r.pid} is still running and could not be stopped (permission denied); stop it by hand, then retry the run` });
+        else this.commit(rt.id, { t: 'interrupt', key: r.key });
       }
     }
     for (const rt of loaded) this.drive(rt);

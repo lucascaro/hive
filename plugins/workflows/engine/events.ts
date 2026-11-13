@@ -127,8 +127,10 @@ export function capData(type: EventType, input: Data): Data {
       const entries = Array.isArray(data.entries) ? [...(data.entries as unknown[])] : [];
       let omitted = 0;
       while (entries.length > 0 && encodedSize({ ...data, entries, entries_omitted: omitted }) > MAX_EVENT_BYTES) {
-        entries.pop();
-        omitted++;
+        // A quarter at a time: one at a time is quadratic in the list (20,000 entries once held a commit for 26 s).
+        const drop = Math.max(1, Math.floor(entries.length / 4));
+        entries.length -= drop;
+        omitted += drop;
       }
       data.entries = entries;
       if (omitted > 0) data.entries_omitted = omitted;

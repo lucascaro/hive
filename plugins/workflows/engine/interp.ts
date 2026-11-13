@@ -10,11 +10,11 @@
 // committed. The engine (engine.ts) owns the effects.
 
 import type { Cond, Edge, GroupNode, IR, LoopNode, MapNode, Node } from '../sdk/dsl.ts';
-import { encodedSize, truncateEncoded } from './size.ts';
+import { encodedSize } from './size.ts';
 import { badPermissionIds, type EventDraft, MAX_EVENT_BYTES, prepareEvent } from './events.ts';
 import { buildIndex, type Index, keyOf, parseKey } from './keys.ts';
 import type { Change, NodeState, Row, RunState } from './model.ts';
-import { redactString, redactValue } from './redact.ts';
+import { redactCut, redactValue } from './redact.ts';
 
 /** An `interrupted` node gets one more attempt (spec 529, Attempts); a timeout or a bad answer never does. */
 export const MAX_ATTEMPTS = 2;
@@ -307,7 +307,7 @@ function deriveRunState(rows: Iterable<Row>): RunState {
   return 'running';
 }
 
-const clip = (s: string): string => truncateEncoded(redactString(s).text, MAX_ERROR_BYTES).text;
+const clip = (s: string): string => redactCut(s, MAX_ERROR_BYTES);
 
 /** Turns one transition into the rows and events to commit. Does not touch the model: the engine does, after the commit lands. */
 export function apply(m: Model, t: Transition, deps: ApplyDeps): Applied {
@@ -341,9 +341,9 @@ export function apply(m: Model, t: Transition, deps: ApplyDeps): Applied {
     const text = clip(error);
     // A conflict can name any number of files: keep the first 32, each cut, so node.get and the event stay bounded.
     const conflict = rawConflict && {
-      branch: truncateEncoded(rawConflict.branch, 256).text,
-      worktree: truncateEncoded(rawConflict.worktree, 256).text,
-      files: rawConflict.files.slice(0, 32).map((f) => truncateEncoded(f, 256).text),
+      branch: redactCut(rawConflict.branch, 256),
+      worktree: redactCut(rawConflict.worktree, 256),
+      files: rawConflict.files.slice(0, 32).map((f) => redactCut(f, 256)),
       ...(rawConflict.files.length > 32 ? { files_omitted: rawConflict.files.length - 32 } : {}),
     };
     const next = put(r, { state: 'failed', error: text, ended_at: now, waiting: undefined, ...(cap ? { cap } : {}), ...(conflict ? { conflict } : {}) });
@@ -455,7 +455,7 @@ export function apply(m: Model, t: Transition, deps: ApplyDeps): Applied {
       const bad = t.waiting.reason === 'permission' ? badPermissionIds(t.waiting) : [];
       if (bad.length > 0) {
         // An id the GUI could not send back unchanged is never substituted (B-18): the node fails, naming the id (redacted, cut).
-        failRow(r, `the agent offered a permission id that cannot be answered: ${bad.slice(0, 3).map((b) => JSON.stringify(truncateEncoded(b, 64).text)).join(', ')}`, 'permission_option_invalid');
+        failRow(r, `the agent offered a permission id that cannot be answered: ${bad.slice(0, 3).map((b) => JSON.stringify(redactCut(b, 64))).join(', ')}`, 'permission_option_invalid');
       } else {
         // Prepared once: this exact data is the event and the row's `waiting`, so what node.get serves is what the event said.
         waitingState(r, prepareEvent({ key: r.key, node_id: r.node_id, attempt: r.attempt, type: 'node.waiting', data: t.waiting }).data);

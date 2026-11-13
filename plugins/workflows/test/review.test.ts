@@ -73,15 +73,15 @@ test('a timeout that fires during a stop does not turn a cancel into a timeout',
   }
 });
 
-test('killTree propagates EPERM instead of reporting the group gone, and treats ESRCH as gone', async () => {
+test('killTree reports EPERM as kept instead of throwing or claiming the group gone, and ESRCH as gone', async () => {
   const eperm = () => {
     throw Object.assign(new Error('nope'), { code: 'EPERM' });
   };
-  await assert.rejects(killTree({ pid: 4242, pgid: 4242 }, { platform: 'linux', graceMs: 5, kill: eperm }), /nope/);
+  assert.equal(await killTree({ pid: 4242, pgid: 4242 }, { platform: 'linux', graceMs: 5, kill: eperm }), 'kept');
   const esrch = () => {
     throw Object.assign(new Error('gone'), { code: 'ESRCH' });
   };
-  await killTree({ pid: 4242, pgid: 4242 }, { platform: 'linux', graceMs: 5, kill: esrch });
+  assert.equal(await killTree({ pid: 4242, pgid: 4242 }, { platform: 'linux', graceMs: 5, kill: esrch }), 'gone');
 });
 
 function prepared(dir: string, extra: Record<string, unknown> = {}): FakeHive {

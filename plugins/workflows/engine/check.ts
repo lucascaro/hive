@@ -8,7 +8,7 @@
 
 import { spawn } from 'node:child_process';
 import { StringDecoder } from 'node:string_decoder';
-import { type KillDeps, killTree, procStart } from './killtree.ts';
+import { type KillDeps, killTree, procStart, type StopResult } from './killtree.ts';
 import { redactString } from './redact.ts';
 
 const FLUSH_MS = 250;
@@ -54,7 +54,7 @@ export interface CheckHandle {
   proc_start: string | undefined;
   result: Promise<CheckResult>;
   /** Stops the tree, politely and then not. `result` settles as `stopped`. */
-  stop(): Promise<void>;
+  stop(): Promise<'kept' | void>;
 }
 
 export interface CheckDeps extends KillDeps {
@@ -82,7 +82,7 @@ export function launch(spec: CheckSpec, onOutput: (stream: 'stdout' | 'stderr', 
     stdio: ['ignore', 'pipe', 'pipe'],
   });
   let stopping: 'timeout' | 'stopped' | undefined;
-  let tree: Promise<void> | undefined;
+  let tree: Promise<StopResult> | undefined;
   let settle: (r: CheckResult) => void = () => {};
   const result = new Promise<CheckResult>((r) => {
     settle = r;
@@ -137,15 +137,18 @@ export function launch(spec: CheckSpec, onOutput: (stream: 'stdout' | 'stderr', 
       if (pid === undefined) return;
       stopping ??= 'stopped';
       tree ??= killTree({ pid, pgid: handle.pgid }, deps);
-      await tree;
+      return (await tree) === 'kept' ? 'kept' : undefined;
     },
   };
 
   const timeout = setTimeout(() => {
     if (stopping) return; // a stop is already under way: a cancel stays a cancel
     stopping = 'timeout';
-    // A stop that cannot signal the group (EPERM) must not escape as an unhandled rejection, which would end the plugin: the check settles as an error.
-    handle.stop().catch((err: Error) => settle({ kind: 'error', message: `could not stop ${spec.argv[0]}: ${err.message}` }));
+    // A stop the OS refuses (EPERM) leaves the process alive: the check settles as an error saying so.
+    handle.stop().then(
+      (r) => r === 'kept' && settle({ kind: 'error', message: `could not stop ${spec.argv[0]}: the operating system refused the signal (EPERM); it may still be running` }),
+      (err: Error) => settle({ kind: 'error', message: `could not stop ${spec.argv[0]}: ${err.message}` }),
+    );
   }, spec.timeout_s * 1000);
   child.on('error', (err: Error) => {
     clearTimeout(timeout);
