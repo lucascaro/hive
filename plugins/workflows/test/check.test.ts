@@ -8,7 +8,7 @@
 
 import assert from 'node:assert/strict';
 import { spawn } from 'node:child_process';
-import { mkdtempSync, realpathSync, rmSync } from 'node:fs';
+import { mkdtempSync, readFileSync, realpathSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { test } from 'node:test';
@@ -25,6 +25,16 @@ const node = (script: string): string[] => [process.execPath, '-e', script];
 const quiet = (): void => {};
 const tmp = (): string => realpathSync(mkdtempSync(join(tmpdir(), 'wf-check-')));
 const sleepForever = 'setInterval(()=>{},1000)';
+
+/** alive, but a killed process nobody has reaped yet (a zombie, as a grandchild is in a container without an init) counts as dead. */
+function running(pid: number): boolean {
+  if (!alive(pid)) return false;
+  try {
+    return !/^\d+ \(.*\) Z/.test(readFileSync(`/proc/${pid}/stat`, 'utf8'));
+  } catch {
+    return true;
+  }
+}
 
 test('a check reports ok and the exit code; a non-zero exit is an outcome, not an error', async () => {
   const dir = tmp();
@@ -95,8 +105,8 @@ test('a timeout sends TERM to the group and KILL after the grace, and a grandchi
     assert.equal(r.kind, 'timeout');
     assert.ok(Date.now() - t0 >= 700, 'the KILL waited out the grace');
     assert.ok(grand > 0 && h.pid !== undefined);
-    assert.equal(alive(h.pid as number), false, 'the leader is dead');
-    assert.equal(alive(grand), false, 'its grandchild, in the same group, is dead');
+    assert.equal(running(h.pid as number), false, 'the leader is dead');
+    assert.equal(running(grand), false, 'its grandchild, in the same group, is dead');
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }
@@ -141,7 +151,7 @@ test('startup reaps a recorded group only when the start time matches', { skip: 
     assert.equal(procStart(pid), h.proc_start, 'and its start time is stable');
     assert.equal(await reap({ pid, pgid: h.pgid, proc_start: h.proc_start }, { graceMs: 200 }), 'killed');
     await h.result;
-    assert.equal(alive(pid), false);
+    assert.equal(running(pid), false);
     assert.equal(await reap({ pid, pgid: h.pgid, proc_start: h.proc_start }), 'gone');
   } finally {
     rmSync(dir, { recursive: true, force: true });
@@ -245,7 +255,7 @@ test('run.cancel stops a running check and its group', { skip: posix }, async ()
     assert.equal(call(h, 'run.cancel', { run_id: id }).ok, true);
     assert.equal(rowOf(h, id, 'a')?.state, 'cancelled');
     assert.equal(runState(h, id), 'cancelled');
-    await waitFor(() => !alive(pid), 'the process to die');
+    await waitFor(() => !running(pid), 'the process to die');
   } finally {
     h.close();
     rmSync(dir, { recursive: true, force: true });
@@ -283,7 +293,7 @@ test('plugin crash: the check outlives the engine, is reaped on restart, and the
     try {
       await h.engine.recover();
       await waitFor(() => runState(h, id) === 'done', 'the retried run');
-      assert.equal(alive(pid), false, 'the survivor was reaped');
+      assert.equal(running(pid), false, 'the survivor was reaped');
       const c = rowOf(h, id, 'c');
       assert.equal(c?.attempt, 2);
       assert.deepEqual(c?.output_raw, { ok: true, exit_code: 0 });
@@ -307,7 +317,7 @@ test('hived restart: the check is already gone, the node becomes interrupted and
   try {
     const { id, pid } = await crashedEngine(dir, marker, wt);
     process.kill(-pid, 'SIGKILL'); // hived took its children down with it
-    await waitFor(() => !alive(pid), 'the check to die');
+    await waitFor(() => !running(pid), 'the check to die');
     const h = harness(checkOnly, { dir, hive: prepared(wt) });
     try {
       await h.engine.recover();
@@ -330,7 +340,7 @@ test('shutdown terminates running checks so a normal hived stop leaves none behi
     await waitFor(() => rowOf(h, id, 'a')?.state === 'running', 'the check to run');
     const pid = rowOf(h, id, 'a')?.pid as number;
     await h.engine.shutdown(2000);
-    assert.equal(alive(pid), false);
+    assert.equal(running(pid), false);
     assert.equal(rowOf(h, id, 'a')?.state, 'running', 'the row stays running: the next start reaps and retries it');
   } finally {
     h.close();
