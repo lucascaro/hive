@@ -4,10 +4,10 @@
 - **Design:** [workflow-engine.md](../../design-docs/workflow-engine.md), [acp-workflows.md](../../design-docs/acp-workflows.md)
 - **Depends on:** A (#528), planned against `origin/feature/528-daemon-sdk-prereqs:docs/exec-plans/active/528-workflow-engine-a-daemon-sdk-prereqs.md` at `7410f6b7`
 - **Issue:** #529
-- **Branch:** `feature/529-engine-core` (research and plan); one branch per phase PR (B1: `feature/529-b1-validator`)
-- **PR:** #538 (B1)
-- **Phase:** 1 of 5
-- **Status:** active. Plan approved. Phase 1 (B1) implemented and in review (PR #538); B2 to B5 remain.
+- **Branch:** `feature/529-engine-core` (research and plan); one branch per phase PR (B1: `feature/529-b1-validator`, B2: `feature/529-b2-store-interpreter`)
+- **PR:** #538 (B1), B2: see Progress
+- **Phase:** 2 of 5
+- **Status:** active. Plan approved. Phase 1 (B1) merged; phase 2 (B2) implemented and in review; B3 to B5 remain.
   - All open questions are decided (see Decision log, 2026-10-25 user
     decisions).
   - R1–R6 are approved as A changes: R2, R3, R5 and R6 go to A PR1; R1 and
@@ -1489,6 +1489,58 @@ download, the accepted sandbox gap, and `LIST_ACP_AGENTS`.
     returns only events for that node key (indexed on `(run_id, key, seq)`).
     Unfiltered paging stays for gap recovery. C's node detail uses it.
 
+- **2026-11-12 (B2), implementation decisions and deviations.**
+  - **`redact.ts` landed in B2**, not B4 (Phases lists it under B4): B-5 and the
+    task's B2 scope need every served value redacted, and `prepareEvent` runs
+    it before insert. B4 still owns the per-pattern review.
+  - **PREPARE_WORKTREE refuses an empty `base`** (`invalid_base`, measured
+    against the real daemon), so the plan's "first PREPARE passes no base" does
+    not exist. The first PREPARE of a run asks for `HEAD`; the reply's
+    `base_sha` is pinned on `runs.base_sha` in the same commit as that node's
+    `node.started`, and every later PREPARE passes the SHA. A run's PREPAREs
+    are serialized in the plugin so the first one fixes the base.
+  - **`run.retry` also resets `cancelled` nodes** (a failing node cancels its
+    running siblings, and an edge settles only on done, skipped or failed, so a
+    cancelled sibling would hang the retried run). A failed or cancelled
+    *container* (group, loop, map) goes to `pending` like a leaf, but keeps its
+    `progress`: the loop iteration or map expansion reached is not redone and
+    its `loop.iteration` / `map.expanded` is not announced twice.
+  - **A human prompt's 16 KiB cap (B-15) is measured as sent** (`encodedSize`),
+    like every other budget, and a prompt whose `node.waiting` data (prompt plus
+    answer schema) passes the 24 KiB event cap fails the node with
+    `waiting_too_large`, so `node.get`'s non-output fields stay bounded.
+  - **`human.ts` was not created.** A human node is a reducer transition
+    (`interp.ts`, which renders the prompt) plus `Engine.answerHuman`
+    (validates against the node's schema and finishes the node); a separate
+    module would only re-export them.
+  - **B-16 handle mapping has no answer route yet.** Permission waits are
+    answered by the GUI's own `ANSWER_PERMISSION` straight to the daemon, so a
+    handle the engine substitutes for a non-conforming id can never reach the
+    engine to be mapped back. B2 implements the validation, the exemption and a
+    durable `handles` table (`Store.handleFor` / `realIdFor`), and invents no
+    topic. Request ids are daemon-minted (`<epoch>-<n>`) and always conform, so
+    the handle path is a defence for `option_id`, which an agent chooses. Needs a
+    decision with C before B3 emits permission waits.
+  - **Test-only topics** `test.start-run` (the `startRunFromIR` seam) and
+    `test.pid` exist only when `HIVE_WF_TEST_SEAM=1`. B4 replaces the first with
+    `run.start`; the seam must never be set in a release.
+  - **Base worktrees are not cleaned up in B2.** The REMOVE_WORKTREE sweep at
+    run end is B3's ("Cleanup"), and covers the B-4 base worktrees too.
+  - **A live `run.event` push exists** (`engine/main.ts`, batched by
+    `events.batchForPush` to 48 KiB as sent) so the topics are usable end to end;
+    B5 adds the coalescing, the usage wiring and the `seq` contract test.
+  - **A map's `results` holds `null`** for a copy whose sink was skipped.
+  - **A run is `waiting` while any node is waiting**, even if others run, so
+    `runs.list {state:"waiting"}` finds every run with a question open.
+  - **`run.get`'s `ir` is served as stored**, not redacted: it is the reviewed
+    source, and redacting a prompt would change what the user approved.
+  - **Reaping survivors of a dead leader is B3** (B-9): `reap` kills a group only
+    while the recorded leader's pid and start time still match, and reports
+    `gone` otherwise.
+  - **The 512-byte key cap holds by construction** (a 128-byte id under at most
+    32 nesting levels of `[31]`); `shape.ts` pins the arithmetic in a test
+    instead of carrying an unreachable check.
+
 ## Progress
 
 - **2026-10-25:** Research complete. Plan drafted against A at `7410f6b7`.
@@ -1504,6 +1556,16 @@ download, the accepted sandbox gap, and `LIST_ACP_AGENTS`.
   its tests run on the CI leg's Node 24 (type stripping), as the prototype's
   did. The `**/*.test.ts` glob is the plan's own conventions-card form.
 - **2026-11-07 (B1):** Gate FAIL; doc accuracy: `internal/acp/resultschema.go:21` pointed at the deleted `scripts/workflow-proto/schema.ts`; fixed (comment now names `plugins/workflows/sdk/schema.ts` and the TS port `plugins/workflows/ir/resultschema.ts`).
+
+- **2026-11-12 (B2):** Implemented on `feature/529-b2-store-interpreter`, based
+  on `origin/main` at `fda621f5`. Added `engine/{size,keys,redact,events,model,store,interp,engine,check,killtree,nodes,topics,main}.ts`,
+  the plugin skeleton (`hive-plugin.json` with `node: "26.0.0"`, `main.mjs`,
+  the SDK copy), the tests and the Go `internal/workflowe2e/` harness with the
+  four plan e2e tests. Node 26 is not installed locally, so the `.ts` tests and
+  the Go e2e ran on Node 24.16 (the harness installs a copy of the plugin whose
+  manifest drops the floor when Node is older than 26 and `HIVE_REQUIRE_NODE`
+  is unset); CI's Node 26 leg runs the unmodified manifest. B2 decisions are
+  logged below under "B2".
 
 ## Open questions
 

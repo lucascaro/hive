@@ -95,6 +95,20 @@ jobs:
         env:
           TERM: dumb
 
+      - name: Workflow engine tests on Node 26 (spec 529)
+        # The engine's own floor. The build job runs the same files on Node 24;
+        # this is the one that runs them where the manifest says they need to.
+        run: node --test 'plugins/workflows/**/*.test.ts'
+
+      - name: Workflow engine e2e (real hived, real plugin, unmodified manifest)
+        # HIVE_REQUIRE_NODE makes a missing or older Node fail the step instead
+        # of skipping it. Isolated like the other e2e steps: the harness sets
+        # HIVE_SOCKET and HIVE_STATE_DIR to temp paths itself.
+        run: go test -count=1 -timeout 280s ./internal/workflowe2e/...
+        env:
+          HIVE_REQUIRE_NODE: '26'
+          TERM: dumb
+
       - name: Plugin e2e (real hived starting a real plugin)
         # Behind the e2e build tag, so the step above skips it. Isolated
         # like the build job's e2e step; never touches real hive state.
