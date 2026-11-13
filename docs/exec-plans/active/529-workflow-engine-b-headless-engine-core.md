@@ -189,7 +189,7 @@ plugins/workflows/
   hive-plugin.mjs    byte copy of plugins/sdk/hive-plugin.mjs (drift-tested like webhook)
   sdk/               @hive/workflow and @hive/workflow/library: dsl.ts schema.ts library.ts index.ts library-index.ts
   ir/                shape.ts validate.ts catalog.ts mermaid.ts ir-schema.ts ir.schema.json resultschema.ts
-  engine/            main.ts store.ts interp.ts keys.ts worktrees.ts agent.ts check.ts human.ts
+  engine/            main.ts engine.ts model.ts nodes.ts store.ts interp.ts keys.ts size.ts worktrees.ts agent.ts check.ts
                      prompt.ts events.ts redact.ts topics.ts trust.ts build.ts typecheck.ts tsgo.ts killtree.ts
   build/             runner.mjs import-hook.mjs (the only files the sandbox child may read besides sdk/ and the snapshot)
   tools/             check-doc.ts emit.ts
@@ -426,7 +426,7 @@ Decisions.
 8. **F5.** Pi needs the user's "unattended" ceiling. The daemon's
    `ACPRefusal` enforces it, and R6 surfaces it before the run.
 
-### Check and human nodes (`engine/check.ts`, `engine/human.ts`)
+### Check and human nodes (`engine/check.ts`, `engine/nodes.ts`, `engine/interp.ts`)
 
 - **Check spawn.** `spawn(argv[0], argv.slice(1), {cwd, env: ALLOW_ENV, windowsHide: true, detached: process.platform !== 'win32'})`.
   - POSIX: its own process group.
@@ -755,8 +755,8 @@ All of it travels on A's `PLUGIN_MESSAGE` with `plugin_id: "workflows"`.
 | `workflow.build` | `{project_id, file}` | `{name, ir, mermaid, source_hash, input_schema}` or `error.code: "untrusted"\|"changed"\|"type_errors"\|"build_failed"\|"invalid_ir"\|"sandbox_unavailable"` with `type_errors?: [{file, line, col, message}]`, `errors?: string[]` |
 | `run.start` | `{project_id, file, input, source_hash}` | `{run_id}` — refuses `changed` if `source_hash` is not the current one, so the user runs what they reviewed |
 | `run.cancel` | `{run_id}` | `{}` |
-| `run.retry` | `{run_id}` | `{}` — failed or cancelled → running: failed and interrupted nodes reset to `pending`, attempts cleared. One transaction appends a `node.reset` per reset node and then `run.retried` (B-11), so live clients see it, and the reset rows are what `run.nodes` serves afterwards (B-12) |
-| `runs.list` | `{project_id?, state?: <a run state, below>, before?: created_at, limit ≤ 50}` — `project_id` omitted means every project (B-2), so the GUI finds waiting runs at boot with one call (`state: "waiting"`) | `{runs: [{run_id, project_id, workflow, file, state, created_at, updated_at, source_hash, source_changed}]}` |
+| `run.retry` | `{run_id}` | `{}` — failed or cancelled → running: failed, interrupted **and cancelled** nodes (a failing node cancels its running siblings, which would otherwise hang the resumed run) reset to `pending`, attempts cleared; a container keeps its loop iteration or map expansion. One transaction appends a `node.reset` per reset node and then `run.retried` (B-11), so live clients see it, and the reset rows are what `run.nodes` serves afterwards (B-12) |
+| `runs.list` | `{project_id?, state?: <a run state, below>, before?: created_at, before_id?: run_id, limit ≤ 50}` (`before_id` completes the (created_at, run_id) cursor so same-millisecond runs are not skipped) — `project_id` omitted means every project (B-2), so the GUI finds waiting runs at boot with one call (`state: "waiting"`) | `{runs: [{run_id, project_id, workflow, file, state, created_at, updated_at, source_hash, source_changed}]}` |
 | `run.get` | `{run_id}` | `{run: {…as above, last_seq (B-14), input, base_sha, kept_worktrees, kept_worktrees_total, error}, ir}` — no nodes, no paging (B-6). `kept_worktrees` is at most 16 paths of ≤ 256 bytes and `error` ≤ 2 KiB; `kept_worktrees_total` is the real count, and the full list is in the `run.finished` and `node.started`/`node.finished` events, paged through `run.events` |
 | `run.nodes` | `{run_id, after?: key}` | `{nodes: [{key, node_id, state, attempt, started_at?, finished_at?, cap?}], last_seq, more?, next_after?}` — the materialized node, loop and map state (B-12). Slim rows: no `output` or `error` (those come from `node.get`). Ordered by `key`; a page stops once `encodedSize` would pass 48 KiB (always at least one row), and `next_after` is the last key returned. Each page carries its own `last_seq`: the max committed `seq` when that page was read, read in one SQLite read transaction, so the rows reflect exactly the events `seq <= last_seq` |
 | `node.get` | `{run_id, key, offset?: 0, limit?: 16384}` | `{key, node_id, state, attempt, output?: string, total_bytes?, next_offset?, more?, session_id?, branch?, worktree?, error?, conflict?, waiting?}` — `output` is a slice of the serialized redacted output (B-7). `waiting` is the data of the node's open `node.waiting` event (rendered prompt, `output_schema`, permission `request_id` and `options`), present only while the node is `waiting`, so a wait raised before the run view opened can be answered from it (B-13, confirmed). The rendered prompt is capped at 16 KiB at build time, so it is never truncated (B-15: longer fails the node with `prompt_too_large`); `request_id` and `option_id` are exempt from redaction after strict validation (B-16). Everything else is redacted and counted in the 48 KiB encoded budget |
@@ -842,7 +842,7 @@ type RunEvent = {
 | `type` | `data` |
 |---|---|
 | `run.started` | `{workflow, file, project_id, source_hash, base_sha, input}` |
-| `run.finished` | `{state: "done"\|"failed"\|"cancelled", error?, cap?: "map_copies"\|"agent_turns", kept_worktrees?: string[]}` |
+| `run.finished` | `{state: "done"\|"failed"\|"cancelled", error?, cap?: "map_copies"\|"agent_turns"\|"prompt_too_large"\|"waiting_too_large", kept_worktrees?: string[]}` |
 | `run.retried` | `{reset: number}` — `run.retry` committed: the run is `running` again; `reset` counts the `node.reset` events just before it (B-11) |
 | `node.reset` | `{}` — `run.retry` returned the node to `pending` with its attempt cleared (B-11) |
 | `node.ready` | `{}` |
@@ -850,7 +850,7 @@ type RunEvent = {
 | `node.waiting` | `{reason: "human", prompt, output_schema}` or `{reason: "permission", session_id, request_id, title, options: [{option_id, name, kind}]}` |
 | `node.resumed` | `{reason: "permission" \| "human"}` — a `node.waiting` ended without the node finishing. B emits it only for a cleared permission; a human answer ends with `node.output` + `node.finished` in one transaction, so it emits none (B-1) |
 | `node.output` | `{output, truncated?: true}` — capped at 16 KiB of `encodedSize` in the event; the full redacted value is paged through `node.get` (B-7) |
-| `node.finished` | `{state: "done"\|"failed"\|"skipped"\|"interrupted"\|"cancelled", error?, cap?, conflict?: {branch, files, worktree}}` |
+| `node.finished` | `{state: "done"\|"failed"\|"skipped"\|"interrupted"\|"cancelled", error?, cap?, conflict?: {branch, files (at most 32, each cut), worktree, files_omitted?}}`; `cap` also takes `prompt_too_large` and `waiting_too_large`, decided when a human node *starts* (the rendered prompt or its `output_schema`, up to ~8 KiB raw, can exceed the cap), not at build time |
 | `loop.iteration` | `{iteration, max_iters}` |
 | `map.expanded` | `{count, concurrency}` |
 | `agent.turn.started` | `{session_id, prompt_id, reprompt: boolean}` |
@@ -906,7 +906,8 @@ first if it copies them.*
 *Needs A PR1–PR3.*
 
 - Plugin skeleton: manifest with `node: "26.0.0"`, SDK copy, `main.mjs`.
-- `store.ts`, `interp.ts`, `keys.ts`, `check.ts`, `human.ts`, `killtree.ts`,
+- `store.ts`, `interp.ts`, `keys.ts`, `check.ts`, `killtree.ts`, `engine.ts`,
+  `model.ts`, `nodes.ts`,
   `events.ts`, and the topics `runs.list` (with the optional `project_id`
   and `state` filters, B-2), `run.get` (`{run, ir}` only, B-6), `run.events`
   (byte-budgeted pages, B-6), `run.nodes` (byte-budgeted snapshot pages
@@ -1496,8 +1497,11 @@ download, the accepted sandbox gap, and `LIST_ACP_AGENTS`.
   - **PREPARE_WORKTREE refuses an empty `base`** (`invalid_base`, measured
     against the real daemon), so the plan's "first PREPARE passes no base" does
     not exist. The first PREPARE of a run asks for `HEAD`; the reply's
-    `base_sha` is pinned on `runs.base_sha` in the same commit as that node's
-    `node.started`, and every later PREPARE passes the SHA. A run's PREPAREs
+    `base_sha` is pinned on `runs.base_sha` immediately after that PREPARE (the
+    base resolves at the run's first PREPARE, not at run start, so `run.started`
+    carries `base_sha: ""`), and every later PREPARE passes the SHA. Pinning
+    writes no event, so B-14's "exact" does not cover `runs.base_sha`: clients
+    read it from `run.get` and treat it as eventually consistent. A run's PREPAREs
     are serialized in the plugin so the first one fixes the base.
   - **`run.retry` also resets `cancelled` nodes** (a failing node cancels its
     running siblings, and an edge settles only on done, skipped or failed, so a
@@ -1549,6 +1553,23 @@ download, the accepted sandbox gap, and `LIST_ACP_AGENTS`.
   - **The 512-byte key cap holds by construction** (a 128-byte id under at most
     32 nesting levels of `[31]`); `shape.ts` pins the arithmetic in a test
     instead of carrying an unreachable check.
+
+  - **PR #550 gate follow-ups (B3 and B5).**
+    - B3, B-8: the intent row and `HIVE_WF_CHECK` marker. Until then there is a
+      window in B2 where an engine kill between a check's spawn and `beginNode`
+      leaves a pending row with a live, unrecorded process, which the next start
+      launches again.
+    - B3, B-9 in full: Windows `taskkill` after the leader exited has a pid-reuse
+      gap (no start-time re-check before the kill); `reap` must re-verify pid
+      and start time immediately before each signal, TERM and KILL; survivors of
+      a dead leader are not reaped; macOS `lstart` is whole seconds.
+    - B5: strip `HIVE_WF_*` (the test seam) from the embedded plugin's
+      environment, or compile the seam out, with a test that an embedded plugin
+      cannot enable `test.start-run`.
+  - **Open for the user (not decided in B2).** (a) B-16: a non-conforming
+    `option_id` becomes an `h-<hex>` handle the GUI cannot send back to the
+    daemon, and there is no answer route. (b) `run.get` serves `ir` unredacted
+    while B-5 says everything served is redacted. Both are left as built.
 
 ## Progress
 

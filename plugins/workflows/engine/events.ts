@@ -137,18 +137,59 @@ export function capData(type: EventType, input: Data): Data {
     default:
       break;
   }
-  // Whatever is still over (an `error`, a `kept_worktrees` list, an odd field): halve the longest string until it fits.
-  for (let guard = 0; guard < 64 && encodedSize(data) > MAX_EVENT_BYTES; guard++) {
-    const longest = Object.entries(data)
-      .filter(([, v]) => typeof v === 'string')
-      .sort((a, b) => (b[1] as string).length - (a[1] as string).length)[0];
-    if (!longest) {
-      return { truncated: true };
+  return encodedSize(data) > MAX_EVENT_BYTES ? shrink(data) : data;
+}
+
+/** Fields that say what happened or name what it happened to: never cut, however big the rest is. */
+const KEEP = new Set(['state', 'reason', 'request_id', 'option_id', 'cap', 'kind', 'stream', 'session_id', 'item_id', 'tool_call_id', 'status', 'branch', 'worktree', 'type', 'id', 'node_id', 'key', 'truncated', 'redacted']);
+const MIN_TEXT = 64;
+
+/**
+ * Brings any event data under the cap (B-11). Whatever the shape: trailing
+ * elements of the biggest array anywhere are dropped (with a sibling
+ * `<name>_omitted` count), then the longest string that is not a KEEP field
+ * is halved. If something still does not fit, only the small KEEP scalars stay.
+ */
+function shrink(root: Data): Data {
+  const out = JSON.parse(JSON.stringify(root)) as Data;
+  type Slot = { parent: Data | unknown[]; key: string | number; size: number; array: boolean };
+  const pick = (): Slot | undefined => {
+    let best: Slot | undefined;
+    const walk = (node: unknown, parentKey: string): void => {
+      if (Array.isArray(node)) node.forEach((v, i) => walk(v, `${parentKey}[${i}]`));
+      else if (typeof node === 'object' && node !== null) {
+        for (const [k, v] of Object.entries(node)) {
+          let slot: Slot | undefined;
+          if (Array.isArray(v) && v.length > 0) slot = { parent: node as Data, key: k, size: encodedSize(v), array: true };
+          else if (typeof v === 'string' && v.length > MIN_TEXT && !KEEP.has(k)) slot = { parent: node as Data, key: k, size: encodedSize(v), array: false };
+          if (slot && (!best || slot.size > best.size)) best = slot;
+          walk(v, k);
+        }
+      }
+    };
+    walk(out, '');
+    return best;
+  };
+  for (let guard = 0; guard < 100_000 && encodedSize(out) > MAX_EVENT_BYTES; guard++) {
+    const slot = pick();
+    if (!slot) break;
+    const holder = slot.parent as Data;
+    const v = holder[slot.key as string];
+    if (slot.array) {
+      const arr = v as unknown[];
+      const drop = Math.max(1, Math.floor(arr.length / 4));
+      arr.length -= drop;
+      holder[`${slot.key as string}_omitted`] = ((holder[`${slot.key as string}_omitted`] as number | undefined) ?? 0) + drop;
+    } else {
+      const str = v as string;
+      holder[slot.key as string] = str.slice(0, Math.max(MIN_TEXT, Math.floor(str.length / 2)));
     }
-    data[longest[0]] = (longest[1] as string).slice(0, Math.max(0, Math.floor((longest[1] as string).length / 2)));
-    data.truncated = true;
+    out.truncated = true;
   }
-  return data;
+  if (encodedSize(out) <= MAX_EVENT_BYTES) return out;
+  const kept: Data = { truncated: true };
+  for (const [k, v] of Object.entries(root)) if (KEEP.has(k) && (typeof v === 'string' || typeof v === 'number' || typeof v === 'boolean') && encodedSize(v) <= 256) kept[k] = v;
+  return kept;
 }
 
 /** Splits events into `run.event` pushes that each fit the 48 KiB message budget, keeping order. */

@@ -37,7 +37,7 @@ export interface Row {
   prompt_id?: number;
   epoch?: number;
   boot_id?: string;
-  conflict?: { branch: string; files: string[]; worktree: string };
+  conflict?: { branch: string; files: string[]; worktree: string; files_omitted?: number };
   /** The data of the open `node.waiting` event; present only while the node is waiting (B-13). */
   waiting?: Record<string, unknown>;
   started_at?: string;

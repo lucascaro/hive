@@ -179,7 +179,8 @@ export class Engine {
     this.#publish(runId, events);
     for (const r of a.cancelled) {
       const stop = rt.stops.get(r.key);
-      if (stop) void stop();
+      // The node is already cancelled; a stop that fails (EPERM) is logged, never thrown into the event loop.
+      if (stop) stop().catch((err: Error) => console.error(`workflows: could not stop ${r.key}: ${err.message}`));
     }
     if (rt.model.state === 'done' || rt.model.state === 'failed' || rt.model.state === 'cancelled') this.#runs.delete(runId);
     return a;

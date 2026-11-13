@@ -338,8 +338,15 @@ export function apply(m: Model, t: Transition, deps: ApplyDeps): Applied {
     ev(next, 'node.finished', { state });
     return next;
   };
-  const failRow = (r: Row, error: string, cap?: string, conflict?: Row['conflict']): Row => {
+  const failRow = (r: Row, error: string, cap?: string, rawConflict?: Row['conflict']): Row => {
     const text = clip(error);
+    // A conflict can name any number of files: keep the first 32, each cut, so node.get and the event stay bounded.
+    const conflict = rawConflict && {
+      branch: truncateEncoded(rawConflict.branch, 256).text,
+      worktree: truncateEncoded(rawConflict.worktree, 256).text,
+      files: rawConflict.files.slice(0, 32).map((f) => truncateEncoded(f, 256).text),
+      ...(rawConflict.files.length > 32 ? { files_omitted: rawConflict.files.length - 32 } : {}),
+    };
     const next = put(r, { state: 'failed', error: text, ended_at: now, waiting: undefined, ...(cap ? { cap } : {}), ...(conflict ? { conflict } : {}) });
     ev(next, 'node.finished', { state: 'failed', error: text, ...(cap ? { cap } : {}), ...(conflict ? { conflict } : {}) });
     return next;

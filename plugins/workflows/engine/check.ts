@@ -144,7 +144,8 @@ export function launch(spec: CheckSpec, onOutput: (stream: 'stdout' | 'stderr', 
   const timeout = setTimeout(() => {
     if (stopping) return; // a stop is already under way: a cancel stays a cancel
     stopping = 'timeout';
-    void handle.stop();
+    // A stop that cannot signal the group (EPERM) must not escape as an unhandled rejection, which would end the plugin: the check settles as an error.
+    handle.stop().catch((err: Error) => settle({ kind: 'error', message: `could not stop ${spec.argv[0]}: ${err.message}` }));
   }, spec.timeout_s * 1000);
   child.on('error', (err: Error) => {
     clearTimeout(timeout);

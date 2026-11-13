@@ -68,16 +68,21 @@ export function checkExecutor(doLaunch: Launch = launch): (ctx: NodeContext) => 
     const h = doLaunch({ argv: n.argv, cwd: wt.path, timeout_s: n.timeout_s }, (stream, text) => {
       engine.buffer(run_id, { key, node_id: n.id, attempt, type: 'check.output', data: { stream, text } });
     });
+    // Every failure below is reported only while this launch still belongs to the live run: a cancel and retry during an await must not fail the new attempt.
+    const fail = (why: string): void => {
+      if (engine.current(ctx)) engine.failNode(run_id, key, why);
+    };
+    const stopQuietly = async (): Promise<string | undefined> => h.stop().then(() => undefined, (e: Error) => e.message);
     if (h.pid === undefined) {
       const r = await h.result;
-      engine.failNode(run_id, key, r.kind === 'error' ? r.message : 'could not start the command');
+      fail(r.kind === 'error' ? r.message : 'could not start the command');
       return;
     }
     // The pid, group and start time are written with the node going `running`, so a restart can reap it.
     if (h.proc_start === undefined) {
       // Without a start time a restart could not tell this process from a stranger, so it could not reap it: do not run it untracked.
-      await h.stop();
-      engine.failNode(run_id, key, 'could not read the check process start time');
+      const err = await stopQuietly();
+      fail(`could not read the check process start time${err ? `, and could not stop it: ${err}` : ''}`);
       return;
     }
     const patch = { pid: h.pid, ...(h.pgid === undefined ? {} : { pgid: h.pgid }), ...(h.proc_start === undefined ? {} : { proc_start: h.proc_start }), worktree: wt.path, branch: wt.branch };
@@ -85,12 +90,13 @@ export function checkExecutor(doLaunch: Launch = launch): (ctx: NodeContext) => 
     try {
       started = engine.beginNode(run_id, key, patch);
     } finally {
-      if (!started) await h.stop();
+      if (!started) await stopQuietly();
     }
     if (!started) return;
     engine.onStop(run_id, key, h.stop);
     const r = await h.result;
-    engine.onStop(run_id, key, undefined);
+    if (engine.current(ctx)) engine.onStop(run_id, key, undefined);
+    else return; // the run was cancelled and retried meanwhile: this result belongs to the old attempt
     switch (r.kind) {
       case 'exit':
         engine.completeNode(run_id, key, { ok: r.ok, exit_code: r.exit_code });
