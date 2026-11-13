@@ -15,7 +15,6 @@ import { s } from '../sdk/schema.ts';
 import { call, FakeHive, harness, rowOf, runState, tick, waitFor } from './harness.ts';
 
 const never = (): Promise<void> => new Promise(() => {});
-const handles = { handleFor: (id: string) => `h-${id.length}` };
 const oneCheck = () => workflow('c', s.object({}), (g) => void g.check('c', { argv: ['true'] }));
 
 // ------------------------------------------------------- 1. capData, any shape
@@ -34,7 +33,7 @@ test('a node.finished with 200 conflict files fits the cap and keeps its state a
 
 test('a permission wait with 300 options fits the cap and keeps reason and request_id', () => {
   const options = Array.from({ length: 300 }, (_, i) => ({ option_id: `opt-${i}`, name: `Option ${'<'.repeat(100)} ${i}`, kind: 'allow_once' }));
-  const e = prepareEvent({ key: 'a', node_id: 'a', attempt: 1, type: 'node.waiting', data: { reason: 'permission', session_id: 's', request_id: '1-1', title: 't', options } }, handles);
+  const e = prepareEvent({ key: 'a', node_id: 'a', attempt: 1, type: 'node.waiting', data: { reason: 'permission', session_id: 's', request_id: '1-1', title: 't', options } });
   assert.ok(encodedSize(e.data) <= MAX_EVENT_BYTES, `${encodedSize(e.data)} bytes`);
   assert.equal(e.data.reason, 'permission');
   assert.equal(e.data.request_id, '1-1');

@@ -69,16 +69,15 @@ test('redactValue walks objects and arrays, leaves keys and non-strings, and cou
 
 // ----------------------------------------------------------------------- events
 
-const handles = { handleFor: (id: string) => `h-${id.length}` };
 const draft = (type: Parameters<typeof prepareEvent>[0]['type'], data: Record<string, unknown>) => ({ key: 'a', node_id: 'a', attempt: 1, type, data });
 
 test('prepareEvent redacts first and notes the count, then caps', () => {
-  const e = prepareEvent(draft('check.output', { stream: 'stdout', text: `${'<'.repeat(20_000)} AKIAABCDEFGHIJKLMNOP` }), handles);
+  const e = prepareEvent(draft('check.output', { stream: 'stdout', text: `${'<'.repeat(20_000)} AKIAABCDEFGHIJKLMNOP` }));
   assert.equal(e.data.redacted, 1);
   assert.equal(e.data.truncated, true);
   assert.ok(encodedSize(e.data) <= MAX_EVENT_BYTES);
   // A secret straddling the cut is still redacted, because redaction ran on the whole text.
-  const cut = prepareEvent(draft('agent.message', { session_id: 's', item_id: 'i', text: `${'x'.repeat(16_300)} AKIAABCDEFGHIJKLMNOP${'<'.repeat(100)}` }), handles);
+  const cut = prepareEvent(draft('agent.message', { session_id: 's', item_id: 'i', text: `${'x'.repeat(16_300)} AKIAABCDEFGHIJKLMNOP${'<'.repeat(100)}` }));
   assert.ok(!String(cut.data.text).includes('AKIA'));
   assert.match(String(cut.data.text), /\[redacted\]/);
   assert.equal(cut.data.truncated, true);

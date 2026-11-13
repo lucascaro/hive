@@ -11,7 +11,7 @@
 
 import type { Cond, Edge, GroupNode, IR, LoopNode, MapNode, Node } from '../sdk/dsl.ts';
 import { encodedSize, truncateEncoded } from './size.ts';
-import { type EventDraft, MAX_EVENT_BYTES, type Handles, prepareEvent } from './events.ts';
+import { badPermissionIds, type EventDraft, MAX_EVENT_BYTES, prepareEvent } from './events.ts';
 import { buildIndex, type Index, keyOf, parseKey } from './keys.ts';
 import type { Change, NodeState, Row, RunState } from './model.ts';
 import { redactString, redactValue } from './redact.ts';
@@ -300,7 +300,6 @@ export interface Applied {
 
 export interface ApplyDeps {
   now: () => string;
-  handles?: Handles;
 }
 
 function deriveRunState(rows: Iterable<Row>): RunState {
@@ -452,10 +451,15 @@ export function apply(m: Model, t: Transition, deps: ApplyDeps): Applied {
       finished(get(t.key), 'interrupted');
       break;
     case 'wait': {
-      // Prepared once: this exact data is the event and the row's `waiting`, so what node.get serves is what the event said.
-      if (!deps.handles) throw new Error('a permission wait needs the run\'s handles');
       const r = get(t.key);
-      waitingState(r, prepareEvent({ key: r.key, node_id: r.node_id, attempt: r.attempt, type: 'node.waiting', data: t.waiting }, deps.handles).data);
+      const bad = t.waiting.reason === 'permission' ? badPermissionIds(t.waiting) : [];
+      if (bad.length > 0) {
+        // An id the GUI could not send back unchanged is never substituted (B-18): the node fails, naming the id (redacted, cut).
+        failRow(r, `the agent offered a permission id that cannot be answered: ${bad.slice(0, 3).map((b) => JSON.stringify(truncateEncoded(b, 64).text)).join(', ')}`, 'permission_option_invalid');
+      } else {
+        // Prepared once: this exact data is the event and the row's `waiting`, so what node.get serves is what the event said.
+        waitingState(r, prepareEvent({ key: r.key, node_id: r.node_id, attempt: r.attempt, type: 'node.waiting', data: t.waiting }).data);
+      }
       break;
     }
     case 'resume': {

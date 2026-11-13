@@ -759,7 +759,7 @@ All of it travels on A's `PLUGIN_MESSAGE` with `plugin_id: "workflows"`.
 | `runs.list` | `{project_id?, state?: <a run state, below>, before?: created_at, before_id?: run_id, limit ≤ 50}` (`before_id` completes the (created_at, run_id) cursor so same-millisecond runs are not skipped) — `project_id` omitted means every project (B-2), so the GUI finds waiting runs at boot with one call (`state: "waiting"`) | `{runs: [{run_id, project_id, workflow, file, state, created_at, updated_at, source_hash, source_changed}]}` |
 | `run.get` | `{run_id}` | `{run: {…as above, last_seq (B-14), input, base_sha, kept_worktrees, kept_worktrees_total, error}, ir}` — no nodes, no paging (B-6). `kept_worktrees` is at most 16 paths of ≤ 256 bytes and `error` ≤ 2 KiB; `kept_worktrees_total` is the real count, and the full list is in the `run.finished` and `node.started`/`node.finished` events, paged through `run.events` |
 | `run.nodes` | `{run_id, after?: key}` | `{nodes: [{key, node_id, state, attempt, started_at?, finished_at?, cap?}], last_seq, more?, next_after?}` — the materialized node, loop and map state (B-12). Slim rows: no `output` or `error` (those come from `node.get`). Ordered by `key`; a page stops once `encodedSize` would pass 48 KiB (always at least one row), and `next_after` is the last key returned. Each page carries its own `last_seq`: the max committed `seq` when that page was read, read in one SQLite read transaction, so the rows reflect exactly the events `seq <= last_seq` |
-| `node.get` | `{run_id, key, offset?: 0, limit?: 16384}` | `{key, node_id, state, attempt, output?: string, total_bytes?, next_offset?, more?, session_id?, branch?, worktree?, error?, conflict?, waiting?}` — `output` is a slice of the serialized redacted output (B-7). `waiting` is the data of the node's open `node.waiting` event (rendered prompt, `output_schema`, permission `request_id` and `options`), present only while the node is `waiting`, so a wait raised before the run view opened can be answered from it (B-13, confirmed). The rendered prompt is capped at 16 KiB at build time, so it is never truncated (B-15: longer fails the node with `prompt_too_large`); `request_id` and `option_id` are exempt from redaction after strict validation (B-16). Everything else is redacted and counted in the 48 KiB encoded budget |
+| `node.get` | `{run_id, key, offset?: 0, limit?: 16384}` | `{key, node_id, state, attempt, output?: string, total_bytes?, next_offset?, more?, session_id?, branch?, worktree?, error?, conflict?, waiting?}` — `output` is a slice of the serialized redacted output (B-7). `waiting` is the data of the node's open `node.waiting` event (rendered prompt, `output_schema`, permission `request_id` and `options`), present only while the node is `waiting`, so a wait raised before the run view opened can be answered from it (B-13, confirmed). The rendered prompt is capped at 16 KiB at build time, so it is never truncated (B-15: longer fails the node with `prompt_too_large`); `request_id` and `option_id` are exempt from redaction, and a wait whose ids fail the charset never opens: the node fails with `cap: "permission_option_invalid"` (B-18). Everything else is redacted and counted in the 48 KiB encoded budget |
 | `run.events` | `{run_id, after_seq, limit ≤ 500, key?}` | `{events: RunEvent[], last_seq, more}` — also byte-budgeted: a page stops once `encodedSize` would pass 48 KiB (always at least one event, B-11), so `more` can be true below `limit`. `key?` returns only that node's events (B-17); unfiltered paging stays for gap recovery |
 | `human.answer` | `{run_id, key, answer}` | `{}`; `error.code: "invalid_answer"` with a path-qualified message, or `"not_waiting"` |
 
@@ -842,7 +842,7 @@ type RunEvent = {
 | `type` | `data` |
 |---|---|
 | `run.started` | `{workflow, file, project_id, source_hash, base_sha, input}` |
-| `run.finished` | `{state: "done"\|"failed"\|"cancelled", error?, cap?: "map_copies"\|"agent_turns"\|"prompt_too_large"\|"waiting_too_large", kept_worktrees?: string[]}` |
+| `run.finished` | `{state: "done"\|"failed"\|"cancelled", error?, cap?: "map_copies"\|"agent_turns"\|"prompt_too_large"\|"waiting_too_large"\|"permission_option_invalid", kept_worktrees?: string[]}` |
 | `run.retried` | `{reset: number}` — `run.retry` committed: the run is `running` again; `reset` counts the `node.reset` events just before it (B-11) |
 | `node.reset` | `{}` — `run.retry` returned the node to `pending` with its attempt cleared (B-11) |
 | `node.ready` | `{}` |
@@ -850,7 +850,7 @@ type RunEvent = {
 | `node.waiting` | `{reason: "human", prompt, output_schema}` or `{reason: "permission", session_id, request_id, title, options: [{option_id, name, kind}]}` |
 | `node.resumed` | `{reason: "permission" \| "human"}` — a `node.waiting` ended without the node finishing. B emits it only for a cleared permission; a human answer ends with `node.output` + `node.finished` in one transaction, so it emits none (B-1) |
 | `node.output` | `{output, truncated?: true}` — capped at 16 KiB of `encodedSize` in the event; the full redacted value is paged through `node.get` (B-7) |
-| `node.finished` | `{state: "done"\|"failed"\|"skipped"\|"interrupted"\|"cancelled", error?, cap?, conflict?: {branch, files (at most 32, each cut), worktree, files_omitted?}}`; `cap` also takes `prompt_too_large` and `waiting_too_large`, decided when a human node *starts* (the rendered prompt or its `output_schema`, up to ~8 KiB raw, can exceed the cap), not at build time |
+| `node.finished` | `{state: "done"\|"failed"\|"skipped"\|"interrupted"\|"cancelled", error?, cap?, conflict?: {branch, files (at most 32, each cut), worktree, files_omitted?}}`; `cap` also takes `prompt_too_large`, `waiting_too_large` and `permission_option_invalid` (B-18), decided when a human node *starts* (the rendered prompt or its `output_schema`, up to ~8 KiB raw, can exceed the cap), not at build time |
 | `loop.iteration` | `{iteration, max_iters}` |
 | `map.expanded` | `{count, concurrency}` |
 | `agent.turn.started` | `{session_id, prompt_id, reprompt: boolean}` |
@@ -1517,14 +1517,6 @@ download, the accepted sandbox gap, and `LIST_ACP_AGENTS`.
     (`interp.ts`, which renders the prompt) plus `Engine.answerHuman`
     (validates against the node's schema and finishes the node); a separate
     module would only re-export them.
-  - **B-16 handle mapping has no answer route yet.** Permission waits are
-    answered by the GUI's own `ANSWER_PERMISSION` straight to the daemon, so a
-    handle the engine substitutes for a non-conforming id can never reach the
-    engine to be mapped back. B2 implements the validation, the exemption and a
-    durable `handles` table (`Store.handleFor` / `realIdFor`), and invents no
-    topic. Request ids are daemon-minted (`<epoch>-<n>`) and always conform, so
-    the handle path is a defence for `option_id`, which an agent chooses. Needs a
-    decision with C before B3 emits permission waits.
   - **Test-only topics** `test.start-run` (the `startRunFromIR` seam) and
     `test.pid` exist only when `HIVE_WF_TEST_SEAM=1`. B4 replaces the first with
     `run.start`; the seam must never be set in a release.
@@ -1566,10 +1558,20 @@ download, the accepted sandbox gap, and `LIST_ACP_AGENTS`.
     - B5: strip `HIVE_WF_*` (the test seam) from the embedded plugin's
       environment, or compile the seam out, with a test that an embedded plugin
       cannot enable `test.start-run`.
-  - **Open for the user (not decided in B2).** (a) B-16: a non-conforming
-    `option_id` becomes an `h-<hex>` handle the GUI cannot send back to the
-    daemon, and there is no answer route. (b) `run.get` serves `ir` unredacted
-    while B-5 says everything served is redacted. Both are left as built.
+
+- **2026-11-12, user decisions on the PR #550 gate.**
+  - **B-18, no handles (supersedes B-16's handle part).** A permission
+    `option_id` or `request_id` that fails `^[A-Za-z0-9._:-]{1,256}$` is never
+    substituted: the engine fails the node with `cap: "permission_option_invalid"`
+    and a redacted, cut detail, and no `node.waiting` is opened. Conforming ids
+    stay exempt from `redact()` so ANSWER_PERMISSION gets them unchanged. The
+    `handles` table and `Store.handleFor` / `realIdFor` are removed. Why: the GUI
+    answers permissions straight to the daemon, so a handle could never be sent
+    back.
+  - **B-19, `run.get` serves `ir` unredacted (amends B-5).** The IR is the user's
+    own trusted, hash-pinned workflow file (trust-gated in B4), not run output;
+    redacting it would change what the user approved. B-5's "everything served is
+    redacted" excludes `ir`. A test pins it.
 
 ## Progress
 
@@ -1618,7 +1620,7 @@ Raised by the PR #540 review, consequences of B-6:
   `types?` filter and archive-table candidates are dropped.
 - **B2, run-level `last_seq`:** Resolved 2026-11-12, B-14.
 - **B-13 waiting prompt, paging:** Resolved 2026-11-12, B-15 (cap, not paging).
-- **B-13 redacted permission ids:** Resolved 2026-11-12, B-16.
+- **B-13 redacted permission ids:** Resolved 2026-11-12, B-16, handle part superseded by B-18.
 - **B-12 per-node history:** Resolved 2026-11-12, B-17 (`key?` filter).
 - **B3, Windows launch.** Whether Node's `spawn` already puts a non-detached
   child in a kill-on-close job at creation (libuv), or a `CREATE_SUSPENDED`
@@ -1639,7 +1641,7 @@ needs A PR1–3; B3 needs R1–R4 merged in A.
 - **2026-11-07 iter 6** — verdict: REQUEST_CHANGES (CodeRabbit re-review of a0df0db8: one plan-wording thread); mergeable: MERGEABLE; findings_hash: see list; threads_open: 1 -> 0; action: autofix+push; head_sha: see PR head. Fixed: the B3 fence wording no longer lets an empty marker scan lift the fence. Docs only; the iter 5 convergence stands once this head is green.
 - **2026-11-12 iter 1 (B2, PR #550)** — verdict: REQUEST_CHANGES; mergeable: MERGEABLE; findings_hash: see list; threads_open: 14 -> 0; action: autofix+push; head_sha: a2d5f7fd. CodeRabbit raised 14 threads on 8fef0b01, all valid and fixed with tests: check output cut by UTF-16 length and redacted per event (now bytes, redact-then-cut, partial token held back); a check with no start time ran untracked; timeout overwrote a cancel; result settled before the tree died; stale executor failure could fail a retried node (epoch guard); lstart second resolution (Linux uses /proc ticks; macOS ceiling noted); EPERM treated as gone; reattached worktree lost the base (pinned at once, head_sha fallback); Authorization= / Bearer / quoted-token redaction; late check.output after node.finished; runs.list cursor skipped same-ms runs (before_id); error replies unbounded. Own review (advisor) fixed before bots: per-run permission handles minted under the wrong run, effects launched from a failing step, nodes row read outside a read transaction.
 - **2026-11-12 iter 2 (B2, PR #550)** — verdict: APPROVE; mergeable: MERGEABLE; findings_hash: empty; threads_open: 0; action: stop; head_sha: a2d5f7fd. All CI green (Linux, macOS, Windows, Plugins on Node 26 incl. the unmodified-manifest e2e). Two CI-only failures found and fixed on the way: crash tests killed the engine before the check created its marker, and unreaped zombies counted as alive on Linux.
-- **2026-11-12 iter 3 (B2, PR #550)** — verdict: REQUEST_CHANGES (Opus gate FAIL on f8ebbe8c, plus 2 CodeRabbit threads); mergeable: MERGEABLE; findings_hash: see list; threads_open: 2 -> 0; action: autofix+push; head_sha: e918dff1. Fixed with tests: capData did not bound nested shapes (now trims the biggest array with an exact `*_omitted` count, never cuts state/reason/ids; conflicts keep 32 files); a failing stop (EPERM) escaped as an unhandled rejection; a stale launch could fail a retried attempt after `await stop()`. Plan amended (contract rows, decision log, B3/B5 follow-ups, B-16 and `ir` redaction left open for the user).
+- **2026-11-12 iter 3 (B2, PR #550)** — verdict: REQUEST_CHANGES (Opus gate FAIL on f8ebbe8c, plus 2 CodeRabbit threads); mergeable: MERGEABLE; findings_hash: see list; threads_open: 2 -> 0; action: autofix+push; head_sha: e918dff1. Fixed with tests: capData did not bound nested shapes (now trims the biggest array with an exact `*_omitted` count, never cuts state/reason/ids; conflicts keep 32 files); a failing stop (EPERM) escaped as an unhandled rejection; a stale launch could fail a retried attempt after `await stop()`. Plan amended (contract rows, decision log, B3/B5 follow-ups, user decisions B-18 (no permission-id handles: a non-conforming id fails the node with permission_option_invalid) and B-19 (run.get ir unredacted, pinned by a test)). Head after these: see PR.
 
 ## Gate verdict
 

@@ -320,59 +320,67 @@ test('every stored event is at most 24 KiB as sent, so a page can always hold on
   }
 });
 
-// ---------------------------------------------------------- permission ids (B-16)
+// ----------------------------------------------- permission ids (B-16, B-18)
 
-test('permission ids pass redaction when they validate, and are swapped for a handle when they do not (B-16)', async () => {
+const permIr = () => workflow('a', s.object({}), (g) => void g.agent('a', { agent: 'claude', prompt: 'go', output: s.object({ r: s.string() }) }));
+
+test('a conforming token-shaped permission id round-trips unmodified, while everything else in the wait is redacted (B-16)', async () => {
   const h = harness(scripted(() => 'hang'));
   try {
-    const ir = workflow('a', s.object({}), (g) => void g.agent('a', { agent: 'claude', prompt: 'go', output: s.object({ r: s.string() }) }));
-    const id = h.engine.startRunFromIR({ project_id: 'p1', file: 'a.ts', ir, input: {} });
+    const id = h.engine.startRunFromIR({ project_id: 'p1', file: 'a.ts', ir: permIr(), input: {} });
     await waitFor(() => rowOf(h, id, 'a')?.state === 'running', 'the agent to run');
     const tokenShaped = 'AKIAABCDEFGHIJKLMNOP'; // would be redacted as a secret if it were not exempt
     const options = [
       { option_id: `sk-${'z'.repeat(30)}`, name: 'Allow once', kind: 'allow_once' },
-      { option_id: 'bad id/with spaces', name: 'Reject', kind: 'reject_once' },
+      { option_id: 'reject_once', name: 'Reject', kind: 'reject_once' },
     ];
     h.engine.commit(id, { t: 'wait', key: 'a', waiting: { reason: 'permission', session_id: 's-a', request_id: tokenShaped, title: `Run curl with ghp_${'a'.repeat(36)}`, options } });
-    const r = call(h, 'node.get', { run_id: id, key: 'a' }) as { state: string; waiting: { request_id: string; title: string; options: { option_id: string; name: string }[] } };
+    const r = call(h, 'node.get', { run_id: id, key: 'a' }) as { state: string; waiting: { request_id: string; title: string; options: { option_id: string }[] } };
     assert.equal(r.state, 'waiting');
     assert.equal(r.waiting.request_id, tokenShaped, 'a valid id reaches ANSWER_PERMISSION untouched');
-    assert.equal(r.waiting.options[0].option_id, `sk-${'z'.repeat(30)}`);
-    assert.match(r.waiting.title, /^Run curl with \[redacted\]$/, 'everything else is still redacted');
-    const handle = r.waiting.options[1].option_id;
-    assert.match(handle, /^h-[0-9a-f]{24}$/);
-    assert.equal(h.store.realIdFor(id, handle), 'bad id/with spaces', 'the engine can map the handle back');
-    // The event carries the same prepared data as node.get.
+    assert.deepEqual(r.waiting.options.map((o) => o.option_id), [`sk-${'z'.repeat(30)}`, 'reject_once']);
+    assert.match(r.waiting.title, /^Run curl with \[redacted\]$/);
     const ev = h.store.events(id, 0, 100).find((e) => e.type === 'node.waiting');
-    assert.equal((ev?.data as { request_id: string }).request_id, tokenShaped);
-    // node.get serves the stored data as it is: no re-preparation, and no write on a read.
     assert.deepEqual(r.waiting, ev?.data, 'node.get and the event agree exactly');
-    assert.equal((call(h, 'node.get', { run_id: id, key: 'a' }) as { waiting: { options: { option_id: string }[] } }).waiting.options[1].option_id, handle);
   } finally {
     h.close();
   }
 });
 
-test('handles belong to their run: a commit on another run never changes what node.get serves (B-16)', async () => {
+test('a permission id that fails the charset fails the node with permission_option_invalid, and no handle is ever issued (B-18)', async () => {
   const h = harness(scripted(() => 'hang'));
   try {
-    const ir = workflow('a', s.object({}), (g) => void g.agent('a', { agent: 'claude', prompt: 'go', output: s.object({ r: s.string() }) }));
-    const runA = h.engine.startRunFromIR({ project_id: 'p1', file: 'a.ts', ir, input: {} });
-    const runB = h.engine.startRunFromIR({ project_id: 'p1', file: 'b.ts', ir, input: {} });
-    await waitFor(() => rowOf(h, runA, 'a')?.state === 'running' && rowOf(h, runB, 'a')?.state === 'running', 'both agents to run');
-    const wait = { reason: 'permission', session_id: 's-a', request_id: '1-1', title: 'Allow?', options: [{ option_id: 'bad id/with spaces', name: 'Reject', kind: 'reject_once' }] };
-    h.engine.commit(runA, { t: 'wait', key: 'a', waiting: wait });
-    const handleA = (call(h, 'node.get', { run_id: runA, key: 'a' }) as { waiting: { options: { option_id: string }[] } }).waiting.options[0].option_id;
-    // Run B commits, with the same bad id in its own wait.
-    h.engine.commit(runB, { t: 'wait', key: 'a', waiting: { ...wait, session_id: 's-b' } });
-    const handleB = (call(h, 'node.get', { run_id: runB, key: 'a' }) as { waiting: { options: { option_id: string }[] } }).waiting.options[0].option_id;
-    assert.notEqual(handleA, handleB, 'each run mints its own');
-    const again = (call(h, 'node.get', { run_id: runA, key: 'a' }) as { waiting: { options: { option_id: string }[] } }).waiting.options[0].option_id;
-    assert.equal(again, handleA, 'a read never mints a new handle');
-    const ev = h.store.events(runA, 0, 100).find((e) => e.type === 'node.waiting');
-    assert.equal((ev?.data as { options: { option_id: string }[] }).options[0].option_id, handleA, 'the event and node.get agree');
-    assert.equal(h.store.realIdFor(runA, handleA), 'bad id/with spaces');
-    assert.equal(h.store.realIdFor(runB, handleA), handleA, 'run B knows nothing of run A handle');
+    const id = h.engine.startRunFromIR({ project_id: 'p1', file: 'a.ts', ir: permIr(), input: {} });
+    await waitFor(() => rowOf(h, id, 'a')?.state === 'running', 'the agent to run');
+    const secret = `ghp_${'a'.repeat(36)} with spaces`;
+    h.engine.commit(id, { t: 'wait', key: 'a', waiting: { reason: 'permission', session_id: 's-a', request_id: '1-1', title: 'Allow?', options: [{ option_id: secret, name: 'Allow', kind: 'allow_once' }] } });
+    const n = call(h, 'node.get', { run_id: id, key: 'a' }) as { state: string; error: string; waiting?: unknown };
+    assert.equal(n.state, 'failed');
+    assert.ok(!('waiting' in n), 'no wait was opened');
+    assert.match(n.error, /permission id that cannot be answered/);
+    assert.ok(!n.error.includes('ghp_a'), 'the detail is redacted');
+    const fin = h.store.events(id, 0, 100).find((e) => e.type === 'node.finished' && e.key === 'a');
+    assert.equal(fin?.data.cap, 'permission_option_invalid');
+    assert.equal(h.store.events(id, 0, 100).some((e) => e.type === 'node.waiting'), false);
+    // Nothing in the store stands in for an id: there is no handle table.
+    assert.equal(JSON.stringify(h.store.events(id, 0, 100)).includes('h-'), false);
+    // A bad request_id is refused the same way.
+    const id2 = h.engine.startRunFromIR({ project_id: 'p1', file: 'b.ts', ir: permIr(), input: {} });
+    await waitFor(() => rowOf(h, id2, 'a')?.state === 'running', 'the agent to run');
+    h.engine.commit(id2, { t: 'wait', key: 'a', waiting: { reason: 'permission', session_id: 's', request_id: 'bad id', title: 't', options: [] } });
+    assert.equal(rowOf(h, id2, 'a')?.cap, 'permission_option_invalid');
+  } finally {
+    h.close();
+  }
+});
+
+test('run.get serves the IR as stored, unredacted, on purpose (B-19)', () => {
+  const h = harness(parked);
+  try {
+    const ir = { ir: 1, name: 'w', input: { type: 'object', properties: {}, required: [], additionalProperties: false }, nodes: [{ id: 'c', kind: 'check', argv: ['echo', 'AKIAABCDEFGHIJKLMNOP'], timeout_s: 1 }], edges: [] };
+    seed(h, 'r1', [row('c', 'pending')], { ir });
+    const r = call(h, 'run.get', { run_id: 'r1' }) as { ir: { nodes: { argv: string[] }[] } };
+    assert.equal(r.ir.nodes[0].argv[1], 'AKIAABCDEFGHIJKLMNOP', 'the reviewed workflow file is shown as written: redacting it would change what the user approved');
   } finally {
     h.close();
   }

@@ -57,22 +57,22 @@ const MAX_TEXT_BYTES = 16 << 10;
 /** Permission ids the GUI sends back to the daemon verbatim (B-16). */
 const SAFE_ID = /^[A-Za-z0-9._:-]{1,256}$/;
 
-/** Stands in for a permission id that fails SAFE_ID; the real id stays in the store (B-16). */
-export interface Handles {
-  handleFor(realId: string): string;
-}
-
 type Data = Record<string, unknown>;
+
+/** The ids of a permission wait that do not match SAFE_ID: they cannot be exempt from redaction, so the wait is refused (B-18). */
+export function badPermissionIds(data: Data): string[] {
+  const ids = [data.request_id, ...(Array.isArray(data.options) ? (data.options as Data[]).map((o) => o?.option_id) : [])];
+  return ids.filter((v) => typeof v !== 'string' || !SAFE_ID.test(v)).map((v) => String(v));
+}
 
 /**
  * A `node.waiting` for a permission carries ids that must reach
  * ANSWER_PERMISSION untouched, so a token-shaped id must not be redacted
- * (B-16). Exactly `request_id` and each `option_id` are exempt, and only when
- * they pass SAFE_ID; any other value is swapped for an opaque handle first.
- * Everything else is redacted as usual.
+ * (B-16, B-18). Exactly `request_id` and each `option_id` are exempt, and only
+ * because the engine refuses a wait whose ids fail SAFE_ID (`badPermissionIds`)
+ * before it gets here. Everything else is redacted as usual.
  */
-function redactWaiting(data: Data, handles: Handles): { value: Data; count: number } {
-  const id = (v: unknown): string => (typeof v === 'string' && SAFE_ID.test(v) ? v : handles.handleFor(String(v)));
+function redactWaiting(data: Data): { value: Data; count: number } {
   const options = Array.isArray(data.options) ? (data.options as unknown[]).filter((o): o is Data => typeof o === 'object' && o !== null && !Array.isArray(o)) : [];
   const { request_id, options: _o, ...rest } = data;
   const r = redactValue(rest);
@@ -80,15 +80,15 @@ function redactWaiting(data: Data, handles: Handles): { value: Data; count: numb
     const { option_id, ...others } = o;
     const ro = redactValue(others);
     r.count += ro.count;
-    return { option_id: id(option_id), ...ro.value };
+    return { option_id, ...ro.value };
   });
-  return { value: { request_id: id(request_id), ...r.value, options: redactedOptions }, count: r.count };
+  return { value: { request_id, ...r.value, options: redactedOptions }, count: r.count };
 }
 
 /** Redacts an event's data, counting replacements in `data.redacted`, then caps its size. */
-export function prepareEvent(draft: EventDraft, handles: Handles): EventDraft {
+export function prepareEvent(draft: EventDraft): EventDraft {
   const waitingPerm = draft.type === 'node.waiting' && draft.data.reason === 'permission';
-  const r = waitingPerm ? redactWaiting(draft.data, handles) : redactValue(draft.data);
+  const r = waitingPerm ? redactWaiting(draft.data) : redactValue(draft.data);
   const data: Data = r.count > 0 ? { ...r.value, redacted: r.count } : r.value;
   return { ...draft, data: capData(draft.type, data) };
 }

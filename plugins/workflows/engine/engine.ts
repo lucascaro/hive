@@ -172,7 +172,7 @@ export class Engine {
   /** Commits one transition: store first, then the model, then the push and the stops. Throws, leaving the model alone, when the store does. */
   commit(runId: string, t: Transition): Applied {
     const rt = this.#rt(runId);
-    const a = apply(rt.model, t, { now: () => this.#now().toISOString(), handles: this.store.handlesFor(runId) });
+    const a = apply(rt.model, t, { now: () => this.#now().toISOString() });
     const events = this.store.commit(runId, a.change);
     for (const r of a.change.rows) rt.model.rows.set(r.key, r);
     if (a.change.run?.state) rt.model.state = a.change.run.state;

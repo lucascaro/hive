@@ -14,7 +14,7 @@ import { randomBytes } from 'node:crypto';
 import { chmodSync, closeSync, mkdirSync, openSync } from 'node:fs';
 import { DatabaseSync } from 'node:sqlite';
 import { join } from 'node:path';
-import { type EventDraft, type Handles, prepareEvent, type RunEvent } from './events.ts';
+import { type EventDraft, prepareEvent, type RunEvent } from './events.ts';
 import type { Change, Row, RunRow, RunState } from './model.ts';
 
 const SCHEMA_VERSION = 1;
@@ -45,9 +45,6 @@ CREATE TABLE IF NOT EXISTS events (
   PRIMARY KEY (run_id, seq)
 );
 CREATE INDEX IF NOT EXISTS events_by_key ON events (run_id, key, seq);
-CREATE TABLE IF NOT EXISTS handles (
-  run_id TEXT NOT NULL, handle TEXT NOT NULL, real_id TEXT NOT NULL, PRIMARY KEY (run_id, handle)
-);
 `;
 
 type Sql = string | number | null;
@@ -219,9 +216,8 @@ export class Store {
     const ts = this.#iso();
     const out: RunEvent[] = [];
     const ins = this.#db.prepare('INSERT INTO events (run_id, seq, ts, key, node_id, attempt, type, data) VALUES (?,?,?,?,?,?,?,?)');
-    const handles = this.handlesFor(runId);
     for (const draft of drafts) {
-      const d = prepareEvent(draft, handles);
+      const d = prepareEvent(draft);
       const ev: RunEvent = { run_id: runId, seq: last + out.length + 1, ts, ...d } as RunEvent;
       ins.run(runId, ev.seq, ts, ev.key, ev.node_id, ev.attempt, ev.type, JSON.stringify(ev.data));
       out.push(ev);
@@ -285,27 +281,6 @@ export class Store {
     const out: RunEvent[] = [];
     for (const runId of [...this.#buffered.keys()]) out.push(...this.commit(runId, { rows: [], events: [] }));
     return out;
-  }
-
-  // ---- permission-id handles (B-16)
-
-  /** The handles of one run: a stand-in for each permission id that cannot pass through unredacted, minted once and kept. */
-  handlesFor(runId: string): Handles {
-    return {
-      handleFor: (realId) => {
-        const existing = this.#db.prepare('SELECT handle AS h FROM handles WHERE run_id = ? AND real_id = ?').get(runId, realId) as { h: string } | undefined;
-        if (existing) return existing.h;
-        const handle = `h-${randomBytes(12).toString('hex')}`;
-        this.#db.prepare('INSERT INTO handles (run_id, handle, real_id) VALUES (?,?,?)').run(runId, handle, realId);
-        return handle;
-      },
-    };
-  }
-
-  /** The real permission id a handle stands for, or the input when it is not a handle. */
-  realIdFor(runId: string, id: string): string {
-    const r = this.#db.prepare('SELECT real_id AS r FROM handles WHERE run_id = ? AND handle = ?').get(runId, id) as { r: string } | undefined;
-    return r?.r ?? id;
   }
 
   // ------------------------------------------------------------- reads

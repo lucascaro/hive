@@ -173,6 +173,7 @@ export class Topics {
         kept_worktrees_total: r.kept_worktrees.length,
         error: r.error === undefined ? undefined : truncateEncoded(redactString(r.error).text, 2 << 10).text,
       },
+      // Served as stored, deliberately (B-19): the IR is the user's own trusted, hash-pinned workflow file, not run output, so B-5's redaction does not apply to it.
       ir: JSON.parse(r.ir),
     };
   }
