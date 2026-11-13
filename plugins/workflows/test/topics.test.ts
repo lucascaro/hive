@@ -345,8 +345,34 @@ test('permission ids pass redaction when they validate, and are swapped for a ha
     // The event carries the same prepared data as node.get.
     const ev = h.store.events(id, 0, 100).find((e) => e.type === 'node.waiting');
     assert.equal((ev?.data as { request_id: string }).request_id, tokenShaped);
-    // A second wait for the same bad id reuses its handle.
+    // node.get serves the stored data as it is: no re-preparation, and no write on a read.
+    assert.deepEqual(r.waiting, ev?.data, 'node.get and the event agree exactly');
     assert.equal((call(h, 'node.get', { run_id: id, key: 'a' }) as { waiting: { options: { option_id: string }[] } }).waiting.options[1].option_id, handle);
+  } finally {
+    h.close();
+  }
+});
+
+test('handles belong to their run: a commit on another run never changes what node.get serves (B-16)', async () => {
+  const h = harness(scripted(() => 'hang'));
+  try {
+    const ir = workflow('a', s.object({}), (g) => void g.agent('a', { agent: 'claude', prompt: 'go', output: s.object({ r: s.string() }) }));
+    const runA = h.engine.startRunFromIR({ project_id: 'p1', file: 'a.ts', ir, input: {} });
+    const runB = h.engine.startRunFromIR({ project_id: 'p1', file: 'b.ts', ir, input: {} });
+    await waitFor(() => rowOf(h, runA, 'a')?.state === 'running' && rowOf(h, runB, 'a')?.state === 'running', 'both agents to run');
+    const wait = { reason: 'permission', session_id: 's-a', request_id: '1-1', title: 'Allow?', options: [{ option_id: 'bad id/with spaces', name: 'Reject', kind: 'reject_once' }] };
+    h.engine.commit(runA, { t: 'wait', key: 'a', waiting: wait });
+    const handleA = (call(h, 'node.get', { run_id: runA, key: 'a' }) as { waiting: { options: { option_id: string }[] } }).waiting.options[0].option_id;
+    // Run B commits, with the same bad id in its own wait.
+    h.engine.commit(runB, { t: 'wait', key: 'a', waiting: { ...wait, session_id: 's-b' } });
+    const handleB = (call(h, 'node.get', { run_id: runB, key: 'a' }) as { waiting: { options: { option_id: string }[] } }).waiting.options[0].option_id;
+    assert.notEqual(handleA, handleB, 'each run mints its own');
+    const again = (call(h, 'node.get', { run_id: runA, key: 'a' }) as { waiting: { options: { option_id: string }[] } }).waiting.options[0].option_id;
+    assert.equal(again, handleA, 'a read never mints a new handle');
+    const ev = h.store.events(runA, 0, 100).find((e) => e.type === 'node.waiting');
+    assert.equal((ev?.data as { options: { option_id: string }[] }).options[0].option_id, handleA, 'the event and node.get agree');
+    assert.equal(h.store.realIdFor(runA, handleA), 'bad id/with spaces');
+    assert.equal(h.store.realIdFor(runB, handleA), handleA, 'run B knows nothing of run A handle');
   } finally {
     h.close();
   }

@@ -158,13 +158,12 @@ export interface StoreOptions {
   now?: () => Date;
 }
 
-export class Store implements Handles {
+export class Store {
   readonly #db: DatabaseSync;
   readonly #afterRows: (() => void) | undefined;
   readonly #now: () => Date;
   /** Events waiting for the next flush, per run: agent.* and check.output (Write batching). */
   readonly #buffered = new Map<string, EventDraft[]>();
-  #handleRun = '';
 
   constructor(dir: string, opts: StoreOptions = {}) {
     mkdirSync(dir, { recursive: true, mode: 0o700 });
@@ -220,9 +219,9 @@ export class Store implements Handles {
     const ts = this.#iso();
     const out: RunEvent[] = [];
     const ins = this.#db.prepare('INSERT INTO events (run_id, seq, ts, key, node_id, attempt, type, data) VALUES (?,?,?,?,?,?,?,?)');
-    this.#handleRun = runId;
+    const handles = this.handlesFor(runId);
     for (const draft of drafts) {
-      const d = prepareEvent(draft, this);
+      const d = prepareEvent(draft, handles);
       const ev: RunEvent = { run_id: runId, seq: last + out.length + 1, ts, ...d } as RunEvent;
       ins.run(runId, ev.seq, ts, ev.key, ev.node_id, ev.attempt, ev.type, JSON.stringify(ev.data));
       out.push(ev);
@@ -290,12 +289,17 @@ export class Store implements Handles {
 
   // ---- permission-id handles (B-16)
 
-  handleFor(realId: string): string {
-    const existing = this.#db.prepare('SELECT handle AS h FROM handles WHERE run_id = ? AND real_id = ?').get(this.#handleRun, realId) as { h: string } | undefined;
-    if (existing) return existing.h;
-    const handle = `h-${randomBytes(12).toString('hex')}`;
-    this.#db.prepare('INSERT INTO handles (run_id, handle, real_id) VALUES (?,?,?)').run(this.#handleRun, handle, realId);
-    return handle;
+  /** The handles of one run: a stand-in for each permission id that cannot pass through unredacted, minted once and kept. */
+  handlesFor(runId: string): Handles {
+    return {
+      handleFor: (realId) => {
+        const existing = this.#db.prepare('SELECT handle AS h FROM handles WHERE run_id = ? AND real_id = ?').get(runId, realId) as { h: string } | undefined;
+        if (existing) return existing.h;
+        const handle = `h-${randomBytes(12).toString('hex')}`;
+        this.#db.prepare('INSERT INTO handles (run_id, handle, real_id) VALUES (?,?,?)').run(runId, handle, realId);
+        return handle;
+      },
+    };
   }
 
   /** The real permission id a handle stands for, or the input when it is not a handle. */
@@ -343,12 +347,20 @@ export class Store implements Handles {
     return rest;
   }
 
-  /** Slim node rows after `after`, in key order, with the `last_seq` they reflect. Read in one synchronous step, so no commit falls between them. */
+  /** Slim node rows after `after`, in key order, with the `last_seq` they reflect. */
   nodePage(runId: string, after: string | undefined, limit: number): { rows: SlimRow[]; last_seq: number } {
-    const last_seq = this.lastSeq(runId);
-    const rows = this.#db
-      .prepare('SELECT key, node_id, state, attempt, started_at, ended_at, cap FROM nodes WHERE run_id = ? AND key > ? ORDER BY key LIMIT ?')
-      .all(runId, after ?? '', limit) as Rec[];
+    // One read transaction: the rows and the last_seq they reflect come from the same snapshot (B-12).
+    this.#db.exec('BEGIN');
+    let last_seq: number;
+    let rows: Rec[];
+    try {
+      last_seq = this.lastSeq(runId);
+      rows = this.#db
+        .prepare('SELECT key, node_id, state, attempt, started_at, ended_at, cap FROM nodes WHERE run_id = ? AND key > ? ORDER BY key LIMIT ?')
+        .all(runId, after ?? '', limit) as Rec[];
+    } finally {
+      this.#db.exec('COMMIT');
+    }
     return {
       last_seq,
       rows: rows.map((d) => ({

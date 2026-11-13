@@ -9,9 +9,9 @@
 // test, and crash recovery is the same reducer run over whatever was last
 // committed. The engine (engine.ts) owns the effects.
 
-import type { AgentNode, Cond, Edge, GroupNode, IR, LoopNode, MapNode, Node } from '../sdk/dsl.ts';
+import type { Cond, Edge, GroupNode, IR, LoopNode, MapNode, Node } from '../sdk/dsl.ts';
 import { encodedSize, truncateEncoded } from './size.ts';
-import { type EventDraft, MAX_EVENT_BYTES, type Handles } from './events.ts';
+import { type EventDraft, MAX_EVENT_BYTES, type Handles, prepareEvent } from './events.ts';
 import { buildIndex, type Index, keyOf, parseKey } from './keys.ts';
 import type { Change, NodeState, Row, RunState } from './model.ts';
 import { redactString, redactValue } from './redact.ts';
@@ -446,9 +446,13 @@ export function apply(m: Model, t: Transition, deps: ApplyDeps): Applied {
     case 'interrupt':
       finished(get(t.key), 'interrupted');
       break;
-    case 'wait':
-      waitingState(get(t.key), t.waiting);
+    case 'wait': {
+      // Prepared once: this exact data is the event and the row's `waiting`, so what node.get serves is what the event said.
+      if (!deps.handles) throw new Error('a permission wait needs the run\'s handles');
+      const r = get(t.key);
+      waitingState(r, prepareEvent({ key: r.key, node_id: r.node_id, attempt: r.attempt, type: 'node.waiting', data: t.waiting }, deps.handles).data);
       break;
+    }
     case 'resume': {
       const r = put(get(t.key), { state: 'running', waiting: undefined });
       ev(r, 'node.resumed', { reason: t.reason });
@@ -504,10 +508,4 @@ export function apply(m: Model, t: Transition, deps: ApplyDeps): Applied {
     if (state !== m.state) run = { ...run, state };
   }
   return { change: { rows, events, ...(run ? { run } : {}) }, cancelled };
-}
-
-/** The agent node a key names, for the effects that need its definition. */
-export function agentNode(m: Model, key: string): AgentNode | undefined {
-  const n = m.ix.byId.get(m.rows.get(key)?.node_id ?? '')?.node;
-  return n?.kind === 'agent' ? n : undefined;
 }

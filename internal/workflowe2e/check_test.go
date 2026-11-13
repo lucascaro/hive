@@ -115,6 +115,19 @@ func TestHumanNode_SurvivesRestart(t *testing.T) {
 	f.waitRun(run, "done", 30*time.Second)
 }
 
+// A project whose repo has no commit cannot give a worktree a base: PREPARE
+// answers with an error, and the run must fail with it promptly rather than
+// wait out the request timeout.
+func TestCheckNode_EmptyRepo_FailsPromptly(t *testing.T) {
+	f := newFixture(t)
+	pid, _ := f.projectWith(false)
+	run := f.startRun(pid, ir("empty", []any{check("c", "true")}))
+	f.waitRun(run, "failed", 20*time.Second)
+	if state, _ := f.nodeState(run, "c"); state != "failed" {
+		t.Errorf("node c = %s, want failed", state)
+	}
+}
+
 // B-4: a check with no upstream head runs in a clean worktree of its own,
 // on hive/wf/<run>/<key>, at the base the run pinned with its first PREPARE.
 func TestCheckNode_NoUpstreamHead_RunsInBaseWorktree(t *testing.T) {

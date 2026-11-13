@@ -168,7 +168,7 @@ export class Engine {
   /** Commits one transition: store first, then the model, then the push and the stops. Throws, leaving the model alone, when the store does. */
   commit(runId: string, t: Transition): Applied {
     const rt = this.#rt(runId);
-    const a = apply(rt.model, t, { now: () => this.#now().toISOString(), handles: this.store });
+    const a = apply(rt.model, t, { now: () => this.#now().toISOString(), handles: this.store.handlesFor(runId) });
     const events = this.store.commit(runId, a.change);
     for (const r of a.change.rows) rt.model.rows.set(r.key, r);
     if (a.change.run?.state) rt.model.state = a.change.run.state;
@@ -218,12 +218,15 @@ export class Engine {
         rt.again = false;
         for (;;) {
           const due = step(rt.model, rt.inflight);
-          for (const t of due.transitions) {
-            if (rt.model.state === 'done' || rt.model.state === 'failed' || rt.model.state === 'cancelled') break;
-            this.commit(rt.id, t);
+          if (due.transitions.length > 0) {
+            for (const t of due.transitions) {
+              if (rt.model.state === 'done' || rt.model.state === 'failed' || rt.model.state === 'cancelled') break;
+              this.commit(rt.id, t);
+            }
+            continue; // effects start only from a pass with nothing left to commit: a run that is failing launches nothing
           }
           for (const a of due.actions) this.#launch(rt, a);
-          if (due.transitions.length === 0) break;
+          break;
         }
       } while (rt.again);
     } finally {

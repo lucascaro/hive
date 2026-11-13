@@ -329,10 +329,16 @@ func (f *fixture) nodeState(runID, key string) (string, int) {
 
 func (f *fixture) waitNode(runID, key, state string, d time.Duration) {
 	f.t.Helper()
-	f.eventually(d, fmt.Sprintf("node %s to be %s (%s)", key, state, f.describe(runID, key)), func() bool {
-		s, _ := f.nodeState(runID, key)
-		return s == state
-	})
+	deadline := time.Now().Add(d)
+	for {
+		if s, _ := f.nodeState(runID, key); s == state {
+			return
+		}
+		if time.Now().After(deadline) {
+			f.t.Fatalf("timed out waiting for node %s to be %s (%s)", key, state, f.describe(runID, key))
+		}
+		time.Sleep(25 * time.Millisecond)
+	}
 }
 
 // describe is what a failed wait prints: the node and the run, as the engine reports them.
@@ -355,14 +361,19 @@ func (f *fixture) startRun(projectID string, ir map[string]any) string {
 }
 
 // project makes a git repo with one commit and a hived project on it.
-func (f *fixture) project() (projectID, repo string) {
+func (f *fixture) project() (projectID, repo string) { return f.projectWith(true) }
+
+// projectWith is project, optionally leaving the repo with no commit at all.
+func (f *fixture) projectWith(commit bool) (projectID, repo string) {
 	t := f.t
 	t.Helper()
 	repo = t.TempDir()
 	git(t, repo, "init", "-q", "-b", "main")
 	git(t, repo, "config", "user.name", "Test User")
 	git(t, repo, "config", "user.email", "test@example.com")
-	git(t, repo, "commit", "--allow-empty", "-q", "-m", "one")
+	if commit {
+		git(t, repo, "commit", "--allow-empty", "-q", "-m", "one")
+	}
 	p, err := f.d.Registry().CreateProject(wire.CreateProjectReq{Name: "wf", Cwd: repo})
 	if err != nil {
 		t.Fatal(err)

@@ -5,7 +5,7 @@
 - **Depends on:** A (#528), planned against `origin/feature/528-daemon-sdk-prereqs:docs/exec-plans/active/528-workflow-engine-a-daemon-sdk-prereqs.md` at `7410f6b7`
 - **Issue:** #529
 - **Branch:** `feature/529-engine-core` (research and plan); one branch per phase PR (B1: `feature/529-b1-validator`, B2: `feature/529-b2-store-interpreter`)
-- **PR:** #538 (B1), B2: see Progress
+- **PR:** #538 (B1), #550 (B2)
 - **Phase:** 2 of 5
 - **Status:** active. Plan approved. Phase 1 (B1) merged; phase 2 (B2) implemented and in review; B3 to B5 remain.
   - All open questions are decided (see Decision log, 2026-10-25 user
@@ -1557,7 +1557,7 @@ download, the accepted sandbox gap, and `LIST_ACP_AGENTS`.
   did. The `**/*.test.ts` glob is the plan's own conventions-card form.
 - **2026-11-07 (B1):** Gate FAIL; doc accuracy: `internal/acp/resultschema.go:21` pointed at the deleted `scripts/workflow-proto/schema.ts`; fixed (comment now names `plugins/workflows/sdk/schema.ts` and the TS port `plugins/workflows/ir/resultschema.ts`).
 
-- **2026-11-12 (B2):** Implemented on `feature/529-b2-store-interpreter`, based
+- **2026-11-12 (B2, PR #550):** Implemented on `feature/529-b2-store-interpreter`, based
   on `origin/main` at `fda621f5`. Added `engine/{size,keys,redact,events,model,store,interp,engine,check,killtree,nodes,topics,main}.ts`,
   the plugin skeleton (`hive-plugin.json` with `node: "26.0.0"`, `main.mjs`,
   the SDK copy), the tests and the Go `internal/workflowe2e/` harness with the

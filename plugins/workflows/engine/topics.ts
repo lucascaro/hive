@@ -9,7 +9,7 @@
 // encoded size, never by count alone.
 
 import { type Engine, EngineError } from './engine.ts';
-import { prepareEvent, type RunEvent } from './events.ts';
+import type { RunEvent } from './events.ts';
 import type { Row, RunRow } from './model.ts';
 import { redactString, redactValue } from './redact.ts';
 import { encodedSize, MAX_MESSAGE_BYTES, truncateEncoded } from './size.ts';
@@ -218,7 +218,7 @@ export class Topics {
     if (typeof limit !== 'number' || !Number.isInteger(limit) || limit < 4) throw new TopicError('invalid_limit', 'limit must be an integer of at least 4');
     const want = Math.min(limit, DEFAULT_OUTPUT_LIMIT);
 
-    // Everything but the output slice is redacted and counted against the budget. Permission ids pass untouched (B-16).
+    // Everything but the output slice was redacted when it was written, and is counted against the budget. Permission ids passed untouched (B-16).
     const fields: Data = {
       key: row.key,
       node_id: row.node_id,
@@ -229,9 +229,8 @@ export class Topics {
       ...(row.worktree ? { worktree: row.worktree } : {}),
       ...(row.error ? { error: redactString(row.error).text } : {}),
       ...(row.conflict ? { conflict: redactValue(row.conflict).value } : {}),
-      ...(row.state === 'waiting' && row.waiting
-        ? { waiting: prepareEvent({ key, node_id: row.node_id, attempt: row.attempt, type: 'node.waiting', data: row.waiting }, this.#store).data }
-        : {}),
+      // The data of the open node.waiting event, as stored: prepared once at write time, so it is the event.
+      ...(row.state === 'waiting' && row.waiting ? { waiting: row.waiting } : {}),
     };
     if (row.state !== 'done' || row.output === undefined) return fields;
 

@@ -23,7 +23,7 @@ const row = (key: string, state: Row['state'], extra: Partial<Row> = {}): Row =>
 const newRun = { run_id: 'r1', project_id: 'p', workflow: 'w', file: 'w.ts', source_hash: 'h', ir: '{}', input: '{}' };
 const started = { key: null, node_id: null, attempt: 0, type: 'run.started' as const, data: {} };
 
-test('seq is gapless across commits, buffered events and concurrent engines of the same store', async () => {
+test('seq is gapless across commits and interleaved buffered events', async () => {
   const h = harness(scripted(() => ({ summary: 's' })));
   try {
     const id = h.engine.startRunFromIR({ project_id: 'p', file: 'f.ts', ir: examples.fanOutThenVerify(), input: { goal: 'g' } });
