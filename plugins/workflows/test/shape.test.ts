@@ -4,7 +4,7 @@
 
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { MAX_IR_BYTES, MAX_NESTING, shape } from '../ir/shape.ts';
+import { MAX_ID_BYTES, MAX_IR_BYTES, MAX_KEY_BYTES, MAX_NESTING, shape } from '../ir/shape.ts';
 import { examples } from '../tools/examples.ts';
 
 // biome-ignore lint/suspicious/noExplicitAny: tests mutate a parsed IR freely
@@ -150,5 +150,29 @@ test('caps the whole IR at 32 KiB of JSON', () => {
   assert.equal(new TextEncoder().encode(JSON.stringify(exact)).length, MAX_IR_BYTES);
   assert.deepEqual(shape(exact), [], 'exactly at the limit passes');
   agentOf(exact).prompt += 'x';
-  assert.deepEqual(shape(exact), [`ir: too large (${MAX_IR_BYTES + 1} bytes of JSON, the limit is ${MAX_IR_BYTES})`]);
+  assert.deepEqual(shape(exact), [`ir: too large (${MAX_IR_BYTES + 1} bytes as sent, the limit is ${MAX_IR_BYTES})`]);
+});
+
+test('counts the IR as the daemon re-encodes it: an IR full of < is over the cap at a sixth of the size', () => {
+  const ir = fresh();
+  agentOf(ir).prompt = '<'.repeat(7000); // 7 KB raw, 42 KB once Go escapes every one
+  assert.ok(new TextEncoder().encode(JSON.stringify(ir)).length < MAX_IR_BYTES, 'raw JSON is under the cap');
+  assert.match(text(ir), /ir: too large/);
+});
+
+test('refuses a node id over 128 bytes; the 512-byte key cap follows from it', () => {
+  const long = (n: number) => 'a'.repeat(n);
+  const one = (id: string, inner: Any = { kind: 'check', argv: ['true'], timeout_s: 1 }) => ({
+    ir: 1,
+    name: 'caps',
+    input: fresh().input,
+    nodes: [{ id, ...inner }],
+    edges: [],
+  });
+  assert.deepEqual(shape(one(long(128))), [], '128 bytes is fine');
+  assert.match(text(one(long(129))), /id is 129 bytes, the limit is 128/);
+  assert.match(text(one(long(25_000))), /id is 25000 bytes/);
+
+  // The key cap holds by construction: the longest id plus an index on every nesting level.
+  assert.ok(MAX_ID_BYTES + MAX_NESTING * '[31]'.length <= MAX_KEY_BYTES);
 });
