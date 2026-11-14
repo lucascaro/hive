@@ -216,6 +216,7 @@ check-on-open).
 <Append-only; one line per /hs-review-loop iteration.>
 
 - **2026-11-14 iter 1** — verdict: APPROVE; mergeable: MERGEABLE; findings_hash: empty; threads_open: 0; action: stop; head_sha: 698c5af. (Two MINORs noted, not counted: runWithTimeout WaitDelay — fixed next commit with a test; stale probe may briefly overwrite a just-toggled status — self-corrects on next menu open, left as is.)
+- **2026-11-14 iter 2** — verdict: APPROVE; mergeable: MERGEABLE; findings_hash: empty; threads_open: 0; action: stop; head_sha: 3194e2e.
 
 ## Open questions / risks
 - `open -n` of a nested LoginItems helper must be proven on a real build (menubar.Spawn uses `open -a` without `-n`).

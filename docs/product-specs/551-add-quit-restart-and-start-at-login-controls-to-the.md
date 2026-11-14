@@ -5,7 +5,7 @@ type: enhancement
 complexity: M
 priority: P2
 pr: 552
-stage: REVIEW
+stage: GATE
 ---
 
 # Add Quit, Restart and Start-at-Login controls to the menu bar
