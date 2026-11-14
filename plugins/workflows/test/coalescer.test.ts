@@ -9,7 +9,7 @@
 
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { Coalescer, MAX_DISCARD, MAX_HELD_BLOCK, MAX_HELD_LINE } from '../engine/check.ts';
+import { Coalescer, MAX_HELD_BLOCK, MAX_HELD_LINE } from '../engine/check.ts';
 import { redactString } from '../engine/redact.ts';
 
 const manual = () => {
@@ -197,11 +197,16 @@ test('a line over the cap becomes a marker, the rest of it is dropped, and memor
   assert.ok(peak <= 2 * MAX_HELD_LINE + 64, `held ${peak}`);
 });
 
-test('the discard after a cap is itself bounded: a line longer than the budget resumes after it', () => {
-  const total = MAX_HELD_LINE + MAX_DISCARD + 5000;
-  const { got } = run([`${'y'.repeat(total)}\n`.slice(0, MAX_HELD_LINE + 10), 'y'.repeat(MAX_DISCARD + 100), 'tail\n']);
-  assert.match(got, /^\[redacted: line too long\]\n/);
-  assert.ok(got.length < 200, 'what is lost is the capped line and one budget, not the stream');
+test('a discarded line is discarded to its real end, however long: there is no budget after which output resumes mid-line', () => {
+  const tok = `ghp_${'A'.repeat(36)}`;
+  const { got } = run([`${'z'.repeat(9000)}`, `${'z'.repeat(65_536)}${tok.slice(0, 10)}`, `${tok.slice(10)} end\n`, 'next line\n']);
+  assert.equal(got, '[redacted: line too long]\nnext line\n');
+  assert.ok(!got.includes('AAAA') && !got.includes('end'), 'no raw suffix of the oversize line');
+});
+
+test('a keyword in the discarded part of a long line cannot leak its value on resume', () => {
+  const { got } = run(['y'.repeat(9000), `${'y'.repeat(70_000)} Authorization: `, 'token abcdef0123456789abcdef\nnext\n']);
+  assert.equal(got, '[redacted: line too long]\nnext\n');
 });
 
 test('a private-key block over the cap is replaced by a marker and dropped through its END line', () => {
@@ -223,5 +228,60 @@ test('pieces are at most 8 KiB of UTF-8 and never split a character', () => {
   for (const p of pieces) {
     assert.ok(new TextEncoder().encode(p).length <= 8192);
     assert.ok(!/[\ud800-\udbff]$/.test(p));
+  }
+});
+
+test('a private-key block of over 80 KiB is discarded whole: no run of its body is ever emitted', () => {
+  const body = Array.from({ length: 100 }, () => 'K'.repeat(1023));
+  const text = `-----BEGIN RSA PRIVATE KEY-----\n${body.join('\n')}\n-----END RSA PRIVATE KEY-----\nok\n`;
+  assert.ok(text.length > 80 * 1024);
+  const chunks: string[] = [];
+  for (let at = 0; at < text.length; at += 7000) chunks.push(text.slice(at, at + 7000));
+  const { got, peak } = run(chunks);
+  assert.equal(got, '[redacted: private key block too long]\nok\n');
+  assert.ok(peak <= MAX_HELD_BLOCK + 2 * 7000 + 128, `held ${peak}`);
+});
+
+test('the END marker of a discarded block is found at every split offset, and the next line survives', () => {
+  const end = '-----END RSA PRIVATE KEY-----';
+  const big = `-----BEGIN RSA PRIVATE KEY-----\n${'K'.repeat(1000)}\n`.repeat(1) + `${('K'.repeat(1000) + '\n').repeat(17)}`;
+  for (let at = 0; at <= end.length; at++) {
+    const { got } = run([big.slice(0, 9000), big.slice(9000), end.slice(0, at), `${end.slice(at)}\nVISIBLE line\n`]);
+    assert.equal(got, '[redacted: private key block too long]\nVISIBLE line\n', `END split at ${at}`);
+  }
+});
+
+// ------------------------------------------- adjacent keys on one line (every 1/2/3-way split)
+
+test('oracle: a key block closing and another opening on one line, at every 1-, 2- and 3-way split', () => {
+  const inputs = [
+    '-----BEGIN RSA PRIVATE KEY-----\nSECRETa-----END RSA PRIVATE KEY----- -----BEGIN RSA PRIVATE KEY-----\nSECRETb\n-----END RSA PRIVATE KEY-----\nok\n',
+    '-----BEGIN PRIVATE KEY-----\nAAA\n-----END PRIVATE KEY-----\n-----BEGIN PRIVATE KEY-----\nBBB\n-----END PRIVATE KEY-----\ntail\n',
+    'cat: -----BEGIN PRIVATE KEY-----\nKEY1\n-----END PRIVATE KEY----- -----BEGIN OPENSSH PRIVATE KEY-----\nKEY2\n-----END OPENSSH PRIVATE KEY-----\n',
+  ];
+  let n = 0;
+  for (const text of inputs) {
+    const want = redactString(text).text;
+    for (let a = 0; a <= text.length; a++) {
+      for (let b = a; b <= text.length; b += 1 + (b % 3)) {
+        for (let c = b; c <= text.length; c += 5 + (c % 7)) {
+          const chunks = [text.slice(0, a), text.slice(a, b), text.slice(b, c), text.slice(c)].filter((x) => x !== '');
+          const { got } = run(chunks, chunks.map((_, i) => i % 2 === 0));
+          assert.equal(got, want, `splits ${a}/${b}/${c}`);
+          assert.ok(!got.includes('SECRETa') && !got.includes('KEY1') && !got.includes('AAA'), `splits ${a}/${b}/${c} leaked`);
+          n++;
+        }
+      }
+    }
+  }
+  assert.ok(n > 3000, `${n} splits`);
+});
+
+// ----------------------------------------------- redact.ts: whitespace the patterns now accept
+
+test('the line-local patterns still match non-newline whitespace: NBSP, a lone CR, spaces around =', () => {
+  for (const t of ['Bearer abcdefghij0123456789', 'secret = "abcdefghij12345"', 'token\r=\r"abcdefghij12345"', 'Authorization : Basic abcdefghijklmnop']) {
+    const r = redactString(t);
+    assert.ok(r.count >= 1 && !/abcdefghij/.test(r.text), `${JSON.stringify(t)} -> ${JSON.stringify(r.text)}`);
   }
 });

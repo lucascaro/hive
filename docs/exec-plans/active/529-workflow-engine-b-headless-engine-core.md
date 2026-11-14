@@ -1584,16 +1584,49 @@ download, the accepted sandbox gap, and `LIST_ACP_AGENTS`.
     `shrink` can drop permission `options` from an oversized wait
     (`options_omitted`); those options cannot be answered from the GUI.
 
-  - **Round-3 gate: ids from the store are not trusted; output is held across ticks.**
-    `killTree` is the one choke point and refuses (`refused`, nothing sent) any
-    pid that is not a safe integer >= 2, is the engine's own, or whose pgid is
-    not the pid (the engine always writes pgid == pid); `reap`, `shutdown()` and
-    a check's own stop all go through it, `recover()` fails a node whose row
-    fails the same test (naming the row), and the store drops non-numeric ids on
-    read. A `Coalescer` holds a trailing unbroken run of up to 256 characters,
-    plus a credential keyword just before it (`Bearer `, `Authorization: `,
-    `"token": `), until more output or the end of the stream; it is never
-    flushed by the timer alone.
+  - **Round-3 gate: ids from the store are not trusted.** `killTree` is the one
+    choke point and refuses (`refused`, nothing sent) any pid that is not a safe
+    integer >= 2, is the engine's own, or whose pgid is not the pid (the engine
+    always writes pgid == pid); `reap`, `shutdown()` and a check's own stop all go
+    through it, `recover()` fails a node whose row fails the same test (naming the
+    row), and the store drops non-numeric ids on read.
+  - **Rounds 4 and 5 gate: check output is redacted by whole units (supersedes
+    the round-3 hold-and-lookback).** The redaction patterns are line-local
+    (`[^\S\n]` for in-line whitespace) except the PEM block, so the stream layer
+    (`Coalescer`, check.ts) is line- and block-oriented too:
+    - it redacts only COMPLETE units: a whole line, or a whole private-key block;
+    - the unfinished tail is kept RAW until its newline, its END line, the end of
+      the stream or a cap, and a redacted remainder is never stored (a half-redacted
+      line has lost the context the patterns need); the timer ships only what is
+      already complete;
+    - the held region starts at the earliest still-unresolved unit: a block that is
+      open, or closes in the unfinished line, holds from the start of the line it
+      begins on, and keeps moving back while that line begins inside an earlier
+      block (`END ... BEGIN` on one line), so a closed block is never cut from its
+      BEGIN;
+    - caps fail closed: a line over 8 KiB or a block over 16 KiB becomes a
+      `[redacted: ... too long]` marker, and the rest of that unit is DISCARDED to
+      its real end (a newline, or the END line; a short tail is kept so an END
+      marker split across chunks is found), or the end of the stream. There is no
+      discard budget after which output resumes: resuming mid-unit emits a raw
+      suffix, and discarding holds no memory, so a budget bought nothing;
+    - the stream end, an exit, a cancel and a timeout redact and emit the held
+      tail, and `shutdown()` waits a moment for stopped checks to hand theirs over.
+
+    A seeded oracle test requires the output to equal `redactString(whole text)`
+    for every chunking (every offset, random multi-way splits, byte at a time,
+    ticks interleaved, every 1-, 2- and 3-way split of adjacent-key inputs).
+  - **Accepted limits of line-local patterns** (not regressions of the whole-text
+    patterns for the stream; the other `redact.ts` callers see them too):
+    `Bearer` / `Basic` followed by a newline then the token, `"token":` then a
+    newline then the value, `token` newline `= "..."`, and `Authorization`
+    newline `: value`.
+  - **Known pattern gaps, accepted and unfixed in B2** (a candidate follow-up, not
+    regressions): JWTs, `password=`, unquoted `X-Api-Key: v`, cookies, PGP
+    `PRIVATE KEY BLOCK`, and ANSI-coloured tokens (`\x1b[31mghp_...` has no `\b`).
+  - **`#refuse` orphans a still-running check without reaping it.** It cancels the
+    refused run's nodes and clears their pids, so nothing stale is ever signalled,
+    but a process that is still alive is left alone: B3's survivor sweep owns it.
 
 ## Progress
 

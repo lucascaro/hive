@@ -23,21 +23,37 @@ export interface Timers {
 
 /** An unfinished line is held (raw) up to this many characters; past it the line is dropped, fail closed. */
 export const MAX_HELD_LINE = 8 << 10;
-/** An open `-----BEGIN ... PRIVATE KEY-----` block is held up to this many characters. */
+/** An open or still-resolving `-----BEGIN ... PRIVATE KEY-----` block is held up to this many characters. */
 export const MAX_HELD_BLOCK = 16 << 10;
-/** After a cap, at most this many more characters are discarded looking for the end of the line or block. */
-export const MAX_DISCARD = 64 << 10;
 
 const PEM_BEGIN = /-----BEGIN [A-Z ]*PRIVATE KEY-----/g;
 const PEM_END = /-----END [A-Z ]*PRIVATE KEY-----/;
+/** What discarding keeps between chunks so an END marker split across two of them is still found. */
+const END_TAIL = 64;
 
-/** Where the first private-key block with no END after it begins, or -1. */
-function openBlock(s: string): number {
-  PEM_BEGIN.lastIndex = 0;
-  for (let m = PEM_BEGIN.exec(s); m; m = PEM_BEGIN.exec(s)) {
-    if (!PEM_END.test(s.slice(m.index + m[0].length))) return m.index;
+interface Span {
+  start: number;
+  /** One past the END marker, or Infinity for a block that has not closed yet. */
+  end: number;
+}
+
+/** The private-key blocks in `s`, as redactString's PEM pattern would match them: each from a BEGIN to the first END after it, the next one searched after that. */
+function blocks(s: string): Span[] {
+  const out: Span[] = [];
+  let from = 0;
+  for (;;) {
+    PEM_BEGIN.lastIndex = from;
+    const m = PEM_BEGIN.exec(s);
+    if (!m) return out;
+    const at = m.index + m[0].length;
+    const e = PEM_END.exec(s.slice(at));
+    if (!e) {
+      out.push({ start: m.index, end: Infinity });
+      return out;
+    }
+    from = at + e.index + e[0].length;
+    out.push({ start: m.index, end: from });
   }
-  return -1;
 }
 
 /**
@@ -53,18 +69,21 @@ function openBlock(s: string): number {
  * output equals redacting the whole text at once.
  *
  * Caps fail closed. A line longer than MAX_HELD_LINE, or a key block longer
- * than MAX_HELD_BLOCK, is replaced by a `[redacted: ...]` marker and the rest of
- * that line or block is discarded, up to MAX_DISCARD further characters, so a
- * raw prefix or suffix of something that may be a secret is never emitted and
- * memory stays bounded. The stream end, an exit, a cancel and a timeout all
- * end the stream: the held tail is then redacted whole and emitted.
+ * than MAX_HELD_BLOCK, is replaced by a `[redacted: ...]` marker, and the rest
+ * of that unit is DISCARDED to its real end (the newline, or the END line), or
+ * the end of the stream. There is no budget after which output resumes: that
+ * would resume mid-unit and emit a raw suffix. Discarding holds nothing, so
+ * memory stays bounded however long the unit is; what is lost is the rest of one
+ * oversize line or key block, and nothing after it. The stream end, an exit, a
+ * cancel and a timeout all end the stream: the held tail is then redacted whole
+ * and emitted.
  */
 export class Coalescer {
   #raw = '';
   #out = '';
   #timer: unknown;
-  /** Discarding until a newline (line) or an END line (block), with this many characters of budget left. */
-  #skip: { kind: 'line' | 'block'; left: number } | undefined;
+  /** Discarding to the end of an oversize line (a newline) or key block (its END line). */
+  #skip: 'line' | 'block' | undefined;
   readonly #emit: (text: string) => void;
   readonly #timers: Timers;
 
@@ -101,37 +120,45 @@ export class Coalescer {
   #drain(final: boolean): void {
     for (;;) {
       if (this.#skip) {
-        // Dropping the rest of an oversize line or block, looking for where it ends.
-        const re = this.#skip.kind === 'line' ? /\n/ : /-----END [A-Z ]*PRIVATE KEY-----[^\n]*\n?/;
+        // Dropping the rest of an oversize unit, looking for where it really ends.
+        const re = this.#skip === 'line' ? /\n/ : /-----END [A-Z ]*PRIVATE KEY-----[^\n]*\n?/;
         const m = re.exec(this.#raw);
         if (m) {
           this.#raw = this.#raw.slice(m.index + m[0].length);
-          this.#skip = undefined;
+          // An END marker with no newline after it yet: the rest of its line is still part of the unit.
+          this.#skip = this.#skip === 'block' && !m[0].endsWith('\n') ? 'line' : undefined;
           continue;
         }
-        this.#skip.left -= this.#raw.length;
-        this.#raw = '';
-        if (this.#skip.left <= 0) this.#skip = undefined; // the discard budget is spent: resume with whatever comes next
+        // Keep a short tail so an END marker split across two chunks is still found; nothing else is held.
+        this.#raw = this.#skip === 'block' ? this.#raw.slice(-END_TAIL) : '';
         return;
       }
       if (this.#raw === '') return;
-      let cut = final ? this.#raw.length : this.#raw.lastIndexOf('\n') + 1;
-      if (cut > 0) {
-        const open = final ? -1 : openBlock(this.#raw.slice(0, cut));
-        // Hold from the start of the line the block opens on: the patterns see that line whole (`Authorization: x -----BEGIN ...`).
-        if (open >= 0) cut = this.#raw.lastIndexOf('\n', open - 1) + 1;
+      const lines = final ? this.#raw.length : this.#raw.lastIndexOf('\n') + 1;
+      // Only whole units go out: complete lines, and whole private-key blocks. A block that is open, or closes in
+      // the unfinished last line, holds from the start of the line it begins on; and that line may itself begin
+      // inside an earlier block (`END ... BEGIN` on one line), so the cut keeps moving back until no block spans it.
+      let cut = lines;
+      const spans = final ? [] : blocks(this.#raw);
+      for (let moved = true; moved && cut > 0; ) {
+        moved = false;
+        for (const sp of spans) {
+          if (sp.start < cut && sp.end > cut) {
+            cut = this.#raw.lastIndexOf('\n', sp.start - 1) + 1;
+            moved = true;
+          }
+        }
       }
       if (cut > 0) {
         this.#out += redactString(this.#raw.slice(0, cut)).text;
         this.#raw = this.#raw.slice(cut);
         continue;
       }
-      // Nothing complete: what is held is an unfinished line, or an open private-key block.
-      const open = openBlock(this.#raw);
-      const block = open >= 0;
+      // Nothing can go out: what is held is an unfinished line, or a key block still being resolved.
+      const block = lines > 0 || blocks(this.#raw).length > 0;
       if (this.#raw.length > (block ? MAX_HELD_BLOCK : MAX_HELD_LINE)) {
         this.#out += block ? '[redacted: private key block too long]\n' : '[redacted: line too long]\n';
-        this.#skip = { kind: block ? 'block' : 'line', left: MAX_DISCARD };
+        this.#skip = block ? 'block' : 'line';
         continue;
       }
       return;
