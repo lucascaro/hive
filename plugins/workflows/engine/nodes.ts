@@ -7,11 +7,11 @@
 // plainly rather than hanging.
 
 import type { CheckNode } from '../sdk/dsl.ts';
-import { type CheckHandle, type CheckSpec, launch } from './check.ts';
+import { type CheckHandle, type CheckSpec, launch, type OutputMeta } from './check.ts';
 import type { Engine, Executors, NodeContext } from './engine.ts';
 import { encodeKey } from './keys.ts';
 
-type Launch = (spec: CheckSpec, onOutput: (stream: 'stdout' | 'stderr', text: string) => void) => CheckHandle;
+type Launch = (spec: CheckSpec, onOutput: (stream: 'stdout' | 'stderr', text: string, meta: OutputMeta) => void) => CheckHandle;
 
 interface Prepared {
   path: string;
@@ -65,8 +65,8 @@ export function checkExecutor(doLaunch: Launch = launch): (ctx: NodeContext) => 
     if (!engine.current(ctx) || !startable()) return; // cancelled, failed or retried while the worktree was being made
 
     const attempt = (engine.run(run_id).model.rows.get(key)?.attempt ?? 0) + 1;
-    const h = doLaunch({ argv: n.argv, cwd: wt.path, timeout_s: n.timeout_s }, (stream, text) => {
-      if (engine.current(ctx)) engine.buffer(run_id, { key, node_id: n.id, attempt, type: 'check.output', data: { stream, text } }); // output of a cancelled attempt is not the retry's
+    const h = doLaunch({ argv: n.argv, cwd: wt.path, timeout_s: n.timeout_s }, (stream, text, meta) => {
+      if (engine.current(ctx)) engine.buffer(run_id, { key, node_id: n.id, attempt, type: 'check.output', data: { stream, text, ...meta } }); // output of a cancelled attempt is not the retry's
     });
     // Every failure below is reported only while this launch still belongs to the live run: a cancel and retry during an await must not fail the new attempt.
     const fail = (why: string): void => {

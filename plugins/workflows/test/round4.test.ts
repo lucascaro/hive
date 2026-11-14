@@ -2,18 +2,13 @@
 // Copyright (C) 2026 Lucas Caro
 // See LICENSE and ADDITIONAL-TERMS.md.
 
-// Round-4 gate follow-ups on PR #550 (the Coalescer's own tests are in
-// coalescer.test.ts).
+// Round-4 gate follow-ups on PR #550.
 
 import assert from 'node:assert/strict';
-import { mkdtempSync, realpathSync, rmSync } from 'node:fs';
-import { tmpdir } from 'node:os';
-import { join } from 'node:path';
 import { test } from 'node:test';
-import { checkExecutor } from '../engine/nodes.ts';
 import { workflow } from '../sdk/dsl.ts';
 import { s } from '../sdk/schema.ts';
-import { call, FakeHive, harness, rowOf, waitFor } from './harness.ts';
+import { call, harness, rowOf } from './harness.ts';
 
 const never = (): Promise<void> => new Promise(() => {});
 const oneCheck = (argv: string[] = ['true']) => workflow('c', s.object({}), (g) => void g.check('c', { argv, timeoutSec: 60 }));
@@ -67,30 +62,5 @@ test('the survivor message names the OS refusal, not a permission the engine nev
   } finally {
     child.kill();
     h.close();
-  }
-});
-
-test('shutdown() hands over the unfinished last line a stopped check was holding', { skip: process.platform === 'win32' ? 'POSIX signals' : false }, async () => {
-  const dir = realpathSync(mkdtempSync(join(tmpdir(), 'wf-r4-')));
-  const hive = new FakeHive();
-  hive.replies.PREPARE_WORKTREE = (req) => ({ path: dir, branch: req.branch, base_sha: 'sha-1', head_sha: 'sha-1', reattached: false });
-  const script = "process.stdout.write('first line\\n' + 'no newline yet, key=' + 'AKIA' + 'ABCDEFGHIJKLMNOP'); setInterval(()=>{},1000)";
-  const h = harness({ agent: never, check: checkExecutor() }, { hive });
-  try {
-    const id = h.engine.startRunFromIR({ project_id: 'p', file: 'c.ts', ir: oneCheck([process.execPath, '-e', script]), input: {} });
-    await waitFor(() => rowOf(h, id, 'c')?.state === 'running', 'the check to run');
-    await new Promise((r) => setTimeout(r, 400)); // the complete line has shipped; the unfinished one is held
-    await h.engine.shutdown(2000, 500);
-    const text = h.store
-      .events(id, 0, 100)
-      .filter((e) => e.type === 'check.output')
-      .map((e) => String(e.data.text))
-      .join('');
-    assert.match(text, /^first line\n/);
-    assert.match(text, /no newline yet, key=\[redacted\]$/, `the held tail was written, redacted: ${JSON.stringify(text)}`);
-    assert.ok(!text.includes('AKIA'));
-  } finally {
-    h.close();
-    rmSync(dir, { recursive: true, force: true });
   }
 });

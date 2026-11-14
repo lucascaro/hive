@@ -23,36 +23,6 @@ const tmp = (): string => realpathSync(mkdtempSync(join(tmpdir(), 'wf-rev-')));
 const never = (): Promise<void> => new Promise(() => {});
 const posix = process.platform === 'win32' ? 'POSIX process groups' : false;
 
-test('output pieces are bounded in UTF-8 bytes and never split a surrogate pair', async () => {
-  const dir = tmp();
-  try {
-    const got: string[] = [];
-    const r = await launch({ argv: node("process.stdout.write(('é'.repeat(60)+'\\n').repeat(150)+('x😀'.repeat(30)+'\\n').repeat(200))"), cwd: dir, timeout_s: 20 }, (_s, t) => got.push(t)).result;
-    assert.equal(r.kind, 'exit');
-    for (const g of got) {
-      assert.ok(new TextEncoder().encode(g).length <= 8192, 'a piece is over 8 KiB of UTF-8');
-      assert.ok(!/[\ud800-\udbff]$/.test(g) && !/^[\udc00-\udfff]/.test(g), 'a surrogate pair was split');
-    }
-    assert.equal(got.join(''), ('é'.repeat(60) + '\n').repeat(150) + ('x😀'.repeat(30) + '\n').repeat(200));
-  } finally {
-    rmSync(dir, { recursive: true, force: true });
-  }
-});
-
-test('a secret that straddles the 8 KiB cut is redacted, not stored in two halves', async () => {
-  const dir = tmp();
-  try {
-    const got: string[] = [];
-    const token = `ghp_${'a'.repeat(36)}`;
-    await launch({ argv: node(`process.stdout.write(('x'.repeat(100)+'\\n').repeat(81)+' '+${JSON.stringify(token)}+' done\\n')`), cwd: dir, timeout_s: 20 }, (_s, t) => got.push(t)).result;
-    const all = got.join('');
-    assert.ok(!all.includes('ghp'), 'no fragment of the token survives');
-    assert.match(all, /\[redacted\] done\n$/);
-  } finally {
-    rmSync(dir, { recursive: true, force: true });
-  }
-});
-
 test('redaction covers Authorization=, bare Bearer and Basic, and quoted token fields', () => {
   assert.equal(redactString('Authorization="Bearer abc.def.ghi.jkl"').count >= 1, true);
   assert.ok(!redactString('Authorization="Bearer abc.def.ghi.jkl"').text.includes('abc.def'));

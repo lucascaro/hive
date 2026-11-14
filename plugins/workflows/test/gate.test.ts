@@ -149,8 +149,8 @@ test('a cancel and retry while a check is being stopped does not fail the retrie
 test('output from a cancelled attempt that is still dying is not recorded against the retried node', async () => {
   let emit: (text: string) => void = () => {};
   let calls = 0;
-  const fake = (_spec: unknown, onOutput: (stream: 'stdout' | 'stderr', text: string) => void): CheckHandle => {
-    if (calls++ === 0) emit = (t) => onOutput('stdout', t);
+  const fake = (_spec: unknown, onOutput: (stream: 'stdout' | 'stderr', text: string, meta: { total_bytes: number }) => void): CheckHandle => {
+    if (calls++ === 0) emit = (t) => onOutput('stdout', t, { total_bytes: t.length });
     return { pid: 4242, pgid: 4242, proc_start: 'x', result: new Promise(() => {}), stop: async () => {} };
   };
   const hive = new FakeHive();

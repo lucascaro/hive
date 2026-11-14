@@ -375,7 +375,7 @@ export class Engine {
    * `hived` stop leaves no `go test` behind. The rows stay `running`; the next
    * start reaps and retries them like any other interrupted check.
    */
-  async shutdown(graceMs = 1_000, settleMs = 100): Promise<void> {
+  async shutdown(graceMs = 1_000): Promise<void> {
     // A check ended by this stop is interrupted, not finished: nothing it reports from here on is recorded.
     this.#stopping = true;
     const stops: Promise<unknown>[] = [];
@@ -386,8 +386,6 @@ export class Engine {
     }
     // One stop that fails must not skip the flush: buffered events are the only record of the output so far.
     await Promise.allSettled(stops);
-    // The stopped checks' streams close a moment later and hand over the unfinished last line each was holding: give them that moment.
-    await new Promise((r) => setTimeout(r, settleMs));
     this.stopFlush();
     this.flush();
   }

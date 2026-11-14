@@ -432,8 +432,11 @@ Decisions.
   - POSIX: its own process group.
   - The row stores `pid`, `pgid` and the process start time before the node
     is `running`.
-  - stdout and stderr become `check.output` events, coalesced per 250 ms or
-    8 KiB, with each event's text capped at 16 KiB (`truncated`).
+  - stdout and stderr are captured while the check runs (head 16 KiB, tail
+    48 KiB of whole lines, `total_bytes`) and become `check.output` events when
+    the check ENDS, redacted once as whole text, in pieces of at most 8 KiB
+    (B-20). Nothing is emitted while it runs, and nothing for a cancelled check
+    (B-21).
   - Output `{ok: exit_code === 0, exit_code}`.
   - The check env is the login PATH plus `LANG`, `TZ` and `HOME`. `HOME` is
     allowed because builds and tests need it; checks are argv the user
@@ -634,8 +637,8 @@ continue from `seq`.
   On Windows, POSIX modes don't apply: the files inherit the 0700 data dir's
   ACL, so the test is skipped there with that reason.
 - **Write batching.** Transitions (start, finish, wait, output) commit
-  immediately. `agent.*` and `check.output` events are buffered and
-  committed in one transaction per 250 ms flush. `seq` is assigned at
+  immediately. `agent.*` events and a finished check's `check.output` events
+  are buffered and committed in one transaction per 250 ms flush. `seq` is assigned at
   commit, so it stays gapless, and FULL fsyncs stay rare, as the design
   intends.
 - **Clean stop.** The engine has a POSIX `SIGTERM` handler that TERMs the
@@ -660,7 +663,7 @@ continue from `seq`.
   recorded: a corrupted `nodes` table cannot be repaired by replay, because
   the engine never derives it from events. A debug rebuild-from-events command
   is optional and built only if a real corruption ever needs it. Buffered
-  `agent.*` and `check.output` events (250 ms flush) change no column that
+  `agent.*` events and `check.output` events (250 ms flush) change no column that
   `run.nodes` serves, so they need no row update; they still take their `seq`
   at commit, so `last_seq` never runs ahead of a committed row.
 - **One row per node instance.** Map expansion writes one `nodes` row for
@@ -689,7 +692,9 @@ continue from `seq`.
 
 ### Events (`engine/events.ts`, `redact.ts`)
 
-The exact schema is under Contract for C. Events are pushed live as
+The exact schema is under Contract for C. Redaction is best-effort (B-5): a
+pattern list, not a guarantee, and its result does not depend on how output
+was chunked (B-20). Events are pushed live as
 `run.event` batches (≤ 48 KiB per message, leaving headroom under A's
 64 KiB). `run.events` pages the history by `seq`; it is not how node state
 is rebuilt (that is `run.nodes`, B-12).
@@ -859,7 +864,7 @@ type RunEvent = {
 | `agent.tool` | `{session_id, tool_call_id, title, tool_kind, status}` — one per status change |
 | `agent.plan` | `{session_id, entries: [{content, status, priority?}], entries_omitted?: number}` — capped like every event (B-11) |
 | `agent.usage` | `{session_id, usage}` — the ACP `usage_update` payload, from R5 |
-| `check.output` | `{stream: "stdout"\|"stderr", text, truncated?: true}` |
+| `check.output` | `{stream: "stdout"\|"stderr", text, truncated?: true, total_bytes?}` — emitted when the check ENDS, not live: the head and the tail of the stream (16 KiB + 48 KiB), redacted whole, in pieces of at most 8 KiB, with a `[... N bytes omitted ...]` marker where the middle was dropped; `truncated` and `total_bytes` (every byte the stream produced) ride on each piece. A cancelled check emits none (B-21). Slice C renders a check's output at its end; it must not wait for live lines |
 
 **Node states** are `pending | running | waiting | done | failed | skipped |
 interrupted | cancelled`. `cancelled` is an addition to the design's list.
@@ -1350,7 +1355,7 @@ download, the accepted sandbox gap, and `LIST_ACP_AGENTS`.
 - **2026-11-09, user decisions on the B1 review's open questions.**
   - **B-5, outputs vs `redact()`:** option (b). Raw outputs go in a separate
     column (`nodes.output_raw`) that only the reducer reads; no topic, event
-    or log ever serves it, and everything served is redacted. `runs.db` stays
+    or log ever serves it, and everything served is redacted on a best-effort basis (a pattern list, not a guarantee; B-20). `runs.db` stays
     0600. Known tradeoff: a secret an agent prints is persisted raw locally;
     B5 documents it. Rejected: (a) redacting events only with outputs raw in
     the served column, and redacting before insert, which could change which
@@ -1590,37 +1595,40 @@ download, the accepted sandbox gap, and `LIST_ACP_AGENTS`.
     always writes pgid == pid); `reap`, `shutdown()` and a check's own stop all go
     through it, `recover()` fails a node whose row fails the same test (naming the
     row), and the store drops non-numeric ids on read.
-  - **Rounds 4 and 5 gate: check output is redacted by whole units (supersedes
-    the round-3 hold-and-lookback).** The redaction patterns are line-local
-    (`[^\S\n]` for in-line whitespace) except the PEM block, so the stream layer
-    (`Coalescer`, check.ts) is line- and block-oriented too:
-    - it redacts only COMPLETE units: a whole line, or a whole private-key block;
-    - the unfinished tail is kept RAW until its newline, its END line, the end of
-      the stream or a cap, and a redacted remainder is never stored (a half-redacted
-      line has lost the context the patterns need); the timer ships only what is
-      already complete;
-    - the held region starts at the earliest still-unresolved unit: a block that is
-      open, or closes in the unfinished line, holds from the start of the line it
-      begins on, and keeps moving back while that line begins inside an earlier
-      block (`END ... BEGIN` on one line), so a closed block is never cut from its
-      BEGIN;
-    - caps fail closed: a line over 8 KiB or a block over 16 KiB becomes a
-      `[redacted: ... too long]` marker, and the rest of that unit is DISCARDED to
-      its real end (a newline, or the END line; a short tail is kept so an END
-      marker split across chunks is found), or the end of the stream. There is no
-      discard budget after which output resumes: resuming mid-unit emits a raw
-      suffix, and discarding holds no memory, so a budget bought nothing;
-    - the stream end, an exit, a cancel and a timeout redact and emit the held
-      tail, and `shutdown()` waits a moment for stopped checks to hand theirs over.
-
-    A seeded oracle test requires the output to equal `redactString(whole text)`
-    for every chunking (every offset, random multi-way splits, byte at a time,
-    ticks interleaved, every 1-, 2- and 3-way split of adjacent-key inputs).
-  - **Accepted limits of line-local patterns** (not regressions of the whole-text
-    patterns for the stream; the other `redact.ts` callers see them too):
-    `Bearer` / `Basic` followed by a newline then the token, `"token":` then a
-    newline then the value, `token` newline `= "..."`, and `Authorization`
-    newline `: value`.
+  - **B-20, check output is captured and redacted ONCE, at the end of the check
+    (user decision; supersedes the round-3 hold-and-lookback and the round-4/5
+    line-oriented `Coalescer`).** Five gate rounds on a streaming redactor found
+    a new boundary-dependent leak each time (a token split by a chunk, a tick, a
+    size cut, a discard budget, adjacent key blocks). Redaction is a best-effort
+    control, and a split-perfect streaming implementation was disproportionate to
+    it. So: nothing is emitted while the check runs; each stream is captured in
+    bounded memory as a HEAD (first 16 KiB, cut back to its last newline before
+    redacting, because a token cut in half can fall under a pattern's minimum
+    length and survive; a head with no newline becomes a marker) and a TAIL (the
+    last 48 KiB, a ring of WHOLE lines, so it starts at a line start; one line
+    longer than the tail becomes a marker), plus `total_bytes`. Lines that fall out
+    of the ring are scanned only for private-key BEGIN/END markers: if a block is
+    open where the tail starts, the tail's lines up to its END line are dropped
+    (the whole tail if it has none), because the BEGIN that would make the
+    redaction pattern recognise them is gone. At the end each part is redacted
+    once as whole text, with `[... N bytes omitted ...]` between them, and emitted
+    as `check.output` pieces of at most 8 KiB (`prepareEvent` re-redacts each piece,
+    which can only over-redact). `redact.ts` is back to whole-text patterns (`\s`),
+    keeping the Bearer, keyword=value and URL-credential patterns this work added.
+    Order holds: `store.commit` drains buffered events before the change's own,
+    and the pipes close before the node is completed or failed, so every
+    `check.output` has a lower seq than the `node.finished` that follows, a
+    timeout included (tested).
+  - **B-21, a cancelled check emits no `check.output` (user decision).** The output
+    of a check that was stopped on purpose is dropped; the Contract says so.
+  - **Follow-up, only if slice C needs live check progress:** line-by-line
+    streaming through a pure reference `redactLines(text)` with a seeded property
+    test (PEM lines dropped, an overlong line discarded to its newline, the
+    `redact.ts` patterns unchanged). Not needed for B2.
+  - **Accepted limits, now of whole-text redaction:** a secret written in a form
+    no pattern lists is not redacted (best-effort, B-5); the dropped middle of a
+    long output is not shown at all. A few shapes needing whitespace across a newline
+    that the whole-text patterns accept are covered; the gaps below are not.
   - **Known pattern gaps, accepted and unfixed in B2** (a candidate follow-up, not
     regressions): JWTs, `password=`, unquoted `X-Api-Key: v`, cookies, PGP
     `PRIVATE KEY BLOCK`, and ANSI-coloured tokens (`\x1b[31mghp_...` has no `\b`).

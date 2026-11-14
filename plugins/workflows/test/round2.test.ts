@@ -8,7 +8,7 @@
 import assert from 'node:assert/strict';
 import { spawn } from 'node:child_process';
 import { test } from 'node:test';
-import { type CheckHandle, Coalescer } from '../engine/check.ts';
+import type { CheckHandle } from '../engine/check.ts';
 import { capData, MAX_EVENT_BYTES } from '../engine/events.ts';
 import { killTree, procStart, reap } from '../engine/killtree.ts';
 import { checkExecutor } from '../engine/nodes.ts';
@@ -259,47 +259,3 @@ test('shutdown() signals nothing for hostile ids and still flushes', async () =>
     h.close();
   }
 });
-
-// ------------------------------- a token split across timer ticks is never stored in halves
-
-const manual = () => {
-  const fns: (() => void)[] = [];
-  return { timers: { set: (fn: () => void) => (fns.push(fn), fns.length), clear: () => {} }, fire: () => fns.splice(0).forEach((f) => f()) };
-};
-
-for (const [name, first, second] of [
-  ['ghp_', `ghp_${'A'.repeat(20)}`, 'A'.repeat(16)],
-  ['sk-', `sk-${'b'.repeat(10)}`, 'b'.repeat(15)],
-  ['Bearer', `Bearer ${'c'.repeat(8)}`, 'c'.repeat(12)],
-] as const) {
-  test(`a ${name} token split across two timer ticks is redacted whole`, () => {
-    const out: string[] = [];
-    const m = manual();
-    const co = new Coalescer((t) => out.push(t), m.timers);
-    co.write(`token: ${first}`);
-    m.fire(); // first tick: the trailing run is held
-    assert.ok(out.every((o) => !/ghp_|sk-|Bearer/.test(o)), `nothing of the token was emitted yet: ${JSON.stringify(out)}`);
-    co.write(second);
-    m.fire(); // second tick: still held
-    co.write('\n');
-    m.fire();
-    co.end();
-    const all = out.join('');
-    assert.ok(!/ghp_|sk-[a-z]|Bearer [a-z]/.test(all), all);
-    assert.match(all, /\[redacted\]/);
-  });
-}
-
-test('an unfinished line is held raw until its newline or the end, and the timer never ships it', () => {
-  const out: string[] = [];
-  const m = manual();
-  const co = new Coalescer((t) => out.push(t), m.timers);
-  co.write('done line\nunfinished');
-  m.fire();
-  assert.equal(out.join(''), 'done line\n', 'only the complete line is shipped');
-  m.fire();
-  assert.equal(out.join(''), 'done line\n', 'ticks do not release the partial line');
-  co.end();
-  assert.equal(out.join(''), 'done line\nunfinished', 'the end releases it');
-});
-;
