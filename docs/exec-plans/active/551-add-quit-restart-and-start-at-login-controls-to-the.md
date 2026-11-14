@@ -218,6 +218,14 @@ check-on-open).
 - **2026-11-14 iter 1** — verdict: APPROVE; mergeable: MERGEABLE; findings_hash: empty; threads_open: 0; action: stop; head_sha: 698c5af. (Two MINORs noted, not counted: runWithTimeout WaitDelay — fixed next commit with a test; stale probe may briefly overwrite a just-toggled status — self-corrects on next menu open, left as is.)
 - **2026-11-14 iter 2** — verdict: APPROVE; mergeable: MERGEABLE; findings_hash: empty; threads_open: 0; action: stop; head_sha: 3194e2e.
 
+## Gate verdict
+
+- **2026-11-14** — verdict: NEEDS_FOLLOWUP; phase: —; checks: 8 passed / 0 failed / 1 followups / 0 deferred; followups: operator-run click rows (see below); one-line: code, tests, docs and non-goals all hold; the end-to-end menu clicks (criteria 1–3) and the real unsigned-build failure alert (criterion 4) were not observable here (Automation not authorized for System Events). Dimensions were verified inline, not by isolated validators.
+  - 2026-11-14 dimensions:
+    - acceptance — NEEDS_FOLLOWUP — (1) Quit: `handle(clickQuitBar)`→`quitApp` calls only `systray.Quit`, no confirm, no daemon call (menu.go; `TestSlowToggleDoesNotBlockFooterLoop`); icon/hived-PID/session signal not observed. (2) Restart: `-n … --args -restart` lock handoff proven on the real build (old PID held, new PID took the lock after old exit); click not observed. (3) Start at Login: real probe returned `hive-login-item: enabled`; checkmark rendering and toggle write path not exercised, deliberately, so the operator's real login item is not changed; Settings re-reads on open (Settings.tsx:306). (4) Alert/truthful checkmark covered by `TestToggleFailureReturnsErrorAndRereadsStatus` + `TestToggleFailureAlertsAfterReleasingTheFlag`, not by a real unsigned build. (5) PASS — confirmRestart/confirmQuit unchanged apart from `quitApp`. (6) PASS — `TestAddMenuItemOnlyInsideReady`. (7) PASS — tests, `cmd/hivebar/README.md`, README.md, DESIGN.md, changeset, features.json.
+    - non-goals — PASS — no sticky-quit flag; `HIVE_NO_MENUBAR` untouched; Quit Hive semantics unchanged; darwin only; no Settings/frontend change in the diff.
+    - doc accuracy — PASS — changeset `type: added` (no `regression_of` needed); site/features.json entry `since: "Unreleased"`; `scripts/test.sh unit` green.
+
 ## Open questions / risks
 - `open -n` of a nested LoginItems helper must be proven on a real build (menubar.Spawn uses `open -a` without `-n`).
 - `TrayOpenedCh` is a non-blocking send on a size-? channel; a burst of opens may drop signals — acceptable, next open refreshes.
