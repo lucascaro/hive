@@ -15,7 +15,7 @@ import { checkValue } from '../ir/resultschema.ts';
 import type { IR, Node } from '../sdk/dsl.ts';
 import type { EventDraft, RunEvent } from './events.ts';
 import { initialRows, apply, type Action, type Applied, type Model, modelFor, step, type Transition } from './interp.ts';
-import { type KillDeps, killTree, reap } from './killtree.ts';
+import { type KillDeps, killTree, reap, unsafeTarget } from './killtree.ts';
 import { redactCut } from './redact.ts';
 import type { Row, RunRow } from './model.ts';
 import { encodedSize } from './size.ts';
@@ -401,10 +401,16 @@ export class Engine {
         if (r.state !== 'running') continue;
         const kind = rt.model.ix.byId.get(r.node_id)?.node.kind;
         if (kind !== 'check' && kind !== 'agent') continue;
+        // A row is not trusted to name a process: a corrupt or forged pid fails the node, naming the row, and nothing is signalled.
+        const bad = r.pid === undefined ? undefined : unsafeTarget({ pid: r.pid, pgid: r.pgid });
+        if (bad) {
+          this.commit(rt.id, { t: 'fail', key: r.key, error: `the recorded process for ${r.key} cannot be used (${bad}); nothing was signalled` });
+          continue;
+        }
         let reaped: string = 'gone';
         if (r.pid !== undefined) reaped = await reap({ pid: r.pid, pgid: r.pgid, proc_start: r.proc_start }, this.#killDeps).catch(() => 'kept');
         // A survivor the OS will not let us stop must not be run twice at once: the node fails, naming the pid, instead of being retried.
-        if (reaped === 'kept') this.commit(rt.id, { t: 'fail', key: r.key, error: `the previous attempt's process ${r.pid} is still running and could not be stopped (permission denied); stop it by hand, then retry the run` });
+        if (reaped === 'kept' || reaped === 'refused') this.commit(rt.id, { t: 'fail', key: r.key, error: `the previous attempt's process ${r.pid} is still running and could not be stopped (permission denied); stop it by hand, then retry the run` });
         else this.commit(rt.id, { t: 'interrupt', key: r.key });
       }
     }

@@ -104,8 +104,9 @@ function dbToRow(d: Rec): Row {
   set('session_id', opt(d.session_id));
   set('branch', opt(d.branch));
   set('worktree', opt(d.worktree));
-  set('pid', opt(d.pid));
-  set('pgid', opt(d.pgid));
+  // A recorded id is kept only if it is a number: recover() judges the number, and fails a node whose row is not a usable process id.
+  set('pid', typeof d.pid === 'number' ? d.pid : undefined);
+  set('pgid', typeof d.pgid === 'number' ? d.pgid : undefined);
   set('proc_start', opt(d.proc_start));
   set('prompt_id', opt(d.prompt_id));
   set('epoch', opt(d.epoch));

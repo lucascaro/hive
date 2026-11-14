@@ -79,8 +79,24 @@ async function taskkill(pid: number, force: boolean, deps: KillDeps): Promise<vo
   });
 }
 
-/** What a stop achieved: `stopped` (signalled and gone, or force sent), `gone` (nothing was left), `kept` (the OS refused the signal, EPERM: the process is still there). */
-export type StopResult = 'stopped' | 'gone' | 'kept';
+/** What a stop achieved: `refused` (the recorded ids are not a process this engine may signal: nothing was sent), `stopped` (signalled and gone, or force sent), `gone` (nothing was left), `kept` (the OS refused the signal, EPERM: the process is still there). */
+export type StopResult = 'stopped' | 'gone' | 'kept' | 'refused';
+
+/**
+ * Whether the recorded ids name something the engine may signal, as a reason
+ * when not. A row in `runs.db` is only trusted this far: `kill(-1)` signals
+ * every process the user owns, `kill(0)` and `kill(-own pid)` the engine's own
+ * group, and an arbitrary pid is someone else's process. The engine writes
+ * pgid == pid for every check, so anything else is a corrupt or forged row.
+ */
+export function unsafeTarget(t: Tracked, own: number = process.pid): string | undefined {
+  const { pid, pgid } = t;
+  if (!Number.isSafeInteger(pid) || pid < 2) return `pid ${String(pid)} is not a process id`;
+  if (pid === own) return `pid ${pid} is the engine itself`;
+  if (pgid !== undefined && (!Number.isSafeInteger(pgid) || pgid < 2)) return `process group ${String(pgid)} is not a process group id`;
+  if (pgid !== undefined && pgid !== pid) return `process group ${pgid} is not the process's own group ${pid}`;
+  return undefined;
+}
 
 /**
  * TERM, then KILL after the grace period, to the whole group (POSIX) or tree
@@ -88,8 +104,12 @@ export type StopResult = 'stopped' | 'gone' | 'kept';
  * asks, `/T /F` forces). Never throws: a signal the OS refuses (EPERM, say a
  * check started under sudo) is reported as `kept`, because only ESRCH proves
  * a group is gone and the caller must decide what a surviving process means.
+ * Every caller (reap, shutdown, a check's own stop) comes through here, so the
+ * guard against hostile ids is here: nothing is sent for ids `unsafeTarget`
+ * refuses.
  */
 export async function killTree(t: Tracked, deps: KillDeps = {}): Promise<StopResult> {
+  if (unsafeTarget(t) !== undefined) return 'refused';
   const grace = deps.graceMs ?? KILL_GRACE_MS;
   const kill = deps.kill ?? process.kill;
   if ((deps.platform ?? process.platform) === 'win32') {
@@ -98,7 +118,7 @@ export async function killTree(t: Tracked, deps: KillDeps = {}): Promise<StopRes
     await taskkill(t.pid, true, deps);
     return 'stopped';
   }
-  const target = -(t.pgid ?? t.pid);
+  const target = -t.pid;
   const signal = (sig: string): 'ok' | 'gone' | 'kept' => {
     try {
       kill(target, sig);
@@ -121,9 +141,11 @@ export async function killTree(t: Tracked, deps: KillDeps = {}): Promise<StopRes
  * Startup reaping: kills a recorded check's group only when the pid is alive
  * and its start time is the recorded one. Returns what it found.
  */
-export async function reap(t: Tracked, deps: KillDeps = {}): Promise<'gone' | 'stranger' | 'killed' | 'kept'> {
+export async function reap(t: Tracked, deps: KillDeps = {}): Promise<'gone' | 'stranger' | 'killed' | 'kept' | 'refused'> {
+  if (unsafeTarget(t) !== undefined) return 'refused';
   const now = procStart(t.pid, deps);
   if (now === undefined) return 'gone';
   if (t.proc_start === undefined || now !== t.proc_start) return 'stranger';
-  return (await killTree(t, { graceMs: 2_000, ...deps })) === 'kept' ? 'kept' : 'killed';
+  const r = await killTree(t, { graceMs: 2_000, ...deps });
+  return r === 'kept' || r === 'refused' ? r : 'killed';
 }

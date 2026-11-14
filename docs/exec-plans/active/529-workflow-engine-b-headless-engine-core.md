@@ -1584,6 +1584,17 @@ download, the accepted sandbox gap, and `LIST_ACP_AGENTS`.
     `shrink` can drop permission `options` from an oversized wait
     (`options_omitted`); those options cannot be answered from the GUI.
 
+  - **Round-3 gate: ids from the store are not trusted; output is held across ticks.**
+    `killTree` is the one choke point and refuses (`refused`, nothing sent) any
+    pid that is not a safe integer >= 2, is the engine's own, or whose pgid is
+    not the pid (the engine always writes pgid == pid); `reap`, `shutdown()` and
+    a check's own stop all go through it, `recover()` fails a node whose row
+    fails the same test (naming the row), and the store drops non-numeric ids on
+    read. A `Coalescer` holds a trailing unbroken run of up to 256 characters,
+    plus a credential keyword just before it (`Bearer `, `Authorization: `,
+    `"token": `), until more output or the end of the stream; it is never
+    flushed by the timer alone.
+
 ## Progress
 
 - **2026-10-25:** Research complete. Plan drafted against A at `7410f6b7`.
