@@ -2,7 +2,7 @@
 
 - **Spec:** [docs/product-specs/551-add-quit-restart-and-start-at-login-controls-to-the.md](../../product-specs/551-add-quit-restart-and-start-at-login-controls-to-the.md)
 - **Issue:** #551
-- **Status:** active
+- **Status:** completed
 - **PR:** #552
 - **Branch:** feature/551-menubar-controls
 
@@ -225,6 +225,11 @@ check-on-open).
     - acceptance — NEEDS_FOLLOWUP — (1) Quit: `handle(clickQuitBar)`→`quitApp` calls only `systray.Quit`, no confirm, no daemon call (menu.go; `TestSlowToggleDoesNotBlockFooterLoop`); icon/hived-PID/session signal not observed. (2) Restart: `-n … --args -restart` lock handoff proven on the real build (old PID held, new PID took the lock after old exit); click not observed. (3) Start at Login: real probe returned `hive-login-item: enabled`; checkmark rendering and toggle write path not exercised, deliberately, so the operator's real login item is not changed; Settings re-reads on open (Settings.tsx:306). (4) Alert/truthful checkmark covered by `TestToggleFailureReturnsErrorAndRereadsStatus` + `TestToggleFailureAlertsAfterReleasingTheFlag`, not by a real unsigned build. (5) PASS — confirmRestart/confirmQuit unchanged apart from `quitApp`. (6) PASS — `TestAddMenuItemOnlyInsideReady`. (7) PASS — tests, `cmd/hivebar/README.md`, README.md, DESIGN.md, changeset, features.json.
     - non-goals — PASS — no sticky-quit flag; `HIVE_NO_MENUBAR` untouched; Quit Hive semantics unchanged; darwin only; no Settings/frontend change in the diff.
     - doc accuracy — PASS — changeset `type: added` (no `regression_of` needed); site/features.json entry `since: "Unreleased"`; `scripts/test.sh unit` green.
+- **2026-11-14** — verdict: PASS; phase: —; checks: 9 passed / 0 failed / 0 followups / 0 deferred; followups: none; one-line: re-run after the operator hand-tested Quit Menu Bar, Restart Menu Bar and the Start at Login toggle on the real built hivebar (isolated state dir) and reported they work. Residual, unobserved and accepted: the "hived PID unchanged, sessions still attached" signal on a live daemon (the Quit/Restart code paths never call the daemon; covered by code + tests only) and the real unsigned-build failure alert (covered by unit tests only).
+  - 2026-11-14 dimensions:
+    - acceptance — PASS — criteria 1–3 operator-confirmed on the built app; 4 by tests; 5–7 as in the prior entry.
+    - non-goals — PASS
+    - doc accuracy — PASS
 
 ## Open questions / risks
 - `open -n` of a nested LoginItems helper must be proven on a real build (menubar.Spawn uses `open -a` without `-n`).
