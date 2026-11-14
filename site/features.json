@@ -245,5 +245,11 @@
     "blurb": "Press ⌘P to search every session by name, window title, branch or project and jump straight to it — with nothing typed, the one you just left is first.",
     "status": "shipped",
     "since": "2.10.0"
+  },
+  {
+    "title": "Quit or restart the menu bar on its own",
+    "blurb": "The menu bar now has Quit Menu Bar, Restart Menu Bar and a Start at Login checkmark that leave your daemon and running agents alone.",
+    "status": "shipped",
+    "since": "Unreleased"
   }
 ]

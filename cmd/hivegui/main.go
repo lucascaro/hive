@@ -99,6 +99,13 @@ func main() {
 	if printVersion(os.Stdout, os.Args[1:]) {
 		return
 	}
+	// Headless login-item probe for cmd/hivebar. Must stay above
+	// setupLogFile and menubar.Spawn: it runs on every menu-bar menu open
+	// and must not touch the log, start hivebar, or open a window
+	// (TestLoginItemFlagRunsBeforeStartup).
+	if handled, code := handleMenuBarLoginItemFlag(os.Args[1:], os.Stdout, os.Stderr, &App{}); handled {
+		os.Exit(code)
+	}
 	setupLogFile()
 	logLaunch()
 	// Belt and braces with hived's own call: a user who opens the GUI
