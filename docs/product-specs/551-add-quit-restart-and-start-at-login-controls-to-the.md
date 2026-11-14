@@ -4,7 +4,8 @@ title: Add Quit, Restart and Start-at-Login controls to the menu bar
 type: enhancement
 complexity: M
 priority: P2
-stage: IMPLEMENT
+pr: 552
+stage: REVIEW
 ---
 
 # Add Quit, Restart and Start-at-Login controls to the menu bar

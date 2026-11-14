@@ -3,6 +3,8 @@
 - **Spec:** [docs/product-specs/551-add-quit-restart-and-start-at-login-controls-to-the.md](../../product-specs/551-add-quit-restart-and-start-at-login-controls-to-the.md)
 - **Issue:** #551
 - **Status:** active
+- **PR:** #552
+- **Branch:** feature/551-menubar-controls
 
 ## Summary
 
