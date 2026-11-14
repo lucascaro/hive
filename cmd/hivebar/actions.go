@@ -226,6 +226,9 @@ func runWithTimeout(timeout time.Duration, name string, args ...string) (string,
 	var stdout, stderr bytes.Buffer
 	cmd := exec.CommandContext(ctx, name, args...)
 	cmd.Stdout, cmd.Stderr = &stdout, &stderr
+	// Bound the wait for the output pipes after the kill: a grandchild that
+	// inherited them would otherwise hold Run open past the deadline.
+	cmd.WaitDelay = 500 * time.Millisecond
 	err := cmd.Run()
 	if errors.Is(ctx.Err(), context.DeadlineExceeded) {
 		return "", fmt.Errorf("%s: no answer after %s: %w", filepath.Base(name), timeout, context.DeadlineExceeded)

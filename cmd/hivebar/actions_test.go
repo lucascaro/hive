@@ -70,3 +70,17 @@ func TestRestartQuitsOnlyWhenSpawnSucceeds(t *testing.T) {
 		t.Errorf("no bundle: err=%v quits=%d alerts=%d", err, quits, alerts)
 	}
 }
+
+// Killing the child at the deadline is not enough if a grandchild inherited
+// the stdout pipe: cmd.Run then waits for the pipe to close. An older hivegui
+// that ignores --menubar-login-item and starts a whole GUI is that case.
+func TestRunWithTimeoutIsBoundedWhenAGrandchildHoldsThePipe(t *testing.T) {
+	start := time.Now()
+	_, err := runWithTimeout(50*time.Millisecond, "sh", "-c", "sleep 5 & sleep 5")
+	if !errors.Is(err, context.DeadlineExceeded) {
+		t.Fatalf("err = %v, want a deadline error", err)
+	}
+	if d := time.Since(start); d > 3*time.Second {
+		t.Errorf("took %v; a grandchild holding the pipe stalled the caller past the deadline", d)
+	}
+}

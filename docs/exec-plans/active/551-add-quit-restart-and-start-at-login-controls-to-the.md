@@ -209,7 +209,15 @@ check-on-open).
   **These smoke rows are mandatory, not best-effort**: criteria 1–3 are only proven here (`open -n` of the nested helper and the real lock handoff are invisible to unit tests). Clicks are driven through System Events UI scripting; if accessibility is not granted for the driving terminal, the rows are listed in the PR as "operator must run" and `/hs-merge-gate` must not pass them as verified. Also assert the probe is side-effect free: after `hivegui --menubar-login-item=status`, no new hivegui/hivebar process exists and `hivegui.log` is untouched.
 - Mutation checks (stage the fix first; never `git checkout --`): (a) make `claimSingleton(wait)` ignore `wait` → `TestClaimSingletonWaitsForRelease` fails; (b) drop the `-restart` → `wait` plumbing in `cmd/hivebar/main.go` → a `TestMainRestartFlagEnablesWait` (flag parsing extracted to `parseFlags(args)`) fails; (c) move the hivegui flag call below `menubar.Spawn()` → `TestLoginItemFlagRunsBeforeStartup` fails; (d) quit unconditionally in `restartMenuBar` → `TestRestartQuitsOnlyWhenSpawnSucceeds` fails.
 
-### Open questions / risks
+#
+
+## PR convergence ledger
+
+<Append-only; one line per /hs-review-loop iteration.>
+
+- **2026-11-14 iter 1** — verdict: APPROVE; mergeable: MERGEABLE; findings_hash: empty; threads_open: 0; action: stop; head_sha: 698c5af. (Two MINORs noted, not counted: runWithTimeout WaitDelay — fixed next commit with a test; stale probe may briefly overwrite a just-toggled status — self-corrects on next menu open, left as is.)
+
+## Open questions / risks
 - `open -n` of a nested LoginItems helper must be proven on a real build (menubar.Spawn uses `open -a` without `-n`).
 - `TrayOpenedCh` is a non-blocking send on a size-? channel; a burst of opens may drop signals — acceptable, next open refreshes.
 - hivegui subcommand adds ~100 ms exec per probe; async so the menu never blocks.
