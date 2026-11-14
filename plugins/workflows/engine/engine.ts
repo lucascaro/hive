@@ -147,7 +147,16 @@ export class Engine {
   /** Fails a run that cannot be resumed, in one commit, so it is not retried on every start. */
   #refuse(run: RunRow, why: string): void {
     const error = redactCut(why, 1024);
-    this.#publish(run.run_id, this.store.commit(run.run_id, { rows: [], events: [{ key: null, node_id: null, attempt: 0, type: 'run.finished', data: { state: 'failed', error } }], run: { state: 'failed', error } }));
+    // A refused run stops here: its live nodes are cancelled in the same commit, with their recorded process ids cleared, so
+    // run.retry has nothing stuck `running` and nothing can ever signal a stale row.
+    const now = this.#now().toISOString();
+    const live = this.store.loadRows(run.run_id).filter((r) => r.state === 'running' || r.state === 'waiting');
+    const rows = live.map((r) => ({ ...r, state: 'cancelled' as const, pid: undefined, pgid: undefined, proc_start: undefined, waiting: undefined, ended_at: now }));
+    const events = [
+      ...live.map((r) => ({ key: r.key, node_id: r.node_id, attempt: r.attempt, type: 'node.finished' as const, data: { state: 'cancelled' } })),
+      { key: null, node_id: null, attempt: 0, type: 'run.finished' as const, data: { state: 'failed', error } },
+    ];
+    this.#publish(run.run_id, this.store.commit(run.run_id, { rows, events, run: { state: 'failed', error } }));
   }
 
   #load(run: RunRow): Runtime {
@@ -366,7 +375,7 @@ export class Engine {
    * `hived` stop leaves no `go test` behind. The rows stay `running`; the next
    * start reaps and retries them like any other interrupted check.
    */
-  async shutdown(graceMs = 1_000): Promise<void> {
+  async shutdown(graceMs = 1_000, settleMs = 100): Promise<void> {
     // A check ended by this stop is interrupted, not finished: nothing it reports from here on is recorded.
     this.#stopping = true;
     const stops: Promise<unknown>[] = [];
@@ -377,6 +386,8 @@ export class Engine {
     }
     // One stop that fails must not skip the flush: buffered events are the only record of the output so far.
     await Promise.allSettled(stops);
+    // The stopped checks' streams close a moment later and hand over the unfinished last line each was holding: give them that moment.
+    await new Promise((r) => setTimeout(r, settleMs));
     this.stopFlush();
     this.flush();
   }
@@ -410,7 +421,8 @@ export class Engine {
         let reaped: string = 'gone';
         if (r.pid !== undefined) reaped = await reap({ pid: r.pid, pgid: r.pgid, proc_start: r.proc_start }, this.#killDeps).catch(() => 'kept');
         // A survivor the OS will not let us stop must not be run twice at once: the node fails, naming the pid, instead of being retried.
-        if (reaped === 'kept' || reaped === 'refused') this.commit(rt.id, { t: 'fail', key: r.key, error: `the previous attempt's process ${r.pid} is still running and could not be stopped (permission denied); stop it by hand, then retry the run` });
+        if (reaped === 'kept') this.commit(rt.id, { t: 'fail', key: r.key, error: `the previous attempt's process ${r.pid} is still running and could not be stopped (the operating system refused the signal); stop it by hand, then retry the run` });
+        else if (reaped === 'refused') this.commit(rt.id, { t: 'fail', key: r.key, error: `the recorded process ${r.pid} for ${r.key} cannot be used; nothing was signalled` });
         else this.commit(rt.id, { t: 'interrupt', key: r.key });
       }
     }

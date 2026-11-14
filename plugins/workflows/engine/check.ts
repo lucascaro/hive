@@ -13,8 +13,6 @@ import { redactString } from './redact.ts';
 
 const FLUSH_MS = 250;
 const FLUSH_BYTES = 8 << 10;
-/** A trailing run this short is held back at a timed flush, in case it is the start of a token. */
-const HOLD_CHARS = 256;
 
 const utf8Bytes = (s: string): number => new TextEncoder().encode(s).length;
 
@@ -23,69 +21,131 @@ export interface Timers {
   clear(t: unknown): void;
 }
 
+/** An unfinished line is held (raw) up to this many characters; past it the line is dropped, fail closed. */
+export const MAX_HELD_LINE = 8 << 10;
+/** An open `-----BEGIN ... PRIVATE KEY-----` block is held up to this many characters. */
+export const MAX_HELD_BLOCK = 16 << 10;
+/** After a cap, at most this many more characters are discarded looking for the end of the line or block. */
+export const MAX_DISCARD = 64 << 10;
+
+const PEM_BEGIN = /-----BEGIN [A-Z ]*PRIVATE KEY-----/g;
+const PEM_END = /-----END [A-Z ]*PRIVATE KEY-----/;
+
+/** Where the first private-key block with no END after it begins, or -1. */
+function openBlock(s: string): number {
+  PEM_BEGIN.lastIndex = 0;
+  for (let m = PEM_BEGIN.exec(s); m; m = PEM_BEGIN.exec(s)) {
+    if (!PEM_END.test(s.slice(m.index + m[0].length))) return m.index;
+  }
+  return -1;
+}
+
 /**
- * Cuts a stream into `check.output` pieces: at most 8 KiB of UTF-8, flushed
- * 250 ms after the first byte arrives. Redaction runs on everything in hand
- * before it is cut, and a trailing unbroken run of up to 256 characters (a
- * token that may still be arriving) is held back, by the timer and by the size
- * cut alike, until more output arrives or the stream ends. It is never flushed
- * on a timer alone: a token split across two timer ticks would match no pattern
- * in either half.
+ * Cuts a stream into `check.output` pieces (at most 8 KiB of UTF-8, flushed 250
+ * ms after output is ready) and redacts it on the way.
+ *
+ * The redaction patterns are line and block oriented, so this layer is too:
+ * it redacts only COMPLETE units, a whole line or a whole private-key block,
+ * and keeps the unfinished tail RAW until its newline, its END line, the end
+ * of the stream, or a cap arrives. It never stores a redacted remainder (a
+ * partly redacted line has lost the context the patterns need) and the timer
+ * never emits a partial line. So whatever the chunk boundaries and ticks, the
+ * output equals redacting the whole text at once.
+ *
+ * Caps fail closed. A line longer than MAX_HELD_LINE, or a key block longer
+ * than MAX_HELD_BLOCK, is replaced by a `[redacted: ...]` marker and the rest of
+ * that line or block is discarded, up to MAX_DISCARD further characters, so a
+ * raw prefix or suffix of something that may be a secret is never emitted and
+ * memory stays bounded. The stream end, an exit, a cancel and a timeout all
+ * end the stream: the held tail is then redacted whole and emitted.
  */
 export class Coalescer {
-  #buf = '';
+  #raw = '';
+  #out = '';
   #timer: unknown;
+  /** Discarding until a newline (line) or an END line (block), with this many characters of budget left. */
+  #skip: { kind: 'line' | 'block'; left: number } | undefined;
   readonly #emit: (text: string) => void;
   readonly #timers: Timers;
 
   constructor(emit: (text: string) => void, timers: Timers = { set: (fn, ms) => setTimeout(fn, ms), clear: (t) => clearTimeout(t as ReturnType<typeof setTimeout>) }) {
-    this.#emit = (text) => emit(redactString(text).text);
+    this.#emit = emit;
     this.#timers = timers;
   }
 
-  /**
-   * Where the held-back tail begins: everything before it is safe to emit. The
-   * tail is the trailing unbroken run, plus a credential keyword just before it
-   * (`Bearer `, `Basic `, `Authorization: `, `"token": `), because those
-   * patterns need the keyword and the value together.
-   */
-  static #safe(s: string, upTo: number): number {
-    const ws = Math.max(s.lastIndexOf('\n', upTo - 1), s.lastIndexOf(' ', upTo - 1), s.lastIndexOf('\t', upTo - 1));
-    let start = ws + 1;
-    const key = /(?:\b(?:Bearer|Basic)|Authorization["']?\s*[:=]|["']?\b(?:auth_?token|access_?token|api_?key|secret|token)["']?\s*[:=])[ \t]*$/i.exec(s.slice(Math.max(0, start - 40), start));
-    if (key) start = Math.max(0, start - 40) + key.index;
-    return upTo - start <= HOLD_CHARS ? start : upTo;
+  /** Characters held raw, for tests that bound memory. */
+  get held(): number {
+    return this.#raw.length + this.#out.length;
   }
 
   write(text: string): void {
-    this.#buf += text;
-    while (utf8Bytes(this.#buf) >= FLUSH_BYTES) {
-      const red = redactString(this.#buf).text;
-      let cut = prefixWithin(red, FLUSH_BYTES);
-      const safe = Coalescer.#safe(red, cut);
-      if (safe > 0) cut = safe; // with no earlier break the run is cut as it is: it is longer than a token
-      this.#emit(red.slice(0, cut));
-      this.#buf = red.slice(cut);
-    }
-    if (this.#buf !== '' && this.#timer === undefined) this.#timer = this.#timers.set(() => this.tick(), FLUSH_MS);
+    this.#raw += text;
+    this.#drain(false);
+    this.#ship(false);
   }
 
-  /** The timer fired: emit what is safe, keep a trailing run that may be a token's front half. */
+  /** The timer fired: ship what is ready. Held (unfinished) text is never shipped here. */
   tick(): void {
     this.#timer = undefined;
-    const safe = Coalescer.#safe(this.#buf, this.#buf.length);
-    if (safe > 0) {
-      this.#emit(this.#buf.slice(0, safe));
-      this.#buf = this.#buf.slice(safe);
-    }
+    this.#ship(true);
   }
 
-  /** The stream ended: nothing more can complete a token, so emit it all. */
+  /** The stream ended: nothing more can complete a unit, so redact the held tail whole and emit everything. */
   end(): void {
     if (this.#timer !== undefined) this.#timers.clear(this.#timer);
     this.#timer = undefined;
-    if (this.#buf !== '') this.#emit(this.#buf);
-    this.#buf = '';
+    this.#drain(true);
+    this.#ship(true);
+  }
+
+  #drain(final: boolean): void {
+    for (;;) {
+      if (this.#skip) {
+        // Dropping the rest of an oversize line or block, looking for where it ends.
+        const re = this.#skip.kind === 'line' ? /\n/ : /-----END [A-Z ]*PRIVATE KEY-----[^\n]*\n?/;
+        const m = re.exec(this.#raw);
+        if (m) {
+          this.#raw = this.#raw.slice(m.index + m[0].length);
+          this.#skip = undefined;
+          continue;
+        }
+        this.#skip.left -= this.#raw.length;
+        this.#raw = '';
+        if (this.#skip.left <= 0) this.#skip = undefined; // the discard budget is spent: resume with whatever comes next
+        return;
+      }
+      if (this.#raw === '') return;
+      let cut = final ? this.#raw.length : this.#raw.lastIndexOf('\n') + 1;
+      if (cut > 0) {
+        const open = final ? -1 : openBlock(this.#raw.slice(0, cut));
+        // Hold from the start of the line the block opens on: the patterns see that line whole (`Authorization: x -----BEGIN ...`).
+        if (open >= 0) cut = this.#raw.lastIndexOf('\n', open - 1) + 1;
+      }
+      if (cut > 0) {
+        this.#out += redactString(this.#raw.slice(0, cut)).text;
+        this.#raw = this.#raw.slice(cut);
+        continue;
+      }
+      // Nothing complete: what is held is an unfinished line, or an open private-key block.
+      const open = openBlock(this.#raw);
+      const block = open >= 0;
+      if (this.#raw.length > (block ? MAX_HELD_BLOCK : MAX_HELD_LINE)) {
+        this.#out += block ? '[redacted: private key block too long]\n' : '[redacted: line too long]\n';
+        this.#skip = { kind: block ? 'block' : 'line', left: MAX_DISCARD };
+        continue;
+      }
+      return;
+    }
+  }
+
+  /** Emit ready text in pieces of at most 8 KiB, now when asked and otherwise once 8 KiB has built up. */
+  #ship(all: boolean): void {
+    while (this.#out !== '' && (all || utf8Bytes(this.#out) >= FLUSH_BYTES)) {
+      const cut = prefixWithin(this.#out, FLUSH_BYTES);
+      this.#emit(this.#out.slice(0, cut));
+      this.#out = this.#out.slice(cut);
+    }
+    if (this.#out !== '' && this.#timer === undefined) this.#timer = this.#timers.set(() => this.tick(), FLUSH_MS);
   }
 }
 

@@ -27,13 +27,13 @@ test('output pieces are bounded in UTF-8 bytes and never split a surrogate pair'
   const dir = tmp();
   try {
     const got: string[] = [];
-    const r = await launch({ argv: node("process.stdout.write('é'.repeat(9000)+'x😀'.repeat(6000))"), cwd: dir, timeout_s: 20 }, (_s, t) => got.push(t)).result;
+    const r = await launch({ argv: node("process.stdout.write(('é'.repeat(60)+'\\n').repeat(150)+('x😀'.repeat(30)+'\\n').repeat(200))"), cwd: dir, timeout_s: 20 }, (_s, t) => got.push(t)).result;
     assert.equal(r.kind, 'exit');
     for (const g of got) {
       assert.ok(new TextEncoder().encode(g).length <= 8192, 'a piece is over 8 KiB of UTF-8');
       assert.ok(!/[\ud800-\udbff]$/.test(g) && !/^[\udc00-\udfff]/.test(g), 'a surrogate pair was split');
     }
-    assert.equal(got.join(''), 'é'.repeat(9000) + 'x😀'.repeat(6000));
+    assert.equal(got.join(''), ('é'.repeat(60) + '\n').repeat(150) + ('x😀'.repeat(30) + '\n').repeat(200));
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }
@@ -44,10 +44,10 @@ test('a secret that straddles the 8 KiB cut is redacted, not stored in two halve
   try {
     const got: string[] = [];
     const token = `ghp_${'a'.repeat(36)}`;
-    await launch({ argv: node(`process.stdout.write('x'.repeat(8160)+' '+${JSON.stringify(token)}+' done')`), cwd: dir, timeout_s: 20 }, (_s, t) => got.push(t)).result;
+    await launch({ argv: node(`process.stdout.write(('x'.repeat(100)+'\\n').repeat(81)+' '+${JSON.stringify(token)}+' done\\n')`), cwd: dir, timeout_s: 20 }, (_s, t) => got.push(t)).result;
     const all = got.join('');
     assert.ok(!all.includes('ghp'), 'no fragment of the token survives');
-    assert.match(all, /\[redacted\] done$/);
+    assert.match(all, /\[redacted\] done\n$/);
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }

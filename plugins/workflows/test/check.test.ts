@@ -63,11 +63,11 @@ test('output is coalesced in pieces of at most 8 KiB per stream, and a multi-byt
   const dir = tmp();
   try {
     const got: { stream: string; text: string }[] = [];
-    const script = "process.stdout.write('é'.repeat(10000)); process.stderr.write('warn'); process.stdout.write('tail')";
+    const script = "for (let i=0;i<200;i++) process.stdout.write('é'.repeat(100)+'\\n'); process.stderr.write('warn'); process.stdout.write('tail')";
     const r = await launch({ argv: node(script), cwd: dir, timeout_s: 20 }, (stream, text) => got.push({ stream, text })).result;
     assert.equal(r.kind, 'exit');
     const out = got.filter((g) => g.stream === 'stdout');
-    assert.equal(out.map((g) => g.text).join(''), `${'é'.repeat(10000)}tail`);
+    assert.equal(out.map((g) => g.text).join(''), `${('é'.repeat(100) + '\n').repeat(200)}tail`);
     assert.ok(out.every((g) => new TextEncoder().encode(g.text).length <= 8192), 'no piece is over 8 KiB of UTF-8');
     assert.ok(out.length >= 2);
     assert.equal(got.filter((g) => g.stream === 'stderr').map((g) => g.text).join(''), 'warn');

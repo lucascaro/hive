@@ -290,16 +290,16 @@ for (const [name, first, second] of [
   });
 }
 
-test('a held run is emitted when the stream ends, and a run longer than a token is not held', () => {
+test('an unfinished line is held raw until its newline or the end, and the timer never ships it', () => {
   const out: string[] = [];
   const m = manual();
   const co = new Coalescer((t) => out.push(t), m.timers);
-  co.write('x'.repeat(300));
+  co.write('done line\nunfinished');
   m.fire();
-  assert.equal(out.join('').length, 300, 'longer than 256 characters: cannot be a token, flushed');
-  co.write('tail');
+  assert.equal(out.join(''), 'done line\n', 'only the complete line is shipped');
   m.fire();
-  assert.equal(out.join('').length, 300, 'a short run is held');
+  assert.equal(out.join(''), 'done line\n', 'ticks do not release the partial line');
   co.end();
-  assert.equal(out.join('').length, 304, 'and written at the end');
+  assert.equal(out.join(''), 'done line\nunfinished', 'the end releases it');
 });
+;
