@@ -22,7 +22,16 @@ const PIECE_ENCODED = 14 << 10;
 
 const utf8Bytes = (s: string): number => new TextEncoder().encode(s).length;
 const KEY_MARKER = /-----(BEGIN|END) [A-Z ]*PRIVATE KEY-----/g;
-const END_MARKER = /-----END [A-Z ]*PRIVATE KEY-----/;
+
+interface Entry {
+  text: string;
+  bytes: number;
+  /** Whether a private-key block was open when the line began, and when it ended, in stream order. */
+  startsOpen: boolean;
+  endsOpen: boolean;
+  /** An overlong line that was dropped; `text` is its stand-in. */
+  marker: boolean;
+}
 
 export interface Captured {
   /** Redacted, with a `[... N bytes omitted ...]` marker where the middle was dropped. */
@@ -60,14 +69,16 @@ export class Capture {
   #spilled = false;
   #headText = '';
   #headLost = false;
-  #ring: { text: string; bytes: number }[] = [];
+  #ring: Entry[] = [];
   #ringBytes = 0;
   #cur = '';
   #curBytes = 0;
   #overlong = false;
   #carry = '';
-  /** Whether a private-key block is open in the text that precedes the tail. */
-  #open = false;
+  /** Whether a private-key block is open after everything scanned so far. Every line is scanned exactly once, in stream order. */
+  #state = false;
+  /** The state when the current overlong line began. */
+  #overStart = false;
   #dropped = 0;
   #lost = false;
   #total = 0;
@@ -117,11 +128,18 @@ export class Capture {
       // Nothing was dropped between the head and the tail: it is the whole output.
       return { text: redactString(this.#headText + this.#ring.map((l) => l.text).join('')).text, truncated: false, total_bytes: this.#total };
     }
-    let lines = this.#ring.map((l) => l.text);
-    if (this.#open) {
-      // The BEGIN of the block the tail starts in was dropped: do not show its body.
-      const end = lines.findIndex((l) => END_MARKER.test(l));
-      lines = end < 0 ? [] : lines.slice(end + 1);
+    // A key block whose BEGIN is not in the kept text (dropped off the front, or inside an omitted overlong line)
+    // must not show its body: drop entries while such a block is open, in stream order, using the state each
+    // entry was scanned with.
+    let hidden = this.#ring[0]?.startsOpen ?? false;
+    const lines: string[] = [];
+    for (const e of this.#ring) {
+      if (hidden) {
+        hidden = e.endsOpen;
+        continue;
+      }
+      lines.push(e.text);
+      if (e.marker && e.endsOpen) hidden = true;
     }
     const tailRaw = lines.join('');
     const shown = (this.#headLost ? 0 : utf8Bytes(this.#headText)) + utf8Bytes(tailRaw);
@@ -133,7 +151,7 @@ export class Capture {
   /** Track whether a private-key block is open after `text`, by its last BEGIN or END marker. */
   #scan(text: string): void {
     KEY_MARKER.lastIndex = 0;
-    for (let m = KEY_MARKER.exec(text); m; m = KEY_MARKER.exec(text)) this.#open = m[1] === 'BEGIN';
+    for (let m = KEY_MARKER.exec(text); m; m = KEY_MARKER.exec(text)) this.#state = m[1] === 'BEGIN';
   }
 
   #tail(text: string): void {
@@ -158,6 +176,7 @@ export class Capture {
     if (this.#curBytes > TAIL_BYTES) {
       // One line longer than the whole tail: fail closed. Its text is dropped; only its key markers are noted.
       this.#dropped += this.#curBytes;
+      this.#overStart = this.#state;
       this.#scanChunk(this.#cur);
       this.#cur = '';
       this.#curBytes = 0;
@@ -183,17 +202,23 @@ export class Capture {
     this.#overlong = false;
     this.#lost = true;
     this.#carry = '';
-    this.#pushLine('[... a line longer than the capture window omitted ...]\n', 64);
+    // The omitted line's text was scanned as it streamed past: the marker inherits the state before and after it.
+    this.#add({ text: '[... a line longer than the capture window omitted ...]\n', bytes: 64, startsOpen: this.#overStart, endsOpen: this.#state, marker: true });
   }
 
   #pushLine(text: string, bytes: number): void {
-    this.#ring.push({ text, bytes });
-    this.#ringBytes += bytes;
+    const startsOpen = this.#state;
+    this.#scan(text);
+    this.#add({ text, bytes, startsOpen, endsOpen: this.#state, marker: false });
+  }
+
+  #add(e: Entry): void {
+    this.#ring.push(e);
+    this.#ringBytes += e.bytes;
     while (this.#ringBytes > TAIL_BYTES && this.#ring.length > 1) {
-      const old = this.#ring.shift() as { text: string; bytes: number };
+      const old = this.#ring.shift() as Entry;
       this.#ringBytes -= old.bytes;
       this.#dropped += old.bytes;
-      this.#scan(old.text);
     }
   }
 }

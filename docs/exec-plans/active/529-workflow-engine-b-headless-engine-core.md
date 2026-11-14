@@ -1606,10 +1606,9 @@ download, the accepted sandbox gap, and `LIST_ACP_AGENTS`.
     redacting, because a token cut in half can fall under a pattern's minimum
     length and survive; a head with no newline becomes a marker) and a TAIL (the
     last 48 KiB, a ring of WHOLE lines, so it starts at a line start; one line
-    longer than the tail becomes a marker), plus `total_bytes`. Lines that fall out
-    of the ring are scanned only for private-key BEGIN/END markers: if a block is
-    open where the tail starts, the tail's lines up to its END line are dropped
-    (the whole tail if it has none), because the BEGIN that would make the
+    longer than the tail becomes a marker), plus `total_bytes`. Lines are scanned for private-key BEGIN/END markers in stream order (see the
+    round-6 note below): if a block is open where the tail starts, the tail's
+    lines up to its END line are dropped (the whole tail if it has none), because the BEGIN that would make the
     redaction pattern recognise them is gone. At the end each part is redacted
     once as whole text, with `[... N bytes omitted ...]` between them, and emitted
     as `check.output` pieces of at most 8 KiB (`prepareEvent` re-redacts each piece,
@@ -1619,6 +1618,14 @@ download, the accepted sandbox gap, and `LIST_ACP_AGENTS`.
     and the pipes close before the node is completed or failed, so every
     `check.output` has a lower seq than the `node.finished` that follows, a
     timeout included (tested).
+  - **Key-block state is tracked in stream order (round 6).** Every line is scanned
+    exactly once, when it is first pushed, and each kept entry records whether a
+    block was open when it began and when it ended; an overlong line dropped to a
+    marker inherits the state before and after it. `finish()` hides entries from
+    the first kept entry's `startsOpen` until the entry that closes the block, so
+    an earlier closed block, or its later eviction, can no longer flip the state.
+    Tests: the two shapes the gate found, plus a seeded property test over random
+    filler, blocks, overlong lines and chunking (mutation-checked).
   - **B-21, a cancelled check emits no `check.output` (user decision).** The output
     of a check that was stopped on purpose is dropped; the Contract says so.
   - **Follow-up, only if slice C needs live check progress:** line-by-line
@@ -1628,7 +1635,11 @@ download, the accepted sandbox gap, and `LIST_ACP_AGENTS`.
   - **Accepted limits, now of whole-text redaction:** a secret written in a form
     no pattern lists is not redacted (best-effort, B-5); the dropped middle of a
     long output is not shown at all. A few shapes needing whitespace across a newline
-    that the whole-text patterns accept are covered; the gaps below are not.
+    that the whole-text patterns accept are covered; the gaps below are not. In the
+    same class: a `keyword=value` secret whose `=` and value are split by a newline
+    exactly at the boundary between the dropped middle and the kept tail (the
+    keyword-value pattern's `\s*`, `redact.ts`) can survive; the two halves are never
+    in one redacted text. No machinery is added for it.
   - **Known pattern gaps, accepted and unfixed in B2** (a candidate follow-up, not
     regressions): JWTs, `password=`, unquoted `X-Api-Key: v`, cookies, PGP
     `PRIVATE KEY BLOCK`, and ANSI-coloured tokens (`\x1b[31mghp_...` has no `\b`).

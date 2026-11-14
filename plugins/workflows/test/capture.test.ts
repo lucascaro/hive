@@ -274,3 +274,64 @@ test('the patterns are whole-text again: whitespace may include a newline', () =
   }
   assert.ok(redactString('https://user:hunter2@example.com/x').count >= 1, 'URL credentials stay covered');
 });
+
+// ----------------------------------------------- key-block state is tracked in stream order (round 6)
+
+const BEGIN = '-----BEGIN RSA PRIVATE KEY-----';
+const END = '-----END RSA PRIVATE KEY-----';
+const BODY = 'MIIEpAIBAAKCAQEAsecretbodyZZZ';
+const FILLER = `${'x'.repeat(79)}\n`.repeat(250); // 20 KB: spills the head
+
+test('a block opened by an overlong line is hidden even after an earlier, closed block (leak A)', () => {
+  const got = capture([
+    FILLER,
+    `${BEGIN}\nold\n${END}\n`,
+    `${'y'.repeat(60_000)}${BEGIN}\n`,
+    `${BODY}\n${END}\nbye\n`,
+  ]);
+  assert.ok(!got.text.includes(BODY));
+  assert.ok(got.text.includes('bye'));
+});
+
+test('evicting an earlier block does not reopen the tail after an overlong BEGIN line (leak B)', () => {
+  const got = capture([
+    FILLER,
+    `${BEGIN}\n${END}\n`,
+    `${'y'.repeat(60_000)}${BEGIN}\n`,
+    `${BODY}\n`,
+    `${'z'.repeat(79)}\n`.repeat(10),
+  ]);
+  assert.ok(!got.text.includes(BODY));
+});
+
+test('no body line of an unclosed or straddling key block is shown without its BEGIN (seeded, any chunking)', () => {
+  const r = prng(61_114);
+  for (let t = 0; t < 400; t++) {
+    let text = '';
+    let n = 0;
+    const parts = 3 + Math.floor(r() * 10);
+    for (let p = 0; p < parts; p++) {
+      const k = r();
+      if (k < 0.3) text += lines(Math.floor(r() * 400));
+      else if (k < 0.6) {
+        const body = Array.from({ length: 1 + Math.floor(r() * 3) }, () => `SECRETBODY${n++}\n`).join('');
+        text += `${BEGIN}\n${body}${r() < 0.5 ? `${END}\n` : ''}`;
+      } else if (k < 0.85) {
+        const opens = r() < 0.5;
+        const tail = opens ? `${BEGIN}\n` : r() < 0.5 ? `${END}\n` : '\n';
+        // An overlong line that opens a block: its body follows, and may or may not be closed.
+        const rest = opens ? `SECRETBODY${n++}\n${r() < 0.5 ? `${END}\n` : ''}` : '';
+        text += `${'y'.repeat(TAIL_BYTES + 1 + Math.floor(r() * 4000))}${tail}${rest}`;
+      } else text += lines(3);
+    }
+    const got = capture(split(text, r, Math.floor(r() * 20))).text;
+    // Complete blocks are redacted whole. A body token that survives must sit under a BEGIN the reader can see.
+    for (const m of got.matchAll(/SECRETBODY\d+/g)) {
+      const before = got.slice(0, m.index);
+      const lastBegin = before.lastIndexOf(BEGIN);
+      // The omission stand-in hides a BEGIN: it is a barrier, not a visible opener.
+      const barrier = Math.max(before.lastIndexOf(END), before.lastIndexOf('a line longer than the capture window'));
+      assert.ok(lastBegin >= 0 && barrier < lastBegin, `${m[0]} shown without its BEGIN (trial ${t})`);
+    }
+  }
+});
