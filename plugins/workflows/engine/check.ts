@@ -21,8 +21,6 @@ export const PIECE_BYTES = 8 << 10;
 const PIECE_ENCODED = 14 << 10;
 
 const utf8Bytes = (s: string): number => new TextEncoder().encode(s).length;
-/** A marker label is unbounded; a split one is kept in the carry up to this long, then treated as a BEGIN. */
-const PENDING_MAX = 256;
 const KEY_MARKER = /-----(BEGIN|END) [A-Z ]*PRIVATE KEY-----/g;
 
 interface Entry {
@@ -55,8 +53,10 @@ export interface Captured {
  *   newline at all is replaced by a marker;
  * - the tail is a ring of WHOLE lines, so it starts at a line start; a line
  *   longer than TAIL_BYTES is replaced by a marker (fail closed, memory bounded);
- * - every line is scanned once, in stream order, for private-key BEGIN and END
- *   markers (an overlong line as it streams past). Each kept line records
+ * - every complete line is scanned once, in stream order, for private-key BEGIN
+ *   and END markers; a dropped overlong line is scanned only for the substring
+ *   `BEGIN`, which opens the state (fail closed; an END in it is ignored, so
+ *   a block stays open). Each kept line records
  *   whether a block was open when it began. If one is open where the tail
  *   starts, the tail's lines up to and including its END line are dropped (or
  *   the whole tail, if it has no END), because the BEGIN that would make
@@ -178,7 +178,7 @@ export class Capture {
     this.#cur += piece;
     this.#curBytes += bytes;
     if (this.#curBytes > TAIL_BYTES) {
-      // One line longer than the whole tail: fail closed. Its text is dropped; only its key markers are noted.
+      // One line longer than the whole tail: fail closed. Its text is dropped; only a `BEGIN` in it is noted.
       this.#dropped += this.#curBytes;
       this.#overStart = this.#state;
       this.#scanChunk(this.#cur);
@@ -188,22 +188,14 @@ export class Capture {
     }
   }
 
-  /** Scan a dropped chunk for key markers, keeping a short carry so a marker split between chunks is seen. */
+  /**
+   * Scan a chunk of a dropped overlong line. Markers are not parsed here: any `BEGIN` opens the state (fail closed),
+   * an END is ignored (a block stays open, which only over-hides), and a 4-char carry finds a split `BEGIN`.
+   */
   #scanChunk(text: string): void {
     const both = this.#carry + text;
-    this.#scan(both);
-    // Carry what could still become a marker: from the last BEGIN/END prefix that has no closing dashes yet, or
-    // else the last few characters (a split prefix).
-    const pos = Math.max(both.lastIndexOf('-----BEGIN'), both.lastIndexOf('-----END'));
-    if (pos >= 0 && both.indexOf('-----', pos + 5) < 0) {
-      const pending = both.slice(pos);
-      if (pending.length <= PENDING_MAX) this.#carry = pending;
-      else {
-        // A label this long is not one we can wait for: fail closed. A BEGIN stays open until a later END.
-        if (pending.startsWith('-----BEGIN')) this.#state = true;
-        this.#carry = '';
-      }
-    } else this.#carry = both.slice(-10);
+    if (both.includes('BEGIN')) this.#state = true;
+    this.#carry = both.slice(-4);
   }
 
   #completeLine(): void {

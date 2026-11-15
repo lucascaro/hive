@@ -340,7 +340,7 @@ test('no body line of an unclosed or straddling key block is shown without its B
 
 const longBegin = (n: number): string => `-----BEGIN ${'A'.repeat(n)} PRIVATE KEY-----`;
 
-// A label of 38 makes a 66-char marker, 39 a 67-char one: both longer than the old 64-char carry.
+// Long labels split by a write inside an overlong line (a label of 38 makes a 66-char marker).
 for (const [label, cut, n] of [
   ['66-char marker', 65, 38],
   ['67-char marker', 66, 39],
@@ -359,7 +359,7 @@ for (const [label, cut, n] of [
   });
 }
 
-test('a 300-char BEGIN label split by a write fails closed: open until a later END', () => {
+test('a 300-char BEGIN label split by a write hides its body (an overlong line is scanned for BEGIN only)', () => {
   const b = longBegin(300);
   const got = capture([FILLER, `${'y'.repeat(60_000)}${b.slice(0, 120)}`, `${b.slice(120)}\n`, `${BODY}\n${END}\nbye\n`]);
   assert.ok(!got.text.includes(BODY));
@@ -371,6 +371,45 @@ test('the same long marker, unsplit, hides its body (control)', () => {
     const got = capture([FILLER, `${'y'.repeat(60_000)}${longBegin(n)}\n`, `${BODY}\n${END}\nbye\n`]);
     assert.ok(!got.text.includes(BODY), `label ${n}`);
   }
+});
+
+// ---- an overlong line is scanned for the substring BEGIN only (round 8)
+
+const OVER = 'y'.repeat(60_000);
+const run8 = (chunks: string[], after = `${BODY}\n${END}\nbye\n`): string => capture([FILLER, ...chunks, after]).text;
+
+test('shared-dash markers (BEGIN...-----END) in an overlong line hide the body at every split offset', () => {
+  const line = `${OVER}-----BEGIN RSA PRIVATE KEY-----END RSA PRIVATE KEY-----`;
+  for (let off = 60_000; off <= line.length; off++) {
+    const text = run8([line.slice(0, off), `${line.slice(off)}\n`]);
+    assert.ok(!text.includes(BODY), `offset ${off - 60_000}`);
+  }
+  assert.ok(!run8([`${line}\n`]).includes(BODY));
+});
+
+test('a BEGIN split at every offset inside an overlong line, even one byte per write, opens the state', () => {
+  for (let cut = 1; cut < 5; cut++) {
+    const text = run8([`${OVER}BEGIN`.slice(0, 60_000 + cut), `${`${OVER}BEGIN`.slice(60_000 + cut)}\n`]);
+    assert.ok(!text.includes(BODY), `cut ${cut}`);
+  }
+  const bytewise = [...`${OVER}BEGIN\n`];
+  assert.ok(!run8(bytewise).includes(BODY));
+});
+
+test('an overlong line with a BEGIN and no END later hides the whole remaining tail', () => {
+  const got = capture([FILLER, `${OVER}BEGIN\n`, `${BODY}\n`, lines(50)]).text;
+  assert.ok(!got.includes(BODY));
+  assert.ok(!got.includes('line 000049'));
+});
+
+test('an END inside an overlong line is ignored: an open block stays hidden', () => {
+  const text = run8([`${BEGIN}\n`, `${OVER}${END}\n`]);
+  assert.ok(!text.includes(BODY));
+});
+
+test('an overlong line with no BEGIN leaves the state unchanged (control)', () => {
+  const text = run8([`${OVER}\n`], `${BODY}\nbye\n`);
+  assert.ok(text.includes(BODY) && text.includes('bye'));
 });
 
 test('stream-order oracle: no key body is ever shown, for any filler, label, line length or chunking', () => {
@@ -397,7 +436,7 @@ test('stream-order oracle: no key body is ever shown, for any filler, label, lin
         open = false;
       } else if (k < 5) {
         let L = 'y'.repeat(ri(30_000) + 10_000);
-        const m = ri(5);
+        const m = ri(7);
         if (m === 0) {
           L += B;
           open = true;
@@ -407,8 +446,17 @@ test('stream-order oracle: no key body is ever shown, for any filler, label, lin
         } else if (m === 2) {
           L += B + 'q'.repeat(100) + E;
           open = false;
-        } else {
+        } else if (m === 3) {
           L += E + 'w'.repeat(50) + B;
+          open = true;
+        } else if (m === 4) {
+          L += B + E.slice(5); // shared dashes: the BEGIN's closing dashes open the END
+          open = true;
+        } else if (m === 5) {
+          L += B + E; // adjacent markers
+          open = false; // BEGIN then END: an empty block, closed
+        } else {
+          L += `${E}${B}`;
           open = true;
         }
         text += `${L}${'y'.repeat(ri(30_000) + 10_000)}${eol()}`;
