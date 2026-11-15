@@ -335,3 +335,102 @@ test('no body line of an unclosed or straddling key block is shown without its B
     }
   }
 });
+
+// ----------------------------------------------- split and long markers, and a stream-order oracle (round 7)
+
+const longBegin = (n: number): string => `-----BEGIN ${'A'.repeat(n)} PRIVATE KEY-----`;
+
+// A label of 38 makes a 66-char marker, 39 a 67-char one: both longer than the old 64-char carry.
+for (const [label, cut, n] of [
+  ['66-char marker', 65, 38],
+  ['67-char marker', 66, 39],
+  ['marker split inside its dashes', 3, 40],
+] as const) {
+  test(`a BEGIN marker split by a write inside an overlong line hides its body (${label})`, () => {
+    const b = longBegin(n);
+    const got = capture([
+      FILLER,
+      `${'y'.repeat(60_000)}${b.slice(0, cut)}`,
+      `${b.slice(cut)}\n`,
+      `${BODY}\n${END}\nbye\n`,
+    ]);
+    assert.ok(!got.text.includes(BODY));
+    assert.ok(got.text.includes('bye'));
+  });
+}
+
+test('a 300-char BEGIN label split by a write fails closed: open until a later END', () => {
+  const b = longBegin(300);
+  const got = capture([FILLER, `${'y'.repeat(60_000)}${b.slice(0, 120)}`, `${b.slice(120)}\n`, `${BODY}\n${END}\nbye\n`]);
+  assert.ok(!got.text.includes(BODY));
+  assert.ok(got.text.includes('bye'));
+});
+
+test('the same long marker, unsplit, hides its body (control)', () => {
+  for (const n of [38, 39, 40, 300]) {
+    const got = capture([FILLER, `${'y'.repeat(60_000)}${longBegin(n)}\n`, `${BODY}\n${END}\nbye\n`]);
+    assert.ok(!got.text.includes(BODY), `label ${n}`);
+  }
+});
+
+test('stream-order oracle: no key body is ever shown, for any filler, label, line length or chunking', () => {
+  const r = prng(77_114);
+  const ri = (n: number): number => Math.floor(r() * n);
+  const types = ['RSA ', 'EC ', 'OPENSSH ', '', 'ENCRYPTED ', `${'L'.repeat(40)} `, `${'M'.repeat(300)} `];
+  const eol = (): string => ['\n', '\r\n', '\n'][ri(3)] as string;
+  for (let t = 0; t < 60; t++) {
+    let text = '';
+    let open = false;
+    let n = 0;
+    const bodies: string[] = [];
+    const target = HEAD_BYTES + TAIL_BYTES + ri(80_000) - 30_000;
+    while (text.length < target) {
+      const k = ri(20);
+      const ty = types[ri(types.length)] as string;
+      const B = `-----BEGIN ${ty}PRIVATE KEY-----`;
+      const E = `-----END ${ty}PRIVATE KEY-----`;
+      if (k < 2) {
+        text += B + eol();
+        open = true;
+      } else if (k < 4) {
+        text += E + eol();
+        open = false;
+      } else if (k < 5) {
+        let L = 'y'.repeat(ri(30_000) + 10_000);
+        const m = ri(5);
+        if (m === 0) {
+          L += B;
+          open = true;
+        } else if (m === 1) {
+          L += E;
+          open = false;
+        } else if (m === 2) {
+          L += B + 'q'.repeat(100) + E;
+          open = false;
+        } else {
+          L += E + 'w'.repeat(50) + B;
+          open = true;
+        }
+        text += `${L}${'y'.repeat(ri(30_000) + 10_000)}${eol()}`;
+      } else if (k < 6) {
+        text += `${B}${eol()}zz${eol()}${E}${eol()}`;
+        open = false;
+      } else if (open) {
+        // Tens of lines per body, so that eviction lands mid-block.
+        for (let i = 0, c = 5 + ri(40); i < c; i++) {
+          const b = `SECRET${n++}X`;
+          bodies.push(b);
+          text += b + 'a'.repeat(ri(60)) + eol();
+        }
+      } else text += 'f'.repeat(ri(200)) + eol();
+    }
+    const chunks: string[] = [];
+    for (let i = 0; i < text.length; ) {
+      const k = 1 + ri(r() < 0.3 ? 50 : 70_000);
+      chunks.push(text.slice(i, i + k));
+      i += k;
+    }
+    const got = capture(chunks).text;
+    for (const b of bodies) assert.ok(!got.includes(b), `${b} shown (trial ${t})`);
+  }
+});

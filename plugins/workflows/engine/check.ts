@@ -21,6 +21,8 @@ export const PIECE_BYTES = 8 << 10;
 const PIECE_ENCODED = 14 << 10;
 
 const utf8Bytes = (s: string): number => new TextEncoder().encode(s).length;
+/** A marker label is unbounded; a split one is kept in the carry up to this long, then treated as a BEGIN. */
+const PENDING_MAX = 256;
 const KEY_MARKER = /-----(BEGIN|END) [A-Z ]*PRIVATE KEY-----/g;
 
 interface Entry {
@@ -53,10 +55,12 @@ export interface Captured {
  *   newline at all is replaced by a marker;
  * - the tail is a ring of WHOLE lines, so it starts at a line start; a line
  *   longer than TAIL_BYTES is replaced by a marker (fail closed, memory bounded);
- * - lines that fall out of the ring are scanned only for private-key BEGIN and
- *   END lines. If a block is open where the tail starts, the tail's lines up to
- *   and including its END line are dropped (or the whole tail, if it has no
- *   END), because the BEGIN that would make redaction recognise them is gone.
+ * - every line is scanned once, in stream order, for private-key BEGIN and END
+ *   markers (an overlong line as it streams past). Each kept line records
+ *   whether a block was open when it began. If one is open where the tail
+ *   starts, the tail's lines up to and including its END line are dropped (or
+ *   the whole tail, if it has no END), because the BEGIN that would make
+ *   redaction recognise them is gone.
  *
  * Redaction is best-effort (B-5); this removes the boundary-dependent ways it
  * could fail, not the patterns' own gaps. `prepareEvent` redacts each emitted
@@ -188,7 +192,18 @@ export class Capture {
   #scanChunk(text: string): void {
     const both = this.#carry + text;
     this.#scan(both);
-    this.#carry = both.slice(-64);
+    // Carry what could still become a marker: from the last BEGIN/END prefix that has no closing dashes yet, or
+    // else the last few characters (a split prefix).
+    const pos = Math.max(both.lastIndexOf('-----BEGIN'), both.lastIndexOf('-----END'));
+    if (pos >= 0 && both.indexOf('-----', pos + 5) < 0) {
+      const pending = both.slice(pos);
+      if (pending.length <= PENDING_MAX) this.#carry = pending;
+      else {
+        // A label this long is not one we can wait for: fail closed. A BEGIN stays open until a later END.
+        if (pending.startsWith('-----BEGIN')) this.#state = true;
+        this.#carry = '';
+      }
+    } else this.#carry = both.slice(-10);
   }
 
   #completeLine(): void {
