@@ -416,7 +416,9 @@ Decisions.
 
   The resume path is `run.retry`. Re-preparing re-attaches, and the
   merges already done are no-ops (A).
-- **Sessions at run end** (user decision). When a run reaches `done`,
+- **Sessions at run end** (user decision). *This bullet and Cleanup below
+  are amended by B3, pending B3-Q4: an archived session claims its worktree,
+  and committed run branches are refused as unpushed. See Phases, B3d.* When a run reaches `done`,
   `failed` or `cancelled`, every session it created is archived with
   ARCHIVE_SESSION, so they leave the sidebar but can be restored.
   `run.retry` creates fresh sessions in the same worktrees.
@@ -500,7 +502,10 @@ Decisions.
   - The check env is the login PATH plus `LANG`, `TZ` and `HOME`. `HOME` is
     allowed because builds and tests need it; checks are argv the user
     reviewed, not sandboxed.
-- **Kill tree** (`killtree.ts`).
+- **Kill tree** (`killtree.ts`). *Amended by B3, pending B3-Q2 and B3-Q3:
+  the identity reading, verification before each signal, recorded members,
+  and the Windows job replacing `taskkill` and the PowerShell start time. See
+  Phases, B3a.*
   - POSIX: `process.kill(-pgid, 'SIGTERM')`, then 10 s, then `'SIGKILL'`.
     The group is signalled only while the leader, or a recorded member, still
     matches its pid and start time **and** its current process group
@@ -523,14 +528,19 @@ Decisions.
     asserts the check and its descendants are gone. The engine's
     graceful path still runs `taskkill /T /PID <pid>`, then 10 s, then
     `taskkill /T /F /PID <pid>`, both through `spawn` with `windowsHide: true`.
-- **Startup reaping.** For each `running` check row, the engine kills the
+- **Startup reaping.** *Amended by B3 (`ps` with `TZ=UTC0 LC_ALL=C`, plus
+  the kernel boot in the identity; the spawn-to-record gap is pending
+  B3-Q1). See Phases, B3a.* For each `running` check row, the engine kills the
   recorded group or tree only when the pid is alive **and** its start time
   matches. The start time comes from `ps -o lstart= -p` on POSIX, and from
   `powershell -NoProfile -Command (Get-Process -Id N).StartTime.ToFileTimeUtc()`
   with `windowsHide` on Windows. The row then becomes `interrupted`.
   - Without the start-time match, a reused pid could kill an unrelated
     process.
-  - **Spawn-to-record gap (B-8).** The engine writes an intent row before
+  - **Spawn-to-record gap (B-8).** *Amended by B3, pending B3-Q1 (a start
+    gate instead of the intent row; or, if the row is kept, a `_f<n>` retry
+    branch instead of `-r<attempt>`, and a nonce in the marker). See Phases,
+    B3a step 6.* The engine writes an intent row before
     `spawn`, and the child env carries `HIVE_WF_CHECK=<run>/<key>/<attempt>`
     so a scan can find it (Linux `/proc/<pid>/environ`, macOS `ps eww`). An
     empty scan never lifts the fence: the child may have exec'd a
@@ -938,7 +948,8 @@ Each phase is one PR, and every phase ends green on the Verification
 commands.
 
 **DaemonContract.**
-- B1–B4 need no bump. They touch no gated path, and the plugin isn't
+- B1–B4 need no bump. (*Amended by B3: it holds only if B3-Q3 and B3-Q4
+  avoid daemon changes. See Phases, B3 DaemonContract.*) They touch no gated path, and the plugin isn't
   embedded yet, so `hived`'s behaviour is unchanged. Each PR runs
   `scripts/check-daemon-contract.sh origin/main HEAD` to prove it.
 - **B5 bumps it.** Embedding `workflows` changes what `hived` serves. A
@@ -1061,12 +1072,23 @@ Files: `engine/killtree.ts`, `engine/check.ts`, `engine/nodes.ts`,
      - Linux: every `/proc/<n>/stat` whose field 5 equals the pgid;
      - macOS: `ps -A -o pid=,pgid=,lstart=` with the same env, about 20 ms
        measured.
-   - The engine's own stop of a live check goes through the same path. A
-     leader that exits on TERM while a member ignores it gets no KILL to its
-     group (B-9 strict, B3-Q2).
-   - "A recorded member" in B-9 and B-11h is defined here as the leader. The
-     engine records no other member, so it never signals a group whose
-     leader has gone.
+   - **Recorded members (B3-Q2, recommended option (e)).**
+     - At the TERM the leader passes `verify` for, `killTree` enumerates the
+       group and records each member's `(pid, id)`. That is one `ps -A`
+       (about 20 ms) or one `/proc` scan.
+     - Before KILL it signals `-pgid` if the leader **or any recorded
+       member** still matches its identity and its current pgid.
+     - This is sound by POSIX §4.17. While one of our processes is in the
+       group, its id cannot belong to anyone else. Every member enumerated
+       while the leader verified is in our own `setsid` session, so it is
+       ours.
+     - It keeps B2's behaviour: TERM, then KILL after the grace, even when
+       the leader exits on TERM and a grandchild ignores it. That holds for
+       a live stop and for a startup reap of a live leader.
+   - **The strict path.** When neither the leader nor a recorded member
+     verifies, nothing is sent and `kept_pids` is returned. That happens
+     when the leader was already gone before the engine looked: after an
+     engine crash, or for a check that backgrounded a child and exited.
 3. **`reap`** at startup is `killTree` with `verify` and a 2 s grace. A
    recorded identity from another boot returns `gone` without a probe.
 4. **Survivors** (B-9, B3-Q2, recommended option):
@@ -1443,6 +1465,11 @@ Slice C must be told. Nothing else in the Contract changes.
     changes during the grace gets no KILL (seam);
   - `leader gone, members alive: nothing sent, kept_pids lists the members`
     (seam enumerator);
+  - option (e): `members recorded at a verified TERM`;
+    `leader exits on TERM, a recorded member still verifies: KILL is sent to
+    the group`; `no recorded member verifies: no KILL`. A real POSIX case
+    (a grandchild that ignores TERM dies at KILL) keeps B2's existing
+    timeout test green;
   - `pgid mismatch is not signalled`;
   - `prefix-less proc_start is refused`.
 - `check.test.ts`:
@@ -2080,8 +2107,8 @@ download, the accepted sandbox gap, and `LIST_ACP_AGENTS`.
       whole-second `lstart` is enough.
     - `lstart` must be read with `TZ=UTC0 LC_ALL=C`, which fixes a B2 bug.
     - The identity gains the kernel boot.
-    - B-9/B-11h's "recorded member" means the leader: the engine records no
-      other member.
+    - B-9/B-11h's "recorded member" was undefined. B3-Q2 proposes to record
+      the members at the verified TERM.
     - Verify runs before TERM and before KILL.
     - `#refuse` reaps before it clears pids.
     - The `Capture` docstring is corrected in B3a.
@@ -2209,8 +2236,20 @@ decided.
     while one of our processes is in it. Once the leader is gone, though,
     nothing cheap tells our survivors from a stranger's group after a pid
     wrap.
-  - Recommended: (a). It also covers a leader that exits on TERM during a
-    live stop.
+  - (e) Record members at the verified TERM. While the leader verifies, the
+    engine enumerates the group (one `ps -A` or one `/proc` scan) and
+    records each member's `(pid, id)`. Before KILL, it signals the group if
+    the leader or any recorded member still verifies (B3a step 2).
+    - This is sound by §4.17: the enumeration ran while our leader held the
+      group.
+    - It needs no polling.
+    - It keeps B2's "TERM, then KILL after the grace" on a live timeout,
+      which strict (a) alone would lose: a grandchild that ignores TERM
+      would then run until the user stops it.
+  - Recommended: **(e) together with (a).** (e) covers every stop the
+    engine sees start. (a) covers the case where the leader was already
+    gone when the engine looked (an engine crash). Neither ever signals a
+    group that has no verified process of ours in it.
 - **B3-Q3, where the Windows job helper lives (B-9).** All options create
   the child suspended, assign it to a `KILL_ON_JOB_CLOSE` job with no
   breakaway flags, then resume. The engine stops it by killing the helper
@@ -2232,6 +2271,18 @@ decided.
   - `node:ffi` is rejected: it was added in v26.1.0, which is above the
     floor, and it is experimental.
   - Recommended: (a).
+  - Implementation risk, to verify before coding: Go's `syscall.StartProcess`
+    closes the main-thread handle (`syscall/exec_windows.go:446`, `defer
+    CloseHandle(Handle(pi.Thread))`), so `os/exec` with `CREATE_SUSPENDED`
+    leaves nothing to `ResumeThread` with.
+    - The helper probably calls `CreateProcess` from `x/sys/windows`
+      directly. It can assign the job at creation through
+      `PROC_THREAD_ATTRIBUTE_JOB_LIST`, which needs no suspend; its
+      availability is still to be confirmed. Otherwise it suspends and
+      resumes through the thread handle it keeps.
+    - Either way it belongs in `internal/proc`, the only constructor of
+      non-PTY children (AGENTS.md), with a `TestNoDirectExecOnWindows`
+      allowlist entry and its reason.
   - Unverified on a real Windows machine (the VM MCP was unavailable). B3a's
     Windows CI test is the proof.
 - **B3-Q4, run-end archive and cleanup (amends Approach, Worktrees, Sessions
