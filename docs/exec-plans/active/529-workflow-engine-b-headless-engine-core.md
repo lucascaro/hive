@@ -7,7 +7,7 @@
 - **Branch:** `feature/529-engine-core` (research and plan); one branch per phase PR (B1: `feature/529-b1-validator`, B2: `feature/529-b2-store-interpreter`)
 - **PR:** #538 (B1), #550 (B2)
 - **Phase:** 2 of 5
-- **Status:** active. Plan approved. Phase 1 (B1) merged; phase 2 (B2) implemented and in review; B3 to B5 remain.
+- **Status:** active. Plan approved. B1 (#538) and B2 (#550) merged; the B3 plan is drafted with open questions B3-Q1 to B3-Q4 (2026-11-15); B3 to B5 remain.
   - All open questions are decided (see Decision log, 2026-10-25 user
     decisions).
   - R1–R6 are approved as A changes: R2, R3, R5 and R6 go to A PR1; R1 and
@@ -90,6 +90,65 @@ from that commit.
 | win32-arm64 | 26.8 MB | 8.9 MB |
 
 A macOS universal `hived` would carry both darwin packages, about 56 MB unpacked.
+
+### B3 research (2026-11-15)
+
+Sources were accessed on 2026-11-15. Code references are to `origin/main` at
+`bb91720b`. Experiments ran on macOS 26.7.1 with Node 24.16. Linux and Windows
+are source-only: there is no Linux host, and the windows-vm MCP did not
+connect.
+
+**(a) pid and pgid reuse on Linux and macOS (B-9).**
+
+| Question | Answer | Source |
+|---|---|---|
+| Can a dead leader's pgid be reused while group members survive? | **No.** POSIX: "A process group ID shall not be reused by the system until the process group lifetime ends", and a pid equal to a live group's id "shall not be reused … until the process group lifetime ends". The lifetime ends when the last member leaves. | [POSIX.1-2024 Base Definitions §4.17 "Process ID Reuse"](https://pubs.opengroup.org/onlinepubs/9799919799/basedefs/V1_chap04.html), [fork(): "The child process ID also shall not match any active process group ID"](https://pubs.opengroup.org/onlinepubs/9799919799/functions/fork.html) |
+| Linux implementation | A `struct pid` is released only when no task uses it as PID, TGID, PGID or SID: `__change_pid` returns early `if (pid_has_task(pid, tmp))` for every type. Allocation is `idr_alloc_cyclic`, sequential and wrapping at `pid_max`. | [kernel/pid.c](https://github.com/torvalds/linux/blob/master/kernel/pid.c) (`__change_pid`, `alloc_pid`) |
+| macOS implementation | `forkproc` increments `lastpid`, wraps to 100 at `PID_MAX`, and skips a candidate while `phash_find_locked(pid) \|\| pghash_exists_locked(pid) \|\| session_find_locked(pid)`. `PID_MAX` is 99999. Measured: consecutive forks got consecutive pids. | [xnu bsd/kern/kern_fork.c](https://github.com/apple-oss-distributions/xnu/blob/main/bsd/kern/kern_fork.c), [bsd/sys/proc_internal.h:753](https://github.com/apple-oss-distributions/xnu/blob/main/bsd/sys/proc_internal.h) |
+| Experiment | Spawned a detached `sh` whose child `sleep` outlived it. Afterwards `kill(leader, 0)` gave ESRCH while `kill(-leader, 0)` succeeded, the survivor's pgid was still the dead leader's pid, and `kill(-pgid, SIGKILL)` killed it. | scratch `exp.mjs` |
+| Is whole-second `ps -o lstart` enough? | **Yes**, given cyclic allocation: reusing a pid within one second needs a full wrap (≥ 99,899 forks on macOS). | as above |
+| What is wrong with `lstart` today | `lstart` is **local time**, and B2 runs `ps` with the inherited env. A TZ or DST change between record and check makes a live check read as a stranger. Fix: run `ps` with `TZ=UTC0 LC_ALL=C`. | B2 `killtree.ts` `procStart` |
+| A better identity | Add the kernel boot: Linux `/proc/sys/kernel/random/boot_id`, macOS `sysctl -n kern.boottime` (`{ sec = …, usec = … }`, measured). After a reboot every recorded process is a stranger. A finer macOS start time (`proc_pidinfo` microseconds) needs native code, and a full wrap within one second is out of reach anyway. Linux pidfds are likewise out of Node's reach. | measured; Node has no pidfd API |
+| `exec` keeps identity | `sh -c '…; exec "$@"'` kept the pid, the pgid and `lstart` across the exec (measured). | scratch `exp2.mjs` |
+| Env marker visibility on macOS | `ps -E -ww` and `ps eww` **showed** `HIVE_WF_CHECK` for a `node` child. They showed **no** env for SIP-protected platform binaries (`/bin/sleep`, `/bin/zsh`), even unsandboxed. A marker scan on macOS therefore misses any check that runs a system tool. | measured |
+
+Consequence: `kill(-pgid)` is safe exactly while a process verified as ours
+is still in the group. Once the recorded leader is gone and nobody else is
+recorded, a group with that id holds either our survivors or, after a full
+pid wrap, a stranger's group. No cheap check tells the two apart, which is
+why B-9 leaves such survivors alone.
+
+**(b) Windows launch (B-9, B-11h).**
+
+| Question | Answer | Source |
+|---|---|---|
+| Does Node's non-detached `spawn` put the child in a kill-on-close job? | **Yes, but only the direct child, and not from creation.** libuv's global job sets `BREAKAWAY_OK \| SILENT_BREAKAWAY_OK \| DIE_ON_UNHANDLED_EXCEPTION \| KILL_ON_JOB_CLOSE`, and its handle is not inheritable (`bInheritHandle = FALSE`). Only **detached** children are created with `CREATE_SUSPENDED`. A non-detached child is created running and then assigned to the job; an `ERROR_ACCESS_DENIED` from that assignment is ignored. | [libuv src/win/process.c](https://github.com/libuv/libuv/blob/v1.x/src/win/process.c) (`uv__init_global_job_handle`, `uv_spawn`) |
+| What `SILENT_BREAKAWAY_OK` means | "Allows any process associated with the job to create child processes that are not associated with the job." So every grandchild of a check leaves libuv's job, and an engine crash kills only the check's first process. | [JOBOBJECT_BASIC_LIMIT_INFORMATION](https://learn.microsoft.com/en-us/windows/win32/api/winnt/ns-winnt-jobobject_basic_limit_information) |
+| `taskkill /T /F` after the leader exits | `/t` "Ends the specified process and any child processes started by it". The page says nothing about how children are found. Win32_Process: "It is possible that the process identified by ParentProcessId is terminated … It is also possible that ParentProcessId incorrectly refers to a process that reuses a process identifier". `ProcessId`: "Upon termination, that same numeric identifier can be applied to a new process." So `/T` on a dead leader's pid targets whoever holds that pid now, plus any process whose recorded parent id matches it. **Unsafe without a fresh identity check, and even then it cannot reach orphans.** | [taskkill](https://learn.microsoft.com/en-us/windows-server/administration/windows-commands/taskkill), [Win32_Process](https://learn.microsoft.com/en-us/windows/win32/cimwin32prov/win32-process) |
+| `node:ffi` as a way in | Added in **v26.1.0**, above the 26.0.0 floor. Stability 1, and its type and signature keys were renamed within v26. Rejected. | [node:ffi](https://nodejs.org/api/ffi.html) |
+| Recommendation | A per-check job of our own: `KILL_ON_JOB_CLOSE`, no breakaway flags, the child created suspended and assigned before it runs, held by a helper that the engine kills through its process handle. See B3-Q3 for where the helper lives. | — |
+
+**(c) Spawn-to-record gap (B-8).** Both designs are under B3a step 6. The
+start gate closes the gap instead of fencing it. Measured: a gate whose
+stdin closes without `run` exits 125 and never runs its command.
+
+**(d) Daemon surfaces B3 relies on that the plan had not checked.**
+- An archived session claims its worktree: `RemoveWorktree` refuses
+  `ErrWorktreeInUse` for "archived session %q" (`registry/worktrees.go:275-278`).
+- Without force, `RemoveWorktree` refuses `ErrWorktreeUnpushed` when
+  `Unpushed > 0 && !merged` (`worktrees.go:302-308`).
+  - The comparison base is the upstream or, with none, the default ref
+    (`worktree/inventory.go:379-384`).
+  - A `hive/wf/…` branch has no upstream, so any agent commit or merge
+    commit is "unpushed".
+- ARCHIVE_SESSION answers success with `ARCHIVED` and REMOVE_WORKTREE with
+  `WORKTREES`, neither carrying a `req_id` (`daemon.go:1711-1731`, `:1473-1480`).
+  - Only their errors echo it (`reqid.go:44-65`).
+  - Neither is in the SDK's `REQUEST_VERBS`, so `request()` refuses them.
+- `CREATE_SESSION{worktree_path}` does not consult archived claims
+  (archived claims are checked only by `RemoveWorktree`, `DeleteArchived`
+  and the closed-session reclaim, `closed.go:345`), so `run.retry` after archiving can still create a session in
+  the same worktree.
 
 ### Prior lessons
 
@@ -930,33 +989,312 @@ first if it copies them.*
 
 ### B3: agent nodes, worktrees and durability
 
-*Needs R1–R4.*
+*Needs R1–R4: all merged on `main` (verified at `bb91720b`).* A PR1 (#532)
+carries R2 (`Welcome.boot_id`, `wire/control.go:197-200`; the PROMPT_ACP ACK's
+`prompt_id`/`epoch`, `wire/request.go:29-33`) and R3 (RESTART_SESSION ACK,
+`wire/control.go:589-596`, `daemon.go:2000-2009`). A PR2 (#539) carries R1
+(COMMIT_WORKTREE, ACK `committed`/`head`, `wire/request.go:34-38,134-144`)
+and R4 (`base_sha`/`head_sha`, `wire/request.go:127-129`). A PR3 (#541) is
+the runtime. The SDK's `REQUEST_VERBS` (`plugins/sdk/hive-plugin.mjs:132-144`)
+covers CREATE, KILL, RESTART, PROMPT_ACP, CANCEL_ACP, LIST_ACP_AGENTS,
+PREPARE_WORKTREE and COMMIT_WORKTREE. It does **not** cover ARCHIVE_SESSION or
+REMOVE_WORKTREE (see B3-Q4).
 
-- `agent.ts`, `worktrees.ts` and `prompt.ts`.
-- `node.resumed` when a permission wait clears (B-1).
-- The durability startup routine and reconnect.
-- Caps, cleanup, and the fan-out bench.
-- Check spawn-to-record gap as designed (B-8): intent row first, env marker
-  `HIVE_WF_CHECK`, an empty scan never lifts the fence, no recorded pid
-  fails the node and keeps the worktree, a retry gets a fresh worktree (a new
-  branch forked at the fenced branch's recorded `HEAD`, B-11, because
-  `PrepareRun` re-attaches a kept branch). Tests at the launch and recovery
-  boundaries.
-- Windows launch (B-9, B-11): the job is in force from process creation, with
-  the launch mechanism chosen by research and an engine-crash test at that
-  boundary.
-- Group survivors (B-9): signal the group only while the leader or a recorded
-  member matches pid + start time + current pgid (re-checked before each
-  signal), otherwise record `kept_pids`; Job Object
-  with kill-on-close on Windows. B3's research must verify pid and pgid
-  reuse semantics on Linux and macOS (verify, do not assume). Marker-verified
-  individual kills (reusing `HIVE_WF_CHECK`) are a follow-up only if B3
-  testing shows orphans are a real problem.
-- **Follow-up (B-10a), not in B3's scope:** linking agent config (untracked
-  skills and settings) at registry session adoption. It needs its own
-  security review: a committed `.claude` symlink, a Windows copy fallback,
-  and an untracked link blocking merges. `PREPARE_WORKTREE` does not link
-  it, and `merge[]` stays restricted to `hive/wf/<run>/` branches.
+The design under Approach (Worktrees, Agent nodes, Check and human nodes,
+Durability) stands. This section makes it concrete, folds in every B3
+follow-up, and says which open question each step waits on. Research is
+under **B3 research (2026-11-15)** in Research.
+
+**Not in B3:**
+- Linking agent config (B-10a). It stays a follow-up with its own security
+  review, as decided. `PREPARE_WORKTREE` links nothing, and `merge[]` stays
+  restricted to `hive/wf/<run>/` branches.
+- `agent.usage` wiring (R5). Phases puts it in B5, so
+  `TestUsage_AgentUsageEventsPerNode` moves from the B3 test list to B5.
+
+**Split.** Four PRs, each gated alone. B2 needed 9 gate rounds on one
+surface, so the riskiest code (signalling processes) ships without agent
+code beside it.
+
+| PR | Scope | Blocked on |
+|---|---|---|
+| **B3a** process safety | B-8 gap, full B-9, reap re-verify, `#refuse` sweep, Windows launch, process identity, `Capture` docstring | B3-Q1, B3-Q2, B3-Q3 |
+| **B3b** agent nodes and worktrees | `agent.ts`, `prompt.ts`, `worktrees.ts`, commit (R1), merges, loops, F3, permissions (B-1), modes, timeout and cancel, the turn cap | nothing |
+| **B3c** durability | the startup table for agent rows, `boot_id`, orphan adoption, RESTART and fresh-CREATE retries, reconnect, the crash loop | B3b |
+| **B3d** run end and scale | archive on run end, worktree cleanup, the fan-out bench, `acptest.FlagChatty` | B3-Q4, B3b |
+
+B3b can start now and run in parallel with B3a.
+
+#### B3a: process safety
+
+Files: `engine/killtree.ts`, `engine/check.ts`, `engine/nodes.ts`,
+`engine/engine.ts`, `engine/store.ts`. Windows adds whatever B3-Q3 picks.
+
+1. **Process identity** (`killtree.ts`: `procStart` becomes `procId`). One
+   string per process, with the kernel boot in it. After a reboot every
+   recorded pid is a stranger, and a reaper must not even probe it.
+   - **Linux:** `linux:<boot_id>:<starttime>`. The boot id is
+     `/proc/sys/kernel/random/boot_id`; the start time is field 22 of
+     `/proc/<pid>/stat`. The current pgid is field 5 of the same read.
+     B2 stores the ticks without the boot id.
+   - **macOS:** `darwin:<kern.boottime sec.usec>:<lstart>`. It comes from
+     `sysctl -n kern.boottime` (read once) and
+     `ps -o pgid=,lstart= -p <pid>`, run with the env
+     `{PATH, TZ: 'UTC0', LC_ALL: 'C'}`.
+     - B2 runs `ps` with the inherited env, and `lstart` is local time.
+     - So a timezone or DST change between record and reap reads a live
+       check as a `stranger`. B2 then retries the node beside it.
+       **This is a B2 bug fixed here.**
+   - **Windows:** see B3-Q3. Under the recommended helper the engine never
+     signals by pid, so it needs no identity.
+   - Rows written by B2 have no prefix. B2 was never embedded (B5 embeds it),
+     so no user has such a row. A prefix-less `proc_start` reads as
+     `refused`: the node fails, naming the row, and nothing is signalled.
+2. **`verify(t)`**: `procId(t.pid) === t.proc_start` **and** the leader's
+   current pgid `=== t.pgid`.
+   - `killTree` takes `verify` and calls it **immediately before TERM and
+     again immediately before KILL** (the reap re-verify follow-up). B2
+     checks once, before TERM, and only in `reap`.
+   - When `verify` fails before a signal, nothing is sent. `killTree`
+     enumerates the group's members and returns
+     `{result: 'kept', kept_pids}`:
+     - Linux: every `/proc/<n>/stat` whose field 5 equals the pgid;
+     - macOS: `ps -A -o pid=,pgid=,lstart=` with the same env, about 20 ms
+       measured.
+   - The engine's own stop of a live check goes through the same path. A
+     leader that exits on TERM while a member ignores it gets no KILL to its
+     group (B-9 strict, B3-Q2).
+   - "A recorded member" in B-9 and B-11h is defined here as the leader. The
+     engine records no other member, so it never signals a group whose
+     leader has gone.
+3. **`reap`** at startup is `killTree` with `verify` and a 2 s grace. A
+   recorded identity from another boot returns `gone` without a probe.
+4. **Survivors** (B-9, B3-Q2, recommended option):
+   - The node fails with `error` naming the pids, and `node.finished` gains
+     `kept_pids?: number[]` (additive to the Contract).
+   - `nodes.kept_pids` stores `[{pid, id}]`.
+   - `run.retry` refuses with `error.code: "survivors_running"` while any
+     stored survivor still verifies by `procId`, and clears the column once
+     none does.
+   - So no retry ever runs beside a survivor in the same worktree. B2
+     interrupts and retries in place.
+5. **`#refuse` sweeps first.** Before it clears the pids of a refused run's
+   running check rows, it reaps each one, as `recover()` does. Survivors go
+   into the run's `error` and each node's `kept_pids`. B2 clears the pids of
+   a live process and orphans it (`engine.ts:148-160`).
+6. **The spawn-to-record gap (B-8).** The mechanism is B3-Q1's pick; both
+   options are specified so the PR can follow either.
+   - **Option A, start gate (recommended).** The check is spawned through a
+     shim that blocks before it runs anything:
+
+     ```
+     spawn('/bin/sh', ['-c', 'IFS= read -r go && [ "$go" = run ] || exit 125; exec "$@" </dev/null', 'sh', resolved, ...argv.slice(1)],
+           {cwd, env: checkEnv(), detached: true, windowsHide: true, stdio: ['pipe', 'pipe', 'pipe']})
+     ```
+
+     - Order: spawn; read `procId(pid)` of the waiting shim; `beginNode`
+       commits `running` with pid, pgid and `proc_start`; then
+       `stdin.end('run\n')`.
+     - An engine death before the commit closes the pipe. The shim reads
+       EOF and exits 125, and nothing has run.
+     - An engine death after the commit but before the write is the same.
+       The row is recorded, `reap` finds the shim gone or kills it, and the
+       node is `interrupted`.
+     - `exec` keeps the pid, the pgid and `lstart` (measured), so the
+       recorded identity is the check's.
+     - `resolved` is `argv[0]` resolved against the check's `PATH` by the
+       engine, with the cwd for a relative path. A missing program is then
+       still a spawn-time `could not start`, not the shim's exit 127.
+     - No intent row, no marker scan, no fence and no fenced-retry branch.
+     - Windows: the helper (B3-Q3) holds the child suspended until it
+       reads `run`.
+   - **Option B, B-8 as decided.** Spelled out so it can be built as is:
+     - **Schema.** `nodes.launch TEXT` (JSON
+       `{marker, attempt, branch, worktree, head, at}`) and
+       `nodes.fence_n INTEGER NOT NULL DEFAULT 0`.
+     - **Marker.**
+       `HIVE_WF_CHECK=<run>/<key>/<attempt>/<nonce8>`.
+       - The nonce is needed because `run.retry` clears attempts, so two
+         launches can share `<attempt>`.
+       - The value is parsed from the right, because a key holds `/`.
+     - **Write order:**
+       1. PREPARE has returned; `head` is its `head_sha`.
+       2. `store.setLaunch` commits `launch` in its own transaction, with
+          no event and no state change, like `pinBase`.
+       3. `spawn` with the marker in env.
+       4. `beginNode` commits `running` plus pid, pgid and `proc_start`.
+       5. Every terminal transition clears `launch` in its own
+          transaction.
+     - **Recovery** (in `recover()`, before any `drive`). A row in a
+       non-terminal state with `launch` set and no pid is fenced:
+       - A best-effort scan collects marker matches into `kept_pids`.
+         Linux reads `/proc/*/environ`. macOS uses `ps -E -ww -A -o
+         pid=,command=`, which does not show the env of SIP-protected
+         platform binaries (measured), so an empty scan proves nothing.
+         Matches are never signalled.
+       - The node fails with `error: "fenced"`, `fence_n += 1` and the
+         worktree kept.
+     - **Retry.** PREPARE branch `hive/wf/<run>/<encodeKey(key)>_f<fence_n>`
+       with `base = launch.head`, recorded as the row's `branch`.
+       - It is **not** B-11g's `-r<attempt>`, for two reasons.
+         - `-r1` collides with a legal sibling id: `work-r1` passes
+           `shape.ts:31`'s `ID`.
+         - `run.retry` resets `attempt`, so a second fence would re-use the
+           first fenced name, and `PrepareRun` would re-attach the fenced
+           worktree.
+       - `_` never appears in an id, and the index encoding is `_<digits>`,
+         so `_f<n>` cannot collide.
+7. **Windows launch** (B-9, B-11h). The libuv job is not enough
+   (research), so B3a adds a per-check job of its own, using B3-Q3's
+   mechanism.
+   - **Launch.** Create the child suspended, assign it to a new job with
+     `KILL_ON_JOB_CLOSE` and **no** breakaway flags, report the pid, wait
+     for `run` (option A), then resume.
+   - **Stop.** Kill the helper through Node's own child handle. libuv
+     terminates by handle, never by pid. The job's last handle closes and
+     the tree dies.
+   - **Engine crash.** libuv's job kills the helper, the helper is the
+     helper's job's only holder, so the tree dies.
+   - **What it removes.**
+     - `taskkill` and the PowerShell start-time probe are deleted from the
+       check path.
+     - So does the pid-reuse gap after the leader exits (gate follow-up).
+   - **Without a helper** (B3-Q3 option d), every `taskkill` is preceded by
+     a `CreationDate` check of the pid. `/T` is never sent once the leader
+     is gone, because `ParentProcessId` can name a reused pid (Win32_Process
+     docs). The descendants are then reported as unreachable.
+8. **`Capture` docstring** (`check.ts:51`). Replace "a head with no newline
+   at all is replaced by a marker" with: "a head with no newline at all is
+   not shown as a head; its text moves to the tail, where it is shown if that
+   line fits TAIL_BYTES and becomes the overlong-line marker otherwise." That
+   is what `write()` does (`check.ts:110-113`). This was the R9 gate's nit.
+9. **Store schema v2.** Add `nodes.kept_pids`, plus option B's `launch` and
+   `fence_n`, with `ALTER TABLE … ADD COLUMN` behind `meta.schema_version`.
+   No user database exists yet.
+
+#### B3b: agent nodes and worktrees
+
+Files:
+- new: `engine/agent.ts`, `engine/prompt.ts`, `engine/worktrees.ts`;
+- changed: `engine/nodes.ts` (the agent executor replaces the stub, and
+  B2's `prepareBase` with its per-run serialization moves into
+  `worktrees.ts`), `engine/engine.ts` (transcript and session subscriptions),
+  `engine/interp.ts` (head and input-head bookkeeping on rows).
+
+1. **`worktrees.ts`**, as in Approach, Worktrees:
+   - branch `hive/wf/<run>/<encodeWorkflowKey(key)>`, leaf instances only;
+   - the head and input head of every node kind;
+   - none: the pinned base; one: that branch; several: a merge worktree
+     (`base = first, merge = rest`);
+   - a loop entry at *k > 1* starts from its own *k−1* branch;
+   - `worktree: {of}` reuses the `of` node's path;
+   - `conflict` fails the node with the Approach message and
+     `node.finished.conflict`, and keeps the worktree.
+2. **`prompt.ts`**: `{{ref}}` interpolation inside
+   `<hive-data run-nonce=…>` blocks, with the nonce scrubbed from values
+   first.
+3. **`agent.ts`**: steps 1–8 of Approach, Agent nodes:
+   - reserve a turn, then PREPARE;
+   - CREATE without `initial_prompt`, with an explicit mode (the IR's, or
+     `Modes[0]`), then wait for `phase: ready`;
+   - every turn through `request('PROMPT_ACP')`, storing `prompt_id`,
+     `epoch` and `boot_id` on the row;
+   - permission waits through B-18's id check, and `node.resumed`
+     (B-1);
+   - F3: one re-prompt, then a second miss fails;
+   - on `end_turn` with a result: COMMIT_WORKTREE
+     (`wf: <key> (attempt N)`), then `node.output` + `node.finished` in one
+     transaction;
+   - timeout or cancel: CANCEL_ACP pinned to `prompt_id`/`epoch`; after 10 s
+     with no `stop_reason: cancelled`, KILL_SESSION (worktree kept);
+   - F2: a takeover pauses the timeout;
+   - the 50-turn cap counts every PROMPT_ACP.
+4. **The live-agent throttle (4)** sits in the scheduler, not on map
+   admission. B2's reducer already models it; B3b connects it to real
+   sessions.
+5. **The catalog is re-checked** (`LIST_ACP_AGENTS`) on every resume and
+   retry, so a ceiling the user lowered applies.
+
+#### B3c: durability
+
+Files: `engine/engine.ts` (`recover()`), `engine/main.ts` (reconnect).
+1. Read `boot_id` from WELCOME and store it on every agent row it touches.
+2. Startup and reconnect follow the Durability table:
+   - **Same `boot_id`:** read each running agent row's transcript
+     (`GET_ACP_TRANSCRIPT`) and record a finished turn with the attempt
+     unchanged.
+   - **New `boot_id`:** `interrupted`.
+   - **No stored `prompt_id`:** send the turn once.
+   - **No stored session:** adopt the single unreferenced live session by
+     `spawned_by` + name, or kill them all and mark the row `interrupted`.
+3. **Retry an interrupted agent node:**
+   - a live session is re-prompted with the interrupted note;
+   - a dead one gets RESTART_SESSION;
+   - on `restart_failed`: KILL_SESSION (worktree kept), then a fresh CREATE
+     on the same `worktree_path`. `create.go:487-490` adopts an existing
+     path, and no archived-holder check stands in the way.
+4. **Reconnect.** A transcript-listener overflow closes the socket. The
+   engine redials through the SDK and reruns step 2. Pending `request()`s
+   are rejected by the SDK (`_rejectAll`) and their effects re-derived from
+   the rows.
+
+#### B3d: run end and scale
+
+Files: `engine/engine.ts` (the run-end hook), `engine/worktrees.ts`,
+`internal/acp/acptest` (`FlagChatty`, test package only). B3-Q4 may add an
+A-side change.
+1. **Run end** (`done`, `failed` or `cancelled`) follows B3-Q4's pick. Under
+   the recommended option:
+   1. ARCHIVE_SESSION for every session the run created. `archive_busy`
+      (`archive.go:112-121`, e.g. a session still closing after a cancel)
+      is retried with backoff, at most 30 s.
+   2. REMOVE_WORKTREE (no force, no `delete_branch`) for every run
+      worktree that **no archived session holds**: B-4 base worktrees,
+      merge worktrees, and check-only worktrees. It skips the failing node's
+      and a conflicted merge.
+   3. `worktree_dirty` and `worktree_unpushed` are recorded in
+      `kept_worktrees`, never retried with force.
+   4. An agent worktree lives as long as its archived session. Deleting the
+      archived entry with its worktree (DELETE_ARCHIVED, existing) removes
+      it and still refuses a dirty one.
+2. **The fan-out bench and the chatty-fake reconnect test**, as listed under
+   Tests.
+
+#### B3 contract delta for C
+
+- `node.finished` gains `kept_pids?: number[]`.
+- `run.retry` gains `error.code: "survivors_running"`.
+- Under option B, `error: "fenced"` on `node.finished`.
+
+Slice C must be told. Nothing else in the Contract changes.
+
+#### B3 DaemonContract
+
+- **B3a** under B3-Q3 option (a) touches `cmd/hived/` and `internal/plugin/`.
+  It needs the `daemon-contract-override` label (no wire or GUI-facing
+  change), or it rides B5's bump.
+- **B3d** under B3-Q4 option (a) changes the daemon's behaviour, so it
+  bumps `DaemonContract`.
+- Either way, "B1–B4 need no bump" (Phases) no longer holds unconditionally.
+  The rest of B3 touches only ungated paths.
+
+#### B3 risks
+
+- **Signal safety.** `killTree` stays the single choke point, with
+  `unsafeTarget` unchanged.
+  - Every new signal site goes through it.
+  - Every new test fakes `kill` and identity through `KillDeps`, except the
+    Go e2e tests, which signal only processes they spawned.
+- **macOS `ps` cost.** Each `verify` is one `ps` call (about 3 ms) and each
+  enumeration about 20 ms (measured). That is fine at the 32-check ceiling.
+- **The start gate adds `/bin/sh` to every POSIX check.** Every supported
+  OS has it. `exec` replaces it, so the tree is unchanged.
+- **Windows is source-verified only.** The windows-vm MCP was unavailable
+  on 2026-11-15. The proof is the B3a Windows CI test that kills the engine
+  mid-check and asserts the tree is gone.
+- **Archive and cleanup** depend on daemon behaviour the plan had not
+  anticipated (B3-Q4). Without the A change, cleanup removes only worktrees
+  with no commits ahead of the default branch.
 
 ### B4: trust, sandbox, build and type check (own security review)
 
@@ -1094,7 +1432,56 @@ first if it copies them.*
     `hive/wf/<run>/<key>` at the pinned base, never the project's main
     checkout; an uncommitted file in the main checkout is absent there.
 
-**B3** (Go `internal/workflowe2e/`, fake adapter)
+**B3a** (process safety; `node --test` with faked `kill`/identity through
+`KillDeps`, plus Go e2e tests that signal only processes they spawned)
+- `killtree.test.ts`:
+  - `identity carries the boot` (Linux `boot_id`, macOS `kern.boottime`);
+    `identity from another boot is gone without a probe`;
+  - `macOS ps runs with TZ=UTC0 LC_ALL=C`: the identity string is unchanged
+    when the engine's `TZ` changes. This fails on B2's `procStart`;
+  - `verify runs before TERM and again before KILL`: an identity that
+    changes during the grace gets no KILL (seam);
+  - `leader gone, members alive: nothing sent, kept_pids lists the members`
+    (seam enumerator);
+  - `pgid mismatch is not signalled`;
+  - `prefix-less proc_start is refused`.
+- `check.test.ts`:
+  - option A: `gate: nothing runs until run is written`;
+    `gate: stdin EOF exits 125 and runs nothing`;
+    `gate: exec keeps pid, pgid and start time`;
+    `missing program is a spawn error, not exit 127` (POSIX).
+  - option B: `intent row committed before spawn`;
+    `marker carries run/key/attempt/nonce`;
+    `terminal transition clears launch`.
+- `engine.test.ts`:
+  - `refuse reaps before clearing pids`: a refused run's live check is
+    reaped, and a survivor is named in the run error and `kept_pids`;
+  - `survivors fail the node with kept_pids`;
+  - `run.retry refuses survivors_running while a survivor verifies, and
+    succeeds once it is gone`;
+  - option B: `fenced row fails, keeps worktree, retry prepares <key>_f<n>
+    from launch.head`; `a second fence gets _f2, never re-attaching _f1`.
+- `capture.test.ts`: `a head with no newline moves to the tail` (pins the
+  corrected docstring).
+- Go `internal/workflowe2e/`:
+  - `TestCheckNode_EngineKilledBeforeRecord_NothingRuns` (option A: a
+    test-only seam stops the engine between spawn and `beginNode`; the
+    check's marker file never appears) or
+    `TestCheckNode_EngineKilledBeforeRecord_FencedAndRetriedInFreshWorktree`
+    (option B);
+  - `TestCheckNode_LeaderDiesMemberSurvives_KeptNotSignalled` (POSIX: the
+    leader execs a shell that backgrounds a TERM-ignoring child and exits.
+    The engine is killed and restarted. The node fails with `kept_pids`
+    naming the child, and the child is still alive until the test kills it);
+  - `TestCheckNode_RefusedRunReapsLiveCheck`;
+  - `TestCheckNode_Windows_EngineKilledTreeDies` (Windows CI: the check
+    starts a grandchild. The engine is killed. Both are gone within 5 s.
+    The same test also kills the engine between spawn and resume).
+
+**B3b–B3d** (Go `internal/workflowe2e/`, fake adapter). Each test is listed
+under the PR that adds it: worktrees, prompt, F3, permissions, cancel,
+timeout, modes, provenance and catalog in **B3b**; durability and the crash
+loop in **B3c**; cleanup, archive and fan-out in **B3d**.
 - `TestAgentNode_ResultRecorded` (typed result through A's schema).
 - Durability:
   - `TestDurability_PluginCrash_FinishedWhileDown_RecordedAttemptUnchanged`;
@@ -1129,16 +1516,22 @@ first if it copies them.*
   - `TestWorktree_LoopIterationBranchesFromPrevious`;
   - `TestMerge_AfterMap`, `TestMerge_ConflictFailsWithRecoveryPath`;
   - `TestBranchNames_EncodedKeys` (`hive/wf/<run>/fix_2/work`, `…/work/each_3/do`).
-- Cleanup:
+- Cleanup (B3d; the exact assertions follow B3-Q4's pick):
   - `TestCleanup_RemovesCleanKeepsDirty` (`ErrWorktreeDirty` → `kept_worktrees`);
+  - `TestCleanup_CommittedRunWorktreeNotRefusedAsUnpushed`. Under option (a),
+    a merge worktree with a merge commit is removed and its branch kept.
+    Under option (b), it is recorded as kept with `worktree_unpushed`;
+  - `TestCleanup_ArchivedAgentWorktreeLeftToArchive`. REMOVE_WORKTREE is
+    never sent for a worktree an archived node session holds, and
+    DELETE_ARCHIVED with its worktree removes it;
   - `TestCleanup_FailedRunKeepsFailingWorktree`;
   - `TestRunEnd_ArchivesNodeSessions` (sessions are archived, and restoring
-    one works for ACP).
+    one works for ACP; `archive_busy` is retried);
+  - `TestRunRetry_AfterArchive_CreatesInSameWorktree`.
 - `TestRunRetry_ResumesFailedRunAfterConflictResolved`: conflict → commit in
   the kept worktree → `run.retry` → the merge re-attaches and is a no-op,
   and the run completes.
 - `TestCatalog_CeilingLoweredBetweenBuildAndStartRefusedBeforeRun` (R6).
-- `TestUsage_AgentUsageEventsPerNode` (R5).
 - Provenance and trust:
   - `TestProvenance_SessionsCarryRunLabel`;
   - `TestNodesOnlyRunInProjectWorktrees` (the #505 follow-through: every engine session's cwd is a PREPARE'd worktree of the run's project, so `hiveKnowsFolder` holds and no untrusted notice appears).
@@ -1191,6 +1584,8 @@ first if it copies them.*
   - `every event keyed by IR node_id and instance key`.
 - Go `TestEvents_LiveAndHistoryIdentical`: a GUI test client collects live `run.event`, then pages `run.events`, and the two sequences are equal.
 - `TestEmbed_WorkflowsBuiltinDisabledByDefault`.
+- `TestUsage_AgentUsageEventsPerNode` (R5; moved from B3, where Phases had
+  no wiring for it).
 
 ## Verification
 
@@ -1675,6 +2070,40 @@ download, the accepted sandbox gap, and `LIST_ACP_AGENTS`.
     refused run's nodes and clears their pids, so nothing stale is ever signalled,
     but a process that is still alive is left alone: B3's survivor sweep owns it.
 
+- **2026-11-15, B3 research and plan (no user decision yet; nothing above is
+  changed).** The findings are in Research, under "B3 research (2026-11-15)".
+  The plan is under Phases, B3. The open items are B3-Q1 to B3-Q4.
+  - R1–R4 are merged on `main` (#532, #539, #541), so B3 is unblocked.
+  - **Settled by evidence, applied in the B3 plan:**
+    - pgids are not reused while a member lives (POSIX §4.17; Linux
+      `__change_pid`; XNU `forkproc`), and allocation is cyclic, so
+      whole-second `lstart` is enough.
+    - `lstart` must be read with `TZ=UTC0 LC_ALL=C`, which fixes a B2 bug.
+    - The identity gains the kernel boot.
+    - B-9/B-11h's "recorded member" means the leader: the engine records no
+      other member.
+    - Verify runs before TERM and before KILL.
+    - `#refuse` reaps before it clears pids.
+    - The `Capture` docstring is corrected in B3a.
+    - `TestUsage_AgentUsageEventsPerNode` moves to B5.
+  - **Findings that contradict the approved plan, each raised as an open
+    question rather than worked around:**
+    - B-8's macOS `ps eww` scan cannot see the env of SIP platform binaries
+      (B3-Q1).
+    - B-11g's `-r<attempt>` branch can collide with a legal sibling id, and
+      can re-attach the first fenced worktree after a second fence (B3-Q1,
+      option B).
+    - Node's non-detached spawn does not give the B-9 Windows job: libuv's
+      job allows silent breakaway and does not create the child suspended
+      (B3-Q3).
+    - The approved run-end design cannot remove agent worktrees:
+      - an archived session claims its worktree;
+      - every committed run branch is refused as unpushed without force;
+      - neither ARCHIVE_SESSION nor REMOVE_WORKTREE has a success reply that
+        carries `req_id`.
+      This is raised as B3-Q4. It may need an A-side change and a
+      DaemonContract bump before B5.
+
 ## Progress
 
 - **2026-10-25:** Research complete. Plan drafted against A at `7410f6b7`.
@@ -1724,13 +2153,119 @@ Raised by the PR #540 review, consequences of B-6:
 - **B-13 waiting prompt, paging:** Resolved 2026-11-12, B-15 (cap, not paging).
 - **B-13 redacted permission ids:** Resolved 2026-11-12, B-16, handle part superseded by B-18.
 - **B-12 per-node history:** Resolved 2026-11-12, B-17 (`key?` filter).
-- **B3, Windows launch.** Whether Node's `spawn` already puts a non-detached
-  child in a kill-on-close job at creation (libuv), or a `CREATE_SUSPENDED`
-  helper is needed, is unverified; B3 research settles it. B-9 (Job Object)
-  stands either way.
+- **B3, Windows launch.** Researched on 2026-11-15; the research question
+  is closed. libuv's job covers only the direct child, and not from
+  creation, so a helper is needed. Where the helper lives is B3-Q3.
 
-Execution order still depends on A: B1 needs A PR1's fixtures; B2
-needs A PR1–3; B3 needs R1–R4 merged in A.
+Execution order: R1–R4 are merged (#532, #539, #541), so B3 is unblocked.
+
+### B3 open questions (raised 2026-11-15, awaiting the user)
+
+The B3 plan (Phases, B3) names a recommended pick for each one. None is
+decided.
+
+- **B3-Q1, how the spawn-to-record gap is closed (amends B-8, B-11g).**
+  - (A) **Start gate** (recommended).
+    - The check is spawned through `sh -c 'read go; [ "$go" = run ] || exit
+      125; exec "$@"'` and released only after `beginNode` has committed its
+      pid and start time.
+    - An engine death first gives the gate EOF, so nothing runs.
+    - Evidence (measured): EOF exits 125 without running the command, and
+      `exec` keeps the pid, the pgid and `lstart`.
+    - The intent row, the marker scan, the fence and the fenced-retry branch
+      all go away. Windows uses the same gate through the B3-Q3 helper.
+    - Cost: `/bin/sh` per check, and the engine resolves `argv[0]` itself so
+      a missing program is still a spawn error.
+  - (B) **B-8 as decided**: an intent row, the `HIVE_WF_CHECK` marker, the
+    fence, and a retry on a fresh branch.
+    - It is fully specified in B3a step 6, with two corrections to B-11g:
+      - The branch is `<key>_f<n>`. `-r<attempt>` collides with a legal id
+        such as `work-r1`, and because `run.retry` resets attempts, a second
+        fence would re-attach the first fenced worktree.
+      - The marker carries a nonce.
+    - Evidence against its scan: macOS `ps -E` does not show the env of
+      SIP-protected platform binaries (measured with `/bin/sleep` and
+      `/bin/zsh`), so the scan is best-effort on macOS and absent on Windows.
+      Since an empty scan never lifts the fence, the scan only ever feeds
+      `kept_pids`.
+  - Recommended: (A). It closes the gap where (B) only fences it, and it
+    removes the most state.
+- **B3-Q2, survivors whose leader has gone (B-9).**
+  - (a) Strict B-9, plus a retry guard (recommended).
+    - Never signal the group.
+    - The node fails with `kept_pids`.
+    - `run.retry` refuses `survivors_running` while any survivor still
+      verifies, so nothing reruns beside it in the same worktree.
+  - (b) Strict B-9 and retry in place, which is B2 today. A survivor such as
+    a backgrounded server can keep writing into the worktree the retry runs
+    in.
+  - (c) Record members periodically (`ps -A -o pid=,pgid=,lstart=`, about
+    20 ms on macOS, measured). A verified recorded member then permits a
+    group signal. This needs polling, and it still misses members started
+    after the last poll.
+  - (d) Kill members individually after verifying the marker. This is the
+    recorded follow-up, and it works on Linux only (see B3-Q1).
+  - Evidence: POSIX §4.17 means our group's id cannot belong to anyone else
+    while one of our processes is in it. Once the leader is gone, though,
+    nothing cheap tells our survivors from a stranger's group after a pid
+    wrap.
+  - Recommended: (a). It also covers a leader that exits on TERM during a
+    live stop.
+- **B3-Q3, where the Windows job helper lives (B-9).** All options create
+  the child suspended, assign it to a `KILL_ON_JOB_CLOSE` job with no
+  breakaway flags, then resume. The engine stops it by killing the helper
+  through its handle, so there is no `taskkill` and no pid-reuse gap.
+  - (a) A hidden `hived` subcommand (`hived wf-exec -- argv…`, Windows only),
+    with the plugin Manager exporting `HIVE_DAEMON_EXE` to plugins
+    (recommended).
+    - It ships in a binary that is already there.
+    - It touches `cmd/hived/` and `internal/plugin/`, so it needs the
+      `daemon-contract-override` label, or it rides B5's bump.
+  - (b) A separate `cmd/hive-wf-exec` binary. Same code, plus `build.sh`,
+    release and signing work for one more executable.
+  - (c) PowerShell `Add-Type` with P/Invoke. No packaging, but it compiles
+    C# per run, its startup cost is unmeasured, and Constrained Language
+    Mode on managed machines blocks it.
+  - (d) No helper: libuv's job plus a `CreationDate`-verified `taskkill`.
+    An engine crash still orphans every grandchild, because libuv's job sets
+    `SILENT_BREAKAWAY_OK`. `/T` must never be sent after the leader is gone.
+  - `node:ffi` is rejected: it was added in v26.1.0, which is above the
+    floor, and it is experimental.
+  - Recommended: (a).
+  - Unverified on a real Windows machine (the VM MCP was unavailable). B3a's
+    Windows CI test is the proof.
+- **B3-Q4, run-end archive and cleanup (amends Approach, Worktrees, Sessions
+  at run end and Cleanup).** Three daemon facts break the approved design:
+  - an archived session claims its worktree (`worktrees.go:275-278`);
+  - without force, every committed `hive/wf/` branch is refused as
+    `worktree_unpushed`, because it has no upstream and is ahead of the
+    default ref (`worktrees.go:306`, `inventory.go:379-384`);
+  - neither ARCHIVE_SESSION nor REMOVE_WORKTREE has a success reply carrying
+    `req_id`, so SDK `request()` refuses both.
+
+  The options:
+  - (a) An A follow-up, "R7" (recommended).
+    - ARCHIVE_SESSION and REMOVE_WORKTREE ACK `req_id` on success and join
+      `REQUEST_VERBS`.
+    - REMOVE_WORKTREE skips the unpushed test for a branch under
+      `hive/wf/<run>/` when the request comes from that run's plugin
+      principal with `delete_branch: false`. The branch keeps the commits,
+      and dirty still refuses.
+    - The engine archives sessions, removes the worktrees no archived
+      session holds, and leaves agent worktrees to their archived session
+      (DELETE_ARCHIVED removes them and refuses dirty ones).
+    - It is a daemon change, so it bumps DaemonContract and lands as an A
+      PR before B3d.
+  - (b) No daemon change.
+    - `send()` and correlate on the SESSION_EVENT removal and the inventory.
+    - Record `worktree_unpushed` as kept, so in practice only worktrees with
+      no commits are ever removed.
+    - Criterion 13's "cleanup policy" is met in the letter only.
+  - (c) Kill sessions instead of archiving them (reverses a user decision),
+    then remove with force after a dirty check. There is a race between the
+    check and the forced remove, and it contradicts "never retried with
+    force".
+  - Recommended: (a).
 
 ## PR convergence ledger
 
