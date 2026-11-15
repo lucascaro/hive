@@ -7,6 +7,9 @@
 package main
 
 import (
+	"bytes"
+	"context"
+	"errors"
 	"fmt"
 	"log"
 	"net"
@@ -206,4 +209,95 @@ func asAppleScriptString(s string) string {
 	}
 	b.WriteByte('"')
 	return b.String()
+}
+
+// runner runs an external command with a deadline and returns its stdout.
+// Everything hivebar execs for the menu goes through one so a hung child
+// cannot freeze a menu refresh, and tests can swap it out.
+type runner func(timeout time.Duration, name string, args ...string) (string, error)
+
+// runWithTimeout is the production runner. The deadline is enforced by the
+// context, so a command that outlives it is killed rather than abandoned.
+// The error carries the command's stderr: the failures worth showing the
+// user (an unsigned build refusing a login item) are written there.
+func runWithTimeout(timeout time.Duration, name string, args ...string) (string, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), timeout)
+	defer cancel()
+	var stdout, stderr bytes.Buffer
+	cmd := exec.CommandContext(ctx, name, args...)
+	cmd.Stdout, cmd.Stderr = &stdout, &stderr
+	// Bound the wait for the output pipes after the kill: a grandchild that
+	// inherited them would otherwise hold Run open past the deadline.
+	cmd.WaitDelay = 500 * time.Millisecond
+	err := cmd.Run()
+	if errors.Is(ctx.Err(), context.DeadlineExceeded) {
+		return "", fmt.Errorf("%s: no answer after %s: %w", filepath.Base(name), timeout, context.DeadlineExceeded)
+	}
+	if err != nil {
+		if msg := strings.TrimSpace(stderr.String()); msg != "" {
+			return "", errors.New(msg)
+		}
+		return "", err
+	}
+	return stdout.String(), nil
+}
+
+// guiBinary is the hivegui executable inside the enclosing Hive.app, or ""
+// outside a bundle (a dev tree has no login item to manage anyway).
+func guiBinary() string {
+	app := hiveAppBundle()
+	if app == "" {
+		return ""
+	}
+	return filepath.Join(app, "Contents", "MacOS", "hivegui")
+}
+
+// ownBundle is this process's hivebar.app, or "" outside a bundle.
+func ownBundle() string {
+	self, err := os.Executable()
+	if err != nil {
+		return ""
+	}
+	return enclosingAppBundle(self)
+}
+
+// relaunchArgs is the `open` command line that starts a NEW hivebar.
+//
+// -n is not optional: with the current instance still running, plain
+// `open -a` just activates it and launches nothing. -restart tells the new
+// instance to wait for the old one's lock instead of exiting quietly.
+func relaunchArgs(app string) []string {
+	return []string{"-n", "-a", app, "--args", restartFlag}
+}
+
+// restartMenuBar starts a replacement and, only if that worked, quits this
+// instance. Quitting first, or regardless, would leave a failed relaunch
+// with no menu bar at all until hived or hivegui next respawn one.
+func restartMenuBar(run runner, app string, quit func(), notify func(title, body string)) error {
+	if app == "" {
+		err := errors.New("not running from a Hive menu bar bundle")
+		notify("Could not restart the menu bar", err.Error())
+		return err
+	}
+	if _, err := run(loginItemTimeout, "open", relaunchArgs(app)...); err != nil {
+		log.Printf("hivebar: restart menu bar: %v", err)
+		notify("Could not restart the menu bar", err.Error())
+		return err
+	}
+	quit()
+	return nil
+}
+
+// Notify shows a native alert with a single OK button. Blocks until it is
+// dismissed, so callers run it off any loop that must stay responsive.
+func Notify(title, body string) {
+	script := fmt.Sprintf(
+		`tell application "System Events"
+			activate
+			display dialog %s with title %s buttons {"OK"} default button "OK" with icon caution
+		end tell`,
+		asAppleScriptString(body), asAppleScriptString(title))
+	if err := exec.Command("osascript", "-e", script).Run(); err != nil {
+		log.Printf("hivebar: notify %q: %v", title, err)
+	}
 }

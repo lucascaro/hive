@@ -64,6 +64,32 @@ never starts one.
 Logs land in `hivebar.log` beside `hived.log` in the state dir; a
 bundled agent has no terminal to write to.
 
+## Menu-bar controls
+
+Three footer items act on the menu bar alone and never touch the daemon;
+the existing **Quit Hive** still stops everything, after confirming.
+
+- **Quit Menu Bar** — `systray.Quit()`, no confirm. It lasts until the
+  next `hived` or `hivegui` launch respawns it (`internal/menubar`);
+  `HIVE_NO_MENUBAR=1` stays the hard off.
+- **Restart Menu Bar** — runs `open -n -a hivebar.app --args -restart`
+  and quits only if that succeeded. `-n` is required (plain `open -a`
+  would just activate the instance that is quitting); `-restart` makes the
+  new instance wait up to 5 s for the old one's lock instead of losing the
+  race quietly.
+- **Start at Login** — the same registration as Settings → Start at
+  login. SMAppService resolves the helper against the *calling* bundle, so
+  hivebar cannot register itself and `hived` must stay cgo-free: it runs
+  `Hive.app/Contents/MacOS/hivegui --menubar-login-item=status|enable|disable`,
+  a headless mode that exits before the log, `menubar.Spawn` and Wails
+  start. The state is re-read on every menu open (`systray.TrayOpenedCh`)
+  and after each toggle; the item is hidden when the answer is unknown. A
+  registration waiting for approval opens System Settings → Login Items.
+
+Every external call runs under a 5 s deadline, and every footer click is
+handled on its own goroutine, so a slow exec or an open alert never stops
+**Quit Menu Bar** from being heard.
+
 ## What it deliberately does not implement
 
 **Updates.** "Check for Updates…" opens the GUI and asks it to run the
@@ -81,6 +107,7 @@ have both binaries call it.
 | `client.go` | control connection, reconnect loop, outbound commands |
 | `model.go` | **pure** snapshot → menu model; everything testable lives here |
 | `menu.go` | model → systray items, click routing |
-| `actions.go` | launching the GUI, restarting the daemon, native confirms |
+| `loginitem.go` | Start at Login: status → menu item, toggle via the hivegui probe |
+| `actions.go` | launching the GUI, restarting the daemon, self-relaunch, native dialogs, timed exec |
 | `singleton.go` | the flock that keeps one icon in the menu bar |
 | `assets/` | 22pt template PNG (black + alpha; macOS recolours it) |

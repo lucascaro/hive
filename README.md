@@ -221,10 +221,18 @@ also the only time you can't ask the GUI. It shows:
 
 Plus **Reload GUI**, **Restart Daemon…** (confirmed — it ends every
 running shell and agent), **Check for Updates…**, **Open Hive** and
-**Quit Hive**.
+**Quit Hive** (confirmed, and it too ends everything).
+
+Three items act on the menu bar alone and leave the daemon and every
+session running: **Quit Menu Bar** (no confirmation — nothing is lost),
+**Restart Menu Bar**, and a **Start at Login** checkmark that is the same
+login item as `Settings ▸ Menu bar ▸ Start at login`. The checkmark is
+re-read each time you open the menu, and is hidden where macOS can't
+register a login item (a build run outside `Hive.app`).
 
 It starts on its own whenever `hived` or a window does, so in normal use
-it is simply there. `Settings ▸ Menu bar ▸ Start at login` additionally
+it is simply there — a quit menu bar comes back the next time either
+starts, or from **Restart Menu Bar**. `Start at Login` additionally
 registers it with macOS so it appears at login before either has run.
 Set `HIVE_NO_MENUBAR=1` to suppress it; an isolated run
 (`HIVE_STATE_DIR` set, e.g. `scripts/dev-iso.sh`) never starts one.

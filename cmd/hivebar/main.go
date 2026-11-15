@@ -36,6 +36,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"fyne.io/systray"
 
@@ -57,10 +58,35 @@ import (
 //go:embed assets/hive-template.png
 var iconTemplate []byte
 
+// options is hivebar's command line.
+type options struct {
+	version bool
+	restart bool
+}
+
+func parseFlags(args []string) (options, error) {
+	var o options
+	fs := flag.NewFlagSet("hivebar", flag.ContinueOnError)
+	fs.BoolVar(&o.version, "version", false, "print build identity and exit")
+	fs.BoolVar(&o.restart, "restart", false,
+		"started by Restart Menu Bar: wait for the previous instance to release the lock")
+	return o, fs.Parse(args)
+}
+
+// lockWait is how long this instance waits for the singleton lock.
+func (o options) lockWait() time.Duration {
+	if o.restart {
+		return restartLockWait
+	}
+	return 0
+}
+
 func main() {
-	version := flag.Bool("version", false, "print build identity and exit")
-	flag.Parse()
-	if *version {
+	opts, err := parseFlags(os.Args[1:])
+	if err != nil {
+		log.Fatal(err)
+	}
+	if opts.version {
 		id := buildinfo.CurrentIdentity()
 		log.SetFlags(0)
 		log.SetOutput(os.Stdout)
@@ -83,7 +109,7 @@ func main() {
 	// best-effort on boot and launchd may have started it at login, so
 	// losing this race is the normal case, not an error worth a dialog
 	// or a non-zero status.
-	release, ok := claimSingleton()
+	release, ok := claimSingleton(opts.lockWait())
 	if !ok {
 		log.Printf("hivebar: another instance holds the lock; exiting")
 		return

@@ -68,9 +68,45 @@ type Menu struct {
 	restart   *systray.MenuItem
 	update    *systray.MenuItem
 	quit      *systray.MenuItem
+
+	// The menu-bar controls. Unlike Quit Hive these never touch the
+	// daemon: they act on this process only.
+	loginItem  *systray.MenuItem
+	restartBar *systray.MenuItem
+	quitBar    *systray.MenuItem
+
+	// Guarded by mu. loginStatus is what the Start at Login item is
+	// showing; toggling drops a second click while one is in flight;
+	// quitting suppresses alerts once the process is going away, so an
+	// osascript dialog is not orphaned by systray.Quit.
+	loginStatus string
+	toggling    bool
+	quitting    bool
+
+	// probeReq has capacity 1 and is the whole "needs a refresh" state: a
+	// request while a probe runs leaves exactly one more queued. The
+	// systray open signal is an unbuffered, non-blocking send, so the
+	// receiver must be parked to catch it — see watchTrayOpen.
+	probeReq chan struct{}
+
+	// Seams, swapped in tests. Production values come from NewMenu.
+	run    runner
+	gui    string
+	app    string
+	notify func(title, body string)
+	quitFn func()
 }
 
-func NewMenu() *Menu { return &Menu{} }
+func NewMenu() *Menu {
+	return &Menu{
+		probeReq: make(chan struct{}, 1),
+		run:      runWithTimeout,
+		gui:      guiBinary(),
+		app:      ownBundle(),
+		notify:   Notify,
+		quitFn:   systray.Quit,
+	}
+}
 
 // Attach records the client the menu drives. Split from NewMenu because
 // the client needs the menu's Update method to exist first.
@@ -106,8 +142,17 @@ func (m *Menu) Ready() {
 	m.restart = systray.AddMenuItem("Restart Daemon…", "Ends every running shell and agent")
 	m.update = systray.AddMenuItem("Check for Updates…", "Opens Hive and runs the check")
 	systray.AddSeparator()
+	// Hidden until the first probe answers: a checkmark that guesses is
+	// worse than no item (see loginItemView).
+	m.loginItem = systray.AddMenuItem("Start at Login", "")
+	m.loginItem.Hide()
+	m.restartBar = systray.AddMenuItem("Restart Menu Bar", "Relaunch the menu bar; the daemon and sessions keep running")
+	m.quitBar = systray.AddMenuItem("Quit Menu Bar", "Close the menu bar; the daemon and sessions keep running")
+	systray.AddSeparator()
 	m.quit = systray.AddMenuItem("Quit Hive", "Stop the daemon and close the menu bar")
 	go m.watchFooter()
+	go m.probeWorker()
+	go m.watchTrayOpen()
 
 	m.mu.Lock()
 	m.ready = true
@@ -115,6 +160,7 @@ func (m *Menu) Ready() {
 	m.pending = nil
 	m.mu.Unlock()
 
+	m.requestProbe()
 	if held != nil {
 		m.Update(*held)
 		return
@@ -201,30 +247,100 @@ func (m *Menu) watchRow(i int) {
 	}()
 }
 
+// footerClick names one footer item. watchFooter turns channel receives into
+// these so the dispatch below is testable without systray.
+type footerClick int
+
+const (
+	clickOpenGUI footerClick = iota
+	clickReloadGUI
+	clickRestartDaemon
+	clickCheckUpdates
+	clickLoginItem
+	clickRestartBar
+	clickQuitBar
+	clickQuitHive
+)
+
+// watchFooter is a pure forwarder. Every handler runs on its own goroutine
+// (dispatch), because several block for a long time — a confirm dialog, an
+// exec with a 5 s deadline — and none of them may stop another click from
+// being heard, least of all Quit Menu Bar.
 func (m *Menu) watchFooter() {
 	for {
 		select {
 		case <-m.openGUI.ClickedCh:
-			if err := OpenGUI(); err != nil {
-				log.Printf("hivebar: open GUI: %v", err)
-			}
+			m.dispatch(clickOpenGUI)
 		case <-m.reloadGUI.ClickedCh:
-			m.client.ReloadGUIs()
+			m.dispatch(clickReloadGUI)
 		case <-m.restart.ClickedCh:
-			m.confirmRestart()
+			m.dispatch(clickRestartDaemon)
 		case <-m.update.ClickedCh:
-			// Delegated to the GUI rather than reimplemented here: the
-			// GUI owns the staging, verification and bundle swap, and it
-			// is the thing being replaced. See cmd/hivebar/README.md.
-			if err := OpenGUI(); err != nil {
-				log.Printf("hivebar: open GUI: %v", err)
-				continue
-			}
-			m.client.CheckForUpdates()
+			m.dispatch(clickCheckUpdates)
+		case <-m.loginItem.ClickedCh:
+			m.dispatch(clickLoginItem)
+		case <-m.restartBar.ClickedCh:
+			m.dispatch(clickRestartBar)
+		case <-m.quitBar.ClickedCh:
+			m.dispatch(clickQuitBar)
 		case <-m.quit.ClickedCh:
-			m.confirmQuit()
+			m.dispatch(clickQuitHive)
 		}
 	}
+}
+
+func (m *Menu) dispatch(c footerClick) { go m.handle(c) }
+
+func (m *Menu) handle(c footerClick) {
+	switch c {
+	case clickOpenGUI:
+		if err := OpenGUI(); err != nil {
+			log.Printf("hivebar: open GUI: %v", err)
+		}
+	case clickReloadGUI:
+		m.client.ReloadGUIs()
+	case clickRestartDaemon:
+		m.confirmRestart()
+	case clickCheckUpdates:
+		// Delegated to the GUI rather than reimplemented here: the
+		// GUI owns the staging, verification and bundle swap, and it
+		// is the thing being replaced. See cmd/hivebar/README.md.
+		if err := OpenGUI(); err != nil {
+			log.Printf("hivebar: open GUI: %v", err)
+			return
+		}
+		m.client.CheckForUpdates()
+	case clickLoginItem:
+		m.toggleLogin()
+	case clickRestartBar:
+		_ = restartMenuBar(m.run, m.app, m.quitApp, m.alert)
+	case clickQuitBar:
+		// No confirm: nothing is lost. The daemon and every session keep
+		// running, and hived or hivegui bring the icon back next launch.
+		m.quitApp()
+	case clickQuitHive:
+		m.confirmQuit()
+	}
+}
+
+// quitApp ends this process's menu bar only. It marks the menu as quitting
+// first so a late failure alert is not shown over a dying process.
+func (m *Menu) quitApp() {
+	m.mu.Lock()
+	m.quitting = true
+	m.mu.Unlock()
+	m.quitFn()
+}
+
+// alert shows a native dialog unless the process is already quitting.
+func (m *Menu) alert(title, body string) {
+	m.mu.Lock()
+	quitting := m.quitting
+	m.mu.Unlock()
+	if quitting {
+		return
+	}
+	m.notify(title, body)
 }
 
 func (m *Menu) confirmRestart() {
@@ -244,5 +360,92 @@ func (m *Menu) confirmQuit() {
 		return
 	}
 	m.client.ShutdownDaemon()
-	systray.Quit()
+	m.quitApp()
+}
+
+// watchTrayOpen asks for a refresh each time the menu opens, so the
+// checkmark is current when the user looks at it — it may have been changed
+// in Settings or System Settings since the last time.
+//
+// systray sends on an unbuffered channel without blocking, so this loop does
+// nothing but flag a request and go straight back to receiving; the probe
+// itself runs on probeWorker.
+func (m *Menu) watchTrayOpen() {
+	for range systray.TrayOpenedCh {
+		m.requestProbe()
+	}
+}
+
+// requestProbe asks for one more refresh. Never blocks: a request already
+// queued covers this one.
+func (m *Menu) requestProbe() {
+	select {
+	case m.probeReq <- struct{}{}:
+	default:
+	}
+}
+
+func (m *Menu) probeWorker() {
+	for range m.probeReq {
+		status, err := m.probe()
+		m.applyLogin(status, err)
+	}
+}
+
+func (m *Menu) probe() (string, error) {
+	if m.gui == "" {
+		return "", fmt.Errorf("not running from a Hive.app bundle")
+	}
+	return probeLoginItem(m.run, m.gui)
+}
+
+// toggleLogin handles one click on Start at Login.
+func (m *Menu) toggleLogin() {
+	m.mu.Lock()
+	if m.toggling {
+		m.mu.Unlock()
+		return
+	}
+	m.toggling = true
+	status := m.loginStatus
+	m.mu.Unlock()
+
+	next, err := toggleLoginItem(m.run, m.gui, status)
+
+	// Release the flag and show the truth BEFORE any alert: display dialog
+	// blocks until OK, and the item must not stay locked behind it.
+	m.mu.Lock()
+	m.toggling = false
+	m.mu.Unlock()
+	m.applyLogin(next, nil)
+	if err != nil {
+		log.Printf("hivebar: login item: %v", err)
+		m.alert("Could not change the login item", err.Error())
+	}
+}
+
+// applyLogin records the status and, once the menu exists, shows it.
+func (m *Menu) applyLogin(status string, err error) {
+	view := loginItemView(status, err)
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if err != nil {
+		status = ""
+	}
+	m.loginStatus = status
+	if !m.ready {
+		return
+	}
+	if !view.Visible {
+		m.loginItem.Hide()
+		return
+	}
+	m.loginItem.SetTitle(view.Title)
+	m.loginItem.SetTooltip(view.Tooltip)
+	if view.Checked {
+		m.loginItem.Check()
+	} else {
+		m.loginItem.Uncheck()
+	}
+	m.loginItem.Show()
 }
