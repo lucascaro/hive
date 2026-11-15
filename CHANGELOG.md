@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+The menu bar can now be stopped, restarted and kept from starting at login without touching your sessions: new "Quit Menu Bar" and "Restart Menu Bar" items leave the daemon and every running agent alone, and a "Start at Login" checkmark flips the same login item as Settings. "Quit Hive" still stops everything, after confirming.
 
 ## [2.10.0] — 2026-11-12
 
