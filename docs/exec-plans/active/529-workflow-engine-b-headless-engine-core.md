@@ -1626,6 +1626,16 @@ download, the accepted sandbox gap, and `LIST_ACP_AGENTS`.
     an earlier closed block, or its later eviction, can no longer flip the state.
     Tests: the two shapes the gate found, plus a seeded property test over random
     filler, blocks, overlong lines and chunking (mutation-checked).
+  - **A marker split inside an overlong line (round 7).** The key-marker label has
+    no length bound (and `redact.ts` must keep matching long labels), so the scan
+    carry is no longer a fixed 64 characters: it is the text from the last
+    `-----BEGIN`/`-----END` that has no closing dashes yet (else a few trailing
+    characters). If that pending prefix exceeds 256 characters it fails closed: a
+    BEGIN is treated as open until a later END. A missed END only over-hides.
+    Tests: 66- and 67-char markers split by a write, a 300-char split label, the
+    unsplit control, and a stream-order oracle fuzzer (bodies of tens of lines,
+    long labels, CRLF, overlong lines holding BEGIN/END) that fails the
+    initial-hidden-state and old-carry mutations.
   - **B-21, a cancelled check emits no `check.output` (user decision).** The output
     of a check that was stopped on purpose is dropped; the Contract says so.
   - **Follow-up, only if slice C needs live check progress:** line-by-line
@@ -1729,6 +1739,8 @@ needs A PR1–3; B3 needs R1–R4 merged in A.
 - **2026-11-14 iter 14 (B2, PR #550)** — verdict: APPROVE; mergeable: MERGEABLE; findings_hash: empty; threads_open: 0; action: stop; head_sha: 7cdf4ff9. Code head; the branch head is this docs-only ledger commit, whose CI is the final CI. 226 plugin tests pass.
 - **2026-11-14 iter 15 (B2, PR #550)** — verdict: REQUEST_CHANGES (round-6 gate: `Capture` tracked the open key-block state out of stream order, so an overlong BEGIN line after an earlier closed block, or that block's later eviction, showed a key body without its BEGIN); mergeable: MERGEABLE; findings_hash: see list; threads_open: 0 -> 0; action: autofix+push; head_sha: 9aaaa33b. Every line is now scanned once, in order, when pushed; ring entries carry startsOpen/endsOpen and an overlong line's marker inherits the state around it; `finish()` hides from the first kept entry's state. Both leaks and a seeded property test added (mutation-checked). The minor cross-newline keyword=value gap is recorded under B-20's accepted limits. 229 plugin tests pass.
 - **2026-11-14 iter 16 (B2, PR #550)** — verdict: APPROVE; mergeable: MERGEABLE; findings_hash: empty; threads_open: 0; action: stop; head_sha: 9aaaa33b. Code head; the branch head is this docs-only ledger commit, whose CI is the final CI. 229 plugin tests pass.
+- **2026-11-14 iter 17 (B2, PR #550)** — verdict: REQUEST_CHANGES (round-7 gate: a key-marker label longer than the 64-char scan carry, split by a write inside an overlong line, was never matched; the property test missed the initial-hidden-state mutation; stale docstring); mergeable: MERGEABLE; findings_hash: see list; threads_open: 0 -> 0; action: autofix+push; head_sha: a8b3e7e2. Carry is now the pending BEGIN/END prefix (fail closed past 256 chars); added split-marker tests and a stream-order oracle fuzzer, mutation-checked; docstring fixed. 235 plugin tests pass.
+- **2026-11-14 iter 18 (B2, PR #550)** — verdict: APPROVE; mergeable: MERGEABLE; findings_hash: empty; threads_open: 0; action: stop; head_sha: a8b3e7e2. Code head; the branch head is this docs-only ledger commit, whose CI is the final CI. 235 plugin tests pass.
 
 ## Gate verdict
 
