@@ -1125,9 +1125,18 @@ Files:
      `kept_pids?: number[]`.
    - `nodes.kept_pids` stores `[{pid, id}]`.
    - `run.retry` refuses with `error.code: "survivors_running"` while any
-     stored survivor still verifies by `procId`, and clears the column once
-     none does. A retry never runs beside a survivor in the same worktree;
-     B2 interrupts and retries in place.
+     stored survivor still verifies by `procId` **or the recorded group still
+     has any member**. The guard re-enumerates the pgid at retry time, so a
+     descendant that a survivor spawned after the snapshot (it inherits the
+     group) keeps the retry blocked after its parent exits.
+     - This fails closed: a group id reused by a stranger after a full pid
+       wrap also blocks, and the error tells the user how to check.
+     - The column is cleared once the guard passes.
+     - A descendant that calls `setsid`/`setpgid` itself leaves the group
+       and is not seen. That is the documented ceiling of group tracking
+       without a kernel subreaper.
+     - So a retry never runs beside a survivor in the group in the same
+       worktree. B2 interrupts and retries in place.
 5. **`reap` at startup** is `killTree` with `verify`, recorded members and a
    2 s grace.
 6. **`#refuse` reaps first.** Before it clears a refused run's pids, it
@@ -1170,8 +1179,18 @@ Files:
    - **What the helper does:**
      1. creates a job with `JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE` and **no**
         breakaway flags;
-     2. creates the child already in that job, or suspended and then
-        assigned;
+     2. creates the child **both** in that job and suspended: `CreateProcess`
+        with `PROC_THREAD_ATTRIBUTE_JOB_LIST` **and** `CREATE_SUSPENDED`.
+        - Assigning the job at creation leaves no window outside the job.
+        - The suspension is what makes the start gate: assigning the job
+          alone would let the child run before `run`.
+        - If `PROC_THREAD_ATTRIBUTE_JOB_LIST` is unavailable, the fallback is
+          `CREATE_SUSPENDED` and then `AssignProcessToJobObject`, before
+          any resume. A helper death between those two calls leaves a child
+          that is suspended, outside the job and unreported. It has run no
+          code and never will, because nothing resumes it, so the gate's
+          "nothing ran" still holds. The cost is a leaked suspended process,
+          which the B3a PR must document.
      3. writes the child's pid to stdout;
      4. waits for `run` on stdin. EOF means the job closes and the child
         dies before it has run, which is the same gate as step 7;
@@ -1189,10 +1208,10 @@ Files:
      (`syscall/exec_windows.go:446`, `defer CloseHandle(Handle(pi.Thread))`).
      So `os/exec` with `CREATE_SUSPENDED` leaves nothing to `ResumeThread`
      with. The helper therefore calls `CreateProcess` from `x/sys/windows`
-     directly, either:
-     - with `PROC_THREAD_ATTRIBUTE_JOB_LIST`, which assigns the job at
-       creation (availability still to be confirmed); or
-     - suspended, keeping the thread handle it then resumes.
+     directly and keeps the thread handle it later resumes. The real Windows
+     run must confirm that `PROC_THREAD_ATTRIBUTE_JOB_LIST` combined with
+     `CREATE_SUSPENDED` works on the CI image. If it does not, it must
+     confirm the fallback in step 2.
    - **Daemon contract.** B3a touches `cmd/hived/` and `internal/plugin/`
      but changes no wire frame and nothing a GUI drives, so it takes the
      `daemon-contract-override` label. Only B3-R7 bumps DaemonContract.
@@ -1257,7 +1276,14 @@ Files: `engine/engine.ts` (`recover()`), `engine/main.ts` (reconnect).
      (`GET_ACP_TRANSCRIPT`) and record a finished turn with the attempt
      unchanged.
    - **New `boot_id`:** `interrupted`.
-   - **No stored `prompt_id`:** send the turn once.
+   - **No stored `prompt_id`** (the PROMPT_ACP ACK was lost, or never
+     came): read the transcript first.
+     - If it holds a user item whose origin is this run
+       (`plugin:workflows/workflow:<run>`) and that no row has recorded,
+       adopt that item's prompt as this node's turn and store its id.
+     - Only when there is none, send the turn once.
+     - This is the Durability table's rule, so an accepted turn is never
+       sent twice.
    - **No stored session:** adopt the single unreferenced live session by
      `spawned_by` + name, or kill them all and mark the row `interrupted`.
 3. **Retry an interrupted agent node:**
@@ -1563,7 +1589,9 @@ change is B3-R7's.
     reaped, and a survivor is named in the run error and `kept_pids`;
   - `survivors fail the node with kept_pids`;
   - `run.retry refuses survivors_running while a survivor verifies, and
-    succeeds once it is gone`.
+    succeeds once it is gone`;
+  - `run.retry stays blocked while a survivor's later descendant is in the
+    group after the survivor exits`.
 - `capture.test.ts`: `a head with no newline moves to the tail` (pins the
   corrected docstring).
 - Go `internal/workflowe2e/`:
@@ -1600,6 +1628,7 @@ loop in **B3c**; cleanup, archive and fan-out in **B3d**.
   - `TestDurability_CreateInFlight_OrphanAdopted`;
   - `TestDurability_ResultThenHivedRestart_InterruptedByDesign`.
 - `TestDurability_CrashBeforePromptAck_SendsTurnOnce`.
+- `TestDurability_LostPromptAck_AdoptsTranscriptTurn`: a test seam drops the PROMPT_ACP ACK. On restart the engine adopts the transcript's turn, and exactly one PROMPT_ACP was sent.
 - `TestDurability_CrashLoopFailedThenRestart_RunsResume` (criterion 13):
   - kill the engine more than 5 times in 60 s (the test shrinks the
     window), so the plugin is marked `failed` and the run stays `running`
@@ -2416,10 +2445,11 @@ what was weighed.
     CloseHandle(Handle(pi.Thread))`), so `os/exec` with `CREATE_SUSPENDED`
     leaves nothing to `ResumeThread` with.
     - The helper probably calls `CreateProcess` from `x/sys/windows`
-      directly. It can assign the job at creation through
-      `PROC_THREAD_ATTRIBUTE_JOB_LIST`, which needs no suspend; its
-      availability is still to be confirmed. Otherwise it suspends and
-      resumes through the thread handle it keeps.
+      directly. It must create the child both suspended
+      (`CREATE_SUSPENDED`, which is the start gate) and in the job
+      (`PROC_THREAD_ATTRIBUTE_JOB_LIST`, availability to be confirmed;
+      otherwise it assigns the job before resuming). Job assignment alone
+      is not a gate. It keeps the thread handle for `ResumeThread`.
     - Either way it belongs in `internal/proc`, the only constructor of
       non-PTY children (AGENTS.md), with a `TestNoDirectExecOnWindows`
       allowlist entry and its reason.
@@ -2488,6 +2518,11 @@ what was weighed.
 - **2026-11-15 iter 19 (B2, PR #550)** — verdict: REQUEST_CHANGES (round-8 gate: shared-dash markers split across writes in an overlong line read as an END and leaked the key body); mergeable: MERGEABLE; findings_hash: see list; threads_open: 0 -> 0; action: autofix+push; head_sha: ea960401. User decision: an overlong line is scanned for the substring BEGIN only (carry 4), BEGIN opens the state, END is ignored; pending-prefix carry and PENDING_MAX deleted. New tests plus oracle shapes, mutation-checked. 240 plugin tests pass.
 - **2026-11-15 iter 20 (B2, PR #550)** — verdict: APPROVE; mergeable: MERGEABLE; findings_hash: empty; threads_open: 0; action: stop; head_sha: ea960401. Code head; the branch head is this docs-only ledger commit, whose CI is the final CI. 240 plugin tests pass.
 - **2026-11-15 iter 1 (B3 plan, PR #554)** — verdict: COMMENT; mergeable: MERGEABLE; findings_hash: see list; threads_open: 0; action: autofix+push; head_sha: see PR head. Inline docs review (no bot reviews yet). Every cited file:line checked against `bb91720b`. One IMPORTANT consistency finding fixed: the Contract for C tables did not carry B3's `node.finished.kept_pids` and `run.retry`'s `survivors_running` (B-23).
+- **2026-11-15 iter 2 (B3 plan, PR #554)** — verdict: REQUEST_CHANGES (CodeRabbit, 4 threads on a901b176); mergeable: MERGEABLE; findings_hash: see list; threads_open: 4 -> 0; action: autofix+push; head_sha: see PR head. All four were valid and are fixed in the plan text:
+  - the retry guard now re-enumerates the group, so a survivor's later descendant keeps `run.retry` blocked (a test was added);
+  - the Windows helper creates the child both suspended and in the job, since job assignment alone is not the gate (in B3a step 8 and the B3-Q3 record);
+  - the fallback's helper-death window is stated as "nothing ran, a suspended process leaks";
+  - B3c adopts the transcript's turn when the PROMPT_ACP ACK was lost, instead of sending a second one (a test was added).
 
 ## Gate verdict
 
