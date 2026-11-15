@@ -11,11 +11,22 @@
 // cap on the whole IR so it fits one plugin message.
 
 import { MAX_CONCURRENCY, MAX_ITERS } from '../sdk/dsl.ts';
+import { encodedSize } from '../engine/size.ts';
 import { checkSchema } from './resultschema.ts';
 
 export const MAX_NESTING = 32;
-/** A stored IR is at most this much JSON, so one plugin message can carry it (spec 529, Contract for C). */
+/** A stored IR is at most this much JSON, counted as the daemon re-encodes it, so one plugin message can carry it (spec 529, Contract for C). */
 export const MAX_IR_BYTES = 32 << 10;
+/** A node id is at most this many bytes, so a `run.nodes` row always fits a page (B-12). */
+export const MAX_ID_BYTES = 128;
+/**
+ * A node instance key (`fix[2]/work`) is at most this many bytes. It holds by
+ * construction: an id is at most MAX_ID_BYTES and nodes nest at most
+ * MAX_NESTING deep, each loop or map adding `[20]` or `[31]` (4 bytes), so
+ * the longest key is 128 + 32 * 4 = 256. The cap is the contract; the test
+ * pins the arithmetic, so raising either bound fails it.
+ */
+export const MAX_KEY_BYTES = 512;
 
 const ID = /^[a-z][a-z0-9]*(-[a-z0-9]+)*(\/[a-z][a-z0-9]*(-[a-z0-9]+)*)*$/;
 const OPS = ['eq', 'ne', 'in', 'truthy', 'lt', 'gt'];
@@ -107,6 +118,7 @@ export function shape(json: unknown): string[] {
     const at = typeof v.id === 'string' ? v.id : path;
     exactKeys(v, at, KEYS[kind], KEYS[kind].filter((k) => !OPTIONAL.has(k)));
     id(v.id, `${path}.id`);
+    if (typeof v.id === 'string' && v.id.length > MAX_ID_BYTES) err(at.slice(0, 64), `id is ${v.id.length} bytes, the limit is ${MAX_ID_BYTES}`);
     switch (kind) {
       case 'agent':
         if (typeof v.agent !== 'string' || v.agent === '') err(`${at}.agent`, 'must be a non-empty string');
@@ -151,11 +163,11 @@ export function shape(json: unknown): string[] {
   // Measured on the JSON, before any walk, so an oversized IR costs one stringify.
   let size = 0;
   try {
-    size = new TextEncoder().encode(JSON.stringify(json)).length;
+    size = encodedSize(json);
   } catch {
     return ['ir: not JSON'];
   }
-  if (size > MAX_IR_BYTES) return [`ir: too large (${size} bytes of JSON, the limit is ${MAX_IR_BYTES})`];
+  if (size > MAX_IR_BYTES) return [`ir: too large (${size} bytes as sent, the limit is ${MAX_IR_BYTES})`];
   exactKeys(json, 'ir', ['ir', 'name', 'input', 'nodes', 'edges'], ['ir', 'name', 'input', 'nodes', 'edges']);
   if (json.ir !== 1) err('ir.ir', 'must be 1');
   if (typeof json.name !== 'string') err('ir.name', 'must be a string');

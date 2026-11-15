@@ -4,10 +4,10 @@
 - **Design:** [workflow-engine.md](../../design-docs/workflow-engine.md), [acp-workflows.md](../../design-docs/acp-workflows.md)
 - **Depends on:** A (#528), planned against `origin/feature/528-daemon-sdk-prereqs:docs/exec-plans/active/528-workflow-engine-a-daemon-sdk-prereqs.md` at `7410f6b7`
 - **Issue:** #529
-- **Branch:** `feature/529-engine-core` (research and plan); one branch per phase PR (B1: `feature/529-b1-validator`)
-- **PR:** #538 (B1)
-- **Phase:** 1 of 5
-- **Status:** active. Plan approved. Phase 1 (B1) implemented and in review (PR #538); B2 to B5 remain.
+- **Branch:** `feature/529-engine-core` (research and plan); one branch per phase PR (B1: `feature/529-b1-validator`, B2: `feature/529-b2-store-interpreter`)
+- **PR:** #538 (B1), #550 (B2)
+- **Phase:** 2 of 5
+- **Status:** active. Plan approved. Phase 1 (B1) merged; phase 2 (B2) implemented and in review; B3 to B5 remain.
   - All open questions are decided (see Decision log, 2026-10-25 user
     decisions).
   - R1–R6 are approved as A changes: R2, R3, R5 and R6 go to A PR1; R1 and
@@ -189,7 +189,7 @@ plugins/workflows/
   hive-plugin.mjs    byte copy of plugins/sdk/hive-plugin.mjs (drift-tested like webhook)
   sdk/               @hive/workflow and @hive/workflow/library: dsl.ts schema.ts library.ts index.ts library-index.ts
   ir/                shape.ts validate.ts catalog.ts mermaid.ts ir-schema.ts ir.schema.json resultschema.ts
-  engine/            main.ts store.ts interp.ts keys.ts worktrees.ts agent.ts check.ts human.ts
+  engine/            main.ts engine.ts model.ts nodes.ts store.ts interp.ts keys.ts size.ts worktrees.ts agent.ts check.ts
                      prompt.ts events.ts redact.ts topics.ts trust.ts build.ts typecheck.ts tsgo.ts killtree.ts
   build/             runner.mjs import-hook.mjs (the only files the sandbox child may read besides sdk/ and the snapshot)
   tools/             check-doc.ts emit.ts
@@ -426,14 +426,17 @@ Decisions.
 8. **F5.** Pi needs the user's "unattended" ceiling. The daemon's
    `ACPRefusal` enforces it, and R6 surfaces it before the run.
 
-### Check and human nodes (`engine/check.ts`, `engine/human.ts`)
+### Check and human nodes (`engine/check.ts`, `engine/nodes.ts`, `engine/interp.ts`)
 
 - **Check spawn.** `spawn(argv[0], argv.slice(1), {cwd, env: ALLOW_ENV, windowsHide: true, detached: process.platform !== 'win32'})`.
   - POSIX: its own process group.
   - The row stores `pid`, `pgid` and the process start time before the node
     is `running`.
-  - stdout and stderr become `check.output` events, coalesced per 250 ms or
-    8 KiB, with each event's text capped at 16 KiB (`truncated`).
+  - stdout and stderr are captured while the check runs (head 16 KiB, tail
+    48 KiB of whole lines, `total_bytes`) and become `check.output` events when
+    the check ENDS, redacted once as whole text, in pieces of at most 8 KiB
+    (B-20). Nothing is emitted while it runs, and nothing for a cancelled check
+    (B-21).
   - Output `{ok: exit_code === 0, exit_code}`.
   - The check env is the login PATH plus `LANG`, `TZ` and `HOME`. `HOME` is
     allowed because builds and tests need it; checks are argv the user
@@ -634,8 +637,8 @@ continue from `seq`.
   On Windows, POSIX modes don't apply: the files inherit the 0700 data dir's
   ACL, so the test is skipped there with that reason.
 - **Write batching.** Transitions (start, finish, wait, output) commit
-  immediately. `agent.*` and `check.output` events are buffered and
-  committed in one transaction per 250 ms flush. `seq` is assigned at
+  immediately. `agent.*` events and a finished check's `check.output` events
+  are buffered and committed in one transaction per 250 ms flush. `seq` is assigned at
   commit, so it stays gapless, and FULL fsyncs stay rare, as the design
   intends.
 - **Clean stop.** The engine has a POSIX `SIGTERM` handler that TERMs the
@@ -660,7 +663,7 @@ continue from `seq`.
   recorded: a corrupted `nodes` table cannot be repaired by replay, because
   the engine never derives it from events. A debug rebuild-from-events command
   is optional and built only if a real corruption ever needs it. Buffered
-  `agent.*` and `check.output` events (250 ms flush) change no column that
+  `agent.*` events and `check.output` events (250 ms flush) change no column that
   `run.nodes` serves, so they need no row update; they still take their `seq`
   at commit, so `last_seq` never runs ahead of a committed row.
 - **One row per node instance.** Map expansion writes one `nodes` row for
@@ -689,7 +692,9 @@ continue from `seq`.
 
 ### Events (`engine/events.ts`, `redact.ts`)
 
-The exact schema is under Contract for C. Events are pushed live as
+The exact schema is under Contract for C. Redaction is best-effort (B-5): a
+pattern list, not a guarantee, and its result does not depend on how output
+was chunked (B-20). Events are pushed live as
 `run.event` batches (≤ 48 KiB per message, leaving headroom under A's
 64 KiB). `run.events` pages the history by `seq`; it is not how node state
 is rebuilt (that is `run.nodes`, B-12).
@@ -755,11 +760,11 @@ All of it travels on A's `PLUGIN_MESSAGE` with `plugin_id: "workflows"`.
 | `workflow.build` | `{project_id, file}` | `{name, ir, mermaid, source_hash, input_schema}` or `error.code: "untrusted"\|"changed"\|"type_errors"\|"build_failed"\|"invalid_ir"\|"sandbox_unavailable"` with `type_errors?: [{file, line, col, message}]`, `errors?: string[]` |
 | `run.start` | `{project_id, file, input, source_hash}` | `{run_id}` — refuses `changed` if `source_hash` is not the current one, so the user runs what they reviewed |
 | `run.cancel` | `{run_id}` | `{}` |
-| `run.retry` | `{run_id}` | `{}` — failed or cancelled → running: failed and interrupted nodes reset to `pending`, attempts cleared. One transaction appends a `node.reset` per reset node and then `run.retried` (B-11), so live clients see it, and the reset rows are what `run.nodes` serves afterwards (B-12) |
-| `runs.list` | `{project_id?, state?: <a run state, below>, before?: created_at, limit ≤ 50}` — `project_id` omitted means every project (B-2), so the GUI finds waiting runs at boot with one call (`state: "waiting"`) | `{runs: [{run_id, project_id, workflow, file, state, created_at, updated_at, source_hash, source_changed}]}` |
+| `run.retry` | `{run_id}` | `{}` — failed or cancelled → running: failed, interrupted **and cancelled** nodes (a failing node cancels its running siblings, which would otherwise hang the resumed run) reset to `pending`, attempts cleared; a container keeps its loop iteration or map expansion. One transaction appends a `node.reset` per reset node and then `run.retried` (B-11), so live clients see it, and the reset rows are what `run.nodes` serves afterwards (B-12) |
+| `runs.list` | `{project_id?, state?: <a run state, below>, before?: created_at, before_id?: run_id, limit ≤ 50}` (`before_id` completes the (created_at, run_id) cursor so same-millisecond runs are not skipped) — `project_id` omitted means every project (B-2), so the GUI finds waiting runs at boot with one call (`state: "waiting"`) | `{runs: [{run_id, project_id, workflow, file, state, created_at, updated_at, source_hash, source_changed}]}` |
 | `run.get` | `{run_id}` | `{run: {…as above, last_seq (B-14), input, base_sha, kept_worktrees, kept_worktrees_total, error}, ir}` — no nodes, no paging (B-6). `kept_worktrees` is at most 16 paths of ≤ 256 bytes and `error` ≤ 2 KiB; `kept_worktrees_total` is the real count, and the full list is in the `run.finished` and `node.started`/`node.finished` events, paged through `run.events` |
 | `run.nodes` | `{run_id, after?: key}` | `{nodes: [{key, node_id, state, attempt, started_at?, finished_at?, cap?}], last_seq, more?, next_after?}` — the materialized node, loop and map state (B-12). Slim rows: no `output` or `error` (those come from `node.get`). Ordered by `key`; a page stops once `encodedSize` would pass 48 KiB (always at least one row), and `next_after` is the last key returned. Each page carries its own `last_seq`: the max committed `seq` when that page was read, read in one SQLite read transaction, so the rows reflect exactly the events `seq <= last_seq` |
-| `node.get` | `{run_id, key, offset?: 0, limit?: 16384}` | `{key, node_id, state, attempt, output?: string, total_bytes?, next_offset?, more?, session_id?, branch?, worktree?, error?, conflict?, waiting?}` — `output` is a slice of the serialized redacted output (B-7). `waiting` is the data of the node's open `node.waiting` event (rendered prompt, `output_schema`, permission `request_id` and `options`), present only while the node is `waiting`, so a wait raised before the run view opened can be answered from it (B-13, confirmed). The rendered prompt is capped at 16 KiB at build time, so it is never truncated (B-15: longer fails the node with `prompt_too_large`); `request_id` and `option_id` are exempt from redaction after strict validation (B-16). Everything else is redacted and counted in the 48 KiB encoded budget |
+| `node.get` | `{run_id, key, offset?: 0, limit?: 16384}` | `{key, node_id, state, attempt, output?: string, total_bytes?, next_offset?, more?, session_id?, branch?, worktree?, error?, conflict?, waiting?}` — `output` is a slice of the serialized redacted output (B-7). `waiting` is the data of the node's open `node.waiting` event (rendered prompt, `output_schema`, permission `request_id` and `options`), present only while the node is `waiting`, so a wait raised before the run view opened can be answered from it (B-13, confirmed). The rendered prompt is capped at 16 KiB at build time, so it is never truncated (B-15: longer fails the node with `prompt_too_large`); `request_id` and `option_id` are exempt from redaction, and a wait whose ids fail the charset never opens: the node fails with `cap: "permission_option_invalid"` (B-18). Everything else is redacted and counted in the 48 KiB encoded budget |
 | `run.events` | `{run_id, after_seq, limit ≤ 500, key?}` | `{events: RunEvent[], last_seq, more}` — also byte-budgeted: a page stops once `encodedSize` would pass 48 KiB (always at least one event, B-11), so `more` can be true below `limit`. `key?` returns only that node's events (B-17); unfiltered paging stays for gap recovery |
 | `human.answer` | `{run_id, key, answer}` | `{}`; `error.code: "invalid_answer"` with a path-qualified message, or `"not_waiting"` |
 
@@ -842,7 +847,7 @@ type RunEvent = {
 | `type` | `data` |
 |---|---|
 | `run.started` | `{workflow, file, project_id, source_hash, base_sha, input}` |
-| `run.finished` | `{state: "done"\|"failed"\|"cancelled", error?, cap?: "map_copies"\|"agent_turns", kept_worktrees?: string[]}` |
+| `run.finished` | `{state: "done"\|"failed"\|"cancelled", error?, cap?: "map_copies"\|"agent_turns"\|"prompt_too_large"\|"waiting_too_large"\|"permission_option_invalid", kept_worktrees?: string[]}` |
 | `run.retried` | `{reset: number}` — `run.retry` committed: the run is `running` again; `reset` counts the `node.reset` events just before it (B-11) |
 | `node.reset` | `{}` — `run.retry` returned the node to `pending` with its attempt cleared (B-11) |
 | `node.ready` | `{}` |
@@ -850,7 +855,7 @@ type RunEvent = {
 | `node.waiting` | `{reason: "human", prompt, output_schema}` or `{reason: "permission", session_id, request_id, title, options: [{option_id, name, kind}]}` |
 | `node.resumed` | `{reason: "permission" \| "human"}` — a `node.waiting` ended without the node finishing. B emits it only for a cleared permission; a human answer ends with `node.output` + `node.finished` in one transaction, so it emits none (B-1) |
 | `node.output` | `{output, truncated?: true}` — capped at 16 KiB of `encodedSize` in the event; the full redacted value is paged through `node.get` (B-7) |
-| `node.finished` | `{state: "done"\|"failed"\|"skipped"\|"interrupted"\|"cancelled", error?, cap?, conflict?: {branch, files, worktree}}` |
+| `node.finished` | `{state: "done"\|"failed"\|"skipped"\|"interrupted"\|"cancelled", error?, cap?, conflict?: {branch, files (at most 32, each cut), worktree, files_omitted?}}`; `cap` also takes `prompt_too_large`, `waiting_too_large` and `permission_option_invalid` (B-18), decided when a human node *starts* (the rendered prompt or its `output_schema`, up to ~8 KiB raw, can exceed the cap), not at build time |
 | `loop.iteration` | `{iteration, max_iters}` |
 | `map.expanded` | `{count, concurrency}` |
 | `agent.turn.started` | `{session_id, prompt_id, reprompt: boolean}` |
@@ -859,7 +864,7 @@ type RunEvent = {
 | `agent.tool` | `{session_id, tool_call_id, title, tool_kind, status}` — one per status change |
 | `agent.plan` | `{session_id, entries: [{content, status, priority?}], entries_omitted?: number}` — capped like every event (B-11) |
 | `agent.usage` | `{session_id, usage}` — the ACP `usage_update` payload, from R5 |
-| `check.output` | `{stream: "stdout"\|"stderr", text, truncated?: true}` |
+| `check.output` | `{stream: "stdout"\|"stderr", text, truncated?: true, total_bytes?}` — emitted when the check ENDS, not live: the head and the tail of the stream (16 KiB + 48 KiB), redacted whole, in pieces of at most 8 KiB, with a `[... N bytes omitted ...]` marker where the middle was dropped; `truncated` and `total_bytes` (every byte the stream produced) ride on each piece. A cancelled check emits none (B-21). Slice C renders a check's output at its end; it must not wait for live lines |
 
 **Node states** are `pending | running | waiting | done | failed | skipped |
 interrupted | cancelled`. `cancelled` is an addition to the design's list.
@@ -906,7 +911,8 @@ first if it copies them.*
 *Needs A PR1–PR3.*
 
 - Plugin skeleton: manifest with `node: "26.0.0"`, SDK copy, `main.mjs`.
-- `store.ts`, `interp.ts`, `keys.ts`, `check.ts`, `human.ts`, `killtree.ts`,
+- `store.ts`, `interp.ts`, `keys.ts`, `check.ts`, `killtree.ts`, `engine.ts`,
+  `model.ts`, `nodes.ts`,
   `events.ts`, and the topics `runs.list` (with the optional `project_id`
   and `state` filters, B-2), `run.get` (`{run, ir}` only, B-6), `run.events`
   (byte-budgeted pages, B-6), `run.nodes` (byte-budgeted snapshot pages
@@ -1349,7 +1355,7 @@ download, the accepted sandbox gap, and `LIST_ACP_AGENTS`.
 - **2026-11-09, user decisions on the B1 review's open questions.**
   - **B-5, outputs vs `redact()`:** option (b). Raw outputs go in a separate
     column (`nodes.output_raw`) that only the reducer reads; no topic, event
-    or log ever serves it, and everything served is redacted. `runs.db` stays
+    or log ever serves it, and everything served is redacted on a best-effort basis (a pattern list, not a guarantee; B-20). `runs.db` stays
     0600. Known tradeoff: a secret an agent prints is persisted raw locally;
     B5 documents it. Rejected: (a) redacting events only with outputs raw in
     the served column, and redacting before insert, which could change which
@@ -1479,7 +1485,7 @@ download, the accepted sandbox gap, and `LIST_ACP_AGENTS`.
     `prompt_too_large`. The `node.waiting` event therefore never truncates, and
     `waiting.truncated`/`prompt_total_bytes` are dropped from `node.get`.
     The 24 KiB event cap stays as a defence, unreachable by a prompt.
-  - **B-16, permission ids exempt from `redact()`.** Exactly `request_id` and
+  - **B-16, permission ids exempt from `redact()` (handle part superseded by B-18).** Exactly `request_id` and
     `option_id` in `waiting` are exempt, but only after strict validation
     (charset `[A-Za-z0-9._:-]`, length <= 256); a value failing it is replaced
     by an engine-issued opaque handle that the engine maps back to the real id
@@ -1488,6 +1494,186 @@ download, the accepted sandbox gap, and `LIST_ACP_AGENTS`.
   - **B-17, `run.events` `key?` filter.** `run.events` accepts `key?` and
     returns only events for that node key (indexed on `(run_id, key, seq)`).
     Unfiltered paging stays for gap recovery. C's node detail uses it.
+
+- **2026-11-12 (B2), implementation decisions and deviations.**
+  - **`redact.ts` landed in B2**, not B4 (Phases lists it under B4): B-5 and the
+    task's B2 scope need every served value redacted, and `prepareEvent` runs
+    it before insert. B4 still owns the per-pattern review.
+  - **PREPARE_WORKTREE refuses an empty `base`** (`invalid_base`, measured
+    against the real daemon), so the plan's "first PREPARE passes no base" does
+    not exist. The first PREPARE of a run asks for `HEAD`; the reply's
+    `base_sha` is pinned on `runs.base_sha` immediately after that PREPARE (the
+    base resolves at the run's first PREPARE, not at run start, so `run.started`
+    carries `base_sha: ""`), and every later PREPARE passes the SHA. Pinning
+    writes no event, so B-14's "exact" does not cover `runs.base_sha`: clients
+    read it from `run.get` and treat it as eventually consistent. A run's PREPAREs
+    are serialized in the plugin so the first one fixes the base.
+  - **`run.retry` also resets `cancelled` nodes** (a failing node cancels its
+    running siblings, and an edge settles only on done, skipped or failed, so a
+    cancelled sibling would hang the retried run). A failed or cancelled
+    *container* (group, loop, map) goes to `pending` like a leaf, but keeps its
+    `progress`: the loop iteration or map expansion reached is not redone and
+    its `loop.iteration` / `map.expanded` is not announced twice.
+  - **A human prompt's 16 KiB cap (B-15) is measured as sent** (`encodedSize`),
+    like every other budget, and a prompt whose `node.waiting` data (prompt plus
+    answer schema) passes the 24 KiB event cap fails the node with
+    `waiting_too_large`, so `node.get`'s non-output fields stay bounded.
+  - **`human.ts` was not created.** A human node is a reducer transition
+    (`interp.ts`, which renders the prompt) plus `Engine.answerHuman`
+    (validates against the node's schema and finishes the node); a separate
+    module would only re-export them.
+  - **Test-only topics** `test.start-run` (the `startRunFromIR` seam) and
+    `test.pid` exist only when `HIVE_WF_TEST_SEAM=1`. B4 replaces the first with
+    `run.start`; the seam must never be set in a release.
+  - **Base worktrees are not cleaned up in B2.** The REMOVE_WORKTREE sweep at
+    run end is B3's ("Cleanup"), and covers the B-4 base worktrees too.
+  - **A live `run.event` push exists** (`engine/main.ts`, batched by
+    `events.batchForPush` to 48 KiB as sent) so the topics are usable end to end;
+    B5 adds the coalescing, the usage wiring and the `seq` contract test.
+  - **A map's `results` holds `null`** for a copy whose sink was skipped.
+  - **A run is `waiting` while any node is waiting**, even if others run, so
+    `runs.list {state:"waiting"}` finds every run with a question open.
+  - **`run.get`'s `ir` is served as stored**, not redacted: it is the reviewed
+    source, and redacting a prompt would change what the user approved.
+  - **Reaping survivors of a dead leader is B3** (B-9): `reap` kills a group only
+    while the recorded leader's pid and start time still match, and reports
+    `gone` otherwise.
+  - **PR #550 review additions.** `runs.list` also takes `before_id` (with
+    `before`) so a page boundary inside one millisecond skips no run; check
+    output is redacted before it is cut and a trailing partial token is held
+    back; a check with no readable start time fails instead of running
+    untracked; the base is pinned right after PREPARE (a reattached worktree
+    supplies it from `head_sha`); Linux uses `/proc` start ticks (macOS keeps
+    whole-second `lstart`, a known ceiling for B3's B-9 research); executors
+    carry an `epoch` so a failure from before a retry cannot fail the retried
+    node; output for a node no longer running is dropped.
+  - **The 512-byte key cap holds by construction** (a 128-byte id under at most
+    32 nesting levels of `[31]`); `shape.ts` pins the arithmetic in a test
+    instead of carrying an unreachable check.
+
+  - **PR #550 gate follow-ups (B3 and B5).**
+    - B3, B-8: the intent row and `HIVE_WF_CHECK` marker. Until then there is a
+      window in B2 where an engine kill between a check's spawn and `beginNode`
+      leaves a pending row with a live, unrecorded process, which the next start
+      launches again.
+    - B3, B-9 in full: Windows `taskkill` after the leader exited has a pid-reuse
+      gap (no start-time re-check before the kill); `reap` must re-verify pid
+      and start time immediately before each signal, TERM and KILL; survivors of
+      a dead leader are not reaped; macOS `lstart` is whole seconds.
+    - B5: strip `HIVE_WF_*` (the test seam) from the embedded plugin's
+      environment, or compile the seam out, with a test that an embedded plugin
+      cannot enable `test.start-run`.
+
+- **2026-11-12, user decisions on the PR #550 gate.**
+  - **B-18, no handles (supersedes B-16's handle part).** A permission
+    `option_id` or `request_id` that fails `^[A-Za-z0-9._:-]{1,256}$` is never
+    substituted: the engine fails the node with `cap: "permission_option_invalid"`
+    and a redacted, cut detail, and no `node.waiting` is opened. Conforming ids
+    stay exempt from `redact()` so ANSWER_PERMISSION gets them unchanged. The
+    `handles` table and `Store.handleFor` / `realIdFor` are removed. Why: the GUI
+    answers permissions straight to the daemon, so a handle could never be sent
+    back.
+  - **B-19, `run.get` serves `ir` unredacted (amends B-5).** The IR is the user's
+    own trusted, hash-pinned workflow file (trust-gated in B4), not run output;
+    redacting it would change what the user approved. B-5's "everything served is
+    redacted" excludes `ir`. A test pins it.
+
+  - **Redact before cut (round-2 gate).** Every place that shortens a value
+    that might hold a secret goes through `redactCut` (redact, then cut): error
+    texts, permission-id details, conflict fields, kept worktree paths, error
+    replies, the stored-IR refusal. `shrink` and the event caps run after
+    `prepareEvent` has redacted. `killTree` and `reap` never throw: an EPERM is
+    reported as `kept`; `recover()` then fails the node naming the pid instead
+    of retrying it beside a survivor, and `shutdown()` settles every stop and
+    always flushes. `agent.plan` drops a quarter of its entries at a time.
+    `shrink` can drop permission `options` from an oversized wait
+    (`options_omitted`); those options cannot be answered from the GUI.
+
+  - **Round-3 gate: ids from the store are not trusted.** `killTree` is the one
+    choke point and refuses (`refused`, nothing sent) any pid that is not a safe
+    integer >= 2, is the engine's own, or whose pgid is not the pid (the engine
+    always writes pgid == pid); `reap`, `shutdown()` and a check's own stop all go
+    through it, `recover()` fails a node whose row fails the same test (naming the
+    row), and the store drops non-numeric ids on read.
+  - **B-20, check output is captured and redacted ONCE, at the end of the check
+    (user decision; supersedes the round-3 hold-and-lookback and the round-4/5
+    line-oriented `Coalescer`).** Five gate rounds on a streaming redactor found
+    a new boundary-dependent leak each time (a token split by a chunk, a tick, a
+    size cut, a discard budget, adjacent key blocks). Redaction is a best-effort
+    control, and a split-perfect streaming implementation was disproportionate to
+    it. So: nothing is emitted while the check runs; each stream is captured in
+    bounded memory as a HEAD (first 16 KiB, cut back to its last newline before
+    redacting, because a token cut in half can fall under a pattern's minimum
+    length and survive; a head with no newline becomes a marker) and a TAIL (the
+    last 48 KiB, a ring of WHOLE lines, so it starts at a line start; one line
+    longer than the tail becomes a marker), plus `total_bytes`. Lines are scanned for private-key BEGIN/END markers in stream order (see the
+    round-6 and round-8 notes below): if a block is open where the tail starts, the tail's
+    lines up to its END line are dropped (the whole tail if it has none), because the BEGIN that would make the
+    redaction pattern recognise them is gone. At the end each part is redacted
+    once as whole text, with `[... N bytes omitted ...]` between them, and emitted
+    as `check.output` pieces of at most 8 KiB (`prepareEvent` re-redacts each piece,
+    which can only over-redact). `redact.ts` is back to whole-text patterns (`\s`),
+    keeping the Bearer, keyword=value and URL-credential patterns this work added.
+    Order holds: `store.commit` drains buffered events before the change's own,
+    and the pipes close before the node is completed or failed, so every
+    `check.output` has a lower seq than the `node.finished` that follows, a
+    timeout included (tested).
+  - **Key-block state is tracked in stream order (round 6).** Every line is scanned
+    exactly once, when it is first pushed, and each kept entry records whether a
+    block was open when it began and when it ended; an overlong line dropped to a
+    marker inherits the state before and after it. `finish()` hides entries from
+    the first kept entry's `startsOpen` until the entry that closes the block, so
+    an earlier closed block, or its later eviction, can no longer flip the state.
+    Tests: the two shapes the gate found, plus a seeded property test over random
+    filler, blocks, overlong lines and chunking (mutation-checked).
+  - **An overlong line is scanned for `BEGIN` only (round 8, user decision;
+    replaces round 7's pending-prefix carry).** Parsing whole markers inside a
+    dropped overlong line was unsound: the marker label has no length bound, and a
+    carry that restarts inside already-matched text reads shared dashes
+    (`-----BEGIN X-----END X-----`) as an END. So complete lines (head and ring,
+    at most the cap) are scanned once in stream order with the full marker
+    pattern, while a dropped overlong line is scanned, chunk by chunk with a
+    4-character carry, only for the substring `BEGIN`: if it appears anywhere the
+    state after the line is OPEN, whatever came before; otherwise it is
+    unchanged. An END inside an overlong line is ignored (an open block stays
+    open). The state closes only at a later complete-line END. This fails closed
+    and removes the marker-length and pending-prefix machinery.
+    Tests: the shared-dash case at every split offset (and unsplit); `BEGIN`
+    split at every offset and one byte per write; BEGIN with no END hides the whole
+    remaining tail; an END inside an overlong line keeps an open block hidden; an
+    overlong line with no BEGIN leaves the state unchanged; 66/67/300-char labels
+    split by a write; and the oracle fuzzer (bodies of tens of lines, labels up to
+    300 characters, CRLF, overlong lines holding BEGIN/END, shared-dash and
+    adjacent markers). Mutation checks: removing the 4-character carry fails
+    "a BEGIN split at every offset ...", "shared-dash markers ... at every split
+    offset" and the seeded property test (the oracle fuzzer does not catch it);
+    making an overlong line's BEGIN not open fails the leak A/B tests, the split
+    and unsplit marker tests, "BEGIN and no END", the shared-dash test, the seeded
+    property test and the oracle fuzzer; `let hidden = false` in `finish()` fails
+    the oracle fuzzer.
+  - **B-21, a cancelled check emits no `check.output` (user decision).** The output
+    of a check that was stopped on purpose is dropped; the Contract says so.
+  - **Follow-up, only if slice C needs live check progress:** line-by-line
+    streaming through a pure reference `redactLines(text)` with a seeded property
+    test (PEM lines dropped, an overlong line discarded to its newline, the
+    `redact.ts` patterns unchanged). Not needed for B2.
+  - **Accepted limits, now of whole-text redaction:** a secret written in a form
+    no pattern lists is not redacted (best-effort, B-5); the dropped middle of a
+    long output is not shown at all. A few shapes needing whitespace across a newline
+    that the whole-text patterns accept are covered; the gaps below are not. In the
+    same class: a `keyword=value` secret whose `=` and value are split by a newline
+    exactly at the boundary between the dropped middle and the kept tail (the
+    keyword-value pattern's `\s*`, `redact.ts`) can survive; the two halves are never
+    in one redacted text. No machinery is added for it. Also accepted (round 8):
+    output after a huge line that mentions `BEGIN` is hidden until the next
+    complete-line END, and a block opened before an overlong line that contains an
+    END stays hidden past it (over-hiding, never a leak).
+  - **Known pattern gaps, accepted and unfixed in B2** (a candidate follow-up, not
+    regressions): JWTs, `password=`, unquoted `X-Api-Key: v`, cookies, PGP
+    `PRIVATE KEY BLOCK`, and ANSI-coloured tokens (`\x1b[31mghp_...` has no `\b`).
+  - **`#refuse` orphans a still-running check without reaping it.** It cancels the
+    refused run's nodes and clears their pids, so nothing stale is ever signalled,
+    but a process that is still alive is left alone: B3's survivor sweep owns it.
 
 ## Progress
 
@@ -1504,6 +1690,16 @@ download, the accepted sandbox gap, and `LIST_ACP_AGENTS`.
   its tests run on the CI leg's Node 24 (type stripping), as the prototype's
   did. The `**/*.test.ts` glob is the plan's own conventions-card form.
 - **2026-11-07 (B1):** Gate FAIL; doc accuracy: `internal/acp/resultschema.go:21` pointed at the deleted `scripts/workflow-proto/schema.ts`; fixed (comment now names `plugins/workflows/sdk/schema.ts` and the TS port `plugins/workflows/ir/resultschema.ts`).
+
+- **2026-11-12 (B2, PR #550):** Implemented on `feature/529-b2-store-interpreter`, based
+  on `origin/main` at `fda621f5`. Added `engine/{size,keys,redact,events,model,store,interp,engine,check,killtree,nodes,topics,main}.ts`,
+  the plugin skeleton (`hive-plugin.json` with `node: "26.0.0"`, `main.mjs`,
+  the SDK copy), the tests and the Go `internal/workflowe2e/` harness with the
+  four plan e2e tests. Node 26 is not installed locally, so the `.ts` tests and
+  the Go e2e ran on Node 24.16 (the harness installs a copy of the plugin whose
+  manifest drops the floor when Node is older than 26 and `HIVE_REQUIRE_NODE`
+  is unset); CI's Node 26 leg runs the unmodified manifest. B2 decisions are
+  logged below under "B2".
 
 ## Open questions
 
@@ -1526,7 +1722,7 @@ Raised by the PR #540 review, consequences of B-6:
   `types?` filter and archive-table candidates are dropped.
 - **B2, run-level `last_seq`:** Resolved 2026-11-12, B-14.
 - **B-13 waiting prompt, paging:** Resolved 2026-11-12, B-15 (cap, not paging).
-- **B-13 redacted permission ids:** Resolved 2026-11-12, B-16.
+- **B-13 redacted permission ids:** Resolved 2026-11-12, B-16, handle part superseded by B-18.
 - **B-12 per-node history:** Resolved 2026-11-12, B-17 (`key?` filter).
 - **B3, Windows launch.** Whether Node's `spawn` already puts a non-detached
   child in a kill-on-close job at creation (libuv), or a `CREATE_SUSPENDED`
@@ -1545,6 +1741,26 @@ needs A PR1–3; B3 needs R1–R4 merged in A.
 - **2026-11-07 iter 4** — verdict: APPROVE; mergeable: MERGEABLE; findings_hash: empty; threads_open: 0; action: stop; head_sha: 778131da. Converged for PR 1 of 5 (phase 1 of 5 only; B2 to B5 remain). Greptile re-reviewed 778131da with no findings; CodeRabbit was rate-limited on it (its last review covered 62d5eb3a, whose 4 threads are fixed or declined with reasons); CI green on Linux, macOS and Windows.
 - **2026-11-07 iter 5** — verdict: APPROVE; mergeable: MERGEABLE; findings_hash: empty; threads_open: 0; action: stop; head_sha: see PR head. Converged for PR 1 of 5 (phase 1 of 5 only; B2 to B5 remain). Re-converged after the gate's doc-accuracy fix (a stale comment in internal/acp/resultschema.go; comment-only, no behaviour change).
 - **2026-11-07 iter 6** — verdict: REQUEST_CHANGES (CodeRabbit re-review of a0df0db8: one plan-wording thread); mergeable: MERGEABLE; findings_hash: see list; threads_open: 1 -> 0; action: autofix+push; head_sha: see PR head. Fixed: the B3 fence wording no longer lets an empty marker scan lift the fence. Docs only; the iter 5 convergence stands once this head is green.
+- **2026-11-12 iter 1 (B2, PR #550)** — verdict: REQUEST_CHANGES; mergeable: MERGEABLE; findings_hash: see list; threads_open: 14 -> 0; action: autofix+push; head_sha: a2d5f7fd. CodeRabbit raised 14 threads on 8fef0b01, all valid and fixed with tests: check output cut by UTF-16 length and redacted per event (now bytes, redact-then-cut, partial token held back); a check with no start time ran untracked; timeout overwrote a cancel; result settled before the tree died; stale executor failure could fail a retried node (epoch guard); lstart second resolution (Linux uses /proc ticks; macOS ceiling noted); EPERM treated as gone; reattached worktree lost the base (pinned at once, head_sha fallback); Authorization= / Bearer / quoted-token redaction; late check.output after node.finished; runs.list cursor skipped same-ms runs (before_id); error replies unbounded. Own review (advisor) fixed before bots: per-run permission handles minted under the wrong run, effects launched from a failing step, nodes row read outside a read transaction.
+- **2026-11-12 iter 2 (B2, PR #550)** — verdict: APPROVE; mergeable: MERGEABLE; findings_hash: empty; threads_open: 0; action: stop; head_sha: a2d5f7fd. All CI green (Linux, macOS, Windows, Plugins on Node 26 incl. the unmodified-manifest e2e). Two CI-only failures found and fixed on the way: crash tests killed the engine before the check created its marker, and unreaped zombies counted as alive on Linux.
+- **2026-11-12 iter 3 (B2, PR #550)** — verdict: REQUEST_CHANGES (Opus gate FAIL on f8ebbe8c, plus 2 CodeRabbit threads); mergeable: MERGEABLE; findings_hash: see list; threads_open: 2 -> 0; action: autofix+push; head_sha: e918dff1. Fixed with tests: capData did not bound nested shapes (now trims the biggest array with an exact `*_omitted` count, never cuts the state, reason, request_id, option_id or cap fields (the `options` array itself can be trimmed from the tail, with `options_omitted`); conflicts keep 32 files); a failing stop (EPERM) escaped as an unhandled rejection; a stale launch could fail a retried attempt after `await stop()`. Plan amended (contract rows, decision log, B3/B5 follow-ups, user decisions B-18 (no permission-id handles: a non-conforming id fails the node with permission_option_invalid) and B-19 (run.get ir unredacted, pinned by a test)). Head after these: see PR.
+- **2026-11-13 iter 4 (B2, PR #550)** — verdict: REQUEST_CHANGES (1 CodeRabbit thread on 0ecbf8b6); mergeable: MERGEABLE; findings_hash: see list; threads_open: 1 -> 0; action: autofix+push; head_sha: see PR head. Fixed with a test: check output from a cancelled attempt was recorded against the retried node (now guarded by the run epoch). CI was green on 74724e76 (gate fixes) and the Node 26 leg on 0ecbf8b6 (B-18, B-19).
+- **2026-11-13 iter 5 (B2, PR #550)** — verdict: REQUEST_CHANGES (Opus gate round 2 FAIL on a8df7b83); mergeable: MERGEABLE; findings_hash: see list; threads_open: 0 -> 0; action: autofix+push; head_sha: 1fff4425. Fixed with tests (each mutation-checked): secrets straddling a cut leaked from permission-id detail and conflict fields (every cut site now goes through redactCut: redact, then cut); EPERM from reap/killTree crashed recover() and skipped shutdown's flush (they now report `kept`, recover() fails the node naming the pid, shutdown() settles every stop and flushes); an old attempt exiting during cancel+retry could complete the retried node (guard test added); agent.plan cap was quadratic.
+- **2026-11-13 iter 6 (B2, PR #550)** — verdict: APPROVE; mergeable: MERGEABLE; findings_hash: empty; threads_open: 0; action: stop; head_sha: 1fff4425. All five CI jobs green on 1fff4425 (Linux, macOS, Windows, Plugins on Node 26, Shellcheck); 207 plugin tests pass. This entry and the plan edits that record it are docs-only on top of 1fff4425.
+- **2026-11-13 iter 7 (B2, PR #550)** — verdict: REQUEST_CHANGES (Opus gate round 3 FAIL on abe9208a); mergeable: MERGEABLE; findings_hash: see list; threads_open: 0 -> 0; action: autofix+push; head_sha: 548332de. Fixed with seam-only tests (no real signal, each mutation-checked): hostile or corrupt pid/pgid rows (pgid 1, pid 1, 0, negatives, our own pid or group, pgid != pid) reached kill(); killTree now refuses them for every caller and recover() fails the node naming the row; check output released a held token on a timer tick (Coalescer now holds the trailing run and a preceding Bearer/Authorization/token key until more output or the end); the stored-IR leak test did not straddle the cut.
+- **2026-11-13 iter 8 (B2, PR #550)** — verdict: APPROVE; mergeable: MERGEABLE; findings_hash: empty; threads_open: 0; action: stop; head_sha: 548332de. Code head; the branch head is this docs-only ledger commit on top, whose CI is the final CI. 214 plugin tests pass.
+- **2026-11-13 iter 9 (B2, PR #550)** — verdict: REQUEST_CHANGES (Opus gate round 4 FAIL on 74e564e9); mergeable: MERGEABLE; findings_hash: see list; threads_open: 0 -> 0; action: autofix+push; head_sha: a865ad3e. Check output still leaked in 325 of 4416 (input, split) probes: the size cut kept a redacted remainder, keyword lookbacks missed `Authorization: token X`, and a split key block leaked its body. Redesigned instead of patched: the stream layer is line/block oriented (redact only complete lines and complete private-key blocks, keep the unfinished tail raw, caps fail closed with a marker and a bounded discard, the timer never ships a partial line); patterns made line-local; URL credentials redacted; a seeded oracle test (every offset, random multi-way splits, byte-at-a-time, ticks interleaved) requires output == whole-text redaction, and reintroducing the redacted remainder or the timer flush fails it. Also: a refused run cancels its live nodes and clears their pids; the survivor message no longer says "permission denied"; shutdown() lets stopped checks hand over their held tail.
+- **2026-11-13 iter 10 (B2, PR #550)** — verdict: APPROVE; mergeable: MERGEABLE; findings_hash: empty; threads_open: 0; action: stop; head_sha: a865ad3e. Code head; the branch head is this docs-only ledger commit, whose CI is the final CI. 230 plugin tests pass.
+- **2026-11-14 iter 11 (B2, PR #550)** — verdict: REQUEST_CHANGES (Opus gate round 5 FAIL on c3116af3); mergeable: MERGEABLE; findings_hash: see list; threads_open: 0 -> 0; action: autofix+push; head_sha: 1dac0188. Fixed with tests (mutation-checked): the discard budget resumed mid-unit and emitted a raw suffix (now discards to the real end of the line or block, no budget); the held region cut a closed key block from its BEGIN when another opened on the same line (the cut now moves back while any block spans it); a split END marker was missed while discarding (a short tail is kept); `[ \t]` weakened the other redaction callers (back to `[^\\S\\n]`). Plan decision log rewritten to the round-5 design, accepted limits and gaps recorded.
+- **2026-11-14 iter 12 (B2, PR #550)** — verdict: APPROVE; mergeable: MERGEABLE; findings_hash: empty; threads_open: 0; action: stop; head_sha: 1dac0188. Code head; the branch head is this docs-only ledger commit, whose CI is the final CI. 235 plugin tests pass.
+- **2026-11-14 iter 13 (B2, PR #550)** — verdict: REQUEST_CHANGES (user decision after a holistic Opus review: the streaming Coalescer was over-engineered); mergeable: MERGEABLE; findings_hash: see list; threads_open: 0 -> 0; action: autofix+push; head_sha: 7cdf4ff9. Replaced the streaming redactor with B-20/B-21: check output is captured (head 16 KiB cut back to a line start, tail 48 KiB of whole lines, total_bytes, key blocks opened in the dropped middle never shown) and redacted once as whole text when the check ends, in pieces of at most 8 KiB, before node.finished (a timeout included); a cancelled check emits none. Coalescer, the 250 ms coalescing and shutdown()'s settle wait deleted; redact.ts back to whole-text patterns (keeping Bearer, keyword=value and URL-credential patterns). Contract and decision log amended; the round-5 fixes are superseded.
+- **2026-11-14 iter 14 (B2, PR #550)** — verdict: APPROVE; mergeable: MERGEABLE; findings_hash: empty; threads_open: 0; action: stop; head_sha: 7cdf4ff9. Code head; the branch head is this docs-only ledger commit, whose CI is the final CI. 226 plugin tests pass.
+- **2026-11-14 iter 15 (B2, PR #550)** — verdict: REQUEST_CHANGES (round-6 gate: `Capture` tracked the open key-block state out of stream order, so an overlong BEGIN line after an earlier closed block, or that block's later eviction, showed a key body without its BEGIN); mergeable: MERGEABLE; findings_hash: see list; threads_open: 0 -> 0; action: autofix+push; head_sha: 9aaaa33b. Every line is now scanned once, in order, when pushed; ring entries carry startsOpen/endsOpen and an overlong line's marker inherits the state around it; `finish()` hides from the first kept entry's state. Both leaks and a seeded property test added (mutation-checked). The minor cross-newline keyword=value gap is recorded under B-20's accepted limits. 229 plugin tests pass.
+- **2026-11-14 iter 16 (B2, PR #550)** — verdict: APPROVE; mergeable: MERGEABLE; findings_hash: empty; threads_open: 0; action: stop; head_sha: 9aaaa33b. Code head; the branch head is this docs-only ledger commit, whose CI is the final CI. 229 plugin tests pass.
+- **2026-11-14 iter 17 (B2, PR #550)** — verdict: REQUEST_CHANGES (round-7 gate: a key-marker label longer than the 64-char scan carry, split by a write inside an overlong line, was never matched; the property test missed the initial-hidden-state mutation; stale docstring); mergeable: MERGEABLE; findings_hash: see list; threads_open: 0 -> 0; action: autofix+push; head_sha: a8b3e7e2. Carry is now the pending BEGIN/END prefix (fail closed past 256 chars); added split-marker tests and a stream-order oracle fuzzer, mutation-checked; docstring fixed. 235 plugin tests pass.
+- **2026-11-14 iter 18 (B2, PR #550)** — verdict: APPROVE; mergeable: MERGEABLE; findings_hash: empty; threads_open: 0; action: stop; head_sha: a8b3e7e2. Code head; the branch head is this docs-only ledger commit, whose CI is the final CI. 235 plugin tests pass.
+- **2026-11-15 iter 19 (B2, PR #550)** — verdict: REQUEST_CHANGES (round-8 gate: shared-dash markers split across writes in an overlong line read as an END and leaked the key body); mergeable: MERGEABLE; findings_hash: see list; threads_open: 0 -> 0; action: autofix+push; head_sha: ea960401. User decision: an overlong line is scanned for the substring BEGIN only (carry 4), BEGIN opens the state, END is ignored; pending-prefix carry and PENDING_MAX deleted. New tests plus oracle shapes, mutation-checked. 240 plugin tests pass.
+- **2026-11-15 iter 20 (B2, PR #550)** — verdict: APPROVE; mergeable: MERGEABLE; findings_hash: empty; threads_open: 0; action: stop; head_sha: ea960401. Code head; the branch head is this docs-only ledger commit, whose CI is the final CI. 240 plugin tests pass.
 
 ## Gate verdict
 
@@ -1560,3 +1776,16 @@ needs A PR1–3; B3 needs R1–R4 merged in A.
     - acceptance — PASS — criterion 1: tsgo size per platform recorded in `workflow-engine.md`; criterion 2: prototype moved to `plugins/workflows/` (`scripts/workflow-proto/` deleted), doc-drift check kept in `ci.yml`, catalog/ceiling/unavailable rejections tested in `catalog.test.ts`; `node --test` 88/88, `tsc -p plugins/workflows/tsconfig.json` exit 0, `check-doc.ts` exit 0; criteria 3–9 DEFERRED (phase > 1)
     - non-goals — PASS — delta adds no code beyond a comment; `check-daemon-contract.sh origin/main HEAD` reports no daemon-side changes
     - doc accuracy — PASS — no `workflow-proto` pointer outside history except spec 528's active-plan research table (a point-in-time snapshot of another feature, non-blocking); `no-changeset` label applies (scripts/docs/unembedded plugin)
+- **2026-11-12** — verdict: FAIL; phase: 2/5 (B2, PR #550); round R1; head f8ebbe8c; one-line: capData did not bound nested shapes (overflow).
+- **2026-11-13** — verdict: FAIL; phase: 2/5; round R2; head a8df7b83; one-line: cut-before-redact leaked secrets straddling a cut; EPERM from reap crashed recover().
+- **2026-11-13** — verdict: FAIL; phase: 2/5; round R3; head abe9208a; one-line: an unguarded hostile pid/pgid row could reach kill(-1).
+- **2026-11-13** — verdict: FAIL; phase: 2/5; round R4; head 74e564e9; one-line: streaming Coalescer leaked secrets split across chunks, ticks and size cuts.
+- **2026-11-14** — verdict: FAIL; phase: 2/5; round R5; head c3116af3; one-line: Coalescer discard budget and held-region cut still leaked (led to B-20/B-21 redesign).
+- **2026-11-14** — verdict: FAIL; phase: 2/5; round R6; head 7cdf4ff9; one-line: key-block PEM state tracked out of stream order showed a body without its BEGIN.
+- **2026-11-14** — verdict: FAIL; phase: 2/5; round R7; head 9aaaa33b; one-line: the 64-char carry missed a long BEGIN marker split inside an overlong line.
+- **2026-11-15** — verdict: FAIL; phase: 2/5; round R8; head a8b3e7e2; one-line: shared-dash BEGIN/END in an overlong line read as an END and leaked the key body.
+- **2026-11-15** — verdict: PASS; phase: 2/5; round R9; code head ea960401 (branch head c9ef3f7c); checks: 3 passed / 0 failed / 0 followups; followups: none; one-line: overlong-line BEGIN-only scan fails closed; 0 leaks across gate7/gate8 repros, sweep (40412 cases), fuzz seeds 1/7/99 x200 and 2955 new round-9 attacks; 240/240 plugin tests. Spec stays at GATE; plan stays in active/ for B3-B5.
+  - 2026-11-15 dimensions:
+    - acceptance — PASS — B2-scope criteria (interpreter, node kinds, durability, caps/cancel for check nodes) covered by `node --test --test-timeout=60000 'plugins/workflows/**/*.test.ts'` 240/240; round-9 attacks (cap crossing at T-40..T+10, CRLF/lone CR, 2-4-way BEGIN splits, several overlong lines, cross-line carry, head/no-newline head, ring eviction, 50 MB line) 0 leaks; held bytes max 93152 <= HEAD+2*TAIL; plan's round-8 mutation claims spot-checked (carry removal fails the 3 named tests, not the oracle; `let hidden = false` fails the oracle). Criteria owned by B3-B5 DEFERRED (phase > 2).
+    - non-goals — PASS — `check-daemon-contract.sh origin/main HEAD`: no daemon-side changes; delta a8b3e7e2..ea960401 is check.ts, capture.test.ts and the plan only.
+    - doc accuracy — PASS — `Capture` docstring, `#scanChunk` comment and plan B-20 / round-8 note / accepted limits match the code. Non-blocking nit (pre-existing, not in delta): "a head with no newline at all is replaced by a marker" — its text actually moves to the tail and is shown if that line fits TAIL_BYTES.

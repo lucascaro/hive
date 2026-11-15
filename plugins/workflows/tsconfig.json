@@ -13,5 +13,5 @@
     "noUnusedParameters": true,
     "types": []
   },
-  "include": ["*.d.ts", "sdk/*.ts", "ir/*.ts", "tools/*.ts", "test/*.ts"]
+  "include": ["*.d.ts", "sdk/*.ts", "ir/*.ts", "engine/*.ts", "tools/*.ts", "test/*.ts"]
 }

@@ -128,6 +128,36 @@ func TestWebhookVendorsCurrentSDK(t *testing.T) {
 	}
 }
 
+// The workflow engine vendors the SDK too (spec 529): byte for byte.
+func TestWorkflowsVendorsCurrentSDK(t *testing.T) {
+	sdk, err := os.ReadFile(sdkPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	vendored, err := os.ReadFile("../../plugins/workflows/hive-plugin.mjs")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Equal(sdk, vendored) {
+		t.Fatal("plugins/workflows/hive-plugin.mjs differs from plugins/sdk/hive-plugin.mjs; copy the SDK over it")
+	}
+}
+
+// The engine's manifest loads in this build and pins the Node floor its
+// TypeScript (type stripping) and node:sqlite need.
+func TestManifest_NodeFloor26(t *testing.T) {
+	m, err := LoadManifest("../../plugins/workflows")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if m.ID != "workflows" || m.Node != "26.0.0" || m.UI != nil {
+		t.Fatalf("workflows manifest = %+v, want id workflows, node 26.0.0, no ui", m)
+	}
+	if got := strings.Join(m.Main.Command, " "); got != "node --disable-sigusr1 ./main.mjs" {
+		t.Fatalf("main command = %q", got)
+	}
+}
+
 // The reference plugin's manifest must load in this build.
 func TestWebhookManifestLoads(t *testing.T) {
 	m, err := LoadManifest("../../plugins/webhook")
