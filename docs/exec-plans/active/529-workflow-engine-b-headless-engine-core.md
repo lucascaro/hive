@@ -5,7 +5,7 @@
 - **Depends on:** A (#528), planned against `origin/feature/528-daemon-sdk-prereqs:docs/exec-plans/active/528-workflow-engine-a-daemon-sdk-prereqs.md` at `7410f6b7`
 - **Issue:** #529
 - **Branch:** `feature/529-engine-core` (research and plan); one branch per phase PR (B1: `feature/529-b1-validator`, B2: `feature/529-b2-store-interpreter`)
-- **PR:** #538 (B1), #550 (B2)
+- **PR:** #538 (B1), #550 (B2), #554 (B3 plan)
 - **Phase:** 2 of 5
 - **Status:** active. Plan approved. B1 (#538) and B2 (#550) merged; the B3 plan is drafted with open questions B3-Q1 to B3-Q4 (2026-11-15); B3 to B5 remain.
   - All open questions are decided (see Decision log, 2026-10-25 user
