@@ -54,6 +54,20 @@ func gitCmd(ctx context.Context, args ...string) *exec.Cmd {
 	return cmd
 }
 
+// combinedOutput is cmd.CombinedOutput that does not mistake a clean
+// exit for a failure. When git exits 0 but a descendant (a background
+// helper such as `git maintenance`, or ssh) still holds the pipe, Go
+// reports exec.ErrWaitDelay once WaitDelay lapses; the command itself
+// succeeded, and treating it as failed would make a good fetch look
+// stale or a created worktree look absent.
+func combinedOutput(cmd *exec.Cmd) ([]byte, error) {
+	out, err := cmd.CombinedOutput()
+	if errors.Is(err, exec.ErrWaitDelay) && cmd.ProcessState != nil && cmd.ProcessState.Success() {
+		err = nil
+	}
+	return out, err
+}
+
 // git runs `git -C dir <args…>` with a bounded timeout and a C locale.
 // The locale pin keeps error-text matching meaningful on non-English
 // systems, the same reason gitWorktreeAdd pins it.
@@ -63,7 +77,7 @@ func git(ctx context.Context, timeout time.Duration, dir string, args ...string)
 	cmd := gitCmd(ctx, append([]string{"-C", dir}, args...)...)
 	cmd.Env = append(os.Environ(), "LC_ALL=C", "LANG=C")
 	start := time.Now()
-	out, err := cmd.CombinedOutput()
+	out, err := combinedOutput(cmd)
 	if d := time.Since(start); d > slowGit {
 		log.Printf("worktree: git %s in %s took %s", args[0], dir, d.Round(time.Millisecond))
 	}
@@ -240,6 +254,25 @@ func MainRoot(dir string) (string, error) {
 		return Root(dir)
 	}
 	return ResolvePath(filepath.Dir(common)), nil
+}
+
+// CommonDir returns the git directory shared by every worktree of the
+// repository dir belongs to. Unlike MainRoot it never guesses where the
+// checkout is: a checkout made with --separate-git-dir keeps its git dir
+// elsewhere, and git records no path back to the checkout. Git runs
+// correctly with -C pointed at this directory, which is all a caller
+// that only needs to prune or delete branches wants.
+func CommonDir(dir string) (string, error) {
+	out, err := git(context.Background(), readTimeout, dir,
+		"rev-parse", "--path-format=absolute", "--git-common-dir")
+	if err != nil {
+		return "", err
+	}
+	common := strings.TrimSpace(string(out))
+	if common == "" {
+		return "", fmt.Errorf("git rev-parse --git-common-dir in %s: empty", dir)
+	}
+	return common, nil
 }
 
 // BranchInfo describes one local branch. Ahead counts commits not

@@ -107,7 +107,7 @@ func PrepareBase(ctx context.Context, repoDir string) (string, error) {
 
 	fetchCtx, fetchCancel := context.WithTimeout(ctx, 10*time.Second)
 	defer fetchCancel()
-	fetchOut, fetchErr := gitCmd(fetchCtx, "-C", repoDir, "fetch", "--quiet", "origin").CombinedOutput()
+	fetchOut, fetchErr := combinedOutput(gitCmd(fetchCtx, "-C", repoDir, "fetch", "--quiet", "origin"))
 	if fetchErr != nil {
 		// Resolve the cached ref anyway: it is what the user will be
 		// offered as the explicit fallback, and the age is what makes
@@ -275,7 +275,7 @@ func gitWorktreeAdd(ctx context.Context, repoDir string, args ...string) ([]byte
 	full := append([]string{"-C", repoDir, "worktree", "add"}, args...)
 	cmd := gitCmd(ctx, full...)
 	cmd.Env = append(os.Environ(), "LC_ALL=C", "LANG=C")
-	out, err := cmd.CombinedOutput()
+	out, err := combinedOutput(cmd)
 	if err != nil && ctx.Err() == context.DeadlineExceeded {
 		return out, fmt.Errorf("timed out after 30s")
 	}
@@ -307,7 +307,11 @@ func Cleanup(repoDir, worktreePath string) error {
 	// Always try the FS removal too — `git worktree remove` may have
 	// succeeded but left a stray dir, or it may have skipped it.
 	if err := removeAllBounded(worktreePath, mutateTimeout); err != nil {
-		log.Printf("worktree: %v", err)
+		// Still deleting in the background. Pruning now would keep the
+		// entry (its directory still exists) and the caller could not
+		// delete the branch (still checked out there), so hand the
+		// decision back: it finishes once Done closes.
+		return err
 	}
 	// Prune git's admin state regardless of how the above went.
 	if out, err := git(context.Background(), mutateTimeout, repoDir, "worktree", "prune"); err != nil {
@@ -321,18 +325,38 @@ func Cleanup(repoDir, worktreePath string) error {
 	return nil
 }
 
-// removeAllBounded is os.RemoveAll that gives up after d. Callers hold
-// the registry's git lock, and a wedged mount or a huge node_modules
-// tree must not pin it. On timeout the removal keeps running in the
-// background; the startup orphan reclaim finishes whatever is left.
+// RemovalPendingError reports that Cleanup gave up waiting for the
+// directory to be deleted. The deletion continues in the background;
+// Done closes once it has finished, and only then can git's admin entry
+// be pruned and the worktree's branch deleted. Callers that care run
+// Cleanup again after <-Done, which is idempotent.
+type RemovalPendingError struct {
+	Path string
+	Done <-chan struct{}
+}
+
+func (e *RemovalPendingError) Error() string {
+	return fmt.Sprintf("removing %s: still running; continuing in background", e.Path)
+}
+
+// removeAll is os.RemoveAll, swappable so a test can make it slow.
+var removeAll = os.RemoveAll
+
+// removeAllBounded is removeAll that gives up after d with a
+// *RemovalPendingError. Callers hold the registry's git lock, and a
+// wedged mount or a huge node_modules tree must not pin it.
 func removeAllBounded(path string, d time.Duration) error {
-	done := make(chan error, 1)
-	go func() { done <- os.RemoveAll(path) }()
+	done := make(chan struct{})
+	res := make(chan error, 1)
+	go func() {
+		res <- removeAll(path)
+		close(done)
+	}()
 	select {
-	case err := <-done:
+	case err := <-res:
 		return err
 	case <-time.After(d):
-		return fmt.Errorf("removing %s: still running after %s; continuing in background", path, d)
+		return &RemovalPendingError{Path: path, Done: done}
 	}
 }
 
