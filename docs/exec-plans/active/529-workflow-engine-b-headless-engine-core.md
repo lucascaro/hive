@@ -7,7 +7,7 @@
 - **Branch:** `feature/529-engine-core` (research and plan); one branch per phase PR (B1: `feature/529-b1-validator`, B2: `feature/529-b2-store-interpreter`)
 - **PR:** #538 (B1), #550 (B2), #554 (B3 plan)
 - **Phase:** 2 of 5
-- **Status:** active. Plan approved. B1 (#538) and B2 (#550) merged; the B3 plan is drafted with open questions B3-Q1 to B3-Q4 (2026-11-15); B3 to B5 remain.
+- **Status:** active. Plan approved. B1 (#538) and B2 (#550) merged; the B3 plan is decided (B-22..B-25, 2026-11-15); B3 to B5 remain.
   - All open questions are decided (see Decision log, 2026-10-25 user
     decisions).
   - R1–R6 are approved as A changes: R2, R3, R5 and R6 go to A PR1; R1 and
@@ -126,7 +126,7 @@ why B-9 leaves such survivors alone.
 | What `SILENT_BREAKAWAY_OK` means | "Allows any process associated with the job to create child processes that are not associated with the job." So every grandchild of a check leaves libuv's job, and an engine crash kills only the check's first process. | [JOBOBJECT_BASIC_LIMIT_INFORMATION](https://learn.microsoft.com/en-us/windows/win32/api/winnt/ns-winnt-jobobject_basic_limit_information) |
 | `taskkill /T /F` after the leader exits | `/t` "Ends the specified process and any child processes started by it". The page says nothing about how children are found. Win32_Process: "It is possible that the process identified by ParentProcessId is terminated … It is also possible that ParentProcessId incorrectly refers to a process that reuses a process identifier". `ProcessId`: "Upon termination, that same numeric identifier can be applied to a new process." So `/T` on a dead leader's pid targets whoever holds that pid now, plus any process whose recorded parent id matches it. **Unsafe without a fresh identity check, and even then it cannot reach orphans.** | [taskkill](https://learn.microsoft.com/en-us/windows-server/administration/windows-commands/taskkill), [Win32_Process](https://learn.microsoft.com/en-us/windows/win32/cimwin32prov/win32-process) |
 | `node:ffi` as a way in | Added in **v26.1.0**, above the 26.0.0 floor. Stability 1, and its type and signature keys were renamed within v26. Rejected. | [node:ffi](https://nodejs.org/api/ffi.html) |
-| Recommendation | A per-check job of our own: `KILL_ON_JOB_CLOSE`, no breakaway flags, the child created suspended and assigned before it runs, held by a helper that the engine kills through its process handle. See B3-Q3 for where the helper lives. | — |
+| Recommendation | A per-check job of our own: `KILL_ON_JOB_CLOSE`, no breakaway flags, the child created suspended and assigned before it runs, held by a helper that the engine kills through its process handle. Where the helper lives was B3-Q3, decided as B-24. | — |
 
 **(c) Spawn-to-record gap (B-8).** Both designs are under B3a step 6. The
 start gate closes the gap instead of fencing it. Measured: a gate whose
@@ -417,8 +417,8 @@ Decisions.
   The resume path is `run.retry`. Re-preparing re-attaches, and the
   merges already done are no-ops (A).
 - **Sessions at run end** (user decision). *This bullet and Cleanup below
-  are amended by B3, pending B3-Q4: an archived session claims its worktree,
-  and committed run branches are refused as unpushed. See Phases, B3d.* When a run reaches `done`,
+  are amended by B-25: an archived session claims its worktree, and committed
+  run branches need B3-R7's unpushed exemption. See Phases, B3-R7 and B3d.* When a run reaches `done`,
   `failed` or `cancelled`, every session it created is archived with
   ARCHIVE_SESSION, so they leave the sidebar but can be restored.
   `run.retry` creates fresh sessions in the same worktrees.
@@ -502,10 +502,9 @@ Decisions.
   - The check env is the login PATH plus `LANG`, `TZ` and `HOME`. `HOME` is
     allowed because builds and tests need it; checks are argv the user
     reviewed, not sandboxed.
-- **Kill tree** (`killtree.ts`). *Amended by B3, pending B3-Q2 and B3-Q3:
-  the identity reading, verification before each signal, recorded members,
-  and the Windows job replacing `taskkill` and the PowerShell start time. See
-  Phases, B3a.*
+- **Kill tree** (`killtree.ts`). *Amended by B-23 and B-24: the identity
+  reading, verification before each signal, recorded members, and the Windows
+  job replacing `taskkill` and the PowerShell start time. See Phases, B3a.*
   - POSIX: `process.kill(-pgid, 'SIGTERM')`, then 10 s, then `'SIGKILL'`.
     The group is signalled only while the leader, or a recorded member, still
     matches its pid and start time **and** its current process group
@@ -529,18 +528,17 @@ Decisions.
     graceful path still runs `taskkill /T /PID <pid>`, then 10 s, then
     `taskkill /T /F /PID <pid>`, both through `spawn` with `windowsHide: true`.
 - **Startup reaping.** *Amended by B3 (`ps` with `TZ=UTC0 LC_ALL=C`, plus
-  the kernel boot in the identity; the spawn-to-record gap is pending
-  B3-Q1). See Phases, B3a.* For each `running` check row, the engine kills the
+  the kernel boot in the identity) and by B-22 (the start gate). See Phases,
+  B3a.* For each `running` check row, the engine kills the
   recorded group or tree only when the pid is alive **and** its start time
   matches. The start time comes from `ps -o lstart= -p` on POSIX, and from
   `powershell -NoProfile -Command (Get-Process -Id N).StartTime.ToFileTimeUtc()`
   with `windowsHide` on Windows. The row then becomes `interrupted`.
   - Without the start-time match, a reused pid could kill an unrelated
     process.
-  - **Spawn-to-record gap (B-8).** *Amended by B3, pending B3-Q1 (a start
-    gate instead of the intent row; or, if the row is kept, a `_f<n>` retry
-    branch instead of `-r<attempt>`, and a nonce in the marker). See Phases,
-    B3a step 6.* The engine writes an intent row before
+  - **Spawn-to-record gap (B-8).** *Superseded by B-22: a start gate
+    replaces the intent row, the marker, the scan, the fence and the retry
+    branch below. See Phases, B3a step 7.* The engine writes an intent row before
     `spawn`, and the child env carries `HIVE_WF_CHECK=<run>/<key>/<attempt>`
     so a scan can find it (Linux `/proc/<pid>/environ`, macOS `ps eww`). An
     empty scan never lifts the fence: the child may have exec'd a
@@ -948,8 +946,9 @@ Each phase is one PR, and every phase ends green on the Verification
 commands.
 
 **DaemonContract.**
-- B1–B4 need no bump. (*Amended by B3: it holds only if B3-Q3 and B3-Q4
-  avoid daemon changes. See Phases, B3 DaemonContract.*) They touch no gated path, and the plugin isn't
+- B1–B4 need no bump. (*Amended by B3: B3-R7 bumps DaemonContract (B-25), and
+  B3a takes the override label for `hived wf-exec` (B-24). See Phases, B3
+  DaemonContract.*) They touch no gated path, and the plugin isn't
   embedded yet, so `hived`'s behaviour is unchanged. Each PR runs
   `scripts/check-daemon-contract.sh origin/main HEAD` to prove it.
 - **B5 bumps it.** Embedding `workflows` changes what `hived` serves. A
@@ -1000,21 +999,34 @@ first if it copies them.*
 
 ### B3: agent nodes, worktrees and durability
 
-*Needs R1–R4: all merged on `main` (verified at `bb91720b`).* A PR1 (#532)
-carries R2 (`Welcome.boot_id`, `wire/control.go:197-200`; the PROMPT_ACP ACK's
-`prompt_id`/`epoch`, `wire/request.go:29-33`) and R3 (RESTART_SESSION ACK,
-`wire/control.go:589-596`, `daemon.go:2000-2009`). A PR2 (#539) carries R1
-(COMMIT_WORKTREE, ACK `committed`/`head`, `wire/request.go:34-38,134-144`)
-and R4 (`base_sha`/`head_sha`, `wire/request.go:127-129`). A PR3 (#541) is
-the runtime. The SDK's `REQUEST_VERBS` (`plugins/sdk/hive-plugin.mjs:132-144`)
-covers CREATE, KILL, RESTART, PROMPT_ACP, CANCEL_ACP, LIST_ACP_AGENTS,
-PREPARE_WORKTREE and COMMIT_WORKTREE. It does **not** cover ARCHIVE_SESSION or
-REMOVE_WORKTREE (see B3-Q4).
+*Needs R1–R4: all merged on `main` (verified at `bb91720b`).*
+- A PR1 (#532) carries R2 and R3:
+  - R2: `Welcome.boot_id` (`wire/control.go:197-200`) and the PROMPT_ACP
+    ACK's `prompt_id`/`epoch` (`wire/request.go:29-33`);
+  - R3: the RESTART_SESSION ACK (`wire/control.go:589-596`,
+    `daemon.go:2000-2009`).
+- A PR2 (#539) carries R1 and R4:
+  - R1: COMMIT_WORKTREE, with ACK `committed`/`head`
+    (`wire/request.go:34-38,134-144`);
+  - R4: `base_sha`/`head_sha` (`wire/request.go:127-129`).
+- A PR3 (#541) is the runtime.
+
+The SDK's `REQUEST_VERBS` (`plugins/sdk/hive-plugin.mjs:132-144`) covers
+CREATE, KILL, RESTART, PROMPT_ACP, CANCEL_ACP, LIST_ACP_AGENTS,
+PREPARE_WORKTREE and COMMIT_WORKTREE. It does **not** cover ARCHIVE_SESSION
+or REMOVE_WORKTREE. **B3-R7** adds them (B-25).
 
 The design under Approach (Worktrees, Agent nodes, Check and human nodes,
-Durability) stands. This section makes it concrete, folds in every B3
-follow-up, and says which open question each step waits on. Research is
+Durability) stands, as amended by B-22..B-25 (user decisions, 2026-11-15).
+This section makes it concrete and folds in every B3 follow-up. Research is
 under **B3 research (2026-11-15)** in Research.
+
+**Windows claims are source-only.** The windows-vm MCP was unavailable on
+2026-11-15, so nothing Windows-specific in this section has been run on
+Windows. B3a must verify on a real Windows run (the Windows CI leg, or the
+VM) both of these before its gate can pass:
+- the job helper's launch, including the Go thread-handle risk in step 7;
+- `TestCheckNode_Windows_EngineKilledTreeDies`.
 
 **Not in B3:**
 - Linking agent config (B-10a). It stays a follow-up with its own security
@@ -1023,176 +1035,175 @@ under **B3 research (2026-11-15)** in Research.
 - `agent.usage` wiring (R5). Phases puts it in B5, so
   `TestUsage_AgentUsageEventsPerNode` moves from the B3 test list to B5.
 
-**Split.** Four PRs, each gated alone. B2 needed 9 gate rounds on one
+**Split.** Five PRs, each gated alone. B2 needed 9 gate rounds on one
 surface, so the riskiest code (signalling processes) ships without agent
 code beside it.
 
-| PR | Scope | Blocked on |
+| PR | Scope | Depends on |
 |---|---|---|
-| **B3a** process safety | B-8 gap, full B-9, reap re-verify, `#refuse` sweep, Windows launch, process identity, `Capture` docstring | B3-Q1, B3-Q2, B3-Q3 |
+| **B3a** process safety | start gate (B-22), recorded members and survivors (B-23), the `lstart` TZ fix and boot identity, reap re-verify, `#refuse` sweep, the Windows job helper (B-24), `Capture` docstring | nothing |
 | **B3b** agent nodes and worktrees | `agent.ts`, `prompt.ts`, `worktrees.ts`, commit (R1), merges, loops, F3, permissions (B-1), modes, timeout and cancel, the turn cap | nothing |
 | **B3c** durability | the startup table for agent rows, `boot_id`, orphan adoption, RESTART and fresh-CREATE retries, reconnect, the crash loop | B3b |
-| **B3d** run end and scale | archive on run end, worktree cleanup, the fan-out bench, `acptest.FlagChatty` | B3-Q4, B3b |
+| **B3-R7** daemon: archive/remove acks and the run-branch unpushed exemption | see B3-R7 below (B-25); the only B3 PR that bumps DaemonContract | nothing |
+| **B3d** run end and scale | archive on run end, worktree cleanup, the fan-out bench, `acptest.FlagChatty` | B3-R7, B3b |
 
-B3b can start now and run in parallel with B3a.
+B3a, B3b and B3-R7 can run in parallel.
+
+**Where R7 lives.** R7 is a daemon change, and slice A owns the daemon side.
+A's plan (`docs/exec-plans/completed/528-workflow-engine-a-daemon-sdk-prereqs.md`)
+is **completed**, so R7 is planned here as its own PR, B3-R7, landing before
+B3d. Reopening A for one PR would have meant un-completing a merged plan.
 
 #### B3a: process safety
 
-Files: `engine/killtree.ts`, `engine/check.ts`, `engine/nodes.ts`,
-`engine/engine.ts`, `engine/store.ts`. Windows adds whatever B3-Q3 picks.
+Files:
+- `engine/killtree.ts`, `engine/check.ts`, `engine/nodes.ts`,
+  `engine/engine.ts`, `engine/store.ts`;
+- for Windows (B-24): `internal/proc` (the job launcher), `cmd/hived` (the
+  hidden `wf-exec` subcommand) and `internal/plugin/manager.go`
+  (`HIVE_DAEMON_EXE`).
 
-1. **Process identity** (`killtree.ts`: `procStart` becomes `procId`). One
-   string per process, with the kernel boot in it. After a reboot every
-   recorded pid is a stranger, and a reaper must not even probe it.
-   - **Linux:** `linux:<boot_id>:<starttime>`. The boot id is
-     `/proc/sys/kernel/random/boot_id`; the start time is field 22 of
-     `/proc/<pid>/stat`. The current pgid is field 5 of the same read.
-     B2 stores the ticks without the boot id.
-   - **macOS:** `darwin:<kern.boottime sec.usec>:<lstart>`. It comes from
-     `sysctl -n kern.boottime` (read once) and
-     `ps -o pgid=,lstart= -p <pid>`, run with the env
-     `{PATH, TZ: 'UTC0', LC_ALL: 'C'}`.
-     - B2 runs `ps` with the inherited env, and `lstart` is local time.
-     - So a timezone or DST change between record and reap reads a live
-       check as a `stranger`. B2 then retries the node beside it.
-       **This is a B2 bug fixed here.**
-   - **Windows:** see B3-Q3. Under the recommended helper the engine never
-     signals by pid, so it needs no identity.
-   - Rows written by B2 have no prefix. B2 was never embedded (B5 embeds it),
-     so no user has such a row. A prefix-less `proc_start` reads as
-     `refused`: the node fails, naming the row, and nothing is signalled.
-2. **`verify(t)`**: `procId(t.pid) === t.proc_start` **and** the leader's
-   current pgid `=== t.pgid`.
-   - `killTree` takes `verify` and calls it **immediately before TERM and
-     again immediately before KILL** (the reap re-verify follow-up). B2
-     checks once, before TERM, and only in `reap`.
-   - When `verify` fails before a signal, nothing is sent. `killTree`
-     enumerates the group's members and returns
-     `{result: 'kept', kept_pids}`:
-     - Linux: every `/proc/<n>/stat` whose field 5 equals the pgid;
-     - macOS: `ps -A -o pid=,pgid=,lstart=` with the same env, about 20 ms
-       measured.
-   - **Recorded members (B3-Q2, recommended option (e)).**
-     - At the TERM the leader passes `verify` for, `killTree` enumerates the
-       group and records each member's `(pid, id)`. That is one `ps -A`
-       (about 20 ms) or one `/proc` scan.
-     - Before KILL it signals `-pgid` if the leader **or any recorded
-       member** still matches its identity and its current pgid.
-     - This is sound by POSIX §4.17. While one of our processes is in the
-       group, its id cannot belong to anyone else. Every member enumerated
-       while the leader verified is in our own `setsid` session, so it is
-       ours.
-     - It keeps B2's behaviour: TERM, then KILL after the grace, even when
-       the leader exits on TERM and a grandchild ignores it. That holds for
-       a live stop and for a startup reap of a live leader.
-   - **The strict path.** When neither the leader nor a recorded member
-     verifies, nothing is sent and `kept_pids` is returned. That happens
-     when the leader was already gone before the engine looked: after an
-     engine crash, or for a check that backgrounded a child and exited.
-3. **`reap`** at startup is `killTree` with `verify` and a 2 s grace. A
-   recorded identity from another boot returns `gone` without a probe.
-4. **Survivors** (B-9, B3-Q2, recommended option):
+1. **Fix B2's `lstart` TZ bug, and put the boot in every identity.** This is
+   an explicit, tested item. `killtree.ts`'s `procStart` becomes `procId`.
+   - **The bug.**
+     - B2 runs `ps -o lstart=` with the engine's inherited env, and `lstart`
+       is local time.
+     - A timezone or DST change between record and reap therefore reads a
+       live check as a `stranger`. The node is then retried beside the
+       process that is still running.
+     - Fix: every `ps` call (identity, pgid, member enumeration) runs with
+       exactly `{PATH, TZ: 'UTC0', LC_ALL: 'C'}`.
+   - **Linux** identity: `linux:<boot_id>:<starttime>`.
+     - The boot id is `/proc/sys/kernel/random/boot_id`, read once.
+     - The start time is field 22 of `/proc/<pid>/stat`.
+     - The current pgid comes from field 5 of the same read.
+   - **macOS** identity: `darwin:<kern.boottime sec.usec>:<lstart>`.
+     - The boot time is `sysctl -n kern.boottime`, read once.
+     - The rest comes from one `ps -o pgid=,lstart= -p <pid>`.
+   - **Windows** has no identity. The engine never signals by pid there
+     (step 7).
+   - **An identity from another boot** is `gone` without a probe. After a
+     reboot, every recorded pid is a stranger.
+   - **Prefix-less `proc_start` rows from B2** read as `refused`: the node
+     fails naming the row, and nothing is signalled. B2 was never embedded,
+     so no user database holds such a row.
+   - **Tests** (`killtree.test.ts`):
+     - `ps runs with TZ=UTC0 LC_ALL=C and nothing else`, asserted on the
+       spawn seam's env;
+     - `identity is unchanged when the engine's TZ changes`, which fails
+       against B2's `procStart`;
+     - `identity carries the boot`;
+     - `identity from another boot is gone without a probe`;
+     - `prefix-less proc_start is refused`.
+2. **Verify before every signal (the reap re-verify follow-up).**
+   - `verify(t)` holds when `procId(t.pid) === t.proc_start` **and** the
+     current pgid of `t.pid` equals `t.pgid`.
+   - `killTree` calls it **immediately before TERM and again immediately
+     before KILL**. B2 checks once, before TERM, and only in `reap`.
+3. **Recorded members (B-23).**
+   - At the TERM that the leader passes `verify` for, `killTree` enumerates
+     the group and records each member's `(pid, id)`:
+     - Linux: every `/proc/<n>/stat` whose field 5 is the pgid;
+     - macOS: one `ps -A -o pid=,pgid=,lstart=` with the step 1 env, about
+       20 ms measured.
+   - Before KILL, it signals `-pgid` if the leader **or any recorded
+     member** still verifies, meaning its identity and its current pgid
+     both match.
+   - Why this is sound (POSIX §4.17): while one of our processes is in the
+     group, the group's id cannot belong to anyone else. Every member
+     enumerated while the leader verified is in our own `setsid` session.
+   - This keeps B2's "TERM, then KILL after the grace" when the leader exits
+     on TERM and a grandchild ignores it. That holds for a live stop and for
+     a startup reap of a live leader.
+4. **Strict survivors (B-23).**
+   - When neither the leader nor a recorded member verifies, nothing is
+     sent, and `killTree` returns `{result: 'kept', kept_pids}` from a fresh
+     enumeration. This is the case where the leader was gone before the
+     engine looked (an engine crash, or a check that backgrounded a child
+     and exited).
    - The node fails with `error` naming the pids, and `node.finished` gains
-     `kept_pids?: number[]` (additive to the Contract).
+     `kept_pids?: number[]`.
    - `nodes.kept_pids` stores `[{pid, id}]`.
    - `run.retry` refuses with `error.code: "survivors_running"` while any
      stored survivor still verifies by `procId`, and clears the column once
-     none does.
-   - So no retry ever runs beside a survivor in the same worktree. B2
-     interrupts and retries in place.
-5. **`#refuse` sweeps first.** Before it clears the pids of a refused run's
-   running check rows, it reaps each one, as `recover()` does. Survivors go
+     none does. A retry never runs beside a survivor in the same worktree;
+     B2 interrupts and retries in place.
+5. **`reap` at startup** is `killTree` with `verify`, recorded members and a
+   2 s grace.
+6. **`#refuse` reaps first.** Before it clears a refused run's pids, it
+   reaps each running check row exactly as `recover()` does. Survivors go
    into the run's `error` and each node's `kept_pids`. B2 clears the pids of
    a live process and orphans it (`engine.ts:148-160`).
-6. **The spawn-to-record gap (B-8).** The mechanism is B3-Q1's pick; both
-   options are specified so the PR can follow either.
-   - **Option A, start gate (recommended).** The check is spawned through a
-     shim that blocks before it runs anything:
+7. **Start gate (B-22, supersedes B-8 and B-11g).** POSIX checks are spawned
+   through a shim that blocks before it runs anything:
 
-     ```
-     spawn('/bin/sh', ['-c', 'IFS= read -r go && [ "$go" = run ] || exit 125; exec "$@" </dev/null', 'sh', resolved, ...argv.slice(1)],
-           {cwd, env: checkEnv(), detached: true, windowsHide: true, stdio: ['pipe', 'pipe', 'pipe']})
-     ```
+   ```
+   spawn('/bin/sh', ['-c', 'IFS= read -r go && [ "$go" = run ] || exit 125; exec "$@" </dev/null', 'sh', resolved, ...argv.slice(1)],
+         {cwd, env: checkEnv(), detached: true, windowsHide: true, stdio: ['pipe', 'pipe', 'pipe']})
+   ```
 
-     - Order: spawn; read `procId(pid)` of the waiting shim; `beginNode`
-       commits `running` with pid, pgid and `proc_start`; then
-       `stdin.end('run\n')`.
-     - An engine death before the commit closes the pipe. The shim reads
-       EOF and exits 125, and nothing has run.
-     - An engine death after the commit but before the write is the same.
-       The row is recorded, `reap` finds the shim gone or kills it, and the
-       node is `interrupted`.
-     - `exec` keeps the pid, the pgid and `lstart` (measured), so the
-       recorded identity is the check's.
-     - `resolved` is `argv[0]` resolved against the check's `PATH` by the
-       engine, with the cwd for a relative path. A missing program is then
-       still a spawn-time `could not start`, not the shim's exit 127.
-     - No intent row, no marker scan, no fence and no fenced-retry branch.
-     - Windows: the helper (B3-Q3) holds the child suspended until it
-       reads `run`.
-   - **Option B, B-8 as decided.** Spelled out so it can be built as is:
-     - **Schema.** `nodes.launch TEXT` (JSON
-       `{marker, attempt, branch, worktree, head, at}`) and
-       `nodes.fence_n INTEGER NOT NULL DEFAULT 0`.
-     - **Marker.**
-       `HIVE_WF_CHECK=<run>/<key>/<attempt>/<nonce8>`.
-       - The nonce is needed because `run.retry` clears attempts, so two
-         launches can share `<attempt>`.
-       - The value is parsed from the right, because a key holds `/`.
-     - **Write order:**
-       1. PREPARE has returned; `head` is its `head_sha`.
-       2. `store.setLaunch` commits `launch` in its own transaction, with
-          no event and no state change, like `pinBase`.
-       3. `spawn` with the marker in env.
-       4. `beginNode` commits `running` plus pid, pgid and `proc_start`.
-       5. Every terminal transition clears `launch` in its own
-          transaction.
-     - **Recovery** (in `recover()`, before any `drive`). A row in a
-       non-terminal state with `launch` set and no pid is fenced:
-       - A best-effort scan collects marker matches into `kept_pids`.
-         Linux reads `/proc/*/environ`. macOS uses `ps -E -ww -A -o
-         pid=,command=`, which does not show the env of SIP-protected
-         platform binaries (measured), so an empty scan proves nothing.
-         Matches are never signalled.
-       - The node fails with `error: "fenced"`, `fence_n += 1` and the
-         worktree kept.
-     - **Retry.** PREPARE branch `hive/wf/<run>/<encodeKey(key)>_f<fence_n>`
-       with `base = launch.head`, recorded as the row's `branch`.
-       - It is **not** B-11g's `-r<attempt>`, for two reasons.
-         - `-r1` collides with a legal sibling id: `work-r1` passes
-           `shape.ts:31`'s `ID`.
-         - `run.retry` resets `attempt`, so a second fence would re-use the
-           first fenced name, and `PrepareRun` would re-attach the fenced
-           worktree.
-       - `_` never appears in an id, and the index encoding is `_<digits>`,
-         so `_f<n>` cannot collide.
-7. **Windows launch** (B-9, B-11h). The libuv job is not enough
-   (research), so B3a adds a per-check job of its own, using B3-Q3's
-   mechanism.
-   - **Launch.** Create the child suspended, assign it to a new job with
-     `KILL_ON_JOB_CLOSE` and **no** breakaway flags, report the pid, wait
-     for `run` (option A), then resume.
-   - **Stop.** Kill the helper through Node's own child handle. libuv
-     terminates by handle, never by pid. The job's last handle closes and
-     the tree dies.
-   - **Engine crash.** libuv's job kills the helper, the helper is the
-     helper's job's only holder, so the tree dies.
-   - **What it removes.**
-     - `taskkill` and the PowerShell start-time probe are deleted from the
-       check path.
-     - So does the pid-reuse gap after the leader exits (gate follow-up).
-   - **Without a helper** (B3-Q3 option d), every `taskkill` is preceded by
-     a `CreationDate` check of the pid. `/T` is never sent once the leader
-     is gone, because `ParentProcessId` can name a reused pid (Win32_Process
-     docs). The descendants are then reported as unreachable.
-8. **`Capture` docstring** (`check.ts:51`). Replace "a head with no newline
+   - **Order:**
+     1. spawn;
+     2. read `procId(pid)` of the waiting shim;
+     3. `beginNode` commits `running` with pid, pgid and `proc_start`;
+     4. `stdin.end('run\n')`.
+   - **An engine death before the commit** closes the pipe. The shim reads
+     EOF and exits 125, and nothing has run.
+   - **An engine death after the commit but before the write** is the same:
+     the row is recorded, `reap` finds the shim gone or kills it, and the
+     node is `interrupted`.
+   - **Identity survives the `exec`.** It keeps the pid, the pgid and
+     `lstart` (measured), so the recorded identity is the check's.
+   - **`resolved`** is `argv[0]` resolved by the engine against the check's
+     `PATH` (a relative path against the cwd). A missing program is then
+     still a spawn-time `could not start`, not the shim's exit 127.
+   - **What goes away.** No intent row, `HIVE_WF_CHECK` marker, marker scan,
+     fence or fenced-retry branch is built. `nodes` gets no `launch` or
+     `fence_n` column.
+8. **Windows job helper (B-24).** A hidden subcommand,
+   `hived wf-exec -- <argv…>`, Windows only.
+   - **Where it is implemented.** In `internal/proc`, the only constructor
+     of non-PTY children, with a `TestNoDirectExecOnWindows` allowlist entry
+     giving the reason.
+   - **How the engine finds it.** The plugin Manager exports
+     `HIVE_DAEMON_EXE` (its own `os.Executable()`) to every plugin.
+   - **What the helper does:**
+     1. creates a job with `JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE` and **no**
+        breakaway flags;
+     2. creates the child already in that job, or suspended and then
+        assigned;
+     3. writes the child's pid to stdout;
+     4. waits for `run` on stdin. EOF means the job closes and the child
+        dies before it has run, which is the same gate as step 7;
+     5. resumes the child, relays its stdout and stderr, and exits with its
+        exit code.
+   - **Stop.** The engine kills the helper through Node's child handle.
+     libuv terminates by handle, never by pid, so the job's last handle
+     closes and the tree dies.
+   - **Engine crash.** libuv's own job kills the helper, so the same
+     happens. `taskkill` and the PowerShell start-time probe are deleted
+     from the check path, which removes the pid-reuse gap after the leader
+     exits.
+   - **To verify on a real Windows run before B3a's gate.** Go's
+     `syscall.StartProcess` closes the main-thread handle
+     (`syscall/exec_windows.go:446`, `defer CloseHandle(Handle(pi.Thread))`).
+     So `os/exec` with `CREATE_SUSPENDED` leaves nothing to `ResumeThread`
+     with. The helper therefore calls `CreateProcess` from `x/sys/windows`
+     directly, either:
+     - with `PROC_THREAD_ATTRIBUTE_JOB_LIST`, which assigns the job at
+       creation (availability still to be confirmed); or
+     - suspended, keeping the thread handle it then resumes.
+   - **Daemon contract.** B3a touches `cmd/hived/` and `internal/plugin/`
+     but changes no wire frame and nothing a GUI drives, so it takes the
+     `daemon-contract-override` label. Only B3-R7 bumps DaemonContract.
+9. **`Capture` docstring** (`check.ts:51`). Replace "a head with no newline
    at all is replaced by a marker" with: "a head with no newline at all is
    not shown as a head; its text moves to the tail, where it is shown if that
    line fits TAIL_BYTES and becomes the overlong-line marker otherwise." That
-   is what `write()` does (`check.ts:110-113`). This was the R9 gate's nit.
-9. **Store schema v2.** Add `nodes.kept_pids`, plus option B's `launch` and
-   `fence_n`, with `ALTER TABLE … ADD COLUMN` behind `meta.schema_version`.
-   No user database exists yet.
+   matches `write()` (`check.ts:110-113`), and it was the R9 gate's nit.
+10. **Store schema v2.** Add `nodes.kept_pids` with
+    `ALTER TABLE … ADD COLUMN` behind `meta.schema_version`. No user
+    database exists yet.
 
 #### B3b: agent nodes and worktrees
 
@@ -1260,45 +1271,116 @@ Files: `engine/engine.ts` (`recover()`), `engine/main.ts` (reconnect).
    are rejected by the SDK (`_rejectAll`) and their effects re-derived from
    the rows.
 
+#### B3-R7: archive/remove acks and the run-branch unpushed exemption (daemon, B-25)
+
+This is the daemon change B3d depends on. Slice A owns daemon changes, but
+A's plan is completed, so R7 is its own PR here and lands before B3d. It is
+the only B3 PR that bumps DaemonContract.
+
+**Wire.** All three are additive, and no new frame is added, so
+`wire.PROTOCOL_VERSION` is unchanged:
+- `ArchiveSessionReq` gains `ReqID int \`json:"req_id,omitempty"\``.
+  - On success, a request that carried a `req_id` gets
+    `ACK {req_id, session_id}` after the existing `ARCHIVED` refresh.
+  - Errors already echo the `req_id` (`reqid.go:44-65`).
+- `RemoveWorktreeReq` gains `ReqID int \`json:"req_id,omitempty"\`` and
+  `WorkflowRunID string \`json:"workflow_run_id,omitempty"\``.
+  - On success, `ACK {req_id}` follows the existing `WORKTREES` inventory.
+  - A request with no `req_id` behaves exactly as today, so the GUI is
+    unaffected.
+- `REQUEST_VERBS` in `plugins/sdk/hive-plugin.mjs` gains `ARCHIVE_SESSION`
+  and `REMOVE_WORKTREE`. The byte copy in `plugins/workflows/hive-plugin.mjs`
+  is updated in the same PR, and `sdk_drift_test.go` pins it.
+  `docs/plugins.md`'s verb table changes the reply column for both verbs.
+
+**The unpushed exemption** (`registry.RemoveWorktree`). It skips **only**
+the `ErrWorktreeUnpushed` test. All of these must hold:
+- the caller is a plugin principal;
+- `workflow_run_id` passes `ValidWorkflowRunID`;
+- the worktree's own branch, read by `worktree.Inspect` and never taken from
+  the caller, starts with `hive/wf/<workflow_run_id>/`;
+- `delete_branch` is false.
+
+The branch keeps every commit, so nothing is lost. `ErrWorktreeDirty`, the
+in-use refusal (live or archived holder) and every other refusal still
+apply.
+
+The handler reads `ops.principal`, as SEND_TO_SESSION and CREATE's
+orchestrator check already do (`daemon.go:2020`, `:2064`), and passes
+whether the caller is a plugin. PREPARE_WORKTREE does not check the
+principal today, so this is new. A non-plugin caller, or a branch outside
+the run's prefix, gets today's refusal unchanged.
+
+**Clients, in lock-step** (AGENTS.md, "Wire protocol change"):
+- `cmd/hivegui/app_calls.go:369` (remove) and `:760` (archive): no new
+  field is sent, so behaviour is unchanged. Each call site gets a comment
+  that the GUI does not use the ack.
+- `cmd/hived-ws-bridge/main.go`: passes the new fields through.
+- `internal/wire/testclient/client.go:204`: gains `ArchiveSessionReq`
+  `ReqID` support and a `RemoveWorktree` helper with `req_id`, so the e2e
+  tests can await the ack.
+
+**DaemonContract.** Bump `internal/buildinfo/contract.go`. A GUI or plugin
+built against R7 cannot drive a pre-R7 daemon: the acks would never arrive,
+and the exemption would not apply. `scripts/check-daemon-contract.sh`
+requires the bump. No override label.
+
+**Tests (Go):**
+- `TestArchiveSession_AcksReqID`, `TestArchiveSession_NoReqIDNoAck`;
+- `TestRemoveWorktree_AcksReqID`, `TestRemoveWorktree_ErrorEchoesReqID`;
+- `TestRemoveWorktree_RunBranchUnpushedExemptForPlugin`: a committed
+  `hive/wf/<run>/x` branch with `workflow_run_id` from a plugin is removed,
+  and the branch still exists afterwards;
+- `TestRemoveWorktree_ExemptionStillRefusesDirty`;
+- `TestRemoveWorktree_ExemptionNotForOtherRunOrPrefix` (another run's id,
+  or a non-`hive/wf/` branch);
+- `TestRemoveWorktree_ExemptionNotForUserPrincipal`;
+- `TestRemoveWorktree_ExemptionNotWithDeleteBranch`;
+- `TestRemoveWorktree_ArchivedHolderStillInUse`;
+- `sdk_drift_test.go` for the SDK copy;
+- the CI `daemon-contract` gate passing with the bump.
+
 #### B3d: run end and scale
 
-Files: `engine/engine.ts` (the run-end hook), `engine/worktrees.ts`,
-`internal/acp/acptest` (`FlagChatty`, test package only). B3-Q4 may add an
-A-side change.
-1. **Run end** (`done`, `failed` or `cancelled`) follows B3-Q4's pick. Under
-   the recommended option:
-   1. ARCHIVE_SESSION for every session the run created. `archive_busy`
-      (`archive.go:112-121`, e.g. a session still closing after a cancel)
-      is retried with backoff, at most 30 s.
-   2. REMOVE_WORKTREE (no force, no `delete_branch`) for every run
-      worktree that **no archived session holds**: B-4 base worktrees,
-      merge worktrees, and check-only worktrees. It skips the failing node's
-      and a conflicted merge.
-   3. `worktree_dirty` and `worktree_unpushed` are recorded in
-      `kept_worktrees`, never retried with force.
+*Depends on B3-R7 (merged) and B3b.*
+
+Files: `engine/engine.ts` (the run-end hook), `engine/worktrees.ts`, and
+`internal/acp/acptest` (`FlagChatty`, test package only).
+1. **Run end** (`done`, `failed` or `cancelled`), per B-25:
+   1. `request('ARCHIVE_SESSION')` for every session the run created.
+      `archive_busy` (`archive.go:112-121`, for example a session still
+      closing after a cancel) is retried with backoff for at most 30 s, then
+      recorded as kept.
+   2. `request('REMOVE_WORKTREE', {force: false, delete_branch: false,
+      workflow_run_id})` for every run worktree **no archived session
+      holds**: B-4 base worktrees, merge worktrees and check-only
+      worktrees. The failing node's worktree and a conflicted merge are
+      skipped.
+   3. `worktree_dirty` (and any other refusal) is recorded in
+      `kept_worktrees` and never retried with force.
    4. An agent worktree lives as long as its archived session. Deleting the
-      archived entry with its worktree (DELETE_ARCHIVED, existing) removes
-      it and still refuses a dirty one.
+      archived entry with its worktree (DELETE_ARCHIVED, existing) removes it
+      and still refuses a dirty one.
 2. **The fan-out bench and the chatty-fake reconnect test**, as listed under
    Tests.
 
 #### B3 contract delta for C
 
-- `node.finished` gains `kept_pids?: number[]`.
-- `run.retry` gains `error.code: "survivors_running"`.
-- Under option B, `error: "fenced"` on `node.finished`.
+- `node.finished` gains `kept_pids?: number[]` (B-23).
+- `run.retry` gains `error.code: "survivors_running"` (B-23).
 
-Slice C must be told. Nothing else in the Contract changes.
+Slice C must be told. Nothing else in the plugin Contract changes. The wire
+change is B3-R7's.
 
 #### B3 DaemonContract
 
-- **B3a** under B3-Q3 option (a) touches `cmd/hived/` and `internal/plugin/`.
-  It needs the `daemon-contract-override` label (no wire or GUI-facing
-  change), or it rides B5's bump.
-- **B3d** under B3-Q4 option (a) changes the daemon's behaviour, so it
-  bumps `DaemonContract`.
-- Either way, "B1–B4 need no bump" (Phases) no longer holds unconditionally.
-  The rest of B3 touches only ungated paths.
+- **B3-R7** bumps it (B-25).
+- **B3a** touches `cmd/hived/` and `internal/plugin/` (the `wf-exec`
+  subcommand and `HIVE_DAEMON_EXE`, B-24), with no wire or GUI-facing
+  change. It takes the `daemon-contract-override` label.
+- **B3b, B3c and B3d** touch only ungated paths.
+- Phases' "B1–B4 need no bump" is amended accordingly; B5 still bumps for
+  embedding.
 
 #### B3 risks
 
@@ -1311,12 +1393,9 @@ Slice C must be told. Nothing else in the Contract changes.
   enumeration about 20 ms (measured). That is fine at the 32-check ceiling.
 - **The start gate adds `/bin/sh` to every POSIX check.** Every supported
   OS has it. `exec` replaces it, so the tree is unchanged.
-- **Windows is source-verified only.** The windows-vm MCP was unavailable
-  on 2026-11-15. The proof is the B3a Windows CI test that kills the engine
-  mid-check and asserts the tree is gone.
-- **Archive and cleanup** depend on daemon behaviour the plan had not
-  anticipated (B3-Q4). Without the A change, cleanup removes only worktrees
-  with no commits ahead of the default branch.
+- **Windows is source-only** (see the note at the top of B3). B3a's gate
+  needs a real Windows run of the helper and of the engine-kill test.
+- **B3d cannot start until B3-R7 is merged.**
 
 ### B4: trust, sandbox, build and type check (own security review)
 
@@ -1459,13 +1538,15 @@ Slice C must be told. Nothing else in the Contract changes.
 - `killtree.test.ts`:
   - `identity carries the boot` (Linux `boot_id`, macOS `kern.boottime`);
     `identity from another boot is gone without a probe`;
-  - `macOS ps runs with TZ=UTC0 LC_ALL=C`: the identity string is unchanged
-    when the engine's `TZ` changes. This fails on B2's `procStart`;
+  - the B2 `lstart` TZ fix, tested explicitly:
+    `ps runs with TZ=UTC0 LC_ALL=C and nothing else` (spawn-seam env) and
+    `identity is unchanged when the engine's TZ changes` (this fails against
+    B2's `procStart`);
   - `verify runs before TERM and again before KILL`: an identity that
     changes during the grace gets no KILL (seam);
   - `leader gone, members alive: nothing sent, kept_pids lists the members`
     (seam enumerator);
-  - option (e): `members recorded at a verified TERM`;
+  - recorded members (B-23): `members recorded at a verified TERM`;
     `leader exits on TERM, a recorded member still verifies: KILL is sent to
     the group`; `no recorded member verifies: no KILL`. A real POSIX case
     (a grandchild that ignores TERM dies at KILL) keeps B2's existing
@@ -1473,37 +1554,35 @@ Slice C must be told. Nothing else in the Contract changes.
   - `pgid mismatch is not signalled`;
   - `prefix-less proc_start is refused`.
 - `check.test.ts`:
-  - option A: `gate: nothing runs until run is written`;
+  - start gate (B-22): `gate: nothing runs until run is written`;
     `gate: stdin EOF exits 125 and runs nothing`;
     `gate: exec keeps pid, pgid and start time`;
     `missing program is a spawn error, not exit 127` (POSIX).
-  - option B: `intent row committed before spawn`;
-    `marker carries run/key/attempt/nonce`;
-    `terminal transition clears launch`.
 - `engine.test.ts`:
   - `refuse reaps before clearing pids`: a refused run's live check is
     reaped, and a survivor is named in the run error and `kept_pids`;
   - `survivors fail the node with kept_pids`;
   - `run.retry refuses survivors_running while a survivor verifies, and
-    succeeds once it is gone`;
-  - option B: `fenced row fails, keeps worktree, retry prepares <key>_f<n>
-    from launch.head`; `a second fence gets _f2, never re-attaching _f1`.
+    succeeds once it is gone`.
 - `capture.test.ts`: `a head with no newline moves to the tail` (pins the
   corrected docstring).
 - Go `internal/workflowe2e/`:
-  - `TestCheckNode_EngineKilledBeforeRecord_NothingRuns` (option A: a
+  - `TestCheckNode_EngineKilledBeforeRecord_NothingRuns` (B-22: a
     test-only seam stops the engine between spawn and `beginNode`; the
-    check's marker file never appears) or
-    `TestCheckNode_EngineKilledBeforeRecord_FencedAndRetriedInFreshWorktree`
-    (option B);
+    check's marker file never appears);
   - `TestCheckNode_LeaderDiesMemberSurvives_KeptNotSignalled` (POSIX: the
     leader execs a shell that backgrounds a TERM-ignoring child and exits.
     The engine is killed and restarted. The node fails with `kept_pids`
     naming the child, and the child is still alive until the test kills it);
   - `TestCheckNode_RefusedRunReapsLiveCheck`;
-  - `TestCheckNode_Windows_EngineKilledTreeDies` (Windows CI: the check
-    starts a grandchild. The engine is killed. Both are gone within 5 s.
-    The same test also kills the engine between spawn and resume).
+  - `TestCheckNode_Windows_EngineKilledTreeDies` (B-24, Windows CI: the
+    check starts a grandchild. The engine is killed. Both are gone within
+    5 s. The same test also kills the engine between spawn and resume, and
+    the check never runs). B3a's gate requires a green real-Windows run of
+    this test.
+  - Go `internal/proc`: `TestJobExec_SuspendedUntilRun`,
+    `TestJobExec_EOFKillsBeforeRun`, `TestJobExec_KillHelperKillsTree`
+    (Windows only), and the `TestNoDirectExecOnWindows` allowlist entry.
 
 **B3b–B3d** (Go `internal/workflowe2e/`, fake adapter). Each test is listed
 under the PR that adds it: worktrees, prompt, F3, permissions, cancel,
@@ -1543,11 +1622,11 @@ loop in **B3c**; cleanup, archive and fan-out in **B3d**.
   - `TestWorktree_LoopIterationBranchesFromPrevious`;
   - `TestMerge_AfterMap`, `TestMerge_ConflictFailsWithRecoveryPath`;
   - `TestBranchNames_EncodedKeys` (`hive/wf/<run>/fix_2/work`, `…/work/each_3/do`).
-- Cleanup (B3d; the exact assertions follow B3-Q4's pick):
+- Cleanup (B3d, per B-25; needs B3-R7):
   - `TestCleanup_RemovesCleanKeepsDirty` (`ErrWorktreeDirty` → `kept_worktrees`);
-  - `TestCleanup_CommittedRunWorktreeNotRefusedAsUnpushed`. Under option (a),
-    a merge worktree with a merge commit is removed and its branch kept.
-    Under option (b), it is recorded as kept with `worktree_unpushed`;
+  - `TestCleanup_CommittedRunWorktreeNotRefusedAsUnpushed` (B3-R7's
+    exemption): a merge worktree with a merge commit is removed, and its
+    branch is kept;
   - `TestCleanup_ArchivedAgentWorktreeLeftToArchive`. REMOVE_WORKTREE is
     never sent for a worktree an archived node session holds, and
     DELETE_ARCHIVED with its worktree removes it;
@@ -2131,6 +2210,66 @@ download, the accepted sandbox gap, and `LIST_ACP_AGENTS`.
       This is raised as B3-Q4. It may need an A-side change and a
       DaemonContract bump before B5.
 
+- **2026-11-15, user decisions on B3-Q1 to B3-Q4.** The user picked the
+  recommended option each time.
+  - **B-22, start gate (B3-Q1 option A; supersedes B-8, and B-11g with
+    it).**
+    - A POSIX check is spawned through
+      `sh -c 'read go; [ "$go" = run ] || exit 125; exec "$@"'`.
+    - It is released only after `beginNode` has committed the pid, the
+      pgid and `proc_start`. An engine death before that gives the gate EOF,
+      so nothing runs.
+    - On Windows the B-24 helper holds the child suspended until it reads
+      `run`.
+    - B-8's intent row, `HIVE_WF_CHECK` marker, marker scan and fence, and
+      B-11g's fresh retry branch, are not built.
+    - Why:
+      - it closes the gap instead of fencing it;
+      - `exec` keeps the identity (measured);
+      - the marker scan is blind to SIP platform binaries on macOS;
+      - `-r<attempt>` could collide with a legal id or re-attach a fenced
+        worktree.
+  - **B-23, survivors (B3-Q2, options (e) and (a); refines B-9 and B-11h).**
+    - "A recorded member" means a member of the group enumerated at the TERM
+      the leader verified for.
+    - Before KILL, the group is signalled if the leader or any recorded
+      member still matches its identity and its current pgid. That is sound
+      by POSIX §4.17, and it keeps B2's TERM-then-KILL behaviour.
+    - When nothing verifies, nothing is sent:
+      - the node fails with `kept_pids`;
+      - `run.retry` refuses with `survivors_running` while any survivor
+        still verifies.
+    - Contract delta for C: `node.finished.kept_pids?` and
+      `survivors_running`.
+  - **B-24, Windows job helper (B3-Q3 option a; settles B-9's Windows
+    mechanism).**
+    - A hidden `hived wf-exec -- <argv…>` subcommand, implemented in
+      `internal/proc` with a `TestNoDirectExecOnWindows` allowlist entry.
+    - The plugin Manager exports `HIVE_DAEMON_EXE`.
+    - It uses a per-check job with `KILL_ON_JOB_CLOSE` and no breakaway
+      flags, and the child is in the job before it runs.
+    - The engine stops it by killing the helper through Node's handle, so
+      `taskkill` and its pid-reuse gap leave the check path.
+    - B3a takes the `daemon-contract-override` label.
+    - Before B3a's gate, a real Windows run must verify the launch, including
+      whether `PROC_THREAD_ATTRIBUTE_JOB_LIST` or a kept thread handle is
+      used. Go's `StartProcess` closes the thread handle, and the windows-vm
+      MCP was unavailable for the research.
+  - **B-25, R7 (B3-Q4 option a; amends Approach, Sessions at run end and
+    Cleanup).**
+    - ARCHIVE_SESSION and REMOVE_WORKTREE ACK their `req_id` and join
+      `REQUEST_VERBS`.
+    - REMOVE_WORKTREE skips only the unpushed test for a branch under
+      `hive/wf/<workflow_run_id>/` when a plugin principal asks with
+      `delete_branch: false`. Dirty and in-use still refuse.
+    - The engine archives sessions at run end and removes only the
+      worktrees that no archived session holds. Agent worktrees go when the
+      user deletes the archived session.
+    - It bumps DaemonContract.
+    - Slice A's plan (528) is completed, so R7 ships as its own PR, B3-R7,
+      before B3d, rather than reopening A. Its contract and tests are under
+      Phases, B3-R7.
+
 ## Progress
 
 - **2026-10-25:** Research complete. Plan drafted against A at `7410f6b7`.
@@ -2182,16 +2321,17 @@ Raised by the PR #540 review, consequences of B-6:
 - **B-12 per-node history:** Resolved 2026-11-12, B-17 (`key?` filter).
 - **B3, Windows launch.** Researched on 2026-11-15; the research question
   is closed. libuv's job covers only the direct child, and not from
-  creation, so a helper is needed. Where the helper lives is B3-Q3.
+  creation, so a helper is needed. Where it lives was B3-Q3, decided as B-24.
 
 Execution order: R1–R4 are merged (#532, #539, #541), so B3 is unblocked.
 
-### B3 open questions (raised 2026-11-15, awaiting the user)
+### B3 open questions (raised and resolved 2026-11-15)
 
-The B3 plan (Phases, B3) names a recommended pick for each one. None is
-decided.
+All four are resolved. The user took the recommended option each time
+(Decision log, B-22 to B-25). The options are kept below as the record of
+what was weighed.
 
-- **B3-Q1, how the spawn-to-record gap is closed (amends B-8, B-11g).**
+- **B3-Q1, how the spawn-to-record gap is closed (amends B-8, B-11g).** **Resolved: (A), B-22.**
   - (A) **Start gate** (recommended).
     - The check is spawned through `sh -c 'read go; [ "$go" = run ] || exit
       125; exec "$@"'` and released only after `beginNode` has committed its
@@ -2217,7 +2357,7 @@ decided.
       `kept_pids`.
   - Recommended: (A). It closes the gap where (B) only fences it, and it
     removes the most state.
-- **B3-Q2, survivors whose leader has gone (B-9).**
+- **B3-Q2, survivors whose leader has gone (B-9).** **Resolved: (e) + (a), B-23.**
   - (a) Strict B-9, plus a retry guard (recommended).
     - Never signal the group.
     - The node fails with `kept_pids`.
@@ -2250,7 +2390,7 @@ decided.
     engine sees start. (a) covers the case where the leader was already
     gone when the engine looked (an engine crash). Neither ever signals a
     group that has no verified process of ours in it.
-- **B3-Q3, where the Windows job helper lives (B-9).** All options create
+- **B3-Q3, where the Windows job helper lives (B-9).** **Resolved: (a), B-24.** All options create
   the child suspended, assign it to a `KILL_ON_JOB_CLOSE` job with no
   breakaway flags, then resume. The engine stops it by killing the helper
   through its handle, so there is no `taskkill` and no pid-reuse gap.
@@ -2285,7 +2425,7 @@ decided.
       allowlist entry and its reason.
   - Unverified on a real Windows machine (the VM MCP was unavailable). B3a's
     Windows CI test is the proof.
-- **B3-Q4, run-end archive and cleanup (amends Approach, Worktrees, Sessions
+- **B3-Q4 (resolved: (a), B-25; shipped as B3-R7), run-end archive and cleanup (amends Approach, Worktrees, Sessions
   at run end and Cleanup).** Three daemon facts break the approved design:
   - an archived session claims its worktree (`worktrees.go:275-278`);
   - without force, every committed `hive/wf/` branch is refused as
