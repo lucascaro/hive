@@ -2523,6 +2523,7 @@ what was weighed.
   - the Windows helper creates the child both suspended and in the job, since job assignment alone is not the gate (in B3a step 8 and the B3-Q3 record);
   - the fallback's helper-death window is stated as "nothing ran, a suspended process leaks";
   - B3c adopts the transcript's turn when the PROMPT_ACP ACK was lost, instead of sending a second one (a test was added).
+- **2026-11-15 iter 3 (B3 plan, PR #554)** — verdict: APPROVE; mergeable: MERGEABLE; findings_hash: empty; threads_open: 0; action: stop; head_sha: dbf9b71c. All CI green on dbf9b71c. CodeRabbit skipped the incremental review. An inline re-review of the iter 2 delta found nothing. The branch head is this ledger-only commit, and its CI is the final CI.
 
 ## Gate verdict
 
