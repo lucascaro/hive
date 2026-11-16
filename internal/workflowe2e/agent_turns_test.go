@@ -158,6 +158,10 @@ func TestCancel_WaitsForCancelledThenKills(t *testing.T) {
 		return len(files) == 1
 	})
 	wt, _ := f.nodeInfo(run, "a")["worktree"].(string)
+	f.eventually(wait, "the agent's unfinished work to exist", func() bool {
+		_, err := os.Stat(filepath.Join(wt, "wip.txt"))
+		return err == nil
+	})
 	f.ok("run.cancel", map[string]any{"run_id": run})
 	// The fake ignores the cancel until released, so only the kill can end the session.
 	f.eventually(30*time.Second, "the session to be killed", func() bool {
