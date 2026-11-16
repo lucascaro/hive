@@ -85,6 +85,13 @@ const (
 	// FlagSlowInit makes initialize wait until <dir>/release exists, so a
 	// test sees a session while its adapter is still starting.
 	FlagSlowInit = "slow-init"
+	// FlagGate makes each prompt announce itself by creating
+	// <dir>/turn-<sessionId>-<n>.waiting (n counts that session's prompts
+	// from 1) and wait for <dir>/turn-<sessionId>-<n>.go, so a test can act
+	// between a turn's start and its end, once per turn. Unlike FlagBlock's
+	// single release file, it is not sticky: the next turn waits again. A
+	// cancel ends the wait.
+	FlagGate = "gate"
 	// FlagSlowCancel makes a cancelled prompt wait until
 	// <dir>/release-cancel exists before it replies, so a test can act
 	// between "cancel was sent" and "the turn is over".
@@ -163,6 +170,7 @@ type fake struct {
 	pending map[string]chan json.RawMessage
 	servers map[string]string // sessionId -> first MCP server name
 	prompts map[string]int    // sessionId -> prompts so far
+	gates   map[string]int    // sessionId -> gated prompts so far
 	setMode int               // set_mode calls so far
 	cancel  map[string]bool   // sessionId -> session/cancel seen during the running prompt
 	// inflight is the sessions with a prompt received and not yet
@@ -217,6 +225,7 @@ func Main() {
 		pending:  map[string]chan json.RawMessage{},
 		servers:  map[string]string{},
 		prompts:  map[string]int{},
+		gates:    map[string]int{},
 		cancel:   map[string]bool{},
 		inflight: map[string]bool{},
 	}
@@ -520,6 +529,18 @@ func (f *fake) handle(id json.RawMessage, method string, params json.RawMessage)
 			answer += " [" + o + "]"
 			if f.flags[FlagEscalateAfterAnswer] {
 				f.update(p.SessionID, map[string]any{"sessionUpdate": "current_mode_update", "currentModeId": "acceptEdits"})
+			}
+		}
+		if f.flags[FlagGate] {
+			f.mu.Lock()
+			f.gates[p.SessionID]++
+			base := filepath.Join(f.dir, fmt.Sprintf("turn-%s-%d", p.SessionID, f.gates[p.SessionID]))
+			f.mu.Unlock()
+			_ = os.WriteFile(base+".waiting", nil, 0o600)
+			for deadline := time.Now().Add(30 * time.Second); time.Now().Before(deadline) && !f.cancelled(p.SessionID); time.Sleep(10 * time.Millisecond) {
+				if _, err := os.Stat(base + ".go"); err == nil {
+					break
+				}
 			}
 		}
 		if f.flags[FlagBlock] {

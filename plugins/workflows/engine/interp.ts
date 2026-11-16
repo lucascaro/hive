@@ -54,6 +54,8 @@ export type Transition =
   | { t: 'wait'; key: string; waiting: Data }
   | { t: 'resume'; key: string; reason: 'permission' }
   | { t: 'turn'; key: string }
+  /** An agent turn was started (the PROMPT_ACP ack): which transcript item and epoch it is, and which daemon boot (B3). */
+  | { t: 'ack'; key: string; prompt_id: number; epoch: number; boot_id?: string }
   | { t: 'run.fail' }
   | { t: 'run.cancel' }
   | { t: 'run.retry' }
@@ -88,11 +90,32 @@ export function initialRows(ir: IR): Row[] {
 
 // ---------------------------------------------------------------- references
 
-interface Scope {
+export interface Scope {
   /** Ids of the enclosing loops and maps, outermost first. */
   lm: readonly string[];
   /** The loop iteration or map index for each of them. */
   ctx: readonly number[];
+}
+
+/** Whether the reader's first `p + 1` enclosing loops and maps are the target's. */
+const sharedAt = (scope: Scope, tlm: readonly string[], p: number): boolean => p < scope.lm.length && scope.lm.slice(0, p + 1).every((id, i) => id === tlm[i]);
+
+/**
+ * The instance context of a node placed under the loops and maps `tlm`, seen
+ * from `scope`. Shared loops and maps use the reader's index; a loop only the
+ * target is in reads its latest iteration. `back` reads one iteration earlier
+ * on the shared position `back`. Null when the target is inside a map the
+ * reader is not in (`validate` refuses it). One resolver for references, heads
+ * and worktree sharing, so they cannot disagree about which instance is meant.
+ */
+export function instanceCtx(m: Model, tlm: readonly string[], scope: Scope, back = -1): number[] | null {
+  const out: number[] = [];
+  for (let p = 0; p < tlm.length; p++) {
+    if (sharedAt(scope, tlm, p)) out.push(scope.ctx[p] - (p === back ? 1 : 0));
+    else if (m.ix.byId.get(tlm[p])?.node.kind === 'loop') out.push(m.rows.get(keyOf(m.ix, tlm[p], out))?.progress ?? 0);
+    else return null;
+  }
+  return out;
 }
 
 /**
@@ -119,21 +142,8 @@ export function resolveRef(m: Model, ref: string, scope: Scope): unknown {
   const placed = ix.byId.get(target);
   if (!placed) return undefined;
   const tlm = placed.lm;
-  const shared = (p: number): boolean => p < scope.lm.length && scope.lm.slice(0, p + 1).every((id, i) => id === tlm[i]);
-
-  // The target's instance context. Shared loops and maps use the reader's
-  // index; a loop only the target is in reads its latest iteration. `back`
-  // reads one iteration earlier on the innermost shared loop that has one.
-  const ctxFor = (back: number): number[] | null => {
-    const out: number[] = [];
-    for (let p = 0; p < tlm.length; p++) {
-      if (shared(p)) out.push(scope.ctx[p] - (p === back ? 1 : 0));
-      else if (ix.byId.get(tlm[p])?.node.kind === 'loop') {
-        out.push(m.rows.get(keyOf(ix, tlm[p], out))?.progress ?? 0);
-      } else return null; // reaches into a map from outside: validate refuses it
-    }
-    return out;
-  };
+  const shared = (p: number): boolean => sharedAt(scope, tlm, p);
+  const ctxFor = (back: number): number[] | null => instanceCtx(m, tlm, scope, back);
   const read = (ctx: number[] | null): Row | undefined => (ctx ? m.rows.get(keyOf(ix, target, ctx)) : undefined);
   const out = (row: Row | undefined): unknown => (row?.state === 'done' && isRecord(row.output_raw) ? row.output_raw[name] : undefined);
 
@@ -467,6 +477,9 @@ export function apply(m: Model, t: Transition, deps: ApplyDeps): Applied {
       ev(r, 'node.resumed', { reason: t.reason });
       break;
     }
+    case 'ack':
+      put(get(t.key), { prompt_id: t.prompt_id, epoch: t.epoch, ...(t.boot_id ? { boot_id: t.boot_id } : {}) });
+      break;
     case 'turn': {
       const r = get(t.key);
       let total = 0;

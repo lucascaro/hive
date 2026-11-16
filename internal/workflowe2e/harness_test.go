@@ -134,6 +134,7 @@ type fixture struct {
 	d        *daemon.Daemon
 	cancel   context.CancelFunc
 	runDone  chan struct{}
+	drained  chan struct{} // closed to stop the SESSION_EVENT drain
 	c        *testclient.Client
 	seq      int
 	ready    int // "workflows: ready" lines seen so far
@@ -208,6 +209,19 @@ func (f *fixture) start() {
 		t.Fatal(err)
 	}
 	f.c = c
+	// The client queues SESSION_EVENTs on a small channel nobody else reads, and a full one stops it reading
+	// PLUGIN_MESSAGEs too: a run with several agent sessions makes more of them than it holds.
+	f.drained = make(chan struct{})
+	go func(done chan struct{}) {
+		for {
+			select {
+			case <-done:
+				return
+			default:
+			}
+			_, _ = c.AwaitSessionEventFunc(func(wire.SessionEvent) bool { return false }, 100*time.Millisecond, "nothing")
+		}
+	}(f.drained)
 }
 
 // stop shuts the daemon down the way a normal stop does: the plugin gets
@@ -215,6 +229,10 @@ func (f *fixture) start() {
 func (f *fixture) stop() {
 	if f.d == nil {
 		return
+	}
+	if f.drained != nil {
+		close(f.drained)
+		f.drained = nil
 	}
 	_ = f.c.Close()
 	f.cancel()
@@ -279,7 +297,8 @@ func (f *fixture) rpc(topic string, data map[string]any) map[string]any {
 	for time.Now().Before(deadline) {
 		m, err := f.c.AwaitPluginMessage(time.Until(deadline))
 		if err != nil {
-			f.t.Fatalf("%s: %v", topic, err)
+			b, _ := os.ReadFile(f.logPath())
+			f.t.Fatalf("%s: %v; plugin log:\n%s", topic, err, b)
 		}
 		if m.PluginID != pluginID || m.Topic != topic+".reply" {
 			continue

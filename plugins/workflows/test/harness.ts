@@ -18,6 +18,8 @@ import { Topics } from '../engine/topics.ts';
 import type { Node } from '../sdk/dsl.ts';
 
 export class FakeHive implements Hive {
+  welcome: { boot_id?: string } = { boot_id: 'boot-1' };
+  readonly #listeners = new Map<string, ((msg: never) => void)[]>();
   requests: { name: string; payload: Record<string, unknown> }[] = [];
   posts: { topic: string; data: unknown }[] = [];
   /** How a request is answered; unlisted verbs answer `{}`. */
@@ -32,6 +34,16 @@ export class FakeHive implements Hive {
 
   postMessage(topic: string, data?: unknown): void {
     this.posts.push({ topic, data });
+  }
+
+  on(event: string, fn: (msg: never) => void): this {
+    this.#listeners.set(event, [...(this.#listeners.get(event) ?? []), fn]);
+    return this;
+  }
+
+  /** Delivers a frame the daemon sends unasked (SESSION_EVENT, ACP_TRANSCRIPT, ERROR). */
+  emit(event: string, msg: unknown): void {
+    for (const fn of this.#listeners.get(event) ?? []) fn(msg as never);
   }
 }
 

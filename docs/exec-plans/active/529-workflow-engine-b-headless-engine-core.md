@@ -2299,6 +2299,71 @@ download, the accepted sandbox gap, and `LIST_ACP_AGENTS`.
       before B3d, rather than reopening A. Its contract and tests are under
       Phases, B3-R7.
 
+- **2026-11-15, B3b implementation decisions (PR for #529, branch
+  `feature/529-b3b-agent-nodes`).** No daemon change, no DaemonContract bump.
+  - **A check's base worktree is nobody's head.** Approach says a check with
+    "a base worktree" has that worktree's branch as its head. Built literally,
+    every check after a check with no agent upstream would run in the first
+    one's tree, and B2's test (`a → b`, two roots' worth of base worktrees)
+    would change meaning. So a check passes its input through, and only a
+    **merge** worktree (two or more input heads) is a new head. A check after
+    an agent runs in the agent's worktree, re-attached through PREPARE; the
+    re-attach refuses (`reattached: false`) rather than let PREPARE make a
+    fresh branch and test the wrong tree.
+  - **Skipped nodes pass their input through** when heads are collected, so a
+    skipped worker in a loop copy does not hide the work upstream of it.
+  - **The base of a derived worktree is `refs/heads/<branch>`**, so a tag of
+    the same short name cannot stand in for an upstream branch.
+  - **A result with `status: "error"` fails the node** (the daemon drops its
+    `data`), naming the agent's `summary`, redacted and cut like any error.
+    The plan does not say; a task the agent says it could not do must not
+    become a done node with no output.
+  - **The catalog check before a run starts or is retried is async**, so it
+    cannot live in the synchronous `Topics.handle`. `Topics.preflight`
+    answers a refusal as `invalid_ir` (an existing code, so the Contract for C
+    gains nothing); `main.ts` awaits it before `handle`. The executor asks
+    `LIST_ACP_AGENTS` again on every launch as the backstop, so a ceiling
+    lowered mid-run fails the node naming it.
+  - **Heads are derived, not stored.** The plan put "head and input-head
+    bookkeeping on rows" in `interp.ts`. Heads are computed from each row's
+    persisted `branch` and the IR's edges (`worktrees.ts`), through the same
+    `instanceCtx` resolver as references, so there is nothing extra to keep
+    consistent across a restart or a `run.retry` reset.
+  - **B4 must route `run.start` through `Topics.preflight`**; it handles only
+    `test.start-run` and `run.retry` today.
+  - **A cancel or timeout during `PROMPT_ACP` stops that turn.** `stop()`
+    waits for the in-flight ack before it cancels, so the cancel is pinned to
+    the turn the daemon started (a cancel that raced ahead of the ack would
+    be a no-op, or pinned to the previous turn on the F3 re-prompt).
+  - **Interim hazard until B3c.** A plugin crash mid-turn makes `recover()`
+    interrupt the node and relaunch it, which creates a second session in the
+    same worktree while the old turn may still run. B3c's orphan adoption
+    owns this; nothing reaches users before B5.
+  - **`agent.turn.*` events are not emitted in B3b.** They belong to B5's
+    events contract with the other `agent.*` types; B3b records the turn on
+    the row (`prompt_id`, `epoch`, `boot_id`).
+  - **Plan corrections found by the tests.**
+    - `TestCancel_WaitsForCancelledThenKills` needs `FlagSlowCancel`: with
+      `FlagBlock` alone the fake honours a cancel at once. B3b adds
+      `acptest.FlagGate` (a per-turn latch, unlike `FlagBlock`'s sticky
+      release file) and uses it with `FlagSlowCancel`. The plugin's 10 s grace
+      is shortened by `HIVE_WF_CANCEL_GRACE_MS`, read only with the test seam
+      on.
+    - **`KILL_SESSION` does not "keep the worktree" by itself.** Without
+      `force` it refuses a worktree with uncommitted work
+      (`ErrWorktreeDirty`), so an agent mid-edit would survive its own
+      kill; and `disposeWorktree` removes a **pristine** worktree when its
+      last session goes. The engine sends `force: true` (so the kill always
+      happens; dirty work is then kept by `disposeWorktree`, never removed
+      without `remove_worktree`). A pristine worktree holds nothing, and a
+      retry's PREPARE recreates it. Linux CI caught this; macOS had won the race.
+    - A conflict leaves the kept merge worktree **clean at the base**: the
+      daemon runs `git merge --abort` (`worktree.MergeBranches`). The message's
+      "Resolve and commit there" therefore means: redo the merge there,
+      resolve, commit. The node's `conflict.branch` names the branch to merge.
+    - The e2e GUI client must drain `SESSION_EVENT`s: the test client holds 32
+      of them and a full channel stops it reading `PLUGIN_MESSAGE`s too.
+
 ## Progress
 
 - **2026-10-25:** Research complete. Plan drafted against A at `7410f6b7`.
@@ -2324,6 +2389,17 @@ download, the accepted sandbox gap, and `LIST_ACP_AGENTS`.
   manifest drops the floor when Node is older than 26 and `HIVE_REQUIRE_NODE`
   is unset); CI's Node 26 leg runs the unmodified manifest. B2 decisions are
   logged below under "B2".
+
+- **2026-11-15 (B3b):** Implemented on `feature/529-b3b-agent-nodes`, based on
+  `origin/main` at `3bd42ec7`. Added `engine/{agent,prompt,worktrees,sessions}.ts`;
+  `nodes.ts` now takes its worktree from `worktrees.ts` (B2's `prepareBase`
+  moved there and is used by checks and agents alike); `interp.ts` exports
+  `instanceCtx`, the one resolver for references, heads and `{of}`, and gains
+  the row-only `ack` transition; `engine.ts` keeps the latest state per
+  session (`SessionFeed`) and gains `waitNode`, `resumeNode`, `ackTurn` and
+  `catalogRefusal`. Tests: `agent`, `prompt`, `worktrees` in
+  `plugins/workflows/test/`, and Go `internal/workflowe2e/{agent_turns,agent_modes,worktree}_test.go`
+  against the fake adapter. Decisions under "B3b implementation decisions".
 
 ## Open questions
 
@@ -2524,6 +2600,9 @@ what was weighed.
   - the fallback's helper-death window is stated as "nothing ran, a suspended process leaks";
   - B3c adopts the transcript's turn when the PROMPT_ACP ACK was lost, instead of sending a second one (a test was added).
 - **2026-11-15 iter 3 (B3 plan, PR #554)** — verdict: APPROVE; mergeable: MERGEABLE; findings_hash: empty; threads_open: 0; action: stop; head_sha: dbf9b71c. All CI green on dbf9b71c. CodeRabbit skipped the incremental review. An inline re-review of the iter 2 delta found nothing. The branch head is this ledger-only commit, and its CI is the final CI.
+- **2026-11-16 iter 1 (B3b, PR #555)** — verdict: REQUEST_CHANGES (Linux CI: `TestCancel_WaitsForCancelledThenKills`, a pristine worktree is removed by an unforced kill and a dirty one refuses it; CodeRabbit, 6 threads on ebc6f27e); mergeable: MERGEABLE; findings_hash: see list; threads_open: 6 -> 0; action: autofix+push; head_sha: 68e2b60d. Fixed with tests (each mutation-checked): the kill is forced so a dirty worktree cannot keep the session alive, and dirty work is kept; a stale launch (cancel and retry during CREATE_SESSION) no longer claims the new attempt's node; a stop before any turn closes the idle session; heads are memoised per question (a layered graph was exponential); a stray `out.txt` removed; `stop` twice after a failed `start` no longer panics. Earlier, an own pre-review catch: a cancel during PROMPT_ACP now cancels the turn it started.
+- **2026-11-16 iter 2 (B3b, PR #555)** — verdict: COMMENT; mergeable: MERGEABLE; findings_hash: see list; threads_open: 1 -> 0; action: autofix+push; head_sha: b290b9bd. One CodeRabbit thread on 68e2b60d (the cancel test raced the agent's file write); the test now waits for it. All CI green on 68e2b60d.
+- **2026-11-16 iter 3 (B3b, PR #555)** — verdict: APPROVE; mergeable: MERGEABLE; findings_hash: empty; threads_open: 0; action: stop; head_sha: b290b9bd. Code head; the branch head is this docs-only ledger commit, whose CI is the final CI. 291 plugin tests pass; Go e2e green.
 
 ## Gate verdict
 
@@ -2552,3 +2631,8 @@ what was weighed.
     - acceptance — PASS — B2-scope criteria (interpreter, node kinds, durability, caps/cancel for check nodes) covered by `node --test --test-timeout=60000 'plugins/workflows/**/*.test.ts'` 240/240; round-9 attacks (cap crossing at T-40..T+10, CRLF/lone CR, 2-4-way BEGIN splits, several overlong lines, cross-line carry, head/no-newline head, ring eviction, 50 MB line) 0 leaks; held bytes max 93152 <= HEAD+2*TAIL; plan's round-8 mutation claims spot-checked (carry removal fails the 3 named tests, not the oracle; `let hidden = false` fails the oracle). Criteria owned by B3-B5 DEFERRED (phase > 2).
     - non-goals — PASS — `check-daemon-contract.sh origin/main HEAD`: no daemon-side changes; delta a8b3e7e2..ea960401 is check.ts, capture.test.ts and the plan only.
     - doc accuracy — PASS — `Capture` docstring, `#scanChunk` comment and plan B-20 / round-8 note / accepted limits match the code. Non-blocking nit (pre-existing, not in delta): "a head with no newline at all is replaced by a marker" — its text actually moves to the tail and is shown if that line fits TAIL_BYTES.
+- **2026-11-16** — verdict: PASS; phase: 3/5 (B3b, PR #555); round R1; code head b290b9bd (branch head b959311f); checks: 3 passed / 0 failed / 0 followups; followups: none; one-line: B3b steps 1-5 and its whole test list delivered; forced KILL_SESSION proven to skip only the dirty pre-flight (dirty or committed worktrees kept, removal only with `remove_worktree`); 291/291 plugin tests, Go e2e 24/24; 3 of 4 spot mutations killed, the fourth equivalent. Spec stays at GATE; plan stays in active/ for B3a, B3c, B3-R7, B3d, B4 and B5.
+  - 2026-11-16 dimensions:
+    - acceptance — PASS — criterion 6 (minus run-end archive, B3d): own worktree from upstream, `{of}` shares path, COMMIT_WORKTREE before done, merge after map/join, loop k>1 from k-1, conflict fails with recovery path then `run.retry` resumes, F3 once, permission → waiting → resumed (B-1, B-18), explicit mode / ceiling refusal; criterion 7: 50-turn cap counts the re-prompt, 4-live throttle counts launching agents, cancel → CANCEL_ACP pinned to prompt_id/epoch → forced KILL_SESSION after grace; criterion 8: `hive/wf/<run>/fix_2/work` (ID_SEGMENT forbids `_`, so encodeKey is injective); criterion 2: catalog re-asked on retry (`Topics.preflight`, `invalid_ir`) and on every launch; criterion 9 (B3b share): nonce fencing, values never reach argv/mode/agent/path, provenance `plugin:<id>/workflow:<run>` asserted exactly, sessions only in run worktrees. Rows record prompt_id/epoch/boot_id (the SDK connection exposes `welcome.boot_id`). Mutations: drop `force` (3 tests fail), drop stop's wait on the in-flight PROMPT_ACP (3 fail), stop failing `status: "error"` (1 fails), base-worktree check as a head (`>= 0`, B2 check tests fail); `>= 1` is an equivalent mutant (a one-head check re-attaches `heads[0]`). Criteria 3, 5, 10-14 and run-end archive DEFERRED (phase > 3).
+    - non-goals — PASS — `check-daemon-contract.sh origin/main HEAD`: no daemon-side changes; the only Go non-test change is `acptest.FlagGate`; no GUI, SDK, `max_attempts` or `agent.turn.*` work; production `run.start` routing left to B4 as recorded. `HIVE_WF_CANCEL_GRACE_MS` is read only under `HIVE_WF_TEST_SEAM=1` (main.mjs).
+    - doc accuracy — PASS — B3b implementation decisions match the code (force semantics checked against `registry.kill`/`disposeWorktree`, `MergeBranches` aborts a conflict, `instanceCtx` shared, redactCut on every new error path via `failRow`/`clip`). Non-blocking: the conflict message still says "Resolve and commit there" although the kept tree is clean at base (recorded in the decision log; C should word it "merge `<branch>` there"); `internal/wire/control.go:460-462` says force "discard[s] uncommitted changes", contradicting the registry (pre-existing); the plan header still reads `Phase: 2 of 5` and `PR:` omits #555. THEORETICAL, not blocking: `run.retry`'s async preflight lets a later `run.cancel` be handled first (it refuses with `not_running`, so nothing is lost silently); a stale launch's forced kill can dispose a pristine worktree a retried attempt has just re-attached, before its CREATE (pre-existing pristine-dispose semantics, not caused by force). Local Node is 24; CI's plugin leg is 26.
