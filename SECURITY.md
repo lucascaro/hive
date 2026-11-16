@@ -45,7 +45,19 @@ daemon's control socket, which sits next to the `HIVE_SOCKET` path every
 session is handed, gets the full control protocol. That includes
 creating a session with any command, typing into any session, answering
 an agent's permission prompt, approving a plan, and installing a plugin.
-Installed plugins get the same control protocol.
+
+An installed plugin connects on a socket of its own, and the daemon
+refuses it the user's decisions there with `mode_not_allowed`: typing
+into a session (attach input and resize, `SEND_TO_SESSION`, a
+`RESOLVE_PROMPT` paste), answering a permission prompt, deciding a plan
+review or a worktree-setup question, stopping Hive, installing,
+enabling or removing plugins, and changing another plugin's config. It
+may prompt only the ACP sessions it spawned itself. The full list is in
+[docs/plugins.md](docs/plugins.md#what-a-plugin-cannot-do). This is not
+a sandbox: a plugin runs as you, so it can still dial the main control
+socket like any other process here and get the full protocol. The
+refusals keep a well-behaved plugin, and whatever text steers it, to
+its role.
 
 **Agents are processes running as you.** An agent with a shell — Claude
 Code, Codex, any of them — can therefore do everything above. Usually

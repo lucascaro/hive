@@ -1517,6 +1517,14 @@ How the design hedges against that change returning:
 
 Everything stays inside 492's trust model. The plugin is a principal, `hived`
 stamps provenance, permission requests go to the user, and nothing escalates.
+`hived` enforces the user-only parts on the plugin's socket: it refuses
+`ANSWER_PERMISSION`, `RESOLVE_PLAN_REVIEW`, `SEND_TO_SESSION`, terminal input
+on an attach, `PROMPT_ACP` into a session the plugin did not spawn, and
+installing, enabling or removing plugins, all with
+`mode_not_allowed` (the full list is in
+[plugins.md](../plugins.md#what-a-plugin-cannot-do)). So the engine shows a
+permission wait to the user and cannot answer it. This holds the engine to its
+role; it is not a sandbox, because a plugin runs as the user.
 
 - **Hooks and MCP servers from untrusted worktrees.**
   - **The gap.** The Claude ACP adapter loads project settings by default.
@@ -1581,8 +1589,9 @@ stamps provenance, permission requests go to the user, and nothing escalates.
   caught. A node that reads untrusted outputs should run in the least
   permissive mode that does its job.
 - **Permission defaults.** Least-permissive mode unless the node names one,
-  capped at the user's per-agent setting. The engine auto-answers only its own
-  `submit_result`, matched on exact identity (F7).
+  capped at the user's per-agent setting. The engine answers no permission
+  request: `hived` auto-allows only the session's own `submit_result`, matched
+  on exact identity (F7), and refuses `ANSWER_PERMISSION` from a plugin.
 - **Secrets.** The IR, the events and `runs.db` hold prompts, outputs and tool
   titles. Hive never reads the user's tokens, and workflow inputs are shown to
   the user before a run. An agent can still echo a secret it read in a

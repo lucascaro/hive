@@ -102,7 +102,7 @@ func TestPromptAcp_OriginCarriesRun(t *testing.T) {
 	fakeACPDir(t)
 	d := startTestDaemon(t)
 	pc, _ := pluginConn(t, d, "wf", "p")
-	e := createACPVia(t, d, (&recordOps{}).ops(), `{"kind":"acp","agent":"claude"}`)
+	e := createACPVia(t, d, asPlugin("plugin:wf"), `{"kind":"acp","agent":"claude"}`)
 
 	originOf := func(text string) string {
 		m, err := d.reg.AcpTranscript(e.ID)
@@ -230,7 +230,8 @@ func TestCancelAcp_PluginAndUser(t *testing.T) {
 	gui := guiConn(t, d)
 	pc, _ := pluginConn(t, d, "wf", "p")
 	for name, c := range map[string]net.Conn{"plugin": pc, "user": gui} {
-		e := createACPVia(t, d, (&recordOps{}).ops(), `{"kind":"acp","agent":"claude"}`)
+		// The plugin's session, which the user can prompt and cancel too.
+		e := createACPVia(t, d, asPlugin("plugin:wf"), `{"kind":"acp","agent":"claude"}`)
 		waitReady(t, d, e.ID)
 		send(t, c, wire.FramePromptAcp, wire.PromptAcpReq{SessionID: e.ID, Text: "work", ReqID: 1})
 		readFrameWhere(t, c, "prompt ACK", isFrame(wire.FrameAck))

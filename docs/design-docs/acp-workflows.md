@@ -250,7 +250,8 @@ or the engine plugin, which `hived` identifies by its plugin socket.
      closes F4.
    - Pi runs only where the user's setting allows unattended tool use (F5).
 4. **Permission requests go to the user.** The engine never answers
-   `request_permission` except for its own `submit_result`, matched by exact
+   `request_permission`, and `hived` refuses `ANSWER_PERMISSION` on a plugin
+   socket; `hived` itself auto-allows only the node's own `submit_result`, matched by exact
    identity and bound to the node's own server name (F7). Everything else surfaces as `waiting_permission`, just like a
    hook-tier session.
 5. **Caps.** The engine is limited to a fixed number of live nodes per run, in

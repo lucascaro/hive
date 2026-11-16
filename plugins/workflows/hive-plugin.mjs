@@ -597,8 +597,11 @@ export class HiveConnection extends EventEmitter {
   }
 
   /**
-   * Sends one control frame. Every control verb a GUI has is available:
-   * see the table in docs/plugins.md.
+   * Sends one control frame. Every control verb a GUI has is available
+   * except those a plugin socket refuses with `mode_not_allowed`
+   * (ANSWER_PERMISSION, RESOLVE_PLAN_REVIEW, SEND_TO_SESSION, plugin
+   * install/enable/remove, ...): see "What a plugin cannot do" and the
+   * table in docs/plugins.md.
    * @param {keyof typeof Frame} name
    * @param {object} [payload]
    */
@@ -623,8 +626,9 @@ export class HiveConnection extends EventEmitter {
   }
 
   /**
-   * Opens an attach connection to one session — how a plugin types into
-   * it. Output arrives as 'data' events (Buffers).
+   * Opens an attach connection to one session. Output arrives as 'data'
+   * events (Buffers). On a plugin socket it is read-only: see
+   * Attachment.write.
    * @param {string} sessionId
    */
   attach(sessionId) {
@@ -645,7 +649,12 @@ export class Attachment extends EventEmitter {
     super();
     this.sock = sock;
   }
-  /** Types into the session. @param {string|Buffer} data */
+  /**
+   * Types into the session. A plugin socket refuses this: the first
+   * write is answered with an 'ERROR' event (`mode_not_allowed`) and
+   * nothing reaches the terminal. It works only on Hive's main socket.
+   * @param {string|Buffer} data
+   */
   write(data) {
     this.sock.write(encode(Frame.DATA, Buffer.from(data)));
   }

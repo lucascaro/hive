@@ -4,8 +4,8 @@ A Hive plugin extends Hive in one of two ways, or both:
 
 - **In the background.** A program Hive runs for you. It sees what every
   session is doing — which agent started working, which one is waiting
-  on you, which one exited — and can act: rename a session, type into
-  it, start or stop one, file an idea. A webhook when an agent needs
+  on you, which one exited — and can act: rename a session, prompt an
+  ACP agent, start or stop one, file an idea. A webhook when an agent needs
   you, a bridge to a chat app, a rule that restarts a crashed agent.
 - **In the app.** A JavaScript module the Hive app loads, which adds
   to the app itself: a view for a session, commands in the command
@@ -30,10 +30,10 @@ app.
 ## Trust
 
 **A plugin runs as you, with everything you can do.** There is no
-sandbox. It can read and write your files, reach the network, start
-programs, and — through Hive — type into any session, including ones
-running agents with access to your code and credentials. Install
-plugins you would be comfortable running yourself.
+sandbox. It can read and write your files, reach the network and start
+programs. Through Hive it can start, restart and kill sessions,
+prompt the ACP sessions it created, and read every session's output.
+Install plugins you would be comfortable running yourself.
 
 An app plugin is no different: its module runs inside the Hive app,
 with the app's full access — every session's screen, every action the
@@ -43,10 +43,20 @@ Because of that, Hive installs every plugin **disabled**. Nothing a
 plugin contains runs until you enable it, and the Hive app asks you
 first, showing the plugin's name, source and the command it will run
 (or the module it will load into the app).
-That prompt is the app's; the protocol itself does not ask anyone. Any
-wire client — including an enabled plugin, which has full trust — can
-install, enable and remove plugins directly, just as it could run any
-program you can.
+That prompt is the app's; the protocol itself does not ask anyone.
+The app's own connection, and any other client on Hive's main socket,
+can install, enable and remove plugins directly. A plugin's own socket
+cannot: Hive refuses it the decisions that belong to you, so the trust
+prompt cannot be skipped through a plugin's own socket, and a plugin never
+approves on your behalf what an agent may do. The full list is under
+**[What a plugin cannot do](#what-a-plugin-cannot-do)**.
+
+These refusals keep a plugin — and anything steering it, such as text
+an agent wrote — to its role. They are not a sandbox: a plugin runs as
+you, so hostile code could connect to the main socket as the app does.
+The trust prompt is the boundary; the refusals make sure everything a
+plugin does through its own socket stays inside what that prompt
+showed you.
 
 ## Layout
 
@@ -93,7 +103,8 @@ prompt; turning it off acts at once, and removing it asks you to confirm
 first. None of these needs a
 daemon restart. It sends the same `INSTALL_PLUGIN` /
 `SET_PLUGIN_ENABLED` / `REMOVE_PLUGIN` requests described below, so any
-other wire client can do the same.
+other client on Hive's main socket can do the same. A plugin's own socket
+cannot: see [What a plugin cannot do](#what-a-plugin-cannot-do).
 
 A plugin is installed from either:
 
@@ -230,16 +241,22 @@ on a plugin socket:
   and a failure is an `ERROR`; to tell your requests' answers apart, see
   **Correlating replies** below.
 - **`attach`** (`"session_id": "…"`) — one session's terminal. The
-  daemon replays the scrollback, then streams output as `DATA`; send
-  `DATA` to type and `RESIZE` (`{ "cols", "rows" }`) to resize.
+  daemon replays the scrollback, then streams output as `DATA`;
+  `REQUEST_REPLAY` replays it again. A plugin's attach is **read-only**:
+  `DATA` (typing) and `RESIZE` from it are refused. The first one is
+  answered with an `ERROR` (`mode_not_allowed`, carrying the
+  `session_id`); later ones are dropped without a reply.
 - **`create`** (`"create": { … }`) — create a session and attach to it
-  in one step.
+  in one step. The attach is read-only in the same way. To give a new
+  session its first prompt, put it in the `CreateSpec`
+  (`initial_prompt`), or use `PROMPT_ACP` for an ACP session.
 
 ### Everything a plugin can do
 
-A plugin can send every control request the Hive app can. The request
-and reply payloads are the Go structs of the same name in
-[`internal/wire/`](../internal/wire/control.go).
+A plugin can send the control requests the Hive app can, except the
+ones under [What a plugin cannot do](#what-a-plugin-cannot-do), which
+the table marks. The request and reply payloads are the Go structs of
+the same name in [`internal/wire/`](../internal/wire/control.go).
 
 | Request | Payload | Answered by |
 |---------|---------|-------------|
@@ -269,29 +286,29 @@ and reply payloads are the Go structs of the same name in
 | `ADD_IDEA` | `AddIdeaReq` | `IDEA_EVENT` (added) |
 | `UPDATE_IDEA` | `UpdateIdeaReq` | `IDEA_EVENT` |
 | `REMOVE_IDEA` | `RemoveIdeaReq` | `IDEA_EVENT` (removed) |
-| `RESOLVE_PROMPT` | `ResolvePromptReq` | `SESSION_EVENT` |
-| `RESOLVE_WORKTREE_CHOICE` | `ResolveWorktreeChoiceReq` | `SESSION_EVENT` |
+| `RESOLVE_PROMPT` | `ResolvePromptReq` | `SESSION_EVENT`. A plugin may only dismiss (`"paste": false`): a paste types into the session, so with `"paste": true` a plugin socket gets `mode_not_allowed` |
+| `RESOLVE_WORKTREE_CHOICE` | `ResolveWorktreeChoiceReq` | `SESSION_EVENT`. Not for plugins: a plugin socket gets `mode_not_allowed`, because the worktree-setup question is the user's |
 | `GET_ACTIVITY` | `GetActivityReq` | `ACTIVITY` |
 | `SEARCH_TRANSCRIPT` | `SearchTranscriptReq` | `TRANSCRIPT_MATCHES` |
 | `GET_TRANSCRIPT_LINES` | `GetTranscriptLinesReq` | `TRANSCRIPT_LINES` |
 | `GET_PLAN_REVIEW` | `GetPlanReviewReq` | `PLAN_REVIEW` |
-| `RESOLVE_PLAN_REVIEW` | `ResolvePlanReviewReq` | `SESSION_EVENT` |
+| `RESOLVE_PLAN_REVIEW` | `ResolvePlanReviewReq` | `SESSION_EVENT`. Not for plugins: a plugin socket gets `mode_not_allowed`, because whether a plan runs is the user's decision. The bundled plan-review plugin decides through the app's `hive.actions.resolvePlanReview`, which the app sends on its own connection |
 | `CLIENT_COMMAND` | `ClientCommand` | `CLIENT_BROADCAST` |
-| `SHUTDOWN` | empty | the daemon exits |
+| `SHUTDOWN` | empty | the daemon exits. Not for plugins: a plugin socket gets `mode_not_allowed`, because it ends every session |
 | `LIST_PLUGINS` | empty | `PLUGINS` |
-| `INSTALL_PLUGIN` | `InstallPluginReq` | `PLUGIN_EVENT` (added) |
-| `SET_PLUGIN_ENABLED` | `SetPluginEnabledReq` | `PLUGIN_EVENT` |
-| `SET_PLUGIN_CONFIG` | `SetPluginConfigReq` | `PLUGIN_EVENT` (updated) |
+| `INSTALL_PLUGIN` | `InstallPluginReq` | `PLUGIN_EVENT` (added). Not for plugins: a plugin socket gets `mode_not_allowed`, because installing from a plugin would skip the app's trust prompt |
+| `SET_PLUGIN_ENABLED` | `SetPluginEnabledReq` | `PLUGIN_EVENT`. Not for plugins: a plugin socket gets `mode_not_allowed`, because enabling from a plugin would skip the app's trust prompt |
+| `SET_PLUGIN_CONFIG` | `SetPluginConfigReq` | `PLUGIN_EVENT` (updated). From a plugin socket only for the plugin's own `id`; any other is `mode_not_allowed` |
 | `SET_CLIENT_UI` | `SetClientUIReq` | nothing. The Hive app's own announcement of which plugin UIs it runs; ignored from a plugin |
-| `REMOVE_PLUGIN` | `RemovePluginReq` | `PLUGIN_EVENT` (removed) |
+| `REMOVE_PLUGIN` | `RemovePluginReq` | `PLUGIN_EVENT` (removed). Not for plugins: a plugin socket gets `mode_not_allowed`, because which plugins are installed is the user's choice |
 | `GET_ACP_TRANSCRIPT` | `GetAcpTranscriptReq` | `ACP_TRANSCRIPT` (snapshot). Start an ACP session with `CREATE_SESSION` and `"kind": "acp"` (Claude, Codex; Pi only where the user allows unattended tool use; Gemini and Copilot not yet). It runs at the user's mode ceiling for that agent, or at `"acp_mode"` when that is at or below it (`acp_mode_above_ceiling` otherwise). It records `spawned_by: "plugin:<id>"` |
-| `PROMPT_ACP` | `PromptAcpReq` | `ACP_TRANSCRIPT`, `SESSION_EVENT` (state). The turn's origin is recorded as `plugin:<id>`, or `plugin:<id>/workflow:<run>` with `workflow_run_id`. With a `req_id`, also `ACK` once the turn has started, carrying that turn's `prompt_id` and `epoch` |
+| `PROMPT_ACP` | `PromptAcpReq` | `ACP_TRANSCRIPT`, `SESSION_EVENT` (state). From a plugin socket only into a session that plugin created (its `spawned_by` is `plugin:<id>`, with or without a workflow run); any other session, or an unknown one, is `mode_not_allowed`. The turn's origin is recorded as `plugin:<id>`, or `plugin:<id>/workflow:<run>` with `workflow_run_id`. With a `req_id`, also `ACK` once the turn has started, carrying that turn's `prompt_id` and `epoch` |
 | `CANCEL_ACP` | `CancelAcpReq` | Asks the session's running turn to stop. Idempotent: with no turn running it does nothing. With a `req_id`, `ACK` with `was_busy`: a turn was running and was *asked* to stop (absent = false). The turn is over when `ACP_TRANSCRIPT` carries its `stop_reason` (`cancelled` normally); until then `PROMPT_ACP` answers `acp_busy`. Pass the `prompt_id` and `epoch` from that turn's `PROMPT_ACP` ACK to aim the cancel at it: if the session has moved on, nothing is stopped and `was_busy` is false. Errors: `session_dead` means the adapter is gone or the cancel could not be written; `acp_busy` here means the daemon-wide cap of 64 cancels still waiting on their prompt write is reached (unlike `PROMPT_ACP`, where it means a turn is running). That cap is shared by every connection, and it drains when the stuck session is killed. Not served on a session connection |
 | `LIST_ACP_AGENTS` | `ListAcpAgentsReq` | `ACP_AGENTS` |
 | `PLUGIN_MESSAGE` | `PluginMessage` | Nothing: no `req_id`, no reply. The daemon stamps your plugin id and relays it to every client that shows UI (the Hive app); a client sends one back to a plugin the same way. A bad `topic` is `invalid_plugin_message`, a frame over 64 KiB `plugin_message_too_large`, and a client message to a plugin that is not running `plugin_not_running`. Not served on a session connection. See below |
 | `PREPARE_WORKTREE` | `PrepareWorktreeReq` | `PREPARED_WORKTREE` (`request()` resolves on it): a worktree on a run-owned branch, optionally with other run branches merged in. See below |
 | `COMMIT_WORKTREE` | `CommitWorktreeReq` | `ACK` with `committed` and `head`: everything in the run branch's worktree is committed (`committed` absent when the tree was clean). See below |
-| `ANSWER_PERMISSION` | `AnswerPermissionReq` | `ACP_TRANSCRIPT`; with a `req_id`, also `ACK` |
+| `ANSWER_PERMISSION` | `AnswerPermissionReq` | `ACP_TRANSCRIPT`; with a `req_id`, also `ACK`. Not for plugins: a plugin socket gets `mode_not_allowed`, because what an agent may do is the user's decision. A plugin sees the request on `ACP_TRANSCRIPT` and can show it; the user answers in the app |
 | `SUBMIT_RESULT` | `SubmitResultReq` | `SUBMIT_RESULT_OK`, `ACP_TRANSCRIPT` (result). Not for plugins: a plugin socket gets `mode_not_allowed`. An ACP session's own submit server (`hived mcp-submit`) sends it on a session connection, with that session's nonce |
 | `SEND_TO_SESSION` | `SendToSessionReq` | `SENT`, or `ERROR`. Not for plugins: a plugin socket gets `mode_not_allowed`, because typing into another session's terminal is the confused-deputy case until a plugin can be granted it explicitly |
 | `SET_FOCUSED_SESSION` | `SetFocusedSessionReq` | `SESSION_EVENT` (focus) stamping the session's `focused_at`. Not for plugins: a plugin socket gets `mode_not_allowed`, because the newest focus is the default target of the menu bar's dictation HUD (spec 553) |
@@ -329,6 +346,34 @@ And everything the daemon sends on a control connection:
 | `ACP_TRANSCRIPT` | Answer to `GET_ACP_TRANSCRIPT` (`reset`), and broadcast as an ACP session's transcript changes. Every message also carries the latest prompt's typed result: `prompt_id` (that prompt's user item), `result_status` (`submitted`, `none` once the turn ended without one, or absent while it runs) and `result` (the canonical `{status, summary, data}` envelope the daemon validated and stored: keys in that order, `data` dropped when `status` is `error`). It also carries `stop_reason` (how the latest prompt ended: `end_turn`, `cancelled`, `max_tokens`, `max_turn_requests`, `refusal`, or `error` if the adapter call failed; absent while it runs) and `usage` (the adapter's latest `usage_update` for that prompt). A new prompt clears both. |
 | `SUBMIT_RESULT_OK` | Answer to `SUBMIT_RESULT`: the result is recorded. |
 | `SENT` | Answer to `SEND_TO_SESSION`: how the note was delivered (`typed`, `queued` or `acp`). Never sent to a plugin, which is refused. |
+
+### What a plugin cannot do
+
+Hive refuses these on a plugin's own socket with `mode_not_allowed`.
+Each one is a decision that belongs to you, or a way to act as you
+inside a session. The same requests still work from the app.
+
+- **Type into a session.** `DATA` and `RESIZE` on an `attach` or
+  `create` connection, `SEND_TO_SESSION`, and `RESOLVE_PROMPT` with
+  `"paste": true`. A plugin's attach is read-only.
+- **Prompt an agent it did not start**: `PROMPT_ACP` reaches only the
+  ACP sessions the plugin created itself.
+- **Answer an agent's permission request**: `ANSWER_PERMISSION`.
+- **Decide a plan review**: `RESOLVE_PLAN_REVIEW`.
+- **Answer a worktree-setup question**: `RESOLVE_WORKTREE_CHOICE`.
+- **Manage plugins**: `INSTALL_PLUGIN`, `SET_PLUGIN_ENABLED`,
+  `REMOVE_PLUGIN`, and `SET_PLUGIN_CONFIG` for any plugin but itself.
+  `LIST_PLUGINS` stays available.
+- **Stop Hive**: `SHUTDOWN`.
+- **Steer the menu bar's dictation HUD**: `SET_FOCUSED_SESSION` and
+  `SET_GLOBAL_HOTKEY`.
+- **Act as a session**: `WAIT_SESSION` and `SUBMIT_RESULT` are served
+  to a session's own connection only, and the `event`, `session` and
+  `plan_review` modes are not served on a plugin socket.
+
+A plugin can still notice that one of these is needed and tell you,
+with a notification of its own or a `PLUGIN_MESSAGE` to its app
+surface. There is no way yet to grant a plugin any of them.
 
 ### Correlating replies
 
@@ -535,8 +580,7 @@ hive.on('SESSION_EVENT', (ev) => {
 
 hive.send('ADD_IDEA', { project_id: '…', text: 'from a plugin' });
 
-const term = await hive.attach(sessionId); // type into a session
-term.write('echo hello\n');
+const term = await hive.attach(sessionId); // watch a session (read-only)
 term.on('data', (buf) => process.stdout.write(buf));
 ```
 
@@ -732,6 +776,14 @@ Hive: 2.10.0.
 - **Breaking:** a manifest must say `"api_version": "0.2"`. A `0.1`
   plugin is shown as `refused` until it does. Nothing else a `0.1`
   plugin could use changed.
+- Within 0.2, after 2.10.0: a plugin socket refuses typing into a
+  session over `attach`/`create` (`DATA`, `RESIZE`),
+  `ANSWER_PERMISSION`, `RESOLVE_PLAN_REVIEW`, `RESOLVE_WORKTREE_CHOICE`,
+  `SHUTDOWN`, `INSTALL_PLUGIN`, `SET_PLUGIN_ENABLED`, `REMOVE_PLUGIN`,
+  `RESOLVE_PROMPT` with `"paste": true`, `SET_PLUGIN_CONFIG` for another
+  plugin, and `PROMPT_ACP` into a session it did not create, all with
+  `mode_not_allowed`. See
+  [What a plugin cannot do](#what-a-plugin-cannot-do).
 
 ### 0.1
 

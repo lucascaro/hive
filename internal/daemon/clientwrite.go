@@ -151,6 +151,17 @@ func (f *frameSink) Write(p []byte) (int, error) {
 	return len(p), nil
 }
 
+// writeError queues one ERROR frame behind whatever output is already
+// queued: the writer goroutine is the conn's only writer, so the attach
+// read loop must not write to the conn itself.
+func (f *frameSink) writeError(e wire.Error) error {
+	b, err := encodeJSON(wire.FrameError, e)
+	if err != nil {
+		return err
+	}
+	return f.enqueue([]sinkItem{{b: b}}, len(b), false)
+}
+
 // writeReplay queues Begin → chunked replay bytes → Done as one unit.
 // It runs under Session.mu via SubscribeWithAtomicReplay /
 // EmitAtomicReplay, so no live chunk can be queued between Begin and

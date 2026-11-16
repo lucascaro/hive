@@ -1426,6 +1426,66 @@ var sessionModeFrames = map[wire.FrameType]bool{
 	wire.FrameWaitSession:  true,
 }
 
+// pluginRefusedFrames are the control verbs a plugin connection
+// (non-empty principal) is refused, each with the reason sent back.
+// They are the user's own decisions: what an agent may do, whether a
+// plan runs, and which plugins run with what trust. SEND_TO_SESSION and
+// the capture-HUD verbs are refused in their own arms; terminal input
+// on a plugin's attach connection is refused in serveAttach.
+// docs/plugins.md lists the full set; spec 555 is how a plugin could
+// one day be granted one.
+var pluginRefusedFrames = map[wire.FrameType]string{
+	wire.FrameAnswerPermission:      "a permission request is answered by the user",
+	wire.FrameResolvePlanReview:     "a plan review is decided by the user",
+	wire.FrameInstallPlugin:         "installing a plugin skips the app's trust prompt",
+	wire.FrameSetPluginEnabled:      "enabling a plugin skips the app's trust prompt",
+	wire.FrameRemovePlugin:          "which plugins are installed is the user's choice",
+	wire.FrameResolveWorktreeChoice: "a worktree-setup question is answered by the user",
+	wire.FrameShutdown:              "stopping Hive ends every session",
+}
+
+// pluginRefusal is why principal (a plugin) may not send ft with this
+// payload, or "" when it may. Beyond pluginRefusedFrames, three verbs
+// depend on the payload: RESOLVE_PROMPT may only dismiss (a paste types
+// into the session), SET_PLUGIN_CONFIG may only touch the caller's own
+// plugin, and PROMPT_ACP may only reach a session that plugin spawned.
+// A payload that does not decode is left to the arm, which reports it.
+func (d *Daemon) pluginRefusal(principal string, ft wire.FrameType, payload []byte) string {
+	if why, ok := pluginRefusedFrames[ft]; ok {
+		return why
+	}
+	own, _ := wire.ParsePrincipal(principal)
+	switch ft {
+	case wire.FrameResolvePrompt:
+		var req wire.ResolvePromptReq
+		if jsonUnmarshal(payload, &req) == nil && req.Paste {
+			return "pasting a prompt types into the session; a plugin may only dismiss it"
+		}
+	case wire.FrameSetPluginConfig:
+		var req wire.SetPluginConfigReq
+		if jsonUnmarshal(payload, &req) == nil && req.ID != own {
+			return "a plugin may only change its own config"
+		}
+	case wire.FramePromptAcp:
+		var req wire.PromptAcpReq
+		if jsonUnmarshal(payload, &req) != nil {
+			return ""
+		}
+		// SpawnedBy is stamped once at create and never rewritten.
+		if e := d.reg.Get(req.SessionID); e == nil || !spawnedByPlugin(e.SpawnedBy, own) {
+			return "a plugin may only prompt sessions it created"
+		}
+	}
+	return ""
+}
+
+// spawnedByPlugin reports whether spawnedBy names plugin id, with or
+// without a workflow run.
+func spawnedByPlugin(spawnedBy, id string) bool {
+	p, _ := wire.ParsePrincipal(spawnedBy)
+	return id != "" && p == id
+}
+
 // projectOfSession resolves the project a session belongs to, or "" if
 // the id names no live session.
 func projectOfSession(all []wire.SessionInfo, id string) string {
@@ -1666,6 +1726,15 @@ func (d *Daemon) handleControlFrame(ctx context.Context, ops controlOps, ft wire
 		ops.sendError(wire.ErrCodeModeNotAllowed,
 			fmt.Sprintf("%s is not served on a session connection; want ADD_IDEA, LIST_IDEAS, SUBMIT_RESULT, SEND_TO_SESSION, LIST_SESSIONS or WAIT_SESSION", ft))
 		return false
+	}
+	// The same shape for plugins: a fixed set of verbs a plugin socket
+	// is refused, checked before any arm runs (so before the async ones
+	// start) and before handlePluginFrame's plugins_unavailable.
+	if ops.principal != "" {
+		if why := d.pluginRefusal(ops.principal, ft, payload); why != "" {
+			ops.sendError(wire.ErrCodeModeNotAllowed, ft.String()+" is not available to plugins: "+why)
+			return false
+		}
 	}
 	switch ft {
 	case wire.FrameShutdown:
@@ -2480,6 +2549,7 @@ func (d *Daemon) serveAttach(conn net.Conn, sessionID string, tag *pluginTag) {
 	}
 	defer unsub()
 
+	refused := false
 	for {
 		ft, payload, err := wire.ReadFrame(conn)
 		if err != nil {
@@ -2494,6 +2564,19 @@ func (d *Daemon) serveAttach(conn net.Conn, sessionID string, tag *pluginTag) {
 			return
 		}
 		release()
+		// A plugin's attach is read-only: no keystrokes, and no resize
+		// (that reflows every viewer's terminal and signals the
+		// agent). Refused once with an ERROR through the sink, the
+		// conn's only writer; later attempts are dropped so a write
+		// loop cannot flood the connection with errors.
+		if tag != nil && (ft == wire.FrameData || ft == wire.FrameResize) {
+			if !refused {
+				refused = true
+				_ = sink.writeError(wire.Error{Code: wire.ErrCodeModeNotAllowed,
+					Message: ft.String() + " is not available to plugins: a plugin's attach is read-only", SessionID: sessionID})
+			}
+			continue
+		}
 		switch ft {
 		case wire.FrameData:
 			if _, werr := sess.Write(payload); werr != nil {

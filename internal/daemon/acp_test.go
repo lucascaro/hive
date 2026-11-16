@@ -161,9 +161,9 @@ func TestGetAcpTranscriptQueuesResetOnListener(t *testing.T) {
 func TestPromptAcpOriginFromConnection(t *testing.T) {
 	useFakeACP(t)
 	d := newFrameTestDaemon(t)
-	e := createACPVia(t, d, (&recordOps{}).ops(), `{"kind":"acp","agent":"claude"}`)
-	ops := (&recordOps{}).ops()
-	ops.principal = "plugin:wf"
+	// The plugin's own session: PROMPT_ACP from a plugin reaches no other.
+	e := createACPVia(t, d, asPlugin("plugin:wf"), `{"kind":"acp","agent":"claude"}`)
+	ops := asPlugin("plugin:wf")
 	d.handleControlFrame(t.Context(), ops, wire.FramePromptAcp, []byte(`{"session_id":"`+e.ID+`","text":"hi"}`))
 	msg, err := d.reg.AcpTranscript(e.ID)
 	if err != nil || len(msg.Items) == 0 || msg.Items[0].Origin != "plugin:wf" {

@@ -55,7 +55,9 @@ try {
 	if created == "" || created != killed {
 		t.Errorf("created %q, killed %q: want the same non-empty id", created, killed)
 	}
-	if got := read("refused"); got != "no_such_session" {
-		t.Errorf("refusal code = %q, want no_such_session", got)
+	// A plugin may prompt only sessions it created, so an unknown id is
+	// refused as such rather than reported missing.
+	if got := read("refused"); got != "mode_not_allowed" {
+		t.Errorf("refusal code = %q, want mode_not_allowed", got)
 	}
 }

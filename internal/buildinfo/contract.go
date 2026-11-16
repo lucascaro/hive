@@ -28,6 +28,16 @@ package buildinfo
 // History (newest first), so a bump is a decision with a record and
 // not just a number going up:
 //
+//	38 — Plugin limits. A plugin socket now refuses, with
+//	    mode_not_allowed, DATA and RESIZE on an attach or create
+//	    connection, ANSWER_PERMISSION, RESOLVE_PLAN_REVIEW,
+//	    RESOLVE_WORKTREE_CHOICE, SHUTDOWN, INSTALL_PLUGIN,
+//	    SET_PLUGIN_ENABLED, REMOVE_PLUGIN, RESOLVE_PROMPT with paste,
+//	    SET_PLUGIN_CONFIG for another plugin, and PROMPT_ACP into a
+//	    session the plugin did not spawn. A GUI built
+//	    against this tree documents and relies on those refusals (the
+//	    trust prompt cannot be skipped through a plugin's socket); an older
+//	    daemon still serves them, so the GUI must restart it.
 //	37 — Verified session identity. Every spawn gets a fresh
 //	    HIVE_SESSION_TOKEN, and a ModeSession, ModeEvent or
 //	    ModePlanReview HELLO must carry it as session_token (event and
@@ -316,7 +326,7 @@ package buildinfo
 //	    before this cannot see or clear the flag.
 //	1 — first contract; everything up to and including the
 //	    CLIENT_COMMAND relay.
-const DaemonContract = 37
+const DaemonContract = 38
 
 // Identity is this binary's full build identity. `hived --version
 // --json` prints it, and Welcome carries the same three values, so a
