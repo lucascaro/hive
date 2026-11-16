@@ -89,7 +89,14 @@ func TestSessionTokenRefusesUnverifiedHello(t *testing.T) {
 	var msg string
 	socks := map[string]string{"events": f.d.EventSocketPath(), "control": f.d.SocketPath()}
 	for sockName, sock := range socks {
-		for _, mode := range []wire.Mode{wire.ModeSession, wire.ModeEvent} {
+		modes := []wire.Mode{wire.ModeSession, wire.ModeEvent}
+		if sockName == "events" {
+			// plan_review is events-socket only. Review is off here, and
+			// the refusal still comes first: an unverified caller never
+			// learns whether review is on.
+			modes = append(modes, wire.ModePlanReview)
+		}
+		for _, mode := range modes {
 			for _, tc := range cases {
 				t.Run(sockName+"/"+string(mode)+"/"+tc.name, func(t *testing.T) {
 					c := helloOn(t, sock, mode, tc.id, tc.tok)
