@@ -2299,6 +2299,48 @@ download, the accepted sandbox gap, and `LIST_ACP_AGENTS`.
       before B3d, rather than reopening A. Its contract and tests are under
       Phases, B3-R7.
 
+- **2026-11-15, B3b implementation decisions (PR for #529, branch
+  `feature/529-b3b-agent-nodes`).** No daemon change, no DaemonContract bump.
+  - **A check's base worktree is nobody's head.** Approach says a check with
+    "a base worktree" has that worktree's branch as its head. Built literally,
+    every check after a check with no agent upstream would run in the first
+    one's tree, and B2's test (`a → b`, two roots' worth of base worktrees)
+    would change meaning. So a check passes its input through, and only a
+    **merge** worktree (two or more input heads) is a new head. A check after
+    an agent runs in the agent's worktree, re-attached through PREPARE; the
+    re-attach refuses (`reattached: false`) rather than let PREPARE make a
+    fresh branch and test the wrong tree.
+  - **Skipped nodes pass their input through** when heads are collected, so a
+    skipped worker in a loop copy does not hide the work upstream of it.
+  - **The base of a derived worktree is `refs/heads/<branch>`**, so a tag of
+    the same short name cannot stand in for an upstream branch.
+  - **A result with `status: "error"` fails the node** (the daemon drops its
+    `data`), naming the agent's `summary`, redacted and cut like any error.
+    The plan does not say; a task the agent says it could not do must not
+    become a done node with no output.
+  - **The catalog check before a run starts or is retried is async**, so it
+    cannot live in the synchronous `Topics.handle`. `Topics.preflight`
+    answers a refusal as `invalid_ir` (an existing code, so the Contract for C
+    gains nothing); `main.ts` awaits it before `handle`. The executor asks
+    `LIST_ACP_AGENTS` again on every launch as the backstop, so a ceiling
+    lowered mid-run fails the node naming it.
+  - **`agent.turn.*` events are not emitted in B3b.** They belong to B5's
+    events contract with the other `agent.*` types; B3b records the turn on
+    the row (`prompt_id`, `epoch`, `boot_id`).
+  - **Plan corrections found by the tests.**
+    - `TestCancel_WaitsForCancelledThenKills` needs `FlagSlowCancel`: with
+      `FlagBlock` alone the fake honours a cancel at once. B3b adds
+      `acptest.FlagGate` (a per-turn latch, unlike `FlagBlock`'s sticky
+      release file) and uses it with `FlagSlowCancel`. The plugin's 10 s grace
+      is shortened by `HIVE_WF_CANCEL_GRACE_MS`, read only with the test seam
+      on.
+    - A conflict leaves the kept merge worktree **clean at the base**: the
+      daemon runs `git merge --abort` (`worktree.MergeBranches`). The message's
+      "Resolve and commit there" therefore means: redo the merge there,
+      resolve, commit. The node's `conflict.branch` names the branch to merge.
+    - The e2e GUI client must drain `SESSION_EVENT`s: the test client holds 32
+      of them and a full channel stops it reading `PLUGIN_MESSAGE`s too.
+
 ## Progress
 
 - **2026-10-25:** Research complete. Plan drafted against A at `7410f6b7`.
@@ -2324,6 +2366,17 @@ download, the accepted sandbox gap, and `LIST_ACP_AGENTS`.
   manifest drops the floor when Node is older than 26 and `HIVE_REQUIRE_NODE`
   is unset); CI's Node 26 leg runs the unmodified manifest. B2 decisions are
   logged below under "B2".
+
+- **2026-11-15 (B3b):** Implemented on `feature/529-b3b-agent-nodes`, based on
+  `origin/main` at `3bd42ec7`. Added `engine/{agent,prompt,worktrees,sessions}.ts`;
+  `nodes.ts` now takes its worktree from `worktrees.ts` (B2's `prepareBase`
+  moved there and is used by checks and agents alike); `interp.ts` exports
+  `instanceCtx`, the one resolver for references, heads and `{of}`, and gains
+  the row-only `ack` transition; `engine.ts` keeps the latest state per
+  session (`SessionFeed`) and gains `waitNode`, `resumeNode`, `ackTurn` and
+  `catalogRefusal`. Tests: `agent`, `prompt`, `worktrees` in
+  `plugins/workflows/test/`, and Go `internal/workflowe2e/{agent_turns,agent_modes,worktree}_test.go`
+  against the fake adapter. Decisions under "B3b implementation decisions".
 
 ## Open questions
 

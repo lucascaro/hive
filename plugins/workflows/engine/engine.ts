@@ -9,6 +9,7 @@
 // state, and `recover()` runs the same reducer over it.
 
 import { randomBytes } from 'node:crypto';
+import { type AcpAgentInfo, agentNodes, catalog } from '../ir/catalog.ts';
 import { validate } from '../ir/validate.ts';
 import { shape } from '../ir/shape.ts';
 import { checkValue } from '../ir/resultschema.ts';
@@ -18,6 +19,7 @@ import { initialRows, apply, type Action, type Applied, type Model, modelFor, st
 import { type KillDeps, killTree, reap, unsafeTarget } from './killtree.ts';
 import { redactCut } from './redact.ts';
 import type { Row, RunRow } from './model.ts';
+import { SessionFeed } from './sessions.ts';
 import { encodedSize } from './size.ts';
 import type { Store } from './store.ts';
 
@@ -29,6 +31,10 @@ export interface Hive {
   // biome-ignore lint/suspicious/noExplicitAny: wire replies are decoded JSON
   request(name: string, payload?: object, opts?: { timeoutMs?: number }): Promise<any>;
   postMessage(topic: string, data?: unknown): void;
+  /** Frames the daemon sends unasked (SESSION_EVENT, ACP_TRANSCRIPT, ERROR): the SDK connection is an EventEmitter. */
+  on?(event: string, fn: (msg: never) => void): unknown;
+  /** The daemon's WELCOME: `boot_id` changes when `hived` restarts (R2). */
+  readonly welcome?: { boot_id?: string };
 }
 
 export interface NodeContext {
@@ -86,6 +92,8 @@ function newRunId(): string {
 export class Engine {
   readonly store: Store;
   readonly hive: Hive;
+  /** The latest the daemon said about each session; agent executors wait on it. */
+  readonly feed = new SessionFeed();
   readonly #executors: Executors;
   readonly #now: () => Date;
   readonly #onEvents: ((runId: string, events: RunEvent[]) => void) | undefined;
@@ -102,6 +110,7 @@ export class Engine {
     this.#now = o.now ?? (() => new Date());
     this.#onEvents = o.onEvents;
     this.#killDeps = o.kill ?? {};
+    this.feed.attach(o.hive);
   }
 
   // ----------------------------------------------------------------- runs
@@ -320,6 +329,36 @@ export class Engine {
     this.commit(runId, { t: 'turn', key });
     this.#after(runId);
     return this.#row(runId, key)?.state !== 'failed';
+  }
+
+  /** The agent's turn is waiting on the user: a permission request (B-1, B-18 in `apply`). False when the node is not running. */
+  waitNode(runId: string, key: string, waiting: Record<string, unknown>): boolean {
+    if (this.#stopping || this.#row(runId, key)?.state !== 'running') return false;
+    this.commit(runId, { t: 'wait', key, waiting });
+    this.#after(runId);
+    return true;
+  }
+
+  /** The permission was answered and the turn goes on: `node.resumed`. False when the node is not waiting. */
+  resumeNode(runId: string, key: string): boolean {
+    if (this.#stopping || this.#row(runId, key)?.state !== 'waiting') return false;
+    this.commit(runId, { t: 'resume', key, reason: 'permission' });
+    return true;
+  }
+
+  /** Records which transcript item and epoch an agent turn is, with the daemon boot it ran under (R2). */
+  ackTurn(runId: string, key: string, a: { prompt_id: number; epoch: number }): void {
+    const r = this.#row(runId, key);
+    if (this.#stopping || !r || (r.state !== 'running' && r.state !== 'waiting')) return;
+    this.commit(runId, { t: 'ack', key, ...a, ...(this.hive.welcome?.boot_id ? { boot_id: this.hive.welcome.boot_id } : {}) });
+  }
+
+  /** Why the IR's agent nodes cannot run under the daemon's catalog and ceilings right now (R6), or undefined. Asked before every run start and retry. */
+  async catalogRefusal(ir: IR): Promise<string | undefined> {
+    if (agentNodes(ir.nodes).next().done) return undefined;
+    const reply = await this.hive.request('LIST_ACP_AGENTS', {}, { timeoutMs: 30_000 });
+    const errors = catalog(ir, (reply?.agents ?? []) as AcpAgentInfo[]);
+    return errors.length > 0 ? errors.join('; ') : undefined;
   }
 
   #end(runId: string, key: string, from: Row['state'], t: Transition): boolean {

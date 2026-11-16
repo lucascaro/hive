@@ -16,5 +16,8 @@ if (!dataDir) {
 }
 
 const hive = await connect();
-await start(hive, { dataDir, testSeam: process.env.HIVE_WF_TEST_SEAM === '1' });
+const testSeam = process.env.HIVE_WF_TEST_SEAM === '1';
+// The 10 s a cancelled turn gets before its session is killed: a test shortens it, and only with the seam on.
+const grace = Number(process.env.HIVE_WF_CANCEL_GRACE_MS);
+await start(hive, { dataDir, testSeam, ...(testSeam && Number.isFinite(grace) && grace > 0 ? { cancelGraceMs: grace } : {}) });
 console.log('workflows: ready');

@@ -8,6 +8,8 @@
 // 48 KiB as the daemon will send it, by construction: lists are paged by
 // encoded size, never by count alone.
 
+import { shape } from '../ir/shape.ts';
+import type { IR } from '../sdk/dsl.ts';
 import { type Engine, EngineError } from './engine.ts';
 import type { RunEvent } from './events.ts';
 import type { Row, RunRow } from './model.ts';
@@ -94,6 +96,34 @@ export class Topics {
       if (err instanceof TopicError || err instanceof EngineError) return fail(err.code, err.message);
       return fail('internal', err instanceof Error ? err.message : String(err));
     }
+  }
+
+  /**
+   * Before a run starts or is retried, asks the daemon whether it would run the
+   * workflow's agents: its catalog and the user's ceilings may have changed
+   * since the workflow was built (R6). Asking is asynchronous, so it cannot be
+   * part of `handle`. Returns the refusal to send, or undefined to go on to `handle`.
+   */
+  async preflight(topic: string, data: unknown): Promise<Reply | undefined> {
+    const req: Data = isObj(data) ? data : {};
+    let ir: IR | undefined;
+    try {
+      if (topic === 'run.retry') {
+        const run = this.#store.getRun(str(req, 'run_id'));
+        if (run && (run.state === 'failed' || run.state === 'cancelled')) ir = JSON.parse(run.ir) as IR;
+      } else if (topic === 'test.start-run' && this.#opts.testSeam && shape(req.ir).length === 0) ir = req.ir as IR;
+    } catch {
+      return undefined; // `handle` reports what is wrong with the request
+    }
+    if (!ir) return undefined;
+    let why: string | undefined;
+    try {
+      why = await this.#engine.catalogRefusal(ir);
+    } catch (err) {
+      why = `could not read the agent catalog from the daemon: ${err instanceof Error ? err.message : String(err)}`;
+    }
+    if (!why) return undefined;
+    return { topic: `${topic}.reply`, data: { nonce: typeof req.nonce === 'string' ? req.nonce : undefined, ok: false, error: { code: 'invalid_ir', message: redactCut(why, 4 << 10) } } };
   }
 
   #table(): Record<string, (d: Data) => Data> {

@@ -26,6 +26,8 @@ export interface StartOptions {
   dataDir: string;
   /** Turns on the `test.start-run` topic. Set from HIVE_WF_TEST_SEAM by main.mjs; never in a release. */
   testSeam?: boolean;
+  /** How long a cancelled agent turn gets before its session is killed. A test shortens it; never set in a release. */
+  cancelGraceMs?: number;
 }
 
 export async function start(hive: HiveConnection, opts: StartOptions): Promise<Engine> {
@@ -33,7 +35,7 @@ export async function start(hive: HiveConnection, opts: StartOptions): Promise<E
   const engine = new Engine({
     store,
     hive,
-    executors: defaultExecutors(),
+    executors: defaultExecutors(opts.cancelGraceMs === undefined ? {} : { cancelGraceMs: opts.cancelGraceMs }),
     onEvents: (runId, events) => {
       for (const batch of batchForPush(runId, events)) hive.postMessage('run.event', { run_id: runId, events: batch });
     },
@@ -41,8 +43,10 @@ export async function start(hive: HiveConnection, opts: StartOptions): Promise<E
   const topics = new Topics({ engine, ...(opts.testSeam ? { testSeam: true } : {}) });
 
   hive.on('PLUGIN_MESSAGE', ((msg: PluginMessage) => {
-    const reply = topics.handle(msg.topic, msg.data);
-    if (reply) hive.postMessage(reply.topic, reply.data);
+    void (async () => {
+      const reply = (await topics.preflight(msg.topic, msg.data)) ?? topics.handle(msg.topic, msg.data);
+      if (reply) hive.postMessage(reply.topic, reply.data);
+    })().catch((err: Error) => console.error(`workflows: ${msg.topic}: ${err.message}`));
   }) as (msg: never) => void);
 
   engine.startFlush();
