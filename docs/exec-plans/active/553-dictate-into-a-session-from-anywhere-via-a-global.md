@@ -239,3 +239,4 @@ None — criterion 6 amendment approved at the plan stop (2026-11-15).
 ## PR convergence ledger
 
 - **2026-11-16 iter 1** — verdict: COMMENT; mergeable: MERGEABLE; findings_hash: d8374aacda5b9a4629684f4ad6ecdc42620dd2df17cd6570d932bc66d4057676; threads_open: 0; action: escalated:risky-fix-needs-human-decision; head_sha: 13f70b2c.
+- **2026-11-16 iter 2** — verdict: COMMENT; mergeable: MERGEABLE; findings_hash: 42cbaa3f8843378db5c06fc62db31a068af798adc58da35a43e99ebccaab200b; threads_open: 0; action: escalated:risky-fix-needs-human-decision; head_sha: 784672fa.

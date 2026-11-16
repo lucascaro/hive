@@ -230,6 +230,19 @@ login item as `Settings ▸ Menu bar ▸ Start at login`. The checkmark is
 re-read each time you open the menu, and is hidden where macOS can't
 register a login item (a build run outside `Hive.app`).
 
+It starts on its own whenever `hived` or a window does, so in normal use
+it is simply there — a quit menu bar comes back the next time either
+starts, or from **Restart Menu Bar**. `Start at Login` additionally
+registers it with macOS so it appears at login before either has run.
+Set `HIVE_NO_MENUBAR=1` to suppress it; an isolated run
+(`HIVE_STATE_DIR` set, e.g. `scripts/dev-iso.sh`) never starts one.
+
+The agent ships inside the app bundle at
+`hivegui.app/Contents/Library/LoginItems/hivebar.app` (whatever you
+renamed the bundle to on install). It is a client like
+the GUI — it talks to the daemon over the wire protocol and never opens
+a PTY of its own.
+
 ### Dictate into a session from any app
 
 Press **⌃⌥Space** anywhere, with Hive in front or not, and a small box
@@ -243,25 +256,13 @@ text for when it settles. **⇧↩** starts a new line and **Esc** throws
 the text away; either way focus goes back to the app you were in.
 
 Hive itself never listens to the microphone, and needs no Accessibility
-permission for the hotkey. Rebind it, or remove it, under
+permission for the hotkey, which is active whenever Hive's daemon is
+running. Rebind it, or remove it, under
 `Settings ▸ Shortcuts ▸ Global (system-wide)`. The menu bar's
 **Dictate into a Session…** item opens the same box and shows the
 current hotkey, or says so when another app already owns it. One press
 opens the box and a second starts your dictation tool: macOS gives an
 app no supported way to start Dictation for you.
-
-It starts on its own whenever `hived` or a window does, so in normal use
-it is simply there — a quit menu bar comes back the next time either
-starts, or from **Restart Menu Bar**. `Start at Login` additionally
-registers it with macOS so it appears at login before either has run.
-Set `HIVE_NO_MENUBAR=1` to suppress it; an isolated run
-(`HIVE_STATE_DIR` set, e.g. `scripts/dev-iso.sh`) never starts one.
-
-The agent ships inside the app bundle at
-`hivegui.app/Contents/Library/LoginItems/hivebar.app` (whatever you
-renamed the bundle to on install). It is a client like
-the GUI — it talks to the daemon over the wire protocol and never opens
-a PTY of its own.
 
 ## Reloading vs restarting
 

@@ -348,25 +348,44 @@ func TestHUDOnlyHotkeyTakesFocus(t *testing.T) {
 	}
 }
 
-// A reply to a send the user walked away from must not settle a newer
-// send to the same session.
-func TestHUDStaleReplyDoesNotSettleNewSend(t *testing.T) {
+// The daemon answers sends out of order, and a reply names only the
+// session, so a send abandoned with Esc blocks a new one to that session
+// until it is answered: its reply can then never settle the new send.
+func TestHUDAbandonedSendBlocksUntilAnswered(t *testing.T) {
 	h, v, s := newTestHUD(sess("a", 0, 1))
 	h.Open()
 	h.Submit("first")
 	h.Cancel()
 	h.Open()
 	h.Submit("second")
+	if len(s.sends) != 1 || !strings.Contains(v.last().Status, "not answered") || !v.visible {
+		t.Fatalf("a second send went out with the first unanswered: sends %+v, status %q", s.sends, v.last().Status)
+	}
 	h.OnSent("a") // answers "first"
 	if !v.visible {
 		t.Fatal("the reply to the abandoned send closed the panel")
 	}
-	h.OnError("a", wire.ErrCodeSessionBusy, "busy") // answers "second"
-	if !v.visible || v.last().Hints != hintsBusy {
-		t.Fatalf("state after the real reply = %+v", v.last())
-	}
-	if len(s.sends) != 2 {
+	h.Submit("second")
+	if len(s.sends) != 2 || s.sends[1].text != "second" {
 		t.Fatalf("sends = %+v", s.sends)
+	}
+	h.OnSent("a")
+	if v.visible {
+		t.Fatal("the reply to the second send did not close the panel")
+	}
+}
+
+// A send that never reached the daemon has no reply coming, so it must
+// not block the next one.
+func TestHUDLocalFailureDoesNotBlock(t *testing.T) {
+	h, _, s := newTestHUD(sess("a", 0, 1))
+	s.connected = false
+	h.Open()
+	h.Submit("one")
+	s.connected = true
+	h.Submit("one")
+	if len(s.sends) != 2 {
+		t.Fatalf("sends = %d, want 2: a local failure left the session blocked", len(s.sends))
 	}
 }
 

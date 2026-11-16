@@ -105,12 +105,13 @@ type HUD struct {
 	connected bool
 	projects  []wire.ProjectInfo
 	sessions  []wire.SessionInfo
-	// stale counts, per session, the replies still due for sends the user
-	// walked away from (Esc while sending). SENT and ERROR name only the
-	// session, and the daemon answers a connection's frames in order, so
-	// the next that many replies for that session belong to those sends,
-	// not to a newer one.
-	stale map[string]int
+	// pending counts, per session, sends with a reply still due. SENT and
+	// ERROR name only the session, and the daemon runs each send on its
+	// own goroutine, so replies can come back out of order. Allowing one
+	// unanswered send per session makes every reply unambiguous: a send
+	// abandoned with Esc blocks a new one to that session until it is
+	// answered, rather than its reply settling the new one.
+	pending map[string]int
 
 	open   bool
 	target string
@@ -122,7 +123,7 @@ type HUD struct {
 }
 
 func NewHUD(view hudView, send hudSender) *HUD {
-	return &HUD{view: view, send: send, goSend: func(f func()) { go f() }, stale: map[string]int{}}
+	return &HUD{view: view, send: send, goSend: func(f func()) { go f() }, pending: map[string]int{}}
 }
 
 // SetSessions takes a fresh daemon snapshot. While the panel is open it
@@ -158,7 +159,7 @@ func (h *HUD) Disconnected() {
 	defer h.mu.Unlock()
 	h.connected = false
 	h.projects, h.sessions = nil, nil
-	clear(h.stale)
+	clear(h.pending) // no reply is coming on a dead connection
 	if !h.open {
 		return
 	}
@@ -194,9 +195,6 @@ func (h *HUD) Cancel() {
 	defer h.mu.Unlock()
 	if !h.open {
 		return
-	}
-	if h.phase == hudSending {
-		h.stale[h.target]++
 	}
 	h.closeLocked()
 }
@@ -279,8 +277,14 @@ func (h *HUD) prepareSend(text string) func() {
 		h.renderLocked(false, false)
 		return nil
 	}
+	if h.pending[h.target] > 0 {
+		h.status = "Hive has not answered the last send to this session yet. Try again in a moment."
+		h.renderLocked(false, false)
+		return nil
+	}
 	queue := h.phase == hudBusy
 	id := h.target
+	h.pending[id]++
 	h.phase = hudSending
 	h.status = "Sending…"
 	h.renderLocked(false, false)
@@ -294,6 +298,7 @@ func (h *HUD) prepareSend(text string) func() {
 func (h *HUD) failed(id, msg string) {
 	h.mu.Lock()
 	defer h.mu.Unlock()
+	h.answeredLocked(id) // never written, so no reply is coming
 	if !h.open || h.phase != hudSending || h.target != id {
 		return
 	}
@@ -306,7 +311,7 @@ func (h *HUD) failed(id, msg string) {
 func (h *HUD) OnSent(id string) {
 	h.mu.Lock()
 	defer h.mu.Unlock()
-	if h.consumeStaleLocked(id) {
+	if !h.answeredLocked(id) {
 		return
 	}
 	if !h.open || h.phase != hudSending || h.target != id {
@@ -319,7 +324,7 @@ func (h *HUD) OnSent(id string) {
 func (h *HUD) OnError(id, code, msg string) {
 	h.mu.Lock()
 	defer h.mu.Unlock()
-	if h.consumeStaleLocked(id) {
+	if !h.answeredLocked(id) {
 		return
 	}
 	if !h.open || h.phase != hudSending || h.target != id {
@@ -346,14 +351,15 @@ func (h *HUD) OnError(id, code, msg string) {
 	h.renderLocked(false, false)
 }
 
-// consumeStaleLocked reports whether a reply for id answers a send the
-// user already walked away from, and so must not settle the current one.
-func (h *HUD) consumeStaleLocked(id string) bool {
-	if h.stale[id] == 0 {
+// answeredLocked records a reply (or a local failure) for id's one
+// outstanding send, reporting false when none was outstanding: a reply
+// to nothing of ours.
+func (h *HUD) answeredLocked(id string) bool {
+	if h.pending[id] == 0 {
 		return false
 	}
-	if h.stale[id]--; h.stale[id] == 0 {
-		delete(h.stale, id)
+	if h.pending[id]--; h.pending[id] == 0 {
+		delete(h.pending, id)
 	}
 	return true
 }
