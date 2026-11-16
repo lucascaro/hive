@@ -29,15 +29,26 @@ function sinks(body: Body): Node[] {
  * in its input's worktree) passes its input through; a container reports what
  * its sinks end on (a map: every copy's), and the node after it merges them.
  */
-export function headsOf(m: Model, key: string): string[] {
+export function headsOf(m: Model, key: string, memo: Memo = new Map()): string[] {
+  const hit = memo.get(`h:${key}`);
+  if (hit) return hit;
+  const heads = computeHeads(m, key, memo);
+  memo.set(`h:${key}`, heads);
+  return heads;
+}
+
+/** Heads already worked out during one question: without it a layered graph is walked once per path, which is exponential in its depth. */
+type Memo = Map<string, string[]>;
+
+function computeHeads(m: Model, key: string, memo: Memo): string[] {
   const { ix } = m;
   const row = m.rows.get(key);
   const node = row && ix.byId.get(row.node_id)?.node;
   const sc = scopeOf(m, key);
   if (!row || !node || !sc) return [];
-  const through = (): string[] => inputHeads(m, key);
+  const through = (): string[] => inputHeads(m, key, memo);
   const ofSinks = (body: GroupNode | LoopNode | MapNode, ctx: readonly number[]): string[] =>
-    uniq(sinks(body).flatMap((s) => headsOf(m, keyOf(ix, s.id, ctx))));
+    uniq(sinks(body).flatMap((s) => headsOf(m, keyOf(ix, s.id, ctx), memo)));
   switch (node.kind) {
     case 'agent':
       return row.state === 'skipped' ? through() : row.branch ? [row.branch] : [];
@@ -72,7 +83,15 @@ export function headsOf(m: Model, key: string): string[] {
  * from its own iteration k-1 (that is how a worker revises its own change),
  * falling back to the loop's input when that copy did nothing.
  */
-export function inputHeads(m: Model, key: string): string[] {
+export function inputHeads(m: Model, key: string, memo: Memo = new Map()): string[] {
+  const hit = memo.get(`i:${key}`);
+  if (hit) return hit;
+  const heads = computeInputHeads(m, key, memo);
+  memo.set(`i:${key}`, heads);
+  return heads;
+}
+
+function computeInputHeads(m: Model, key: string, memo: Memo): string[] {
   const { ix } = m;
   const row = m.rows.get(key);
   const placed = row && ix.byId.get(row.node_id);
@@ -81,15 +100,15 @@ export function inputHeads(m: Model, key: string): string[] {
   const parent = placed.parent ? ix.byId.get(placed.parent)?.node : undefined;
   const body: Body = (parent as Body | undefined) ?? ix.ir;
   const incoming = body.edges.filter((e) => e.to === placed.node.id);
-  if (incoming.length > 0) return uniq(incoming.flatMap((e) => headsOf(m, keyOf(ix, e.from, sc.ctx))));
+  if (incoming.length > 0) return uniq(incoming.flatMap((e) => headsOf(m, keyOf(ix, e.from, sc.ctx), memo)));
   if (!parent) return [];
   const outerCtx = parent.kind === 'group' ? sc.ctx : sc.ctx.slice(0, -1);
   const iteration = sc.ctx[sc.ctx.length - 1];
   if (parent.kind === 'loop' && iteration > 1) {
-    const own = headsOf(m, keyOf(ix, placed.node.id, [...outerCtx, iteration - 1]));
+    const own = headsOf(m, keyOf(ix, placed.node.id, [...outerCtx, iteration - 1]), memo);
     if (own.length > 0) return own;
   }
-  return inputHeads(m, keyOf(ix, parent.id, outerCtx));
+  return inputHeads(m, keyOf(ix, parent.id, outerCtx), memo);
 }
 
 /** The instance key `of` names, as read from the instance `key` (same copy and iteration, or the latest of a loop only `of` is in). */

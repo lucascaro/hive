@@ -577,3 +577,40 @@ test('a cancel while the F3 re-prompt is in flight is pinned to the re-prompt, n
     r.h.close();
   }
 });
+
+test('a run cancelled while the session is becoming ready closes the idle session', async () => {
+  const r = rig(() => {}, { neverReady: true });
+  try {
+    const id = r.start(one());
+    await waitFor(() => r.sim.sessions.length === 1 && rowOf(r.h, id, 'a')?.state === 'running', 'the node to wait for its session');
+    r.h.engine.cancelRun(id);
+    await waitFor(() => r.sim.of('KILL_SESSION').length === 1, 'the idle session to be closed');
+    assert.equal(r.sim.of('CANCEL_ACP').length, 0, 'no turn ever started, so there is nothing to cancel');
+  } finally {
+    r.h.close();
+  }
+});
+
+test('a launch made stale by a cancel and retry during CREATE_SESSION kills its session and leaves the node to the new attempt', async () => {
+  const r = rig(() => {});
+  const make = r.hive.replies.CREATE_SESSION;
+  let id = '';
+  let n = 0;
+  r.hive.replies.CREATE_SESSION = (p) => {
+    const reply = make(p);
+    if (++n === 1) {
+      r.h.engine.cancelRun(id);
+      r.h.engine.retryRun(id);
+    }
+    return reply;
+  };
+  try {
+    id = r.start(one());
+    await waitFor(() => r.sim.of('KILL_SESSION').length === 1, 'the stale session to be killed');
+    assert.deepEqual(r.sim.of('KILL_SESSION')[0], { session_id: 's1', force: true });
+    await waitFor(() => rowOf(r.h, id, 'a')?.session_id === 's2', 'the new attempt to own the node');
+    assert.equal(r.sim.prompts.length, 1, 'only the new attempt was prompted');
+  } finally {
+    r.h.close();
+  }
+});

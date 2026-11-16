@@ -131,7 +131,8 @@ class AgentRun {
     if (!sid) return this.#fail('the daemon did not name the new session');
     this.#sid = sid;
     engine.feed.track(sid);
-    if (!engine.beginNode(run_id, key, { session_id: sid, branch: ws.branch, worktree: ws.path })) {
+    // CREATE_SESSION can take a while: a cancel and retry meanwhile must not let this stale launch claim the new attempt's node.
+    if (!engine.current(this.#ctx) || !engine.beginNode(run_id, key, { session_id: sid, branch: ws.branch, worktree: ws.path })) {
       await this.#kill(); // cancelled while the session was being made
       return;
     }
@@ -307,7 +308,7 @@ class AgentRun {
 
   /** Whether the turn that was started has ended (or none was). */
   #ended(): boolean {
-    if (!this.#ack || !this.#sid) return true;
+    if (!this.#ack || !this.#sid) return false;
     const tx: TranscriptState | undefined = this.#engine.feed.transcript(this.#sid);
     return tx?.epoch === this.#ack.epoch && tx.prompt_id === this.#ack.prompt_id && tx.stop_reason !== '';
   }
@@ -323,6 +324,8 @@ class AgentRun {
       if (!sid) return;
       // A prompt that is still being sent has started a turn the daemon will not tell us about until its ack: wait for it, so the cancel is pinned to that turn.
       await this.#sending?.catch(() => {});
+      // No turn was ever started (cancelled while the session was becoming ready, or the first prompt was refused): nothing to cancel, so the idle session is closed.
+      if (!this.#ack) return await this.#kill();
       if (this.#ended()) return;
       try {
         await this.#engine.hive.request('CANCEL_ACP', { session_id: sid, ...(this.#ack ?? {}) });

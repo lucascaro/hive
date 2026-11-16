@@ -135,7 +135,7 @@ func TestPermission_WaitEmitsNodeResumedAfterAnswer(t *testing.T) {
 			finished = i
 		}
 	}
-	if !(waiting >= 0 && waiting < resumed && resumed < finished) {
+	if waiting < 0 || waiting >= resumed || resumed >= finished {
 		t.Errorf("event order waiting=%d resumed=%d finished=%d, want waiting < resumed < finished", waiting, resumed, finished)
 	}
 }

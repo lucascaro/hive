@@ -121,6 +121,20 @@ test('a human passes its input through', () => {
   assert.deepEqual(inputs.c, [b('a')]);
 });
 
+test('layers of checks that each depend on both checks before them are not walked once per path', () => {
+  const ir = workflow('deep', s.object({}), (g) => {
+    const a = g.agent('a', { agent: 'claude', prompt: 'a', output: sum });
+    let prev: { id: string }[] = [a];
+    for (let i = 0; i < 40; i++) {
+      const layer = [g.check(`x${i}`, { argv: ['true'] }), g.check(`y${i}`, { argv: ['true'] })];
+      for (const from of prev) for (const to of layer) g.edge(from, to);
+      prev = layer;
+    }
+  });
+  const { inputs } = play(ir, {}, (k) => (k === 'a' ? { summary: 'x' } : { ok: true, exit_code: 0 }));
+  assert.deepEqual(inputs.x39, [b('a')]);
+});
+
 // -------------------------------------------------------------------- PREPARE
 
 function engineWith(ir: ReturnType<typeof workflow>, hive: FakeHive, input: Record<string, unknown> = {}) {

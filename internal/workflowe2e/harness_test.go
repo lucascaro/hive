@@ -230,7 +230,10 @@ func (f *fixture) stop() {
 	if f.d == nil {
 		return
 	}
-	close(f.drained)
+	if f.drained != nil {
+		close(f.drained)
+		f.drained = nil
+	}
 	_ = f.c.Close()
 	f.cancel()
 	_ = f.d.Close()
