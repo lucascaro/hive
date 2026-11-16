@@ -789,6 +789,7 @@ func pluginEnv(base []string, add ...string) []string {
 	for _, kv := range base {
 		k, _, _ := strings.Cut(kv, "=")
 		if strings.HasPrefix(kv, "HIVE_SOCKET=") || strings.HasPrefix(kv, "HIVE_SESSION_ID=") ||
+			strings.HasPrefix(kv, "HIVE_SESSION_TOKEN=") ||
 			strings.HasPrefix(kv, "HIVE_PLUGIN_") || replaced[strings.ToUpper(k)] {
 			continue
 		}

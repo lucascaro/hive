@@ -174,6 +174,7 @@ const MAX_PAYLOAD = 1 << 20;
  * @property {'control'|'attach'|'create'} [mode]
  * @property {string} [session_id]
  * @property {object} [create]
+ * @property {string} [session_token] session/event modes only, which a plugin socket does not serve
  */
 
 /**

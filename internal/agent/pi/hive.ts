@@ -19,9 +19,10 @@
 //   | 1 B   | 4 B          | len B   |
 //   +-------+--------------+---------+
 //
-// A report is one connection: HELLO{mode:"event"} then one or more
-// AGENT_EVENTs (a successful hive_todo call is a tool_end AND a plan),
-// then close. The daemon replies to neither.
+// A report is one connection: HELLO{mode:"event", session_id,
+// session_token} then one or more AGENT_EVENTs (a successful hive_todo
+// call is a tool_end AND a plan), then close. The daemon replies to
+// neither, except to refuse a HELLO whose token does not verify.
 //
 // The one exception is a plan review (#457, requestPlanReview): HELLO
 // {mode:"plan_review"}, one PLAN_REVIEW_REQUEST, then the connection is
@@ -154,16 +155,30 @@ function eventBody(sessionId: string, e: ReportEvent, at: string) {
   };
 }
 
+// TOKEN_ENV carries the token the daemon spawned this session with. A
+// HELLO in mode event or session must present it with session_id, or
+// the daemon refuses the connection: the id alone proves nothing. A
+// plan_review HELLO carries them too, and may only ask about its own
+// session.
+export const TOKEN_ENV = "HIVE_SESSION_TOKEN";
+
+// sessionHello is the HELLO of a connection that speaks as this session.
+function sessionHello(mode: "event" | "session" | "plan_review", sid: string) {
+  return {
+    version: PROTOCOL_VERSION,
+    client: "hive-pi-ext",
+    mode,
+    session_id: sid,
+    session_token: process.env[TOKEN_ENV] ?? "",
+  };
+}
+
 // encodeFrames builds one report: HELLO plus an AGENT_EVENT per event,
 // all stamped with the same `at`. Exported so a Go test can decode what
 // this encoder actually produces rather than trusting a hand-written
 // fixture to stay in sync.
 export function encodeFrames(sessionId: string, events: ReportEvent[], at: string): Buffer {
-  const hello = frame(FRAME_HELLO, {
-    version: PROTOCOL_VERSION,
-    client: "hive-pi-ext",
-    mode: "event",
-  });
+  const hello = frame(FRAME_HELLO, sessionHello("event", sessionId));
   return Buffer.concat([hello, ...events.map((e) => frame(FRAME_AGENT_EVENT, eventBody(sessionId, e, at)))]);
 }
 
@@ -334,7 +349,7 @@ export function submitResult(
     conn.on("connect", () => {
       conn?.write(
         Buffer.concat([
-          frame(FRAME_HELLO, { version: PROTOCOL_VERSION, client: "hive-pi-ext", mode: "session", session_id: sid }),
+          frame(FRAME_HELLO, sessionHello("session", sid)),
           frame(FRAME_SUBMIT_RESULT, { nonce, result }),
         ]),
       );
@@ -402,7 +417,7 @@ export function requestPlanReview(
       connected = true;
       conn?.write(
         Buffer.concat([
-          frame(FRAME_HELLO, { version: PROTOCOL_VERSION, client: "hive-pi-ext", mode: "plan_review" }),
+          frame(FRAME_HELLO, sessionHello("plan_review", sid)),
           frame(FRAME_PLAN_REVIEW_REQUEST, { session_id: sid, source: "pi", plan, cwd }),
         ]),
       );

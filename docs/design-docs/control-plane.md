@@ -88,11 +88,17 @@ Why a wire mode and not a file drop:
   socket path resolution (`daemon.SocketPath`). No shell script to
   install, no Node dependency for Claude's side.
 - **Authentication by inheritance.** The daemon injects
-  `HIVE_SESSION_ID` and `HIVE_SOCKET` into every session's environment
+  `HIVE_SESSION_ID`, `HIVE_SOCKET` and a fresh per-spawn
+  `HIVE_SESSION_TOKEN` into every session's environment
   (`session.Options.Env`). A hook inherits them from the agent process.
-  The daemon accepts an `AGENT_EVENT` only for a session id it has
-  alive; a stale or forged id is logged and dropped. The socket is
-  already user-only; this is the same trust model as the attach mode.
+  An `event`, `session` or `plan_review` HELLO must carry the id and the
+  token; the
+  daemon checks the token against the one it spawned that session
+  with, refuses the connection otherwise (`session_auth_failed`), and
+  drops any `AGENT_EVENT` naming a different session. So a process can
+  report only for the session it runs in. The socket is already
+  user-only, and the full control socket is not covered by this check
+  (see [agent-orchestration.md](agent-orchestration.md)).
 
 **Since the 2026-09 hardening, `event` is served on its own listener.**
 The daemon binds a second socket beside the control one —
@@ -117,8 +123,12 @@ and only a window running its UI can answer. The agent side below is
 unchanged and stays in core.
 
 - **Requester side.** On the events socket, a `plan_review` connection
-  sends `HELLO{mode:"plan_review"}`, then one `PLAN_REVIEW_REQUEST`
-  (0x32), and the daemon later writes one `PLAN_REVIEW_DECISION` (0x33).
+  sends `HELLO{mode:"plan_review", session_id, session_token}`, then one
+  `PLAN_REVIEW_REQUEST` (0x32), and the daemon later writes one
+  `PLAN_REVIEW_DECISION` (0x33). The HELLO must prove its session with
+  that session's `HIVE_SESSION_TOKEN` (else `session_auth_failed`), and
+  the request's `session_id` must be that same session (else `invalid`):
+  a process can only put its own session's plan in front of the user.
   The connection stays open for the whole wait, up to 4 days (Claude's
   hook timeout, `agent.PlanReviewHookTimeout`). Closing it early
   withdraws the review. That is how Claude killing its hook, because

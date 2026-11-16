@@ -313,12 +313,13 @@ test('headless: a hung CLI times out and its process group is gone', async () =>
 
 test('childEnv: strips parent-session markers, keeps user preferences', () => {
   const saved = { ...process.env };
-  Object.assign(process.env, { CLAUDECODE: '1', CLAUDE_CODE_CHILD_SESSION: '1', HIVE_SOCKET: '/x', CLAUDE_CODE_ENABLE_TODO_TOOLS: '1' });
+  Object.assign(process.env, { CLAUDECODE: '1', CLAUDE_CODE_CHILD_SESSION: '1', HIVE_SOCKET: '/x', HIVE_SESSION_TOKEN: 't', CLAUDE_CODE_ENABLE_TODO_TOOLS: '1' });
   try {
     const env = childEnv();
     assert.equal(env.CLAUDECODE, undefined);
     assert.equal(env.CLAUDE_CODE_CHILD_SESSION, undefined);
     assert.equal(env.HIVE_SOCKET, undefined);
+    assert.equal(env.HIVE_SESSION_TOKEN, undefined);
     assert.equal(env.CLAUDE_CODE_ENABLE_TODO_TOOLS, '1');
   } finally {
     for (const k of Object.keys(process.env)) if (!(k in saved)) delete process.env[k];

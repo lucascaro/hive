@@ -55,7 +55,7 @@ const DRAIN_GRACE_MS = 1000;
 // Session markers only — user preferences such as CLAUDE_CODE_ENABLE_TODO_TOOLS
 // pass through untouched.
 const INHERITED_MARKERS =
-  /^(CLAUDECODE|CLAUDE_CODE_(CHILD_SESSION|ENTRYPOINT|EXECPATH|SSE_PORT|MESSAGING_[A-Z_]+|SESSION_[A-Z_]+)|CLAUDE_PID|CLAUDE_EFFORT|HIVE_SESSION_ID|HIVE_SOCKET)$/;
+  /^(CLAUDECODE|CLAUDE_CODE_(CHILD_SESSION|ENTRYPOINT|EXECPATH|SSE_PORT|MESSAGING_[A-Z_]+|SESSION_[A-Z_]+)|CLAUDE_PID|CLAUDE_EFFORT|HIVE_SESSION_ID|HIVE_SESSION_TOKEN|HIVE_SOCKET)$/;
 export function childEnv(extra = {}) {
   const env = Object.fromEntries(Object.entries(process.env).filter(([k]) => !INHERITED_MARKERS.test(k)));
   return { ...env, ...extra };

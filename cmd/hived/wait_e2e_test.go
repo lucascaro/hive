@@ -13,13 +13,15 @@ import (
 )
 
 // insideSession runs `hived <args…>` as an agent's shell would: HIVE_SOCKET
-// is the narrowed events socket and HIVE_SESSION_ID the caller.
+// is the narrowed events socket, HIVE_SESSION_ID the caller and
+// HIVE_SESSION_TOKEN its spawn token.
 func insideSession(t *testing.T, d *spawnedDaemon, sessionID string, args ...string) (stdout, stderr string, exit int) {
 	t.Helper()
 	cmd := exec.Command(hivedBinary(t), args...)
 	cmd.Env = append(os.Environ(),
 		"HIVE_SESSION_ID="+sessionID,
 		"HIVE_SOCKET="+daemon.EventSocketPath(d.sockPath),
+		"HIVE_SESSION_TOKEN="+sessionToken(t, d, sessionID),
 	)
 	var so, se strings.Builder
 	cmd.Stdout, cmd.Stderr = &so, &se

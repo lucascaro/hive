@@ -112,12 +112,24 @@ var (
 // PLAN_REVIEW_REQUEST, then — possibly days later — one
 // PLAN_REVIEW_DECISION. The connection is not in d.clients (Close does
 // not hang it up); instead the wait below watches ctx and d.stop.
-func (d *Daemon) servePlanReview(ctx context.Context, conn net.Conn) {
+//
+// The HELLO must prove its session (verifySession), and the request may
+// only park a review on that session: a process cannot put a plan in
+// front of the user as some other session's.
+func (d *Daemon) servePlanReview(ctx context.Context, conn net.Conn, hello wire.Hello) {
+	if !d.verifySession(conn, hello) {
+		return
+	}
 	_ = conn.SetReadDeadline(time.Now().Add(eventReadDeadline))
 	var req wire.PlanReviewRequest
 	ft, err := wire.ReadJSON(conn, &req)
 	if err != nil || ft != wire.FramePlanReviewRequest {
 		log.Printf("hived: plan review: bad request (%s): %v", ft, err)
+		_ = writeBounded(conn, writeTimeout(), wire.FramePlanReviewDecision, wire.PlanReviewDecision{Status: wire.PlanReviewInvalid})
+		return
+	}
+	if req.SessionID != hello.SessionID {
+		log.Printf("hived: plan review: %s asked for a review on another session; refused", hello.SessionID)
 		_ = writeBounded(conn, writeTimeout(), wire.FramePlanReviewDecision, wire.PlanReviewDecision{Status: wire.PlanReviewInvalid})
 		return
 	}

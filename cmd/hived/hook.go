@@ -176,6 +176,7 @@ func requestPlanReview(sock string, req wire.PlanReviewRequest) (wire.PlanReview
 	}
 	if err := wire.WriteJSON(conn, wire.FrameHello, wire.Hello{
 		Version: wire.PROTOCOL_VERSION, Client: "hived-hook", Mode: wire.ModePlanReview,
+		SessionID: req.SessionID, SessionToken: os.Getenv("HIVE_SESSION_TOKEN"),
 	}); err != nil {
 		return dec, err
 	}
@@ -662,10 +663,15 @@ func sendHookEvents(sock string, evs []wire.AgentEvent) error {
 	if err := conn.SetWriteDeadline(time.Now().Add(hookWriteDeadline)); err != nil {
 		return err
 	}
+	// Every event is about this hook's own session, and the HELLO proves
+	// it is: the daemon refuses an unverified HELLO and any event for a
+	// different session.
 	if err := wire.WriteJSON(conn, wire.FrameHello, wire.Hello{
-		Version: wire.PROTOCOL_VERSION,
-		Client:  "hived-hook",
-		Mode:    wire.ModeEvent,
+		Version:      wire.PROTOCOL_VERSION,
+		Client:       "hived-hook",
+		Mode:         wire.ModeEvent,
+		SessionID:    evs[0].SessionID,
+		SessionToken: os.Getenv("HIVE_SESSION_TOKEN"),
 	}); err != nil {
 		return err
 	}

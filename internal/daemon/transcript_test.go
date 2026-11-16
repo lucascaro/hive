@@ -169,7 +169,7 @@ func TestSessionModeCannotSearchTranscript(t *testing.T) {
 	defer c.Close()
 	if err := wire.WriteJSON(c, wire.FrameHello, wire.Hello{
 		Version: wire.PROTOCOL_VERSION, Client: "test/0",
-		Mode: wire.ModeSession, SessionID: id,
+		Mode: wire.ModeSession, SessionID: id, SessionToken: sessionToken(d, id),
 	}); err != nil {
 		t.Fatalf("write hello: %v", err)
 	}
@@ -193,7 +193,7 @@ func TestSessionModeCannotGetTranscriptLines(t *testing.T) {
 	defer c.Close()
 	if err := wire.WriteJSON(c, wire.FrameHello, wire.Hello{
 		Version: wire.PROTOCOL_VERSION, Client: "test/0",
-		Mode: wire.ModeSession, SessionID: id,
+		Mode: wire.ModeSession, SessionID: id, SessionToken: sessionToken(d, id),
 	}); err != nil {
 		t.Fatal(err)
 	}

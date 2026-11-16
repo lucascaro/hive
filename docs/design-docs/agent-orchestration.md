@@ -45,6 +45,12 @@ process running as them can dial it — `SECURITY.md` says so, and the
 2026-09 narrowing of the session socket is defence in depth, not a
 boundary.
 
+The same holds for the session token below: it protects the narrowed
+socket (`HIVE_SOCKET`) only. It stops one session passing itself off as
+another *there*, but an agent with a shell can still find and dial the
+full control socket, where none of these rules apply. Closing that is
+tracked as stage-2 work.
+
 The risk is **confused deputy**. An agent reads untrusted text — a web
 page, a PR body, a README in a cloned repo — and acts on an instruction
 hidden in it. Today the blast radius is that one session's permissions.
@@ -63,15 +69,29 @@ named**, and only within rules the daemon enforces.
   set by the user in the launcher or, for a running session, from the
   command palette, default off, persisted with the entry (it is user intent, like
   `Agent`). The daemon checks it on every frame that mutates another
-  session. It is not an environment token: a child cannot copy it,
-  and revoking it takes effect on the next frame.
+  session. The grant itself is not in the environment, so revoking it
+  takes effect on the next frame. What the environment does carry is
+  the session's *identity*: see the next point.
+- **Verified identity.** Every spawn (create, revive, restart) hands
+  the session a fresh 32-byte `HIVE_SESSION_TOKEN`, held in the daemon's
+  memory only and never sent to any client. A `ModeSession`,
+  `ModeEvent` or `ModePlanReview` HELLO must carry it beside
+  `session_id`, or the daemon
+  refuses the connection (`session_auth_failed`, the same answer for an
+  unknown id, a missing token and a wrong one). So a process can speak
+  only as the session whose process tree it belongs to: it cannot claim
+  a granted sibling's id to borrow its grant, and an event or plan-review
+  connection may only report state, or park a review, for its own
+  session. A restart issues a new
+  token, so the old process tree stops verifying.
 - **Same project only.** A granted session can direct sessions in its
   own project and no other. Cross-project is a non-goal until someone
   needs it.
 - **Provenance on every delivery.** A message from a session is
   delivered as *from that session*, never indistinguishable from the
   user typing. The daemon sets the sender from the connection it
-  arrived on and ignores anything the client claims.
+  arrived on, whose session the HELLO's token proved, and ignores
+  anything the frame claims.
 - **No permission inheritance.** A spawned session launches with the
   agent's defaults. It never inherits a bypass flag or a custom
   command from its spawner; the daemon overrides those fields, not the
@@ -101,8 +121,9 @@ named**, and only within rules the daemon enforces.
 The grant is checked in `hived`, on the `ModeSession` connection, for
 the same reason the control plane derives state there: it is the only
 Hive process every client and every hook can reach, and it already
-resolves the caller's session and project once at handshake
-(`serveControl`, `ownSessionID` / `ownProjectID`). Each phase adds
+verifies the caller's session token and resolves its session and
+project once at handshake (`serveControl`, `verifySession`,
+`ownSessionID` / `ownProjectID`). Each phase adds
 frames to `sessionModeFrames` and a check next to the existing
 `restricted` branch — the shape the 2026-09 narrowing built is the
 shape orchestration extends.
@@ -154,8 +175,10 @@ built. That is the point.
   user cannot say "this one may, that one may not". Kept as the
   fallback if per-session friction is real.
 - **A capability token in the child's environment** instead of a flag
-  on the entry. Copyable, not revocable, and the daemon already knows
-  which session a `ModeSession` connection belongs to. No.
+  on the entry. Copyable, not revocable. No. The environment carries an
+  *identity* token (`HIVE_SESSION_TOKEN`, above) instead, and the grant
+  stays a flag on the entry: the token says which session is asking,
+  the flag says whether that session may.
 - **Let agents use their own cross-session messaging** and build
   nothing. Only works agent-to-same-agent, and it is exactly the
   ambient model above with no provenance, no scope and no log.

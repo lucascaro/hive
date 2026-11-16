@@ -175,6 +175,7 @@ process.stdout.write(Buffer.concat([
 	defer cancel()
 	cmd := exec.CommandContext(ctx, node, "--input-type=module", "-e", script)
 	cmd.Dir = "." // internal/agent
+	cmd.Env = append(os.Environ(), "HIVE_SESSION_TOKEN=tok-42")
 	var stderr bytes.Buffer
 	cmd.Stderr = &stderr
 	out, err := cmd.Output()
@@ -204,6 +205,11 @@ process.stdout.write(Buffer.concat([
 	}
 	if hello.Mode != wire.ModeEvent {
 		t.Errorf("HELLO mode = %q, want %q", hello.Mode, wire.ModeEvent)
+	}
+	// The daemon refuses an event HELLO that does not name its session
+	// and prove it with the spawn token.
+	if hello.SessionID != "sess-42" || hello.SessionToken != "tok-42" {
+		t.Errorf("HELLO session_id/session_token = %q/%q, want %q/%q", hello.SessionID, hello.SessionToken, "sess-42", "tok-42")
 	}
 
 	ft, payload, err = wire.ReadFrame(r)

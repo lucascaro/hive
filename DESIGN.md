@@ -145,7 +145,8 @@ Architectural invariants. Each one should ideally be enforceable by `gc-sweep` o
   on the user is `SessionInfo.pending_plan_review`. It is not a phase: the
   session is alive and its own approval prompt is on the terminal too. The
   requester holds a `plan_review` connection on the events socket, and its
-  closing withdraws the review. The review's UI is the bundled
+  closing withdraws the review. That HELLO proves its session with the
+  session's spawn token, and may only ask about its own session. The review's UI is the bundled
   plan-review plugin, not core: review is on while that plugin is
   enabled, and a review parks only for a window whose `SET_CLIENT_UI`
   says it runs that plugin's UI. With none (hivebar and plugins never

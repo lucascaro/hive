@@ -185,11 +185,12 @@ func submitOverSocket(env func(string) string) func(json.RawMessage) error {
 		defer conn.Close()
 		_ = conn.SetDeadline(time.Now().Add(mcpSubmitDeadline))
 		c, err := wire.Handshake(conn, wire.Hello{
-			Version:   wire.PROTOCOL_VERSION,
-			Client:    "hived-mcp-submit/" + buildinfo.Version(),
-			BuildID:   buildinfo.BuildID(),
-			Mode:      wire.ModeSession,
-			SessionID: sessionID,
+			Version:      wire.PROTOCOL_VERSION,
+			Client:       "hived-mcp-submit/" + buildinfo.Version(),
+			BuildID:      buildinfo.BuildID(),
+			Mode:         wire.ModeSession,
+			SessionID:    sessionID,
+			SessionToken: env("HIVE_SESSION_TOKEN"),
 		})
 		if err != nil {
 			return err

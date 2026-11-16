@@ -34,7 +34,8 @@ What works:
   waiting for you, exited — derived from what the terminal renders, so
   every agent and plain shell gets it. Claude sessions get a more
   precise answer via Claude Code hooks: every session Hive spawns sets
-  `HIVE_SESSION_ID` / `HIVE_SOCKET` in the child's environment, and
+  `HIVE_SESSION_ID` / `HIVE_SOCKET` / `HIVE_SESSION_TOKEN` in the
+  child's environment, and
   `hived hook` (invoked by hooks Hive wires through `claude --settings`)
   reports prompts, turn-end, and permission prompts back to the daemon
   over that socket. The same hooks carry Claude's task list, shown as a

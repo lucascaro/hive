@@ -471,6 +471,15 @@ func TestResolveCommand_DaemonPATHWins(t *testing.T) {
 	}
 }
 
+// A daemon started from inside a session inherits that session's
+// identity; a plugin must never be able to speak as it.
+func TestPluginEnv_DropsSessionIdentity(t *testing.T) {
+	got := pluginEnv([]string{"KEEP=1", "HIVE_SESSION_ID=s", "HIVE_SESSION_TOKEN=t", "HIVE_SOCKET=/x"})
+	if !slices.Equal(got, []string{"KEEP=1"}) {
+		t.Fatalf("env = %v, want only KEEP=1", got)
+	}
+}
+
 func TestPluginEnv_PATHIsResolvedPATH(t *testing.T) {
 	got := pluginEnv([]string{"PATH=/old", "KEEP=1", "HIVE_PLUGIN_ID=x"}, "PATH=/new", "HIVE_PLUGIN_ID=y")
 	var paths []string

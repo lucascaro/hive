@@ -18,7 +18,7 @@ import (
 // the way `hived hook` does.
 func reportTool(t *testing.T, d *Daemon, ev wire.AgentEvent) {
 	t.Helper()
-	c := dialEvent(t, d)
+	c := dialEvent(t, d, ev.SessionID)
 	defer c.Close()
 	ev.Source = wire.StateSourceHook
 	if err := wire.WriteJSON(c, wire.FrameAgentEvent, ev); err != nil {
@@ -241,7 +241,7 @@ func TestSessionModeCannotGetActivity(t *testing.T) {
 	defer c.Close()
 	if err := wire.WriteJSON(c, wire.FrameHello, wire.Hello{
 		Version: wire.PROTOCOL_VERSION, Client: "test/0",
-		Mode: wire.ModeSession, SessionID: id,
+		Mode: wire.ModeSession, SessionID: id, SessionToken: sessionToken(d, id),
 	}); err != nil {
 		t.Fatalf("write hello: %v", err)
 	}
@@ -268,7 +268,7 @@ func TestSessionModeGetsNoActivityBroadcast(t *testing.T) {
 	defer c.Close()
 	if err := wire.WriteJSON(c, wire.FrameHello, wire.Hello{
 		Version: wire.PROTOCOL_VERSION, Client: "test/0",
-		Mode: wire.ModeSession, SessionID: id,
+		Mode: wire.ModeSession, SessionID: id, SessionToken: sessionToken(d, id),
 	}); err != nil {
 		t.Fatalf("write hello: %v", err)
 	}

@@ -121,6 +121,7 @@ func runHookFixture(t *testing.T, d *daemon.Daemon, sessionID, fixture string) {
 	// session's environment carries, so pointing this at SocketPath
 	// would exercise wiring production no longer uses.
 	t.Setenv("HIVE_SOCKET", d.EventSocketPath())
+	t.Setenv("HIVE_SESSION_TOKEN", d.Registry().SessionTokenForTest(sessionID))
 	raw := readFixture(t, fixture)
 	runHook(bytesReader(raw))
 }

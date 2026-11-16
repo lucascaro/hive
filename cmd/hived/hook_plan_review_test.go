@@ -232,6 +232,9 @@ func TestHookPlanReviewRoundTrip(t *testing.T) {
 	t.Setenv("HOME", t.TempDir()) // no external reviewer
 	d := startHookTestDaemon(t)
 	id := d.Registry().List()[0].ID
+	// The hook's own session token, as its environment carries it: the
+	// daemon refuses a plan_review HELLO without it.
+	t.Setenv("HIVE_SESSION_TOKEN", d.Registry().SessionTokenForTest(id))
 	enablePlanReviewPlugin(t, d)
 	gui := planReviewGUI(t, d)
 

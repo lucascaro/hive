@@ -270,9 +270,11 @@ func ideaDial(sock, sessionID string) (*wire.Client, error) {
 		// ModeSession, not ModeControl: HIVE_SOCKET names the daemon's
 		// events socket, which serves the idea verbs and nothing else.
 		// The session id narrows the SESSIONS snapshot below to our own
-		// entry, which is all `list` needs to resolve its project.
-		Mode:      wire.ModeSession,
-		SessionID: sessionID,
+		// entry, which is all `list` needs to resolve its project. The
+		// token proves the id is ours; the daemon refuses it otherwise.
+		Mode:         wire.ModeSession,
+		SessionID:    sessionID,
+		SessionToken: os.Getenv("HIVE_SESSION_TOKEN"),
 	})
 	if err != nil {
 		conn.Close()

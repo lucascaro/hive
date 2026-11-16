@@ -860,6 +860,7 @@ async function reviewServer(script: ReviewScript) {
   const sock = path.join(dir, "h.sock");
   const events: Array<Record<string, any>> = [];
   const requests: Array<Record<string, any>> = [];
+  const hellos: Array<Record<string, any>> = [];
   let clientClosed = 0;
   const server = net.createServer((conn) => {
     let buf = Buffer.alloc(0);
@@ -872,8 +873,10 @@ async function reviewServer(script: ReviewScript) {
         if (buf.length < 5 + len) break;
         const body = JSON.parse(buf.subarray(5, 5 + len).toString("utf8"));
         buf = buf.subarray(5 + len);
-        if (type === 0x01) mode = body.mode;
-        else if (type === 0x22) events.push(body);
+        if (type === 0x01) {
+          mode = body.mode;
+          if (mode === "plan_review") hellos.push(body);
+        } else if (type === 0x22) events.push(body);
         else if (type === 0x32 && mode === "plan_review") {
           requests.push(body);
           script(body, (d) => conn.write(frameOf(0x33, d)), conn);
@@ -890,6 +893,7 @@ async function reviewServer(script: ReviewScript) {
     sock,
     events,
     requests,
+    hellos,
     closed: () => clientClosed,
     stop: () => {
       server.close();
@@ -946,12 +950,17 @@ test("hive_submit_plan is registered with a snippet and guidelines that name it"
 
 test("approve: the request carries the plan and the tool reports approval", unixOnly, async () => {
   const srv = await reviewServer((_req, reply) => setTimeout(() => reply({ status: "approve" }), 50));
+  const savedToken = process.env.HIVE_SESSION_TOKEN;
+  process.env.HIVE_SESSION_TOKEN = "t0k";
   try {
     const { tool } = planTool(srv.sock);
     const res = await tool.execute("c1", { plan: "# Plan\n- one" }, undefined, undefined, {});
     assert.match(textOf(res), /approved/);
     assert.equal(srv.requests.length, 1);
     assert.equal(srv.requests[0].session_id, "s1");
+    // The daemon refuses a plan_review HELLO that does not prove its session.
+    assert.equal(srv.hellos[0].session_id, "s1");
+    assert.equal(srv.hellos[0].session_token, "t0k");
     assert.equal(srv.requests[0].source, "pi");
     assert.equal(srv.requests[0].plan, "# Plan\n- one");
     await settle();
@@ -962,6 +971,8 @@ test("approve: the request carries the plan and the tool reports approval", unix
     );
     assert.ok(srv.events[0].seq, "waiting_permission must be keyed so the heartbeat replays it");
   } finally {
+    if (savedToken === undefined) delete process.env.HIVE_SESSION_TOKEN;
+    else process.env.HIVE_SESSION_TOKEN = savedToken;
     srv.stop();
   }
 });
@@ -1167,13 +1178,19 @@ function replyFrame(conn: net.Socket, type: number, payload: unknown) {
 
 test("submitResult sends one SUBMIT_RESULT on a session connection and waits for the ack", unixOnly, async () => {
   const d = await fakeSubmitDaemon((c) => replyFrame(c, 0x44, {}));
+  const savedToken = process.env.HIVE_SESSION_TOKEN;
+  process.env.HIVE_SESSION_TOKEN = "t0k";
   try {
     const r = await mod.submitResult(d.sock, "s1", "n0nce", { status: "ok", summary: "done" });
     assert.deepEqual(r, { ok: true });
     assert.equal(d.seen.hello.mode, "session");
     assert.equal(d.seen.hello.session_id, "s1");
+    // The daemon refuses a session HELLO without the spawn token.
+    assert.equal(d.seen.hello.session_token, "t0k");
     assert.deepEqual(d.seen.submit, { nonce: "n0nce", result: { status: "ok", summary: "done" } });
   } finally {
+    if (savedToken === undefined) delete process.env.HIVE_SESSION_TOKEN;
+    else process.env.HIVE_SESSION_TOKEN = savedToken;
     d.close();
   }
 });

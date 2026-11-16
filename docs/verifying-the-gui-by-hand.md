@@ -80,12 +80,17 @@ binary, the real event socket, and the fixtures the Go tests already use:
 
 ```bash
 go build -o /tmp/hived-probe ./cmd/hived
-export HIVE_SOCKET=$ISO/hived.sock HIVE_SESSION_ID=<session id>
+export HIVE_SOCKET=$ISO/hived.sock HIVE_SESSION_ID=<session id> HIVE_SESSION_TOKEN=<token>
 /tmp/hived-probe hook < cmd/hived/testdata/hooks/user_prompt_submit.json
 /tmp/hived-probe hook < cmd/hived/testdata/hooks/stop.json
 ```
 
-Session ids are the directory names under `$ISO/state/sessions/`.
+Session ids are the directory names under `$ISO/state/sessions/`. The
+daemon refuses an event connection that does not carry the session's
+spawn token, which lives only in the daemon's memory and in that
+session's environment: read it with `echo $HIVE_SESSION_TOKEN` in the
+session's own shell (or run the commands there, where all three
+variables are already set). A restart of the session issues a new one.
 
 For the extension tier and for anything only a real agent produces, prefer
 the opt-in probes: `HIVE_PROBE_CLAUDE=1` / `HIVE_PROBE_PI=1 go test
