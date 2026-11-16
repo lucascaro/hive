@@ -84,6 +84,43 @@ func TestPluginAttach_InputRefused(t *testing.T) {
 	}
 }
 
+// RESIZE alone is refused too: a plugin must not reflow the terminal
+// every viewer shares.
+func TestPluginAttach_ResizeRefused(t *testing.T) {
+	skipOnWindows(t)
+	d := startTestDaemon(t)
+	sid := firstSessionID(t, d)
+	_, path := pluginConn(t, d, "resizer", "p")
+	pa, err := net.Dial("unix", path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer pa.Close()
+	handshake(t, pa, wire.Hello{Mode: wire.ModeAttach, SessionID: sid})
+	if err := wire.WriteJSON(pa, wire.FrameResize, wire.Resize{Cols: 23, Rows: 7}); err != nil {
+		t.Fatal(err)
+	}
+	readModeNotAllowed(t, pa, "RESIZE")
+
+	ua := dial(t, d)
+	defer ua.Close()
+	handshake(t, ua, wire.Hello{Mode: wire.ModeAttach, SessionID: sid})
+	if err := wire.WriteFrame(ua, wire.FrameData, []byte("stty size; echo size-$((2*21))\n")); err != nil {
+		t.Fatal(err)
+	}
+	var out bytes.Buffer
+	deadline := time.Now().Add(5 * time.Second)
+	for !strings.Contains(out.String(), "size-42") && time.Now().Before(deadline) {
+		drainFor(ua, &out, 200*time.Millisecond)
+	}
+	if !strings.Contains(out.String(), "size-42") {
+		t.Fatalf("no output from the user's attach; got %q", out.String())
+	}
+	if strings.Contains(out.String(), "7 23") {
+		t.Fatalf("a plugin's RESIZE reached the PTY: %q", out.String())
+	}
+}
+
 // Create mode ends in the same attach: a plugin's session is spawned,
 // but typing into it is still refused.
 func TestPluginCreateMode_InputRefused(t *testing.T) {

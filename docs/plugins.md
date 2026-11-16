@@ -47,7 +47,7 @@ That prompt is the app's; the protocol itself does not ask anyone.
 The app's own connection, and any other client on Hive's main socket,
 can install, enable and remove plugins directly. A plugin's own socket
 cannot: Hive refuses it the decisions that belong to you, so the trust
-prompt cannot be skipped from inside a plugin, and a plugin never
+prompt cannot be skipped through a plugin's own socket, and a plugin never
 approves on your behalf what an agent may do. The full list is under
 **[What a plugin cannot do](#what-a-plugin-cannot-do)**.
 
@@ -103,7 +103,8 @@ prompt; turning it off acts at once, and removing it asks you to confirm
 first. None of these needs a
 daemon restart. It sends the same `INSTALL_PLUGIN` /
 `SET_PLUGIN_ENABLED` / `REMOVE_PLUGIN` requests described below, so any
-other wire client can do the same.
+other client on Hive's main socket can do the same. A plugin's own socket
+cannot: see [What a plugin cannot do](#what-a-plugin-cannot-do).
 
 A plugin is installed from either:
 
@@ -346,8 +347,6 @@ And everything the daemon sends on a control connection:
 | `SUBMIT_RESULT_OK` | Answer to `SUBMIT_RESULT`: the result is recorded. |
 | `SENT` | Answer to `SEND_TO_SESSION`: how the note was delivered (`typed`, `queued` or `acp`). Never sent to a plugin, which is refused. |
 
-### Correlating replies
-
 ### What a plugin cannot do
 
 Hive refuses these on a plugin's own socket with `mode_not_allowed`.
@@ -371,6 +370,8 @@ inside a session. The same requests still work from the app.
 A plugin can still notice that one of these is needed and tell you,
 with a notification of its own or a `PLUGIN_MESSAGE` to its app
 surface. There is no way yet to grant a plugin any of them.
+
+### Correlating replies
 
 Any control request may carry an integer `req_id` of your choosing. The
 daemon then echoes it on every `ERROR` it raises for that request.
