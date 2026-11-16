@@ -53,6 +53,8 @@ class AgentRun {
   #ws: Workspace | undefined;
   #sid: string | undefined;
   #ack: { prompt_id: number; epoch: number } | undefined;
+  /** The PROMPT_ACP in flight, until its ack has been recorded: a stop that arrives meanwhile must cancel the turn that ack names. */
+  #sending: Promise<unknown> | undefined;
   #timer: ReturnType<typeof setTimeout> | undefined;
   #deadline = 0;
   #left: number | undefined;
@@ -188,11 +190,17 @@ class AgentRun {
     // Every PROMPT_ACP counts against the run's cap, the re-prompt included.
     if (again && !this.#engine.reserveTurn(run_id, key)) return undefined;
     if (!this.#live('running', 'waiting')) return undefined;
-    const ack = await this.#engine.hive.request('PROMPT_ACP', { session_id: this.#sid, text, workflow_run_id: run_id }, { timeoutMs: 60_000 });
-    this.#ack = { prompt_id: ack?.prompt_id ?? 0, epoch: ack?.epoch ?? 0 };
-    if (this.#ack.prompt_id === 0) throw new Error('the daemon did not report the turn it started');
-    this.#engine.ackTurn(run_id, key, this.#ack);
-    return await this.#outcome(this.#ack);
+    const sending = this.#engine.hive.request('PROMPT_ACP', { session_id: this.#sid, text, workflow_run_id: run_id }, { timeoutMs: 60_000 }).then((ack) => {
+      this.#ack = { prompt_id: ack?.prompt_id ?? 0, epoch: ack?.epoch ?? 0 };
+    });
+    this.#sending = sending;
+    await sending;
+    const ack = this.#ack as { prompt_id: number; epoch: number };
+    if (ack.prompt_id === 0) throw new Error('the daemon did not report the turn it started');
+    // A stop that came while the prompt was in flight cancels this turn itself (stop waits for the ack); there is nothing to wait for here.
+    if (!this.#live('running', 'waiting')) return undefined;
+    this.#engine.ackTurn(run_id, key, ack);
+    return await this.#outcome(ack);
   }
 
   /** Waits for the prompt `ack` names to end. Undefined when the node stopped being ours or failed meanwhile. */
@@ -312,7 +320,10 @@ class AgentRun {
   stop(): Promise<void> {
     this.#stopped ??= (async () => {
       const sid = this.#sid;
-      if (!sid || this.#ended()) return;
+      if (!sid) return;
+      // A prompt that is still being sent has started a turn the daemon will not tell us about until its ack: wait for it, so the cancel is pinned to that turn.
+      await this.#sending?.catch(() => {});
+      if (this.#ended()) return;
       try {
         await this.#engine.hive.request('CANCEL_ACP', { session_id: sid, ...(this.#ack ?? {}) });
       } catch {

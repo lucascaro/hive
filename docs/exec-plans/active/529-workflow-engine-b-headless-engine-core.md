@@ -2324,6 +2324,21 @@ download, the accepted sandbox gap, and `LIST_ACP_AGENTS`.
     gains nothing); `main.ts` awaits it before `handle`. The executor asks
     `LIST_ACP_AGENTS` again on every launch as the backstop, so a ceiling
     lowered mid-run fails the node naming it.
+  - **Heads are derived, not stored.** The plan put "head and input-head
+    bookkeeping on rows" in `interp.ts`. Heads are computed from each row's
+    persisted `branch` and the IR's edges (`worktrees.ts`), through the same
+    `instanceCtx` resolver as references, so there is nothing extra to keep
+    consistent across a restart or a `run.retry` reset.
+  - **B4 must route `run.start` through `Topics.preflight`**; it handles only
+    `test.start-run` and `run.retry` today.
+  - **A cancel or timeout during `PROMPT_ACP` stops that turn.** `stop()`
+    waits for the in-flight ack before it cancels, so the cancel is pinned to
+    the turn the daemon started (a cancel that raced ahead of the ack would
+    be a no-op, or pinned to the previous turn on the F3 re-prompt).
+  - **Interim hazard until B3c.** A plugin crash mid-turn makes `recover()`
+    interrupt the node and relaunch it, which creates a second session in the
+    same worktree while the old turn may still run. B3c's orphan adoption
+    owns this; nothing reaches users before B5.
   - **`agent.turn.*` events are not emitted in B3b.** They belong to B5's
     events contract with the other `agent.*` types; B3b records the turn on
     the row (`prompt_id`, `epoch`, `boot_id`).

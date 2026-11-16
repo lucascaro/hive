@@ -42,6 +42,25 @@ func (s *seen) has(key, file string) bool {
 	return s.m[key][file]
 }
 
+// ran reports whether the node's turn was played.
+func (s *seen) ran(key string) bool {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	_, ok := s.m[key]
+	return ok
+}
+
+// files is what the node found, copied under the lock.
+func (s *seen) files(key string) map[string]bool {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	out := map[string]bool{}
+	for k, v := range s.m[key] {
+		out[k] = v
+	}
+	return out
+}
+
 func (s *seen) path(key string) string {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -194,8 +213,8 @@ func TestMerge_AfterMap(t *testing.T) {
 	mapTurns(f, dir, 3, false, joined)
 	run := f.startRun(pid, mapIR())
 	f.waitRun(run, "done", wait)
-	if len(joined.m["join"]) != 3 {
-		t.Errorf("the join saw %v, want all three copies' files merged", joined.m["join"])
+	if got := joined.files("join"); len(got) != 3 {
+		t.Errorf("the join saw %v, want all three copies' files merged", got)
 	}
 	// Every copy starts from what is upstream of the map, not from a sibling.
 	for i := range 3 {
@@ -287,7 +306,7 @@ func TestRunRetry_ResumesFailedRunAfterConflictResolved(t *testing.T) {
 	if state, attempt := f.nodeState(run, "join"); state != "done" || attempt != 1 {
 		t.Errorf("join = %s attempt %d, want done attempt 1 (a retry clears attempts)", state, attempt)
 	}
-	if _, ok := joined.m["join"]; !ok {
+	if !joined.ran("join") {
 		t.Error("the join never ran after the retry")
 	}
 	if got := f.nodeInfo(run, "join")["worktree"]; got != wt {

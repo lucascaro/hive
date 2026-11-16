@@ -514,3 +514,66 @@ test('run.retry is asked again: a ceiling lowered while the run was failed refus
     r.h.close();
   }
 });
+
+// A cancel or a timeout that lands while PROMPT_ACP is in flight must still stop the turn that prompt starts.
+
+/** Cancels the run just after the nth PROMPT_ACP is answered but before the engine reads the answer. */
+function cancelDuringPrompt(r: ReturnType<typeof rig>, nth: number, id: () => string): void {
+  const answer = r.hive.replies.PROMPT_ACP;
+  let n = 0;
+  r.hive.replies.PROMPT_ACP = (p) => {
+    const reply = answer(p);
+    if (++n === nth) void Promise.resolve().then(() => r.h.engine.cancelRun(id()));
+    return reply;
+  };
+}
+
+test('a cancel while the first PROMPT_ACP is in flight cancels the turn it started, pinned to the new ack, then kills if it never ends', async () => {
+  const r = rig(() => {}, { grace: 50 });
+  let id = '';
+  cancelDuringPrompt(r, 1, () => id);
+  try {
+    id = r.start(one());
+    await waitFor(() => r.sim.of('KILL_SESSION').length === 1, 'the kill');
+    assert.deepEqual(r.sim.of('CANCEL_ACP'), [{ session_id: 's1', prompt_id: 10, epoch: 1 }], 'the turn that was started, not "whatever turn is running"');
+    assert.equal(rowOf(r.h, id, 'a')?.state, 'cancelled');
+  } finally {
+    r.h.close();
+  }
+});
+
+test('a cancel while the first PROMPT_ACP is in flight needs no kill when the turn reports cancelled', async () => {
+  const r = rig(() => {}, { grace: 200 });
+  r.hive.replies.CANCEL_ACP = () => {
+    setImmediate(() => r.sim.sessions[0].end('cancelled'));
+    return { was_busy: true };
+  };
+  let id = '';
+  cancelDuringPrompt(r, 1, () => id);
+  try {
+    id = r.start(one());
+    await waitFor(() => r.sim.of('CANCEL_ACP').length === 1, 'the cancel');
+    await new Promise((res) => setTimeout(res, 300));
+    assert.equal(r.sim.of('KILL_SESSION').length, 0);
+  } finally {
+    r.h.close();
+  }
+});
+
+test('a cancel while the F3 re-prompt is in flight is pinned to the re-prompt, not the finished first turn', async () => {
+  const r = rig(
+    (turn, _, sess) => {
+      if (turn === 1) sess.end(); // no result: the re-prompt follows
+    },
+    { grace: 50 },
+  );
+  let id = '';
+  cancelDuringPrompt(r, 2, () => id);
+  try {
+    id = r.start(one());
+    await waitFor(() => r.sim.of('KILL_SESSION').length === 1, 'the kill');
+    assert.deepEqual(r.sim.of('CANCEL_ACP'), [{ session_id: 's1', prompt_id: 20, epoch: 1 }], 'the second turn: a cancel pinned to the first would be a no-op');
+  } finally {
+    r.h.close();
+  }
+});
