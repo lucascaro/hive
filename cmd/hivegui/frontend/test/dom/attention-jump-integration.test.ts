@@ -19,6 +19,11 @@ import * as bridge from '../../src/bridge.js';
 import { createScrollTrace } from '../../src/lib/scroll-debug.js';
 import type { TermTile } from '../../src/app/state.js';
 
+// Focus reports are macOS-only (the menu-bar HUD is their only reader).
+vi.mock('../../src/lib/platform.js', async (orig) => ({
+  ...(await orig<typeof import('../../src/lib/platform.js')>()),
+  isMac: true,
+}));
 vi.mock('../../src/bridge.js', () => {
   const fn = () => vi.fn(() => Promise.resolve());
   return {

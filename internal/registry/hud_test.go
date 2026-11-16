@@ -213,3 +213,23 @@ func TestGlobalHotkeyCorruptFileFallsBackToDefault(t *testing.T) {
 		})
 	}
 }
+
+// A chord that cannot be written is not adopted, so the daemon never
+// relays a hotkey it would forget on restart.
+func TestGlobalHotkeyWriteFailureKeepsValue(t *testing.T) {
+	r := freshRegistry(t)
+	// A regular file where the state dir's parent should be: no write or
+	// mkdir under it can succeed.
+	blocker := filepath.Join(t.TempDir(), "blocker")
+	if err := os.WriteFile(blocker, nil, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	r.stateDir = filepath.Join(blocker, "state")
+	h := wire.GlobalHotkey{KeyCode: 2, Modifiers: wire.HotkeyModCmd | wire.HotkeyModShift, Enabled: true}
+	if changed, err := r.SetGlobalHotkey(h); err == nil || changed {
+		t.Fatalf("SetGlobalHotkey into an unwritable dir: changed %v, err %v", changed, err)
+	}
+	if got := r.GlobalHotkey(); got != wire.DefaultGlobalHotkey {
+		t.Fatalf("value after a failed write = %+v, want default", got)
+	}
+}

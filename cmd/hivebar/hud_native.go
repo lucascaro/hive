@@ -43,7 +43,7 @@ func setNativeTargets(h *HUD, d *Dictation) {
 // nativeView is the AppKit panel.
 type nativeView struct{}
 
-func (nativeView) Show(st hudState, clear bool) {
+func (nativeView) Show(st hudState, clear, focus bool) {
 	labels := make([]string, len(st.Targets))
 	for i, t := range st.Targets {
 		// \x1f separates labels on the way into Objective-C; a title is
@@ -65,7 +65,11 @@ func (nativeView) Show(st hudState, clear bool) {
 	if clear {
 		clr = 1
 	}
-	C.hbHUDShow(cl, C.int(len(labels)), C.int(st.Selected), cs, ch, clr)
+	foc := C.int(0)
+	if focus {
+		foc = 1
+	}
+	C.hbHUDShow(cl, C.int(len(labels)), C.int(st.Selected), cs, ch, clr, foc)
 }
 
 func (nativeView) Hide(restore bool) {

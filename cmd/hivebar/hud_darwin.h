@@ -10,5 +10,5 @@
 void hbHotkeySet(uint32_t keyCode, uint32_t modifiers, int enabled);
 // labels holds n target labels separated by '\x1f'.
 void hbHUDShow(const char *labels, int n, int selected, const char *status,
-               const char *hints, int clear);
+               const char *hints, int clear, int focus);
 void hbHUDHide(int restore);

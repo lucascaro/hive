@@ -134,7 +134,10 @@ type recHUD struct {
 	sessions [][]wire.SessionInfo
 	sent     []string
 	errs     []string
+	down     int
 }
+
+func (r *recHUD) Disconnected() { r.down++ }
 
 func (r *recHUD) SetSessions(_ []wire.ProjectInfo, s []wire.SessionInfo) {
 	r.sessions = append(r.sessions, s)
@@ -191,8 +194,8 @@ func TestClientFeedsHUDSessionsAndDisconnect(t *testing.T) {
 		t.Fatalf("HUD did not get the snapshot: %v", h.sessions)
 	}
 	c.setDisconnected()
-	if got := h.sessions[len(h.sessions)-1]; len(got) != 0 || k.down != 1 {
-		t.Fatalf("after disconnect: sessions %v, down %d", got, k.down)
+	if h.down != 1 || k.down != 1 {
+		t.Fatalf("after disconnect: HUD down %d, hotkey down %d", h.down, k.down)
 	}
 }
 

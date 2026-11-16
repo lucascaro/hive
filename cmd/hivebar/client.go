@@ -81,6 +81,7 @@ type hudEvents interface {
 	SetSessions(projects []wire.ProjectInfo, sessions []wire.SessionInfo)
 	OnSent(id string)
 	OnError(id, code, msg string)
+	Disconnected()
 }
 
 // hotkeyEvents is what the hotkey needs: the daemon's contract and the
@@ -310,8 +311,10 @@ func (c *Client) flush() {
 
 func (c *Client) setDisconnected() {
 	c.onChange(Disconnected())
-	// The HUD stays openable with no daemon, and says so on send.
-	c.feedHUD(nil, nil)
+	// The HUD stays openable with no daemon, and says so.
+	if c.hud != nil {
+		c.hud.Disconnected()
+	}
 	if c.hotkeys != nil {
 		c.hotkeys.Disconnected()
 	}

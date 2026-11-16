@@ -46,8 +46,11 @@ const hudContract = 36
 type hudView interface {
 	// Show puts the panel up, or refreshes it if it is up. clear empties
 	// the text field, which happens only when the panel opens: a live
-	// update must never wipe what the user is dictating.
-	Show(st hudState, clear bool)
+	// update must never wipe what the user is dictating. focus makes the
+	// panel key with the caret at the end of the text, which only a
+	// hotkey press asks for: a live update that took focus would move
+	// the caret, or cut off a dictation, mid-sentence.
+	Show(st hudState, clear, focus bool)
 	// Hide takes the panel down. restore hands focus back to the app that
 	// was in front when the panel opened.
 	Hide(restore bool)
@@ -86,7 +89,7 @@ const (
 
 const (
 	hintsEditing = "[↩] send · [⇧↩] new line · [↑↓] target · [esc] cancel"
-	hintsBusy    = "[↩] queue it · [↑↓] target · [esc] cancel"
+	hintsBusy    = "[↩] queue it · [⇧↩] new line · [↑↓] target · [esc] cancel"
 )
 
 // HUD is the controller. Safe for concurrent use; no method blocks.
@@ -98,9 +101,16 @@ type HUD struct {
 	// it inline.
 	goSend func(func())
 
-	mu       sync.Mutex
-	projects []wire.ProjectInfo
-	sessions []wire.SessionInfo
+	mu        sync.Mutex
+	connected bool
+	projects  []wire.ProjectInfo
+	sessions  []wire.SessionInfo
+	// stale counts, per session, the replies still due for sends the user
+	// walked away from (Esc while sending). SENT and ERROR name only the
+	// session, and the daemon answers a connection's frames in order, so
+	// the next that many replies for that session belong to those sends,
+	// not to a newer one.
+	stale map[string]int
 
 	open   bool
 	target string
@@ -112,7 +122,7 @@ type HUD struct {
 }
 
 func NewHUD(view hudView, send hudSender) *HUD {
-	return &HUD{view: view, send: send, goSend: func(f func()) { go f() }}
+	return &HUD{view: view, send: send, goSend: func(f func()) { go f() }, stale: map[string]int{}}
 }
 
 // SetSessions takes a fresh daemon snapshot. While the panel is open it
@@ -122,17 +132,42 @@ func NewHUD(view hudView, send hudSender) *HUD {
 func (h *HUD) SetSessions(projects []wire.ProjectInfo, sessions []wire.SessionInfo) {
 	h.mu.Lock()
 	defer h.mu.Unlock()
+	h.connected = true
 	h.projects = append([]wire.ProjectInfo(nil), projects...)
 	h.sessions = append([]wire.SessionInfo(nil), sessions...)
 	if !h.open {
 		return
 	}
 	if h.target != "" && !h.liveLocked(h.target) {
+		if h.phase == hudSending {
+			h.status = "The target session ended while sending; the text may have arrived. Pick another with ↑↓."
+		} else {
+			h.status = "The target session ended. Pick another with ↑↓."
+		}
 		h.target = ""
 		h.phase = hudEditing
-		h.status = "The target session ended. Pick another with ↑↓."
 	}
-	h.renderLocked(false)
+	h.renderLocked(false, false)
+}
+
+// Disconnected records that the daemon went away. A send in flight has
+// no answer coming, and may or may not have been delivered, so the panel
+// says exactly that rather than inviting a blind resend.
+func (h *HUD) Disconnected() {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	h.connected = false
+	h.projects, h.sessions = nil, nil
+	clear(h.stale)
+	if !h.open {
+		return
+	}
+	if h.phase == hudSending {
+		h.status = "Lost Hive's daemon while sending; the text may have arrived. Check the session before sending again."
+	}
+	h.target = ""
+	h.phase = hudEditing
+	h.renderLocked(false, false)
 }
 
 // Open shows the panel with the default target. A second press while it
@@ -141,7 +176,7 @@ func (h *HUD) Open() {
 	h.mu.Lock()
 	defer h.mu.Unlock()
 	if h.open {
-		h.renderLocked(false)
+		h.renderLocked(false, true)
 		return
 	}
 	h.open = true
@@ -149,7 +184,7 @@ func (h *HUD) Open() {
 	h.phase = hudEditing
 	h.status = ""
 	h.target = h.defaultTargetLocked()
-	h.renderLocked(true)
+	h.renderLocked(true, true)
 }
 
 // Cancel is Esc: close and send nothing. A reply to a send already in
@@ -159,6 +194,9 @@ func (h *HUD) Cancel() {
 	defer h.mu.Unlock()
 	if !h.open {
 		return
+	}
+	if h.phase == hudSending {
+		h.stale[h.target]++
 	}
 	h.closeLocked()
 }
@@ -206,7 +244,7 @@ func (h *HUD) pickLocked(id string) {
 	h.manual = true
 	h.phase = hudEditing
 	h.status = ""
-	h.renderLocked(false)
+	h.renderLocked(false, false)
 }
 
 // Submit is Enter with the field's text. It sends to the target only,
@@ -233,19 +271,19 @@ func (h *HUD) prepareSend(text string) func() {
 	}
 	if len(text) > wire.MaxMessageLen {
 		h.status = fmt.Sprintf("Too long to send: the limit is %d KiB.", wire.MaxMessageLen>>10)
-		h.renderLocked(false)
+		h.renderLocked(false, false)
 		return nil
 	}
 	if h.target == "" || !h.liveLocked(h.target) {
 		h.status = "Pick a session to send to with ↑↓."
-		h.renderLocked(false)
+		h.renderLocked(false, false)
 		return nil
 	}
 	queue := h.phase == hudBusy
 	id := h.target
 	h.phase = hudSending
 	h.status = "Sending…"
-	h.renderLocked(false)
+	h.renderLocked(false, false)
 	return func() {
 		if !h.send.SendToSession(id, text, queue) {
 			h.failed(id, "Hive's daemon is not running.")
@@ -261,13 +299,16 @@ func (h *HUD) failed(id, msg string) {
 	}
 	h.phase = hudEditing
 	h.status = msg
-	h.renderLocked(false)
+	h.renderLocked(false, false)
 }
 
 // OnSent is the daemon's SENT. The panel closes and hands focus back.
 func (h *HUD) OnSent(id string) {
 	h.mu.Lock()
 	defer h.mu.Unlock()
+	if h.consumeStaleLocked(id) {
+		return
+	}
 	if !h.open || h.phase != hudSending || h.target != id {
 		return
 	}
@@ -278,6 +319,9 @@ func (h *HUD) OnSent(id string) {
 func (h *HUD) OnError(id, code, msg string) {
 	h.mu.Lock()
 	defer h.mu.Unlock()
+	if h.consumeStaleLocked(id) {
+		return
+	}
 	if !h.open || h.phase != hudSending || h.target != id {
 		return
 	}
@@ -299,7 +343,19 @@ func (h *HUD) OnError(id, code, msg string) {
 		}
 		h.status = "Not sent: " + msg
 	}
-	h.renderLocked(false)
+	h.renderLocked(false, false)
+}
+
+// consumeStaleLocked reports whether a reply for id answers a send the
+// user already walked away from, and so must not settle the current one.
+func (h *HUD) consumeStaleLocked(id string) bool {
+	if h.stale[id] == 0 {
+		return false
+	}
+	if h.stale[id]--; h.stale[id] == 0 {
+		delete(h.stale, id)
+	}
+	return true
 }
 
 func (h *HUD) closeLocked() {
@@ -389,10 +445,15 @@ func indexOf(ts []hudTarget, id string) int {
 	return -1
 }
 
-func (h *HUD) renderLocked(clear bool) {
+func (h *HUD) renderLocked(clear, focus bool) {
 	ts := h.targetsLocked()
 	st := hudState{Targets: ts, Selected: indexOf(ts, h.target), Status: h.status, Hints: hintsEditing}
 	switch {
+	case !h.connected:
+		if st.Status == "" {
+			st.Status = "Hive's daemon is not running."
+		}
+		st.Hints = "[esc] close"
 	case len(ts) == 0:
 		st.Status = "No live sessions. Start one in Hive first."
 		st.Hints = "[esc] close"
@@ -402,5 +463,5 @@ func (h *HUD) renderLocked(clear bool) {
 		st.Status = "Pick a session to send to with ↑↓."
 	}
 	st.CanSend = st.Selected >= 0 && h.phase != hudSending
-	h.view.Show(st, clear)
+	h.view.Show(st, clear, focus)
 }

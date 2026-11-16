@@ -77,6 +77,9 @@ void hbHotkeySet(uint32_t keyCode, uint32_t modifiers, int enabled) {
 @property(strong) NSTextField *status;
 @property(strong) NSTextField *hints;
 @property(strong) NSRunningApplication *previous;
+// The labels the popup was last built from: rebuilding an unchanged list
+// would close the popup under a user who has it open.
+@property(copy) NSString *builtLabels;
 @end
 
 static HBHUD *hbHUD = nil;
@@ -201,19 +204,23 @@ static void hbEnsureEditMenu(void) {
 @end
 
 void hbHUDShow(const char *labels, int n, int selected, const char *status,
-               const char *hints, int clear) {
+               const char *hints, int clear, int focus) {
+  NSString *joined = n > 0 ? [NSString stringWithUTF8String:labels] : @"";
   NSArray<NSString *> *items =
-      n > 0 ? [[NSString stringWithUTF8String:labels] componentsSeparatedByString:@"\x1f"] : @[];
+      n > 0 ? [joined componentsSeparatedByString:@"\x1f"] : @[];
   NSString *st = [NSString stringWithUTF8String:status];
   NSString *hi = [NSString stringWithUTF8String:hints];
   dispatch_async(dispatch_get_main_queue(), ^{
     if (hbHUD == nil) hbHUD = [HBHUD new];
     HBHUD *h = hbHUD;
-    [h.targets removeAllItems];
-    for (NSString *s in items) {
-      // addItemWithTitle: drops a duplicate title; two sessions can share
-      // a label, so add the item and set its title directly.
-      [h.targets.menu addItem:[[NSMenuItem alloc] initWithTitle:s action:nil keyEquivalent:@""]];
+    if (![joined isEqualToString:h.builtLabels]) {
+      h.builtLabels = joined;
+      [h.targets removeAllItems];
+      for (NSString *s in items) {
+        // addItemWithTitle: drops a duplicate title; two sessions can share
+        // a label, so add the item and set its title directly.
+        [h.targets.menu addItem:[[NSMenuItem alloc] initWithTitle:s action:nil keyEquivalent:@""]];
+      }
     }
     if (selected >= 0 && selected < (int)items.count) {
       [h.targets selectItemAtIndex:selected];
@@ -225,7 +232,8 @@ void hbHUDShow(const char *labels, int n, int selected, const char *status,
     h.status.stringValue = st;
     h.hints.stringValue = hi;
     if (clear) h.field.stringValue = @"";
-    if (!h.panel.isVisible) {
+    BOOL opening = !h.panel.isVisible;
+    if (opening) {
       NSRunningApplication *front = NSWorkspace.sharedWorkspace.frontmostApplication;
       h.previous = [front isEqual:NSRunningApplication.currentApplication] ? nil : front;
       NSScreen *screen = NSScreen.mainScreen;
@@ -236,6 +244,10 @@ void hbHUDShow(const char *labels, int n, int selected, const char *status,
                                             NSMinY(sf) + sf.size.height * 0.62)];
       }
     }
+    // Only a hotkey press takes focus. A live refresh (a title change, a
+    // new session) leaves key status, the caret and any running dictation
+    // where the user has them.
+    if (!opening && !focus) return;
     [h.panel makeKeyAndOrderFront:nil];
     [h.panel makeFirstResponder:h.field];
     // Put the caret at the end rather than selecting what is there, so a

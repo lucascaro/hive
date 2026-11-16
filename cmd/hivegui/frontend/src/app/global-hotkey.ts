@@ -33,7 +33,9 @@ export const DICTATE_COMMAND = 'dictate-hud';
 
 /** Tells the daemon this window is showing session id. */
 export function reportFocus(id: string | null): void {
-  if (!id) return;
+  // Only the macOS menu-bar HUD reads focus; elsewhere a report would
+  // just fan a SESSION_EVENT out to every client.
+  if (!id || !isMac) return;
   ReportFocusedSession(id).catch(() => {
     // No control connection yet: the next switch or window focus
     // reports again.
@@ -86,10 +88,10 @@ let wired = false;
 export function initGlobalHotkey(): void {
   if (wired) return;
   wired = true;
+  if (!isMac) return;
   window.addEventListener('focus', () =>
     reportFocus(appStore.getState().activeId),
   );
-  if (!isMac) return;
   EventsOn('hotkey:global', (payload: unknown) => {
     try {
       received = readHotkey(payload);

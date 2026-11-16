@@ -17,15 +17,19 @@ import (
 type fakeView struct {
 	shown   []hudState
 	clears  int
+	focuses int
 	hidden  int
 	visible bool
 }
 
-func (v *fakeView) Show(st hudState, clear bool) {
+func (v *fakeView) Show(st hudState, clear, focus bool) {
 	v.shown = append(v.shown, st)
 	v.visible = true
 	if clear {
 		v.clears++
+	}
+	if focus {
+		v.focuses++
 	}
 }
 
@@ -323,5 +327,73 @@ func TestHUDSecondOpenKeepsText(t *testing.T) {
 	h.Open()
 	if v.clears != 1 {
 		t.Fatalf("a second hotkey press cleared the field (%d clears)", v.clears)
+	}
+}
+
+// Only a hotkey press takes focus. A live update that did would move the
+// caret, or cut a dictation off, while the user is speaking.
+func TestHUDOnlyHotkeyTakesFocus(t *testing.T) {
+	h, v, _ := newTestHUD(sess("a", 0, 1), sess("b", 1, 2))
+	h.Open()
+	h.SetSessions([]wire.ProjectInfo{{ID: "p", Name: "proj"}}, []wire.SessionInfo{sess("a", 0, 1), sess("b", 1, 2), sess("c", 2, 0)})
+	h.Move(1)
+	h.Submit("x")
+	h.OnError("a", wire.ErrCodeSessionBusy, "busy")
+	if v.focuses != 1 {
+		t.Fatalf("focus taken %d times, want 1 (the open)", v.focuses)
+	}
+	h.Open()
+	if v.focuses != 2 || v.clears != 1 {
+		t.Fatalf("a second press: focuses %d, clears %d; want 2, 1", v.focuses, v.clears)
+	}
+}
+
+// A reply to a send the user walked away from must not settle a newer
+// send to the same session.
+func TestHUDStaleReplyDoesNotSettleNewSend(t *testing.T) {
+	h, v, s := newTestHUD(sess("a", 0, 1))
+	h.Open()
+	h.Submit("first")
+	h.Cancel()
+	h.Open()
+	h.Submit("second")
+	h.OnSent("a") // answers "first"
+	if !v.visible {
+		t.Fatal("the reply to the abandoned send closed the panel")
+	}
+	h.OnError("a", wire.ErrCodeSessionBusy, "busy") // answers "second"
+	if !v.visible || v.last().Hints != hintsBusy {
+		t.Fatalf("state after the real reply = %+v", v.last())
+	}
+	if len(s.sends) != 2 {
+		t.Fatalf("sends = %+v", s.sends)
+	}
+}
+
+func TestHUDDisconnectWhileSendingWarns(t *testing.T) {
+	h, v, s := newTestHUD(sess("a", 0, 1))
+	h.Open()
+	h.Submit("hello")
+	h.Disconnected()
+	st := v.last()
+	if !strings.Contains(st.Status, "may have arrived") || st.CanSend {
+		t.Fatalf("after a disconnect mid-send: %+v", st)
+	}
+	h.Submit("hello")
+	if len(s.sends) != 1 {
+		t.Fatalf("sent again with no daemon: %+v", s.sends)
+	}
+}
+
+func TestHUDDisconnectedSaysDaemonNotRunning(t *testing.T) {
+	h, v, _ := newTestHUD(sess("a", 0, 1))
+	h.Disconnected()
+	h.Open()
+	if !strings.Contains(v.last().Status, "not running") {
+		t.Fatalf("status = %q, want the daemon named", v.last().Status)
+	}
+	h.SetSessions(nil, []wire.SessionInfo{sess("a", 0, 1)})
+	if strings.Contains(v.last().Status, "not running") {
+		t.Fatalf("still says not running after reconnecting: %q", v.last().Status)
 	}
 }
