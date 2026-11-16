@@ -40,6 +40,7 @@ import { flashStatus, reportFailure } from '../../app/dom.js';
 import { activeProjectId } from '../../app/selectors.js';
 
 import { focusableWithin } from '../../lib/focus-trap.js';
+import { ORCHESTRATOR_GRANT_HINT } from '../../lib/orchestrator.js';
 import { cmdOrCtrl } from '../../lib/platform.js';
 import {
   bumpAgentUsage,
@@ -641,12 +642,24 @@ function LauncherBody({
       ) : null}
       {!loading && !req.duplicateFrom ? (
         <label className="launcher-orchestrator">
+          {/* Named by its own span and described by the hint, so a
+              screen reader hears the label, then the caveat. */}
           <input
             type="checkbox"
             checked={orchestrator}
+            aria-labelledby="launcher-orchestrator-label"
+            aria-describedby="launcher-orchestrator-hint"
             onChange={(e) => setOrchestrator(e.target.checked)}
           />
-          <span>May direct other sessions</span>
+          <span id="launcher-orchestrator-label">
+            May direct other sessions
+          </span>
+          <span
+            id="launcher-orchestrator-hint"
+            className="launcher-orchestrator__hint"
+          >
+            {ORCHESTRATOR_GRANT_HINT}
+          </span>
         </label>
       ) : null}
       {offerKind && !loading ? (
