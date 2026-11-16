@@ -453,7 +453,7 @@ func TestHUDTagsShellTargets(t *testing.T) {
 	h.Open()
 	for _, tg := range v.last().Targets {
 		want := tg.ID != "ag"
-		if got := strings.HasSuffix(tg.Label, "  · shell"); got != want {
+		if got := strings.HasPrefix(tg.Label, "[shell] "); got != want {
 			t.Errorf("target %s label %q: shell tag = %v, want %v", tg.ID, tg.Label, got, want)
 		}
 	}

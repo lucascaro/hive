@@ -459,7 +459,7 @@ func (h *HUD) targetsLocked() []hudTarget {
 		label := strings.TrimSpace(row.LabelIn(projName[s.ProjectID]))
 		if s.Kind != wire.KindACP && (s.Agent == "" || s.Agent == string(agent.IDShell)) {
 			// Dictated text lands in a shell as a command, not a prompt.
-			label += "  · shell"
+			label = "[shell] " + label
 		}
 		out = append(out, hudTarget{
 			ID:    s.ID,

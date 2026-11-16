@@ -109,10 +109,10 @@ func requireIsolation() error {
 	// ($TMPDIR/hive/hived.sock), so the prefix check below cannot tell it
 	// from a test socket. Refuse the defaults by name.
 	defSock, defState := defaultPaths()
-	if filepath.Clean(sock) == defSock {
+	if filepath.Clean(sock) == defSock || sameFile(sock, defSock) {
 		return fmt.Errorf("HIVE_SOCKET %q is the default daemon socket", sock)
 	}
-	if filepath.Clean(state) == defState {
+	if filepath.Clean(state) == defState || sameFile(state, defState) {
 		return fmt.Errorf("HIVE_STATE_DIR %q is the default state dir", state)
 	}
 	tmpPrefixes := []string{os.TempDir(), "/tmp", "/private/tmp", "/var/folders"}
@@ -129,6 +129,17 @@ func requireIsolation() error {
 		}
 	}
 	return nil
+}
+
+// sameFile reports whether a and b both exist and are the same file, so a
+// symlink to the real socket or state dir is caught as well as its name.
+func sameFile(a, b string) bool {
+	fa, err := os.Stat(a)
+	if err != nil {
+		return false
+	}
+	fb, err := os.Stat(b)
+	return err == nil && os.SameFile(fa, fb)
 }
 
 // defaultPaths returns the socket path and state dir a daemon would use

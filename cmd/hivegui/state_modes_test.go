@@ -28,8 +28,12 @@ func TestStateWritersCreatePrivateDirAndLeaveExistingAlone(t *testing.T) {
 			if err := write(); err != nil {
 				t.Fatal(err)
 			}
-			if fi, err := os.Stat(fresh); err != nil || fi.Mode().Perm() != 0o700 {
-				t.Errorf("new state dir: %v mode %v, want 700", err, fi.Mode().Perm())
+			fi, err := os.Stat(fresh)
+			if err != nil {
+				t.Fatalf("stat new state dir: %v", err)
+			}
+			if fi.Mode().Perm() != 0o700 {
+				t.Errorf("new state dir mode %v, want 700", fi.Mode().Perm())
 			}
 			existing := t.TempDir()
 			if err := os.Chmod(existing, 0o755); err != nil {
