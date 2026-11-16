@@ -4,7 +4,8 @@ title: Dictate into a session from anywhere via a global capture HUD
 type: enhancement
 complexity: L
 priority: P2
-stage: IMPLEMENT
+pr: 556
+stage: REVIEW
 ---
 
 # Dictate into a session from anywhere via a global capture HUD

@@ -3,6 +3,8 @@
 - **Spec:** [docs/product-specs/553-dictate-into-a-session-from-anywhere-via-a-global.md](../../product-specs/553-dictate-into-a-session-from-anywhere-via-a-global.md)
 - **Issue:** #553
 - **Status:** active
+- **PR:** #556
+- **Branch:** feature/553-dictate-hud
 
 ## Summary
 
