@@ -246,7 +246,11 @@ The control plane's answer is not only for Hive's own windows. A
 headless plugin ([docs/plugins.md](../plugins.md)) is a program `hived`
 supervises that connects over the same wire protocol, in control mode,
 and so receives the same SESSION_EVENT / state / activity stream and
-may issue the same verbs a GUI does. What distinguishes it is the
+may issue the verbs a GUI does, except the user's own decisions, which
+its socket refuses with `mode_not_allowed` (terminal input, permission
+answers, plan reviews, plugin management and the rest listed in
+[What a plugin cannot do](../plugins.md#what-a-plugin-cannot-do)); it
+may prompt only the ACP sessions it spawned. What distinguishes it is the
 socket it dialed: each plugin run gets its own `<sock>.plugin-<hex>`
 listener, and every connection on it is tagged by the daemon — never
 by its HELLO — so a plugin is never counted as a client that can answer
