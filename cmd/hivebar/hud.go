@@ -110,9 +110,9 @@ type HUD struct {
 	connected bool
 	// conn counts connections, so a local send failure that lands after a
 	// reconnect cannot free a slot belonging to a send on the new one.
-	conn int
-	projects  []wire.ProjectInfo
-	sessions  []wire.SessionInfo
+	conn     int
+	projects []wire.ProjectInfo
+	sessions []wire.SessionInfo
 	// pending counts, per session, sends with a reply still due. SENT and
 	// ERROR name only the session, and the daemon runs each send on its
 	// own goroutine, so replies can come back out of order. Allowing one
