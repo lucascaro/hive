@@ -5,7 +5,6 @@
 package daemon
 
 import (
-	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
@@ -365,7 +364,7 @@ func TestPluginSocket_ServesSameDispatch(t *testing.T) {
 	d := startTestDaemon(t)
 	sid := firstSessionID(t, d)
 	projectID := d.Registry().ListProjects()[0].ID
-	pc, path := pluginConn(t, d, "full", "p")
+	pc, _ := pluginConn(t, d, "full", "p")
 
 	send := func(ft wire.FrameType, v any) {
 		t.Helper()
@@ -391,24 +390,8 @@ func TestPluginSocket_ServesSameDispatch(t *testing.T) {
 	send(wire.FrameUpdateSession, wire.UpdateSessionReq{SessionID: sid, Name: &name})
 	awaitSessionEvent(t, pc, func(ev wire.SessionEvent) bool { return ev.Session.Name == name }, 5*time.Second)
 
-	// Input goes through attach on the same plugin socket.
-	ac, err := net.Dial("unix", path)
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer ac.Close()
-	handshake(t, ac, wire.Hello{Mode: wire.ModeAttach, SessionID: sid})
-	if err := wire.WriteFrame(ac, wire.FrameData, []byte("echo plugin-$((6*7))\n")); err != nil {
-		t.Fatal(err)
-	}
-	var out bytes.Buffer
-	deadline := time.Now().Add(5 * time.Second)
-	for !strings.Contains(out.String(), "plugin-42") && time.Now().Before(deadline) {
-		drainFor(ac, &out, 200*time.Millisecond)
-	}
-	if !strings.Contains(out.String(), "plugin-42") {
-		t.Fatalf("attach input from a plugin produced no output; got %q", out.String())
-	}
+	// Attach on a plugin socket is read-only; see
+	// TestPluginAttach_InputRefused.
 }
 
 // Shutdown cancels an install that is still cloning, including a

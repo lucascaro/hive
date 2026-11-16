@@ -17,8 +17,11 @@ import (
 // Both are refused to plugins. SET_FOCUSED_SESSION picks the session the
 // HUD offers by default, so a plugin able to send it could steer what
 // the user's dictated text lands in; SET_GLOBAL_HOTKEY rebinds or
-// disables a system-wide key. Neither is something a plugin has been
-// granted, the same line SEND_TO_SESSION draws.
+// disables a system-wide key. They sit with the other verbs a plugin
+// socket is refused: SEND_TO_SESSION, input on a plugin's attach
+// (serveAttach) and pluginRefusedFrames (daemon.go). docs/plugins.md
+// lists them all. The refusal is per socket, not a sandbox: a plugin
+// runs as the user.
 func (d *Daemon) handleHUDFrame(ops controlOps, ft wire.FrameType, payload []byte) {
 	if ops.principal != "" {
 		ops.sendError(wire.ErrCodeModeNotAllowed, ft.String()+" is not available to plugins")
