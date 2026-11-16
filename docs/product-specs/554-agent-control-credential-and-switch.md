@@ -44,21 +44,20 @@ Verified on `main` at the time of writing:
 
 ## Desired behavior
 
-**(a) The control socket accepts only Hive's own clients.** The GUI, the
-menu bar (`hivebar`), and the `hived` CLI *when the user runs it* can
-open a control connection. Any other process, including an agent and
-anything it launches, cannot. This rests on a credential agents cannot
-read. The candidate is a macOS Keychain item whose access is limited to
-signed Hive binaries, so that an agent trying to read it gets a system
-prompt or an error, never the secret. Research so far (see *Notes*)
-says the Keychain can do the "limited to signed Hive binaries" part but
-cannot by itself do the "when the user runs it" part; that gap is the
-first open question below and may reshape (a).
+**(a) The control socket accepts only Hive's own clients.** The GUI,
+the menu bar (`hivebar`) and the daemon hold a credential agents cannot
+read: a macOS Keychain item whose access is limited to those signed
+binaries, so an agent trying to read it gets a system prompt or an
+error, never the secret. Every other process, including an agent and
+anything it launches, is refused a control connection. The CLI is not
+one of the credential's holders (see *Chosen direction*): a user who
+needs a control verb from a shell gets it by approving it in the GUI.
 
 **(b) Once (a) is enforced, a setting turns agent-to-agent control
 off.** Settings gains a switch that disables agent-to-agent control
 entirely: no session may direct or message another through Hive
-(whether read-only observation is also cut is open question 5). Default **on**, which is today's behaviour. The switch ships only
+(whether read-only observation is also cut is open question 5).
+Default **on**, which is today's behaviour. The switch ships only
 after (a), by the owner's decision: a switch an agent can route around
 is worse than none, because it tells the user they are protected when
 they are not.
@@ -67,25 +66,46 @@ The narrowed per-session socket keeps working for a session's own
 children (`hive idea`, state reports, `submit_result`) unless an open
 question below decides otherwise.
 
+## Chosen direction
+
+Decided by the owner; recorded here so the plan stage starts from it.
+
+**Why a decision was needed.** The daemon and the CLI are one binary
+today, `Contents/MacOS/hived`, signed once (`scripts/sign-macos.sh:70`).
+A Keychain ACL or access group trusts a code signature, not whoever
+launched it, so any rule that lets the user's `hived msg` read the
+credential also lets an agent that runs the same binary read it,
+silently. Every code path in a trusted binary that can reach the
+credential is reachable by an agent that can run that binary.
+
+**Decision.**
+
+- The CLI ships as a **separate binary with no control credential**. It
+  is not on the Keychain item's access list, so running it — by the user
+  or by an agent — grants nothing by itself.
+- The few control verbs a user needs from a shell are **confirmed in the
+  GUI**: the CLI asks, the GUI shows the request and who made it, and the
+  user approves or denies it there.
+- The Keychain credential therefore guards only the GUI, the menu bar
+  and the daemon.
+
+**Rejected alternatives.**
+
+- *Keep the CLI inside the trusted `hived` binary.* Rejected: an agent
+  runs the same signed binary and gets the same access with no prompt,
+  which is the hole this spec exists to close.
+- *Require user presence for CLI control* (Touch ID / password through
+  `SecAccessControl` `.userPresence`). Rejected: it prompts on every use,
+  which trains reflexive approval, and the prompt cannot say which
+  command or which caller it is for. It also needs the data protection
+  keychain, and with it a provisioning profile and an app-like bundle for
+  the CLI (TN3137, see *Notes*).
+
 ## Open questions
 
-1. **Telling the user's `hived` CLI from an agent's.** The daemon and
-   the CLI are one binary, `Contents/MacOS/hived`, signed once
-   (`scripts/sign-macos.sh:70`). A Keychain ACL or access group trusts a
-   code signature, not whoever launched it, so any rule that lets the
-   user's `hived msg` read the credential also lets an agent that runs
-   the same binary read it — silently. Candidates:
-   - split the CLI into its own binary that is *not* trusted, so it has
-     no control access and talks only through the narrowed socket or a
-     GUI-mediated request;
-   - require user presence for CLI control (Touch ID / password through
-     `SecAccessControl` `.userPresence`), which needs the data
-     protection keychain (see *Notes*) and prompts on every use;
-   - route privileged CLI verbs through a confirmation the GUI shows,
-     so the human approves each one.
-   Every code path in a trusted binary that can reach the credential is
-   reachable by an agent that can run that binary; the design has to
-   hold under that.
+1. **Which control verbs the CLI may request, and what the GUI shows.**
+   The set a user needs from a shell, how a request identifies its
+   caller, and what happens when the GUI is not running.
 2. **Unsigned, dev and ad-hoc builds.** `wails dev`, `go run` and
    `scripts/sign-macos.sh --adhoc` builds have no Team ID and change
    signature on every build. Options: no credential (today's behaviour)
@@ -142,8 +162,9 @@ macOS build:
 - A process that is not a Hive client — for example `nc -U` or a short
   script dialing the control socket — is refused before any control
   verb is served, and the daemon log records the refusal.
-- Running the shipped `hived` binary from inside an agent session does
-  not unlock any control verb without the user's explicit approval.
+- The CLI binary is not on the credential's access list, and running
+  any shipped Hive binary from inside an agent session does not unlock a
+  control verb without the user approving that request in the GUI.
 - The GUI and `hivebar` keep working with no prompt during ordinary use.
 - With the agent-to-agent switch off, `hived msg` from a granted
   session is refused, and so is the same request sent any other way an
@@ -212,10 +233,12 @@ Hive-only ACL prompts any other reader, and a data-protection item in a
 Hive access group is invisible to them. It *cannot* tell the user
 running `hived` from an agent running `hived`, because both are the same
 signed binary — so (a) holds only if no agent-runnable Hive binary hands
-out control without the user's approval (open question 1). The
+out control without the user's approval — hence the separate CLI and
+GUI confirmation in *Chosen direction*. The
 data-protection route is the stronger one (no "Always Allow" to click
 through) but needs a provisioning profile and an app-like bundle for
-every client that reads it. Alternatives if neither fits:
+every client that reads it. Other mechanisms considered, should the
+Keychain prove unworkable:
 
 - **Peer identity instead of a secret.** The daemon reads the
   connecting peer's audit token / PID (`LOCAL_PEERTOKEN`,

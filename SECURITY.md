@@ -31,9 +31,9 @@ from that.
 
 **Who cannot reach Hive.** Nothing outside your account. A release build
 opens no network listener: the daemon listens only on Unix-domain sockets
-in a directory created `0o700`, and every Go client refuses that
-directory unless it is a real directory owned by you with no group or
-other access (see *Single-User Systems* below; on Windows the socket sits
+in a directory created `0o700`, and the Go clients that exchange
+frames with the daemon refuse that directory unless it is a real
+directory owned by you with no group or other access (see *Single-User Systems* below; on Windows the socket sits
 under your profile and relies on its ACL instead). Hive registers no URL
 scheme, so a web page cannot open it with a link. (`wails dev` serves the
 frontend on `localhost:34115`, and the `hived-ws-bridge` test harness
@@ -97,10 +97,12 @@ directory when it is unset), `%LOCALAPPDATA%\Hive\hived.sock` on Windows
 (`HIVE_SOCKET` overrides all three). Both POSIX defaults fall back to the state
 directory rather than to `/tmp`: Linux when `$XDG_RUNTIME_DIR` is unset, macOS
 when `$TMPDIR` resolves to the shared `/tmp`. Hive creates that directory with
-mode `0o700`, and every Go component — the daemon before binding, the GUI, the
-menu bar, `hived idea` and the hook client before dialing — refuses a directory
-that is a symlink, is not owned by the current user, or is reachable by group or
-other. None of the defaults live under the world-writable `/tmp`. The Pi
+mode `0o700`, and the daemon before binding, and the GUI, the menu bar,
+`hived idea` and the hook client before dialing, refuse a directory that is a
+symlink, is not owned by the current user, or is reachable by group or other.
+The GUI's restart probe (`cmd/hivegui/restart.go`) dials without the check: it
+only connects and hangs up to learn whether the old daemon has exited, and
+sends nothing. None of the defaults live under the world-writable `/tmp`. The Pi
 reporter extension (`internal/agent/pi/hive.ts`) is the exception: it runs in
 Pi's JavaScript tier and only ever sends state observations on the events
 socket, so it dials without the check.
@@ -123,7 +125,8 @@ On shared machines (e.g., a development server with multiple accounts):
   (`HELLO{mode:session}`): the idea verbs `hive idea` needs (`ADD_IDEA`,
   `LIST_IDEAS`), an ACP session's `SUBMIT_RESULT`, a project-scoped
   `LIST_SESSIONS` / `WAIT_SESSION`, and `SEND_TO_SESSION` for a session
-  you granted *May direct other sessions*. Everything else is answered
+  you granted *May direct other sessions*. On connect it also receives a
+  snapshot of its own session entry, and nobody else's. Everything else is answered
   with `mode_not_allowed`, so what a session's child processes inherit
   does not let them create, attach to or kill sessions, remove worktrees,
   shut the daemon down, or read another project's ideas.
