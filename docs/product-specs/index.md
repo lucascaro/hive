@@ -18,6 +18,7 @@ The *what* and *why* of work this project plans to do. Each spec describes user 
 | P3 | — | Move SocketPath out of internal/daemon so clients stop linking the daemon | TRIAGE | [331-move-socketpath-out-of-internal-daemon](331-move-socketpath-out-of-internal-daemon.md) |
 | P3 | — | Agent-spawned sessions: a granted session can start a sibling | PLAN | [391-agent-spawned-sessions](391-agent-spawned-sessions.md) |
 | — | — | Agent-control credential and switch | TRIAGE | [554-agent-control-credential-and-switch](554-agent-control-credential-and-switch.md) |
+| P3 | — | Let a plugin ask for a refused power through its manifest | TRIAGE | [555-plugin-capability-grants](555-plugin-capability-grants.md) |
 | P3 | — | Migrate the frontend to CSS Modules | TRIAGE | [frontend-css-modules](frontend-css-modules.md) |
 
 ## Completed
