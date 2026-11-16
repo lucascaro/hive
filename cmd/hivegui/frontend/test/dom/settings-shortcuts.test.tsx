@@ -172,6 +172,8 @@ describe('settings: shortcuts tab', () => {
       'Projects',
       'View',
       'Window',
+      // Spec 553: the dictation HUD's system-wide chord (macOS only).
+      'Global (system-wide)',
       'Other commands',
       'Inside a terminal',
     ]);

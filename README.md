@@ -243,6 +243,28 @@ renamed the bundle to on install). It is a client like
 the GUI — it talks to the daemon over the wire protocol and never opens
 a PTY of its own.
 
+### Dictate into a session from any app
+
+Press **⌃⌥Space** anywhere, with Hive in front or not, and a small box
+opens over whatever you are doing. Dictate into it with macOS Dictation,
+Handy or any other tool that types or pastes, or just type. The box says
+which session the text will go to. That defaults to the session a Hive
+window last showed you; **↑/↓** picks another live session. Nothing
+reaches the agent until you press **↩**, which sends it the way ⇧⌘M
+does. If the agent is working, the box says so and a second ↩ queues the
+text for when it settles (an ACP session can't queue, so the box asks
+you to try again once it is idle). **⇧↩** starts a new line and **Esc** throws
+the text away; either way focus goes back to the app you were in.
+
+Hive itself never listens to the microphone, and needs no Accessibility
+permission for the hotkey, which is active whenever Hive's daemon is
+running. Rebind it, or remove it, under
+`Settings ▸ Shortcuts ▸ Global (system-wide)`. The menu bar's
+**Dictate into a Session…** item opens the same box and shows the
+current hotkey, or says so when another app already owns it. One press
+opens the box and a second starts your dictation tool: macOS gives an
+app no supported way to start Dictation for you.
+
 ## Reloading vs restarting
 
 Picking up a new build of Hive does not have to cost you your sessions.
@@ -371,6 +393,7 @@ These are the defaults. Rebind any of them, and any plugin command, under **Sett
 | ⌘E | Worktrees in the active project (browse, resume, delete) |
 | ⌘I | Capture an idea for later (note, kind, project) |
 | ⇧⌘I | Ideas captured for the active project |
+| ⌃⌥Space | Dictate into a session from any app (macOS; system-wide, opens the menu bar's capture box — see [The menu bar](#the-menu-bar-macos)) |
 | ⇧⌘M | Message the active session: a note sent to it — through the agent's own inbox for Claude Code and Pi, otherwise typed when it is quiet (queued if it is working) |
 | ⌥⌘B | Notify me once when the active session stops working (Ctrl+Alt+Shift+B on Windows and Linux) |
 | ⌘1–9 | Jump to nth session |

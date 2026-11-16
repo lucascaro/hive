@@ -155,6 +155,15 @@ describe('previewImport', () => {
     });
   });
 
+  // Spec 553: the dictation HUD's system-wide chord is an ordinary
+  // binding, so an exported override comes back like any other — which is
+  // what lets the GUI re-sync the menu bar's copy after an import.
+  it('imports the dictation hotkey like any other command', () => {
+    const p = preview({ mac: { 'dictate-hud': ['Mod+Shift+[KeyD]'] } }, true);
+    expect(p.rows.find((r) => r.id === 'dictate-hud')?.status).toBe('ok');
+    expect(p.candidate).toEqual({ 'dictate-hud': ['Mod+Shift+[KeyD]'] });
+  });
+
   // ["Mod+K", 5] still imports Mod+K: the row says what was left out, not
   // that the entry was skipped.
   it('an entry with some keys that are not text is kept, and says so', () => {

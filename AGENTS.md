@@ -246,6 +246,10 @@ A hint for a command with no key shows no key.
 
 - `Ctrl+C` — interrupt / force-quit (universal).
 - Dialog confirm/cancel (`Enter` / `Esc`) inside overlays.
+- Inside the menu bar's native dictation HUD (spec 553): `↑`/`↓` change
+  the target session and `⇧↩` inserts a newline. The panel is AppKit and
+  cannot read the TS bindings; its hints row shows these keys. The
+  system-wide chord that opens it (`dictate-hud`) *is* a binding.
 
 ### Design rule
 

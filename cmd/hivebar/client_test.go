@@ -7,6 +7,7 @@
 package main
 
 import (
+	"encoding/json"
 	"sync"
 	"testing"
 	"time"
@@ -126,5 +127,81 @@ func TestApplySessionEventPatchesTheList(t *testing.T) {
 	})
 	if len(c.sessions) != 1 || c.sessions[0].ID != "b" {
 		t.Errorf("after removal: %+v", c.sessions)
+	}
+}
+
+type recHUD struct {
+	sessions [][]wire.SessionInfo
+	sent     []string
+	errs     []string
+	down     int
+}
+
+func (r *recHUD) Disconnected() { r.down++ }
+
+func (r *recHUD) SetSessions(_ []wire.ProjectInfo, s []wire.SessionInfo) {
+	r.sessions = append(r.sessions, s)
+}
+func (r *recHUD) OnSent(id string)             { r.sent = append(r.sent, id) }
+func (r *recHUD) OnError(id, code, msg string) { r.errs = append(r.errs, id+":"+code) }
+
+type recHotkeys struct {
+	keys []wire.GlobalHotkey
+	down int
+}
+
+func (r *recHotkeys) Connected(int)                 {}
+func (r *recHotkeys) Disconnected()                 { r.down++ }
+func (r *recHotkeys) SetHotkey(h wire.GlobalHotkey) { r.keys = append(r.keys, h) }
+
+func mustMarshal(t *testing.T, v any) []byte {
+	t.Helper()
+	b, err := json.Marshal(v)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return b
+}
+
+// SENT and session-scoped ERRORs reach the HUD; an ERROR with no
+// session id (a reply to a menu click) does not; GLOBAL_HOTKEY reaches
+// the hotkey.
+func TestClientRoutesHUDFrames(t *testing.T) {
+	c := NewClient(func(Model) {})
+	h, k := &recHUD{}, &recHotkeys{}
+	c.AttachHUD(h, k)
+	c.handleFrame(wire.FrameSent, mustMarshal(t, wire.SentResp{SessionID: "a"}))
+	c.handleFrame(wire.FrameError, mustMarshal(t, wire.Error{Code: wire.ErrCodeSessionBusy, SessionID: "a"}))
+	c.handleFrame(wire.FrameError, mustMarshal(t, wire.Error{Code: "mode_not_allowed"}))
+	c.handleFrame(wire.FrameGlobalHotkey, mustMarshal(t, wire.DefaultGlobalHotkey))
+	if len(h.sent) != 1 || h.sent[0] != "a" {
+		t.Errorf("sent = %v", h.sent)
+	}
+	if len(h.errs) != 1 || h.errs[0] != "a:"+wire.ErrCodeSessionBusy {
+		t.Errorf("errs = %v", h.errs)
+	}
+	if len(k.keys) != 1 || k.keys[0] != wire.DefaultGlobalHotkey {
+		t.Errorf("hotkeys = %v", k.keys)
+	}
+}
+
+func TestClientFeedsHUDSessionsAndDisconnect(t *testing.T) {
+	c := NewClient(func(Model) {})
+	h, k := &recHUD{}, &recHotkeys{}
+	c.AttachHUD(h, k)
+	c.handleFrame(wire.FrameSessions, mustMarshal(t, wire.SessionsResp{Sessions: []wire.SessionInfo{{ID: "a", Alive: true}}}))
+	if len(h.sessions) == 0 || len(h.sessions[len(h.sessions)-1]) != 1 {
+		t.Fatalf("HUD did not get the snapshot: %v", h.sessions)
+	}
+	c.setDisconnected()
+	if h.down != 1 || k.down != 1 {
+		t.Fatalf("after disconnect: HUD down %d, hotkey down %d", h.down, k.down)
+	}
+}
+
+func TestClientSendToSessionWithoutConnection(t *testing.T) {
+	c := NewClient(func(Model) {})
+	if c.SendToSession("a", "hi", false) {
+		t.Fatal("SendToSession reported success with no connection")
 	}
 }

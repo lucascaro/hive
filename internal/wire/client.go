@@ -155,6 +155,10 @@ var controlEvents = map[FrameType]string{
 	FrameIdeas:     "idea:list",
 	FrameIdeaEvent: "idea:event",
 
+	// Spec 553: the capture-HUD chord, after WELCOME and on change. The
+	// GUI reconciles it against its keymap.
+	FrameGlobalHotkey: "hotkey:global",
+
 	FrameActivity: "activity:event",
 	// Not transcript:* — find-in-session (spec 431) owns those names.
 	FrameAcpTranscript: "acp:transcript",

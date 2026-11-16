@@ -33,6 +33,23 @@ const FINDER_ROW_544 = {
 } as const;
 type Row = { keys: string; label: string };
 type Group = { title: string; items: Row[] };
+// Spec 553 adds the menu bar's dictation HUD on macOS: its system-wide
+// chord and the HUD's own fixed keys, as two trailing groups.
+const DICTATION_553: Group[] = [
+  {
+    title: 'Global (system-wide)',
+    items: [{ keys: '⌃⌥Space', label: 'Dictate into a session from any app' }],
+  },
+  {
+    title: 'Dictation HUD (menu bar)',
+    items: [
+      { keys: '↩', label: 'Send to the target session' },
+      { keys: '⇧↩', label: 'New line' },
+      { keys: '↑↓', label: 'Change the target session' },
+      { keys: 'Esc', label: 'Discard and close' },
+    ],
+  },
+];
 // The fixture with spec 544's deltas applied: re-keyed rows take their new
 // keys and the finder's row follows the command palette's.
 function expectedGroups(name: 'mac' | 'other', groups: Group[]): Group[] {
@@ -42,7 +59,7 @@ function expectedGroups(name: 'mac' | 'other', groups: Group[]): Group[] {
       REKEYED_544[name]['duplicate-session-choose-tool'],
     'Command palette': REKEYED_544[name]['command-palette'],
   };
-  return groups.map((g) => ({
+  const out = groups.map((g) => ({
     ...g,
     items: g.items.flatMap((r) => {
       const keys = byLabel[r.label] ?? r.keys;
@@ -51,6 +68,7 @@ function expectedGroups(name: 'mac' | 'other', groups: Group[]): Group[] {
         : [{ ...r, keys }];
     }),
   }));
+  return name === 'mac' ? [...out, ...DICTATION_553] : out;
 }
 const platforms = [
   ['mac', true],

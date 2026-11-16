@@ -117,6 +117,9 @@ export const Frame = Object.freeze({
   PREPARE_WORKTREE: 0x54,
   PREPARED_WORKTREE: 0x55,
   COMMIT_WORKTREE: 0x56,
+  SET_FOCUSED_SESSION: 0x57,
+  SET_GLOBAL_HOTKEY: 0x58,
+  GLOBAL_HOTKEY: 0x59,
 });
 
 const frameName = new Map(Object.entries(Frame).map(([k, v]) => [v, k]));
@@ -277,6 +280,7 @@ const MAX_PAYLOAD = 1 << 20;
  * @property {string} [phase]
  * @property {string} [title]
  * @property {boolean} [needs_attention]
+ * @property {number} [focused_at] Unix ms of the last GUI focus report (spec 553)
  * @property {boolean} [notify_when_idle]
  * @property {boolean} [orchestrator] the user let this session message its siblings (spec 389)
  * @property {''|'working'|'waiting_input'|'waiting_permission'|'exited'|'error'} [state]

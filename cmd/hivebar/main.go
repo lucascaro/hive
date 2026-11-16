@@ -120,6 +120,14 @@ func main() {
 	client := NewClient(menu.Update)
 	menu.Attach(client)
 
+	// The dictation capture HUD (spec 553): a native panel, the Carbon
+	// hotkey that opens it, and the menu item that names that hotkey.
+	hud := NewHUD(nativeView{}, client)
+	dict := NewDictation(nativeRegistrar{}, menu.SetDictation)
+	setNativeTargets(hud, dict)
+	client.AttachHUD(hud, dict)
+	menu.AttachHUD(hud)
+
 	go client.Run()
 
 	// systray.Run must be called from main: the package locks the OS

@@ -311,6 +311,17 @@ const (
 	FramePrepareWorktree  FrameType = 0x54 // C → S, JSON, control
 	FramePreparedWorktree FrameType = 0x55 // S → C, JSON, control
 	FrameCommitWorktree   FrameType = 0x56 // C → S, JSON, control
+
+	// Dictation capture HUD (spec 553). SET_FOCUSED_SESSION is a GUI's
+	// "the user is looking at this session" report, which the menu-bar
+	// HUD uses as its default target. SET_GLOBAL_HOTKEY stores the
+	// system-wide chord that opens the HUD, and GLOBAL_HOTKEY carries it
+	// to every control client after WELCOME and on change. None of the
+	// three carries text for a session: the HUD delivers through
+	// SEND_TO_SESSION, and TestHUDFramesCarryNoText pins that.
+	FrameSetFocusedSession FrameType = 0x57 // C → S, JSON, control
+	FrameSetGlobalHotkey   FrameType = 0x58 // C → S, JSON, control
+	FrameGlobalHotkey      FrameType = 0x59 // S → C, JSON, control
 )
 
 // ControlRequestFrames lists every frame a control-mode client may send.
@@ -339,6 +350,7 @@ var ControlRequestFrames = []FrameType{
 	FrameArchiveSession, FrameListArchived, FrameUnarchiveSession, FrameDeleteArchived,
 	FrameWaitSession, FrameCancelAcp, FrameListAcpAgents,
 	FramePluginMessage, FramePrepareWorktree, FrameCommitWorktree,
+	FrameSetFocusedSession, FrameSetGlobalHotkey,
 }
 
 // ControlEventFrames lists every frame the daemon sends on a control
@@ -352,6 +364,7 @@ var ControlEventFrames = []FrameType{
 	FramePlugins, FramePluginEvent, FrameAcpTranscript,
 	FrameSubmitResultOK, FrameSent, FrameArchived, FrameWaited,
 	FrameAck, FrameAcpAgents, FramePreparedWorktree,
+	FrameGlobalHotkey,
 }
 
 // NonControlFrames are the frames that never travel on a control
@@ -498,6 +511,12 @@ func (t FrameType) String() string {
 		return "PREPARED_WORKTREE"
 	case FrameCommitWorktree:
 		return "COMMIT_WORKTREE"
+	case FrameSetFocusedSession:
+		return "SET_FOCUSED_SESSION"
+	case FrameSetGlobalHotkey:
+		return "SET_GLOBAL_HOTKEY"
+	case FrameGlobalHotkey:
+		return "GLOBAL_HOTKEY"
 	case FrameArchiveSession:
 		return "ARCHIVE_SESSION"
 	case FrameListArchived:

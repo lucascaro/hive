@@ -63,6 +63,14 @@ type Menu struct {
 	rows     [maxSessionRows]*systray.MenuItem
 	overflow *systray.MenuItem
 
+	// dictate opens the dictation HUD (spec 553) and names its hotkey.
+	// dictateLabel / dictateOn are its last text and state, held so a
+	// line that arrives before Ready is not lost. Guarded by mu.
+	dictate      *systray.MenuItem
+	dictateLabel string
+	dictateOn    bool
+	hud          interface{ Open() }
+
 	openGUI   *systray.MenuItem
 	reloadGUI *systray.MenuItem
 	restart   *systray.MenuItem
@@ -112,6 +120,34 @@ func NewMenu() *Menu {
 // the client needs the menu's Update method to exist first.
 func (m *Menu) Attach(c *Client) { m.client = c }
 
+// AttachHUD records the dictation HUD the Dictate item opens.
+func (m *Menu) AttachHUD(h interface{ Open() }) { m.hud = h }
+
+// SetDictation retitles the Dictate item. Safe from any goroutine,
+// including the main thread (a hotkey registration answer).
+func (m *Menu) SetDictation(label string, enabled bool) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.dictateLabel, m.dictateOn = label, enabled
+	if m.ready {
+		m.applyDictationLocked()
+	}
+}
+
+func (m *Menu) applyDictationLocked() {
+	if m.dictateLabel == "" {
+		m.dictate.Hide()
+		return
+	}
+	m.dictate.SetTitle(m.dictateLabel)
+	if m.dictateOn {
+		m.dictate.Enable()
+	} else {
+		m.dictate.Disable()
+	}
+	m.dictate.Show()
+}
+
 // Ready builds every item, in final order. Called from systray's
 // onReady, and the only place that adds anything to the menu.
 func (m *Menu) Ready() {
@@ -137,6 +173,8 @@ func (m *Menu) Ready() {
 	m.overflow.Hide()
 
 	systray.AddSeparator()
+	m.dictate = systray.AddMenuItem("", "Open a box to dictate or type into a session")
+	m.dictate.Hide()
 	m.openGUI = systray.AddMenuItem("Open Hive", "Bring the Hive window forward")
 	m.reloadGUI = systray.AddMenuItem("Reload GUI", "Relaunch the windows; sessions keep running")
 	m.restart = systray.AddMenuItem("Restart Daemon…", "Ends every running shell and agent")
@@ -156,6 +194,7 @@ func (m *Menu) Ready() {
 
 	m.mu.Lock()
 	m.ready = true
+	m.applyDictationLocked()
 	held := m.pending
 	m.pending = nil
 	m.mu.Unlock()
@@ -252,7 +291,8 @@ func (m *Menu) watchRow(i int) {
 type footerClick int
 
 const (
-	clickOpenGUI footerClick = iota
+	clickDictate footerClick = iota
+	clickOpenGUI
 	clickReloadGUI
 	clickRestartDaemon
 	clickCheckUpdates
@@ -269,6 +309,8 @@ const (
 func (m *Menu) watchFooter() {
 	for {
 		select {
+		case <-m.dictate.ClickedCh:
+			m.dispatch(clickDictate)
 		case <-m.openGUI.ClickedCh:
 			m.dispatch(clickOpenGUI)
 		case <-m.reloadGUI.ClickedCh:
@@ -293,6 +335,10 @@ func (m *Menu) dispatch(c footerClick) { go m.handle(c) }
 
 func (m *Menu) handle(c footerClick) {
 	switch c {
+	case clickDictate:
+		if m.hud != nil {
+			m.hud.Open()
+		}
 	case clickOpenGUI:
 		if err := OpenGUI(); err != nil {
 			log.Printf("hivebar: open GUI: %v", err)

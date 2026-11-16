@@ -424,6 +424,25 @@ func (c *Client) AwaitSent(timeout time.Duration) (wire.SentResp, error) {
 	}
 }
 
+// SetFocusedSession reports a session as the one the user is looking
+// at (spec 553).
+func (c *Client) SetFocusedSession(sessionID string) error {
+	return c.cli.WriteJSON(wire.FrameSetFocusedSession, wire.SetFocusedSessionReq{SessionID: sessionID})
+}
+
+// SetGlobalHotkey stores the capture-HUD chord (spec 553). Every control
+// client then receives GLOBAL_HOTKEY; use AwaitGlobalHotkey.
+func (c *Client) SetGlobalHotkey(h wire.GlobalHotkey) error {
+	return c.cli.WriteJSON(wire.FrameSetGlobalHotkey, h)
+}
+
+// AwaitGlobalHotkey consumes frames until a GLOBAL_HOTKEY arrives.
+func (c *Client) AwaitGlobalHotkey(timeout time.Duration) (wire.GlobalHotkey, error) {
+	var h wire.GlobalHotkey
+	err := c.awaitSnapshot(wire.FrameGlobalHotkey, "GLOBAL_HOTKEY", timeout, &h)
+	return h, err
+}
+
 // GetActivity asks for one session's stored tool ring and plan.
 func (c *Client) GetActivity(sessionID string) error {
 	return c.cli.WriteJSON(wire.FrameGetActivity, wire.GetActivityReq{SessionID: sessionID})

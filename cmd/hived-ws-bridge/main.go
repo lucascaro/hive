@@ -472,6 +472,20 @@ func (s *session) dispatch(req rpcReq) {
 			return
 		}
 		s.respond(req.ID, "", s.controlWriteJSON(wire.FrameSendToSession, p))
+	case "ReportFocusedSession":
+		var p wire.SetFocusedSessionReq
+		if err := parseParams(req.Params, &p); err != nil {
+			s.respond(req.ID, nil, err)
+			return
+		}
+		s.respond(req.ID, "", s.controlWriteJSON(wire.FrameSetFocusedSession, p))
+	case "SetGlobalHotkey":
+		var p wire.GlobalHotkey
+		if err := parseParams(req.Params, &p); err != nil {
+			s.respond(req.ID, nil, err)
+			return
+		}
+		s.respond(req.ID, "", s.controlWriteJSON(wire.FrameSetGlobalHotkey, p))
 	case "SetSessionNotifyWhenIdle":
 		var p struct {
 			SessionID string `json:"session_id"`

@@ -85,6 +85,7 @@ import {
   initView,
   refreshModeHint,
 } from './app/view.js';
+import { initGlobalHotkey } from './app/global-hotkey.js';
 import { initKeymapSync, loadKeymap } from './app/keymap-sync.js';
 import { MENU_COMMANDS } from './app/commands.js';
 import { goToSession, initActions } from './app/actions.js';
@@ -165,6 +166,8 @@ initKeymapSync({
   ],
 });
 void loadKeymap();
+// The menu bar's dictation HUD (spec 553): focus reports and the hotkey.
+initGlobalHotkey();
 initActions({
   bumpFontSize,
   resetFontSize,

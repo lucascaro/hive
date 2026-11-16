@@ -986,6 +986,30 @@ func (a *App) SendToSession(sessionID, text string, queue bool) error {
 	return cs.WriteJSON(wire.FrameSendToSession, wire.SendToSessionReq{SessionID: sessionID, Text: text, Queue: queue})
 }
 
+// ReportFocusedSession tells the daemon which session this window is
+// showing the user (spec 553), so the menu bar's capture HUD can offer
+// it as the default target. Fire-and-forget: a report that misses (no
+// control connection yet) is replaced by the next one.
+func (a *App) ReportFocusedSession(sessionID string) error {
+	cs, err := a.requireControl()
+	if err != nil {
+		return err
+	}
+	return cs.WriteJSON(wire.FrameSetFocusedSession, wire.SetFocusedSessionReq{SessionID: sessionID})
+}
+
+// SetGlobalHotkey stores the capture-HUD chord with the daemon (spec
+// 553), as a macOS virtual key code and Carbon modifier mask. The
+// frontend converts the user's keymap chord; the daemon answers with a
+// GLOBAL_HOTKEY broadcast ("hotkey:global") when it changed.
+func (a *App) SetGlobalHotkey(keyCode, modifiers uint32, enabled bool) error {
+	cs, err := a.requireControl()
+	if err != nil {
+		return err
+	}
+	return cs.WriteJSON(wire.FrameSetGlobalHotkey, wire.GlobalHotkey{KeyCode: keyCode, Modifiers: modifiers, Enabled: enabled})
+}
+
 // SetSessionNotifyWhenIdle arms or disarms the one-shot "ping me when
 // this session stops working" bell (spec 338). The daemon clears it
 // after it fires and announces that with a SESSION_EVENT(idle_ping).

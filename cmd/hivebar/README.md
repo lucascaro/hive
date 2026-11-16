@@ -24,6 +24,14 @@ PTY, no `internal/session`, no registry writes. Everything it knows
 arrives on one control connection; the only thing it touches in the
 state dir is its own lock file.
 
+The one thing it writes into a session is text the user dictated or
+typed into its capture HUD (spec 553) and then confirmed with Enter. It
+goes through `SEND_TO_SESSION`, the same frame the GUI's ⇧⌘M sheet
+uses. The HUD accepts no text from anywhere but its own focused field:
+no socket, CLI flag or frame feeds it. The panel and the Carbon hotkey
+live in `hud_darwin.m`; every decision is in `hud.go` and `hotkey.go`,
+where it is tested.
+
 It also does **not** spawn `hived`. A menu bar that started a daemon
 merely by existing would resurrect one the user had just quit, at
 login, every time. `hivebar` reports; the GUI starts things. The one

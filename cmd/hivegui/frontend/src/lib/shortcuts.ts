@@ -158,8 +158,10 @@ export interface CommandRow {
 // the terminal or to an overlay, and are not rebindable (spec 477
 // non-goals). The terminal one is listed read-only in the Shortcuts tab.
 const TERMINAL_GROUP = 'Inside a terminal';
+const DICTATION_HUD_GROUP = 'Dictation HUD (menu bar)';
 const FIXED_GROUPS = new Set([
   TERMINAL_GROUP,
+  DICTATION_HUD_GROUP,
   'Ended session',
   'Launcher & dialogs',
 ]);
@@ -433,6 +435,37 @@ function rawGroups(isMac: boolean): { title: string; items: Row[] }[] {
       ],
     },
   ];
+  // The menu bar's dictation capture HUD (spec 553) exists on macOS only.
+  // Its chord is a binding (rebindable); the HUD's own keys belong to a
+  // native panel and are fixed, like an overlay's Enter/Esc.
+  if (isMac) {
+    groups.push(
+      {
+        title: 'Global (system-wide)',
+        items: [
+          {
+            command: 'dictate-hud',
+            label: 'Dictate into a session from any app',
+          },
+        ],
+      },
+      {
+        title: DICTATION_HUD_GROUP,
+        items: [
+          {
+            keys: keyLabel('enter', isMac),
+            label: 'Send to the target session',
+          },
+          { keys: `⇧${keyLabel('enter', isMac)}`, label: 'New line' },
+          {
+            keys: arrowSeq(isMac, 'up', 'down'),
+            label: 'Change the target session',
+          },
+          { keys: 'Esc', label: 'Discard and close' },
+        ],
+      },
+    );
+  }
   return groups;
 }
 

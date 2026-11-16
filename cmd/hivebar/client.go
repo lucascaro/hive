@@ -68,10 +68,37 @@ type Client struct {
 	// changed while it was.
 	timer *time.Timer
 	dirty bool
+
+	// The dictation HUD's feeds (spec 553), set by AttachHUD before Run.
+	// Either may be nil (tests, and a client with no HUD).
+	hud     hudEvents
+	hotkeys hotkeyEvents
+}
+
+// hudEvents is what the dictation HUD needs from the connection: the
+// live session list and the answers to its sends.
+type hudEvents interface {
+	SetSessions(projects []wire.ProjectInfo, sessions []wire.SessionInfo)
+	OnSent(id string)
+	OnError(id, code, msg string)
+	Disconnected()
+}
+
+// hotkeyEvents is what the hotkey needs: the daemon's contract and the
+// chord it relays.
+type hotkeyEvents interface {
+	Connected(contract int)
+	Disconnected()
+	SetHotkey(h wire.GlobalHotkey)
 }
 
 func NewClient(onChange func(Model)) *Client {
 	return &Client{onChange: onChange}
+}
+
+// AttachHUD wires the dictation HUD and its hotkey. Call before Run.
+func (c *Client) AttachHUD(h hudEvents, k hotkeyEvents) {
+	c.hud, c.hotkeys = h, k
 }
 
 // Run dials the daemon and keeps redialling for the life of the
@@ -121,6 +148,9 @@ func (c *Client) session() error {
 	// the new snapshot is in flight.
 	c.projects, c.sessions = nil, nil
 	c.mu.Unlock()
+	if c.hotkeys != nil {
+		c.hotkeys.Connected(cs.Welcome().DaemonContract)
+	}
 	c.publish()
 
 	for {
@@ -158,6 +188,30 @@ func (c *Client) handleFrame(ft wire.FrameType, payload []byte) {
 		if json.Unmarshal(payload, &ev) == nil {
 			c.applySessionEvent(ev)
 			c.publish()
+		}
+	case wire.FrameSent:
+		// The answer to a SEND_TO_SESSION. hivebar sends one only from
+		// the dictation HUD, so every SENT here is the HUD's.
+		var resp wire.SentResp
+		if c.hud != nil && json.Unmarshal(payload, &resp) == nil {
+			c.hud.OnSent(resp.SessionID)
+		}
+	case wire.FrameError:
+		// A refusal of a HUD send carries the session id; errors for
+		// hivebar's other, fire-and-forget requests do not and are only
+		// logged, as before.
+		var e wire.Error
+		if json.Unmarshal(payload, &e) == nil {
+			if e.SessionID != "" && c.hud != nil {
+				c.hud.OnError(e.SessionID, e.Code, e.Message)
+			} else {
+				log.Printf("hivebar: daemon error: %s: %s", e.Code, e.Message)
+			}
+		}
+	case wire.FrameGlobalHotkey:
+		var h wire.GlobalHotkey
+		if c.hotkeys != nil && json.Unmarshal(payload, &h) == nil {
+			c.hotkeys.SetHotkey(h)
 		}
 	case wire.FrameProjectEvent:
 		// Projects change rarely and the menu shows only their names,
@@ -217,9 +271,22 @@ func (c *Client) publish() {
 		return
 	}
 	m := BuildModel(c.projects, c.sessions, c.welcome, buildinfo.DaemonContract)
+	projects, sessions := c.snapshotLocked()
 	c.timer = time.AfterFunc(publishInterval, c.flush)
 	c.mu.Unlock()
 	c.onChange(m)
+	c.feedHUD(projects, sessions)
+}
+
+// snapshotLocked copies the lists for the HUD, which keeps its own.
+func (c *Client) snapshotLocked() ([]wire.ProjectInfo, []wire.SessionInfo) {
+	return append([]wire.ProjectInfo(nil), c.projects...), append([]wire.SessionInfo(nil), c.sessions...)
+}
+
+func (c *Client) feedHUD(projects []wire.ProjectInfo, sessions []wire.SessionInfo) {
+	if c.hud != nil {
+		c.hud.SetSessions(projects, sessions)
+	}
 }
 
 // flush runs when a coalescing window closes, and publishes again only
@@ -233,14 +300,25 @@ func (c *Client) flush() {
 	}
 	c.dirty = false
 	m := BuildModel(c.projects, c.sessions, c.welcome, buildinfo.DaemonContract)
+	projects, sessions := c.snapshotLocked()
 	// Re-arm: the burst is evidently still going, so keep coalescing
 	// rather than letting the next event through unthrottled.
 	c.timer = time.AfterFunc(publishInterval, c.flush)
 	c.mu.Unlock()
 	c.onChange(m)
+	c.feedHUD(projects, sessions)
 }
 
-func (c *Client) setDisconnected() { c.onChange(Disconnected()) }
+func (c *Client) setDisconnected() {
+	c.onChange(Disconnected())
+	// The HUD stays openable with no daemon, and says so.
+	if c.hud != nil {
+		c.hud.Disconnected()
+	}
+	if c.hotkeys != nil {
+		c.hotkeys.Disconnected()
+	}
+}
 
 // request sends one control frame, dropping it if there is no
 // connection. Every caller is a menu click, and a click that arrives
@@ -256,6 +334,24 @@ func (c *Client) request(ft wire.FrameType, v any) {
 	if err := cs.WriteJSON(ft, v); err != nil {
 		log.Printf("hivebar: send %s: %v", ft, err)
 	}
+}
+
+// SendToSession delivers the dictation HUD's confirmed text (spec 553),
+// through the same SEND_TO_SESSION the GUI's message sheet uses. It
+// reports false when there is no connection or the write failed; the
+// daemon's answer arrives later as SENT or ERROR.
+func (c *Client) SendToSession(id, text string, queue bool) bool {
+	c.mu.Lock()
+	cs := c.conn
+	c.mu.Unlock()
+	if cs == nil {
+		return false
+	}
+	if err := cs.WriteJSON(wire.FrameSendToSession, wire.SendToSessionReq{SessionID: id, Text: text, Queue: queue}); err != nil {
+		log.Printf("hivebar: send to session: %v", err)
+		return false
+	}
+	return true
 }
 
 // FocusSession asks the GUI windows to bring one session forward.

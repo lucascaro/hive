@@ -36,6 +36,8 @@ export {
   UpdateSession,
   SetSessionAttention,
   SendToSession,
+  ReportFocusedSession,
+  SetGlobalHotkey,
   SetSessionNotifyWhenIdle,
   SetSessionOrchestrator,
   GetActivity,
