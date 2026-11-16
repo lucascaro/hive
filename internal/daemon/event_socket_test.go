@@ -49,6 +49,7 @@ func TestEventSocketAcceptsAgentEvent(t *testing.T) {
 	defer c.Close()
 	if err := wire.WriteJSON(c, wire.FrameHello, wire.Hello{
 		Version: wire.PROTOCOL_VERSION, Client: "test/0", Mode: wire.ModeEvent,
+		SessionID: id, SessionToken: sessionToken(d, id),
 	}); err != nil {
 		t.Fatal(err)
 	}
@@ -79,7 +80,7 @@ func TestEventSocketSessionModeServesIdeas(t *testing.T) {
 	defer c.Close()
 	if err := wire.WriteJSON(c, wire.FrameHello, wire.Hello{
 		Version: wire.PROTOCOL_VERSION, Client: "test/0",
-		Mode: wire.ModeSession, SessionID: id,
+		Mode: wire.ModeSession, SessionID: id, SessionToken: sessionToken(d, id),
 	}); err != nil {
 		t.Fatal(err)
 	}
@@ -140,7 +141,7 @@ func TestSessionModeRefusesEveryOtherVerb(t *testing.T) {
 	defer c.Close()
 	if err := wire.WriteJSON(c, wire.FrameHello, wire.Hello{
 		Version: wire.PROTOCOL_VERSION, Client: "test/0",
-		Mode: wire.ModeSession, SessionID: id,
+		Mode: wire.ModeSession, SessionID: id, SessionToken: sessionToken(d, id),
 	}); err != nil {
 		t.Fatal(err)
 	}
@@ -447,7 +448,7 @@ func sessionConn(t *testing.T, d *Daemon, sessionID string) net.Conn {
 	c := dialEvents(t, d)
 	if err := wire.WriteJSON(c, wire.FrameHello, wire.Hello{
 		Version: wire.PROTOCOL_VERSION, Client: "test/0",
-		Mode: wire.ModeSession, SessionID: sessionID,
+		Mode: wire.ModeSession, SessionID: sessionID, SessionToken: sessionToken(d, sessionID),
 	}); err != nil {
 		t.Fatal(err)
 	}
@@ -460,35 +461,6 @@ func sessionConn(t *testing.T, d *Daemon, sessionID string) net.Conn {
 		t.Fatalf("snapshot: %v", err)
 	}
 	return c
-}
-
-// A ModeSession HELLO whose session id resolves to nothing — a stale
-// HIVE_SESSION_ID from a copied environment — gets the idea verbs
-// refused rather than falling through to an unscoped registry call.
-func TestSessionModeUnknownSessionRefusesIdeaVerbs(t *testing.T) {
-	skipOnWindows(t)
-	d := startTestDaemon(t)
-	c := sessionConn(t, d, "no-such-session")
-	defer c.Close()
-
-	before := len(d.Registry().ListIdeas(""))
-	for _, f := range []struct {
-		frame wire.FrameType
-		body  any
-	}{
-		{wire.FrameListIdeas, wire.ListIdeasReq{}},
-		{wire.FrameAddIdea, wire.AddIdeaReq{Text: "from nowhere"}},
-	} {
-		if err := wire.WriteJSON(c, f.frame, f.body); err != nil {
-			t.Fatalf("%s: %v", f.frame, err)
-		}
-		if err := awaitModeNotAllowed(t, c); err != nil {
-			t.Fatalf("%s: %v", f.frame, err)
-		}
-	}
-	if got := len(d.Registry().ListIdeas("")); got != before {
-		t.Fatalf("ideas: %d → %d; an unresolvable session must not be able to file one", before, got)
-	}
 }
 
 // A ModeSession connection that goes quiet is hung up on; a control

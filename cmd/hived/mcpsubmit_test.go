@@ -129,15 +129,15 @@ func fakeDaemon(t *testing.T, reply func(net.Conn)) (sock string, hello chan wir
 
 func TestToolsCallSendsSubmitFrame(t *testing.T) {
 	sock, hello, req := fakeDaemon(t, func(c net.Conn) { _ = wire.WriteFrame(c, wire.FrameSubmitResultOK, []byte(`{}`)) })
-	env := map[string]string{"HIVE_SESSION_ID": "s1", "HIVE_SOCKET": sock, "HIVE_SUBMIT_NONCE": "n0nce"}
+	env := map[string]string{"HIVE_SESSION_ID": "s1", "HIVE_SOCKET": sock, "HIVE_SUBMIT_NONCE": "n0nce", "HIVE_SESSION_TOKEN": "t0k"}
 	r := mcpRoundTrip(t, submitOverSocket(func(k string) string { return env[k] }),
 		`{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"submit_result","arguments":{"status":"ok"}}}`)
 	if res := r[0]["result"].(map[string]any); res["isError"] != false {
 		t.Fatalf("tools/call = %v, want success", res)
 	}
 	h := <-hello
-	if h.Mode != wire.ModeSession || h.SessionID != "s1" {
-		t.Errorf("HELLO = %+v, want a session connection for s1", h)
+	if h.Mode != wire.ModeSession || h.SessionID != "s1" || h.SessionToken != "t0k" {
+		t.Errorf("HELLO = %+v, want a session connection for s1 carrying the env token", h)
 	}
 	got := <-req
 	if got.Nonce != "n0nce" || string(got.Result) != `{"status":"ok"}` {

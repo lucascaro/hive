@@ -843,7 +843,7 @@ func (d *Daemon) serveConn(ctx context.Context, conn net.Conn, tag *pluginTag) {
 		}
 		d.serveAttach(conn, e.ID, tag)
 	case wire.ModeEvent:
-		d.serveEvent(conn)
+		d.serveEvent(conn, hello)
 	default:
 		_ = writeBounded(conn, writeTimeout(), wire.FrameError, wire.Error{
 			Code:    "unknown_mode",
@@ -915,9 +915,9 @@ func (d *Daemon) serveEventsOnly(ctx context.Context, conn net.Conn) {
 	}
 	switch hello.Mode {
 	case wire.ModeEvent:
-		d.serveEvent(conn)
+		d.serveEvent(conn, hello)
 	case wire.ModePlanReview:
-		d.servePlanReview(ctx, conn)
+		d.servePlanReview(ctx, conn, hello)
 	case wire.ModeSession:
 		// Long-lived relative to ModeEvent, but not unbounded: this is
 		// the one connection kind a subprocess of an agent can open, so
@@ -963,7 +963,14 @@ const eventMaxFrames = 8
 // dialing twice would double the handshake cost on the hottest path
 // the daemon has. The read deadline is refreshed per frame, so a
 // reporter that stalls mid-stream is still cut off.
-func (d *Daemon) serveEvent(conn net.Conn) {
+//
+// The HELLO must prove its session (verifySession), and every event
+// must be about that session: a reporter speaks for its own session
+// and no other.
+func (d *Daemon) serveEvent(conn net.Conn, hello wire.Hello) {
+	if !d.verifySession(conn, hello) {
+		return
+	}
 	for n := 0; n < eventMaxFrames; n++ {
 		_ = conn.SetReadDeadline(time.Now().Add(eventReadDeadline))
 		ft, payload, err := wire.ReadFrame(conn)
@@ -985,20 +992,42 @@ func (d *Daemon) serveEvent(conn net.Conn) {
 		// one bad event is not a reporter whose next event should be
 		// trusted, and keeping the connection open after refusing
 		// input would be a new and weaker contract.
-		if !d.applyEventFrame(payload) {
+		if !d.applyEventFrame(payload, hello.SessionID) {
 			return
 		}
 	}
 	log.Printf("hived: event mode: dropping connection after %d frames", eventMaxFrames)
 }
 
+// verifySession checks a ModeSession or ModeEvent HELLO's session_token
+// against the token the named session was spawned with. On failure it
+// answers ErrCodeSessionAuthFailed — the same code and message for an
+// unknown id, a missing token and a wrong one — and the caller closes.
+// The token itself is never logged.
+func (d *Daemon) verifySession(conn net.Conn, hello wire.Hello) bool {
+	if d.reg.VerifySessionToken(hello.SessionID, hello.SessionToken) {
+		return true
+	}
+	log.Printf("hived: %s connection refused: session token did not verify", hello.Mode)
+	_ = writeBounded(conn, writeTimeout(), wire.FrameError, wire.Error{
+		Code:    wire.ErrCodeSessionAuthFailed,
+		Message: "session identity could not be verified (HIVE_SESSION_TOKEN missing or wrong)",
+	})
+	return false
+}
+
 // applyEventFrame validates one AGENT_EVENT payload and applies it.
 // It reports whether the frame was valid; an invalid one closes the
-// connection at the caller.
-func (d *Daemon) applyEventFrame(payload []byte) bool {
+// connection at the caller. self is the session the connection's HELLO
+// proved; an event naming any other session is refused.
+func (d *Daemon) applyEventFrame(payload []byte, self string) bool {
 	var ev wire.AgentEvent
 	if err := jsonUnmarshal(payload, &ev); err != nil {
 		log.Printf("hived: event mode: malformed AGENT_EVENT: %v", err)
+		return false
+	}
+	if ev.SessionID != self {
+		log.Printf("hived: event mode: %s reported an event for another session; dropping the connection", self)
 		return false
 	}
 	if !wire.AgentEventKinds[ev.Kind] {
@@ -1092,7 +1121,14 @@ func (d *Daemon) serveControl(ctx context.Context, conn net.Conn, hello wire.Hel
 	// same capability in a different shape. An id the registry does not
 	// know (a stale HIVE_SESSION_ID from a copied environment) resolves
 	// to "", and every idea verb is then refused.
+	//
+	// The id is only trusted once the HELLO's session_token proves it:
+	// ownSessionID is the identity SEND_TO_SESSION's orchestrator grant,
+	// WAIT_SESSION and SUBMIT_RESULT all act on.
 	restricted := hello.Mode == wire.ModeSession
+	if restricted && !d.verifySession(conn, hello) {
+		return
+	}
 	ownProjectID := ""
 	if restricted {
 		ownProjectID = projectOfSession(d.reg.List(), hello.SessionID)

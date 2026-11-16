@@ -167,8 +167,14 @@ type Hello struct {
 
 	// v1 fields:
 	Mode      Mode        `json:"mode,omitempty"`
-	SessionID string      `json:"session_id,omitempty"` // ModeAttach
+	SessionID string      `json:"session_id,omitempty"` // ModeAttach, ModeSession, ModeEvent
 	Create    *CreateSpec `json:"create,omitempty"`     // ModeCreate
+	// SessionToken proves a ModeSession, ModeEvent or ModePlanReview
+	// client is part of SessionID's own process tree: it is the
+	// HIVE_SESSION_TOKEN that session was spawned with. The daemon
+	// refuses those modes without it (ErrCodeSessionAuthFailed). Never
+	// echoed back or logged.
+	SessionToken string `json:"session_token,omitempty"`
 }
 
 // Welcome is the server's response to Hello. For attach/create modes
@@ -1471,6 +1477,13 @@ const (
 	// ADD_IDEA / LIST_IDEAS / SUBMIT_RESULT, and a control connection
 	// gets for SUBMIT_RESULT.
 	ErrCodeModeNotAllowed = "mode_not_allowed"
+	// ErrCodeSessionAuthFailed is returned INSTEAD of serving a
+	// ModeSession, ModeEvent or ModePlanReview HELLO whose session_token
+	// is not the one
+	// the named session was spawned with (HIVE_SESSION_TOKEN). An
+	// unknown id, a missing token and a wrong one all get this same
+	// code and message, so the answer never says whether the id exists.
+	ErrCodeSessionAuthFailed = "session_auth_failed"
 	// ErrCodeSessionBusy is SEND_TO_SESSION's answer when the target is
 	// not idle (or is an ACP session mid-turn) and the request did not
 	// ask to queue. Queueing is unsupported for ACP sessions, so a busy

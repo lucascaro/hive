@@ -5,6 +5,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { test, expect, type Page } from '@playwright/test';
+import { sentinel, settleShell } from './term-harness';
 // The one JS encoder of Hive frames, the same code a real Pi runs: the
 // daemon is driven by it rather than by a hand-written copy. Loaded at
 // runtime, not imported: the frontend's tsconfig deliberately has no
@@ -55,10 +56,55 @@ test.beforeEach(async ({ page }) => {
   );
 });
 
-const firstSessionId = (page: Page) =>
-  page.evaluate(
-    () => (window.__hive_state?.sessions ?? []).find((s) => s.alive)?.id ?? '',
+/** The id of the session in the active terminal, and the
+ * HIVE_SESSION_TOKEN it was spawned with — read the only way a real
+ * requester can get it: from inside that session. The shell writes both
+ * from its own environment to a file in the harness's temp dir. A plan
+ * review must prove its session with the token, exactly as `hived hook`
+ * and the Pi extension do (the daemon refuses it otherwise). Cached:
+ * the suite's shared session is never restarted, so its token holds. */
+let identity: { id: string; token: string } | undefined;
+async function sessionIdentity(page: Page) {
+  if (identity) return identity;
+  await page.waitForFunction(
+    () => !!document.querySelector('.term-host .xterm-helper-textarea'),
+    null,
+    { timeout: 10000 },
   );
+  await page.evaluate(() => {
+    const helper =
+      document.querySelector<HTMLTextAreaElement>(
+        '.term-host.active .xterm-helper-textarea',
+      ) ||
+      document.querySelector<HTMLTextAreaElement>(
+        '.term-host .xterm-helper-textarea',
+      );
+    if (!helper) throw new Error('no xterm helper textarea to focus');
+    helper.focus();
+  });
+  await settleShell(page);
+  const file = path.join(TMP, `${sentinel('session-identity')}.txt`);
+  await page.keyboard.type(
+    `printf '%s %s' "$HIVE_SESSION_ID" "$HIVE_SESSION_TOKEN" > '${file}'\n`,
+  );
+  await expect
+    .poll(() => (fs.existsSync(file) ? fs.readFileSync(file, 'utf8') : ''), {
+      timeout: 15000,
+    })
+    .toMatch(/^\S+ [0-9a-f]{64}$/);
+  const [id, token] = fs.readFileSync(file, 'utf8').split(' ');
+  fs.rmSync(file, { force: true });
+  identity = { id, token };
+  return identity;
+}
+
+/** The session id to request a review for, with its token in the
+ * environment hive.ts's requestPlanReview reads it from. */
+async function firstSessionId(page: Page) {
+  const { id, token } = await sessionIdentity(page);
+  process.env.HIVE_SESSION_TOKEN = token;
+  return id;
+}
 const view = (page: Page) => page.locator('#plugin-view');
 const row = (page: Page) =>
   page.locator('.settings-plugin-row[data-plugin-id="plan-review"]');

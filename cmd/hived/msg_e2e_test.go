@@ -9,6 +9,7 @@ package main
 import (
 	"os"
 	"os/exec"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -60,15 +61,42 @@ func TestE2E_MsgUnknownSessionFails(t *testing.T) {
 	}
 }
 
+// tokenCatCmd is a session command that saves the HIVE_SESSION_TOKEN
+// it was spawned with to path, then becomes cat (so a typed note
+// echoes). It is how these tests learn a session's token: the same way
+// anything running inside the session does, from its environment.
+func tokenCatCmd(path string) []string {
+	return []string{"/bin/sh", "-c", `printf %s "$HIVE_SESSION_TOKEN" > "$0"; exec /bin/cat`, path}
+}
+
+// sessionToken waits for the token a tokenCatCmd session saved.
+func sessionToken(t *testing.T, d *spawnedDaemon, sessionID string) string {
+	t.Helper()
+	path, ok := d.tokenFiles[sessionID]
+	if !ok {
+		t.Fatalf("session %s was not started with tokenCatCmd", sessionID)
+	}
+	deadline := time.Now().Add(10 * time.Second)
+	for time.Now().Before(deadline) {
+		if b, _ := os.ReadFile(path); len(b) > 0 {
+			return string(b)
+		}
+		time.Sleep(50 * time.Millisecond)
+	}
+	t.Fatalf("session %s never saved its token", sessionID)
+	return ""
+}
+
 // orchSessions creates a sender and an agent-kind target (cat, so a
 // typed note echoes) in the bootstrap session's project and returns
-// their ids.
+// their ids. Each saves its spawn token for sessionToken.
 func orchSessions(t *testing.T, d *spawnedDaemon, grant bool) (sender, target string) {
 	t.Helper()
 	c := dialControl(t, d)
+	dir := t.TempDir()
 	for _, spec := range []wire.CreateSpec{
-		{Name: "boss", Agent: "claude", Cmd: []string{"/bin/cat"}, Cols: 80, Rows: 24, Orchestrator: grant},
-		{Name: "worker", Agent: "claude", Cmd: []string{"/bin/cat"}, Cols: 80, Rows: 24},
+		{Name: "boss", Agent: "claude", Cmd: tokenCatCmd(filepath.Join(dir, "boss")), Cols: 80, Rows: 24, Orchestrator: grant},
+		{Name: "worker", Agent: "claude", Cmd: tokenCatCmd(filepath.Join(dir, "worker")), Cols: 80, Rows: 24},
 	} {
 		if err := c.CreateSession(spec); err != nil {
 			t.Fatalf("create %s: %v", spec.Name, err)
@@ -92,6 +120,11 @@ func orchSessions(t *testing.T, d *spawnedDaemon, grant bool) (sender, target st
 			}
 		}
 		if sender != "" && target != "" {
+			if d.tokenFiles == nil {
+				d.tokenFiles = map[string]string{}
+			}
+			d.tokenFiles[sender] = filepath.Join(dir, "boss")
+			d.tokenFiles[target] = filepath.Join(dir, "worker")
 			return
 		}
 		time.Sleep(100 * time.Millisecond)
@@ -101,13 +134,21 @@ func orchSessions(t *testing.T, d *spawnedDaemon, grant bool) (sender, target st
 }
 
 // inSession runs `hived msg` the way an agent's shell would: HIVE_SOCKET
-// names the narrowed events socket and HIVE_SESSION_ID the caller.
+// names the narrowed events socket, HIVE_SESSION_ID the caller and
+// HIVE_SESSION_TOKEN its spawn token.
 func inSession(t *testing.T, d *spawnedDaemon, sessionID string, args ...string) (string, error) {
+	t.Helper()
+	return msgAs(t, d, sessionID, sessionToken(t, d, sessionID), args...)
+}
+
+// msgAs runs `hived msg` with an arbitrary claimed id and token.
+func msgAs(t *testing.T, d *spawnedDaemon, sessionID, token string, args ...string) (string, error) {
 	t.Helper()
 	cmd := exec.Command(hivedBinary(t), append([]string{"msg"}, args...)...)
 	cmd.Env = append(os.Environ(),
 		"HIVE_SESSION_ID="+sessionID,
 		"HIVE_SOCKET="+daemon.EventSocketPath(d.sockPath),
+		"HIVE_SESSION_TOKEN="+token,
 	)
 	out, err := cmd.CombinedOutput()
 	return string(out), err

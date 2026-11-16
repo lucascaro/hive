@@ -72,12 +72,21 @@ func reviewUI(t *testing.T, d *Daemon) net.Conn {
 	return gui
 }
 
-// requestPlanReview dials the events socket and sends one request.
+// requestPlanReview dials the events socket and sends one request, as
+// the requested session (its id and spawn token in the HELLO).
 func requestPlanReview(t *testing.T, d *Daemon, req wire.PlanReviewRequest) net.Conn {
+	t.Helper()
+	return requestPlanReviewAs(t, d, req.SessionID, sessionToken(d, req.SessionID), req)
+}
+
+// requestPlanReviewAs is requestPlanReview with an arbitrary claimed
+// identity in the HELLO.
+func requestPlanReviewAs(t *testing.T, d *Daemon, id, tok string, req wire.PlanReviewRequest) net.Conn {
 	t.Helper()
 	c := dialEvents(t, d)
 	if err := wire.WriteJSON(c, wire.FrameHello, wire.Hello{
 		Version: wire.PROTOCOL_VERSION, Client: "hived-hook/0", Mode: wire.ModePlanReview,
+		SessionID: id, SessionToken: tok,
 	}); err != nil {
 		t.Fatalf("write hello: %v", err)
 	}

@@ -23,11 +23,20 @@ func bootstrapSessionID(t *testing.T, d *Daemon) string {
 	return list[0].ID
 }
 
-func dialEvent(t *testing.T, d *Daemon) net.Conn {
+// sessionToken is the token session id was spawned with, as its
+// process tree reads it from HIVE_SESSION_TOKEN.
+func sessionToken(d *Daemon, id string) string {
+	return d.Registry().SessionTokenForTest(id)
+}
+
+// dialEvent opens a ModeEvent connection on the control socket that
+// speaks, verified, as session id.
+func dialEvent(t *testing.T, d *Daemon, id string) net.Conn {
 	t.Helper()
 	c := dial(t, d)
 	if err := wire.WriteJSON(c, wire.FrameHello, wire.Hello{
 		Version: wire.PROTOCOL_VERSION, Client: "test/0", Mode: wire.ModeEvent,
+		SessionID: id, SessionToken: sessionToken(d, id),
 	}); err != nil {
 		t.Fatalf("write hello: %v", err)
 	}
@@ -42,7 +51,7 @@ func TestEventModeAcceptsOneFrame(t *testing.T) {
 	d := startTestDaemon(t)
 	id := bootstrapSessionID(t, d)
 
-	c := dialEvent(t, d)
+	c := dialEvent(t, d, id)
 	defer c.Close()
 	if err := wire.WriteJSON(c, wire.FrameAgentEvent, wire.AgentEvent{
 		SessionID: id,
@@ -81,7 +90,7 @@ func findSession(d *Daemon, id string) wire.SessionInfo {
 func TestEventModeRejectsControlFrame(t *testing.T) {
 	skipOnWindows(t)
 	d := startTestDaemon(t)
-	c := dialEvent(t, d)
+	c := dialEvent(t, d, bootstrapSessionID(t, d))
 	defer c.Close()
 	if err := wire.WriteJSON(c, wire.FrameListSessions, wire.ListSessionsReq{}); err != nil {
 		t.Fatalf("write: %v", err)
@@ -90,12 +99,12 @@ func TestEventModeRejectsControlFrame(t *testing.T) {
 }
 
 // TestEventModeUnknownSessionDropped: an AGENT_EVENT naming a session
-// id the registry doesn't know is a silent no-op — no panic, no error
-// frame, connection just closes.
+// id other than the one the HELLO proved — here one the registry does
+// not know — is refused: no panic, no error frame, connection closes.
 func TestEventModeUnknownSessionDropped(t *testing.T) {
 	skipOnWindows(t)
 	d := startTestDaemon(t)
-	c := dialEvent(t, d)
+	c := dialEvent(t, d, bootstrapSessionID(t, d))
 	defer c.Close()
 	if err := wire.WriteJSON(c, wire.FrameAgentEvent, wire.AgentEvent{
 		SessionID: "does-not-exist",
@@ -112,7 +121,7 @@ func TestEventModeUnknownSessionDropped(t *testing.T) {
 func TestEventModeMalformedJSONDropped(t *testing.T) {
 	skipOnWindows(t)
 	d := startTestDaemon(t)
-	c := dialEvent(t, d)
+	c := dialEvent(t, d, bootstrapSessionID(t, d))
 	defer c.Close()
 	if err := wire.WriteFrame(c, wire.FrameAgentEvent, []byte(`["not","an","object"]`)); err != nil {
 		t.Fatalf("write: %v", err)
@@ -126,7 +135,7 @@ func TestEventModeUnknownKindDropped(t *testing.T) {
 	skipOnWindows(t)
 	d := startTestDaemon(t)
 	id := bootstrapSessionID(t, d)
-	c := dialEvent(t, d)
+	c := dialEvent(t, d, id)
 	defer c.Close()
 	if err := wire.WriteJSON(c, wire.FrameAgentEvent, wire.AgentEvent{
 		SessionID: id, Kind: "bogus", Source: wire.StateSourceHook,
@@ -146,7 +155,7 @@ func TestEventModeUnknownKindDropped(t *testing.T) {
 func TestEventModeReadDeadline(t *testing.T) {
 	skipOnWindows(t)
 	d := startTestDaemon(t)
-	c := dialEvent(t, d)
+	c := dialEvent(t, d, bootstrapSessionID(t, d))
 	defer c.Close()
 	assertConnClosed(t, c)
 }
@@ -176,7 +185,7 @@ func TestEventFrameRefusesMalformedKey(t *testing.T) {
 		t.Run(name, func(t *testing.T) {
 			d := startTestDaemon(t)
 			id := bootstrapSessionID(t, d)
-			c := dialEvent(t, d)
+			c := dialEvent(t, d, id)
 			defer c.Close()
 			ev.SessionID = id
 			if err := wire.WriteJSON(c, wire.FrameAgentEvent, ev); err != nil {
@@ -198,7 +207,7 @@ func TestEventModeRejectsLayaSource(t *testing.T) {
 	skipOnWindows(t)
 	d := startTestDaemon(t)
 	id := bootstrapSessionID(t, d)
-	c := dialEvent(t, d)
+	c := dialEvent(t, d, id)
 	defer c.Close()
 	if err := wire.WriteJSON(c, wire.FrameAgentEvent, wire.AgentEvent{
 		SessionID: id, Kind: wire.AgentEventWaitingInput, Source: wire.StateSourceLaya,

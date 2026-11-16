@@ -122,6 +122,9 @@ type spawnedDaemon struct {
 	sockPath string
 	stateDir string
 	stderr   *bytes.Buffer
+	// tokenFiles maps a session id to the file its tokenCatCmd saved
+	// its spawn token to (see orchSessions).
+	tokenFiles map[string]string
 }
 
 func skipIfWindows(t *testing.T) {

@@ -217,8 +217,8 @@ func TestMCPServersResentOnLoad(t *testing.T) {
 	for _, l := range lines {
 		f := strings.Fields(l)
 		// mcp <sid> <name> <command> <args…> <env names…>
-		if len(f) != 8 || !strings.HasPrefix(f[2], "hive-") || f[3] != "/opt/hive/hived" || f[4] != "mcp-submit" ||
-			!slices.Equal(f[5:], []string{"HIVE_SESSION_ID", "HIVE_SOCKET", "HIVE_SUBMIT_NONCE"}) {
+		if len(f) != 9 || !strings.HasPrefix(f[2], "hive-") || f[3] != "/opt/hive/hived" || f[4] != "mcp-submit" ||
+			!slices.Equal(f[5:], []string{"HIVE_SESSION_ID", "HIVE_SOCKET", "HIVE_SESSION_TOKEN", "HIVE_SUBMIT_NONCE"}) {
 			t.Errorf("mcp server = %q, want hive-<id> running `hived mcp-submit` with the session's HIVE_* env", l)
 		}
 	}

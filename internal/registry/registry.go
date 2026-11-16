@@ -9,6 +9,9 @@ package registry
 
 import (
 	"context"
+	"crypto/rand"
+	"crypto/subtle"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -114,6 +117,10 @@ type Entry struct {
 	AgentSessionID string
 	LastError      string           // human-readable error from last failed Start/Revive; cleared on success
 	sess           *session.Session // nil ⇔ not running this lifetime
+	// token is the HIVE_SESSION_TOKEN the current process tree was
+	// spawned with (see hiveEnv). Memory only: never persisted, never
+	// in Info(), never on the wire. "" ⇔ not spawned this lifetime.
+	token string
 
 	// Kind is wire.KindACP for a session driven over the Agent Client
 	// Protocol (spec 496); "" or wire.KindPTY for a terminal session.
@@ -1096,21 +1103,66 @@ func (r *Registry) SetHivedPath(p string) {
 	r.hivedPath = p
 }
 
-// hiveEnv returns the HIVE_SESSION_ID / HIVE_SOCKET pair every spawned
-// session's environment carries, so an agent's hook or extension tier
-// (and, per spec 337, anything else that wants to dial the daemon back)
-// knows its own id and where to reach it. HIVE_SOCKET is the daemon's
-// events socket; see socketPath. Takes r.mu.
+// hiveEnv returns the HIVE_SESSION_ID / HIVE_SOCKET / HIVE_SESSION_TOKEN
+// variables every spawned session's environment carries, so an agent's
+// hook or extension tier (and, per spec 337, anything else that wants to
+// dial the daemon back) knows its own id, where to reach it, and how to
+// prove the id is its own. HIVE_SOCKET is the daemon's events socket;
+// see socketPath.
+//
+// Every call is a spawn, so every call issues the entry a fresh token:
+// a restarted or revived session's old process tree cannot keep
+// speaking as it. The token lives only on the in-memory entry — sessions
+// die with the daemon, so there is nothing to persist. Takes r.mu.
 func (r *Registry) hiveEnv(id string) []string {
+	tok := newSessionToken()
 	r.mu.Lock()
 	sock := r.socketPath
+	if e, ok := r.entries[id]; ok {
+		e.token = tok
+	}
 	r.mu.Unlock()
-	return []string{"HIVE_SESSION_ID=" + id, "HIVE_SOCKET=" + sock}
+	return []string{"HIVE_SESSION_ID=" + id, "HIVE_SOCKET=" + sock, "HIVE_SESSION_TOKEN=" + tok}
+}
+
+// newSessionToken returns 32 random bytes, hex-encoded.
+func newSessionToken() string {
+	b := make([]byte, 32)
+	_, _ = rand.Read(b) // documented never to fail since Go 1.24
+	return hex.EncodeToString(b)
+}
+
+// VerifySessionToken reports whether token is the one session id's
+// current process tree was spawned with. An unknown id, an entry not
+// spawned this daemon lifetime, and an empty or wrong token are all
+// just false, so a caller cannot tell them apart.
+func (r *Registry) VerifySessionToken(id, token string) bool {
+	r.mu.Lock()
+	want := ""
+	if e, ok := r.entries[id]; ok {
+		want = e.token
+	}
+	r.mu.Unlock()
+	// ConstantTimeCompare("", "") is 1: an entry with no token must
+	// never accept an empty one.
+	return want != "" && token != "" && subtle.ConstantTimeCompare([]byte(want), []byte(token)) == 1
 }
 
 // HiveEnvForTest exposes hiveEnv to other packages' tests, so the
 // daemon can assert on the environment it actually hands a session.
+// It issues a new token, like any spawn.
 func (r *Registry) HiveEnvForTest(id string) []string { return r.hiveEnv(id) }
+
+// SessionTokenForTest returns session id's current token without
+// rotating it, so other packages' tests can open session connections.
+func (r *Registry) SessionTokenForTest(id string) string {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if e, ok := r.entries[id]; ok {
+		return e.token
+	}
+	return ""
+}
 
 // spawnInfo builds the agent.SpawnInfo a Def.SpawnArgs call needs.
 // Takes r.mu.

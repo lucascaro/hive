@@ -28,6 +28,16 @@ package buildinfo
 // History (newest first), so a bump is a decision with a record and
 // not just a number going up:
 //
+//	37 — Verified session identity. Every spawn gets a fresh
+//	    HIVE_SESSION_TOKEN, and a ModeSession, ModeEvent or
+//	    ModePlanReview HELLO must carry it as session_token (event and
+//	    plan_review HELLOs now name their session_id) or the daemon
+//	    refuses it with the new ERROR code session_auth_failed; an event
+//	    or plan-review connection may only act on its own session. The hived subcommands, the Claude hook and the Pi
+//	    extension that ship beside this daemon send the token; an older
+//	    daemon ignores it. That daemon still takes any claimed session
+//	    id on trust, so the GUI restarts it to get the check rather than
+//	    reloading into it.
 //	36 — Dictation capture HUD (spec 553). New SET_FOCUSED_SESSION
 //	    (0x57), which stamps SessionInfo.focused_at and broadcasts a
 //	    SESSION_EVENT of the new kind "focus"; SET_GLOBAL_HOTKEY (0x58);
@@ -306,7 +316,7 @@ package buildinfo
 //	    before this cannot see or clear the flag.
 //	1 — first contract; everything up to and including the
 //	    CLIENT_COMMAND relay.
-const DaemonContract = 36
+const DaemonContract = 37
 
 // Identity is this binary's full build identity. `hived --version
 // --json` prints it, and Welcome carries the same three values, so a
