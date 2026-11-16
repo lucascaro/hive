@@ -5,13 +5,14 @@ type: enhancement
 complexity: L
 priority: P2
 pr: 556
-stage: GATE
+shipped: 2026-11-16
+stage: DONE
 ---
 
 # Dictate into a session from anywhere via a global capture HUD
 
 - **Issue:** #553
-- **Exec plan:** [docs/exec-plans/active/553-dictate-into-a-session-from-anywhere-via-a-global.md](../exec-plans/active/553-dictate-into-a-session-from-anywhere-via-a-global.md)
+- **Exec plan:** [docs/exec-plans/completed/553-dictate-into-a-session-from-anywhere-via-a-global.md](../exec-plans/completed/553-dictate-into-a-session-from-anywhere-via-a-global.md)
 
 ## Problem
 

@@ -2,7 +2,7 @@
 
 - **Spec:** [docs/product-specs/553-dictate-into-a-session-from-anywhere-via-a-global.md](../../product-specs/553-dictate-into-a-session-from-anywhere-via-a-global.md)
 - **Issue:** #553
-- **Status:** active
+- **Status:** completed
 - **PR:** #556
 - **Branch:** feature/553-dictate-hud
 
@@ -242,3 +242,11 @@ None — criterion 6 amendment approved at the plan stop (2026-11-15).
 - **2026-11-16 iter 2** — verdict: COMMENT; mergeable: MERGEABLE; findings_hash: 42cbaa3f8843378db5c06fc62db31a068af798adc58da35a43e99ebccaab200b; threads_open: 0; action: escalated:risky-fix-needs-human-decision; head_sha: 784672fa.
 - **2026-11-16 iter 3** — verdict: APPROVE; mergeable: MERGEABLE; findings_hash: empty; threads_open: 0; action: stop; head_sha: 39c19ba3.
 - **2026-11-16 iter 4** — verdict: APPROVE; mergeable: MERGEABLE; findings_hash: empty; threads_open: 0; action: stop; head_sha: ff270d52.
+
+## Gate verdict
+
+- **2026-11-16** — verdict: PASS; phase: —; checks: 9 criteria + 6 non-goals + 12 doc checks passed / 0 failed / 0 followups; followups: none; one-line: every success criterion delivered (criteria 1 and 8 on operator smoke; Handy untested, Hive-frontmost run not separately recorded), no non-goal touched, docs match the shipped behaviour.
+  - 2026-11-16 dimensions:
+    - acceptance — PASS — HUD/registry/daemon/wire tests, e2e GlobalHotkey/FocusReport, vitest global-hotkey + carbon-keys; operator smoke 2026-11-16.
+    - non-goals — PASS — no mic/speech/URL scheme/listener/CLI; new frames carry no text (TestHUDFramesCarryNoText); darwin-only HUD, frontend gated on isMac.
+    - doc accuracy — PASS — README, Keybinds row, changeset (added/minor), features.json, AGENTS.md, DESIGN.md, plugins.md, contract 36; minor: Option+↩ newline undocumented; ACP no-queue now in README.
