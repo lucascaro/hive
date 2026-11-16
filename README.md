@@ -252,7 +252,8 @@ which session the text will go to. That defaults to the session a Hive
 window last showed you; **↑/↓** picks another live session. Nothing
 reaches the agent until you press **↩**, which sends it the way ⇧⌘M
 does. If the agent is working, the box says so and a second ↩ queues the
-text for when it settles. **⇧↩** starts a new line and **Esc** throws
+text for when it settles (an ACP session can't queue, so the box asks
+you to try again once it is idle). **⇧↩** starts a new line and **Esc** throws
 the text away; either way focus goes back to the app you were in.
 
 Hive itself never listens to the microphone, and needs no Accessibility
