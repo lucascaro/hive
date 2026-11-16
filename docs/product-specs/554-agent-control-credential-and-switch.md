@@ -57,8 +57,8 @@ first open question below and may reshape (a).
 
 **(b) Once (a) is enforced, a setting turns agent-to-agent control
 off.** Settings gains a switch that disables agent-to-agent control
-entirely: no session may direct, message or observe another through
-Hive. Default **on**, which is today's behaviour. The switch ships only
+entirely: no session may direct or message another through Hive
+(whether read-only observation is also cut is open question 5). Default **on**, which is today's behaviour. The switch ships only
 after (a), by the owner's decision: a switch an agent can route around
 is worse than none, because it tells the user they are protected when
 they are not.
