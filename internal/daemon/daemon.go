@@ -334,13 +334,13 @@ func New(cfg Config) (*Daemon, error) {
 	// the kernel backlog with nobody accepting, and its HELLO timed
 	// out against wire.handshakeTimeout while the daemon was still
 	// starting up. Nothing above needs the listener.
-	ln, err := net.Listen("unix", sock)
+	ln, err := listenUnix(sock)
 	if err != nil {
 		_ = reg.Close()
 		closeStateLock(lock)
 		return nil, fmt.Errorf("daemon: listen %s: %w", sock, err)
 	}
-	lnEvents, err := net.Listen("unix", evsock)
+	lnEvents, err := listenUnix(evsock)
 	if err != nil {
 		_ = ln.Close()
 		_ = os.Remove(sock)

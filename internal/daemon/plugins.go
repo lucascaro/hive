@@ -132,7 +132,7 @@ func (d *Daemon) listenPlugin(id string) (string, func(), error) {
 		return "", nil, fmt.Errorf("plugin socket path %s is %d bytes; the OS limit is %d — set HIVE_SOCKET to a shorter path", path, len(path), limit-1)
 	}
 	_ = os.Remove(path)
-	ln, err := net.Listen("unix", path)
+	ln, err := listenUnix(path)
 	if err != nil {
 		return "", nil, err
 	}

@@ -30,20 +30,23 @@ import (
 	"log"
 	"net"
 	"net/http"
-	"net/url"
 	"os"
+	"path/filepath"
 	"strings"
 	"sync"
 	"time"
 
 	"github.com/gorilla/websocket"
 	"github.com/lucascaro/hive/internal/buildinfo"
+	"github.com/lucascaro/hive/internal/daemon"
 	"github.com/lucascaro/hive/internal/plugin/pluginassets"
+	"github.com/lucascaro/hive/internal/registry"
 	"github.com/lucascaro/hive/internal/wire"
 )
 
 func main() {
 	addr := flag.String("addr", "127.0.0.1:0", "WebSocket listen addr (0 picks a free port)")
+	origins := flag.String("allow-origin", "", "comma-separated browser Origins allowed to connect (exact match); clients that send no Origin are always allowed")
 	version := flag.Bool("version", false, "print build identity and exit")
 	flag.Parse()
 	if *version {
@@ -57,6 +60,11 @@ func main() {
 	}
 	if err := requireLoopback(*addr); err != nil {
 		log.Fatalf("hived-ws-bridge: %v", err)
+	}
+	for _, o := range strings.Split(*origins, ",") {
+		if o = strings.TrimSpace(o); o != "" {
+			allowedOrigins[o] = true
+		}
 	}
 	sockPath := os.Getenv("HIVE_SOCKET")
 
@@ -97,6 +105,16 @@ func requireIsolation() error {
 	if sock == "" || state == "" {
 		return errors.New("HIVE_SOCKET and HIVE_STATE_DIR must be set")
 	}
+	// The real daemon's socket lives under os.TempDir() on macOS
+	// ($TMPDIR/hive/hived.sock), so the prefix check below cannot tell it
+	// from a test socket. Refuse the defaults by name.
+	defSock, defState := defaultPaths()
+	if filepath.Clean(sock) == defSock {
+		return fmt.Errorf("HIVE_SOCKET %q is the default daemon socket", sock)
+	}
+	if filepath.Clean(state) == defState {
+		return fmt.Errorf("HIVE_STATE_DIR %q is the default state dir", state)
+	}
 	tmpPrefixes := []string{os.TempDir(), "/tmp", "/private/tmp", "/var/folders"}
 	for _, p := range []string{sock, state} {
 		ok := false
@@ -113,8 +131,21 @@ func requireIsolation() error {
 	return nil
 }
 
+// defaultPaths returns the socket path and state dir a daemon would use
+// with no HIVE_SOCKET / HIVE_STATE_DIR set, by asking the same functions
+// the daemon asks. The env is restored before returning.
+func defaultPaths() (sock, state string) {
+	for _, k := range []string{"HIVE_SOCKET", "HIVE_STATE_DIR"} {
+		if v, ok := os.LookupEnv(k); ok {
+			os.Unsetenv(k)
+			defer os.Setenv(k, v)
+		}
+	}
+	return filepath.Clean(daemon.SocketPath()), filepath.Clean(registry.StateDir())
+}
+
 // requireLoopback rejects any -addr that is not bound to the loopback
-// interface. The upgrader below accepts every Origin, which is only
+// interface. The upgrader below admits only the origins the harness names, which is only
 // defensible while nothing off this machine can reach the listener —
 // this is what makes "localhost-only listener" a guarantee rather than
 // a comment. An empty host ("":0, ":9222") binds all interfaces, so it
@@ -151,25 +182,16 @@ func requireLoopback(addr string) error {
 // ws://127.0.0.1:<port>/ and drive the whole RPC surface — including
 // WriteStdin into a live PTY and RemoveWorktree. So check the Origin
 // too: no Origin at all (a non-browser client, which is how the Go
-// tests connect) or a loopback origin on any port, which is what the
-// harness's arbitrary Vite dev port needs.
-var upgrader = websocket.Upgrader{CheckOrigin: originIsLocal}
+// tests connect) or an exact match for an origin the harness named via
+// --allow-origin.
+var upgrader = websocket.Upgrader{CheckOrigin: originAllowed}
 
-func originIsLocal(r *http.Request) bool {
+// allowedOrigins is filled once in main, before the listener starts.
+var allowedOrigins = map[string]bool{}
+
+func originAllowed(r *http.Request) bool {
 	origin := r.Header.Get("Origin")
-	if origin == "" {
-		return true
-	}
-	u, err := url.Parse(origin)
-	if err != nil {
-		return false
-	}
-	host := u.Hostname()
-	if host == "localhost" {
-		return true
-	}
-	ip := net.ParseIP(host)
-	return ip != nil && ip.IsLoopback()
+	return origin == "" || allowedOrigins[origin]
 }
 
 type session struct {

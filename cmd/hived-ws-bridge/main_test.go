@@ -234,44 +234,69 @@ func TestRequireIsolationRefusesRealState(t *testing.T) {
 	}
 }
 
-// TestOriginIsLocal: the loopback bind is not origin protection. A
+// TestOriginAllowed: the loopback bind is not origin protection. A
 // WebSocket handshake is not subject to the same-origin policy, so
 // without this check any page open in a browser on this machine could
 // connect and drive the whole RPC surface — WriteStdin into a live
-// PTY included.
-func TestOriginIsLocal(t *testing.T) {
+// PTY included. Only origins named via --allow-origin get in.
+func TestOriginAllowed(t *testing.T) {
+	old := allowedOrigins
+	allowedOrigins = map[string]bool{"http://localhost:5175": true}
+	t.Cleanup(func() { allowedOrigins = old })
 	check := func(origin string) bool {
 		r := httptest.NewRequest(http.MethodGet, "/", nil)
 		if origin != "" {
 			r.Header.Set("Origin", origin)
 		}
-		return originIsLocal(r)
+		return originAllowed(r)
 	}
 	// No Origin header at all: a non-browser client, which is how the
 	// Go tests and any CLI connect. Browsers always send one.
 	if !check("") {
 		t.Error("a request with no Origin was rejected")
 	}
-	for _, o := range []string{
-		"http://localhost:5175", // the harness's Vite dev server
-		"http://127.0.0.1:5173",
-		"http://[::1]:9222",
-		"https://localhost",
-	} {
-		if !check(o) {
-			t.Errorf("local origin %q was rejected", o)
-		}
+	if !check("http://localhost:5175") {
+		t.Error("the configured origin was rejected")
 	}
 	for _, o := range []string{
+		"http://localhost:5176", // another local page, wrong port
+		"http://localhost",
+		"http://127.0.0.1:5175", // same port, different host string
+		"https://localhost:5175",
+		"http://localhost:5175.evil.example.com",
 		"http://evil.example.com",
-		"https://127.0.0.1.evil.example.com", // suffix trickery
-		"http://192.168.1.10:5173",
-		"http://localhost.evil.example.com",
-		"::not a url::",
+		"null",
 	} {
 		if check(o) {
-			t.Errorf("foreign origin %q was accepted", o)
+			t.Errorf("origin %q was accepted", o)
 		}
+	}
+}
+
+// TestRequireIsolationRefusesDefaultPaths: on macOS the real daemon's
+// socket lives under os.TempDir(), so the temp-prefix check alone would
+// wave it through.
+func TestRequireIsolationRefusesDefaultPaths(t *testing.T) {
+	t.Setenv("HIVE_SOCKET", "")
+	t.Setenv("HIVE_STATE_DIR", "")
+	defSock, defState := defaultPaths()
+	tmp := t.TempDir()
+	t.Setenv("HIVE_SOCKET", defSock)
+	t.Setenv("HIVE_STATE_DIR", tmp)
+	if err := requireIsolation(); err == nil {
+		t.Errorf("default socket %q was accepted", defSock)
+	}
+	t.Setenv("HIVE_SOCKET", filepath.Join(tmp, "hived.sock"))
+	t.Setenv("HIVE_STATE_DIR", defState)
+	if err := requireIsolation(); err == nil {
+		t.Errorf("default state dir %q was accepted", defState)
+	}
+	t.Setenv("HIVE_STATE_DIR", tmp)
+	if err := requireIsolation(); err != nil {
+		t.Errorf("isolated paths refused: %v", err)
+	}
+	if os.Getenv("HIVE_SOCKET") == "" {
+		t.Error("defaultPaths did not restore the environment")
 	}
 }
 
