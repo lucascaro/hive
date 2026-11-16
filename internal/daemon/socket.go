@@ -230,3 +230,22 @@ func CheckSocketDir(sockPath string) error {
 // carries no uid — it should not happen on the POSIX targets, and the
 // safe reading of "cannot tell who owns this" is to refuse.
 var errNoOwner = errors.New("socket dir: cannot read owner")
+
+// listenUnix binds a unix socket and narrows it to 0600. net.Listen
+// creates the file at 0755 under the umask; the 0700 parent directory is
+// what keeps other accounts out today, and this makes the socket itself
+// private so the directory is not the only barrier. Windows has no
+// meaningful unix mode bits, so it is left alone there.
+func listenUnix(path string) (net.Listener, error) {
+	ln, err := net.Listen("unix", path)
+	if err != nil {
+		return nil, err
+	}
+	if runtime.GOOS != "windows" {
+		if err := os.Chmod(path, 0o600); err != nil {
+			_ = ln.Close()
+			return nil, fmt.Errorf("chmod %s: %w", path, err)
+		}
+	}
+	return ln, nil
+}

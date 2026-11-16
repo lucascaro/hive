@@ -20,7 +20,7 @@ import (
 // the next load would refuse.
 func writeStateJSON(name string, v any) error {
 	dir := registry.StateDir()
-	if err := os.MkdirAll(dir, 0o755); err != nil {
+	if err := os.MkdirAll(dir, 0o700); err != nil {
 		return fmt.Errorf("create state dir: %w", err)
 	}
 	return writeJSONFile(filepath.Join(dir, name), v, 0o600)

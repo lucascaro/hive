@@ -82,7 +82,7 @@ func loadUpdateSettings() (UpdateSettings, error) {
 func saveUpdateSettings(s UpdateSettings) error {
 	s.Channel = normalizeChannel(s.Channel)
 	dir := registry.StateDir()
-	if err := os.MkdirAll(dir, 0o755); err != nil {
+	if err := os.MkdirAll(dir, 0o700); err != nil {
 		return fmt.Errorf("create state dir: %w", err)
 	}
 	b, err := json.MarshalIndent(s, "", "  ")

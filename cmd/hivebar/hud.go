@@ -12,6 +12,7 @@ import (
 	"strings"
 	"sync"
 
+	"github.com/lucascaro/hive/internal/agent"
 	"github.com/lucascaro/hive/internal/wire"
 )
 
@@ -109,9 +110,9 @@ type HUD struct {
 	connected bool
 	// conn counts connections, so a local send failure that lands after a
 	// reconnect cannot free a slot belonging to a send on the new one.
-	conn int
-	projects  []wire.ProjectInfo
-	sessions  []wire.SessionInfo
+	conn     int
+	projects []wire.ProjectInfo
+	sessions []wire.SessionInfo
 	// pending counts, per session, sends with a reply still due. SENT and
 	// ERROR name only the session, and the daemon runs each send on its
 	// own goroutine, so replies can come back out of order. Allowing one
@@ -455,9 +456,14 @@ func (h *HUD) targetsLocked() []hudTarget {
 	out := make([]hudTarget, 0, len(live))
 	for _, s := range live {
 		row := SessionRow{ID: s.ID, Name: s.Name, Title: s.Title, Alive: true}
+		label := strings.TrimSpace(row.LabelIn(projName[s.ProjectID]))
+		if s.Kind != wire.KindACP && (s.Agent == "" || s.Agent == string(agent.IDShell)) {
+			// Dictated text lands in a shell as a command, not a prompt.
+			label = "[shell] " + label
+		}
 		out = append(out, hudTarget{
 			ID:    s.ID,
-			Label: strings.TrimSpace(row.LabelIn(projName[s.ProjectID])),
+			Label: label,
 			ACP:   s.Kind == wire.KindACP,
 		})
 	}

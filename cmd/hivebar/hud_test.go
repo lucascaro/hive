@@ -441,3 +441,20 @@ func TestHUDLateLocalFailureAfterReconnect(t *testing.T) {
 		t.Fatal("the reply to the new send was ignored: the late failure freed its slot")
 	}
 }
+
+// Dictated text in a plain shell runs as a command; the list says so.
+func TestHUDTagsShellTargets(t *testing.T) {
+	sh := sess("sh", 0, 0) // Agent "" = generic shell
+	sh2 := sess("sh2", 1, 0)
+	sh2.Agent = "shell"
+	ag := sess("ag", 2, 0)
+	ag.Agent = "claude"
+	h, v, _ := newTestHUD(sh, sh2, ag)
+	h.Open()
+	for _, tg := range v.last().Targets {
+		want := tg.ID != "ag"
+		if got := strings.HasPrefix(tg.Label, "[shell] "); got != want {
+			t.Errorf("target %s label %q: shell tag = %v, want %v", tg.ID, tg.Label, got, want)
+		}
+	}
+}

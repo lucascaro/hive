@@ -21,6 +21,10 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const REPO_ROOT = path.resolve(__dirname, '../../../../..');
 
+// The only page allowed to open a WebSocket to the bridge: the Vite dev
+// server playwright.real.config.js starts (baseURL / VITE_PORT there).
+const WEB_ORIGIN = 'http://localhost:5175';
+
 function makeTempDir(prefix) {
   return fs.mkdtempSync(path.join('/tmp', prefix));
 }
@@ -146,10 +150,14 @@ export default async function globalSetup() {
 
   // Spawn the bridge; it prints its bound URL to stdout. We pin the
   // port to 0 (OS-picked) so parallel CI runs don't collide.
-  const bridge = spawn(bridgeBin, ['--addr', '127.0.0.1:0'], {
-    env,
-    stdio: ['ignore', 'pipe', 'pipe'],
-  });
+  const bridge = spawn(
+    bridgeBin,
+    ['--addr', '127.0.0.1:0', '--allow-origin', WEB_ORIGIN],
+    {
+      env,
+      stdio: ['ignore', 'pipe', 'pipe'],
+    },
+  );
   bridge.stderr.on('data', (b) => process.stderr.write(`[ws-bridge] ${b}`));
   const wsUrl = await readBridgeUrl(bridge.stdout, 5000);
 
