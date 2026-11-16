@@ -1,0 +1,9 @@
+{
+  "id": "workflows",
+  "name": "Workflows",
+  "version": "0.1.0",
+  "api_version": "0.2",
+  "description": "Runs typed multi-agent workflows from .hive/workflows/ and checkpoints every step.",
+  "main": { "command": ["node", "--disable-sigusr1", "./main.mjs"] },
+  "node": "26.0.0"
+}
