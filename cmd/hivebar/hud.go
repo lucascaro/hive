@@ -87,6 +87,10 @@ const (
 	hudBusy
 )
 
+// statusUnanswered is shown while a send the user abandoned still holds
+// the session's one reply slot, and cleared when that reply arrives.
+const statusUnanswered = "Hive has not answered the last send to this session yet. Try again in a moment."
+
 const (
 	hintsEditing = "[↩] send · [⇧↩] new line · [↑↓] target · [esc] cancel"
 	hintsBusy    = "[↩] queue it · [⇧↩] new line · [↑↓] target · [esc] cancel"
@@ -103,6 +107,9 @@ type HUD struct {
 
 	mu        sync.Mutex
 	connected bool
+	// conn counts connections, so a local send failure that lands after a
+	// reconnect cannot free a slot belonging to a send on the new one.
+	conn int
 	projects  []wire.ProjectInfo
 	sessions  []wire.SessionInfo
 	// pending counts, per session, sends with a reply still due. SENT and
@@ -158,6 +165,7 @@ func (h *HUD) Disconnected() {
 	h.mu.Lock()
 	defer h.mu.Unlock()
 	h.connected = false
+	h.conn++
 	h.projects, h.sessions = nil, nil
 	clear(h.pending) // no reply is coming on a dead connection
 	if !h.open {
@@ -278,26 +286,29 @@ func (h *HUD) prepareSend(text string) func() {
 		return nil
 	}
 	if h.pending[h.target] > 0 {
-		h.status = "Hive has not answered the last send to this session yet. Try again in a moment."
+		h.status = statusUnanswered
 		h.renderLocked(false, false)
 		return nil
 	}
 	queue := h.phase == hudBusy
-	id := h.target
+	id, conn := h.target, h.conn
 	h.pending[id]++
 	h.phase = hudSending
 	h.status = "Sending…"
 	h.renderLocked(false, false)
 	return func() {
 		if !h.send.SendToSession(id, text, queue) {
-			h.failed(id, "Hive's daemon is not running.")
+			h.failed(id, conn, "Hive's daemon is not running.")
 		}
 	}
 }
 
-func (h *HUD) failed(id, msg string) {
+func (h *HUD) failed(id string, conn int, msg string) {
 	h.mu.Lock()
 	defer h.mu.Unlock()
+	if conn != h.conn {
+		return // a disconnect since then already freed the slot and said so
+	}
 	h.answeredLocked(id) // never written, so no reply is coming
 	if !h.open || h.phase != hudSending || h.target != id {
 		return
@@ -315,6 +326,7 @@ func (h *HUD) OnSent(id string) {
 		return
 	}
 	if !h.open || h.phase != hudSending || h.target != id {
+		h.clearUnansweredLocked(id)
 		return
 	}
 	h.closeLocked()
@@ -328,6 +340,7 @@ func (h *HUD) OnError(id, code, msg string) {
 		return
 	}
 	if !h.open || h.phase != hudSending || h.target != id {
+		h.clearUnansweredLocked(id)
 		return
 	}
 	h.phase = hudEditing
@@ -362,6 +375,15 @@ func (h *HUD) answeredLocked(id string) bool {
 		delete(h.pending, id)
 	}
 	return true
+}
+
+// clearUnansweredLocked drops the "not answered yet" status once the
+// reply it was waiting on for the target has come.
+func (h *HUD) clearUnansweredLocked(id string) {
+	if h.open && h.target == id && h.status == statusUnanswered {
+		h.status = ""
+		h.renderLocked(false, false)
+	}
 }
 
 func (h *HUD) closeLocked() {

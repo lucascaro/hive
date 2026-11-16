@@ -365,6 +365,9 @@ func TestHUDAbandonedSendBlocksUntilAnswered(t *testing.T) {
 	if !v.visible {
 		t.Fatal("the reply to the abandoned send closed the panel")
 	}
+	if strings.Contains(v.last().Status, "not answered") {
+		t.Fatalf("status still waits after the answer: %q", v.last().Status)
+	}
 	h.Submit("second")
 	if len(s.sends) != 2 || s.sends[1].text != "second" {
 		t.Fatalf("sends = %+v", s.sends)
@@ -414,5 +417,27 @@ func TestHUDDisconnectedSaysDaemonNotRunning(t *testing.T) {
 	h.SetSessions(nil, []wire.SessionInfo{sess("a", 0, 1)})
 	if strings.Contains(v.last().Status, "not running") {
 		t.Fatalf("still says not running after reconnecting: %q", v.last().Status)
+	}
+}
+
+// A local failure reported after a reconnect must not free the slot of a
+// send made on the new connection.
+func TestHUDLateLocalFailureAfterReconnect(t *testing.T) {
+	h, v, s := newTestHUD(sess("a", 0, 1))
+	var queued []func()
+	h.goSend = func(f func()) { queued = append(queued, f) }
+	s.connected = false
+	h.Open()
+	h.Submit("one") // its failure is still on its way
+	h.Disconnected()
+	h.SetSessions(nil, []wire.SessionInfo{sess("a", 0, 1)})
+	h.Select(0)
+	h.Submit("two")
+	queued[0]() // the old send fails only now, on the new connection
+	s.connected = true
+	queued[1]()
+	h.OnSent("a")
+	if v.visible {
+		t.Fatal("the reply to the new send was ignored: the late failure freed its slot")
 	}
 }
