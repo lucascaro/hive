@@ -5,7 +5,7 @@ type: enhancement
 complexity: L
 priority: P2
 pr: 556
-stage: REVIEW
+stage: GATE
 ---
 
 # Dictate into a session from anywhere via a global capture HUD
