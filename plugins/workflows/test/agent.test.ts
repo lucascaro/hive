@@ -316,14 +316,14 @@ test('a timeout cancels the turn, pinned to it, and fails the node naming the ti
   }
 });
 
-test('a cancel that the agent ignores is followed by KILL_SESSION after the grace, and the worktree is kept', async () => {
+test('a cancel that the agent ignores is followed by KILL_SESSION after the grace, forced, and no worktree is removed', async () => {
   const r = rig(() => {}, { grace: 60 });
   try {
     const id = r.start(one());
     await waitFor(() => rowOf(r.h, id, 'a')?.state === 'running' && r.sim.prompts.length === 1, 'the turn');
     r.h.engine.cancelRun(id);
     await waitFor(() => r.sim.of('KILL_SESSION').length === 1, 'the kill');
-    assert.deepEqual(r.sim.of('KILL_SESSION')[0], { session_id: 's1' }, 'no remove_worktree: the work is kept');
+    assert.deepEqual(r.sim.of('KILL_SESSION')[0], { session_id: 's1', force: true }, 'force so a dirty worktree cannot keep the session alive; no remove_worktree so dirty work is kept');
     assert.equal(r.sim.of('REMOVE_WORKTREE').length, 0);
     assert.deepEqual(r.sim.of('CANCEL_ACP')[0], { session_id: 's1', prompt_id: 10, epoch: 1 });
   } finally {
@@ -360,7 +360,7 @@ test('a run cancelled while the session is being created kills the new session i
   try {
     id = r.start(one());
     await waitFor(() => r.sim.of('KILL_SESSION').length === 1, 'the kill');
-    assert.deepEqual(r.sim.of('KILL_SESSION')[0], { session_id: 's1' });
+    assert.deepEqual(r.sim.of('KILL_SESSION')[0], { session_id: 's1', force: true });
     assert.equal(r.sim.prompts.length, 0, 'no turn was started');
   } finally {
     r.h.close();

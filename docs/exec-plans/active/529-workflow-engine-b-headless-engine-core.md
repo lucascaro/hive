@@ -2349,6 +2349,14 @@ download, the accepted sandbox gap, and `LIST_ACP_AGENTS`.
       release file) and uses it with `FlagSlowCancel`. The plugin's 10 s grace
       is shortened by `HIVE_WF_CANCEL_GRACE_MS`, read only with the test seam
       on.
+    - **`KILL_SESSION` does not "keep the worktree" by itself.** Without
+      `force` it refuses a worktree with uncommitted work
+      (`ErrWorktreeDirty`), so an agent mid-edit would survive its own
+      kill; and `disposeWorktree` removes a **pristine** worktree when its
+      last session goes. The engine sends `force: true` (so the kill always
+      happens; dirty work is then kept by `disposeWorktree`, never removed
+      without `remove_worktree`). A pristine worktree holds nothing, and a
+      retry's PREPARE recreates it. Linux CI caught this; macOS had won the race.
     - A conflict leaves the kept merge worktree **clean at the base**: the
       daemon runs `git merge --abort` (`worktree.MergeBranches`). The message's
       "Resolve and commit there" therefore means: redo the merge there,

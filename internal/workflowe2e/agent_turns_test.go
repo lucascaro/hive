@@ -147,6 +147,11 @@ func TestCancel_WaitsForCancelledThenKills(t *testing.T) {
 	t.Setenv("HIVE_WF_CANCEL_GRACE_MS", "300")
 	f, dir := newAgentFixture(t, acptest.FlagGate, acptest.FlagSlowCancel)
 	pid, _ := f.project()
+	// The agent has work in progress when it is stopped: an unforced kill would refuse, and the work must survive the forced one.
+	f.onTurns(dir, func(tc *turn) {
+		tc.write("wip.txt", "half done")
+		tc.Hold()
+	})
 	run := f.startRun(pid, ir("cancel", []any{agentNode("a", "do it", nil)}))
 	f.eventually(wait, "the turn to start", func() bool {
 		files, _ := filepath.Glob(filepath.Join(dir, "turn-*.waiting"))
@@ -167,8 +172,8 @@ func TestCancel_WaitsForCancelledThenKills(t *testing.T) {
 	if got := fakeCalls(dir, "session/cancel"); len(got) != 1 {
 		t.Errorf("session/cancel calls = %v, want one", got)
 	}
-	if st, err := os.Stat(wt); err != nil || !st.IsDir() {
-		t.Errorf("the worktree %q was not kept: %v", wt, err)
+	if _, err := os.Stat(filepath.Join(wt, "wip.txt")); err != nil {
+		t.Errorf("the agent's unfinished work in %q was not kept: %v", wt, err)
 	}
 }
 

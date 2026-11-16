@@ -339,7 +339,7 @@ class AgentRun {
   async #kill(): Promise<void> {
     if (!this.#sid) return;
     try {
-      await this.#engine.hive.request('KILL_SESSION', { session_id: this.#sid });
+      await this.#engine.hive.request('KILL_SESSION', { session_id: this.#sid, force: true });
     } catch {
       // Already gone, or the daemon is: nothing more to do for it.
     }
