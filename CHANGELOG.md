@@ -11,6 +11,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 The menu bar can now be stopped, restarted and kept from starting at login without touching your sessions: new "Quit Menu Bar" and "Restart Menu Bar" items leave the daemon and every running agent alone, and a "Start at Login" checkmark flips the same login item as Settings. "Quit Hive" still stops everything, after confirming.
 Dictate into a session from any app on macOS: ⌃⌥Space opens a small box from the menu bar that any dictation tool (macOS Dictation, Handy) or the keyboard can fill. It names the session the text will go to (the one a Hive window last showed you; ↑/↓ picks another), and nothing is sent until you press Enter. Rebind or remove the hotkey under Settings › Shortcuts. Hive asks for no microphone or Accessibility permission.
 
+### Changed
+Granting "May direct other sessions" now notes that the grant limits only agents that use Hive's messaging, since any agent with a shell can reach Hive directly; SECURITY.md gains a Trust model section explaining what that means and how to run untrusted agents safely.
+
+### Security
+Hive's sockets and settings files are now private to your user account, and the dictation HUD marks shell sessions.
+
 ## [2.10.0] — 2026-11-12
 
 ### Added
