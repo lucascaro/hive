@@ -63,6 +63,7 @@ import {
 } from './view.js';
 import { clearAttention } from './events.js';
 import { goBack, goForward } from '../lib/nav-history.js';
+import { ORCHESTRATOR_GRANT_HINT } from '../lib/orchestrator.js';
 import { readProjectId } from '../lib/wire.js';
 import { clusterReorderOps } from '../lib/worktree-groups.js';
 import { runReorder } from './reorder-runner.js';
@@ -564,9 +565,14 @@ export function toggleOrchestrator(sessionId?: string): boolean | undefined {
   const id = sessionId ?? appData().activeId;
   const s = appData().sessions.find((x) => x.id === id);
   if (!s) return false;
-  SetSessionOrchestrator(s.id, !s.orchestrator).catch(
-    reportFailure('toggle may direct other sessions'),
-  );
+  const grant = !s.orchestrator;
+  SetSessionOrchestrator(s.id, grant)
+    .then(() => {
+      // The palette title has no room for the caveat the launcher shows
+      // under its checkbox, so a grant made here says it once instead.
+      if (grant) flashStatus(ORCHESTRATOR_GRANT_HINT);
+    })
+    .catch(reportFailure('toggle may direct other sessions'));
 }
 
 // toggleIdeaInbox is ⇧⌘I. The capture sheet closes first: it is the

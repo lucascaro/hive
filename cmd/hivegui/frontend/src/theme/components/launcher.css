@@ -64,6 +64,15 @@
 .launcher-orchestrator input[type=checkbox] {
   margin: 0;
 }
+/* The grant's caveat (SECURITY.md › Trust model) wraps onto its own
+   line under the checkbox's label. */
+.launcher-orchestrator { flex-wrap: wrap; }
+.launcher-orchestrator__hint {
+  flex-basis: 100%;
+  color: var(--fg-muted);
+  font-size: var(--text-xs);
+  line-height: 1.4;
+}
 .launcher-worktree.disabled {
   opacity: 0.5;
   cursor: default;

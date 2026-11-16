@@ -24,6 +24,7 @@ import { resetStore } from '../../src/store/store.js';
 // Type-only: erased, so the generated module is never resolved at runtime.
 import type { main } from '../../wailsjs/go/models';
 import type { SessionInfo } from '../../src/app/state';
+import { ORCHESTRATOR_GRANT_HINT } from '../../src/lib/orchestrator.js';
 import { isMac } from '../../src/lib/platform.js';
 import { hiveStateView as state } from '../../src/store/store.js';
 
@@ -1305,5 +1306,21 @@ describe('launcher orchestrator grant (spec 389)', () => {
       duplicateCwd: '/tmp',
     });
     expect(launcher().querySelector('.launcher-orchestrator')).toBeNull();
+    expect(launcher().querySelector('#launcher-orchestrator-hint')).toBeNull();
+  });
+
+  // SECURITY.md › Trust model: the grant is not a boundary, and the
+  // checkbox says so where it is ticked.
+  it('says the grant only limits agents that use Hive messaging', async () => {
+    await open();
+    const hint = launcher().querySelector('#launcher-orchestrator-hint');
+    expect(hint?.textContent).toBe(ORCHESTRATOR_GRANT_HINT);
+    expect(box().getAttribute('aria-describedby')).toBe(
+      'launcher-orchestrator-hint',
+    );
+    expect(
+      document.getElementById(box().getAttribute('aria-labelledby') ?? '')
+        ?.textContent,
+    ).toBe('May direct other sessions');
   });
 });

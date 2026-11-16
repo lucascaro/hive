@@ -59,6 +59,15 @@ named**, and only within rules the daemon enforces.
 
 ## Trust model: per-session grant
 
+> **What the grant bounds.** The grant is enforced on the narrowed
+> `ModeSession` socket, so it constrains an agent that directs siblings
+> through Hive's messaging (`hived msg`). It does not constrain an agent
+> that goes around it: any agent with a shell runs as the user and can
+> dial the full control socket, grant or no grant. The grant is a
+> statement of user intent, not a sandbox. See
+> [SECURITY.md › Trust model](../../SECURITY.md#trust-model) and, for the
+> plan to close the gap, [spec 554](../product-specs/554-agent-control-credential-and-switch.md).
+
 - **Capability, not ambient.** An entry carries `Orchestrator bool`,
   set by the user in the launcher or, for a running session, from the
   command palette, default off, persisted with the entry (it is user intent, like

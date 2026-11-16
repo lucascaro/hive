@@ -24,6 +24,67 @@ You can expect an acknowledgement within 72 hours.
 | `hivegui` (desktop client) | In scope |
 | Agent processes | Spawned as the invoking user; the agent CLI's own security is out of scope |
 
+## Trust model
+
+Hive's security boundary is your user account. Everything below follows
+from that.
+
+**Who cannot reach Hive.** Nothing outside your account. A release build
+opens no network listener: the daemon listens only on Unix-domain sockets
+in a directory created `0o700`, and every Go client refuses that
+directory unless it is a real directory owned by you with no group or
+other access (see *Single-User Systems* below; on Windows the socket sits
+under your profile and relies on its ACL instead). Hive registers no URL
+scheme, so a web page cannot open it with a link. (`wails dev` serves the
+frontend on `localhost:34115`, and the `hived-ws-bridge` test harness
+listens on TCP; neither ships in the app.)
+
+**Who can.** Any process running as you. Hive does not distinguish its
+own GUI from any other program you run: a process that connects to the
+daemon's control socket, which sits next to the `HIVE_SOCKET` path every
+session is handed, gets the full control protocol. That includes
+creating a session with any command, typing into any session, answering
+an agent's permission prompt, approving a plan, and installing a plugin.
+Installed plugins get the same control protocol.
+
+**Agents are processes running as you.** An agent with a shell — Claude
+Code, Codex, any of them — can therefore do everything above. Usually
+that is fine: you started it and it acts for you. The risk is an agent
+that reads untrusted text (a web page, an issue, a README in a cloned
+repo) and follows an instruction hidden in it. Because every session is
+reachable from every other, one prompt-injected agent can drive all of
+your sessions, including ones running with permission prompts turned
+off.
+
+**What the orchestrator grant does and does not do.** *May direct other
+sessions* (spec 389) decides whether a session may message its siblings
+through Hive's own messaging — `hived msg` over the session's narrowed
+socket. The daemon enforces it on that socket, and an agent that uses
+Hive's messaging as intended cannot direct other sessions without it.
+It does **not** stop an agent that goes around Hive's messaging: an
+agent with a shell can reach the control socket directly, grant or no
+grant. Read the grant as a statement of intent that well-behaved agents
+honour, not as a sandbox.
+
+**What to do about it.**
+
+- Treat every agent you run under Hive as having your privileges,
+  because it does, and treat what it reads as input to all of your
+  sessions, not just its own.
+- Run untrusted repositories and agents you do not trust somewhere that
+  cannot reach your Hive: a container or VM, or a separate macOS user
+  account with its own Hive.
+- Prefer each agent's own permission prompts over bypass modes for work
+  that reads untrusted content.
+- Review plugins before installing them; a plugin runs as you.
+
+**What is planned.** Stage 2 is to make the control socket accept only
+Hive's own clients, using a credential agents cannot read, and then to
+let you switch agent-to-agent control off entirely. The problem and
+open questions are in
+[spec: agent-control credential and switch](docs/product-specs/554-agent-control-credential-and-switch.md).
+Until it ships, the advice above is the boundary.
+
 ## Known Considerations
 
 ### Single-User Systems
@@ -58,24 +119,17 @@ On shared machines (e.g., a development server with multiple accounts):
   harness that dials a socket its caller names explicitly.
 - Programs running inside a session inherit `HIVE_SOCKET`, which names a
   second, narrowed socket rather than the control socket. It serves state
-  reports (`HELLO{mode:event}`) and the idea verbs `hive idea` needs
-  (`HELLO{mode:session}` — `ADD_IDEA` and `LIST_IDEAS`, both bound to the
-  caller's own session and project, plus a session snapshot narrowed to that
-  session's id and project). Everything else is answered with
-  `mode_not_allowed`, so what a session's child processes inherit does not
-  let them create, attach to or kill sessions, remove worktrees, shut the
-  daemon down, or read another project's ideas.
+  reports (`HELLO{mode:event}`) and a short list of session verbs
+  (`HELLO{mode:session}`): the idea verbs `hive idea` needs (`ADD_IDEA`,
+  `LIST_IDEAS`), an ACP session's `SUBMIT_RESULT`, a project-scoped
+  `LIST_SESSIONS` / `WAIT_SESSION`, and `SEND_TO_SESSION` for a session
+  you granted *May direct other sessions*. Everything else is answered
+  with `mode_not_allowed`, so what a session's child processes inherit
+  does not let them create, attach to or kill sessions, remove worktrees,
+  shut the daemon down, or read another project's ideas.
 
-  **This is defence in depth, not a security boundary.** The control socket
-  sits next to the events one, and both are owned by you: a process running as
-  your user can find it and connect to it, whatever `HIVE_SOCKET` says. POSIX
-  permissions cannot separate two processes running as the same user, and Hive
-  does not sandbox the agents it launches (see *Agent Processes* below). What
-  the narrowed socket buys is that the obvious path — the environment variable
-  a tool was handed — no longer leads to session creation, and that an
-  integration written against `HIVE_SOCKET` cannot reach those verbs by
-  accident. Treat an agent you run under Hive as having your privileges,
-  because it does.
+  **This is defence in depth, not a security boundary** — see
+  [Trust model](#trust-model) above.
 - Log files (`hived.log`, `hivegui.log`) are created with mode `0o600` and
   are not readable by other users.
 - Agent session output is not exposed outside the daemon process.

@@ -4,6 +4,7 @@
 // session's leave to message its siblings. The daemon owns the flag, so
 // the command only asks — with the opposite of what the store shows.
 import { describe, it, expect, vi, beforeAll, beforeEach } from 'vitest';
+import { ORCHESTRATOR_GRANT_HINT } from '../../src/lib/orchestrator.js';
 
 const { SetSessionOrchestrator } = vi.hoisted(() => ({
   SetSessionOrchestrator: vi.fn(
@@ -19,6 +20,12 @@ vi.mock('../../src/bridge.js', async (importOriginal) => {
   );
   return { ...stubs, SetSessionOrchestrator };
 });
+
+const { flashStatus } = vi.hoisted(() => ({ flashStatus: vi.fn() }));
+vi.mock('../../src/app/dom.js', async (importOriginal) => ({
+  ...(await importOriginal<Record<string, unknown>>()),
+  flashStatus,
+}));
 
 type Store = typeof import('../../src/store/store.js');
 let store: Store;
@@ -39,6 +46,7 @@ beforeAll(async () => {
 
 beforeEach(() => {
   SetSessionOrchestrator.mockClear();
+  flashStatus.mockClear();
   store.resetStore();
 });
 
@@ -63,6 +71,22 @@ describe('toggleOrchestrator', () => {
     seed(true);
     actions.toggleOrchestrator();
     expect(SetSessionOrchestrator).toHaveBeenCalledWith('s1', false);
+  });
+
+  // SECURITY.md › Trust model: the palette title has no room for the
+  // caveat, so a grant made from it flashes the caveat instead.
+  it('flashes the trust caveat on grant, not on revoke', async () => {
+    seed();
+    actions.toggleOrchestrator();
+    await Promise.resolve();
+    expect(flashStatus).toHaveBeenCalledWith(ORCHESTRATOR_GRANT_HINT);
+
+    flashStatus.mockClear();
+    store.resetStore();
+    seed(true);
+    actions.toggleOrchestrator();
+    await Promise.resolve();
+    expect(flashStatus).not.toHaveBeenCalled();
   });
 
   it('does nothing with no session', () => {
