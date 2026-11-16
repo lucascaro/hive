@@ -368,6 +368,19 @@ const APPROVED_477 = {
         (e.shiftKey && /^k$/i.test(e.key)
           ? was === 'command-palette' && now === 'duplicate-session-choose-tool'
           : false))),
+  // H (spec 553): macOS ⌃⌥Space names dictate-hud, the menu bar's
+  // system-wide dictation chord. The OS takes it before the webview in a
+  // real build; a copy that does arrive declines to the terminal.
+  H: (s: string, e: Ev, mac: boolean, was: string | null, now: string | null) =>
+    mac &&
+    s === 'app' &&
+    e.code === 'Space' &&
+    e.ctrlKey &&
+    e.altKey &&
+    !e.metaKey &&
+    !e.shiftKey &&
+    was === null &&
+    now === 'dictate-hud',
   M: (
     s: string,
     _e: Ev,
@@ -384,7 +397,7 @@ describe('key bindings vs the pre-478 matchers', () => {
   const seen: Record<
     keyof typeof APPROVED | keyof typeof APPROVED_477,
     number
-  > = { A: 0, B: 0, D: 0, F: 0, M: 0, N: 0, R: 0 };
+  > = { A: 0, B: 0, D: 0, F: 0, H: 0, M: 0, N: 0, R: 0 };
   const unexpected: string[] = [];
 
   for (const mac of [true, false]) {
@@ -419,6 +432,7 @@ describe('key bindings vs the pre-478 matchers', () => {
     expect(seen.B).toBeGreaterThan(0);
     expect(seen.D).toBeGreaterThan(0);
     expect(seen.F).toBeGreaterThan(0);
+    expect(seen.H).toBeGreaterThan(0);
     expect(seen.M).toBeGreaterThan(0);
     expect(seen.N).toBeGreaterThan(0);
     expect(seen.R).toBeGreaterThan(0);

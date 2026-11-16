@@ -177,6 +177,15 @@ const PALETTE: readonly Command[] = [
     title: 'Message Session…',
     run: () => messageActiveSession(),
   },
+  // The dictation HUD's system-wide chord (spec 553). No title: it is
+  // not something to run from inside Hive, so the palette leaves it out.
+  // The OS hands the chord to the menu bar before the webview sees it;
+  // if the key does arrive here (no menu bar running), decline, so it
+  // reaches the terminal like any unbound key.
+  {
+    id: 'dictate-hud',
+    run: () => false,
+  },
   {
     id: 'notify-when-idle',
     title: 'Notify When Session Is Idle',

@@ -70,7 +70,13 @@ Architectural invariants. Each one should ideally be enforceable by `gc-sweep` o
   `Hive.app` bundle, and `hived` stays cgo-free); it also relaunches
   itself for Restart Menu Bar. It never spawns `hived` on its own — only as
   the explicit Restart Daemon action — so a menu bar cannot resurrect a
-  daemon the user just quit.
+  daemon the user just quit. Its dictation capture HUD (spec 553) sends
+  text to a session only through `SEND_TO_SESSION`, and only after the
+  user confirms in the panel: there is no socket, CLI or frame that puts
+  text into the HUD or past it. The HUD's own frames
+  (`SET_FOCUSED_SESSION`, `SET_GLOBAL_HOTKEY`, `GLOBAL_HOTKEY`) carry a
+  session id and a key chord, never text, and plugins are refused both
+  requests.
 - **A GUI reload never touches the daemon.** `App.ReloadGUI` relaunches the
   GUI process and leaves `hived` and every PTY it owns running; only
   `App.RestartDaemon` may send `FrameShutdown` or signal the daemon. Grep

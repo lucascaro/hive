@@ -32,6 +32,7 @@ vi.mock('../../src/bridge.js', () => {
     DuplicateSession: fn(),
     KillSession: fn(),
     SetSessionAttention: fn(),
+    ReportFocusedSession: fn(),
     RestartSession: fn(),
     UpdateSession: fn(),
     ListAgents: fn(),
@@ -326,17 +327,21 @@ describe('⌘B into a minimized project', () => {
 describe('setActive and the daemon', () => {
   beforeEach(() => {
     vi.mocked(bridge.SetSessionAttention).mockClear();
+    vi.mocked(bridge.ReportFocusedSession).mockClear();
   });
 
   it('reports the look when you arrive at a session', () => {
     state.activeId = 'a';
     setActive('z');
     expect(bridge.SetSessionAttention).toHaveBeenCalledWith('z', false);
+    // Spec 553: and the focus the menu bar's dictation HUD defaults to.
+    expect(bridge.ReportFocusedSession).toHaveBeenCalledWith('z');
   });
 
   it('says nothing when re-selecting the session already active', () => {
     state.activeId = 'z';
     setActive('z');
     expect(bridge.SetSessionAttention).not.toHaveBeenCalled();
+    expect(bridge.ReportFocusedSession).not.toHaveBeenCalled();
   });
 });

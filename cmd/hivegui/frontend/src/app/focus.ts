@@ -21,6 +21,7 @@ import { activityGridShown, anyModalOpen } from '../store/store.js';
 import { pushNav } from '../lib/nav-history.js';
 import { clearAttention } from './events.js';
 import { closeFindForAllSessions } from './find-session.js';
+import { reportFocus } from './global-hotkey.js';
 import { scrollTrace } from './trace.js';
 
 // Live read of the store. A function, not a destructured snapshot: this
@@ -77,6 +78,10 @@ export function setActive(id: string | null) {
     if (pid) setCurrentProjectId(pid);
   }
   setActiveId(id);
+  // The menu bar's dictation HUD offers the newest focus as its target
+  // (spec 553). Only on a change: setActive is re-entered for the
+  // session that is already active on every grid move and re-render.
+  if (changed) reportFocus(id);
   // Search ends when its session loses focus. After setActiveId, so the
   // focus a closing box hands back lands on the newly active session.
   if (changed) closeFindForAllSessions(id);

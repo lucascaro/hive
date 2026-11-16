@@ -116,6 +116,9 @@ const DECLINES_IN_SINGLE_VIEW = new Set([
   // in the focused terminal.
   'grid-left',
   'grid-right',
+  // commands.ts: the dictation HUD's chord is the OS's (spec 553); one
+  // that reaches the webview is left to the terminal.
+  'dictate-hud',
 ]);
 
 function expectedRan(command: string): boolean {

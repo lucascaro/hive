@@ -207,6 +207,11 @@ type Entry struct {
 	// is persisted, and TestMetaFileUnchangedByState holds that line.
 	state *agentstate.Machine
 
+	// focusedAt is the Unix-millisecond stamp of the last GUI focus
+	// report (Registry.SetFocused, spec 553). In-memory only, like
+	// state: never persisted.
+	focusedAt int64
+
 	// laya is this session's Laya classifier bookkeeping (spec 458). See
 	// classify.go.
 	laya layaEntry
@@ -369,6 +374,7 @@ func (e *Entry) Info() wire.SessionInfo {
 		Phase:                 e.Phase,
 		Title:                 e.title(),
 		NeedsAttention:        needsAttention(st.State),
+		FocusedAt:             e.focusedAt,
 		State:                 st.State,
 		StateSource:           st.Source,
 		LastPrompt:            st.LastPrompt,
@@ -435,6 +441,13 @@ type Registry struct {
 	entries     map[string]*Entry
 	order       []string
 	stateDir    string
+
+	// lastFocusID / lastFocusAt are the newest SET_FOCUSED_SESSION
+	// report (hud.go). globalHotkey is the capture HUD's chord, loaded
+	// at Open. All guarded by r.mu.
+	lastFocusID  string
+	lastFocusAt  int64
+	globalHotkey wire.GlobalHotkey
 
 	// socketPath is the daemon's EVENTS socket — not its control
 	// socket. Set once by the daemon right after Open (SetSocketPath);
@@ -1189,6 +1202,7 @@ func Open(stateDir string) (*Registry, error) {
 	if err := r.load(); err != nil {
 		return nil, fmt.Errorf("registry: load: %w", err)
 	}
+	r.globalHotkey = r.loadGlobalHotkey()
 	go r.tickStates()
 	r.startClassifier()
 	return r, nil

@@ -182,6 +182,7 @@ export async function fireChord(page: Page, chord: string) {
       BracketLeft: '[',
       BracketRight: ']',
       Backquote: '`',
+      Space: ' ',
     };
     const codeFor = (k: string) => {
       if (NAMED[k]) return NAMED[k];

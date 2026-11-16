@@ -272,6 +272,13 @@ type SessionInfo struct {
 	// answers to one question and no way for the menu bar to have any
 	// answer at all.
 	NeedsAttention bool `json:"needs_attention,omitempty"`
+	// FocusedAt is when a GUI last reported this session as the one the
+	// user is looking at (SET_FOCUSED_SESSION), in Unix milliseconds;
+	// zero when none has since the daemon started. In-memory only. The
+	// newest stamp across sessions is the menu-bar capture HUD's default
+	// target (spec 553); a stamp rather than a single focused id means
+	// several GUI windows need no arbitration: the latest report wins.
+	FocusedAt int64 `json:"focused_at,omitempty"`
 	// NotifyWhenIdle is true while the session is armed to ping the
 	// user when it next stops working (spec 338). Daemon-owned and
 	// in-memory: a daemon restart disarms every session.
@@ -652,6 +659,11 @@ const (
 	// doing. Consumers that re-render the world on "updated" must not
 	// be made to do so on every turn.
 	SessionEventState = "state"
+	// SessionEventFocus reports that a GUI focused the session, so
+	// SessionInfo.FocusedAt moved (spec 553). Kept apart from "updated"
+	// for the same reason "title" is: it follows the user's clicks, and
+	// consumers that re-render the world on "updated" must not.
+	SessionEventFocus = "focus"
 	// SessionEventIdlePing reports that a session armed with
 	// NotifyWhenIdle just stopped working (spec 338). The payload is the
 	// session's SessionInfo with NotifyWhenIdle already cleared. Clients
@@ -1865,6 +1877,53 @@ const (
 	// the current turn while it streams, a new turn when idle.
 	DeliveryExtension = "extension"
 )
+
+// SetFocusedSessionReq is the SET_FOCUSED_SESSION payload (spec 553).
+type SetFocusedSessionReq struct {
+	SessionID string `json:"session_id"`
+}
+
+// GlobalHotkey is the SET_GLOBAL_HOTKEY payload and the GLOBAL_HOTKEY
+// event (spec 553): the system-wide chord that opens the menu-bar
+// capture HUD. KeyCode is a macOS virtual key code (kVK_*) and
+// Modifiers a Carbon modifier mask (cmdKey, shiftKey, optionKey,
+// controlKey), so the menu bar can hand both to RegisterEventHotKey
+// without parsing the GUI's chord grammar. Enabled false means "no
+// global hotkey"; KeyCode and Modifiers are then ignored.
+type GlobalHotkey struct {
+	KeyCode   uint32 `json:"key_code"`
+	Modifiers uint32 `json:"modifiers"`
+	Enabled   bool   `json:"enabled"`
+}
+
+// Carbon modifier bits accepted in GlobalHotkey.Modifiers (Carbon's
+// Events.h values). Mirrored here so the daemon can validate a chord
+// without cgo.
+const (
+	HotkeyModCmd     uint32 = 0x0100
+	HotkeyModShift   uint32 = 0x0200
+	HotkeyModOption  uint32 = 0x0800
+	HotkeyModControl uint32 = 0x1000
+	hotkeyModAll            = HotkeyModCmd | HotkeyModShift | HotkeyModOption | HotkeyModControl
+)
+
+// kVKSpace is macOS's virtual key code for the space bar.
+const kVKSpace = 49
+
+// DefaultGlobalHotkey is ⌃⌥Space, the chord the HUD opens with until
+// the user rebinds it.
+var DefaultGlobalHotkey = GlobalHotkey{KeyCode: kVKSpace, Modifiers: HotkeyModControl | HotkeyModOption, Enabled: true}
+
+// Valid reports whether h can be registered: a disabled hotkey always
+// can; an enabled one needs a key code in the virtual-key range and at
+// least one modifier from the known set, and no other bits. A chord
+// with no modifier would swallow a plain key in every app.
+func (h GlobalHotkey) Valid() bool {
+	if !h.Enabled {
+		return true
+	}
+	return h.KeyCode < 128 && h.Modifiers != 0 && h.Modifiers&^hotkeyModAll == 0
+}
 
 // SendToSessionReq is the SEND_TO_SESSION payload.
 type SendToSessionReq struct {

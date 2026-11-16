@@ -251,5 +251,11 @@
     "blurb": "The menu bar now has Quit Menu Bar, Restart Menu Bar and a Start at Login checkmark that leave your daemon and running agents alone.",
     "status": "shipped",
     "since": "Unreleased"
+  },
+  {
+    "title": "Dictate into a session from any app",
+    "blurb": "On macOS, press ⌃⌥Space anywhere to open a small box, dictate or type into it, check which session it goes to, and press Enter to send it.",
+    "status": "shipped",
+    "since": "Unreleased"
   }
 ]

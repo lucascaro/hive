@@ -28,6 +28,13 @@ package buildinfo
 // History (newest first), so a bump is a decision with a record and
 // not just a number going up:
 //
+//	36 — Dictation capture HUD (spec 553). New SET_FOCUSED_SESSION
+//	    (0x57), which stamps SessionInfo.focused_at and broadcasts a
+//	    SESSION_EVENT of the new kind "focus"; SET_GLOBAL_HOTKEY (0x58);
+//	    and GLOBAL_HOTKEY (0x59), sent after WELCOME and on change. A GUI
+//	    built against this tree reports focus and syncs the chord into
+//	    nothing on an older daemon, and the menu bar there never learns a
+//	    chord, so its HUD stays off.
 //	35 — Workflow-engine prerequisites, part 2 (spec 528). New
 //	    PLUGIN_MESSAGE (0x53, both ways: a plugin to every UI client, a
 //	    UI client to a named plugin), PREPARE_WORKTREE (0x54) answered by
@@ -299,7 +306,7 @@ package buildinfo
 //	    before this cannot see or clear the flag.
 //	1 — first contract; everything up to and including the
 //	    CLIENT_COMMAND relay.
-const DaemonContract = 35
+const DaemonContract = 36
 
 // Identity is this binary's full build identity. `hived --version
 // --json` prints it, and Welcome carries the same three values, so a

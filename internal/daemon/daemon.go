@@ -97,6 +97,9 @@ type Daemon struct {
 	// commands relays client-to-client verbs (see commands.go). Not
 	// state, so it is not in the registry.
 	commands *commandHub
+	// hotkeys tells every control client the capture-HUD chord changed
+	// (GLOBAL_HOTKEY, spec 553); the value itself is the registry's.
+	hotkeys *hotkeyHub
 	// pluginMsgs relays PLUGIN_MESSAGE between plugins and UI clients
 	// (pluginmsg.go). Not state either.
 	pluginMsgs *pluginMsgHub
@@ -384,6 +387,7 @@ func New(cfg Config) (*Daemon, error) {
 		orphanCandidates: orphanCandidates,
 		clients:          make(map[net.Conn]struct{}),
 		commands:         newCommandHub(),
+		hotkeys:          newHotkeyHub(),
 		pluginMsgs:       newPluginMsgHub(),
 		pluginFanout:     make(chan struct{}, 1),
 		shutdown:         make(chan struct{}),
@@ -644,6 +648,9 @@ func (d *Daemon) Close() error {
 	d.ops.Wait()
 	if d.commands != nil {
 		d.commands.Close()
+	}
+	if d.hotkeys != nil {
+		d.hotkeys.Close()
 	}
 	if d.pluginMsgs != nil {
 		d.pluginMsgs.Close()
@@ -1109,6 +1116,8 @@ func (d *Daemon) serveControl(ctx context.Context, conn net.Conn, hello wire.Hel
 	defer acpUnsub()
 	cmdListener, cmdUnsub := d.commands.Subscribe()
 	defer cmdUnsub()
+	hkListener, hkUnsub := d.hotkeys.Subscribe()
+	defer hkUnsub()
 	// A nil channel blocks forever in the select below, which is what
 	// "plugin support did not load" should look like to the fan-out.
 	var plListener chan wire.PluginEvent
@@ -1187,6 +1196,7 @@ func (d *Daemon) serveControl(ctx context.Context, conn net.Conn, hello wire.Hel
 		} else {
 			_ = writeJSON(wire.FrameProjects, wire.ProjectsResp{Projects: d.reg.ListProjects()})
 			_ = writeJSON(wire.FrameSessions, wire.SessionsResp{Sessions: d.reg.List()})
+			_ = writeJSON(wire.FrameGlobalHotkey, d.reg.GlobalHotkey())
 		}
 		for {
 			select {
@@ -1264,6 +1274,16 @@ func (d *Daemon) serveControl(ctx context.Context, conn net.Conn, hello wire.Hel
 					continue
 				}
 				if err := writeJSON(wire.FrameClientBroadcast, cmd); err != nil {
+					return
+				}
+			case hk, ok := <-hkListener:
+				if !ok {
+					return
+				}
+				if restricted {
+					continue
+				}
+				if err := writeJSON(wire.FrameGlobalHotkey, hk); err != nil {
 					return
 				}
 			case ev, ok := <-plListener:
@@ -2331,6 +2351,8 @@ func (d *Daemon) handleControlFrame(ctx context.Context, ops controlOps, ft wire
 	case wire.FrameListPlugins, wire.FrameInstallPlugin, wire.FrameSetPluginEnabled, wire.FrameRemovePlugin,
 		wire.FrameSetPluginConfig:
 		d.handlePluginFrame(ctx, ops, ft, payload)
+	case wire.FrameSetFocusedSession, wire.FrameSetGlobalHotkey:
+		d.handleHUDFrame(ops, ft, payload)
 	case wire.FrameSetClientUI:
 		req, ok := decodeReq[wire.SetClientUIReq](payload, ops.sendError)
 		if ok && ops.announceUI != nil {

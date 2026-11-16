@@ -598,6 +598,22 @@ export async function SendToSession(id: string, text: string, queue: boolean) {
 export async function SetSessionOrchestrator(id: string, want: boolean) {
   return call('SetSessionOrchestrator', { session_id: id, want: !!want });
 }
+export async function ReportFocusedSession(id: string) {
+  return call('ReportFocusedSession', { session_id: id });
+}
+
+export async function SetGlobalHotkey(
+  keyCode: number,
+  modifiers: number,
+  enabled: boolean,
+) {
+  return call('SetGlobalHotkey', {
+    key_code: keyCode,
+    modifiers,
+    enabled: !!enabled,
+  });
+}
+
 export async function SetSessionNotifyWhenIdle(id: string, want: boolean) {
   return call('SetSessionNotifyWhenIdle', { session_id: id, want: !!want });
 }

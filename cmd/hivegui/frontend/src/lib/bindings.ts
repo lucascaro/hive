@@ -134,6 +134,15 @@ export const DEFAULT_APP_BINDINGS: readonly Binding[] = [
   { keys: 'Mod+Shift+I', command: 'idea-inbox' },
   // Session messaging (spec 338).
   { keys: 'Mod+Shift+M', command: 'message-session' },
+  // The menu bar's dictation capture HUD (spec 553), macOS only. A
+  // SYSTEM-WIDE chord: the menu bar registers it with the OS, which
+  // takes it before any app, Hive included, so it never reaches this
+  // dispatcher in a real build. It lives here anyway so Settings ›
+  // Shortcuts, the help overlay, keymap import and the overlap rules
+  // treat it like every other binding; the GUI converts the effective
+  // chord for the menu bar (app/global-hotkey.ts). [Space], not Space:
+  // ⌥Space types a non-breaking space, so e.key cannot name it.
+  { keys: { mac: 'Ctrl+Alt+[Space]', other: [] }, command: 'dictate-hud' },
   // ⌥⌘B on macOS, where the ⌥ spelling needs [KeyB] (⌥B types '∫'). Off
   // macOS Ctrl+Alt+Shift, like activity-grid above: AltGr reports as
   // Ctrl+Alt, so a bare Ctrl+Alt chord would lose a layout's character.

@@ -25,14 +25,34 @@ import (
 // including the slow-listener drop and its log line: two fan-outs that
 // behave differently under back-pressure is one more thing to hold in
 // your head when a client goes quiet.
-type commandHub struct {
+//
+// The same stateless fan-out also carries GLOBAL_HOTKEY (spec 553), so
+// it is generic over the payload; describe names a dropped value in the
+// slow-listener log line.
+type hub[T any] struct {
 	mu        sync.Mutex
-	listeners map[chan wire.ClientCommand]struct{}
+	listeners map[chan T]struct{}
 	closed    bool
+	describe  func(T) string
 }
 
+// commandHub is the CLIENT_BROADCAST fan-out.
+type commandHub = hub[wire.ClientCommand]
+
 func newCommandHub() *commandHub {
-	return &commandHub{listeners: make(map[chan wire.ClientCommand]struct{})}
+	return newHub(func(c wire.ClientCommand) string { return c.Cmd })
+}
+
+// hotkeyHub is the GLOBAL_HOTKEY fan-out: the value itself lives in the
+// registry; this only tells connected clients it changed.
+type hotkeyHub = hub[wire.GlobalHotkey]
+
+func newHotkeyHub() *hotkeyHub {
+	return newHub(func(wire.GlobalHotkey) string { return "global_hotkey" })
+}
+
+func newHub[T any](describe func(T) string) *hub[T] {
+	return &hub[T]{listeners: make(map[chan T]struct{}), describe: describe}
 }
 
 // Subscribe returns a channel receiving every relayed command, and a
@@ -43,12 +63,12 @@ func newCommandHub() *commandHub {
 // d.serve(...)`), so one can land here after shutdown has begun. The
 // caller's range loop then drains and exits immediately, which is what
 // a subscriber to a dead daemon should see.
-func (h *commandHub) Subscribe() (chan wire.ClientCommand, func()) {
+func (h *hub[T]) Subscribe() (chan T, func()) {
 	// 8 is ample: commands are user-initiated (a menu click), not
 	// event-stream traffic, so a listener that is even briefly awake
 	// cannot fall behind. The buffer exists so Publish never blocks on
 	// a conn whose write goroutine is mid-frame.
-	ch := make(chan wire.ClientCommand, 8)
+	ch := make(chan T, 8)
 	h.mu.Lock()
 	if h.closed {
 		h.mu.Unlock()
@@ -72,15 +92,15 @@ func (h *commandHub) Subscribe() (chan wire.ClientCommand, func()) {
 // relaunch along with its siblings, and routing it through the same
 // broadcast keeps one code path instead of a local special case that
 // could drift from the remote one.
-func (h *commandHub) Publish(cmd wire.ClientCommand) {
+func (h *hub[T]) Publish(cmd T) {
 	h.mu.Lock()
 	defer h.mu.Unlock()
 	for ch := range h.listeners {
 		select {
 		case ch <- cmd:
 		default:
-			log.Printf("daemon: dropping slow client-command listener (buffer %d full, %d listeners); closing the channel, so the daemon hangs up on that client (it missed %q) and it reconnects",
-				cap(ch), len(h.listeners), cmd.Cmd)
+			log.Printf("daemon: dropping slow broadcast listener (buffer %d full, %d listeners); closing the channel, so the daemon hangs up on that client (it missed %q) and it reconnects",
+				cap(ch), len(h.listeners), h.describe(cmd))
 			delete(h.listeners, ch)
 			close(ch)
 		}
@@ -88,7 +108,7 @@ func (h *commandHub) Publish(cmd wire.ClientCommand) {
 }
 
 // Close unsubscribes and closes every listener. Idempotent.
-func (h *commandHub) Close() {
+func (h *hub[T]) Close() {
 	h.mu.Lock()
 	defer h.mu.Unlock()
 	if h.closed {
@@ -121,7 +141,7 @@ func updatesPersistedFields(req wire.UpdateSessionReq) bool {
 
 // pressure is how full the fullest command listener is, 0 to 1; see
 // registry.Pressure.
-func (h *commandHub) pressure() float64 {
+func (h *hub[T]) pressure() float64 {
 	h.mu.Lock()
 	defer h.mu.Unlock()
 	p := 0.0

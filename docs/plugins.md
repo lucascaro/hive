@@ -294,6 +294,8 @@ and reply payloads are the Go structs of the same name in
 | `ANSWER_PERMISSION` | `AnswerPermissionReq` | `ACP_TRANSCRIPT`; with a `req_id`, also `ACK` |
 | `SUBMIT_RESULT` | `SubmitResultReq` | `SUBMIT_RESULT_OK`, `ACP_TRANSCRIPT` (result). Not for plugins: a plugin socket gets `mode_not_allowed`. An ACP session's own submit server (`hived mcp-submit`) sends it on a session connection, with that session's nonce |
 | `SEND_TO_SESSION` | `SendToSessionReq` | `SENT`, or `ERROR`. Not for plugins: a plugin socket gets `mode_not_allowed`, because typing into another session's terminal is the confused-deputy case until a plugin can be granted it explicitly |
+| `SET_FOCUSED_SESSION` | `SetFocusedSessionReq` | `SESSION_EVENT` (focus) stamping the session's `focused_at`. Not for plugins: a plugin socket gets `mode_not_allowed`, because the newest focus is the default target of the menu bar's dictation HUD (spec 553) |
+| `SET_GLOBAL_HOTKEY` | `GlobalHotkey` | `GLOBAL_HOTKEY` to every control client when the chord changed. Not for plugins: a plugin socket gets `mode_not_allowed`, because it rebinds a system-wide key |
 | `SET_SESSION_KIND` | `SetSessionKindReq` | `SESSION_EVENT` (updated, with the new `kind`). `"kind": "pty"` takes an ACP session over in a terminal in the same conversation; `"acp"` hands it back. Refused with `takeover_refused` when the agent's CLI might start a fresh conversation instead, `acp_busy` mid-turn, and `acp_writer_locked` when Codex still holds the conversation (the session is then back in a terminal) |
 
 And everything the daemon sends on a control connection:
@@ -306,7 +308,8 @@ And everything the daemon sends on a control connection:
 | `PREPARED_WORKTREE` | Answer to `PREPARE_WORKTREE`: the worktree's `path` and `branch` (authoritative), whether it was `reattached`, the `base_sha` it started from, its `head_sha`, the branches `merged`, and a `conflict` if a merge stopped. |
 | `ACP_AGENTS` | Answer to `LIST_ACP_AGENTS`: each ACP-capable agent with its permission `modes` (least permissive first), `default_mode`, the user's `ceiling`, `no_approval_gate`, `experimental`, and whether it is `available` now (`reason` when not). |
 | `SESSIONS` | Snapshot after `WELCOME`; answer to `LIST_SESSIONS`. |
-| `SESSION_EVENT` | Broadcast. `kind` is `added`, `removed`, `updated`, `title`, `attention` or `state`; `session` is the whole `SessionInfo`. |
+| `GLOBAL_HOTKEY` | After `WELCOME` and on change: the chord (`key_code`, Carbon `modifiers`, `enabled`) that opens the menu bar's dictation HUD (spec 553). Safe to ignore. |
+| `SESSION_EVENT` | Broadcast. `kind` is `added`, `removed`, `updated`, `title`, `attention`, `state` or `focus`; `session` is the whole `SessionInfo`. |
 | `PROJECTS` | Snapshot after `WELCOME`; answer to `LIST_PROJECTS`. |
 | `PROJECT_EVENT` | Broadcast: a project was added, removed or updated. |
 | `WORKTREES` | A project's worktree inventory. |
