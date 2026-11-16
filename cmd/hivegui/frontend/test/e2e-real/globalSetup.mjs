@@ -150,10 +150,14 @@ export default async function globalSetup() {
 
   // Spawn the bridge; it prints its bound URL to stdout. We pin the
   // port to 0 (OS-picked) so parallel CI runs don't collide.
-  const bridge = spawn(bridgeBin, ['--addr', '127.0.0.1:0', '--allow-origin', WEB_ORIGIN], {
-    env,
-    stdio: ['ignore', 'pipe', 'pipe'],
-  });
+  const bridge = spawn(
+    bridgeBin,
+    ['--addr', '127.0.0.1:0', '--allow-origin', WEB_ORIGIN],
+    {
+      env,
+      stdio: ['ignore', 'pipe', 'pipe'],
+    },
+  );
   bridge.stderr.on('data', (b) => process.stderr.write(`[ws-bridge] ${b}`));
   const wsUrl = await readBridgeUrl(bridge.stdout, 5000);
 
