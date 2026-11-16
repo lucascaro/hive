@@ -243,3 +243,109 @@ func TestPluginManagement_RefusedForPlugin(t *testing.T) {
 	send(t, gui, wire.FrameRemovePlugin, wire.RemovePluginReq{ID: "sleepy"})
 	awaitPluginEvent(t, gui, func(ev wire.PluginEvent) bool { return ev.Kind == wire.PluginEventRemoved })
 }
+
+// asPlugin is a recordOps acting as principal, for creating a session
+// a plugin owns (PROMPT_ACP from a plugin reaches only those).
+func asPlugin(principal string) controlOps {
+	o := (&recordOps{}).ops()
+	o.principal = principal
+	return o
+}
+
+// expectNoError fails if ops reported an ERROR within a short wait.
+func expectNoError(t *testing.T, errs chan wire.Error, what string) {
+	t.Helper()
+	select {
+	case e := <-errs:
+		t.Fatalf("%s: unexpected error %+v", what, e)
+	case <-time.After(100 * time.Millisecond):
+	}
+}
+
+// SHUTDOWN from a plugin is refused and the daemon keeps running.
+func TestShutdown_RefusedForPlugin(t *testing.T) {
+	d := newFrameTestDaemon(t)
+	ops, errs, _ := asyncOps("plugin:acme")
+	d.handleControlFrame(t.Context(), ops, wire.FrameShutdown, nil)
+	expectRefused(t, errs)
+	select {
+	case <-d.shutdown:
+		t.Fatal("a plugin shut the daemon down")
+	default:
+	}
+}
+
+// RESOLVE_WORKTREE_CHOICE answers the user's own dialog.
+func TestResolveWorktreeChoice_RefusedForPlugin(t *testing.T) {
+	d := newFrameTestDaemon(t)
+	ops, errs, _ := asyncOps("plugin:acme")
+	d.handleControlFrame(t.Context(), ops, wire.FrameResolveWorktreeChoice,
+		mustJSON(t, wire.ResolveWorktreeChoiceReq{SessionID: d.reg.List()[0].ID}))
+	expectRefused(t, errs)
+}
+
+// RESOLVE_PROMPT may dismiss, but a paste types into the session.
+func TestResolvePrompt_PasteRefusedForPlugin(t *testing.T) {
+	d := newFrameTestDaemon(t)
+	id := d.reg.List()[0].ID
+	ops, errs, _ := asyncOps("plugin:acme")
+	d.handleControlFrame(t.Context(), ops, wire.FrameResolvePrompt, mustJSON(t, wire.ResolvePromptReq{SessionID: id, Paste: true}))
+	expectRefused(t, errs)
+	d.handleControlFrame(t.Context(), ops, wire.FrameResolvePrompt, mustJSON(t, wire.ResolvePromptReq{SessionID: id}))
+	expectNoError(t, errs, "dismiss from a plugin")
+	user, uerrs, _ := asyncOps("")
+	d.handleControlFrame(t.Context(), user, wire.FrameResolvePrompt, mustJSON(t, wire.ResolvePromptReq{SessionID: id, Paste: true}))
+	expectNoError(t, uerrs, "paste from the user")
+}
+
+// SET_PLUGIN_CONFIG from a plugin reaches only its own plugin.
+func TestSetPluginConfig_OwnPluginOnly(t *testing.T) {
+	skipOnWindows(t)
+	d := startTestDaemon(t)
+	gui := pluginTestControl(t, d, "hivegui/a")
+	send(t, gui, wire.FrameInstallPlugin, wire.InstallPluginReq{Source: writeUIPlugin(t, "notes")})
+	awaitPluginEvent(t, gui, func(ev wire.PluginEvent) bool { return ev.Kind == wire.PluginEventAdded })
+
+	rogue, _ := pluginConn(t, d, "rogue", "p")
+	send(t, rogue, wire.FrameSetPluginConfig, wire.SetPluginConfigReq{ID: "notes", Config: json.RawMessage(`{"badge":true}`)})
+	readModeNotAllowed(t, rogue, "SET_PLUGIN_CONFIG on another plugin")
+	d.ops.Wait()
+	for _, p := range d.plugins.List() {
+		if p.ID == "notes" && p.Config != nil {
+			t.Fatalf("another plugin changed notes' config to %s", p.Config)
+		}
+	}
+
+	own, _ := pluginConn(t, d, "notes", "p")
+	send(t, own, wire.FrameSetPluginConfig, wire.SetPluginConfigReq{ID: "notes", Config: json.RawMessage(`{"badge":true}`)})
+	ev := awaitPluginEvent(t, gui, func(ev wire.PluginEvent) bool { return ev.Plugin.ID == "notes" && ev.Plugin.Config != nil })
+	if string(ev.Plugin.Config) != `{"badge":true}` {
+		t.Fatalf("own config = %s", ev.Plugin.Config)
+	}
+}
+
+// PROMPT_ACP from a plugin reaches only sessions that plugin spawned,
+// with or without a workflow run; the user still prompts any of them.
+func TestPromptAcp_PluginOnlyIntoItsOwnSessions(t *testing.T) {
+	fakeACPDir(t)
+	d := startTestDaemon(t)
+	userSess := createACPVia(t, d, (&recordOps{}).ops(), `{"kind":"acp","agent":"claude"}`)
+	ownSess := createACPVia(t, d, asPlugin("plugin:acme"), `{"kind":"acp","agent":"claude"}`)
+	runSess := createACPVia(t, d, asPlugin("plugin:acme"), `{"kind":"acp","agent":"claude","workflow_run_id":"r1"}`)
+	otherSess := createACPVia(t, d, asPlugin("plugin:other"), `{"kind":"acp","agent":"claude"}`)
+
+	prompt := func(principal, sid string) chan wire.Error {
+		ops, errs, _ := asyncOps(principal)
+		d.handleControlFrame(t.Context(), ops, wire.FramePromptAcp, mustJSON(t, wire.PromptAcpReq{SessionID: sid, Text: "hi"}))
+		return errs
+	}
+	for name, sid := range map[string]string{"user's": userSess.ID, "another plugin's": otherSess.ID, "unknown": "nope"} {
+		t.Run(name, func(t *testing.T) { expectRefused(t, prompt("plugin:acme", sid)) })
+	}
+	if m, _ := d.reg.AcpTranscript(userSess.ID); m.PromptID != 0 {
+		t.Fatalf("a refused prompt reached the user's session: prompt %d", m.PromptID)
+	}
+	expectNoError(t, prompt("plugin:acme", ownSess.ID), "own session")
+	expectNoError(t, prompt("plugin:acme", runSess.ID), "own workflow session")
+	expectNoError(t, prompt("", otherSess.ID), "user into a plugin's session")
+}

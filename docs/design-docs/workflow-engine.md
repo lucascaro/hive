@@ -1519,7 +1519,8 @@ Everything stays inside 492's trust model. The plugin is a principal, `hived`
 stamps provenance, permission requests go to the user, and nothing escalates.
 `hived` enforces the user-only parts on the plugin's socket: it refuses
 `ANSWER_PERMISSION`, `RESOLVE_PLAN_REVIEW`, `SEND_TO_SESSION`, terminal input
-on an attach, and installing, enabling or removing plugins, all with
+on an attach, `PROMPT_ACP` into a session the plugin did not spawn, and
+installing, enabling or removing plugins, all with
 `mode_not_allowed` (the full list is in
 [plugins.md](../plugins.md#what-a-plugin-cannot-do)). So the engine shows a
 permission wait to the user and cannot answer it. This holds the engine to its

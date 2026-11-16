@@ -1435,11 +1435,55 @@ var sessionModeFrames = map[wire.FrameType]bool{
 // docs/plugins.md lists the full set; spec 555 is how a plugin could
 // one day be granted one.
 var pluginRefusedFrames = map[wire.FrameType]string{
-	wire.FrameAnswerPermission:  "a permission request is answered by the user",
-	wire.FrameResolvePlanReview: "a plan review is decided by the user",
-	wire.FrameInstallPlugin:     "installing a plugin skips the app's trust prompt",
-	wire.FrameSetPluginEnabled:  "enabling a plugin skips the app's trust prompt",
-	wire.FrameRemovePlugin:      "which plugins are installed is the user's choice",
+	wire.FrameAnswerPermission:      "a permission request is answered by the user",
+	wire.FrameResolvePlanReview:     "a plan review is decided by the user",
+	wire.FrameInstallPlugin:         "installing a plugin skips the app's trust prompt",
+	wire.FrameSetPluginEnabled:      "enabling a plugin skips the app's trust prompt",
+	wire.FrameRemovePlugin:          "which plugins are installed is the user's choice",
+	wire.FrameResolveWorktreeChoice: "a worktree-setup question is answered by the user",
+	wire.FrameShutdown:              "stopping Hive ends every session",
+}
+
+// pluginRefusal is why principal (a plugin) may not send ft with this
+// payload, or "" when it may. Beyond pluginRefusedFrames, three verbs
+// depend on the payload: RESOLVE_PROMPT may only dismiss (a paste types
+// into the session), SET_PLUGIN_CONFIG may only touch the caller's own
+// plugin, and PROMPT_ACP may only reach a session that plugin spawned.
+// A payload that does not decode is left to the arm, which reports it.
+func (d *Daemon) pluginRefusal(principal string, ft wire.FrameType, payload []byte) string {
+	if why, ok := pluginRefusedFrames[ft]; ok {
+		return why
+	}
+	own, _ := wire.ParsePrincipal(principal)
+	switch ft {
+	case wire.FrameResolvePrompt:
+		var req wire.ResolvePromptReq
+		if jsonUnmarshal(payload, &req) == nil && req.Paste {
+			return "pasting a prompt types into the session; a plugin may only dismiss it"
+		}
+	case wire.FrameSetPluginConfig:
+		var req wire.SetPluginConfigReq
+		if jsonUnmarshal(payload, &req) == nil && req.ID != own {
+			return "a plugin may only change its own config"
+		}
+	case wire.FramePromptAcp:
+		var req wire.PromptAcpReq
+		if jsonUnmarshal(payload, &req) != nil {
+			return ""
+		}
+		// SpawnedBy is stamped once at create and never rewritten.
+		if e := d.reg.Get(req.SessionID); e == nil || !spawnedByPlugin(e.SpawnedBy, own) {
+			return "a plugin may only prompt sessions it created"
+		}
+	}
+	return ""
+}
+
+// spawnedByPlugin reports whether spawnedBy names plugin id, with or
+// without a workflow run.
+func spawnedByPlugin(spawnedBy, id string) bool {
+	p, _ := wire.ParsePrincipal(spawnedBy)
+	return id != "" && p == id
 }
 
 // projectOfSession resolves the project a session belongs to, or "" if
@@ -1687,7 +1731,7 @@ func (d *Daemon) handleControlFrame(ctx context.Context, ops controlOps, ft wire
 	// is refused, checked before any arm runs (so before the async ones
 	// start) and before handlePluginFrame's plugins_unavailable.
 	if ops.principal != "" {
-		if why, refused := pluginRefusedFrames[ft]; refused {
+		if why := d.pluginRefusal(ops.principal, ft, payload); why != "" {
 			ops.sendError(wire.ErrCodeModeNotAllowed, ft.String()+" is not available to plugins: "+why)
 			return false
 		}

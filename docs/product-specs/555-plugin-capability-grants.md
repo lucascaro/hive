@@ -13,8 +13,9 @@ stage: TRIAGE
 A plugin's own socket is refused the decisions that belong to the user:
 typing into a session (attach `DATA`/`RESIZE`, `SEND_TO_SESSION`),
 answering an agent's permission request (`ANSWER_PERMISSION`), deciding a
-plan review (`RESOLVE_PLAN_REVIEW`), and installing, enabling or removing
-plugins. No bundled plugin needs any of them today. A legitimate plugin may
+plan review (`RESOLVE_PLAN_REVIEW`), answering a worktree-setup question,
+stopping Hive (`SHUTDOWN`), prompting an ACP session it did not create, and
+installing, enabling, removing or reconfiguring other plugins. No bundled plugin needs any of them today. A legitimate plugin may
 one day need one, such as a chat bridge that types the user's reply into a
 session, and today the only answer is "no". The protocol has no way for the
 user to say "yes, this plugin may".
