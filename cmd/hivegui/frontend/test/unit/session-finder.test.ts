@@ -160,13 +160,145 @@ describe('finderRows — empty query is recency order (criterion 3)', () => {
   });
 });
 
+describe('finderRows — attention ranking (spec 562)', () => {
+  // A live, ready session: sessionState() resolves these to `running`
+  // unless a flag below says otherwise.
+  const live = (o: Partial<FinderSession> & { id: string }): FinderSession =>
+    s({ alive: true, ...o });
+  const waiting = { state: 'waiting_input' };
+
+  it('keeps the previous session first even when others are flagged', () => {
+    const sessions = [
+      live({ id: 'a', ...waiting }),
+      live({ id: 'b' }),
+      live({ id: 'c' }),
+    ];
+    // left b for c: b is previous, a is flagged, c is active.
+    expect(rows(sessions, '', ['b'], 'c')).toEqual(['b', 'a', 'c']);
+  });
+
+  it.each([
+    ['attention (bell)', { needs_attention: true }],
+    ['attention (waiting for input)', { state: 'waiting_input' }],
+    ['waiting-permission', { state: 'waiting_permission' }],
+    ['failed (live, daemon error)', { state: 'error' }],
+    ['error (dead with last_error)', { alive: false, last_error: 'boom' }],
+  ])('ranks a %s session ahead of unflagged ones', (_, flag) => {
+    const sessions = [
+      live({ id: 'prev' }),
+      live({ id: 'x' }),
+      live({ id: 'y' }),
+      live({ id: 'flagged', ...flag }),
+      live({ id: 'me' }),
+    ];
+    expect(rows(sessions, '', ['prev'], 'me')).toEqual([
+      'prev',
+      'flagged',
+      'x',
+      'y',
+      'me',
+    ]);
+  });
+
+  it('leads with flagged sessions when there is no history', () => {
+    const sessions = [live({ id: 'a' }), live({ id: 'b', ...waiting })];
+    expect(rows(sessions, '', [], null)).toEqual(['b', 'a']);
+  });
+
+  it('keeps recency order within the flagged and unflagged groups', () => {
+    const sessions = [
+      live({ id: 'a', ...waiting }),
+      live({ id: 'b' }),
+      live({ id: 'c', ...waiting }),
+      live({ id: 'd' }),
+      live({ id: 'e' }),
+    ];
+    // back (most recent last): d, c, b, a; e active. Recency: a b c d.
+    expect(rows(sessions, '', ['d', 'c', 'b', 'a'], 'e')).toEqual([
+      'a',
+      'c',
+      'b',
+      'd',
+      'e',
+    ]);
+  });
+
+  it('lists a flagged previous session once, first', () => {
+    const sessions = [
+      live({ id: 'a', ...waiting }),
+      live({ id: 'b', ...waiting }),
+      live({ id: 'c' }),
+    ];
+    expect(rows(sessions, '', ['a'], 'c')).toEqual(['a', 'b', 'c']);
+  });
+
+  it('keeps the active session last even when flagged', () => {
+    const sessions = [
+      live({ id: 'a', ...waiting }),
+      live({ id: 'b' }),
+      live({ id: 'c' }),
+    ];
+    expect(rows(sessions, '', [], 'a')).toEqual(['b', 'c', 'a']);
+  });
+
+  it('does not flag a starting or exited session', () => {
+    const sessions = [
+      live({ id: 'plain' }),
+      live({ id: 'starting', phase: 'starting', needs_attention: true }),
+      live({ id: 'dead', alive: false, needs_attention: true }),
+    ];
+    expect(rows(sessions, '', [], null)).toEqual(['plain', 'starting', 'dead']);
+  });
+
+  it('a flag that clears is ranked unflagged on the next call', () => {
+    const before = [live({ id: 'a' }), live({ id: 'b', ...waiting })];
+    const after = [live({ id: 'a' }), live({ id: 'b' })];
+    expect(rows(before, '')).toEqual(['b', 'a']);
+    expect(rows(after, '')).toEqual(['a', 'b']);
+  });
+
+  it('typed query: a better-scoring unflagged match beats a worse flagged one', () => {
+    const sessions = [
+      live({ id: 'loose', name: 'f-i-x', ...waiting }),
+      live({ id: 'tight', name: 'fix' }),
+    ];
+    expect(rows(sessions, 'fix')).toEqual(['tight', 'loose']);
+  });
+
+  it('typed query: at equal score the flagged session comes first', () => {
+    const sessions = [
+      live({ id: 'calm', name: 'same' }),
+      live({ id: 'flagged', name: 'same', ...waiting }),
+    ];
+    expect(rows(sessions, 'same', ['calm'])).toEqual(['flagged', 'calm']);
+  });
+
+  it('typed query: the active session is never treated as flagged', () => {
+    const sessions = [
+      live({ id: 'me', name: 'same', ...waiting }),
+      live({ id: 'other', name: 'same' }),
+    ];
+    expect(rows(sessions, 'same', [], 'me')).toEqual(['other', 'me']);
+  });
+});
+
 describe('finderRows — scale (criterion 7)', () => {
   it('filters 100 sessions well inside the budget', () => {
+    // Every third one flagged, so the partition and tie-break are timed.
     const many = Array.from({ length: 100 }, (_, i) =>
-      s({ id: `s${i}`, name: `session-${i}`, worktree_branch: `feat/x-${i}` }),
+      s({
+        id: `s${i}`,
+        name: `session-${i}`,
+        worktree_branch: `feat/x-${i}`,
+        alive: true,
+        state: i % 3 === 0 ? 'waiting_input' : undefined,
+      }),
     );
     const t0 = performance.now();
-    for (let i = 0; i < 20; i++) rows(many, 'feat 7');
+    for (let i = 0; i < 20; i++) {
+      rows(many, 'feat 7');
+      rows(many, '');
+    }
     expect((performance.now() - t0) / 20).toBeLessThan(20);
   });
 });

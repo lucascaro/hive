@@ -257,5 +257,11 @@
     "blurb": "On macOS, press ⌃⌥Space anywhere to open a small box, dictate or type into it, check which session it goes to, and press Enter to send it.",
     "status": "shipped",
     "since": "Unreleased"
+  },
+  {
+    "title": "Waiting sessions first in Go to session",
+    "blurb": "With nothing typed, ⌘P now lists the sessions waiting on you right after the one you just left, so a session that needs you is never buried.",
+    "status": "shipped",
+    "since": "Unreleased"
   }
 ]
