@@ -5,7 +5,7 @@ type: enhancement
 complexity: S
 priority: P2
 pr: 564
-stage: REVIEW
+stage: GATE
 ---
 
 # Rank sessions needing attention higher in the ⌘P session finder

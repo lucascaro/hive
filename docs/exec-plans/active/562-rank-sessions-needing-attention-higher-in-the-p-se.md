@@ -128,6 +128,7 @@ Alternative ruled out: freezing order at open — operator chose live order + id
 ## PR convergence ledger
 
 - **2026-11-17 iter 1** — verdict: APPROVE; mergeable: MERGEABLE; findings_hash: empty; threads_open: 0; action: stop; head_sha: 1081e9c.
+- **2026-11-17 iter 2** — verdict: APPROVE; mergeable: MERGEABLE; findings_hash: empty; threads_open: 0; action: stop; head_sha: 9a04941.
 
 ## Open questions
 
