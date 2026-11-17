@@ -38,6 +38,10 @@ Every list that reorders by drag — sidebar sessions, project cards, Settings' 
 
 Attention on a session propagates *up* to every container that can hide it: project card header (swatch ring), collapsed project ("k need you" count), minimized session chip, minimized project chip (state icon + "k" alert count, and the label colour / dot pulse). The collapsed card and the minimized chip both derive their number from one helper, `attentionSummary()` in `lib/session-state.ts`, so the two cannot disagree; it resolves through `sessionState()`, which means a session that is still starting or already gone stops bubbling even if its last-known `needs_attention` flag was set. It propagates *nowhere else* — no window-level flashing, no dock badge beyond what `internal/notify` already does. Clearing: attention clears when the session receives input or is selected, as today; every bubbled indicator clears with it in the same render.
 
+## The selection is never hidden
+
+The active session's row is always on screen while the sidebar is shown (spec 563). On every change of active session, whatever caused it, `#projects` scrolls the minimum needed to show the row clear of the sticky project and group headers (`src/lib/reveal-row.ts`); a row already in view does not move the list. A container that hides rows keeps the active one: a minimized session's row stays while it is active (#407), and a collapsed project card or worktree group draws the active row on its own beneath its header without expanding (components.md › projectCard, worktreeGroup).
+
 ## Exited sessions
 
 Stay in the list, dimmed with strike-through, until the user kills them. Rationale: an agent that exited holds scrollback the user may want; hiding it loses the "why did it stop" trail. Row hover shows `rotate` (restart) first, `x` second. Error exits use `--state-error` on the icon only — the name stays `--fg-subtle`, so a column of failures doesn't turn the sidebar red.

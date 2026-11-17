@@ -44,6 +44,10 @@ export interface ProjectCardProps {
   nameRef: Ref<HTMLSpanElement>;
   // Drag-to-reorder handlers from lib/drag-row.ts, spread onto the card.
   drag: DragRowProps;
+  /** The active session's row, shown beneath the header while the card is
+      collapsed (#563) — the card stays collapsed, but the selection never
+      goes invisible. The caller leaves it out of `children`. */
+  peek?: ReactNode;
   children?: ReactNode;
 }
 
@@ -206,6 +210,11 @@ export function ProjectCard(p: ProjectCardProps) {
           <ul> of their own (drag-reorder inserts its placeholder as a
           sibling <li>). See lib/use-collapse.ts for why the clip is not
           permanent. */}
+      {p.peek ? (
+        <ul className="hv-project-card__rows hv-project-card__peek">
+          {p.peek}
+        </ul>
+      ) : null}
       <div className="hv-project-card__body">
         <ul className="hv-project-card__rows">{p.children}</ul>
       </div>

@@ -55,6 +55,7 @@ import { moveIndex } from '../lib/agent-order.js';
 import { dragRowProps } from '../lib/drag-row.js';
 import { attentionSummary, sessionState } from '../lib/session-state.js';
 import { hasUnread, latestVersion } from '../lib/whats-new.js';
+import { revealRow } from '../lib/reveal-row.js';
 import { readProjectId } from '../lib/wire.js';
 import {
   appStore,
@@ -362,7 +363,18 @@ interface ProjectItemProps {
 // wrap painted rows, so they are grouped from `rows`; a row's shared count
 // is a fact about the worktree, so it counts every session on it — a
 // minimized one still holds the worktree a kill would refuse to touch.
-function renderRows(o: ProjectItemProps, rows: SessionInfo[]): ReactNode[] {
+//
+// `omit` is the active session's id when the card is collapsed (#563): its
+// row is returned as `peek`, for the card to show beneath its header, and
+// left out of `nodes`. Groups are still built from every painted row, so
+// omitting one member of a two-member group does not dissolve the group —
+// that would remount it and lose its collapse state. A group never peeks
+// while the card does (`activeIndex` is -1), so one row has one home.
+function renderRows(
+  o: ProjectItemProps,
+  rows: SessionInfo[],
+  omit: string | null,
+): { nodes: ReactNode[]; peek: ReactNode } {
   const groups = worktreeGroups(rows);
   const allGroups = worktreeGroups(o.sessions);
   const sharedCount = (s: SessionInfo) =>
@@ -390,7 +402,7 @@ function renderRows(o: ProjectItemProps, rows: SessionInfo[]): ReactNode[] {
     const key = worktreeKey(rows[i]);
     const members = key ? groups.get(key) : undefined;
     if (!members || members.length < 2) {
-      out.push(item(rows[i], false));
+      if (rows[i].id !== omit) out.push(item(rows[i], false));
       i++;
       continue;
     }
@@ -415,6 +427,7 @@ function renderRows(o: ProjectItemProps, rows: SessionInfo[]): ReactNode[] {
     out.push(
       <WorktreeGroup
         key={`wt:${key}`}
+        activeIndex={omit ? -1 : run.findIndex((s) => s.id === o.activeId)}
         branch={branch}
         count={run.length}
         color={head.color ?? ''}
@@ -461,13 +474,15 @@ function renderRows(o: ProjectItemProps, rows: SessionInfo[]): ReactNode[] {
           })
         }
       >
-        {run.map((s) =>
-          item(s, !!defaultName && (s.name ?? '') === defaultName),
-        )}
+        {run
+          .filter((s) => s.id !== omit)
+          .map((s) => item(s, !!defaultName && (s.name ?? '') === defaultName))}
       </WorktreeGroup>,
     );
   }
-  return out;
+  // Flat, outside any group: a peeked row is the card's, not the panel's.
+  const omitted = omit ? rows.find((s) => s.id === omit) : undefined;
+  return { nodes: out, peek: omitted ? item(omitted, false) : null };
 }
 
 function ProjectItem(o: ProjectItemProps) {
@@ -485,6 +500,7 @@ function ProjectItem(o: ProjectItemProps) {
   const rows = o.sessions.filter(
     (s) => !o.minimizedSessions.has(s.id) || s.id === o.activeId,
   );
+  const body = renderRows(o, rows, o.collapsed ? o.activeId : null);
 
   // dragstart bubbles, so a session-row drag fires here too after its own
   // handler runs; dragRowProps ignores it rather than preventDefault-ing
@@ -548,13 +564,41 @@ function ProjectItem(o: ProjectItemProps) {
         });
       }}
       drag={drag}
+      peek={body.peek}
     >
-      {renderRows(o, rows)}
+      {body.nodes}
     </ProjectCard>
   );
 }
 
 // ---------- the sidebar ----------
+
+// Keeps the active session's row in view (#563). One reveal per change of
+// active session — never on an unrelated render, or a status update would
+// yank the list back after the user scrolled away. The reveal waits for
+// the row: a spawned session can become active a render before its row
+// paints, and a minimized project's rows paint only once it is restored.
+// Until then the id stays pending; the next active change replaces it.
+function useRevealActiveRow(activeId: string | null) {
+  const pending = useRef<string | null>(null);
+  // Declared before the consumer below, so on the render that changes
+  // activeId both run, in this order, in the same commit.
+  useLayoutEffect(() => {
+    pending.current = activeId;
+  }, [activeId]);
+  // No deps: the row may first appear on any later render.
+  useLayoutEffect(() => {
+    const want = pending.current;
+    if (!want) return;
+    const scroller = document.getElementById('projects');
+    const row = Array.from(
+      scroller?.querySelectorAll<HTMLElement>('.hv-session-row') ?? [],
+    ).find((el) => el.dataset.sid === want);
+    if (!scroller || !row) return;
+    pending.current = null;
+    revealRow(row, scroller);
+  });
+}
 
 export function Sidebar(props: SidebarProps) {
   const projects = useAppStore((s) => s.projects);
@@ -572,6 +616,7 @@ export function Sidebar(props: SidebarProps) {
   // so it is subscribed as a derived string: the selector re-runs on
   // every store change, but only a different id re-renders the sidebar.
   const activePID = useAppStore(() => activeProjectId());
+  useRevealActiveRow(activeId);
 
   const keymap = useAppStore((s) => s.keymap);
   const hints = keyHints(keymap);

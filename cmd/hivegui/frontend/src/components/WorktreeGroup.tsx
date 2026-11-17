@@ -52,7 +52,13 @@ export interface WorktreeGroupProps {
   /** Opens the rename editor over `el` (the title cell). Returns the
       input so the group can cancel it if the group unmounts first. */
   onRenameTitle?: (el: HTMLElement) => HTMLInputElement | undefined;
-  children?: ReactNode;
+  /** The member rows, in painted order. */
+  children?: ReactNode[];
+  /** Index in `children` of the active session's row, or -1. While the
+      group is collapsed that row is lifted out of the hidden body and
+      shown on its own beneath the header (#563): collapsing a group must
+      not make the selection invisible. */
+  activeIndex?: number;
 }
 
 export function WorktreeGroup(p: WorktreeGroupProps) {
@@ -95,6 +101,10 @@ export function WorktreeGroup(p: WorktreeGroupProps) {
     editorRef.current = p.onRenameTitle(el) ?? null;
   };
   const hidden = collapsed && p.attention.count > 0;
+  const rows = p.children ?? [];
+  const ai = p.activeIndex ?? -1;
+  const peek = collapsed && ai >= 0 ? rows[ai] : null;
+  const body = peek ? rows.filter((_, i) => i !== ai) : rows;
   const style = p.color
     ? ({ '--session-color': p.color } as CSSProperties)
     : undefined;
@@ -166,9 +176,16 @@ export function WorktreeGroup(p: WorktreeGroupProps) {
           {p.count}
         </span>
       </div>
+      {/* Both classes: the peek keeps the rail and member indent of
+          __rows, so the lone row still reads as part of its group. */}
+      {peek ? (
+        <ul className="hv-worktree-group__rows hv-worktree-group__peek">
+          {peek}
+        </ul>
+      ) : null}
       {/* Clip wrapper; see ProjectCard and lib/use-collapse.ts. */}
       <div className="hv-worktree-group__body" id={bodyId}>
-        <ul className="hv-worktree-group__rows">{p.children}</ul>
+        <ul className="hv-worktree-group__rows">{body}</ul>
       </div>
     </li>
   );

@@ -61,6 +61,7 @@ Decided in [mocks/sidebar-redesign.html](mocks/sidebar-redesign.html) (G3c).
 - **The group can be named** (#395). Double-clicking the title opens the shared inline editor (`app/inline-rename.ts`, class `group-name-input`), seeded with the current name or the branch. The name is real state — persisted daemon-side on the owning project as `worktree_labels[worktreePath]`, set with `SET_WORKTREE_LABEL` and broadcast as a `PROJECT_EVENT`, so every open window repaints rather than only the one that typed it. It is NOT derived from member names, and committing renames no session: an earlier design fanned the name out over the members and was withdrawn because it worked exactly once and could clobber a hand-named session. Emptying the field clears the name (`allowEmpty`, opt-in precisely because an empty session or project name is a mistake while an unnamed group is just a group).
 - Title cell: one `__title` span holding the optional `__label` (`--text-sm`) and then the `__branch`, both in `--hv-group-ink`. The branch is never dropped when a name is present — stating it is the panel's whole reason to exist — it only demotes to `--text-xs` and gives up its width first. The editor mounts over the whole `__title` cell so there is one mount target whether or not a name exists.
 - The double-click guard is `closest('.hv-worktree-group__title')`, not target identity: the branch carries an `<Icon>` svg, and a click on the icon is a click on the title. The chevron, count and collapsed-state alert sit outside `__title`, so no deny list is needed.
+- Collapsed with the active session inside (and its card expanded): that member is drawn in `ul.hv-worktree-group__rows.hv-worktree-group__peek` under the header, keeping the rail and member indent, and left out of the body. When the card is the one collapsed, the card peeks the row instead, so a row has one home (spec 563).
 
 ## `projectCard({ project, sessions, collapsed, ... })` — React, `src/components/ProjectCard.tsx`
 
@@ -70,6 +71,7 @@ Decided in [mocks/sidebar-redesign.html](mocks/sidebar-redesign.html) (G3c).
 - Card margin `--space-1` above, `--space-3` below.
 - The card ROOT gets `data-state="attention"` when any child session has attention (that is what the CSS selects): the header's swatch gains the pulse ring. Nothing else on the header changes.
 - Collapsed: body hidden, header shows "n sessions · k waiting on you" in the count slot — the same wording the menu bar summary uses, off the same predicate.
+- Collapsed with the active session inside: that one row is drawn, flat, in `ul.hv-project-card__rows.hv-project-card__peek` between the header and the body, and left out of the body (spec 563). The card stays collapsed; the peek goes when the selection moves away. See patterns.md › The selection is never hidden.
 
 ## `chip({ label, color?, state?, count?, attention?, onClick, onRestore? })` — `src/components/Chip.tsx`
 
