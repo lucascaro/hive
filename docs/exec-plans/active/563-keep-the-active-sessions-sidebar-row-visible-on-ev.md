@@ -194,3 +194,6 @@ Independent reviewer (hs-reviewer subagent), two rounds.
 - **2026-11-17** — Spec triaged (enhancement · M · P2); research complete.
 - **2026-11-17** — Plan approved (chat); stage IMPLEMENT.
 - **2026-11-17** — Implemented. 6 DOM/unit mutation checks and 1 e2e mutation check each turn a named test red. typecheck, biome ci, ui-lint, and scripts/test.sh unit (867) / dom (1361) / e2e (586) are all green.
+
+## PR convergence ledger
+
