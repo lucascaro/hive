@@ -7,14 +7,19 @@
 // a thin view over it (same idiom as lib/nav-history.ts).
 //
 // Every call derives the rows from the sessions/projects it is handed, so
-// a rename or a changed branch is matched by its new value with no cache
-// to invalidate.
+// a rename, a changed branch or a flag that comes or goes is reflected
+// with no cache to invalidate.
+//
+// Sessions that want the user (spec 562) rank right after the previous
+// session on an empty query, and win ties on a typed one.
+
+import { sessionState, type StateCarrier } from './session-state.js';
 
 // The slice of SessionInfo / ProjectInfo the finder reads. Structural, so
 // this module imports nothing from app/. Wire fields are dual-spelled
 // (snake_case on the wire, camelCase through some bridges); `title` is
 // snake-only (SessionInfo.title).
-export interface FinderSession {
+export interface FinderSession extends StateCarrier {
   id: string;
   name?: string;
   title?: string;
@@ -92,30 +97,50 @@ export interface FinderInput {
   query: string;
 }
 
+// The states that want the user (spec 562), read through sessionState()
+// so the finder agrees with the status icon it renders on the same row.
+const FLAGGED = new Set(['attention', 'waiting-permission', 'failed', 'error']);
+
 // recencyOrder: the previously focused session first, the active one
-// last, everything else in the order given. Ids no longer present are
-// skipped and repeats collapse. Derived from the nav history rather than
-// a dedicated MRU, so a ⌃- walk makes it approximate — good enough for
-// "chord, Enter = back to the last session".
+// last, everything else in recency order with the flagged ones ahead of
+// the rest. Ids no longer present are skipped and repeats collapse.
+// Derived from the nav history rather than a dedicated MRU, so a ⌃- walk
+// makes it approximate — good enough for "chord, Enter = back to the
+// last session". The active session is never flagged: it is pinned last,
+// and a flag on the session already in view is stale.
 function recencyOrder(
   sessions: readonly FinderSession[],
   back: readonly string[],
   activeId: string | null,
-): FinderSession[] {
+): { session: FinderSession; flagged: boolean }[] {
   const byId = new Map(sessions.map((s) => [s.id, s]));
-  const out: FinderSession[] = [];
+  const recent: FinderSession[] = [];
   const seen = new Set<string>();
   const take = (s: FinderSession | undefined) => {
     if (!s || seen.has(s.id)) return;
     seen.add(s.id);
-    out.push(s);
+    recent.push(s);
   };
   seen.add(activeId ?? '');
   for (let i = back.length - 1; i >= 0; i--) take(byId.get(back[i]));
+  // Only a session that came from the history is "previous"; with none,
+  // nothing is pinned and the flagged sessions lead.
+  const pinned = recent.length;
   for (const s of sessions) take(s);
+  const tagged = recent.map((session) => ({
+    session,
+    flagged: FLAGGED.has(sessionState(session)),
+  }));
+  const head = pinned > 0 ? tagged.slice(0, 1) : [];
+  const rest = pinned > 0 ? tagged.slice(1) : tagged;
+  const out = [
+    ...head,
+    ...rest.filter((r) => r.flagged),
+    ...rest.filter((r) => !r.flagged),
+  ];
   if (activeId) {
     const active = byId.get(activeId);
-    if (active) out.push(active);
+    if (active) out.push({ session: active, flagged: false });
   }
   return out;
 }
@@ -123,19 +148,22 @@ function recencyOrder(
 export function finderRows(input: FinderInput): FinderRow[] {
   const projectName = new Map(input.projects.map((p) => [p.id, p.name ?? '']));
   const rows = recencyOrder(input.sessions, input.back, input.activeId).map(
-    (s) => ({
-      id: s.id,
-      name: s.name ?? '',
-      title: s.title ?? '',
-      project: projectName.get(s.projectId ?? s.project_id ?? '') ?? '',
-      branch: s.worktree_branch ?? s.worktreeBranch ?? '',
-      agent: s.agent ?? '',
+    ({ session: s, flagged }) => ({
+      flagged,
+      row: {
+        id: s.id,
+        name: s.name ?? '',
+        title: s.title ?? '',
+        project: projectName.get(s.projectId ?? s.project_id ?? '') ?? '',
+        branch: s.worktree_branch ?? s.worktreeBranch ?? '',
+        agent: s.agent ?? '',
+      },
     }),
   );
   const terms = input.query.split(/\s+/).filter(Boolean);
-  if (terms.length === 0) return rows;
-  const scored: { row: FinderRow; score: number }[] = [];
-  for (const row of rows) {
+  if (terms.length === 0) return rows.map((r) => r.row);
+  const scored: { row: FinderRow; score: number; flagged: boolean }[] = [];
+  for (const { row, flagged } of rows) {
     let total = 0;
     let ok = true;
     for (const term of terms) {
@@ -150,8 +178,11 @@ export function finderRows(input: FinderInput): FinderRow[] {
       }
       total += best;
     }
-    if (ok) scored.push({ row, score: total });
+    if (ok) scored.push({ row, score: total, flagged });
   }
-  // Array.prototype.sort is stable: ties keep the recency order above.
-  return scored.sort((a, b) => b.score - a.score).map((x) => x.row);
+  // Score first; a flagged session wins a tie. Array.prototype.sort is
+  // stable, so what is still tied keeps the recency order above.
+  return scored
+    .sort((a, b) => b.score - a.score || Number(b.flagged) - Number(a.flagged))
+    .map((x) => x.row);
 }

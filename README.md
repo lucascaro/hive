@@ -376,7 +376,7 @@ These are the defaults. Rebind any of them, and any plugin command, under **Sett
 | Key | Action |
 |---|---|
 | ⌘T / ⇧⌘T | New session (agent launcher) / in a git worktree |
-| ⌘P | Go to session: search every session by name, window title, branch or project, then Enter to jump (empty search lists the one you were just in first). Ctrl+P on Windows and Linux |
+| ⌘P | Go to session: search every session by name, window title, branch or project, then Enter to jump (empty search lists the one you were just in first, then sessions waiting on you; while typing, a waiting session wins a tie). Ctrl+P on Windows and Linux |
 | ⌘K / ⇧⌘K | Duplicate session / duplicate choosing the tool |
 | ⌘N | New project |
 | ⇧⌘N | New window |

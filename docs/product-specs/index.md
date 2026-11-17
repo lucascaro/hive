@@ -25,6 +25,7 @@ The *what* and *why* of work this project plans to do. Each spec describes user 
 
 | Issue | Title | PR | Shipped | Spec |
 |-------|-------|----|---------|------|
+| #562 | Rank sessions needing attention higher in the ⌘P session finder | #564 | 2026-11-17 | [562-rank-sessions-needing-attention-higher-in-the-p-se](562-rank-sessions-needing-attention-higher-in-the-p-se.md) |
 | #553 | Dictate into a session from anywhere via a global capture HUD | #556 | 2026-11-16 | [553-dictate-into-a-session-from-anywhere-via-a-global](553-dictate-into-a-session-from-anywhere-via-a-global.md) |
 | #551 | Add Quit, Restart and Start-at-Login controls to the menu bar | #552 | 2026-11-14 | [551-add-quit-restart-and-start-at-login-controls-to-the](551-add-quit-restart-and-start-at-login-controls-to-the.md) |
 | #544 | Add a session finder: shortcut and palette command to jump to any session by name, title, branch or project | #545 | 2026-11-11 | [544-add-a-session-finder-shortcut-and-palette-command-to](544-add-a-session-finder-shortcut-and-palette-command-to.md) |

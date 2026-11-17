@@ -14,9 +14,22 @@
 // registerModal() here anymore (registry.ts is gone with this phase),
 // so this file is also what pins the outside-mousedown-closes and
 // reopen-resets-state contracts down.
-import { describe, it, expect, vi, beforeAll, beforeEach } from 'vitest';
+import {
+  afterEach,
+  beforeAll,
+  beforeEach,
+  describe,
+  expect,
+  it,
+  vi,
+} from 'vitest';
 import { act, fireEvent, render } from '@testing-library/react';
-import { resetStore } from '../../src/store/store.js';
+import {
+  appStore,
+  removeSession,
+  resetStore,
+  updateSession,
+} from '../../src/store/store.js';
 
 // #app wraps the root for the same reason settings.test.tsx wraps its
 // dialog root: RTL's cleanup() removes a render() container whose
@@ -37,6 +50,7 @@ let initCommandPalette: CommandPaletteModule['initCommandPalette'];
 let CommandPalette: typeof import('../../src/components/modals/CommandPalette.js')['CommandPalette'];
 
 const focusActiveTerm = vi.fn();
+const goToSession = vi.fn();
 
 // Three rows: one with a shortcut, one without (the empty-span case),
 // and one whose shortcut is the ONLY thing a query can match on — the
@@ -108,7 +122,7 @@ beforeAll(async () => {
   initCommandPalette({
     focusActiveTerm,
     setFocusedTile: () => {},
-    goToSession: () => {},
+    goToSession,
   });
 });
 
@@ -117,6 +131,7 @@ beforeEach(() => {
   runBeta.mockClear();
   runZoom.mockClear();
   focusActiveTerm.mockClear();
+  goToSession.mockClear();
   resetStore();
   render(<CommandPalette root={palette()} />, { container: palette() });
 });
@@ -303,5 +318,76 @@ describe('Escape belongs to the ladder', () => {
     });
     expect(e.defaultPrevented).toBe(false);
     expect(palette().classList.contains('hidden')).toBe(false);
+  });
+});
+
+// Spec 562: attention can reorder the session finder while it is open, so
+// the highlight follows the session it is on rather than its old row index.
+describe('session finder: live reorder (spec 562)', () => {
+  type Sess = ReturnType<typeof appStore.getState>['sessions'][number];
+  const sess = (id: string, extra: Partial<Sess> = {}) =>
+    ({ id, name: id, project_id: 'p', alive: true, ...extra }) as Sess;
+  const sids = () => rows().map((r) => r.getAttribute('data-sid'));
+  const selectedSid = () =>
+    palette()
+      .querySelector('.palette-item[data-selected]')
+      ?.getAttribute('data-sid');
+  const openFinder = async () => {
+    const { openSessionFinder } = await import(
+      '../../src/app/modals/command-palette.js'
+    );
+    act(() => openSessionFinder());
+  };
+
+  beforeEach(() => {
+    vi.useFakeTimers();
+    act(() =>
+      resetStore({
+        sessions: [sess('a'), sess('b'), sess('c'), sess('d')],
+        projects: [{ id: 'p', name: 'proj' }] as never,
+        activeId: 'd',
+      }),
+    );
+  });
+  // Here, not at the end of each test: a failed assertion would otherwise
+  // leave fake timers on for every later test in the file.
+  afterEach(() => vi.useRealTimers());
+
+  it('highlight follows the selected session when a state change reorders rows', async () => {
+    await openFinder();
+    expect(sids()).toEqual(['a', 'b', 'c', 'd']);
+    press('ArrowDown');
+    expect(selectedSid()).toBe('b');
+    // c starts waiting: it jumps ahead of b, which moves to index 2.
+    act(() => updateSession(sess('c', { state: 'waiting_input' })));
+    expect(sids()).toEqual(['c', 'a', 'b', 'd']);
+    expect(selectedSid()).toBe('b');
+    press('Enter');
+    act(() => vi.runAllTimers());
+    expect(goToSession).toHaveBeenCalledWith('b');
+  });
+
+  it('typing after ArrowDown keeps the index rule (regression guard)', async () => {
+    await openFinder();
+    press('ArrowDown');
+    expect(selectedSid()).toBe('b');
+    // A query every row matches (the project name) leaves the list as it
+    // was; the selection keeps its index, exactly as before spec 562.
+    type('proj');
+    expect(selectedSid()).toBe(sids()[1]);
+  });
+
+  it('a removed selected session falls back to the clamped index; Enter never activates a gone id', async () => {
+    await openFinder();
+    press('ArrowDown');
+    press('ArrowDown');
+    expect(selectedSid()).toBe('c');
+    act(() => removeSession('c'));
+    expect(sids()).toEqual(['a', 'b', 'd']);
+    expect(selectedSid()).toBe('d');
+    press('Enter');
+    act(() => vi.runAllTimers());
+    expect(goToSession).toHaveBeenCalledWith('d');
+    expect(goToSession).not.toHaveBeenCalledWith('c');
   });
 });

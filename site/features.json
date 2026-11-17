@@ -259,6 +259,12 @@
     "since": "Unreleased"
   },
   {
+    "title": "Waiting sessions first in Go to session",
+    "blurb": "With nothing typed, ⌘P now lists the sessions waiting on you right after the one you just left, so a session that needs you is never buried.",
+    "status": "shipped",
+    "since": "Unreleased"
+  },
+  {
     "title": "The sidebar keeps your session in view",
     "blurb": "Switch sessions any way you like and the sidebar scrolls to it, even inside a collapsed project or worktree group.",
     "status": "shipped",
