@@ -144,9 +144,7 @@ func TestEventModeUnknownKindDropped(t *testing.T) {
 	}
 	assertConnClosed(t, c)
 	// And the session's state must be untouched.
-	if info := findSession(d, id); info.State != wire.StateIdle {
-		t.Errorf("state = %q, want idle (unchanged)", info.State)
-	}
+	assertStateUnclaimed(t, d, id)
 }
 
 // TestEventModeReadDeadline: a client that connects in event mode and
@@ -158,6 +156,19 @@ func TestEventModeReadDeadline(t *testing.T) {
 	c := dialEvent(t, d, bootstrapSessionID(t, d))
 	defer c.Close()
 	assertConnClosed(t, c)
+}
+
+// assertStateUnclaimed checks that a refused event left the session's
+// state to the byte heuristic. It cannot demand idle: the heuristic reads
+// the shell's own startup output as working until it goes quiet, and on a
+// slow runner that is still happening when the event is refused.
+func assertStateUnclaimed(t *testing.T, d *Daemon, id string) {
+	t.Helper()
+	info := findSession(d, id)
+	if info.StateSource != wire.StateSourceHeuristic ||
+		(info.State != wire.StateIdle && info.State != wire.StateWorking) {
+		t.Errorf("state = %q/%q, want idle or working from the heuristic (unchanged)", info.State, info.StateSource)
+	}
 }
 
 // assertConnClosed reads from c and expects EOF (or any error) within
@@ -192,9 +203,7 @@ func TestEventFrameRefusesMalformedKey(t *testing.T) {
 				t.Fatalf("write: %v", err)
 			}
 			assertConnClosed(t, c)
-			if info := findSession(d, id); info.State != wire.StateIdle {
-				t.Errorf("state = %q, want idle (unchanged)", info.State)
-			}
+			assertStateUnclaimed(t, d, id)
 		})
 	}
 }
@@ -215,7 +224,5 @@ func TestEventModeRejectsLayaSource(t *testing.T) {
 		t.Fatalf("write: %v", err)
 	}
 	assertConnClosed(t, c)
-	if info := findSession(d, id); info.State != wire.StateIdle || info.StateSource != wire.StateSourceHeuristic {
-		t.Errorf("state = %q/%q, want idle/heuristic (unchanged)", info.State, info.StateSource)
-	}
+	assertStateUnclaimed(t, d, id)
 }

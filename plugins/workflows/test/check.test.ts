@@ -106,7 +106,10 @@ test('a timeout sends TERM to the group and KILL after the grace, and a grandchi
     assert.ok(Date.now() - t0 >= 700, 'the KILL waited out the grace');
     assert.ok(grand > 0 && h.pid !== undefined);
     assert.equal(running(h.pid as number), false, 'the leader is dead');
-    assert.equal(running(grand), false, 'its grandchild, in the same group, is dead');
+    // The grandchild is not our child: once the leader dies it is reparented and
+    // reaped by init on init's schedule, so a KILL that has landed can still
+    // read as alive for a moment.
+    await waitFor(() => !running(grand), 'its grandchild, in the same group, to die');
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }
@@ -293,7 +296,7 @@ test('plugin crash: the check outlives the engine, is reaped on restart, and the
     try {
       await h.engine.recover();
       await waitFor(() => runState(h, id) === 'done', 'the retried run');
-      assert.equal(running(pid), false, 'the survivor was reaped');
+      await waitFor(() => !running(pid), 'the survivor to be reaped (an orphan: init reaps it)');
       const c = rowOf(h, id, 'c');
       assert.equal(c?.attempt, 2);
       assert.deepEqual(c?.output_raw, { ok: true, exit_code: 0 });

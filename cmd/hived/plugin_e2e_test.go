@@ -346,7 +346,7 @@ hive.on('PROJECTS', (p) => {
 func TestE2E_NonSDKPlugin_Contained(t *testing.T) {
 	requireNode(t)
 	script := `import net from 'node:net';
-import { writeFileSync } from 'node:fs';
+import { renameSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 const frame = (type, obj) => {
   const body = Buffer.from(JSON.stringify(obj));
@@ -372,7 +372,12 @@ const pump = () => {
   if (s.writableLength < (1 << 20)) s.write(batch);
   setImmediate(pump);
 };
-const report = () => writeFileSync(join(process.env.HIVE_PLUGIN_DATA_DIR, 'count'), String(replies));
+// Write then rename: the test reads the file as soon as it exists.
+const report = () => {
+  const p = join(process.env.HIVE_PLUGIN_DATA_DIR, 'count');
+  writeFileSync(p + '.tmp', String(replies));
+  renameSync(p + '.tmp', p);
+};
 setInterval(() => {}, 1 << 30);
 `
 	d := spawnDaemon(t)
