@@ -56,6 +56,7 @@ import { dragRowProps } from '../lib/drag-row.js';
 import { attentionSummary, sessionState } from '../lib/session-state.js';
 import { hasUnread, latestVersion } from '../lib/whats-new.js';
 import { revealRow } from '../lib/reveal-row.js';
+import { COLLAPSE_MS } from '../lib/use-collapse.js';
 import { readProjectId } from '../lib/wire.js';
 import {
   appStore,
@@ -581,10 +582,13 @@ function ProjectItem(o: ProjectItemProps) {
 // Until then the id stays pending; the next active change replaces it.
 function useRevealActiveRow(activeId: string | null) {
   const pending = useRef<string | null>(null);
+  const settle = useRef<ReturnType<typeof setTimeout>>(undefined);
   // Declared before the consumer below, so on the render that changes
-  // activeId both run, in this order, in the same commit.
+  // activeId both run, in this order, in the same commit. Its cleanup
+  // drops a settle re-reveal still due for the previous active session.
   useLayoutEffect(() => {
     pending.current = activeId;
+    return () => clearTimeout(settle.current);
   }, [activeId]);
   // No deps: the row may first appear on any later render.
   useLayoutEffect(() => {
@@ -597,6 +601,15 @@ function useRevealActiveRow(activeId: string | null) {
     if (!scroller || !row) return;
     pending.current = null;
     revealRow(row, scroller);
+    // A card or group mid collapse/expand is still moving rows and capping
+    // the scroll height, so the reveal above can clamp short. Finish it
+    // once the transition settles (the margin covers a transition that
+    // starts at this same style flush).
+    if (scroller.querySelector('[data-animating]')) {
+      settle.current = setTimeout(() => {
+        if (row.isConnected) revealRow(row, scroller);
+      }, COLLAPSE_MS + 50);
+    }
   });
 }
 

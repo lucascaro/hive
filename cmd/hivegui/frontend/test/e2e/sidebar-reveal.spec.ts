@@ -245,6 +245,28 @@ test.describe('the sidebar follows the active session (#563)', () => {
     expect(await fullyVisible(page, second)).toBe(true);
   });
 
+  test('a switch during an expand animation is revealed once it settles', async ({
+    page,
+  }) => {
+    await boot(page);
+    const first = await firstRow(page);
+    const last = await sidOf(page, 'after7');
+    const card = page.locator('.hv-project-card').first();
+    const chevron = card.locator('.hv-project-card__chevron');
+    await page.locator(`#projects .hv-session-row[data-sid="${last}"]`).click();
+    await page
+      .locator(`#projects .hv-session-row[data-sid="${first}"]`)
+      .click();
+    await chevron.click();
+    await expect(chevron).toHaveAttribute('aria-expanded', 'false');
+    // Expand, then go back to the last row while the body is still growing:
+    // the list is too short to scroll that far yet, so the first reveal
+    // clamps, and only a reveal after the 160ms transition lands the row.
+    await chevron.click();
+    await page.keyboard.press(NAV_BACK);
+    await expectRevealed(page, last);
+  });
+
   test('a collapsed worktree group peeks the active row', async ({ page }) => {
     await boot(page);
     const alpha = await sidOf(page, 'alpha');
