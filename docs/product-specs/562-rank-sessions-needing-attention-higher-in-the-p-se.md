@@ -5,7 +5,8 @@ type: enhancement
 complexity: S
 priority: P2
 pr: 564
-stage: GATE
+shipped: 2026-11-17
+stage: DONE
 ---
 
 # Rank sessions needing attention higher in the ⌘P session finder
@@ -14,7 +15,7 @@ stage: GATE
 - **Type:** enhancement
 - **Complexity:** S
 - **Priority:** P2
-- **Exec plan:** [docs/exec-plans/active/562-rank-sessions-needing-attention-higher-in-the-p-se.md](../exec-plans/active/562-rank-sessions-needing-attention-higher-in-the-p-se.md)
+- **Exec plan:** [docs/exec-plans/completed/562-rank-sessions-needing-attention-higher-in-the-p-se.md](../exec-plans/completed/562-rank-sessions-needing-attention-higher-in-the-p-se.md)
 
 ## Problem
 

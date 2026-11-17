@@ -2,7 +2,7 @@
 
 - **Spec:** [docs/product-specs/562-rank-sessions-needing-attention-higher-in-the-p-se.md](../../product-specs/562-rank-sessions-needing-attention-higher-in-the-p-se.md)
 - **Issue:** #562
-- **Status:** active
+- **Status:** completed
 - **PR:** #564
 - **Branch:** feature/562-finder-attention-first
 
@@ -129,6 +129,14 @@ Alternative ruled out: freezing order at open — operator chose live order + id
 
 - **2026-11-17 iter 1** — verdict: APPROVE; mergeable: MERGEABLE; findings_hash: empty; threads_open: 0; action: stop; head_sha: 1081e9c.
 - **2026-11-17 iter 2** — verdict: APPROVE; mergeable: MERGEABLE; findings_hash: empty; threads_open: 0; action: stop; head_sha: 9a04941.
+
+## Gate verdict
+
+- **2026-11-17** — verdict: PASS; phase: —; checks: 17 passed / 0 failed / 0 followups; followups: none; one-line: all 7 success criteria, 5 non-goals and doc accuracy verified on PR #564.
+  - 2026-11-17 dimensions:
+    - acceptance — PASS — 38 unit + 20 dom + 11 e2e finder tests green; one case per flagged state; 100-session budget <20 ms (spec <100 ms)
+    - non-goals — PASS — ⌘B code, filters, flag clearing, severity ordering and command-mode ranking untouched
+    - doc accuracy — PASS — README ⌘P row, changeset (changed/minor), features.json Unreleased entry, whats-new test green; no generated files edited
 
 ## Open questions
 
