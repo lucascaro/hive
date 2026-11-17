@@ -3,8 +3,8 @@
 - **Spec:** [docs/product-specs/562-rank-sessions-needing-attention-higher-in-the-p-se.md](../../product-specs/562-rank-sessions-needing-attention-higher-in-the-p-se.md)
 - **Issue:** #562
 - **Status:** active
-- **PR:** —
-- **Branch:** —
+- **PR:** #564
+- **Branch:** feature/562-finder-attention-first
 
 ## Summary
 

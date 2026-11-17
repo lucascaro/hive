@@ -4,7 +4,8 @@ title: "Rank sessions needing attention higher in the ⌘P session finder"
 type: enhancement
 complexity: S
 priority: P2
-stage: IMPLEMENT
+pr: 564
+stage: REVIEW
 ---
 
 # Rank sessions needing attention higher in the ⌘P session finder
