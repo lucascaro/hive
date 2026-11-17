@@ -4,7 +4,8 @@ title: Keep the active session's sidebar row visible on every switch
 type: enhancement
 complexity: M
 priority: P2
-stage: IMPLEMENT
+pr: 565
+stage: REVIEW
 ---
 
 # Keep the active session's sidebar row visible on every switch

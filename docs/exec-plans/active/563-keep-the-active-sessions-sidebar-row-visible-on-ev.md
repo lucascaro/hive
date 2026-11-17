@@ -3,6 +3,8 @@
 - **Spec:** [docs/product-specs/563-keep-the-active-sessions-sidebar-row-visible-on-ev.md](../../product-specs/563-keep-the-active-sessions-sidebar-row-visible-on-ev.md)
 - **Issue:** #563
 - **Status:** active
+- **PR:** #565
+- **Branch:** feature/563-sidebar-follows-active-session
 
 ## Summary
 
