@@ -125,6 +125,10 @@ Alternative ruled out: freezing order at open — operator chose live order + id
 - **2026-11-17** — TDD red confirmed on unmodified source: 9 new unit tests failed; the dom reorder test failed (on ordering first, then — after the finder change — on the selection, proving it is not vacuous). The e2e test first passed on old code (recency already put the target second: boot activates each added session, so it is in history); retargeted to the session third by recency, then confirmed red on old code and green on new.
 - **2026-11-17** — Implemented; full `scripts/test.sh` green (go, 878 unit, 1350 dom, 579 e2e), typecheck, `biome ci`, ui-lint OK.
 
+## PR convergence ledger
+
+- **2026-11-17 iter 1** — verdict: APPROVE; mergeable: MERGEABLE; findings_hash: empty; threads_open: 0; action: stop; head_sha: 1081e9c.
+
 ## Open questions
 
 - Flagged-row visual treatment (spec Notes).

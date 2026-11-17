@@ -14,7 +14,15 @@
 // registerModal() here anymore (registry.ts is gone with this phase),
 // so this file is also what pins the outside-mousedown-closes and
 // reopen-resets-state contracts down.
-import { describe, it, expect, vi, beforeAll, beforeEach } from 'vitest';
+import {
+  afterEach,
+  beforeAll,
+  beforeEach,
+  describe,
+  expect,
+  it,
+  vi,
+} from 'vitest';
 import { act, fireEvent, render } from '@testing-library/react';
 import {
   appStore,
@@ -341,6 +349,9 @@ describe('session finder: live reorder (spec 562)', () => {
       }),
     );
   });
+  // Here, not at the end of each test: a failed assertion would otherwise
+  // leave fake timers on for every later test in the file.
+  afterEach(() => vi.useRealTimers());
 
   it('highlight follows the selected session when a state change reorders rows', async () => {
     await openFinder();
@@ -354,7 +365,6 @@ describe('session finder: live reorder (spec 562)', () => {
     press('Enter');
     act(() => vi.runAllTimers());
     expect(goToSession).toHaveBeenCalledWith('b');
-    vi.useRealTimers();
   });
 
   it('typing after ArrowDown keeps the index rule (regression guard)', async () => {
@@ -365,7 +375,6 @@ describe('session finder: live reorder (spec 562)', () => {
     // was; the selection keeps its index, exactly as before spec 562.
     type('proj');
     expect(selectedSid()).toBe(sids()[1]);
-    vi.useRealTimers();
   });
 
   it('a removed selected session falls back to the clamped index; Enter never activates a gone id', async () => {
@@ -380,6 +389,5 @@ describe('session finder: live reorder (spec 562)', () => {
     act(() => vi.runAllTimers());
     expect(goToSession).toHaveBeenCalledWith('d');
     expect(goToSession).not.toHaveBeenCalledWith('c');
-    vi.useRealTimers();
   });
 });
