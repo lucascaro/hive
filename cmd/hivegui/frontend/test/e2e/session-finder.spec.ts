@@ -172,6 +172,35 @@ test.describe('session finder', () => {
     await termFocused(page);
   });
 
+  test('empty query: a waiting session is listed right after the previous one', async ({
+    page,
+  }) => {
+    // Spec 562. Four sessions; boot activates each as it is added, then we
+    // visit 0 and 1, so recency reads 0 (previous), 3, 2, and 1 is current.
+    // Session 2 — third by recency — then starts waiting on the user.
+    await boot(page, 3);
+    const ids = await page.evaluate(
+      () => window.__hive_state?.sessions.map((s) => s.id) ?? [],
+    );
+    await page.click(`#projects li[data-sid="${ids[0]}"]`);
+    await expect.poll(() => activeId(page)).toBe(ids[0]);
+    await page.click(`#projects li[data-sid="${ids[1]}"]`);
+    await expect.poll(() => activeId(page)).toBe(ids[1]);
+    await updateSession(page, ids[2], { state: 'waiting_input' });
+
+    await openFinder(page);
+    await expect(rows(page).nth(0)).toHaveAttribute('data-sid', ids[0]);
+    const waiting = rows(page).nth(1);
+    await expect(waiting).toHaveAttribute('data-sid', ids[2]);
+    // The row really is flagged, so this cannot pass on an unflagged row
+    // that happened to land second.
+    await expect(
+      waiting.locator('.palette-state[data-state="attention"] title'),
+    ).toHaveText(/^Waiting for you/);
+    await expect(rows(page).nth(2)).toHaveAttribute('data-sid', ids[3]);
+    await expect(rows(page).nth(3)).toHaveAttribute('data-sid', ids[1]);
+  });
+
   test('Escape closes, keeps the selection and returns focus to the terminal', async ({
     page,
   }) => {

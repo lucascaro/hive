@@ -82,6 +82,14 @@ export function CommandPalette({
   );
 }
 
+// The palette's selection: the picked row's key and index, and the query
+// it was picked under (see activeIndex).
+interface Selection {
+  key: string | null;
+  index: number;
+  query: string;
+}
+
 // One row either list renders; `run` is what Enter and a click do.
 interface PaletteRow {
   key: string;
@@ -106,7 +114,12 @@ function CommandPaletteBody({
     mode === 'commands' ? 'session-finder' : 'command-palette',
   );
   const [query, setQuery] = useState('');
-  const [selected, setSelected] = useState(0);
+  // What the user picked, where, and under which query. See activeIndex.
+  const [selected, setSelected] = useState<Selection>({
+    key: null,
+    index: 0,
+    query: '',
+  });
   const inputRef = useRef<HTMLInputElement | null>(null);
   const listRef = useRef<HTMLDivElement | null>(null);
 
@@ -180,10 +193,25 @@ function CommandPaletteBody({
       }));
   }, [mode, query, sessions, projects, back, activeId]);
 
-  // Derived rather than chased with another effect: whatever `selected`
-  // drifted to (a query narrowing the list is the only way it can),
-  // this is the "reset to 0" the legacy renderPalette() did inline.
-  const activeIndex = selected >= filtered.length ? 0 : selected;
+  // Derived rather than chased with another effect. Under the query the
+  // pick was made with, the highlight follows the picked row's key: the
+  // session list can reorder while the finder is open (spec 562, a
+  // session starting or stopping to wait), and an index would silently
+  // move Enter onto a different session. Once the query changes, or the
+  // row is gone, it is the index rule the legacy renderPalette() used —
+  // keep the index while the list still reaches it, else reset to 0.
+  const followed =
+    selected.query === query && selected.key !== null
+      ? filtered.findIndex((r) => r.key === selected.key)
+      : -1;
+  const activeIndex =
+    followed >= 0
+      ? followed
+      : selected.index >= filtered.length
+        ? 0
+        : selected.index;
+  const select = (i: number) =>
+    setSelected({ key: filtered[i]?.key ?? null, index: i, query });
 
   function activate(i: number) {
     const c = filtered[i];
@@ -227,14 +255,14 @@ function CommandPaletteBody({
         e.preventDefault();
         e.stopPropagation();
         if (filtered.length === 0) return;
-        setSelected((activeIndex + 1) % filtered.length);
+        select((activeIndex + 1) % filtered.length);
         return;
       }
       if (e.key === 'ArrowUp' || (e.key === 'Tab' && e.shiftKey)) {
         e.preventDefault();
         e.stopPropagation();
         if (filtered.length === 0) return;
-        setSelected((activeIndex - 1 + filtered.length) % filtered.length);
+        select((activeIndex - 1 + filtered.length) % filtered.length);
         return;
       }
       if (e.key === 'Enter') {
@@ -308,7 +336,7 @@ function CommandPaletteBody({
               mode === 'sessions' && c.key === activeId ? 'true' : undefined
             }
             data-selected={i === activeIndex ? '' : undefined}
-            onMouseEnter={() => setSelected(i)}
+            onMouseEnter={() => select(i)}
             onClick={() => activate(i)}
           >
             {c.content}
