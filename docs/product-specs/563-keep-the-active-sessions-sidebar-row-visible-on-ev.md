@@ -5,7 +5,8 @@ type: enhancement
 complexity: M
 priority: P2
 pr: 565
-stage: GATE
+shipped: 2026-11-17
+stage: DONE
 ---
 
 # Keep the active session's sidebar row visible on every switch

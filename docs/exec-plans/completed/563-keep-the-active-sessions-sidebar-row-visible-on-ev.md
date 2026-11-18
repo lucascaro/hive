@@ -2,7 +2,7 @@
 
 - **Spec:** [docs/product-specs/563-keep-the-active-sessions-sidebar-row-visible-on-ev.md](../../product-specs/563-keep-the-active-sessions-sidebar-row-visible-on-ev.md)
 - **Issue:** #563
-- **Status:** active
+- **Status:** completed
 - **PR:** #565
 - **Branch:** feature/563-sidebar-follows-active-session
 
@@ -200,3 +200,11 @@ Independent reviewer (hs-reviewer subagent), two rounds.
 - **2026-11-17 iter 1** — verdict: APPROVE; mergeable: MERGEABLE; findings_hash: empty; threads_open: 1; action: escalated:thread-opened-after-autofix; head_sha: 96dbf746.
 - **2026-11-17 iter 2** — verdict: COMMENT; mergeable: MERGEABLE; findings_hash: c7c41eab; threads_open: 0; action: autofix+push; head_sha: b8ec265a.
 - **2026-11-17 iter 3** — verdict: APPROVE; mergeable: MERGEABLE; findings_hash: empty; threads_open: 0; action: stop; head_sha: d038e127.
+
+## Gate verdict
+
+- **2026-11-17** — verdict: PASS; phase: —; checks: 10 passed / 0 failed / 0 followups; followups: none; one-line: all 8 success criteria are backed by passing unit/dom/e2e tests, no non-goal was crossed, and the docs and changeset are current.
+  - 2026-11-17 dimensions:
+    - acceptance — PASS — vitest 18/18 (new suites), Playwright sidebar-reveal + collapse-animation 12/12, minimize suites 57+15, attention-jump 28. Criterion 8's ⌘B-restores-minimized-project path is untouched by this diff (`app/view.ts` `restoreSession` unchanged) and covered only by mock-based tests.
+    - non-goals — PASS — the diff adds no `toggleCollapsed`/`setCollapsed`/`restoreProject`/sidebar-toggle calls; `revealDelta` is minimal (no centering); reveal fires only on an active-session change; no minimize code touched; no keybinding files touched.
+    - doc accuracy — PASS — `.changesets/sidebar-follows-active-session.md` (`type: changed`, so no `regression_of` needed), a `site/features.json` entry with `since: "Unreleased"`, and `docs/design-docs/ui/components.md` + `patterns.md` updated. The README has no collapse or keybinding text affected.
