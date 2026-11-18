@@ -5,7 +5,7 @@ type: enhancement
 complexity: M
 priority: P2
 pr: 565
-stage: REVIEW
+stage: GATE
 ---
 
 # Keep the active session's sidebar row visible on every switch
