@@ -198,3 +198,4 @@ Independent reviewer (hs-reviewer subagent), two rounds.
 ## PR convergence ledger
 
 - **2026-11-17 iter 1** — verdict: APPROVE; mergeable: MERGEABLE; findings_hash: empty; threads_open: 1; action: escalated:thread-opened-after-autofix; head_sha: 96dbf746.
+- **2026-11-17 iter 2** — verdict: COMMENT; mergeable: MERGEABLE; findings_hash: c7c41eab; threads_open: 0; action: autofix+push; head_sha: b8ec265a.
