@@ -21,9 +21,15 @@ func TestE2E_SDKRequest_CreateSessionReturnsID(t *testing.T) {
 	requireNode(t)
 	d := spawnDaemon(t)
 	script := `import { connect } from './hive-plugin.mjs';
-import { writeFileSync } from 'node:fs';
+import { renameSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
-const out = (name, v) => writeFileSync(join(process.env.HIVE_PLUGIN_DATA_DIR, name), v);
+// Write then rename: the test polls for the file and reads it once it
+// exists, so a plain write could be seen empty.
+const out = (name, v) => {
+  const p = join(process.env.HIVE_PLUGIN_DATA_DIR, name);
+  writeFileSync(p + '.tmp', v);
+  renameSync(p + '.tmp', p);
+};
 const hive = await connect();
 const ack = await hive.request('CREATE_SESSION', { shell: '/bin/sh', name: 'from-sdk' });
 out('created', ack.session_id);
