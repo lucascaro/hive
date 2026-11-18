@@ -59,6 +59,14 @@ test.describe('collapse animation', () => {
 
   test('a project card animates shut instead of snapping', async ({ page }) => {
     await boot(page);
+    // The active session's row leaves a collapsed card's body for the peek
+    // above it (#563), so the body needs a row that is NOT active to have
+    // anything to animate. The new session becomes active; the seed one
+    // stays in the body.
+    await page.evaluate(() => window.__hive.addSession?.('second'));
+    await expect(
+      page.locator('.hv-project-card').first().locator('.hv-session-row'),
+    ).toHaveCount(2);
     await slowCollapse(page);
     const body = '.hv-project-card__body';
     const open = await heightOf(page, body);
