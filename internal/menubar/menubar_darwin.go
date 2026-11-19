@@ -5,7 +5,7 @@
 //go:build darwin
 
 // Package menubar starts Hive's macOS menu-bar agent when it is not
-// already running.
+// already running, and replaces one left running from a different build.
 //
 // It lives in internal/ rather than in either binary because both need
 // it and neither owns it: hived starts hivebar so the menu bar exists
