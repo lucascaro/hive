@@ -73,11 +73,7 @@ func Spawn() {
 	lock := filepath.Join(registry.StateDir(), LockFile)
 	stalePid, stale := staleHolder(lock, buildinfo.BuildID())
 	stale = stale && isHivebar(stalePid)
-	args := []string{"-a", app}
-	if stale {
-		args = []string{"-n", "-a", app, "--args", RestartFlag}
-	}
-	cmd := exec.Command("open", args...)
+	cmd := exec.Command("open", openArgs(app, stale)...)
 	cmd.SysProcAttr = &syscall.SysProcAttr{Setsid: true}
 	cmd.Stdin, cmd.Stdout, cmd.Stderr = nil, nil, nil
 	if err := cmd.Start(); err != nil {
@@ -88,15 +84,29 @@ func Spawn() {
 	// unwaited child of a long-lived daemon is a zombie for the life of
 	// the process. Waiting here, off the caller's path, is also what
 	// tells a stale replacement that the new instance really launched.
-	go func() {
-		if err := cmd.Wait(); err != nil || !stale {
-			return
-		}
-		log.Printf("menubar: replacing hivebar pid %d (different build)", stalePid)
-		if err := syscall.Kill(stalePid, syscall.SIGTERM); err != nil {
-			log.Printf("menubar: stop stale hivebar pid %d: %v", stalePid, err)
-		}
-	}()
+	go func() { afterOpen(cmd.Wait(), stale, stalePid, syscall.Kill) }()
+}
+
+// openArgs is the `open` command line. A replacement needs -n (plain -a
+// only activates the running instance) and RestartFlag (so the new one
+// waits for the old one's lock instead of losing the race).
+func openArgs(app string, replace bool) []string {
+	if replace {
+		return []string{"-n", "-a", app, "--args", RestartFlag}
+	}
+	return []string{"-a", app}
+}
+
+// afterOpen stops the replaced hivebar, and only once `open` succeeded:
+// stopping it after a failed launch would leave no menu bar at all.
+func afterOpen(openErr error, replace bool, pid int, kill func(int, syscall.Signal) error) {
+	if openErr != nil || !replace {
+		return
+	}
+	log.Printf("menubar: replacing hivebar pid %d (different build)", pid)
+	if err := kill(pid, syscall.SIGTERM); err != nil {
+		log.Printf("menubar: stop stale hivebar pid %d: %v", pid, err)
+	}
 }
 
 // staleHolder reports the pid recorded in the lock file when its build

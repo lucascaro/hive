@@ -7,8 +7,11 @@
 package menubar
 
 import (
+	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
+	"slices"
 	"syscall"
 	"testing"
 )
@@ -93,5 +96,49 @@ func TestIsHivebarAcceptsHivebar(t *testing.T) {
 	t.Cleanup(func() { _ = p.Kill(); _, _ = p.Wait() })
 	if !isHivebar(p.Pid) {
 		t.Error("a process named hivebar was not recognised")
+	}
+}
+
+func TestOpenArgs(t *testing.T) {
+	if got := openArgs("/A/hivebar.app", false); !slices.Equal(got, []string{"-a", "/A/hivebar.app"}) {
+		t.Errorf("plain start = %v", got)
+	}
+	want := []string{"-n", "-a", "/A/hivebar.app", "--args", RestartFlag}
+	if got := openArgs("/A/hivebar.app", true); !slices.Equal(got, want) {
+		t.Errorf("replacement = %v, want %v", got, want)
+	}
+}
+
+// The old menu bar is stopped only after its replacement launched, and
+// only when there is one to replace. Killing after a failed `open` would
+// leave no menu bar at all.
+func TestAfterOpenKillsOnlyAfterSuccessfulReplace(t *testing.T) {
+	cases := []struct {
+		name    string
+		openErr error
+		replace bool
+		kill    bool
+	}{
+		{"replace, open ok", nil, true, true},
+		{"replace, open failed", errors.New("open: exit 1"), true, false},
+		{"plain start", nil, false, false},
+		{"plain start, open failed", errors.New("open: exit 1"), false, false},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			var calls []string
+			kill := func(pid int, sig syscall.Signal) error {
+				calls = append(calls, fmt.Sprintf("%d/%v", pid, sig))
+				return nil
+			}
+			afterOpen(tc.openErr, tc.replace, 4242, kill)
+			want := []string(nil)
+			if tc.kill {
+				want = []string{fmt.Sprintf("4242/%v", syscall.SIGTERM)}
+			}
+			if !slices.Equal(calls, want) {
+				t.Errorf("kill calls = %v, want %v", calls, want)
+			}
+		})
 	}
 }
