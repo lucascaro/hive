@@ -7,18 +7,19 @@
 package main
 
 import (
-	"fmt"
 	"os"
 	"path/filepath"
 	"syscall"
 	"time"
 
+	"github.com/lucascaro/hive/internal/buildinfo"
+	"github.com/lucascaro/hive/internal/menubar"
 	"github.com/lucascaro/hive/internal/registry"
 )
 
 const (
 	// restartFlag marks an instance started by Restart Menu Bar.
-	restartFlag = "-restart"
+	restartFlag = menubar.RestartFlag
 	// restartLockWait is how long a restarted instance waits for its
 	// predecessor's lock. Generous: the predecessor only has to return
 	// from systray.Run, which is milliseconds.
@@ -49,7 +50,7 @@ const (
 // quitting on purpose and is about to let go, so failing at once would
 // leave no menu bar at all.
 func claimSingleton(wait time.Duration) (release func(), ok bool) {
-	path := filepath.Join(registry.StateDir(), "hivebar.lock")
+	path := filepath.Join(registry.StateDir(), menubar.LockFile)
 	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
 		// No state dir means no daemon either. Refuse rather than
 		// running unlocked: an unlocked hivebar is how you get two.
@@ -71,10 +72,10 @@ func claimSingleton(wait time.Duration) (release func(), ok bool) {
 		}
 		time.Sleep(lockPollInterval)
 	}
-	// Record the pid for a human debugging "why is there a menu bar
-	// icon". Advisory only — nothing reads it back.
+	// Record who holds it. menubar.Spawn reads the build id back to
+	// replace a menu bar left running from before an update.
 	_ = f.Truncate(0)
-	_, _ = fmt.Fprintf(f, "%d\n", os.Getpid())
+	_, _ = f.WriteAt([]byte(menubar.FormatLockRecord(os.Getpid(), buildinfo.BuildID())), 0)
 	return func() {
 		_ = syscall.Flock(int(f.Fd()), syscall.LOCK_UN)
 		_ = f.Close()

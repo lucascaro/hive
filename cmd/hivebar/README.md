@@ -69,6 +69,14 @@ expected case; the flock in `singleton.go` decides who wins. Set
 (`HIVE_STATE_DIR` set — `scripts/dev-iso.sh`, the e2e-real harness)
 never starts one.
 
+A menu bar left running from an older build is replaced, not kept: the
+lock file records `<pid> <build id>`, and when `menubar.Spawn` finds the
+record from a different build it launches `open -n … -restart` and, once
+that succeeds, sends the old `hivebar` SIGTERM (after checking the pid
+really is `hivebar`).
+So the first `hived` or `hivegui` launch after an update brings the menu
+bar up to date as well.
+
 Logs land in `hivebar.log` beside `hived.log` in the state dir; a
 bundled agent has no terminal to write to.
 
