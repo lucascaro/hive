@@ -16,6 +16,7 @@
 //
 // Nothing here starts a second session while the first may still be running.
 
+import { INTERRUPTED_NOTE } from './agent.ts';
 import type { Engine } from './engine.ts';
 import type { Row } from './model.ts';
 import type { SessionState } from './sessions.ts';
@@ -57,7 +58,7 @@ export async function recoverAgents(engine: Engine, runIds: string[]): Promise<v
       }
     }
     if (lost()) return;
-    await settleOrphans(engine, run.id, listed, run.rows);
+    await settleOrphans(engine, run.id, listed, run.rows, link, lost);
   }
 }
 
@@ -82,7 +83,9 @@ async function recoverRunning(engine: Engine, runId: string, row: Row, byId: Map
   if (!tx) return engine.interruptNode(runId, key);
 
   // A turn of ours is a user item the daemon stamped with this run's principal.
-  const ours = [...tx.users].filter(([, u]) => u.origin === engine.principalOf(runId)).map(([id]) => ({ id })).sort((a, b) => a.id - b.id);
+  // A retried attempt may reuse a session whose transcript still holds the earlier attempt's turns of ours; its own first turn is the one that carries the interrupted note.
+  const mine = (u: { origin: string; text: string }): boolean => u.origin === engine.principalOf(runId) && (recorded !== undefined || row.attempt <= 1 || u.text.startsWith(INTERRUPTED_NOTE.slice(0, 64)));
+  const ours = [...tx.users].filter(([, u]) => mine(u)).map(([id]) => ({ id })).sort((a, b) => a.id - b.id);
   if (recorded && tx.epoch !== recorded.epoch) return engine.interruptNode(runId, key); // the session was restarted or reloaded: that turn is gone
   // The PROMPT_ACP ack can be lost (the engine died between the daemon starting the turn and the row recording it): the turn is in the transcript, and sending the prompt again would run it twice.
   const after = recorded ? recorded.prompt_id : 0;
@@ -119,9 +122,14 @@ async function recoverRunning(engine: Engine, runId: string, row: Row, byId: Map
  * session is left alone) and the node fails naming the timeout.
  */
 function awaitIdleThenInterrupt(engine: Engine, runId: string, row: Row, idle: boolean, lost: () => boolean): void {
-  const { key } = row;
+  const { key, attempt } = row;
   const sid = row.session_id as string;
   if (idle) return engine.interruptNode(runId, key);
+  // The waiter is for this attempt of this node: once the node is cancelled, retried or finished it must do nothing.
+  const mineStill = (): boolean => {
+    const r = engine.rowOf(runId, key);
+    return r !== undefined && r.attempt === attempt && r.session_id === sid && (r.state === 'running' || r.state === 'waiting');
+  };
   const node = engine.timeoutOf(runId, key);
   const since = Date.parse(row.started_at ?? '');
   const left = Math.max(1000, node * 1000 - (Number.isFinite(since) ? Date.now() - since : 0));
@@ -133,11 +141,11 @@ function awaitIdleThenInterrupt(engine: Engine, runId: string, row: Row, idle: b
     over = true;
     clearTimeout(timer);
     unsub();
-    if (!lost() && engine.rowOf(runId, key)?.session_id === sid) then();
+    if (!lost() && mineStill()) then();
   };
   const look = (): void => {
     const info = feed.session(sid);
-    if (lost()) return end(() => {});
+    if (lost() || !mineStill()) return end(() => {});
     const t = feed.transcript(sid);
     if (info === undefined || info.removed || !info.alive || (t && (t.prompt_id === 0 || t.stop_reason !== ''))) end(() => engine.interruptNode(runId, key, true));
   };
@@ -160,7 +168,7 @@ function awaitIdleThenInterrupt(engine: Engine, runId: string, row: Row, idle: b
  * adopted (it was never prompted: the first turn follows the ack); anything
  * else is killed, so a node never ends up with two sessions in its worktree.
  */
-async function settleOrphans(engine: Engine, runId: string, listed: Listed[], before: Row[]): Promise<void> {
+async function settleOrphans(engine: Engine, runId: string, listed: Listed[], before: Row[], link: number, lost: () => boolean): Promise<void> {
   const rows = engine.agentRows(runId);
   if (rows.length === 0) return; // the run ended while its nodes were read: its sessions are the run-end cleanup's
   // A session a node named when recovery began is that node's, even if the node has changed or ended since.
@@ -182,10 +190,21 @@ async function settleOrphans(engine: Engine, runId: string, listed: Listed[], be
       continue;
     }
     for (const s of group) {
-      try {
-        await engine.hive.request('KILL_SESSION', { session_id: s.id, force: true }, { timeoutMs: 60_000 });
-      } catch (err) {
+      let err: unknown;
+      // Twice: a node must not launch while a session of its own is left running in its worktree.
+      for (let i = 0; i < 2; i++) {
+        try {
+          await engine.hive.request('KILL_SESSION', { session_id: s.id, force: true }, { timeoutMs: 60_000 });
+          err = undefined;
+          break;
+        } catch (e) {
+          err = e;
+        }
+      }
+      if (err !== undefined) {
+        if (lost()) return;
         console.error(`workflows: could not remove ${s.id}, a leftover session of ${runId}/${key}: ${errMsg(err)}`);
+        if (row && (row.state === 'pending' || row.state === 'interrupted')) engine.failNode(runId, key, `a leftover session (${s.id}) from an earlier launch could not be removed (${errMsg(err)}), so the node was not started in its worktree`, { link });
       }
     }
   }

@@ -56,6 +56,8 @@ export interface NodeContext {
   node: Node;
   /** Set only when an agent node is picked up after a crash or reconnect. */
   plan?: AgentPlan;
+  /** The connection generation the launch was queued under: an agent launch is stale once the engine has moved on. */
+  link?: number;
 }
 
 /** What starts a node. A check is real in B2; agents arrive in B3, and tests inject their own. */
@@ -85,6 +87,8 @@ interface Runtime {
   project_id: string;
   model: Model;
   inflight: Set<string>;
+  /** Which launch holds each `inflight` claim, so a launch that settles late cannot release its replacement's. */
+  claims: Map<string, object>;
   stops: Map<string, () => Promise<'kept' | void>>;
   driving: boolean;
   again: boolean;
@@ -228,7 +232,7 @@ export class Engine {
 
   #load(run: RunRow): Runtime {
     const model = modelFor(JSON.parse(run.ir) as IR, JSON.parse(run.input), this.store.loadRows(run.run_id), run.state);
-    const rt: Runtime = { id: run.run_id, epoch: ++this.#epochs, project_id: run.project_id, model, inflight: new Set(), stops: new Map(), driving: false, again: false };
+    const rt: Runtime = { id: run.run_id, epoch: ++this.#epochs, project_id: run.project_id, model, inflight: new Set(), claims: new Map(), stops: new Map(), driving: false, again: false };
     // A finished run is not kept: it is only read, or retried, and a retry reloads it.
     if (run.state === 'running' || run.state === 'waiting') this.#runs.set(run.run_id, rt);
     return rt;
@@ -335,14 +339,19 @@ export class Engine {
   #launch(rt: Runtime, a: Action, plan?: AgentPlan): void {
     const node = rt.model.ix.byId.get(a.node_id)?.node as Node;
     rt.inflight.add(a.key);
+    const claim = {};
+    rt.claims.set(a.key, claim);
     const link = this.#link;
-    const ctx: NodeContext = { engine: this, epoch: rt.epoch, run_id: rt.id, key: a.key, node, ...(plan ? { plan } : {}) };
+    const agent = a.a === 'agent';
+    const ctx: NodeContext = { engine: this, epoch: rt.epoch, run_id: rt.id, key: a.key, node, link, ...(plan ? { plan } : {}) };
     const fail = (err: unknown): void => {
       if (this.#runs.get(rt.id) !== rt) return; // the run ended or was retried since: this failure is not the new attempt's
-      if (link !== this.#link) return; // the connection was lost under this launch: recovery re-derives it from the rows, so its failure is not the node's
-      this.failNode(rt.id, a.key, `${a.a} could not run: ${err instanceof Error ? err.message : String(err)}`, { link });
+      if (agent && link !== this.#link) return; // the connection was lost under this agent launch: recovery re-derives it from the row, so its failure is not the node's (a check does not use the connection)
+      this.failNode(rt.id, a.key, `${a.a} could not run: ${err instanceof Error ? err.message : String(err)}`, agent ? { link } : {});
     };
     const start = (): Promise<void> => {
+      // Queued behind a stale launch while the connection was lost: it is stale too, and starts nothing.
+      if (agent && link !== this.#link) return Promise.resolve();
       try {
         return this.#executors[a.a](ctx);
       } catch (err) {
@@ -363,11 +372,14 @@ export class Engine {
       p.then(clear, clear);
     }
     p.catch(fail).finally(() => {
-      rt.inflight.delete(a.key);
+      if (rt.claims.get(a.key) === claim) {
+        rt.inflight.delete(a.key);
+        rt.claims.delete(a.key);
+      }
       // An executor that returns without starting or failing its node would be launched again at once, forever.
       const s = rt.model.rows.get(a.key)?.state;
-      const live = this.#runs.get(rt.id) === rt && link === this.#link;
-      if (live && (s === 'pending' || s === 'interrupted')) this.failNode(rt.id, a.key, `${a.a} executor returned without starting the node`, { link });
+      const live = this.#runs.get(rt.id) === rt && (!agent || link === this.#link);
+      if (live && (s === 'pending' || s === 'interrupted')) this.failNode(rt.id, a.key, `${a.a} executor returned without starting the node`, agent ? { link } : {});
       if (live) this.drive(rt);
     });
   }
@@ -662,11 +674,12 @@ export class Engine {
   reconnect(hive: Hive): Promise<void> {
     // The connection is the engine's from this call on, so a close that lands while the read is still queued behind the startup recovery is seen.
     this.#hive = hive;
+    this.feed.attach(hive); // before anything can read from it: an answer must not arrive with no listener
     this.#alive = true;
     this.#holds++;
     return this.#serial(async () => {
       try {
-        await this.#reconnect(hive);
+        await this.#reconnect();
       } finally {
         this.#holds--;
       }
@@ -675,11 +688,13 @@ export class Engine {
     });
   }
 
-  async #reconnect(hive: Hive): Promise<void> {
-    this.feed.attach(hive);
+  async #reconnect(): Promise<void> {
     // The agent launches of the lost connection are dead: forget that they are in flight, so a node that was being created is launched again (it may adopt what that launch made).
     for (const rt of this.#runs.values()) {
-      for (const key of [...rt.inflight]) if (rt.model.ix.byId.get(rt.model.rows.get(key)?.node_id ?? '')?.node.kind === 'agent') rt.inflight.delete(key);
+      for (const key of [...rt.inflight]) if (rt.model.ix.byId.get(rt.model.rows.get(key)?.node_id ?? '')?.node.kind === 'agent') {
+          rt.inflight.delete(key);
+          rt.claims.delete(key);
+        }
     }
     await recoverAgents(this, [...this.#runs.keys()]);
   }

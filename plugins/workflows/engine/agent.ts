@@ -85,7 +85,7 @@ class AgentRun {
     this.#deps = deps;
     this.#graceMs = deps.cancelGraceMs ?? CANCEL_GRACE_MS;
     this.#readyMs = deps.readyTimeoutMs ?? READY_TIMEOUT_MS;
-    this.#link = ctx.engine.link;
+    this.#link = ctx.link ?? ctx.engine.link;
   }
 
   get #row(): Row | undefined {
@@ -111,13 +111,12 @@ class AgentRun {
   }
 
   async run(): Promise<void> {
-    const { run_id, key, plan } = this.#ctx;
+    const { plan } = this.#ctx;
     if (plan) {
       if (!this.#live('running', 'waiting')) return; // picked up after a crash: the row is already running
     } else {
       if (!this.#live('pending', 'interrupted')) return;
       this.#retry = this.#state === 'interrupted';
-      if (!this.#engine.reserveTurn(run_id, key)) return; // the 50-turn cap failed the node
     }
     try {
       await (plan ? this.#resumed(plan) : this.#go());
@@ -229,7 +228,9 @@ class AgentRun {
     const ready = await this.#ready();
     if (ready !== undefined) return this.#fail(ready);
     const { model } = engine.run(run_id);
-    return await this.#loop(renderAgentPrompt(model, key, engine.store.getRun(run_id)?.nonce ?? ''), undefined, false);
+    const task = renderAgentPrompt(model, key, engine.store.getRun(run_id)?.nonce ?? '');
+    // An attempt after the first is a retry, whichever launch sends its first turn.
+    return await this.#loop(row.attempt > 1 ? INTERRUPTED_NOTE + task : task, undefined, false);
   }
 
   // ---------------------------------------------------------------- session
@@ -361,8 +362,12 @@ class AgentRun {
 
   async #turn(text: string, again: boolean): Promise<Outcome | undefined> {
     const { run_id, key } = this.#ctx;
-    // Every PROMPT_ACP counts against the run's cap, the re-prompt included.
-    if (again && !this.#engine.reserveTurn(run_id, key)) return undefined;
+    // Every PROMPT_ACP counts against the run's cap, the first and the re-prompt alike. It is charged here, at the send, so a launch that the
+    // connection cut short before any prompt (and is relaunched) is not charged twice.
+    if (!this.#engine.reserveTurn(run_id, key)) {
+      void this.stop(); // the cap failed the node: the session it made has no turn and is closed
+      return undefined;
+    }
     if (!this.#live('running', 'waiting')) return undefined;
     const sending = this.#engine.hive.request('PROMPT_ACP', { session_id: this.#sid, text, workflow_run_id: run_id }, { timeoutMs: 60_000 }).then((ack) => {
       this.#ack = { prompt_id: ack?.prompt_id ?? 0, epoch: ack?.epoch ?? 0 };

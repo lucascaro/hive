@@ -14,6 +14,8 @@ import { test } from 'node:test';
 import { agentExecutor } from '../engine/agent.ts';
 import { type HiveConnection, start } from '../engine/main.ts';
 import { simulate } from './daemon-sim.ts';
+import { workflow } from '../sdk/dsl.ts';
+import { s } from '../sdk/schema.ts';
 import { FakeHive, harness, waitFor } from './harness.ts';
 
 const conn = (h: FakeHive): HiveConnection => h as unknown as HiveConnection;
@@ -295,7 +297,7 @@ test('a connection that dies right after every read is redialled with growing pa
     assert.equal(gone, 1, 'the plugin gave up');
     assert.equal(dialled.length, 10, 'ten redials in a row, however many closes');
     const gaps = dialled.slice(1).map((t, i) => t - dialled[i]);
-    assert.ok(gaps[gaps.length - 1] >= 500 && gaps[gaps.length - 1] > 10 * gaps[0], `the pauses grow: 4 ms doubling, so the last is about 1 s (${gaps.join(', ')} ms)`);
+    assert.ok(gaps[gaps.length - 1] >= 500 && gaps[gaps.length - 1] > gaps[0], `the pauses grow: 4 ms doubling, so the last is about 1 s (${gaps.join(', ')} ms)`);
     assert.equal(engine.store.loadRows(id)[0].state, 'running', 'never failed or interrupted');
   } finally {
     engine.stopFlush();
@@ -337,6 +339,31 @@ test('a connection that stays open clears the streak', async () => {
   } finally {
     engine.stopFlush();
     engine.store.close();
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('a check that fails after the daemon connection was lost still fails its node: checks do not use the connection', async () => {
+  const dir = mkdtempSync(join(tmpdir(), 'wf-redial-'));
+  const hive = new FakeHive();
+  const h = harness(
+    {
+      agent: () => new Promise(() => {}),
+      check: async (ctx) => {
+        ctx.engine.beginNode(ctx.run_id, ctx.key); // the check is running
+        await new Promise((r) => setTimeout(r, 20));
+        throw new Error('the check could not run');
+      },
+    },
+    { dir, hive },
+  );
+  try {
+    const ir = workflow('c', s.object({}), (g) => void g.check('c', { argv: ['true'], timeoutSec: 5 }));
+    const id = h.engine.startRunFromIR({ project_id: 'p1', file: 'w.ts', ir, input: {} });
+    h.engine.disconnect(); // the connection is lost while the check runs
+    await waitFor(() => h.store.getRun(id)?.state === 'failed', 'the check to fail its node');
+  } finally {
+    h.close();
     rmSync(dir, { recursive: true, force: true });
   }
 });

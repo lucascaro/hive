@@ -59,6 +59,8 @@ export interface Source {
 const MAX_ERRORS = 256;
 /** Listings still owed an answer that are remembered: a daemon that never answers cannot grow this. */
 const MAX_LISTINGS = 64;
+/** The codes GET_ACP_TRANSCRIPT is refused with (daemon `sendACPError`). */
+const SNAPSHOT_REFUSALS = new Set(['no_such_session', 'not_acp_session', 'acp_failed', 'session_dead']);
 
 export class SessionFeed {
   readonly #tx = new Map<string, TranscriptState>();
@@ -98,6 +100,8 @@ export class SessionFeed {
    * Undefined when the daemon does not answer in time.
    */
   async listSessions(send: (name: string, payload?: object) => void, timeoutMs = 15_000): Promise<(SessionState & { id: string })[] | undefined> {
+    // A daemon that owes this many answers is not answering: a further request is declined, not sent, so no owed slot is ever dropped.
+    if (this.#listing.length >= MAX_LISTINGS) return undefined;
     let entry: { done: (m: unknown) => void } | undefined;
     const reply = new Promise<unknown>((resolve) => {
       // A listing that gave up keeps its slot in the queue: its answer, if it comes, belongs to it and not to the next request.
@@ -110,7 +114,6 @@ export class SessionFeed {
         },
       };
       this.#listing.push(entry);
-      if (this.#listing.length > MAX_LISTINGS) this.#listing.shift();
     });
     try {
       send('LIST_SESSIONS', {});
@@ -255,15 +258,18 @@ export class SessionFeed {
         named.add(s.id);
         this.#info.set(s.id, sessionState(s));
       }
-      for (const id of [...this.#info.keys()]) if (!named.has(id)) this.#info.delete(id);
-      for (const id of named) this.#notify(id);
+      const gone = [...this.#info.keys()].filter((id) => !named.has(id));
+      for (const id of gone) this.#info.delete(id);
+      // A session the list no longer has is told to its waiters too: they must see it is gone.
+      for (const id of [...named, ...gone]) this.#notify(id);
     }
     answered?.done(m);
   }
 
   #error(m: unknown): void {
     if (!isObj(m) || typeof m.session_id !== 'string' || typeof m.message !== 'string') return;
-    const asked = this.#snapshots.get(m.session_id);
+    // Only an error that says the transcript cannot be had answers a read of it; any other error on the session is not its answer.
+    const asked = SNAPSHOT_REFUSALS.has(String(m.code)) ? this.#snapshots.get(m.session_id) : undefined;
     if (asked) {
       this.#snapshots.delete(m.session_id);
       asked(undefined);

@@ -72,7 +72,7 @@ async function crash(w: World, boot = 'boot-1', deps: AgentDeps = {}): Promise<W
   const all = { ...w.deps, ...deps };
   const h = harness({ agent: agentExecutor(all), check: never }, { dir: w.dir, hive });
   await h.engine.recover();
-  return { ...w, hive, h, deps: all };
+  return { ...w, hive, h, deps: all, cleanup: () => (h.close(), rmSync(w.dir, { recursive: true, force: true })) };
 }
 
 const row = (w: World, key = 'a'): Row => rowOf(w.h, w.id, key) as Row;
@@ -664,6 +664,7 @@ test('orphan adoption: a session made for a node the engine never recorded is ta
     assert.equal(w2.sim.of('CREATE_SESSION').length, 1, 'no second session in the same worktree');
     assert.equal(row(w2).session_id, w2.sim.sessions[0].id);
     assert.equal(row(w2).attempt, 1);
+    assert.equal(row(w2).turns, 1, 'the launch the crash cut short sent nothing, so it charged nothing');
     finish(w2.sim.sessions[0]);
     await done(w2);
   } finally {
@@ -749,6 +750,97 @@ test('orphan scan: a finished run is not active, so its leftover sessions are le
     assert.deepEqual(w2.sim.of('KILL_SESSION'), []);
   } finally {
     w2.cleanup();
+  }
+});
+
+test('orphan adoption: a session that cannot be removed keeps its node from launching in the same worktree', async () => {
+  const w = creating({ killFails: true });
+  await waitFor(() => w.sim.sessions.length === 1, 'the session to be made');
+  const twin = Object.assign(Object.create(Object.getPrototypeOf(w.sim.sessions[0])), w.sim.sessions[0], { id: 'sx' });
+  w.sim.sessions.push(twin);
+  const w2 = await crash(w);
+  try {
+    await waitFor(() => runState(w2.h, w2.id) === 'failed', 'the node to fail');
+    assert.match(row(w2).error ?? '', /could not be removed/);
+    assert.equal(w2.sim.of('CREATE_SESSION').length, 1, 'no second session beside the leftover');
+  } finally {
+    w2.cleanup();
+  }
+});
+
+test('a recovered first turn of a retried attempt still carries the interrupted note', async () => {
+  const w = world(one());
+  await running(w);
+  w.h.engine.disconnect();
+  revive(w.sim.sessions[0]);
+  // attempt 2 is running its session and has not sent its turn when the plugin crashes again
+  const w2 = await crash(w, 'boot-2', { pause: (p) => (p === 'before-prompt' ? never() : Promise.resolve()) });
+  await waitFor(() => row(w2).attempt === 2 && row(w2).state === 'running', 'attempt 2 to be running with no turn');
+  assert.equal(row(w2).prompt_id, undefined);
+  const w3 = await crash(w2, 'boot-2');
+  try {
+    await waitFor(() => w3.sim.prompts.length === 2, 'the turn');
+    assert.ok(w3.sim.prompts[1].startsWith(INTERRUPTED_NOTE), 'sent once, with the note');
+    assert.equal(row(w3).attempt, 2);
+  } finally {
+    w3.cleanup();
+  }
+});
+
+test('a retried attempt does not adopt an earlier attempt\'s turn of ours that its reused session still holds', async () => {
+  const w = world(one());
+  await running(w);
+  w.h.engine.disconnect();
+  finish(w.sim.sessions[0], 'attempt 1\'s result'); // epoch 1, our item 10, ended with a result: the daemon "restarted" with the session unchanged
+  const w2 = await crash(w, 'boot-2', { pause: (p) => (p === 'before-prompt' ? never() : Promise.resolve()) });
+  await waitFor(() => row(w2).attempt === 2 && row(w2).state === 'running', 'attempt 2 to be running with no turn');
+  const w3 = await crash(w2, 'boot-2');
+  try {
+    await waitFor(() => runState(w3.h, w3.id) === 'failed', 'the node to be interrupted again');
+    assert.notEqual(row(w3).state, 'done', 'attempt 1\'s result was not taken as attempt 2\'s');
+    assert.equal(w3.sim.prompts.length, 1);
+  } finally {
+    w3.cleanup();
+  }
+});
+
+test('an idle waiter belongs to its attempt: a cancelled run is not cancelled or failed again when its timer fires', async () => {
+  const slow = workflow('w', s.object({}), (g) => {
+    g.agent('a', { agent: 'claude', prompt: 'do it', output: out, timeoutSec: 1 });
+  });
+  const w = world(slow, {}, { pause: (p) => (p === 'after-prompt' ? never() : Promise.resolve()) });
+  await waitFor(() => w.sim.prompts.length === 1, 'the turn');
+  await tick();
+  w.h.engine.disconnect();
+  w.sim.sessions[0].trim = 1;
+  const w2 = await crash(w);
+  try {
+    await tick();
+    w2.h.engine.cancelRun(w2.id);
+    await new Promise((r) => setTimeout(r, 1300));
+    assert.equal(runState(w2.h, w2.id), 'cancelled');
+    assert.deepEqual(w2.sim.of('CANCEL_ACP'), [], 'the waiter did nothing for a node that had left its attempt');
+  } finally {
+    w2.cleanup();
+  }
+});
+
+test('a launch queued behind a stale one does not start when the connection is lost meanwhile', async () => {
+  let release: () => void = () => {};
+  const w = world(one(), { holdCreate: new Promise<void>((r) => (release = r)) });
+  await waitFor(() => w.sim.sessions.length === 1, 'the first launch to be creating');
+  const asked = w.sim.of('LIST_ACP_AGENTS').length;
+  w.h.engine.cancelRun(w.id);
+  w.h.engine.retryRun(w.id); // the retry queues behind the first launch
+  await tick();
+  w.h.engine.disconnect(); // and the connection is lost while it waits
+  release();
+  await new Promise((r) => setTimeout(r, 60));
+  try {
+    assert.equal(w.sim.of('LIST_ACP_AGENTS').length, asked, 'the queued launch asked the daemon nothing: it belongs to a lost connection');
+    assert.equal(row(w).turns, 0);
+  } finally {
+    w.cleanup();
   }
 });
 

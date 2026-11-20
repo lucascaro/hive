@@ -94,8 +94,8 @@ export class SimSession {
   }
 
   /** The snapshot GET_ACP_TRANSCRIPT answers with: the whole transcript, as a reset. */
-  snapshot(): void {
-    this.hive.emit('ACP_TRANSCRIPT', { ...this.state(), reset: true, items: this.users.slice(this.trim).map((u) => ({ id: u.id, kind: 'user', origin: u.origin, text: u.text })) });
+  snapshot(to: FakeHive = this.hive): void {
+    to.emit('ACP_TRANSCRIPT', { ...this.state(), reset: true, items: this.users.slice(this.trim).map((u) => ({ id: u.id, kind: 'user', origin: u.origin, text: u.text })) });
   }
 
   ask(p: Permission): void {
@@ -124,6 +124,7 @@ export class SimSession {
 
   /** What a restarted adapter looks like: a new epoch, nothing said yet. */
   reset(): void {
+    this.trim = 0; // the trim counted the old epoch's items
     this.epoch++;
     this.prompt_id = 0;
     this.permission = undefined;
@@ -155,6 +156,8 @@ export interface SimOptions {
   neverReady?: boolean;
   /** Called when RESTART_SESSION arrives: throw to refuse it (`restart_failed`). */
   onRestart?: (s: SimSession) => void;
+  /** Refuse every KILL_SESSION. */
+  killFails?: boolean;
   /** Delay CREATE_SESSION's reply, to hold a launch in flight. */
   holdCreate?: Promise<void>;
   /** Drop the PROMPT_ACP ack (the daemon starts the turn; the reply never comes). */
@@ -195,6 +198,7 @@ export function simulate(hive: FakeHive, o: SimOptions): Sim {
     h.replies.COMMIT_WORKTREE = () => ({ committed: true, head: 'sha-2' });
     h.replies.CANCEL_ACP = () => ({ was_busy: true });
     h.replies.KILL_SESSION = (req) => {
+      if (o.killFails) throw hiveError('kill_failed', 'the daemon refused');
       const s = sim.sessions.find((x) => x.id === req.session_id);
       if (s && !s.removed) {
         s.removed = true;
@@ -243,7 +247,7 @@ export function simulate(hive: FakeHive, o: SimOptions): Sim {
     h.onSend.GET_ACP_TRANSCRIPT = (req) => {
       const s = live().find((x) => x.id === req.session_id);
       if (!s) h.emit('ERROR', { code: 'no_such_session', message: 'that session is not open', session_id: req.session_id });
-      else s.snapshot();
+      else s.snapshot(h); // the reply goes to the connection that asked
     };
   }
   install(hive);
