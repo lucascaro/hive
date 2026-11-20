@@ -15,7 +15,7 @@ import { join } from 'node:path';
 import { test } from 'node:test';
 import { type AgentDeps, agentExecutor, INTERRUPTED_NOTE, REPROMPT } from '../engine/agent.ts';
 import type { Row } from '../engine/model.ts';
-import { workflow } from '../sdk/dsl.ts';
+import { p, workflow } from '../sdk/dsl.ts';
 import { s } from '../sdk/schema.ts';
 import { type Sim, type SimOptions, type SimSession, simulate } from './daemon-sim.ts';
 import { FakeHive, type Harness, harness, rowOf, runState, tick, waitFor } from './harness.ts';
@@ -1290,5 +1290,191 @@ test('a session that gets a turn between its read and its removal is not killed'
   } finally {
     h.close();
     rmSync(w.dir, { recursive: true, force: true });
+  }
+});
+
+// ----------------------------------------------- a run that ends inside the orphan scan, and what an adopted session may be
+
+test('a run that ends inside the orphan scan keeps no orphan: a later retry does not take a leftover session the user has since used', async () => {
+  const ir = workflow('w', s.object({}), (g) => {
+    g.agent('a', { agent: 'claude', prompt: 'do a', output: out });
+    g.agent('b', { agent: 'claude', prompt: 'do b', output: out });
+  });
+  const hive = new FakeHive();
+  const dir = mkdtempSync(join(tmpdir(), 'wf-r6-'));
+  const sim = simulate(hive, { onPrompt: () => {} });
+  const create = hive.replies.CREATE_SESSION;
+  hive.replies.CREATE_SESSION = async (req) => {
+    await create(req);
+    return never(); // neither ack is seen: both nodes have a leftover session and no recorded one
+  };
+  const deps = { cancelGraceMs: 40, readyTimeoutMs: 400, settlePollMs: 5 };
+  const h = harness({ agent: agentExecutor(deps), check: never }, { dir, hive });
+  const id = h.engine.startRunFromIR({ project_id: 'p1', file: 'w.ts', ir, input: {} });
+  await waitFor(() => sim.sessions.length === 2, 'both sessions');
+  const sa = sim.sessions.find((x) => x.name.endsWith(' · a')) as SimSession;
+  const sb = sim.sessions.find((x) => x.name.endsWith(' · b')) as SimSession;
+  h.engine.disconnect();
+  h.close();
+  const hive2 = new FakeHive();
+  hive2.welcome = { boot_id: 'boot-1' };
+  sim.attach(hive2);
+  const answer = hive2.onSend.GET_ACP_TRANSCRIPT;
+  hive2.onSend.GET_ACP_TRANSCRIPT = (p) => {
+    if (p.session_id === sa.id) return; // a's leftover cannot be read: a fails, which ends the run
+    answer(p);
+  };
+  const h2 = harness({ agent: agentExecutor(deps), check: never }, { dir, hive: hive2, daemonWaitMs: 300 });
+  try {
+    await h2.engine.recover();
+    assert.equal(runState(h2, id), 'failed');
+    assert.equal(h2.engine.takeOrphan(id, 'b'), undefined, 'nothing is set aside for a run that has ended');
+    // Later the user types into the leftover session from the GUI, and retries the run.
+    sb.begin('user', 'my own work');
+    const before = sim.of('PROMPT_ACP').length;
+    h2.engine.retryRun(id);
+    await new Promise((r) => setTimeout(r, 300));
+    assert.notEqual(rowOf(h2, id, 'b')?.session_id, sb.id, 'b did not take the session the user has used');
+    assert.equal(sim.of('PROMPT_ACP').slice(before).filter((p) => p.session_id === sb.id).length, 0, 'and nothing was prompted into it');
+    assert.deepEqual(sim.of('KILL_SESSION').filter((k) => k.session_id === sb.id), []);
+  } finally {
+    h2.close();
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('an adopted session that has a conversation by the time it would be prompted is not prompted into, and its node does not start beside it', async () => {
+  const w = world(one(), { holdCreate: never() });
+  await waitFor(() => w.sim.sessions.length === 1, 'the session to be made');
+  const sess = w.sim.sessions[0];
+  w.h.engine.disconnect();
+  w.h.close();
+  const hive = new FakeHive();
+  hive.welcome = { boot_id: 'boot-1' };
+  w.sim.attach(hive);
+  let reads = 0;
+  const answer = hive.onSend.GET_ACP_TRANSCRIPT;
+  hive.onSend.GET_ACP_TRANSCRIPT = (p) => {
+    if (++reads === 2) sess.begin('user', 'typed after the scan'); // the read made when the adopted session is about to be prompted
+    answer(p);
+  };
+  const h = harness({ agent: agentExecutor({ cancelGraceMs: 40, readyTimeoutMs: 400, settlePollMs: 5 }), check: never }, { dir: w.dir, hive });
+  try {
+    await h.engine.recover();
+    await waitFor(() => rowOf(h, w.id, 'a')?.state === 'failed', 'the node to fail');
+    assert.match(rowOf(h, w.id, 'a')?.error ?? '', /has a conversation now/);
+    assert.equal(w.sim.of('PROMPT_ACP').length, 0, 'nothing prompted into the conversation');
+    assert.equal(w.sim.of('CREATE_SESSION').length, 1, 'and no second session beside it');
+  } finally {
+    h.close();
+    rmSync(w.dir, { recursive: true, force: true });
+  }
+});
+
+test('a session with an earlier conversation but no turn since its agent started (prompt id 0, replayed items) is not adopted', async () => {
+  const w = world(one(), { holdCreate: never() });
+  await waitFor(() => w.sim.sessions.length === 1, 'the session to be made');
+  const sess = w.sim.sessions[0];
+  sess.users = [{ id: 5, origin: 'replayed', text: 'what the user said before the restart' }]; // revived: counters restarted, history replayed
+  const w2 = await crash(w);
+  try {
+    await waitFor(() => w2.sim.sessions.length === 2, 'the node to start a session of its own');
+    assert.equal(w2.sim.of('PROMPT_ACP').filter((p) => p.session_id === sess.id).length, 0);
+    assert.deepEqual(w2.sim.of('KILL_SESSION'), [], 'left alone, not killed');
+  } finally {
+    w2.cleanup();
+  }
+});
+
+// ---------------------------------------------------------------- nits of round 6
+
+test('answering a waiting human while recovery holds the engine launches nothing until the hold is released', async () => {
+  const gate = workflow('w', s.object({}), (g) => {
+    g.agent('a', { agent: 'claude', prompt: 'do a', output: out });
+    const ask = g.human('ask', { prompt: p`Go on?`, output: s.object({ ok: s.boolean() }) });
+    const c = g.agent('c', { agent: 'claude', prompt: 'do c', output: out });
+    g.edge(ask, c);
+  });
+  const hive = new FakeHive();
+  const dir = mkdtempSync(join(tmpdir(), 'wf-dur-'));
+  const sim = simulate(hive, { onPrompt: () => {} });
+  const deps = { cancelGraceMs: 40, readyTimeoutMs: 400, settlePollMs: 5 };
+  const h = harness({ agent: agentExecutor(deps), check: never }, { dir, hive });
+  const id = h.engine.startRunFromIR({ project_id: 'p1', file: 'w.ts', ir: gate, input: {} });
+  await waitFor(() => rowOf(h, id, 'a')?.prompt_id !== undefined && rowOf(h, id, 'ask')?.state === 'waiting', 'a running and the human waiting');
+  const sa = rowOf(h, id, 'a')?.session_id as string;
+  h.engine.disconnect();
+  h.close();
+  const hive2 = new FakeHive();
+  hive2.welcome = { boot_id: 'boot-1' };
+  sim.attach(hive2);
+  let release: () => void = () => {};
+  let held = false;
+  const answer = hive2.onSend.GET_ACP_TRANSCRIPT;
+  hive2.onSend.GET_ACP_TRANSCRIPT = (q) => {
+    if (q.session_id === sa) {
+      held = true;
+      release = () => answer(q);
+    } else answer(q);
+  };
+  const h2 = harness({ agent: agentExecutor(deps), check: never }, { dir, hive: hive2 });
+  try {
+    const rec = h2.engine.recover();
+    await waitFor(() => held, 'a\'s read to be sent');
+    h2.engine.answerHuman(id, 'ask', { ok: true }); // allowed: it replaces no run
+    await new Promise((r) => setTimeout(r, 60));
+    assert.equal(rowOf(h2, id, 'ask')?.state, 'done');
+    assert.equal(sim.of('CREATE_SESSION').filter((c) => String(c.name).endsWith(' · c')).length, 0, 'c is not launched while recovery holds the engine');
+    release();
+    await rec;
+    await waitFor(() => sim.of('CREATE_SESSION').some((c) => String(c.name).endsWith(' · c')), 'c to launch once the hold is released');
+  } finally {
+    h2.close();
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('a reconnect that throws releases its hold', async () => {
+  const w = world(one());
+  await running(w);
+  w.h.engine.disconnect();
+  const hive2 = new FakeHive();
+  hive2.welcome = { boot_id: 'boot-1' };
+  w.sim.attach(hive2);
+  w.h.engine.feed.listSessions = async () => {
+    throw new Error('the read blew up');
+  };
+  try {
+    await assert.rejects(w.h.engine.reconnect(hive2), /blew up/);
+    assert.equal(w.h.engine.recovering, false, 'the refusal does not stick');
+    w.h.engine.cancelRun(w.id);
+    assert.equal(runState(w.h, w.id), 'cancelled');
+  } finally {
+    w.cleanup();
+  }
+});
+
+test('run.retry says `recovering` when the engine is disconnected or reading, whether the catalog read failed with the connection or not, and never a bad-workflow error', async () => {
+  const w = world(one());
+  await running(w);
+  w.h.engine.cancelRun(w.id);
+  try {
+    // Before: the engine is disconnected.
+    w.h.engine.disconnect();
+    const early = await w.h.topics.preflight('run.retry', { nonce: 'n1', run_id: w.id });
+    assert.equal((early?.data.error as { code: string }).code, 'recovering');
+    // After: the connection goes while the catalog is being asked, and the request fails with it.
+    const hive2 = new FakeHive();
+    hive2.welcome = { boot_id: 'boot-1' };
+    w.sim.attach(hive2);
+    await w.h.engine.reconnect(hive2);
+    hive2.replies.LIST_ACP_AGENTS = () => {
+      w.h.engine.disconnect();
+      throw new Error('hive: connection closed');
+    };
+    const late = await w.h.topics.preflight('run.retry', { nonce: 'n2', run_id: w.id });
+    assert.equal((late?.data.error as { code: string }).code, 'recovering', 'not invalid_ir');
+  } finally {
+    w.cleanup();
   }
 });

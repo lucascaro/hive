@@ -164,21 +164,28 @@ function awaitIdleThenInterrupt(engine: Engine, runId: string, row: Row, idle: b
 
 /**
  * Sessions this run made that no row names. Run cancel and retry are refused
- * while recovery runs (`recovering`, B-26), so the rows read here are the
- * run's rows for the whole pass.
+ * while recovery runs (`recovering`, B-26), so a run is never replaced by a
+ * retry during a pass. A run can still END during it (a node failing ends the
+ * run, which drops it from the engine), so nothing here trusts the rows it
+ * read first: they are read again at every group and before each adoption and
+ * removal, and a run that is gone is left alone.
  *
  * A session that has been prompted is left alone: nothing in this pass knows
- * whose turn it is, and one still running must not be handed to a node that
- * would prompt it (the daemon refuses that as busy) nor killed under it. It
- * is B3d step 2's to reconcile. A session that was never prompted is a
+ * whose turn is running on it, and one still running must not be handed to a
+ * node that would prompt it (the daemon refuses that as busy) nor killed under
+ * it. It is B3d step 2's to reconcile. "Never prompted" means its transcript
+ * has no user item and `prompt_id` is 0: a session `hived` revived after a
+ * restart has `prompt_id` 0 too (the daemon's counters restart with the adapter),
+ * so the empty transcript is what tells it from a conversation, and any turn it
+ * had running died with the adapter. A session that was never prompted is a
  * CREATE_SESSION whose ack the engine never recorded: exactly one, for a node
  * waiting to be launched, is adopted (the first turn follows the ack); any
  * other is killed, so a node never ends up with two sessions in its worktree.
  */
 async function settleOrphans(engine: Engine, runId: string, listed: Listed[], send: (name: string, payload?: object) => void, link: number, lost: () => boolean): Promise<void> {
-  const rows = engine.agentRows(runId);
-  if (rows.length === 0) return; // the run ended while its nodes were read: its sessions are the run-end cleanup's
-  const named = new Set(rows.map((r) => r.session_id).filter((id): id is string => !!id));
+  const rows0 = engine.agentRows(runId);
+  if (rows0.length === 0) return; // the run ended while its nodes were read: its sessions are the run-end cleanup's
+  const named = new Set(rows0.map((r) => r.session_id).filter((id): id is string => !!id));
   const prefix = `${engine.workflowName(runId)} · `;
   const principal = engine.principalOf(runId);
   const byKey = new Map<string, Listed[]>();
@@ -187,20 +194,24 @@ async function settleOrphans(engine: Engine, runId: string, listed: Listed[], se
     const key = s.name?.startsWith(prefix) ? s.name.slice(prefix.length) : '';
     byKey.set(key, [...(byKey.get(key) ?? []), s]);
   }
+  const ended = (): boolean => engine.agentRows(runId).length === 0;
+  const neverPrompted = (tx: { prompt_id: number; users: ReadonlyMap<number, unknown> } | undefined): boolean => tx !== undefined && tx.prompt_id === 0 && tx.users.size === 0;
   for (const [key, group] of byKey) {
+    if (lost()) return;
     // Which of them were never prompted: no answer from the daemon is not "never prompted".
-    const row = rows.find((r) => r.key === key);
     const idle: Listed[] = [];
     for (const s of group) {
       const tx = await engine.feed.fetchTranscript(send, s.id, engine.daemonWaitMs);
       if (lost()) return;
-      if (tx && tx.prompt_id === 0) idle.push(s);
+      const row = engine.rowOf(runId, key);
+      if (neverPrompted(tx)) idle.push(s);
       else if (!tx && row && (row.state === 'pending' || row.state === 'interrupted')) {
         // Neither adopted nor removed, so the node must not launch beside it: it fails (run.retry starts it again), naming the session.
         engine.failNode(runId, key, `a leftover session (${s.id}) from an earlier launch could not be read, so the node was not started in its worktree beside it`, { link });
         break;
       }
     }
+    const row = engine.rowOf(runId, key);
     if (row?.state === 'failed') continue;
     const [only] = idle;
     // Only a node that was about to launch can own it; a node with a session of its own, or a finished one, has no use for another.
@@ -209,10 +220,11 @@ async function settleOrphans(engine: Engine, runId: string, listed: Listed[], se
       continue;
     }
     for (const s of idle) {
+      if (lost()) return;
       // Looked at again just before the kill: a turn may have started on it since it was read. (Narrows the window; closing it is the daemon's.)
       const again = await engine.feed.fetchTranscript(send, s.id, engine.daemonWaitMs);
-      if (lost()) return;
-      if (!again || again.prompt_id !== 0) continue;
+      if (lost() || ended()) return;
+      if (!neverPrompted(again)) continue;
       let err: unknown;
       // Twice: a node must not launch while a session of its own is left running in its worktree.
       for (let i = 0; i < 2; i++) {
@@ -226,9 +238,10 @@ async function settleOrphans(engine: Engine, runId: string, listed: Listed[], se
         }
       }
       if (err !== undefined) {
-        if (lost()) return;
+        if (lost() || ended()) return;
         console.error(`workflows: could not remove ${s.id}, a leftover session of ${runId}/${key}: ${errMsg(err)}`);
-        if (row && (row.state === 'pending' || row.state === 'interrupted')) engine.failNode(runId, key, `a leftover session (${s.id}) from an earlier launch could not be removed (${errMsg(err)}), so the node was not started in its worktree`, { link });
+        const now = engine.rowOf(runId, key);
+        if (now && (now.state === 'pending' || now.state === 'interrupted')) engine.failNode(runId, key, `a leftover session (${s.id}) from an earlier launch could not be removed (${errMsg(err)}), so the node was not started in its worktree`, { link });
       }
     }
   }

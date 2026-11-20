@@ -116,12 +116,20 @@ export class Topics {
       return undefined; // `handle` reports what is wrong with the request
     }
     if (!ir) return undefined;
+    // run.retry is refused while the engine reads the daemon (B-26), and that is what the caller is told, checked after the catalog is asked
+    // (which may be what failed because the connection went): a lost connection must not read as a bad workflow.
+    const recovering = (): Reply | undefined =>
+      topic === 'run.retry' && this.#engine.recovering
+        ? { topic: `${topic}.reply`, data: { nonce: typeof req.nonce === 'string' ? req.nonce : undefined, ok: false, error: { code: 'recovering', message: 'the engine is reading the daemon after a restart or a lost connection, so retrying is refused for now; try again in a moment' } } }
+        : undefined;
     let why: string | undefined;
     try {
       why = await this.#engine.catalogRefusal(ir);
     } catch (err) {
       why = `could not read the agent catalog from the daemon: ${err instanceof Error ? err.message : String(err)}`;
     }
+    const late = recovering();
+    if (late) return late;
     if (!why) return undefined;
     return { topic: `${topic}.reply`, data: { nonce: typeof req.nonce === 'string' ? req.nonce : undefined, ok: false, error: { code: 'invalid_ir', message: redactCut(why, 4 << 10) } } };
   }

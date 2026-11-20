@@ -494,8 +494,13 @@ export class Engine {
    * run.cancel and run.retry are refused while the engine reads the daemon (recovery, a reconnect) or has no connection: they replace
    * what that read describes, and the read decides things about sessions and processes from it. The caller tries again (B-26).
    */
+  /** Whether run.cancel and run.retry are refused right now (B-26). */
+  get recovering(): boolean {
+    return this.#holds > 0 || !this.#alive;
+  }
+
   #refuseWhileRecovering(runId: string, what: string): void {
-    if (this.#holds > 0 || !this.#alive) {
+    if (this.recovering) {
       throw new EngineError('recovering', `the engine is reading the daemon after a restart or a lost connection, so ${what} ${runId} is refused for now; try again in a moment`);
     }
   }
@@ -641,6 +646,7 @@ export class Engine {
 
   /** A live session recovery found for a pending node that was being created when the engine stopped: the next launch of that node takes it over. */
   adoptOrphan(runId: string, key: string, sessionId: string): void {
+    if (!this.#runs.has(runId)) return; // the run ended meanwhile: a retry starts from new rows, and nothing of this one is kept
     this.#orphans.set(`${runId}/${key}`, sessionId);
   }
 
