@@ -211,12 +211,22 @@ const taskToolsNudge = "Hive (the terminal manager running this session) shows t
 
 // pinNudge asks a Claude session to use Hive's pin tool (spec 566) on
 // its own initiative. Like the task tools, an MCP tool may be deferred
-// behind ToolSearch, so it names the tool exactly.
-const pinNudge = "Hive also lets you pin important responses for the user to recall later, " +
-	"shown in Hive's sidebar. When you give an answer the user will want to find again " +
-	"(a decision and its reasons, a root cause, a command recipe, a summary of findings), " +
-	"call the " + agent.ClaudePinToolID + " tool (load it with ToolSearch if it is not loaded) " +
-	"with a short title and the content as markdown. Pin sparingly: not routine progress."
+// behind ToolSearch, so it names the tool exactly. The wording is firm
+// and names concrete triggers on purpose: the first, "pin sparingly"
+// version reached the model and changed nothing (0 of 3 unprompted pins
+// in TestProbeClaudePinsUnprompted on Claude Code 2.1.329).
+var pinNudge = pinGuidance("the " + agent.ClaudePinToolID + " tool (load it with ToolSearch first if it is not loaded)")
+
+// pinGuidance is the pin instruction, naming the tool as call. Shared by
+// the Claude nudge and the pin tool's own MCP description.
+func pinGuidance(call string) string {
+	return "Hive (the terminal manager running this session) keeps the user's important answers ONLY " +
+		"as pins in its inspector; anything you do not pin scrolls away. Before you end any turn in " +
+		"which you explained a root cause, gave a command or recipe, made or recommended a decision, " +
+		"or summarized findings, call " + call + " with a short title naming what it is and the answer " +
+		"as markdown. Do this even when the user did not ask for it. Skip it only for routine progress, " +
+		"chit-chat, or answers with nothing worth finding again."
+}
 
 // envOn reports whether an on/off variable is set to something other
 // than "0" or "false".

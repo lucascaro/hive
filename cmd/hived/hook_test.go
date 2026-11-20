@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"testing"
 	"unicode/utf8"
@@ -603,5 +604,26 @@ func TestHookEmptyTodoWriteClearsPlan(t *testing.T) {
 		"tool_use_id":"toolu_2","tool_input":{}}`))
 	if len(none) != 1 {
 		t.Errorf("got %d events for a TodoWrite with no todos, want only the tool event", len(none))
+	}
+}
+
+// The Pi extension states the pin rule in its own copy (PIN_GUIDANCE in
+// internal/agent/pi/hive.ts). Both agents must get the same rule: tuned
+// on one, it is only as good as the other's stale copy.
+func TestPiPinGuidanceMatchesClaude(t *testing.T) {
+	src, err := os.ReadFile("../../internal/agent/pi/hive.ts")
+	if err != nil {
+		t.Fatal(err)
+	}
+	m := regexp.MustCompile(`(?s)export const PIN_GUIDANCE =\s*(.*?")\s*;\n`).FindSubmatch(src)
+	if m == nil {
+		t.Fatal("PIN_GUIDANCE not found in hive.ts")
+	}
+	var b strings.Builder
+	for _, part := range regexp.MustCompile(`"((?:[^"\\]|\\.)*)"`).FindAllSubmatch(m[1], -1) {
+		b.Write(part[1])
+	}
+	if got, want := b.String(), pinGuidance("hive_pin"); got != want {
+		t.Errorf("Pi PIN_GUIDANCE drifted from the Claude nudge:\n pi:     %s\n claude: %s", got, want)
 	}
 }

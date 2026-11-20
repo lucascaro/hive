@@ -838,3 +838,55 @@ func TestProbeClaudePinsViaMCP(t *testing.T) {
 	}
 	_, _ = sess.Write([]byte("/exit\r"))
 }
+
+// TestProbeClaudePinsUnprompted checks the pin *nudge*, not the plumbing:
+// asked a question whose answer is a root cause plus a command recipe —
+// exactly what the nudge names — and never told to pin, a real Claude
+// should pin the answer on its own. Run it several times when changing
+// the nudge's wording; a soft wording reaches the model and changes
+// nothing (the task-tools nudge went 0/2 to 3/4 on wording alone).
+//
+// Opt-in — it costs API calls:
+//
+//	HIVE_PROBE_CLAUDE=1 go test ./cmd/hived/ -run TestProbeClaudePinsUnprompted -count=3 -v
+func TestProbeClaudePinsUnprompted(t *testing.T) {
+	if os.Getenv("HIVE_PROBE_CLAUDE") != "1" {
+		t.Skip("set HIVE_PROBE_CLAUDE=1 to run the real-claude probe")
+	}
+	if _, err := exec.LookPath("claude"); err != nil {
+		t.Skip("claude not on PATH")
+	}
+	sess, wait := startClaudeProbe(t)
+	_, _ = sess.Write([]byte("Without editing or creating any files: what is the root cause of git's " +
+		"\"fatal: refusing to merge unrelated histories\" error, and what exact command fixes it? Answer concisely."))
+	time.Sleep(700 * time.Millisecond)
+	_, _ = sess.Write([]byte("\r"))
+	info := wait(180*time.Second, func(i wire.SessionInfo) bool { return i.LastSummary != "" }, "the turn to end")
+	if info.PinCount < 1 {
+		t.Fatalf("the agent answered without pinning; summary = %q", info.LastSummary)
+	}
+	_, _ = sess.Write([]byte("/exit\r"))
+}
+
+// TestProbeClaudeSkipsTrivialPins is the other half of the nudge's
+// tuning: a firm rule must not turn every reply into a pin. A trivial
+// answer is not pinned.
+//
+//	HIVE_PROBE_CLAUDE=1 go test ./cmd/hived/ -run TestProbeClaudeSkipsTrivialPins -count=3 -v
+func TestProbeClaudeSkipsTrivialPins(t *testing.T) {
+	if os.Getenv("HIVE_PROBE_CLAUDE") != "1" {
+		t.Skip("set HIVE_PROBE_CLAUDE=1 to run the real-claude probe")
+	}
+	if _, err := exec.LookPath("claude"); err != nil {
+		t.Skip("claude not on PATH")
+	}
+	sess, wait := startClaudeProbe(t)
+	_, _ = sess.Write([]byte("Without using any tools, reply with just the word ok."))
+	time.Sleep(700 * time.Millisecond)
+	_, _ = sess.Write([]byte("\r"))
+	info := wait(120*time.Second, func(i wire.SessionInfo) bool { return i.LastSummary != "" }, "the turn to end")
+	if info.PinCount != 0 {
+		t.Fatalf("a trivial reply was pinned (%d pins)", info.PinCount)
+	}
+	_, _ = sess.Write([]byte("/exit\r"))
+}
