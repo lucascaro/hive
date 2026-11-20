@@ -2581,6 +2581,27 @@ download, the accepted sandbox gap, and `LIST_ACP_AGENTS`.
       prompt, which the daemon refuses while that turn runs (`acp_busy`), and the
       node then fails (the state check ends the waiter); once the turn ends the
       waiter has already ended. The check stays as a cheap guard.
+    - *Gate round 4: a run cancelled and retried while recovery reads it.*
+      `run.cancel` and `run.retry` are not held back during recovery (they are
+      user-facing), and a retry makes a new in-memory run with pending rows and no
+      session. Recovery used the rows it had read before its awaits, so a read that
+      came back late resumed a watch on a node that was pending again (the retried
+      run failed with "executor returned without starting the node") and the orphan
+      scan handed the old node's session, whose turn was still running, to the new
+      node. Now `recoverAgents` records each run's in-memory identity
+      (`Engine.epochOf`) and each node's state, attempt and session at the start,
+      and after every await does nothing to a node or run that is no longer that
+      one (rows, `ackTurn`, `resumeAgent`, the orphan scan and each removal in it);
+      a session set aside as an orphan is valid for one in-memory run only
+      (`takeOrphan` checks the run's identity). Not restored: the `before` rows.
+      **The old run's still-running turn** on that session is not adopted, killed
+      or prompted by the retried run; it is left running, and B3d step 2
+      (reconciliation of a run cancelled while the engine was away or the
+      connection down) is what cancels it, pinned to its `prompt_id` and `epoch`.
+      The orphan removal's stop on a lost link now has its own test. The `#reuse`
+      comment now says what the daemon does: closing the last session of a
+      hive-managed worktree removes it only when it is Pristine (nothing
+      uncommitted, no unpushed commits, inspectable) and keeps one holding work.
     - *The 130 s launch wait* (follow-up 2) is shorter than `#reuse`'s worst-case
       chain (two session settles of 60 s each, a restart of 60 s, a kill and a
       prepare of 120 s). If the wait ends first, the retry's launch goes on beside
@@ -2898,6 +2919,9 @@ what was weighed.
 
 - **2026-11-20 iter 11 (B3c, PR #570)** — verdict: REQUEST_CHANGES (CodeRabbit, 2 threads on 459df1fc); mergeable: MERGEABLE; findings_hash: see list; threads_open: 2 -> 0; action: autofix+push; head_sha: c29f1747. One fixed: the orphan removal's retry now stops once the link is lost, so its second try cannot go to a replacement connection. One answered with a test: a turn is never watched twice after a reconnect (the watcher the lost connection left is woken by `pokeAll` and ends at once, so it does not wait out the 130 s launch wait; the reconnect test now asserts one COMMIT_WORKTREE and one `node.finished`). This entry's stop line supersedes iter 10's.
 - **2026-11-20 iter 12 (B3c, PR #570)** — verdict: APPROVE (own); mergeable: MERGEABLE; findings_hash: empty; threads_open: 0; action: stop; head_sha: c29f1747. Code head; the branch head is this docs-only ledger commit, whose CI is the final CI. 355 plugin tests pass.
+
+- **2026-11-20 iter 13 (B3c, PR #570)** — verdict: REQUEST_CHANGES (gate round 4 FAIL on c29f1747); mergeable: MERGEABLE; findings_hash: see list; threads_open: 0 -> 0; action: autofix+push; head_sha: 17aee59c. Fixed with tests (mutation-checked: 6 of the new guards killed, 3 removed as redundant after showing them equivalent): recovery acted on a stale row snapshot after `run.cancel` + `run.retry` (the gate's probe is now a regression test: the retried run is not failed, nothing prompts or kills the old session, and the old session is not adopted); a session set aside as an orphan is valid for one in-memory run; the orphan-removal retry's stop on a lost link has its own test; the `#reuse` comment matches the daemon's Pristine rule. Decision log: "Gate round 4".
+- **2026-11-20 iter 14 (B3c, PR #570)** — verdict: APPROVE (own); mergeable: MERGEABLE; findings_hash: empty; threads_open: 0; action: stop; head_sha: 17aee59c. Code head; the branch head is this docs-only ledger commit, whose CI is the final CI. 358 plugin tests pass; `internal/workflowe2e` green. This stop supersedes iter 12's.
 
 ## Gate verdict
 
