@@ -55,7 +55,7 @@ export type Transition =
   | { t: 'resume'; key: string; reason: 'permission' }
   | { t: 'turn'; key: string }
   /** An agent turn was started (the PROMPT_ACP ack): which transcript item and epoch it is, and which daemon boot (B3). */
-  | { t: 'ack'; key: string; prompt_id: number; epoch: number; boot_id?: string }
+  | { t: 'ack'; key: string; prompt_id: number; epoch: number; boot_id?: string; again?: boolean }
   | { t: 'run.fail' }
   | { t: 'run.cancel' }
   | { t: 'run.retry' }
@@ -399,7 +399,8 @@ export function apply(m: Model, t: Transition, deps: ApplyDeps): Applied {
       const n = nodeOf(r);
       const base = { state: 'running' as const, started_at: now, ended_at: undefined, error: undefined, ...t.patch };
       if (n.kind === 'check' || n.kind === 'agent') {
-        const next = put(r, { ...base, attempt: r.attempt + 1 });
+        // A new attempt has not been prompted: the turn of an earlier one is not its turn (B3c reads the transcript to tell).
+        const next = put(r, { ...base, ...(n.kind === 'agent' ? { prompt_id: undefined, epoch: undefined, boot_id: undefined, reprompted: undefined, ...t.patch } : {}), attempt: r.attempt + 1 });
         ev(next, 'node.started', { kind: n.kind, ...(next.branch ? { branch: next.branch } : {}), ...(next.worktree ? { worktree: next.worktree } : {}), ...(next.session_id ? { session_id: next.session_id } : {}) });
       } else if (n.kind === 'human') {
         const sc = scopeOf(m, r.key) as Scope;
@@ -478,7 +479,7 @@ export function apply(m: Model, t: Transition, deps: ApplyDeps): Applied {
       break;
     }
     case 'ack':
-      put(get(t.key), { prompt_id: t.prompt_id, epoch: t.epoch, ...(t.boot_id ? { boot_id: t.boot_id } : {}) });
+      put(get(t.key), { prompt_id: t.prompt_id, epoch: t.epoch, reprompted: t.again ? true : undefined, ...(t.boot_id ? { boot_id: t.boot_id } : {}) });
       break;
     case 'turn': {
       const r = get(t.key);

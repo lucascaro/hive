@@ -15,9 +15,21 @@ if (!dataDir) {
   process.exit(1);
 }
 
-const hive = await connect();
+// A connection the daemon closes on us (its fan-out overflowed) is dialled again; the engine decides when to give up.
+const dial = () => connect({ exitOnClose: false });
+const hive = await dial();
 const testSeam = process.env.HIVE_WF_TEST_SEAM === '1';
 // The 10 s a cancelled turn gets before its session is killed: a test shortens it, and only with the seam on.
 const grace = Number(process.env.HIVE_WF_CANCEL_GRACE_MS);
-await start(hive, { dataDir, testSeam, ...(testSeam && Number.isFinite(grace) && grace > 0 ? { cancelGraceMs: grace } : {}) });
+// A test can hold an agent node still at one point ("after-create:3000"), so it can crash the plugin exactly there.
+const [pausePoint, pauseMs] = (testSeam ? (process.env.HIVE_WF_TEST_PAUSE ?? '') : '').split(':');
+const pause = pausePoint && Number(pauseMs) > 0 ? (point) => (point === pausePoint ? new Promise((r) => setTimeout(r, Number(pauseMs))) : Promise.resolve()) : undefined;
+await start(hive, {
+  dataDir,
+  testSeam,
+  redial: dial,
+  onGone: () => process.exit(0),
+  ...(testSeam && Number.isFinite(grace) && grace > 0 ? { cancelGraceMs: grace } : {}),
+  ...(pause ? { pause } : {}),
+});
 console.log('workflows: ready');

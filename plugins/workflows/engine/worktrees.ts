@@ -151,7 +151,7 @@ async function serialized<T>(runId: string, fn: () => Promise<T>): Promise<T> {
 /** What the engine tells the user when a merge stops on conflicts. */
 export function conflictMessage(branch: string, files: readonly string[], path: string): string {
   const shown = files.slice(0, 8).join(', ');
-  return `Merging ${branch} conflicted in ${shown}${files.length > 8 ? `, and ${files.length - 8} more` : ''}. The merge worktree is kept at ${path} with the other branches merged. Resolve and commit there, then resume the run.`;
+  return `Merging ${branch} conflicted in ${shown}${files.length > 8 ? `, and ${files.length - 8} more` : ''}. The conflicting merge was aborted: the worktree kept at ${path} is clean, holds the branches merged before it, and does not contain ${branch}. Merge ${branch} there yourself, resolve the conflicts and commit, then retry the run.`;
 }
 
 /**

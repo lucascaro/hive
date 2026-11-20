@@ -275,11 +275,18 @@ func TestMerge_ConflictFailsWithRecoveryPath(t *testing.T) {
 	if !strings.HasPrefix(c["branch"].(string), "hive/wf/"+run+"/each_") || len(files) != 1 || files[0] != "same.txt" {
 		t.Errorf("conflict = %v, want a copy's branch and same.txt", c)
 	}
-	if e, _ := info["error"].(string); !strings.Contains(e, "conflicted in same.txt") || !strings.Contains(e, wt) || !strings.Contains(e, "Resolve and commit there, then resume the run.") {
+	if e, _ := info["error"].(string); !strings.Contains(e, "conflicted in same.txt") || !strings.Contains(e, wt) || !strings.Contains(e, "Merge "+c["branch"].(string)+" there yourself, resolve the conflicts and commit, then retry the run.") || strings.Contains(e, "Resolve and commit there") {
 		t.Errorf("error = %q, want the recovery message naming the files and %s", e, wt)
 	}
 	if st, err := os.Stat(wt); err != nil || !st.IsDir() {
 		t.Errorf("the merge worktree %q was not kept: %v", wt, err)
+	}
+	// The message says the kept tree is clean and lacks the branch, so the user must redo the merge: that is what the daemon leaves.
+	if st := git(t, wt, "status", "--porcelain"); st != "" {
+		t.Errorf("the kept merge worktree is not clean (the message says it is): %q", st)
+	}
+	if err := exec.Command("git", "-C", wt, "merge-base", "--is-ancestor", c["branch"].(string), "HEAD").Run(); err == nil {
+		t.Errorf("the kept merge worktree already contains %v (the message says it does not)", c["branch"])
 	}
 	if n := len(fakeCalls(dir, "session/prompt")); n != 3 {
 		t.Errorf("%d prompts, want 3 (split and the two copies); the join never started", n)
