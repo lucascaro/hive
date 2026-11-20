@@ -413,8 +413,10 @@ it once it is past the point of no return, so a pin racing a close
 either travels with the tombstone or is refused — it can never
 recreate the removed session directory.
 
-**Size.** There is no limit on how many pins a session keeps; the user
-prunes with unpin and "Unpin all". Each pin is bounded at the trust
+**Size.** A session keeps up to 1000 pins (`MaxPinsPerSession`), a
+safety bound against an agent pinning in a loop: the next one is
+refused with `pin_limit`, never an old one evicted, until the user
+prunes with unpin or "Unpin all". Each pin is bounded at the trust
 boundary — title 256 B, body 64 KiB, rejected rather than truncated —
 and the list travels as headers in pages of 200 (`PINS`, `done` on the
 last), with a body fetched when the user opens it (`GET_PIN_BODY`).

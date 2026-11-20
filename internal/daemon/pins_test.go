@@ -108,6 +108,22 @@ func TestAddPinRejectsOversizeWithCode(t *testing.T) {
 	}
 }
 
+func TestAddPinAtLimitIsPinLimit(t *testing.T) {
+	skipOnWindows(t)
+	d := startTestDaemon(t)
+	id := bootstrapSessionID(t, d)
+	for range wire.MaxPinsPerSession {
+		if _, err := d.Registry().AddPin(id, "t", "b"); err != nil {
+			t.Fatal(err)
+		}
+	}
+	c := sessionConn(t, d, id)
+	defer c.Close()
+	if ft, p := addPin(t, c, "one too many", "b"); ft != wire.FrameError || errCode(t, p) != wire.ErrCodePinLimit {
+		t.Fatalf("pin past the limit = %s %s", ft, p)
+	}
+}
+
 func TestAddPinRequiresValidToken(t *testing.T) {
 	skipOnWindows(t)
 	d := startTestDaemon(t)
@@ -205,12 +221,13 @@ func TestPinMutationsRefusedForPlugins(t *testing.T) {
 	}
 }
 
-// 5000 maximal-title headers are several MiB: GET_PINS must page them.
+// A session at the pin limit is answered in pages of at most PinsPageSize
+// headers, done on the last, every page under MaxPayload.
 func TestGetPinsPagesUnderMaxPayload(t *testing.T) {
 	skipOnWindows(t)
 	d := startTestDaemon(t)
 	id := bootstrapSessionID(t, d)
-	const n = 5000
+	const n = wire.MaxPinsPerSession
 	title := strings.Repeat("t", wire.MaxPinTitleLen)
 	for range n {
 		if _, err := d.Registry().AddPin(id, title, "b"); err != nil {
@@ -219,8 +236,8 @@ func TestGetPinsPagesUnderMaxPayload(t *testing.T) {
 	}
 	c := controlConn(t, d)
 	pages := getPins(t, c, id)
-	if len(pages) < 2 {
-		t.Fatalf("%d pages, want several", len(pages))
+	if len(pages) != n/wire.PinsPageSize {
+		t.Fatalf("%d pages, want %d", len(pages), n/wire.PinsPageSize)
 	}
 	var ids []string
 	for i, p := range pages {

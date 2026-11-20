@@ -34,6 +34,8 @@ func sendPinError(ops controlOps, err error) {
 		ops.sendError(wire.ErrCodePinInvalid, err.Error())
 	case errors.Is(err, registry.ErrPinTooLong):
 		ops.sendError(wire.ErrCodePinTooLong, err.Error())
+	case errors.Is(err, registry.ErrPinLimit):
+		ops.sendError(wire.ErrCodePinLimit, err.Error())
 	case errors.Is(err, registry.ErrNoSuchPin):
 		ops.sendError(wire.ErrCodeNoSuchPin, "that pin does not exist in this session")
 	case errors.Is(err, registry.ErrNotFound):

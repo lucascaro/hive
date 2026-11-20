@@ -313,7 +313,7 @@ the same name in [`internal/wire/`](../internal/wire/control.go).
 | `SEND_TO_SESSION` | `SendToSessionReq` | `SENT`, or `ERROR`. Not for plugins: a plugin socket gets `mode_not_allowed`, because typing into another session's terminal is the confused-deputy case until a plugin can be granted it explicitly |
 | `SET_FOCUSED_SESSION` | `SetFocusedSessionReq` | `SESSION_EVENT` (focus) stamping the session's `focused_at`. Not for plugins: a plugin socket gets `mode_not_allowed`, because the newest focus is the default target of the menu bar's dictation HUD (spec 553) |
 | `SET_GLOBAL_HOTKEY` | `GlobalHotkey` | `GLOBAL_HOTKEY` to every control client when the chord changed. Not for plugins: a plugin socket gets `mode_not_allowed`, because it rebinds a system-wide key |
-| `ADD_PIN` | `AddPinReq` | `ADD_PIN_OK`, `PINS_CHANGED`. Not for plugins: a plugin socket gets `mode_not_allowed`. A session's own agent pins a response to its own session on a session connection (spec 566) |
+| `ADD_PIN` | `AddPinReq` | `ADD_PIN_OK`, `PINS_CHANGED`; `pin_too_long`, `pin_invalid`, or `pin_limit` at 1000 pins. Not for plugins: a plugin socket gets `mode_not_allowed`. A session's own agent pins a response to its own session on a session connection (spec 566) |
 | `GET_PINS` | `GetPinsReq` | One or more `PINS` pages of headers, newest first; the last has `done` |
 | `GET_PIN_BODY` | `GetPinBodyReq` | `PIN_BODY`, or `no_such_pin` |
 | `UNPIN` | `UnpinReq` | `PINS_CHANGED`, `SESSION_EVENT` (updated). Not for plugins: a plugin socket gets `mode_not_allowed`, because which pins to keep is the user's choice |

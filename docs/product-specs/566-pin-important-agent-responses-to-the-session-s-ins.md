@@ -50,7 +50,7 @@ Long agent sessions produce a handful of responses worth returning to — a desi
 - Agents other than Claude and Pi (Codex, Gemini, Aider, shell, custom).
 - Cross-session or project-wide pin views; pins outliving their session.
 - Editing, reordering, or searching pins.
-- A user-facing cap on pin count or length (user prunes with unpin / unpin all).
+- A product limit on what users pin. Only trust-boundary safety bounds exist: per pin (title 256 B, body 64 KiB) and, by operator decision during review (2026-11-19), 1000 pins per session — the next is refused, never an old one evicted; the user prunes with unpin / unpin all.
 - Notifications on new pins.
 
 ## Notes

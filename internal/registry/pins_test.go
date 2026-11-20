@@ -89,6 +89,101 @@ func TestAddPinRejectsInvalid(t *testing.T) {
 	}
 }
 
+func TestAddPinRefusedAtLimitNotEvicted(t *testing.T) {
+	skipNonPosix(t)
+	r := freshRegistry(t)
+	e := createShell(t, r)
+	first := mustPin(t, r, e.ID, "first")
+	for range wire.MaxPinsPerSession - 1 {
+		mustPin(t, r, e.ID, "t")
+	}
+	if _, err := r.AddPin(e.ID, "over", "b"); !errors.Is(err, ErrPinLimit) {
+		t.Fatalf("pin past the limit = %v, want ErrPinLimit", err)
+	}
+	// Refused, never an old one evicted to make room.
+	if _, err := r.PinBody(e.ID, first.ID); err != nil {
+		t.Fatalf("oldest pin gone: %v", err)
+	}
+	if err := r.Unpin(e.ID, first.ID); err != nil {
+		t.Fatal(err)
+	}
+	mustPin(t, r, e.ID, "room again")
+}
+
+// A pin whose header cannot be removed still exists: Unpin says so and
+// keeps it, rather than reporting a removal a restart would undo.
+func TestUnpinKeepsPinWhenItCannotBeRemoved(t *testing.T) {
+	skipNonPosix(t)
+	if os.Geteuid() == 0 {
+		t.Skip("root ignores directory permissions")
+	}
+	r := freshRegistry(t)
+	e := createShell(t, r)
+	a := mustPin(t, r, e.ID, "a")
+	mustPin(t, r, e.ID, "b")
+	dir := r.pinsDir(e.ID)
+	if err := os.Chmod(dir, 0o500); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.Chmod(dir, 0o700) })
+
+	if err := r.Unpin(e.ID, a.ID); err == nil {
+		t.Fatal("Unpin reported success with the header still on disk")
+	}
+	if err := r.UnpinAll(e.ID); err == nil {
+		t.Fatal("UnpinAll reported success with headers still on disk")
+	}
+	if got := pinTitles(t, r, e.ID); len(got) != 2 {
+		t.Fatalf("pins after failed removals = %v, want both kept", got)
+	}
+	_ = os.Chmod(dir, 0o700)
+	if err := r.UnpinAll(e.ID); err != nil {
+		t.Fatalf("UnpinAll once removable: %v", err)
+	}
+}
+
+// A close that lands right after a reopen keeps its undo record and the
+// pins beside it: the reopen's cleanup must not delete what that close
+// just wrote. The hook closes the session at the first moment another
+// caller can see it.
+func TestCloseRightAfterReopenKeepsTombstoneAndPins(t *testing.T) {
+	skipNonPosix(t)
+	r := freshRegistry(t)
+	e := createShell(t, r)
+	id := e.ID
+	mustPin(t, r, id, "keep")
+	if err := r.Kill(id, true); err != nil {
+		t.Fatal(err)
+	}
+	killed := make(chan error, 1)
+	testHookRestoreVisible = func(sid string) {
+		go func() { killed <- r.Kill(sid, true) }()
+		// Let the close run ahead of the rest of the restore, without
+		// deadlocking a restore that still holds the pins' lock.
+		select {
+		case err := <-killed:
+			killed <- err
+		case <-time.After(time.Second):
+		}
+	}
+	t.Cleanup(func() { testHookRestoreVisible = nil })
+	_, _, _ = r.Restore(id, session.Options{})
+	select {
+	case err := <-killed:
+		if err != nil {
+			t.Fatalf("Kill: %v", err)
+		}
+	case <-time.After(10 * time.Second):
+		t.Fatal("the close never finished")
+	}
+	if _, err := r.readTombstone(id); err != nil {
+		t.Fatalf("the second close's tombstone is gone: %v", err)
+	}
+	if h := loadPinHeaders(pinRecordDir(ClosedDir(r.stateDir), id)); len(h) != 1 {
+		t.Fatalf("pins beside the tombstone = %d, want 1", len(h))
+	}
+}
+
 func TestAddPinUnknownSession(t *testing.T) {
 	r := freshRegistry(t)
 	if _, err := r.AddPin("nope", "t", "b"); !errors.Is(err, ErrNotFound) {

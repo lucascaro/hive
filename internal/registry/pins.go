@@ -50,6 +50,8 @@ var (
 	ErrPinTooLong = errors.New("registry: pin is too long")
 	// ErrNoSuchPin is a pin id that is not in that session.
 	ErrNoSuchPin = errors.New("registry: no such pin")
+	// ErrPinLimit is a session already holding wire.MaxPinsPerSession.
+	ErrPinLimit = errors.New("registry: too many pins in this session")
 )
 
 // pinSet is one session's pins.
@@ -178,6 +180,10 @@ func (r *Registry) addPin(e *Entry, title, body string) (wire.Pin, error) {
 		p.mu.Unlock()
 		return wire.Pin{}, ErrNotFound
 	}
+	if len(p.headers) >= wire.MaxPinsPerSession {
+		p.mu.Unlock()
+		return wire.Pin{}, fmt.Errorf("%w: %d pinned; unpin some first", ErrPinLimit, len(p.headers))
+	}
 	pin := wire.Pin{
 		ID:        newPinID(p.lastID),
 		Title:     title,
@@ -256,7 +262,10 @@ func (r *Registry) Unpin(id, pinID string) error {
 		p.mu.Unlock()
 		return ErrNoSuchPin
 	}
-	r.removePinFiles(id, pinID)
+	if err := r.removePinFiles(id, pinID); err != nil {
+		p.mu.Unlock()
+		return err
+	}
 	p.setHeadersLocked(slices.Delete(slices.Clone(p.headers), i, i+1))
 	r.announcePins(e, wire.PinsChangedMsg{SessionID: id, RemovedIDs: []string{pinID}})
 	p.mu.Unlock()
@@ -275,24 +284,42 @@ func (r *Registry) UnpinAll(id string) error {
 		p.mu.Unlock()
 		return ErrNotFound
 	}
+	// Stops at the first pin it cannot remove: those removed so far are
+	// gone (and announced), the rest stay — never reported removed while
+	// still on disk, where a restart would bring them back.
+	var removed []string
+	var ferr error
 	for _, h := range p.headers {
-		r.removePinFiles(id, h.ID)
+		if ferr = r.removePinFiles(id, h.ID); ferr != nil {
+			break
+		}
+		removed = append(removed, h.ID)
 	}
-	p.setHeadersLocked(nil)
-	r.announcePins(e, wire.PinsChangedMsg{SessionID: id, Cleared: true})
+	if ferr == nil {
+		p.setHeadersLocked(nil)
+		r.announcePins(e, wire.PinsChangedMsg{SessionID: id, Cleared: true})
+	} else if len(removed) > 0 {
+		p.setHeadersLocked(slices.Clone(p.headers[len(removed):]))
+		r.announcePins(e, wire.PinsChangedMsg{SessionID: id, RemovedIDs: removed})
+	}
 	p.mu.Unlock()
-	return nil
+	return ferr
 }
 
-// removePinFiles deletes one pin, header first, so a crash part way
-// leaves at worst a body with no header, which loadPinHeaders sweeps.
-func (r *Registry) removePinFiles(id, pinID string) {
+// removePinFiles deletes one pin, header first. The header is the pin:
+// if it cannot be removed the pin still exists, and the error says so,
+// rather than reporting a removal a restart would undo. A body left
+// behind once its header is gone is only an orphan, which
+// loadPinHeaders sweeps at the next boot, so that failure is logged.
+func (r *Registry) removePinFiles(id, pinID string) error {
 	dir := r.pinsDir(id)
-	for _, name := range []string{pinID + ".json", pinID + ".md"} {
-		if err := os.Remove(filepath.Join(dir, name)); err != nil && !os.IsNotExist(err) {
-			log.Printf("registry: session %s: remove pin %s: %v", id, name, err)
-		}
+	if err := os.Remove(filepath.Join(dir, pinID+".json")); err != nil && !os.IsNotExist(err) {
+		return fmt.Errorf("registry: remove pin: %w", err)
 	}
+	if err := os.Remove(filepath.Join(dir, pinID+".md")); err != nil && !os.IsNotExist(err) {
+		log.Printf("registry: session %s: remove pin body %s: %v", id, pinID, err)
+	}
+	return nil
 }
 
 // announcePins tells clients about a change: the delta, and the

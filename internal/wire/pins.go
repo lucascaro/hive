@@ -10,10 +10,10 @@ package wire
 // disk with the session, so they outlive a restart, a revive and a
 // daemon restart, and are dropped only when the session's record is.
 //
-// There is no cap on how many pins a session holds, so the whole set
-// can outgrow one frame (MaxPayload). The list therefore travels as
-// headers only, in pages (PINS, Done on the last), and a body is
-// fetched on its own (GET_PIN_BODY) when the user opens that pin.
+// The list travels as headers only, in pages (PINS, Done on the last),
+// and a body is fetched on its own (GET_PIN_BODY) when the user opens
+// that pin: bodies are what make a session's pins large, and paging
+// keeps every frame small however many headers MaxPinsPerSession allows.
 
 const (
 	// MaxPinTitleLen and MaxPinBodyLen bound one pin, in bytes, at the
@@ -22,6 +22,11 @@ const (
 	// These are safety bounds, not a product limit on what users pin.
 	MaxPinTitleLen = 256
 	MaxPinBodyLen  = 64 << 10
+	// MaxPinsPerSession is a safety bound against an agent pinning in a
+	// loop: the 1001st pin is refused (never an old one evicted) until
+	// the user unpins some. At MaxPinBodyLen that is at most ~64 MiB on
+	// disk per session; in practice pins are a few KiB.
+	MaxPinsPerSession = 1000
 	// PinsPageSize is the most headers one PINS frame carries. 200
 	// maximal headers are ~70 KiB, far under MaxPayload.
 	PinsPageSize = 200
@@ -31,6 +36,9 @@ const (
 	ErrCodePinInvalid = "pin_invalid"
 	// ErrCodePinTooLong: ADD_PIN whose title or body exceeds its bound.
 	ErrCodePinTooLong = "pin_too_long"
+	// ErrCodePinLimit: ADD_PIN to a session already holding
+	// MaxPinsPerSession pins.
+	ErrCodePinLimit = "pin_limit"
 	// ErrCodeNoSuchPin: the pin does not exist in that session — never
 	// "exists, but in another session".
 	ErrCodeNoSuchPin = "no_such_pin"

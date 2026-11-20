@@ -488,6 +488,12 @@ The independent reviewer (`hs-reviewer` subagent) ran two rounds.
 - **2026-11-19** — Pins-store reconnect fix, found in the advisor review. Before it, a reload merged its pages into the headers the client already held, so a pin removed while the client was disconnected stayed in the inspector while the badge (the daemon's `pin_count`) disagreed. Now a load's first page replaces every header except pins a delta added during the load. The fix is covered by a test, mutation-checked.
 - **2026-11-19** — Added `TestPiExtensionFrameConstantsMatchWire`. Nothing pinned `hive.ts`'s hand-written `FRAME_*` numbers to the wire, so a renumbering would have broken Pi pins silently. The test is mutation-checked.
 
+- **2026-11-19** — Review escalation (iter 2) resolved by the operator:
+  - **Unpin errors** are now reported. A header that cannot be removed keeps its pin and returns an error. Unpin-all stops at the first failure, removing and announcing only what is gone.
+  - **Close right after a reopen.** The reopen's pin move-back and record discard now run under `r.mu`, before a close can take the entry. Before, a close landing in that window had its tombstone and its pins deleted by the reopen's cleanup; the tombstone half predated this PR. A deterministic test now covers it through `testHookRestoreVisible`.
+  - **A failed pin-folder move** at close or restore stays the accepted design: logged, pins lost, the close never fails.
+  - **Per-session limit.** `MaxPinsPerSession` = 1000 is added as a safety bound: refused with `pin_limit`, never evicted. This reverses the brainstorm's "no caps", and the spec's non-goal is reworded to match. Paging stays, since bodies are fetched on demand. The paging test now runs at the limit: 5 pages of 200.
+
 ## Progress
 
 - **2026-11-19** — Spec triaged (enhancement / L / P2); research started.
@@ -495,3 +501,8 @@ The independent reviewer (`hs-reviewer` subagent) ran two rounds.
 - **2026-11-19** — Implemented. Go: full suite green, plus per-GOOS staticcheck and vet. Frontend: unit and dom green, full Playwright e2e green (597), biome, typecheck and ui-lint clean. Mutation checks all fail as expected, and the real-Claude probe passed.
 
 ## Open questions
+
+## PR convergence ledger
+
+- **2026-11-19 iter 1** — verdict: APPROVE; mergeable: MERGEABLE; findings_hash: empty; threads_open: 0; action: stop; head_sha: 22bb048.
+- **2026-11-19 iter 2** — verdict: COMMENT; mergeable: MERGEABLE; findings_hash: 7b16c0395489a819527fde6b161afc0b6b3741f9118958652c39a4f270569672; threads_open: 4; action: escalated:risky-fix-needs-human-decision; head_sha: 309c9d3.

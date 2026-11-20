@@ -386,6 +386,11 @@ func (r *Registry) reviveRestored(id string, opts session.Options, res RestoreRe
 	return e, res, nil
 }
 
+// testHookRestoreVisible, when set by a test, runs the moment a
+// restored entry is visible to other callers: where a close can first
+// land. Nil outside tests.
+var testHookRestoreVisible func(id string)
+
 // restoreEntry rebuilds the registry entry for a record in dir and
 // drops the record, without spawning anything. check, when non-nil, may
 // add degradations that need the resolved working directory (the
@@ -481,18 +486,25 @@ func (r *Registry) restoreEntry(dir, id string, check func(t Tombstone, cwd stri
 		return nil, res, fmt.Errorf("restore %s: persist entry: %w", id, perr)
 	}
 	r.persistIndexLoggedLocked("restore")
+	// Still under r.mu: bring the pins back and drop the record before a
+	// close can take the entry. Done after the unlock, a close landing in
+	// between wrote its own tombstone (and moved the pins beside it) and
+	// this discard then deleted both — the close's undo and its pins.
+	// The record goes before the revive too, so a spawn failure can't
+	// leave one that would restore a second copy of a session already
+	// in the map. (pins' mutex is held here, taken before r.mu — the
+	// allowed order; see pins.go.)
+	r.finishRestorePins(pins, dir, id)
+	discardRecord(dir, id)
 	info := e.Info()
 	r.mu.Unlock()
-	r.finishRestorePins(pins, dir, id)
+	if testHookRestoreVisible != nil {
+		testHookRestoreVisible(id)
+	}
 
 	// The entry exists and is visible before the PTY forks, so a client
 	// sees the tile come back immediately rather than after the spawn.
 	r.broadcast(wire.SessionEventAdded, info)
-
-	// The tombstone has done its job. Drop it before the revive so a
-	// spawn failure can't leave a record that would restore a second
-	// copy of a session that is already in the map.
-	discardRecord(dir, id)
 	return e, res, nil
 }
 
