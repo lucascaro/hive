@@ -285,20 +285,18 @@ class AgentRun {
       this.#fail('the previous attempt\'s session was taken over, so it cannot be prompted');
       return undefined;
     }
-    if (info.alive && !info.last_error) {
-      // A session set aside as never prompted is looked at again before it is prompted into: if a turn (the user's, say) has started on it since, it is
-      // not ours to use, and the node does not start beside it either.
-      if (orphan) {
-        const send = this.#engine.hive.send?.bind(this.#engine.hive);
-        const tx = send ? await this.#engine.feed.fetchTranscript(send, sid, this.#engine.daemonWaitMs) : undefined;
-        if (!this.#live('pending', 'interrupted')) return undefined;
-        if (!tx || tx.prompt_id !== 0 || tx.users.size !== 0) {
-          this.#fail(`the leftover session ${sid} was set aside as never prompted but has a conversation now (or could not be read), so the node was not started in its worktree beside it`);
-          return undefined;
-        }
+    // A session set aside as never prompted is looked at again before it is prompted into or killed, whatever its health: if a turn or a user
+    // item has appeared since (the user's own conversation, say), it is not ours to use or close, and the node does not start beside it either.
+    if (orphan) {
+      const send = this.#engine.hive.send?.bind(this.#engine.hive);
+      const tx = send ? await this.#engine.feed.fetchTranscript(send, sid, this.#engine.daemonWaitMs) : undefined;
+      if (!this.#live('pending', 'interrupted')) return undefined;
+      if (!tx || tx.prompt_id !== 0 || tx.users.size !== 0) {
+        this.#fail(`the leftover session ${sid} was set aside as never prompted but has a conversation now (or could not be read), so the node was not started in its worktree beside it`);
+        return undefined;
       }
-      return true;
     }
+    if (info.alive && !info.last_error) return true;
     if (!orphan) {
       try {
         await this.#engine.hive.request('RESTART_SESSION', { session_id: sid }, { timeoutMs: 60_000 });

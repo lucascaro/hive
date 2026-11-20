@@ -116,12 +116,16 @@ export class Topics {
       return undefined; // `handle` reports what is wrong with the request
     }
     if (!ir) return undefined;
-    // run.retry is refused while the engine reads the daemon (B-26), and that is what the caller is told, checked after the catalog is asked
+    // run.retry is refused while the engine reads the daemon (B-26), and that is what the caller is told, checked before the catalog is asked and again after
     // (which may be what failed because the connection went): a lost connection must not read as a bad workflow.
     const recovering = (): Reply | undefined =>
       topic === 'run.retry' && this.#engine.recovering
         ? { topic: `${topic}.reply`, data: { nonce: typeof req.nonce === 'string' ? req.nonce : undefined, ok: false, error: { code: 'recovering', message: 'the engine is reading the daemon after a restart or a lost connection, so retrying is refused for now; try again in a moment' } } }
         : undefined;
+    // Before the catalog is asked: a retry received while the engine reads the daemon is refused as received, even if the read ends while the
+    // catalog request is out (the check after it is for a connection that went during the request).
+    const early = recovering();
+    if (early) return early;
     let why: string | undefined;
     try {
       why = await this.#engine.catalogRefusal(ir);

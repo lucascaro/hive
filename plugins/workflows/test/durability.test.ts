@@ -1478,3 +1478,49 @@ test('run.retry says `recovering` when the engine is disconnected or reading, wh
     w.cleanup();
   }
 });
+
+test('an adopted session that is dead and has a conversation by the time it is looked at is not killed', async () => {
+  const w = world(one(), { holdCreate: never() });
+  await waitFor(() => w.sim.sessions.length === 1, 'the session to be made');
+  const sess = w.sim.sessions[0];
+  w.h.engine.disconnect();
+  w.h.close();
+  const hive = new FakeHive();
+  hive.welcome = { boot_id: 'boot-1' };
+  w.sim.attach(hive);
+  let lists = 0;
+  const list = hive.onSend.LIST_SESSIONS;
+  hive.onSend.LIST_SESSIONS = (q) => {
+    if (++lists === 2) {
+      // the second listing is the launch looking at the adopted session: by then it has a conversation, and its adapter has failed
+      sess.begin('user', 'typed after the scan');
+      sess.event('updated', { alive: false, last_error: 'adapter exited' });
+    }
+    list(q);
+  };
+  const h = harness({ agent: agentExecutor({ cancelGraceMs: 40, readyTimeoutMs: 400, settlePollMs: 5 }), check: never }, { dir: w.dir, hive });
+  try {
+    await h.engine.recover();
+    await waitFor(() => rowOf(h, w.id, 'a')?.state === 'failed', 'the node to fail');
+    assert.deepEqual(w.sim.of('KILL_SESSION'), [], 'a session with a conversation is never killed here');
+    assert.equal(w.sim.of('CREATE_SESSION').length, 1);
+  } finally {
+    h.close();
+    rmSync(w.dir, { recursive: true, force: true });
+  }
+});
+
+test('run.retry received while the engine is disconnected is refused before the catalog is asked', async () => {
+  const w = world(one());
+  await running(w);
+  w.h.engine.cancelRun(w.id);
+  try {
+    w.h.engine.disconnect();
+    const asked = w.sim.of('LIST_ACP_AGENTS').length;
+    const reply = await w.h.topics.preflight('run.retry', { nonce: 'n1', run_id: w.id });
+    assert.equal((reply?.data.error as { code: string }).code, 'recovering');
+    assert.equal(w.sim.of('LIST_ACP_AGENTS').length, asked, 'the daemon was not asked: the retry was refused as it arrived');
+  } finally {
+    w.cleanup();
+  }
+});
