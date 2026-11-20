@@ -3,7 +3,7 @@
 - **Spec:** [docs/product-specs/573-start-handy-recording-when-the-dictation-hud-open.md](../../product-specs/573-start-handy-recording-when-the-dictation-hud-open.md)
 - **Issue:** #573
 - **Status:** active
-- **PR:** —
+- **PR:** #574
 - **Branch:** feature/573-handy-autostart
 
 ## Summary

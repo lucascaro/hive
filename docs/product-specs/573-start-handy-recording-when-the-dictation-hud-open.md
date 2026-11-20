@@ -4,7 +4,8 @@ title: Start Handy recording when the dictation HUD opens
 type: enhancement
 complexity: M
 priority: P2
-stage: IMPLEMENT
+pr: 574
+stage: REVIEW
 ---
 
 # Start Handy recording when the dictation HUD opens
