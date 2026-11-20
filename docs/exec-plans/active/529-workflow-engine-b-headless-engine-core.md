@@ -2527,6 +2527,29 @@ download, the accepted sandbox gap, and `LIST_ACP_AGENTS`.
       redial the plugin keeps no listeners or timers of the old connection: the
       old object is dropped, `pokeAll` empties the feed's waiters, and the stable
       timer is cleared on a loss.
+    - *CodeRabbit round on #570* (17 threads on e886b6ba). Fixed: a turn is
+      charged against the cap at the send (`#turn`), not at the start of the
+      launch, so a launch the connection cut short before any prompt is not charged
+      twice; a recovered `send` of a retried attempt carries the interrupted note
+      (`row.attempt > 1`); an unrecorded turn is adopted only if, in a retried
+      attempt, it carries that note, so an earlier attempt's turn in a reused
+      session is not taken as the retry's; the idle waiter checks it is still the
+      same attempt of a running node before it acts; a leftover session that
+      cannot be removed (two tries) fails its node instead of letting it launch
+      beside it; a check's failure after a disconnect is still reported (the
+      generation guard is for agent launches only); a launch queued behind a stale
+      one is stale too (its generation is the one it was queued under); the
+      replacement feed is attached when the connection is handed over; an
+      `inflight` claim is released only by the launch that holds it; the listing
+      queue declines past 64 owed answers instead of dropping a slot; a session a
+      full listing no longer has wakes its waiters; a transcript read is ended only
+      by a refusal that is its own answer (`no_such_session`, `not_acp_session`,
+      `acp_failed`, `session_dead`). **Declined:** reconciling a turn of a run
+      cancelled while the connection was down (`stop()` of a stale launch sends
+      nothing). The run is cancelled in `runs.db` and its sessions are what B3d's
+      run-end cleanup archives or kills; a durable per-turn cleanup record is a
+      design of its own, for B3d. A stale launch must not speak on the new
+      connection, which is why `stop()` is inert.
     - *The 130 s launch wait* (follow-up 2) is shorter than `#reuse`'s worst-case
       chain (two session settles of 60 s each, a restart of 60 s, a kill and a
       prepare of 120 s). If the wait ends first, the retry's launch goes on beside
@@ -2832,6 +2855,9 @@ what was weighed.
   - close storm: the redial loop keeps a streak (first redial at once, then doubling pauses capped at 5 s, ten in a row end the plugin); only a connection that stays open for `stableMs` clears it;
   - mutants that survive, all equivalent: the orphan scan's `before` rows and its ended-run skip each cover the other (dropping both shows), a stale launch's `stop()` and its timer each cover the other.
 - **2026-11-20 iter 6 (B3c, PR #570)** — verdict: APPROVE (own); mergeable: MERGEABLE; findings_hash: empty; threads_open: 0; action: stop; head_sha: a4ba2081. Code head; the branch head is this docs-only ledger commit, whose CI is the final CI. 343 plugin tests pass; `internal/workflowe2e` green.
+
+- **2026-11-20 iter 7 (B3c, PR #570)** — verdict: REQUEST_CHANGES (CodeRabbit, 17 threads on e886b6ba); mergeable: MERGEABLE; findings_hash: see list; threads_open: 17 -> 0; action: autofix+push; head_sha: e58b621b. 16 fixed with tests (mutation-checked: 12 mutants, 8 killed; the 4 survivors are two guards that cover each other (queued-launch generation, idle-waiter row check) and two that no unit test can reach (the feed attached early, a late launch's claim release)); 1 declined with reasons (cancel while disconnected is B3d's run-end cleanup). Details under "CodeRabbit round on #570" in the decision log.
+- **2026-11-20 iter 8 (B3c, PR #570)** — verdict: APPROVE (own); mergeable: MERGEABLE; findings_hash: empty; threads_open: 0; action: stop; head_sha: e58b621b. Code head; the branch head is this docs-only ledger commit, whose CI is the final CI. 352 plugin tests pass; `internal/workflowe2e` green. Linux CI on e886b6ba failed once on `TestSessionTokenRefusesForgedPlanReview` (`internal/daemon`, a broken pipe; untouched, passes 15 of 15 locally) and passed on rerun.
 
 ## Gate verdict
 
