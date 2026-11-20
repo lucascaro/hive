@@ -391,8 +391,10 @@ permission rules from every settings source are combined, like hooks.
 The SessionStart hook adds a nudge naming the tool, because MCP tools
 may be deferred behind ToolSearch. An ACP Claude gets the same server
 as a second `acp.MCPServer`, named after its random submit server, and
-the registry auto-allows exactly that identity. Pi gets a native
-`hive_pin` tool from the Hive extension. One Hive-owned variable,
+the registry auto-allows exactly that identity. A terminal Pi gets a
+native `hive_pin` tool from the Hive extension; an ACP Pi gets none,
+since its registry env forces `HIVE_PIN_TOOL=0` as it does Hive's other
+Pi tools. One Hive-owned variable,
 `HIVE_PIN_TOOL`, set both ways from the "Let agents pin" setting,
 decides all of it: off means no server, no allow rule, no nudge, no
 tool. A Bash `hived pin` command was the alternative; it needed an

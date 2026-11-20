@@ -35,6 +35,7 @@ import {
   applyPinBody,
   applyPinsPage,
   pinsStore,
+  resetPinsOnSessionList,
   type Pin,
 } from '../../src/store/pins.js';
 import { resetStore } from '../../src/store/store.js';
@@ -105,6 +106,20 @@ describe('Pinned section', () => {
     await flush();
     expect(container.querySelector('.hv-activity__pins')).toBeNull();
     expect(bridge.GetPins).not.toHaveBeenCalled();
+  });
+
+  it('refetches pins it still holds after a reconnect reports zero, and drops them', async () => {
+    const { container } = await renderWithPins();
+    expect(container.querySelectorAll('.hv-activity__pin')).toHaveLength(2);
+    // Another window removed them while this one was disconnected.
+    act(() => {
+      resetStore({ sessions: [session({ pin_count: 0 })] });
+      resetPinsOnSessionList(new Set([SID]));
+    });
+    await flush();
+    expect(bridge.GetPins).toHaveBeenCalledTimes(2);
+    act(() => applyPinsPage({ session_id: SID, pins: [], done: true }));
+    expect(container.querySelector('.hv-activity__pins')).toBeNull();
   });
 
   it('lists pins newest first, one line each, with the count in the header', async () => {

@@ -470,3 +470,17 @@ cleared:
 		t.Fatal("no clear delta")
 	}
 }
+
+func TestLoadKeepsBodyOfUnreadableHeader(t *testing.T) {
+	dir := t.TempDir()
+	id := "0000000000000003cccccccc"
+	_ = os.WriteFile(filepath.Join(dir, id+".json"), []byte("{not json"), 0o600)
+	body := filepath.Join(dir, id+".md")
+	_ = os.WriteFile(body, []byte("keep me"), 0o600)
+	if h := loadPinHeaders(dir); len(h) != 0 {
+		t.Fatalf("headers = %+v", h)
+	}
+	if _, err := os.Stat(body); err != nil {
+		t.Errorf("body of an unreadable header was deleted: %v", err)
+	}
+}

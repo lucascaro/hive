@@ -196,9 +196,8 @@ func (r *Registry) addPin(e *Entry, title, body string) (wire.Pin, error) {
 	}
 	p.lastID = pin.ID
 	p.setHeadersLocked(append([]wire.Pin{pin}, p.headers...))
-	p.mu.Unlock()
-
 	r.announcePins(e, wire.PinsChangedMsg{SessionID: id, Added: &pin})
+	p.mu.Unlock()
 	return pin, nil
 }
 
@@ -259,9 +258,8 @@ func (r *Registry) Unpin(id, pinID string) error {
 	}
 	r.removePinFiles(id, pinID)
 	p.setHeadersLocked(slices.Delete(slices.Clone(p.headers), i, i+1))
-	p.mu.Unlock()
-
 	r.announcePins(e, wire.PinsChangedMsg{SessionID: id, RemovedIDs: []string{pinID}})
+	p.mu.Unlock()
 	return nil
 }
 
@@ -281,9 +279,8 @@ func (r *Registry) UnpinAll(id string) error {
 		r.removePinFiles(id, h.ID)
 	}
 	p.setHeadersLocked(nil)
-	p.mu.Unlock()
-
 	r.announcePins(e, wire.PinsChangedMsg{SessionID: id, Cleared: true})
+	p.mu.Unlock()
 	return nil
 }
 
@@ -300,7 +297,9 @@ func (r *Registry) removePinFiles(id, pinID string) {
 
 // announcePins tells clients about a change: the delta, and the
 // session's new pin count — but only while e is still the live entry,
-// so a change racing a close never resurrects a removed row.
+// so a change racing a close never resurrects a removed row. Callers
+// hold p.mu (pinSet.mu before r.mu, the allowed order), so concurrent
+// changes publish in the order they were made.
 func (r *Registry) announcePins(e *Entry, msg wire.PinsChangedMsg) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
@@ -352,6 +351,8 @@ func loadPinHeaders(dir string) []wire.Pin {
 	if err != nil {
 		return nil
 	}
+	// have is every header file present, readable or not: an
+	// unreadable header keeps its body, so restoring access recovers it.
 	have := map[string]bool{}
 	var out []wire.Pin
 	for _, d := range ents {
@@ -360,13 +361,13 @@ func loadPinHeaders(dir string) []wire.Pin {
 		if !ok || !validPinID(id) {
 			continue
 		}
+		have[id] = true
 		var h wire.Pin
 		b, err := os.ReadFile(filepath.Join(dir, name))
 		if err != nil || json.Unmarshal(b, &h) != nil || h.ID != id {
 			log.Printf("registry: skipping unreadable pin %s", filepath.Join(dir, name))
 			continue
 		}
-		have[id] = true
 		out = append(out, h)
 	}
 	for _, d := range ents {

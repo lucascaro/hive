@@ -87,7 +87,7 @@ What works:
   session whose agent stops reporting mid-turn greys out and says how long
   it has been quiet.
   (Ctrl+Shift+J / Ctrl+Alt+Shift+J on Windows and Linux.)
-- Pinned responses — Claude and Pi pin the answers worth keeping (a
+- Pinned responses — Claude and Pi (not Pi under ACP) pin the answers worth keeping (a
   decision, a root cause, a recipe) with a title, and they collect in a
   Pinned section at the top of the inspector, newest first: one line
   each, a click opens the body, and the section collapses to its header

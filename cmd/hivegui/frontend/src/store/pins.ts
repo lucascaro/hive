@@ -259,8 +259,9 @@ const NONE: readonly Pin[] = [];
 const NO_BODIES: ReadonlyMap<string, string> = new Map();
 
 // useSessionPins subscribes to one session's pins, fetching them while
-// the session has any (count from SessionInfo.pin_count) and they are
-// not loaded.
+// they are not loaded and the session has any (count from
+// SessionInfo.pin_count) — or this client still holds some from before
+// a reconnect, which a count of zero alone would leave on screen.
 export function useSessionPins(
   id: string,
   count: number,
@@ -269,10 +270,11 @@ export function useSessionPins(
   const loaded = entry?.loaded ?? false;
   const loading = entry?.loading ?? false;
   const failed = entry?.failed ?? false;
+  const held = (entry?.headers.length ?? 0) > 0;
   // biome-ignore lint/correctness/useExhaustiveDependencies: the flags are the trigger; requestPins reads the store itself
   useEffect(() => {
-    if (count > 0) requestPins(id);
-  }, [id, count > 0, loaded, loading, failed]);
+    if (count > 0 || held) requestPins(id);
+  }, [id, count > 0, held, loaded, loading, failed]);
   return { pins: entry?.headers ?? NONE, bodies: entry?.bodies ?? NO_BODIES };
 }
 
