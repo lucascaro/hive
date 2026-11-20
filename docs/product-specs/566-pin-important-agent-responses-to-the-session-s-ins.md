@@ -1,11 +1,12 @@
 ---
 issue: 566
 pr: 568
+shipped: 2026-11-19
 title: Pin important agent responses to the session's inspector panel
 type: enhancement
 complexity: L
 priority: P2
-stage: GATE
+stage: DONE
 ---
 
 # Pin important agent responses to the session's inspector panel
@@ -14,7 +15,7 @@ stage: GATE
 - **Type:** enhancement
 - **Complexity:** L
 - **Priority:** P2
-- **Exec plan:** [docs/exec-plans/active/566-pin-important-agent-responses-to-the-session-s-ins.md](../exec-plans/active/566-pin-important-agent-responses-to-the-session-s-ins.md)
+- **Exec plan:** [docs/exec-plans/completed/566-pin-important-agent-responses-to-the-session-s-ins.md](../exec-plans/completed/566-pin-important-agent-responses-to-the-session-s-ins.md)
 
 ## Problem
 

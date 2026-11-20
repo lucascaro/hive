@@ -2,7 +2,7 @@
 
 - **Spec:** [docs/product-specs/566-pin-important-agent-responses-to-the-session-s-ins.md](../../product-specs/566-pin-important-agent-responses-to-the-session-s-ins.md)
 - **Issue:** #566
-- **Status:** active
+- **Status:** completed
 - **PR:** [#568](https://github.com/lucascaro/hive/pull/568)
 - **Branch:** feature/566-pinned-responses
 
@@ -515,3 +515,11 @@ The independent reviewer (`hs-reviewer` subagent) ran two rounds.
 - **2026-11-19 iter 3** — verdict: COMMENT; mergeable: MERGEABLE; findings_hash: 1b4d2b3194c91eb3870cb00b907598b914244b38a3571ce25c81dca5c94a7d0a; threads_open: 1; action: escalated:risky-fix-needs-human-decision; head_sha: 712d4b4.
 - **2026-11-19 iter 4** — verdict: APPROVE; mergeable: MERGEABLE; findings_hash: empty; threads_open: 0; action: stop; head_sha: 95e3ef3.
 - **2026-11-19 iter 5** — verdict: APPROVE; mergeable: MERGEABLE; findings_hash: empty; threads_open: 0; action: stop; head_sha: d8fd52c.
+
+## Gate verdict
+
+- **2026-11-19** — verdict: PASS; phase: —; checks: 13 passed / 0 failed / 0 followups; followups: none; one-line: every success criterion is evidenced by tests, including a real-Claude probe on 2.1.329; there is no non-goal bleed; docs, changesets and features.json match the code; CI is green.
+  - 2026-11-19 dimensions:
+    - acceptance — PASS — 13 criteria. Each is backed by Go, vitest and Playwright tests, re-run green: Go registry, daemon, agent, wire, acp and hived; 143 dom tests; 9 pinned e2e. The probe record is in the decision log.
+    - non-goals — PASS — there is no manual pinning, terminal capture, other-agent support, cross-session view, edit/reorder/search, or notification. The only bounds are the documented safety bounds.
+    - doc accuracy — PASS — README, DESIGN, agent-activity, plugins.md, icons.md, features.json (Unreleased), contract 39 and 3 changesets. regression_of: declared-absent on both fixed changesets.
