@@ -59,6 +59,12 @@ export interface PinsEntry {
   removed: ReadonlySet<string>;
   // While loading: a clear landed, so the rest of the pages are stale.
   ignorePages: boolean;
+  // While loading: ids a delta added since the request. The load's first
+  // page replaces every other header — what this client held before may
+  // include pins removed while it was not listening (a reconnect).
+  added: ReadonlySet<string>;
+  // The next page is the load's first.
+  fresh: boolean;
 }
 
 interface PinsData {
@@ -81,6 +87,8 @@ const blank = (): PinsEntry => ({
   failed: false,
   removed: new Set(),
   ignorePages: false,
+  added: new Set(),
+  fresh: false,
 });
 
 function patch(id: string, fn: (e: PinsEntry) => PinsEntry): void {
@@ -112,8 +120,11 @@ export function applyPinsPage(msg: PinsPage): void {
     const pins = e.ignorePages
       ? []
       : (msg.pins ?? []).filter((p) => !e.removed.has(p.id));
-    const headers = newestFirst(e.headers, pins);
-    if (!done) return { ...e, headers };
+    const base = e.fresh
+      ? e.headers.filter((p) => e.added.has(p.id))
+      : e.headers;
+    const headers = newestFirst(base, pins);
+    if (!done) return { ...e, headers, fresh: false };
     return {
       ...e,
       headers,
@@ -122,6 +133,8 @@ export function applyPinsPage(msg: PinsPage): void {
       failed: false,
       removed: new Set(),
       ignorePages: false,
+      added: new Set(),
+      fresh: false,
     };
   });
 }
@@ -132,8 +145,11 @@ export function applyPinsChanged(msg: PinsChanged): void {
     if (msg.cleared) {
       return { ...e, headers: [], bodies: new Map(), ignorePages: e.loading };
     }
-    let { headers, bodies, removed } = e;
-    if (msg.added) headers = newestFirst(headers, [msg.added]);
+    let { headers, bodies, removed, added } = e;
+    if (msg.added) {
+      headers = newestFirst(headers, [msg.added]);
+      if (e.loading) added = new Set([...added, msg.added.id]);
+    }
     const gone = msg.removed_ids ?? [];
     if (gone.length > 0) {
       const drop = new Set(gone);
@@ -143,7 +159,7 @@ export function applyPinsChanged(msg: PinsChanged): void {
       bodies = b;
       if (e.loading) removed = new Set([...removed, ...gone]);
     }
-    return { ...e, headers, bodies, removed };
+    return { ...e, headers, bodies, removed, added };
   });
 }
 
@@ -165,6 +181,8 @@ export function requestPins(id: string): void {
     loading: true,
     removed: new Set(),
     ignorePages: false,
+    added: new Set(),
+    fresh: true,
   }));
   Promise.resolve()
     .then(() => GetPins(id))

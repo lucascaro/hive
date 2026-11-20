@@ -480,6 +480,10 @@ The independent reviewer (`hs-reviewer` subagent) ran two rounds.
   - Every run that got past the dialog passed.
 - **2026-11-19** — `AddPin` was split into a lookup and `addPin(e, …)`, so `TestAddPinOnClosedEntryIsRefused` can exercise the closed-entry branch deterministically. The race test alone did not catch the mutation that removed the `closed` check.
 
+- **2026-11-19** — `--mcp-config` is variadic and is now among the spawn args. An argv opening prompt cannot be swallowed by it: `resolveAgentCmd` appends the prompt after a literal `--` (`internal/registry/create.go:766-774`), and `--` ends option parsing.
+- **2026-11-19** — Pins-store reconnect fix, found in the advisor review. Before it, a reload merged its pages into the headers the client already held, so a pin removed while the client was disconnected stayed in the inspector while the badge (the daemon's `pin_count`) disagreed. Now a load's first page replaces every header except pins a delta added during the load. The fix is covered by a test, mutation-checked.
+- **2026-11-19** — Added `TestPiExtensionFrameConstantsMatchWire`. Nothing pinned `hive.ts`'s hand-written `FRAME_*` numbers to the wire, so a renumbering would have broken Pi pins silently. The test is mutation-checked.
+
 ## Progress
 
 - **2026-11-19** — Spec triaged (enhancement / L / P2); research started.

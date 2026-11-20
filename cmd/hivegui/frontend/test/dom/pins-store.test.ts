@@ -143,6 +143,17 @@ describe('pins store', () => {
     expect(entry()).toBeUndefined();
   });
 
+  it('a reload drops pins removed while this client was not listening', () => {
+    requestPins(SID);
+    applyPinsPage({ session_id: SID, pins: [pin(2), pin(1)], done: true });
+    resetPinsOnSessionList(new Set([SID]));
+    requestPins(SID);
+    // A pin added during the reload survives the first page.
+    applyPinsChanged({ session_id: SID, added: pin(5) });
+    applyPinsPage({ session_id: SID, pins: [pin(2)], done: true });
+    expect(titles()).toEqual(['pin 5', 'pin 2']);
+  });
+
   it('forgets a removed session', () => {
     applyPinsChanged({ session_id: SID, added: pin(1) });
     forgetPins(SID);
