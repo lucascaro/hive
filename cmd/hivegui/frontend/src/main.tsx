@@ -422,15 +422,21 @@ flushSync(() => createRoot(mustEl('react-root')).render(<App />));
     // enabled UI plugins, and a reconnect re-lists from here on.
     markPluginsWanted();
     relistPluginsIfWanted();
-    // Agent colours for the sidebar's agent glyph. Static for the life of
+    // Agent colours for the sidebar's agent glyph, and each agent's
+    // image-paste key for the terminal's paste chord. Static for the life of
     // the daemon, so one call at boot. A failure is not fatal: every glyph
     // falls back to the neutral code, which is what a colourless custom
     // agent renders anyway.
     ListAgents()
       .then((list) => {
         const m = new Map<string, string>();
-        for (const a of list || []) if (a.color) m.set(a.id, a.color);
+        const keys = new Map<string, string>();
+        for (const a of list || []) {
+          if (a.color) m.set(a.id, a.color);
+          if (a.imagePasteKey) keys.set(a.id, a.imagePasteKey);
+        }
         store.setAgentColors(m);
+        store.setAgentImagePasteKeys(keys);
       })
       .catch(() => {
         /* ignore — glyphs stay neutral */

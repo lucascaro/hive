@@ -29,6 +29,11 @@ const (
 	IDPi      ID = "pi"
 )
 
+// altV (ESC v) is the image-paste key on Windows of Claude Code (its
+// documented binding there) and of Codex (openai/codex#5644). See
+// Def.ImagePasteKey.
+const altV = "\x1bv"
+
 // Def describes one agent.
 type Def struct {
 	ID         ID       // canonical identifier; persisted in session metadata
@@ -114,6 +119,14 @@ type Def struct {
 	// gets the same answer. Proven by
 	// TestShellNeverReceivesATypedPrompt.
 	TypedPrompt bool
+	// ImagePasteKey is what the GUI writes to the PTY when the paste
+	// chord finds an image and no text on the clipboard: the key that
+	// makes this agent read the image from the clipboard itself, since a
+	// terminal cannot paste image bytes. Empty means no known key, and
+	// the GUI tells the user rather than send a stray keystroke to, say,
+	// a shell. Only Windows reports an image-only clipboard
+	// (cmd/hivegui/clipboard_windows.go).
+	ImagePasteKey string
 }
 
 // SpawnInfo is what an adapter may need at spawn time to build
@@ -183,6 +196,7 @@ var (
 			SpawnEnv:        claudeSpawnEnv,
 			// Verified interactive under a PTY; see PositionalPrompt.
 			PositionalPrompt: true,
+			ImagePasteKey:    altV,
 		},
 		IDCodex: {
 			ID:         IDCodex,
@@ -196,6 +210,7 @@ var (
 			},
 			CaptureSessionIDFn: codexCaptureSessionID,
 			TypedPrompt:        true,
+			ImagePasteKey:      altV,
 		},
 		IDGemini: {
 			ID:            IDGemini,

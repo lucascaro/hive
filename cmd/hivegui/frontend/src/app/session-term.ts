@@ -69,7 +69,6 @@ import {
   isShiftEnter,
   macForwardKillSeq,
   macLineEditSeq,
-  IMAGE_PASTE_SEQ,
   NEWLINE_SEQ,
 } from '../lib/keymap.js';
 import { DEFAULT_FONT_SIZE, clampFont } from '../lib/font.js';
@@ -695,7 +694,16 @@ export class SessionTerm {
             // writing the clipboard raw would make every multi-line
             // paste submit once per line in Claude/Codex.
             if (text) this.term.paste(text);
-            else if (image) this._writePty(IMAGE_PASTE_SEQ);
+            else if (image) {
+              // Only an agent known to read the clipboard on this key
+              // gets it: the same bytes are a stray keystroke to a
+              // shell (bash in vi mode opens $EDITOR on ESC v).
+              const key = appData().agentImagePasteKeys.get(
+                this.info.agent ?? '',
+              );
+              if (key) this._writePty(key);
+              else flashStatus('Clipboard holds an image, not text');
+            }
           })
           .catch(reportFailure('paste'));
         return false;

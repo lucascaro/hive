@@ -18,13 +18,6 @@
 // regression-prone, so we deliberately send the literal Ctrl+J byte.
 export const NEWLINE_SEQ = '\x0a';
 
-// Written to the PTY when the paste chord finds an image and no text
-// on the clipboard (only reported on Windows; see ReadClipboard in
-// cmd/hivegui/clipboard.go). A terminal cannot paste image bytes, so
-// we send Alt+V (ESC v) and the agent reads the clipboard itself:
-// Claude Code's image-paste key on Windows, and one Codex accepts too.
-export const IMAGE_PASTE_SEQ = '\x1bv';
-
 // isShiftEnter reports whether a keydown event is a bare Shift+Enter
 // (no other modifier). xterm sends a plain \r for Shift+Enter — the
 // Shift is dropped — so Claude/Codex can't tell it from Enter and

@@ -61,6 +61,8 @@ type AgentInfo struct {
 	// agent's mode (Gemini, Copilot).
 	ACPModes       []agent.ACPMode `json:"acpModes,omitempty"`
 	ACPDefaultMode string          `json:"acpDefaultMode,omitempty"`
+	// ImagePasteKey: see agent.Def.ImagePasteKey.
+	ImagePasteKey string `json:"imagePasteKey,omitempty"`
 }
 
 // ListAgents returns every agent definition — built-ins plus the
@@ -83,7 +85,8 @@ func (a *App) ListAgents() []AgentInfo {
 			// custom agent is neither: validateCustom builds its Def
 			// with ID/Name/Cmd/Color only, so both flags are false by
 			// construction.
-			TakesPrompt: d.PositionalPrompt || d.TypedPrompt,
+			TakesPrompt:   d.PositionalPrompt || d.TypedPrompt,
+			ImagePasteKey: d.ImagePasteKey,
 		}
 		if spec := d.ACP(); spec != nil {
 			info.ACP = true

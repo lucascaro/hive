@@ -112,9 +112,14 @@ beforeEach(() => {
   store.resetStore();
 });
 
-function mount() {
+function mount(agent?: string) {
   seq += 1;
-  const info = { id: `paste-${seq}`, name: 'test', color: '#888' } as Info;
+  const info = {
+    id: `paste-${seq}`,
+    name: 'test',
+    color: '#888',
+    agent,
+  } as Info;
   const st = new SessionTerm(info);
   const textarea = st.body.querySelector('textarea');
   if (!textarea) throw new Error('xterm helper textarea not mounted');
@@ -175,14 +180,31 @@ describe('Ctrl+Shift+V paste', () => {
 
   // Windows: an image-only clipboard used to fail the read with
   // "The operation completed successfully." The terminal cannot paste
-  // the image, so it hands the agent its image-paste key (Alt+V).
-  it('forwards Alt+V when the clipboard holds only an image', async () => {
+  // the image, so an agent with a catalogued image-paste key gets that
+  // key and reads the clipboard itself.
+  it('sends the agent its image-paste key when the clipboard holds only an image', async () => {
     clipboardText = '';
     clipboardImage = true;
-    const { textarea } = mount();
+    store.setAgentImagePasteKeys(new Map([['claude', '\x1bv']]));
+    const { textarea } = mount('claude');
     textarea.dispatchEvent(ctrlShiftKey('v'));
     await settle();
     expect(writes).toEqual(['\x1bv']);
+  });
+
+  // A shell (or any agent with no known key) must not get the bytes: to
+  // bash in vi mode ESC v opens $EDITOR. It gets a status hint instead.
+  it('tells the user, and writes nothing, for an agent with no image-paste key', async () => {
+    clipboardText = '';
+    clipboardImage = true;
+    store.setAgentImagePasteKeys(new Map([['claude', '\x1bv']]));
+    const { textarea } = mount('shell');
+    textarea.dispatchEvent(ctrlShiftKey('v'));
+    await settle();
+    expect(writes).toEqual([]);
+    expect(store.appStore.getState().status.text).toBe(
+      'Clipboard holds an image, not text',
+    );
   });
 
   it('writes nothing for an empty clipboard', async () => {
