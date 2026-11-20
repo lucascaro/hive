@@ -5,9 +5,9 @@
 - **Depends on:** A (#528), planned against `origin/feature/528-daemon-sdk-prereqs:docs/exec-plans/active/528-workflow-engine-a-daemon-sdk-prereqs.md` at `7410f6b7`
 - **Issue:** #529
 - **Branch:** `feature/529-engine-core` (research and plan); one branch per phase PR (B1: `feature/529-b1-validator`, B2: `feature/529-b2-store-interpreter`)
-- **PR:** #538 (B1), #550 (B2), #554 (B3 plan), #555 (B3b), PRNUM (B3c)
-- **Phase:** 3 of 5 (B3 in progress: B3b and B3c done, B3a, B3-R7 and B3d remain)
-- **Status:** active. Plan approved. B1 (#538), B2 (#550) and B3b (#555) merged; B3c (PRNUM) in review; the B3 plan is decided (B-22..B-25, 2026-11-15); the rest of B3 to B5 remain.
+- **PR:** #538 (B1), #550 (B2), #554 (B3 plan), #555 (B3b), #570 (B3c)
+- **Phase:** 3 of 5 (B3 in progress: B3b merged, B3c in review; B3a, B3-R7 and B3d remain)
+- **Status:** active. Plan approved. B1 (#538), B2 (#550) and B3b (#555) merged; B3c (#570) in review; the B3 plan is decided (B-22..B-25, 2026-11-15); the rest of B3 to B5 remain.
   - All open questions are decided (see Decision log, 2026-10-25 user
     decisions).
   - R1–R6 are approved as A changes: R2, R3, R5 and R6 go to A PR1; R1 and
@@ -1309,7 +1309,7 @@ Files: `engine/engine.ts` (`recover()`), `engine/main.ts` (reconnect).
    are rejected by the SDK (`_rejectAll`) and their effects re-derived from
    the rows.
 
-*Built as (PRNUM).* `engine/durability.ts` is the startup table; `recover()`
+*Built as (#570).* `engine/durability.ts` is the startup table; `recover()`
 and `Engine.reconnect()` both run it. The engine reads the daemon with
 LIST_SESSIONS and GET_ACP_TRANSCRIPT, neither of which is an SDK `request()`
 verb (no `req_id` reply), so `SessionFeed.listSessions` and `fetchTranscript`
@@ -2384,7 +2384,7 @@ download, the accepted sandbox gap, and `LIST_ACP_AGENTS`.
     - The e2e GUI client must drain `SESSION_EVENT`s: the test client holds 32
       of them and a full channel stops it reading `PLUGIN_MESSAGE`s too.
 
-- **2026-11-19, B3c implementation decisions (PR PRNUM, branch
+- **2026-11-19, B3c implementation decisions (PR #570, branch
   `feature/529-b3c-durability`).** No daemon change, no DaemonContract bump.
   - **The engine reads the daemon with `send` plus an event, not `request()`.**
     GET_ACP_TRANSCRIPT and LIST_SESSIONS are not in the SDK's `REQUEST_VERBS`:
