@@ -2896,6 +2896,9 @@ what was weighed.
   - plan: the cancelled-while-disconnected reconciliation is now numbered step 2 of B3d.
 - **2026-11-20 iter 10 (B3c, PR #570)** — verdict: APPROVE (own); mergeable: MERGEABLE; findings_hash: empty; threads_open: 0; action: stop; head_sha: 2bd26012. Code head; the branch head is this docs-only ledger commit, whose CI is the final CI.
 
+- **2026-11-20 iter 11 (B3c, PR #570)** — verdict: REQUEST_CHANGES (CodeRabbit, 2 threads on 459df1fc); mergeable: MERGEABLE; findings_hash: see list; threads_open: 2 -> 0; action: autofix+push; head_sha: c29f1747. One fixed: the orphan removal's retry now stops once the link is lost, so its second try cannot go to a replacement connection. One answered with a test: a turn is never watched twice after a reconnect (the watcher the lost connection left is woken by `pokeAll` and ends at once, so it does not wait out the 130 s launch wait; the reconnect test now asserts one COMMIT_WORKTREE and one `node.finished`). This entry's stop line supersedes iter 10's.
+- **2026-11-20 iter 12 (B3c, PR #570)** — verdict: APPROVE (own); mergeable: MERGEABLE; findings_hash: empty; threads_open: 0; action: stop; head_sha: c29f1747. Code head; the branch head is this docs-only ledger commit, whose CI is the final CI. 355 plugin tests pass.
+
 ## Gate verdict
 
 <!-- /hs-merge-gate appends one line per run here (append-only). -->
