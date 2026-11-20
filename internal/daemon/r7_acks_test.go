@@ -237,21 +237,23 @@ func TestRemoveWorktree_ExemptionNotWithDeleteBranch(t *testing.T) {
 func TestRemoveWorktree_ArchivedHolderStillInUse(t *testing.T) {
 	d, repo := startDaemonInRepo(t)
 	pid := projectIDOf(t, d)
-	e, err := d.reg.Create(context.Background(), wire.CreateSpec{ProjectID: pid, Shell: "/bin/bash", UseWorktree: true})
-	if err != nil || e.WorktreePath == "" {
-		t.Skipf("worktree session unavailable: %v", err)
+	// Every exemption input holds (committed run branch, valid run id,
+	// plugin caller, kept branch); only the archived claim differs.
+	wt := r7Worktree(t, repo, "hive/wf/run-1/x", true)
+	e, err := d.reg.Create(context.Background(), wire.CreateSpec{ProjectID: pid, Shell: "/bin/bash", WorktreePath: wt})
+	if err != nil {
+		t.Fatal(err)
 	}
 	if err := d.reg.Archive(e.ID); err != nil {
 		t.Fatal(err)
 	}
-	_ = repo
 	c, _ := pluginConn(t, d, "wf", "wf")
 
-	f := removeFrom(t, c, wire.RemoveWorktreeReq{ProjectID: pid, Path: e.WorktreePath, WorkflowRunID: "run-1", ReqID: 85})
+	f := removeFrom(t, c, wire.RemoveWorktreeReq{ProjectID: pid, Path: wt, WorkflowRunID: "run-1", ReqID: 85})
 	if f.ft != wire.FrameError || f.err(t).Code != wire.ErrCodeWorktreeInUse {
 		t.Fatalf("got %v %s, want worktree_in_use", f.ft, f.payload)
 	}
-	if _, err := os.Stat(e.WorktreePath); err != nil {
+	if _, err := os.Stat(wt); err != nil {
 		t.Errorf("worktree removed from under an archived session: %v", err)
 	}
 }
