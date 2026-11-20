@@ -395,7 +395,7 @@ func (r *Registry) discardWorktree(p createPlan) {
 	if !p.wtCreated {
 		// No directory of ours to remove — but the add may still have
 		// created the branch before failing, and that branch is ours.
-		if p.wtBranchCreated {
+		if p.wtBranchCreated && p.projectCwd != "" {
 			if root, err := worktree.Root(p.projectCwd); err == nil {
 				r.gitMu.Lock()
 				r.discardBranchLocked(root, p)
@@ -413,16 +413,58 @@ func (r *Registry) discardWorktree(p createPlan) {
 		}
 	}
 	r.mu.Unlock()
-	root, err := worktree.Root(p.wtPath)
+	// The repo, resolved BEFORE Cleanup deletes the worktree: Root(wtPath)
+	// is the worktree itself, so the prune and branch delete that follow
+	// would run from a directory that is gone. The shared git dir is
+	// derived from the worktree rather than projectCwd, which is empty
+	// when the project was removed mid-create (and `git -C ""` would act
+	// on whatever repo the daemon runs in), and it stays correct for a
+	// checkout made with --separate-git-dir. projectCwd is the fallback
+	// for a worktree git can no longer read.
+	root, err := worktree.CommonDir(p.wtPath)
 	if err != nil {
-		return
+		if p.projectCwd == "" {
+			return
+		}
+		if root, err = worktree.Root(p.projectCwd); err != nil {
+			return
+		}
 	}
 	r.gitMu.Lock()
 	defer r.gitMu.Unlock()
 	if err := worktree.Cleanup(root, p.wtPath); err != nil {
 		log.Printf("registry: discarding worktree %s after mid-create kill: %v", p.wtPath, err)
+		// Directory still being deleted: git still lists the worktree
+		// and holds its branch checked out, so the branch delete would
+		// fail. Finish both once the deletion is done.
+		if r.finishAfterRemoval(err, root, p.wtPath, func() { r.discardBranchLocked(root, p) }) {
+			return
+		}
 	}
 	r.discardBranchLocked(root, p)
+}
+
+// finishAfterRemoval handles a worktree.Cleanup that timed out waiting
+// for the directory to be deleted (*worktree.RemovalPendingError). It
+// reports whether err was that case. If so it waits, off the caller's
+// goroutine and without holding gitMu, for the deletion to finish, then
+// takes gitMu, re-runs Cleanup (idempotent: it now prunes the entry)
+// and runs then. For any other err it does nothing and returns false.
+func (r *Registry) finishAfterRemoval(err error, root, wtPath string, then func()) bool {
+	var pending *worktree.RemovalPendingError
+	if !errors.As(err, &pending) {
+		return false
+	}
+	go func() {
+		<-pending.Done
+		r.gitMu.Lock()
+		defer r.gitMu.Unlock()
+		if cerr := worktree.Cleanup(root, wtPath); cerr != nil {
+			log.Printf("registry: finishing removal of %s: %v", wtPath, cerr)
+		}
+		then()
+	}()
+	return true
 }
 
 // discardBranchLocked deletes the branch this plan's own add created.

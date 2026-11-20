@@ -16,6 +16,7 @@ import (
 
 	"github.com/lucascaro/hive/internal/session"
 	"github.com/lucascaro/hive/internal/wire"
+	"github.com/lucascaro/hive/internal/worktree"
 )
 
 // #451: worktree setup failures are put to the user instead of
@@ -1002,5 +1003,157 @@ func TestResolveAddFailureCancelLeavesNothing(t *testing.T) {
 	}
 	if r.Get(e.ID) != nil {
 		t.Error("cancel must leave no session behind")
+	}
+}
+
+// A plan killed mid-create owns a worktree and its branch. Discarding
+// must clear BOTH from git's point of view: the directory, the stale
+// admin entry under .git/worktrees, and the branch. The cleanup used to
+// run git from the worktree's own toplevel, which Cleanup had just
+// deleted, so prune and `branch -D` died with "cannot change to" and
+// every cancelled create leaked an entry and a branch.
+func TestDiscardClearsWorktreeEntryAndBranch(t *testing.T) {
+	skipNonPosix(t)
+	r, p := freshRegistryWithProject(t)
+	repo := p.Cwd
+
+	wt := filepath.Join(repo, ".worktrees", "half-made")
+	runGit(t, repo, "worktree", "add", "-q", "-b", "half-made", wt)
+
+	r.discardWorktree(createPlan{
+		id:              "gone",
+		projectCwd:      repo,
+		wtPath:          wt,
+		wtBranch:        "half-made",
+		wtCreated:       true,
+		wtBranchCreated: true,
+	})
+
+	if _, err := os.Stat(wt); !os.IsNotExist(err) {
+		t.Errorf("worktree dir survived discard: %v", err)
+	}
+	if out := gitOutput(t, repo, "worktree", "list", "--porcelain"); strings.Contains(out, "half-made") {
+		t.Errorf("stale worktree entry survived discard:\n%s", out)
+	}
+	if out := gitOutput(t, repo, "branch", "--list", "half-made"); out != "" {
+		t.Errorf("branch survived discard: %q", out)
+	}
+}
+
+// The project can be removed while a create is in flight, leaving the
+// plan with no projectCwd. Discard must still clean the right repo —
+// and must not touch the daemon's own working directory's repo.
+func TestDiscardWithoutProjectCwdStillCleansTheRepo(t *testing.T) {
+	skipNonPosix(t)
+	r, p := freshRegistryWithProject(t)
+	repo := p.Cwd
+
+	wt := filepath.Join(repo, ".worktrees", "orphaned")
+	runGit(t, repo, "worktree", "add", "-q", "-b", "orphaned", wt)
+
+	r.discardWorktree(createPlan{
+		id:              "gone",
+		wtPath:          wt,
+		wtBranch:        "orphaned",
+		wtCreated:       true,
+		wtBranchCreated: true,
+	})
+
+	if out := gitOutput(t, repo, "worktree", "list", "--porcelain"); strings.Contains(out, "orphaned") {
+		t.Errorf("stale worktree entry survived discard:\n%s", out)
+	}
+	if out := gitOutput(t, repo, "branch", "--list", "orphaned"); out != "" {
+		t.Errorf("branch survived discard: %q", out)
+	}
+}
+
+// When the directory takes longer than the bound to delete, Cleanup
+// hands back a *RemovalPendingError. finishAfterRemoval must wait for
+// the deletion, then prune the entry and run the follow-up (the branch
+// delete, which git refuses while the worktree still lists it).
+func TestFinishAfterRemovalPrunesOnceDeletionCompletes(t *testing.T) {
+	skipNonPosix(t)
+	r, p := freshRegistryWithProject(t)
+	repo := p.Cwd
+
+	wt := filepath.Join(repo, ".worktrees", "slowpoke")
+	runGit(t, repo, "worktree", "add", "-q", "-b", "slowpoke", wt)
+
+	done := make(chan struct{})
+	pending := &worktree.RemovalPendingError{Path: wt, Done: done}
+	ran := make(chan struct{})
+	if !r.finishAfterRemoval(pending, repo, wt, func() {
+		if err := worktree.DeleteBranch(repo, "slowpoke", true); err != nil {
+			t.Errorf("DeleteBranch: %v", err)
+		}
+		close(ran)
+	}) {
+		t.Fatal("finishAfterRemoval did not recognise a pending removal")
+	}
+
+	// Nothing may happen while the directory is still being deleted.
+	select {
+	case <-ran:
+		t.Fatal("follow-up ran before the deletion finished")
+	case <-time.After(200 * time.Millisecond):
+	}
+
+	if err := os.RemoveAll(wt); err != nil {
+		t.Fatal(err)
+	}
+	close(done)
+	select {
+	case <-ran:
+	case <-time.After(10 * time.Second):
+		t.Fatal("follow-up never ran after the deletion finished")
+	}
+	if out := gitOutput(t, repo, "worktree", "list", "--porcelain"); strings.Contains(out, "slowpoke") {
+		t.Errorf("stale worktree entry survived:\n%s", out)
+	}
+	if out := gitOutput(t, repo, "branch", "--list", "slowpoke"); out != "" {
+		t.Errorf("branch survived: %q", out)
+	}
+}
+
+// Any other error is not this function's business.
+func TestFinishAfterRemovalIgnoresOtherErrors(t *testing.T) {
+	r := freshRegistry(t)
+	if r.finishAfterRemoval(errors.New("boom"), "/r", "/w", func() { t.Error("ran") }) {
+		t.Error("handled a non-pending error")
+	}
+}
+
+// A checkout made with --separate-git-dir keeps its git dir elsewhere,
+// so the main root derived from the worktree is that git dir, not the
+// checkout. Git runs fine from there, so discard must still clear the
+// worktree entry and branch.
+func TestDiscardWithSeparateGitDir(t *testing.T) {
+	skipNonPosix(t)
+	base := t.TempDir()
+	repo := filepath.Join(base, "checkout")
+	meta := filepath.Join(base, "meta", "repo.git")
+	if err := os.MkdirAll(filepath.Dir(meta), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	runGit(t, base, "init", "-q", "-b", "main", "--separate-git-dir", meta, repo)
+	runGit(t, repo, "-c", "user.email=t@t", "-c", "user.name=t", "commit", "--allow-empty", "-q", "-m", "init")
+
+	r := freshRegistry(t)
+	wt := filepath.Join(repo, ".worktrees", "sep")
+	runGit(t, repo, "worktree", "add", "-q", "-b", "sep", wt)
+
+	r.discardWorktree(createPlan{
+		id: "gone", wtPath: wt, wtBranch: "sep",
+		wtCreated: true, wtBranchCreated: true,
+	})
+
+	if _, err := os.Stat(wt); !os.IsNotExist(err) {
+		t.Errorf("worktree dir survived: %v", err)
+	}
+	if out := gitOutput(t, repo, "worktree", "list", "--porcelain"); strings.Contains(out, "/sep") {
+		t.Errorf("stale worktree entry survived:\n%s", out)
+	}
+	if out := gitOutput(t, repo, "branch", "--list", "sep"); out != "" {
+		t.Errorf("branch survived: %q", out)
 	}
 }

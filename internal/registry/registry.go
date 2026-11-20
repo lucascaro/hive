@@ -2068,6 +2068,7 @@ func (r *Registry) disposeWorktree(id, projectID, projectCwd, wtPath, wtBranch s
 			// work at stake.
 			if err := worktree.Cleanup(root, wtPath); err != nil {
 				log.Printf("registry: worktree cleanup failed for %s: %v (branch=%s)", id, err, wtBranch)
+				r.finishAfterRemoval(err, root, wtPath, func() { r.pruneWorktreeLabel(projectID, wtPath) })
 			} else {
 				r.pruneWorktreeLabel(projectID, wtPath)
 			}
@@ -2079,6 +2080,7 @@ func (r *Registry) disposeWorktree(id, projectID, projectCwd, wtPath, wtBranch s
 		default:
 			if err := worktree.Cleanup(root, wtPath); err != nil {
 				log.Printf("registry: worktree cleanup failed for %s: %v (branch=%s)", id, err, wtBranch)
+				r.finishAfterRemoval(err, root, wtPath, func() { r.pruneWorktreeLabel(projectID, wtPath) })
 			} else {
 				r.pruneWorktreeLabel(projectID, wtPath)
 			}

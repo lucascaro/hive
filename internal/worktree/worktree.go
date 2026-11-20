@@ -107,7 +107,7 @@ func PrepareBase(ctx context.Context, repoDir string) (string, error) {
 
 	fetchCtx, fetchCancel := context.WithTimeout(ctx, 10*time.Second)
 	defer fetchCancel()
-	fetchOut, fetchErr := proc.CommandContext(fetchCtx, "git", "-C", repoDir, "fetch", "--quiet", "origin").CombinedOutput()
+	fetchOut, fetchErr := combinedOutput(gitCmd(fetchCtx, "-C", repoDir, "fetch", "--quiet", "origin"))
 	if fetchErr != nil {
 		// Resolve the cached ref anyway: it is what the user will be
 		// offered as the explicit fallback, and the age is what makes
@@ -273,9 +273,9 @@ func gitWorktreeAdd(ctx context.Context, repoDir string, args ...string) ([]byte
 	ctx, cancel := context.WithTimeout(ctx, 30*time.Second)
 	defer cancel()
 	full := append([]string{"-C", repoDir, "worktree", "add"}, args...)
-	cmd := proc.CommandContext(ctx, "git", full...)
+	cmd := gitCmd(ctx, full...)
 	cmd.Env = append(os.Environ(), "LC_ALL=C", "LANG=C")
-	out, err := cmd.CombinedOutput()
+	out, err := combinedOutput(cmd)
 	if err != nil && ctx.Err() == context.DeadlineExceeded {
 		return out, fmt.Errorf("timed out after 30s")
 	}
@@ -306,7 +306,13 @@ func Cleanup(repoDir, worktreePath string) error {
 		"worktree", "remove", "--force", worktreePath)
 	// Always try the FS removal too — `git worktree remove` may have
 	// succeeded but left a stray dir, or it may have skipped it.
-	_ = os.RemoveAll(worktreePath)
+	if err := removeAllBounded(worktreePath, mutateTimeout); err != nil {
+		// Still deleting in the background. Pruning now would keep the
+		// entry (its directory still exists) and the caller could not
+		// delete the branch (still checked out there), so hand the
+		// decision back: it finishes once Done closes.
+		return err
+	}
 	// Prune git's admin state regardless of how the above went.
 	if out, err := git(context.Background(), mutateTimeout, repoDir, "worktree", "prune"); err != nil {
 		return fmt.Errorf("git worktree prune: %s", strings.TrimSpace(string(out)))
@@ -317,6 +323,41 @@ func Cleanup(repoDir, worktreePath string) error {
 		return fmt.Errorf("git worktree remove: %s (best-effort completed)", strings.TrimSpace(string(removeOut)))
 	}
 	return nil
+}
+
+// RemovalPendingError reports that Cleanup gave up waiting for the
+// directory to be deleted. The deletion continues in the background;
+// Done closes once it has finished, and only then can git's admin entry
+// be pruned and the worktree's branch deleted. Callers that care run
+// Cleanup again after <-Done, which is idempotent.
+type RemovalPendingError struct {
+	Path string
+	Done <-chan struct{}
+}
+
+func (e *RemovalPendingError) Error() string {
+	return fmt.Sprintf("removing %s: still running; continuing in background", e.Path)
+}
+
+// removeAll is os.RemoveAll, swappable so a test can make it slow.
+var removeAll = os.RemoveAll
+
+// removeAllBounded is removeAll that gives up after d with a
+// *RemovalPendingError. Callers hold the registry's git lock, and a
+// wedged mount or a huge node_modules tree must not pin it.
+func removeAllBounded(path string, d time.Duration) error {
+	done := make(chan struct{})
+	res := make(chan error, 1)
+	go func() {
+		res <- removeAll(path)
+		close(done)
+	}()
+	select {
+	case err := <-res:
+		return err
+	case <-time.After(d):
+		return &RemovalPendingError{Path: path, Done: done}
+	}
 }
 
 // agentConfigDirs are the per-project agent config directories that
