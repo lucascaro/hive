@@ -122,7 +122,8 @@ func main() {
 
 	// The dictation capture HUD (spec 553): a native panel, the Carbon
 	// hotkey that opens it, and the menu item that names that hotkey.
-	hud := NewHUD(nativeView{}, client)
+	// Handy, when installed and switched on, records as it opens (573).
+	hud := NewHUD(nativeView{}, client, newExecHandy())
 	dict := NewDictation(nativeRegistrar{}, menu.SetDictation)
 	setNativeTargets(hud, dict)
 	client.AttachHUD(hud, dict)
