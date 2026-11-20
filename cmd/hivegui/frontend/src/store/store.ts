@@ -172,6 +172,10 @@ export interface AppData {
   // ListAgents(); empty until then, and an agent missing from it renders
   // its code with no tint rather than an invented colour.
   agentColors: ReadonlyMap<string, string>;
+  // agent id -> the key that makes the agent read an image off the
+  // clipboard (internal/agent Def.ImagePasteKey). Filled with
+  // agentColors; an agent missing from it has no known key.
+  agentImagePasteKeys: ReadonlyMap<string, string>;
   // The choice dialog is not in `modals`: it is mounted over any of
   // them, and its answer travels back to the caller through a promise
   // rather than through a component. `seq` remounts the body on a
@@ -567,6 +571,7 @@ function initialData(): AppData {
     archived: [],
     plugins: [],
     agentColors: new Map(),
+    agentImagePasteKeys: new Map(),
     choiceDialog: null,
     keymap: EMPTY_KEYMAP,
   };
@@ -1386,6 +1391,13 @@ function byCreatedDesc(list: IdeaInfo[]): IdeaInfo[] {
 // Boot-time only; ListAgents() is static for the life of the daemon.
 export function setAgentColors(colors: ReadonlyMap<string, string>): void {
   set({ agentColors: colors });
+}
+
+// Boot-time only, like setAgentColors.
+export function setAgentImagePasteKeys(
+  keys: ReadonlyMap<string, string>,
+): void {
+  set({ agentImagePasteKeys: keys });
 }
 
 export function setArchived(archived: ArchivedSessionInfo[]): void {

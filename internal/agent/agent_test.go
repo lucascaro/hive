@@ -22,6 +22,18 @@ func TestBuiltinsPresent(t *testing.T) {
 	}
 }
 
+// ImagePasteKey is what the GUI's paste chord sends an agent when the
+// clipboard holds an image. Only agents known to read the clipboard on
+// that key may have one: to a shell the bytes are a stray keystroke.
+func TestImagePasteKey(t *testing.T) {
+	want := map[ID]string{IDClaude: "\x1bv", IDCodex: "\x1bv"}
+	for _, d := range All() {
+		if d.ImagePasteKey != want[d.ID] {
+			t.Errorf("%s: ImagePasteKey = %q, want %q", d.ID, d.ImagePasteKey, want[d.ID])
+		}
+	}
+}
+
 func TestShellAlwaysAvailable(t *testing.T) {
 	d, _ := Get(IDShell)
 	if !d.Available() {

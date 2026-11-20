@@ -32,7 +32,7 @@ vi.mock('../../src/bridge.js', () => {
     Confirm: fn(),
     EventsOn: vi.fn(),
     WindowSetTitle: vi.fn(),
-    ClipboardGetText: fn(),
+    ReadClipboard: fn(),
   };
 });
 

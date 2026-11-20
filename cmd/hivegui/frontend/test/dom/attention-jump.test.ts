@@ -53,7 +53,7 @@ vi.mock('../../src/bridge.js', () => {
     SetClipboardText: fn(),
     EventsOn: vi.fn(),
     WindowSetTitle: vi.fn(),
-    ClipboardGetText: fn(),
+    ReadClipboard: fn(),
   };
 });
 

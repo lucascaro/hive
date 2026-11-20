@@ -115,6 +115,7 @@ export {
   SaveUpdateSettings,
   SourceRepoStatusFor,
   SetClipboardText,
+  ReadClipboard,
   LogFrontend,
   SetDebugTrace,
   MenuBarLoginItemStatus,
@@ -123,5 +124,4 @@ export {
 export {
   EventsOn,
   WindowSetTitle,
-  ClipboardGetText,
 } from '../wailsjs/runtime/runtime';
