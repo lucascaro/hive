@@ -43,12 +43,12 @@ func newCommandHub() *commandHub {
 	return newHub(func(c wire.ClientCommand) string { return c.Cmd })
 }
 
-// hotkeyHub is the GLOBAL_HOTKEY fan-out: the value itself lives in the
+// dictationHub is the DICTATION fan-out: the value itself lives in the
 // registry; this only tells connected clients it changed.
-type hotkeyHub = hub[wire.GlobalHotkey]
+type dictationHub = hub[wire.Dictation]
 
-func newHotkeyHub() *hotkeyHub {
-	return newHub(func(wire.GlobalHotkey) string { return "global_hotkey" })
+func newDictationHub() *dictationHub {
+	return newHub(func(wire.Dictation) string { return "dictation" })
 }
 
 func newHub[T any](describe func(T) string) *hub[T] {

@@ -430,17 +430,17 @@ func (c *Client) SetFocusedSession(sessionID string) error {
 	return c.cli.WriteJSON(wire.FrameSetFocusedSession, wire.SetFocusedSessionReq{SessionID: sessionID})
 }
 
-// SetGlobalHotkey stores the capture-HUD chord (spec 553). Every control
-// client then receives GLOBAL_HOTKEY; use AwaitGlobalHotkey.
-func (c *Client) SetGlobalHotkey(h wire.GlobalHotkey) error {
-	return c.cli.WriteJSON(wire.FrameSetGlobalHotkey, h)
+// SetDictation changes the capture-HUD settings req names (spec 573).
+// Every control client then receives DICTATION; use AwaitDictation.
+func (c *Client) SetDictation(req wire.SetDictationReq) error {
+	return c.cli.WriteJSON(wire.FrameSetDictation, req)
 }
 
-// AwaitGlobalHotkey consumes frames until a GLOBAL_HOTKEY arrives.
-func (c *Client) AwaitGlobalHotkey(timeout time.Duration) (wire.GlobalHotkey, error) {
-	var h wire.GlobalHotkey
-	err := c.awaitSnapshot(wire.FrameGlobalHotkey, "GLOBAL_HOTKEY", timeout, &h)
-	return h, err
+// AwaitDictation consumes frames until a DICTATION arrives.
+func (c *Client) AwaitDictation(timeout time.Duration) (wire.Dictation, error) {
+	var d wire.Dictation
+	err := c.awaitSnapshot(wire.FrameDictation, "DICTATION", timeout, &d)
+	return d, err
 }
 
 // GetPins asks for one session's pin headers (spec 566), answered as
