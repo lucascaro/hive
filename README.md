@@ -273,9 +273,25 @@ permission for the hotkey, which is active whenever Hive's daemon is
 running. Rebind it, or remove it, under
 `Settings ▸ Shortcuts ▸ Global (system-wide)`. The menu bar's
 **Dictate into a Session…** item opens the same box and shows the
-current hotkey, or says so when another app already owns it. One press
-opens the box and a second starts your dictation tool: macOS gives an
-app no supported way to start Dictation for you.
+current hotkey, or says so when another app already owns it. Usually one
+press opens the box and a second starts your dictation tool: macOS gives
+an app no supported way to start Dictation for you.
+
+With [Handy](https://handy.computer) installed, one press can do both.
+Turn on **Start Handy recording when the dictation box opens** under
+`Settings ▸ Menu bar`, and ⌃⌥Space opens the box with Handy already
+listening (Handy must be running; Hive never launches it). Then either:
+
+- stop Handy with its own key, and its text lands in the box for you to
+  read before ↩ sends it; or
+- press **↩** while it is still recording, which stops Handy and sends
+  the transcription as soon as it arrives. If none arrives within 10
+  seconds, nothing is sent and the box says so.
+
+**Esc**, or anything else that closes the box, cancels Handy, so a
+recording Hive started never pastes into another app. Handy can't tell
+other apps whether it is recording, so if it already was when you press
+⌃⌥Space, the press stops it instead.
 
 ## Reloading vs restarting
 

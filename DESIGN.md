@@ -74,9 +74,12 @@ Architectural invariants. Each one should ideally be enforceable by `gc-sweep` o
   text to a session only through `SEND_TO_SESSION`, and only after the
   user confirms in the panel: there is no socket, CLI or frame that puts
   text into the HUD or past it. The HUD's own frames
-  (`SET_FOCUSED_SESSION`, `SET_GLOBAL_HOTKEY`, `GLOBAL_HOTKEY`) carry a
-  session id and a key chord, never text, and plugins are refused both
-  requests.
+  (`SET_FOCUSED_SESSION`, `SET_DICTATION`, `DICTATION`) carry a
+  session id, a key chord and switches, never text, and plugins are
+  refused both requests. With Handy auto-start on (spec 573), the menu
+  bar runs Handy's own `--toggle-transcription` / `--cancel` when the
+  HUD opens and closes; Handy still pastes into the HUD, so the confirm
+  step stays.
 - **A GUI reload never touches the daemon.** `App.ReloadGUI` relaunches the
   GUI process and leaves `hived` and every PTY it owns running; only
   `App.RestartDaemon` may send `FrameShutdown` or signal the daemon. Grep
