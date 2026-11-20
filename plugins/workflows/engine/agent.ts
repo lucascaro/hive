@@ -374,7 +374,7 @@ class AgentRun {
     await this.#deps.pause?.('after-prompt');
     // A stop that came while the prompt was in flight cancels this turn itself (stop waits for the ack); there is nothing to wait for here.
     if (!this.#live('running', 'waiting')) return undefined;
-    this.#engine.ackTurn(run_id, key, ack);
+    this.#engine.ackTurn(run_id, key, ack, again);
     return await this.#outcome(ack);
   }
 
@@ -471,6 +471,7 @@ class AgentRun {
     this.#deadline = Date.now() + ms;
     this.#timer = setTimeout(() => {
       this.#timer = undefined;
+      if (!this.#fresh()) return;
       this.#fail(`timed out after ${this.#n.timeout_s}s`);
       void this.stop();
     }, ms);
@@ -499,6 +500,8 @@ class AgentRun {
    * session is killed; the worktree is kept either way. Safe to call twice.
    */
   stop(): Promise<void> {
+    // A launch the connection outlived is stale: its session belongs to the launch that replaced it, and this one speaks for no one.
+    if (!this.#fresh()) return (this.#stopped ??= Promise.resolve());
     this.#stopped ??= (async () => {
       const sid = this.#sid;
       if (!sid) return;

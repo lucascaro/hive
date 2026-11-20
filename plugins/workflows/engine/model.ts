@@ -37,6 +37,8 @@ export interface Row {
   prompt_id?: number;
   epoch?: number;
   boot_id?: string;
+  /** The turn recorded in `prompt_id` is this attempt's F3 re-prompt: the engine's own record, so a restart never has to read it back from the transcript. */
+  reprompted?: boolean;
   conflict?: { branch: string; files: string[]; worktree: string; files_omitted?: number };
   /** The data of the open `node.waiting` event; present only while the node is waiting (B-13). */
   waiting?: Record<string, unknown>;

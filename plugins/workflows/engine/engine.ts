@@ -427,10 +427,10 @@ export class Engine {
   }
 
   /** Records which transcript item and epoch an agent turn is, with the daemon boot it ran under (R2). */
-  ackTurn(runId: string, key: string, a: { prompt_id: number; epoch: number }): void {
+  ackTurn(runId: string, key: string, a: { prompt_id: number; epoch: number }, again = false): void {
     const r = this.#row(runId, key);
     if (this.#stopping || !r || (r.state !== 'running' && r.state !== 'waiting')) return;
-    this.commit(runId, { t: 'ack', key, ...a, ...(this.hive.welcome?.boot_id ? { boot_id: this.hive.welcome.boot_id } : {}) });
+    this.commit(runId, { t: 'ack', key, ...a, again, ...(this.hive.welcome?.boot_id ? { boot_id: this.hive.welcome.boot_id } : {}) });
   }
 
   /** Why the IR's agent nodes cannot run under the daemon's catalog and ceilings right now (R6), or undefined. Asked before every run start and retry. */
@@ -578,6 +578,13 @@ export class Engine {
     return [...rt.model.rows.values()].filter((r) => rt.model.ix.byId.get(r.node_id)?.node.kind === 'agent');
   }
 
+  /** The `timeout_s` of an agent node. */
+  timeoutOf(runId: string, key: string): number {
+    const rt = this.#runs.get(runId);
+    const n = rt?.model.ix.byId.get(rt.model.rows.get(key)?.node_id ?? '')?.node;
+    return n?.kind === 'agent' ? n.timeout_s : 0;
+  }
+
   /** The workflow's name: what its sessions are named after. */
   workflowName(runId: string): string {
     return this.#runs.get(runId)?.model.ix.ir.name ?? '';
@@ -608,10 +615,17 @@ export class Engine {
     return id;
   }
 
-  /** Marks a running or waiting agent node `interrupted`: its turn did not survive, and the reducer retries it. */
-  interruptNode(runId: string, key: string): void {
+  /** Marks a running or waiting agent node `interrupted`: its turn did not survive, and the reducer retries it. `drive` also starts the retry (for a call made after recovery has finished). */
+  interruptNode(runId: string, key: string, drive = false): void {
     const s = this.#row(runId, key)?.state;
-    if (s === 'running' || s === 'waiting') this.commit(runId, { t: 'interrupt', key });
+    if (s !== 'running' && s !== 'waiting') return;
+    this.commit(runId, { t: 'interrupt', key });
+    if (drive) this.#after(runId);
+  }
+
+  /** The row of an agent node of an active run. */
+  rowOf(runId: string, key: string): Row | undefined {
+    return this.#row(runId, key);
   }
 
   // ------------------------------------------------------------- reconnect

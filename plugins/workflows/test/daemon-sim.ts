@@ -228,6 +228,8 @@ export function simulate(hive: FakeHive, o: SimOptions): Sim {
     };
     h.replies.PROMPT_ACP = (req) => {
       const s = sim.sessions.find((x) => x.id === req.session_id) as SimSession;
+      // The daemon refuses a prompt while a turn is running (ErrACPBusy).
+      if (s.prompt_id > 0 && !s.stop_reason) throw hiveError('acp_busy', 'a turn is running');
       sim.prompts.push(req.text as string);
       const turn = sim.prompts.length;
       const id = s.begin(req.workflow_run_id ? `plugin:workflows/workflow:${req.workflow_run_id as string}` : 'user', req.text as string);

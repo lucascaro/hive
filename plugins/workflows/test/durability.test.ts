@@ -362,33 +362,133 @@ test('a turn of ours that was not recorded, followed by one that is not ours, is
   }
 });
 
-test('a trimmed transcript: a lost ack whose turn the daemon no longer lists is not sent again', async () => {
-  const w = world(one(), {}, { pause: (p) => (p === 'after-prompt' ? never() : Promise.resolve()) });
-  await waitFor(() => w.sim.prompts.length === 1, 'the turn');
-  await tick();
+// The daemon trims the oldest transcript items of a long conversation, never the state fields (`prompt_id`, `stop_reason`, the result).
+
+test('a trimmed transcript: a recorded turn still running is kept at attempt 1, with no second prompt and no kill', async () => {
+  const w = world(one());
+  await running(w);
   w.h.engine.disconnect();
-  w.sim.sessions[0].trim = 1; // the oldest items were trimmed: the turn is running, and its item is gone
+  w.sim.sessions[0].trim = 1; // its user item is gone; the turn is not
   const w2 = await crash(w);
   try {
-    await waitFor(() => row(w2).attempt === 2, 'the node to be interrupted');
-    assert.equal(w2.sim.prompts.length, 2);
-    assert.ok(w2.sim.prompts[1].startsWith(INTERRUPTED_NOTE), 'the retry says it is one; the original prompt was not sent as if nothing had happened');
+    await tick();
+    await new Promise((r) => setTimeout(r, 30));
+    assert.deepEqual([row(w2).state, row(w2).attempt], ['running', 1]);
+    assert.equal(w2.sim.of('PROMPT_ACP').length, 1, 'a healthy long turn is not prompted again (the daemon would refuse it as busy)');
+    assert.deepEqual(w2.sim.of('KILL_SESSION'), []);
+    finish(w2.sim.sessions[0], 'long turn');
+    await done(w2);
+    assert.equal(row(w2).attempt, 1);
   } finally {
     w2.cleanup();
   }
 });
 
-test('a trimmed transcript: a re-prompt whose item is gone does not allow a third prompt', async () => {
+test('a trimmed transcript: a recorded turn that finished with a result is accepted, not run again', async () => {
+  const w = world(one());
+  await running(w);
+  w.h.engine.disconnect();
+  finish(w.sim.sessions[0], 'a finished long turn');
+  w.sim.sessions[0].trim = 1;
+  const w2 = await crash(w);
+  try {
+    await done(w2);
+    assert.deepEqual(row(w2).output_raw, { summary: 'a finished long turn' });
+    assert.equal(w2.sim.of('PROMPT_ACP').length, 1);
+    assert.equal(row(w2).attempt, 1);
+  } finally {
+    w2.cleanup();
+  }
+});
+
+test('a trimmed transcript: the F3 re-prompt is known from the row, so its trimmed item allows no third prompt', async () => {
   const w = world(one(), { onPrompt: (turn, _t, sess) => (turn === 1 ? sess.end() : undefined) });
   await waitFor(() => w.sim.prompts.length === 2 && row(w).prompt_id === 20, 'the re-prompt to be running and recorded');
+  assert.equal(row(w).reprompted, true);
   w.h.engine.disconnect();
   w.sim.sessions[0].trim = 2; // both user items trimmed
   w.sim.sessions[0].end(); // the re-prompt ended without a result
   const w2 = await crash(w);
   try {
-    await waitFor(() => row(w2).attempt === 2, 'the node to be interrupted');
-    assert.ok(w2.sim.prompts[2]?.startsWith(INTERRUPTED_NOTE), 'not the F3 re-prompt a third time');
-    assert.equal(w2.sim.prompts.filter((p) => p === REPROMPT).length, 1);
+    await waitFor(() => runState(w2.h, w2.id) === 'failed', 'the second miss to fail the node');
+    assert.match(row(w2).error ?? '', /twice without calling submit_result/);
+    assert.equal(w2.sim.prompts.length, 2, 'no third prompt');
+    assert.deepEqual(w2.sim.of('KILL_SESSION'), []);
+  } finally {
+    w2.cleanup();
+  }
+});
+
+test('a trimmed transcript, lost ack, turn still running: nothing is sent or killed; when the turn ends the node is interrupted and its retry succeeds', async () => {
+  const w = world(one(), {}, { pause: (p) => (p === 'after-prompt' ? never() : Promise.resolve()) });
+  await waitFor(() => w.sim.prompts.length === 1, 'the turn');
+  await tick();
+  w.h.engine.disconnect();
+  w.sim.sessions[0].trim = 1; // the turn is running and its item is gone: the row cannot tell it from the user's
+  const w2 = await crash(w);
+  try {
+    await new Promise((r) => setTimeout(r, 60));
+    assert.deepEqual([row(w2).state, row(w2).attempt], ['running', 1], 'waiting for the session to go idle');
+    assert.equal(w2.sim.of('PROMPT_ACP').length, 1);
+    assert.deepEqual(w2.sim.of('KILL_SESSION'), []);
+    w2.sim.sessions[0].end(); // the turn ends
+    await waitFor(() => row(w2).attempt === 2 && w2.sim.prompts.length === 2, 'the retry to be prompted');
+    assert.ok(w2.sim.prompts[1].startsWith(INTERRUPTED_NOTE));
+    assert.notEqual(row(w2).state, 'failed', 'the retry was not refused as busy');
+    assert.deepEqual(w2.sim.of('KILL_SESSION'), [], 'a healthy session is never killed for this');
+  } finally {
+    w2.cleanup();
+  }
+});
+
+test('a recorded turn on a session that has no turn at all (same epoch, nothing prompted) is interrupted at once, not waited for', async () => {
+  const w = world(one());
+  await running(w);
+  w.h.engine.disconnect();
+  const sess = w.sim.sessions[0];
+  sess.prompt_id = 0; // a session that came back with an empty transcript under the same epoch number
+  sess.users = [];
+  const w2 = await crash(w);
+  try {
+    await waitFor(() => row(w2).attempt === 2 && w2.sim.prompts.length === 2, 'the retry');
+    assert.deepEqual(w2.sim.of('KILL_SESSION'), []);
+  } finally {
+    w2.cleanup();
+  }
+});
+
+test('a trimmed transcript, lost ack, session idle: the node is interrupted at once', async () => {
+  const w = world(one(), {}, { pause: (p) => (p === 'after-prompt' ? never() : Promise.resolve()) });
+  await waitFor(() => w.sim.prompts.length === 1, 'the turn');
+  await tick();
+  w.h.engine.disconnect();
+  finish(w.sim.sessions[0], 'unreadable'); // the turn ended meanwhile
+  w.sim.sessions[0].trim = 1;
+  const w2 = await crash(w);
+  try {
+    await waitFor(() => row(w2).attempt === 2 && w2.sim.prompts.length === 2, 'the retry');
+    assert.deepEqual(w2.sim.of('KILL_SESSION'), []);
+  } finally {
+    w2.cleanup();
+  }
+});
+
+test('a trimmed transcript, lost ack, a turn that outlives the node\'s timeout: it is cancelled, not killed, and the node fails naming the timeout', async () => {
+  const slow = workflow('w', s.object({}), (g) => {
+    g.agent('a', { agent: 'claude', prompt: 'do it', output: out, timeoutSec: 1 });
+  });
+  const w = world(slow, {}, { pause: (p) => (p === 'after-prompt' ? never() : Promise.resolve()) });
+  await waitFor(() => w.sim.prompts.length === 1, 'the turn');
+  await tick();
+  w.h.engine.disconnect();
+  w.sim.sessions[0].trim = 1;
+  const w2 = await crash(w);
+  try {
+    await waitFor(() => runState(w2.h, w2.id) === 'failed', 'the node to time out');
+    assert.match(row(w2).error ?? '', /timed out after 1s/);
+    assert.equal(w2.sim.of('CANCEL_ACP').length, 1);
+    assert.deepEqual(w2.sim.of('KILL_SESSION'), []);
+    assert.equal(w2.sim.prompts.length, 1);
   } finally {
     w2.cleanup();
   }

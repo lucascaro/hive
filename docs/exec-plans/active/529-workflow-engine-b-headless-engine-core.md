@@ -2484,11 +2484,30 @@ download, the accepted sandbox gap, and `LIST_ACP_AGENTS`.
     - *A stale launch's failure could fail a node a newer launch owns.*
       `failNode` takes the connection generation the caller started under and
       refuses a failure from an older one.
-    - *Trimmed transcripts.* The daemon drops the oldest items past 2000 or 512
-      KiB. With no turn recorded and a transcript that has turns but none of ours,
-      or with the recorded turn's item gone, the node is interrupted: the turn is
-      never sent again (which would run twice or be refused as busy), and an F3
-      re-prompt whose item is gone is never followed by a third prompt.
+    - *Trimmed transcripts (gate round 2 corrected round 1's rule).* The daemon
+      drops the oldest items past 2000 items or 512 KiB, but never the state
+      fields: `prompt_id`, `stop_reason` and the result are set when a prompt
+      starts and are not trimmed. So:
+      - **A recorded turn is followed whether or not its item is listed.** Same
+        boot, same epoch and `tx.prompt_id` equal to the row's recorded id prove
+        the turn is the row's: it is watched while it runs and its result is taken
+        when it is done. Round 1 interrupted here, which made the retry hit
+        `acp_busy` on a healthy running turn (then `stop()` force-killed the
+        session) or threw away a finished result.
+      - **"This was the F3 re-prompt" is the engine's own record**, never read
+        back from the transcript's text: the row has a `reprompted` flag written
+        with the turn's ack (a new `nodes.reprompted` column; an older `runs.db`
+        gets it by `ALTER TABLE`). A lost ack on the second turn of an attempt is
+        the re-prompt by construction (an attempt sends no other second turn).
+      - **A lost ack whose user item is trimmed, or a latest turn that is the
+        user's, is ambiguous.** Nothing is sent and nothing is killed while the
+        session has a turn running. The node waits (without holding up recovery of
+        the other nodes) until the session goes idle, then it is interrupted, and
+        its retry prompts an idle session, so it cannot be refused as busy. If the
+        session is already idle the node is interrupted at once. The wait is
+        bounded by the node's own `timeout_s` counted from `started_at`: past it
+        the turn is cancelled (CANCEL_ACP, the session is left alone) and the node
+        fails naming the timeout.
     - *A SESSIONS frame answered every waiting listing.* LIST_SESSIONS has no
       `req_id`, so a poll right after a RESTART ack could read an earlier answer
       and kill a session that had restarted fine. Each listing now takes the
@@ -2496,6 +2515,18 @@ download, the accepted sandbox gap, and `LIST_ACP_AGENTS`.
       listing that timed out keeps its slot so its late answer is not the next
       one's. (The unsolicited snapshot a connection gets after WELCOME can answer
       the first listing; it is at least as fresh as that request.)
+    - *Gate round 2 also fixed:* a stale launch's timeout timer and `stop()` no
+      longer act (they would have spoken on the new connection); the orphan scan
+      counts the sessions the rows named when recovery began and skips a run that
+      ended while its nodes were read (a node that failed during recovery had its
+      healthy session killed as an "orphan"); and the redial loop has a streak:
+      the first redial of a streak is at once, each next one waits twice as long
+      (`redialDelayMs`, doubling, capped at 5 s), and ten in a row end the plugin.
+      Only a connection that stays open for `stableMs` (30 s) clears the streak, so
+      one that dies right after every read cannot be redialled without bound. Per
+      redial the plugin keeps no listeners or timers of the old connection: the
+      old object is dropped, `pokeAll` empties the feed's waiters, and the stable
+      timer is cleared on a loss.
     - *The 130 s launch wait* (follow-up 2) is shorter than `#reuse`'s worst-case
       chain (two session settles of 60 s each, a restart of 60 s, a kill and a
       prepare of 120 s). If the wait ends first, the retry's launch goes on beside

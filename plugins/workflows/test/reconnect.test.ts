@@ -262,3 +262,81 @@ test('a failure from a launch the connection outlived is refused, whenever it ar
     rmSync(dir, { recursive: true, force: true });
   }
 });
+
+test('a connection that dies right after every read is redialled with growing pauses, and only ten times in a row', async () => {
+  const dir = mkdtempSync(join(tmpdir(), 'wf-redial-'));
+  const hive = new FakeHive();
+  const sim = simulate(hive, { onPrompt: () => {} });
+  const dialled: number[] = [];
+  let gone = 0;
+  const engine = await start(conn(hive), {
+    dataDir: dir,
+    testSeam: true,
+    redialDelayMs: 4,
+    onGone: () => gone++,
+    redial: async () => {
+      dialled.push(Date.now());
+      const c = new FakeHive();
+      c.welcome = { boot_id: 'boot-1' };
+      sim.attach(c);
+      return conn(c);
+    },
+  });
+  try {
+    const id = engine.startRunFromIR({ project_id: 'p1', file: 'w.ts', ir: IR, input: {} });
+    await waitFor(() => engine.store.loadRows(id)[0].prompt_id !== undefined, 'the turn to start');
+    let current: FakeHive = hive;
+    for (let i = 0; i < 12 && gone === 0; i++) {
+      current.emit('close', undefined);
+      // each redial survives its read; the next close comes right after it
+      await waitFor(() => gone === 1 || (engine.hive !== current && !engine.disconnected), 'the redial', 10_000);
+      if (gone === 0) current = engine.hive as unknown as FakeHive;
+    }
+    assert.equal(gone, 1, 'the plugin gave up');
+    assert.equal(dialled.length, 10, 'ten redials in a row, however many closes');
+    const gaps = dialled.slice(1).map((t, i) => t - dialled[i]);
+    assert.ok(gaps[gaps.length - 1] >= 500 && gaps[gaps.length - 1] > 10 * gaps[0], `the pauses grow: 4 ms doubling, so the last is about 1 s (${gaps.join(', ')} ms)`);
+    assert.equal(engine.store.loadRows(id)[0].state, 'running', 'never failed or interrupted');
+  } finally {
+    engine.stopFlush();
+    engine.store.close();
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('a connection that stays open clears the streak', async () => {
+  const dir = mkdtempSync(join(tmpdir(), 'wf-redial-'));
+  const hive = new FakeHive();
+  const sim = simulate(hive, { onPrompt: () => {} });
+  let dials = 0;
+  let gone = 0;
+  const engine = await start(conn(hive), {
+    dataDir: dir,
+    testSeam: true,
+    redialDelayMs: 1,
+    stableMs: 5,
+    onGone: () => gone++,
+    redial: async () => {
+      dials++;
+      const c = new FakeHive();
+      c.welcome = { boot_id: 'boot-1' };
+      sim.attach(c);
+      return conn(c);
+    },
+  });
+  try {
+    let current: FakeHive = hive;
+    for (let i = 0; i < 14; i++) {
+      current.emit('close', undefined);
+      await waitFor(() => engine.hive !== current && !engine.disconnected, 'the redial');
+      current = engine.hive as unknown as FakeHive;
+      await new Promise((r) => setTimeout(r, 15)); // long enough to count as stable
+    }
+    assert.equal(gone, 0, 'a connection that lasts is not a streak');
+    assert.equal(dials, 14);
+  } finally {
+    engine.stopFlush();
+    engine.store.close();
+    rmSync(dir, { recursive: true, force: true });
+  }
+});

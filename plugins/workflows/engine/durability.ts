@@ -16,7 +16,6 @@
 //
 // Nothing here starts a second session while the first may still be running.
 
-import { REPROMPT } from './agent.ts';
 import type { Engine } from './engine.ts';
 import type { Row } from './model.ts';
 import type { SessionState } from './sessions.ts';
@@ -58,7 +57,7 @@ export async function recoverAgents(engine: Engine, runIds: string[]): Promise<v
       }
     }
     if (lost()) return;
-    await settleOrphans(engine, run.id, listed);
+    await settleOrphans(engine, run.id, listed, run.rows);
   }
 }
 
@@ -76,39 +75,83 @@ async function recoverRunning(engine: Engine, runId: string, row: Row, byId: Map
   const recorded = row.prompt_id !== undefined && row.epoch !== undefined ? { prompt_id: row.prompt_id, epoch: row.epoch } : undefined;
   if (info.kind === 'pty') {
     // The user has taken the session over (F2): the node keeps waiting for it to be handed back.
-    return recorded ? engine.resumeAgent(runId, key, { kind: 'watch', ack: recorded, again: false }) : engine.interruptNode(runId, key);
+    return recorded ? engine.resumeAgent(runId, key, { kind: 'watch', ack: recorded, again: row.reprompted === true }) : engine.interruptNode(runId, key);
   }
   const tx = await engine.feed.fetchTranscript(send, sid, engine.daemonWaitMs);
   if (lost()) return;
   if (!tx) return engine.interruptNode(runId, key);
 
   // A turn of ours is a user item the daemon stamped with this run's principal.
-  const ours = [...tx.users].filter(([, u]) => u.origin === engine.principalOf(runId)).map(([id, u]) => ({ id, text: u.text })).sort((a, b) => a.id - b.id);
-  const after = recorded && tx.epoch === recorded.epoch ? recorded.prompt_id : 0;
+  const ours = [...tx.users].filter(([, u]) => u.origin === engine.principalOf(runId)).map(([id]) => ({ id })).sort((a, b) => a.id - b.id);
   if (recorded && tx.epoch !== recorded.epoch) return engine.interruptNode(runId, key); // the session was restarted or reloaded: that turn is gone
   // The PROMPT_ACP ack can be lost (the engine died between the daemon starting the turn and the row recording it): the turn is in the transcript, and sending the prompt again would run it twice.
+  const after = recorded ? recorded.prompt_id : 0;
   const unrecorded = ours.filter((u) => u.id > after).at(-1);
 
-  // The daemon trims the oldest transcript items of a long conversation. A turn of ours that is no longer listed cannot be told from "never sent",
-  // and sending it again would run it twice (or be refused as busy), so a transcript with turns but none of ours, or without the item of the
-  // turn the row recorded, is not read as a turn the node can follow: it is interrupted, never re-sent and never re-prompted a third time.
-  const recordedItem = recorded ? tx.users.get(recorded.prompt_id) : undefined;
-  if (!unrecorded && !recorded && tx.prompt_id > 0) return engine.interruptNode(runId, key);
-  if (!unrecorded && recorded && !recordedItem) return engine.interruptNode(runId, key);
-
+  // The daemon trims the oldest transcript items of a long conversation, but never the state fields: `prompt_id` is the turn the session is on.
+  // Same boot, same epoch and the recorded id as the latest turn prove the turn is the row's, whether or not its item is still listed.
   let ack = recorded;
-  let again = recordedItem?.text === REPROMPT;
-  if (unrecorded) {
-    if (tx.prompt_id !== unrecorded.id) return engine.interruptNode(runId, key); // someone prompted after it: not a turn the node can follow
+  let again = row.reprompted === true; // the engine's own record of the F3 re-prompt, never read back from the transcript's text
+  if (unrecorded && tx.prompt_id === unrecorded.id) {
+    // The only second turn an attempt sends is the F3 re-prompt, so a turn newer than the recorded one is it.
     ack = { prompt_id: unrecorded.id, epoch: tx.epoch };
-    again = unrecorded.text === REPROMPT;
+    again = recorded !== undefined;
     if (lost()) return;
-    engine.ackTurn(runId, key, ack);
-  } else if (recorded && tx.prompt_id !== recorded.prompt_id) {
-    return engine.interruptNode(runId, key); // the latest turn is not ours
+    engine.ackTurn(runId, key, ack, again);
+  } else if (recorded && tx.prompt_id === recorded.prompt_id) {
+    // follow the recorded turn
+  } else if (!recorded && tx.prompt_id === 0) {
+    ack = undefined; // nothing was ever sent: the turn is sent now
+  } else {
+    // A turn the node cannot follow: the user's own, or ours with its item trimmed away and no ack recorded. Which one it is cannot be told, so
+    // nothing is sent (a prompt on a running session is refused as busy, and the refusal would fail the node) and nothing is killed: the node
+    // waits for the session to go idle, then it is interrupted and its retry prompts an idle session.
+    return awaitIdleThenInterrupt(engine, runId, row, tx.prompt_id === 0 || tx.stop_reason !== '', lost); // a turn is running only once a prompt has started and has no stop reason yet
   }
   if (lost()) return;
   engine.resumeAgent(runId, key, ack ? { kind: 'watch', ack, again } : { kind: 'send' });
+}
+
+/**
+ * Interrupts the node once its session has no turn running. Not awaited by
+ * recovery: the other nodes are read meanwhile. Bounded by the node's own
+ * timeout, counted from when it started: past it the turn is cancelled (the
+ * session is left alone) and the node fails naming the timeout.
+ */
+function awaitIdleThenInterrupt(engine: Engine, runId: string, row: Row, idle: boolean, lost: () => boolean): void {
+  const { key } = row;
+  const sid = row.session_id as string;
+  if (idle) return engine.interruptNode(runId, key);
+  const node = engine.timeoutOf(runId, key);
+  const since = Date.parse(row.started_at ?? '');
+  const left = Math.max(1000, node * 1000 - (Number.isFinite(since) ? Date.now() - since : 0));
+  const feed = engine.feed;
+  let over = false;
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const end = (then: () => void): void => {
+    if (over) return;
+    over = true;
+    clearTimeout(timer);
+    unsub();
+    if (!lost() && engine.rowOf(runId, key)?.session_id === sid) then();
+  };
+  const look = (): void => {
+    const info = feed.session(sid);
+    if (lost()) return end(() => {});
+    const t = feed.transcript(sid);
+    if (info === undefined || info.removed || !info.alive || (t && (t.prompt_id === 0 || t.stop_reason !== ''))) end(() => engine.interruptNode(runId, key, true));
+  };
+  const unsub = feed.subscribe(sid, look);
+  timer = setTimeout(
+    () =>
+      end(() => {
+        // The turn outlived the node's timeout: stop it, and fail the node as any timed-out node fails.
+        void engine.hive.request('CANCEL_ACP', { session_id: sid }).catch(() => {});
+        engine.failNode(runId, key, `timed out after ${node}s`, { link: engine.link });
+      }),
+    left,
+  );
+  timer.unref?.();
 }
 
 /**
@@ -117,9 +160,11 @@ async function recoverRunning(engine: Engine, runId: string, row: Row, byId: Map
  * adopted (it was never prompted: the first turn follows the ack); anything
  * else is killed, so a node never ends up with two sessions in its worktree.
  */
-async function settleOrphans(engine: Engine, runId: string, listed: Listed[]): Promise<void> {
+async function settleOrphans(engine: Engine, runId: string, listed: Listed[], before: Row[]): Promise<void> {
   const rows = engine.agentRows(runId);
-  const named = new Set(rows.map((r) => r.session_id).filter((id): id is string => !!id));
+  if (rows.length === 0) return; // the run ended while its nodes were read: its sessions are the run-end cleanup's
+  // A session a node named when recovery began is that node's, even if the node has changed or ended since.
+  const named = new Set([...before, ...rows].map((r) => r.session_id).filter((id): id is string => !!id));
   const prefix = `${engine.workflowName(runId)} · `;
   const principal = engine.principalOf(runId);
   const byKey = new Map<string, Listed[]>();
