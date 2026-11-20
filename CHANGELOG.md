@@ -14,6 +14,7 @@ Pinned responses: Claude and Pi sessions (except ACP Pi) can pin an important an
 
 ### Changed
 Go to session (⌘P) now lists sessions that are waiting on you — for input, a permission, or after a failure — right after the session you just left, and a waiting session wins a tie while you type. The highlight also stays on the session you picked if the list reorders while the finder is open.
+Claude and Pi now actually pin answers worth keeping — a root cause, a command recipe, a decision, a summary of findings — without being asked. The earlier, softer instruction was being ignored; trivial replies are still not pinned.
 The sidebar now follows the active session. However you switch (⌘B, ⌘↑/⌘↓, the session finder, going back, clicking a grid tile, or a session that just started), its row scrolls into view, and a collapsed project or worktree group shows that one row without expanding. Clicking a row that is already visible never moves the list.
 Granting "May direct other sessions" now notes that the grant limits only agents that use Hive's messaging, since any agent with a shell can reach Hive directly; SECURITY.md gains a Trust model section explaining what that means and how to run untrusted agents safely.
 
