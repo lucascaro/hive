@@ -10,6 +10,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/lucascaro/hive/internal/registry"
 	"github.com/lucascaro/hive/internal/session"
 	"github.com/lucascaro/hive/internal/wire"
 )
@@ -413,5 +414,35 @@ func TestPinsSurviveDaemonRestart(t *testing.T) {
 		if s.ID == id && s.PinCount != 1 {
 			t.Errorf("pin_count after restart = %d", s.PinCount)
 		}
+	}
+}
+
+// A reopen that lands while the close is still tearing down is answered
+// session_closing, so a client can say "try again" rather than a bare
+// failure.
+func TestRestoreDuringKillTeardownIsSessionClosing(t *testing.T) {
+	skipOnWindows(t)
+	d := startTestDaemon(t)
+	id := secondSession(t, d)
+	ctl := controlConn(t, d)
+	ran := false
+	registry.SetKillTeardownHookForTest(func(sid string) {
+		if sid != id {
+			return
+		}
+		ran = true
+		_ = wire.WriteJSON(ctl, wire.FrameRestoreSession, wire.RestoreSessionReq{SessionID: sid})
+		// Hold the teardown until the daemon has answered.
+		_, payload := awaitFrame(t, ctl, wire.FrameError)
+		if code := errCode(t, payload); code != "session_closing" {
+			t.Errorf("RESTORE_SESSION mid-teardown = %s, want session_closing", code)
+		}
+	})
+	t.Cleanup(func() { registry.SetKillTeardownHookForTest(nil) })
+	if err := d.Registry().Kill(id, true); err != nil {
+		t.Fatal(err)
+	}
+	if !ran {
+		t.Fatal("the teardown hook never ran")
 	}
 }

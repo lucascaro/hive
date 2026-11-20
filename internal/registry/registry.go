@@ -1852,15 +1852,19 @@ func (r *Registry) KillAndRemoveWorktree(id string, force bool) error {
 	return r.kill(id, force, true, false)
 }
 
-// kill closes a session. archive=true is the Archive path: the durable
-// archive record replaces the tombstone, the worktree is never disposed,
-// tombstone retention is not run, and a failed record write aborts
-// before any teardown (the record is the only copy).
 // testHookKillTeardown, when set by a test, runs during kill's
 // teardown, after the entry is gone and before its directory is
 // removed. Nil outside tests.
 var testHookKillTeardown func(id string)
 
+// SetKillTeardownHookForTest sets testHookKillTeardown for another
+// package's tests (the daemon's error-mapping test). Pass nil to clear.
+func SetKillTeardownHookForTest(fn func(id string)) { testHookKillTeardown = fn }
+
+// kill closes a session. archive=true is the Archive path: the durable
+// archive record replaces the tombstone, the worktree is never disposed,
+// tombstone retention is not run, and a failed record write aborts
+// before any teardown (the record is the only copy).
 func (r *Registry) kill(id string, force, removeWorktree, archive bool) error {
 	// A session parked on a worktree-setup question can be killed from
 	// under the dialog. Its worktree (if the add half-succeeded) is not
