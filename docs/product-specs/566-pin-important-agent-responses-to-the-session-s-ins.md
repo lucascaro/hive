@@ -5,7 +5,7 @@ title: Pin important agent responses to the session's inspector panel
 type: enhancement
 complexity: L
 priority: P2
-stage: REVIEW
+stage: GATE
 ---
 
 # Pin important agent responses to the session's inspector panel
