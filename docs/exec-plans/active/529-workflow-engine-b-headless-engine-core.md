@@ -1422,9 +1422,11 @@ Files: `engine/engine.ts` (the run-end hook), `engine/worktrees.ts`, and
    `epoch` (never an unpinned cancel, which could stop later work), then archive
    the session as in step 1. It covers the sessions B3c's orphan scan leaves
    alone too (B-26): a session of a run's principal that no row names and that
-   has a turn (`prompt_id > 0`) is neither adopted nor killed at recovery, so
-   this step finds it by its principal and name, cancels the running turn
-   pinned to the transcript's own `prompt_id` and `epoch`, and archives it. This is not optional: step 1.1's `archive_busy`
+   has a turn (`prompt_id > 0`) or any conversation item (a revived session has
+   `prompt_id` 0 with its history replayed, trimmed or not) is neither adopted
+   nor killed at recovery, so this step finds it by its principal and name,
+   cancels the running turn pinned to the transcript's own `prompt_id` and
+   `epoch` (a revived session has none running), and archives it. This is not optional: step 1.1's `archive_busy`
    retry-then-kept would otherwise leave that turn running with the session
    archived "kept".
 3. **The fan-out bench and the chatty-fake reconnect test**, as listed under
@@ -2611,13 +2613,28 @@ download, the accepted sandbox gap, and `LIST_ACP_AGENTS`.
         `run.events` (reads). Only cancel and retry replace what a read describes,
         so only they are gated.
       - **(b) The orphan scan adopts only a session that was never prompted**
-        (its transcript has `prompt_id` 0 and no user item at all), and kills only
-        such sessions. "Never prompted" really means "not prompted since its agent
+        (its transcript has `prompt_id` 0 and holds nothing but Hive's own `notice`
+        lines), and kills only such sessions. "Never prompted" really means "not prompted since its agent
         last started": a session `hived` revived after a restart also has
         `prompt_id` 0 (the daemon's counters restart with the adapter, and the
         history is replayed as `replayed` user items). The empty transcript is what
         tells such a session, which has a conversation, from one a launch made and
-        never prompted; and a turn it had running died with the adapter, so nothing
+        never prompted. **Gate round 7 corrected the test from "no user item" to
+        "no item that is not a notice".** The daemon replays a revived session's
+        history and trims it to the newest 2000 items / 512 KiB
+        (`internal/acp/transcript.go:32-33`, `trim` at `:206`), and a long last turn
+        can trim every user item away, leaving a conversation that looked never
+        prompted and was force-killed. `trim` always keeps the newest item (`:204-205`,
+        "The newest item always stays"), and one item is bounded at 64 KiB raw
+        (`maxItemText`, `clip` `:219`) against a 512 KiB budget, so a non-empty
+        conversation cannot trim to nothing, and its newest item is an agent, tool,
+        plan or thought item, never a user one. The kinds the daemon can emit
+        (`wire.AcpItem*`: user, agent, thought, plan, tool, notice) before a first
+        prompt are only the untrusted-folder `notice` (`registry/acp.go` after the
+        replay, `AddNotice` `transcript.go:85`; engine worktrees are trusted, so a
+        node's own session has none); anything else was put there by a replay or a
+        user. One test per kind pins it, and a notice alone is still adopted. This
+        rule does not depend on how much of the history survived the trim; and a turn it had running died with the adapter, so nothing
         is running on a revived session either. A
         session with a turn is left alone: nothing in a pass knows whose turn is
         running on it, and prompting it is refused as busy and then the node's
@@ -2660,6 +2677,17 @@ download, the accepted sandbox gap, and `LIST_ACP_AGENTS`.
         answers reads after 30 ms), on the Node 26 leg, bounded at 120 s per file.
         Gate round 5 found a test that leaked a launch past its cleanup under that
         delay; the suite was run 5 times at each setting.
+    - **Known daemon-side gap (found in gate round 7, not fixable in B3c).**
+      Between the read that shows an adopted session idle and the PROMPT_ACP that
+      follows it (milliseconds) the user can type into the session: the engine's
+      prompt is then refused as busy, the node fails, and its `stop()` force-kills
+      the session under the user's turn. B3c has no daemon change. Closing it needs
+      the daemon to refuse a forced KILL_SESSION of a session with a running turn
+      (or a compare-and-set prompt: "prompt only if the transcript's `prompt_id` is
+      still N"). Follow-up: raise it with the daemon owners (the registry's
+      `kill`/`disposeWorktree` path and `PromptACPTurn`); the engine-side windows
+      (the scan read, the recheck before a removal, the read before the prompt) are
+      as narrow as the wire allows.
     - *Gate round 4: a run cancelled and retried while recovery reads it. (Superseded by B-26 above: the per-await guards this entry describes were removed once cancel and retry were refused during recovery.)*
       `run.cancel` and `run.retry` are not held back during recovery (they are
       user-facing), and a retry makes a new in-memory run with pending rows and no
@@ -3016,6 +3044,9 @@ what was weighed.
 
 - **2026-11-20 iter 23 (B3c, PR #570)** — verdict: REQUEST_CHANGES (CodeRabbit, 2 threads on 4846b0dc); mergeable: MERGEABLE; findings_hash: see list; threads_open: 2 -> 0; action: autofix+push; head_sha: e10a6676. Fixed with tests (mutation-checked): an adopted orphan's transcript is read before it is prompted into or killed, whatever its health, so a dead session with the user's conversation is never killed; `run.retry` is refused as it arrives (before the catalog request) as well as after it. Suite: 3 of 3 default and 3 of 3 with `HIVE_SIM_REPLY_MS=30`.
 - **2026-11-20 iter 24 (B3c, PR #570)** — verdict: APPROVE (own); mergeable: MERGEABLE; findings_hash: empty; threads_open: 0; action: stop; head_sha: e10a6676. Code head; the branch head is this docs-only ledger commit, whose CI is the final CI. 371 plugin tests pass. This stop supersedes iter 22's.
+
+- **2026-11-20 iter 25 (B3c, PR #570)** — verdict: REQUEST_CHANGES (gate round 7 FAIL on e10a6676: a revived session whose replay was trimmed to non-user items read as never prompted and was force-killed); mergeable: MERGEABLE; findings_hash: see list; threads_open: 0 -> 0; action: autofix+push; head_sha: 04fc4eba. Fixed with tests (the gate's probe, one test per item kind, and the notice-only session still adopted; mutation-checked, 4 of 4 killed): "never prompted" is `prompt_id` 0 and no item that is not a notice (`TranscriptState.content`), used by the scan, the recheck before a kill and `#reuse`; the plan cites the daemon's trim and item kinds, and B3d step 2 covers revived sessions. Nits: the second-pass user turn on an adopted session, and a stale launch killing a dead orphan from the new connection, each have a test that fails when the check is removed; the user-types-before-PROMPT_ACP window is recorded as a known daemon-side gap. Suite: 3 of 3 default and 3 of 3 with `HIVE_SIM_REPLY_MS=30`.
+- **2026-11-20 iter 26 (B3c, PR #570)** — verdict: APPROVE (own); mergeable: MERGEABLE; findings_hash: empty; threads_open: 0; action: stop; head_sha: 04fc4eba. Code head; the branch head is this docs-only ledger commit, whose CI is the final CI. This stop supersedes iter 24's.
 
 ## Gate verdict
 
