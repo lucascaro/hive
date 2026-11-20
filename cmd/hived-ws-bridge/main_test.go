@@ -497,6 +497,20 @@ func TestBridge_WorkflowOpsDecodeAndForward(t *testing.T) {
 	}
 }
 
+// B3-R7: ARCHIVE_SESSION and REMOVE_WORKTREE carry req_id (and the run id)
+// through the bridge to the control connection.
+func TestBridge_ArchiveAndRemoveCarryReqID(t *testing.T) {
+	ws := dialTestBridge(t)
+	for i, op := range []string{"ArchiveSession", "RemoveWorktree"} {
+		if resp := roundTrip(t, ws, 30+i, op, `{"req_id":"not a number","workflow_run_id":5}`); strings.Contains(resp.Error, "no control connection") || resp.Error == "" {
+			t.Errorf("%s with malformed params: error = %q, want a decode error", op, resp.Error)
+		}
+		if resp := roundTrip(t, ws, 40+i, op, `{"session_id":"s","project_id":"p","path":"/x","req_id":7,"workflow_run_id":"run-1"}`); !strings.Contains(resp.Error, "no control connection") {
+			t.Errorf("%s: error = %q, want %q", op, resp.Error, "no control connection")
+		}
+	}
+}
+
 // SetClientUI reaches the control connection like any other verb.
 func TestBridge_SetClientUIForwarded(t *testing.T) {
 	ws := dialTestBridge(t)

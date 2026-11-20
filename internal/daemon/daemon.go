@@ -1853,6 +1853,7 @@ func (d *Daemon) handleControlFrame(ctx context.Context, ops controlOps, ft wire
 			// The removal reaches every client as a SESSION_EVENT; this
 			// refreshes the requester's archived list.
 			_ = ops.writeJSON(wire.FrameArchived, wire.ArchivedResp{Archived: d.reg.ListArchived()})
+			ops.ack(wire.AckMsg{SessionID: req.SessionID})
 		})
 	case wire.FrameUnarchiveSession:
 		req, ok := decodeReq[wire.UnarchiveSessionReq](payload, ops.sendError)
@@ -2274,9 +2275,18 @@ func (d *Daemon) handleControlFrame(ctx context.Context, ops controlOps, ft wire
 			return false
 		}
 		d.runOp(func() {
-			err := d.reg.RemoveWorktree(req.ProjectID, req.Path,
-				req.Force, req.DeleteBranch, req.DeleteRemote)
+			// The unpushed exemption is a plugin's alone (B-25): the
+			// user has no workflow run, so their run id is ignored.
+			run := ""
+			if ops.principal != "" {
+				run = req.WorkflowRunID
+			}
+			err := d.reg.RemoveWorktreeForRun(req.ProjectID, req.Path,
+				req.Force, req.DeleteBranch, req.DeleteRemote, run)
 			ops.finishMutation(req.ProjectID, err, "remove_worktree_failed")
+			if err == nil {
+				ops.ack(wire.AckMsg{})
+			}
 		})
 	case wire.FrameCreateWorktree:
 		req, ok := decodeReq[wire.CreateWorktreeReq](payload, ops.sendError)
