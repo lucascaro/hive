@@ -198,6 +198,7 @@ async function settleOrphans(engine: Engine, runId: string, listed: Listed[], li
           break;
         } catch (e) {
           err = e;
+          if (lost()) return; // the second try would go to a connection this pass does not belong to
         }
       }
       if (err !== undefined) {

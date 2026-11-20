@@ -58,6 +58,9 @@ test('a closed connection is redialled, and the engine reads its running agent a
     sim.sessions[0].submit({ status: 'ok', summary: 's', data: { summary: 's' } });
     sim.sessions[0].end();
     await waitFor(() => engine.store.getRun(id)?.state === 'done', 'the run to finish on the new connection');
+    // One watcher owns the turn: the one the lost connection left is gone, so the result is committed and recorded once.
+    assert.equal(sim.of('COMMIT_WORKTREE').length, 1);
+    assert.equal(engine.store.events(id, 0, 500).filter((e) => e.key === 'a' && e.type === 'node.finished').length, 1);
   } finally {
     engine.stopFlush();
     engine.store.close();
