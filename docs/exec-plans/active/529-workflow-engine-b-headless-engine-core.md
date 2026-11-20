@@ -2923,6 +2923,9 @@ what was weighed.
 - **2026-11-20 iter 13 (B3c, PR #570)** — verdict: REQUEST_CHANGES (gate round 4 FAIL on c29f1747); mergeable: MERGEABLE; findings_hash: see list; threads_open: 0 -> 0; action: autofix+push; head_sha: 17aee59c. Fixed with tests (mutation-checked: 6 of the new guards killed, 3 removed as redundant after showing them equivalent): recovery acted on a stale row snapshot after `run.cancel` + `run.retry` (the gate's probe is now a regression test: the retried run is not failed, nothing prompts or kills the old session, and the old session is not adopted); a session set aside as an orphan is valid for one in-memory run; the orphan-removal retry's stop on a lost link has its own test; the `#reuse` comment matches the daemon's Pristine rule. Decision log: "Gate round 4".
 - **2026-11-20 iter 14 (B3c, PR #570)** — verdict: APPROVE (own); mergeable: MERGEABLE; findings_hash: empty; threads_open: 0; action: stop; head_sha: 17aee59c. Code head; the branch head is this docs-only ledger commit, whose CI is the final CI. 358 plugin tests pass; `internal/workflowe2e` green. This stop supersedes iter 12's.
 
+- **2026-11-20 iter 15 (B3c, PR #570)** — verdict: REQUEST_CHANGES (CodeRabbit, 1 thread on 1d2649da); mergeable: MERGEABLE; findings_hash: see list; threads_open: 1 -> 0; action: autofix+push; head_sha: a5b38c4e. Fixed with a test (mutation-checked): the orphan removal checks the run before each session it removes, not only before each group, so a run retried during one removal does not lose a second session of its old run to an obsolete pass.
+- **2026-11-20 iter 16 (B3c, PR #570)** — verdict: APPROVE (own); mergeable: MERGEABLE; findings_hash: empty; threads_open: 0; action: stop; head_sha: a5b38c4e. Code head; the branch head is this docs-only ledger commit, whose CI is the final CI. 359 plugin tests pass. This stop supersedes iter 14's.
+
 ## Gate verdict
 
 <!-- /hs-merge-gate appends one line per run here (append-only). -->
