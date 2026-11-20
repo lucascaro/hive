@@ -361,6 +361,9 @@ func (a *App) ListWorktrees(projectID string) error {
 // control:error channel; the GUI confirms and retries with force for
 // the latter two. force never overrides the in-use refusal.
 // deleteBranch additionally removes the branch the worktree was on.
+// The GUI sends no req_id and no workflow_run_id (those are a plugin's),
+// so it never gets an ACK and never gets the run-branch unpushed
+// exemption: the WORKTREES reply is its only confirmation.
 func (a *App) RemoveWorktree(projectID, path string, force, deleteBranch, deleteRemote bool) error {
 	cs, err := a.requireControl()
 	if err != nil {
@@ -751,7 +754,9 @@ func (a *App) ListClosedSessions() error {
 // can be brought back later (spec 518). Unlike KillSession it never
 // touches the worktree, so there is no dirty-worktree confirm. The
 // removal arrives on the ordinary session event stream, then an
-// "archived:list" event refreshes the archived list.
+// "archived:list" event refreshes the archived list. The GUI sends no
+// req_id, so the daemon's optional ACK (a plugin's confirmation) is not
+// used here.
 func (a *App) ArchiveSession(id string) error {
 	cs, err := a.requireControl()
 	if err != nil {

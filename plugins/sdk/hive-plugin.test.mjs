@@ -273,6 +273,8 @@ test('request refuses a verb that has no reply carrying a req_id', unixOnly, asy
 test('every request verb is a real frame and none is a reply frame', () => {
   for (const v of REQUEST_VERBS) assert.ok(Frame[v] !== undefined, v);
   for (const v of ['ACK', 'ACP_AGENTS', 'ERROR']) assert.ok(!REQUEST_VERBS.includes(v), v);
+  // B3-R7: the daemon acks both on success.
+  for (const v of ['ARCHIVE_SESSION', 'REMOVE_WORKTREE']) assert.ok(REQUEST_VERBS.includes(v), v);
 });
 
 test('request on an unknown frame name rejects', unixOnly, async () => {

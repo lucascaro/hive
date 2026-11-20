@@ -204,6 +204,19 @@ func (c *Client) ArchiveSession(id string) error {
 	return c.cli.WriteJSON(wire.FrameArchiveSession, wire.ArchiveSessionReq{SessionID: id})
 }
 
+// ArchiveSessionAck sends ARCHIVE_SESSION as a Request and returns its
+// ACK{req_id, session_id}, which the daemon sends after the ARCHIVED
+// refresh; a refusal is a *RequestError.
+func (c *Client) ArchiveSessionAck(id string, timeout time.Duration) (wire.AckMsg, error) {
+	var out wire.AckMsg
+	_, payload, err := c.Request(wire.FrameArchiveSession, wire.ArchiveSessionReq{SessionID: id}, timeout)
+	if err != nil {
+		return out, err
+	}
+	err = json.Unmarshal(payload, &out)
+	return out, err
+}
+
 // ListArchivedSessions sends LIST_ARCHIVED. Use AwaitArchived to
 // consume the response.
 func (c *Client) ListArchivedSessions() error {
@@ -621,6 +634,19 @@ func (c *Client) ListWorktrees(projectID string) error {
 // one of the worktree_* codes.
 func (c *Client) RemoveWorktree(req wire.RemoveWorktreeReq) error {
 	return c.cli.WriteJSON(wire.FrameRemoveWorktree, req)
+}
+
+// RemoveWorktreeAck sends REMOVE_WORKTREE as a Request (req.ReqID is
+// overwritten) and returns its ACK, which follows the WORKTREES
+// inventory; a refusal is a *RequestError carrying the worktree_* code.
+func (c *Client) RemoveWorktreeAck(req wire.RemoveWorktreeReq, timeout time.Duration) (wire.AckMsg, error) {
+	var out wire.AckMsg
+	_, payload, err := c.Request(wire.FrameRemoveWorktree, req, timeout)
+	if err != nil {
+		return out, err
+	}
+	err = json.Unmarshal(payload, &out)
+	return out, err
 }
 
 // CreateWorktree sends CREATE_WORKTREE.
