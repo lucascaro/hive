@@ -5,19 +5,14 @@
 package main
 
 import (
-	"bufio"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
 	"maps"
-	"net"
 	"os"
-	"time"
 
 	"github.com/lucascaro/hive/internal/acp"
-	"github.com/lucascaro/hive/internal/buildinfo"
-	"github.com/lucascaro/hive/internal/daemon"
 	"github.com/lucascaro/hive/internal/wire"
 )
 
@@ -32,13 +27,6 @@ import (
 // the same user, which can read another process's environment; Hive is
 // not a sandbox (docs/design-docs/acp-session-kind.md). A port of scripts/acp-probe/submit-mcp.mjs, which wrote to a
 // file; this one reports over the session's events socket.
-
-const (
-	mcpSubmitDialTimeout = 3 * time.Second
-	// The submit waits for the daemon's ack before the tool returns, so
-	// the turn cannot end before the daemon has the result.
-	mcpSubmitDeadline = 10 * time.Second
-)
 
 // submitTool is the tool's MCP definition. The nonce is deliberately
 // absent: the model never sees it.
@@ -55,20 +43,6 @@ var submitTool = map[string]any{
 		"required":             []string{"status"},
 		"additionalProperties": false,
 	},
-}
-
-type rpcMsg struct {
-	JSONRPC string          `json:"jsonrpc"`
-	ID      json.RawMessage `json:"id,omitempty"`
-	Method  string          `json:"method,omitempty"`
-	Params  json.RawMessage `json:"params,omitempty"`
-	Result  any             `json:"result,omitempty"`
-	Error   *rpcError       `json:"error,omitempty"`
-}
-
-type rpcError struct {
-	Code    int    `json:"code"`
-	Message string `json:"message"`
 }
 
 // toolFor is submitTool, with the session's result schema (when it has
@@ -98,63 +72,18 @@ func runMCPSubmit(in io.Reader, out io.Writer, submit func(json.RawMessage) erro
 // runMCPSubmitSchema is runMCPSubmit for a session with a result schema
 // (HIVE_SUBMIT_SCHEMA): nil means the plain tool.
 func runMCPSubmitSchema(in io.Reader, out io.Writer, submit func(json.RawMessage) error, schema *acp.Schema) int {
-	w := bufio.NewWriter(out)
-	send := func(m rpcMsg) {
-		m.JSONRPC = "2.0"
-		b, _ := json.Marshal(m)
-		w.Write(append(b, '\n'))
-		w.Flush()
-	}
-	sc := bufio.NewScanner(in)
-	sc.Buffer(make([]byte, 64<<10), 4<<20)
-	for sc.Scan() {
-		var m rpcMsg
-		if json.Unmarshal(sc.Bytes(), &m) != nil || len(m.ID) == 0 {
-			continue // malformed, or a notification (initialized, cancelled)
+	return serveMCP(in, out, []any{toolFor(schema)}, func(name string, args json.RawMessage) (string, bool, bool) {
+		if name != acp.SubmitToolName {
+			return "", false, false
 		}
-		switch m.Method {
-		case "initialize":
-			var p struct {
-				ProtocolVersion string `json:"protocolVersion"`
-			}
-			_ = json.Unmarshal(m.Params, &p)
-			if p.ProtocolVersion == "" {
-				p.ProtocolVersion = "2025-06-18"
-			}
-			send(rpcMsg{ID: m.ID, Result: map[string]any{
-				"protocolVersion": p.ProtocolVersion,
-				"capabilities":    map[string]any{"tools": map[string]any{}},
-				"serverInfo":      map[string]any{"name": "hive", "version": buildinfo.Version()},
-			}})
-		case "ping":
-			send(rpcMsg{ID: m.ID, Result: map[string]any{}})
-		case "tools/list":
-			send(rpcMsg{ID: m.ID, Result: map[string]any{"tools": []any{toolFor(schema)}}})
-		case "tools/call":
-			var p struct {
-				Name      string          `json:"name"`
-				Arguments json.RawMessage `json:"arguments"`
-			}
-			_ = json.Unmarshal(m.Params, &p)
-			if p.Name != acp.SubmitToolName {
-				send(rpcMsg{ID: m.ID, Error: &rpcError{Code: -32602, Message: "unknown tool " + p.Name}})
-				continue
-			}
-			text, isErr := "Result recorded.", false
-			if err := checkSubmitArgs(p.Arguments, schema); err != nil {
-				text, isErr = err.Error(), true
-			} else if err := submit(p.Arguments); err != nil {
-				text, isErr = "Hive did not record the result: "+err.Error(), true
-			}
-			send(rpcMsg{ID: m.ID, Result: map[string]any{
-				"content": []any{map[string]any{"type": "text", "text": text}},
-				"isError": isErr,
-			}})
-		default:
-			send(rpcMsg{ID: m.ID, Error: &rpcError{Code: -32601, Message: "method not found: " + m.Method}})
+		if err := checkSubmitArgs(args, schema); err != nil {
+			return err.Error(), true, true
 		}
-	}
-	return 0
+		if err := submit(args); err != nil {
+			return "Hive did not record the result: " + err.Error(), true, true
+		}
+		return "Result recorded.", false, true
+	})
 }
 
 // checkSubmitArgs enforces the schema's one hard rule — and, for a
@@ -175,43 +104,9 @@ func submitOverSocket(env func(string) string) func(json.RawMessage) error {
 		if sessionID == "" || sock == "" || nonce == "" {
 			return errors.New("not started by Hive (no HIVE_SESSION_ID, HIVE_SOCKET or HIVE_SUBMIT_NONCE)")
 		}
-		if err := daemon.CheckSocketDir(sock); err != nil {
-			return err
-		}
-		conn, err := net.DialTimeout("unix", sock, mcpSubmitDialTimeout)
-		if err != nil {
-			return fmt.Errorf("cannot reach the daemon: %w", err)
-		}
-		defer conn.Close()
-		_ = conn.SetDeadline(time.Now().Add(mcpSubmitDeadline))
-		c, err := wire.Handshake(conn, wire.Hello{
-			Version:      wire.PROTOCOL_VERSION,
-			Client:       "hived-mcp-submit/" + buildinfo.Version(),
-			BuildID:      buildinfo.BuildID(),
-			Mode:         wire.ModeSession,
-			SessionID:    sessionID,
-			SessionToken: env("HIVE_SESSION_TOKEN"),
-		})
-		if err != nil {
-			return err
-		}
-		_ = conn.SetDeadline(time.Now().Add(mcpSubmitDeadline))
-		if err := c.WriteJSON(wire.FrameSubmitResult, wire.SubmitResultReq{Nonce: nonce, Result: result}); err != nil {
-			return err
-		}
-		for {
-			ft, payload, err := c.ReadFrame()
-			if err != nil {
-				return err
-			}
-			switch ft {
-			case wire.FrameSubmitResultOK:
-				return nil
-			case wire.FrameError:
-				return ideaFrameError(payload)
-			}
-			// Anything else is the session connection's own snapshots.
-		}
+		_, err := sessionRoundTrip(env, "hived-mcp-submit", wire.FrameSubmitResult,
+			wire.SubmitResultReq{Nonce: nonce, Result: result}, wire.FrameSubmitResultOK)
+		return err
 	}
 }
 

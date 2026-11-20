@@ -22,6 +22,7 @@ import (
 	"slices"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/lucascaro/hive/internal/acp"
@@ -157,6 +158,10 @@ type Entry struct {
 	// acpRes is the typed result of the latest prompt in this
 	// transcript epoch. In-memory, like acpTx. Guarded by r.mu.
 	acpRes acpResult
+	// pins are the responses the agent pinned (spec 566), created on
+	// first use. See pins.go for the locking rules.
+	pins atomic.Pointer[pinSet]
+
 	// switching is set while SetKind moves the entry between ACP and a
 	// terminal: a second switch, and any new ACP turn, is refused with
 	// ErrACPBusy until it ends. In-memory only. Guarded by r.mu.
@@ -391,6 +396,7 @@ func (e *Entry) Info() wire.SessionInfo {
 		CurrentTool:           st.CurrentTool,
 
 		SubagentsRunning: st.SubagentsRunning,
+		PinCount:         e.pinCount(),
 
 		Kind:      e.Kind,
 		SpawnedBy: e.SpawnedBy,
@@ -537,6 +543,8 @@ type Registry struct {
 	activityListeners map[ActivityListener]struct{}
 	// acpListeners receive ACP_TRANSCRIPT messages (spec 496).
 	acpListeners map[AcpListener]struct{}
+	// pinsListeners receive PINS_CHANGED deltas (spec 566).
+	pinsListeners map[PinsListener]struct{}
 
 	// createMu serializes the synchronous prefix of Create (id/color
 	// resolution, name planning, order splicing). The daemon now runs
@@ -1248,6 +1256,7 @@ func Open(stateDir string) (*Registry, error) {
 		ideaListeners:     make(map[IdeaListener]struct{}),
 		activityListeners: make(map[ActivityListener]struct{}),
 		acpListeners:      make(map[AcpListener]struct{}),
+		pinsListeners:     make(map[PinsListener]struct{}),
 		tickStop:          make(chan struct{}),
 		tickDone:          make(chan struct{}),
 	}
@@ -1445,6 +1454,13 @@ func (r *Registry) load() error {
 			r.order = append(r.order, meta.ID)
 		}
 	}
+	// Pins (spec 566): headers only, before any revive. Then drop pins
+	// left beside a record that no longer exists.
+	for _, e := range r.entries {
+		r.loadPins(e)
+	}
+	sweepOrphanPinRecords(ClosedDir(r.stateDir))
+	sweepOrphanPinRecords(ArchivedDir(r.stateDir))
 	return nil
 }
 
@@ -1992,6 +2008,15 @@ func (r *Registry) kill(id string, force, removeWorktree, archive bool) error {
 	removed := e.Info()
 	r.mu.Unlock()
 
+	// Past the point of no return: the entry is out of r.entries. Stop
+	// every pin change and carry the pins beside the record, before the
+	// session directory they live in is removed below.
+	pinsTo := ClosedDir(r.stateDir)
+	if archive {
+		pinsTo = ArchivedDir(r.stateDir)
+	}
+	r.closePins(e, pinsTo)
+
 	// The entry is already gone from r.entries, so watchACPExit no-ops.
 	if ac != nil {
 		ac.agent.Close()
@@ -2171,6 +2196,10 @@ func (r *Registry) Close() error {
 	for ch := range r.acpListeners {
 		close(ch)
 	}
+	for ch := range r.pinsListeners {
+		close(ch)
+	}
+	r.pinsListeners = nil
 	r.acpListeners = nil
 	r.listeners = nil
 	r.projectListeners = nil

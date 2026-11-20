@@ -338,6 +338,10 @@ type SessionInfo struct {
 	// and not yet ended. Subagent tool calls never drive CurrentTool,
 	// State or the plan; this is the only place they show on the row.
 	SubagentsRunning int `json:"subagents_running,omitempty"`
+	// PinCount is how many responses the agent has pinned (spec 566).
+	// The sidebar badge renders from it; the pins themselves are
+	// fetched with GET_PINS.
+	PinCount int `json:"pin_count,omitempty"`
 
 	// Kind is KindPTY or KindACP; empty means KindPTY.
 	Kind string `json:"kind,omitempty"`
@@ -1474,8 +1478,8 @@ const (
 	// process inside a session cannot use the environment it was
 	// handed to create, attach to or kill sessions. It is also the
 	// code a ModeSession connection gets for any verb outside
-	// ADD_IDEA / LIST_IDEAS / SUBMIT_RESULT, and a control connection
-	// gets for SUBMIT_RESULT.
+	// sessionModeFrames (ADD_IDEA, LIST_IDEAS, SUBMIT_RESULT, ADD_PIN,
+	// …), and a control connection gets for SUBMIT_RESULT or ADD_PIN.
 	ErrCodeModeNotAllowed = "mode_not_allowed"
 	// ErrCodeSessionAuthFailed is returned INSTEAD of serving a
 	// ModeSession, ModeEvent or ModePlanReview HELLO whose session_token

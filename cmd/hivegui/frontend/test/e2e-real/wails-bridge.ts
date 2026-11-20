@@ -425,6 +425,7 @@ export async function GetAgentSettings() {
   return {
     claude_task_tools: true,
     pi_todo_tool: true,
+    pin_tool: true,
     plan_review: false,
     plan_reviewer: 'external',
   };
@@ -534,6 +535,19 @@ export async function RequestReloadAllGUIs() {
 }
 export async function GetActivity(id: string) {
   return call('GetActivity', { session_id: id });
+}
+// Pinned responses (spec 566). Answers arrive as `pins:*` events.
+export async function GetPins(id: string) {
+  return call('GetPins', { session_id: id });
+}
+export async function GetPinBody(id: string, pinId: string) {
+  return call('GetPinBody', { session_id: id, id: pinId });
+}
+export async function Unpin(id: string, pinId: string) {
+  return call('Unpin', { session_id: id, id: pinId });
+}
+export async function UnpinAll(id: string) {
+  return call('UnpinAll', { session_id: id });
 }
 // ACP sessions (spec 496). Answers arrive as `acp:transcript` events.
 export async function GetAcpTranscript(id: string) {

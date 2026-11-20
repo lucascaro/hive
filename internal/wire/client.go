@@ -160,6 +160,10 @@ var controlEvents = map[FrameType]string{
 	FrameGlobalHotkey: "hotkey:global",
 
 	FrameActivity: "activity:event",
+	// Spec 566: pin header pages, one pin's body, and the delta.
+	FramePins:        "pins:page",
+	FramePinBody:     "pins:body",
+	FramePinsChanged: "pins:changed",
 	// Not transcript:* — find-in-session (spec 431) owns those names.
 	FrameAcpTranscript: "acp:transcript",
 

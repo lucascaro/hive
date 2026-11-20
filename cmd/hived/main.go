@@ -61,6 +61,11 @@ func main() {
 	if len(os.Args) > 1 && os.Args[1] == "mcp-submit" {
 		os.Exit(runMCPSubmitMain())
 	}
+	// `hived mcp-pin` is Claude's pin MCP server (spec 566), started by
+	// Claude itself (--mcp-config) or by an ACP adapter.
+	if len(os.Args) > 1 && os.Args[1] == "mcp-pin" {
+		os.Exit(runMCPPinMain())
+	}
 
 	var (
 		sock  = flag.String("socket", "", "Unix socket path (empty = platform default)")

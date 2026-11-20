@@ -117,6 +117,8 @@ func TestHookNoEnvExitsZero(t *testing.T) {
 // SessionStart only, and only when the session has the task tools.
 func TestHookSessionStartNudge(t *testing.T) {
 	start := readFixture(t, "session_start.json")
+	// A test run inside a Hive session inherits the pin variable.
+	t.Setenv(agent.PinToolEnv, "")
 
 	t.Setenv(agent.ClaudeTaskToolsEnv, "1")
 	out := sessionStartOutput(start)
@@ -143,6 +145,50 @@ func TestHookSessionStartNudge(t *testing.T) {
 		if out := sessionStartOutput(start); out != nil {
 			t.Errorf("%s=%q: output %s, want none", agent.ClaudeTaskToolsEnv, v, out)
 		}
+	}
+}
+
+// TestSessionStartPinNudgeGatedOnEnv: the pin nudge goes out when Hive
+// gave the session its pin tool, independently of the task tools.
+func TestSessionStartPinNudgeGatedOnEnv(t *testing.T) {
+	start := readFixture(t, "session_start.json")
+	ctx := func() string {
+		t.Helper()
+		var got struct {
+			HookSpecificOutput struct {
+				AdditionalContext string `json:"additionalContext"`
+			} `json:"hookSpecificOutput"`
+		}
+		out := sessionStartOutput(start)
+		if out == nil {
+			return ""
+		}
+		if err := json.Unmarshal(out, &got); err != nil {
+			t.Fatalf("output %q: %v", out, err)
+		}
+		return got.HookSpecificOutput.AdditionalContext
+	}
+
+	t.Setenv(agent.ClaudeTaskToolsEnv, "0")
+	t.Setenv(agent.PinToolEnv, "1")
+	if got := ctx(); got != pinNudge {
+		t.Errorf("pin only: context = %q", got)
+	}
+	if !strings.Contains(pinNudge, "mcp__hive-pin__pin") {
+		t.Errorf("nudge does not name the tool: %q", pinNudge)
+	}
+
+	t.Setenv(agent.ClaudeTaskToolsEnv, "1")
+	if got := ctx(); !strings.Contains(got, taskToolsNudge) || !strings.Contains(got, pinNudge) {
+		t.Errorf("both: context = %q", got)
+	}
+
+	t.Setenv(agent.PinToolEnv, "0")
+	if got := ctx(); got != taskToolsNudge {
+		t.Errorf("pin off: context = %q", got)
+	}
+	if out := sessionStartOutput(readFixture(t, "stop.json")); out != nil {
+		t.Errorf("non-SessionStart event got %s", out)
 	}
 }
 

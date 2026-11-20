@@ -269,5 +269,11 @@
     "blurb": "Switch sessions any way you like and the sidebar scrolls to it, even inside a collapsed project or worktree group.",
     "status": "shipped",
     "since": "Unreleased"
+  },
+  {
+    "title": "Pinned responses",
+    "blurb": "Claude and Pi pin the answers worth keeping, and they collect, titled and newest first, in a Pinned section of the inspector that you can copy from, unpin, or collapse.",
+    "status": "shipped",
+    "since": "Unreleased"
   }
 ]

@@ -9,6 +9,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 )
@@ -153,8 +154,8 @@ func TestClaudeSettingsJSONQuotesPath(t *testing.T) {
 		return []byte("2.1.260 (Claude Code)"), nil
 	}))
 	args := claudeSpawnArgs(SpawnInfo{HivedPath: "/Applications/Hive.app/Contents/Application Support/hived"})
-	if len(args) != 2 || args[0] != "--settings" {
-		t.Fatalf("args = %v, want [--settings <json>]", args)
+	if len(args) < 2 || args[0] != "--settings" {
+		t.Fatalf("args = %v, want [--settings <json> ...]", args)
 	}
 	var settings claudeSettings
 	if err := json.Unmarshal([]byte(args[1]), &settings); err != nil {
@@ -238,7 +239,7 @@ func TestClaudeSettingsRegistersSubagentHooks(t *testing.T) {
 		return []byte("2.1.273 (Claude Code)"), nil
 	}))
 	args := claudeSpawnArgs(SpawnInfo{HivedPath: "/usr/local/bin/hived"})
-	if len(args) != 2 {
+	if len(args) < 2 || args[0] != "--settings" {
 		t.Fatalf("args = %v, want [--settings <json>]", args)
 	}
 	var settings claudeSettings
@@ -249,5 +250,114 @@ func TestClaudeSettingsRegistersSubagentHooks(t *testing.T) {
 		if len(settings.Hooks[ev]) != 1 {
 			t.Errorf("hooks[%s] not registered: %+v", ev, settings.Hooks[ev])
 		}
+	}
+}
+
+// pinArgs returns the --mcp-config value and the --settings permissions
+// claudeSpawnArgs produced, "" / nil when absent.
+func pinArgs(t *testing.T, args []string) (string, *claudePermissions) {
+	t.Helper()
+	var mcp string
+	var settings claudeSettings
+	for i := 0; i+1 < len(args); i++ {
+		switch args[i] {
+		case "--mcp-config":
+			mcp = args[i+1]
+		case "--settings":
+			if err := json.Unmarshal([]byte(args[i+1]), &settings); err != nil {
+				t.Fatal(err)
+			}
+		}
+	}
+	return mcp, settings.Permissions
+}
+
+func TestClaudeSpawnArgsAddsPinMCPWhenOn(t *testing.T) {
+	withClaudeVersion(t, "2.1.273")
+	settingsDir(t, "")
+	mcp, perms := pinArgs(t, claudeSpawnArgs(hooked))
+	if perms == nil || len(perms.Allow) != 1 || perms.Allow[0] != "mcp__hive-pin__pin" {
+		t.Fatalf("permissions = %+v, want the pin tool allowed", perms)
+	}
+	var cfg struct {
+		MCPServers map[string]struct {
+			Type    string            `json:"type"`
+			Command string            `json:"command"`
+			Args    []string          `json:"args"`
+			Env     map[string]string `json:"env"`
+		} `json:"mcpServers"`
+	}
+	if err := json.Unmarshal([]byte(mcp), &cfg); err != nil {
+		t.Fatalf("--mcp-config %q: %v", mcp, err)
+	}
+	srv, ok := cfg.MCPServers["hive-pin"]
+	if !ok || len(cfg.MCPServers) != 1 {
+		t.Fatalf("servers = %+v", cfg.MCPServers)
+	}
+	if srv.Command != hooked.HivedPath || len(srv.Args) != 1 || srv.Args[0] != "mcp-pin" || srv.Type != "stdio" {
+		t.Errorf("server = %+v", srv)
+	}
+	want := map[string]string{
+		"HIVE_SESSION_ID":    "${HIVE_SESSION_ID}",
+		"HIVE_SOCKET":        "${HIVE_SOCKET}",
+		"HIVE_SESSION_TOKEN": "${HIVE_SESSION_TOKEN}",
+	}
+	if len(srv.Env) != len(want) {
+		t.Fatalf("env = %v", srv.Env)
+	}
+	for k, v := range want {
+		if srv.Env[k] != v {
+			t.Errorf("env[%s] = %q, want the reference %q, never a value", k, srv.Env[k], v)
+		}
+	}
+}
+
+func TestClaudeSpawnArgsNoPinWhenOff(t *testing.T) {
+	withClaudeVersion(t, "2.1.273")
+	settingsDir(t, "")
+	if err := SaveSettings(Settings{ClaudeTaskTools: true, PiTodoTool: true, PinTool: false}); err != nil {
+		t.Fatal(err)
+	}
+	args := claudeSpawnArgs(hooked)
+	mcp, perms := pinArgs(t, args)
+	if mcp != "" || perms != nil {
+		t.Fatalf("pin off but args = %v", args)
+	}
+	for _, a := range args {
+		if a == "--mcp-config" || strings.Contains(a, "mcp-pin") {
+			t.Fatalf("pin off but args = %v", args)
+		}
+	}
+}
+
+func TestClaudeSpawnArgsNoPinWithoutHooks(t *testing.T) {
+	withClaudeVersion(t, "2.1.273")
+	settingsDir(t, "")
+	if args := claudeSpawnArgs(SpawnInfo{}); args != nil {
+		t.Fatalf("no hived path but args = %v", args)
+	}
+}
+
+func TestClaudeAndPiSpawnEnvPinTool(t *testing.T) {
+	withClaudeVersion(t, "2.1.273")
+	settingsDir(t, "")
+	// Hive's own variable: an inherited value never decides.
+	t.Setenv(PinToolEnv, "0")
+	has := func(env []string, kv string) bool { return slices.Contains(env, kv) }
+	if env := claudeSpawnEnv(hooked); !has(env, PinToolEnv+"=1") {
+		t.Errorf("claude env = %v, want %s=1", env, PinToolEnv)
+	}
+	if env := piSpawnEnv(piExtensionDir(t)); !has(env, PinToolEnv+"=1") {
+		t.Errorf("pi env = %v, want %s=1", env, PinToolEnv)
+	}
+	if err := SaveSettings(Settings{ClaudeTaskTools: true, PiTodoTool: true, PinTool: false}); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv(PinToolEnv, "1")
+	if env := claudeSpawnEnv(hooked); !has(env, PinToolEnv+"=0") {
+		t.Errorf("claude env = %v, want %s=0", env, PinToolEnv)
+	}
+	if env := piSpawnEnv(piExtensionDir(t)); !has(env, PinToolEnv+"=0") {
+		t.Errorf("pi env = %v, want %s=0", env, PinToolEnv)
 	}
 }

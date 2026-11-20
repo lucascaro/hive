@@ -322,6 +322,20 @@ const (
 	FrameSetFocusedSession FrameType = 0x57 // C → S, JSON, control
 	FrameSetGlobalHotkey   FrameType = 0x58 // C → S, JSON, control
 	FrameGlobalHotkey      FrameType = 0x59 // S → C, JSON, control
+
+	// Pinned responses (spec 566; types in pins.go). ADD_PIN is sent
+	// only on a session connection, for the session its HELLO named.
+	// GET_PINS answers one or more PINS pages; GET_PIN_BODY answers
+	// PIN_BODY. PINS_CHANGED is the delta broadcast to control clients.
+	FrameAddPin      FrameType = 0x5a // C → S, JSON, session mode only
+	FrameAddPinOK    FrameType = 0x5b // S → C, JSON
+	FrameGetPins     FrameType = 0x5c // C → S, JSON, control
+	FramePins        FrameType = 0x5d // S → C, JSON, control
+	FrameGetPinBody  FrameType = 0x5e // C → S, JSON, control
+	FramePinBody     FrameType = 0x5f // S → C, JSON, control
+	FrameUnpin       FrameType = 0x60 // C → S, JSON, control
+	FrameUnpinAll    FrameType = 0x61 // C → S, JSON, control
+	FramePinsChanged FrameType = 0x62 // S → C, JSON, control
 )
 
 // ControlRequestFrames lists every frame a control-mode client may send.
@@ -351,6 +365,7 @@ var ControlRequestFrames = []FrameType{
 	FrameWaitSession, FrameCancelAcp, FrameListAcpAgents,
 	FramePluginMessage, FramePrepareWorktree, FrameCommitWorktree,
 	FrameSetFocusedSession, FrameSetGlobalHotkey,
+	FrameAddPin, FrameGetPins, FrameGetPinBody, FrameUnpin, FrameUnpinAll,
 }
 
 // ControlEventFrames lists every frame the daemon sends on a control
@@ -365,6 +380,7 @@ var ControlEventFrames = []FrameType{
 	FrameSubmitResultOK, FrameSent, FrameArchived, FrameWaited,
 	FrameAck, FrameAcpAgents, FramePreparedWorktree,
 	FrameGlobalHotkey,
+	FrameAddPinOK, FramePins, FramePinBody, FramePinsChanged,
 }
 
 // NonControlFrames are the frames that never travel on a control
@@ -517,6 +533,24 @@ func (t FrameType) String() string {
 		return "SET_GLOBAL_HOTKEY"
 	case FrameGlobalHotkey:
 		return "GLOBAL_HOTKEY"
+	case FrameAddPin:
+		return "ADD_PIN"
+	case FrameAddPinOK:
+		return "ADD_PIN_OK"
+	case FrameGetPins:
+		return "GET_PINS"
+	case FramePins:
+		return "PINS"
+	case FrameGetPinBody:
+		return "GET_PIN_BODY"
+	case FramePinBody:
+		return "PIN_BODY"
+	case FrameUnpin:
+		return "UNPIN"
+	case FrameUnpinAll:
+		return "UNPIN_ALL"
+	case FramePinsChanged:
+		return "PINS_CHANGED"
 	case FrameArchiveSession:
 		return "ARCHIVE_SESSION"
 	case FrameListArchived:

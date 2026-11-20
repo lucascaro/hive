@@ -313,6 +313,11 @@ the same name in [`internal/wire/`](../internal/wire/control.go).
 | `SEND_TO_SESSION` | `SendToSessionReq` | `SENT`, or `ERROR`. Not for plugins: a plugin socket gets `mode_not_allowed`, because typing into another session's terminal is the confused-deputy case until a plugin can be granted it explicitly |
 | `SET_FOCUSED_SESSION` | `SetFocusedSessionReq` | `SESSION_EVENT` (focus) stamping the session's `focused_at`. Not for plugins: a plugin socket gets `mode_not_allowed`, because the newest focus is the default target of the menu bar's dictation HUD (spec 553) |
 | `SET_GLOBAL_HOTKEY` | `GlobalHotkey` | `GLOBAL_HOTKEY` to every control client when the chord changed. Not for plugins: a plugin socket gets `mode_not_allowed`, because it rebinds a system-wide key |
+| `ADD_PIN` | `AddPinReq` | `ADD_PIN_OK`, `PINS_CHANGED`. Not for plugins: a plugin socket gets `mode_not_allowed`. A session's own agent pins a response to its own session on a session connection (spec 566) |
+| `GET_PINS` | `GetPinsReq` | One or more `PINS` pages of headers, newest first; the last has `done` |
+| `GET_PIN_BODY` | `GetPinBodyReq` | `PIN_BODY`, or `no_such_pin` |
+| `UNPIN` | `UnpinReq` | `PINS_CHANGED`, `SESSION_EVENT` (updated). Not for plugins: a plugin socket gets `mode_not_allowed`, because which pins to keep is the user's choice |
+| `UNPIN_ALL` | `UnpinAllReq` | `PINS_CHANGED`, `SESSION_EVENT` (updated). Not for plugins, like `UNPIN` |
 | `SET_SESSION_KIND` | `SetSessionKindReq` | `SESSION_EVENT` (updated, with the new `kind`). `"kind": "pty"` takes an ACP session over in a terminal in the same conversation; `"acp"` hands it back. Refused with `takeover_refused` when the agent's CLI might start a fresh conversation instead, `acp_busy` mid-turn, and `acp_writer_locked` when Codex still holds the conversation (the session is then back in a terminal) |
 
 And everything the daemon sends on a control connection:
@@ -345,6 +350,10 @@ And everything the daemon sends on a control connection:
 | `PLUGIN_EVENT` | Broadcast: a plugin was installed, removed, or changed status. |
 | `ACP_TRANSCRIPT` | Answer to `GET_ACP_TRANSCRIPT` (`reset`), and broadcast as an ACP session's transcript changes. Every message also carries the latest prompt's typed result: `prompt_id` (that prompt's user item), `result_status` (`submitted`, `none` once the turn ended without one, or absent while it runs) and `result` (the canonical `{status, summary, data}` envelope the daemon validated and stored: keys in that order, `data` dropped when `status` is `error`). It also carries `stop_reason` (how the latest prompt ended: `end_turn`, `cancelled`, `max_tokens`, `max_turn_requests`, `refusal`, or `error` if the adapter call failed; absent while it runs) and `usage` (the adapter's latest `usage_update` for that prompt). A new prompt clears both. |
 | `SUBMIT_RESULT_OK` | Answer to `SUBMIT_RESULT`: the result is recorded. |
+| `ADD_PIN_OK` | Answer to `ADD_PIN`: the new pin's `id`. Never sent to a plugin, which is refused. |
+| `PINS` | Answer to `GET_PINS`: one page of a session's pin headers (`id`, `title`, `created_at`, `body_len`), newest first, at most 200 per page; `done` on the last. |
+| `PIN_BODY` | Answer to `GET_PIN_BODY`: one pin's markdown `body`. |
+| `PINS_CHANGED` | Broadcast: a session's pins changed — one `added`, some `removed_ids`, or `cleared`. The session's `pin_count` follows on `SESSION_EVENT`. |
 | `SENT` | Answer to `SEND_TO_SESSION`: how the note was delivered (`typed`, `queued` or `acp`). Never sent to a plugin, which is refused. |
 
 ### What a plugin cannot do
@@ -365,9 +374,11 @@ inside a session. The same requests still work from the app.
   `REMOVE_PLUGIN`, and `SET_PLUGIN_CONFIG` for any plugin but itself.
   `LIST_PLUGINS` stays available.
 - **Stop Hive**: `SHUTDOWN`.
+- **Remove an agent's pins**: `UNPIN` and `UNPIN_ALL`. `GET_PINS` and
+  `GET_PIN_BODY` stay available.
 - **Steer the menu bar's dictation HUD**: `SET_FOCUSED_SESSION` and
   `SET_GLOBAL_HOTKEY`.
-- **Act as a session**: `WAIT_SESSION` and `SUBMIT_RESULT` are served
+- **Act as a session**: `WAIT_SESSION`, `SUBMIT_RESULT` and `ADD_PIN` are served
   to a session's own connection only, and the `event`, `session` and
   `plan_review` modes are not served on a plugin socket.
 

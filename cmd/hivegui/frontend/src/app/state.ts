@@ -107,6 +107,9 @@ export interface SessionInfo {
   // (SessionInfo.SubagentsRunning). Their tools never drive
   // current_tool, state or the plan, so this is where they show.
   subagents_running?: number;
+  // Responses the agent pinned (spec 566). Absent or 0 = none, and the
+  // row shows no pin badge. The pins themselves come from GET_PINS.
+  pin_count?: number;
   // The first thing this session was asked to do, and what the agent
   // said as it finished its last turn. Both absent on the heuristic
   // tier, which cannot know either.

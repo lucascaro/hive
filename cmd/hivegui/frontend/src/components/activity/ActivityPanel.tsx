@@ -13,6 +13,7 @@ import { useState, type ReactNode } from 'react';
 
 import { groupTimeline, type StepGroup } from '../../lib/activity.js';
 import { Icon } from '../Icon.js';
+import { PinnedSection } from './PinnedSection.js';
 import {
   ActivityEmpty,
   NoCalls,
@@ -41,6 +42,12 @@ export function ActivityPanel({ sessionId }: { sessionId: string }): ReactNode {
           <span className="hv-activity__stale">{staleText}</span>
         ) : null}
       </div>
+      {/* Outside the empty gate: pins are the user's, whatever the tier. */}
+      <PinnedSection
+        sessionId={info.id}
+        count={info.pin_count ?? 0}
+        now={now}
+      />
       {empty ? (
         <ActivityEmpty />
       ) : (
@@ -92,9 +99,9 @@ function PlanStep({
   now: number;
 }): ReactNode {
   // null = follow the default (open only while it is the current step);
-  // a click pins it either way.
-  const [pinned, setPinned] = useState<boolean | null>(null);
-  const open = pinned ?? step.item.status === 'active';
+  // a click holds it either way.
+  const [held, setHeld] = useState<boolean | null>(null);
+  const open = held ?? step.item.status === 'active';
   const calls =
     step.main.length + step.subagents.reduce((n, s) => n + s.calls.length, 0);
   return (
@@ -105,7 +112,7 @@ function PlanStep({
     >
       {/* biome-ignore lint/a11y/useKeyWithClickEvents: deliberately not focusable — see file header */}
       {/* biome-ignore lint/a11y/noStaticElementInteractions: see above */}
-      <div className="hv-activity__step-row" onClick={() => setPinned(!open)}>
+      <div className="hv-activity__step-row" onClick={() => setHeld(!open)}>
         <Icon name={open ? 'chevron-down' : 'chevron-right'} size={12} />
         <span className="hv-activity__mark" aria-hidden="true">
           {step.item.status === 'done' ? <Icon name="check" size={12} /> : null}

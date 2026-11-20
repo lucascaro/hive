@@ -78,6 +78,16 @@ import {
   forgetActivity,
   resetActivityOnSessionList,
 } from '../store/activity.js';
+import {
+  applyPinBody,
+  applyPinsChanged,
+  applyPinsPage,
+  forgetPins,
+  resetPinsOnSessionList,
+  type PinBody,
+  type PinsChanged,
+  type PinsPage,
+} from '../store/pins.js';
 import type { ActivityMsg } from '../lib/activity.js';
 import type { AcpTranscriptMsg } from '../lib/acp.js';
 import {
@@ -828,6 +838,29 @@ export function wireDaemonEvents(injected: EventsDeps) {
     }
   });
 
+  // Pinned responses (spec 566): header pages, one body, and the deltas.
+  EventsOn('pins:page', (jsonStr: string) => {
+    try {
+      applyPinsPage(JSON.parse(jsonStr) as PinsPage);
+    } catch {
+      /* dropped */
+    }
+  });
+  EventsOn('pins:body', (jsonStr: string) => {
+    try {
+      applyPinBody(JSON.parse(jsonStr) as PinBody);
+    } catch {
+      /* dropped */
+    }
+  });
+  EventsOn('pins:changed', (jsonStr: string) => {
+    try {
+      applyPinsChanged(JSON.parse(jsonStr) as PinsChanged);
+    } catch {
+      /* dropped */
+    }
+  });
+
   // ACP transcripts (spec 496): snapshots this client asked for and
   // every ACP session's deltas, in one ordered stream. A malformed frame
   // costs one delta; the next epoch check refetches if it mattered.
@@ -994,6 +1027,7 @@ export function wireDaemonEvents(injected: EventsDeps) {
     pruneNav(appData().nav, (id) => liveIds.has(id));
     // Sent on every (re)connect: refetch what may have missed deltas.
     resetActivityOnSessionList(liveIds);
+    resetPinsOnSessionList(liveIds);
     resetAcpOnSessionList(liveIds);
     if (!appData().activeId && appData().sessions.length > 0) {
       deps.switchTo(orderedSessions()[0].id);
@@ -1120,6 +1154,7 @@ export function wireDaemonEvents(injected: EventsDeps) {
       onSessionRemoved(ev.session.id);
       forgetSession(ev.session.id);
       forgetActivity(ev.session.id);
+      forgetPins(ev.session.id);
       forgetAcp(ev.session.id);
       const nextId =
         appData().activeId === ev.session.id

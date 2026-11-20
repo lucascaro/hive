@@ -8,6 +8,7 @@ import (
 	"context"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -118,8 +119,10 @@ func TestCreateAppendsSpawnArgsForResolvedAgent(t *testing.T) {
 	if len(got) < 4 || got[0] != "claude" || got[1] != "--session-id" || got[2] != e.ID {
 		t.Fatalf("Cmd = %v, want [claude --session-id %s ...]", got, e.ID)
 	}
-	if got[len(got)-2] != "--settings" || !strings.Contains(got[len(got)-1], `"UserPromptSubmit"`) {
-		t.Errorf("Cmd tail = %v, want --settings <hooks json>", got[len(got)-2:])
+	// --settings, then (spec 566) --mcp-config for the pin server.
+	i := slices.Index(got, "--settings")
+	if i < 3 || i+1 >= len(got) || !strings.Contains(got[i+1], `"UserPromptSubmit"`) {
+		t.Errorf("Cmd = %v, want --settings <hooks json> after the session id", got)
 	}
 }
 
@@ -144,8 +147,8 @@ func TestRestartAppendsSpawnArgs(t *testing.T) {
 	rec.mu.Lock()
 	got := rec.opts[len(rec.opts)-1]
 	rec.mu.Unlock()
-	if got.Cmd[len(got.Cmd)-2] != "--settings" {
-		t.Errorf("Restart Cmd = %v, want a trailing --settings", got.Cmd)
+	if !slices.Contains(got.Cmd, "--settings") {
+		t.Errorf("Restart Cmd = %v, want --settings", got.Cmd)
 	}
 	if !hasEnvVar(got.Env, "HIVE_SESSION_ID") {
 		t.Errorf("Restart Env = %v, missing HIVE_SESSION_ID", got.Env)

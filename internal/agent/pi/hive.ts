@@ -48,6 +48,8 @@ const FRAME_PLAN_REVIEW_REQUEST = 0x32;
 const FRAME_PLAN_REVIEW_DECISION = 0x33;
 const FRAME_SUBMIT_RESULT = 0x43;
 const FRAME_SUBMIT_RESULT_OK = 0x44;
+const FRAME_ADD_PIN = 0x5a;
+const FRAME_ADD_PIN_OK = 0x5b;
 const PROTOCOL_VERSION = 1;
 
 // Caps mirroring internal/wire (control.go). The daemon truncates again
@@ -75,6 +77,25 @@ export const TODO_TOOL_NAME = "hive_todo";
 // Set to "0" by hived (internal/agent/settings.go, piSpawnEnv) when the
 // user turned the tool off in Settings → Agents.
 export const TODO_TOOL_ENV = "HIVE_PI_TODO_TOOL";
+
+// hive_pin (spec 566) pins an important response to this session's
+// inspector in Hive. Registered unless HIVE_PIN_TOOL is "0", which Hive
+// sets from the "Agents pin important responses" setting.
+export const PIN_TOOL_NAME = "hive_pin";
+export const PIN_TOOL_ENV = "HIVE_PIN_TOOL";
+// The daemon's bounds (wire.MaxPinTitleLen / MaxPinBodyLen); checked
+// here too so the model is told before a round trip.
+const MAX_PIN_TITLE_LEN = 256;
+const MAX_PIN_BODY_LEN = 64 << 10;
+const PIN_PARAMETERS = {
+  type: "object",
+  properties: {
+    title: { type: "string", description: "A short title naming what this is." },
+    body: { type: "string", description: "The content to keep, in markdown." },
+  },
+  required: ["title", "body"],
+  additionalProperties: false,
+};
 
 // Set to "1" by hived (internal/agent/settings.go, piSpawnEnv) when the
 // daemon orders keyed reports. Without it there is no heartbeat: an
@@ -320,15 +341,14 @@ export function submitParameters(rawSchema: string | undefined): typeof SUBMIT_P
   }
 }
 
-// submitResult sends one SUBMIT_RESULT on a session connection and
-// resolves once the daemon has recorded it — so the tool returns only
-// after that, and the turn cannot end first and be reported as having
-// no result — or with the daemon's refusal. It never rejects.
-export function submitResult(
+// sessionRequest sends one frame on a session connection and resolves
+// when the daemon answers okType — or with its refusal. It never rejects.
+function sessionRequest(
   sock: string,
   sid: string,
-  nonce: string,
-  result: unknown,
+  type: number,
+  body: unknown,
+  okType: number,
 ): Promise<{ ok: true } | { ok: false; error: string }> {
   return new Promise((resolve) => {
     let settled = false;
@@ -347,27 +367,22 @@ export function submitResult(
     }
     conn.setTimeout(SUBMIT_TIMEOUT_MS, () => done({ ok: false, error: "Hive did not answer" }));
     conn.on("connect", () => {
-      conn?.write(
-        Buffer.concat([
-          frame(FRAME_HELLO, sessionHello("session", sid)),
-          frame(FRAME_SUBMIT_RESULT, { nonce, result }),
-        ]),
-      );
+      conn?.write(Buffer.concat([frame(FRAME_HELLO, sessionHello("session", sid)), frame(type, body)]));
     });
     conn.on("data", (chunk: Buffer) => {
       buf = Buffer.concat([buf, chunk]);
       // A session connection also gets its own snapshots; skip them.
       while (buf.length >= 5) {
-        const type = buf[0];
+        const t = buf[0];
         const len = buf.readUInt32BE(1);
         if (buf.length < 5 + len) return;
-        const body = buf.subarray(5, 5 + len);
+        const payload = buf.subarray(5, 5 + len);
         buf = buf.subarray(5 + len);
-        if (type === FRAME_SUBMIT_RESULT_OK) return done({ ok: true });
-        if (type === FRAME_ERROR) {
+        if (t === okType) return done({ ok: true });
+        if (t === FRAME_ERROR) {
           let msg = "refused";
           try {
-            msg = str(JSON.parse(body.toString("utf8"))?.message) || msg;
+            msg = str(JSON.parse(payload.toString("utf8"))?.message) || msg;
           } catch {}
           return done({ ok: false, error: msg });
         }
@@ -376,6 +391,30 @@ export function submitResult(
     conn.on("error", () => done({ ok: false, error: "cannot reach Hive" }));
     conn.on("close", () => done({ ok: false, error: "Hive closed the connection" }));
   });
+}
+
+// submitResult sends one SUBMIT_RESULT on a session connection and
+// resolves once the daemon has recorded it — so the tool returns only
+// after that, and the turn cannot end first and be reported as having
+// no result — or with the daemon's refusal. It never rejects.
+export function submitResult(
+  sock: string,
+  sid: string,
+  nonce: string,
+  result: unknown,
+): Promise<{ ok: true } | { ok: false; error: string }> {
+  return sessionRequest(sock, sid, FRAME_SUBMIT_RESULT, { nonce, result }, FRAME_SUBMIT_RESULT_OK);
+}
+
+// addPin pins one response to this session (spec 566) and resolves once
+// the daemon has stored it, or with its refusal. It never rejects.
+export function addPin(
+  sock: string,
+  sid: string,
+  title: string,
+  body: string,
+): Promise<{ ok: true } | { ok: false; error: string }> {
+  return sessionRequest(sock, sid, FRAME_ADD_PIN, { title, body }, FRAME_ADD_PIN_OK);
 }
 
 export type PlanReviewDecision = { status: string; message?: string };
@@ -649,6 +688,7 @@ export default function (pi: ExtensionAPI) {
   if (!sid || !sock) return; // not under Hive: inert
 
   const todoTool = process.env[TODO_TOOL_ENV] !== "0";
+  const pinTool = process.env[PIN_TOOL_ENV] !== "0";
   const submitNonce = process.env[SUBMIT_NONCE_ENV] ?? "";
   const planTool = process.env[PLAN_REVIEW_ENV] === "1";
   // The review in flight, if any. Aborted by the tool's own signal (Esc)
@@ -734,6 +774,36 @@ export default function (pi: ExtensionAPI) {
         const r = await submitResult(sock, sid, submitNonce, params);
         if (!r.ok) throw new Error(`Hive did not record the result: ${r.error}`);
         return { content: [{ type: "text", text: "Result recorded." }], details: {} };
+      },
+    } as any);
+  }
+
+  if (pinTool) {
+    pi.registerTool({
+      name: PIN_TOOL_NAME,
+      label: "Pin response",
+      description:
+        "Pin an important response so the user can find it again in Hive's sidebar. " +
+        "The title says what it is; the body is the content, in markdown.",
+      promptSnippet: "Pin an important response for the user to recall later in Hive",
+      promptGuidelines: [
+        `When you give an answer the user will want to find again (a decision and its reasons, a root cause, a command recipe, a summary of findings), call ${PIN_TOOL_NAME} with a short title and the content as markdown. Pin sparingly: not routine progress.`,
+      ],
+      parameters: PIN_PARAMETERS as any,
+      async execute(_toolCallId: string, params: any) {
+        const title = typeof params?.title === "string" ? params.title : "";
+        const body = typeof params?.body === "string" ? params.body : "";
+        if (title.trim() === "" || body.trim() === "") {
+          throw new Error(`${PIN_TOOL_NAME} needs a non-empty "title" and "body".`);
+        }
+        if (Buffer.byteLength(title, "utf8") > MAX_PIN_TITLE_LEN || Buffer.byteLength(body, "utf8") > MAX_PIN_BODY_LEN) {
+          throw new Error(
+            `The pin is too long: the title may be ${MAX_PIN_TITLE_LEN} bytes and the body ${MAX_PIN_BODY_LEN}. Shorten it and call ${PIN_TOOL_NAME} again.`,
+          );
+        }
+        const r = await addPin(sock, sid, title, body);
+        if (!r.ok) throw new Error(`Hive did not pin it: ${r.error}`);
+        return { content: [{ type: "text", text: "Pinned." }], details: {} };
       },
     } as any);
   }

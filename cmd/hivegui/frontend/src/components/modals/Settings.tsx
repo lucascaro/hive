@@ -217,6 +217,7 @@ function SettingsDialog({ root }: { root: HTMLElement }): ReactNode {
   // slow read never flashes the box unchecked first.
   const [claudeTaskTools, setClaudeTaskTools] = useState(true);
   const [piTodoTool, setPiTodoTool] = useState(true);
+  const [pinTool, setPinTool] = useState(true);
   // Per-agent ACP mode ceiling (spec 496). Only the agents the user has
   // set are keys; a missing one is the agent's acpDefaultMode, as in Go.
   const [acpCeiling, setAcpCeiling] = useState<Record<string, string>>({});
@@ -436,6 +437,7 @@ function SettingsDialog({ root }: { root: HTMLElement }): ReactNode {
         if (!live) return;
         setClaudeTaskTools(s?.claude_task_tools ?? true);
         setPiTodoTool(s?.pi_todo_tool ?? true);
+        setPinTool(s?.pin_tool ?? true);
         setAcpCeiling(s?.acp_mode_ceiling ?? {});
         setLayaEnabled(s?.laya_enabled ?? false);
         setLayaUrl(s?.laya_url ?? '');
@@ -778,6 +780,7 @@ function SettingsDialog({ root }: { root: HTMLElement }): ReactNode {
           : SaveAgentSettings({
               claude_task_tools: claudeTaskTools,
               pi_todo_tool: piTodoTool,
+              pin_tool: pinTool,
               acp_mode_ceiling: acpCeiling,
               laya_enabled: layaEnabled,
               laya_url: layaUrl.trim(),
@@ -960,6 +963,23 @@ function SettingsDialog({ root }: { root: HTMLElement }): ReactNode {
           tool to the Pi sessions it starts, and the sidebar shows how far each
           one is through its plan. It uses some of the model's context, and
           applies to newly started sessions only.
+        </p>
+        <label className="settings-check">
+          <input
+            id="settings-pin-tool"
+            type="checkbox"
+            checked={pinTool}
+            disabled={!agentSettingsLoaded || agentSettingsFailed}
+            aria-describedby="settings-pin-tool-hint"
+            onChange={(e) => setPinTool(e.target.checked)}
+          />
+          <span>Let agents pin important responses (Claude, Pi)</span>
+        </label>
+        <p id="settings-pin-tool-hint" className="settings-hint">
+          Gives Claude and Pi sessions a tool to pin answers worth keeping — a
+          decision, a root cause, a recipe — and asks them to use it. Pins show
+          in the session's inspector and survive restarts. It uses some of the
+          model's context, and applies to newly started sessions only.
         </p>
         {(catalog ?? []).some((a) => a.acpModes?.length) && (
           <>

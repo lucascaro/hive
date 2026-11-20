@@ -294,6 +294,7 @@ describe('settings: Claude plan progress toggle', () => {
     expect(saveAgentSettings).toHaveBeenCalledWith({
       claude_task_tools: false,
       pi_todo_tool: true,
+      pin_tool: true,
       laya_enabled: false,
       laya_url: '',
       laya_model: '',
@@ -343,6 +344,52 @@ describe('settings: Claude plan progress toggle', () => {
   });
 });
 
+describe('settings: pin tool toggle (spec 566)', () => {
+  const box = () => el<HTMLInputElement>('settings-pin-tool');
+
+  it('defaults to on when an older file has no pin_tool', async () => {
+    getAgentSettings.mockResolvedValue({
+      claude_task_tools: true,
+      pi_todo_tool: true,
+    } as main.AgentSettings);
+    open();
+    await flush();
+    expect(box().checked).toBe(true);
+    expect(box().disabled).toBe(false);
+  });
+
+  it('loads a saved off and saves the toggled value with the rest', async () => {
+    getAgentSettings.mockResolvedValue({
+      claude_task_tools: true,
+      pi_todo_tool: true,
+      pin_tool: false,
+    } as main.AgentSettings);
+    open();
+    await flush();
+    expect(box().checked).toBe(false);
+    fireEvent.click(box());
+    click(el('settings-save'));
+    await flush();
+    expect(saveAgentSettings).toHaveBeenCalledWith(
+      expect.objectContaining({
+        claude_task_tools: true,
+        pi_todo_tool: true,
+        pin_tool: true,
+      }),
+    );
+  });
+
+  it('says what it does and when it applies', async () => {
+    open();
+    await flush();
+    const hint = el('settings-pin-tool-hint').textContent ?? '';
+    expect(hint).toMatch(/newly started sessions only/);
+    expect(box().getAttribute('aria-describedby')).toBe(
+      'settings-pin-tool-hint',
+    );
+  });
+});
+
 describe('settings: Pi plan progress toggle', () => {
   const box = () => el<HTMLInputElement>('settings-pi-todo-tool');
 
@@ -382,6 +429,7 @@ describe('settings: Pi plan progress toggle', () => {
     expect(saveAgentSettings).toHaveBeenCalledWith({
       claude_task_tools: false,
       pi_todo_tool: false,
+      pin_tool: true,
       laya_enabled: false,
       laya_url: '',
       laya_model: '',

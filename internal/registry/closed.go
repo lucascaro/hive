@@ -321,6 +321,11 @@ func discardRecord(dir, id string) {
 	if err := os.Remove(filepath.Join(dir, id+".patch")); err != nil && !os.IsNotExist(err) {
 		log.Printf("registry: could not remove recovery patch %s: %v", id, err)
 	}
+	// The pins went with the record (spec 566); a restore has already
+	// moved them back by the time it discards the record.
+	if err := os.RemoveAll(pinRecordDir(dir, id)); err != nil {
+		log.Printf("registry: could not remove pins of %s: %v", id, err)
+	}
 }
 
 // tombstoneClaimsWorktree reports whether a live tombstone still
@@ -434,6 +439,9 @@ func (r *Registry) restoreEntry(dir, id string, check func(t Tombstone, cwd stri
 		check(t, cwd, &res)
 	}
 
+	// Locked until finishRestorePins below has moved the files back, so
+	// a pin change cannot land in a directory that is still elsewhere.
+	pins := pinsForRestore(dir, id)
 	e := &Entry{
 		ID: t.Meta.ID, Name: t.Meta.Name, Color: t.Meta.Color,
 		Created:        t.Meta.Created,
@@ -448,6 +456,8 @@ func (r *Registry) restoreEntry(dir, id string, check func(t Tombstone, cwd stri
 		ResultSchema:   t.Meta.ResultSchema,
 		Orchestrator:   t.Meta.Orchestrator,
 	}
+
+	e.pins.Store(pins)
 
 	r.mu.Lock()
 	// Re-check liveness: the worktree work above ran unlocked and can
@@ -473,6 +483,7 @@ func (r *Registry) restoreEntry(dir, id string, check func(t Tombstone, cwd stri
 	r.persistIndexLoggedLocked("restore")
 	info := e.Info()
 	r.mu.Unlock()
+	r.finishRestorePins(pins, dir, id)
 
 	// The entry exists and is visible before the PTY forks, so a client
 	// sees the tile come back immediately rather than after the spawn.
