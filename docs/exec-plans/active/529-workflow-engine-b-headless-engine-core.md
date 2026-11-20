@@ -2823,6 +2823,16 @@ what was weighed.
   - Equivalent mutants: dropping `reconnect()`'s final `!this.#alive` check (the launch guard in `drive()` covers it), dropping `resumeAgent`'s alive guard (`recoverRunning` checks the connection first), and the listing slot of an abandoned entry being resolved twice (a promise resolves once).
 - **2026-11-19 iter 4 (B3c, PR #570)** — verdict: APPROVE (own); mergeable: MERGEABLE; findings_hash: empty; threads_open: 0; action: stop; head_sha: e2fc9f75. Code head; the branch head is this docs-only ledger commit, whose CI is the final CI. 336 plugin tests pass; `internal/workflowe2e` green.
 
+- **2026-11-20 iter 5 (B3c, PR #570)** — verdict: REQUEST_CHANGES (gate round 2 FAIL on e2fc9f75: round 1's "fail closed to interrupt" for a trimmed recorded turn was wrong); mergeable: MERGEABLE; findings_hash: see list; threads_open: 0 -> 0; action: autofix+push; head_sha: a4ba2081. Fixed with tests, each mutation-checked (12 mutants; 8 killed, 4 equivalent below):
+  - a recorded turn (same boot, same epoch, `tx.prompt_id` equal to the row's) is followed whether or not its user item is listed: watched while running, its result taken when done. Interrupting made the retry hit `acp_busy` on a healthy turn (then a force kill) or discarded a finished result;
+  - "this was the F3 re-prompt" is the engine's own record (`nodes.reprompted`, written with the ack, added to an older `runs.db` by `ALTER TABLE`), never the transcript's text, so a trimmed re-prompt allows no third prompt;
+  - a lost ack whose user item is trimmed (or a latest turn that is the user's) sends nothing and kills nothing: with a turn running the node waits for the session to go idle (bounded by its `timeout_s` from `started_at`, then CANCEL_ACP and a timeout failure), then is interrupted so the retry prompts an idle session; an idle session is interrupted at once. The plan's round-1 sentence ("never sent again, which would run twice or be refused as busy") is corrected;
+  - found by the Go e2e: a session with no turn at all is idle (the in-process daemon keeps its boot id across a "restart"), and the orphan scan killed the healthy session of a node that failed while recovery read it (it now counts the rows from before and skips an ended run); a stale launch's timeout timer and `stop()` no longer act on the new connection;
+  - the sim refuses a PROMPT_ACP on a running turn (`acp_busy`), and the test that asserted a second prompt on one is replaced;
+  - close storm: the redial loop keeps a streak (first redial at once, then doubling pauses capped at 5 s, ten in a row end the plugin); only a connection that stays open for `stableMs` clears it;
+  - mutants that survive, all equivalent: the orphan scan's `before` rows and its ended-run skip each cover the other (dropping both shows), a stale launch's `stop()` and its timer each cover the other.
+- **2026-11-20 iter 6 (B3c, PR #570)** — verdict: APPROVE (own); mergeable: MERGEABLE; findings_hash: empty; threads_open: 0; action: stop; head_sha: a4ba2081. Code head; the branch head is this docs-only ledger commit, whose CI is the final CI. 343 plugin tests pass; `internal/workflowe2e` green.
+
 ## Gate verdict
 
 <!-- /hs-merge-gate appends one line per run here (append-only). -->
