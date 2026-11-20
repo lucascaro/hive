@@ -12,9 +12,9 @@ import (
 )
 
 // pinPages splits a session's pin headers (newest first) into PINS
-// frames of at most wire.PinsPageSize, Done on the last. There is no
-// cap on how many pins a session holds, so one frame could outgrow
-// wire.MaxPayload; no session ever answers zero frames.
+// frames of at most wire.PinsPageSize, Done on the last, so every frame
+// stays small however many pins wire.MaxPinsPerSession allows; no
+// session ever answers zero frames.
 func pinPages(sessionID string, pins []wire.Pin) []wire.PinsMsg {
 	var out []wire.PinsMsg
 	for len(pins) > wire.PinsPageSize {

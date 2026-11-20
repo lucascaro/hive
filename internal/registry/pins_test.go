@@ -297,6 +297,45 @@ func TestUnpinAllClears(t *testing.T) {
 	}
 }
 
+// UnpinAll stopping part-way keeps the pins it could not remove and
+// announces only the ones it did, never a clear.
+func TestUnpinAllPartialFailureAnnouncesOnlyRemoved(t *testing.T) {
+	skipNonPosix(t)
+	r := freshRegistry(t)
+	e := createShell(t, r)
+	mustPin(t, r, e.ID, "old")
+	mid := mustPin(t, r, e.ID, "mid")
+	newest := mustPin(t, r, e.ID, "new")
+	// A non-empty directory where mid's header was: os.Remove fails.
+	hdr := filepath.Join(r.pinsDir(e.ID), mid.ID+".json")
+	if err := os.Remove(hdr); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(filepath.Join(hdr, "x"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	pl, unsub := r.SubscribePins()
+	defer unsub()
+
+	if err := r.UnpinAll(e.ID); err == nil {
+		t.Fatal("UnpinAll reported success with a header it could not remove")
+	}
+	if got := pinTitles(t, r, e.ID); len(got) != 2 || got[0] != "mid" || got[1] != "old" {
+		t.Fatalf("pins = %v, want [mid old]", got)
+	}
+	if got := r.Get(e.ID).Info().PinCount; got != 2 {
+		t.Errorf("PinCount = %d, want 2", got)
+	}
+	select {
+	case m := <-pl:
+		if m.Cleared || len(m.RemovedIDs) != 1 || m.RemovedIDs[0] != newest.ID {
+			t.Fatalf("delta = %+v, want RemovedIDs [%s]", m, newest.ID)
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("no delta for the pin that was removed")
+	}
+}
+
 func TestUnpinOtherSessionsPinIsNotFound(t *testing.T) {
 	skipNonPosix(t)
 	r := freshRegistry(t)
