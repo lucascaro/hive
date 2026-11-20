@@ -189,13 +189,19 @@ async function settleOrphans(engine: Engine, runId: string, listed: Listed[], se
   }
   for (const [key, group] of byKey) {
     // Which of them were never prompted: no answer from the daemon is not "never prompted".
+    const row = rows.find((r) => r.key === key);
     const idle: Listed[] = [];
     for (const s of group) {
       const tx = await engine.feed.fetchTranscript(send, s.id, engine.daemonWaitMs);
       if (lost()) return;
       if (tx && tx.prompt_id === 0) idle.push(s);
+      else if (!tx && row && (row.state === 'pending' || row.state === 'interrupted')) {
+        // Neither adopted nor removed, so the node must not launch beside it: it fails (run.retry starts it again), naming the session.
+        engine.failNode(runId, key, `a leftover session (${s.id}) from an earlier launch could not be read, so the node was not started in its worktree beside it`, { link });
+        break;
+      }
     }
-    const row = rows.find((r) => r.key === key);
+    if (row?.state === 'failed') continue;
     const [only] = idle;
     // Only a node that was about to launch can own it; a node with a session of its own, or a finished one, has no use for another.
     if (only && group.length === 1 && row && row.state === 'pending' && row.ready && !row.session_id && only.alive && only.kind === 'acp') {
@@ -203,6 +209,10 @@ async function settleOrphans(engine: Engine, runId: string, listed: Listed[], se
       continue;
     }
     for (const s of idle) {
+      // Looked at again just before the kill: a turn may have started on it since it was read. (Narrows the window; closing it is the daemon's.)
+      const again = await engine.feed.fetchTranscript(send, s.id, engine.daemonWaitMs);
+      if (lost()) return;
+      if (!again || again.prompt_id !== 0) continue;
       let err: unknown;
       // Twice: a node must not launch while a session of its own is left running in its worktree.
       for (let i = 0; i < 2; i++) {

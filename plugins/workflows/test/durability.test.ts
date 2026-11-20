@@ -1143,14 +1143,17 @@ test('cancel is refused during the reap of a check, before any agent is read, so
       }
     };
     const h2 = harness({ agent: agentExecutor(deps), check: never }, { dir, hive: hive2, kill: { kill, graceMs: 200 } });
-    const created = sim.of('CREATE_SESSION').length;
-    await h2.engine.recover();
-    await new Promise((r) => setTimeout(r, 200));
-    assert.ok(refusals.length >= 2 && refusals.every((c) => c === 'recovering'), `cancel and retry were refused during the reap: ${JSON.stringify(refusals)}`);
-    assert.equal(rowOf(h2, id, 'a')?.session_id, sa, 'the node still has its own session');
-    assert.equal(sim.of('CREATE_SESSION').length, created, 'nothing was started beside it');
-    assert.deepEqual(sim.of('KILL_SESSION'), []);
-    h2.close();
+    try {
+      const created = sim.of('CREATE_SESSION').length;
+      await h2.engine.recover();
+      await new Promise((r) => setTimeout(r, 200));
+      assert.ok(refusals.length >= 2 && refusals.every((c) => c === 'recovering'), `cancel and retry were refused during the reap: ${JSON.stringify(refusals)}`);
+      assert.equal(rowOf(h2, id, 'a')?.session_id, sa, 'the node still has its own session');
+      assert.equal(sim.of('CREATE_SESSION').length, created, 'nothing was started beside it');
+      assert.deepEqual(sim.of('KILL_SESSION'), []);
+    } finally {
+      h2.close();
+    }
   } finally {
     try {
       process.kill(-pid, 'SIGKILL');
@@ -1184,5 +1187,108 @@ test('a session set aside for a node is forgotten when its run ends', async () =
     assert.equal(w.h.engine.takeOrphan(w.id, 'a'), undefined, 'nothing of a finished run is kept');
   } finally {
     w.cleanup();
+  }
+});
+
+test('a connection lost while a check is reaped: the startup scan of the agents is skipped and the reconnect reads them once', async () => {
+  const { spawn } = await import('node:child_process');
+  const { procStart } = await import('../engine/killtree.ts');
+  const hive = new FakeHive();
+  const dir = mkdtempSync(join(tmpdir(), 'wf-dur-'));
+  const sim = simulate(hive, { onPrompt: () => {} });
+  const deps = { cancelGraceMs: 40, readyTimeoutMs: 400, settlePollMs: 5 };
+  const beginCheck = (ctx: { engine: { beginNode: (a: string, b: string) => boolean }; run_id: string; key: string }): Promise<void> => (ctx.engine.beginNode(ctx.run_id, ctx.key), never());
+  const ir = workflow('w', s.object({}), (g) => {
+    g.check('c', { argv: ['true'], timeoutSec: 600 });
+    g.agent('a', { agent: 'claude', prompt: 'do a', output: out });
+  });
+  const h = harness({ agent: agentExecutor(deps), check: beginCheck as never }, { dir, hive });
+  const id = h.engine.startRunFromIR({ project_id: 'p1', file: 'w.ts', ir, input: {} });
+  await waitFor(() => rowOf(h, id, 'a')?.prompt_id !== undefined && rowOf(h, id, 'c')?.state === 'running', 'a prompted, c running');
+  const child = spawn(process.execPath, ['-e', 'setInterval(()=>{},1000)'], { stdio: 'ignore', detached: true });
+  const pid = child.pid as number;
+  try {
+    await new Promise((r) => setTimeout(r, 100));
+    h.store.commit(id, { rows: [{ ...(rowOf(h, id, 'c') as Row), pid, pgid: pid, proc_start: procStart(pid) as string }], events: [] });
+    h.engine.disconnect();
+    h.close();
+    const hive2 = new FakeHive();
+    hive2.welcome = { boot_id: 'boot-1' };
+    sim.attach(hive2);
+    const kill = (p: number, sig: string | number): void => {
+      try {
+        process.kill(p, sig as never); // the test's own process
+      } catch {}
+      h2.engine.disconnect(); // the connection goes while the check is being reaped
+    };
+    const h2 = harness({ agent: agentExecutor(deps), check: never }, { dir, hive: hive2, kill: { kill, graceMs: 200 } });
+    try {
+      await h2.engine.recover();
+      assert.deepEqual(hive2.sends, [], 'the agents were not read on a connection that was lost');
+      const hive3 = new FakeHive();
+      hive3.welcome = { boot_id: 'boot-1' };
+      sim.attach(hive3);
+      await h2.engine.reconnect(hive3);
+      assert.equal(sim.of('PROMPT_ACP').length, 1, 'no second turn');
+      finish(sim.sessions[0]);
+      await waitFor(() => rowOf(h2, id, 'a')?.state === 'done', 'a to finish once');
+      assert.equal(sim.of('COMMIT_WORKTREE').length, 1, 'one watcher: committed once');
+    } finally {
+      h2.close();
+    }
+  } finally {
+    try {
+      process.kill(-pid, 'SIGKILL');
+    } catch {}
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('an orphan whose transcript cannot be read keeps its node from launching beside it', async () => {
+  const w = world(one(), { holdCreate: never() });
+  await waitFor(() => w.sim.sessions.length === 1, 'the session to be made');
+  w.h.engine.disconnect();
+  w.h.close();
+  const hive = new FakeHive();
+  hive.welcome = { boot_id: 'boot-1' };
+  w.sim.attach(hive);
+  hive.onSend.GET_ACP_TRANSCRIPT = () => {}; // the daemon does not answer the read
+  const h = harness({ agent: never, check: never }, { dir: w.dir, hive, daemonWaitMs: 300 }); // longer than a slow reply, shorter than the test's patience
+  try {
+    await h.engine.recover();
+    assert.equal(rowOf(h, w.id, 'a')?.state, 'failed');
+    assert.match(rowOf(h, w.id, 'a')?.error ?? '', /could not be read/);
+    assert.equal(w.sim.of('CREATE_SESSION').length, 1, 'no second session beside the one nobody could read');
+    assert.deepEqual(w.sim.of('KILL_SESSION'), []);
+  } finally {
+    h.close();
+    rmSync(w.dir, { recursive: true, force: true });
+  }
+});
+
+test('a session that gets a turn between its read and its removal is not killed', async () => {
+  const w = world(one(), { holdCreate: never() });
+  await waitFor(() => w.sim.sessions.length === 1, 'the session to be made');
+  const twin = Object.assign(Object.create(Object.getPrototypeOf(w.sim.sessions[0])), w.sim.sessions[0], { id: 'sx' });
+  w.sim.sessions.push(twin);
+  w.h.engine.disconnect();
+  w.h.close();
+  const hive = new FakeHive();
+  hive.welcome = { boot_id: 'boot-1' };
+  w.sim.attach(hive);
+  // sx is read as idle once, and has a turn by the time it is looked at again before the kill.
+  let reads = 0;
+  const answer = hive.onSend.GET_ACP_TRANSCRIPT;
+  hive.onSend.GET_ACP_TRANSCRIPT = (p) => {
+    if (p.session_id === 'sx' && ++reads === 2) twin.prompt_id = 30;
+    answer(p);
+  };
+  const h = harness({ agent: never, check: never }, { dir: w.dir, hive });
+  try {
+    await h.engine.recover();
+    assert.ok(!w.sim.of('KILL_SESSION').some((k) => k.session_id === 'sx'), 'the session that now has a turn was left alone');
+  } finally {
+    h.close();
+    rmSync(w.dir, { recursive: true, force: true });
   }
 });

@@ -570,6 +570,7 @@ export class Engine {
 
   async #recover(): Promise<void> {
     {
+      const link = this.#link;
       const loaded: Runtime[] = [];
       for (const run of this.store.activeRuns()) {
         const why = this.#stale(run);
@@ -583,7 +584,9 @@ export class Engine {
           await this.#recoverCheck(rt, r);
         }
       }
-      await recoverAgents(this, loaded.map((rt) => rt.id));
+      // A connection lost while a check was reaped is lost for this pass: the reconnect queued behind it reads the agents on the new one,
+      // and a scan here would start a second watcher for each of them.
+      if (this.#link === link && this.#alive) await recoverAgents(this, loaded.map((rt) => rt.id));
     }
   }
 
