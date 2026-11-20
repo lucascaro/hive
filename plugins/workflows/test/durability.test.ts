@@ -496,6 +496,25 @@ test('a daemon that does not list its sessions: running nodes are interrupted, n
   }
 });
 
+test('a connection that is already closed when recovery reads the daemon: running nodes are interrupted, and recovery does not throw', async () => {
+  const w = world(one());
+  await running(w);
+  w.h.engine.disconnect();
+  w.h.close();
+  const hive = new FakeHive();
+  hive.send = () => {
+    throw new Error('write after end');
+  };
+  const h = harness({ agent: never, check: never }, { dir: w.dir, hive });
+  try {
+    await h.engine.recover();
+    assert.equal(rowOf(h, w.id, 'a')?.state, 'interrupted');
+  } finally {
+    h.close();
+    rmSync(w.dir, { recursive: true, force: true });
+  }
+});
+
 // ------------------------------------------------------------ orphans
 
 /** A CREATE_SESSION the engine never saw the ack of: the daemon made the session, and the engine died waiting. */

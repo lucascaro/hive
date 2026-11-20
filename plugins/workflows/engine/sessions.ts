@@ -103,7 +103,11 @@ export class SessionFeed {
         resolve(m);
       });
     });
-    send('LIST_SESSIONS', {});
+    try {
+      send('LIST_SESSIONS', {});
+    } catch {
+      return undefined; // the connection is already gone: the caller reads that as "no word from the daemon"
+    }
     const m = await reply;
     if (!isObj(m) || !Array.isArray(m.sessions)) return undefined;
     const out: (SessionState & { id: string })[] = [];
@@ -129,7 +133,12 @@ export class SessionFeed {
         resolve(s);
       });
     });
-    send('GET_ACP_TRANSCRIPT', { session_id: id });
+    try {
+      send('GET_ACP_TRANSCRIPT', { session_id: id });
+    } catch {
+      this.#snapshots.delete(id);
+      return undefined;
+    }
     return await reply;
   }
 
