@@ -1098,3 +1098,31 @@ test('a session set aside for a node is not handed to the node of a run that was
     w.cleanup();
   }
 });
+
+test('the orphan removal checks the run before each session, not only before each group', async () => {
+  let swap: () => void = () => {};
+  const w = world(one(), { holdCreate: never(), onKill: () => swap() });
+  await waitFor(() => w.sim.sessions.length === 1, 'the session to be made');
+  const twin = Object.assign(Object.create(Object.getPrototypeOf(w.sim.sessions[0])), w.sim.sessions[0], { id: 'sx' });
+  w.sim.sessions.push(twin);
+  w.h.engine.disconnect();
+  w.h.close();
+  const hive = new FakeHive();
+  hive.welcome = { boot_id: 'boot-1' };
+  w.sim.attach(hive);
+  const h = harness({ agent: never, check: never }, { dir: w.dir, hive });
+  let swapped = false;
+  swap = () => {
+    if (swapped) return;
+    swapped = true;
+    h.engine.cancelRun(w.id); // the user cancels and retries while the first removal is out
+    h.engine.retryRun(w.id);
+  };
+  try {
+    await h.engine.recover();
+    assert.equal(w.sim.of('KILL_SESSION').length, 1, 'the second session belongs to the run that was replaced: this pass leaves it');
+  } finally {
+    h.close();
+    rmSync(w.dir, { recursive: true, force: true });
+  }
+});

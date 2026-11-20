@@ -202,6 +202,7 @@ async function settleOrphans(engine: Engine, runId: string, listed: Listed[], li
       continue;
     }
     for (const s of group) {
+      if (lost() || replaced()) return; // checked before each removal: the run may have been retried during the one before
       let err: unknown;
       // Twice: a node must not launch while a session of its own is left running in its worktree.
       for (let i = 0; i < 2; i++) {
