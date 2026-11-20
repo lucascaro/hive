@@ -19,6 +19,7 @@ import { initialRows, apply, type Action, type Applied, type Model, modelFor, st
 import { type KillDeps, killTree, reap, unsafeTarget } from './killtree.ts';
 import { redactCut } from './redact.ts';
 import type { Row, RunRow } from './model.ts';
+import { recoverAgents } from './durability.ts';
 import { SessionFeed } from './sessions.ts';
 import { encodedSize } from './size.ts';
 import type { Store } from './store.ts';
@@ -33,9 +34,18 @@ export interface Hive {
   postMessage(topic: string, data?: unknown): void;
   /** Frames the daemon sends unasked (SESSION_EVENT, ACP_TRANSCRIPT, ERROR): the SDK connection is an EventEmitter. */
   on?(event: string, fn: (msg: never) => void): unknown;
+  /** Sends a frame that has no req_id reply (LIST_SESSIONS, GET_ACP_TRANSCRIPT): its answer arrives as an event. */
+  send?(name: string, payload?: object): void;
   /** The daemon's WELCOME: `boot_id` changes when `hived` restarts (R2). */
   readonly welcome?: { boot_id?: string };
 }
+
+/** What an agent launch is picking up instead of starting from nothing (B3c): a node whose turn survived a plugin crash or a reconnect. */
+export type AgentPlan =
+  /** The row is running and its turn was started: watch it, from the ack the daemon gave (or the transcript showed). */
+  | { kind: 'watch'; ack: { prompt_id: number; epoch: number }; again: boolean }
+  /** The row is running with a ready session and no turn of ours in its transcript: send the turn now. */
+  | { kind: 'send' };
 
 export interface NodeContext {
   engine: Engine;
@@ -44,6 +54,8 @@ export interface NodeContext {
   run_id: string;
   key: string;
   node: Node;
+  /** Set only when an agent node is picked up after a crash or reconnect. */
+  plan?: AgentPlan;
 }
 
 /** What starts a node. A check is real in B2; agents arrive in B3, and tests inject their own. */
@@ -59,6 +71,8 @@ export interface EngineOptions {
   now?: () => Date;
   /** How processes are signalled at startup and shutdown: a seam so a test can make the OS refuse (EPERM) without signalling anything. */
   kill?: KillDeps;
+  /** This plugin's id, as the daemon labels the sessions it creates (`plugin:<id>/workflow:<run>`). Defaults to HIVE_PLUGIN_ID. */
+  pluginId?: string;
   /** Called with every batch of events as stored, for the live push. */
   onEvents?: (runId: string, events: RunEvent[]) => void;
 }
@@ -82,6 +96,22 @@ export class EngineError extends Error {
   }
 }
 
+/** How long a retry waits for the launch of the same node before it. Longer than any request a launch makes. */
+const LAUNCH_WAIT_MS = 130_000;
+
+/** Resolves when `p` settles (either way) or after `ms`. */
+function waitFor(p: Promise<unknown>, ms: number): Promise<void> {
+  return new Promise((resolve) => {
+    const timer = setTimeout(resolve, ms);
+    timer.unref?.();
+    const done = (): void => {
+      clearTimeout(timer);
+      resolve();
+    };
+    p.then(done, done);
+  });
+}
+
 const B32 = 'abcdefghijklmnopqrstuvwxyz234567';
 /** `^[a-z0-9][a-z0-9-]{0,62}$`, as A requires of a workflow run id. */
 function newRunId(): string {
@@ -91,7 +121,7 @@ function newRunId(): string {
 
 export class Engine {
   readonly store: Store;
-  readonly hive: Hive;
+  #hive: Hive;
   /** The latest the daemon said about each session; agent executors wait on it. */
   readonly feed = new SessionFeed();
   readonly #executors: Executors;
@@ -101,16 +131,36 @@ export class Engine {
   #flusher: ReturnType<typeof setInterval> | undefined;
   #stopping = false;
   readonly #killDeps: KillDeps;
+  readonly #pluginId: string;
   #epochs = 0;
+  /** Counts lost connections: an agent launch made under an earlier one is stale and must not fail or kill anything (B3c). */
+  #link = 0;
+  /** No effects are started while the engine recovers or has no connection: a launch before the orphan scan could create a second session. */
+  #paused = false;
+  #down = false;
+  /** Sessions found by recovery that a pending node should take over instead of creating one, by `run/key`. */
+  readonly #orphans = new Map<string, string>();
+  /** The latest agent launch of each node: a retry waits for the one before it, so a stale launch's kill cannot land after the retry re-attached its worktree. */
+  readonly #tails = new Map<string, Promise<unknown>>();
 
   constructor(o: EngineOptions) {
     this.store = o.store;
-    this.hive = o.hive;
+    this.#hive = o.hive;
     this.#executors = o.executors;
     this.#now = o.now ?? (() => new Date());
     this.#onEvents = o.onEvents;
     this.#killDeps = o.kill ?? {};
+    this.#pluginId = o.pluginId ?? process.env.HIVE_PLUGIN_ID ?? 'workflows';
     this.feed.attach(o.hive);
+  }
+
+  get hive(): Hive {
+    return this.#hive;
+  }
+
+  /** Bumped on every lost connection. A launch compares it with the value it started under. */
+  get link(): number {
+    return this.#link;
   }
 
   // ----------------------------------------------------------------- runs
@@ -265,7 +315,7 @@ export class Engine {
             }
             continue; // effects start only from a pass with nothing left to commit: a run that is failing launches nothing
           }
-          for (const a of due.actions) this.#launch(rt, a);
+          if (!this.#paused) for (const a of due.actions) this.#launch(rt, a);
           break;
         }
       } while (rt.again);
@@ -274,25 +324,41 @@ export class Engine {
     }
   }
 
-  #launch(rt: Runtime, a: Action): void {
+  #launch(rt: Runtime, a: Action, plan?: AgentPlan): void {
     const node = rt.model.ix.byId.get(a.node_id)?.node as Node;
     rt.inflight.add(a.key);
-    const ctx: NodeContext = { engine: this, epoch: rt.epoch, run_id: rt.id, key: a.key, node };
+    const link = this.#link;
+    const ctx: NodeContext = { engine: this, epoch: rt.epoch, run_id: rt.id, key: a.key, node, ...(plan ? { plan } : {}) };
     const fail = (err: unknown): void => {
       if (this.#runs.get(rt.id) !== rt) return; // the run ended or was retried since: this failure is not the new attempt's
+      if (link !== this.#link) return; // the connection was lost under this launch: recovery re-derives it from the rows, so its failure is not the node's
       this.failNode(rt.id, a.key, `${a.a} could not run: ${err instanceof Error ? err.message : String(err)}`);
     };
-    let p: Promise<void>;
-    try {
-      p = this.#executors[a.a](ctx);
-    } catch (err) {
-      p = Promise.reject(err);
+    const start = (): Promise<void> => {
+      try {
+        return this.#executors[a.a](ctx);
+      } catch (err) {
+        return Promise.reject(err);
+      }
+    };
+    // A retry of a node waits for the launch before it (a cancelled attempt's stale CREATE_SESSION and its kill): that kill
+    // can dispose a worktree the retry has just re-attached, so the two must not overlap. Bounded, so a hung launch
+    // cannot hold the node forever.
+    const tkey = `${rt.id}/${a.key}`;
+    const before = a.a === 'agent' ? this.#tails.get(tkey) : undefined;
+    const p = before ? waitFor(before, LAUNCH_WAIT_MS).then(start) : start();
+    if (a.a === 'agent') {
+      this.#tails.set(tkey, p);
+      const clear = (): void => {
+        if (this.#tails.get(tkey) === p) this.#tails.delete(tkey);
+      };
+      p.then(clear, clear);
     }
     p.catch(fail).finally(() => {
       rt.inflight.delete(a.key);
       // An executor that returns without starting or failing its node would be launched again at once, forever.
       const s = rt.model.rows.get(a.key)?.state;
-      const live = this.#runs.get(rt.id) === rt;
+      const live = this.#runs.get(rt.id) === rt && link === this.#link;
       if (live && (s === 'pending' || s === 'interrupted')) this.failNode(rt.id, a.key, `${a.a} executor returned without starting the node`);
       if (live) this.drive(rt);
     });
@@ -436,33 +502,133 @@ export class Engine {
    * that was running is gone with the plugin (or about to be): its recorded
    * group is reaped when the pid still is that process, and the node becomes
    * `interrupted`, which the reducer retries. A waiting human is untouched.
+   * An agent node is read against the daemon (durability.ts): its turn is
+   * recorded, watched or adopted when it survived, and the node is
+   * `interrupted` only when it did not.
    */
   async recover(): Promise<void> {
-    const loaded: Runtime[] = [];
-    for (const run of this.store.activeRuns()) {
-      const why = this.#stale(run);
-      if (why) this.#refuse(run, why);
-      else loaded.push(this.#load(run));
-    }
-    for (const rt of loaded) {
-      for (const r of [...rt.model.rows.values()]) {
-        if (r.state !== 'running') continue;
-        const kind = rt.model.ix.byId.get(r.node_id)?.node.kind;
-        if (kind !== 'check' && kind !== 'agent') continue;
-        // A row is not trusted to name a process: a corrupt or forged pid fails the node, naming the row, and nothing is signalled.
-        const bad = r.pid === undefined ? undefined : unsafeTarget({ pid: r.pid, pgid: r.pgid });
-        if (bad) {
-          this.commit(rt.id, { t: 'fail', key: r.key, error: `the recorded process for ${r.key} cannot be used (${bad}); nothing was signalled` });
-          continue;
-        }
-        let reaped: string = 'gone';
-        if (r.pid !== undefined) reaped = await reap({ pid: r.pid, pgid: r.pgid, proc_start: r.proc_start }, this.#killDeps).catch(() => 'kept');
-        // A survivor the OS will not let us stop must not be run twice at once: the node fails, naming the pid, instead of being retried.
-        if (reaped === 'kept') this.commit(rt.id, { t: 'fail', key: r.key, error: `the previous attempt's process ${r.pid} is still running and could not be stopped (the operating system refused the signal); stop it by hand, then retry the run` });
-        else if (reaped === 'refused') this.commit(rt.id, { t: 'fail', key: r.key, error: `the recorded process ${r.pid} for ${r.key} cannot be used; nothing was signalled` });
-        else this.commit(rt.id, { t: 'interrupt', key: r.key });
+    this.#paused = true;
+    try {
+      const loaded: Runtime[] = [];
+      for (const run of this.store.activeRuns()) {
+        const why = this.#stale(run);
+        if (why) this.#refuse(run, why);
+        else loaded.push(this.#load(run));
       }
+      for (const rt of loaded) {
+        for (const r of [...rt.model.rows.values()]) {
+          if (r.state !== 'running') continue;
+          if (rt.model.ix.byId.get(r.node_id)?.node.kind !== 'check') continue;
+          await this.#recoverCheck(rt, r);
+        }
+      }
+      await recoverAgents(this, loaded.map((rt) => rt.id));
+    } finally {
+      this.#paused = false;
     }
-    for (const rt of loaded) this.drive(rt);
+    for (const rt of this.#runs.values()) this.drive(rt);
+  }
+
+  async #recoverCheck(rt: Runtime, r: Row): Promise<void> {
+    // A row is not trusted to name a process: a corrupt or forged pid fails the node, naming the row, and nothing is signalled.
+    const bad = r.pid === undefined ? undefined : unsafeTarget({ pid: r.pid, pgid: r.pgid });
+    if (bad) {
+      this.commit(rt.id, { t: 'fail', key: r.key, error: `the recorded process for ${r.key} cannot be used (${bad}); nothing was signalled` });
+      return;
+    }
+    let reaped: string = 'gone';
+    if (r.pid !== undefined) reaped = await reap({ pid: r.pid, pgid: r.pgid, proc_start: r.proc_start }, this.#killDeps).catch(() => 'kept');
+    // A survivor the OS will not let us stop must not be run twice at once: the node fails, naming the pid, instead of being retried.
+    if (reaped === 'kept') this.commit(rt.id, { t: 'fail', key: r.key, error: `the previous attempt's process ${r.pid} is still running and could not be stopped (the operating system refused the signal); stop it by hand, then retry the run` });
+    else if (reaped === 'refused') this.commit(rt.id, { t: 'fail', key: r.key, error: `the recorded process ${r.pid} for ${r.key} cannot be used; nothing was signalled` });
+    else this.commit(rt.id, { t: 'interrupt', key: r.key });
+  }
+
+  // ------------------------------------------- durability (B3c, durability.ts)
+
+  /** The agent node rows of an active run (empty for a run that is not active). */
+  agentRows(runId: string): Row[] {
+    const rt = this.#runs.get(runId);
+    if (!rt) return [];
+    return [...rt.model.rows.values()].filter((r) => rt.model.ix.byId.get(r.node_id)?.node.kind === 'agent');
+  }
+
+  /** The workflow's name: what its sessions are named after. */
+  workflowName(runId: string): string {
+    return this.#runs.get(runId)?.model.ix.ir.name ?? '';
+  }
+
+  /** The principal the daemon stamps on this run's sessions and turns: `plugin:<id>/workflow:<run>`. */
+  principalOf(runId: string): string {
+    return `plugin:${this.#pluginId}/workflow:${runId}`;
+  }
+
+  /** The agent node `key` is picked up with `plan`: its row is already running, so nothing is created and no turn is reserved. */
+  resumeAgent(runId: string, key: string, plan: AgentPlan): void {
+    const rt = this.#runs.get(runId);
+    const node = rt && rt.model.ix.byId.get(rt.model.rows.get(key)?.node_id ?? '');
+    if (!rt || !node) return;
+    this.#launch(rt, { a: 'agent', key, node_id: node.node.id }, plan);
+  }
+
+  /** A live session recovery found for a pending node that was being created when the engine stopped: the next launch of that node takes it over. */
+  adoptOrphan(runId: string, key: string, sessionId: string): void {
+    this.#orphans.set(`${runId}/${key}`, sessionId);
+  }
+
+  /** The session recovery set aside for `key`, once. */
+  takeOrphan(runId: string, key: string): string | undefined {
+    const id = this.#orphans.get(`${runId}/${key}`);
+    this.#orphans.delete(`${runId}/${key}`);
+    return id;
+  }
+
+  /** Marks a running or waiting agent node `interrupted`: its turn did not survive, and the reducer retries it. */
+  interruptNode(runId: string, key: string): void {
+    const s = this.#row(runId, key)?.state;
+    if (s === 'running' || s === 'waiting') this.commit(runId, { t: 'interrupt', key });
+  }
+
+  // ------------------------------------------------------------- reconnect
+
+  /**
+   * The connection to the daemon is gone. Every agent launch made so far is
+   * stale from here on (it fails nothing and kills nothing: recovery
+   * re-derives it from the rows), and nothing new starts until `reconnect`.
+   */
+  disconnect(): void {
+    this.#down = true;
+    this.#paused = true;
+    this.#link++;
+    this.feed.pokeAll();
+  }
+
+  /** Whether the engine has no connection. */
+  get disconnected(): boolean {
+    return this.#down;
+  }
+
+  /**
+   * A new connection to the daemon (the old one overflowed or dropped): the
+   * running agent nodes are read against it exactly as at startup, then the
+   * runs go on. Same `boot_id` means the turns may still be running; a new
+   * one means `hived` restarted and they are not.
+   */
+  async reconnect(hive: Hive): Promise<void> {
+    this.#hive = hive;
+    this.feed.attach(hive);
+    this.#down = true;
+    this.#paused = true;
+    // The agent launches of the lost connection are dead: forget that they are in flight, so a node that was being created is launched again (it may adopt what that launch made).
+    for (const rt of this.#runs.values()) {
+      for (const key of [...rt.inflight]) if (rt.model.ix.byId.get(rt.model.rows.get(key)?.node_id ?? '')?.node.kind === 'agent') rt.inflight.delete(key);
+    }
+    try {
+      await recoverAgents(this, [...this.#runs.keys()]);
+    } finally {
+      this.#down = false;
+      this.#paused = false;
+    }
+    for (const rt of [...this.#runs.values()]) this.drive(rt);
   }
 }

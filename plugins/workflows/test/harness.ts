@@ -25,11 +25,25 @@ export class FakeHive implements Hive {
   /** How a request is answered; unlisted verbs answer `{}`. */
   replies: Record<string, (payload: Record<string, unknown>) => unknown> = {};
 
+  sends: { name: string; payload: Record<string, unknown> }[] = [];
+  /** How a frame sent with no req_id is answered: emit what the daemon would (LIST_SESSIONS → SESSIONS). Delivered on the next turn of the loop. */
+  onSend: Record<string, (payload: Record<string, unknown>) => void> = {};
+
   // biome-ignore lint/suspicious/noExplicitAny: wire replies are decoded JSON
   request(name: string, payload: object = {}): Promise<any> {
     this.requests.push({ name, payload: payload as Record<string, unknown> });
     const f = this.replies[name];
-    return Promise.resolve(f ? f(payload as Record<string, unknown>) : {});
+    try {
+      return Promise.resolve(f ? f(payload as Record<string, unknown>) : {});
+    } catch (err) {
+      return Promise.reject(err);
+    }
+  }
+
+  send(name: string, payload: object = {}): void {
+    this.sends.push({ name, payload: payload as Record<string, unknown> });
+    const f = this.onSend[name];
+    if (f) setImmediate(() => f(payload as Record<string, unknown>));
   }
 
   postMessage(topic: string, data?: unknown): void {

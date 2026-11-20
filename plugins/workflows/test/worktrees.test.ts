@@ -189,7 +189,7 @@ test('PREPARE: a conflict is returned with the files, the kept worktree and the 
     assert.ok(isConflict(r));
     if (isConflict(r)) {
       assert.deepEqual(r.conflict, { branch: 'hive/wf/x/c', files: ['a.txt', 'b.txt'], worktree: `/wt/hive/wf/${id}/a` });
-      assert.equal(r.message, `Merging hive/wf/x/c conflicted in a.txt, b.txt. The merge worktree is kept at /wt/hive/wf/${id}/a with the other branches merged. Resolve and commit there, then resume the run.`);
+      assert.equal(r.message, `Merging hive/wf/x/c conflicted in a.txt, b.txt. The conflicting merge was aborted: the worktree kept at /wt/hive/wf/${id}/a is clean, holds the branches merged before it, and does not contain hive/wf/x/c. Merge hive/wf/x/c there yourself, resolve the conflicts and commit, then retry the run.`);
     }
   } finally {
     h.close();

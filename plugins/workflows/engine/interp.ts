@@ -399,7 +399,8 @@ export function apply(m: Model, t: Transition, deps: ApplyDeps): Applied {
       const n = nodeOf(r);
       const base = { state: 'running' as const, started_at: now, ended_at: undefined, error: undefined, ...t.patch };
       if (n.kind === 'check' || n.kind === 'agent') {
-        const next = put(r, { ...base, attempt: r.attempt + 1 });
+        // A new attempt has not been prompted: the turn of an earlier one is not its turn (B3c reads the transcript to tell).
+        const next = put(r, { ...base, ...(n.kind === 'agent' ? { prompt_id: undefined, epoch: undefined, boot_id: undefined, ...t.patch } : {}), attempt: r.attempt + 1 });
         ev(next, 'node.started', { kind: n.kind, ...(next.branch ? { branch: next.branch } : {}), ...(next.worktree ? { worktree: next.worktree } : {}), ...(next.session_id ? { session_id: next.session_id } : {}) });
       } else if (n.kind === 'human') {
         const sc = scopeOf(m, r.key) as Scope;

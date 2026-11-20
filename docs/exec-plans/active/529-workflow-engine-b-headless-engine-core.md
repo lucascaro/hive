@@ -5,9 +5,9 @@
 - **Depends on:** A (#528), planned against `origin/feature/528-daemon-sdk-prereqs:docs/exec-plans/active/528-workflow-engine-a-daemon-sdk-prereqs.md` at `7410f6b7`
 - **Issue:** #529
 - **Branch:** `feature/529-engine-core` (research and plan); one branch per phase PR (B1: `feature/529-b1-validator`, B2: `feature/529-b2-store-interpreter`)
-- **PR:** #538 (B1), #550 (B2), #554 (B3 plan)
-- **Phase:** 2 of 5
-- **Status:** active. Plan approved. B1 (#538) and B2 (#550) merged; the B3 plan is decided (B-22..B-25, 2026-11-15); B3 to B5 remain.
+- **PR:** #538 (B1), #550 (B2), #554 (B3 plan), #555 (B3b), PRNUM (B3c)
+- **Phase:** 3 of 5 (B3 in progress: B3b and B3c done, B3a, B3-R7 and B3d remain)
+- **Status:** active. Plan approved. B1 (#538), B2 (#550) and B3b (#555) merged; B3c (PRNUM) in review; the B3 plan is decided (B-22..B-25, 2026-11-15); the rest of B3 to B5 remain.
   - All open questions are decided (see Decision log, 2026-10-25 user
     decisions).
   - R1–R6 are approved as A changes: R2, R3, R5 and R6 go to A PR1; R1 and
@@ -410,12 +410,16 @@ Decisions.
 - **Conflict.** PREPARED_WORKTREE `conflict` fails the node with this
   message:
 
-  > Merging `<branch>` conflicted in `<files>`. The merge worktree is kept at
-  > `<path>` with the other branches merged. Resolve and commit there, then
-  > resume the run.
+  > Merging `<branch>` conflicted in `<files>`. The conflicting merge was
+  > aborted: the worktree kept at `<path>` is clean, holds the branches merged
+  > before it, and does not contain `<branch>`. Merge `<branch>` there
+  > yourself, resolve the conflicts and commit, then retry the run.
 
-  The resume path is `run.retry`. Re-preparing re-attaches, and the
-  merges already done are no-ops (A).
+  The daemon aborts the conflicting merge (`worktree.MergeBranches`), so the
+  kept tree is clean at the base, never mid-merge. The resume path is
+  `run.retry`. Re-preparing re-attaches, and the merges already done are
+  no-ops (A). *Amended in B3c (B3b gate follow-up): the first wording said
+  "Resolve and commit there", which a clean tree cannot do.*
 - **Sessions at run end** (user decision). *This bullet and Cleanup below
   are amended by B-25: an archived session claims its worktree, and committed
   run branches need B3-R7's unpushed exemption. See Phases, B3-R7 and B3d.* When a run reaches `done`,
@@ -940,6 +944,14 @@ interrupted | cancelled`. `cancelled` is an addition to the design's list.
 **Overlay keys.** `node_id` is the IR id (what the overlay colours); `key` is
 the instance (`<map>[<i>]/<node>`, `<loop>[<k>]/<node>`).
 
+**Conflict wording (B3c).** A node failed by a merge conflict carries
+`node.finished.conflict {branch, files, worktree}`. The kept `worktree` is
+**clean at the base**: the daemon aborts the conflicting merge, so the tree
+holds the branches merged before it and not `conflict.branch`. C words its
+recovery hint the same way the engine's `error` does: *merge `<branch>` in
+`<worktree>` yourself, resolve the conflicts and commit, then retry the run.*
+It never says "resolve and commit there", as if a merge were in progress.
+
 ## Phases
 
 Each phase is one PR, and every phase ends green on the Verification
@@ -1296,6 +1308,13 @@ Files: `engine/engine.ts` (`recover()`), `engine/main.ts` (reconnect).
    engine redials through the SDK and reruns step 2. Pending `request()`s
    are rejected by the SDK (`_rejectAll`) and their effects re-derived from
    the rows.
+
+*Built as (PRNUM).* `engine/durability.ts` is the startup table; `recover()`
+and `Engine.reconnect()` both run it. The engine reads the daemon with
+LIST_SESSIONS and GET_ACP_TRANSCRIPT, neither of which is an SDK `request()`
+verb (no `req_id` reply), so `SessionFeed.listSessions` and `fetchTranscript`
+send the frame and wait for its SESSIONS or reset ACP_TRANSCRIPT. The
+decisions are under "B3c implementation decisions" in the Decision log.
 
 #### B3-R7: archive/remove acks and the run-branch unpushed exemption (daemon, B-25)
 
@@ -2338,7 +2357,8 @@ download, the accepted sandbox gap, and `LIST_ACP_AGENTS`.
   - **Interim hazard until B3c.** A plugin crash mid-turn makes `recover()`
     interrupt the node and relaunch it, which creates a second session in the
     same worktree while the old turn may still run. B3c's orphan adoption
-    owns this; nothing reaches users before B5.
+    owns this; nothing reaches users before B5. *Closed by B3c: a running agent row is read against the daemon, and its
+    turn is watched, adopted or retried on the same session.*
   - **`agent.turn.*` events are not emitted in B3b.** They belong to B5's
     events contract with the other `agent.*` types; B3b records the turn on
     the row (`prompt_id`, `epoch`, `boot_id`).
@@ -2363,6 +2383,101 @@ download, the accepted sandbox gap, and `LIST_ACP_AGENTS`.
       resolve, commit. The node's `conflict.branch` names the branch to merge.
     - The e2e GUI client must drain `SESSION_EVENT`s: the test client holds 32
       of them and a full channel stops it reading `PLUGIN_MESSAGE`s too.
+
+- **2026-11-19, B3c implementation decisions (PR PRNUM, branch
+  `feature/529-b3c-durability`).** No daemon change, no DaemonContract bump.
+  - **The engine reads the daemon with `send` plus an event, not `request()`.**
+    GET_ACP_TRANSCRIPT and LIST_SESSIONS are not in the SDK's `REQUEST_VERBS`:
+    neither has a reply that carries a `req_id`. `SessionFeed.listSessions`
+    sends LIST_SESSIONS and takes the next SESSIONS frame; `fetchTranscript`
+    sends GET_ACP_TRANSCRIPT and takes the next `reset` ACP_TRANSCRIPT for the
+    session (or its ERROR). The feed keeps each epoch's user items (id, origin,
+    the first 512 characters of the text), which is what turn adoption reads.
+  - **The Durability table's rows, as built** (`engine/durability.ts`):
+    - *Same `boot_id`* needs the row's own `boot_id`, so `beginNode` now
+      stores it with the session (it was only stored with the first turn's
+      ack, so a crash before the ack had nothing to compare). A row with no
+      `boot_id` is a new boot.
+    - Epoch and prompt ids restart with the daemon, so they cannot tell a
+      restart from a crash; the boot id alone decides, and a test pins that a
+      transcript with the row's exact epoch and prompt id under a new boot is
+      still interrupted.
+    - A recorded turn is followed only while the transcript's epoch is the
+      row's and its latest turn is the recorded one, or a newer user item of
+      this run's principal (`plugin:<id>/workflow:<run>`) that the row did not
+      record (the lost ack, including the F3 re-prompt's). A latest turn that is
+      not ours interrupts the node.
+    - **`waiting` agent rows are recovered too.** The table named `running`
+      only, and B3b's `recover()` skipped `waiting`, so a node waiting on a
+      permission when the plugin crashed had no one watching it.
+    - A `start` of an agent attempt now clears `prompt_id`, `epoch` and
+      `boot_id`. They are the attempt's own: left from attempt 1 they made a
+      lost ack on attempt 2 look like "recorded, other epoch" (interrupted
+      again) instead of "no turn recorded" (adopt).
+    - If LIST_SESSIONS is not answered, running and waiting agent rows are
+      interrupted: nothing can be shown to have survived, and a retry that finds
+      a turn still running is refused by the daemon (`acp_busy`), never doubled.
+  - **Orphans are `pending` rows, not `running` ones.** The table's "agent
+    `running`, create sent, no session id stored" cannot exist: `beginNode`
+    records the session with the transition to `running`, after the CREATE ack.
+    The crash window is a `pending` row whose launch was in flight.
+    Recovery lists the run's sessions (`spawned_by` exactly
+    `plugin:<id>/workflow:<run>`) that no row names. Exactly one, alive, ACP,
+    for a `pending` node that was ready, is adopted; anything else is killed
+    (forced; a worktree with work is kept). The row is **not** marked
+    `interrupted`, as the table said: nothing was ever prompted, so there is no
+    partial work to warn about and no attempt to spend. The adopted session must
+    also be in the worktree PREPARE returns, or it is killed and a fresh one is
+    created.
+  - **Retry of an interrupted node** (the executor, `agent.ts`): the prompt is
+    `INTERRUPTED_NOTE` plus the original; the node's own session is reused when
+    the daemon has it alive, **waited for while it is `reviving` or
+    `spawning`** (the boot revive is sequential, so a plugin that starts first
+    must not RESTART a session `hived` is about to load); a dead one gets
+    RESTART_SESSION; on `restart_failed` it is killed (forced), **the worktree
+    is prepared again** (the kill removes a worktree that holds nothing, and a
+    CREATE on a missing path would fail), and a fresh CREATE uses the same
+    `worktree_path`. The wait polls LIST_SESSIONS: a SESSION_EVENT is not
+    ordered against an ack, and the restart's own events can arrive after it.
+  - **Watching a surviving turn** skips the catalog re-check (the node is
+    mid-turn and a lowered ceiling cannot change that turn) and arms the
+    timeout from the row's `started_at`, so the time the plugin was away counts.
+    Sending a turn that was never sent re-checks the catalog.
+  - **Reconnect.** The SDK exits the process when its connection closes (the
+    daemon then starts a fresh copy, which counts against the crash limit), so
+    "redial through the SDK" needed `connect({exitOnClose: false})`.
+    `main.mjs` does that; `start()` redials three times (300 ms apart) and ends
+    the process only when the daemon cannot be reached. `Engine.disconnect()`
+    bumps a link counter, so every agent launch made under the lost connection is
+    stale (it fails nothing and kills nothing) and no effect starts; `reconnect`
+    reads the agent rows against the new connection exactly like startup, then
+    drives. A launch that was creating a session leaves an orphan, which the same
+    scan adopts.
+  - **B3b gate follow-up 2, the stale launch's kill.** A retry's launch of an
+    agent node now waits for the previous launch of the same node (bounded at
+    130 s, longer than any request a launch makes), so a stale CREATE_SESSION's
+    kill cannot land after the retry has re-attached the worktree and dispose a
+    pristine one. Chosen over "the stale launch must not kill when the worktree
+    is claimed" because the session it made would then be an unowned running
+    session in the same worktree.
+  - **Test seams.** `HIVE_WF_TEST_PAUSE=<point>:<ms>` (read only with the test
+    seam on) holds an agent node at `after-create`, `before-prompt` or
+    `after-prompt`, so `internal/workflowe2e` can crash the plugin exactly
+    between the daemon's CREATE and the row, the session and its first turn, or
+    the daemon's ack and the row.
+  - **The crash-loop test cannot shrink the Manager's window.** `crashWindow` is
+    unexported in `internal/plugin`, so `TestDurability_CrashLoopFailedThenRestart_RunsResume`
+    kills the plugin six times through the real backoff (about 32 s; skipped
+    with `-short`). The fake adapter gives up on a held turn after 30 s, so the
+    agent finishes early in the loop and a human node keeps the run open.
+  - **Plan wrongs found while building:** the table named `running` only
+    (`waiting` agents were never recovered); `GET_ACP_TRANSCRIPT` is not a
+    `request()` verb; "no session id stored" is a `pending` row; the SDK does not
+    redial, it exits; `start` kept the previous attempt's turn ids; the crash-loop
+    window cannot be shrunk by a test outside the package.
+  - **Left as they were:** check-node recovery (B2); the `FlagChatty` fan-out
+    overflow test (B3d). B3c's reconnect is covered by unit tests with a scripted
+    daemon, since only B3d's chatty fake can make the daemon close the socket.
 
 ## Progress
 
@@ -2400,6 +2515,16 @@ download, the accepted sandbox gap, and `LIST_ACP_AGENTS`.
   `catalogRefusal`. Tests: `agent`, `prompt`, `worktrees` in
   `plugins/workflows/test/`, and Go `internal/workflowe2e/{agent_turns,agent_modes,worktree}_test.go`
   against the fake adapter. Decisions under "B3b implementation decisions".
+
+- **2026-11-19 (B3c):** Implemented on `feature/529-b3c-durability`, based on
+  `origin/main` at `03a0d2df`. Added `engine/durability.ts`; `engine.ts` gains
+  `recover()`'s agent half, `reconnect`/`disconnect`, orphan hand-off and the
+  per-node launch gate; `agent.ts` gains the resume and retry paths (`AgentPlan`),
+  `sessions.ts` the session list and transcript snapshot reads, `main.ts` the
+  redial. Tests: `durability.test.ts`, `reconnect.test.ts` and Go
+  `internal/workflowe2e/durability_test.go`. Also the three B3b gate follow-ups
+  (conflict wording, the stale launch's kill, this header). Decisions under "B3c
+  implementation decisions".
 
 ## Open questions
 

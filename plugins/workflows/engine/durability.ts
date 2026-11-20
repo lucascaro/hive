@@ -1,0 +1,130 @@
+// SPDX-License-Identifier: GPL-3.0-only
+// Copyright (C) 2026 Lucas Caro
+// See LICENSE and ADDITIONAL-TERMS.md.
+
+// Agent nodes across a restart (spec 529, Durability). When the engine starts,
+// and again after a reconnect, every agent node that was running is read against
+// what the daemon says now, and one of three things is true of it:
+//
+//   - its turn survived (same daemon boot, same transcript epoch): the turn is
+//     recorded if it ended, watched if it is still running, and sent once if it
+//     was never started. The attempt does not change;
+//   - it did not (the daemon restarted, the session is gone or was restarted):
+//     the node is `interrupted`, and its retry is attempt + 1;
+//   - it was being created when the engine stopped: the session it made is
+//     adopted when there is exactly one, and removed otherwise.
+//
+// Nothing here starts a second session while the first may still be running.
+
+import { REPROMPT } from './agent.ts';
+import type { Engine } from './engine.ts';
+import type { Row } from './model.ts';
+import type { SessionState } from './sessions.ts';
+
+type Listed = SessionState & { id: string };
+
+const errMsg = (e: unknown): string => (e instanceof Error ? e.message : String(e));
+
+export async function recoverAgents(engine: Engine, runIds: string[]): Promise<void> {
+  const runs = runIds.map((id) => ({ id, rows: engine.agentRows(id) })).filter((r) => r.rows.length > 0);
+  // A pending row may have been launched (its CREATE_SESSION sent) when the engine stopped; one that was never made ready cannot have been.
+  const maybeLaunched = (r: Row): boolean => r.state === 'running' || r.state === 'waiting' || r.state === 'interrupted' || (r.state === 'pending' && r.ready);
+  if (!runs.some((r) => r.rows.some(maybeLaunched))) return;
+
+  const hive = engine.hive;
+  const send = hive.send?.bind(hive);
+  const listed = send ? await engine.feed.listSessions(send) : undefined;
+  if (!listed || !send) {
+    // Without the daemon's word nothing can be shown to have survived: the turns are retried, and a retry that finds one still running is refused by the daemon, never doubled.
+    for (const run of runs) for (const r of run.rows) if (r.state === 'running' || r.state === 'waiting') engine.interruptNode(run.id, r.key);
+    return;
+  }
+  const byId = new Map(listed.map((s) => [s.id, s]));
+
+  for (const run of runs) {
+    for (const r of run.rows) {
+      if (r.state !== 'running' && r.state !== 'waiting') continue;
+      try {
+        await recoverRunning(engine, run.id, r, byId, send);
+      } catch (err) {
+        console.error(`workflows: recovering ${run.id}/${r.key}: ${errMsg(err)}`);
+        engine.interruptNode(run.id, r.key);
+      }
+    }
+    await settleOrphans(engine, run.id, listed);
+  }
+}
+
+/** One running or waiting agent row, against the daemon. */
+async function recoverRunning(engine: Engine, runId: string, row: Row, byId: Map<string, Listed>, send: (name: string, payload?: object) => void): Promise<void> {
+  const key = row.key;
+  const sid = row.session_id;
+  const info = sid ? byId.get(sid) : undefined;
+  // The row says which daemon boot its turn belongs to: after a restart there is no turn to find, whatever the transcript says.
+  const boot = engine.hive.welcome?.boot_id;
+  const sameBoot = !!boot && row.boot_id === boot;
+  if (!sid || !sameBoot || !info || info.removed || !info.alive || info.last_error || info.phase !== '') return engine.interruptNode(runId, key);
+
+  engine.feed.track(sid);
+  const recorded = row.prompt_id !== undefined && row.epoch !== undefined ? { prompt_id: row.prompt_id, epoch: row.epoch } : undefined;
+  if (info.kind === 'pty') {
+    // The user has taken the session over (F2): the node keeps waiting for it to be handed back.
+    return recorded ? engine.resumeAgent(runId, key, { kind: 'watch', ack: recorded, again: false }) : engine.interruptNode(runId, key);
+  }
+  const tx = await engine.feed.fetchTranscript(send, sid);
+  if (!tx) return engine.interruptNode(runId, key);
+
+  // A turn of ours is a user item the daemon stamped with this run's principal.
+  const ours = [...tx.users].filter(([, u]) => u.origin === engine.principalOf(runId)).map(([id, u]) => ({ id, text: u.text })).sort((a, b) => a.id - b.id);
+  const after = recorded && tx.epoch === recorded.epoch ? recorded.prompt_id : 0;
+  if (recorded && tx.epoch !== recorded.epoch) return engine.interruptNode(runId, key); // the session was restarted or reloaded: that turn is gone
+  // The PROMPT_ACP ack can be lost (the engine died between the daemon starting the turn and the row recording it): the turn is in the transcript, and sending the prompt again would run it twice.
+  const unrecorded = ours.filter((u) => u.id > after).at(-1);
+
+  let ack = recorded;
+  let again = recorded ? tx.users.get(recorded.prompt_id)?.text === REPROMPT : false;
+  if (unrecorded) {
+    if (tx.prompt_id !== unrecorded.id) return engine.interruptNode(runId, key); // someone prompted after it: not a turn the node can follow
+    ack = { prompt_id: unrecorded.id, epoch: tx.epoch };
+    again = unrecorded.text === REPROMPT;
+    engine.ackTurn(runId, key, ack);
+  } else if (recorded && tx.prompt_id !== recorded.prompt_id) {
+    return engine.interruptNode(runId, key); // the latest turn is not ours
+  }
+  engine.resumeAgent(runId, key, ack ? { kind: 'watch', ack, again } : { kind: 'send' });
+}
+
+/**
+ * Sessions this run made that no row names: a CREATE_SESSION whose ack the
+ * engine never recorded. Exactly one, for a node waiting to be launched, is
+ * adopted (it was never prompted: the first turn follows the ack); anything
+ * else is killed, so a node never ends up with two sessions in its worktree.
+ */
+async function settleOrphans(engine: Engine, runId: string, listed: Listed[]): Promise<void> {
+  const rows = engine.agentRows(runId);
+  const named = new Set(rows.map((r) => r.session_id).filter((id): id is string => !!id));
+  const prefix = `${engine.workflowName(runId)} · `;
+  const principal = engine.principalOf(runId);
+  const byKey = new Map<string, Listed[]>();
+  for (const s of listed) {
+    if (s.spawned_by !== principal || s.removed || named.has(s.id)) continue;
+    const key = s.name?.startsWith(prefix) ? s.name.slice(prefix.length) : '';
+    byKey.set(key, [...(byKey.get(key) ?? []), s]);
+  }
+  for (const [key, group] of byKey) {
+    const row = rows.find((r) => r.key === key);
+    const [only] = group;
+    // Only a node that was about to launch can own it; a node with a session of its own, or a finished one, has no use for another.
+    if (only && group.length === 1 && row && row.state === 'pending' && row.ready && !row.session_id && only.alive && only.kind === 'acp') {
+      engine.adoptOrphan(runId, key, only.id);
+      continue;
+    }
+    for (const s of group) {
+      try {
+        await engine.hive.request('KILL_SESSION', { session_id: s.id, force: true }, { timeoutMs: 60_000 });
+      } catch (err) {
+        console.error(`workflows: could not remove ${s.id}, a leftover session of ${runId}/${key}: ${errMsg(err)}`);
+      }
+    }
+  }
+}
