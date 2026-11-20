@@ -150,7 +150,7 @@ export class Engine {
   /** Recovery and reconnect never overlap: a reconnect queued behind the startup recovery waits for it. */
   #chain: Promise<unknown> = Promise.resolve();
   /** Sessions found by recovery that a pending node should take over instead of creating one, by `run/key`. */
-  readonly #orphans = new Map<string, string>();
+  readonly #orphans = new Map<string, { sid: string; epoch: number | undefined }>();
   /** The latest agent launch of each node: a retry waits for the one before it, so a stale launch's kill cannot land after the retry re-attached its worktree. */
   readonly #tails = new Map<string, Promise<unknown>>();
 
@@ -597,6 +597,11 @@ export class Engine {
     return n?.kind === 'agent' ? n.timeout_s : 0;
   }
 
+  /** Which in-memory run an id names right now: it changes when the run is cancelled and retried, so a read of its rows made earlier no longer describes it. */
+  epochOf(runId: string): number | undefined {
+    return this.#runs.get(runId)?.epoch;
+  }
+
   /** The workflow's name: what its sessions are named after. */
   workflowName(runId: string): string {
     return this.#runs.get(runId)?.model.ix.ir.name ?? '';
@@ -617,14 +622,15 @@ export class Engine {
 
   /** A live session recovery found for a pending node that was being created when the engine stopped: the next launch of that node takes it over. */
   adoptOrphan(runId: string, key: string, sessionId: string): void {
-    this.#orphans.set(`${runId}/${key}`, sessionId);
+    this.#orphans.set(`${runId}/${key}`, { sid: sessionId, epoch: this.epochOf(runId) });
   }
 
   /** The session recovery set aside for `key`, once. */
   takeOrphan(runId: string, key: string): string | undefined {
-    const id = this.#orphans.get(`${runId}/${key}`);
+    const o = this.#orphans.get(`${runId}/${key}`);
     this.#orphans.delete(`${runId}/${key}`);
-    return id;
+    // Set aside for one in-memory run: a run cancelled and retried since is a new run, and the old one's session is not its node's.
+    return o && o.epoch === this.epochOf(runId) ? o.sid : undefined;
   }
 
   /** Marks a running or waiting agent node `interrupted`: its turn did not survive, and the reducer retries it. `drive` also starts the retry (for a call made after recovery has finished). */

@@ -299,7 +299,8 @@ class AgentRun {
     }
     await this.#kill(sid);
     if (!this.#live('pending', 'interrupted')) return undefined;
-    // The kill removes a worktree that holds nothing; preparing it again recreates it, and re-attaches one that holds work.
+    // Closing the last session of a hive-managed worktree makes the daemon remove it only when it is Pristine (nothing uncommitted, no unpushed commits, and
+    // it could be inspected): a worktree holding work is kept. Preparing it again re-attaches one that was kept and recreates one that was removed.
     const again = await prepare(this.#engine, this.#ctx.run_id, this.#ctx.key);
     if (!this.#live('pending', 'interrupted')) return undefined;
     if (isConflict(again)) {

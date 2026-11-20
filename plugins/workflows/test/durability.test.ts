@@ -998,3 +998,103 @@ test('a stale launch\'s kill lands before the retried attempt re-attaches the wo
     w.cleanup();
   }
 });
+
+// ------------------------------------------- a run cancelled and retried while it is read
+
+const par = () =>
+  workflow('w', s.object({}), (g) => {
+    g.agent('a', { agent: 'claude', prompt: 'do a', output: out });
+    g.agent('b', { agent: 'claude', prompt: 'do b', output: out });
+  });
+
+test('a run cancelled and retried while recovery reads a node is not failed by that read, and its old sessions are not adopted', async () => {
+  const hive = new FakeHive();
+  const dir = mkdtempSync(join(tmpdir(), 'wf-dur-'));
+  const sim = simulate(hive, { onPrompt: () => {} });
+  const deps = { cancelGraceMs: 40, readyTimeoutMs: 400, settlePollMs: 5 };
+  const h = harness({ agent: agentExecutor(deps), check: never }, { dir, hive });
+  const id = h.engine.startRunFromIR({ project_id: 'p1', file: 'w.ts', ir: par(), input: {} });
+  await waitFor(() => ['a', 'b'].every((k) => rowOf(h, id, k)?.prompt_id !== undefined), 'both nodes running');
+  const sb = rowOf(h, id, 'b')?.session_id as string;
+  h.engine.disconnect();
+  h.close();
+  const promptsBefore = sim.of('PROMPT_ACP').length; // the original run's own turns
+
+  const hive2 = new FakeHive();
+  hive2.welcome = { boot_id: 'boot-1' };
+  sim.attach(hive2);
+  let release: () => void = () => {};
+  let held = false;
+  const answer = hive2.onSend.GET_ACP_TRANSCRIPT;
+  hive2.onSend.GET_ACP_TRANSCRIPT = (p) => {
+    if (p.session_id === sb) {
+      held = true; // b's read is slow
+      release = () => answer(p);
+    } else answer(p);
+  };
+  const h2 = harness({ agent: agentExecutor(deps), check: never }, { dir, hive: hive2 });
+  try {
+    const rec = h2.engine.recover();
+    await waitFor(() => held, 'b\'s read to be sent');
+    await tick();
+    h2.engine.cancelRun(id); // the user cancels and retries while the read is out
+    await waitFor(() => runState(h2, id) === 'cancelled', 'the cancel');
+    h2.engine.retryRun(id);
+    release();
+    await rec;
+    await new Promise((r) => setTimeout(r, 300));
+    assert.notEqual(runState(h2, id), 'failed', `the retried run was failed by a read of the old one: ${rowOf(h2, id, 'b')?.error ?? ''}`);
+    assert.notEqual(rowOf(h2, id, 'b')?.session_id, sb, 'the retried node did not take over the old node\'s session');
+    assert.deepEqual(
+      sim.of('PROMPT_ACP').slice(promptsBefore).map((p) => p.session_id).filter((sid) => sid === sb),
+      [],
+      'nothing prompted the old session, whose turn is still running',
+    );
+    assert.deepEqual(sim.of('KILL_SESSION').filter((k) => k.session_id === sb), [], 'and nothing killed it: that turn is B3d\'s reconciliation of a run cancelled while the engine was away');
+  } finally {
+    h2.close();
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('the orphan removal does not try again once the connection is lost', async () => {
+  let cut: () => void = () => {};
+  const w = world(one(), { holdCreate: never(), killFails: true, onKill: () => cut() });
+  await waitFor(() => w.sim.sessions.length === 1, 'the session to be made');
+  const twin = Object.assign(Object.create(Object.getPrototypeOf(w.sim.sessions[0])), w.sim.sessions[0], { id: 'sx' });
+  w.sim.sessions.push(twin);
+  w.h.engine.disconnect();
+  w.h.close();
+  const hive = new FakeHive();
+  hive.welcome = { boot_id: 'boot-1' };
+  w.sim.attach(hive);
+  const h = harness({ agent: never, check: never }, { dir: w.dir, hive });
+  let first = true;
+  cut = () => {
+    if (first) h.engine.disconnect(); // the first removal fails and the connection goes with it
+    first = false;
+  };
+  try {
+    await h.engine.recover();
+    assert.equal(w.sim.of('KILL_SESSION').length, 1, 'one try, then the pass gave up: its second try would have gone to a connection it does not belong to');
+  } finally {
+    h.close();
+    rmSync(w.dir, { recursive: true, force: true });
+  }
+});
+
+test('a session set aside for a node is not handed to the node of a run that was cancelled and retried since', async () => {
+  const w = world(one());
+  await running(w);
+  try {
+    w.h.engine.adoptOrphan(w.id, 'a', 'sx');
+    w.h.engine.cancelRun(w.id);
+    w.h.engine.retryRun(w.id); // a new in-memory run
+    assert.equal(w.h.engine.takeOrphan(w.id, 'a'), undefined, 'the old run\'s session is not the new run\'s');
+    w.h.engine.adoptOrphan(w.id, 'a', 'sy');
+    assert.equal(w.h.engine.takeOrphan(w.id, 'a'), 'sy', 'one set aside for this run is handed over, once');
+    assert.equal(w.h.engine.takeOrphan(w.id, 'a'), undefined);
+  } finally {
+    w.cleanup();
+  }
+});

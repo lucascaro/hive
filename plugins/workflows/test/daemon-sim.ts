@@ -158,6 +158,8 @@ export interface SimOptions {
   onRestart?: (s: SimSession) => void;
   /** Refuse every KILL_SESSION. */
   killFails?: boolean;
+  /** Called with each KILL_SESSION request before it is answered. */
+  onKill?: (req: Record<string, unknown>) => void;
   /** Delay CREATE_SESSION's reply, to hold a launch in flight. */
   holdCreate?: Promise<void>;
   /** Drop the PROMPT_ACP ack (the daemon starts the turn; the reply never comes). */
@@ -199,6 +201,7 @@ export function simulate(hive: FakeHive, o: SimOptions): Sim {
     h.replies.COMMIT_WORKTREE = () => ({ committed: true, head: 'sha-2' });
     h.replies.CANCEL_ACP = () => ({ was_busy: true });
     h.replies.KILL_SESSION = (req) => {
+      o.onKill?.(req);
       if (o.killFails) throw hiveError('kill_failed', 'the daemon refused');
       const s = sim.sessions.find((x) => x.id === req.session_id);
       if (s && !s.removed) {

@@ -35,6 +35,14 @@ export async function recoverAgents(engine: Engine, runIds: string[]): Promise<v
   const link = engine.link;
   // A connection lost while the nodes are read says nothing about them: they stay as they are, and the reconnect reads them again.
   const lost = (): boolean => engine.link !== link || engine.disconnected;
+  // The rows above are a snapshot, and every read of the daemon below lets the user cancel and retry a run, which makes a new in-memory run
+  // with new rows. Nothing is done to a run, or to a node, that is no longer the one the snapshot described.
+  const epochs = new Map(runs.map((r) => [r.id, engine.epochOf(r.id)]));
+  const replaced = (runId: string): boolean => engine.epochOf(runId) !== epochs.get(runId);
+  const unchanged = (runId: string, row: Row): boolean => {
+    const now = engine.rowOf(runId, row.key);
+    return now !== undefined && (now.state === 'running' || now.state === 'waiting') && now.attempt === row.attempt && now.session_id === row.session_id;
+  };
   const send = hive.send?.bind(hive);
   const listed = send ? await engine.feed.listSessions(send, engine.daemonWaitMs) : undefined;
   if (lost()) return;
@@ -49,16 +57,20 @@ export async function recoverAgents(engine: Engine, runIds: string[]): Promise<v
     for (const r of run.rows) {
       if (r.state !== 'running' && r.state !== 'waiting') continue;
       if (lost()) return;
+      // For this node: the connection is lost, or the node (or its whole run) is no longer what was read.
+      const gone = (): boolean => lost() || !unchanged(run.id, r);
+      if (gone()) continue;
       try {
-        await recoverRunning(engine, run.id, r, byId, send, lost);
+        await recoverRunning(engine, run.id, r, byId, send, gone);
       } catch (err) {
-        if (lost()) return;
+        if (gone()) continue;
         console.error(`workflows: recovering ${run.id}/${r.key}: ${errMsg(err)}`);
         engine.interruptNode(run.id, r.key);
       }
     }
     if (lost()) return;
-    await settleOrphans(engine, run.id, listed, link, lost);
+    // settleOrphans refuses a run that was cancelled and retried meanwhile: it has new rows and no session, the sessions of the old one are not its own, and a turn still running on one must not be handed to a node that would prompt it.
+    await settleOrphans(engine, run.id, listed, link, lost, () => replaced(run.id));
   }
 }
 
@@ -168,7 +180,7 @@ function awaitIdleThenInterrupt(engine: Engine, runId: string, row: Row, idle: b
  * adopted (it was never prompted: the first turn follows the ack); anything
  * else is killed, so a node never ends up with two sessions in its worktree.
  */
-async function settleOrphans(engine: Engine, runId: string, listed: Listed[], link: number, lost: () => boolean): Promise<void> {
+async function settleOrphans(engine: Engine, runId: string, listed: Listed[], link: number, lost: () => boolean, replaced: () => boolean): Promise<void> {
   const rows = engine.agentRows(runId);
   if (rows.length === 0) return; // the run ended while its nodes were read: its sessions are the run-end cleanup's
   const named = new Set(rows.map((r) => r.session_id).filter((id): id is string => !!id));
@@ -181,6 +193,7 @@ async function settleOrphans(engine: Engine, runId: string, listed: Listed[], li
     byKey.set(key, [...(byKey.get(key) ?? []), s]);
   }
   for (const [key, group] of byKey) {
+    if (lost() || replaced()) return; // the run was cancelled and retried while a removal was awaited: these rows are not its rows
     const row = rows.find((r) => r.key === key);
     const [only] = group;
     // Only a node that was about to launch can own it; a node with a session of its own, or a finished one, has no use for another.
@@ -198,11 +211,11 @@ async function settleOrphans(engine: Engine, runId: string, listed: Listed[], li
           break;
         } catch (e) {
           err = e;
-          if (lost()) return; // the second try would go to a connection this pass does not belong to
+          if (lost() || replaced()) return; // the second try would go to a connection this pass does not belong to
         }
       }
       if (err !== undefined) {
-        if (lost()) return;
+        if (lost() || replaced()) return;
         console.error(`workflows: could not remove ${s.id}, a leftover session of ${runId}/${key}: ${errMsg(err)}`);
         if (row && (row.state === 'pending' || row.state === 'interrupted')) engine.failNode(runId, key, `a leftover session (${s.id}) from an earlier launch could not be removed (${errMsg(err)}), so the node was not started in its worktree`, { link });
       }
