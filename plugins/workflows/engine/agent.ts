@@ -291,7 +291,7 @@ class AgentRun {
       const send = this.#engine.hive.send?.bind(this.#engine.hive);
       const tx = send ? await this.#engine.feed.fetchTranscript(send, sid, this.#engine.daemonWaitMs) : undefined;
       if (!this.#live('pending', 'interrupted')) return undefined;
-      if (!tx || tx.prompt_id !== 0 || tx.users.size !== 0) {
+      if (!tx || tx.prompt_id !== 0 || tx.content.size !== 0) {
         this.#fail(`the leftover session ${sid} was set aside as never prompted but has a conversation now (or could not be read), so the node was not started in its worktree beside it`);
         return undefined;
       }

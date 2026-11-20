@@ -19,7 +19,7 @@
 import { INTERRUPTED_NOTE } from './agent.ts';
 import type { Engine } from './engine.ts';
 import type { Row } from './model.ts';
-import type { SessionState } from './sessions.ts';
+import type { SessionState, TranscriptState } from './sessions.ts';
 
 type Listed = SessionState & { id: string };
 
@@ -173,11 +173,17 @@ function awaitIdleThenInterrupt(engine: Engine, runId: string, row: Row, idle: b
  * A session that has been prompted is left alone: nothing in this pass knows
  * whose turn is running on it, and one still running must not be handed to a
  * node that would prompt it (the daemon refuses that as busy) nor killed under
- * it. It is B3d step 2's to reconcile. "Never prompted" means its transcript
- * has no user item and `prompt_id` is 0: a session `hived` revived after a
- * restart has `prompt_id` 0 too (the daemon's counters restart with the adapter),
- * so the empty transcript is what tells it from a conversation, and any turn it
- * had running died with the adapter. A session that was never prompted is a
+ * it. It is B3d step 2's to reconcile. "Never prompted" means `prompt_id` 0 and
+ * a transcript with nothing in it but Hive's own `notice` lines. `prompt_id`
+ * alone is not enough: a session `hived` revived after a restart has `prompt_id`
+ * 0 too (its counters restart with the adapter) while the history is replayed
+ * into it, and that replay is trimmed to the newest 2000 items / 512 KiB, which
+ * can leave no user item at all after a long last turn (the trim always keeps the
+ * newest item, internal/acp/transcript.go `trim`). So any item that is not a
+ * notice means a conversation: a fresh session holds only the untrusted-folder
+ * notice before its first prompt (registry/acp.go, after the replay), and a turn
+ * it had running died with the adapter, so nothing runs on a revived session. A
+ * session that was never prompted is a
  * CREATE_SESSION whose ack the engine never recorded: exactly one, for a node
  * waiting to be launched, is adopted (the first turn follows the ack); any
  * other is killed, so a node never ends up with two sessions in its worktree.
@@ -195,7 +201,7 @@ async function settleOrphans(engine: Engine, runId: string, listed: Listed[], se
     byKey.set(key, [...(byKey.get(key) ?? []), s]);
   }
   const ended = (): boolean => engine.agentRows(runId).length === 0;
-  const neverPrompted = (tx: { prompt_id: number; users: ReadonlyMap<number, unknown> } | undefined): boolean => tx !== undefined && tx.prompt_id === 0 && tx.users.size === 0;
+  const neverPrompted = (tx: TranscriptState | undefined): boolean => tx !== undefined && tx.prompt_id === 0 && tx.content.size === 0;
   for (const [key, group] of byKey) {
     if (lost()) return;
     // Which of them were never prompted: no answer from the daemon is not "never prompted".

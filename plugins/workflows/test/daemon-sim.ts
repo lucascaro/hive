@@ -45,6 +45,8 @@ export class SimSession {
   result: unknown;
   stop_reason = '';
   users: UserItem[] = [];
+  /** Items other than user turns the daemon holds: a revived session's replayed agent, tool and plan items, or a notice. */
+  others: { id: number; kind: string; text: string }[] = [];
   /** The daemon trims the oldest items of a long transcript: a snapshot leaves out this many of the oldest user items. */
   trim = 0;
 
@@ -95,7 +97,7 @@ export class SimSession {
 
   /** The snapshot GET_ACP_TRANSCRIPT answers with: the whole transcript, as a reset. */
   snapshot(to: FakeHive = this.hive): void {
-    to.emit('ACP_TRANSCRIPT', { ...this.state(), reset: true, items: this.users.slice(this.trim).map((u) => ({ id: u.id, kind: 'user', origin: u.origin, text: u.text })) });
+    to.emit('ACP_TRANSCRIPT', { ...this.state(), reset: true, items: [...this.users.slice(this.trim).map((u) => ({ id: u.id, kind: 'user', origin: u.origin, text: u.text })), ...this.others] });
   }
 
   ask(p: Permission): void {
@@ -132,6 +134,7 @@ export class SimSession {
     this.result = undefined;
     this.stop_reason = '';
     this.users = [];
+    this.others = [];
   }
 }
 

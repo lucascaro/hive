@@ -1524,3 +1524,145 @@ test('run.retry received while the engine is disconnected is refused before the 
     w.cleanup();
   }
 });
+
+// ------------------------------------ "never prompted" is an empty transcript, not just a prompt id of 0 (round 7)
+
+/** A node whose CREATE ack the engine never saw, with a session in the daemon's list; `shape` says what the daemon holds for it. */
+async function leftover(shape: (s: SimSession) => void, deps: AgentDeps = {}): Promise<{ w: World; w2: World }> {
+  const w = world(one(), { holdCreate: never() });
+  await waitFor(() => w.sim.sessions.length === 1, 'the session to be made');
+  shape(w.sim.sessions[0]);
+  return { w, w2: await crash(w, 'boot-1', deps) };
+}
+
+test('a revived session whose replay was trimmed to non-user items is a conversation: not adopted and not killed', async () => {
+  // prompt_id 0 (the daemon's counters restart), and the newest 2000 items / 512 KiB left only the tail of a long last turn.
+  const { w2 } = await leftover((s) => {
+    s.others = [{ id: 1999, kind: 'agent', text: 'the end of a long answer' }];
+  });
+  try {
+    await waitFor(() => w2.sim.sessions.length === 2, 'the node to start a session of its own');
+    assert.deepEqual(w2.sim.of('KILL_SESSION'), [], 'the session with the user\'s conversation was not killed');
+    assert.equal(w2.sim.of('PROMPT_ACP').filter((p) => p.session_id === w2.sim.sessions[0].id).length, 0, 'and not prompted');
+  } finally {
+    w2.cleanup();
+  }
+});
+
+for (const kind of ['agent', 'thought', 'tool', 'plan', 'user']) {
+  test(`an item of kind ${kind} before any prompt means a conversation`, async () => {
+    const { w2 } = await leftover((s) => {
+      s.others = [{ id: 7, kind, text: 'x' }];
+    });
+    try {
+      await waitFor(() => w2.sim.sessions.length === 2, 'the node to start a session of its own');
+      assert.deepEqual(w2.sim.of('KILL_SESSION'), []);
+      assert.equal(w2.sim.sessions[0].spawned_by.length > 0, true);
+      assert.equal(row(w2).session_id, w2.sim.sessions[1].id, 'not adopted');
+    } finally {
+      w2.cleanup();
+    }
+  });
+}
+
+test('the untrusted-folder notice is the only item a fresh session holds before its first prompt: it is still adopted', async () => {
+  const { w2 } = await leftover((s) => {
+    s.others = [{ id: 1, kind: 'notice', text: 'this folder is not trusted' }];
+  });
+  try {
+    await waitFor(() => w2.sim.prompts.length === 1, 'the turn');
+    assert.equal(w2.sim.of('CREATE_SESSION').length, 1, 'adopted, not duplicated');
+    assert.equal(row(w2).session_id, w2.sim.sessions[0].id);
+  } finally {
+    w2.cleanup();
+  }
+});
+
+test('a second pass finds a user turn on a session the first pass adopted: the launch does not prompt into it', async () => {
+  let open: () => void = () => {};
+  const gate = new Promise<void>((r) => (open = r));
+  const w = world(one(), { holdCreate: never() });
+  await waitFor(() => w.sim.sessions.length === 1, 'the session to be made');
+  const sess = w.sim.sessions[0];
+  w.h.engine.disconnect();
+  w.h.close();
+  const hive = new FakeHive();
+  hive.welcome = { boot_id: 'boot-1' };
+  w.sim.attach(hive);
+  const base = hive.replies.LIST_ACP_AGENTS;
+  hive.replies.LIST_ACP_AGENTS = (req) => gate.then(() => base(req)); // the launch is held after the scan adopted the session
+  const h = harness({ agent: agentExecutor({ cancelGraceMs: 40, readyTimeoutMs: 400, settlePollMs: 5 }), check: never }, { dir: w.dir, hive });
+  try {
+    await h.engine.recover();
+    sess.begin('user', 'the user types into it meanwhile');
+    open();
+    await waitFor(() => rowOf(h, w.id, 'a')?.state === 'failed', 'the node to fail');
+    assert.equal(w.sim.of('PROMPT_ACP').filter((p) => p.session_id === sess.id && p.workflow_run_id).length, 0, 'the engine did not prompt into the user\'s conversation');
+    assert.deepEqual(w.sim.of('KILL_SESSION'), []);
+  } finally {
+    open();
+    h.close();
+    rmSync(w.dir, { recursive: true, force: true });
+  }
+});
+
+test('a dead adopted session is not killed from a connection the launch no longer belongs to', async () => {
+  const w = world(one(), { holdCreate: never() });
+  await waitFor(() => w.sim.sessions.length === 1, 'the session to be made');
+  const sess = w.sim.sessions[0];
+  sess.event('updated', { alive: false, last_error: 'adapter exited' });
+  w.h.engine.disconnect();
+  w.h.close();
+  const hive = new FakeHive();
+  hive.welcome = { boot_id: 'boot-1' };
+  w.sim.attach(hive);
+  let release: () => void = () => {};
+  let held = false;
+  let reads = 0;
+  const answer = hive.onSend.GET_ACP_TRANSCRIPT;
+  hive.onSend.GET_ACP_TRANSCRIPT = (q) => {
+    if (++reads === 2) {
+      held = true; // the launch's own read of the adopted session
+      release = () => answer(q);
+    } else answer(q);
+  };
+  const h = harness({ agent: agentExecutor({ cancelGraceMs: 40, readyTimeoutMs: 400, settlePollMs: 5 }), check: never }, { dir: w.dir, hive });
+  try {
+    await h.engine.recover();
+    await waitFor(() => held, 'the launch to read the adopted session');
+    h.engine.disconnect(); // the connection goes while the read is out
+    release();
+    await new Promise((r) => setTimeout(r, 80));
+    assert.deepEqual(w.sim.of('KILL_SESSION'), [], 'a stale launch kills nothing');
+  } finally {
+    h.close();
+    rmSync(w.dir, { recursive: true, force: true });
+  }
+});
+
+test('an adopted session that gains replayed history (prompt id still 0) before it is prompted is not prompted into', async () => {
+  const w = world(one(), { holdCreate: never() });
+  await waitFor(() => w.sim.sessions.length === 1, 'the session to be made');
+  const sess = w.sim.sessions[0];
+  w.h.engine.disconnect();
+  w.h.close();
+  const hive = new FakeHive();
+  hive.welcome = { boot_id: 'boot-1' };
+  w.sim.attach(hive);
+  let reads = 0;
+  const answer = hive.onSend.GET_ACP_TRANSCRIPT;
+  hive.onSend.GET_ACP_TRANSCRIPT = (q) => {
+    if (++reads === 2) sess.others = [{ id: 9, kind: 'agent', text: 'history' }]; // what a revival replays, with no prompt id
+    answer(q);
+  };
+  const h = harness({ agent: agentExecutor({ cancelGraceMs: 40, readyTimeoutMs: 400, settlePollMs: 5 }), check: never }, { dir: w.dir, hive });
+  try {
+    await h.engine.recover();
+    await waitFor(() => rowOf(h, w.id, 'a')?.state === 'failed', 'the node to fail');
+    assert.equal(w.sim.of('PROMPT_ACP').length, 0);
+    assert.deepEqual(w.sim.of('KILL_SESSION'), []);
+  } finally {
+    h.close();
+    rmSync(w.dir, { recursive: true, force: true });
+  }
+});
