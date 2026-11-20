@@ -35,6 +35,8 @@ export interface StartOptions {
   redial?: () => Promise<HiveConnection>;
   /** The connection is gone and cannot be had again: the plugin ends, and the daemon starts a fresh copy. */
   onGone?: () => void;
+  /** How long recovery waits for the daemon's answer to a read before it assumes nothing survived. A test shortens it. */
+  daemonWaitMs?: number;
   /** Pause between redial attempts, ms. */
   redialDelayMs?: number;
 }
@@ -47,6 +49,7 @@ export async function start(hive: HiveConnection, opts: StartOptions): Promise<E
   const engine = new Engine({
     store,
     hive,
+    ...(opts.daemonWaitMs ? { daemonWaitMs: opts.daemonWaitMs } : {}),
     executors: defaultExecutors({ ...(opts.cancelGraceMs === undefined ? {} : { cancelGraceMs: opts.cancelGraceMs }), ...(opts.pause ? { pause: opts.pause } : {}) }),
     onEvents: (runId, events) => {
       for (const batch of batchForPush(runId, events)) hive.postMessage('run.event', { run_id: runId, events: batch });
@@ -63,25 +66,30 @@ export async function start(hive: HiveConnection, opts: StartOptions): Promise<E
       })().catch((err: Error) => console.error(`workflows: ${msg.topic}: ${err.message}`));
     }) as (msg: never) => void);
     // The daemon closes a connection whose fan-out overflowed (a chatty fleet of sessions): the plugin dials again and re-reads its nodes rather than ending.
-    h.on('close', (() => void lost(h)) as (msg: never) => void);
+    h.on('close', (() => lost(h)) as (msg: never) => void);
   };
   let redialing = false;
-  const lost = async (h: HiveConnection): Promise<void> => {
-    if (h !== engine.hive || redialing) return; // a connection that was already replaced
+  const lost = (h: HiveConnection): void => {
+    // Every close of the current connection is recorded at once, even one that lands while a redial is reading its nodes: that read then
+    // knows its connection is dead and the loop below dials again, instead of the engine going on as if it were open.
+    if (!engine.disconnect(h)) return; // a connection that was already replaced or lost
     if (ended || !opts.redial) return opts.onGone?.();
+    if (!redialing) void redialLoop();
+  };
+  const redialLoop = async (): Promise<void> => {
     redialing = true;
-    engine.disconnect();
     try {
       for (let i = 0; i < REDIAL_ATTEMPTS && !ended; i++) {
         try {
-          const next = await opts.redial();
+          const next = await (opts.redial as () => Promise<HiveConnection>)();
           bind(next);
           await engine.reconnect(next);
-          return;
+          if (!engine.disconnected) return;
+          console.error(`workflows: redial ${i + 1}/${REDIAL_ATTEMPTS}: the new connection closed while its nodes were read`);
         } catch (err) {
           console.error(`workflows: redial ${i + 1}/${REDIAL_ATTEMPTS}: ${(err as Error).message}`);
-          await new Promise((r) => setTimeout(r, opts.redialDelayMs ?? 300));
         }
+        await new Promise((r) => setTimeout(r, opts.redialDelayMs ?? 300));
       }
       if (!ended) opts.onGone?.();
     } finally {

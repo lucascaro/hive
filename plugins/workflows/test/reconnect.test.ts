@@ -11,9 +11,10 @@ import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { test } from 'node:test';
+import { agentExecutor } from '../engine/agent.ts';
 import { type HiveConnection, start } from '../engine/main.ts';
 import { simulate } from './daemon-sim.ts';
-import { FakeHive, waitFor } from './harness.ts';
+import { FakeHive, harness, waitFor } from './harness.ts';
 
 const conn = (h: FakeHive): HiveConnection => h as unknown as HiveConnection;
 
@@ -93,6 +94,168 @@ test('without a way to redial a closed connection ends the plugin at once', asyn
   try {
     hive.emit('close', undefined);
     await waitFor(() => gone === 1, 'the plugin to end');
+  } finally {
+    engine.stopFlush();
+    engine.store.close();
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+// ------------------------------------------------- a close while reading
+
+const IR = { ir: 1, name: 'w', input: { type: 'object', properties: {}, required: [], additionalProperties: false }, nodes: [{ id: 'a', kind: 'agent', agent: 'claude', worktree: 'own', timeout_s: 60, prompt: 'do it', output: { type: 'object', properties: { summary: { type: 'string' } }, required: ['summary'], additionalProperties: false } }], edges: [] } as never;
+
+/** A connection the daemon closes as soon as the engine asks it anything. */
+function closesOnFirstRead(c: FakeHive): void {
+  c.onSend.LIST_SESSIONS = () => {
+    c.request = () => Promise.reject(new Error('hive: connection closed'));
+    c.send = () => {
+      throw new Error('write after end');
+    };
+    c.emit('close', undefined);
+  };
+}
+
+test('a close of the redialled connection while its nodes are read is dialled again, and the surviving turn is not touched', async () => {
+  const dir = mkdtempSync(join(tmpdir(), 'wf-redial-'));
+  const hive = new FakeHive();
+  const sim = simulate(hive, { onPrompt: () => {} });
+  const conns: FakeHive[] = [];
+  let gone = 0;
+  const engine = await start(conn(hive), {
+    dataDir: dir,
+    testSeam: true,
+    redialDelayMs: 1,
+    daemonWaitMs: 5_000, // the old engine waited this out and then interrupted the node
+    onGone: () => gone++,
+    redial: async () => {
+      const c = new FakeHive();
+      c.welcome = { boot_id: 'boot-1' };
+      sim.attach(c);
+      conns.push(c);
+      if (conns.length === 1) closesOnFirstRead(c);
+      return conn(c);
+    },
+  });
+  try {
+    const id = engine.startRunFromIR({ project_id: 'p1', file: 'w.ts', ir: IR, input: {} });
+    await waitFor(() => engine.store.loadRows(id)[0].prompt_id !== undefined, 'the turn to start');
+    hive.emit('close', undefined);
+    await waitFor(() => conns.length === 2 && !engine.disconnected, 'the second redial and its read');
+    assert.equal(gone, 0);
+    assert.equal(engine.hive, conns[1], 'the engine speaks on the connection that survived');
+    const r = engine.store.loadRows(id)[0];
+    assert.deepEqual([r.state, r.attempt], ['running', 1], 'not interrupted, not failed');
+    assert.equal(sim.of('PROMPT_ACP').length, 1);
+    sim.sessions[0].submit({ status: 'ok', summary: 's', data: { summary: 's' } });
+    sim.sessions[0].end();
+    await waitFor(() => engine.store.getRun(id)?.state === 'done', 'the run to finish');
+  } finally {
+    engine.stopFlush();
+    engine.store.close();
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('a close during the startup recovery does not fail the node whose turn survived', async () => {
+  const dir = mkdtempSync(join(tmpdir(), 'wf-redial-'));
+  const h0 = new FakeHive();
+  const sim = simulate(h0, { onPrompt: () => {} });
+  const ir = IR;
+  const first = harness({ agent: agentExecutor({ readyTimeoutMs: 400, settlePollMs: 5 }), check: () => new Promise(() => {}) }, { dir, hive: h0 });
+  const id = first.engine.startRunFromIR({ project_id: 'p1', file: 'w.ts', ir, input: {} });
+  await waitFor(() => first.engine.store.loadRows(id)[0].prompt_id !== undefined, 'the turn');
+  first.engine.disconnect();
+  first.close();
+
+  const h1 = new FakeHive();
+  h1.welcome = { boot_id: 'boot-1' };
+  sim.attach(h1);
+  closesOnFirstRead(h1); // the daemon closes us while the startup recovery reads it
+  let dials = 0;
+  let gone = 0;
+  const engine = await start(conn(h1), {
+    dataDir: dir,
+    testSeam: true,
+    redialDelayMs: 1,
+    onGone: () => gone++,
+    redial: async () => {
+      dials++;
+      await new Promise((r) => setTimeout(r, 20)); // a real dial takes a moment
+      const h2 = new FakeHive();
+      h2.welcome = { boot_id: 'boot-1' };
+      sim.attach(h2);
+      return conn(h2);
+    },
+  });
+  try {
+    await waitFor(() => dials === 1 && !engine.disconnected, 'the redial and the re-read');
+    const r = engine.store.loadRows(id)[0];
+    assert.deepEqual([r.state, r.attempt], ['running', 1], `the node did not fail: ${r.error ?? ''}`);
+    assert.equal(sim.of('PROMPT_ACP').length, 1, 'no second turn');
+    assert.equal(gone, 0);
+    sim.sessions[0].submit({ status: 'ok', summary: 's', data: { summary: 's' } });
+    sim.sessions[0].end();
+    await waitFor(() => engine.store.getRun(id)?.state === 'done', 'the run to finish');
+  } finally {
+    engine.stopFlush();
+    engine.store.close();
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('connections that keep closing are redialled three times, then the plugin ends', async () => {
+  const dir = mkdtempSync(join(tmpdir(), 'wf-redial-'));
+  const hive = new FakeHive();
+  const sim = simulate(hive, { onPrompt: () => {} });
+  let dials = 0;
+  let gone = 0;
+  const engine = await start(conn(hive), {
+    dataDir: dir,
+    testSeam: true,
+    redialDelayMs: 1,
+    onGone: () => gone++,
+    redial: async () => {
+      dials++;
+      const c = new FakeHive();
+      c.welcome = { boot_id: 'boot-1' };
+      sim.attach(c);
+      closesOnFirstRead(c);
+      return conn(c);
+    },
+  });
+  try {
+    const id = engine.startRunFromIR({ project_id: 'p1', file: 'w.ts', ir: IR, input: {} });
+    await waitFor(() => engine.store.loadRows(id)[0].prompt_id !== undefined, 'the turn to start');
+    hive.emit('close', undefined);
+    await waitFor(() => gone === 1, 'the plugin to give up');
+    assert.equal(dials, 3, 'bounded by the redial limit, however many closes');
+    assert.equal(engine.store.loadRows(id)[0].state, 'running', 'the row was never failed or interrupted: the next start reads it');
+    assert.equal(engine.disconnected, true);
+  } finally {
+    engine.stopFlush();
+    engine.store.close();
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('a failure from a launch the connection outlived is refused, whenever it arrives', async () => {
+  const dir = mkdtempSync(join(tmpdir(), 'wf-redial-'));
+  const hive = new FakeHive();
+  const sim = simulate(hive, { onPrompt: () => {} });
+  const h2 = new FakeHive();
+  h2.welcome = { boot_id: 'boot-1' };
+  sim.attach(h2);
+  const engine = await start(conn(hive), { dataDir: dir, testSeam: true, redial: async () => conn(h2), redialDelayMs: 1 });
+  try {
+    const id = engine.startRunFromIR({ project_id: 'p1', file: 'w.ts', ir: IR, input: {} });
+    await waitFor(() => engine.store.loadRows(id)[0].prompt_id !== undefined, 'the turn to start');
+    const stale = engine.link;
+    hive.emit('close', undefined);
+    await waitFor(() => engine.hive === h2 && !engine.disconnected, 'the reconnect');
+    assert.equal(engine.failNode(id, 'a', 'hive: connection closed', { link: stale }), false, 'the stale launch cannot fail the node a newer launch owns');
+    assert.equal(engine.store.loadRows(id)[0].state, 'running');
+    assert.equal(engine.failNode(id, 'a', 'a current failure', { link: engine.link }), true);
   } finally {
     engine.stopFlush();
     engine.store.close();

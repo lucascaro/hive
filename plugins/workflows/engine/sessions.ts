@@ -57,6 +57,8 @@ export interface Source {
 }
 
 const MAX_ERRORS = 256;
+/** Listings still owed an answer that are remembered: a daemon that never answers cannot grow this. */
+const MAX_LISTINGS = 64;
 
 export class SessionFeed {
   readonly #tx = new Map<string, TranscriptState>();
@@ -65,7 +67,8 @@ export class SessionFeed {
   readonly #tracked = new Set<string>();
   readonly #subs = new Map<string, Set<() => void>>();
   /** Callers waiting for the next SESSIONS frame, and for a transcript snapshot of one session. */
-  #listing: ((m: unknown) => void)[] = [];
+  /** One entry per LIST_SESSIONS sent, oldest first: each SESSIONS frame answers the oldest, so a poll never reads the answer to an earlier request. */
+  #listing: { done: (m: unknown) => void }[] = [];
   readonly #snapshots = new Map<string, (s: TranscriptState | undefined) => void>();
 
   attach(src: Source): void {
@@ -85,7 +88,7 @@ export class SessionFeed {
     }
     const waiting = this.#listing;
     this.#listing = [];
-    for (const done of waiting) done(undefined);
+    for (const w of waiting) w.done(undefined);
   }
 
   /**
@@ -95,17 +98,24 @@ export class SessionFeed {
    * Undefined when the daemon does not answer in time.
    */
   async listSessions(send: (name: string, payload?: object) => void, timeoutMs = 15_000): Promise<(SessionState & { id: string })[] | undefined> {
+    let entry: { done: (m: unknown) => void } | undefined;
     const reply = new Promise<unknown>((resolve) => {
+      // A listing that gave up keeps its slot in the queue: its answer, if it comes, belongs to it and not to the next request.
       const timer = setTimeout(() => resolve(undefined), timeoutMs);
       timer.unref?.();
-      this.#listing.push((m) => {
-        clearTimeout(timer);
-        resolve(m);
-      });
+      entry = {
+        done: (m) => {
+          clearTimeout(timer);
+          resolve(m);
+        },
+      };
+      this.#listing.push(entry);
+      if (this.#listing.length > MAX_LISTINGS) this.#listing.shift();
     });
     try {
       send('LIST_SESSIONS', {});
     } catch {
+      if (entry) this.#listing = this.#listing.filter((e) => e !== entry); // never sent: no answer is owed
       return undefined; // the connection is already gone: the caller reads that as "no word from the daemon"
     }
     const m = await reply;
@@ -237,8 +247,7 @@ export class SessionFeed {
 
   /** A SESSIONS snapshot: it is the whole list, so whatever it does not name is gone. */
   #sessions(m: unknown): void {
-    const waiting = this.#listing;
-    this.#listing = [];
+    const answered = this.#listing.shift();
     if (isObj(m) && Array.isArray(m.sessions)) {
       const named = new Set<string>();
       for (const s of m.sessions) {
@@ -249,7 +258,7 @@ export class SessionFeed {
       for (const id of [...this.#info.keys()]) if (!named.has(id)) this.#info.delete(id);
       for (const id of named) this.#notify(id);
     }
-    for (const done of waiting) done(m);
+    answered?.done(m);
   }
 
   #error(m: unknown): void {

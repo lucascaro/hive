@@ -140,8 +140,11 @@ export class Engine {
   /** Counts lost connections: an agent launch made under an earlier one is stale and must not fail or kill anything (B3c). */
   #link = 0;
   /** No effects are started while the engine recovers or has no connection: a launch before the orphan scan could create a second session. */
-  #paused = false;
-  #down = false;
+  #holds = 0;
+  /** Whether the current connection is open. A lost one stays lost until `reconnect` is handed a new one that survives its own read. */
+  #alive = true;
+  /** Recovery and reconnect never overlap: a reconnect queued behind the startup recovery waits for it. */
+  #chain: Promise<unknown> = Promise.resolve();
   /** Sessions found by recovery that a pending node should take over instead of creating one, by `run/key`. */
   readonly #orphans = new Map<string, string>();
   /** The latest agent launch of each node: a retry waits for the one before it, so a stale launch's kill cannot land after the retry re-attached its worktree. */
@@ -320,7 +323,7 @@ export class Engine {
             }
             continue; // effects start only from a pass with nothing left to commit: a run that is failing launches nothing
           }
-          if (!this.#paused) for (const a of due.actions) this.#launch(rt, a);
+          if (this.#holds === 0 && this.#alive) for (const a of due.actions) this.#launch(rt, a);
           break;
         }
       } while (rt.again);
@@ -337,7 +340,7 @@ export class Engine {
     const fail = (err: unknown): void => {
       if (this.#runs.get(rt.id) !== rt) return; // the run ended or was retried since: this failure is not the new attempt's
       if (link !== this.#link) return; // the connection was lost under this launch: recovery re-derives it from the rows, so its failure is not the node's
-      this.failNode(rt.id, a.key, `${a.a} could not run: ${err instanceof Error ? err.message : String(err)}`);
+      this.failNode(rt.id, a.key, `${a.a} could not run: ${err instanceof Error ? err.message : String(err)}`, { link });
     };
     const start = (): Promise<void> => {
       try {
@@ -364,7 +367,7 @@ export class Engine {
       // An executor that returns without starting or failing its node would be launched again at once, forever.
       const s = rt.model.rows.get(a.key)?.state;
       const live = this.#runs.get(rt.id) === rt && link === this.#link;
-      if (live && (s === 'pending' || s === 'interrupted')) this.failNode(rt.id, a.key, `${a.a} executor returned without starting the node`);
+      if (live && (s === 'pending' || s === 'interrupted')) this.failNode(rt.id, a.key, `${a.a} executor returned without starting the node`, { link });
       if (live) this.drive(rt);
     });
   }
@@ -387,10 +390,16 @@ export class Engine {
     return this.#end(runId, key, 'running', { t: 'finish', key, output });
   }
 
-  failNode(runId: string, key: string, error: string, extra: { cap?: string; conflict?: Row['conflict'] } = {}): boolean {
+  /**
+   * `link` is the connection generation the caller started under: a failure from a launch the connection outlived is not the
+   * node's (recovery reads it again from its row, and a newer launch may own it), so it is refused.
+   */
+  failNode(runId: string, key: string, error: string, extra: { cap?: string; conflict?: Row['conflict']; link?: number } = {}): boolean {
+    const { link, ...rest } = extra;
+    if (link !== undefined && link !== this.#link) return false;
     const r = this.#row(runId, key);
     if (this.#stopping || !r || r.state === 'done' || r.state === 'failed' || r.state === 'cancelled' || r.state === 'skipped') return false;
-    this.commit(runId, { t: 'fail', key, error, ...extra });
+    this.commit(runId, { t: 'fail', key, error, ...rest });
     this.#after(runId);
     return true;
   }
@@ -511,8 +520,18 @@ export class Engine {
    * recorded, watched or adopted when it survived, and the node is
    * `interrupted` only when it did not.
    */
-  async recover(): Promise<void> {
-    this.#paused = true;
+  recover(): Promise<void> {
+    return this.#serial(() => this.#recover());
+  }
+
+  #serial<T>(fn: () => Promise<T>): Promise<T> {
+    const p = this.#chain.then(fn, fn);
+    this.#chain = p.catch(() => {});
+    return p;
+  }
+
+  async #recover(): Promise<void> {
+    this.#holds++;
     try {
       const loaded: Runtime[] = [];
       for (const run of this.store.activeRuns()) {
@@ -529,8 +548,9 @@ export class Engine {
       }
       await recoverAgents(this, loaded.map((rt) => rt.id));
     } finally {
-      this.#paused = false;
+      this.#holds--;
     }
+    // A connection lost during the read leaves the nodes as they are: the reconnect reads them again.
     for (const rt of this.#runs.values()) this.drive(rt);
   }
 
@@ -572,7 +592,7 @@ export class Engine {
   resumeAgent(runId: string, key: string, plan: AgentPlan): void {
     const rt = this.#runs.get(runId);
     const node = rt && rt.model.ix.byId.get(rt.model.rows.get(key)?.node_id ?? '');
-    if (!rt || !node) return;
+    if (!rt || !node || !this.#alive) return; // a lost connection cannot run a launch; the reconnect reads the row again
     this.#launch(rt, { a: 'agent', key, node_id: node.node.id }, plan);
   }
 
@@ -597,43 +617,56 @@ export class Engine {
   // ------------------------------------------------------------- reconnect
 
   /**
-   * The connection to the daemon is gone. Every agent launch made so far is
-   * stale from here on (it fails nothing and kills nothing: recovery
-   * re-derives it from the rows), and nothing new starts until `reconnect`.
+   * The connection to the daemon is gone (`h`: the one that closed; omitted
+   * means the current one). Every agent launch made so far is stale from here
+   * on (it fails nothing and kills nothing: recovery re-derives it from the
+   * rows), and nothing new starts until a `reconnect` survives its own read.
+   * A connection that is not the current one, or is already lost, is ignored.
+   * Returns whether the current connection was just lost.
    */
-  disconnect(): void {
-    this.#down = true;
-    this.#paused = true;
+  disconnect(h?: Hive): boolean {
+    if ((h !== undefined && h !== this.#hive) || !this.#alive) return false;
+    this.#alive = false;
     this.#link++;
     this.feed.pokeAll();
+    return true;
   }
 
-  /** Whether the engine has no connection. */
+  /** Whether the engine's current connection is lost. */
   get disconnected(): boolean {
-    return this.#down;
+    return !this.#alive;
   }
 
   /**
    * A new connection to the daemon (the old one overflowed or dropped): the
    * running agent nodes are read against it exactly as at startup, then the
    * runs go on. Same `boot_id` means the turns may still be running; a new
-   * one means `hived` restarted and they are not.
+   * one means `hived` restarted and they are not. If the new connection is
+   * itself lost while it is read, the engine stays disconnected and the caller
+   * dials again.
    */
-  async reconnect(hive: Hive): Promise<void> {
+  reconnect(hive: Hive): Promise<void> {
+    // The connection is the engine's from this call on, so a close that lands while the read is still queued behind the startup recovery is seen.
     this.#hive = hive;
+    this.#alive = true;
+    this.#holds++;
+    return this.#serial(async () => {
+      try {
+        await this.#reconnect(hive);
+      } finally {
+        this.#holds--;
+      }
+      if (this.#hive !== hive || !this.#alive) return; // lost while it was read: nothing starts on a dead socket
+      for (const rt of [...this.#runs.values()]) this.drive(rt);
+    });
+  }
+
+  async #reconnect(hive: Hive): Promise<void> {
     this.feed.attach(hive);
-    this.#down = true;
-    this.#paused = true;
     // The agent launches of the lost connection are dead: forget that they are in flight, so a node that was being created is launched again (it may adopt what that launch made).
     for (const rt of this.#runs.values()) {
       for (const key of [...rt.inflight]) if (rt.model.ix.byId.get(rt.model.rows.get(key)?.node_id ?? '')?.node.kind === 'agent') rt.inflight.delete(key);
     }
-    try {
-      await recoverAgents(this, [...this.#runs.keys()]);
-    } finally {
-      this.#down = false;
-      this.#paused = false;
-    }
-    for (const rt of [...this.#runs.values()]) this.drive(rt);
+    await recoverAgents(this, [...this.#runs.keys()]);
   }
 }

@@ -32,8 +32,12 @@ export async function recoverAgents(engine: Engine, runIds: string[]): Promise<v
   if (!runs.some((r) => r.rows.some(maybeLaunched))) return;
 
   const hive = engine.hive;
+  const link = engine.link;
+  // A connection lost while the nodes are read says nothing about them: they stay as they are, and the reconnect reads them again.
+  const lost = (): boolean => engine.link !== link || engine.disconnected;
   const send = hive.send?.bind(hive);
   const listed = send ? await engine.feed.listSessions(send, engine.daemonWaitMs) : undefined;
+  if (lost()) return;
   if (!listed || !send) {
     // Without the daemon's word nothing can be shown to have survived: the turns are retried, and a retry that finds one still running is refused by the daemon, never doubled.
     for (const run of runs) for (const r of run.rows) if (r.state === 'running' || r.state === 'waiting') engine.interruptNode(run.id, r.key);
@@ -44,19 +48,22 @@ export async function recoverAgents(engine: Engine, runIds: string[]): Promise<v
   for (const run of runs) {
     for (const r of run.rows) {
       if (r.state !== 'running' && r.state !== 'waiting') continue;
+      if (lost()) return;
       try {
-        await recoverRunning(engine, run.id, r, byId, send);
+        await recoverRunning(engine, run.id, r, byId, send, lost);
       } catch (err) {
+        if (lost()) return;
         console.error(`workflows: recovering ${run.id}/${r.key}: ${errMsg(err)}`);
         engine.interruptNode(run.id, r.key);
       }
     }
+    if (lost()) return;
     await settleOrphans(engine, run.id, listed);
   }
 }
 
 /** One running or waiting agent row, against the daemon. */
-async function recoverRunning(engine: Engine, runId: string, row: Row, byId: Map<string, Listed>, send: (name: string, payload?: object) => void): Promise<void> {
+async function recoverRunning(engine: Engine, runId: string, row: Row, byId: Map<string, Listed>, send: (name: string, payload?: object) => void, lost: () => boolean): Promise<void> {
   const key = row.key;
   const sid = row.session_id;
   const info = sid ? byId.get(sid) : undefined;
@@ -72,6 +79,7 @@ async function recoverRunning(engine: Engine, runId: string, row: Row, byId: Map
     return recorded ? engine.resumeAgent(runId, key, { kind: 'watch', ack: recorded, again: false }) : engine.interruptNode(runId, key);
   }
   const tx = await engine.feed.fetchTranscript(send, sid, engine.daemonWaitMs);
+  if (lost()) return;
   if (!tx) return engine.interruptNode(runId, key);
 
   // A turn of ours is a user item the daemon stamped with this run's principal.
@@ -81,16 +89,25 @@ async function recoverRunning(engine: Engine, runId: string, row: Row, byId: Map
   // The PROMPT_ACP ack can be lost (the engine died between the daemon starting the turn and the row recording it): the turn is in the transcript, and sending the prompt again would run it twice.
   const unrecorded = ours.filter((u) => u.id > after).at(-1);
 
+  // The daemon trims the oldest transcript items of a long conversation. A turn of ours that is no longer listed cannot be told from "never sent",
+  // and sending it again would run it twice (or be refused as busy), so a transcript with turns but none of ours, or without the item of the
+  // turn the row recorded, is not read as a turn the node can follow: it is interrupted, never re-sent and never re-prompted a third time.
+  const recordedItem = recorded ? tx.users.get(recorded.prompt_id) : undefined;
+  if (!unrecorded && !recorded && tx.prompt_id > 0) return engine.interruptNode(runId, key);
+  if (!unrecorded && recorded && !recordedItem) return engine.interruptNode(runId, key);
+
   let ack = recorded;
-  let again = recorded ? tx.users.get(recorded.prompt_id)?.text === REPROMPT : false;
+  let again = recordedItem?.text === REPROMPT;
   if (unrecorded) {
     if (tx.prompt_id !== unrecorded.id) return engine.interruptNode(runId, key); // someone prompted after it: not a turn the node can follow
     ack = { prompt_id: unrecorded.id, epoch: tx.epoch };
     again = unrecorded.text === REPROMPT;
+    if (lost()) return;
     engine.ackTurn(runId, key, ack);
   } else if (recorded && tx.prompt_id !== recorded.prompt_id) {
     return engine.interruptNode(runId, key); // the latest turn is not ours
   }
+  if (lost()) return;
   engine.resumeAgent(runId, key, ack ? { kind: 'watch', ack, again } : { kind: 'send' });
 }
 

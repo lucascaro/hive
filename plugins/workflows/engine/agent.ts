@@ -107,7 +107,7 @@ class AgentRun {
   }
 
   #fail(why: string): void {
-    if (this.#fresh() && this.#engine.current(this.#ctx)) this.#engine.failNode(this.#ctx.run_id, this.#ctx.key, why);
+    if (this.#fresh() && this.#engine.current(this.#ctx)) this.#engine.failNode(this.#ctx.run_id, this.#ctx.key, why, { link: this.#link });
   }
 
   async run(): Promise<void> {
@@ -161,7 +161,7 @@ class AgentRun {
     const prompt = this.#retry ? INTERRUPTED_NOTE + task : task;
     const ws = await prepare(engine, run_id, key);
     if (!this.#live('pending', 'interrupted')) return;
-    if (isConflict(ws)) return void engine.failNode(run_id, key, ws.message, { conflict: ws.conflict });
+    if (isConflict(ws)) return void engine.failNode(run_id, key, ws.message, { conflict: ws.conflict, link: this.#link });
     this.#ws = ws;
 
     const got = await this.#session(cat.mode, project_id, `${model.ix.ir.name} · ${key}`);
@@ -302,7 +302,7 @@ class AgentRun {
     const again = await prepare(this.#engine, this.#ctx.run_id, this.#ctx.key);
     if (!this.#live('pending', 'interrupted')) return undefined;
     if (isConflict(again)) {
-      this.#engine.failNode(this.#ctx.run_id, this.#ctx.key, again.message, { conflict: again.conflict });
+      this.#engine.failNode(this.#ctx.run_id, this.#ctx.key, again.message, { conflict: again.conflict, link: this.#link });
       return undefined;
     }
     this.#ws = again;

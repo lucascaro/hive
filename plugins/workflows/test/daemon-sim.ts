@@ -45,6 +45,8 @@ export class SimSession {
   result: unknown;
   stop_reason = '';
   users: UserItem[] = [];
+  /** The daemon trims the oldest items of a long transcript: a snapshot leaves out this many of the oldest user items. */
+  trim = 0;
 
   constructor(hive: FakeHive, id: string) {
     this.hive = hive;
@@ -93,7 +95,7 @@ export class SimSession {
 
   /** The snapshot GET_ACP_TRANSCRIPT answers with: the whole transcript, as a reset. */
   snapshot(): void {
-    this.hive.emit('ACP_TRANSCRIPT', { ...this.state(), reset: true, items: this.users.map((u) => ({ id: u.id, kind: 'user', origin: u.origin, text: u.text })) });
+    this.hive.emit('ACP_TRANSCRIPT', { ...this.state(), reset: true, items: this.users.slice(this.trim).map((u) => ({ id: u.id, kind: 'user', origin: u.origin, text: u.text })) });
   }
 
   ask(p: Permission): void {

@@ -4,7 +4,7 @@
 - **Design:** [workflow-engine.md](../../design-docs/workflow-engine.md), [acp-workflows.md](../../design-docs/acp-workflows.md)
 - **Depends on:** A (#528), planned against `origin/feature/528-daemon-sdk-prereqs:docs/exec-plans/active/528-workflow-engine-a-daemon-sdk-prereqs.md` at `7410f6b7`
 - **Issue:** #529
-- **Branch:** `feature/529-engine-core` (research and plan); one branch per phase PR (B1: `feature/529-b1-validator`, B2: `feature/529-b2-store-interpreter`)
+- **Branch:** `feature/529-engine-core` (research and plan); one branch per phase PR (B1: `feature/529-b1-validator`, B2: `feature/529-b2-store-interpreter`, B3b: `feature/529-b3b-agent-nodes`, B3c: `feature/529-b3c-durability`)
 - **PR:** #538 (B1), #550 (B2), #554 (B3 plan), #555 (B3b), #570 (B3c)
 - **Phase:** 3 of 5 (B3 in progress: B3b merged, B3c in review; B3a, B3-R7 and B3d remain)
 - **Status:** active. Plan approved. B1 (#538), B2 (#550) and B3b (#555) merged; B3c (#570) in review; the B3 plan is decided (B-22..B-25, 2026-11-15); the rest of B3 to B5 remain.
@@ -562,6 +562,8 @@ Decisions.
   - A waiting human survives every restart unchanged.
 
 ### Durability (`engine/main.ts` startup, also run after a reconnect)
+
+*Amended in B3c (see "B3c implementation decisions"): the table's rows are read by `engine/durability.ts`. `waiting` agent rows are recovered like `running` ones. The "create sent, no session id stored" row is a **`pending`** row (the session id is stored with the transition to `running`, after the CREATE ack), and an orphan that cannot be adopted is removed without marking the row `interrupted`: nothing was ever prompted. A transcript the daemon has trimmed is never read as "turn not sent".*
 
 The engine connects, reads `boot_id`, and rebuilds its view from SESSIONS,
 from `GET_ACP_TRANSCRIPT` for every `running` agent row, and from `runs.db`.
@@ -2460,6 +2462,47 @@ download, the accepted sandbox gap, and `LIST_ACP_AGENTS`.
     pristine one. Chosen over "the stale launch must not kill when the worktree
     is claimed" because the session it made would then be an unowned running
     session in the same worktree.
+  - **Gate round 1 on #570 (code head 34755fbe) and its fixes.**
+    - *A close that lands while a redial is being read was ignored.* `lost()`
+      returned early while a redial was running and `reconnect()` cleared its
+      flags unconditionally, so the engine went on as if the dead socket were
+      open (15 s listing wait, every node interrupted, launches timing out and
+      failing their nodes, no redial). Now every close of the current
+      connection is recorded at once (`Engine.disconnect(h)`: it bumps the link
+      counter, refuses launches and wakes waiters); `reconnect()` takes the
+      connection synchronously, so a close that lands while the read is still
+      queued is seen; a read that finds its own connection lost leaves every
+      node as it is and returns with the engine still disconnected, and the redial
+      loop counts that as an attempt and dials again. Three attempts per loss,
+      then the plugin ends.
+    - *A close during startup recovery failed a surviving turn.* Recovery and
+      reconnect are serialised, recovery's end no longer lifts the launch hold of
+      a lost connection, `drive()` and `resumeAgent` start nothing without a live
+      connection, and `recoverAgents` returns without interrupting anything when
+      the connection was lost while it read (it used to read "no answer" as "nothing
+      survived").
+    - *A stale launch's failure could fail a node a newer launch owns.*
+      `failNode` takes the connection generation the caller started under and
+      refuses a failure from an older one.
+    - *Trimmed transcripts.* The daemon drops the oldest items past 2000 or 512
+      KiB. With no turn recorded and a transcript that has turns but none of ours,
+      or with the recorded turn's item gone, the node is interrupted: the turn is
+      never sent again (which would run twice or be refused as busy), and an F3
+      re-prompt whose item is gone is never followed by a third prompt.
+    - *A SESSIONS frame answered every waiting listing.* LIST_SESSIONS has no
+      `req_id`, so a poll right after a RESTART ack could read an earlier answer
+      and kill a session that had restarted fine. Each listing now takes the
+      answer to its own request: a queue, oldest first, one frame per entry; a
+      listing that timed out keeps its slot so its late answer is not the next
+      one's. (The unsolicited snapshot a connection gets after WELCOME can answer
+      the first listing; it is at least as fresh as that request.)
+    - *The 130 s launch wait* (follow-up 2) is shorter than `#reuse`'s worst-case
+      chain (two session settles of 60 s each, a restart of 60 s, a kill and a
+      prepare of 120 s). If the wait ends first, the retry's launch goes on beside
+      the stale one. That fails safe: the stale launch can at worst kill a session
+      the retry has not created yet, and the retry's own PREPARE recreates a
+      worktree that holds nothing; no work is lost, because a worktree that holds
+      work is kept by the kill. Accepted, no change.
   - **Test seams.** `HIVE_WF_TEST_PAUSE=<point>:<ms>` (read only with the test
     seam on) holds an agent node at `after-create`, `before-prompt` or
     `after-prompt`, so `internal/workflowe2e` can crash the plugin exactly

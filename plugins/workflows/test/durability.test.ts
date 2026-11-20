@@ -362,6 +362,38 @@ test('a turn of ours that was not recorded, followed by one that is not ours, is
   }
 });
 
+test('a trimmed transcript: a lost ack whose turn the daemon no longer lists is not sent again', async () => {
+  const w = world(one(), {}, { pause: (p) => (p === 'after-prompt' ? never() : Promise.resolve()) });
+  await waitFor(() => w.sim.prompts.length === 1, 'the turn');
+  await tick();
+  w.h.engine.disconnect();
+  w.sim.sessions[0].trim = 1; // the oldest items were trimmed: the turn is running, and its item is gone
+  const w2 = await crash(w);
+  try {
+    await waitFor(() => row(w2).attempt === 2, 'the node to be interrupted');
+    assert.equal(w2.sim.prompts.length, 2);
+    assert.ok(w2.sim.prompts[1].startsWith(INTERRUPTED_NOTE), 'the retry says it is one; the original prompt was not sent as if nothing had happened');
+  } finally {
+    w2.cleanup();
+  }
+});
+
+test('a trimmed transcript: a re-prompt whose item is gone does not allow a third prompt', async () => {
+  const w = world(one(), { onPrompt: (turn, _t, sess) => (turn === 1 ? sess.end() : undefined) });
+  await waitFor(() => w.sim.prompts.length === 2 && row(w).prompt_id === 20, 'the re-prompt to be running and recorded');
+  w.h.engine.disconnect();
+  w.sim.sessions[0].trim = 2; // both user items trimmed
+  w.sim.sessions[0].end(); // the re-prompt ended without a result
+  const w2 = await crash(w);
+  try {
+    await waitFor(() => row(w2).attempt === 2, 'the node to be interrupted');
+    assert.ok(w2.sim.prompts[2]?.startsWith(INTERRUPTED_NOTE), 'not the F3 re-prompt a third time');
+    assert.equal(w2.sim.prompts.filter((p) => p === REPROMPT).length, 1);
+  } finally {
+    w2.cleanup();
+  }
+});
+
 test('hived restart: when the restart fails (no loadSession) the session is killed with its worktree kept and a fresh one is made in the same worktree', async () => {
   const w = world(one(), {
     onRestart: () => {
