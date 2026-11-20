@@ -26,10 +26,8 @@ import (
 // hook to deliver the nudge PTY Claude gets.
 var pinTool = map[string]any{
 	"name": acp.PinToolName,
-	"description": "Pin an important response so the user can find it again in Hive's sidebar. " +
-		"Pin sparingly and on your own initiative: a decision and its reasons, a root cause, " +
-		"a command recipe, a summary the user will want later. Not routine progress. " +
-		"The title says what the pin is; the body is the content, in markdown.",
+	"description": "Pin an important answer so the user can find it again in Hive's inspector. " +
+		pinGuidance("this tool"),
 	"inputSchema": map[string]any{
 		"type": "object",
 		"properties": map[string]any{

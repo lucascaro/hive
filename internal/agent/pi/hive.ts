@@ -87,6 +87,15 @@ export const PIN_TOOL_ENV = "HIVE_PIN_TOOL";
 // here too so the model is told before a round trip.
 const MAX_PIN_TITLE_LEN = 256;
 const MAX_PIN_BODY_LEN = 64 << 10;
+// The pin instruction, kept word for word with the Claude nudge
+// (cmd/hived/hook.go PinGuidance) so both agents get the same rule.
+export const PIN_GUIDANCE =
+  "Hive (the terminal manager running this session) keeps the user's important answers ONLY " +
+  "as pins in its inspector; anything you do not pin scrolls away. Before you end any turn in " +
+  "which you explained a root cause, gave a command or recipe, made or recommended a decision, " +
+  "or summarized findings, call hive_pin with a short title naming what it is and the answer " +
+  "as markdown. Do this even when the user did not ask for it. Skip it only for routine progress, " +
+  "chit-chat, or answers with nothing worth finding again.";
 const PIN_PARAMETERS = {
   type: "object",
   properties: {
@@ -783,12 +792,10 @@ export default function (pi: ExtensionAPI) {
       name: PIN_TOOL_NAME,
       label: "Pin response",
       description:
-        "Pin an important response so the user can find it again in Hive's sidebar. " +
+        "Pin an important answer so the user can find it again in Hive's inspector. " +
         "The title says what it is; the body is the content, in markdown.",
-      promptSnippet: "Pin an important response for the user to recall later in Hive",
-      promptGuidelines: [
-        `When you give an answer the user will want to find again (a decision and its reasons, a root cause, a command recipe, a summary of findings), call ${PIN_TOOL_NAME} with a short title and the content as markdown. Pin sparingly: not routine progress.`,
-      ],
+      promptSnippet: "Pin an important answer for the user to recall later in Hive",
+      promptGuidelines: [PIN_GUIDANCE],
       parameters: PIN_PARAMETERS as any,
       async execute(_toolCallId: string, params: any) {
         const title = typeof params?.title === "string" ? params.title : "";
@@ -855,15 +862,21 @@ export default function (pi: ExtensionAPI) {
   // The guidelines alone were not enough: in the live probe a real Pi
   // wrote the files without ever calling the tool. A system-prompt line
   // at the head of every run states the rule where the model weighs it.
-  if (planTool) {
-    pi.on("before_agent_start", (event: any) => ({
-      systemPrompt:
-        (event?.systemPrompt ?? "") +
-        `\n\nThe user reviews plans in Hive. Before you create or edit any file, call ${PLAN_TOOL_NAME} ` +
-        `with your plan as markdown and wait for its answer. Do not create or edit files until ${PLAN_TOOL_NAME} ` +
-        "returns approval, or it asks you to get approval in the conversation and the user gives it there. " +
-        "Trivial one-line answers that change no files need no plan.",
-    }));
+  // The pin rule (spec 566) rides the same handler: a guideline alone is
+  // the soft wording that changed nothing for Claude.
+  if (planTool || pinTool) {
+    pi.on("before_agent_start", (event: any) => {
+      let systemPrompt = event?.systemPrompt ?? "";
+      if (planTool) {
+        systemPrompt +=
+          `\n\nThe user reviews plans in Hive. Before you create or edit any file, call ${PLAN_TOOL_NAME} ` +
+          `with your plan as markdown and wait for its answer. Do not create or edit files until ${PLAN_TOOL_NAME} ` +
+          "returns approval, or it asks you to get approval in the conversation and the user gives it there. " +
+          "Trivial one-line answers that change no files need no plan.";
+      }
+      if (pinTool) systemPrompt += `\n\n${PIN_GUIDANCE}`;
+      return { systemPrompt };
+    });
   }
 
   pi.on("session_start", (_event, ctx: any) => {

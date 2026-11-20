@@ -122,6 +122,8 @@ test("under Hive: subscribes to exactly the reported events", () => {
       "agent_end",
       "agent_settled",
       "agent_start",
+      // The pin rule's system-prompt line (spec 566), on by default.
+      "before_agent_start",
       "input",
       "session_shutdown",
       "session_start",
@@ -1076,12 +1078,30 @@ test("with review on, every run's system prompt tells Pi to submit a plan first"
   assert.match(out.systemPrompt, /get approval in the conversation/);
 });
 
-test("with review off, the system prompt is left alone", () => {
-  withEnv({ HIVE_SESSION_ID: "s1", HIVE_SOCKET: "/tmp/x.sock", HIVE_PI_PLAN_REVIEW: "0" }, () => {
+test("with review and pins off, the system prompt is left alone", () => {
+  withEnv({ HIVE_SESSION_ID: "s1", HIVE_SOCKET: "/tmp/x.sock", HIVE_PI_PLAN_REVIEW: "0", HIVE_PIN_TOOL: "0" }, () => {
     const pi = handlerPi();
     mod.default(pi as never);
     assert.equal(pi.handlers.get("before_agent_start"), undefined);
   });
+});
+
+// Spec 566: the pin rule is stated in the system prompt, not only as a
+// tool guideline — the soft guideline-only wording changed nothing.
+test("with pins on, the system prompt carries the pin rule, beside the plan rule when both are on", () => {
+  const prompt = (env: Record<string, string>) =>
+    withEnv({ HIVE_SESSION_ID: "s1", HIVE_SOCKET: "/tmp/x.sock", ...env }, () => {
+      const pi = handlerPi();
+      mod.default(pi as never);
+      const h = pi.handlers.get("before_agent_start") as any;
+      return h({ systemPrompt: "BASE" }).systemPrompt as string;
+    });
+  const pinOnly = prompt({ HIVE_PI_PLAN_REVIEW: "0" });
+  assert.ok(pinOnly.startsWith("BASE"));
+  assert.ok(pinOnly.includes(mod.PIN_GUIDANCE));
+  assert.ok(!pinOnly.includes("hive_submit_plan"));
+  const both = prompt({ HIVE_PI_PLAN_REVIEW: "1" });
+  assert.ok(both.includes(mod.PIN_GUIDANCE) && both.includes("hive_submit_plan"));
 });
 
 // submit_result (spec 496): registered only for an ACP Pi session, which
