@@ -1893,6 +1893,8 @@ func (d *Daemon) handleControlFrame(ctx context.Context, ops controlOps, ft wire
 					ops.sendError("no_such_archived_session", "that session is no longer archived")
 				case errors.Is(err, registry.ErrExists):
 					ops.sendError("session_already_open", "that session is already open")
+				case errors.Is(err, registry.ErrClosing):
+					ops.sendError("session_closing", "that session is still closing; try again in a moment")
 				default:
 					ops.sendError("unarchive_failed", err.Error())
 				}
@@ -2179,6 +2181,8 @@ func (d *Daemon) handleControlFrame(ctx context.Context, ops controlOps, ft wire
 					ops.sendError("no_such_closed_session", "that session is no longer restorable")
 				case errors.Is(err, registry.ErrExists):
 					ops.sendError("session_already_open", "that session is already open")
+				case errors.Is(err, registry.ErrClosing):
+					ops.sendError("session_closing", "that session is still closing; try again in a moment")
 				default:
 					ops.sendError("restore_failed", err.Error())
 				}

@@ -545,6 +545,13 @@ type Registry struct {
 	acpListeners map[AcpListener]struct{}
 	// pinsListeners receive PINS_CHANGED deltas (spec 566).
 	pinsListeners map[PinsListener]struct{}
+	// closing holds the ids kill has taken out of entries but not yet
+	// finished tearing down (PTY, worktree, session directory). A
+	// restore of one of them is refused with ErrClosing until it is
+	// done: landing mid-teardown, it would have its new session
+	// directory — session.json and pins — deleted by the close. Guarded
+	// by r.mu.
+	closing map[string]bool
 
 	// createMu serializes the synchronous prefix of Create (id/color
 	// resolution, name planning, order splicing). The daemon now runs
@@ -1257,6 +1264,7 @@ func Open(stateDir string) (*Registry, error) {
 		activityListeners: make(map[ActivityListener]struct{}),
 		acpListeners:      make(map[AcpListener]struct{}),
 		pinsListeners:     make(map[PinsListener]struct{}),
+		closing:           make(map[string]bool),
 		tickStop:          make(chan struct{}),
 		tickDone:          make(chan struct{}),
 	}
@@ -1848,6 +1856,11 @@ func (r *Registry) KillAndRemoveWorktree(id string, force bool) error {
 // archive record replaces the tombstone, the worktree is never disposed,
 // tombstone retention is not run, and a failed record write aborts
 // before any teardown (the record is the only copy).
+// testHookKillTeardown, when set by a test, runs during kill's
+// teardown, after the entry is gone and before its directory is
+// removed. Nil outside tests.
+var testHookKillTeardown func(id string)
+
 func (r *Registry) kill(id string, force, removeWorktree, archive bool) error {
 	// A session parked on a worktree-setup question can be killed from
 	// under the dialog. Its worktree (if the add half-succeeded) is not
@@ -1973,6 +1986,7 @@ func (r *Registry) kill(id string, force, removeWorktree, archive bool) error {
 	}
 	e.dropSendStateLocked()
 	delete(r.entries, id)
+	r.closing[id] = true
 	for i, sid := range r.order {
 		if sid == id {
 			r.order = append(r.order[:i], r.order[i+1:]...)
@@ -2031,7 +2045,15 @@ func (r *Registry) kill(id string, force, removeWorktree, archive bool) error {
 	if wtPath != "" && !worktreeShared && !archive {
 		r.disposeWorktree(id, projectID, projectCwd, wtPath, wtBranch, removeWorktree)
 	}
+	if testHookKillTeardown != nil {
+		testHookKillTeardown(id)
+	}
 	_ = os.RemoveAll(dir)
+	// Only now may the session be reopened: its directory is gone, so a
+	// restore writes a fresh one nothing will delete.
+	r.mu.Lock()
+	delete(r.closing, id)
+	r.mu.Unlock()
 	r.broadcast(wire.SessionEventRemoved, removed)
 	// Re-read the survivors HERE rather than snapshotting them back
 	// under the lock above: the worktree teardown between the two can

@@ -27,6 +27,10 @@ import (
 // only fires if something upstream reused one.
 var ErrExists = errors.New("registry: session already exists")
 
+// ErrClosing is returned by Restore and Unarchive for a session whose
+// close has not finished tearing down; trying again moments later works.
+var ErrClosing = errors.New("registry: session is still closing")
+
 // Tombstone retention. Both bounds apply and whichever prunes first
 // wins: the count keeps the state dir from growing without limit on a
 // heavy day, the age keeps a week-old close from surfacing as "the
@@ -410,6 +414,10 @@ func (r *Registry) restoreEntry(dir, id string, check func(t Tombstone, cwd stri
 		r.mu.Unlock()
 		return nil, res, ErrExists
 	}
+	if r.closing[id] {
+		r.mu.Unlock()
+		return nil, res, ErrClosing
+	}
 	// Resolve the project now: it may have been killed since the close.
 	projectID := t.Meta.ProjectID
 	if _, ok := r.projects[projectID]; !ok {
@@ -470,6 +478,10 @@ func (r *Registry) restoreEntry(dir, id string, check func(t Tombstone, cwd stri
 	if _, live := r.entries[id]; live {
 		r.mu.Unlock()
 		return nil, res, ErrExists
+	}
+	if r.closing[id] {
+		r.mu.Unlock()
+		return nil, res, ErrClosing
 	}
 	r.entries[id] = e
 	// Append rather than splice back into the original slot. Every

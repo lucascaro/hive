@@ -180,9 +180,9 @@ func (r *Registry) addPin(e *Entry, title, body string) (wire.Pin, error) {
 		p.mu.Unlock()
 		return wire.Pin{}, ErrNotFound
 	}
-	if len(p.headers) >= wire.MaxPinsPerSession {
+	if n := len(p.headers); n >= wire.MaxPinsPerSession {
 		p.mu.Unlock()
-		return wire.Pin{}, fmt.Errorf("%w: %d pinned; unpin some first", ErrPinLimit, len(p.headers))
+		return wire.Pin{}, fmt.Errorf("%w: %d pinned; unpin some first", ErrPinLimit, n)
 	}
 	pin := wire.Pin{
 		ID:        newPinID(p.lastID),

@@ -184,6 +184,39 @@ func TestCloseRightAfterReopenKeepsTombstoneAndPins(t *testing.T) {
 	}
 }
 
+// A reopen landing while the close is still tearing down is refused
+// (ErrClosing), so the close's final directory removal can never delete
+// the reopened session's session.json and pins. Once the close is done
+// the reopen works, and the pins come back.
+func TestRestoreDuringKillTeardownIsRefused(t *testing.T) {
+	skipNonPosix(t)
+	r := freshRegistry(t)
+	e := createShell(t, r)
+	id := e.ID
+	mustPin(t, r, id, "keep")
+	var midErr error
+	testHookKillTeardown = func(sid string) {
+		_, _, midErr = r.Restore(sid, session.Options{})
+	}
+	t.Cleanup(func() { testHookKillTeardown = nil })
+	if err := r.Kill(id, true); err != nil {
+		t.Fatal(err)
+	}
+	testHookKillTeardown = nil
+	if !errors.Is(midErr, ErrClosing) {
+		t.Fatalf("Restore mid-teardown = %v, want ErrClosing", midErr)
+	}
+	if _, _, err := r.Restore(id, session.Options{}); err != nil {
+		t.Fatalf("Restore after the close: %v", err)
+	}
+	if got := pinTitles(t, r, id); len(got) != 1 || got[0] != "keep" {
+		t.Fatalf("pins after reopen = %v", got)
+	}
+	if _, err := os.Stat(filepath.Join(SessionsDir(r.stateDir), id, "session.json")); err != nil {
+		t.Fatalf("reopened session.json: %v", err)
+	}
+}
+
 func TestAddPinUnknownSession(t *testing.T) {
 	r := freshRegistry(t)
 	if _, err := r.AddPin("nope", "t", "b"); !errors.Is(err, ErrNotFound) {

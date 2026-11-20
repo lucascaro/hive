@@ -494,6 +494,12 @@ The independent reviewer (`hs-reviewer` subagent) ran two rounds.
   - **A failed pin-folder move** at close or restore stays the accepted design: logged, pins lost, the close never fails.
   - **Per-session limit.** `MaxPinsPerSession` = 1000 is added as a safety bound: refused with `pin_limit`, never evicted. This reverses the brainstorm's "no caps", and the spec's non-goal is reworded to match. Paging stays, since bodies are fetched on demand. The paging test now runs at the limit: 5 pages of 200.
 
+- **2026-11-19** — Review escalation (iter 3), resolved by the operator choosing "fix in this PR":
+  - **The race.** A restore landing during kill's teardown, after the entry is gone but before `RemoveAll(dir)`, had its new session directory deleted. That meant `session.json` and the pins; the race predated this PR, and pins widened it.
+  - **The fix.** `Registry.closing` marks an id from its removal until its directory is gone, and Restore and Unarchive refuse it with `ErrClosing` (`session_closing`). This was chosen over re-checking before `RemoveAll`, because the pins move (`closePins`) and the restore's pin load race in the same window. Refusing the restore closes every such window at once.
+  - **Test.** `TestRestoreDuringKillTeardownIsRefused` covers it through `testHookKillTeardown`, and is mutation-checked.
+  - **Also fixed.** The limit error read `len(p.headers)` after unlocking, a data race CodeRabbit found.
+
 ## Progress
 
 - **2026-11-19** — Spec triaged (enhancement / L / P2); research started.
@@ -506,3 +512,4 @@ The independent reviewer (`hs-reviewer` subagent) ran two rounds.
 
 - **2026-11-19 iter 1** — verdict: APPROVE; mergeable: MERGEABLE; findings_hash: empty; threads_open: 0; action: stop; head_sha: 22bb048.
 - **2026-11-19 iter 2** — verdict: COMMENT; mergeable: MERGEABLE; findings_hash: 7b16c0395489a819527fde6b161afc0b6b3741f9118958652c39a4f270569672; threads_open: 4; action: escalated:risky-fix-needs-human-decision; head_sha: 309c9d3.
+- **2026-11-19 iter 3** — verdict: COMMENT; mergeable: MERGEABLE; findings_hash: 1b4d2b3194c91eb3870cb00b907598b914244b38a3571ce25c81dca5c94a7d0a; threads_open: 1; action: escalated:risky-fix-needs-human-decision; head_sha: 712d4b4.
