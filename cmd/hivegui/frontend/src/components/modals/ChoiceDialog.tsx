@@ -106,6 +106,13 @@ function ChoiceDialogBody({
       // destructive (see ChoiceSpec). safeValue already accounts for
       // both, so this stays a single path.
       onClose={() => resolveChoiceDialog(safeValue)}
+      // Every overlay shows its confirm/cancel keys (AGENTS.md). Both are
+      // fixed overlay keys, not bindings: Enter answers the focused
+      // choice (the safe one until Tab moves it), Escape the safe one.
+      hints={[
+        { keys: '[enter]', label: 'choose' },
+        { keys: '[esc]', label: 'cancel' },
+      ]}
       actions={spec.choices.map((c) => (
         <Button
           key={c.value}

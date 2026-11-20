@@ -443,6 +443,27 @@ func (c *Client) AwaitGlobalHotkey(timeout time.Duration) (wire.GlobalHotkey, er
 	return h, err
 }
 
+// GetPins asks for one session's pin headers (spec 566), answered as
+// one or more PINS pages.
+func (c *Client) GetPins(sessionID string) error {
+	return c.cli.WriteJSON(wire.FrameGetPins, wire.GetPinsReq{SessionID: sessionID})
+}
+
+// GetPinBody asks for one pin's body.
+func (c *Client) GetPinBody(sessionID, pinID string) error {
+	return c.cli.WriteJSON(wire.FrameGetPinBody, wire.GetPinBodyReq{SessionID: sessionID, ID: pinID})
+}
+
+// Unpin removes one pin.
+func (c *Client) Unpin(sessionID, pinID string) error {
+	return c.cli.WriteJSON(wire.FrameUnpin, wire.UnpinReq{SessionID: sessionID, ID: pinID})
+}
+
+// UnpinAll removes every pin in a session.
+func (c *Client) UnpinAll(sessionID string) error {
+	return c.cli.WriteJSON(wire.FrameUnpinAll, wire.UnpinAllReq{SessionID: sessionID})
+}
+
 // GetActivity asks for one session's stored tool ring and plan.
 func (c *Client) GetActivity(sessionID string) error {
 	return c.cli.WriteJSON(wire.FrameGetActivity, wire.GetActivityReq{SessionID: sessionID})

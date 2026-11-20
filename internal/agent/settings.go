@@ -40,6 +40,13 @@ const ClaudeTaskToolsEnv = "CLAUDE_CODE_ENABLE_TODO_TOOLS"
 // ClaudeTaskToolsEnv it is Hive's own variable, not the user's.
 const PiTodoToolEnv = "HIVE_PI_TODO_TOOL"
 
+// PinToolEnv tells the agents Hive starts whether they get its pin
+// tool (spec 566): "0" means off. Hive's own variable, set explicitly
+// both ways, like PiTodoToolEnv. Claude's SessionStart hook reads it to
+// decide whether to send the pin nudge; Pi's extension reads it to
+// decide whether to register hive_pin.
+const PinToolEnv = "HIVE_PIN_TOOL"
+
 // Settings is the user-facing shape of agent-settings.json.
 type Settings struct {
 	// ClaudeTaskTools opts Hive's Claude sessions into Claude Code's
@@ -54,6 +61,11 @@ type Settings struct {
 	// ClaudeTaskTools; off saves the tool's context and keeps Hive from
 	// adding anything to the user's agent.
 	PiTodoTool bool `json:"pi_todo_tool"`
+	// PinTool gives the Claude and Pi sessions Hive starts a tool to pin
+	// important responses to the session's inspector, and asks them to
+	// use it on their own initiative (spec 566). On by default. Off means
+	// neither the tool nor the instruction.
+	PinTool bool `json:"pin_tool"`
 	// PlanReview holds an agent's plan for the user to approve or deny
 	// in Hive before it implements it: Claude's ExitPlanMode, and a
 	// hive_submit_plan tool for Pi. Not stored here: it is on while the
@@ -117,6 +129,7 @@ const (
 type settingsFile struct {
 	ClaudeTaskTools *bool   `json:"claude_task_tools,omitempty"`
 	PiTodoTool      *bool   `json:"pi_todo_tool,omitempty"`
+	PinTool         *bool   `json:"pin_tool,omitempty"`
 	LayaEnabled     *bool   `json:"laya_enabled,omitempty"`
 	LayaURL         *string `json:"laya_url,omitempty"`
 	LayaModel       *string `json:"laya_model,omitempty"`
@@ -127,7 +140,7 @@ type settingsFile struct {
 
 // DefaultSettings is what a fresh install, or a missing key, means.
 func DefaultSettings() Settings {
-	return Settings{ClaudeTaskTools: true, PiTodoTool: true, PlanReviewer: PlanReviewerExternal}
+	return Settings{ClaudeTaskTools: true, PiTodoTool: true, PinTool: true, PlanReviewer: PlanReviewerExternal}
 }
 
 func (f settingsFile) resolve() Settings {
@@ -137,6 +150,9 @@ func (f settingsFile) resolve() Settings {
 	}
 	if f.PiTodoTool != nil {
 		s.PiTodoTool = *f.PiTodoTool
+	}
+	if f.PinTool != nil {
+		s.PinTool = *f.PinTool
 	}
 	if f.LayaEnabled != nil {
 		s.LayaEnabled = *f.LayaEnabled
@@ -192,7 +208,7 @@ func SaveSettings(s Settings) error {
 		return err
 	}
 	blob, err := json.MarshalIndent(settingsFile{
-		ClaudeTaskTools: &s.ClaudeTaskTools, PiTodoTool: &s.PiTodoTool,
+		ClaudeTaskTools: &s.ClaudeTaskTools, PiTodoTool: &s.PiTodoTool, PinTool: &s.PinTool,
 		LayaEnabled: &s.LayaEnabled, LayaURL: &s.LayaURL, LayaModel: &s.LayaModel,
 		ACPModeCeiling: s.ACPModeCeiling,
 	}, "", "  ")
@@ -244,7 +260,12 @@ func claudeSpawnEnv(sp SpawnInfo) []string {
 	st := sp.settings()
 	// Hive's own variable, so it is explicit both ways and always set:
 	// an inherited value must never decide who reviews this session.
-	env := []string{PlanReviewerEnv + "=" + claudeSpawnReviewer(st)}
+	env := []string{
+		PlanReviewerEnv + "=" + claudeSpawnReviewer(st),
+		// Hive's own too, and read by `hived hook` for the pin nudge: it
+		// must agree with the --mcp-config claudeSpawnArgs adds.
+		PinToolEnv + "=" + boolEnv(st.PinTool),
+	}
 	if _, set := lookupEnv(ClaudeTaskToolsEnv); set {
 		return env
 	}
@@ -274,6 +295,7 @@ func piSpawnEnv(sp SpawnInfo) []string {
 	env := []string{
 		PiTodoToolEnv + "=" + boolEnv(st.PiTodoTool),
 		PiPlanReviewEnv + "=" + boolEnv(st.PlanReview),
+		PinToolEnv + "=" + boolEnv(st.PinTool),
 	}
 	// The path itself, not "1": the extension listens exactly where the
 	// daemon will dial, so neither derives it.

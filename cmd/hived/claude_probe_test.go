@@ -14,6 +14,7 @@ import (
 	"context"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"strings"
 	"sync"
 	"testing"
@@ -33,6 +34,11 @@ func TestMain(m *testing.M) {
 	if len(os.Args) > 1 && os.Args[1] == "hook" {
 		runHook(os.Stdin)
 		os.Exit(0)
+	}
+	// And `hived mcp-pin` (spec 566): Claude starts the pin server from
+	// the same resolved path.
+	if len(os.Args) > 1 && os.Args[1] == "mcp-pin" {
+		os.Exit(runMCPPinMain())
 	}
 	os.Exit(m.Run())
 }
@@ -154,12 +160,29 @@ func TestClaudeProbeWaitingPermission(t *testing.T) {
 	// A fresh directory gets the folder-trust dialog; Enter accepts.
 	deadline := time.Now().Add(20 * time.Second)
 	for time.Now().Before(deadline) {
-		if sink.contains("trust") {
-			_, _ = sess.Write([]byte("\r"))
+		info, _ := findSessionByID(d, id)
+		if info.StateSource == wire.StateSourceHook {
 			break
 		}
-		if info, _ := findSessionByID(d, id); info.StateSource == wire.StateSourceHook {
-			break
+		// Pressed again each second until the hook tier shows the
+		// dialog is gone: an Enter that lands before it takes input is
+		// lost, and a stray one at Claude's empty prompt sends nothing.
+		if sink.contains("trust") {
+			_, _ = sess.Write([]byte("\r"))
+			time.Sleep(time.Second)
+			continue
+		}
+		// Claude's own OSC status reports the trust dialog as a wait for
+		// permission, which is all a setup that adds project settings
+		// may get when the dialog drew before the capture subscribed.
+		// Nothing has been typed yet, so the dialog is the only thing
+		// Enter can answer.
+		// Pressed again each second while it lasts: an Enter that lands
+		// before the dialog takes input is lost.
+		if info.State == wire.StateWaitingPermission {
+			_, _ = sess.Write([]byte("\r"))
+			time.Sleep(time.Second)
+			continue
 		}
 		time.Sleep(200 * time.Millisecond)
 	}
@@ -406,6 +429,13 @@ func startClaudeProbe(t *testing.T) (*session.Session, probeWait) {
 // session over the wire or read its screen.
 func startClaudeProbeDaemon(t *testing.T) (*session.Session, probeWait, *daemon.Daemon, *captureSink) {
 	t.Helper()
+	return startClaudeProbeDaemonIn(t, nil)
+}
+
+// startClaudeProbeDaemonIn is startClaudeProbeDaemon with setup run on
+// the session's working directory before Claude starts.
+func startClaudeProbeDaemonIn(t *testing.T, setup func(cwd string)) (*session.Session, probeWait, *daemon.Daemon, *captureSink) {
+	t.Helper()
 	// Strip the nesting markers, as the probes above do — and, here, it
 	// matters twice: a CLAUDE_CODE_ENABLE_TODO_TOOLS inherited from the
 	// Claude session running this test would count as the user's own
@@ -429,8 +459,12 @@ func startClaudeProbeDaemon(t *testing.T) (*session.Session, probeWait, *daemon.
 	agent.SetCustomDir(t.TempDir())
 	t.Cleanup(func() { agent.SetCustomDir("") })
 
+	cwd := t.TempDir()
+	if setup != nil {
+		setup(cwd)
+	}
 	e, err := d.Registry().Create(context.Background(), wire.CreateSpec{
-		Agent: "claude", Cwd: t.TempDir(), Cols: 120, Rows: 40,
+		Agent: "claude", Cwd: cwd, Cols: 120, Rows: 40,
 	})
 	if err != nil {
 		t.Fatalf("create: %v", err)
@@ -731,4 +765,76 @@ func TestClaudeProbeOSC7501EscGoesIdle(t *testing.T) {
 	if now, _ := findSessionByID(d, id); now.State != wire.StateIdle {
 		t.Errorf("state = %q 5s after Esc during a tool, want idle: a hook fired by the interrupt resurrected the turn", now.State)
 	}
+}
+
+// TestProbeClaudePinsViaMCP is spec 566's required pre-merge gate: a real
+// Claude, started exactly as Hive starts one, pins through `hived
+// mcp-pin`. It proves three things CI cannot:
+//
+//   - Claude starts the --mcp-config server and expands ${VAR} in its env
+//     from its own environment (else the server could not authenticate,
+//     and no pin would arrive);
+//   - the --settings allow rule lets the tool run without a prompt;
+//   - that rule is ADDED to the user's permission rules, not swapped for
+//     them: a project-level deny for one Bash command still applies, so
+//     that command is refused and writes nothing.
+//
+// Opt-in — it costs API calls:
+//
+//	HIVE_PROBE_CLAUDE=1 go test ./cmd/hived/ -run TestProbeClaudePinsViaMCP -v
+func TestProbeClaudePinsViaMCP(t *testing.T) {
+	if os.Getenv("HIVE_PROBE_CLAUDE") != "1" {
+		t.Skip("set HIVE_PROBE_CLAUDE=1 to run the real-claude probe")
+	}
+	if _, err := exec.LookPath("claude"); err != nil {
+		t.Skip("claude not on PATH")
+	}
+	var workDir string
+	sess, wait, d, sink := startClaudeProbeDaemonIn(t, func(cwd string) {
+		workDir = cwd
+		// The user's own rule, at project scope.
+		dir := filepath.Join(cwd, ".claude")
+		if err := os.MkdirAll(dir, 0o700); err != nil {
+			t.Fatal(err)
+		}
+		rule := `{"permissions":{"deny":["Bash(touch hive-probe-denied.txt)"]}}`
+		if err := os.WriteFile(filepath.Join(dir, "settings.json"), []byte(rule), 0o600); err != nil {
+			t.Fatal(err)
+		}
+	})
+
+	// The trust dialog read as a permission wait; start clean, so any
+	// wait seen below is one the turn itself raised.
+	wait(30*time.Second, func(i wire.SessionInfo) bool { return i.State != wire.StateWaitingPermission }, "the trust dialog to clear")
+	_, _ = sess.Write([]byte("Call the mcp__hive-pin__pin tool (load it with ToolSearch if needed) with title " +
+		"\"Probe pin\" and body \"pinned by the probe\". Then run the shell command: touch hive-probe-denied.txt. If it is refused, do not retry or work around it. Then reply done."))
+	time.Sleep(700 * time.Millisecond)
+	_, _ = sess.Write([]byte("\r"))
+
+	sawPrompt := false
+	info := wait(180*time.Second, func(i wire.SessionInfo) bool {
+		if i.State == wire.StateWaitingPermission {
+			sawPrompt = true
+		}
+		// The turn is over once the agent has said it finished.
+		return (i.PinCount >= 1 && i.LastSummary != "") || sawPrompt
+	}, "a pin and the denied command")
+	if sawPrompt {
+		t.Fatalf("Claude asked for permission; Hive's rule or the user's did not apply\n--- terminal tail ---\n%s", sink.tail(1500))
+	}
+	// The user's deny still applies beside Hive's allow, so the command
+	// was refused and wrote nothing. (A deny, not an allow: whether an
+	// unlisted command prompts depends on the user's own mode, so only a
+	// deny tells "merged" from "replaced" on every machine.)
+	if _, err := os.Stat(filepath.Join(workDir, "hive-probe-denied.txt")); err == nil {
+		t.Fatalf("the project-denied command ran: Hive's --settings permissions replaced the user's\n--- terminal tail ---\n%s", sink.tail(1500))
+	}
+	pins, err := d.Registry().Pins(info.ID)
+	if err != nil || len(pins) != 1 || pins[0].Title != "Probe pin" {
+		t.Fatalf("pins = %+v, %v", pins, err)
+	}
+	if body, err := d.Registry().PinBody(info.ID, pins[0].ID); err != nil || !strings.Contains(body, "pinned by the probe") {
+		t.Fatalf("body = %q, %v", body, err)
+	}
+	_, _ = sess.Write([]byte("/exit\r"))
 }

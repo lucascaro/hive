@@ -87,6 +87,15 @@ What works:
   session whose agent stops reporting mid-turn greys out and says how long
   it has been quiet.
   (Ctrl+Shift+J / Ctrl+Alt+Shift+J on Windows and Linux.)
+- Pinned responses — Claude and Pi (not Pi under ACP) pin the answers worth keeping (a
+  decision, a root cause, a recipe) with a title, and they collect in a
+  Pinned section at the top of the inspector, newest first: one line
+  each, a click opens the body, and the section collapses to its header
+  so the activity below stays usable. Copy a pin, unpin it, or unpin all
+  (after a confirm). The sidebar row shows how many a session has, and
+  activity-grid tiles list their titles. Pins survive restarts and come
+  back when you reopen or unarchive the session. Agents pin on their own
+  initiative; turn it off in Settings → Agents.
 - Idea inbox — notes captured against a project instead of derailing the
   session you are in. Every session Hive spawns can file one from its
   own shell:

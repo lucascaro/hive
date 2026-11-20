@@ -14,6 +14,20 @@ import (
 // mcp-submit`) and its Pi extension expose for a typed result.
 const SubmitToolName = "submit_result"
 
+// PinToolName is the tool `hived mcp-pin` exposes (spec 566).
+const PinToolName = "pin"
+
+// PinServerName is the MCP server name an ACP session's pin server gets:
+// the session's own random submit server name, suffixed, so it is just
+// as unguessable.
+func PinServerName(server string) string { return server + "-pin" }
+
+// PinIdentities is SubmitIdentities for the pin tool of the pin server
+// that belongs to the submit server named server.
+func PinIdentities(server string) []string {
+	return []string{"mcp__" + PinServerName(server) + "__" + PinToolName}
+}
+
 // SubmitIdentities is every structured identity under which an adapter
 // reports the submit tool of the MCP server named server: ACP's `name`
 // as Claude's adapter fills it (`mcp__<server>__<tool>`). It embeds the

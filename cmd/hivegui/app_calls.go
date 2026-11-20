@@ -153,6 +153,9 @@ type AgentSettings struct {
 	// PiTodoTool has Hive's Pi extension add its hive_todo tool to newly
 	// started Pi sessions, which is where a Pi session's plan comes from.
 	PiTodoTool bool `json:"pi_todo_tool"`
+	// PinTool gives newly started Claude and Pi sessions Hive's pin tool
+	// and asks them to pin important responses (spec 566).
+	PinTool bool `json:"pin_tool"`
 	// LayaEnabled / LayaURL / LayaModel configure the optional Laya
 	// state classifier (spec 458). Read live by the daemon.
 	LayaEnabled bool   `json:"laya_enabled"`
@@ -170,7 +173,7 @@ type AgentSettings struct {
 func (a *App) GetAgentSettings() (AgentSettings, error) {
 	s, err := agent.LoadSettings()
 	return AgentSettings{
-		ClaudeTaskTools: s.ClaudeTaskTools, PiTodoTool: s.PiTodoTool,
+		ClaudeTaskTools: s.ClaudeTaskTools, PiTodoTool: s.PiTodoTool, PinTool: s.PinTool,
 		LayaEnabled: s.LayaEnabled, LayaURL: s.LayaURL, LayaModel: s.LayaModel,
 		ACPModeCeiling: s.ACPModeCeiling,
 	}, err
@@ -182,7 +185,7 @@ func (a *App) GetAgentSettings() (AgentSettings, error) {
 // it was started with.
 func (a *App) SaveAgentSettings(s AgentSettings) error {
 	return agent.SaveSettings(agent.Settings{
-		ClaudeTaskTools: s.ClaudeTaskTools, PiTodoTool: s.PiTodoTool,
+		ClaudeTaskTools: s.ClaudeTaskTools, PiTodoTool: s.PiTodoTool, PinTool: s.PinTool,
 		LayaEnabled: s.LayaEnabled, LayaURL: s.LayaURL, LayaModel: s.LayaModel,
 		ACPModeCeiling: s.ACPModeCeiling,
 	})
@@ -918,6 +921,44 @@ func (a *App) GetActivity(sessionID string) error {
 		return err
 	}
 	return cs.WriteJSON(wire.FrameGetActivity, wire.GetActivityReq{SessionID: sessionID})
+}
+
+// GetPins asks for one session's pin headers (spec 566). They arrive as
+// one or more "pins:page" events, done on the last; after that the
+// "pins:changed" fan-out keeps them current.
+func (a *App) GetPins(sessionID string) error {
+	cs, err := a.requireControl()
+	if err != nil {
+		return err
+	}
+	return cs.WriteJSON(wire.FrameGetPins, wire.GetPinsReq{SessionID: sessionID})
+}
+
+// GetPinBody asks for one pin's body, answered as a "pins:body" event.
+func (a *App) GetPinBody(sessionID, pinID string) error {
+	cs, err := a.requireControl()
+	if err != nil {
+		return err
+	}
+	return cs.WriteJSON(wire.FrameGetPinBody, wire.GetPinBodyReq{SessionID: sessionID, ID: pinID})
+}
+
+// Unpin removes one pin; "pins:changed" reports it to every window.
+func (a *App) Unpin(sessionID, pinID string) error {
+	cs, err := a.requireControl()
+	if err != nil {
+		return err
+	}
+	return cs.WriteJSON(wire.FrameUnpin, wire.UnpinReq{SessionID: sessionID, ID: pinID})
+}
+
+// UnpinAll removes every pin in a session. The GUI confirms first.
+func (a *App) UnpinAll(sessionID string) error {
+	cs, err := a.requireControl()
+	if err != nil {
+		return err
+	}
+	return cs.WriteJSON(wire.FrameUnpinAll, wire.UnpinAllReq{SessionID: sessionID})
 }
 
 // GetAcpTranscript asks for an ACP session's whole transcript. The

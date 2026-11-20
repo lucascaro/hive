@@ -268,7 +268,7 @@ func TestResultSchema_ReachesSubmitServerEnv(t *testing.T) {
 	// The fake logs "mcp <sid> <name> <command> <args…> <env names…>".
 	var line string
 	for _, l := range acptest.Calls(dir) {
-		if strings.HasPrefix(l, "mcp ") {
+		if strings.HasPrefix(l, "mcp ") && strings.Contains(l, " mcp-submit") {
 			line = l
 		}
 	}

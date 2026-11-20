@@ -307,6 +307,17 @@ describe('archiving', () => {
     // id; archive must not swallow it before applyAcpError runs.
     expect(archive.onArchiveError('no_such_session', 'acp1')).toBe(false);
     expect(archive.onArchiveError('session_already_open')).toBe(false);
+    expect(archive.onArchiveError('session_closing')).toBe(false);
+  });
+
+  it('claims session_closing for its own pending unarchive and clears it', () => {
+    archive.unarchiveSession('s1');
+    expect(archive.onArchiveError('session_closing')).toBe(true);
+    expect(String(flashStatus.mock.calls.at(-1)?.[0])).toContain(
+      'still closing',
+    );
+    // Cleared, so the next one is not claimed.
+    expect(archive.onArchiveError('session_closing')).toBe(false);
   });
 
   it('claims no_such_session for its own pending archive only', () => {

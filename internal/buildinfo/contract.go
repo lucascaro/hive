@@ -28,6 +28,11 @@ package buildinfo
 // History (newest first), so a bump is a decision with a record and
 // not just a number going up:
 //
+//	39 — Pinned responses (spec 566). ADD_PIN on a session
+//	    connection; GET_PINS / PINS pages, GET_PIN_BODY / PIN_BODY,
+//	    UNPIN, UNPIN_ALL and the PINS_CHANGED broadcast on a control
+//	    connection; SessionInfo.pin_count. A GUI built against this
+//	    asks an older daemon for pins it cannot answer.
 //	38 — Plugin limits. A plugin socket now refuses, with
 //	    mode_not_allowed, DATA and RESIZE on an attach or create
 //	    connection, ANSWER_PERMISSION, RESOLVE_PLAN_REVIEW,
@@ -326,7 +331,7 @@ package buildinfo
 //	    before this cannot see or clear the flag.
 //	1 — first contract; everything up to and including the
 //	    CLIENT_COMMAND relay.
-const DaemonContract = 38
+const DaemonContract = 39
 
 // Identity is this binary's full build identity. `hived --version
 // --json` prints it, and Welcome carries the same three values, so a

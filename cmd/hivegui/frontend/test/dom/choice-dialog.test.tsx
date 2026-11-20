@@ -73,6 +73,18 @@ afterEach(() => {
 });
 
 describe('rendering', () => {
+  // AGENTS.md: every overlay shows its confirm and cancel keys.
+  it('shows its enter and esc keys', () => {
+    const root = mount();
+    act(() => {
+      void openChoiceDialog(SPEC);
+    });
+    const hints = [...root.querySelectorAll('.hv-dialog__hint')].map(
+      (h) => h.textContent,
+    );
+    expect(hints).toEqual(['[enter] choose', '[esc] cancel']);
+  });
+
   it('is hidden until a question is asked', () => {
     const root = mount();
     expect(root.classList.contains('hidden')).toBe(true);

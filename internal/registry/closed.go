@@ -27,6 +27,10 @@ import (
 // only fires if something upstream reused one.
 var ErrExists = errors.New("registry: session already exists")
 
+// ErrClosing is returned by Restore and Unarchive for a session whose
+// close has not finished tearing down; trying again moments later works.
+var ErrClosing = errors.New("registry: session is still closing")
+
 // Tombstone retention. Both bounds apply and whichever prunes first
 // wins: the count keeps the state dir from growing without limit on a
 // heavy day, the age keeps a week-old close from surfacing as "the
@@ -321,6 +325,11 @@ func discardRecord(dir, id string) {
 	if err := os.Remove(filepath.Join(dir, id+".patch")); err != nil && !os.IsNotExist(err) {
 		log.Printf("registry: could not remove recovery patch %s: %v", id, err)
 	}
+	// The pins went with the record (spec 566); a restore has already
+	// moved them back by the time it discards the record.
+	if err := os.RemoveAll(pinRecordDir(dir, id)); err != nil {
+		log.Printf("registry: could not remove pins of %s: %v", id, err)
+	}
 }
 
 // tombstoneClaimsWorktree reports whether a live tombstone still
@@ -381,6 +390,11 @@ func (r *Registry) reviveRestored(id string, opts session.Options, res RestoreRe
 	return e, res, nil
 }
 
+// testHookRestoreVisible, when set by a test, runs the moment a
+// restored entry is visible to other callers: where a close can first
+// land. Nil outside tests.
+var testHookRestoreVisible func(id string)
+
 // restoreEntry rebuilds the registry entry for a record in dir and
 // drops the record, without spawning anything. check, when non-nil, may
 // add degradations that need the resolved working directory (the
@@ -399,6 +413,10 @@ func (r *Registry) restoreEntry(dir, id string, check func(t Tombstone, cwd stri
 	if _, live := r.entries[id]; live {
 		r.mu.Unlock()
 		return nil, res, ErrExists
+	}
+	if r.closing[id] {
+		r.mu.Unlock()
+		return nil, res, ErrClosing
 	}
 	// Resolve the project now: it may have been killed since the close.
 	projectID := t.Meta.ProjectID
@@ -434,6 +452,9 @@ func (r *Registry) restoreEntry(dir, id string, check func(t Tombstone, cwd stri
 		check(t, cwd, &res)
 	}
 
+	// Locked until finishRestorePins below has moved the files back, so
+	// a pin change cannot land in a directory that is still elsewhere.
+	pins := pinsForRestore(dir, id)
 	e := &Entry{
 		ID: t.Meta.ID, Name: t.Meta.Name, Color: t.Meta.Color,
 		Created:        t.Meta.Created,
@@ -449,12 +470,18 @@ func (r *Registry) restoreEntry(dir, id string, check func(t Tombstone, cwd stri
 		Orchestrator:   t.Meta.Orchestrator,
 	}
 
+	e.pins.Store(pins)
+
 	r.mu.Lock()
 	// Re-check liveness: the worktree work above ran unlocked and can
 	// take seconds, easily long enough for a second undo to land.
 	if _, live := r.entries[id]; live {
 		r.mu.Unlock()
 		return nil, res, ErrExists
+	}
+	if r.closing[id] {
+		r.mu.Unlock()
+		return nil, res, ErrClosing
 	}
 	r.entries[id] = e
 	// Append rather than splice back into the original slot. Every
@@ -471,17 +498,25 @@ func (r *Registry) restoreEntry(dir, id string, check func(t Tombstone, cwd stri
 		return nil, res, fmt.Errorf("restore %s: persist entry: %w", id, perr)
 	}
 	r.persistIndexLoggedLocked("restore")
+	// Still under r.mu: bring the pins back and drop the record before a
+	// close can take the entry. Done after the unlock, a close landing in
+	// between wrote its own tombstone (and moved the pins beside it) and
+	// this discard then deleted both — the close's undo and its pins.
+	// The record goes before the revive too, so a spawn failure can't
+	// leave one that would restore a second copy of a session already
+	// in the map. (pins' mutex is held here, taken before r.mu — the
+	// allowed order; see pins.go.)
+	r.finishRestorePins(pins, dir, id)
+	discardRecord(dir, id)
 	info := e.Info()
 	r.mu.Unlock()
+	if testHookRestoreVisible != nil {
+		testHookRestoreVisible(id)
+	}
 
 	// The entry exists and is visible before the PTY forks, so a client
 	// sees the tile come back immediately rather than after the spawn.
 	r.broadcast(wire.SessionEventAdded, info)
-
-	// The tombstone has done its job. Drop it before the revive so a
-	// spawn failure can't leave a record that would restore a second
-	// copy of a session that is already in the map.
-	discardRecord(dir, id)
 	return e, res, nil
 }
 

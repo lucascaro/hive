@@ -290,13 +290,13 @@ func piExtensionDir(t *testing.T) SpawnInfo {
 func TestPiSpawnEnvExplicitBothWays(t *testing.T) {
 	settingsDir(t, "")
 	sp := piExtensionDir(t)
-	if got := piSpawnEnv(sp); len(got) != 3 || got[0] != PiTodoToolEnv+"=1" {
+	if got := piSpawnEnv(sp); len(got) != 4 || got[0] != PiTodoToolEnv+"=1" {
 		t.Errorf("default env = %v, want [%s=1 ...]", got, PiTodoToolEnv)
 	}
 	if err := SaveSettings(Settings{ClaudeTaskTools: true, PiTodoTool: false}); err != nil {
 		t.Fatalf("save: %v", err)
 	}
-	if got := piSpawnEnv(sp); len(got) != 3 || got[0] != PiTodoToolEnv+"=0" {
+	if got := piSpawnEnv(sp); len(got) != 4 || got[0] != PiTodoToolEnv+"=0" {
 		t.Errorf("env with the setting off = %v, want [%s=0 ...]", got, PiTodoToolEnv)
 	}
 }
@@ -308,7 +308,7 @@ func TestPiSpawnEnvExplicitBothWays(t *testing.T) {
 func TestPiSpawnEnvIgnoresInheritedValue(t *testing.T) {
 	settingsDir(t, "")
 	t.Setenv(PiTodoToolEnv, "0")
-	if got := piSpawnEnv(piExtensionDir(t)); len(got) != 3 || got[0] != PiTodoToolEnv+"=1" {
+	if got := piSpawnEnv(piExtensionDir(t)); len(got) != 4 || got[0] != PiTodoToolEnv+"=1" {
 		t.Errorf("env = %v with an inherited =0 and the setting on, want [%s=1]", got, PiTodoToolEnv)
 	}
 }
@@ -468,16 +468,34 @@ func TestPiSpawnEnvCarriesInbox(t *testing.T) {
 	got := piSpawnEnv(sp)
 	want := PiInboxEnv + "=" + PiInboxPath(sp.SocketPath, sp.SessionID)
 	if runtime.GOOS == "windows" {
-		if len(got) != 3 {
+		if len(got) != 4 {
 			t.Fatalf("env = %v, want no inbox on windows", got)
 		}
 		return
 	}
-	if len(got) != 4 || got[2] != want || got[len(got)-1] != PiHeartbeatEnv+"=1" {
-		t.Fatalf("env = %v, want %q third and the heartbeat last", got, want)
+	if len(got) != 5 || got[3] != want || got[len(got)-1] != PiHeartbeatEnv+"=1" {
+		t.Fatalf("env = %v, want %q fourth and the heartbeat last", got, want)
 	}
 	sp.SocketPath = ""
-	if got := piSpawnEnv(sp); len(got) != 3 {
+	if got := piSpawnEnv(sp); len(got) != 4 {
 		t.Fatalf("env = %v with no socket path, want no inbox variable", got)
+	}
+}
+
+func TestPinToolDefaultOnAndRoundTrip(t *testing.T) {
+	settingsDir(t, "")
+	if s, err := LoadSettings(); err != nil || !s.PinTool {
+		t.Fatalf("default PinTool = %v, %v", s.PinTool, err)
+	}
+	if !DefaultSettings().PinTool {
+		t.Fatal("DefaultSettings().PinTool is off")
+	}
+	s := DefaultSettings()
+	s.PinTool = false
+	if err := SaveSettings(s); err != nil {
+		t.Fatal(err)
+	}
+	if got, err := LoadSettings(); err != nil || got.PinTool {
+		t.Fatalf("after saving off: PinTool = %v, %v", got.PinTool, err)
 	}
 }

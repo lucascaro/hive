@@ -120,6 +120,15 @@ export const Frame = Object.freeze({
   SET_FOCUSED_SESSION: 0x57,
   SET_GLOBAL_HOTKEY: 0x58,
   GLOBAL_HOTKEY: 0x59,
+  ADD_PIN: 0x5a,
+  ADD_PIN_OK: 0x5b,
+  GET_PINS: 0x5c,
+  PINS: 0x5d,
+  GET_PIN_BODY: 0x5e,
+  PIN_BODY: 0x5f,
+  UNPIN: 0x60,
+  UNPIN_ALL: 0x61,
+  PINS_CHANGED: 0x62,
 });
 
 const frameName = new Map(Object.entries(Frame).map(([k, v]) => [v, k]));
@@ -292,6 +301,7 @@ const MAX_PAYLOAD = 1 << 20;
  * @property {number} [plan_total]
  * @property {string} [current_tool]
  * @property {number} [subagents_running]
+ * @property {number} [pin_count]
  * @property {string} [kind] "acp" for an ACP session; absent for a terminal session
  * @property {string} [spawned_by] who created the session: "plugin:<id>", "session:<id>", …; absent = the user
  */

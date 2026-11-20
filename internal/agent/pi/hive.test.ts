@@ -436,7 +436,8 @@ test("tool_execution_end posts tool_end with ok always explicit and no result", 
 
 test("todo tool is registered by default as hive_todo with a plain JSON-Schema", () => {
   for (const value of [undefined, "1", ""]) {
-    withEnv({ HIVE_SESSION_ID: "s1", HIVE_SOCKET: "/tmp/x.sock", HIVE_PI_TODO_TOOL: value }, () => {
+    // HIVE_PIN_TOOL=0 so hive_pin (spec 566) does not count here.
+    withEnv({ HIVE_SESSION_ID: "s1", HIVE_SOCKET: "/tmp/x.sock", HIVE_PI_TODO_TOOL: value, HIVE_PIN_TOOL: "0" }, () => {
       const pi = fakePi();
       mod.default(pi as never);
       assert.equal(pi.tools.length, 1, `HIVE_PI_TODO_TOOL=${value}`);
@@ -511,7 +512,7 @@ test("disabled todo tool registers nothing and posts no plan", unixOnly, async (
       );
     },
     3,
-    { HIVE_PI_TODO_TOOL: "0" },
+    { HIVE_PI_TODO_TOOL: "0", HIVE_PIN_TOOL: "0" },
   );
   assert.deepEqual(tools, []);
   assert.deepEqual(conns.flat().map((e) => e.kind), ["ping", "idle", "tool_end"]);
@@ -1137,7 +1138,7 @@ test("submit_result parameters carry HIVE_SUBMIT_SCHEMA as the schema of data", 
 
 // fakeDaemon answers one session connection: it skips HELLO, records
 // SUBMIT_RESULT's payload, sends an unrelated frame first and then reply.
-async function fakeSubmitDaemon(reply: (conn: net.Socket) => void) {
+async function fakeSubmitDaemon(reply: (conn: net.Socket) => void, reqType = 0x43) {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), "hive-pi-"));
   const sock = path.join(dir, "h.sock");
   const seen: { hello?: any; submit?: any } = {};
@@ -1152,7 +1153,7 @@ async function fakeSubmitDaemon(reply: (conn: net.Socket) => void) {
         const body = JSON.parse(buf.subarray(5, 5 + len).toString("utf8"));
         buf = buf.subarray(5 + len);
         if (type === 0x01) seen.hello = body;
-        if (type === 0x43) {
+        if (type === reqType) {
           seen.submit = body;
           const sessions = Buffer.from('{"sessions":[]}');
           const head = Buffer.alloc(5);
@@ -1199,6 +1200,66 @@ test("submitResult reports the daemon's refusal", unixOnly, async () => {
   const d = await fakeSubmitDaemon((c) => replyFrame(c, 0x06, { code: "submit_rejected", message: "no turn is running" }));
   try {
     assert.deepEqual(await mod.submitResult(d.sock, "s1", "n", { status: "ok" }), { ok: false, error: "no turn is running" });
+  } finally {
+    d.close();
+  }
+});
+
+// --- Pins (spec 566) ---
+
+test("hive_pin is registered by default and not when HIVE_PIN_TOOL=0", () => {
+  for (const [value, want] of [[undefined, true], ["1", true], ["0", false]] as const) {
+    withEnv({ HIVE_SESSION_ID: "s1", HIVE_SOCKET: "/tmp/x.sock", HIVE_PIN_TOOL: value }, () => {
+      const pi = fakePi();
+      mod.default(pi as never);
+      const pin = pi.tools.find((t: any) => t.name === "hive_pin");
+      assert.equal(!!pin, want, `HIVE_PIN_TOOL=${value}`);
+      if (pin) {
+        assert.deepEqual(pin.parameters.required, ["title", "body"]);
+        assert.ok(pin.promptGuidelines?.length, "proactive-pin guidance");
+      }
+    });
+  }
+});
+
+test("hive_pin posts ADD_PIN on a session connection and waits for the ack", unixOnly, async () => {
+  const d = await fakeSubmitDaemon((c) => replyFrame(c, 0x5b, { id: "p1" }), 0x5a);
+  try {
+    let tool: any;
+    withEnv({ HIVE_SESSION_ID: "s1", HIVE_SOCKET: d.sock, HIVE_PIN_TOOL: undefined, HIVE_SESSION_TOKEN: "t0k" }, () => {
+      const pi = fakePi();
+      mod.default(pi as never);
+      tool = pi.tools.find((t: any) => t.name === "hive_pin");
+    });
+    const saved = process.env.HIVE_SESSION_TOKEN;
+    process.env.HIVE_SESSION_TOKEN = "t0k";
+    try {
+      const r = await tool.execute("c1", { title: "Root cause", body: "It was **DNS**." });
+      assert.equal(r.content[0].text, "Pinned.");
+    } finally {
+      if (saved === undefined) delete process.env.HIVE_SESSION_TOKEN;
+      else process.env.HIVE_SESSION_TOKEN = saved;
+    }
+    assert.equal(d.seen.hello.mode, "session");
+    assert.equal(d.seen.hello.session_token, "t0k");
+    assert.deepEqual(d.seen.submit, { title: "Root cause", body: "It was **DNS**." });
+  } finally {
+    d.close();
+  }
+});
+
+test("hive_pin surfaces the daemon's refusal and checks bounds first", unixOnly, async () => {
+  const d = await fakeSubmitDaemon((c) => replyFrame(c, 0x06, { code: "pin_too_long", message: "body is too long" }), 0x5a);
+  try {
+    let tool: any;
+    withEnv({ HIVE_SESSION_ID: "s1", HIVE_SOCKET: d.sock, HIVE_PIN_TOOL: undefined }, () => {
+      const pi = fakePi();
+      mod.default(pi as never);
+      tool = pi.tools.find((t: any) => t.name === "hive_pin");
+    });
+    await assert.rejects(tool.execute("c1", { title: "t", body: "b" }), /Hive did not pin it: body is too long/);
+    await assert.rejects(tool.execute("c2", { title: " ", body: "b" }), /non-empty/);
+    await assert.rejects(tool.execute("c3", { title: "t", body: "x".repeat((64 << 10) + 1) }), /too long/);
   } finally {
     d.close();
   }

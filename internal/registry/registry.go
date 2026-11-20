@@ -22,6 +22,7 @@ import (
 	"slices"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/lucascaro/hive/internal/acp"
@@ -157,6 +158,10 @@ type Entry struct {
 	// acpRes is the typed result of the latest prompt in this
 	// transcript epoch. In-memory, like acpTx. Guarded by r.mu.
 	acpRes acpResult
+	// pins are the responses the agent pinned (spec 566), created on
+	// first use. See pins.go for the locking rules.
+	pins atomic.Pointer[pinSet]
+
 	// switching is set while SetKind moves the entry between ACP and a
 	// terminal: a second switch, and any new ACP turn, is refused with
 	// ErrACPBusy until it ends. In-memory only. Guarded by r.mu.
@@ -391,6 +396,7 @@ func (e *Entry) Info() wire.SessionInfo {
 		CurrentTool:           st.CurrentTool,
 
 		SubagentsRunning: st.SubagentsRunning,
+		PinCount:         e.pinCount(),
 
 		Kind:      e.Kind,
 		SpawnedBy: e.SpawnedBy,
@@ -537,6 +543,15 @@ type Registry struct {
 	activityListeners map[ActivityListener]struct{}
 	// acpListeners receive ACP_TRANSCRIPT messages (spec 496).
 	acpListeners map[AcpListener]struct{}
+	// pinsListeners receive PINS_CHANGED deltas (spec 566).
+	pinsListeners map[PinsListener]struct{}
+	// closing holds the ids kill has taken out of entries but not yet
+	// finished tearing down (PTY, worktree, session directory). A
+	// restore of one of them is refused with ErrClosing until it is
+	// done: landing mid-teardown, it would have its new session
+	// directory — session.json and pins — deleted by the close. Guarded
+	// by r.mu.
+	closing map[string]bool
 
 	// createMu serializes the synchronous prefix of Create (id/color
 	// resolution, name planning, order splicing). The daemon now runs
@@ -1248,6 +1263,8 @@ func Open(stateDir string) (*Registry, error) {
 		ideaListeners:     make(map[IdeaListener]struct{}),
 		activityListeners: make(map[ActivityListener]struct{}),
 		acpListeners:      make(map[AcpListener]struct{}),
+		pinsListeners:     make(map[PinsListener]struct{}),
+		closing:           make(map[string]bool),
 		tickStop:          make(chan struct{}),
 		tickDone:          make(chan struct{}),
 	}
@@ -1445,6 +1462,13 @@ func (r *Registry) load() error {
 			r.order = append(r.order, meta.ID)
 		}
 	}
+	// Pins (spec 566): headers only, before any revive. Then drop pins
+	// left beside a record that no longer exists.
+	for _, e := range r.entries {
+		r.loadPins(e)
+	}
+	sweepOrphanPinRecords(ClosedDir(r.stateDir))
+	sweepOrphanPinRecords(ArchivedDir(r.stateDir))
 	return nil
 }
 
@@ -1828,6 +1852,15 @@ func (r *Registry) KillAndRemoveWorktree(id string, force bool) error {
 	return r.kill(id, force, true, false)
 }
 
+// testHookKillTeardown, when set by a test, runs during kill's
+// teardown, after the entry is gone and before its directory is
+// removed. Nil outside tests.
+var testHookKillTeardown func(id string)
+
+// SetKillTeardownHookForTest sets testHookKillTeardown for another
+// package's tests (the daemon's error-mapping test). Pass nil to clear.
+func SetKillTeardownHookForTest(fn func(id string)) { testHookKillTeardown = fn }
+
 // kill closes a session. archive=true is the Archive path: the durable
 // archive record replaces the tombstone, the worktree is never disposed,
 // tombstone retention is not run, and a failed record write aborts
@@ -1957,6 +1990,7 @@ func (r *Registry) kill(id string, force, removeWorktree, archive bool) error {
 	}
 	e.dropSendStateLocked()
 	delete(r.entries, id)
+	r.closing[id] = true
 	for i, sid := range r.order {
 		if sid == id {
 			r.order = append(r.order[:i], r.order[i+1:]...)
@@ -1992,6 +2026,15 @@ func (r *Registry) kill(id string, force, removeWorktree, archive bool) error {
 	removed := e.Info()
 	r.mu.Unlock()
 
+	// Past the point of no return: the entry is out of r.entries. Stop
+	// every pin change and carry the pins beside the record, before the
+	// session directory they live in is removed below.
+	pinsTo := ClosedDir(r.stateDir)
+	if archive {
+		pinsTo = ArchivedDir(r.stateDir)
+	}
+	r.closePins(e, pinsTo)
+
 	// The entry is already gone from r.entries, so watchACPExit no-ops.
 	if ac != nil {
 		ac.agent.Close()
@@ -2006,7 +2049,15 @@ func (r *Registry) kill(id string, force, removeWorktree, archive bool) error {
 	if wtPath != "" && !worktreeShared && !archive {
 		r.disposeWorktree(id, projectID, projectCwd, wtPath, wtBranch, removeWorktree)
 	}
+	if testHookKillTeardown != nil {
+		testHookKillTeardown(id)
+	}
 	_ = os.RemoveAll(dir)
+	// Only now may the session be reopened: its directory is gone, so a
+	// restore writes a fresh one nothing will delete.
+	r.mu.Lock()
+	delete(r.closing, id)
+	r.mu.Unlock()
 	r.broadcast(wire.SessionEventRemoved, removed)
 	// Re-read the survivors HERE rather than snapshotting them back
 	// under the lock above: the worktree teardown between the two can
@@ -2171,6 +2222,10 @@ func (r *Registry) Close() error {
 	for ch := range r.acpListeners {
 		close(ch)
 	}
+	for ch := range r.pinsListeners {
+		close(ch)
+	}
+	r.pinsListeners = nil
 	r.acpListeners = nil
 	r.listeners = nil
 	r.projectListeners = nil

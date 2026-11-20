@@ -88,3 +88,25 @@ func TestMissingIdentityFailsClosed(t *testing.T) {
 		t.Error("auto-allowed a request that offered no allow option")
 	}
 }
+
+// The pin tool (spec 566) is allowed only on this session's own pin
+// server: the exact name, never another server's "pin".
+func TestPinIdentities(t *testing.T) {
+	allowed := PinIdentities(testServer)
+	for _, tc := range []struct {
+		name string
+		call PermissionToolCall
+		want bool
+	}{
+		{"own pin server", PermissionToolCall{ToolCallID: "a", Name: "mcp__" + testServer + "-pin__pin"}, true},
+		{"other server's pin", PermissionToolCall{ToolCallID: "a", Name: "mcp__hive-ffff-pin__pin"}, false},
+		{"user server named pin", PermissionToolCall{ToolCallID: "a", Name: "mcp__hive-pin__pin"}, false},
+		{"submit server, tool pin", PermissionToolCall{ToolCallID: "a", Name: "mcp__" + testServer + "__pin"}, false},
+		{"title only", PermissionToolCall{ToolCallID: "a", Title: "mcp__" + testServer + "-pin__pin"}, false},
+	} {
+		_, ok := AutoAllowOption(permReq(tc.call), nil, allowed)
+		if ok != tc.want {
+			t.Errorf("%s: allowed=%v, want %v", tc.name, ok, tc.want)
+		}
+	}
+}
