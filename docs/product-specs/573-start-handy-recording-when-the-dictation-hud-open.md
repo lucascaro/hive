@@ -4,12 +4,12 @@ title: Start Handy recording when the dictation HUD opens
 type: enhancement
 complexity: M
 priority: P2
-stage: RESEARCH
+stage: IMPLEMENT
 ---
 
 # Start Handy recording when the dictation HUD opens
 
-- **Exec plan:** —
+- **Exec plan:** [docs/exec-plans/active/573-start-handy-recording-when-the-dictation-hud-open.md](../exec-plans/active/573-start-handy-recording-when-the-dictation-hud-open.md)
 
 ## Problem
 
