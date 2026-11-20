@@ -5,7 +5,7 @@
 //go:build darwin
 
 // Package menubar starts Hive's macOS menu-bar agent when it is not
-// already running.
+// already running, and replaces one left running from a different build.
 //
 // It lives in internal/ rather than in either binary because both need
 // it and neither owns it: hived starts hivebar so the menu bar exists
@@ -18,6 +18,7 @@
 package menubar
 
 import (
+	"bytes"
 	"log"
 	"os"
 	"os/exec"
@@ -25,6 +26,9 @@ import (
 	"strings"
 	"syscall"
 
+	"golang.org/x/sys/unix"
+
+	"github.com/lucascaro/hive/internal/buildinfo"
 	"github.com/lucascaro/hive/internal/registry"
 )
 
@@ -58,16 +62,83 @@ func Spawn() {
 	// status item to a process LaunchServices did not start as a
 	// bundle, so running Contents/MacOS/hivebar directly produces a
 	// silent no-op that looks exactly like a crash.
-	cmd := exec.Command("open", "-a", app)
+	//
+	// Plain `open -a` only activates a hivebar that is already running,
+	// so after an update the old build would keep the menu bar until
+	// logout. A holder of a different build is replaced instead: launch
+	// a new instance that waits for the lock (the `-n … -restart` shape
+	// Restart Menu Bar uses), and only once `open` succeeded, SIGTERM the
+	// old one — the kernel then drops its flock. Killing first would
+	// leave no menu bar at all if the launch failed.
+	lock := filepath.Join(registry.StateDir(), LockFile)
+	stalePid, stale := staleHolder(lock, buildinfo.BuildID())
+	stale = stale && isHivebar(stalePid)
+	cmd := exec.Command("open", openArgs(app, stale)...)
 	cmd.SysProcAttr = &syscall.SysProcAttr{Setsid: true}
 	cmd.Stdin, cmd.Stdout, cmd.Stderr = nil, nil, nil
 	if err := cmd.Start(); err != nil {
 		log.Printf("menubar: start %s: %v", app, err)
 		return
 	}
-	// Reap it: `open` returns immediately, and an unwaited child of a
-	// long-lived daemon is a zombie for the life of the process.
-	go func() { _ = cmd.Wait() }()
+	// Reap it: `open` returns once LaunchServices has the launch, and an
+	// unwaited child of a long-lived daemon is a zombie for the life of
+	// the process. Waiting here, off the caller's path, is also what
+	// tells a stale replacement that the new instance really launched.
+	go func() { afterOpen(cmd.Wait(), stale, stalePid, syscall.Kill) }()
+}
+
+// openArgs is the `open` command line. A replacement needs -n (plain -a
+// only activates the running instance) and RestartFlag (so the new one
+// waits for the old one's lock instead of losing the race).
+func openArgs(app string, replace bool) []string {
+	if replace {
+		return []string{"-n", "-a", app, "--args", RestartFlag}
+	}
+	return []string{"-a", app}
+}
+
+// afterOpen stops the replaced hivebar, and only once `open` succeeded:
+// stopping it after a failed launch would leave no menu bar at all.
+func afterOpen(openErr error, replace bool, pid int, kill func(int, syscall.Signal) error) {
+	if openErr != nil || !replace {
+		return
+	}
+	log.Printf("menubar: replacing hivebar pid %d (different build)", pid)
+	if err := kill(pid, syscall.SIGTERM); err != nil {
+		log.Printf("menubar: stop stale hivebar pid %d: %v", pid, err)
+	}
+}
+
+// staleHolder reports the pid recorded in the lock file when its build
+// is not selfBuild.
+//
+// It does not probe the flock: even a non-blocking shared lock, held for
+// an instant, makes a hivebar starting at that moment lose its claim and
+// exit. Whether the pid is still a live hivebar is isHivebar's call.
+func staleHolder(lockPath, selfBuild string) (pid int, stale bool) {
+	b, err := os.ReadFile(lockPath)
+	if err != nil {
+		return 0, false
+	}
+	pid, build, ok := ParseLockRecord(b)
+	if !ok || build == selfBuild {
+		return 0, false
+	}
+	return pid, true
+}
+
+// isHivebar guards the SIGTERM: the record may be a dead instance's,
+// and its pid recycled. Never signal a process that is not hivebar.
+func isHivebar(pid int) bool {
+	kp, err := unix.SysctlKinfoProc("kern.proc.pid", pid)
+	if err != nil || kp.Proc.P_pid != int32(pid) {
+		return false
+	}
+	comm := kp.Proc.P_comm[:]
+	if i := bytes.IndexByte(comm, 0); i >= 0 {
+		comm = comm[:i]
+	}
+	return string(comm) == "hivebar"
 }
 
 // locate finds hivebar.app.

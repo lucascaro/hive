@@ -7,9 +7,13 @@
 package main
 
 import (
+	"os"
+	"path/filepath"
 	"testing"
 	"time"
 
+	"github.com/lucascaro/hive/internal/buildinfo"
+	"github.com/lucascaro/hive/internal/menubar"
 	"github.com/lucascaro/hive/internal/registry"
 )
 
@@ -81,5 +85,27 @@ func TestClaimSingletonWaitGivesUp(t *testing.T) {
 	}
 	if d := time.Since(start); d < 100*time.Millisecond || d > 2*time.Second {
 		t.Errorf("gave up after %v, want ~100ms", d)
+	}
+}
+
+// menubar.Spawn reads the holder's build id back to replace a menu bar
+// left running from before an update.
+func TestClaimSingletonRecordsBuild(t *testing.T) {
+	t.Setenv("HIVE_STATE_DIR", t.TempDir())
+	if !registry.StateDirOverridden() {
+		t.Fatal("HIVE_STATE_DIR did not take effect")
+	}
+	release, ok := claimSingleton(0)
+	if !ok {
+		t.Fatal("claim failed")
+	}
+	defer release()
+	b, err := os.ReadFile(filepath.Join(registry.StateDir(), menubar.LockFile))
+	if err != nil {
+		t.Fatal(err)
+	}
+	pid, build, ok := menubar.ParseLockRecord(b)
+	if !ok || pid != os.Getpid() || build != buildinfo.BuildID() {
+		t.Fatalf("lock record %q parsed to (%d, %q, %v)", b, pid, build, ok)
 	}
 }
