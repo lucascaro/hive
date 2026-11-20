@@ -188,9 +188,9 @@ func (a *App) installMenu(m *menu.Menu) {
 //
 // Replaces wails runtime.ClipboardSetText, which is broken on Windows:
 // the JS-bridged call runs on a non-STA goroutine, so OpenClipboard
-// silently fails and nothing reaches the clipboard. Reads
-// (ClipboardGetText) work since they don't require clipboard ownership.
-// atotto/clipboard shells out to clip.exe on Windows, sidestepping the
+// silently fails and nothing reaches the clipboard. Reads go through
+// ReadClipboard (clipboard.go), not ClipboardGetText, which on Windows
+// fails whenever the clipboard holds no text. atotto/clipboard shells out to clip.exe on Windows, sidestepping the
 // threading constraint entirely.
 func (a *App) SetClipboardText(s string) error {
 	if err := clipboard.WriteAll(s); err != nil {
