@@ -2611,7 +2611,14 @@ download, the accepted sandbox gap, and `LIST_ACP_AGENTS`.
         `run.events` (reads). Only cancel and retry replace what a read describes,
         so only they are gated.
       - **(b) The orphan scan adopts only a session that was never prompted**
-        (its transcript's `prompt_id` is 0), and kills only such sessions. A
+        (its transcript has `prompt_id` 0 and no user item at all), and kills only
+        such sessions. "Never prompted" really means "not prompted since its agent
+        last started": a session `hived` revived after a restart also has
+        `prompt_id` 0 (the daemon's counters restart with the adapter, and the
+        history is replayed as `replayed` user items). The empty transcript is what
+        tells such a session, which has a conversation, from one a launch made and
+        never prompted; and a turn it had running died with the adapter, so nothing
+        is running on a revived session either. A
         session with a turn is left alone: nothing in a pass knows whose turn is
         running on it, and prompting it is refused as busy and then the node's
         failure force-kills it. B3d step 2 reconciles those. This also settles the
@@ -2621,9 +2628,19 @@ download, the accepted sandbox gap, and `LIST_ACP_AGENTS`.
       - **Removed as redundant after (a) and (b)**: recovery's run-identity and
         row-unchanged checks (`epochOf`, `unchanged`, `replaced`, `gone`), and the
         per-group and per-session replaced-run checks of the orphan removal; the
-        epoch stored with a set-aside orphan (an orphan is never-prompted, so
-        handing it to a retried run's node is harmless; its entries are dropped when
-        the run ends). Kept: the lost-connection checks (a connection can be lost
+        epoch stored with a set-aside orphan. **Corrected in gate round 6:** that
+        was NOT redundant by itself. A run can still END during the scan (a node it
+        fails ends the run), and the scan went on adopting on rows it had read
+        first, so an orphan outlived its run and a later retry took a session the
+        user had since used. What replaced it, and what holds now: the scan re-reads
+        the run's rows at each step and after each read before it adopts or removes
+        (so a run that ended is left alone), `adoptOrphan` does nothing for a run
+        that is gone, the set-aside entry is dropped when its run ends, and
+        `#reuse` reads an adopted session's transcript again before prompting and
+        fails the node, rather than prompting into a conversation or starting
+        beside it, if it has a turn or a user item by then. The earlier doc comment
+        "the rows read here are the run's rows for the whole pass" was false and is
+        replaced. Kept: the lost-connection checks (a connection can be lost
         during any read, and that is not refused), the ended-run skip of the orphan
         scan (a run can fail while its nodes are read), and the idle waiter's
         attempt check (the waiter outlives recovery, when cancel and retry work
@@ -2993,6 +3010,9 @@ what was weighed.
 
 - **2026-11-20 iter 19 (B3c, PR #570)** — verdict: REQUEST_CHANGES (CodeRabbit, 5 threads on 9a0b97cb); mergeable: MERGEABLE; findings_hash: see list; threads_open: 5 -> 0; action: autofix+push; head_sha: 6c140a07. Fixed with tests: a ready node whose leftover session cannot be read fails instead of launching beside it; a session is read again just before its removal and skipped if it now has a turn (narrows the window; closing it is the daemon's, outside B3c); a connection lost while a check is reaped skips the startup agent scan, so the reconnect starts the only watcher; the reap test closes its harness on failure; the plan names the second path to the stale `stop()` and rewrites B3d step 2's example (a run that ends while the connection is down, since cancel is refused then).
 - **2026-11-20 iter 20 (B3c, PR #570)** — verdict: APPROVE (own); mergeable: MERGEABLE; findings_hash: empty; threads_open: 0; action: stop; head_sha: 6c140a07. Code head; the branch head is this docs-only ledger commit, whose CI is the final CI. This stop supersedes iter 18's.
+
+- **2026-11-20 iter 21 (B3c, PR #570)** — verdict: REQUEST_CHANGES (gate round 6 FAIL on 6c140a07: the orphan scan trusted rows after its own `failNode` ended the run); mergeable: MERGEABLE; findings_hash: see list; threads_open: 0 -> 0; action: autofix+push; head_sha: 9abb1f37. Fixed with tests (the gate's probe is a regression test): the scan re-reads the run's rows and stops when it has ended, `adoptOrphan` ignores a run that is gone, and `#reuse` reads an adopted session again before prompting; "never prompted" now means no user item and `prompt_id` 0 (a revived session has `prompt_id` 0 and replayed history); the plan's equivalence claim about the orphan epoch is corrected. Nits: a human answered during a held recovery launches nothing (test), a throwing `reconnect` releases its hold (test), `run.retry` reports `recovering` and not `invalid_ir` when the connection goes during the catalog read (test), the Node 26 job runs bounded and with `HIVE_SIM_REPLY_MS=30`, the per-run row checks that nothing needed were removed. Mutants of the new guards: 6 killed (re-read before prompting, empty-transcript rule, recovering reply, hold released on error, drive held, the ended-run check before a removal); the ended-run checks that each covered another were reduced to that one, and `adoptOrphan`'s live-run check stays as an invariant that `row &&` also implies. Suite: 3 of 3 default and 3 of 3 with the delay.
+- **2026-11-20 iter 22 (B3c, PR #570)** — verdict: APPROVE (own); mergeable: MERGEABLE; findings_hash: empty; threads_open: 0; action: stop; head_sha: 9abb1f37. Code head; the branch head is this docs-only ledger commit, whose CI is the final CI. This stop supersedes iter 20's.
 
 ## Gate verdict
 
