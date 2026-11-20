@@ -22,6 +22,7 @@ Granting "May direct other sessions" now notes that the grant limits only agents
 Confirmation dialogs now show their keys — `[enter]` to choose and `[esc]` to cancel — as every overlay should.
 The menu bar now restarts when Hive starts from a newer build, so it no longer keeps showing the old version until you log out.
 Reopening or unarchiving a session while its close is still finishing is now refused with "still closing; try again" instead of silently losing the reopened session's files and pins.
+Windows: pasting with Ctrl+Shift+V while the clipboard holds an image and no text no longer fails with "paste failed: The operation completed successfully." In Claude Code and Codex sessions Hive now sends the agent its image-paste key (Alt+V), so the agent attaches the image itself; other sessions show "Clipboard holds an image, not text" instead.
 
 ### Security
 Hive's sockets and settings files are now private to your user account, and the dictation HUD marks shell sessions.
