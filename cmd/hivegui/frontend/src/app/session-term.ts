@@ -34,7 +34,7 @@ import {
   KillSession,
   RestartSession,
   SetClipboardText,
-  ClipboardGetText,
+  ReadClipboard,
   OpenURL,
 } from '../bridge.js';
 import {
@@ -69,6 +69,7 @@ import {
   isShiftEnter,
   macForwardKillSeq,
   macLineEditSeq,
+  IMAGE_PASTE_SEQ,
   NEWLINE_SEQ,
 } from '../lib/keymap.js';
 import { DEFAULT_FONT_SIZE, clampFont } from '../lib/font.js';
@@ -685,8 +686,8 @@ export class SessionTerm {
       }
       if (key === 'v') {
         e.preventDefault();
-        ClipboardGetText()
-          .then((text) => {
+        ReadClipboard()
+          .then(({ text, image }) => {
             // term.paste() rather than a raw _writePty: it folds CRLF to
             // CR and applies bracketed-paste framing when the running
             // program asked for it (DECSET 2004). That framing used to
@@ -694,6 +695,7 @@ export class SessionTerm {
             // writing the clipboard raw would make every multi-line
             // paste submit once per line in Claude/Codex.
             if (text) this.term.paste(text);
+            else if (image) this._writePty(IMAGE_PASTE_SEQ);
           })
           .catch(reportFailure('paste'));
         return false;

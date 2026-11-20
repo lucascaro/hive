@@ -26,6 +26,7 @@ import { clearTerms } from '../../src/store/terms.js';
 
 const writes: string[] = [];
 let clipboardText = 'CLIP';
+let clipboardImage = false;
 
 vi.mock('../../src/bridge.js', () => {
   const fn = () => vi.fn(() => Promise.resolve());
@@ -65,7 +66,9 @@ vi.mock('../../src/bridge.js', () => {
     LogFrontend: vi.fn(),
     EventsOn: vi.fn(),
     WindowSetTitle: vi.fn(),
-    ClipboardGetText: vi.fn(() => Promise.resolve(clipboardText)),
+    ReadClipboard: vi.fn(() =>
+      Promise.resolve({ text: clipboardText, image: clipboardImage }),
+    ),
   };
 });
 
@@ -104,6 +107,7 @@ let seq = 0;
 beforeEach(() => {
   writes.length = 0;
   clipboardText = 'CLIP';
+  clipboardImage = false;
   clearTerms();
   store.resetStore();
 });
@@ -117,7 +121,7 @@ function mount() {
   return { st, textarea };
 }
 
-// Let the ClipboardGetText promise chain settle.
+// Let the ReadClipboard promise chain settle.
 const settle = () => new Promise((r) => setTimeout(r, 0));
 
 function ctrlShiftKey(key: string) {
@@ -167,6 +171,26 @@ describe('Ctrl+Shift+V paste', () => {
     textarea.dispatchEvent(ctrlShiftKey('v'));
     await settle();
     expect(writes).toEqual(['\x1b[200~hello\x1b[201~']);
+  });
+
+  // Windows: an image-only clipboard used to fail the read with
+  // "The operation completed successfully." The terminal cannot paste
+  // the image, so it hands the agent its image-paste key (Alt+V).
+  it('forwards Alt+V when the clipboard holds only an image', async () => {
+    clipboardText = '';
+    clipboardImage = true;
+    const { textarea } = mount();
+    textarea.dispatchEvent(ctrlShiftKey('v'));
+    await settle();
+    expect(writes).toEqual(['\x1bv']);
+  });
+
+  it('writes nothing for an empty clipboard', async () => {
+    clipboardText = '';
+    const { textarea } = mount();
+    textarea.dispatchEvent(ctrlShiftKey('v'));
+    await settle();
+    expect(writes).toEqual([]);
   });
 });
 

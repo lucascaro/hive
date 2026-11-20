@@ -63,7 +63,7 @@ vi.mock('../../src/bridge.js', () => {
     RestartDaemon: fn(),
     CheckForUpdate: fn(),
     SetClipboardText: fn(),
-    ClipboardGetText: fn(),
+    ReadClipboard: fn(),
     ResolvePrompt: fn(),
     ResolveWorktreeChoice: fn(),
     StateDirID: fn(),

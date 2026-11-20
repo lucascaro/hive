@@ -662,13 +662,13 @@ export async function SourceRepoStatusFor() {
   return { path: '', detected: false, error: '' };
 }
 
-// Clipboard bindings. main.ts imports ClipboardGetText (runtime) and
+// Clipboard bindings. main.ts imports ReadClipboard and
 // SetClipboardText (App), both aliased to this bridge under
 // VITE_WAILS_REAL=1; without these exports the ESM import throws at
 // module load and the app never boots. In-memory is sufficient here.
 let clipboard = '';
-export async function ClipboardGetText() {
-  return clipboard;
+export async function ReadClipboard() {
+  return { text: clipboard, image: false };
 }
 export async function SetClipboardText(text: unknown) {
   clipboard = String(text ?? '');
