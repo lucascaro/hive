@@ -28,8 +28,10 @@ test('a closed connection is redialled, and the engine reads its running agent a
   second.welcome = { boot_id: 'boot-1' };
   let dialled = 0;
   let gone = 0;
+  let reads = 0; // redialled connections whose nodes have been read
   const engine = await start(conn(hive), {
     dataDir: dir,
+    onReconnected: () => reads++,
     testSeam: true,
     redial: async () => {
       dialled++;
@@ -48,7 +50,7 @@ test('a closed connection is redialled, and the engine reads its running agent a
     });
     await waitFor(() => engine.store.loadRows(id)[0].prompt_id !== undefined, 'the turn to start');
     hive.emit('close', undefined); // the daemon closed us: the fan-out overflowed
-    await waitFor(() => dialled === 1 && !engine.disconnected, 'the redial and the re-read');
+    await waitFor(() => reads === 1, 'the redial and the re-read');
     assert.equal(gone, 0, 'the plugin did not end');
     assert.equal(engine.hive, second, 'the engine speaks on the new connection');
     assert.equal(engine.store.loadRows(id)[0].state, 'running', 'the node did not fail');
@@ -68,8 +70,10 @@ test('when the daemon cannot be reached the plugin ends, as it always did', asyn
   const hive = new FakeHive();
   let dialled = 0;
   let gone = 0;
+  let reads = 0; // redialled connections whose nodes have been read
   const engine = await start(conn(hive), {
     dataDir: dir,
+    onReconnected: () => reads++,
     redial: async () => {
       dialled++;
       throw new Error('connect ENOENT');
@@ -92,7 +96,9 @@ test('without a way to redial a closed connection ends the plugin at once', asyn
   const dir = mkdtempSync(join(tmpdir(), 'wf-redial-'));
   const hive = new FakeHive();
   let gone = 0;
-  const engine = await start(conn(hive), { dataDir: dir, onGone: () => gone++ });
+  let reads = 0; // redialled connections whose nodes have been read
+  const engine = await start(conn(hive), { dataDir: dir,
+    onReconnected: () => reads++, onGone: () => gone++ });
   try {
     hive.emit('close', undefined);
     await waitFor(() => gone === 1, 'the plugin to end');
@@ -124,8 +130,10 @@ test('a close of the redialled connection while its nodes are read is dialled ag
   const sim = simulate(hive, { onPrompt: () => {} });
   const conns: FakeHive[] = [];
   let gone = 0;
+  let reads = 0; // redialled connections whose nodes have been read
   const engine = await start(conn(hive), {
     dataDir: dir,
+    onReconnected: () => reads++,
     testSeam: true,
     redialDelayMs: 1,
     daemonWaitMs: 5_000, // the old engine waited this out and then interrupted the node
@@ -143,7 +151,7 @@ test('a close of the redialled connection while its nodes are read is dialled ag
     const id = engine.startRunFromIR({ project_id: 'p1', file: 'w.ts', ir: IR, input: {} });
     await waitFor(() => engine.store.loadRows(id)[0].prompt_id !== undefined, 'the turn to start');
     hive.emit('close', undefined);
-    await waitFor(() => conns.length === 2 && !engine.disconnected, 'the second redial and its read');
+    await waitFor(() => reads === 1, 'the second redial and its read');
     assert.equal(gone, 0);
     assert.equal(engine.hive, conns[1], 'the engine speaks on the connection that survived');
     const r = engine.store.loadRows(id)[0];
@@ -176,8 +184,10 @@ test('a close during the startup recovery does not fail the node whose turn surv
   closesOnFirstRead(h1); // the daemon closes us while the startup recovery reads it
   let dials = 0;
   let gone = 0;
+  let reads = 0; // redialled connections whose nodes have been read
   const engine = await start(conn(h1), {
     dataDir: dir,
+    onReconnected: () => reads++,
     testSeam: true,
     redialDelayMs: 1,
     onGone: () => gone++,
@@ -191,7 +201,7 @@ test('a close during the startup recovery does not fail the node whose turn surv
     },
   });
   try {
-    await waitFor(() => dials === 1 && !engine.disconnected, 'the redial and the re-read');
+    await waitFor(() => reads === 1, 'the redial and the re-read');
     const r = engine.store.loadRows(id)[0];
     assert.deepEqual([r.state, r.attempt], ['running', 1], `the node did not fail: ${r.error ?? ''}`);
     assert.equal(sim.of('PROMPT_ACP').length, 1, 'no second turn');
@@ -212,8 +222,10 @@ test('connections that keep closing are redialled three times, then the plugin e
   const sim = simulate(hive, { onPrompt: () => {} });
   let dials = 0;
   let gone = 0;
+  let reads = 0; // redialled connections whose nodes have been read
   const engine = await start(conn(hive), {
     dataDir: dir,
+    onReconnected: () => reads++,
     testSeam: true,
     redialDelayMs: 1,
     onGone: () => gone++,
@@ -248,13 +260,15 @@ test('a failure from a launch the connection outlived is refused, whenever it ar
   const h2 = new FakeHive();
   h2.welcome = { boot_id: 'boot-1' };
   sim.attach(h2);
-  const engine = await start(conn(hive), { dataDir: dir, testSeam: true, redial: async () => conn(h2), redialDelayMs: 1 });
+  let reads = 0; // redialled connections whose nodes have been read
+  const engine = await start(conn(hive), { dataDir: dir,
+    onReconnected: () => reads++, testSeam: true, redial: async () => conn(h2), redialDelayMs: 1 });
   try {
     const id = engine.startRunFromIR({ project_id: 'p1', file: 'w.ts', ir: IR, input: {} });
     await waitFor(() => engine.store.loadRows(id)[0].prompt_id !== undefined, 'the turn to start');
     const stale = engine.link;
     hive.emit('close', undefined);
-    await waitFor(() => engine.hive === h2 && !engine.disconnected, 'the reconnect');
+    await waitFor(() => reads === 1, 'the reconnect');
     assert.equal(engine.failNode(id, 'a', 'hive: connection closed', { link: stale }), false, 'the stale launch cannot fail the node a newer launch owns');
     assert.equal(engine.store.loadRows(id)[0].state, 'running');
     assert.equal(engine.failNode(id, 'a', 'a current failure', { link: engine.link }), true);
@@ -271,8 +285,10 @@ test('a connection that dies right after every read is redialled with growing pa
   const sim = simulate(hive, { onPrompt: () => {} });
   const dialled: number[] = [];
   let gone = 0;
+  let reads = 0; // redialled connections whose nodes have been read
   const engine = await start(conn(hive), {
     dataDir: dir,
+    onReconnected: () => reads++,
     testSeam: true,
     redialDelayMs: 4,
     onGone: () => gone++,
@@ -291,7 +307,7 @@ test('a connection that dies right after every read is redialled with growing pa
     for (let i = 0; i < 12 && gone === 0; i++) {
       current.emit('close', undefined);
       // each redial survives its read; the next close comes right after it
-      await waitFor(() => gone === 1 || (engine.hive !== current && !engine.disconnected), 'the redial', 10_000);
+      await waitFor(() => gone === 1 || reads === i + 1, 'the redial and its read', 10_000);
       if (gone === 0) current = engine.hive as unknown as FakeHive;
     }
     assert.equal(gone, 1, 'the plugin gave up');
@@ -312,8 +328,10 @@ test('a connection that stays open clears the streak', async () => {
   const sim = simulate(hive, { onPrompt: () => {} });
   let dials = 0;
   let gone = 0;
+  let reads = 0; // redialled connections whose nodes have been read
   const engine = await start(conn(hive), {
     dataDir: dir,
+    onReconnected: () => reads++,
     testSeam: true,
     redialDelayMs: 1,
     stableMs: 5,
@@ -330,7 +348,7 @@ test('a connection that stays open clears the streak', async () => {
     let current: FakeHive = hive;
     for (let i = 0; i < 14; i++) {
       current.emit('close', undefined);
-      await waitFor(() => engine.hive !== current && !engine.disconnected, 'the redial');
+      await waitFor(() => reads === i + 1, 'the redial and its read');
       current = engine.hive as unknown as FakeHive;
       await new Promise((r) => setTimeout(r, 15)); // long enough to count as stable
     }

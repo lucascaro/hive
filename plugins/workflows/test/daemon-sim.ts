@@ -174,6 +174,7 @@ export function simulate(hive: FakeHive, o: SimOptions): Sim {
     of: (name) => log.filter((r) => r.name === name).map((r) => r.payload),
     attach: (h) => install(h),
   };
+  const replyMs = Number(process.env.HIVE_SIM_REPLY_MS ?? 0) || 0;
   let held = o.holdCreate;
   let nSessions = 0;
   let worktree = 0;
@@ -243,12 +244,15 @@ export function simulate(hive: FakeHive, o: SimOptions): Sim {
       if (o.dropPromptAck?.(turn)) throw hiveError('connection_lost', 'hive: connection closed');
       return { prompt_id: id, epoch: s.epoch };
     };
-    h.onSend.LIST_SESSIONS = () => h.emit('SESSIONS', { sessions: live().map((s) => s.info()) });
-    h.onSend.GET_ACP_TRANSCRIPT = (req) => {
-      const s = live().find((x) => x.id === req.session_id);
-      if (!s) h.emit('ERROR', { code: 'no_such_session', message: 'that session is not open', session_id: req.session_id });
-      else s.snapshot(h); // the reply goes to the connection that asked
-    };
+    // A real daemon answers a read after a moment: HIVE_SIM_REPLY_MS makes every test run against that.
+    const later = (fn: () => void): void => void (replyMs > 0 ? setTimeout(fn, replyMs) : fn());
+    h.onSend.LIST_SESSIONS = () => later(() => h.emit('SESSIONS', { sessions: live().map((s) => s.info()) }));
+    h.onSend.GET_ACP_TRANSCRIPT = (req) =>
+      later(() => {
+        const s = live().find((x) => x.id === req.session_id);
+        if (!s) h.emit('ERROR', { code: 'no_such_session', message: 'that session is not open', session_id: req.session_id });
+        else s.snapshot(h); // the reply goes to the connection that asked
+      });
   }
   install(hive);
   return sim;

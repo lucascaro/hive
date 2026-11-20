@@ -58,7 +58,7 @@ export async function recoverAgents(engine: Engine, runIds: string[]): Promise<v
       }
     }
     if (lost()) return;
-    await settleOrphans(engine, run.id, listed, run.rows, link, lost);
+    await settleOrphans(engine, run.id, listed, link, lost);
   }
 }
 
@@ -168,11 +168,10 @@ function awaitIdleThenInterrupt(engine: Engine, runId: string, row: Row, idle: b
  * adopted (it was never prompted: the first turn follows the ack); anything
  * else is killed, so a node never ends up with two sessions in its worktree.
  */
-async function settleOrphans(engine: Engine, runId: string, listed: Listed[], before: Row[], link: number, lost: () => boolean): Promise<void> {
+async function settleOrphans(engine: Engine, runId: string, listed: Listed[], link: number, lost: () => boolean): Promise<void> {
   const rows = engine.agentRows(runId);
   if (rows.length === 0) return; // the run ended while its nodes were read: its sessions are the run-end cleanup's
-  // A session a node named when recovery began is that node's, even if the node has changed or ended since.
-  const named = new Set([...before, ...rows].map((r) => r.session_id).filter((id): id is string => !!id));
+  const named = new Set(rows.map((r) => r.session_id).filter((id): id is string => !!id));
   const prefix = `${engine.workflowName(runId)} · `;
   const principal = engine.principalOf(runId);
   const byKey = new Map<string, Listed[]>();

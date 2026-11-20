@@ -39,6 +39,8 @@ export interface StartOptions {
   daemonWaitMs?: number;
   /** Pause before the second redial in a row, ms; it doubles with each further one, up to 5 s. */
   redialDelayMs?: number;
+  /** Called each time a redialled connection has been read and the engine is running on it. A test waits on it. */
+  onReconnected?: () => void;
   /** How long a redialled connection must stay open before redials stop counting against the plugin, ms. */
   stableMs?: number;
 }
@@ -102,6 +104,7 @@ export async function start(hive: HiveConnection, opts: StartOptions): Promise<E
             clearTimeout(stable);
             stable = setTimeout(() => (streak = 0), opts.stableMs ?? 30_000);
             stable.unref?.();
+            opts.onReconnected?.();
             return;
           }
           console.error(`workflows: redial ${streak}: the new connection closed while its nodes were read`);

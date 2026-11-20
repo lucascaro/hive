@@ -925,6 +925,56 @@ test('while disconnected nothing new is launched, and a run.cancel still commits
   }
 });
 
+test('a run.cancel while the connection is down reaches no stop of a launch the connection outlived', async () => {
+  const w = world(one());
+  await running(w);
+  const asked = w.hive.requests.length;
+  w.h.engine.disconnect();
+  w.h.engine.cancelRun(w.id); // rt.stops still holds the stale launch's stop
+  await tick();
+  await tick();
+  try {
+    assert.equal(runState(w.h, w.id), 'cancelled');
+    const sent = w.hive.requests.slice(asked).map((r) => r.name);
+    assert.deepEqual(sent, [], 'a stale launch speaks for no one: nothing is cancelled or killed through the lost connection');
+  } finally {
+    w.cleanup();
+  }
+});
+
+test('a launch that settles late does not release the claim of the launch that replaced it', async () => {
+  const gates: (() => void)[] = [];
+  const calls: string[] = [];
+  const agent = async (ctx: { key: string }): Promise<void> => {
+    calls.push(ctx.key);
+    await new Promise<void>((r) => gates.push(r));
+  };
+  const hive = new FakeHive();
+  const dir = mkdtempSync(join(tmpdir(), 'wf-dur-'));
+  const h = harness({ agent: agent as never, check: never }, { dir, hive, daemonWaitMs: 30 });
+  try {
+    const id = h.engine.startRunFromIR({ project_id: 'p1', file: 'w.ts', ir: one(), input: {} });
+    assert.deepEqual(calls, ['a']); // the first launch
+    h.engine.disconnect();
+    const hive2 = new FakeHive();
+    hive2.welcome = { boot_id: 'boot-1' };
+    await h.engine.reconnect(hive2); // its replacement is queued behind it
+    gates[0](); // the first launch settles late
+    await tick();
+    await tick();
+    assert.deepEqual(calls, ['a', 'a'], 'the replacement runs once the first has settled');
+    h.engine.reserveTurn(id, 'a'); // anything that drives the run
+    await tick();
+    gates[1](); // the replacement settles; a launch the scheduler wrongly admitted beside it would run now
+    await new Promise((r) => setTimeout(r, 20));
+    assert.deepEqual(calls.slice(0, 2), ['a', 'a']);
+    assert.equal(calls.length, 2, 'the node was not launched a third time');
+  } finally {
+    h.close();
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
 // ---------------------------------------------------- stale launch ordering
 
 test('a stale launch\'s kill lands before the retried attempt re-attaches the worktree', async () => {
