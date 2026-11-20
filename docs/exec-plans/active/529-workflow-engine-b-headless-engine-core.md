@@ -1408,7 +1408,20 @@ Files: `engine/engine.ts` (the run-end hook), `engine/worktrees.ts`, and
    4. An agent worktree lives as long as its archived session. Deleting the
       archived entry with its worktree (DELETE_ARCHIVED, existing) removes it
       and still refuses a dirty one.
-2. **The fan-out bench and the chatty-fake reconnect test**, as listed under
+2. **Turns of a run cancelled while the daemon connection was down** (found
+   in B3c's review of #570). A stale launch's `stop()` is inert (it must not
+   speak on a connection that replaced the one it started under), so a
+   `run.cancel` that lands while the connection is lost cancels the run in
+   `runs.db` and sends no CANCEL_ACP: the node's turn keeps running in the
+   daemon. B3d reconciles it at run end and after a reconnect: for every node of
+   a `cancelled` or `failed` run whose row names a session, read the session
+   (LIST_SESSIONS) and its transcript; when its turn is still running and the
+   boot id is the row's, send CANCEL_ACP pinned to the row's `prompt_id` and
+   `epoch` (never an unpinned cancel, which could stop later work), then archive
+   the session as in step 1. This is not optional: step 1.1's `archive_busy`
+   retry-then-kept would otherwise leave that turn running with the session
+   archived "kept".
+3. **The fan-out bench and the chatty-fake reconnect test**, as listed under
    Tests.
 
 #### B3 contract delta for C
@@ -2550,6 +2563,24 @@ download, the accepted sandbox gap, and `LIST_ACP_AGENTS`.
       run-end cleanup archives or kills; a durable per-turn cleanup record is a
       design of its own, for B3d. A stale launch must not speak on the new
       connection, which is why `stop()` is inert.
+    - *Gate round 3 (the CI flake and the surviving mutants).* The redial tests
+      waited on `engine.hive` changing and the engine not being disconnected,
+      which `reconnect()` makes true when it takes the connection, before its read
+      has finished: a `close` sent then landed mid-read and was counted as a
+      failed attempt. They wait on `StartOptions.onReconnected` (called when a
+      redialled connection has been read and the engine runs on it), and the sim
+      can delay its replies (`HIVE_SIM_REPLY_MS`), under which the whole suite is
+      run. Added: a store test for the `reprompted` migration (an old `runs.db`,
+      opened twice); a test that a launch settling late does not release its
+      replacement's claim; a test that a `run.cancel` during a disconnect reaches
+      no stale `stop()`. The orphan scan's `before` rows were removed: they only
+      mattered for a run that ended mid-read, which the ended-run skip covers and
+      a test now pins. **Equivalent mutant:** dropping `r.attempt === attempt` in
+      the idle waiter's check. The waiter is for a session whose turn is running.
+      An attempt can change on the same session only through an interrupt and a new
+      prompt, which the daemon refuses while that turn runs (`acp_busy`), and the
+      node then fails (the state check ends the waiter); once the turn ends the
+      waiter has already ended. The check stays as a cheap guard.
     - *The 130 s launch wait* (follow-up 2) is shorter than `#reuse`'s worst-case
       chain (two session settles of 60 s each, a restart of 60 s, a kill and a
       prepare of 120 s). If the wait ends first, the retry's launch goes on beside
@@ -2858,6 +2889,12 @@ what was weighed.
 
 - **2026-11-20 iter 7 (B3c, PR #570)** — verdict: REQUEST_CHANGES (CodeRabbit, 17 threads on e886b6ba); mergeable: MERGEABLE; findings_hash: see list; threads_open: 17 -> 0; action: autofix+push; head_sha: e58b621b. 16 fixed with tests (mutation-checked: 12 mutants, 8 killed; the 4 survivors are two guards that cover each other (queued-launch generation, idle-waiter row check) and two that no unit test can reach (the feed attached early, a late launch's claim release)); 1 declined with reasons (cancel while disconnected is B3d's run-end cleanup). Details under "CodeRabbit round on #570" in the decision log.
 - **2026-11-20 iter 8 (B3c, PR #570)** — verdict: APPROVE (own); mergeable: MERGEABLE; findings_hash: empty; threads_open: 0; action: stop; head_sha: e58b621b. Code head; the branch head is this docs-only ledger commit, whose CI is the final CI. 352 plugin tests pass; `internal/workflowe2e` green. Linux CI on e886b6ba failed once on `TestSessionTokenRefusesForgedPlanReview` (`internal/daemon`, a broken pipe; untouched, passes 15 of 15 locally) and passed on rerun.
+
+- **2026-11-20 iter 9 (B3c, PR #570)** — verdict: REQUEST_CHANGES (gate round 3 FAIL on 5adfdbd0: a racy redial test and surviving mutants); mergeable: MERGEABLE; findings_hash: see list; threads_open: 0 -> 0; action: autofix+push; head_sha: 2bd26012. Fixed:
+  - the "dies right after every read" test (and the other redial tests) waited before the read had finished, so a `close` landed mid-read and used up redial attempts (failed 2 in 10 full-suite runs); they now wait on `onReconnected`, and the suite also passes with the sim's replies delayed 30 ms: 355 tests, 10 of 10 full-suite runs with 0 failures at the default and 10 of 10 with the delay (the old predicate failed 3 of 3 with it); 5 mutants re-run: 4 killed, 1 equivalent;
+  - tests for the surviving mutants: the `reprompted` migration, a late launch's claim release, a stale `stop()` reached by a `run.cancel` during a disconnect, the ended-run orphan skip (the redundant `before` rows were removed); results in the decision log. The idle waiter's attempt check is shown equivalent;
+  - plan: the cancelled-while-disconnected reconciliation is now numbered step 2 of B3d.
+- **2026-11-20 iter 10 (B3c, PR #570)** — verdict: APPROVE (own); mergeable: MERGEABLE; findings_hash: empty; threads_open: 0; action: stop; head_sha: 2bd26012. Code head; the branch head is this docs-only ledger commit, whose CI is the final CI.
 
 ## Gate verdict
 
