@@ -251,7 +251,7 @@ test('request refuses a verb that has no reply carrying a req_id', unixOnly, asy
     if (p.marker) marker();
   });
   try {
-    for (const name of ['LIST_SESSIONS', 'UPDATE_SESSION', 'REMOVE_WORKTREE', 'SET_PLUGIN_ENABLED', 'WAIT_SESSION', 'ACK']) {
+    for (const name of ['LIST_SESSIONS', 'UPDATE_SESSION', 'DELETE_ARCHIVED', 'SET_PLUGIN_ENABLED', 'WAIT_SESSION', 'ACK']) {
       await assert.rejects(d.hive.request(name, {}), (err) => {
         assert.equal(err.hive.code, 'unsupported_request');
         assert.match(err.message, /use send\(\)/);
