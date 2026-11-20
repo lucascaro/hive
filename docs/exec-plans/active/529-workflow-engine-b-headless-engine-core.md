@@ -2782,6 +2782,16 @@ what was weighed.
   - Mutants that still survive, both equivalent: dropping the `#fresh()` guard in `AgentRun.#fail` (M9), or in `run()`'s catch (M16), alone. The other, `#live()` and the engine's `#launch` guard each cover the same stale launch, so only dropping them together would show.
 - **2026-11-19 iter 2 (B3c, PR #570)** — verdict: APPROVE (own); mergeable: MERGEABLE; findings_hash: empty; threads_open: 0; action: stop; head_sha: 34755fbe. Code head; the branch head is this docs-only ledger commit, whose CI is the final CI. 326 plugin tests pass on Node 24 and the Node 26 leg; `internal/workflowe2e` green (12 new durability tests, the crash loop through the Manager's real backoff).
 
+- **2026-11-19 iter 3 (B3c, PR #570)** — verdict: REQUEST_CHANGES (gate round 1 FAIL on 34755fbe); mergeable: MERGEABLE; findings_hash: see list; threads_open: 0 -> 0; action: autofix+push; head_sha: e2fc9f75. Fixed with tests, each mutation-checked (12 mutants of the new guards; 9 killed, 3 equivalent below):
+  - a close of the redialled connection while its nodes were read was ignored (the loop returned early and `reconnect()` cleared its flags): every close of the current connection is now recorded at once, `reconnect()` takes its connection synchronously, a read that finds its connection lost touches no node, and the loop dials again (three attempts per loss, then the plugin ends);
+  - a close during the startup recovery failed a surviving turn: recovery and reconnect are serialised, `drive()` and `resumeAgent` start nothing without a live connection, and a lost connection is no longer read as "the daemon said nothing";
+  - `failNode` takes the connection generation of its caller, so a stale launch cannot fail a node a newer launch owns;
+  - a transcript the daemon trimmed: no turn recorded and turns present but none ours, or the recorded turn's item gone, now interrupts the node (never re-sends, never a third prompt);
+  - SESSIONS answers are correlated to their request (a queue), so a poll after a RESTART ack cannot read an earlier answer;
+  - plan: the Durability table is marked amended, the Branch header lists B3b and B3c, and the 130 s launch-wait analysis is recorded.
+  - Equivalent mutants: dropping `reconnect()`'s final `!this.#alive` check (the launch guard in `drive()` covers it), dropping `resumeAgent`'s alive guard (`recoverRunning` checks the connection first), and the listing slot of an abandoned entry being resolved twice (a promise resolves once).
+- **2026-11-19 iter 4 (B3c, PR #570)** — verdict: APPROVE (own); mergeable: MERGEABLE; findings_hash: empty; threads_open: 0; action: stop; head_sha: e2fc9f75. Code head; the branch head is this docs-only ledger commit, whose CI is the final CI. 336 plugin tests pass; `internal/workflowe2e` green.
+
 ## Gate verdict
 
 <!-- /hs-merge-gate appends one line per run here (append-only). -->
