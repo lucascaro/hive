@@ -726,6 +726,8 @@ test('orphan scan: a stray session of a node that already has its own is removed
   await running(w);
   const own = w.sim.sessions[0];
   const stray = Object.assign(Object.create(Object.getPrototypeOf(own)), own, { id: 'stray', name: 'w · a', spawned_by: `plugin:workflows/workflow:${w.id}` });
+  stray.prompt_id = 0; // never prompted
+  stray.users = [];
   w.sim.sessions.push(stray);
   const w2 = await crash(w);
   try {
@@ -906,42 +908,6 @@ test('reconnect to a restarted daemon: the node is interrupted and retried, like
   }
 });
 
-test('while disconnected nothing new is launched, and a run.cancel still commits', async () => {
-  const w = world(two());
-  await running(w, 'a');
-  w.h.engine.disconnect();
-  // a finishes while the connection is down, which makes b due.
-  w.h.engine.completeNode(w.id, 'a', { summary: 'x' });
-  await tick();
-  await tick();
-  try {
-    assert.equal(w.sim.of('CREATE_SESSION').length, 1, 'b is not launched until the connection is back and the nodes have been read');
-    assert.equal(row(w, 'b').state, 'pending');
-    w.h.engine.cancelRun(w.id);
-    assert.equal(runState(w.h, w.id), 'cancelled');
-    assert.equal(w.h.engine.disconnected, true);
-  } finally {
-    w.cleanup();
-  }
-});
-
-test('a run.cancel while the connection is down reaches no stop of a launch the connection outlived', async () => {
-  const w = world(one());
-  await running(w);
-  const asked = w.hive.requests.length;
-  w.h.engine.disconnect();
-  w.h.engine.cancelRun(w.id); // rt.stops still holds the stale launch's stop
-  await tick();
-  await tick();
-  try {
-    assert.equal(runState(w.h, w.id), 'cancelled');
-    const sent = w.hive.requests.slice(asked).map((r) => r.name);
-    assert.deepEqual(sent, [], 'a stale launch speaks for no one: nothing is cancelled or killed through the lost connection');
-  } finally {
-    w.cleanup();
-  }
-});
-
 test('a launch that settles late does not release the claim of the launch that replaced it', async () => {
   const gates: (() => void)[] = [];
   const calls: string[] = [];
@@ -999,64 +965,6 @@ test('a stale launch\'s kill lands before the retried attempt re-attaches the wo
   }
 });
 
-// ------------------------------------------- a run cancelled and retried while it is read
-
-const par = () =>
-  workflow('w', s.object({}), (g) => {
-    g.agent('a', { agent: 'claude', prompt: 'do a', output: out });
-    g.agent('b', { agent: 'claude', prompt: 'do b', output: out });
-  });
-
-test('a run cancelled and retried while recovery reads a node is not failed by that read, and its old sessions are not adopted', async () => {
-  const hive = new FakeHive();
-  const dir = mkdtempSync(join(tmpdir(), 'wf-dur-'));
-  const sim = simulate(hive, { onPrompt: () => {} });
-  const deps = { cancelGraceMs: 40, readyTimeoutMs: 400, settlePollMs: 5 };
-  const h = harness({ agent: agentExecutor(deps), check: never }, { dir, hive });
-  const id = h.engine.startRunFromIR({ project_id: 'p1', file: 'w.ts', ir: par(), input: {} });
-  await waitFor(() => ['a', 'b'].every((k) => rowOf(h, id, k)?.prompt_id !== undefined), 'both nodes running');
-  const sb = rowOf(h, id, 'b')?.session_id as string;
-  h.engine.disconnect();
-  h.close();
-  const promptsBefore = sim.of('PROMPT_ACP').length; // the original run's own turns
-
-  const hive2 = new FakeHive();
-  hive2.welcome = { boot_id: 'boot-1' };
-  sim.attach(hive2);
-  let release: () => void = () => {};
-  let held = false;
-  const answer = hive2.onSend.GET_ACP_TRANSCRIPT;
-  hive2.onSend.GET_ACP_TRANSCRIPT = (p) => {
-    if (p.session_id === sb) {
-      held = true; // b's read is slow
-      release = () => answer(p);
-    } else answer(p);
-  };
-  const h2 = harness({ agent: agentExecutor(deps), check: never }, { dir, hive: hive2 });
-  try {
-    const rec = h2.engine.recover();
-    await waitFor(() => held, 'b\'s read to be sent');
-    await tick();
-    h2.engine.cancelRun(id); // the user cancels and retries while the read is out
-    await waitFor(() => runState(h2, id) === 'cancelled', 'the cancel');
-    h2.engine.retryRun(id);
-    release();
-    await rec;
-    await new Promise((r) => setTimeout(r, 300));
-    assert.notEqual(runState(h2, id), 'failed', `the retried run was failed by a read of the old one: ${rowOf(h2, id, 'b')?.error ?? ''}`);
-    assert.notEqual(rowOf(h2, id, 'b')?.session_id, sb, 'the retried node did not take over the old node\'s session');
-    assert.deepEqual(
-      sim.of('PROMPT_ACP').slice(promptsBefore).map((p) => p.session_id).filter((sid) => sid === sb),
-      [],
-      'nothing prompted the old session, whose turn is still running',
-    );
-    assert.deepEqual(sim.of('KILL_SESSION').filter((k) => k.session_id === sb), [], 'and nothing killed it: that turn is B3d\'s reconciliation of a run cancelled while the engine was away');
-  } finally {
-    h2.close();
-    rmSync(dir, { recursive: true, force: true });
-  }
-});
-
 test('the orphan removal does not try again once the connection is lost', async () => {
   let cut: () => void = () => {};
   const w = world(one(), { holdCreate: never(), killFails: true, onKill: () => cut() });
@@ -1083,46 +991,198 @@ test('the orphan removal does not try again once the connection is lost', async 
   }
 });
 
-test('a session set aside for a node is not handed to the node of a run that was cancelled and retried since', async () => {
-  const w = world(one());
-  await running(w);
+
+// ------------------------------- cancel and retry are refused while the engine reads the daemon (B-26)
+
+const parAB = () =>
+  workflow('w', s.object({}), (g) => {
+    g.agent('a', { agent: 'claude', prompt: 'do a', output: out });
+    g.agent('b', { agent: 'claude', prompt: 'do b', output: out });
+  });
+
+/** The call is refused with the `recovering` code. */
+const refused = (fn: () => void): void => {
+  let code: unknown;
   try {
-    w.h.engine.adoptOrphan(w.id, 'a', 'sx');
+    fn();
+  } catch (e) {
+    code = (e as { code?: string }).code;
+  }
+  assert.equal(code, 'recovering');
+};
+
+test('run.cancel and run.retry are refused with `recovering` while recovery reads the daemon, and work once it is done', async () => {
+  const hive = new FakeHive();
+  const dir = mkdtempSync(join(tmpdir(), 'wf-dur-'));
+  const sim = simulate(hive, { onPrompt: () => {} });
+  const deps = { cancelGraceMs: 40, readyTimeoutMs: 400, settlePollMs: 5 };
+  const h = harness({ agent: agentExecutor(deps), check: never }, { dir, hive });
+  const id = h.engine.startRunFromIR({ project_id: 'p1', file: 'w.ts', ir: parAB(), input: {} });
+  await waitFor(() => ['a', 'b'].every((k) => rowOf(h, id, k)?.prompt_id !== undefined), 'both nodes running');
+  const sb = rowOf(h, id, 'b')?.session_id as string;
+  h.engine.disconnect();
+  h.close();
+  const promptsBefore = sim.of('PROMPT_ACP').length;
+
+  const hive2 = new FakeHive();
+  hive2.welcome = { boot_id: 'boot-1' };
+  sim.attach(hive2);
+  let release: () => void = () => {};
+  let held = false;
+  const answer = hive2.onSend.GET_ACP_TRANSCRIPT;
+  hive2.onSend.GET_ACP_TRANSCRIPT = (p) => {
+    if (p.session_id === sb) {
+      held = true; // b's read is slow
+      release = () => answer(p);
+    } else answer(p);
+  };
+  const h2 = harness({ agent: agentExecutor(deps), check: never }, { dir, hive: hive2 });
+  try {
+    const rec = h2.engine.recover();
+    // Refused from the moment recover() is called, not from when its pass starts.
+    refused(() => h2.engine.cancelRun(id));
+    await waitFor(() => held, 'b\'s read to be sent');
+    refused(() => h2.engine.cancelRun(id));
+    refused(() => h2.engine.retryRun(id));
+    // And over the wire: the topic answers with the code, so the caller knows to try again.
+    const reply = h2.topics.handle('run.cancel', { nonce: 'n1', run_id: id });
+    assert.deepEqual([reply?.data.ok, (reply?.data.error as { code: string }).code], [false, 'recovering']);
+    release();
+    await rec;
+    assert.equal(runState(h2, id), 'running', 'the refused cancel changed nothing');
+    assert.equal(sim.of('PROMPT_ACP').length, promptsBefore, 'and b\'s turn was watched, not prompted again');
+    h2.engine.cancelRun(id); // recovery is over: it works
+    assert.equal(runState(h2, id), 'cancelled');
+  } finally {
+    h2.close();
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('while disconnected cancel and retry are refused and nothing new is launched; after the reconnect they work', async () => {
+  const w = world(two());
+  await running(w, 'a');
+  w.h.engine.disconnect();
+  // a finishes while the connection is down, which makes b due.
+  w.h.engine.completeNode(w.id, 'a', { summary: 'x' });
+  await tick();
+  await tick();
+  const hive2 = new FakeHive();
+  hive2.welcome = { boot_id: 'boot-1' };
+  w.sim.attach(hive2);
+  try {
+    assert.equal(w.sim.of('CREATE_SESSION').length, 1, 'b is not launched until the connection is back and the nodes have been read');
+    assert.equal(row(w, 'b').state, 'pending');
+    refused(() => w.h.engine.cancelRun(w.id));
+    refused(() => w.h.engine.retryRun(w.id));
+    await w.h.engine.reconnect(hive2);
     w.h.engine.cancelRun(w.id);
-    w.h.engine.retryRun(w.id); // a new in-memory run
-    assert.equal(w.h.engine.takeOrphan(w.id, 'a'), undefined, 'the old run\'s session is not the new run\'s');
-    w.h.engine.adoptOrphan(w.id, 'a', 'sy');
-    assert.equal(w.h.engine.takeOrphan(w.id, 'a'), 'sy', 'one set aside for this run is handed over, once');
-    assert.equal(w.h.engine.takeOrphan(w.id, 'a'), undefined);
+    assert.equal(runState(w.h, w.id), 'cancelled');
   } finally {
     w.cleanup();
   }
 });
 
-test('the orphan removal checks the run before each session, not only before each group', async () => {
-  let swap: () => void = () => {};
-  const w = world(one(), { holdCreate: never(), onKill: () => swap() });
-  await waitFor(() => w.sim.sessions.length === 1, 'the session to be made');
-  const twin = Object.assign(Object.create(Object.getPrototypeOf(w.sim.sessions[0])), w.sim.sessions[0], { id: 'sx' });
-  w.sim.sessions.push(twin);
-  w.h.engine.disconnect();
-  w.h.close();
+test('the refusal cannot stick: a recovery that throws releases it', async () => {
   const hive = new FakeHive();
-  hive.welcome = { boot_id: 'boot-1' };
-  w.sim.attach(hive);
-  const h = harness({ agent: never, check: never }, { dir: w.dir, hive });
-  let swapped = false;
-  swap = () => {
-    if (swapped) return;
-    swapped = true;
-    h.engine.cancelRun(w.id); // the user cancels and retries while the first removal is out
-    h.engine.retryRun(w.id);
-  };
+  const dir = mkdtempSync(join(tmpdir(), 'wf-dur-'));
+  simulate(hive, { onPrompt: () => {} });
+  const h = harness({ agent: never, check: never }, { dir, hive });
   try {
-    await h.engine.recover();
-    assert.equal(w.sim.of('KILL_SESSION').length, 1, 'the second session belongs to the run that was replaced: this pass leaves it');
+    const id = h.engine.startRunFromIR({ project_id: 'p1', file: 'w.ts', ir: one(), input: {} });
+    h.store.activeRuns = () => {
+      throw new Error('the store is unreadable');
+    };
+    await assert.rejects(h.engine.recover(), /unreadable/);
+    h.engine.cancelRun(id); // not refused: the hold was released on the error path
+    assert.equal(runState(h, id), 'cancelled');
   } finally {
     h.close();
-    rmSync(w.dir, { recursive: true, force: true });
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('cancel is refused during the reap of a check, before any agent is read, so the retried run cannot take the old run\'s session', async () => {
+  const { spawn } = await import('node:child_process');
+  const { procStart } = await import('../engine/killtree.ts');
+  const hive = new FakeHive();
+  const dir = mkdtempSync(join(tmpdir(), 'wf-dur-'));
+  const sim = simulate(hive, { onPrompt: () => {} }); // turns never end: the session stays busy
+  const deps = { cancelGraceMs: 40, readyTimeoutMs: 400, settlePollMs: 5 };
+  const beginCheck = (ctx: { engine: { beginNode: (a: string, b: string) => boolean }; run_id: string; key: string }): Promise<void> => (ctx.engine.beginNode(ctx.run_id, ctx.key), never());
+  const ir = workflow('w', s.object({}), (g) => {
+    g.check('c', { argv: ['true'], timeoutSec: 600 });
+    g.agent('a', { agent: 'claude', prompt: 'do a', output: out });
+  });
+  const h = harness({ agent: agentExecutor(deps), check: beginCheck as never }, { dir, hive });
+  const id = h.engine.startRunFromIR({ project_id: 'p1', file: 'w.ts', ir, input: {} });
+  await waitFor(() => rowOf(h, id, 'a')?.prompt_id !== undefined && rowOf(h, id, 'c')?.state === 'running', 'a prompted, c running');
+  const sa = rowOf(h, id, 'a')?.session_id;
+  const child = spawn(process.execPath, ['-e', 'setInterval(()=>{},1000)'], { stdio: 'ignore', detached: true }); // a process of ours for the check's row to name
+  const pid = child.pid as number;
+  try {
+    await new Promise((r) => setTimeout(r, 100));
+    h.store.commit(id, { rows: [{ ...(rowOf(h, id, 'c') as Row), pid, pgid: pid, proc_start: procStart(pid) as string }], events: [] });
+    h.engine.disconnect();
+    h.close();
+    const hive2 = new FakeHive();
+    hive2.welcome = { boot_id: 'boot-1' };
+    sim.attach(hive2);
+    const refusals: unknown[] = [];
+    // The check is reaped through this seam; the user tries to cancel and retry while it is.
+    const kill = (p: number, sig: string | number): void => {
+      try {
+        process.kill(p, sig as never); // the process is the test's own
+      } catch {}
+      for (const f of [() => h2.engine.cancelRun(id), () => h2.engine.retryRun(id)]) {
+        try {
+          f();
+        } catch (e) {
+          refusals.push((e as { code?: string }).code);
+        }
+      }
+    };
+    const h2 = harness({ agent: agentExecutor(deps), check: never }, { dir, hive: hive2, kill: { kill, graceMs: 200 } });
+    const created = sim.of('CREATE_SESSION').length;
+    await h2.engine.recover();
+    await new Promise((r) => setTimeout(r, 200));
+    assert.ok(refusals.length >= 2 && refusals.every((c) => c === 'recovering'), `cancel and retry were refused during the reap: ${JSON.stringify(refusals)}`);
+    assert.equal(rowOf(h2, id, 'a')?.session_id, sa, 'the node still has its own session');
+    assert.equal(sim.of('CREATE_SESSION').length, created, 'nothing was started beside it');
+    assert.deepEqual(sim.of('KILL_SESSION'), []);
+    h2.close();
+  } finally {
+    try {
+      process.kill(-pid, 'SIGKILL');
+    } catch {}
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('a session that was prompted is left alone by the orphan scan: not adopted, not killed', async () => {
+  const w = world(one(), { holdCreate: never() });
+  await waitFor(() => w.sim.sessions.length === 1, 'the session to be made');
+  const old = w.sim.sessions[0];
+  old.begin(`plugin:workflows/workflow:${w.id}`, 'a turn of the cancelled run'); // it has a turn, perhaps still running
+  const w2 = await crash(w);
+  try {
+    await waitFor(() => w2.sim.sessions.length === 2, 'the node to start a session of its own');
+    assert.deepEqual(w2.sim.of('KILL_SESSION'), [], 'not killed under its turn');
+    assert.notEqual(row(w2).session_id, old.id, 'not adopted: the node would prompt a busy session');
+    assert.equal(w2.sim.of('PROMPT_ACP').filter((p) => p.session_id === old.id).length, 0);
+  } finally {
+    w2.cleanup();
+  }
+});
+
+test('a session set aside for a node is forgotten when its run ends', async () => {
+  const w = world(one());
+  await running(w);
+  try {
+    w.h.engine.adoptOrphan(w.id, 'a', 'sx');
+    w.h.engine.cancelRun(w.id);
+    assert.equal(w.h.engine.takeOrphan(w.id, 'a'), undefined, 'nothing of a finished run is kept');
+  } finally {
+    w.cleanup();
   }
 });

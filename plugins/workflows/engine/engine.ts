@@ -150,7 +150,7 @@ export class Engine {
   /** Recovery and reconnect never overlap: a reconnect queued behind the startup recovery waits for it. */
   #chain: Promise<unknown> = Promise.resolve();
   /** Sessions found by recovery that a pending node should take over instead of creating one, by `run/key`. */
-  readonly #orphans = new Map<string, { sid: string; epoch: number | undefined }>();
+  readonly #orphans = new Map<string, string>();
   /** The latest agent launch of each node: a retry waits for the one before it, so a stale launch's kill cannot land after the retry re-attached its worktree. */
   readonly #tails = new Map<string, Promise<unknown>>();
 
@@ -267,7 +267,11 @@ export class Engine {
       // The node is already cancelled; a stop that fails (EPERM) is logged, never thrown into the event loop.
       if (stop) stop().then((res) => res === 'kept' && console.error(`workflows: could not stop ${r.key}: the operating system refused the signal`), (err: Error) => console.error(`workflows: could not stop ${r.key}: ${err.message}`));
     }
-    if (rt.model.state === 'done' || rt.model.state === 'failed' || rt.model.state === 'cancelled') this.#runs.delete(runId);
+    if (rt.model.state === 'done' || rt.model.state === 'failed' || rt.model.state === 'cancelled') {
+      this.#runs.delete(runId);
+      // A session set aside for a node of a run that ended is nobody's: a retry starts from new rows.
+      for (const k of [...this.#orphans.keys()]) if (k.startsWith(`${runId}/`)) this.#orphans.delete(k);
+    }
     return a;
   }
 
@@ -486,13 +490,25 @@ export class Engine {
     this.#after(runId);
   }
 
+  /**
+   * run.cancel and run.retry are refused while the engine reads the daemon (recovery, a reconnect) or has no connection: they replace
+   * what that read describes, and the read decides things about sessions and processes from it. The caller tries again (B-26).
+   */
+  #refuseWhileRecovering(runId: string, what: string): void {
+    if (this.#holds > 0 || !this.#alive) {
+      throw new EngineError('recovering', `the engine is reading the daemon after a restart or a lost connection, so ${what} ${runId} is refused for now; try again in a moment`);
+    }
+  }
+
   cancelRun(runId: string): void {
+    this.#refuseWhileRecovering(runId, 'cancelling');
     const rt = this.#rt(runId);
     if (rt.model.state !== 'running' && rt.model.state !== 'waiting') throw new EngineError('not_running', `run ${runId} is ${rt.model.state}`);
     this.commit(runId, { t: 'run.cancel' });
   }
 
   retryRun(runId: string): void {
+    this.#refuseWhileRecovering(runId, 'retrying');
     const rt = this.#rt(runId);
     if (rt.model.state !== 'failed' && rt.model.state !== 'cancelled') throw new EngineError('not_retryable', `run ${runId} is ${rt.model.state}; only a failed or cancelled run can be retried`);
     const why = this.#stale(this.store.getRun(runId) as RunRow);
@@ -533,7 +549,17 @@ export class Engine {
    * `interrupted` only when it did not.
    */
   recover(): Promise<void> {
-    return this.#serial(() => this.#recover());
+    // Held from this call, not from when the serialised pass starts: a topic arriving in between must already be refused.
+    this.#holds++;
+    return this.#serial(async () => {
+      try {
+        await this.#recover();
+      } finally {
+        this.#holds--; // on every exit: an error or a lost connection must not leave run.cancel and run.retry refused for good
+      }
+      // A connection lost during the read leaves the nodes as they are: the reconnect reads them again.
+      for (const rt of this.#runs.values()) this.drive(rt);
+    });
   }
 
   #serial<T>(fn: () => Promise<T>): Promise<T> {
@@ -543,8 +569,7 @@ export class Engine {
   }
 
   async #recover(): Promise<void> {
-    this.#holds++;
-    try {
+    {
       const loaded: Runtime[] = [];
       for (const run of this.store.activeRuns()) {
         const why = this.#stale(run);
@@ -559,11 +584,7 @@ export class Engine {
         }
       }
       await recoverAgents(this, loaded.map((rt) => rt.id));
-    } finally {
-      this.#holds--;
     }
-    // A connection lost during the read leaves the nodes as they are: the reconnect reads them again.
-    for (const rt of this.#runs.values()) this.drive(rt);
   }
 
   async #recoverCheck(rt: Runtime, r: Row): Promise<void> {
@@ -597,11 +618,6 @@ export class Engine {
     return n?.kind === 'agent' ? n.timeout_s : 0;
   }
 
-  /** Which in-memory run an id names right now: it changes when the run is cancelled and retried, so a read of its rows made earlier no longer describes it. */
-  epochOf(runId: string): number | undefined {
-    return this.#runs.get(runId)?.epoch;
-  }
-
   /** The workflow's name: what its sessions are named after. */
   workflowName(runId: string): string {
     return this.#runs.get(runId)?.model.ix.ir.name ?? '';
@@ -622,15 +638,14 @@ export class Engine {
 
   /** A live session recovery found for a pending node that was being created when the engine stopped: the next launch of that node takes it over. */
   adoptOrphan(runId: string, key: string, sessionId: string): void {
-    this.#orphans.set(`${runId}/${key}`, { sid: sessionId, epoch: this.epochOf(runId) });
+    this.#orphans.set(`${runId}/${key}`, sessionId);
   }
 
   /** The session recovery set aside for `key`, once. */
   takeOrphan(runId: string, key: string): string | undefined {
-    const o = this.#orphans.get(`${runId}/${key}`);
+    const sid = this.#orphans.get(`${runId}/${key}`);
     this.#orphans.delete(`${runId}/${key}`);
-    // Set aside for one in-memory run: a run cancelled and retried since is a new run, and the old one's session is not its node's.
-    return o && o.epoch === this.epochOf(runId) ? o.sid : undefined;
+    return sid;
   }
 
   /** Marks a running or waiting agent node `interrupted`: its turn did not survive, and the reducer retries it. `drive` also starts the retry (for a call made after recovery has finished). */

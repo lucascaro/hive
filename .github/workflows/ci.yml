@@ -432,7 +432,9 @@ jobs:
         # bootstrap step above), and fails when the IR / Mermaid / schema
         # blocks in workflow-engine.md differ from what the plugin builds.
         run: |
-          node --test 'plugins/workflows/**/*.test.ts'
+          node --test --test-timeout=120000 'plugins/workflows/**/*.test.ts'
+          # The same suite against a daemon that answers a read after a moment: a test that only passes when the daemon is instant is racy.
+          HIVE_SIM_REPLY_MS=30 node --test --test-timeout=120000 'plugins/workflows/**/*.test.ts'
           node plugins/workflows/tools/check-doc.ts docs/design-docs/workflow-engine.md
           cmd/hivegui/frontend/node_modules/.bin/tsc -p plugins/workflows/tsconfig.json
 
