@@ -332,11 +332,19 @@ The operator chose these trade-offs in the decision log:
 - **2026-11-20** — Plumbing: generalise GLOBAL_HOTKEY into a dictation-settings payload (chord plus `handy_auto_start`). Each GUI writer sets only its own field. Why: operator chose it over a bool on the hotkey frame (a misleading name and a reconcile-clobber risk), a separate frame (more plumbing), or a state file (breaks spec 553's rule that the menu bar reads nothing from the state dir).
 - **2026-11-20** — Use Handy's CLI flags rather than `SIGUSR2`. Why: the probe proved both flags work on macOS, and `--cancel` has no signal equivalent.
 
+- **2026-11-20** — Dropped the planned "(Handy not running)" suffix on the menu bar's dictation item. Why: hivebar has no menu-open hook, so the label would go stale when Handy starts or quits; the HUD itself falls back to spec 553 behaviour when Handy is not running.
+- **2026-11-20** — A failed Handy start keeps `startedHandy` set, so the close still runs `--cancel`. Why: a stop-toggle queued behind the failed start may have started a recording, and `--cancel` on an idle Handy is a no-op.
+
 ## Progress
 
 - **2026-11-20** — Research done; Handy CLI verified on macOS.
 - **2026-11-20** — Plan approved (chat, after the HTML page timed out unanswered).
+- **2026-11-20** — Implemented; PR #574 opened. Go, vitest (2281), Playwright (599), biome, typecheck, vet and staticcheck on three platforms all green locally.
 
 ## Open questions
 
 - None blocking.
+
+## PR convergence ledger
+
+## Gate verdict
