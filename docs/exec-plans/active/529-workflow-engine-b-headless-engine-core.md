@@ -1408,12 +1408,14 @@ Files: `engine/engine.ts` (the run-end hook), `engine/worktrees.ts`, and
    4. An agent worktree lives as long as its archived session. Deleting the
       archived entry with its worktree (DELETE_ARCHIVED, existing) removes it
       and still refuses a dirty one.
-2. **Turns of a run cancelled while the daemon connection was down** (found
+2. **Turns of a run that ended while the daemon connection was down** (found
    in B3c's review of #570). A stale launch's `stop()` is inert (it must not
-   speak on a connection that replaced the one it started under), so a
-   `run.cancel` that lands while the connection is lost cancels the run in
-   `runs.db` and sends no CANCEL_ACP: the node's turn keeps running in the
-   daemon. B3d reconciles it at run end and after a reconnect: for every node of
+   speak on a connection that replaced the one it started under). `run.cancel`
+   is refused while the connection is down (B-26), but a run can still end then:
+   a local check's failure fails the run, which cancels its live nodes and calls
+   their registered stops, and those are the stale launches' inert ones. The run
+   ends in `runs.db` and sends no CANCEL_ACP: the node's turn keeps running in
+   the daemon. B3d reconciles it at run end and after a reconnect: for every node of
    a `cancelled` or `failed` run whose row names a session, read the session
    (LIST_SESSIONS) and its transcript; when its turn is still running and the
    boot id is the row's, send CANCEL_ACP pinned to the row's `prompt_id` and
@@ -2630,10 +2632,13 @@ download, the accepted sandbox gap, and `LIST_ACP_AGENTS`.
         across a disconnect) pass with the point guards gone, and fail again if the
         refusal is removed (mutants of the refusal, the disconnected case, the
         early hold and the release on error all die). The stale launch's `stop()`
-        guard stays as defence: its only reachable path now is a cancel in the
-        instant between a reconnect finishing and the resumed launch registering its
-        own stop, where the stale stop would cancel the cancelled node's own turn;
-        no unit test can hold that window open, and the guard costs one line.
+        guard stays: it is reachable in two ways, a cancel in the instant between a
+        reconnect finishing and the resumed launch registering its own stop, and a
+        local check that fails while the connection is down (its `failNode` carries
+        no connection generation), which fails the run and calls the registered
+        stops, including the stale agent's. Both leave the node's turn running in
+        the daemon, which is B3d step 2's to cancel, pinned to its turn; the guard
+        keeps the stale launch from speaking on the new connection meanwhile.
       - **CI.** The plugin suite also runs with `HIVE_SIM_REPLY_MS=30` (the sim
         answers reads after 30 ms), on the Node 26 leg, bounded at 120 s per file.
         Gate round 5 found a test that leaked a launch past its cleanup under that
@@ -2985,6 +2990,9 @@ what was weighed.
 
 - **2026-11-20 iter 17 (B3c, PR #570)** — verdict: REQUEST_CHANGES (gate round 5 FAIL on a5b38c4e); mergeable: MERGEABLE; findings_hash: see list; threads_open: 0 -> 0; action: autofix+push; head_sha: 4c64419e. B-26 (user decision): `run.cancel` and `run.retry` are refused with `recovering` while the engine reads the daemon or has no connection (held from the call, released on every exit); the orphan scan adopts and removes only never-prompted sessions (a session with a turn is B3d step 2's); the point guards of rounds 4 and 5 that this made redundant are removed. Both gate probes are regression tests; a test that leaked a launch past its cleanup under `HIVE_SIM_REPLY_MS=30` is gone with the guard it tested; the orphan entry of an ended run is dropped; the suite also runs with the delay in CI. 360 plugin tests: 5 of 5 full-suite runs green by default and 5 of 5 with `HIVE_SIM_REPLY_MS=30`. Mutants of the new guards: 7 killed, 1 equivalent (the stale `stop()` guard, kept as defence; reasoning in the decision log).
 - **2026-11-20 iter 18 (B3c, PR #570)** — verdict: APPROVE (own); mergeable: MERGEABLE; findings_hash: empty; threads_open: 0; action: stop; head_sha: 4c64419e. Code head; the branch head is this docs-only ledger commit, whose CI is the final CI. This stop supersedes iter 16's.
+
+- **2026-11-20 iter 19 (B3c, PR #570)** — verdict: REQUEST_CHANGES (CodeRabbit, 5 threads on 9a0b97cb); mergeable: MERGEABLE; findings_hash: see list; threads_open: 5 -> 0; action: autofix+push; head_sha: 6c140a07. Fixed with tests: a ready node whose leftover session cannot be read fails instead of launching beside it; a session is read again just before its removal and skipped if it now has a turn (narrows the window; closing it is the daemon's, outside B3c); a connection lost while a check is reaped skips the startup agent scan, so the reconnect starts the only watcher; the reap test closes its harness on failure; the plan names the second path to the stale `stop()` and rewrites B3d step 2's example (a run that ends while the connection is down, since cancel is refused then).
+- **2026-11-20 iter 20 (B3c, PR #570)** — verdict: APPROVE (own); mergeable: MERGEABLE; findings_hash: empty; threads_open: 0; action: stop; head_sha: 6c140a07. Code head; the branch head is this docs-only ledger commit, whose CI is the final CI. This stop supersedes iter 18's.
 
 ## Gate verdict
 
