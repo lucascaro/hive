@@ -1418,7 +1418,11 @@ Files: `engine/engine.ts` (the run-end hook), `engine/worktrees.ts`, and
    (LIST_SESSIONS) and its transcript; when its turn is still running and the
    boot id is the row's, send CANCEL_ACP pinned to the row's `prompt_id` and
    `epoch` (never an unpinned cancel, which could stop later work), then archive
-   the session as in step 1. This is not optional: step 1.1's `archive_busy`
+   the session as in step 1. It covers the sessions B3c's orphan scan leaves
+   alone too (B-26): a session of a run's principal that no row names and that
+   has a turn (`prompt_id > 0`) is neither adopted nor killed at recovery, so
+   this step finds it by its principal and name, cancels the running turn
+   pinned to the transcript's own `prompt_id` and `epoch`, and archives it. This is not optional: step 1.1's `archive_busy`
    retry-then-kept would otherwise leave that turn running with the session
    archived "kept".
 3. **The fan-out bench and the chatty-fake reconnect test**, as listed under
@@ -1428,6 +1432,11 @@ Files: `engine/engine.ts` (the run-end hook), `engine/worktrees.ts`, and
 
 - `node.finished` gains `kept_pids?: number[]` (B-23).
 - `run.retry` gains `error.code: "survivors_running"` (B-23).
+- `run.cancel` and `run.retry` gain `error.code: "recovering"` (B-26): the
+  engine refuses them while it reads the daemon after a restart or a reconnect,
+  and while it has no connection to the daemon. Nothing changed; the caller
+  tries again in a moment. C shows it as "the engine is catching up", not as
+  a failure.
 
 Slice C must be told. Nothing else in the plugin Contract changes. The wire
 change is B3-R7's.
@@ -2581,7 +2590,55 @@ download, the accepted sandbox gap, and `LIST_ACP_AGENTS`.
       prompt, which the daemon refuses while that turn runs (`acp_busy`), and the
       node then fails (the state check ends the waiter); once the turn ends the
       waiter has already ended. The check stays as a cheap guard.
-    - *Gate round 4: a run cancelled and retried while recovery reads it.*
+    - **B-26 (user decision, 2026-11-20): recovery's view is not allowed to go
+      stale, instead of being checked at every await.** Rounds 4 and 5 found that
+      recovery read rows (and a check's process) and then acted on them after
+      awaits during which `run.cancel` + `run.retry` could replace the run with a
+      new in-memory one: point guards for one await at a time kept missing the next
+      (the check reap, a reconnect with no race at all). Two rules replace them.
+      - **(a) `run.cancel` and `run.retry` are refused with an `EngineError` of
+        code `recovering` while the engine reads the daemon or has no connection.**
+        The hold is taken when `recover()` or `reconnect()` is called (not when its
+        serialised pass starts), covers the check reap, and is released in a
+        `finally` on every exit, so an error cannot leave it stuck. A lost
+        connection keeps the refusal until a `reconnect` has read its nodes. It is
+        in the topic reply and the Contract for C. Audited for the same exposure:
+        `human.answer` (completes a waiting human node; replaces no run and
+        launches nothing while held), `run.start` / `test.start-run` (make a new
+        run; no recovery read describes it), `run.get`/`run.nodes`/`node.get`/
+        `run.events` (reads). Only cancel and retry replace what a read describes,
+        so only they are gated.
+      - **(b) The orphan scan adopts only a session that was never prompted**
+        (its transcript's `prompt_id` is 0), and kills only such sessions. A
+        session with a turn is left alone: nothing in a pass knows whose turn is
+        running on it, and prompting it is refused as busy and then the node's
+        failure force-kills it. B3d step 2 reconciles those. This also settles the
+        earlier question of an adopted session from a cancelled run being prompted
+        without the interrupted note: an adopted session has never had a turn, so
+        there is no earlier attempt's work to warn about.
+      - **Removed as redundant after (a) and (b)**: recovery's run-identity and
+        row-unchanged checks (`epochOf`, `unchanged`, `replaced`, `gone`), and the
+        per-group and per-session replaced-run checks of the orphan removal; the
+        epoch stored with a set-aside orphan (an orphan is never-prompted, so
+        handing it to a retried run's node is harmless; its entries are dropped when
+        the run ends). Kept: the lost-connection checks (a connection can be lost
+        during any read, and that is not refused), the ended-run skip of the orphan
+        scan (a run can fail while its nodes are read), and the idle waiter's
+        attempt check (the waiter outlives recovery, when cancel and retry work
+        again). Each removal is equivalent now because the probe tests of rounds 4
+        and 5 (cancel and retry during a node read, during the check reap, and
+        across a disconnect) pass with the point guards gone, and fail again if the
+        refusal is removed (mutants of the refusal, the disconnected case, the
+        early hold and the release on error all die). The stale launch's `stop()`
+        guard stays as defence: its only reachable path now is a cancel in the
+        instant between a reconnect finishing and the resumed launch registering its
+        own stop, where the stale stop would cancel the cancelled node's own turn;
+        no unit test can hold that window open, and the guard costs one line.
+      - **CI.** The plugin suite also runs with `HIVE_SIM_REPLY_MS=30` (the sim
+        answers reads after 30 ms), on the Node 26 leg, bounded at 120 s per file.
+        Gate round 5 found a test that leaked a launch past its cleanup under that
+        delay; the suite was run 5 times at each setting.
+    - *Gate round 4: a run cancelled and retried while recovery reads it. (Superseded by B-26 above: the per-await guards this entry describes were removed once cancel and retry were refused during recovery.)*
       `run.cancel` and `run.retry` are not held back during recovery (they are
       user-facing), and a retry makes a new in-memory run with pending rows and no
       session. Recovery used the rows it had read before its awaits, so a read that
@@ -2925,6 +2982,9 @@ what was weighed.
 
 - **2026-11-20 iter 15 (B3c, PR #570)** — verdict: REQUEST_CHANGES (CodeRabbit, 1 thread on 1d2649da); mergeable: MERGEABLE; findings_hash: see list; threads_open: 1 -> 0; action: autofix+push; head_sha: a5b38c4e. Fixed with a test (mutation-checked): the orphan removal checks the run before each session it removes, not only before each group, so a run retried during one removal does not lose a second session of its old run to an obsolete pass.
 - **2026-11-20 iter 16 (B3c, PR #570)** — verdict: APPROVE (own); mergeable: MERGEABLE; findings_hash: empty; threads_open: 0; action: stop; head_sha: a5b38c4e. Code head; the branch head is this docs-only ledger commit, whose CI is the final CI. 359 plugin tests pass. This stop supersedes iter 14's.
+
+- **2026-11-20 iter 17 (B3c, PR #570)** — verdict: REQUEST_CHANGES (gate round 5 FAIL on a5b38c4e); mergeable: MERGEABLE; findings_hash: see list; threads_open: 0 -> 0; action: autofix+push; head_sha: 4c64419e. B-26 (user decision): `run.cancel` and `run.retry` are refused with `recovering` while the engine reads the daemon or has no connection (held from the call, released on every exit); the orphan scan adopts and removes only never-prompted sessions (a session with a turn is B3d step 2's); the point guards of rounds 4 and 5 that this made redundant are removed. Both gate probes are regression tests; a test that leaked a launch past its cleanup under `HIVE_SIM_REPLY_MS=30` is gone with the guard it tested; the orphan entry of an ended run is dropped; the suite also runs with the delay in CI. 360 plugin tests: 5 of 5 full-suite runs green by default and 5 of 5 with `HIVE_SIM_REPLY_MS=30`. Mutants of the new guards: 7 killed, 1 equivalent (the stale `stop()` guard, kept as defence; reasoning in the decision log).
+- **2026-11-20 iter 18 (B3c, PR #570)** — verdict: APPROVE (own); mergeable: MERGEABLE; findings_hash: empty; threads_open: 0; action: stop; head_sha: 4c64419e. Code head; the branch head is this docs-only ledger commit, whose CI is the final CI. This stop supersedes iter 16's.
 
 ## Gate verdict
 
