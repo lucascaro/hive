@@ -527,17 +527,6 @@ func (h *HUD) handyResult(gen int, op string, err error) {
 	h.renderLocked(false, false)
 }
 
-// prepareSend validates a submit and moves to hudSending, returning the
-// send to run, or nil when nothing is to be sent.
-func (h *HUD) prepareSend(text string) func() {
-	h.mu.Lock()
-	defer h.mu.Unlock()
-	if !h.open || h.phase == hudSending || h.phase == hudAwaitingText {
-		return nil
-	}
-	return h.prepareSendLocked(text)
-}
-
 // targetReadyLocked reports that a send to the target could go now,
 // saying why not when it could not.
 func (h *HUD) targetReadyLocked() bool {
@@ -554,6 +543,8 @@ func (h *HUD) targetReadyLocked() bool {
 	return true
 }
 
+// prepareSendLocked validates a send of text and moves to hudSending,
+// returning the send to run, or nil when nothing is to be sent.
 func (h *HUD) prepareSendLocked(text string) func() {
 	if strings.TrimSpace(text) == "" {
 		return nil

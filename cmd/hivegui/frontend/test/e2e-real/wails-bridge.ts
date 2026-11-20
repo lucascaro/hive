@@ -628,6 +628,14 @@ export async function SetGlobalHotkey(
   });
 }
 
+export async function SetHandyAutoStart(on: boolean) {
+  return call('SetHandyAutoStart', { on: !!on });
+}
+// The real daemon runs on a CI box with no Handy to find.
+export async function HandyInstalled() {
+  return false;
+}
+
 export async function SetSessionNotifyWhenIdle(id: string, want: boolean) {
   return call('SetSessionNotifyWhenIdle', { session_id: id, want: !!want });
 }

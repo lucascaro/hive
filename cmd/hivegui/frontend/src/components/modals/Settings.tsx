@@ -35,6 +35,7 @@ import {
   useLayoutEffect,
   useRef,
   useState,
+  useSyncExternalStore,
   type ReactNode,
 } from 'react';
 import {
@@ -43,7 +44,9 @@ import {
   GetUpdateSettings,
   ListAgents,
   ListCustomAgents,
+  HandyInstalled,
   MenuBarLoginItemStatus,
+  SetHandyAutoStart,
   PickDirectory,
   SetMenuBarLoginItem,
   SaveAgentSettings,
@@ -115,6 +118,10 @@ import {
   useAppStore,
 } from '../../store/store.js';
 import { useShortcutLabel } from '../../app/bindings.js';
+import {
+  getHandyAutoStart,
+  subscribeHandyAutoStart,
+} from '../../app/global-hotkey.js';
 import { Button } from '../Button.js';
 import { Tabs } from '../Tabs.js';
 import { Icon } from '../Icon.js';
@@ -282,6 +289,7 @@ function SettingsDialog({ root }: { root: HTMLElement }): ReactNode {
   // Applies on change, like density: it is a view preference, not a draft.
   const gridSelectMode = useAppStore((s) => s.gridSelectMode);
   const projectGridKey = useShortcutLabel('toggle-project-grid');
+  const dictateKey = useShortcutLabel('dictate-hud');
   const [overrides, setOverrides] = useState(() =>
     readOverrides().replace(/\n\s*/g, '\n'),
   );
@@ -325,6 +333,38 @@ function SettingsDialog({ root }: { root: HTMLElement }): ReactNode {
       live = false;
     };
   }, []);
+
+  // Handy auto-start (spec 573). Offered only when Handy is installed and
+  // the daemon has said what the switch is: a daemon too old to carry it
+  // would ignore the write. Re-checked on open, like the login item.
+  const [handyInstalled, setHandyInstalled] = useState(false);
+  const [handyError, setHandyError] = useState('');
+  const handyAutoStart = useSyncExternalStore(
+    subscribeHandyAutoStart,
+    getHandyAutoStart,
+  );
+  useEffect(() => {
+    let live = true;
+    HandyInstalled()
+      .then((yes) => {
+        if (live) setHandyInstalled(yes);
+      })
+      .catch(() => {
+        if (live) setHandyInstalled(false);
+      });
+    return () => {
+      live = false;
+    };
+  }, []);
+
+  async function setHandy(on: boolean) {
+    setHandyError('');
+    try {
+      await SetHandyAutoStart(on);
+    } catch (err) {
+      setHandyError(String(err));
+    }
+  }
 
   async function toggleMenuBarLoginItem() {
     const enable = menuBarStatus !== 'enabled';
@@ -1363,6 +1403,32 @@ function SettingsDialog({ root }: { root: HTMLElement }): ReactNode {
           <p id="settings-menubar-hint" className="settings-hint">
             {menuBarHint}
           </p>
+          {handyInstalled && handyAutoStart !== null ? (
+            <>
+              <label className="settings-check">
+                <input
+                  id="settings-handy-auto-start"
+                  type="checkbox"
+                  checked={handyAutoStart}
+                  aria-describedby="settings-handy-auto-start-hint"
+                  onChange={(e) => setHandy(e.target.checked)}
+                />
+                <span>Start Handy recording when the dictation box opens</span>
+              </label>
+              <p id="settings-handy-auto-start-hint" className="settings-hint">
+                {handyError
+                  ? `Could not change it: ${handyError}`
+                  : 'One key to dictate: ' +
+                    (dictateKey
+                      ? `${dictateKey} `
+                      : 'the dictation shortcut ') +
+                    'opens the box and Handy starts listening. ↩ stops Handy ' +
+                    'and sends the text; esc cancels. Handy must be running. ' +
+                    'If Handy is already recording, the shortcut stops it ' +
+                    'instead.'}
+              </p>
+            </>
+          ) : null}
         </Panel>
       ) : null}
 

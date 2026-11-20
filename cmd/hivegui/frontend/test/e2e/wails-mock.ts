@@ -227,12 +227,16 @@ const state: {
 function broadcast() {
   emit('project:list', JSON.stringify({ projects: state.projects }));
   emit('session:list', JSON.stringify({ sessions: state.sessions }));
-  emit('hotkey:global', JSON.stringify(globalHotkey));
+  emit('dictation:settings', JSON.stringify(dictation));
 }
 
-// The daemon's copy of the dictation HUD chord (spec 553): ⌃⌥Space until
-// SetGlobalHotkey changes it, broadcast like GLOBAL_HOTKEY.
-let globalHotkey = { key_code: 49, modifiers: 0x1800, enabled: true };
+// The daemon's copy of the dictation HUD settings (specs 553, 573):
+// ⌃⌥Space and Handy auto-start off until SetGlobalHotkey or
+// SetHandyAutoStart changes them, broadcast like DICTATION.
+let dictation = {
+  hotkey: { key_code: 49, modifiers: 0x1800, enabled: true },
+  handy_auto_start: false,
+};
 
 // Wails control bindings — frontend imports these from
 // ../wailsjs/go/main/App.
@@ -1827,8 +1831,8 @@ export async function SendToSession(id: string, text: string, queue: boolean) {
   return '';
 }
 
-// Spec 553. Recorded for the specs; the hotkey is echoed back as the
-// daemon's GLOBAL_HOTKEY broadcast when it changed.
+// Specs 553, 573. Recorded for the specs; a change is echoed back as the
+// daemon's DICTATION broadcast, which carries every setting.
 export async function ReportFocusedSession(id: string) {
   bridgeCalls.push({ method: 'ReportFocusedSession', args: [id] });
   return '';
@@ -1845,11 +1849,25 @@ export async function SetGlobalHotkey(
   const next = enabled
     ? { key_code: keyCode, modifiers, enabled }
     : { key_code: 0, modifiers: 0, enabled: false };
-  if (JSON.stringify(next) !== JSON.stringify(globalHotkey)) {
-    globalHotkey = next;
-    emit('hotkey:global', JSON.stringify(globalHotkey));
+  if (JSON.stringify(next) !== JSON.stringify(dictation.hotkey)) {
+    dictation = { ...dictation, hotkey: next };
+    emit('dictation:settings', JSON.stringify(dictation));
   }
   return '';
+}
+export async function SetHandyAutoStart(on: boolean) {
+  maybeFail('SetHandyAutoStart');
+  bridgeCalls.push({ method: 'SetHandyAutoStart', args: [on] });
+  if (dictation.handy_auto_start !== on) {
+    dictation = { ...dictation, handy_auto_start: on };
+    emit('dictation:settings', JSON.stringify(dictation));
+  }
+  return '';
+}
+// Whether Handy is installed is a file check on the Mac. ?handy=1 says
+// it is; the default is the common case, not installed.
+export async function HandyInstalled() {
+  return new URLSearchParams(window.location.search).get('handy') === '1';
 }
 
 export async function SetSessionNotifyWhenIdle(id: string, want: boolean) {

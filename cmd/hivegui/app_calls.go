@@ -1042,13 +1042,25 @@ func (a *App) ReportFocusedSession(sessionID string) error {
 // SetGlobalHotkey stores the capture-HUD chord with the daemon (spec
 // 553), as a macOS virtual key code and Carbon modifier mask. The
 // frontend converts the user's keymap chord; the daemon answers with a
-// GLOBAL_HOTKEY broadcast ("hotkey:global") when it changed.
+// DICTATION broadcast ("dictation:settings") when it changed. Only the
+// chord is sent, so the Handy switch is left as it is.
 func (a *App) SetGlobalHotkey(keyCode, modifiers uint32, enabled bool) error {
+	h := wire.GlobalHotkey{KeyCode: keyCode, Modifiers: modifiers, Enabled: enabled}
+	return a.setDictation(wire.SetDictationReq{Hotkey: &h})
+}
+
+// SetHandyAutoStart switches whether opening the capture HUD starts
+// Handy recording (spec 573). Only the switch is sent.
+func (a *App) SetHandyAutoStart(on bool) error {
+	return a.setDictation(wire.SetDictationReq{HandyAutoStart: &on})
+}
+
+func (a *App) setDictation(req wire.SetDictationReq) error {
 	cs, err := a.requireControl()
 	if err != nil {
 		return err
 	}
-	return cs.WriteJSON(wire.FrameSetGlobalHotkey, wire.GlobalHotkey{KeyCode: keyCode, Modifiers: modifiers, Enabled: enabled})
+	return cs.WriteJSON(wire.FrameSetDictation, req)
 }
 
 // SetSessionNotifyWhenIdle arms or disarms the one-shot "ping me when

@@ -26,7 +26,7 @@ import (
 // behave differently under back-pressure is one more thing to hold in
 // your head when a client goes quiet.
 //
-// The same stateless fan-out also carries GLOBAL_HOTKEY (spec 553), so
+// The same stateless fan-out also carries DICTATION (spec 573), so
 // it is generic over the payload; describe names a dropped value in the
 // slow-listener log line.
 type hub[T any] struct {

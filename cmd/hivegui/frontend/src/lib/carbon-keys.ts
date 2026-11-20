@@ -159,7 +159,7 @@ export function carbonHotkey(chord: string): CarbonHotkey | null {
   return { keyCode, modifiers };
 }
 
-/** The wire's GlobalHotkey (GLOBAL_HOTKEY / SET_GLOBAL_HOTKEY). */
+/** The wire's GlobalHotkey: the chord in DICTATION / SET_DICTATION. */
 export interface WireHotkey {
   key_code: number;
   modifiers: number;
