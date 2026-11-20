@@ -1,10 +1,11 @@
 ---
 issue: 566
+pr: 568
 title: Pin important agent responses to the session's inspector panel
 type: enhancement
 complexity: L
 priority: P2
-stage: IMPLEMENT
+stage: REVIEW
 ---
 
 # Pin important agent responses to the session's inspector panel

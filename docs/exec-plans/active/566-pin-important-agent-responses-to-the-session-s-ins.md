@@ -3,6 +3,8 @@
 - **Spec:** [docs/product-specs/566-pin-important-agent-responses-to-the-session-s-ins.md](../../product-specs/566-pin-important-agent-responses-to-the-session-s-ins.md)
 - **Issue:** #566
 - **Status:** active
+- **PR:** [#568](https://github.com/lucascaro/hive/pull/568)
+- **Branch:** feature/566-pinned-responses
 
 ## Summary
 
@@ -429,6 +431,8 @@ The GUI reads `pin_count` from `SessionInfo` for the sidebar badge. Pin headers 
 - `scripts/check-daemon-contract.sh origin/main HEAD && scripts/check-changeset.sh`
 - `HIVE_PROBE_CLAUDE=1 go test ./cmd/hived -run TestProbeClaudePinsViaMCP`: the required manual gate. Its result goes in the decision log.
 - The mutation checks listed under Tests: apply each one, confirm the named test goes red, then revert by re-applying the staged fix. Never use `git checkout --` on a file with uncommitted work.
+
+- **2026-11-19** — PR #568 opened.
 
 ## Open questions / risks
 
