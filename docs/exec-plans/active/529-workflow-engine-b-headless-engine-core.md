@@ -2729,6 +2729,16 @@ what was weighed.
 - **2026-11-16 iter 2 (B3b, PR #555)** — verdict: COMMENT; mergeable: MERGEABLE; findings_hash: see list; threads_open: 1 -> 0; action: autofix+push; head_sha: b290b9bd. One CodeRabbit thread on 68e2b60d (the cancel test raced the agent's file write); the test now waits for it. All CI green on 68e2b60d.
 - **2026-11-16 iter 3 (B3b, PR #555)** — verdict: APPROVE; mergeable: MERGEABLE; findings_hash: empty; threads_open: 0; action: stop; head_sha: b290b9bd. Code head; the branch head is this docs-only ledger commit, whose CI is the final CI. 291 plugin tests pass; Go e2e green.
 
+- **2026-11-19 iter 1 (B3c, PR #570)** — verdict: REQUEST_CHANGES (own review plus an advisor pass before the first push; no bot review had landed: CodeRabbit skipped the PR); mergeable: MERGEABLE; findings_hash: see list; threads_open: 0 -> 0; action: autofix+push; head_sha: 34755fbe. Fixed with tests, each mutation-checked (16 mutants of the recovery, adoption and stale-launch guards; 8 survived the first suite and the fixes below kill 6 of them):
+  - a stray unreferenced session of a node that already has its own was not covered (mutant M7, adopting regardless of the row): added a test that it is killed and the row keeps its own;
+  - the boot-id guard and the epoch guard hid behind each other (M1, M2): added a test where only the boot differs (the transcript carries the row's exact epoch and prompt id) and one where only the epoch differs (a restarted session, same daemon, a turn with the same id);
+  - the attempt's prompt-id reset (M10) and the paused-launch guard (M13) had no test: added a lost ack on a retried attempt, and a launch attempted while disconnected;
+  - a test named for what it did not assert (a finished run's sessions) was renamed; the daemon-silent test left a 15 s timer on a closed store, so the listing wait is injectable (`daemonWaitMs`);
+  - `listSessions` and `fetchTranscript` threw when the socket was already closed: they now answer "no word", and recovery interrupts the running nodes;
+  - the crash-loop test finished its agent early (the fake gives up on a held turn at 30 s, shorter than the loop): `acptest.FlagGateLong` holds the turn through all six kills, and the node is asserted running at attempt 1 when the plugin comes back.
+  - Mutants that still survive, both equivalent: dropping the `#fresh()` guard in `AgentRun.#fail` (M9), or in `run()`'s catch (M16), alone. The other, `#live()` and the engine's `#launch` guard each cover the same stale launch, so only dropping them together would show.
+- **2026-11-19 iter 2 (B3c, PR #570)** — verdict: APPROVE (own); mergeable: MERGEABLE; findings_hash: empty; threads_open: 0; action: stop; head_sha: 34755fbe. Code head; the branch head is this docs-only ledger commit, whose CI is the final CI. 326 plugin tests pass on Node 24 and the Node 26 leg; `internal/workflowe2e` green (12 new durability tests, the crash loop through the Manager's real backoff).
+
 ## Gate verdict
 
 <!-- /hs-merge-gate appends one line per run here (append-only). -->
