@@ -16,6 +16,9 @@ Go to session (⌘P) now lists sessions that are waiting on you — for input, a
 The sidebar now follows the active session. However you switch (⌘B, ⌘↑/⌘↓, the session finder, going back, clicking a grid tile, or a session that just started), its row scrolls into view, and a collapsed project or worktree group shows that one row without expanding. Clicking a row that is already visible never moves the list.
 Granting "May direct other sessions" now notes that the grant limits only agents that use Hive's messaging, since any agent with a shell can reach Hive directly; SECURITY.md gains a Trust model section explaining what that means and how to run untrusted agents safely.
 
+### Fixed
+The menu bar now restarts when Hive starts from a newer build, so it no longer keeps showing the old version until you log out.
+
 ### Security
 Hive's sockets and settings files are now private to your user account, and the dictation HUD marks shell sessions.
 Plugins can no longer type into sessions, answer agents' permission prompts, approve plans, answer worktree-setup questions, stop Hive, or install, enable, remove or reconfigure other plugins, and they can only prompt agents they started themselves.
