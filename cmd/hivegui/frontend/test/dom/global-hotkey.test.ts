@@ -43,9 +43,9 @@ const {
 
 const DEFAULT = { key_code: 49, modifiers: 0x1800, enabled: true };
 const deliver = (h: object, handy = false) =>
-  handlers
-    .get('dictation:settings')
-    ?.(JSON.stringify({ hotkey: h, handy_auto_start: handy }));
+  handlers.get('dictation:settings')?.(
+    JSON.stringify({ hotkey: h, handy_auto_start: handy }),
+  );
 
 beforeEach(() => {
   _resetGlobalHotkeyForTest();
