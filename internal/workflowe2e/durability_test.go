@@ -198,6 +198,13 @@ func TestDurability_PluginCrash_TurnStillRunning_Continues(t *testing.T) {
 	if n := len(fakeCalls(dir, "session/prompt")); n != 1 {
 		t.Errorf("%d prompts, want 1", n)
 	}
+	// The interim hazard B3b left: a recovered node must not start a second session in its worktree.
+	if n := len(fakeCalls(dir, "session/new")); n != 1 {
+		t.Errorf("%d sessions made, want 1", n)
+	}
+	if n := f.sessionsNamed("a"); n != 1 {
+		t.Errorf("%d sessions for node a, want 1", n)
+	}
 }
 
 // ---------------------------------------------------------------- hived restart
@@ -457,25 +464,20 @@ func TestDurability_LostPromptAck_AdoptsTranscriptTurn(t *testing.T) {
 }
 
 // The Manager marks a plugin that exits more than five times in a minute `failed` and stops restarting it. A run
-// in progress stays in runs.db, and enabling the plugin again picks it up where it was.
-//
-// The fake gives up on a held turn after 30 s and the loop takes longer than that through the Manager's real backoff,
-// so the agent finishes early in the loop. A human node after it keeps the run open to the end.
+// in progress stays in runs.db, and enabling the plugin again picks it up where it was: the agent's turn, held through
+// every kill, is still running at attempt 1 when the engine comes back.
 func TestDurability_CrashLoopFailedThenRestart_RunsResume(t *testing.T) {
 	if testing.Short() {
-		t.Skip("kills the plugin six times through the Manager's real backoff (about 40 s)")
+		t.Skip("kills the plugin six times through the Manager's real backoff (about 32 s)")
 	}
-	f, dir := newAgentFixture(t, acptest.FlagGate)
+	// The loop outlasts the fake's default 30 s hold on a turn.
+	f, dir := newAgentFixture(t, acptest.FlagGate, acptest.FlagGateLong)
 	pid, _ := f.project()
-	run := f.startRun(pid, ir("loop", []any{agentNode("a", "do it", nil), human("gate", "Go on?")}, edge("a", "gate")))
+	run := f.startRun(pid, oneAgent("loop"))
 	f.waitGate(dir)
 
 	for i := 0; i < 6; i++ {
 		f.killPlugin()
-		if i == 0 {
-			f.submitFor("a", "during the loop")
-			releaseTurn(dir)
-		}
 		if i < 5 {
 			f.waitReady()
 		}
@@ -489,15 +491,20 @@ func TestDurability_CrashLoopFailedThenRestart_RunsResume(t *testing.T) {
 		return false
 	})
 
-	// Failed is not the end: the run is still open, and enabling the plugin brings the engine back to it.
 	f.setEnabled(true)
-	f.waitNode(run, "gate", "waiting", wait)
-	if state, attempt := f.nodeState(run, "a"); state != "done" || attempt != 1 {
-		t.Fatalf("node a = %s attempt %d after the loop, want done attempt 1", state, attempt)
+	if state, attempt := f.nodeState(run, "a"); state != "running" || attempt != 1 {
+		t.Fatalf("node a = %s attempt %d after the loop, want it still running attempt 1", state, attempt)
 	}
-	f.ok("human.answer", map[string]any{"run_id": run, "key": "gate", "answer": map[string]any{"yes": true}})
+	f.submitFor("a", "after the loop")
+	releaseTurn(dir)
 	f.waitRun(run, "done", wait)
+	if state, attempt := f.nodeState(run, "a"); state != "done" || attempt != 1 {
+		t.Errorf("node a = %s attempt %d, want done attempt 1", state, attempt)
+	}
 	if n := len(fakeCalls(dir, "session/prompt")); n != 1 {
 		t.Errorf("%d prompts, want 1 (calls %v; turns %q)", n, acptest.Calls(dir), userTurns(t, dir))
+	}
+	if n := len(fakeCalls(dir, "session/new")); n != 1 {
+		t.Errorf("%d sessions made, want 1", n)
 	}
 }

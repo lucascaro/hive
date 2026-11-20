@@ -92,6 +92,10 @@ const (
 	// single release file, it is not sticky: the next turn waits again. A
 	// cancel ends the wait.
 	FlagGate = "gate"
+	// FlagGateLong makes a gated turn wait up to 5 minutes for its .go file
+	// instead of 30 s, for a test that holds a turn through a long outage
+	// (the plugin's crash loop takes about 32 s).
+	FlagGateLong = "gate-long"
 	// FlagSlowCancel makes a cancelled prompt wait until
 	// <dir>/release-cancel exists before it replies, so a test can act
 	// between "cancel was sent" and "the turn is over".
@@ -537,7 +541,11 @@ func (f *fake) handle(id json.RawMessage, method string, params json.RawMessage)
 			base := filepath.Join(f.dir, fmt.Sprintf("turn-%s-%d", p.SessionID, f.gates[p.SessionID]))
 			f.mu.Unlock()
 			_ = os.WriteFile(base+".waiting", nil, 0o600)
-			for deadline := time.Now().Add(30 * time.Second); time.Now().Before(deadline) && !f.cancelled(p.SessionID); time.Sleep(10 * time.Millisecond) {
+			hold := 30 * time.Second
+			if f.flags[FlagGateLong] {
+				hold = 5 * time.Minute
+			}
+			for deadline := time.Now().Add(hold); time.Now().Before(deadline) && !f.cancelled(p.SessionID); time.Sleep(10 * time.Millisecond) {
 				if _, err := os.Stat(base + ".go"); err == nil {
 					break
 				}

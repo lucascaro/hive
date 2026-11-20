@@ -483,12 +483,13 @@ test('a daemon that does not list its sessions: running nodes are interrupted, n
   const hive = new FakeHive();
   w.sim.attach(hive);
   hive.onSend.LIST_SESSIONS = () => {}; // never answers
-  const h = harness({ agent: never, check: never }, { dir: w.dir, hive });
+  const h = harness({ agent: never, check: never }, { dir: w.dir, hive, daemonWaitMs: 30 });
   try {
-    // The listing wait is long in production; here the engine would stall, so this only proves the guard exists: it times out into 'interrupted'.
-    const t = h.engine.recover();
-    await Promise.race([t, new Promise((r) => setTimeout(r, 200))]);
-    assert.equal(h.engine.agentRows(w.id)[0].state, 'running', 'still waiting for the daemon, not guessing');
+    await h.engine.recover();
+    const r = rowOf(h, w.id, 'a');
+    assert.equal(r?.state, 'interrupted', 'no word from the daemon: the turn is not assumed to have survived');
+    assert.equal(r?.attempt, 1);
+    assert.equal(w.sim.of('PROMPT_ACP').length, 1, 'and nothing was sent');
   } finally {
     h.close();
     rmSync(w.dir, { recursive: true, force: true });
@@ -523,8 +524,6 @@ test('orphan adoption: two candidates are both removed and the node starts a fre
   const w = creating();
   await waitFor(() => w.sim.sessions.length === 1, 'the session to be made');
   // Another launch of the same node made a second one (a retry that overlapped).
-  const hive2 = new FakeHive();
-  void hive2;
   const extra = w.sim.sessions[0];
   const twin = Object.assign(Object.create(Object.getPrototypeOf(extra)), extra, { id: 'sx' });
   w.sim.sessions.push(twin);
@@ -570,7 +569,25 @@ test('orphan scan: only this run\'s unreferenced sessions are touched', async ()
   }
 });
 
-test('orphan scan: a session no node owns any more (its node already finished) is removed', async () => {
+test('orphan scan: a stray session of a node that already has its own is removed, and the node keeps its own', async () => {
+  const w = world(one());
+  await running(w);
+  const own = w.sim.sessions[0];
+  const stray = Object.assign(Object.create(Object.getPrototypeOf(own)), own, { id: 'stray', name: 'w · a', spawned_by: `plugin:workflows/workflow:${w.id}` });
+  w.sim.sessions.push(stray);
+  const w2 = await crash(w);
+  try {
+    await tick();
+    assert.deepEqual(w2.sim.of('KILL_SESSION').map((k) => k.session_id), ['stray'], 'the stray is removed: a node never has two sessions in its worktree');
+    assert.equal(row(w2).session_id, own.id, 'the node keeps its own');
+    assert.equal(row(w2).state, 'running');
+    assert.equal(w2.sim.of('PROMPT_ACP').length, 1);
+  } finally {
+    w2.cleanup();
+  }
+});
+
+test('orphan scan: a finished run is not active, so its leftover sessions are left to the run-end cleanup (B3d), not recovery', async () => {
   const w = world(one(), { onPrompt: (_t, _x, sess) => finish(sess) });
   await done(w);
   const stray = Object.assign(Object.create(Object.getPrototypeOf(w.sim.sessions[0])), w.sim.sessions[0], { id: 'stray', name: 'w · a', spawned_by: `plugin:workflows/workflow:${w.id}` });

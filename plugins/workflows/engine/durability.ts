@@ -33,7 +33,7 @@ export async function recoverAgents(engine: Engine, runIds: string[]): Promise<v
 
   const hive = engine.hive;
   const send = hive.send?.bind(hive);
-  const listed = send ? await engine.feed.listSessions(send) : undefined;
+  const listed = send ? await engine.feed.listSessions(send, engine.daemonWaitMs) : undefined;
   if (!listed || !send) {
     // Without the daemon's word nothing can be shown to have survived: the turns are retried, and a retry that finds one still running is refused by the daemon, never doubled.
     for (const run of runs) for (const r of run.rows) if (r.state === 'running' || r.state === 'waiting') engine.interruptNode(run.id, r.key);
@@ -71,7 +71,7 @@ async function recoverRunning(engine: Engine, runId: string, row: Row, byId: Map
     // The user has taken the session over (F2): the node keeps waiting for it to be handed back.
     return recorded ? engine.resumeAgent(runId, key, { kind: 'watch', ack: recorded, again: false }) : engine.interruptNode(runId, key);
   }
-  const tx = await engine.feed.fetchTranscript(send, sid);
+  const tx = await engine.feed.fetchTranscript(send, sid, engine.daemonWaitMs);
   if (!tx) return engine.interruptNode(runId, key);
 
   // A turn of ours is a user item the daemon stamped with this run's principal.
