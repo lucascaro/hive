@@ -347,4 +347,6 @@ The operator chose these trade-offs in the decision log:
 
 ## PR convergence ledger
 
+- **2026-11-20 iter 1** — verdict: COMMENT; mergeable: MERGEABLE; findings_hash: a2abe1ad9df6ec658bf15aecd258ffe62ec5ec591678752c6dc814aa3e30079f; threads_open: 0; action: escalated:risky-fix-needs-human-decision; head_sha: cc770ddf.
+- **2026-11-21 iter 2** — verdict: COMMENT; mergeable: MERGEABLE; findings_hash: 318aff8119c3e5327ace6f2cd742a0709c940a3e97a8bdf6f2cec66e7d382c21; threads_open: 5; action: escalated:risky-fix-needs-human-decision; head_sha: 1e731747.
 ## Gate verdict

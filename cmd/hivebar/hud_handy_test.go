@@ -23,6 +23,7 @@ type fakeHandy struct {
 	available bool
 	calls     []string
 	toggleErr error
+	cancelErr error // every Cancel fails with it
 }
 
 func (f *fakeHandy) Available() bool { return f.available }
@@ -40,7 +41,7 @@ func (f *fakeHandy) Cancel() error {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	f.calls = append(f.calls, "cancel")
-	return nil
+	return f.cancelErr
 }
 
 func (f *fakeHandy) got() []string {
@@ -621,5 +622,161 @@ func TestHUDEmptiedWhileAwaitingRendersEditing(t *testing.T) {
 	}
 	if st := v.last(); st.Status == statusAwaiting || st.Hints == hintsAwait || !st.CanSend {
 		t.Fatalf("panel still shows the wait: %+v", st)
+	}
+}
+
+// Review round 2, finding 2: queuing never blocks, so a hung Handy can
+// never back up into the HUD's lock and the main thread.
+func TestSerialWorkerNeverBlocksTheCaller(t *testing.T) {
+	run := serialWorker()
+	release := make(chan struct{})
+	var mu sync.Mutex
+	var order []int
+	run(func() { <-release })
+	done := make(chan struct{})
+	go func() {
+		for i := range 500 {
+			run(func() {
+				mu.Lock()
+				order = append(order, i)
+				mu.Unlock()
+			})
+		}
+		close(done)
+	}()
+	select {
+	case <-done:
+	case <-time.After(2 * time.Second):
+		t.Fatal("queuing blocked behind a stuck call")
+	}
+	close(release)
+	finished := make(chan struct{})
+	run(func() { close(finished) })
+	<-finished
+	if len(order) != 500 || !slices.IsSorted(order) {
+		t.Fatalf("ran %d calls, sorted=%v; want all 500 in order", len(order), slices.IsSorted(order))
+	}
+}
+
+// Finding 1: the quit-time cancel queues behind a start still in flight,
+// so it lands after it, and Shutdown waits for it.
+func TestHUDShutdownCancelsAfterQueuedStart(t *testing.T) {
+	h, _, _ := newTestHUD(sess("a", 0, 1))
+	bh := &blockingHandy{fakeHandy: fakeHandy{available: true}, release: make(chan struct{})}
+	h.handy = bh
+	h.SetHandyAutoStart(true)
+	h.Open()
+	done := make(chan struct{})
+	go func() {
+		h.Shutdown()
+		close(done)
+	}()
+	select {
+	case <-done:
+		t.Fatal("Shutdown returned before its cancel ran")
+	case <-time.After(50 * time.Millisecond):
+	}
+	close(bh.release)
+	select {
+	case <-done:
+	case <-time.After(2 * time.Second):
+		t.Fatal("Shutdown never returned")
+	}
+	if got := bh.got(); !slices.Equal(got, []string{"toggle", "cancel"}) {
+		t.Fatalf("Handy calls ran as %v, want toggle then cancel", got)
+	}
+}
+
+func TestHUDShutdownGivesUpOnAHungHandy(t *testing.T) {
+	h, _, _ := newTestHUD(sess("a", 0, 1))
+	bh := &blockingHandy{fakeHandy: fakeHandy{available: true}, release: make(chan struct{})}
+	defer close(bh.release)
+	h.handy = bh
+	h.shutdownWait = 50 * time.Millisecond
+	h.SetHandyAutoStart(true)
+	h.Open()
+	start := time.Now()
+	h.Shutdown()
+	if d := time.Since(start); d > time.Second {
+		t.Fatalf("Shutdown waited %v on a hung Handy", d)
+	}
+}
+
+// Finding 3: one stray key while waiting for Handy's text sends nothing.
+func TestHUDOneKeystrokeWhileAwaitingDoesNotSend(t *testing.T) {
+	h, _, s, _, ft := newHandyHUD(t)
+	h.Open()
+	h.Submit("draft")
+	h.TextChanged("draftx", false)
+	for _, tm := range ft.pending {
+		if !tm.stopped && tm.d == handyQuiet {
+			t.Fatal("one keystroke armed the send")
+		}
+	}
+	h.TextChanged("draftx and the transcription", true)
+	ft.fire(t)
+	if len(s.sends) != 1 || s.sends[0].text != "draftx and the transcription" {
+		t.Fatalf("sends = %+v", s.sends)
+	}
+}
+
+// Finding 4: a close-time cancel that fails twice leaves a recording
+// nothing tracks; the next opening must not toggle it and says why.
+func TestHUDFailedCloseCancelWarnsNextOpen(t *testing.T) {
+	h, v, _, fh, _ := newHandyHUD(t)
+	fh.cancelErr = errors.New("boom")
+	h.Open()
+	h.Cancel()
+	wantCalls(t, h, fh, "toggle", "cancel", "cancel")
+	h.Open()
+	wantCalls(t, h, fh, "toggle", "cancel", "cancel")
+	if v.last().Status != statusOrphaned {
+		t.Fatalf("status = %q, want the orphaned-recording warning", v.last().Status)
+	}
+	h.Cancel() // nothing started this time, so nothing to cancel
+	fh.cancelErr = nil
+	h.Open() // warned once; back to normal
+	wantCalls(t, h, fh, "toggle", "cancel", "cancel", "toggle")
+}
+
+// A Handy that quit is not an orphan: there is no recording to cancel.
+func TestHUDCancelOnStoppedHandyIsNotOrphan(t *testing.T) {
+	h, v, _, fh, _ := newHandyHUD(t)
+	fh.cancelErr = errHandyNotRunning
+	h.Open()
+	h.Cancel()
+	wantCalls(t, h, fh, "toggle", "cancel")
+	h.Open()
+	if v.last().Status == statusOrphaned {
+		t.Fatal("a stopped Handy was reported as still recording")
+	}
+}
+
+// Finding 5: the target ending while the stop is in flight assumed it
+// worked; when it fails, the HUD is back to recording, so ↩ stops Handy
+// again rather than sending while it may still listen.
+func TestHUDStopFailureAfterTargetLossRestoresRecording(t *testing.T) {
+	h, v, s, fh, _ := newHandyHUD(t)
+	var held []func()
+	h.goHandy = func(f func()) { held = append(held, f) }
+	h.SetSessions([]wire.ProjectInfo{{ID: "p", Name: "proj"}}, []wire.SessionInfo{sess("a", 0, 1), sess("b", 1, 0)})
+	h.Open()
+	h.Submit("")
+	gone := sess("a", 0, 1)
+	gone.Alive = false
+	h.SetSessions([]wire.ProjectInfo{{ID: "p", Name: "proj"}}, []wire.SessionInfo{gone, sess("b", 1, 0)})
+	held[0]() // the start succeeds
+	fh.toggleErr = errors.New("boom")
+	held[1]() // the stop fails
+	if st := v.last(); st.Status != statusStopFailed || st.Hints != hintsRecord {
+		t.Fatalf("after the failed stop = %q / %q", st.Status, st.Hints)
+	}
+	h.Move(1)
+	h.Submit("words")
+	if len(s.sends) != 0 {
+		t.Fatalf("sent while Handy may still be recording: %+v", s.sends)
+	}
+	if len(held) != 3 {
+		t.Fatalf("↩ queued %d Handy calls in all, want a second stop", len(held))
 	}
 }

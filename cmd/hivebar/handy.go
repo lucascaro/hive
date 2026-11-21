@@ -36,6 +36,11 @@ type handyCtl interface {
 	Cancel() error
 }
 
+// errHandyNotRunning: Handy quit after the HUD checked. Neither flag is
+// run then, because either would launch it, and there is no recording to
+// cancel.
+var errHandyNotRunning = errors.New("handy is not running")
+
 // handyBundleID is Handy's macOS bundle identifier.
 const handyBundleID = "com.pais.handy"
 
@@ -87,7 +92,7 @@ func (h *execHandy) do(flag string) error {
 	// Handy may have quit since the HUD opened, and either flag on a
 	// stopped Handy launches it.
 	if !h.running() {
-		return errors.New("handy is not running")
+		return errHandyNotRunning
 	}
 	_, err := h.run(handyTimeout, bin, flag)
 	return err

@@ -7,7 +7,9 @@
 package main
 
 import (
+	"errors"
 	"fmt"
+	"log"
 	"sort"
 	"strings"
 	"sync"
@@ -115,6 +117,7 @@ const (
 	statusNoText      = "No transcription arrived from Handy. Nothing was sent."
 	statusStartFailed = "Couldn't start Handy. Dictate with its own key."
 	statusStopFailed  = "Couldn't stop Handy. Stop it with its own key, then press ↩."
+	statusOrphaned    = "Handy may still be recording from last time. Stop it with its own key."
 )
 
 // statusUnanswered is shown while a send the user abandoned still holds
@@ -175,6 +178,12 @@ type HUD struct {
 	// startedHandy: this opening started Handy, so closing it cancels
 	// Handy. recording: that recording has not yet been seen to end.
 	startedHandy, recording bool
+	// orphaned: a close-time cancel failed twice, so a recording may still
+	// be going with no HUD tracking it. The next opening does not toggle
+	// (that would stop it, not start one) and says so instead.
+	orphaned bool
+	// shutdownWait bounds how long Shutdown waits for its cancel.
+	shutdownWait time.Duration
 	// text is the field as last reported. awaitBase is the field when
 	// Enter stopped Handy, and awaitStart when; timer is the one pending
 	// wait, and timerSeq names it so a stale firing is dropped.
@@ -187,25 +196,48 @@ type HUD struct {
 func NewHUD(view hudView, send hudSender, handy handyCtl) *HUD {
 	h := &HUD{
 		view: view, send: send, handy: handy,
-		goSend:    func(f func()) { go f() },
-		afterFunc: func(d time.Duration, f func()) func() bool { return time.AfterFunc(d, f).Stop },
-		pending:   map[string]int{},
+		goSend:       func(f func()) { go f() },
+		afterFunc:    func(d time.Duration, f func()) func() bool { return time.AfterFunc(d, f).Stop },
+		pending:      map[string]int{},
+		shutdownWait: 2*handyTimeout + time.Second,
 	}
 	h.goHandy = serialWorker()
 	return h
 }
 
 // serialWorker returns a function that runs what it is given on one
-// goroutine, in order. The queue is generous: a person cannot press keys
-// faster than Handy answers often enough to fill it.
+// goroutine, in order. Queuing never blocks: the HUD queues under its
+// lock, and the queued calls take that lock to report, so a bounded
+// queue behind a hung Handy would deadlock the main thread.
 func serialWorker() func(func()) {
-	q := make(chan func(), 64)
+	var mu sync.Mutex
+	var queue []func()
+	wake := make(chan struct{}, 1)
 	go func() {
-		for f := range q {
-			f()
+		for range wake {
+			for {
+				mu.Lock()
+				if len(queue) == 0 {
+					mu.Unlock()
+					break
+				}
+				f := queue[0]
+				queue[0] = nil
+				queue = queue[1:]
+				mu.Unlock()
+				f()
+			}
 		}
 	}()
-	return func(f func()) { q <- f }
+	return func(f func()) {
+		mu.Lock()
+		queue = append(queue, f)
+		mu.Unlock()
+		select {
+		case wake <- struct{}{}:
+		default: // the worker is already awake and will see it
+		}
+	}
 }
 
 // SetHandyAutoStart is the daemon's handy_auto_start. It takes effect at
@@ -295,9 +327,14 @@ func (h *HUD) Open() {
 	// session the microphone would be on for nothing.
 	if h.autoStart && h.connected && len(h.targetsLocked()) > 0 &&
 		h.handy != nil && h.handy.Available() {
-		h.startedHandy, h.recording = true, true
-		h.status = statusRecording
-		h.handyLocked("start", h.handy.Toggle)
+		if h.orphaned {
+			h.orphaned = false
+			h.status = statusOrphaned
+		} else {
+			h.startedHandy, h.recording = true, true
+			h.status = statusRecording
+			h.handyLocked("start", h.handy.Toggle)
+		}
 	}
 	h.renderLocked(true, true)
 }
@@ -305,14 +342,28 @@ func (h *HUD) Open() {
 // Shutdown cancels a Handy recording this opening started, and waits for
 // the cancel to finish, so one cannot outlive the menu bar when it quits.
 // It runs Handy on the caller's goroutine: call it only on the way out.
+//
+// The cancel goes through the same in-order worker as every other Handy
+// call, so it cannot overtake a start still queued, and Shutdown waits at
+// most shutdownWait for it.
 func (h *HUD) Shutdown() {
 	h.mu.Lock()
-	started, handy := h.startedHandy, h.handy
+	started, handy, wait := h.startedHandy, h.handy, h.shutdownWait
 	h.startedHandy, h.recording = false, false
 	h.gen++
 	h.mu.Unlock()
-	if started && handy != nil {
+	if !started || handy == nil {
+		return
+	}
+	done := make(chan struct{})
+	h.goHandy(func() {
 		_ = handy.Cancel()
+		close(done)
+	})
+	select {
+	case <-done:
+	case <-time.After(wait):
+		log.Printf("hivebar: Handy did not answer --cancel before quitting")
 	}
 }
 
@@ -437,7 +488,9 @@ func (h *HUD) textChanged(text string, pasted bool) func() {
 	prev := h.text
 	h.text = text
 	if h.phase == hudAwaitingText {
-		if text == h.awaitBase {
+		// Handy's text, pasted or typed, adds at least two characters; a
+		// stray key does not, and must not send a half message.
+		if utf8.RuneCountInString(text)-utf8.RuneCountInString(h.awaitBase) < 2 {
 			return nil
 		}
 		h.recording = false
@@ -517,9 +570,24 @@ func (h *HUD) handyLocked(op string, call func() error) {
 // cancelHandyLocked cancels whatever Handy is doing for this opening.
 // --cancel on an idle Handy does nothing, so this need not know whether
 // Handy is still listening.
+//
+// A cancel that fails is tried once more. If that fails too, a recording
+// may be left with nothing tracking it, which the next opening says.
 func (h *HUD) cancelHandyLocked() {
 	if h.startedHandy {
-		h.handyLocked("cancel", h.handy.Cancel)
+		handy := h.handy
+		h.goHandy(func() {
+			err := handy.Cancel()
+			if err != nil && !errors.Is(err, errHandyNotRunning) {
+				err = handy.Cancel()
+			}
+			if err != nil && !errors.Is(err, errHandyNotRunning) {
+				log.Printf("hivebar: cancelling Handy: %v", err)
+				h.mu.Lock()
+				h.orphaned = true
+				h.mu.Unlock()
+			}
+		})
 	}
 	h.startedHandy, h.recording = false, false
 }
@@ -542,12 +610,15 @@ func (h *HUD) handyResult(gen int, op string, err error) {
 			h.phase = hudEditing
 		}
 	case "stop":
-		if h.phase != hudAwaitingText {
-			return
+		// Still recording, as far as anyone knows, whatever happened
+		// since: a target that ended while waiting cleared the flag on
+		// the assumption the stop worked.
+		h.recording = true
+		if h.phase == hudAwaitingText {
+			h.stopTimerLocked()
+			h.phase = hudEditing
 		}
-		h.stopTimerLocked()
-		h.phase = hudEditing
-		h.status = statusStopFailed // still recording, as far as anyone knows
+		h.status = statusStopFailed
 	default:
 		return
 	}
