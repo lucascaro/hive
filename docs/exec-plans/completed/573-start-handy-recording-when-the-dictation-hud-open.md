@@ -2,7 +2,7 @@
 
 - **Spec:** [docs/product-specs/573-start-handy-recording-when-the-dictation-hud-open.md](../../product-specs/573-start-handy-recording-when-the-dictation-hud-open.md)
 - **Issue:** #573
-- **Status:** active
+- **Status:** completed
 - **PR:** #574
 - **Branch:** feature/573-handy-autostart
 
@@ -353,3 +353,9 @@ The operator chose these trade-offs in the decision log:
 - **2026-11-21 iter 4** — verdict: APPROVE; mergeable: MERGEABLE; findings_hash: empty; threads_open: 0; action: stop; head_sha: 4a6425d6.
 
 ## Gate verdict
+
+- **2026-11-21** — verdict: PASS; phase: —; checks: 9 criteria + 6 non-goals + 11 doc checks passed / 0 failed / 0 followups; followups: none; one-line: every success criterion delivered and unit-tested (real Handy paste into the panel rests on operator smoke row 3), no non-goal touched, docs match shipped behaviour.
+  - 2026-11-21 dimensions:
+    - acceptance — PASS — 40 HUD/Handy tests plus registry/daemon/wire/DOM tests green; residual risk: real ⌘V into the AppKit panel and real restarts are operator-smoke only.
+    - non-goals — PASS — Handy only toggled/cancelled when already running, no other tools, no state detection, darwin-only behaviour, no new HUD key, inbox untouched.
+    - doc accuracy — PASS — README, AGENTS.md, DESIGN.md, plugins.md, features.json, changeset (added/minor), contract 40 entry; generated files untouched. PR body was stale on quit-cancel and was updated during the gate.

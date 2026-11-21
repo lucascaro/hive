@@ -5,12 +5,13 @@ type: enhancement
 complexity: M
 priority: P2
 pr: 574
-stage: GATE
+shipped: 2026-11-21
+stage: DONE
 ---
 
 # Start Handy recording when the dictation HUD opens
 
-- **Exec plan:** [docs/exec-plans/active/573-start-handy-recording-when-the-dictation-hud-open.md](../exec-plans/active/573-start-handy-recording-when-the-dictation-hud-open.md)
+- **Exec plan:** [docs/exec-plans/completed/573-start-handy-recording-when-the-dictation-hud-open.md](../exec-plans/completed/573-start-handy-recording-when-the-dictation-hud-open.md)
 
 ## Problem
 
