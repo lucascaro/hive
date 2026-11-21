@@ -5,7 +5,7 @@ type: enhancement
 complexity: M
 priority: P2
 pr: 574
-stage: REVIEW
+stage: GATE
 ---
 
 # Start Handy recording when the dictation HUD opens
