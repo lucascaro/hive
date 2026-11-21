@@ -116,6 +116,21 @@ func goHUDSubmit(text *C.char) {
 	}
 }
 
+//export goHUDTextChanged
+func goHUDTextChanged(text *C.char, pasted C.int) {
+	if t := nativeTargets.Load(); t != nil {
+		t.hud.TextChanged(C.GoString(text), pasted != 0)
+	}
+}
+
+// nativeHandyRunning reports that Handy is running, from AppKit's list of
+// running applications: cheap, and safe to call on any thread.
+func nativeHandyRunning() bool {
+	id := C.CString(handyBundleID)
+	defer C.free(unsafe.Pointer(id))
+	return C.hbAppRunning(id) != 0
+}
+
 //export goHUDCancel
 func goHUDCancel() {
 	if t := nativeTargets.Load(); t != nil {

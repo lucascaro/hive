@@ -16,7 +16,7 @@ import (
 // The system-wide hotkey that opens the dictation HUD (spec 553).
 //
 // The chord is the user's keymap entry for `dictate-hud`, which the GUI
-// converts and the daemon relays as GLOBAL_HOTKEY. hivebar registers it
+// converts and the daemon relays in DICTATION. hivebar registers it
 // with Carbon's RegisterEventHotKey, which needs no Accessibility or
 // Input Monitoring permission (unlike an event tap, or an NSEvent global
 // monitor) and swallows the chord before any app sees it.
@@ -43,7 +43,7 @@ type Dictation struct {
 	connected bool
 	contract  int
 	want      wire.GlobalHotkey
-	have      bool // a GLOBAL_HOTKEY has arrived since connecting
+	have      bool // a DICTATION has arrived since connecting
 	taken     bool // the OS refused the chord: another app holds it
 	sent      wire.GlobalHotkey
 	sentValid bool
@@ -71,7 +71,7 @@ func (d *Dictation) Disconnected() {
 	d.renderLocked()
 }
 
-// SetHotkey is a GLOBAL_HOTKEY from the daemon.
+// SetHotkey is the chord in a DICTATION from the daemon.
 func (d *Dictation) SetHotkey(h wire.GlobalHotkey) {
 	d.mu.Lock()
 	defer d.mu.Unlock()

@@ -57,7 +57,7 @@ func (s *fakeSender) SendToSession(id, text string, queue bool) bool {
 
 func newTestHUD(sessions ...wire.SessionInfo) (*HUD, *fakeView, *fakeSender) {
 	v, s := &fakeView{}, &fakeSender{connected: true}
-	h := NewHUD(v, s)
+	h := NewHUD(v, s, nil)
 	h.goSend = func(f func()) { f() }
 	h.SetSessions([]wire.ProjectInfo{{ID: "p", Name: "proj"}}, sessions)
 	return h, v, s

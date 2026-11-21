@@ -135,6 +135,7 @@ type recHUD struct {
 	sent     []string
 	errs     []string
 	down     int
+	handy    []bool
 }
 
 func (r *recHUD) Disconnected() { r.down++ }
@@ -144,6 +145,7 @@ func (r *recHUD) SetSessions(_ []wire.ProjectInfo, s []wire.SessionInfo) {
 }
 func (r *recHUD) OnSent(id string)             { r.sent = append(r.sent, id) }
 func (r *recHUD) OnError(id, code, msg string) { r.errs = append(r.errs, id+":"+code) }
+func (r *recHUD) SetHandyAutoStart(on bool)    { r.handy = append(r.handy, on) }
 
 type recHotkeys struct {
 	keys []wire.GlobalHotkey
@@ -164,8 +166,8 @@ func mustMarshal(t *testing.T, v any) []byte {
 }
 
 // SENT and session-scoped ERRORs reach the HUD; an ERROR with no
-// session id (a reply to a menu click) does not; GLOBAL_HOTKEY reaches
-// the hotkey.
+// session id (a reply to a menu click) does not; DICTATION's chord
+// reaches the hotkey and its Handy switch the HUD.
 func TestClientRoutesHUDFrames(t *testing.T) {
 	c := NewClient(func(Model) {})
 	h, k := &recHUD{}, &recHotkeys{}
@@ -173,7 +175,7 @@ func TestClientRoutesHUDFrames(t *testing.T) {
 	c.handleFrame(wire.FrameSent, mustMarshal(t, wire.SentResp{SessionID: "a"}))
 	c.handleFrame(wire.FrameError, mustMarshal(t, wire.Error{Code: wire.ErrCodeSessionBusy, SessionID: "a"}))
 	c.handleFrame(wire.FrameError, mustMarshal(t, wire.Error{Code: "mode_not_allowed"}))
-	c.handleFrame(wire.FrameGlobalHotkey, mustMarshal(t, wire.DefaultGlobalHotkey))
+	c.handleFrame(wire.FrameDictation, mustMarshal(t, wire.Dictation{Hotkey: wire.DefaultGlobalHotkey, HandyAutoStart: true}))
 	if len(h.sent) != 1 || h.sent[0] != "a" {
 		t.Errorf("sent = %v", h.sent)
 	}
@@ -182,6 +184,9 @@ func TestClientRoutesHUDFrames(t *testing.T) {
 	}
 	if len(k.keys) != 1 || k.keys[0] != wire.DefaultGlobalHotkey {
 		t.Errorf("hotkeys = %v", k.keys)
+	}
+	if len(h.handy) != 1 || !h.handy[0] {
+		t.Errorf("handy auto-start = %v, want [true]", h.handy)
 	}
 }
 

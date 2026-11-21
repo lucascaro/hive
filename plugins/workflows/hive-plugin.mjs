@@ -118,8 +118,6 @@ export const Frame = Object.freeze({
   PREPARED_WORKTREE: 0x55,
   COMMIT_WORKTREE: 0x56,
   SET_FOCUSED_SESSION: 0x57,
-  SET_GLOBAL_HOTKEY: 0x58,
-  GLOBAL_HOTKEY: 0x59,
   ADD_PIN: 0x5a,
   ADD_PIN_OK: 0x5b,
   GET_PINS: 0x5c,
@@ -129,6 +127,8 @@ export const Frame = Object.freeze({
   UNPIN: 0x60,
   UNPIN_ALL: 0x61,
   PINS_CHANGED: 0x62,
+  SET_DICTATION: 0x63,
+  DICTATION: 0x64,
 });
 
 const frameName = new Map(Object.entries(Frame).map(([k, v]) => [v, k]));

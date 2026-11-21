@@ -166,6 +166,19 @@ static void hbEnsureEditMenu(void) {
   return self;
 }
 
+// Every edit goes to Go, which decides whether Handy has delivered its
+// transcription (hud.go TextChanged). A paste arrives as the key event
+// that triggered the Edit menu's Paste: ⌘V, which is also what Handy
+// synthesizes. Programmatic changes (clearing on open) send no
+// notification, so they are never mistaken for input.
+- (void)controlTextDidChange:(NSNotification *)note {
+  NSEvent *e = NSApp.currentEvent;
+  int pasted = e.type == NSEventTypeKeyDown &&
+               (e.modifierFlags & NSEventModifierFlagCommand) &&
+               e.keyCode == kVK_ANSI_V;
+  goHUDTextChanged((char *)self.field.stringValue.UTF8String, pasted);
+}
+
 - (void)pick:(id)sender {
   goHUDSelect((int)self.targets.indexOfSelectedItem);
   [self.panel makeFirstResponder:self.field];
@@ -255,6 +268,11 @@ void hbHUDShow(const char *labels, int n, int selected, const char *status,
     NSText *editor = [h.panel fieldEditor:NO forObject:h.field];
     if (editor != nil) editor.selectedRange = NSMakeRange(editor.string.length, 0);
   });
+}
+
+int hbAppRunning(const char *bundleID) {
+  NSString *bid = [NSString stringWithUTF8String:bundleID];
+  return [NSRunningApplication runningApplicationsWithBundleIdentifier:bid].count > 0;
 }
 
 void hbHUDHide(int restore) {

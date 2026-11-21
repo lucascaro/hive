@@ -1900,9 +1900,8 @@ type SetFocusedSessionReq struct {
 	SessionID string `json:"session_id"`
 }
 
-// GlobalHotkey is the SET_GLOBAL_HOTKEY payload and the GLOBAL_HOTKEY
-// event (spec 553): the system-wide chord that opens the menu-bar
-// capture HUD. KeyCode is a macOS virtual key code (kVK_*) and
+// GlobalHotkey is the system-wide chord that opens the menu-bar capture
+// HUD (spec 553), carried in Dictation. KeyCode is a macOS virtual key code (kVK_*) and
 // Modifiers a Carbon modifier mask (cmdKey, shiftKey, optionKey,
 // controlKey), so the menu bar can hand both to RegisterEventHotKey
 // without parsing the GUI's chord grammar. Enabled false means "no
@@ -1940,6 +1939,45 @@ func (h GlobalHotkey) Valid() bool {
 		return true
 	}
 	return h.KeyCode < 128 && h.Modifiers != 0 && h.Modifiers&^hotkeyModAll == 0
+}
+
+// Dictation is the DICTATION event (spec 573): every setting of the
+// menu-bar capture HUD.
+type Dictation struct {
+	Hotkey GlobalHotkey `json:"hotkey"`
+	// HandyAutoStart starts Handy recording when the HUD opens.
+	HandyAutoStart bool `json:"handy_auto_start"`
+}
+
+// DefaultDictation is the HUD's settings until the user changes them.
+var DefaultDictation = Dictation{Hotkey: DefaultGlobalHotkey}
+
+// SetDictationReq is the SET_DICTATION payload. A nil field leaves that
+// setting as it is, so the GUI's keymap sync and its Settings toggle
+// each write only their own field.
+type SetDictationReq struct {
+	Hotkey         *GlobalHotkey `json:"hotkey,omitempty"`
+	HandyAutoStart *bool         `json:"handy_auto_start,omitempty"`
+}
+
+// Valid reports whether r names at least one setting and its hotkey,
+// if any, can be registered.
+func (r SetDictationReq) Valid() bool {
+	if r.Hotkey == nil && r.HandyAutoStart == nil {
+		return false
+	}
+	return r.Hotkey == nil || r.Hotkey.Valid()
+}
+
+// Apply returns d with r's non-nil fields.
+func (r SetDictationReq) Apply(d Dictation) Dictation {
+	if r.Hotkey != nil {
+		d.Hotkey = *r.Hotkey
+	}
+	if r.HandyAutoStart != nil {
+		d.HandyAutoStart = *r.HandyAutoStart
+	}
+	return d
 }
 
 // SendToSessionReq is the SEND_TO_SESSION payload.

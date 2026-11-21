@@ -157,7 +157,7 @@ var controlEvents = map[FrameType]string{
 
 	// Spec 553: the capture-HUD chord, after WELCOME and on change. The
 	// GUI reconciles it against its keymap.
-	FrameGlobalHotkey: "hotkey:global",
+	FrameDictation: "dictation:settings",
 
 	FrameActivity: "activity:event",
 	// Spec 566: pin header pages, one pin's body, and the delta.
