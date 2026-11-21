@@ -90,7 +90,10 @@ func TestSetDictationRejectsInvalid(t *testing.T) {
 func TestRetiredSetGlobalHotkeyFrameIgnored(t *testing.T) {
 	d := newFrameTestDaemon(t)
 	ops, _, _ := asyncOps("")
-	d.handleControlFrame(context.Background(), ops, wire.FrameType(0x58), mustJSON(t, wire.GlobalHotkey{Enabled: false}))
+	// A payload SET_DICTATION would accept, so a wrong routing of 0x58
+	// would show as a changed setting.
+	on := true
+	d.handleControlFrame(context.Background(), ops, wire.FrameType(0x58), mustJSON(t, wire.SetDictationReq{HandyAutoStart: &on}))
 	if got := d.reg.Dictation(); got != wire.DefaultDictation {
 		t.Fatalf("frame 0x58 changed the settings to %+v", got)
 	}

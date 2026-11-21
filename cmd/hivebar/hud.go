@@ -118,6 +118,7 @@ const (
 	statusStartFailed = "Couldn't start Handy. Dictate with its own key."
 	statusStopFailed  = "Couldn't stop Handy. Stop it with its own key, then press ↩."
 	statusOrphaned    = "Handy may still be recording from last time. Stop it with its own key."
+	statusHandyGone   = "Handy quit before it could be stopped. Press ↩ to send what's here."
 )
 
 // statusUnanswered is shown while a send the user abandoned still holds
@@ -345,19 +346,23 @@ func (h *HUD) Open() {
 //
 // The cancel goes through the same in-order worker as every other Handy
 // call, so it cannot overtake a start still queued, and Shutdown waits at
-// most shutdownWait for it.
+// most shutdownWait for it. With nothing to cancel it still waits for
+// the worker to drain: an Esc just before Quit queued its own cancel,
+// possibly behind a start that has not answered yet.
 func (h *HUD) Shutdown() {
 	h.mu.Lock()
 	started, handy, wait := h.startedHandy, h.handy, h.shutdownWait
 	h.startedHandy, h.recording = false, false
 	h.gen++
 	h.mu.Unlock()
-	if !started || handy == nil {
+	if handy == nil {
 		return
 	}
 	done := make(chan struct{})
 	h.goHandy(func() {
-		_ = handy.Cancel()
+		if started {
+			_ = handy.Cancel()
+		}
 		close(done)
 	})
 	select {
@@ -488,9 +493,10 @@ func (h *HUD) textChanged(text string, pasted bool) func() {
 	prev := h.text
 	h.text = text
 	if h.phase == hudAwaitingText {
-		// Handy's text, pasted or typed, adds at least two characters; a
-		// stray key does not, and must not send a half message.
-		if utf8.RuneCountInString(text)-utf8.RuneCountInString(h.awaitBase) < 2 {
+		// Handy's text is pasted, or typed two or more characters at a
+		// time; a stray key is neither, and must not send a half message.
+		if text == h.awaitBase ||
+			!pasted && utf8.RuneCountInString(text)-utf8.RuneCountInString(h.awaitBase) < 2 {
 			return nil
 		}
 		h.recording = false
@@ -610,6 +616,17 @@ func (h *HUD) handyResult(gen int, op string, err error) {
 			h.phase = hudEditing
 		}
 	case "stop":
+		if errors.Is(err, errHandyNotRunning) {
+			// Handy quit, so there is no recording left to stop or wait
+			// for, and retrying would only fail again.
+			h.recording = false
+			if h.phase == hudAwaitingText {
+				h.stopTimerLocked()
+				h.phase = hudEditing
+			}
+			h.status = statusHandyGone
+			break
+		}
 		// Still recording, as far as anyone knows, whatever happened
 		// since: a target that ended while waiting cleared the flag on
 		// the assumption the stop worked.

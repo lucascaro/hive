@@ -780,3 +780,59 @@ func TestHUDStopFailureAfterTargetLossRestoresRecording(t *testing.T) {
 		t.Fatalf("↩ queued %d Handy calls in all, want a second stop", len(held))
 	}
 }
+
+// Review round 3, finding 1: Esc queued the cancel behind a start that
+// has not answered; Quit right after must still wait for it.
+func TestHUDShutdownAfterEscWaitsForQueuedCancel(t *testing.T) {
+	h, _, _ := newTestHUD(sess("a", 0, 1))
+	bh := &blockingHandy{fakeHandy: fakeHandy{available: true}, release: make(chan struct{})}
+	h.handy = bh
+	h.SetHandyAutoStart(true)
+	h.Open()
+	h.Cancel()
+	done := make(chan struct{})
+	go func() {
+		h.Shutdown()
+		close(done)
+	}()
+	select {
+	case <-done:
+		t.Fatal("Shutdown returned with Esc's cancel still queued")
+	case <-time.After(50 * time.Millisecond):
+	}
+	close(bh.release)
+	<-done
+	if got := bh.got(); !slices.Equal(got, []string{"toggle", "cancel"}) {
+		t.Fatalf("Handy calls ran as %v, want toggle then cancel", got)
+	}
+}
+
+// Finding 2: a one-character transcription arrives by paste and counts.
+func TestHUDShortPasteWhileAwaitingIsDelivery(t *testing.T) {
+	h, _, s, _, ft := newHandyHUD(t)
+	h.Open()
+	h.Submit("")
+	h.TextChanged("好", true)
+	ft.fire(t)
+	if len(s.sends) != 1 || s.sends[0].text != "好" {
+		t.Fatalf("sends = %+v", s.sends)
+	}
+}
+
+// Finding 3: Handy quit before ↩; the stop fails as "not running", which
+// ends the recording, so ↩ then sends instead of retrying forever.
+func TestHUDStopOnQuitHandyEndsRecording(t *testing.T) {
+	h, v, s, fh, _ := newHandyHUD(t)
+	h.Open()
+	drain(h)
+	fh.toggleErr = errHandyNotRunning
+	h.Submit("typed")
+	drain(h)
+	if st := v.last(); st.Status != statusHandyGone || !st.CanSend || st.Hints == hintsRecord {
+		t.Fatalf("after Handy quit = %+v", st)
+	}
+	h.Submit("typed")
+	if len(s.sends) != 1 || s.sends[0].text != "typed" {
+		t.Fatalf("sends = %+v", s.sends)
+	}
+}

@@ -271,8 +271,11 @@ void hbHUDShow(const char *labels, int n, int selected, const char *status,
 }
 
 int hbAppRunning(const char *bundleID) {
-  NSString *bid = [NSString stringWithUTF8String:bundleID];
-  return [NSRunningApplication runningApplicationsWithBundleIdentifier:bid].count > 0;
+  // Called from Go worker threads, which have no autorelease pool.
+  @autoreleasepool {
+    NSString *bid = [NSString stringWithUTF8String:bundleID];
+    return [NSRunningApplication runningApplicationsWithBundleIdentifier:bid].count > 0;
+  }
 }
 
 void hbHUDHide(int restore) {
