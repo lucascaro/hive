@@ -25,6 +25,7 @@ The *what* and *why* of work this project plans to do. Each spec describes user 
 
 | Issue | Title | PR | Shipped | Spec |
 |-------|-------|----|---------|------|
+| #573 | Start Handy recording when the dictation HUD opens | #574 | 2026-11-21 | [573-start-handy-recording-when-the-dictation-hud-open](573-start-handy-recording-when-the-dictation-hud-open.md) |
 | #566 | Pin important agent responses to the session's inspector panel | #568 | 2026-11-19 | [566-pin-important-agent-responses-to-the-session-s-ins](566-pin-important-agent-responses-to-the-session-s-ins.md) |
 | #562 | Rank sessions needing attention higher in the ⌘P session finder | #564 | 2026-11-17 | [562-rank-sessions-needing-attention-higher-in-the-p-se](562-rank-sessions-needing-attention-higher-in-the-p-se.md) |
 | #563 | Keep the active session's sidebar row visible on every switch | #565 | 2026-11-17 | [563-keep-the-active-sessions-sidebar-row-visible-on-ev](563-keep-the-active-sessions-sidebar-row-visible-on-ev.md) |
