@@ -280,7 +280,8 @@ an app no supported way to start Dictation for you.
 With [Handy](https://handy.computer) installed, one press can do both.
 Turn on **Start Handy recording when the dictation box opens** under
 `Settings ▸ Menu bar`, and ⌃⌥Space opens the box with Handy already
-listening (Handy must be running; Hive never launches it). Then either:
+listening. Handy must be running (Hive never launches it), and it only
+starts when the box has a live session to send to. Then either:
 
 - stop Handy with its own key, and its text lands in the box for you to
   read before ↩ sends it; or
@@ -288,8 +289,9 @@ listening (Handy must be running; Hive never launches it). Then either:
   the transcription as soon as it arrives. If none arrives within 10
   seconds, nothing is sent and the box says so.
 
-**Esc**, or anything else that closes the box, cancels Handy, so a
-recording Hive started never pastes into another app. Handy can't tell
+**Esc**, or anything else that closes the box, including quitting the
+menu bar, cancels Handy, so a recording Hive started never pastes into
+another app. Handy can't tell
 other apps whether it is recording, so if it already was when you press
 ⌃⌥Space, the press stops it instead.
 

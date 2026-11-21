@@ -235,6 +235,11 @@ func (h *HUD) SetSessions(projects []wire.ProjectInfo, sessions []wire.SessionIn
 		} else {
 			h.status = "The target session ended. Pick another with ↑↓."
 		}
+		if h.phase == hudAwaitingText {
+			// Enter already stopped Handy; the next ↩ must not toggle it
+			// back on.
+			h.recording = false
+		}
 		h.target = ""
 		h.stopTimerLocked()
 		h.phase = hudEditing
@@ -255,13 +260,14 @@ func (h *HUD) Disconnected() {
 	if !h.open {
 		return
 	}
-	if h.phase == hudSending {
-		h.status = "Lost Hive's daemon while sending; the text may have arrived. Check the session before sending again."
-	}
 	if h.startedHandy {
 		// Nothing can be sent now, so a transcription would be stranded.
 		h.cancelHandyLocked()
 		h.status = "Lost Hive's daemon; Handy was stopped."
+	}
+	if h.phase == hudSending {
+		// Said last: whether the text arrived matters more than Handy.
+		h.status = "Lost Hive's daemon while sending; the text may have arrived. Check the session before sending again."
 	}
 	h.target = ""
 	h.stopTimerLocked()
@@ -285,12 +291,29 @@ func (h *HUD) Open() {
 	h.status = ""
 	h.text = ""
 	h.target = h.defaultTargetLocked()
-	if h.autoStart && h.handy != nil && h.handy.Available() {
+	// Only when something could be sent: with no daemon or no live
+	// session the microphone would be on for nothing.
+	if h.autoStart && h.connected && len(h.targetsLocked()) > 0 &&
+		h.handy != nil && h.handy.Available() {
 		h.startedHandy, h.recording = true, true
 		h.status = statusRecording
 		h.handyLocked("start", h.handy.Toggle)
 	}
 	h.renderLocked(true, true)
+}
+
+// Shutdown cancels a Handy recording this opening started, and waits for
+// the cancel to finish, so one cannot outlive the menu bar when it quits.
+// It runs Handy on the caller's goroutine: call it only on the way out.
+func (h *HUD) Shutdown() {
+	h.mu.Lock()
+	started, handy := h.startedHandy, h.handy
+	h.startedHandy, h.recording = false, false
+	h.gen++
+	h.mu.Unlock()
+	if started && handy != nil {
+		_ = handy.Cancel()
+	}
 }
 
 // Cancel is Esc: close and send nothing. A reply to a send already in

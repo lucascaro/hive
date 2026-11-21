@@ -9,9 +9,12 @@ package main
 import (
 	"errors"
 	"slices"
+	"strings"
 	"sync"
 	"testing"
 	"time"
+
+	"github.com/lucascaro/hive/internal/wire"
 )
 
 // fakeHandy records calls in order. toggleErr fails the next Toggle.
@@ -527,4 +530,76 @@ func TestExecHandyRunsFlags(t *testing.T) {
 	if h.Available() || h.Toggle() == nil {
 		t.Error("no binary, yet available or toggled")
 	}
+}
+
+// Review of PR 574, finding 1: Enter had already stopped Handy, so after
+// the target ends the next ↩ must send, not start a new recording.
+func TestHUDTargetLossWhileAwaitingEndsRecording(t *testing.T) {
+	h, v, s, fh, _ := newHandyHUD(t)
+	h.SetSessions([]wire.ProjectInfo{{ID: "p", Name: "proj"}}, []wire.SessionInfo{sess("a", 0, 1), sess("b", 1, 0)})
+	h.Open()
+	h.Submit("")
+	gone := sess("a", 0, 1)
+	gone.Alive = false
+	h.SetSessions([]wire.ProjectInfo{{ID: "p", Name: "proj"}}, []wire.SessionInfo{gone, sess("b", 1, 0)})
+	if v.last().Hints == hintsRecord {
+		t.Fatal("still offering to stop a Handy that Enter already stopped")
+	}
+	h.Move(1)
+	h.Submit("late words")
+	wantCalls(t, h, fh, "toggle", "toggle")
+	if len(s.sends) != 1 || s.sends[0] != (sent{"b", "late words", false}) {
+		t.Fatalf("sends = %+v", s.sends)
+	}
+}
+
+// Finding 2: whether the text arrived matters more than Handy stopping.
+func TestHUDDisconnectWhileSendingKeepsWarning(t *testing.T) {
+	h, v, _, fh, _ := newHandyHUD(t)
+	h.Open()
+	h.TextChanged("pasted words", true)
+	h.Submit("pasted words") // sending; no reply yet
+	h.Disconnected()
+	if !strings.Contains(v.last().Status, "may have arrived") {
+		t.Fatalf("status = %q; the may-have-arrived warning was lost", v.last().Status)
+	}
+	wantCalls(t, h, fh, "toggle", "cancel")
+}
+
+// Finding 3: no microphone when nothing could be sent.
+func TestHUDNoAutoStartWhenNothingCanBeSent(t *testing.T) {
+	t.Run("no live session", func(t *testing.T) {
+		h, _, _, fh, _ := newHandyHUD(t)
+		dead := sess("a", 0, 1)
+		dead.Alive = false
+		h.SetSessions(nil, []wire.SessionInfo{dead})
+		h.Open()
+		wantCalls(t, h, fh)
+	})
+	t.Run("no daemon", func(t *testing.T) {
+		h, _, _, fh, _ := newHandyHUD(t)
+		h.Disconnected()
+		h.Open()
+		wantCalls(t, h, fh)
+	})
+}
+
+// Finding 4: quitting the menu bar with the HUD open cancels Handy, and
+// waits for it.
+func TestHUDShutdownCancelsHandyItStarted(t *testing.T) {
+	h, _, _, fh, _ := newHandyHUD(t)
+	h.Open()
+	drain(h)
+	h.Shutdown()
+	if got := fh.got(); !slices.Equal(got, []string{"toggle", "cancel"}) {
+		t.Fatalf("Shutdown left %v; it must cancel before returning", got)
+	}
+	h.Cancel()
+	wantCalls(t, h, fh, "toggle", "cancel") // nothing left to cancel
+
+	h2, _, _, fh2, _ := newHandyHUD(t)
+	h2.SetHandyAutoStart(false)
+	h2.Open()
+	h2.Shutdown()
+	wantCalls(t, h2, fh2)
 }
