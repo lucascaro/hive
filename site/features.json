@@ -259,6 +259,12 @@
     "since": "Unreleased"
   },
   {
+    "title": "One key to dictate with Handy",
+    "blurb": "With Handy installed, an opt-in setting starts Handy recording as the dictation box opens, and Enter stops it and sends what you said.",
+    "status": "shipped",
+    "since": "Unreleased"
+  },
+  {
     "title": "Waiting sessions first in Go to session",
     "blurb": "With nothing typed, ⌘P now lists the sessions waiting on you right after the one you just left, so a session that needs you is never buried.",
     "status": "shipped",

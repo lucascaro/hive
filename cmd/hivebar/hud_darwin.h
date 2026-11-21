@@ -12,3 +12,6 @@ void hbHotkeySet(uint32_t keyCode, uint32_t modifiers, int enabled);
 void hbHUDShow(const char *labels, int n, int selected, const char *status,
                const char *hints, int clear, int focus);
 void hbHUDHide(int restore);
+// hbAppRunning reports whether an app with this bundle id is running
+// (spec 573: Handy). Safe on any thread.
+int hbAppRunning(const char *bundleID);

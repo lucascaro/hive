@@ -8,11 +8,12 @@
 // the dictation hotkey in step with keymap.json, and reports focus.
 //
 //   • nothing is sent until the daemon has said what it holds
-//   • a GLOBAL_HOTKEY equal to the keymap sends nothing (no echo loop)
+//   • a DICTATION whose chord equals the keymap sends nothing (no echo loop)
 //   • a differing one — a hand-edited or imported keymap — is corrected
 //   • a keymap change is sent once, even before the echo arrives
 //   • unbinding the command disables the hotkey
 //   • window focus reports the active session
+//   • the Handy switch is tracked and never triggers a chord send
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const handlers = new Map<string, (p: unknown) => void>();
@@ -33,13 +34,18 @@ vi.mock('../../src/lib/platform.js', () => ({ isMac: true }));
 const { appStore, setKeymap, setActiveId } = await import(
   '../../src/store/store.js'
 );
-const { initGlobalHotkey, _resetGlobalHotkeyForTest } = await import(
-  '../../src/app/global-hotkey.js'
-);
+const {
+  initGlobalHotkey,
+  _resetGlobalHotkeyForTest,
+  getHandyAutoStart,
+  subscribeHandyAutoStart,
+} = await import('../../src/app/global-hotkey.js');
 
 const DEFAULT = { key_code: 49, modifiers: 0x1800, enabled: true };
-const deliver = (h: object) =>
-  handlers.get('hotkey:global')?.(JSON.stringify(h));
+const deliver = (h: object, handy = false) =>
+  handlers.get('dictation:settings')?.(
+    JSON.stringify({ hotkey: h, handy_auto_start: handy }),
+  );
 
 beforeEach(() => {
   _resetGlobalHotkeyForTest();
@@ -96,5 +102,24 @@ describe('focus reports', () => {
     window.dispatchEvent(new Event('focus'));
     expect(ReportFocusedSession).not.toHaveBeenCalled();
     expect(appStore.getState().activeId).toBeNull();
+  });
+});
+
+describe('Handy auto-start switch', () => {
+  it('is unknown until the daemon reports, then follows it', () => {
+    expect(getHandyAutoStart()).toBeNull();
+    const seen: (boolean | null)[] = [];
+    const off = subscribeHandyAutoStart(() => seen.push(getHandyAutoStart()));
+    deliver(DEFAULT, false);
+    deliver(DEFAULT, true);
+    deliver(DEFAULT, true); // unchanged: no notification
+    off();
+    expect(seen).toEqual([false, true]);
+  });
+
+  it('a switch-only change sends no chord', () => {
+    deliver(DEFAULT, false);
+    deliver(DEFAULT, true);
+    expect(SetGlobalHotkey).not.toHaveBeenCalled();
   });
 });

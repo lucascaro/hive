@@ -28,6 +28,16 @@ package buildinfo
 // History (newest first), so a bump is a decision with a record and
 // not just a number going up:
 //
+//	40 — Dictation settings (spec 573). SET_DICTATION (0x63) and
+//	    DICTATION (0x64) replace SET_GLOBAL_HOTKEY / GLOBAL_HOTKEY,
+//	    whose numbers (0x58/0x59) are retired, not reused: the payload
+//	    now carries the chord and handy_auto_start, persisted in
+//	    dictation.json (migrated once from global-hotkey.json). A GUI
+//	    built against this tree cannot set the chord on an older daemon,
+//	    so it restarts it. A menu bar still running from before the
+//	    upgrade never receives DICTATION and keeps its last chord until
+//	    it restarts; a new menu bar paired with an older daemon registers
+//	    no chord until the GUI restarts that daemon.
 //	39 — Pinned responses (spec 566). ADD_PIN on a session
 //	    connection; GET_PINS / PINS pages, GET_PIN_BODY / PIN_BODY,
 //	    UNPIN, UNPIN_ALL and the PINS_CHANGED broadcast on a control
@@ -331,7 +341,7 @@ package buildinfo
 //	    before this cannot see or clear the flag.
 //	1 — first contract; everything up to and including the
 //	    CLIENT_COMMAND relay.
-const DaemonContract = 39
+const DaemonContract = 40
 
 // Identity is this binary's full build identity. `hived --version
 // --json` prints it, and Welcome carries the same three values, so a

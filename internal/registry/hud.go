@@ -55,57 +55,84 @@ func (r *Registry) SetFocused(id string) error {
 	return nil
 }
 
-// globalHotkeyFile is the HUD chord's file under the state dir. It is a
-// cache of the GUI's keymap.json entry, kept here so the menu bar, which
-// reads nothing from the state dir, can learn it over the wire even
+// dictationFile holds the capture HUD's settings (spec 573). The chord
+// is a cache of the GUI's keymap.json entry and the Handy switch is the
+// GUI's Settings toggle; both are kept here so the menu bar, which
+// reads nothing from the state dir, can learn them over the wire even
 // when no GUI is running.
-const globalHotkeyFile = "global-hotkey.json"
+const dictationFile = "dictation.json"
 
-// loadGlobalHotkey reads the persisted chord. A missing file means the
-// default. A file that will not parse, or holds a chord that cannot be
-// registered, is logged and replaced by the default: the GUI rewrites
-// the cache from keymap.json at its next boot, so nothing the user typed
-// is lost by ignoring it.
-func (r *Registry) loadGlobalHotkey() wire.GlobalHotkey {
-	path := filepath.Join(r.stateDir, globalHotkeyFile)
+// legacyHotkeyFile is where contract 36 kept the chord alone. It is read
+// once, when dictationFile does not exist yet, so a rebound chord
+// survives the upgrade. It is never written or removed.
+const legacyHotkeyFile = "global-hotkey.json"
+
+// loadDictation reads the persisted settings. With no dictation.json it
+// takes the chord from the legacy file, if that holds a usable one. A
+// dictation.json that will not parse, or holds a chord that cannot be
+// registered, is logged and replaced by the default rather than by the
+// legacy chord: once written it is the truth, and the GUI rewrites the
+// chord from keymap.json at its next boot anyway.
+func (r *Registry) loadDictation() wire.Dictation {
+	path := filepath.Join(r.stateDir, dictationFile)
+	var d wire.Dictation
+	err := readJSON(path, &d)
+	switch {
+	case errors.Is(err, os.ErrNotExist):
+		return r.loadLegacyHotkey()
+	case err != nil:
+		log.Printf("registry: %s: %v; using the default dictation settings", path, err)
+		return wire.DefaultDictation
+	case !d.Hotkey.Valid():
+		log.Printf("registry: %s holds an unusable hotkey %+v; using the default", path, d.Hotkey)
+		d.Hotkey = wire.DefaultGlobalHotkey
+	}
+	return d
+}
+
+func (r *Registry) loadLegacyHotkey() wire.Dictation {
+	d := wire.DefaultDictation
+	path := filepath.Join(r.stateDir, legacyHotkeyFile)
 	var h wire.GlobalHotkey
 	if err := readJSON(path, &h); err != nil {
 		if !errors.Is(err, os.ErrNotExist) {
 			log.Printf("registry: %s: %v; using the default hotkey", path, err)
 		}
-		return wire.DefaultGlobalHotkey
+		return d
 	}
-	if !h.Valid() {
-		log.Printf("registry: %s holds an unusable hotkey %+v; using the default", path, h)
-		return wire.DefaultGlobalHotkey
+	if h.Valid() {
+		d.Hotkey = h
 	}
-	return h
+	return d
 }
 
-// GlobalHotkey returns the chord that opens the capture HUD.
-func (r *Registry) GlobalHotkey() wire.GlobalHotkey {
+// Dictation returns the capture HUD's settings.
+func (r *Registry) Dictation() wire.Dictation {
 	r.mu.Lock()
 	defer r.mu.Unlock()
-	return r.globalHotkey
+	return r.dictation
 }
 
-// SetGlobalHotkey validates, persists and adopts h. It reports whether
-// the value changed, so the caller broadcasts only a real change.
-func (r *Registry) SetGlobalHotkey(h wire.GlobalHotkey) (bool, error) {
-	if !h.Valid() {
-		return false, fmt.Errorf("invalid hotkey %+v", h)
+// SetDictation validates req, merges the settings it names, persists
+// and adopts the result. It reports whether anything changed, so the
+// caller broadcasts only a real change.
+func (r *Registry) SetDictation(req wire.SetDictationReq) (bool, error) {
+	if !req.Valid() {
+		return false, fmt.Errorf("invalid dictation settings")
 	}
-	if !h.Enabled {
-		h.KeyCode, h.Modifiers = 0, 0
+	if h := req.Hotkey; h != nil && !h.Enabled {
+		off := wire.GlobalHotkey{}
+		req.Hotkey = &off
 	}
 	r.mu.Lock()
 	defer r.mu.Unlock()
-	if h == r.globalHotkey {
+	next := req.Apply(r.dictation)
+	if next == r.dictation {
 		return false, nil
 	}
-	if err := writeJSON(filepath.Join(r.stateDir, globalHotkeyFile), h); err != nil {
+	if err := writeJSON(filepath.Join(r.stateDir, dictationFile), next); err != nil {
 		return false, err
 	}
-	r.globalHotkey = h
+	r.dictation = next
 	return true, nil
 }

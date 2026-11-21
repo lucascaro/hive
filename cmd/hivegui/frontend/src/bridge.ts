@@ -38,6 +38,8 @@ export {
   SendToSession,
   ReportFocusedSession,
   SetGlobalHotkey,
+  SetHandyAutoStart,
+  HandyInstalled,
   SetSessionNotifyWhenIdle,
   SetSessionOrchestrator,
   GetActivity,

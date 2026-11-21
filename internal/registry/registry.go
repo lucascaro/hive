@@ -456,11 +456,11 @@ type Registry struct {
 	stateDir    string
 
 	// lastFocusID / lastFocusAt are the newest SET_FOCUSED_SESSION
-	// report (hud.go). globalHotkey is the capture HUD's chord, loaded
+	// report (hud.go). dictation is the capture HUD's settings, loaded
 	// at Open. All guarded by r.mu.
-	lastFocusID  string
-	lastFocusAt  int64
-	globalHotkey wire.GlobalHotkey
+	lastFocusID string
+	lastFocusAt int64
+	dictation   wire.Dictation
 
 	// socketPath is the daemon's EVENTS socket — not its control
 	// socket. Set once by the daemon right after Open (SetSocketPath);
@@ -1271,7 +1271,7 @@ func Open(stateDir string) (*Registry, error) {
 	if err := r.load(); err != nil {
 		return nil, fmt.Errorf("registry: load: %w", err)
 	}
-	r.globalHotkey = r.loadGlobalHotkey()
+	r.dictation = r.loadDictation()
 	go r.tickStates()
 	r.startClassifier()
 	return r, nil

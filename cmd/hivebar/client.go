@@ -82,10 +82,11 @@ type hudEvents interface {
 	OnSent(id string)
 	OnError(id, code, msg string)
 	Disconnected()
+	SetHandyAutoStart(on bool)
 }
 
 // hotkeyEvents is what the hotkey needs: the daemon's contract and the
-// chord it relays.
+// chord it relays in DICTATION.
 type hotkeyEvents interface {
 	Connected(contract int)
 	Disconnected()
@@ -208,10 +209,16 @@ func (c *Client) handleFrame(ft wire.FrameType, payload []byte) {
 				log.Printf("hivebar: daemon error: %s: %s", e.Code, e.Message)
 			}
 		}
-	case wire.FrameGlobalHotkey:
-		var h wire.GlobalHotkey
-		if c.hotkeys != nil && json.Unmarshal(payload, &h) == nil {
-			c.hotkeys.SetHotkey(h)
+	case wire.FrameDictation:
+		var d wire.Dictation
+		if json.Unmarshal(payload, &d) != nil {
+			break
+		}
+		if c.hotkeys != nil {
+			c.hotkeys.SetHotkey(d.Hotkey)
+		}
+		if c.hud != nil {
+			c.hud.SetHandyAutoStart(d.HandyAutoStart)
 		}
 	case wire.FrameProjectEvent:
 		// Projects change rarely and the menu shows only their names,

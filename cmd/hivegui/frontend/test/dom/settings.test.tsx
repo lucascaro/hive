@@ -115,6 +115,17 @@ const updateBridge = {
 let menuBarStatus = 'unsupported';
 let onMac = false;
 const setMenuBarLoginItem = vi.fn(() => Promise.resolve());
+// Handy auto-start (spec 573): whether Handy is installed, and the
+// daemon's switch as global-hotkey.ts last heard it (null: not yet).
+let handyInstalled = false;
+let handyAuto: boolean | null = null;
+const setHandyAutoStart = vi.fn((_on: boolean) => Promise.resolve());
+
+vi.mock('../../src/app/global-hotkey.js', async (orig) => ({
+  ...(await orig<typeof import('../../src/app/global-hotkey.js')>()),
+  getHandyAutoStart: () => handyAuto,
+  subscribeHandyAutoStart: () => () => {},
+}));
 
 vi.mock('../../src/lib/platform.js', async (orig) => ({
   ...(await orig<typeof import('../../src/lib/platform.js')>()),
@@ -138,6 +149,8 @@ vi.mock('../../src/bridge.js', () => ({
   MenuBarLoginItemStatus: () => Promise.resolve(menuBarStatus),
   SetMenuBarLoginItem: (...a: Parameters<typeof setMenuBarLoginItem>) =>
     setMenuBarLoginItem(...a),
+  HandyInstalled: () => Promise.resolve(handyInstalled),
+  SetHandyAutoStart: (on: boolean) => setHandyAutoStart(on),
   ...updateBridge,
   ...editorBridge,
   ...pluginBridge,
@@ -206,6 +219,9 @@ beforeEach(() => {
   setMenuBarLoginItem.mockReset().mockResolvedValue(undefined);
   menuBarStatus = 'unsupported';
   onMac = false;
+  handyInstalled = false;
+  handyAuto = null;
+  setHandyAutoStart.mockClear();
   resetStore();
   render(<Settings root={el('settings')} />, { container: el('settings') });
 });
@@ -1370,6 +1386,52 @@ describe('settings menu-bar tab', () => {
     expect(el('settings-panel-agents').classList.contains('hidden')).toBe(
       false,
     );
+  });
+});
+
+// Spec 573: the Handy switch sits in the Menu bar tab, offered only when
+// Handy is installed and the daemon has said what the switch is.
+describe('settings: Handy auto-start (spec 573)', () => {
+  const showMenuBar = async () => {
+    menuBarStatus = 'not-registered';
+    onMac = true;
+    open();
+    await flush();
+    click(el('settings-tab-menubar'));
+  };
+
+  it('is hidden when Handy is not installed', async () => {
+    handyAuto = false;
+    await showMenuBar();
+    expect(document.getElementById('settings-handy-auto-start')).toBeNull();
+  });
+
+  it('is hidden until the daemon reports the switch', async () => {
+    handyInstalled = true;
+    await showMenuBar();
+    expect(document.getElementById('settings-handy-auto-start')).toBeNull();
+  });
+
+  it('shows the daemon value and writes only the switch', async () => {
+    handyInstalled = true;
+    handyAuto = false;
+    await showMenuBar();
+    const box = el<HTMLInputElement>('settings-handy-auto-start');
+    expect(el('settings-panel-menubar').contains(box)).toBe(true);
+    expect(box.checked).toBe(false);
+    click(box);
+    await flush();
+    expect(setHandyAutoStart).toHaveBeenCalledWith(true);
+  });
+
+  it('says what Enter and Esc do, naming the bound shortcut', async () => {
+    handyInstalled = true;
+    handyAuto = true;
+    await showMenuBar();
+    const hint = el('settings-handy-auto-start-hint').textContent ?? '';
+    expect(hint).toMatch(/stops Handy and sends/);
+    expect(hint).toMatch(/esc cancels/);
+    expect(hint).toMatch(/already recording/);
   });
 });
 

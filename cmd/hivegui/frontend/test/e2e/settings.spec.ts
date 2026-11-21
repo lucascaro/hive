@@ -615,3 +615,47 @@ test('Laya state detection: toggle, URL warning, connection test', async ({
     'http://127.0.0.1:8000',
   );
 });
+
+// Spec 573. The Handy switch lives in the Menu bar tab, which exists only
+// on a Mac, and shows only when Handy is installed (?handy=1 in the mock).
+// A click writes the switch, and the daemon's DICTATION echo checks it.
+test('the Handy auto-start switch round-trips through the daemon', async ({
+  page,
+}) => {
+  await page.addInitScript(() => {
+    Object.defineProperty(navigator, 'platform', { get: () => 'MacIntel' });
+    Object.defineProperty(navigator, 'userAgentData', {
+      get: () => ({ platform: 'macOS' }),
+    });
+  });
+  await page.goto('/?handy=1');
+  await page.waitForFunction(
+    () => document.querySelectorAll('#projects li').length > 0,
+  );
+  await page.evaluate(() => window.__hive.emit('menu:settings'));
+  await page.locator('#settings-tab-menubar').click();
+  const box = page.locator('#settings-handy-auto-start');
+  await expect(box).toBeVisible();
+  await expect(box).not.toBeChecked();
+  await box.click();
+  await expect(box).toBeChecked();
+  expect(
+    await page.evaluate(
+      () => window.__hive.bridgeCalls?.('SetHandyAutoStart') ?? [],
+    ),
+  ).toEqual([{ method: 'SetHandyAutoStart', args: [true] }]);
+});
+
+test('no Handy switch when Handy is not installed', async ({ page }) => {
+  await page.addInitScript(() => {
+    Object.defineProperty(navigator, 'platform', { get: () => 'MacIntel' });
+    Object.defineProperty(navigator, 'userAgentData', {
+      get: () => ({ platform: 'macOS' }),
+    });
+  });
+  await boot(page);
+  await page.evaluate(() => window.__hive.emit('menu:settings'));
+  await page.locator('#settings-tab-menubar').click();
+  await expect(page.locator('#settings-menubar-login-item')).toBeVisible();
+  await expect(page.locator('#settings-handy-auto-start')).toHaveCount(0);
+});
