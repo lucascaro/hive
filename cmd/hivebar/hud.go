@@ -462,7 +462,11 @@ func (h *HUD) deliverLocked() func() {
 	h.stopTimerLocked()
 	h.phase = hudEditing
 	h.status = ""
-	return h.prepareSendLocked(h.text)
+	send := h.prepareSendLocked(h.text)
+	if send == nil {
+		h.renderLocked(false, false) // e.g. the field was emptied while waiting
+	}
+	return send
 }
 
 // noTextLocked is the wait running out with nothing delivered. Handy was

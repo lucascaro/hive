@@ -7,6 +7,7 @@
 package main
 
 import (
+	"errors"
 	"os"
 	"path/filepath"
 	"time"
@@ -82,6 +83,11 @@ func (h *execHandy) do(flag string) error {
 	bin := h.bin()
 	if bin == "" {
 		return os.ErrNotExist
+	}
+	// Handy may have quit since the HUD opened, and either flag on a
+	// stopped Handy launches it.
+	if !h.running() {
+		return errors.New("handy is not running")
 	}
 	_, err := h.run(handyTimeout, bin, flag)
 	return err

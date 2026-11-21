@@ -525,6 +525,10 @@ func TestExecHandyRunsFlags(t *testing.T) {
 	if h.Available() {
 		t.Error("available while Handy is not running; Hive must never launch it")
 	}
+	ran = nil
+	if h.Toggle() == nil || h.Cancel() == nil || len(ran) != 0 {
+		t.Errorf("ran %v with Handy stopped; either flag would launch it", ran)
+	}
 	h.paths = func() []string { return []string{"/nonexistent"} }
 	h.running = func() bool { return true }
 	if h.Available() || h.Toggle() == nil {
@@ -602,4 +606,20 @@ func TestHUDShutdownCancelsHandyItStarted(t *testing.T) {
 	h2.Open()
 	h2.Shutdown()
 	wantCalls(t, h2, fh2)
+}
+
+// Review of PR 574: a field emptied while Enter waits sends nothing, and
+// the panel must leave the waiting state it showed rather than keep it.
+func TestHUDEmptiedWhileAwaitingRendersEditing(t *testing.T) {
+	h, v, s, _, ft := newHandyHUD(t)
+	h.Open()
+	h.Submit("draft")
+	h.TextChanged("", false)
+	ft.fire(t)
+	if len(s.sends) != 0 {
+		t.Fatalf("an empty field was sent: %+v", s.sends)
+	}
+	if st := v.last(); st.Status == statusAwaiting || st.Hints == hintsAwait || !st.CanSend {
+		t.Fatalf("panel still shows the wait: %+v", st)
+	}
 }
