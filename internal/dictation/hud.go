@@ -202,6 +202,8 @@ type HUD struct {
 	orphaned bool
 	// shutdownWait bounds how long Shutdown waits for its cancel.
 	shutdownWait time.Duration
+	// shut: Shutdown ran, so the panel never opens again.
+	shut bool
 	// text is the field as last reported. awaitBase is the field when
 	// Enter stopped Handy, and awaitStart when; timer is the one pending
 	// wait, and timerSeq names it so a stale firing is dropped.
@@ -330,6 +332,9 @@ func (h *HUD) Disconnected() {
 func (h *HUD) Open() {
 	h.mu.Lock()
 	defer h.mu.Unlock()
+	if h.shut {
+		return
+	}
 	if h.open {
 		h.renderLocked(false, true)
 		return
@@ -371,6 +376,14 @@ func (h *HUD) Shutdown() {
 	started, handy, wait := h.startedHandy, h.handy, h.shutdownWait
 	h.startedHandy, h.recording = false, false
 	h.gen++
+	// The host may still own the hotkey for a moment (the Windows box
+	// releases it after this returns): a press now must not open the
+	// panel and start a recording nothing would cancel.
+	h.shut = true
+	if h.open {
+		h.open = false
+		h.view.Hide(false)
+	}
 	h.mu.Unlock()
 	if handy == nil {
 		return
@@ -385,7 +398,7 @@ func (h *HUD) Shutdown() {
 	select {
 	case <-done:
 	case <-time.After(wait):
-		log.Printf("hivebar: Handy did not answer --cancel before quitting")
+		log.Printf("dictation: Handy did not answer --cancel before quitting")
 	}
 }
 
@@ -605,7 +618,7 @@ func (h *HUD) cancelHandyLocked() {
 				err = handy.Cancel()
 			}
 			if err != nil && !errors.Is(err, errHandyNotRunning) {
-				log.Printf("hivebar: cancelling Handy: %v", err)
+				log.Printf("dictation: cancelling Handy: %v", err)
 				h.mu.Lock()
 				h.orphaned = true
 				h.mu.Unlock()

@@ -104,11 +104,14 @@ func TestConnRoutesFrames(t *testing.T) {
 	defer cancel()
 	go c.Run(ctx)
 	srv := <-conns
+	wrote := make(chan wire.FrameType, 16)
 	go func() { // drain what the box writes
 		for {
-			if _, _, err := wire.ReadFrame(srv); err != nil {
+			ft, _, err := wire.ReadFrame(srv)
+			if err != nil {
 				return
 			}
+			wrote <- ft
 		}
 	}()
 	write := func(ft wire.FrameType, v any) {
@@ -132,8 +135,16 @@ func TestConnRoutesFrames(t *testing.T) {
 	if r.has("error::unrelated") {
 		t.Error("an error with no session reached the box")
 	}
+	// A project event is answered with a fresh project list.
+	write(wire.FrameProjectEvent, wire.ProjectEvent{})
+	if ft := <-wrote; ft != wire.FrameListProjects {
+		t.Fatalf("a project event sent %s, want LIST_PROJECTS", ft)
+	}
 	if !c.SendToSession("b", "hi", false) {
 		t.Error("send failed on a live connection")
+	}
+	if ft := <-wrote; ft != wire.FrameSendToSession {
+		t.Fatalf("the send wrote %s, want SEND_TO_SESSION", ft)
 	}
 	srv.Close()
 	waitUntil(t, "disconnect", func() bool { return r.has("disconnected") })

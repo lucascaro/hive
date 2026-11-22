@@ -470,8 +470,14 @@ func editProc(hwnd, msg, wp, lp uintptr) uintptr {
 			return 0
 		}
 	case wmPaste:
-		// Handy pastes with a synthesized Ctrl+V, which arrives here.
+		// Handy pastes with a synthesized Ctrl+V, which arrives here. The
+		// edit reports the change (EN_CHANGE) synchronously while handling
+		// it, so the flag covers exactly this paste; one that changed
+		// nothing must not mark the next keystroke as pasted.
 		b.pasted = true
+		r, _, _ := pCallWindowProcW.Call(b.origEdit, hwnd, msg, wp, lp)
+		b.pasted = false
+		return r
 	}
 	r, _, _ := pCallWindowProcW.Call(b.origEdit, hwnd, msg, wp, lp)
 	return r

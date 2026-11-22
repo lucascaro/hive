@@ -90,3 +90,20 @@ func TestOwnerChordChangeWhileLosing(t *testing.T) {
 		t.Fatal("b did not take the new chord once free")
 	}
 }
+
+// The host learns each outcome once: a refusal when it starts losing
+// (not on every retry), and the win when it takes over.
+func TestOwnerReportsResults(t *testing.T) {
+	free := false
+	var got []bool
+	o := NewOwner(func(wire.GlobalHotkey) bool { return free }, func() {},
+		func(_ wire.GlobalHotkey, ok bool) { got = append(got, ok) })
+	o.Want(chordA)
+	o.Tick()
+	o.Tick()
+	free = true
+	o.Tick()
+	if len(got) != 2 || got[0] || !got[1] {
+		t.Fatalf("results %v, want [false true]", got)
+	}
+}

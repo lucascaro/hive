@@ -379,6 +379,8 @@ Three layers. Only the bottom one is new native code.
 
 ## PR convergence ledger
 
+- **2026-11-22 iter 1** — verdict: APPROVE; mergeable: MERGEABLE; findings_hash: empty; threads_open: 0; action: stop; head_sha: 91895bac.
+
 ## Gate verdict
 
 ## Open questions

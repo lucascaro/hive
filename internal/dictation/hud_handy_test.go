@@ -607,6 +607,20 @@ func TestHUDShutdownCancelsHandyItStarted(t *testing.T) {
 	wantCalls(t, h2, fh2)
 }
 
+// Review of PR 576: the host can still own the hotkey while it shuts
+// down; a press then must not open the panel or start a recording that
+// nothing would cancel.
+func TestHUDOpenAfterShutdownDoesNothing(t *testing.T) {
+	h, v, _, fh, _ := newHandyHUD(t)
+	h.Shutdown()
+	shown := len(v.shown)
+	h.Open()
+	if len(v.shown) != shown || v.visible {
+		t.Fatal("the panel opened after Shutdown")
+	}
+	wantCalls(t, h, fh) // no toggle: Handy was never started
+}
+
 // Review of PR 574: a field emptied while Enter waits sends nothing, and
 // the panel must leave the waiting state it showed rather than keep it.
 func TestHUDEmptiedWhileAwaitingRendersEditing(t *testing.T) {

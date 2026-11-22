@@ -87,6 +87,7 @@ Package one-liners (full detail in `DESIGN.md`):
 | `internal/buildinfo/` | Single source for version + commit, plus `DaemonContract` (the GUI's reload-vs-restart signal). |
 | `cmd/hivegui/` + `frontend/` | Wails desktop client. JS + xterm.js; thin client over the wire, never opens a PTY. |
 | `cmd/hivebar/` | macOS menu-bar agent (darwin only). Pure wire client; ships as its own `.app` inside the GUI bundle. |
+| `internal/dictation/` | The dictation box's logic (HUD state machine, hotkey, Handy driver, Windows connection and hotkey owner), shared by `cmd/hivebar` (macOS) and `cmd/hivegui` (Windows). cgo-free. |
 | `internal/menubar/` | Starts `hivebar` best-effort from both `hived` and `hivegui`. No-op off macOS. |
 | `cmd/hived-ws-bridge/` | WebSocket bridge fronting the daemon for the `e2e-real` browser tests. |
 
