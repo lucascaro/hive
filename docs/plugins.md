@@ -311,7 +311,7 @@ the same name in [`internal/wire/`](../internal/wire/control.go).
 | `ANSWER_PERMISSION` | `AnswerPermissionReq` | `ACP_TRANSCRIPT`; with a `req_id`, also `ACK`. Not for plugins: a plugin socket gets `mode_not_allowed`, because what an agent may do is the user's decision. A plugin sees the request on `ACP_TRANSCRIPT` and can show it; the user answers in the app |
 | `SUBMIT_RESULT` | `SubmitResultReq` | `SUBMIT_RESULT_OK`, `ACP_TRANSCRIPT` (result). Not for plugins: a plugin socket gets `mode_not_allowed`. An ACP session's own submit server (`hived mcp-submit`) sends it on a session connection, with that session's nonce |
 | `SEND_TO_SESSION` | `SendToSessionReq` | `SENT`, or `ERROR`. Not for plugins: a plugin socket gets `mode_not_allowed`, because typing into another session's terminal is the confused-deputy case until a plugin can be granted it explicitly |
-| `SET_FOCUSED_SESSION` | `SetFocusedSessionReq` | `SESSION_EVENT` (focus) stamping the session's `focused_at`. Not for plugins: a plugin socket gets `mode_not_allowed`, because the newest focus is the default target of the menu bar's dictation HUD (spec 553) |
+| `SET_FOCUSED_SESSION` | `SetFocusedSessionReq` | `SESSION_EVENT` (focus) stamping the session's `focused_at`. Not for plugins: a plugin socket gets `mode_not_allowed`, because the newest focus is the default target of the dictation box (specs 553, 575) |
 | `SET_DICTATION` | `SetDictationReq` | `DICTATION` to every control client when a setting changed; only the fields it names change. Not for plugins: a plugin socket gets `mode_not_allowed`, because it rebinds a system-wide key and decides whether opening the HUD turns a microphone on |
 | `ADD_PIN` | `AddPinReq` | `ADD_PIN_OK`, `PINS_CHANGED`; `pin_too_long`, `pin_invalid`, or `pin_limit` at 1000 pins. Not for plugins: a plugin socket gets `mode_not_allowed`. A session's own agent pins a response to its own session on a session connection (spec 566) |
 | `GET_PINS` | `GetPinsReq` | One or more `PINS` pages of headers, newest first; the last has `done` |
@@ -330,7 +330,7 @@ And everything the daemon sends on a control connection:
 | `PREPARED_WORKTREE` | Answer to `PREPARE_WORKTREE`: the worktree's `path` and `branch` (authoritative), whether it was `reattached`, the `base_sha` it started from, its `head_sha`, the branches `merged`, and a `conflict` if a merge stopped. |
 | `ACP_AGENTS` | Answer to `LIST_ACP_AGENTS`: each ACP-capable agent with its permission `modes` (least permissive first), `default_mode`, the user's `ceiling`, `no_approval_gate`, `experimental`, and whether it is `available` now (`reason` when not). |
 | `SESSIONS` | Snapshot after `WELCOME`; answer to `LIST_SESSIONS`. |
-| `DICTATION` | After `WELCOME` and on change: the menu bar dictation HUD's settings, its `hotkey` (`key_code`, Carbon `modifiers`, `enabled`; spec 553) and `handy_auto_start` (spec 573). Safe to ignore. |
+| `DICTATION` | After `WELCOME` and on change: the dictation box's settings, its `hotkey` (`key_code`, Carbon `modifiers`, `enabled`, in macOS terms on every platform; spec 553) and `handy_auto_start` (spec 573). Safe to ignore. |
 | `SESSION_EVENT` | Broadcast. `kind` is `added`, `removed`, `updated`, `title`, `attention`, `state` or `focus`; `session` is the whole `SessionInfo`. |
 | `PROJECTS` | Snapshot after `WELCOME`; answer to `LIST_PROJECTS`. |
 | `PROJECT_EVENT` | Broadcast: a project was added, removed or updated. |
@@ -376,7 +376,7 @@ inside a session. The same requests still work from the app.
 - **Stop Hive**: `SHUTDOWN`.
 - **Remove an agent's pins**: `UNPIN` and `UNPIN_ALL`. `GET_PINS` and
   `GET_PIN_BODY` stay available.
-- **Steer the menu bar's dictation HUD**: `SET_FOCUSED_SESSION` and
+- **Steer the dictation box**: `SET_FOCUSED_SESSION` and
   `SET_DICTATION`.
 - **Act as a session**: `WAIT_SESSION`, `SUBMIT_RESULT` and `ADD_PIN` are served
   to a session's own connection only, and the `event`, `session` and

@@ -23,6 +23,8 @@ import type { TermTile } from '../../src/app/state.js';
 vi.mock('../../src/lib/platform.js', async (orig) => ({
   ...(await orig<typeof import('../../src/lib/platform.js')>()),
   isMac: true,
+  isWindows: false,
+  dictationSupported: true,
 }));
 vi.mock('../../src/bridge.js', () => {
   const fn = () => vi.fn(() => Promise.resolve());
@@ -339,7 +341,7 @@ describe('setActive and the daemon', () => {
     state.activeId = 'a';
     setActive('z');
     expect(bridge.SetSessionAttention).toHaveBeenCalledWith('z', false);
-    // Spec 553: and the focus the menu bar's dictation HUD defaults to.
+    // Specs 553/575: and the focus the dictation box defaults to.
     expect(bridge.ReportFocusedSession).toHaveBeenCalledWith('z');
   });
 

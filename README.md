@@ -295,6 +295,21 @@ another app. Handy can't tell
 other apps whether it is recording, so if it already was when you press
 ⌃⌥Space, the press stops it instead.
 
+#### On Windows
+
+The same box works on Windows while at least one Hive window is open
+(there is no menu bar to keep it alive otherwise). The chord is
+**Ctrl+Shift+Space**, because Ctrl+Alt doubles as AltGr on many keyboard
+layouts. In the box, **Enter** sends, **Shift+Enter** starts a new line,
+**Up/Down** picks the target and **Esc** discards. With several Hive
+windows open, one of them holds the chord and a press opens one box; if
+that window closes, another takes over within a couple of seconds.
+
+The Handy switch lives under `Settings ▸ Dictation`, which appears when
+Handy is installed (in `%LOCALAPPDATA%\Handy` or `%ProgramFiles%\Handy`).
+It behaves as on macOS. Leave Handy's paste method on its default,
+Ctrl+V, so the box can tell its transcription from typing.
+
 ## Reloading vs restarting
 
 Picking up a new build of Hive does not have to cost you your sessions.
@@ -423,7 +438,7 @@ These are the defaults. Rebind any of them, and any plugin command, under **Sett
 | ⌘E | Worktrees in the active project (browse, resume, delete) |
 | ⌘I | Capture an idea for later (note, kind, project) |
 | ⇧⌘I | Ideas captured for the active project |
-| ⌃⌥Space | Dictate into a session from any app (macOS; system-wide, opens the menu bar's capture box — see [The menu bar](#the-menu-bar-macos)) |
+| ⌃⌥Space | Dictate into a session from any app (system-wide, opens the capture box — see [The menu bar](#the-menu-bar-macos); Ctrl+Shift+Space on Windows, while a Hive window is open) |
 | ⇧⌘M | Message the active session: a note sent to it — through the agent's own inbox for Claude Code and Pi, otherwise typed when it is quiet (queued if it is working) |
 | ⌥⌘B | Notify me once when the active session stops working (Ctrl+Alt+Shift+B on Windows and Linux) |
 | ⌘1–9 | Jump to nth session |

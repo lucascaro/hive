@@ -29,7 +29,11 @@ vi.mock('../../src/bridge.js', () => ({
   SetGlobalHotkey: (...a: [number, number, boolean]) => SetGlobalHotkey(...a),
   ReportFocusedSession: (id: string) => ReportFocusedSession(id),
 }));
-vi.mock('../../src/lib/platform.js', () => ({ isMac: true }));
+vi.mock('../../src/lib/platform.js', () => ({
+  isMac: true,
+  isWindows: false,
+  dictationSupported: true,
+}));
 
 const { appStore, setKeymap, setActiveId } = await import(
   '../../src/store/store.js'

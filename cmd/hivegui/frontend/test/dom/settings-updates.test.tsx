@@ -76,6 +76,8 @@ vi.mock('../../src/bridge.js', () => bridge);
 // Mac for any of these assertions to mean anything.
 vi.mock('../../src/lib/platform.js', () => ({
   isMac: true,
+  isWindows: false,
+  dictationSupported: true,
   detectMac: () => true,
   cmdOrCtrl: () => true,
 }));

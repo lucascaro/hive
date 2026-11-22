@@ -106,6 +106,9 @@ function arrowSeq(isMac: boolean, ...keys: string[]): string {
 
 interface Opts {
   isMac: boolean;
+  /** Whether this platform has the dictation box (macOS and Windows,
+   * specs 553 and 575). Defaults to isMac. */
+  dictation?: boolean;
   /** The user's keymap; the shipped defaults when omitted. */
   keymap?: Keymap;
 }
@@ -140,8 +143,9 @@ function rows(list: Row[], keymap: Keymap, isMac: boolean): Shortcut[] {
 export function shortcutGroups({
   isMac,
   keymap = EMPTY_KEYMAP,
+  dictation = isMac,
 }: Opts): ShortcutGroup[] {
-  const groups = rawGroups(isMac);
+  const groups = rawGroups(isMac, dictation);
   return groups.map((g) => ({
     title: g.title,
     items: rows(g.items, keymap, isMac),
@@ -159,9 +163,12 @@ export interface CommandRow {
 // non-goals). The terminal one is listed read-only in the Shortcuts tab.
 const TERMINAL_GROUP = 'Inside a terminal';
 const DICTATION_HUD_GROUP = 'Dictation HUD (menu bar)';
+// Windows hosts the box in each Hive window, not a menu bar (spec 575).
+const DICTATION_BOX_GROUP = 'Dictation box';
 const FIXED_GROUPS = new Set([
   TERMINAL_GROUP,
   DICTATION_HUD_GROUP,
+  DICTATION_BOX_GROUP,
   'Ended session',
   'Launcher & dialogs',
 ]);
@@ -170,8 +177,9 @@ const FIXED_GROUPS = new Set([
  * split), for Settings › Shortcuts. */
 export function commandGroups(
   isMac: boolean,
+  dictation = isMac,
 ): { title: string; items: CommandRow[] }[] {
-  return rawGroups(isMac)
+  return rawGroups(isMac, dictation)
     .filter((g) => !FIXED_GROUPS.has(g.title))
     .map((g) => ({
       title: g.title,
@@ -193,7 +201,10 @@ export function terminalShortcuts(isMac: boolean): Shortcut[] {
   );
 }
 
-function rawGroups(isMac: boolean): { title: string; items: Row[] }[] {
+function rawGroups(
+  isMac: boolean,
+  dictation = isMac,
+): { title: string; items: Row[] }[] {
   const m = (key: string, opts?: ModOpts) => mod(isMac, key, opts);
   const c = (key: string, opts?: ModOpts) => ctrl(isMac, key, opts);
   const vArrows = arrowSeq(isMac, 'up', 'down');
@@ -435,10 +446,11 @@ function rawGroups(isMac: boolean): { title: string; items: Row[] }[] {
       ],
     },
   ];
-  // The menu bar's dictation capture HUD (spec 553) exists on macOS only.
-  // Its chord is a binding (rebindable); the HUD's own keys belong to a
-  // native panel and are fixed, like an overlay's Enter/Esc.
-  if (isMac) {
+  // The dictation box exists on macOS (the menu bar's HUD, spec 553) and
+  // Windows (spec 575). Its chord is a binding (rebindable); the box's own
+  // keys belong to a native window and are fixed, like an overlay's
+  // Enter/Esc.
+  if (dictation) {
     groups.push(
       {
         title: 'Global (system-wide)',
@@ -450,13 +462,16 @@ function rawGroups(isMac: boolean): { title: string; items: Row[] }[] {
         ],
       },
       {
-        title: DICTATION_HUD_GROUP,
+        title: isMac ? DICTATION_HUD_GROUP : DICTATION_BOX_GROUP,
         items: [
           {
             keys: keyLabel('enter', isMac),
             label: 'Send to the target session',
           },
-          { keys: `⇧${keyLabel('enter', isMac)}`, label: 'New line' },
+          {
+            keys: isMac ? `⇧${keyLabel('enter', isMac)}` : 'Shift+Enter',
+            label: 'New line',
+          },
           {
             keys: arrowSeq(isMac, 'up', 'down'),
             label: 'Change the target session',

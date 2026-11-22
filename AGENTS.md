@@ -246,11 +246,12 @@ A hint for a command with no key shows no key.
 
 - `Ctrl+C` — interrupt / force-quit (universal).
 - Dialog confirm/cancel (`Enter` / `Esc`) inside overlays.
-- Inside the menu bar's native dictation HUD (spec 553): `↑`/`↓` change
-  the target session and `⇧↩` inserts a newline. With Handy auto-start
-  (spec 573), `↩` while Handy is recording stops it and sends. The panel
-  is AppKit and cannot read the TS bindings; its hints row shows these
-  keys. The system-wide chord that opens it (`dictate-hud`) *is* a
+- Inside the native dictation box — the menu bar's HUD on macOS (spec
+  553), each Hive window's box on Windows (spec 575): `↑`/`↓` change
+  the target session and `⇧↩` (Shift+Enter) inserts a newline. With
+  Handy auto-start (spec 573), `↩` while Handy is recording stops it and
+  sends. The box is AppKit or Win32 and cannot read the TS bindings; its
+  hints row shows these keys. The system-wide chord that opens it (`dictate-hud`) *is* a
   binding.
 
 ### Design rule

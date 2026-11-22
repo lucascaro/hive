@@ -77,12 +77,27 @@ describe('desiredHotkey / sameHotkey', () => {
 });
 
 describe('the dictate-hud binding', () => {
-  it('ships ⌃⌥Space on macOS and nothing elsewhere', () => {
+  it('ships ⌃⌥Space on macOS and Ctrl+Shift+Space elsewhere', () => {
     expect(chordsOfIn({}, 'dictate-hud', true)).toEqual(['Ctrl+Alt+[Space]']);
-    expect(chordsOfIn({}, 'dictate-hud', false)).toEqual([]);
+    // Spec 575: Ctrl+Alt is AltGr on many PC layouts.
+    expect(chordsOfIn({}, 'dictate-hud', false)).toEqual([
+      'Ctrl+Shift+[Space]',
+    ]);
     expect(
       DEFAULT_APP_BINDINGS.filter((b) => b.command === 'dictate-hud'),
     ).toHaveLength(1);
+  });
+
+  it('reads PC chords with mac=false: Ctrl is Control, Mod is Ctrl', () => {
+    expect(desiredHotkey(chordsOfIn({}, 'dictate-hud', false), false)).toEqual({
+      key_code: 0x31,
+      modifiers: CARBON_CONTROL | CARBON_SHIFT,
+      enabled: true,
+    });
+    expect(carbonHotkey('Mod+Alt+[KeyD]', false)).toEqual({
+      keyCode: 0x02,
+      modifiers: CARBON_CONTROL | CARBON_OPTION,
+    });
   });
 
   it('follows a keymap override, and an unbind disables the hotkey', () => {

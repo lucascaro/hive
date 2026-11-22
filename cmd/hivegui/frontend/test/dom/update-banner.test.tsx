@@ -30,6 +30,8 @@ const bridge = vi.hoisted(() => ({
 vi.mock('../../src/bridge.js', () => bridge);
 vi.mock('../../src/lib/platform.js', () => ({
   isMac: true,
+  isWindows: false,
+  dictationSupported: true,
   detectMac: () => true,
   cmdOrCtrl: () => true,
 }));
