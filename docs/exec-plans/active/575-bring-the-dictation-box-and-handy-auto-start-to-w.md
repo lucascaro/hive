@@ -3,7 +3,7 @@
 - **Spec:** [docs/product-specs/575-bring-the-dictation-box-and-handy-auto-start-to-w.md](../../product-specs/575-bring-the-dictation-box-and-handy-auto-start-to-w.md)
 - **Issue:** #575
 - **Status:** active
-- **PR:** —
+- **PR:** #576
 - **Branch:** feature/575-windows-dictation
 
 ## Summary

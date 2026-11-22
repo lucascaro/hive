@@ -4,7 +4,8 @@ title: Bring the dictation box and Handy auto-start to Windows
 type: enhancement
 complexity: L
 priority: P2
-stage: IMPLEMENT
+pr: 576
+stage: REVIEW
 ---
 
 # Bring the dictation box and Handy auto-start to Windows
