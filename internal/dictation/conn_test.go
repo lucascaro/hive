@@ -216,4 +216,15 @@ func TestApplySessionEvent(t *testing.T) {
 	}
 }
 
+// The daemon subscribes before it sends the snapshot, so an added event
+// can name a session the snapshot already listed: it must not duplicate.
+func TestApplySessionEventAddedIsIdempotent(t *testing.T) {
+	s := []wire.SessionInfo{{ID: "a", Title: "old"}}
+	s = ApplySessionEvent(s, wire.SessionEvent{Kind: wire.SessionEventAdded, Session: wire.SessionInfo{ID: "a", Title: "new"}})
+	s = ApplySessionEvent(s, wire.SessionEvent{Kind: wire.SessionEventAdded, Session: wire.SessionInfo{ID: "b"}})
+	if len(s) != 2 || s[0].Title != "new" || s[1].ID != "b" {
+		t.Fatalf("sessions = %+v, want [a(new) b]", s)
+	}
+}
+
 func jsonUnmarshal(b []byte, v any) error { return json.Unmarshal(b, v) }

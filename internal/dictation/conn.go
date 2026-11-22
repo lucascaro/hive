@@ -200,9 +200,9 @@ func (c *Conn) SendToSession(id, text string, queue bool) bool {
 }
 
 // ApplySessionEvent patches a session list with one SESSION_EVENT.
-// Unknown kinds are treated as an update: the payload is a full
-// SessionInfo either way, so adopting it is closer to the truth than
-// keeping a stale copy.
+// Every kind but removed upserts by ID. An added event can repeat a
+// session the snapshot already holds (the daemon subscribes before it
+// lists), and unknown kinds carry a full SessionInfo either way.
 func ApplySessionEvent(sessions []wire.SessionInfo, ev wire.SessionEvent) []wire.SessionInfo {
 	switch ev.Kind {
 	case wire.SessionEventRemoved:
@@ -213,8 +213,6 @@ func ApplySessionEvent(sessions []wire.SessionInfo, ev wire.SessionEvent) []wire
 			}
 		}
 		return out
-	case wire.SessionEventAdded:
-		return append(sessions, ev.Session)
 	}
 	for i, s := range sessions {
 		if s.ID == ev.Session.ID {
