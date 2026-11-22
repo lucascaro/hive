@@ -53,16 +53,41 @@ var kvkToVK = map[uint32]uint32{
 	0x7b: 0x25, 0x7e: 0x26, 0x7c: 0x27, 0x7d: 0x28, // Left, Up, Right, Down
 }
 
+// kvkToScan is the PC set-1 scan code of each kVK whose character
+// depends on the keyboard layout: letters, digits and punctuation. kVK
+// codes name a physical key (macOS registers the key in that position
+// whatever the layout prints on it), and a scan code does too, so
+// mapping through it keeps a chord on the same physical key on Windows.
+// The rest of kvkToVK (Space, Enter, F-keys, arrows…) has one VK on
+// every layout.
+var kvkToScan = map[uint32]uint32{
+	0x00: 0x1E, 0x01: 0x1F, 0x02: 0x20, 0x03: 0x21, 0x04: 0x23, 0x05: 0x22,
+	0x06: 0x2C, 0x07: 0x2D, 0x08: 0x2E, 0x09: 0x2F, 0x0b: 0x30, 0x0c: 0x10,
+	0x0d: 0x11, 0x0e: 0x12, 0x0f: 0x13, 0x10: 0x15, 0x11: 0x14, 0x12: 0x02,
+	0x13: 0x03, 0x14: 0x04, 0x15: 0x05, 0x16: 0x07, 0x17: 0x06, 0x18: 0x0D,
+	0x19: 0x0A, 0x1a: 0x08, 0x1b: 0x0C, 0x1c: 0x09, 0x1d: 0x0B, 0x1e: 0x1B,
+	0x1f: 0x18, 0x20: 0x16, 0x21: 0x1A, 0x22: 0x17, 0x23: 0x19, 0x25: 0x26,
+	0x26: 0x24, 0x27: 0x28, 0x28: 0x25, 0x29: 0x27, 0x2a: 0x2B, 0x2b: 0x33,
+	0x2c: 0x35, 0x2d: 0x31, 0x2e: 0x32, 0x2f: 0x34, 0x32: 0x29,
+}
+
 // WindowsHotkey is h as RegisterHotKey's (modifiers, vk). ok is false
 // for a disabled, invalid or unmappable chord, which registers nothing.
-// Cmd maps to the Windows key, Option to Alt.
-func WindowsHotkey(h wire.GlobalHotkey) (mods, vk uint32, ok bool) {
+// Cmd maps to the Windows key, Option to Alt. scanToVK is the current
+// layout's scan-code-to-VK map (MapVirtualKey on Windows); nil, or a 0
+// answer, falls back to the US layout's VK.
+func WindowsHotkey(h wire.GlobalHotkey, scanToVK func(scan uint32) uint32) (mods, vk uint32, ok bool) {
 	if !h.Enabled || !h.Valid() {
 		return 0, 0, false
 	}
 	vk, ok = kvkToVK[h.KeyCode]
 	if !ok {
 		return 0, 0, false
+	}
+	if scan, layoutDependent := kvkToScan[h.KeyCode]; layoutDependent && scanToVK != nil {
+		if v := scanToVK(scan); v != 0 {
+			vk = v
+		}
 	}
 	if h.Modifiers&wire.HotkeyModControl != 0 {
 		mods |= ModControl

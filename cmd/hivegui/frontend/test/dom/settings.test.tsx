@@ -114,7 +114,8 @@ const updateBridge = {
 // drive them per test — `isMac` is a module const, not a call.
 let menuBarStatus = 'unsupported';
 let onMac = false;
-let onWindows = false;
+// Hoisted: lib/bindings.ts reads isWindows while the mocks load.
+const plat = vi.hoisted(() => ({ windows: false }));
 const setMenuBarLoginItem = vi.fn(() => Promise.resolve());
 // Handy auto-start (spec 573): whether Handy is installed, and the
 // daemon's switch as global-hotkey.ts last heard it (null: not yet).
@@ -134,10 +135,10 @@ vi.mock('../../src/lib/platform.js', async (orig) => ({
     return onMac;
   },
   get isWindows() {
-    return onWindows;
+    return plat.windows;
   },
   get dictationSupported() {
-    return onMac || onWindows;
+    return onMac || plat.windows;
   },
 }));
 
@@ -228,7 +229,7 @@ beforeEach(() => {
   onMac = false;
   handyInstalled = false;
   handyAuto = null;
-  onWindows = false;
+  plat.windows = false;
   setHandyAutoStart.mockClear();
   resetStore();
   render(<Settings root={el('settings')} />, { container: el('settings') });
@@ -1452,7 +1453,7 @@ describe('settings: Dictation tab on Windows (spec 575)', () => {
     );
 
   it('shows the Handy switch on Windows when Handy is installed', async () => {
-    onWindows = true;
+    plat.windows = true;
     handyInstalled = true;
     handyAuto = false;
     open();
@@ -1471,7 +1472,7 @@ describe('settings: Dictation tab on Windows (spec 575)', () => {
   });
 
   it('is absent on Windows without Handy', async () => {
-    onWindows = true;
+    plat.windows = true;
     handyAuto = false;
     open();
     await flush();

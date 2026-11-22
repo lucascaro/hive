@@ -65,6 +65,7 @@ var (
 	pSetFocus          = user32.NewProc("SetFocus")
 	pIsWindowVisible   = user32.NewProc("IsWindowVisible")
 	pRegisterHotKey    = user32.NewProc("RegisterHotKey")
+	pMapVirtualKeyW    = user32.NewProc("MapVirtualKeyW")
 	pUnregisterHotKey  = user32.NewProc("UnregisterHotKey")
 	pSetTimer          = user32.NewProc("SetTimer")
 	pKillTimer         = user32.NewProc("KillTimer")
@@ -335,12 +336,19 @@ func (b *winBox) run(ready chan<- error) {
 }
 
 func (b *winBox) registerHotkey(h wire.GlobalHotkey) bool {
-	mods, vk, ok := dictation.WindowsHotkey(h)
+	mods, vk, ok := dictation.WindowsHotkey(h, layoutVK)
 	if !ok {
 		return false
 	}
 	r, _, _ := pRegisterHotKey.Call(uintptr(b.hwnd), hotkeyID, uintptr(mods), uintptr(vk))
 	return r != 0
+}
+
+// layoutVK is the current keyboard layout's VK for a physical key, so a
+// chord stays on the key it names on macOS (MAPVK_VSC_TO_VK_EX).
+func layoutVK(scan uint32) uint32 {
+	r, _, _ := pMapVirtualKeyW.Call(uintptr(scan), 3)
+	return uint32(r)
 }
 
 func (b *winBox) unregisterHotkey() {

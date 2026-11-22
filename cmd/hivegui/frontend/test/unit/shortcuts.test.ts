@@ -182,7 +182,11 @@ describe('dictation box rows off macOS', () => {
     shortcutGroups({ isMac: false, dictation }).map((g) => g.title);
 
   it('lists the Windows box and its chord', () => {
-    const groups = shortcutGroups({ isMac: false, dictation: true });
+    const groups = shortcutGroups({
+      isMac: false,
+      dictation: true,
+      keymap: { other: { 'dictate-hud': ['Ctrl+Shift+[Space]'] } },
+    });
     const global = groups.find((g) => g.title === 'Global (system-wide)');
     expect(global?.items).toEqual([
       {

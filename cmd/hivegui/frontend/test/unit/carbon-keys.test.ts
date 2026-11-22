@@ -77,19 +77,18 @@ describe('desiredHotkey / sameHotkey', () => {
 });
 
 describe('the dictate-hud binding', () => {
-  it('ships ⌃⌥Space on macOS and Ctrl+Shift+Space elsewhere', () => {
+  it('ships ⌃⌥Space on macOS and no chord on Linux', () => {
     expect(chordsOfIn({}, 'dictate-hud', true)).toEqual(['Ctrl+Alt+[Space]']);
-    // Spec 575: Ctrl+Alt is AltGr on many PC layouts.
-    expect(chordsOfIn({}, 'dictate-hud', false)).toEqual([
-      'Ctrl+Shift+[Space]',
-    ]);
+    // Spec 575: only Windows gets an off-mac default (see
+    // test/dom/global-hotkey-windows.test.ts); this runs as Linux.
+    expect(chordsOfIn({}, 'dictate-hud', false)).toEqual([]);
     expect(
       DEFAULT_APP_BINDINGS.filter((b) => b.command === 'dictate-hud'),
     ).toHaveLength(1);
   });
 
   it('reads PC chords with mac=false: Ctrl is Control, Mod is Ctrl', () => {
-    expect(desiredHotkey(chordsOfIn({}, 'dictate-hud', false), false)).toEqual({
+    expect(desiredHotkey(['Ctrl+Shift+[Space]'], false)).toEqual({
       key_code: 0x31,
       modifiers: CARBON_CONTROL | CARBON_SHIFT,
       enabled: true,

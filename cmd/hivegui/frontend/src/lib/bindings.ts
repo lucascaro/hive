@@ -27,6 +27,7 @@ import {
   type Keys,
 } from './chord.js';
 import { chordLabel } from './chord-label.js';
+import { isWindows } from './platform.js';
 
 /** keymap.json (spec 477). One half per platform family: a macOS
  * rebind never changes the Windows/Linux keys, and the reverse. Each
@@ -143,11 +144,14 @@ export const DEFAULT_APP_BINDINGS: readonly Binding[] = [
   // treat it like every other binding; the GUI converts the effective
   // chord for the box (app/global-hotkey.ts). [Space], not Space:
   // ⌥Space types a non-breaking space, so e.key cannot name it.
-  // Off macOS, Ctrl+Shift: Ctrl+Alt is AltGr on many layouts (spec 575).
-  // Only Windows registers it; elsewhere it is hidden from Settings and
-  // Help, and declines like any unhandled chord.
+  // On Windows, Ctrl+Shift: Ctrl+Alt is AltGr on many layouts (spec 575).
+  // Linux has no dictation box, so no default: a chord nothing registers
+  // would still count as taken and refuse a plugin the same key.
   {
-    keys: { mac: 'Ctrl+Alt+[Space]', other: 'Ctrl+Shift+[Space]' },
+    keys: {
+      mac: 'Ctrl+Alt+[Space]',
+      other: isWindows ? 'Ctrl+Shift+[Space]' : [],
+    },
     command: 'dictate-hud',
   },
   // ⌥⌘B on macOS, where the ⌥ spelling needs [KeyB] (⌥B types '∫'). Off
