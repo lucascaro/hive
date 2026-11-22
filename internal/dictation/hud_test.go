@@ -478,3 +478,14 @@ func TestHintsUseInjectedKeyNames(t *testing.T) {
 		t.Fatalf("busy status = %q", st.Status)
 	}
 }
+
+// Spec 575: a Shift+Enter in the Windows box is one rune once
+// normalized, so it cannot pass for Handy's transcription.
+func TestFromEditNormalizesCRLF(t *testing.T) {
+	if got := FromEdit("a\r\nb\r\n"); got != "a\nb\n" {
+		t.Fatalf("FromEdit = %q", got)
+	}
+	if n := len([]rune(FromEdit("hi\r\n"))) - len([]rune("hi")); n != 1 {
+		t.Fatalf("a newline adds %d runes, want 1", n)
+	}
+}

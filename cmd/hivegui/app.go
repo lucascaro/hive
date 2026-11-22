@@ -263,6 +263,8 @@ func (a *App) startup(ctx context.Context) {
 	// filesystem and nothing downstream waits on it.
 	go pruneRenamedAside()
 	a.startUpdateCheckLoop(ctx)
+	// The dictation box (spec 575); a no-op where the GUI does not host one.
+	a.startDictation()
 }
 
 // beforeClose logs that a quit reached Wails' close path (menu Quit,
@@ -278,6 +280,9 @@ func (a *App) beforeClose(ctx context.Context) bool {
 
 func (a *App) shutdown(ctx context.Context) {
 	log.Printf("hivegui: shutdown")
+	// First: it cancels a Handy recording the box started, which must not
+	// outlive the window and paste into another app.
+	a.stopDictation()
 	a.saveGeometry()
 	a.mu.Lock()
 	defer a.mu.Unlock()
