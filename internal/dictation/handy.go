@@ -7,7 +7,7 @@ package dictation
 import (
 	"errors"
 	"os"
-	"path/filepath"
+	"path"
 	"strings"
 	"time"
 )
@@ -50,11 +50,12 @@ const HandyBundleID = "com.pais.handy"
 const handyTimeout = 3 * time.Second
 
 // darwinHandyPaths are where Handy's binary lives in a standard macOS
-// install.
+// install. path, not filepath: these are macOS paths on every GOOS the
+// tests run on.
 func darwinHandyPaths(home string) []string {
 	paths := []string{"/Applications/Handy.app/Contents/MacOS/handy"}
 	if home != "" {
-		paths = append(paths, filepath.Join(home, "Applications", "Handy.app", "Contents", "MacOS", "handy"))
+		paths = append(paths, path.Join(home, "Applications", "Handy.app", "Contents", "MacOS", "handy"))
 	}
 	return paths
 }
