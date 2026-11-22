@@ -1870,6 +1870,12 @@ type PluginEvent struct {
 	Nonce string `json:"nonce,omitempty"`
 }
 
+// DictationClientPrefix starts the HELLO client name of the Windows
+// GUI's dictation connection (spec 575). It only feeds the dictation
+// box, so the daemon treats it as headless, like hivebar: no plan
+// review or worktree choice is ever parked on it.
+const DictationClientPrefix = "hive-dictation/"
+
 // MaxMessageLen caps SendToSessionReq.Text in bytes. A note, not a
 // transcript: Claude's own inbox allows far more, and this is smaller
 // on purpose.

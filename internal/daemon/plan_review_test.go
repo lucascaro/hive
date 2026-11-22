@@ -188,26 +188,43 @@ func TestPlanReviewFailsFastWithoutClient(t *testing.T) {
 	}
 }
 
-func TestPlanReviewHivebarIsNotAnAnswerer(t *testing.T) {
+func TestPlanReviewHeadlessClientsAreNotAnswerers(t *testing.T) {
 	skipOnWindows(t)
-	planReviewEnv(t)
-	d := startTestDaemon(t)
-	enableReview(t, d, "")
-	id := bootstrapSessionID(t, d)
-	bar := answerer(t, d, "hivebar/0.1")
-	defer bar.Close()
-	waitFor(t, 2*time.Second, func() bool {
-		d.mu.Lock()
-		defer d.mu.Unlock()
-		return len(d.clients) > 0
-	})
-	if n := answererCount(d); n != 0 {
-		t.Fatalf("hivebar counted as an answerer: %d", n)
+	for _, client := range []string{"hivebar/0.1", wire.DictationClientPrefix + "0.1"} {
+		t.Run(client, func(t *testing.T) {
+			planReviewEnv(t)
+			d := startTestDaemon(t)
+			enableReview(t, d, "")
+			id := bootstrapSessionID(t, d)
+			bar := answerer(t, d, client)
+			defer bar.Close()
+			waitFor(t, 2*time.Second, func() bool {
+				d.mu.Lock()
+				defer d.mu.Unlock()
+				return len(d.clients) > 0
+			})
+			if n := answererCount(d); n != 0 {
+				t.Fatalf("%s counted as an answerer: %d", client, n)
+			}
+			c := requestPlanReview(t, d, claudeReq(id))
+			defer c.Close()
+			if dec := readDecision(t, c, 2*time.Second); dec.Status != wire.PlanReviewNoClient {
+				t.Errorf("with only %s attached: status %q, want no_client", client, dec.Status)
+			}
+		})
 	}
-	c := requestPlanReview(t, d, claudeReq(id))
-	defer c.Close()
-	if dec := readDecision(t, c, 2*time.Second); dec.Status != wire.PlanReviewNoClient {
-		t.Errorf("with only hivebar attached: status %q, want no_client", dec.Status)
+}
+
+func TestCanAnswerExcludesHeadless(t *testing.T) {
+	for client, want := range map[string]bool{
+		"hivebar/0.1":                      false,
+		wire.DictationClientPrefix + "0.1": false,
+		"hivegui/1.2":                      true,
+		"hived-ws-bridge":                  true,
+	} {
+		if got := canAnswer(wire.Hello{Client: client}); got != want {
+			t.Errorf("canAnswer(%q) = %v, want %v", client, got, want)
+		}
 	}
 }
 

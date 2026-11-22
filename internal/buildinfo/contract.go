@@ -28,6 +28,13 @@ package buildinfo
 // History (newest first), so a bump is a decision with a record and
 // not just a number going up:
 //
+//	41 — Dictation box on Windows (spec 575). A control client whose
+//	    HELLO names wire.DictationClientPrefix is headless, like
+//	    hivebar: it is not counted as a client that can answer a plan
+//	    review or worktree choice, gets no PLUGIN_MESSAGEs and cannot
+//	    announce plugin UIs. A Windows GUI built against this tree opens
+//	    one such connection per window; an older daemon would count it
+//	    as an answerer and park questions on it, so the GUI restarts it.
 //	40 — Dictation settings (spec 573). SET_DICTATION (0x63) and
 //	    DICTATION (0x64) replace SET_GLOBAL_HOTKEY / GLOBAL_HOTKEY,
 //	    whose numbers (0x58/0x59) are retired, not reused: the payload
@@ -341,7 +348,7 @@ package buildinfo
 //	    before this cannot see or clear the flag.
 //	1 — first contract; everything up to and including the
 //	    CLIENT_COMMAND relay.
-const DaemonContract = 40
+const DaemonContract = 41
 
 // Identity is this binary's full build identity. `hived --version
 // --json` prints it, and Welcome carries the same three values, so a
