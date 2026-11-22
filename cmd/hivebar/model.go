@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"sort"
 
+	"github.com/lucascaro/hive/internal/dictation"
 	"github.com/lucascaro/hive/internal/wire"
 )
 
@@ -230,10 +231,6 @@ func (m Model) SummaryLine() string {
 // without one pool per project. A row you can click from the top level
 // also beats one you have to hover a parent to reach.
 func (m SessionRow) LabelIn(project string) string {
-	name := m.Name
-	if name == "" {
-		name = m.ID
-	}
 	prefix := "  "
 	if m.Waiting {
 		// A leading marker rather than a trailing one: menu items are
@@ -242,16 +239,11 @@ func (m SessionRow) LabelIn(project string) string {
 		// reading as a column.
 		prefix = "● "
 	}
-	label := prefix + name
-	if project != "" {
-		label = prefix + project + " · " + name
-	}
 	if !m.Alive {
-		label += " (stopped)"
-	} else if m.Title != "" && m.Title != name {
-		label += " — " + m.Title
+		return prefix + dictation.Label(project, m.ID, m.Name, "") + " (stopped)"
 	}
-	return label
+	// The same label the dictation box shows for the session.
+	return prefix + dictation.Label(project, m.ID, m.Name, m.Title)
 }
 
 func plural(n int, noun string) string {

@@ -2,9 +2,7 @@
 // Copyright (C) 2026 Lucas Caro
 // See LICENSE and ADDITIONAL-TERMS.md.
 
-//go:build darwin
-
-package main
+package dictation
 
 import (
 	"errors"
@@ -44,46 +42,46 @@ import (
 // sends it; closing the panel by any route cancels Handy, so a recording
 // the HUD started can never outlive it and paste into another app.
 
-// hudContract is the DaemonContract generation that added the HUD's
+// Contract is the DaemonContract generation that added the HUD's
 // frames (internal/buildinfo/contract.go, entry 40: DICTATION). An older
 // daemon never sends DICTATION, so the hotkey would silently never
 // register; the menu says so instead.
-const hudContract = 40
+const Contract = 40
 
-// hudView is the panel. Every method must return promptly: HUD calls
+// View is the panel. Every method must return promptly: HUD calls
 // them with its lock held, and the panel's own callbacks arrive on the
 // main thread. The AppKit view queues its work onto the main thread and
 // returns.
-type hudView interface {
+type View interface {
 	// Show puts the panel up, or refreshes it if it is up. clear empties
 	// the text field, which happens only when the panel opens: a live
 	// update must never wipe what the user is dictating. focus makes the
 	// panel key with the caret at the end of the text, which only a
 	// hotkey press asks for: a live update that took focus would move
 	// the caret, or cut off a dictation, mid-sentence.
-	Show(st hudState, clear, focus bool)
+	Show(st State, clear, focus bool)
 	// Hide takes the panel down. restore hands focus back to the app that
 	// was in front when the panel opened.
 	Hide(restore bool)
 }
 
-// hudSender delivers confirmed text. It reports false when there is no
+// Sender delivers confirmed text. It reports false when there is no
 // daemon connection to send on.
-type hudSender interface {
+type Sender interface {
 	SendToSession(id, text string, queue bool) bool
 }
 
-// hudState is what the panel shows.
-type hudState struct {
-	Targets  []hudTarget
+// State is what the panel shows.
+type State struct {
+	Targets  []Target
 	Selected int // index into Targets, or -1 for none
 	Status   string
 	Hints    string
 	CanSend  bool
 }
 
-// hudTarget is one live session the text can go to.
-type hudTarget struct {
+// Target is one live session the text can go to.
+type Target struct {
 	ID    string
 	Label string
 	ACP   bool
@@ -132,10 +130,29 @@ const (
 	hintsAwait   = "[esc] cancel"
 )
 
+// KeyNames are the box's Enter and Shift+Enter as the platform writes
+// them. Hints and statuses are written with macOS glyphs; a box on
+// another platform renders them with its own names.
+type KeyNames struct{ Enter, NewLine string }
+
+var (
+	MacKeys = KeyNames{Enter: "↩", NewLine: "⇧↩"}
+	PCKeys  = KeyNames{Enter: "Enter", NewLine: "Shift+Enter"}
+)
+
+func (k KeyNames) apply(s string) string {
+	if k == MacKeys || k == (KeyNames{}) {
+		return s
+	}
+	s = strings.ReplaceAll(s, MacKeys.NewLine, k.NewLine)
+	return strings.ReplaceAll(s, MacKeys.Enter, k.Enter)
+}
+
 // HUD is the controller. Safe for concurrent use; no method blocks.
 type HUD struct {
-	view hudView
-	send hudSender
+	view View
+	send Sender
+	keys KeyNames
 	// goSend runs a send off the caller's goroutine, which for every key
 	// is the main thread: a socket write must never hold it. Tests run
 	// it inline.
@@ -169,7 +186,7 @@ type HUD struct {
 	// worker, so calls run in the order they were made and a cancel can
 	// never overtake the start it follows. afterFunc is time.AfterFunc,
 	// swapped in tests.
-	handy     handyCtl
+	handy     HandyCtl
 	goHandy   func(func())
 	afterFunc func(time.Duration, func()) (stop func() bool)
 	autoStart bool
@@ -194,9 +211,9 @@ type HUD struct {
 	timerSeq        int
 }
 
-func NewHUD(view hudView, send hudSender, handy handyCtl) *HUD {
+func NewHUD(view View, send Sender, handy HandyCtl, keys KeyNames) *HUD {
 	h := &HUD{
-		view: view, send: send, handy: handy,
+		view: view, send: send, handy: handy, keys: keys,
 		goSend:       func(f func()) { go f() },
 		afterFunc:    func(d time.Duration, f func()) func() bool { return time.AfterFunc(d, f).Stop },
 		pending:      map[string]int{},
@@ -814,7 +831,7 @@ func (h *HUD) isACPLocked(id string) bool {
 // targetsLocked lists every live session, in the menu's order: by
 // project, then by the session's own order. Not capped: the menu's row
 // pool has a size, the popup does not need one.
-func (h *HUD) targetsLocked() []hudTarget {
+func (h *HUD) targetsLocked() []Target {
 	projName := make(map[string]string, len(h.projects))
 	projOrder := make(map[string]int, len(h.projects))
 	for _, p := range h.projects {
@@ -838,15 +855,14 @@ func (h *HUD) targetsLocked() []hudTarget {
 		}
 		return live[i].Order < live[j].Order
 	})
-	out := make([]hudTarget, 0, len(live))
+	out := make([]Target, 0, len(live))
 	for _, s := range live {
-		row := SessionRow{ID: s.ID, Name: s.Name, Title: s.Title, Alive: true}
-		label := strings.TrimSpace(row.LabelIn(projName[s.ProjectID]))
+		label := Label(projName[s.ProjectID], s.ID, s.Name, s.Title)
 		if s.Kind != wire.KindACP && (s.Agent == "" || s.Agent == string(agent.IDShell)) {
 			// Dictated text lands in a shell as a command, not a prompt.
 			label = "[shell] " + label
 		}
-		out = append(out, hudTarget{
+		out = append(out, Target{
 			ID:    s.ID,
 			Label: label,
 			ACP:   s.Kind == wire.KindACP,
@@ -855,7 +871,7 @@ func (h *HUD) targetsLocked() []hudTarget {
 	return out
 }
 
-func indexOf(ts []hudTarget, id string) int {
+func indexOf(ts []Target, id string) int {
 	for i, t := range ts {
 		if t.ID == id {
 			return i
@@ -866,7 +882,7 @@ func indexOf(ts []hudTarget, id string) int {
 
 func (h *HUD) renderLocked(clear, focus bool) {
 	ts := h.targetsLocked()
-	st := hudState{Targets: ts, Selected: indexOf(ts, h.target), Status: h.status, Hints: hintsEditing}
+	st := State{Targets: ts, Selected: indexOf(ts, h.target), Status: h.status, Hints: hintsEditing}
 	switch {
 	case !h.connected:
 		if st.Status == "" {
@@ -886,5 +902,6 @@ func (h *HUD) renderLocked(clear, focus bool) {
 		st.Status = "Pick a session to send to with ↑↓."
 	}
 	st.CanSend = st.Selected >= 0 && h.phase != hudSending && h.phase != hudAwaitingText
+	st.Status, st.Hints = h.keys.apply(st.Status), h.keys.apply(st.Hints)
 	h.view.Show(st, clear, focus)
 }

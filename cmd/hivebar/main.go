@@ -43,6 +43,7 @@ import (
 	"fyne.io/systray"
 
 	"github.com/lucascaro/hive/internal/buildinfo"
+	"github.com/lucascaro/hive/internal/dictation"
 	"github.com/lucascaro/hive/internal/registry"
 )
 
@@ -125,8 +126,8 @@ func main() {
 	// The dictation capture HUD (spec 553): a native panel, the Carbon
 	// hotkey that opens it, and the menu item that names that hotkey.
 	// Handy, when installed and switched on, records as it opens (573).
-	hud := NewHUD(nativeView{}, client, newExecHandy())
-	dict := NewDictation(nativeRegistrar{}, menu.SetDictation)
+	hud := dictation.NewHUD(nativeView{}, client, dictation.NewExecHandy(nativeHandyRunning), dictation.MacKeys)
+	dict := dictation.NewHotkeys(nativeRegistrar{}, menu.SetDictation)
 	setNativeTargets(hud, dict)
 	client.AttachHUD(hud, dict)
 	menu.AttachHUD(hud)

@@ -2,9 +2,7 @@
 // Copyright (C) 2026 Lucas Caro
 // See LICENSE and ADDITIONAL-TERMS.md.
 
-//go:build darwin
-
-package main
+package dictation
 
 import (
 	"errors"
@@ -501,16 +499,16 @@ func TestHUDHandyCallsRunInOrder(t *testing.T) {
 	}
 }
 
-var _ handyCtl = (*execHandy)(nil)
+var _ HandyCtl = (*ExecHandy)(nil)
 
 func TestExecHandyRunsFlags(t *testing.T) {
 	var ran [][]string
-	h := &execHandy{
+	h := &ExecHandy{
 		run: func(_ time.Duration, name string, args ...string) (string, error) {
 			ran = append(ran, append([]string{name}, args...))
 			return "", nil
 		},
-		paths:   func() []string { return []string{"/nonexistent", "/bin/sh"} },
+		bin:     func() string { return "/bin/sh" },
 		running: func() bool { return true },
 	}
 	if !h.Available() {
@@ -530,7 +528,7 @@ func TestExecHandyRunsFlags(t *testing.T) {
 	if h.Toggle() == nil || h.Cancel() == nil || len(ran) != 0 {
 		t.Errorf("ran %v with Handy stopped; either flag would launch it", ran)
 	}
-	h.paths = func() []string { return []string{"/nonexistent"} }
+	h.bin = func() string { return "" }
 	h.running = func() bool { return true }
 	if h.Available() || h.Toggle() == nil {
 		t.Error("no binary, yet available or toggled")

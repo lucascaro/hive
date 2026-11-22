@@ -2,14 +2,13 @@
 // Copyright (C) 2026 Lucas Caro
 // See LICENSE and ADDITIONAL-TERMS.md.
 
-//go:build darwin
-
-package main
+package dictation
 
 import (
 	"errors"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
 )
 
@@ -23,11 +22,11 @@ import (
 // is no way to ask whether it is recording, which is why the HUD tracks
 // only the recordings it started itself. Verified on Handy 0.10.1.
 
-// handyCtl starts and stops Handy. Toggle and Cancel may block for a
+// HandyCtl starts and stops Handy. Toggle and Cancel may block for a
 // while (they exec), so the HUD never calls them under its lock or on
 // the main thread; Available must be cheap, because Open calls it on
 // both.
-type handyCtl interface {
+type HandyCtl interface {
 	// Available reports that Handy is installed and running. Hive never
 	// launches Handy: --toggle-transcription on a stopped Handy would
 	// start it, which is not what opening the HUD asked for.
@@ -41,35 +40,43 @@ type handyCtl interface {
 // cancel.
 var errHandyNotRunning = errors.New("handy is not running")
 
-// handyBundleID is Handy's macOS bundle identifier.
-const handyBundleID = "com.pais.handy"
+// HandyBundleID is Handy's macOS bundle identifier, for a host's
+// "is it running" check.
+const HandyBundleID = "com.pais.handy"
 
 // handyTimeout bounds one Handy command. They answer at once when Handy
-// is healthy; the bound is for when it is not.
+// is healthy (about a second on Windows); the bound is for when it is
+// not.
 const handyTimeout = 3 * time.Second
 
-// handyPaths are where Handy's binary lives in a standard install.
-func handyPaths() []string {
+// darwinHandyPaths are where Handy's binary lives in a standard macOS
+// install.
+func darwinHandyPaths(home string) []string {
 	paths := []string{"/Applications/Handy.app/Contents/MacOS/handy"}
-	if home, err := os.UserHomeDir(); err == nil {
+	if home != "" {
 		paths = append(paths, filepath.Join(home, "Applications", "Handy.app", "Contents", "MacOS", "handy"))
 	}
 	return paths
 }
 
-// execHandy is the production handyCtl.
-type execHandy struct {
-	run     runner
-	paths   func() []string
-	running func() bool
+// windowsHandyPaths are where Handy's installers put handy.exe on
+// Windows (checked with 0.10.1): the setup .exe installs per user under
+// %LOCALAPPDATA%\Handy, the .msi under %ProgramFiles%\Handy. Joined with
+// a backslash rather than filepath.Join so the list is the same, and
+// testable, on every OS.
+func windowsHandyPaths(getenv func(string) string) []string {
+	var paths []string
+	for _, root := range []string{getenv("LOCALAPPDATA"), getenv("ProgramFiles")} {
+		if root != "" {
+			paths = append(paths, strings.TrimRight(root, `\`)+`\Handy\handy.exe`)
+		}
+	}
+	return paths
 }
 
-func newExecHandy() *execHandy {
-	return &execHandy{run: runWithTimeout, paths: handyPaths, running: nativeHandyRunning}
-}
-
-func (h *execHandy) bin() string {
-	for _, p := range h.paths() {
+// HandyBin is the installed Handy binary, or "" when there is none.
+func HandyBin() string {
+	for _, p := range handyPaths() {
 		if isExecutable(p) {
 			return p
 		}
@@ -77,14 +84,31 @@ func (h *execHandy) bin() string {
 	return ""
 }
 
-func (h *execHandy) Available() bool {
+// ExecHandy is the production HandyCtl.
+type ExecHandy struct {
+	run     Runner
+	bin     func() string
+	running func() bool
+}
+
+// NewExecHandy drives the installed Handy. running reports that Handy
+// is up; a host passes its own check (hivebar asks AppKit), or nil for
+// this platform's default.
+func NewExecHandy(running func() bool) *ExecHandy {
+	if running == nil {
+		running = handyRunning
+	}
+	return &ExecHandy{run: RunWithTimeout, bin: HandyBin, running: running}
+}
+
+func (h *ExecHandy) Available() bool {
 	return h.bin() != "" && h.running()
 }
 
-func (h *execHandy) Toggle() error { return h.do("--toggle-transcription") }
-func (h *execHandy) Cancel() error { return h.do("--cancel") }
+func (h *ExecHandy) Toggle() error { return h.do("--toggle-transcription") }
+func (h *ExecHandy) Cancel() error { return h.do("--cancel") }
 
-func (h *execHandy) do(flag string) error {
+func (h *ExecHandy) do(flag string) error {
 	bin := h.bin()
 	if bin == "" {
 		return os.ErrNotExist

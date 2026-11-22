@@ -343,6 +343,15 @@ Three layers. Only the bottom one is new native code.
   - the box is a native Win32 window on a locked OS thread;
   - the Ctrl+Shift+Space default and the Settings row apply on Windows only, with no Linux default.
 - **2026-11-22** — `canAnswer` excludes headless `hive-dictation/` clients, and DaemonContract goes to 41. Why: operator approved option A over naming the conn `hivebar/…`. A clean rule beats a misleading name, and the restart cost on upgrade was accepted.
+- **2026-11-22** — Handy probe on Windows 11 ARM VM, Handy 0.10.1:
+  - **Install paths.**
+    - The NSIS `setup.exe` installs per-user to `%LOCALAPPDATA%\Handy\handy.exe`, with an HKCU Uninstall entry whose `DisplayIcon` points there.
+    - The MSI lays out `PFiles\Handy\handy.exe`, which is `%ProgramFiles%\Handy\handy.exe`.
+    - `%LOCALAPPDATA%\Programs\Handy` is not used, so it is dropped from the candidate list.
+  - **Flag forwarding.** `--toggle-transcription` and `--cancel` forward to the running instance. Its log shows `TranscribeAction::start` and `Initiating operation cancellation`. Both exit 0 in about 1.1 s, and only one handy process remains.
+  - **Stopped Handy.** `--cancel` on a stopped Handy launches it, as on macOS, so the "is running" check is required.
+  - **Paste.** The default `paste_method` is `ctrl_v`, which arrives in a standard EDIT as `WM_PASTE`, so no direct-typing fallback is needed for the default.
+  - **Recording.** The VM can't record: there is no model (the VM has no internet) and only a Line In. Per the decision above, the Handy recording rows go to the operator's machine. The VM covers the CLI rows and paste detection via a synthesized Ctrl+V.
 
 ## Progress
 
