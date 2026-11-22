@@ -15,6 +15,7 @@ import (
 
 	"github.com/lucascaro/hive/internal/buildinfo"
 	hdaemon "github.com/lucascaro/hive/internal/daemon"
+	"github.com/lucascaro/hive/internal/dictation"
 	"github.com/lucascaro/hive/internal/wire"
 )
 
@@ -235,32 +236,7 @@ func (c *Client) handleFrame(ft wire.FrameType, payload []byte) {
 func (c *Client) applySessionEvent(ev wire.SessionEvent) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
-	switch ev.Kind {
-	case wire.SessionEventRemoved:
-		out := c.sessions[:0]
-		for _, s := range c.sessions {
-			if s.ID != ev.Session.ID {
-				out = append(out, s)
-			}
-		}
-		c.sessions = out
-		return
-	case wire.SessionEventAdded:
-		c.sessions = append(c.sessions, ev.Session)
-		return
-	}
-	// updated / title / attention, and any kind a newer daemon
-	// introduces: replace in place. Unknown kinds are treated as an
-	// update rather than ignored — the payload is a full SessionInfo
-	// either way, so adopting it is strictly closer to the truth than
-	// keeping a stale copy.
-	for i, s := range c.sessions {
-		if s.ID == ev.Session.ID {
-			c.sessions[i] = ev.Session
-			return
-		}
-	}
-	c.sessions = append(c.sessions, ev.Session)
+	c.sessions = dictation.ApplySessionEvent(c.sessions, ev)
 }
 
 // publish pushes a fresh Model, at most once per publishInterval.
