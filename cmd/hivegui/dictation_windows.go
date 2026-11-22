@@ -68,7 +68,7 @@ var (
 	pUnregisterHotKey  = user32.NewProc("UnregisterHotKey")
 	pSetTimer          = user32.NewProc("SetTimer")
 	pKillTimer         = user32.NewProc("KillTimer")
-	pGetKeyState       = user32.NewProc("GetKeyState")
+	pGetAsyncKeyState  = user32.NewProc("GetAsyncKeyState")
 	pGetCursorPos      = user32.NewProc("GetCursorPos")
 	pMonitorFromPoint  = user32.NewProc("MonitorFromPoint")
 	pGetMonitorInfoW   = user32.NewProc("GetMonitorInfoW")
@@ -78,21 +78,24 @@ var (
 	pLoadCursorW       = user32.NewProc("LoadCursorW")
 	pGetSysColorBrush  = user32.NewProc("GetSysColorBrush")
 	pCreateFontW       = gdi32.NewProc("CreateFontW")
+	pSetBkColor        = gdi32.NewProc("SetBkColor")
+	pGetSysColor       = user32.NewProc("GetSysColor")
 	pDeleteObject      = gdi32.NewProc("DeleteObject")
 	pGetModuleHandleW  = kernel32.NewProc("GetModuleHandleW")
 )
 
 const (
-	wmDestroy = 0x0002
-	wmClose   = 0x0010
-	wmSetFont = 0x0030
-	wmKeyDown = 0x0100
-	wmChar    = 0x0102
-	wmCommand = 0x0111
-	wmTimer   = 0x0113
-	wmPaste   = 0x0302
-	wmHotkey  = 0x0312
-	wmApp     = 0x8000
+	wmDestroy        = 0x0002
+	wmClose          = 0x0010
+	wmSetFont        = 0x0030
+	wmKeyDown        = 0x0100
+	wmChar           = 0x0102
+	wmCommand        = 0x0111
+	wmCtlColorStatic = 0x0138
+	wmTimer          = 0x0113
+	wmPaste          = 0x0302
+	wmHotkey         = 0x0312
+	wmApp            = 0x8000
 
 	wmAppShow   = wmApp + 1
 	wmAppHide   = wmApp + 2
@@ -402,6 +405,13 @@ func boxProc(hwnd, msg, wp, lp uintptr) uintptr {
 			b.hud.TextChanged(dictation.FromEdit(b.editText()), pasted)
 		}
 		return 0
+	case wmCtlColorStatic:
+		// The labels share the box's background rather than the dialog
+		// grey a STATIC paints by default.
+		c, _, _ := pGetSysColor.Call(colorWindow)
+		pSetBkColor.Call(wp, c)
+		br, _, _ := pGetSysColorBrush.Call(colorWindow)
+		return br
 	case wmClose:
 		b.hud.Cancel()
 		return 0
@@ -467,9 +477,14 @@ func editProc(hwnd, msg, wp, lp uintptr) uintptr {
 	return r
 }
 
+// keyDown reports a modifier held right now. Not GetKeyState: that is
+// this thread's view of the keyboard, and the hotkey's own Ctrl and
+// Shift are often released while another app is still in front, so the
+// box's thread never sees them come up. Plain Esc and Down then read as
+// Shift+Esc and Shift+Down and did nothing (found on the Windows VM).
 func keyDown(vk uintptr) bool {
-	r, _, _ := pGetKeyState.Call(vk)
-	return int16(r) < 0
+	r, _, _ := pGetAsyncKeyState.Call(vk)
+	return r&0x8000 != 0
 }
 
 func (b *winBox) editText() string {

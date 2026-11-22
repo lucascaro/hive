@@ -357,6 +357,25 @@ Three layers. Only the bottom one is new native code.
 
 - **2026-11-21** — Spec and issue #575 created via /hs-brainstorm; triaged L/P2; plan created at RESEARCH.
 - **2026-11-22** — Research done. Plan approved via plan-html (round 1, about 13 s); stage IMPLEMENT.
+- **2026-11-22** — Windows VM verification (Windows 11 ARM, amd64 build `a0c87315`+fix, via the windows-vm MCP):
+  1. Hotkey and focus. With Edge in front, Ctrl+Shift+Space opened the box with keyboard focus. Text placed by a Ctrl+V paste landed in it.
+  2. Delivery. Enter sent the text to the target session (`main`) only: `%TEMP%\dict575.txt` contained `DICT575`. The box closed and focus went back to Edge.
+  3. Box keys.
+     - **Down** moved the target to `fern-brook (2 of 2)`.
+     - **Shift+Enter** added a line.
+     - **Esc** closed the box with nothing written: `esc575.txt` was absent.
+  4. Two windows. With two hivegui processes, one press opened exactly one box, owned by the first window. After the first window closed, the next press opened a box from the second process: a new HWND.
+  5. No GUI. With no hivegui running, the chord opened nothing.
+  6. Settings.
+     - With Handy installed, a **Dictation** tab appeared next to Shortcuts, holding the switch. Its hint read "Ctrl+Shift+Space … Enter stops Handy".
+     - The switch wrote `handy_auto_start` to `dictation.json`.
+  7. Handy, switch on. Opening the box showed "Recording with Handy…" and Handy logged `TranscribeAction::start`. Esc made Handy log `Operation cancellation completed`.
+  8. Handy, switch off. Opening the box added no new Handy log line.
+  9. Rebind. In Settings → Shortcuts, Ctrl+Shift+F12 replaced the chord: the old chord stopped opening the box and the new one opened it. Resetting the row restored `key_code 49, modifiers 0x1200` in `dictation.json`.
+  - **Bug found and fixed.** `GetKeyState` still reported the hotkey's own Ctrl/Shift as held, because they were released while another app was in front. Plain Down and Esc read as modified and did nothing. Switched to `GetAsyncKeyState`; Down and Esc then worked.
+  - **Not run on the VM:**
+    - a real Handy transcription: there is no model and no internet. That is an operator row.
+    - the "no live sessions" empty state. It is shared HUD code, covered by `TestHUDNoSessionsEnterInert` in internal/dictation.
 
 ## PR convergence ledger
 
