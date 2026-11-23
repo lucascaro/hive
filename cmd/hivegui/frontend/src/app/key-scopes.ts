@@ -142,7 +142,15 @@ const choiceDialog: KeyScope = {
   active: () => choiceDialogOpen(),
   owns: 'exclusive',
   trap: 'choice-dialog',
-  bindings: () => [{ keys: ESCAPE, command: 'choice-dialog.dismiss' }],
+  // Enter answers the focused choice (the spec's default until Tab
+  // moves it). Bound rather than left to the button's own activation so
+  // the `[enter]` hint holds even when focus has left the buttons.
+  bindings: () => [
+    { keys: ESCAPE, command: 'choice-dialog.dismiss' },
+    // repeat: false — a held Enter that opened the dialog must not
+    // answer it before the user has read the question.
+    { keys: 'Enter', command: 'choice-dialog.confirm', repeat: false },
+  ],
 };
 
 // The launcher's own listener handles every key.

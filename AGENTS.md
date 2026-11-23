@@ -189,7 +189,7 @@ Always apply these principles when adding or modifying UI elements in the GUI. V
 
 ### Feedback on Action
 - Destructive actions (kill, quit+kill) must always go through the confirm overlay — never skip it.
-- Overlays must display the relevant keybinding to confirm and cancel (`y/enter` to confirm, `esc/n` to cancel).
+- Overlays must display the keys that confirm and cancel — `[enter]` and `[esc]` — and a displayed key must do exactly what its hint says. Enter confirms: it runs the dialog's default (affirmative) action, which holds focus when the dialog opens. Esc cancels. Label each hint with the real action (`[enter] Unpin all · [esc] Cancel`), not a generic "choose". The only exception is a dialog that opens by itself or after an async gap (a daemon refusal), while the user may be typing or still holding Enter: its default stays on an answer that destroys nothing, and its hint names that answer. A held, auto-repeating Enter never answers a dialog. Choice dialogs set this with `ChoiceSpec.defaultValue`.
 
 ### Consistency
 - Key hints use the format `[key]` for number/symbol keys and `(key)` for letter keys — pick one format and apply it uniformly across the whole UI.
@@ -245,7 +245,7 @@ A hint for a command with no key shows no key.
 ### Hard-coded exceptions (NOT rebindable)
 
 - `Ctrl+C` — interrupt / force-quit (universal).
-- Dialog confirm/cancel (`Enter` / `Esc`) inside overlays.
+- Dialog confirm/cancel (`Enter` / `Esc`) inside overlays — Enter runs the default action, Esc cancels (see *Feedback on Action*).
 - Inside the menu bar's native dictation HUD (spec 553): `↑`/`↓` change
   the target session and `⇧↩` inserts a newline. With Handy auto-start
   (spec 573), `↩` while Handy is recording stops it and sends. The panel
@@ -256,7 +256,8 @@ A hint for a command with no key shows no key.
 ### Design rule
 
 Destructive actions (kill session, quit) must go through the confirmation
-overlay, and every overlay must show its confirm/cancel bindings.
+overlay, and every overlay must show its confirm/cancel bindings — keys
+that literally do what their hints say.
 
 ## Documentation Maintenance
 

@@ -21,6 +21,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { act, render, screen, cleanup } from '@testing-library/react';
 import { ChoiceDialog } from '../../src/components/modals/ChoiceDialog.js';
 import {
+  confirmChoiceDialog,
   openChoiceDialog,
   choiceDialogOpen,
   dismissChoiceDialog,
@@ -52,6 +53,9 @@ const SPEC = {
   ],
 };
 
+const hints = (root: HTMLElement) =>
+  [...root.querySelectorAll('.hv-dialog__hint')].map((h) => h.textContent);
+
 const answer = (value: string) =>
   act(() => {
     document
@@ -73,16 +77,36 @@ afterEach(() => {
 });
 
 describe('rendering', () => {
-  // AGENTS.md: every overlay shows its confirm and cancel keys.
-  it('shows its enter and esc keys', () => {
+  // AGENTS.md: every overlay shows its confirm and cancel keys, and the
+  // hint has to name what the key actually does.
+  it('names what enter and esc answer', () => {
     const root = mount();
     act(() => {
-      void openChoiceDialog(SPEC);
+      void openChoiceDialog({ ...SPEC, defaultValue: 'keep-branch' });
     });
-    const hints = [...root.querySelectorAll('.hv-dialog__hint')].map(
-      (h) => h.textContent,
-    );
-    expect(hints).toEqual(['[enter] choose', '[esc] cancel']);
+    expect(hints(root)).toEqual([
+      '[enter] Delete, keep branch',
+      '[esc] Cancel',
+    ]);
+  });
+
+  it('moves the enter hint with focus', () => {
+    const root = mount();
+    act(() => {
+      void openChoiceDialog({ ...SPEC, defaultValue: 'keep-branch' });
+    });
+    act(() => {
+      root.querySelector<HTMLButtonElement>('[data-choice="both"]')?.focus();
+    });
+    expect(hints(root)[0]).toBe('[enter] Delete + local branch');
+  });
+
+  it('says close, not cancel, when Escape leaves the question unanswered', () => {
+    const root = mount();
+    act(() => {
+      void openChoiceDialog({ ...SPEC, dismissValue: '' });
+    });
+    expect(hints(root)).toEqual(['[enter] Cancel', '[esc] Close']);
   });
 
   it('is hidden until a question is asked', () => {
@@ -115,7 +139,7 @@ describe('rendering', () => {
       'recoverable',
     );
     // No close button: an alertdialog with a question has no neutral
-    // "dismiss" — the safe choice is a button of its own.
+    // "dismiss" — Cancel is a button of its own.
     expect(root.querySelector('.hv-dialog__close')).toBeNull();
   });
 
@@ -149,7 +173,7 @@ describe('rendering', () => {
     expect(root.querySelector('.choice-dialog-note')).toBeNull();
   });
 
-  it('focuses the safe choice, so a stray Enter destroys nothing', () => {
+  it('focuses the first choice when the spec names no default', () => {
     mount();
     act(() => {
       void openChoiceDialog(SPEC);
@@ -157,6 +181,70 @@ describe('rendering', () => {
     expect((document.activeElement as HTMLElement)?.dataset.choice).toBe(
       'cancel',
     );
+  });
+
+  it('focuses the default choice', () => {
+    mount();
+    act(() => {
+      void openChoiceDialog({ ...SPEC, defaultValue: 'keep-branch' });
+    });
+    expect((document.activeElement as HTMLElement)?.dataset.choice).toBe(
+      'keep-branch',
+    );
+  });
+});
+
+describe('enter', () => {
+  const ask = (spec: typeof SPEC & { defaultValue?: string }) => {
+    let settled: string | null = null;
+    act(() => {
+      void openChoiceDialog(spec).then((v) => {
+        settled = v;
+      });
+    });
+    return () => settled;
+  };
+
+  // The reported bug: the footer said Enter confirms, but Cancel held
+  // focus so Enter cancelled.
+  it('answers the default choice', async () => {
+    mount();
+    const settled = ask({ ...SPEC, defaultValue: 'keep-branch' });
+    act(() => {
+      expect(confirmChoiceDialog()).toBe(true);
+    });
+    await act(async () => {});
+    expect(settled()).toBe('keep-branch');
+  });
+
+  it('answers the focused choice once Tab moves focus', async () => {
+    const root = mount();
+    const settled = ask({ ...SPEC, defaultValue: 'keep-branch' });
+    act(() => {
+      root.querySelector<HTMLButtonElement>('[data-choice="cancel"]')?.focus();
+    });
+    act(() => {
+      confirmChoiceDialog();
+    });
+    await act(async () => {});
+    expect(settled()).toBe('cancel');
+  });
+
+  it('answers the default when focus has left the buttons', async () => {
+    mount();
+    const settled = ask({ ...SPEC, defaultValue: 'keep-branch' });
+    act(() => {
+      (document.activeElement as HTMLElement | null)?.blur();
+    });
+    act(() => {
+      confirmChoiceDialog();
+    });
+    await act(async () => {});
+    expect(settled()).toBe('keep-branch');
+  });
+
+  it('does nothing with no question open', () => {
+    expect(confirmChoiceDialog()).toBe(false);
   });
 });
 
@@ -246,7 +334,7 @@ describe('answering', () => {
     expect(choiceDialogOpen()).toBe(false);
   });
 
-  it('remounts per question, so a re-ask starts on its own safe choice', async () => {
+  it('remounts per question, so a re-ask starts on its own default choice', async () => {
     mount();
     act(() => {
       void openChoiceDialog(SPEC);

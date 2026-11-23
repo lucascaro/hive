@@ -97,6 +97,7 @@ const choiceOpen = { value: false };
 vi.mock('../../src/app/modals/choice-dialog.js', () => ({
   choiceDialogOpen: () => choiceOpen.value,
   dismissChoiceDialog: vi.fn(),
+  confirmChoiceDialog: vi.fn(),
   openChoiceDialog: vi.fn(),
   resolveChoiceDialog: vi.fn(),
 }));

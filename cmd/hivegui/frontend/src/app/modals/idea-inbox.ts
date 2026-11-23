@@ -178,6 +178,7 @@ export async function confirmAndDeleteIdea(idea: IdeaInfo): Promise<void> {
       { label: 'Cancel', value: 'cancel' },
       { label: 'Delete', value: 'delete', danger: true },
     ],
+    defaultValue: 'delete',
   });
   if (answer !== 'delete') return;
   RemoveIdea(idea.id).catch(reportFailure('delete idea'));

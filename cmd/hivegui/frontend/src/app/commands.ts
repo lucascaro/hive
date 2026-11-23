@@ -67,7 +67,10 @@ import { raiseWorktreeChoice } from './events.js';
 import { openFindInSession } from './find-session.js';
 import { cancelInlineRename } from './inline-rename.js';
 import { closeBuildLog } from './modals/build-log.js';
-import { dismissChoiceDialog } from './modals/choice-dialog.js';
+import {
+  confirmChoiceDialog,
+  dismissChoiceDialog,
+} from './modals/choice-dialog.js';
 import {
   closeCommandPalette,
   openCommandPalette,
@@ -362,6 +365,7 @@ const UNLISTED: readonly Command[] = [
 
   { id: 'inline-rename.cancel', run: () => cancelInlineRename() },
   { id: 'choice-dialog.dismiss', run: () => dismissChoiceDialog() },
+  { id: 'choice-dialog.confirm', run: () => confirmChoiceDialog() },
   { id: 'command-palette.close', run: () => closeCommandPalette() },
   { id: 'settings.close', run: () => dismissSettings() },
   { id: 'worktrees.close', run: () => closeWorktrees() },

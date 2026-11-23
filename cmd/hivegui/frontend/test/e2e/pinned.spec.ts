@@ -178,8 +178,8 @@ test.describe('spec 566 pinned responses', () => {
     const dialog = page.locator('#choice-dialog');
     await expect(dialog).toBeVisible();
     await expect(dialog.locator('.hv-dialog__hint')).toHaveText([
-      '[enter] choose',
-      '[esc] cancel',
+      '[enter] Unpin all',
+      '[esc] Cancel',
     ]);
     await page.keyboard.press('Escape');
     await expect(dialog).toBeHidden();
@@ -189,8 +189,9 @@ test.describe('spec 566 pinned responses', () => {
     ).toBe(3);
     await expect.poll(() => isTermFocused(page)).toBe(true);
 
+    // The reported bug: Enter used to cancel here. It must unpin.
     await panel.locator('.hv-activity__pins-clear').click();
-    await dialog.locator('button[data-choice="unpin"]').click();
+    await page.keyboard.press('Enter');
     await expect(panel.locator('.hv-activity__pins')).toHaveCount(0);
     expect(
       await page.evaluate((sid) => window.__hive.pins?.(sid).length, id),
