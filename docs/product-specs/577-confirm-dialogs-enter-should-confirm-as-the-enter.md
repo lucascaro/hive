@@ -5,7 +5,7 @@ type: bug
 complexity: S
 priority: P2
 pr: 578
-stage: REVIEW
+stage: GATE
 ---
 
 # Confirm dialogs: Enter should confirm, as the [enter] hint says
