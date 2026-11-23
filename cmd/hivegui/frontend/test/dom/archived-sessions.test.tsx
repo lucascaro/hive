@@ -276,6 +276,12 @@ describe('deleting', () => {
     act(() => setArchived(LIST));
     const p = archive.onArchivedWorktreeDirty('s2');
     await flush();
+    // Only Escape is advertised; Enter still cancels.
+    expect(
+      [...el('choice-dialog').querySelectorAll('.hv-dialog__hint')].map(
+        (h) => h.textContent,
+      ),
+    ).toEqual(['[esc] Cancel']);
     act(() => {
       confirmChoiceDialog();
     });

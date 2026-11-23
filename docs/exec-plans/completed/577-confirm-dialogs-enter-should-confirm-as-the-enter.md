@@ -94,6 +94,7 @@ Every user-raised caller sets a default: unpin (PinnedSection), delete (idea-inb
 - **2026-11-22** — Review-loop iter 1 (REQUEST_CHANGES, escalated as risky): held Enter still clicked the focused default natively (`repeat: false` only stops the command); `project_has_ideas` refusal defaulted to delete. Both fixed by the orchestrator because the approved spec's success criteria already decide them (held Enter never answers; async-gap dialogs keep a harmless default). Fix placed in `dispatchKey`'s exclusive branch so every exclusive scope's `repeat: false` binding is covered, not only the dialog's.
 - **2026-11-22** — `worktree_dirty` "Close this session anyway?" defaults to Cancel, not close. Why: operator decision on CodeRabbit thread (review iter 3) — Enter keeps today's behaviour there; closing stops a running agent and the dialog is refusal-raised.
 - **2026-11-22** — Dirty-close dialog shows only `[esc] Cancel` (`enterHint: false`). Why: operator — `[enter] Cancel` reads as wrong once Tab moves focus. Enter still cancels.
+- **2026-11-22** — `enterHint: false` extended to the archived dirty-worktree and delete-project-with-ideas refusals. Why: operator decision at the merge stop, for consistency with dirty close.
 - **2026-11-22** — Hint labels shown as written, not lowercased. Why: labels carry branch/ref names.
 - **2026-11-22** — Clarifying round A skipped: the one material decision was already answered by the operator.
 

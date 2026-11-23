@@ -200,7 +200,9 @@ export async function onArchivedWorktreeDirty(
     // No defaultValue: Enter answers Cancel. This question arrives
     // after an async gap (the daemon's refusal), possibly while Enter is
     // still held from the delete, and its only yes destroys uncommitted
-    // changes — the self-raised rule applies (AGENTS.md).
+    // changes — the self-raised rule applies (AGENTS.md). Only
+    // `[esc] Cancel` is shown, as on the dirty-close refusal.
+    enterHint: false,
   });
   if (answer !== 'force') return;
   DeleteArchivedSession(sessionId, true, true).catch(

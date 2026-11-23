@@ -1485,7 +1485,9 @@ export function wireDaemonEvents(injected: EventsDeps) {
         // No defaultValue: Enter answers Cancel. This question arrives
         // after an async gap (the daemon's refusal of the native
         // Confirm), possibly with Enter still held, and its only yes
-        // deletes the ideas for good — the async rule (AGENTS.md).
+        // deletes the ideas for good — the async rule (AGENTS.md). Only
+        // `[esc] Cancel` is shown, as on the dirty-close refusal.
+        enterHint: false,
       });
       if (answer !== 'delete') return;
       // The dialog is async and modal: the project may be gone (another

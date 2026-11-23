@@ -25,7 +25,7 @@ A key shown in a dialog does exactly what its hint says. Enter runs the dialog's
 
 - Opening Unpin all and pressing Enter unpins every pin; pressing Esc keeps them.
 - Every other user-raised choice dialog names a `defaultValue`, which holds focus on open and which Enter answers; with several affirmatives it is the least destructive.
-- The footer's `[enter]` hint shows the label of the choice Enter will answer, and follows Tab; the `[esc]` hint names what Escape answers (`close` when Escape leaves the question unanswered). A dialog may hide its `[enter]` hint (`enterHint: false`) when Enter only cancels; the dirty-close refusal does (operator decision).
+- The footer's `[enter]` hint shows the label of the choice Enter will answer, and follows Tab; the `[esc]` hint names what Escape answers (`close` when Escape leaves the question unanswered). A dialog may hide its `[enter]` hint (`enterHint: false`) when Enter only cancels; the three refusal-raised dialogs (dirty close, archived dirty worktree, delete project with ideas) do (operator decision).
 - Enter answers the dialog even when focus has left its buttons.
 - A mouse click on any choice still answers it (the hint update must not reflow the button out from under the pointer).
 - A dialog that arrives unprompted or after an async gap keeps a default that destroys nothing: the parked-worktree prompt defaults to Retry, the dirty-worktree close refusal, the archived dirty-worktree refusal and the delete-project-with-ideas refusal to Cancel.

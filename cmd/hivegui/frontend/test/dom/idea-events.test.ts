@@ -207,6 +207,8 @@ describe('project_has_ideas', () => {
       project_id: 'p1',
     });
     await flush();
+    // Only Escape is advertised; Enter still cancels.
+    expect(store.appStore.getState().choiceDialog?.spec.enterHint).toBe(false);
     confirmChoiceDialog();
     await flush();
     expect(KillProject).not.toHaveBeenCalled();
