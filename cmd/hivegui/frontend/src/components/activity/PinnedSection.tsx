@@ -48,6 +48,7 @@ export async function confirmUnpinAll(
       { label: 'Cancel', value: 'cancel' },
       { label: 'Unpin all', value: 'unpin', danger: true },
     ],
+    defaultValue: 'unpin',
   });
   if (answer !== 'unpin') return;
   UnpinAll(sessionId).catch(reportFailure('unpin all'));

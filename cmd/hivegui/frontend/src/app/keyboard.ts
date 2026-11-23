@@ -84,9 +84,26 @@ export function dispatchKey(e: KeyboardEvent, mac: boolean = isMac) {
   if (r?.kind === 'binding') {
     runBinding(r.binding, e);
   } else if (r?.kind === 'exclusive') {
+    // A held repeat of one of the scope's own `repeat: false` bindings
+    // matched nothing above, but the scope still owns that key: left
+    // alone it reaches the focused element natively — a held Enter
+    // would click the choice dialog's focused button, the very repeat
+    // the binding refused to run.
+    if (e.repeat && matchBinding(r.scope, chordOf(e), mac)) {
+      e.preventDefault();
+      e.stopPropagation();
+      return;
+    }
     const { trap } = r.scope;
     if (trap && trapFocus(pageEl(trap), e)) e.stopPropagation();
   }
+}
+
+// The key without its repeat flag, so a binding is matched as if the
+// key had just been pressed.
+function chordOf(e: KeyboardEvent) {
+  const { key, code, metaKey, ctrlKey, altKey, shiftKey } = e;
+  return { key, code, metaKey, ctrlKey, altKey, shiftKey };
 }
 
 window.addEventListener(

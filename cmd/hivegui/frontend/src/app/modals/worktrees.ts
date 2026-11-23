@@ -203,6 +203,9 @@ async function askDelete(w: WorktreeInfo): Promise<DeleteChoice> {
     // flatly would argue against the blocker listed right above it.
     note: noteFor(w),
     choices,
+    // Enter takes the least destructive delete: the branch keeps the
+    // commits.
+    defaultValue: 'keep-branch',
   });
   return answer as DeleteChoice;
 }
@@ -288,6 +291,8 @@ async function askDeleteBranch(b: BranchInfo): Promise<BranchDeleteChoice> {
           { label: 'Cancel', value: 'cancel' },
           { label: 'Delete branch', value: 'local', danger: !b.merged },
         ],
+    // Enter deletes the local branch only; the remote is never Enter's.
+    defaultValue: 'local',
   });
   // Narrowed rather than cast: this answer decides whether a remote
   // branch is deleted, so anything unrecognised must read as cancel.

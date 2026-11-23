@@ -10,9 +10,18 @@
 // the only path that may settle it, so Escape and the backdrop resolve
 // through ModalShell's onClose rather than hiding the dialog themselves.
 
-import { useEffect, useLayoutEffect, useRef, type ReactNode } from 'react';
 import {
+  useEffect,
+  useLayoutEffect,
+  useRef,
+  useState,
+  type ReactNode,
+} from 'react';
+import {
+  defaultChoice,
+  focusVisible,
   resolveChoiceDialog,
+  setChoiceEnterTarget,
   type ChoiceSpec,
 } from '../../app/modals/choice-dialog.js';
 import { useAppStore } from '../../store/store.js';
@@ -75,23 +84,52 @@ function ChoiceDialogBody({
     };
   }, []);
 
-  // The safe option holds focus, so a stray Enter can never destroy
-  // anything. Button is a plain function component (no ref forwarding),
-  // so the first choice is found the same way the shell finds anything
-  // outside React's tree: by the id/data contract, off the root.
+  // The default choice holds focus, so Enter answers what the footer's
+  // `[enter]` hint names (see ChoiceSpec.defaultValue). Button is a plain
+  // function component (no ref forwarding), so the button is found the
+  // same way the shell finds anything outside React's tree: by the
+  // id/data contract, off the root.
   //
   // A PASSIVE effect on purpose. The root's `hidden` class is dropped by
   // the parent modal's layout effect, and layout effects run child
   // first — so focusing from one here would run while the dialog was
   // still display:none, which the browser ignores outright, leaving
   // focus (and Tab) on the modal underneath.
+  const initial = defaultChoice(spec);
   useEffect(() => {
     root
       .querySelector<HTMLButtonElement>(
-        '.hv-dialog__actions button[data-choice]',
+        `.hv-dialog__actions button[data-choice="${CSS.escape(initial?.value ?? '')}"]`,
       )
       ?.focus();
-  }, [root]);
+  }, [root, initial]);
+
+  // The hint names the choice Enter will answer, which is the focused
+  // one once Tab moves it (confirmChoiceDialog), so it has to follow
+  // focus to stay true.
+  const [enterLabel, setEnterLabel] = useState(initial?.label ?? 'cancel');
+  useEffect(() => {
+    const onFocusIn = (e: FocusEvent) => {
+      const el = e.target as HTMLElement | null;
+      // Keyboard focus only. A mouse press focuses its button on
+      // mousedown; re-labelling then reflows the footer, the button
+      // moves out from under the pointer before mouseup, and the click
+      // never fires. A pointer user is not reading the Enter hint.
+      if (!focusVisible(el)) return;
+      const value = el?.dataset?.choice;
+      const c = spec.choices.find((x) => x.value === value);
+      if (!c) return;
+      setEnterLabel(c.label);
+      setChoiceEnterTarget(c.value);
+    };
+    root.addEventListener('focusin', onFocusIn);
+    return () => root.removeEventListener('focusin', onFocusIn);
+  }, [root, spec]);
+  // Escape answers safeValue. Name that choice; a dismissValue that is
+  // no choice at all (the parked-worktree prompt's '') leaves the
+  // question unanswered, which is "close", not "cancel".
+  const escLabel =
+    spec.choices.find((c) => c.value === safeValue)?.label ?? 'Close';
 
   return (
     <ModalShell
@@ -106,12 +144,15 @@ function ChoiceDialogBody({
       // destructive (see ChoiceSpec). safeValue already accounts for
       // both, so this stays a single path.
       onClose={() => resolveChoiceDialog(safeValue)}
-      // Every overlay shows its confirm/cancel keys (AGENTS.md). Both are
-      // fixed overlay keys, not bindings: Enter answers the focused
-      // choice (the safe one until Tab moves it), Escape the safe one.
+      // Every overlay shows its confirm/cancel keys (AGENTS.md), named
+      // by what they actually answer: Enter the focused choice (the
+      // default until Tab moves it), Escape the safe one.
       hints={[
-        { keys: '[enter]', label: 'choose' },
-        { keys: '[esc]', label: 'cancel' },
+        // Labels as written: they can carry branch and ref names.
+        ...(spec.enterHint === false
+          ? []
+          : [{ keys: '[enter]', label: enterLabel }]),
+        { keys: '[esc]', label: escLabel },
       ]}
       actions={spec.choices.map((c) => (
         <Button

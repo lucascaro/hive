@@ -60,7 +60,7 @@ export interface ModalShellProps {
   titleSuffix?: ReactNode;
   /**
    * Default true. The choice dialog is the one caller that opts out: its
-   * safe choice already covers "back out", and a second, unlabelled exit
+   * Cancel choice already covers "back out", and a second, unlabelled exit
    * next to a "delete the branch too" button is a worse affordance, not
    * a redundant one.
    */

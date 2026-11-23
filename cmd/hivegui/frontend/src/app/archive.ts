@@ -166,6 +166,8 @@ export async function confirmAndDeleteArchived(
           ]
         : []),
     ],
+    // Enter takes the delete that keeps the worktree on disk.
+    defaultValue: 'keep',
   });
   if (answer === 'cancel') return;
   DeleteArchivedSession(a.session_id, answer === 'remove', false).catch(
@@ -195,6 +197,12 @@ export async function onArchivedWorktreeDirty(
         danger: true,
       },
     ],
+    // No defaultValue: Enter answers Cancel. This question arrives
+    // after an async gap (the daemon's refusal), possibly while Enter is
+    // still held from the delete, and its only yes destroys uncommitted
+    // changes — the self-raised rule applies (AGENTS.md). Only
+    // `[esc] Cancel` is shown, as on the dirty-close refusal.
+    enterHint: false,
   });
   if (answer !== 'force') return;
   DeleteArchivedSession(sessionId, true, true).catch(
