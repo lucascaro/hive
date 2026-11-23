@@ -74,7 +74,7 @@ Every user-raised caller sets a default: unpin (PinnedSection), delete (idea-inb
 
 - `cd cmd/hivegui/frontend && npm run typecheck && npx biome ci . && npx vitest run`
 - `CI=1 npx playwright test` (full e2e incl. every-shortcut sweep)
-- `scripts/ui-lint.sh`
+- `../../../scripts/ui-lint.sh` (still in `cmd/hivegui/frontend`)
 - Mutation: on the old code, `pinned.spec` Enter step leaves 3 pins and `focus-traps` "Enter does what its hint says" leaves the row → both fail.
 
 ### Open questions / risks
