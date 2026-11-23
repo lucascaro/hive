@@ -100,3 +100,7 @@ Every user-raised caller sets a default: unpin (PinnedSection), delete (idea-inb
 - **2026-11-22** — Spec + plan created; research done.
 - **2026-11-22** — Plan approved by operator (chat).
 - **2026-11-22** — PR #578 opened.
+
+## PR convergence ledger
+
+- **2026-11-22 iter 1** — verdict: REQUEST_CHANGES; mergeable: MERGEABLE; findings_hash: ce9ef035de25d8a36722094feadbc5de3762b8895d4f16007f53b98c7ebee85b; threads_open: 0; action: escalated:risky-fix-needs-human-decision; head_sha: 059ca66.
