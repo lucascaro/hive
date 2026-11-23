@@ -104,3 +104,4 @@ Every user-raised caller sets a default: unpin (PinnedSection), delete (idea-inb
 ## PR convergence ledger
 
 - **2026-11-22 iter 1** — verdict: REQUEST_CHANGES; mergeable: MERGEABLE; findings_hash: ce9ef035de25d8a36722094feadbc5de3762b8895d4f16007f53b98c7ebee85b; threads_open: 0; action: escalated:risky-fix-needs-human-decision; head_sha: 059ca66.
+- **2026-11-22 iter 2** — verdict: APPROVE; mergeable: MERGEABLE; findings_hash: 837304af838af24c806f87cfe65bf56bfe0ebc917a51588447d7d1888a057bba; threads_open: 0; action: stop; head_sha: afe850e.

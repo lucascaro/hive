@@ -368,6 +368,15 @@ describe('the choice dialog owns Enter', () => {
     expect(dismissChoiceDialog).not.toHaveBeenCalled();
   });
 
+  // A modified Enter must not slip past the binding to the focused
+  // button's native activation, which ignores the hint's target.
+  it('runs choice-dialog.confirm for a modified Enter too', () => {
+    choiceOpen.value = true;
+    const e = press('Enter', { shiftKey: true });
+    expect(confirmChoiceDialog).toHaveBeenCalledOnce();
+    expect(e.defaultPrevented).toBe(true);
+  });
+
   // A held Enter — the one that opened the dialog — auto-repeats. It
   // must not answer a question the user has not read yet.
   it('ignores an auto-repeated Enter', () => {

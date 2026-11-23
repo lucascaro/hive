@@ -149,7 +149,7 @@ const choiceDialog: KeyScope = {
     { keys: ESCAPE, command: 'choice-dialog.dismiss' },
     // repeat: false — a held Enter that opened the dialog must not
     // answer it before the user has read the question.
-    { keys: 'Enter', command: 'choice-dialog.confirm', repeat: false },
+    { keys: 'Any+Enter', command: 'choice-dialog.confirm', repeat: false },
   ],
 };
 
