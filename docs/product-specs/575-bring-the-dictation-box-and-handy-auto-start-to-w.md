@@ -5,7 +5,7 @@ type: enhancement
 complexity: L
 priority: P2
 pr: 576
-stage: REVIEW
+stage: GATE
 ---
 
 # Bring the dictation box and Handy auto-start to Windows
