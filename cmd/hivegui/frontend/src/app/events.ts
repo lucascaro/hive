@@ -1479,7 +1479,10 @@ export function wireDaemonEvents(injected: EventsDeps) {
           { label: 'Cancel', value: 'cancel' },
           { label: 'Delete project and ideas', value: 'delete', danger: true },
         ],
-        defaultValue: 'delete',
+        // No defaultValue: Enter answers Cancel. This question arrives
+        // after an async gap (the daemon's refusal of the native
+        // Confirm), possibly with Enter still held, and its only yes
+        // deletes the ideas for good — the async rule (AGENTS.md).
       });
       if (answer !== 'delete') return;
       // The dialog is async and modal: the project may be gone (another

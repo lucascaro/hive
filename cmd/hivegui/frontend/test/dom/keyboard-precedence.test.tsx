@@ -372,8 +372,11 @@ describe('the choice dialog owns Enter', () => {
   // must not answer a question the user has not read yet.
   it('ignores an auto-repeated Enter', () => {
     choiceOpen.value = true;
-    press('Enter', { repeat: true });
+    const e = press('Enter', { repeat: true });
     expect(confirmChoiceDialog).not.toHaveBeenCalled();
+    // ...and swallowed: left alone, the held key would reach the
+    // focused button natively and click the default.
+    expect(e.defaultPrevented).toBe(true);
   });
 });
 

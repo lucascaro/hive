@@ -199,6 +199,40 @@ test.describe('spec 566 pinned responses', () => {
     await expect.poll(() => isTermFocused(page)).toBe(true);
   });
 
+  // A held Enter auto-repeats. With the destructive default focused,
+  // a repeat must not reach the button natively — only a fresh press
+  // answers. Sent through CDP: page.keyboard cannot set autoRepeat.
+  test('a held, auto-repeating Enter does not unpin', async ({ page }) => {
+    const id = await boot(page);
+    await page.keyboard.press(TOGGLE);
+    const panel = page.locator('#activity-panel');
+    await panel.locator('.hv-activity__pins-clear').click();
+    const dialog = page.locator('#choice-dialog');
+    await expect(dialog).toBeVisible();
+    await expect(dialog.locator('button[data-choice="unpin"]')).toBeFocused();
+    const cdp = await page.context().newCDPSession(page);
+    const held = {
+      key: 'Enter',
+      code: 'Enter',
+      windowsVirtualKeyCode: 13,
+      text: '\r',
+      autoRepeat: true,
+    };
+    await cdp.send('Input.dispatchKeyEvent', { type: 'keyDown', ...held });
+    await cdp.send('Input.dispatchKeyEvent', {
+      type: 'keyUp',
+      key: 'Enter',
+      code: 'Enter',
+      windowsVirtualKeyCode: 13,
+    });
+    await expect(dialog).toBeVisible();
+    expect(
+      await page.evaluate((sid) => window.__hive.pins?.(sid).length, id),
+    ).toBe(3);
+    await page.keyboard.press('Escape');
+    await expect(dialog).toBeHidden();
+  });
+
   test('a pin the agent adds shows up live, newest first', async ({ page }) => {
     const id = await boot(page);
     await page.keyboard.press(TOGGLE);
