@@ -1434,9 +1434,9 @@ export function wireDaemonEvents(injected: EventsDeps) {
             danger: true,
           },
         ],
-        // Enter closes and keeps the worktree, the answer that loses
-        // nothing.
-        defaultValue: 'close',
+        // No defaultValue: Enter answers Cancel. This question arrives
+        // after the daemon refuses the kill, and closing stops a running
+        // agent — the async rule (AGENTS.md).
       });
       if (answer === 'cancel') return;
       // The dialog is async + modal; the session may have been removed

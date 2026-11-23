@@ -27,7 +27,7 @@ A key shown in a dialog does exactly what its hint says. Enter runs the dialog's
 - The footer's `[enter]` hint shows the label of the choice Enter will answer, and follows Tab; the `[esc]` hint names what Escape answers (`close` when Escape leaves the question unanswered).
 - Enter answers the dialog even when focus has left its buttons.
 - A mouse click on any choice still answers it (the hint update must not reflow the button out from under the pointer).
-- A dialog that arrives unprompted or after an async gap keeps a default that destroys nothing: the parked-worktree prompt defaults to Retry, the archived dirty-worktree refusal and the delete-project-with-ideas refusal to Cancel.
+- A dialog that arrives unprompted or after an async gap keeps a default that destroys nothing: the parked-worktree prompt defaults to Retry, the dirty-worktree close refusal, the archived dirty-worktree refusal and the delete-project-with-ideas refusal to Cancel.
 - An auto-repeated (held) Enter never answers a dialog.
 - AGENTS.md (Feedback on Action, Hard-coded exceptions, Design rule) and `docs/design-docs/ui/components.md` state one rule, with no `y/enter` / `esc/n` left.
 

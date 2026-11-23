@@ -439,9 +439,9 @@ test('the dirty-close dialog offers close-and-delete as the danger option', asyn
   const clean = dialogChoice(page, 'close-and-clean');
   await expect(clean).toBeVisible();
   await expect(clean).toHaveClass(/danger/);
-  // Enter's default is plain close, which keeps the worktree: the
-  // destructive option is never the default.
-  await expect(dialogChoice(page, 'close')).toBeFocused();
+  // Raised by the daemon's refusal, so Enter answers Cancel: neither
+  // close stops the agent on a stray key.
+  await expect(dialogChoice(page, 'cancel')).toBeFocused();
 
   await clean.click();
   // The session goes, and so does its worktree.
@@ -516,7 +516,27 @@ test('closing a dirty session asks in-app, not with an OS alert', async ({
   // worktree — that is now a separate, explicitly destructive choice.
   await expect(dialog).toContainText('keeps the worktree');
   await expect(dialogChoice(page, 'close-and-clean')).toBeVisible();
-  await expect(dialogChoice(page, 'close')).toBeFocused();
+  await expect(dialogChoice(page, 'cancel')).toBeFocused();
+  await expect(dialog.locator('.hv-dialog__hint').first()).toHaveText(
+    '[enter] Cancel',
+  );
+
+  // Enter cancels here: the session survives.
+  await page.keyboard.press('Enter');
+  await expect(dialog).toHaveCount(0);
+  await page.evaluate(
+    (sid) =>
+      window.__hive.emit(
+        'control:error',
+        JSON.stringify({
+          code: 'worktree_dirty',
+          message: 'uncommitted changes',
+          session_id: sid,
+        }),
+      ),
+    id,
+  );
+  await expect(dialog).toBeVisible();
 
   await dialogChoice(page, 'cancel').click();
   await expect(dialog).toHaveCount(0);
