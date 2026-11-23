@@ -376,6 +376,16 @@ Three layers. Only the bottom one is new native code.
   - **Not run on the VM:**
     - a real Handy transcription: there is no model and no internet. That is an operator row.
     - the "no live sessions" empty state. It is shared HUD code, covered by `TestHUDNoSessionsEnterInert` in internal/dictation.
+- **2026-11-22** — Operator verification of real Handy transcription. Run by the operator in the Windows VM, on build `ba1ba3a9`, with Handy 0.10.1 and the Parakeet model.
+  - Ran the four rows below; the operator reports all four pass.
+  - The switch is on under Settings › Dictation.
+  - Stopping with Handy's own key pastes the transcription into the box, and nothing is sent until Enter.
+  - Enter pressed while recording stops Handy and sends the transcription.
+  - Esc pastes nothing anywhere.
+- **2026-11-22** — Review round 2 decisions, by the operator:
+  - Linux gets no `dictate-hud` default;
+  - Windows chords follow the keyboard layout (scan code, then `MapVirtualKey`).
+  Both are in `ba1ba3a9`.
 
 ## PR convergence ledger
 
