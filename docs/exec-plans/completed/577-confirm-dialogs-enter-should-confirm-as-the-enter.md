@@ -2,7 +2,7 @@
 
 - **Spec:** [docs/product-specs/577-confirm-dialogs-enter-should-confirm-as-the-enter.md](../../product-specs/577-confirm-dialogs-enter-should-confirm-as-the-enter.md)
 - **Issue:** #577
-- **Status:** active
+- **Status:** completed
 - **PR:** #578
 - **Branch:** feature/577-choice-dialog-enter-confirms
 
@@ -109,3 +109,12 @@ Every user-raised caller sets a default: unpin (PinnedSection), delete (idea-inb
 - **2026-11-22 iter 2** — verdict: APPROVE; mergeable: MERGEABLE; findings_hash: 837304af838af24c806f87cfe65bf56bfe0ebc917a51588447d7d1888a057bba; threads_open: 0; action: stop; head_sha: afe850e.
 - **2026-11-22 iter 3** — verdict: APPROVE; mergeable: MERGEABLE; findings_hash: 2311a2c12c61354a6e3dd1ae88aa82705039e7b9ffd435b0cc66633ea03709c1; threads_open: 1; action: escalated:risky-fix-needs-human-decision; head_sha: 2cc3ab8.
 - **2026-11-22 iter 4** — verdict: APPROVE; mergeable: MERGEABLE; findings_hash: empty; threads_open: 0; action: stop; head_sha: bff4cb5.
+
+## Gate verdict
+
+- **2026-11-22** — verdict: PASS; phase: —; checks: 3 passed / 0 failed / 0 followups; followups: none; one-line: all success criteria delivered with tests; non-goals untouched; AGENTS.md, components.md and changeset accurate (regression_of: declared-absent).
+  - 2026-11-22 dimensions:
+    - acceptance — PASS — 8/8 criteria; vitest 102 targeted tests, Playwright pinned/focus-traps/worktrees 94 passed; hint criterion amended for the operator's `enterHint: false` on dirty-close
+    - non-goals — PASS — native Confirm(), rebindability, other modals untouched; keyboard.ts held-repeat guard only affects exclusive scopes, and only choice-dialog has a `repeat: false` binding there
+    - doc accuracy — PASS — AGENTS.md three sections consistent, components.md matches code, changeset lists match callers, no generated-file edits, README needs no change
+
