@@ -70,9 +70,9 @@ export interface ChoiceSpec {
   // and treats it as "not answered — ask again".
   dismissValue?: string;
   // false hides the footer's `[enter]` hint, leaving only `[esc]`. For a
-  // dialog with no defaultValue, whose Enter answer is only Cancel until
-  // Tab moves focus: the operator found "[enter] Cancel" next to
-  // "[esc] Cancel" misleading there. Enter still works.
+  // dialog with no defaultValue, whose Enter answer is Cancel until Tab
+  // moves focus (then it is the focused choice): the operator found
+  // "[enter] Cancel" next to "[esc] Cancel" misleading there.
   enterHint?: false;
 }
 
