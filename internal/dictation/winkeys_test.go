@@ -109,9 +109,10 @@ func TestScanRouteMatchesUSLayout(t *testing.T) {
 	}
 }
 
-// On QWERTZ, Y and Z swap places. A chord on the key macOS calls Y
-// (kVK 0x10) must stay on that physical key, which German Windows
-// reports as VK 'Z'.
+// On QWERTZ, Y and Z swap places. The recorder stores the letter typed,
+// so a German user's "Y" chord must register the key labelled Y: VK 'Y',
+// whatever its scan code. Punctuation, recorded by physical key, follows
+// the layout: the US Minus position is VK_OEM_4 (ß) on German Windows.
 func TestScanRouteFollowsTheLayout(t *testing.T) {
 	qwertz := func(scan uint32) uint32 {
 		switch scan {
@@ -119,12 +120,17 @@ func TestScanRouteFollowsTheLayout(t *testing.T) {
 			return 'Z'
 		case 0x2C:
 			return 'Y'
+		case 0x0C:
+			return 0xDB
 		}
 		return usScanToVK[scan]
 	}
-	h := wire.GlobalHotkey{KeyCode: 0x10, Modifiers: wire.HotkeyModControl | wire.HotkeyModShift, Enabled: true}
-	if _, vk, ok := WindowsHotkey(h, qwertz); !ok || vk != 'Z' {
-		t.Fatalf("kVK Y on QWERTZ registered VK %#x, want 'Z'", vk)
+	mods := wire.HotkeyModControl | wire.HotkeyModShift
+	if _, vk, ok := WindowsHotkey(wire.GlobalHotkey{KeyCode: 0x10, Modifiers: mods, Enabled: true}, qwertz); !ok || vk != 'Y' {
+		t.Fatalf("letter Y on QWERTZ registered VK %#x, want 'Y' (the key labelled Y)", vk)
+	}
+	if _, vk, ok := WindowsHotkey(wire.GlobalHotkey{KeyCode: 0x1b, Modifiers: mods, Enabled: true}, qwertz); !ok || vk != 0xDB {
+		t.Fatalf("[Minus] on QWERTZ registered VK %#x, want the layout's 0xDB", vk)
 	}
 	space := wire.GlobalHotkey{KeyCode: 0x31, Modifiers: wire.HotkeyModControl, Enabled: true}
 	if _, vk, _ := WindowsHotkey(space, func(uint32) uint32 { return 'Q' }); vk != 0x20 {

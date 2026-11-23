@@ -352,6 +352,10 @@ Three layers. Only the bottom one is new native code.
   - **Stopped Handy.** `--cancel` on a stopped Handy launches it, as on macOS, so the "is running" check is required.
   - **Paste.** The default `paste_method` is `ctrl_v`, which arrives in a standard EDIT as `WM_PASTE`, so no direct-typing fallback is needed for the default.
   - **Recording.** The VM can't record: there is no model (the VM has no internet) and only a Line In. Per the decision above, the Handy recording rows go to the operator's machine. The VM covers the CLI rows and paste detection via a synthesized Ctrl+V.
+- **2026-11-22** — The round-2 layout fix is replaced by a hybrid (operator's choice in review round 3).
+  - Letters and digits use Windows' letter and digit VKs. These follow the typed character, which is what the recorder stores and what in-app matching compares.
+  - Punctuation goes through its scan code and the layout. The recorder always stores punctuation as a physical `[Code]`.
+  - Why: the full scan-code route moved a German `Y` chord onto the key labelled Z.
 
 ## Progress
 
@@ -391,6 +395,7 @@ Three layers. Only the bottom one is new native code.
 
 - **2026-11-22 iter 1** — verdict: APPROVE; mergeable: MERGEABLE; findings_hash: empty; threads_open: 0; action: stop; head_sha: 91895bac.
 - **2026-11-22 iter 2** — verdict: COMMENT; mergeable: MERGEABLE; findings_hash: d3e1cad3; threads_open: 4; action: escalated:risky-fix-needs-human-decision; head_sha: 018f4fd5.
+- **2026-11-22 iter 3** — verdict: COMMENT; mergeable: MERGEABLE; findings_hash: 02a2791e; threads_open: 1; action: escalated:risky-fix-needs-human-decision; head_sha: d49382fc.
 
 ## Gate verdict
 
