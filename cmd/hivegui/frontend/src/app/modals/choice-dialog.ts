@@ -69,6 +69,11 @@ export interface ChoiceSpec {
   // into a silent, irreversible answer. Such a caller passes '' here
   // and treats it as "not answered — ask again".
   dismissValue?: string;
+  // false hides the footer's `[enter]` hint, leaving only `[esc]`. For a
+  // dialog with no defaultValue, whose Enter answer is only Cancel until
+  // Tab moves focus: the operator found "[enter] Cancel" next to
+  // "[esc] Cancel" misleading there. Enter still works.
+  enterHint?: false;
 }
 
 // The open question's resolver. Module-scope because the promise

@@ -1436,7 +1436,10 @@ export function wireDaemonEvents(injected: EventsDeps) {
         ],
         // No defaultValue: Enter answers Cancel. This question arrives
         // after the daemon refuses the kill, and closing stops a running
-        // agent — the async rule (AGENTS.md).
+        // agent — the async rule (AGENTS.md). Only `[esc] Cancel` is
+        // shown (operator's call): an `[enter] Cancel` hint reads as
+        // wrong once Tab moves focus.
+        enterHint: false,
       });
       if (answer === 'cancel') return;
       // The dialog is async + modal; the session may have been removed

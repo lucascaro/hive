@@ -149,7 +149,9 @@ function ChoiceDialogBody({
       // default until Tab moves it), Escape the safe one.
       hints={[
         // Labels as written: they can carry branch and ref names.
-        { keys: '[enter]', label: enterLabel },
+        ...(spec.enterHint === false
+          ? []
+          : [{ keys: '[enter]', label: enterLabel }]),
         { keys: '[esc]', label: escLabel },
       ]}
       actions={spec.choices.map((c) => (

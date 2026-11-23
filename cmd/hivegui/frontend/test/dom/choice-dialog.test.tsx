@@ -101,6 +101,14 @@ describe('rendering', () => {
     expect(hints(root)[0]).toBe('[enter] Delete + local branch');
   });
 
+  it('shows only the esc hint when the spec hides the enter hint', () => {
+    const root = mount();
+    act(() => {
+      void openChoiceDialog({ ...SPEC, enterHint: false });
+    });
+    expect(hints(root)).toEqual(['[esc] Cancel']);
+  });
+
   it('says close, not cancel, when Escape leaves the question unanswered', () => {
     const root = mount();
     act(() => {

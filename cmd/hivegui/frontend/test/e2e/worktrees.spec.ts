@@ -517,9 +517,8 @@ test('closing a dirty session asks in-app, not with an OS alert', async ({
   await expect(dialog).toContainText('keeps the worktree');
   await expect(dialogChoice(page, 'close-and-clean')).toBeVisible();
   await expect(dialogChoice(page, 'cancel')).toBeFocused();
-  await expect(dialog.locator('.hv-dialog__hint').first()).toHaveText(
-    '[enter] Cancel',
-  );
+  // Only Escape is advertised here; Enter still cancels.
+  await expect(dialog.locator('.hv-dialog__hint')).toHaveText(['[esc] Cancel']);
 
   // Enter cancels here: the session survives.
   await page.keyboard.press('Enter');
