@@ -20,6 +20,7 @@ The sidebar now follows the active session. However you switch (⌘B, ⌘↑/⌘
 Granting "May direct other sessions" now notes that the grant limits only agents that use Hive's messaging, since any agent with a shell can reach Hive directly; SECURITY.md gains a Trust model section explaining what that means and how to run untrusted agents safely.
 
 ### Fixed
+Confirmation dialogs (Unpin all, Delete idea, worktree and branch deletes, archived-session deletes) now confirm on Enter, as their `[enter]` hint said. Before, Cancel held focus, so Enter cancelled. Each hint now names the action its key performs, and follows focus when you Tab to another button. Follow-up questions that appear after a refusal and would destroy work (closing a session with uncommitted changes, removing a dirty worktree, deleting a project's ideas) still default to Cancel, and holding Enter never answers a dialog.
 Confirmation dialogs now show their keys — `[enter]` to choose and `[esc]` to cancel — as every overlay should.
 The menu bar now restarts when Hive starts from a newer build, so it no longer keeps showing the old version until you log out.
 Reopening or unarchiving a session while its close is still finishing is now refused with "still closing; try again" instead of silently losing the reopened session's files and pins.
