@@ -4,7 +4,8 @@ title: "Confirm dialogs: Enter should confirm, as the [enter] hint says"
 type: bug
 complexity: S
 priority: P2
-stage: IMPLEMENT
+pr: 578
+stage: REVIEW
 ---
 
 # Confirm dialogs: Enter should confirm, as the [enter] hint says

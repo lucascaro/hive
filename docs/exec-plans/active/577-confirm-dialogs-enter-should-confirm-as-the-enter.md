@@ -3,6 +3,8 @@
 - **Spec:** [docs/product-specs/577-confirm-dialogs-enter-should-confirm-as-the-enter.md](../../product-specs/577-confirm-dialogs-enter-should-confirm-as-the-enter.md)
 - **Issue:** #577
 - **Status:** active
+- **PR:** #578
+- **Branch:** feature/577-choice-dialog-enter-confirms
 
 ## Summary
 
@@ -96,3 +98,4 @@ Every user-raised caller sets a default: unpin (PinnedSection), delete (idea-inb
 
 - **2026-11-22** — Spec + plan created; research done.
 - **2026-11-22** — Plan approved by operator (chat).
+- **2026-11-22** — PR #578 opened.
