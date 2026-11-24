@@ -2,7 +2,7 @@
 
 - **Spec:** [docs/product-specs/575-bring-the-dictation-box-and-handy-auto-start-to-w.md](../../product-specs/575-bring-the-dictation-box-and-handy-auto-start-to-w.md)
 - **Issue:** #575
-- **Status:** active
+- **Status:** completed
 - **PR:** #576
 - **Branch:** feature/575-windows-dictation
 
@@ -390,6 +390,15 @@ Three layers. Only the bottom one is new native code.
   - Linux gets no `dictate-hud` default;
   - Windows chords follow the keyboard layout (scan code, then `MapVirtualKey`).
   Both are in `ba1ba3a9`.
+- **2026-11-22** — Gate follow-up: re-ran the letter chord on the Windows VM at build `e01059e8`, which includes the hybrid letter-chord mapping.
+  - With `keymap.json` set to `other: {"dictate-hud": ["Ctrl+Shift+Y"]}`, the GUI sent kVK 0x10 with Ctrl|Shift, and Ctrl+Shift+Y opened the box, which started Handy. Esc cancelled Handy: its log shows `Operation cancellation completed`.
+  - The keymap was then restored, and the daemon went back to `49/0x1200`.
+  - Side note, not caused by this PR: a Hive window still holding a stale in-memory keymap, after `keymap.json` was edited behind it, re-asserts its own chord over a newer window's. This affects macOS the same way, and it does not happen for changes made through Settings.
+- **2026-11-24** — Gate follow-up: macOS smoke run by the operator, on an isolated hivebar and GUI built from this branch, with Handy auto-start on. All four steps pass:
+  1. ⌃⌥Space opens the box with focus and starts Handy.
+  2. Handy's key stops recording and its text lands in the box, unsent.
+  3. ↑↓ changes the target and Enter delivers to that session.
+  4. Esc sends nothing and cancels Handy.
 
 ## PR convergence ledger
 
@@ -400,5 +409,11 @@ Three layers. Only the bottom one is new native code.
 - **2026-11-22 iter 5** — verdict: APPROVE; mergeable: MERGEABLE; findings_hash: empty; threads_open: 0; action: stop; head_sha: 1b807584.
 
 ## Gate verdict
+
+- **2026-11-24** — verdict: PASS; phase: —; checks: 13 passed / 0 failed / 0 followups; followups: none; one-line: every success criterion is met. The Windows rows were verified on a real build in the VM, plus the operator's real Handy transcription; the macOS smoke was run by the operator. Non-goals and docs are clean.
+  - 2026-11-24 dimensions:
+    - acceptance — PASS. The validator first returned NEEDS_FOLLOWUP for two rows: no VM re-run since the letter-chord change, and no macOS smoke. Both were closed before this verdict, by the VM letter-chord re-run at `e01059e8` and the operator's macOS smoke; see Progress.
+    - non-goals — PASS. No Linux box or default, no tray agent, no Handy install or state query, no new text entry point, and the macOS chord and wire model are unchanged.
+    - doc accuracy — PASS. Changeset, features.json, README, AGENTS, DESIGN, plugins.md and contract history all match. CHANGELOG and the index are untouched. regression_of: n/a (type added).
 
 ## Open questions

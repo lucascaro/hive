@@ -5,12 +5,13 @@ type: enhancement
 complexity: L
 priority: P2
 pr: 576
-stage: GATE
+shipped: 2026-11-24
+stage: DONE
 ---
 
 # Bring the dictation box and Handy auto-start to Windows
 
-- **Exec plan:** [docs/exec-plans/active/575-bring-the-dictation-box-and-handy-auto-start-to-w.md](../exec-plans/active/575-bring-the-dictation-box-and-handy-auto-start-to-w.md)
+- **Exec plan:** [docs/exec-plans/completed/575-bring-the-dictation-box-and-handy-auto-start-to-w.md](../exec-plans/completed/575-bring-the-dictation-box-and-handy-auto-start-to-w.md)
 
 ## Problem
 
