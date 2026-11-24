@@ -27,6 +27,7 @@ Reopening or unarchiving a session while its close is still finishing is now ref
 Windows: pasting with Ctrl+Shift+V while the clipboard holds an image and no text no longer fails with "paste failed: The operation completed successfully." In Claude Code and Codex sessions Hive now sends the agent its image-paste key (Alt+V), so the agent attaches the image itself; other sessions show "Clipboard holds an image, not text" instead.
 
 ### Security
+Update the WebSocket library (gorilla/websocket) past GO-2026-6278, which generated WebSocket mask keys from a weak random source.
 Hive's sockets and settings files are now private to your user account, and the dictation HUD marks shell sessions.
 Plugins can no longer type into sessions, answer agents' permission prompts, approve plans, answer worktree-setup questions, stop Hive, or install, enable, remove or reconfigure other plugins, and they can only prompt agents they started themselves.
 A program running inside one Hive session can no longer act as, or report state for, a different session: each session now proves its identity to the daemon with a secret only its own processes receive.
