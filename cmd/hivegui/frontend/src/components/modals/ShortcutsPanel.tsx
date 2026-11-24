@@ -62,7 +62,7 @@ import {
   reassignInImport,
   skipInImport,
 } from '../../lib/keymap-import.js';
-import { isMac } from '../../lib/platform.js';
+import { dictationSupported, isMac } from '../../lib/platform.js';
 import { commandGroups, terminalShortcuts } from '../../lib/shortcuts.js';
 import { useAppStore } from '../../store/store.js';
 import { Button } from '../Button.js';
@@ -207,7 +207,7 @@ export function ShortcutsPanel({
   const eff = effectiveFor(draft, isMac);
 
   const groups = useMemo((): Group[] => {
-    const core = commandGroups(isMac).map((g) => ({
+    const core = commandGroups(isMac, dictationSupported).map((g) => ({
       title: g.title,
       rows: g.items.map((r) => ({ id: r.command, label: r.label })),
     }));

@@ -2,9 +2,7 @@
 // Copyright (C) 2026 Lucas Caro
 // See LICENSE and ADDITIONAL-TERMS.md.
 
-//go:build darwin
-
-package main
+package dictation
 
 import (
 	"errors"
@@ -501,16 +499,16 @@ func TestHUDHandyCallsRunInOrder(t *testing.T) {
 	}
 }
 
-var _ handyCtl = (*execHandy)(nil)
+var _ HandyCtl = (*ExecHandy)(nil)
 
 func TestExecHandyRunsFlags(t *testing.T) {
 	var ran [][]string
-	h := &execHandy{
+	h := &ExecHandy{
 		run: func(_ time.Duration, name string, args ...string) (string, error) {
 			ran = append(ran, append([]string{name}, args...))
 			return "", nil
 		},
-		paths:   func() []string { return []string{"/nonexistent", "/bin/sh"} },
+		bin:     func() string { return "/bin/sh" },
 		running: func() bool { return true },
 	}
 	if !h.Available() {
@@ -530,7 +528,7 @@ func TestExecHandyRunsFlags(t *testing.T) {
 	if h.Toggle() == nil || h.Cancel() == nil || len(ran) != 0 {
 		t.Errorf("ran %v with Handy stopped; either flag would launch it", ran)
 	}
-	h.paths = func() []string { return []string{"/nonexistent"} }
+	h.bin = func() string { return "" }
 	h.running = func() bool { return true }
 	if h.Available() || h.Toggle() == nil {
 		t.Error("no binary, yet available or toggled")
@@ -607,6 +605,20 @@ func TestHUDShutdownCancelsHandyItStarted(t *testing.T) {
 	h2.Open()
 	h2.Shutdown()
 	wantCalls(t, h2, fh2)
+}
+
+// Review of PR 576: the host can still own the hotkey while it shuts
+// down; a press then must not open the panel or start a recording that
+// nothing would cancel.
+func TestHUDOpenAfterShutdownDoesNothing(t *testing.T) {
+	h, v, _, fh, _ := newHandyHUD(t)
+	h.Shutdown()
+	shown := len(v.shown)
+	h.Open()
+	if len(v.shown) != shown || v.visible {
+		t.Fatal("the panel opened after Shutdown")
+	}
+	wantCalls(t, h, fh) // no toggle: Handy was never started
 }
 
 // Review of PR 574: a field emptied while Enter waits sends nothing, and

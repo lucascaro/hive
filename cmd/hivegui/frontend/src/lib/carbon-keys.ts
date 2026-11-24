@@ -138,10 +138,10 @@ function codeOf(key: string): string | undefined {
  * optional (`?`) or `Any` modifier — Carbon matches modifiers exactly —
  * or no modifier at all, which would swallow a plain key in every app.
  */
-export function carbonHotkey(chord: string): CarbonHotkey | null {
+export function carbonHotkey(chord: string, mac = true): CarbonHotkey | null {
   let c: ReturnType<typeof parseChord>;
   try {
-    c = parseChord(chord, true);
+    c = parseChord(chord, mac);
   } catch {
     return null;
   }
@@ -172,11 +172,16 @@ export const DISABLED_HOTKEY: WireHotkey = Object.freeze({
   enabled: false,
 });
 
-/** The capture-HUD hotkey a macOS keymap asks for: the command's first
- * chord, or disabled when it has none or none Carbon can register. */
-export function desiredHotkey(chords: readonly string[]): WireHotkey {
+/** The dictation hotkey a keymap asks for: the command's first chord, or
+ * disabled when it has none or none can register. mac picks the chord
+ * grammar; the result is in Carbon terms on every platform, and the
+ * Windows box maps it to its own codes (internal/dictation). */
+export function desiredHotkey(
+  chords: readonly string[],
+  mac = true,
+): WireHotkey {
   for (const chord of chords) {
-    const h = carbonHotkey(chord);
+    const h = carbonHotkey(chord, mac);
     if (h)
       return { key_code: h.keyCode, modifiers: h.modifiers, enabled: true };
   }

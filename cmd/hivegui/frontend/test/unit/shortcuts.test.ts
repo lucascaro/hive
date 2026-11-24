@@ -174,3 +174,37 @@ describe('agent activity chords (spec 416)', () => {
     }
   });
 });
+
+// Spec 575: Windows has the dictation box too, hosted by each Hive window,
+// with its keys written out; Linux has none.
+describe('dictation box rows off macOS', () => {
+  const titles = (dictation: boolean) =>
+    shortcutGroups({ isMac: false, dictation }).map((g) => g.title);
+
+  it('lists the Windows box and its chord', () => {
+    const groups = shortcutGroups({
+      isMac: false,
+      dictation: true,
+      keymap: { other: { 'dictate-hud': ['Ctrl+Shift+[Space]'] } },
+    });
+    const global = groups.find((g) => g.title === 'Global (system-wide)');
+    expect(global?.items).toEqual([
+      {
+        keys: 'Ctrl+Shift+Space',
+        label: 'Dictate into a session from any app',
+      },
+    ]);
+    const box = groups.find((g) => g.title === 'Dictation box');
+    expect(box?.items.map((i) => i.keys)).toEqual([
+      'Enter',
+      'Shift+Enter',
+      'Up/Down',
+      'Esc',
+    ]);
+  });
+
+  it('lists nothing for dictation on Linux', () => {
+    expect(titles(false)).not.toContain('Global (system-wide)');
+    expect(titles(false)).not.toContain('Dictation box');
+  });
+});

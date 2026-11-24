@@ -2,7 +2,8 @@
 // Copyright (C) 2026 Lucas Caro
 // See LICENSE and ADDITIONAL-TERMS.md.
 
-// The GUI's half of the menu bar's dictation capture HUD (specs 553, 573).
+// The GUI's half of the dictation box: the menu bar's on macOS (specs
+// 553, 573), each Hive window's on Windows (spec 575).
 //
 // 1. Focus reports. Whenever this window shows the user a session —
 //    a switch, or the window coming back to the front — the daemon is
@@ -30,7 +31,7 @@ import {
   sameHotkey,
   type WireHotkey,
 } from '../lib/carbon-keys.js';
-import { isMac } from '../lib/platform.js';
+import { dictationSupported, isMac } from '../lib/platform.js';
 import { appStore } from '../store/store.js';
 import { subscribeKeymap } from './bindings.js';
 
@@ -38,9 +39,9 @@ export const DICTATE_COMMAND = 'dictate-hud';
 
 /** Tells the daemon this window is showing session id. */
 export function reportFocus(id: string | null): void {
-  // Only the macOS menu-bar HUD reads focus; elsewhere a report would
-  // just fan a SESSION_EVENT out to every client.
-  if (!id || !isMac) return;
+  // Only the dictation box reads focus; elsewhere a report would just
+  // fan a SESSION_EVENT out to every client.
+  if (!id || !dictationSupported) return;
   ReportFocusedSession(id).catch(() => {
     // No control connection yet: the next switch or window focus
     // reports again.
@@ -72,9 +73,10 @@ export function subscribeHandyAutoStart(cb: () => void): () => void {
 let pending: WireHotkey | null = null;
 
 function reconcile(): void {
-  if (!isMac || received === null) return;
+  if (!dictationSupported || received === null) return;
   const want = desiredHotkey(
-    chordsOfIn(appStore.getState().keymap, DICTATE_COMMAND, true),
+    chordsOfIn(appStore.getState().keymap, DICTATE_COMMAND, isMac),
+    isMac,
   );
   if (sameHotkey(want, received)) {
     pending = null;
@@ -120,7 +122,7 @@ let wired = false;
 export function initGlobalHotkey(): void {
   if (wired) return;
   wired = true;
-  if (!isMac) return;
+  if (!dictationSupported) return;
   window.addEventListener('focus', () =>
     reportFocus(appStore.getState().activeId),
   );

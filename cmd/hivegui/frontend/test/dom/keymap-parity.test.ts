@@ -371,14 +371,14 @@ const APPROVED_477 = {
   // H (spec 553): macOS ⌃⌥Space names dictate-hud, the menu bar's
   // system-wide dictation chord. The OS takes it before the webview in a
   // real build; a copy that does arrive declines to the terminal.
+  // Off macOS (spec 575) the chord is Ctrl+Shift+Space: Ctrl+Alt is AltGr
+  // on many layouts. Windows registers it; elsewhere it declines too.
   H: (s: string, e: Ev, mac: boolean, was: string | null, now: string | null) =>
-    mac &&
     s === 'app' &&
-    e.code === 'Space' &&
+    (e.code === 'Space' || e.key === ' ') &&
     e.ctrlKey &&
-    e.altKey &&
     !e.metaKey &&
-    !e.shiftKey &&
+    (mac ? e.altKey && !e.shiftKey : e.shiftKey && !e.altKey) &&
     was === null &&
     now === 'dictate-hud',
   // C: Enter in the choice dialog is bound to choice-dialog.confirm, so

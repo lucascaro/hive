@@ -18,6 +18,8 @@ vi.mock('../../src/bridge.js', () => bridge);
 vi.mock('../../src/lib/platform.js', async (orig) => ({
   ...(await orig<typeof import('../../src/lib/platform.js')>()),
   isMac: true,
+  isWindows: false,
+  dictationSupported: true,
 }));
 
 import { resetStore, setKeymap, appStore } from '../../src/store/store.js';

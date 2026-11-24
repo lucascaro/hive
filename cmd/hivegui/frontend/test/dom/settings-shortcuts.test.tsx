@@ -56,6 +56,8 @@ vi.mock('../../src/bridge.js', () => bridge);
 
 vi.mock('../../src/lib/platform.js', () => ({
   isMac: true,
+  isWindows: false,
+  dictationSupported: true,
   detectMac: () => true,
   cmdOrCtrl: (e: KeyboardEvent) => e.metaKey,
 }));
@@ -174,7 +176,7 @@ describe('settings: shortcuts tab', () => {
       'Projects',
       'View',
       'Window',
-      // Spec 553: the dictation HUD's system-wide chord (macOS only).
+      // Specs 553/575: the dictation box's system-wide chord (macOS, Windows).
       'Global (system-wide)',
       'Other commands',
       'Inside a terminal',

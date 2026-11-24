@@ -182,8 +182,9 @@ const PALETTE: readonly Command[] = [
   },
   // The dictation HUD's system-wide chord (spec 553). No title: it is
   // not something to run from inside Hive, so the palette leaves it out.
-  // The OS hands the chord to the menu bar before the webview sees it;
-  // if the key does arrive here (no menu bar running), decline, so it
+  // The OS hands the chord to the dictation box (the menu bar on macOS,
+  // one Hive window on Windows) before the webview sees it; if the key
+  // does arrive here (no box to take it), decline, so it
   // reaches the terminal like any unbound key.
   {
     id: 'dictate-hud',

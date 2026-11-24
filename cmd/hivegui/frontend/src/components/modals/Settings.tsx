@@ -68,7 +68,7 @@ import {
   sameKeymap,
 } from '../../lib/keymap-edit.js';
 import { type EditorDraft, EditorSettings } from './EditorSettings.js';
-import { isMac } from '../../lib/platform.js';
+import { isMac, isWindows } from '../../lib/platform.js';
 import {
   CHANNEL_LATEST,
   CHANNEL_RELEASE,
@@ -137,17 +137,27 @@ type TabId =
   | 'appearance'
   | 'shortcuts'
   | 'menubar'
+  | 'dictation'
   | 'plugins'
   | 'updates';
 // Menu bar is macOS-only and needs a login item the build can actually
 // register, so its tab is absent — not disabled — everywhere else, which
 // is what the section it replaced did with the same guard.
-function tabsFor(showMenuBar: boolean): { id: TabId; label: string }[] {
+// Dictation is Windows-only (spec 575): there is no menu bar to hold the
+// Handy switch, so it gets a tab of its own, present only when there is
+// a switch to show.
+function tabsFor(
+  showMenuBar: boolean,
+  showDictation: boolean,
+): { id: TabId; label: string }[] {
   return [
     { id: 'agents', label: 'Agents' },
     { id: 'appearance', label: 'Appearance' },
     { id: 'shortcuts', label: 'Shortcuts' },
     ...(showMenuBar ? [{ id: 'menubar' as TabId, label: 'Menu bar' }] : []),
+    ...(showDictation
+      ? [{ id: 'dictation' as TabId, label: 'Dictation' }]
+      : []),
     { id: 'plugins', label: 'Plugins' },
     { id: 'updates', label: 'Updates' },
   ];
@@ -692,11 +702,39 @@ function SettingsDialog({ root }: { root: HTMLElement }): ReactNode {
   // that from rendering as a strip with no selected tab, no visible panel,
   // and — because Tabs resolves the active id by index — dead arrow keys.
   const showMenuBar = isMac && menuBarStatus !== 'unsupported';
+  const showHandy = handyInstalled && handyAutoStart !== null;
+  const showDictation = isWindows && showHandy;
   const blockedMsg =
     shortcutBlock === 'import'
       ? 'Finish the shortcut import to save.'
       : 'Resolve the shortcut conflict to save.';
-  const tabs = tabsFor(showMenuBar);
+  const tabs = tabsFor(showMenuBar, showDictation);
+  // The Handy switch (spec 573): in the Menu bar tab on macOS, in the
+  // Dictation tab on Windows (spec 575).
+  const handySwitch = (
+    <>
+      <label className="settings-check">
+        <input
+          id="settings-handy-auto-start"
+          type="checkbox"
+          checked={handyAutoStart === true}
+          aria-describedby="settings-handy-auto-start-hint"
+          onChange={(e) => setHandy(e.target.checked)}
+        />
+        <span>Start Handy recording when the dictation box opens</span>
+      </label>
+      <p id="settings-handy-auto-start-hint" className="settings-hint">
+        {handyError
+          ? `Could not change it: ${handyError}`
+          : 'One key to dictate: ' +
+            (dictateKey ? `${dictateKey} ` : 'the dictation shortcut ') +
+            `opens the box and Handy starts listening. ${isMac ? '↩' : 'Enter'} stops Handy ` +
+            `and sends the text; ${isMac ? 'esc' : 'Esc'} cancels. Handy must be running. ` +
+            'If Handy is already recording, the shortcut stops it ' +
+            'instead.'}
+      </p>
+    </>
+  );
   const activeTab = tabs.some((t) => t.id === tab) ? tab : 'agents';
 
   useEffect(() => {
@@ -1403,32 +1441,13 @@ function SettingsDialog({ root }: { root: HTMLElement }): ReactNode {
           <p id="settings-menubar-hint" className="settings-hint">
             {menuBarHint}
           </p>
-          {handyInstalled && handyAutoStart !== null ? (
-            <>
-              <label className="settings-check">
-                <input
-                  id="settings-handy-auto-start"
-                  type="checkbox"
-                  checked={handyAutoStart}
-                  aria-describedby="settings-handy-auto-start-hint"
-                  onChange={(e) => setHandy(e.target.checked)}
-                />
-                <span>Start Handy recording when the dictation box opens</span>
-              </label>
-              <p id="settings-handy-auto-start-hint" className="settings-hint">
-                {handyError
-                  ? `Could not change it: ${handyError}`
-                  : 'One key to dictate: ' +
-                    (dictateKey
-                      ? `${dictateKey} `
-                      : 'the dictation shortcut ') +
-                    'opens the box and Handy starts listening. ↩ stops Handy ' +
-                    'and sends the text; esc cancels. Handy must be running. ' +
-                    'If Handy is already recording, the shortcut stops it ' +
-                    'instead.'}
-              </p>
-            </>
-          ) : null}
+          {showHandy ? handySwitch : null}
+        </Panel>
+      ) : null}
+
+      {showDictation ? (
+        <Panel tab="dictation" active={activeTab}>
+          {handySwitch}
         </Panel>
       ) : null}
 

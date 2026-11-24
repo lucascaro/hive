@@ -114,6 +114,8 @@ const updateBridge = {
 // drive them per test — `isMac` is a module const, not a call.
 let menuBarStatus = 'unsupported';
 let onMac = false;
+// Hoisted: lib/bindings.ts reads isWindows while the mocks load.
+const plat = vi.hoisted(() => ({ windows: false }));
 const setMenuBarLoginItem = vi.fn(() => Promise.resolve());
 // Handy auto-start (spec 573): whether Handy is installed, and the
 // daemon's switch as global-hotkey.ts last heard it (null: not yet).
@@ -131,6 +133,12 @@ vi.mock('../../src/lib/platform.js', async (orig) => ({
   ...(await orig<typeof import('../../src/lib/platform.js')>()),
   get isMac() {
     return onMac;
+  },
+  get isWindows() {
+    return plat.windows;
+  },
+  get dictationSupported() {
+    return onMac || plat.windows;
   },
 }));
 
@@ -221,6 +229,7 @@ beforeEach(() => {
   onMac = false;
   handyInstalled = false;
   handyAuto = null;
+  plat.windows = false;
   setHandyAutoStart.mockClear();
   resetStore();
   render(<Settings root={el('settings')} />, { container: el('settings') });
@@ -1432,6 +1441,65 @@ describe('settings: Handy auto-start (spec 573)', () => {
     expect(hint).toMatch(/stops Handy and sends/);
     expect(hint).toMatch(/esc cancels/);
     expect(hint).toMatch(/already recording/);
+  });
+});
+
+// Spec 575: Windows has no menu bar, so the Handy switch gets a Dictation
+// tab of its own — present only when there is a switch to show.
+describe('settings: Dictation tab on Windows (spec 575)', () => {
+  const tabIds = () =>
+    [...document.querySelectorAll('#settings-tabs [role="tab"]')].map(
+      (t) => t.id,
+    );
+
+  it('shows the Handy switch on Windows when Handy is installed', async () => {
+    plat.windows = true;
+    handyInstalled = true;
+    handyAuto = false;
+    open();
+    await flush();
+    expect(tabIds()).toContain('settings-tab-dictation');
+    expect(tabIds()).not.toContain('settings-tab-menubar');
+    click(el('settings-tab-dictation'));
+    const box = el<HTMLInputElement>('settings-handy-auto-start');
+    expect(el('settings-panel-dictation').contains(box)).toBe(true);
+    click(box);
+    await flush();
+    expect(setHandyAutoStart).toHaveBeenCalledWith(true);
+    const hint = el('settings-handy-auto-start-hint').textContent ?? '';
+    expect(hint).toMatch(/Enter stops Handy and sends/);
+    expect(hint).not.toMatch(/↩/);
+  });
+
+  it('is absent on Windows without Handy', async () => {
+    plat.windows = true;
+    handyAuto = false;
+    open();
+    await flush();
+    expect(tabIds()).not.toContain('settings-tab-dictation');
+  });
+
+  it('is absent on Linux even with Handy', async () => {
+    handyInstalled = true;
+    handyAuto = false;
+    open();
+    await flush();
+    expect(tabIds()).not.toContain('settings-tab-dictation');
+    expect(document.getElementById('settings-handy-auto-start')).toBeNull();
+  });
+
+  it('is absent on macOS, where the switch stays in the Menu bar tab', async () => {
+    onMac = true;
+    menuBarStatus = 'not-registered';
+    handyInstalled = true;
+    handyAuto = false;
+    open();
+    await flush();
+    expect(tabIds()).not.toContain('settings-tab-dictation');
+    click(el('settings-tab-menubar'));
+    expect(
+      el('settings-panel-menubar').contains(el('settings-handy-auto-start')),
+    ).toBe(true);
   });
 });
 
