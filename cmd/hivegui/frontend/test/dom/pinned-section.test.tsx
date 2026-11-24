@@ -199,6 +199,10 @@ describe('Pinned section', () => {
     );
     await flush();
     expect(openChoiceDialog).toHaveBeenCalledTimes(1);
+    // Enter confirms: the dialog's `[enter]` key must unpin, not cancel.
+    expect(openChoiceDialog.mock.calls[0][0]).toMatchObject({
+      defaultValue: 'unpin',
+    });
     expect(bridge.UnpinAll).not.toHaveBeenCalled();
 
     openChoiceDialog.mockResolvedValueOnce('unpin');

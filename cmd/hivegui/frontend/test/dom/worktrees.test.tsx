@@ -463,12 +463,13 @@ describe('deleting', () => {
     expect(RemoveWorktree).not.toHaveBeenCalled();
   });
 
-  // The safe option is the default: a stray Enter must not delete.
-  it('focuses Cancel', async () => {
+  // Enter confirms (AGENTS.md), and takes the least destructive delete:
+  // the branch keeps the commits.
+  it('focuses "Delete, keep branch"', async () => {
     await openWith(payload({ worktrees: [clean] }));
     fireEvent.click(button(rows()[0], 'Delete'));
     await flush();
-    expect(document.activeElement).toBe(choice('cancel'));
+    expect(document.activeElement).toBe(choice('keep-branch'));
   });
 
   // Tab containment is not this modal's job any more: it lives in the

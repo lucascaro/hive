@@ -190,7 +190,7 @@ Always apply these principles when adding or modifying UI elements in the GUI. V
 
 ### Feedback on Action
 - Destructive actions (kill, quit+kill) must always go through the confirm overlay — never skip it.
-- Overlays must display the relevant keybinding to confirm and cancel (`y/enter` to confirm, `esc/n` to cancel).
+- Overlays must display the keys that confirm and cancel — `[enter]` and `[esc]` — and a displayed key must do exactly what its hint says. Enter confirms: it runs the dialog's default (affirmative) action, which holds focus when the dialog opens; once Tab moves keyboard focus, Enter answers the focused choice and the `[enter]` hint follows it. Esc cancels. Label each hint with the real action (`[enter] Unpin all · [esc] Cancel`), not a generic "choose". Choice dialogs set the default with `ChoiceSpec.defaultValue`. The only exception is a dialog that opens by itself or after an async gap (a daemon refusal), while the user may be typing or still holding Enter: its default stays on an answer that destroys nothing, and its hint names that answer. A held, auto-repeating Enter never answers a dialog. Such a dialog may hide its `[enter]` hint (`ChoiceSpec.enterHint: false`) and show only `[esc]`, when Enter's initial answer is Cancel too (Tab can still move Enter to another choice).
 
 ### Consistency
 - Key hints use the format `[key]` for number/symbol keys and `(key)` for letter keys — pick one format and apply it uniformly across the whole UI.
@@ -246,7 +246,7 @@ A hint for a command with no key shows no key.
 ### Hard-coded exceptions (NOT rebindable)
 
 - `Ctrl+C` — interrupt / force-quit (universal).
-- Dialog confirm/cancel (`Enter` / `Esc`) inside overlays.
+- Dialog confirm/cancel (`Enter` / `Esc`) inside overlays — Enter runs the default action, Esc cancels (see *Feedback on Action*).
 - Inside the native dictation box — the menu bar's HUD on macOS (spec
   553), each Hive window's box on Windows (spec 575): `↑`/`↓` change
   the target session and `⇧↩` (Shift+Enter) inserts a newline. With
@@ -258,7 +258,8 @@ A hint for a command with no key shows no key.
 ### Design rule
 
 Destructive actions (kill session, quit) must go through the confirmation
-overlay, and every overlay must show its confirm/cancel bindings.
+overlay, and every overlay must show its confirm/cancel bindings — keys
+that literally do what their hints say.
 
 ## Documentation Maintenance
 

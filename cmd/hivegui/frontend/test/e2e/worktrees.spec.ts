@@ -136,8 +136,9 @@ test('the delete dialog offers three outcomes and cancels cleanly', async ({
   await expect(dialogChoice(page, 'cancel')).toBeVisible();
   await expect(dialogChoice(page, 'keep-branch')).toBeVisible();
   await expect(dialogChoice(page, 'both')).toBeVisible();
-  // The safe option holds focus, so a stray Enter cannot delete.
-  await expect(dialogChoice(page, 'cancel')).toBeFocused();
+  // The least destructive delete holds focus: Enter confirms, and the
+  // branch keeps the commits.
+  await expect(dialogChoice(page, 'keep-branch')).toBeFocused();
 
   await dialogChoice(page, 'cancel').click();
   await expect(page.locator('.choice-dialog')).toHaveCount(0);
@@ -156,10 +157,8 @@ test('Tab cycles the dialog buttons and never leaves the dialog', async ({
   await seed(page, [CLEAN]);
   await page.keyboard.press(`${mod}+e`);
   await row(page, 'clean').getByRole('button', { name: 'Delete' }).click();
-  await expect(dialogChoice(page, 'cancel')).toBeFocused();
-
-  await page.keyboard.press('Tab');
   await expect(dialogChoice(page, 'keep-branch')).toBeFocused();
+
   await page.keyboard.press('Tab');
   await expect(dialogChoice(page, 'both')).toBeFocused();
   // Wraps rather than escaping into the page.
@@ -183,8 +182,19 @@ test('Enter activates the focused dialog button', async ({ page }) => {
   await page.keyboard.press(`${mod}+e`);
   await row(page, 'clean').getByRole('button', { name: 'Delete' }).click();
 
-  // Tab to "Delete, keep branch" and commit with Enter.
-  await page.keyboard.press('Tab');
+  // Shift+Tab to Cancel and press Enter: Enter answers the focused
+  // button, not the default, and the hint follows focus.
+  await page.keyboard.press('Shift+Tab');
+  await expect(dialogChoice(page, 'cancel')).toBeFocused();
+  await expect(
+    page.locator('.choice-dialog .hv-dialog__hint').first(),
+  ).toHaveText('[enter] Cancel');
+  await page.keyboard.press('Enter');
+  await expect(page.locator('.choice-dialog')).toHaveCount(0);
+  await expect(row(page, 'clean')).toBeVisible();
+
+  // Back in: Enter on the default deletes, keeping the branch.
+  await row(page, 'clean').getByRole('button', { name: 'Delete' }).click();
   await expect(dialogChoice(page, 'keep-branch')).toBeFocused();
   await page.keyboard.press('Enter');
 
@@ -202,7 +212,7 @@ test('Escape in the delete dialog backs out without closing the browser', async 
   await seed(page, [CLEAN]);
   await page.keyboard.press(`${mod}+e`);
   await row(page, 'clean').getByRole('button', { name: 'Delete' }).click();
-  await expect(dialogChoice(page, 'cancel')).toBeFocused();
+  await expect(dialogChoice(page, 'keep-branch')).toBeFocused();
 
   await page.keyboard.press('Escape');
   await expect(page.locator('.choice-dialog')).toHaveCount(0);
@@ -356,8 +366,9 @@ test('an orphaned branch can be deleted, behind a confirmation', async ({
   });
   await branchRow.getByRole('button', { name: 'Delete' }).click();
 
-  // Cancel first: nothing should happen.
-  await expect(dialogChoice(page, 'cancel')).toBeFocused();
+  // Cancel first: nothing should happen. (Enter's default is the
+  // local-only delete.)
+  await expect(dialogChoice(page, 'local')).toBeFocused();
   await dialogChoice(page, 'cancel').click();
   await expect(branchRow).toBeVisible();
 
@@ -428,8 +439,8 @@ test('the dirty-close dialog offers close-and-delete as the danger option', asyn
   const clean = dialogChoice(page, 'close-and-clean');
   await expect(clean).toBeVisible();
   await expect(clean).toHaveClass(/danger/);
-  // Cancel still holds focus, so the destructive option is never the
-  // default.
+  // Raised by the daemon's refusal, so Enter answers Cancel: neither
+  // close stops the agent on a stray key.
   await expect(dialogChoice(page, 'cancel')).toBeFocused();
 
   await clean.click();
@@ -506,6 +517,25 @@ test('closing a dirty session asks in-app, not with an OS alert', async ({
   await expect(dialog).toContainText('keeps the worktree');
   await expect(dialogChoice(page, 'close-and-clean')).toBeVisible();
   await expect(dialogChoice(page, 'cancel')).toBeFocused();
+  // Only Escape is advertised here; Enter still cancels.
+  await expect(dialog.locator('.hv-dialog__hint')).toHaveText(['[esc] Cancel']);
+
+  // Enter cancels here: the session survives.
+  await page.keyboard.press('Enter');
+  await expect(dialog).toHaveCount(0);
+  await page.evaluate(
+    (sid) =>
+      window.__hive.emit(
+        'control:error',
+        JSON.stringify({
+          code: 'worktree_dirty',
+          message: 'uncommitted changes',
+          session_id: sid,
+        }),
+      ),
+    id,
+  );
+  await expect(dialog).toBeVisible();
 
   await dialogChoice(page, 'cancel').click();
   await expect(dialog).toHaveCount(0);

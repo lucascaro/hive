@@ -251,6 +251,44 @@ describe('deleting', () => {
     expect(DeleteArchivedSession).toHaveBeenCalledWith('s2', true, false);
   });
 
+  // Enter confirms (AGENTS.md): the delete dialog's default is the
+  // delete that keeps the worktree on disk.
+  it('Enter deletes and keeps the worktree', async () => {
+    const { confirmChoiceDialog } = await import(
+      '../../src/app/modals/choice-dialog.js'
+    );
+    act(() => setArchived(LIST));
+    await pressDelete(2);
+    act(() => {
+      confirmChoiceDialog();
+    });
+    await flush();
+    expect(DeleteArchivedSession).toHaveBeenCalledWith('s2', false, false);
+  });
+
+  // The dirty refusal arrives after an async gap, possibly with Enter
+  // still held, and its only yes destroys uncommitted changes: Enter
+  // must cancel there.
+  it('Enter on the dirty-worktree refusal cancels', async () => {
+    const { confirmChoiceDialog } = await import(
+      '../../src/app/modals/choice-dialog.js'
+    );
+    act(() => setArchived(LIST));
+    const p = archive.onArchivedWorktreeDirty('s2');
+    await flush();
+    // Only Escape is advertised; Enter still cancels.
+    expect(
+      [...el('choice-dialog').querySelectorAll('.hv-dialog__hint')].map(
+        (h) => h.textContent,
+      ),
+    ).toEqual(['[esc] Cancel']);
+    act(() => {
+      confirmChoiceDialog();
+    });
+    await p;
+    expect(DeleteArchivedSession).not.toHaveBeenCalled();
+  });
+
   it('a dirty-worktree refusal asks again and only then forces', async () => {
     act(() => setArchived(LIST));
     const p = archive.onArchivedWorktreeDirty('s2');

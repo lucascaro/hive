@@ -93,10 +93,59 @@ test('choice dialog: focus starts inside it', async ({ page }) => {
   await boot(page);
   await openDeleteDialog(page);
   expect(await activeInside(page, '.choice-dialog')).toBe(true);
-  // ...and on the safe option, so a stray Enter cannot destroy anything.
+  // ...and on the default answer, the one the `[enter]` hint names.
   await expect(
-    page.locator('.choice-dialog button[data-choice="cancel"]'),
+    page.locator('.choice-dialog button[data-choice="keep-branch"]'),
   ).toBeFocused();
+});
+
+// The reported bug: the footer said `[enter]` but Cancel held focus, so
+// Enter cancelled. The hint must name the action, and Enter must do it.
+test('choice dialog: Enter does what its hint says', async ({ page }) => {
+  await boot(page);
+  await openDeleteDialog(page);
+  await expect(
+    page.locator('.choice-dialog .hv-dialog__hint').first(),
+  ).toHaveText('[enter] Delete, keep branch');
+  await page.keyboard.press('Enter');
+  await expect(page.locator('.choice-dialog')).toHaveCount(0);
+  await expect(
+    page.locator('#worktrees-list .worktree-row[data-path$="/trapped"]'),
+  ).toHaveCount(0);
+});
+
+// A pointer press dragged off its button leaves that button focused
+// but not :focus-visible, and the hint unchanged. Enter must still do
+// what the hint says: the default, not the pressed-and-abandoned button.
+test('choice dialog: Enter ignores pointer focus', async ({ page }) => {
+  await boot(page);
+  await openDeleteDialog(page);
+  const cancel = page.locator('.choice-dialog button[data-choice="cancel"]');
+  const box = await cancel.boundingBox();
+  if (!box) throw new Error('no Cancel box');
+  await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
+  await page.mouse.down();
+  await page.mouse.move(box.x + box.width / 2, box.y - 120);
+  await page.mouse.up();
+  await expect(cancel).toBeFocused();
+  await expect(
+    page.locator('.choice-dialog .hv-dialog__hint').first(),
+  ).toHaveText('[enter] Delete, keep branch');
+  await page.keyboard.press('Enter');
+  await expect(page.locator('.choice-dialog')).toHaveCount(0);
+  await expect(
+    page.locator('#worktrees-list .worktree-row[data-path$="/trapped"]'),
+  ).toHaveCount(0);
+});
+
+test('choice dialog: Esc cancels', async ({ page }) => {
+  await boot(page);
+  await openDeleteDialog(page);
+  await page.keyboard.press('Escape');
+  await expect(page.locator('.choice-dialog')).toHaveCount(0);
+  await expect(
+    page.locator('#worktrees-list .worktree-row[data-path$="/trapped"]'),
+  ).toHaveCount(1);
 });
 
 test('choice dialog: Tab cycles and never escapes', async ({ page }) => {

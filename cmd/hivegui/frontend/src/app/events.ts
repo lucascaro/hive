@@ -501,8 +501,8 @@ async function askWorktreeChoice(id: string) {
         : `Nothing was ever fetched from origin here, so ${branch} would ` +
           'come off this checkout\u2019s local HEAD rather than upstream. ' +
           'Retry once the remote is reachable.',
-    // Retry leads, because the FIRST choice is the one that takes
-    // focus — and this dialog raises itself, unprompted, possibly
+    // Retry leads, because with no defaultValue the FIRST choice is the
+    // one Enter answers — and this dialog raises itself, unprompted, possibly
     // while the user is typing. A stray Enter must not destroy a
     // session, and Retry is the one answer that neither destroys work
     // nor commits to a degraded base. Cancel sits last, marked
@@ -1434,6 +1434,12 @@ export function wireDaemonEvents(injected: EventsDeps) {
             danger: true,
           },
         ],
+        // No defaultValue: Enter answers Cancel. This question arrives
+        // after the daemon refuses the kill, and closing stops a running
+        // agent — the async rule (AGENTS.md). Only `[esc] Cancel` is
+        // shown (operator's call): an `[enter] Cancel` hint reads as
+        // wrong once Tab moves focus.
+        enterHint: false,
       });
       if (answer === 'cancel') return;
       // The dialog is async + modal; the session may have been removed
@@ -1476,6 +1482,12 @@ export function wireDaemonEvents(injected: EventsDeps) {
           { label: 'Cancel', value: 'cancel' },
           { label: 'Delete project and ideas', value: 'delete', danger: true },
         ],
+        // No defaultValue: Enter answers Cancel. This question arrives
+        // after an async gap (the daemon's refusal of the native
+        // Confirm), possibly with Enter still held, and its only yes
+        // deletes the ideas for good — the async rule (AGENTS.md). Only
+        // `[esc] Cancel` is shown, as on the dirty-close refusal.
+        enterHint: false,
       });
       if (answer !== 'delete') return;
       // The dialog is async and modal: the project may be gone (another
