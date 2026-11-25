@@ -25,6 +25,7 @@ The *what* and *why* of work this project plans to do. Each spec describes user 
 
 | Issue | Title | PR | Shipped | Spec |
 |-------|-------|----|---------|------|
+| #580 | Keep the new-session launcher inside the window when its project is near the bottom | #581 | 2026-11-25 | [580-keep-the-new-session-launcher-inside-the-window-wh](580-keep-the-new-session-launcher-inside-the-window-wh.md) |
 | #575 | Bring the dictation box and Handy auto-start to Windows | #576 | 2026-11-24 | [575-bring-the-dictation-box-and-handy-auto-start-to-w](575-bring-the-dictation-box-and-handy-auto-start-to-w.md) |
 | #577 | Confirm dialogs: Enter should confirm, as the [enter] hint says | #578 | 2026-11-22 | [577-confirm-dialogs-enter-should-confirm-as-the-enter](577-confirm-dialogs-enter-should-confirm-as-the-enter.md) |
 | #573 | Start Handy recording when the dictation HUD opens | #574 | 2026-11-21 | [573-start-handy-recording-when-the-dictation-hud-open](573-start-handy-recording-when-the-dictation-hud-open.md) |
