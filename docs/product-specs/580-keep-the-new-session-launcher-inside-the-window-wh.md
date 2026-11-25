@@ -5,12 +5,13 @@ type: bug
 complexity: S
 priority: P2
 pr: 581
-stage: GATE
+shipped: 2026-11-25
+stage: DONE
 ---
 
 # Keep the new-session launcher inside the window when its project is near the bottom
 
-- **Exec plan:** [docs/exec-plans/active/580-keep-the-new-session-launcher-inside-the-window-wh.md](../exec-plans/active/580-keep-the-new-session-launcher-inside-the-window-wh.md)
+- **Exec plan:** [docs/exec-plans/completed/580-keep-the-new-session-launcher-inside-the-window-wh.md](../exec-plans/completed/580-keep-the-new-session-launcher-inside-the-window-wh.md)
 
 ## Problem
 
