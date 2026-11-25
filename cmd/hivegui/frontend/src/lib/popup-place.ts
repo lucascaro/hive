@@ -38,12 +38,16 @@ export function placePopup(
 ): { top: number; side: PopupSide | undefined } {
   const below = anchor ? anchor.bottom + GAP : FALLBACK_TOP;
   if (height <= 0) return { top: below, side: prev };
-  const fitsBelow = below + height <= viewportH - MARGIN;
+  // Every placement ends inside the window's margins: the anchor rect is
+  // read once at open, so a later window shrink, or an anchor scrolled
+  // partly out of view, must not leave the popup past an edge.
+  const fit = (top: number) =>
+    Math.max(MARGIN, Math.min(top, viewportH - MARGIN - height));
+  const fitsBelow = below >= MARGIN && below + height <= viewportH - MARGIN;
   if (prev !== 'above' && fitsBelow) return { top: below, side: 'below' };
   if (anchor) {
     const above = anchor.top - GAP - height;
-    if (above >= MARGIN) return { top: above, side: 'above' };
+    if (above >= MARGIN) return { top: fit(above), side: 'above' };
   }
-  const top = Math.max(MARGIN, Math.min(below, viewportH - MARGIN - height));
-  return { top, side: prev ?? 'below' };
+  return { top: fit(below), side: prev ?? 'below' };
 }

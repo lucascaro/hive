@@ -57,4 +57,18 @@ describe('placePopup (#580)', () => {
     });
     expect(placePopup(header(700), 0, 800, 'above').side).toBe('above');
   });
+  it('window shrink: stays above but is clamped back inside the window', () => {
+    // Opened above in an 800px window (top 396), then the window shrinks
+    // to 500: the anchor rect is stale, and 396 + 300 > 492.
+    const r = placePopup(header(700), 300, 500, 'above');
+    expect(r).toEqual({ top: 500 - 8 - 300, side: 'above' });
+  });
+
+  it('anchor scrolled above the window: clamps to the top margin', () => {
+    // header(-30): bottom -10, so below would be -6.
+    expect(placePopup(header(-30), 100, 800)).toEqual({
+      top: 8,
+      side: 'below',
+    });
+  });
 });
