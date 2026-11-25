@@ -121,4 +121,10 @@ Why not CSS-only: the anchor position is runtime; CSS cannot flip a fixed popup 
 - **2026-11-25** — Mutation checks: placement reverted (height forced to 0) → "flips above" + "clamps" fail; CSS bound removed → "clamps" fails.
 - **2026-11-25** — Eyeballed flip state with worktree rows open in Chromium: no clipped focus rings.
 
+## PR convergence ledger
+
+- **2026-11-25 iter 1** — verdict: APPROVE; mergeable: MERGEABLE; findings_hash: empty; threads_open: 0; action: stop; head_sha: 818bbb21. (Bot review threads arrived after this iteration; loop continued.)
+- **2026-11-25 iter 2** — worker pushed 39e18da4 (clamp every placement; resolved 3 Greptile/CodeRabbit threads) then died (host sleep) before returning an envelope; no verdict recorded. Windows CI failed on an unrelated plugin e2e (`session-notes:edit-note declined`), green on rerun.
+- **2026-11-25 iter 3** — verdict: APPROVE; mergeable: MERGEABLE; findings_hash: empty; threads_open: 0; action: stop; head_sha: 39e18da4.
+
 ## Open questions

@@ -5,7 +5,7 @@ type: bug
 complexity: S
 priority: P2
 pr: 581
-stage: REVIEW
+stage: GATE
 ---
 
 # Keep the new-session launcher inside the window when its project is near the bottom
