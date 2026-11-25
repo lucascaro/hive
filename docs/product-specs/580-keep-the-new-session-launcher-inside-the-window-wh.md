@@ -4,7 +4,8 @@ title: "Keep the new-session launcher inside the window when its project is near
 type: bug
 complexity: S
 priority: P2
-stage: IMPLEMENT
+pr: 581
+stage: REVIEW
 ---
 
 # Keep the new-session launcher inside the window when its project is near the bottom

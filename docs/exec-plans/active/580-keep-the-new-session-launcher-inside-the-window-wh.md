@@ -3,6 +3,8 @@
 - **Spec:** [docs/product-specs/580-keep-the-new-session-launcher-inside-the-window-wh.md](../../product-specs/580-keep-the-new-session-launcher-inside-the-window-wh.md)
 - **Issue:** #580
 - **Status:** active
+- **PR:** #581
+- **Branch:** feature/580-launcher-stays-in-window
 
 ## Summary
 
