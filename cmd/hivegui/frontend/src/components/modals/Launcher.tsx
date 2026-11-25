@@ -42,6 +42,7 @@ import { activeProjectId } from '../../app/selectors.js';
 import { focusableWithin } from '../../lib/focus-trap.js';
 import { ORCHESTRATOR_GRANT_HINT } from '../../lib/orchestrator.js';
 import { cmdOrCtrl } from '../../lib/platform.js';
+import { type PopupSide, placePopup } from '../../lib/popup-place.js';
 import {
   bumpAgentUsage,
   closeLauncher,
@@ -227,21 +228,41 @@ function LauncherBody({
   // a fixed spot over the sidebar if neither anchor exists.
   // Mount-only: one opening, one anchor. A re-anchor mid-open would move
   // the popup out from under the pointer.
+  //
+  // The vertical side is not mount-only (#580): below the header when it
+  // fits, else above it, else clamped into the window (lib/popup-place.ts).
+  // The popup's own size decides that, and it is not known here — this
+  // runs child-first, while #launcher is still display:none, and the
+  // agent list and worktree rows arrive later. So a ResizeObserver on the
+  // popup re-places it on reveal and on every size change after. Only the
+  // popup's size moves it; the anchor rect is never re-read.
   // biome-ignore lint/correctness/useExhaustiveDependencies: see above
   useLayoutEffect(() => {
     const anchorEl =
       document.querySelector(
         `.hv-project-card[data-pid="${req.projectId}"] .hv-project-card__header`,
       ) ?? document.getElementById('new-project-btn');
-    if (anchorEl) {
-      const r = anchorEl.getBoundingClientRect();
-      root.style.left = `${r.left}px`;
-      root.style.top = `${r.bottom + 4}px`;
-    } else {
-      root.style.left = '16px';
-      root.style.top = '64px';
-    }
+    const r = anchorEl?.getBoundingClientRect();
+    const anchor = r ? { top: r.top, bottom: r.bottom } : null;
+    root.style.left = r ? `${r.left}px` : '16px';
+    let side: PopupSide | undefined;
+    const place = () => {
+      const p = placePopup(anchor, root.offsetHeight, window.innerHeight, side);
+      side = p.side;
+      const top = `${p.top}px`;
+      if (root.style.top !== top) root.style.top = top;
+    };
+    place();
     setFocusedTile(null);
+    // jsdom has no ResizeObserver; the popup keeps the provisional top.
+    const ro =
+      typeof ResizeObserver === 'undefined' ? null : new ResizeObserver(place);
+    ro?.observe(root);
+    window.addEventListener('resize', place);
+    return () => {
+      ro?.disconnect();
+      window.removeEventListener('resize', place);
+    };
   }, []);
 
   // Focus is a PASSIVE effect, deliberately. Layout effects run

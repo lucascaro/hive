@@ -2319,6 +2319,11 @@ if (typeof window !== 'undefined') {
         agent,
       });
     },
+    // A second project card, for specs that need one further down the
+    // sidebar than the seed project (launcher-viewport.spec.ts).
+    addProject(name: string) {
+      return CreateProject(name, '', '');
+    },
     createSessionWithWorktree(name: string, branch?: string) {
       return CreateSession({
         project: 'p1',
