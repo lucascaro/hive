@@ -93,7 +93,16 @@ Why not CSS-only: the anchor position is runtime; CSS cannot flip a fixed popup 
 - Mutation checks: (a) revert `Launcher.tsx` to `top = r.bottom + 4` → above + clamp tests fail; (b) revert only the CSS → clamp test fails.
 - `scripts/test.sh unit dom e2e`, `npx biome ci .`, `npm run typecheck`, `scripts/ui-lint.sh`.
 
-### Open questions / risks
+### Gate verdict
+
+- **2026-11-25** — verdict: PASS; phase: —; checks: 8 passed / 0 failed / 0 followups; followups: none; one-line: launcher opens below / flips above / clamps and scrolls, re-placed on size change; all six success criteria and both non-goals hold (dimensions run inline by the orchestrator, not independently delegated).
+  - 2026-11-25 dimensions:
+    - acceptance — PASS — bottom in viewport (e2e `flips above…`, `clamps and scrolls…`); below unchanged when room (`opens below…`); above keeps header visible (`popup.bottom <= header.top`); clamp + scroll + last row hit-testable (`clamps and scrolls…`); ResizeObserver re-place (`Launcher.tsx:259`, flip test passes only after async agent list grows the popup); mutation checks failed both specs with TS/CSS reverted. unit 9/9, launcher e2e 9/9 at 39e18da4.
+    - non-goals — PASS — diff touches only `#launcher` / Launcher.tsx (no other popover); anchor rect read once at open, no sidebar-scroll re-anchor.
+    - doc accuracy — PASS — `.changesets/launcher-stays-in-window.md` (fixed, patch, issue 580, pr 581); regression_of: declared-absent; README/docs do not describe launcher positioning.
+  - 2026-11-25 proposed records: none — verdict set no direction
+
+## Open questions / risks
 
 - Resizing the prompt textarea (`resize: vertical`) in a flipped-above popup moves the popup's top as it grows (bottom stays pinned to the header). It converges and is rare; documented, not special-cased.
 - Flip happens after the agent list loads (popup first paints below with "Loading agents…", then jumps above). One jump, before the user can act on rows; acceptable. Alternative (hide until loaded) delays the popup and changes focus timing — rejected.
