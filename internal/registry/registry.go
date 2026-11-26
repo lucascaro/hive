@@ -1945,6 +1945,9 @@ func (r *Registry) kill(id string, force, removeWorktree, archive bool) error {
 		}
 		if dirty || derr != nil {
 			r.setPhase(id, wire.PhaseReady)
+			if derr != nil {
+				return fmt.Errorf("%w: cannot check worktree: %v", ErrWorktreeDirty, derr)
+			}
 			return ErrWorktreeDirty
 		}
 	}
@@ -2083,6 +2086,17 @@ func (r *Registry) kill(id string, force, removeWorktree, archive bool) error {
 	return nil
 }
 
+// rootOfProject is worktree.Root for a project's cwd, where an empty cwd
+// is a failure: the project is gone (KillProject removes it before it
+// kills the sessions), and git -C "" would resolve whatever repo the
+// daemon itself happens to run in.
+func rootOfProject(cwd string) (string, error) {
+	if cwd == "" {
+		return "", errors.New("project no longer exists")
+	}
+	return worktree.Root(cwd)
+}
+
 // disposeWorktree decides what happens to a killed session's worktree
 // and carries it out. Extracted from kill, which was 164 lines: this
 // is the half that can delete a directory on someone's disk, so it is
@@ -2096,7 +2110,7 @@ func (r *Registry) kill(id string, force, removeWorktree, archive bool) error {
 func (r *Registry) disposeWorktree(id, projectID, projectCwd, wtPath, wtBranch string, removeWorktree bool) {
 	r.gitMu.Lock()
 	defer r.gitMu.Unlock()
-	root, err := worktree.Root(projectCwd)
+	root, err := rootOfProject(projectCwd)
 	switch {
 	case err != nil:
 		// Without the repo root hive can neither prove it manages

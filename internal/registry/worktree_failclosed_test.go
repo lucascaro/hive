@@ -117,6 +117,62 @@ func TestKill_StatusFailureRefusesUnforcedKill(t *testing.T) {
 	}
 }
 
+// DeleteArchived's Root handling was already fail-closed; this pins it.
+// Even with force and an explicit removal, an unresolvable project
+// keeps the worktree.
+func TestDeleteArchived_RootFailureKeepsDirtyWorktree(t *testing.T) {
+	for name, cwd := range map[string]func(*testing.T) string{
+		"not a repo":      func(t *testing.T) string { return t.TempDir() },
+		"project removed": func(*testing.T) string { return "" },
+	} {
+		t.Run(name, func(t *testing.T) {
+			skipNonPosix(t)
+			r, p := freshRegistryWithProject(t)
+			e := archivedWorktreeSession(t, r, p)
+			file := filepath.Join(e.WorktreePath, "wip.txt")
+			mustWriteFile(t, file, "unfinished\n")
+			if err := r.Archive(e.ID); err != nil {
+				t.Fatal(err)
+			}
+			repo := p.Cwd
+			setProjectCwd(r, p.ID, cwd(t))
+			if name == "project removed" {
+				// The daemon happens to run inside a repo: with an
+				// empty cwd a git lookup would resolve THAT repo.
+				t.Chdir(repo)
+			}
+			kept, err := r.DeleteArchived(e.ID, true, true)
+			if err != nil || !kept {
+				t.Fatalf("DeleteArchived = kept %v, err %v; want kept, nil", kept, err)
+			}
+			if _, err := os.Stat(file); err != nil {
+				t.Errorf("file destroyed: %v", err)
+			}
+		})
+	}
+}
+
+// KillProject(killSessions) drops the project BEFORE killing its
+// sessions, so disposeWorktree sees an empty project cwd, and running
+// git with -C "" resolves the daemon's own directory. An empty cwd must
+// count as a Root failure, not a lookup against whatever repo the
+// daemon happens to run in.
+func TestKillProject_KillSessionsKeepsDirtyWorktree(t *testing.T) {
+	skipNonPosix(t)
+	r, p := freshRegistryWithProject(t)
+	if _, err := r.CreateProject(wire.CreateProjectReq{Name: "other", Cwd: t.TempDir()}); err != nil {
+		t.Fatal(err)
+	}
+	_, file := dirtyWorktreeSession(t, r, p)
+	t.Chdir(t.TempDir()) // a daemon running outside any repo
+	if err := r.KillProject(p.ID, true, true); err != nil {
+		t.Fatalf("KillProject: %v", err)
+	}
+	if _, err := os.Stat(file); err != nil {
+		t.Fatalf("removing the project destroyed a dirty worktree: %v", err)
+	}
+}
+
 func TestDeleteArchived_StatusFailureRefusesWithoutForce(t *testing.T) {
 	skipNonPosix(t)
 	r, p := freshRegistryWithProject(t)

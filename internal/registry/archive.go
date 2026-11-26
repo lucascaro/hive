@@ -233,14 +233,18 @@ func (r *Registry) removeArchivedWorktree(t Tombstone, force bool) (removed bool
 
 	r.gitMu.Lock()
 	defer r.gitMu.Unlock()
-	root, rerr := worktree.Root(cwd)
+	root, rerr := rootOfProject(cwd)
 	if rerr != nil || !worktree.IsManaged(root, wt) {
 		log.Printf("registry: delete archived %s: cannot establish a managed worktree for %s; keeping it", t.Meta.ID, wt)
 		return false, nil
 	}
 	if !force {
 		// Fail closed: an unanswerable status is not a clean one.
-		if dirty, derr := worktree.HasUncommitted(wt); dirty || derr != nil {
+		dirty, derr := worktree.HasUncommitted(wt)
+		if derr != nil {
+			return false, fmt.Errorf("%w: cannot check worktree: %v", ErrWorktreeDirty, derr)
+		}
+		if dirty {
 			return false, ErrWorktreeDirty
 		}
 	}
