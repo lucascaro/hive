@@ -6,6 +6,7 @@ package daemon
 
 import (
 	"context"
+	"errors"
 	"net"
 	"os"
 	"os/exec"
@@ -231,6 +232,39 @@ func TestRemoveWorktree_ExemptionNotWithDeleteBranch(t *testing.T) {
 	}
 	if _, err := os.Stat(wt); err != nil {
 		t.Errorf("worktree removed: %v", err)
+	}
+}
+
+// A successful REMOVE_WORKTREE whose inventory refresh then fails must
+// still answer the request with its ACK: the listing error is a secondary
+// report, so it must not echo the req_id (the SDK settles on the first
+// frame carrying it, and would reject a request that worked).
+func TestRemoveWorktree_ListFailureAfterSuccessDoesNotEchoReqID(t *testing.T) {
+	d, repo := startDaemonInRepo(t)
+	pid := projectIDOf(t, d)
+	wt := r7Worktree(t, repo, "listfail", false)
+	d.listWorktreesHook = func(string) (wire.WorktreesResp, error) {
+		return wire.WorktreesResp{}, errors.New("injected listing failure")
+	}
+	c := controlConn(t, d)
+
+	send(t, c, wire.FrameRemoveWorktree, wire.RemoveWorktreeReq{ProjectID: pid, Path: wt, ReqID: 95})
+	var errs []wire.Error
+	for {
+		f := readFrameWhere(t, c, "ACK or ERROR", isAckOrError)
+		if f.ft == wire.FrameAck {
+			if a := f.ack(t); a.ReqID != 95 {
+				t.Fatalf("ack = %+v, want req_id 95", a)
+			}
+			break
+		}
+		errs = append(errs, f.err(t))
+	}
+	if len(errs) != 1 || errs[0].Code != "list_worktrees_failed" || errs[0].ReqID != 0 {
+		t.Errorf("errors before the ACK = %+v, want one list_worktrees_failed without a req_id", errs)
+	}
+	if _, err := os.Stat(wt); err == nil {
+		t.Error("worktree still on disk")
 	}
 }
 

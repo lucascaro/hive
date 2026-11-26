@@ -302,6 +302,13 @@ func (r *Registry) RemoveWorktreeForRun(projectID, path string, force, deleteBra
 	if ids := r.liveSessionsIn(resolved); len(ids) > 0 {
 		return fmt.Errorf("%w: %s", ErrWorktreeInUse, strings.Join(ids, ", "))
 	}
+	// Likewise a session archived in that gap: Archive does not take the
+	// git lock, so it can land between the earlier check and here. This
+	// narrows the window rather than closing it; the exemption is what
+	// made it reachable.
+	if name, held := r.archivedHolder(resolved, ""); held {
+		return fmt.Errorf("%w: archived session %q", ErrWorktreeInUse, name)
+	}
 
 	st, err := worktree.Inspect(root, resolved)
 	if err != nil {

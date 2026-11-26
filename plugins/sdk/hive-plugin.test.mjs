@@ -187,6 +187,27 @@ test('request ignores broadcasts carrying the same req_id', unixOnly, async () =
   }
 });
 
+// The daemon contract (internal/daemon/reqid.go): a request gets exactly
+// one terminal frame echoing its req_id. A secondary error after a
+// success (REMOVE_WORKTREE's failed inventory refresh) carries no req_id,
+// so it reaches 'ERROR' listeners but cannot reject the request. Had it
+// echoed the id, the first frame would reject and drop the entry, and the
+// later ACK would be lost.
+test('a secondary ERROR without req_id does not reject a request that then ACKs', unixOnly, async () => {
+  const d = await fakeDaemon((_type, p, reply) => {
+    reply(Frame.ERROR, { code: 'list_worktrees_failed', message: 'boom' });
+    reply(Frame.ACK, { req_id: p.req_id });
+  });
+  try {
+    const seen = new Promise((r) => d.hive.once('ERROR', r));
+    const ack = await d.hive.request('REMOVE_WORKTREE', { project_id: 'p', path: '/x', workflow_run_id: 'run-1' });
+    assert.ok(ack.req_id > 0);
+    assert.equal((await seen).code, 'list_worktrees_failed');
+  } finally {
+    await d.close();
+  }
+});
+
 test('timeout rejects', unixOnly, async () => {
   const d = await fakeDaemon(() => {});
   try {
