@@ -239,7 +239,8 @@ func (r *Registry) removeArchivedWorktree(t Tombstone, force bool) (removed bool
 		return false, nil
 	}
 	if !force {
-		if dirty, _ := worktree.HasUncommitted(wt); dirty {
+		// Fail closed: an unanswerable status is not a clean one.
+		if dirty, derr := worktree.HasUncommitted(wt); dirty || derr != nil {
 			return false, ErrWorktreeDirty
 		}
 	}

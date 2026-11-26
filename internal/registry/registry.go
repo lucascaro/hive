@@ -1935,9 +1935,15 @@ func (r *Registry) kill(id string, force, removeWorktree, archive bool) error {
 	if wtPath != "" && !worktreeShared && !force {
 		r.setPhase(id, wire.PhaseChecking)
 		r.gitMu.Lock()
-		dirty, _ := worktree.HasUncommitted(wtPath)
+		dirty, derr := worktree.HasUncommitted(wtPath)
 		r.gitMu.Unlock()
-		if dirty {
+		// Fail closed: a git status that errored (wedged repo, timeout,
+		// corrupt worktree) has not shown the worktree is clean, so it
+		// gets the same refusal as a dirty one. force overrides.
+		if derr != nil {
+			log.Printf("registry: kill %s: cannot check worktree %s for uncommitted changes (%v); treating it as dirty", id, wtPath, derr)
+		}
+		if dirty || derr != nil {
 			r.setPhase(id, wire.PhaseReady)
 			return ErrWorktreeDirty
 		}
@@ -2093,9 +2099,12 @@ func (r *Registry) disposeWorktree(id, projectID, projectCwd, wtPath, wtBranch s
 	root, err := worktree.Root(projectCwd)
 	switch {
 	case err != nil:
-		log.Printf("registry: kill %s: project cwd %q is not (or no longer) a git repo; falling back to RemoveAll on %s", id, projectCwd, wtPath)
-		_ = os.RemoveAll(wtPath)
-		r.pruneWorktreeLabel(projectID, wtPath)
+		// Without the repo root hive can neither prove it manages
+		// wtPath nor inspect it, and the failure may be transient (git
+		// timeout, permissions). Keep the directory — and its label —
+		// even for an explicit removeWorktree: the worktree browser's
+		// removal can retry once the project resolves again.
+		log.Printf("registry: kill %s: cannot resolve the git root of project cwd %q (%v); leaving worktree %s on disk", id, projectCwd, err, wtPath)
 	case !worktree.IsManaged(root, wtPath):
 		// Second guard, independent of whatever set WorktreePath:
 		// only ever delete a worktree hive owns. An entry pointing
