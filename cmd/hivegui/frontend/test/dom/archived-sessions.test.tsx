@@ -251,6 +251,44 @@ describe('deleting', () => {
     expect(DeleteArchivedSession).toHaveBeenCalledWith('s2', true, false);
   });
 
+  // Enter confirms (AGENTS.md): the delete dialog's default is the
+  // delete that keeps the worktree on disk.
+  it('Enter deletes and keeps the worktree', async () => {
+    const { confirmChoiceDialog } = await import(
+      '../../src/app/modals/choice-dialog.js'
+    );
+    act(() => setArchived(LIST));
+    await pressDelete(2);
+    act(() => {
+      confirmChoiceDialog();
+    });
+    await flush();
+    expect(DeleteArchivedSession).toHaveBeenCalledWith('s2', false, false);
+  });
+
+  // The dirty refusal arrives after an async gap, possibly with Enter
+  // still held, and its only yes destroys uncommitted changes: Enter
+  // must cancel there.
+  it('Enter on the dirty-worktree refusal cancels', async () => {
+    const { confirmChoiceDialog } = await import(
+      '../../src/app/modals/choice-dialog.js'
+    );
+    act(() => setArchived(LIST));
+    const p = archive.onArchivedWorktreeDirty('s2');
+    await flush();
+    // Only Escape is advertised; Enter still cancels.
+    expect(
+      [...el('choice-dialog').querySelectorAll('.hv-dialog__hint')].map(
+        (h) => h.textContent,
+      ),
+    ).toEqual(['[esc] Cancel']);
+    act(() => {
+      confirmChoiceDialog();
+    });
+    await p;
+    expect(DeleteArchivedSession).not.toHaveBeenCalled();
+  });
+
   it('a dirty-worktree refusal asks again and only then forces', async () => {
     act(() => setArchived(LIST));
     const p = archive.onArchivedWorktreeDirty('s2');
@@ -307,6 +345,17 @@ describe('archiving', () => {
     // id; archive must not swallow it before applyAcpError runs.
     expect(archive.onArchiveError('no_such_session', 'acp1')).toBe(false);
     expect(archive.onArchiveError('session_already_open')).toBe(false);
+    expect(archive.onArchiveError('session_closing')).toBe(false);
+  });
+
+  it('claims session_closing for its own pending unarchive and clears it', () => {
+    archive.unarchiveSession('s1');
+    expect(archive.onArchiveError('session_closing')).toBe(true);
+    expect(String(flashStatus.mock.calls.at(-1)?.[0])).toContain(
+      'still closing',
+    );
+    // Cleared, so the next one is not claimed.
+    expect(archive.onArchiveError('session_closing')).toBe(false);
   });
 
   it('claims no_such_session for its own pending archive only', () => {

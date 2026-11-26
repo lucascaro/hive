@@ -235,3 +235,23 @@ describe('SessionRow subagent badge', () => {
     expect(plan(el)?.getAttribute('aria-label')).toBe('14 subagents running');
   });
 });
+
+// Spec 566: what the agent pinned, counted on the row.
+describe('SessionRow pin badge', () => {
+  const pins = (el: HTMLElement) =>
+    el.querySelector<HTMLElement>('.hv-session-row__pins');
+
+  it('is absent with no pins', () => {
+    expect(pins(row({}))).toBeNull();
+    expect(pins(row({ pin_count: 0 }))).toBeNull();
+  });
+
+  it('shows the pin count and names it for assistive tech', () => {
+    const el = row({ pin_count: 3 });
+    expect(pins(el)?.textContent).toBe('3');
+    expect(pins(el)?.getAttribute('aria-label')).toBe('3 pinned responses');
+    expect(pins(row({ pin_count: 1 }))?.getAttribute('aria-label')).toBe(
+      '1 pinned response',
+    );
+  });
+});

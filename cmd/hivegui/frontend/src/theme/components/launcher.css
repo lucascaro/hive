@@ -16,6 +16,16 @@
      past the sidebar it is anchored under. */
   min-width: 220px;
   max-width: min(420px, calc(100vw - 32px));
+  /* Never taller than the window (#580): lib/popup-place.ts keeps an 8px
+     margin top and bottom, and a popup that still does not fit scrolls
+     rather than running off the edge. overflow-x stays hidden so the
+     max-width bound above never grows a horizontal scrollbar. border-box,
+     or the padding and border ride on top of max-height and the clamped
+     popup ends 10px past the window's bottom edge. */
+  box-sizing: border-box;
+  max-height: calc(100vh - 16px);
+  overflow-y: auto;
+  overflow-x: hidden;
   box-shadow: 0 8px 24px rgba(0,0,0,0.6);
   /* Must clear #sidebar-resizer (z-index 20). #app (plain grid, no
      z-index/opacity/transform) establishes no stacking context, so the

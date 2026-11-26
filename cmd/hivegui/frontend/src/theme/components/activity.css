@@ -198,3 +198,95 @@
 .hv-activity[data-stale] .hv-activity__step[data-status='active'] .hv-activity__mark {
   box-shadow: inset 0 0 0 1.5px var(--fg-subtle);
 }
+
+/* ---------- pinned responses (spec 566) ---------- */
+/* Capped at 30% of the panel, beside the plan's 50%, so the timeline
+   always keeps at least a fifth; the list scrolls inside the section and
+   the header stays put. */
+.hv-activity__pins {
+  display: flex;
+  flex-direction: column;
+  flex-shrink: 0;
+  max-height: 30%;
+  min-height: 0;
+  margin-top: var(--space-2);
+}
+.hv-activity__pins-head {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+  padding-bottom: var(--space-1);
+  border-bottom: 1px solid var(--border);
+  font-size: var(--text-xs);
+  color: var(--fg-muted);
+  flex-shrink: 0;
+}
+.hv-activity__pins-toggle {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+  flex: 1;
+  min-width: 0;
+  cursor: pointer;
+}
+.hv-activity__pins-clear,
+.hv-activity__pin-action {
+  flex-shrink: 0;
+  padding: 0 var(--space-1);
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: none;
+  color: var(--fg-subtle);
+  font: inherit;
+  cursor: pointer;
+}
+.hv-activity__pins-clear:hover,
+.hv-activity__pin-action:hover { color: var(--fg); background: var(--sel); }
+.hv-activity__pin-action { display: inline-flex; align-items: center; padding: 2px; }
+.hv-activity__pin-list { flex: 1 1 auto; min-height: 0; overflow-y: auto; }
+.hv-activity__pin-row { display: flex; align-items: center; gap: var(--space-1); padding: 2px 0; }
+.hv-activity__pin-main {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+  flex: 1;
+  min-width: 0;
+  cursor: pointer;
+  color: var(--fg-muted);
+}
+.hv-activity__pin[data-open] .hv-activity__pin-main { color: var(--fg); }
+.hv-activity__pin-title {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.hv-activity__age {
+  flex-shrink: 0;
+  font-size: var(--text-xs);
+  color: var(--fg-subtle);
+  font-variant-numeric: tabular-nums;
+}
+.hv-activity__pin-body {
+  padding: var(--space-1) 0 var(--space-2) var(--space-5);
+  color: var(--fg);
+  overflow-wrap: anywhere;
+}
+/* In a tile: titles only, inert, never more than a third of the tile. */
+.hv-activity__tile-pins {
+  flex: 0 1 auto;
+  max-height: 30%;
+  min-height: 0;
+  overflow: hidden;
+  margin-bottom: var(--space-1);
+  flex-shrink: 0;
+}
+.hv-activity__tile-pin {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+  padding: 1px 0;
+  color: var(--fg-muted);
+  font-size: var(--text-xs);
+}

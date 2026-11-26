@@ -61,6 +61,8 @@ type AgentInfo struct {
 	// agent's mode (Gemini, Copilot).
 	ACPModes       []agent.ACPMode `json:"acpModes,omitempty"`
 	ACPDefaultMode string          `json:"acpDefaultMode,omitempty"`
+	// ImagePasteKey: see agent.Def.ImagePasteKey.
+	ImagePasteKey string `json:"imagePasteKey,omitempty"`
 }
 
 // ListAgents returns every agent definition — built-ins plus the
@@ -83,7 +85,8 @@ func (a *App) ListAgents() []AgentInfo {
 			// custom agent is neither: validateCustom builds its Def
 			// with ID/Name/Cmd/Color only, so both flags are false by
 			// construction.
-			TakesPrompt: d.PositionalPrompt || d.TypedPrompt,
+			TakesPrompt:   d.PositionalPrompt || d.TypedPrompt,
+			ImagePasteKey: d.ImagePasteKey,
 		}
 		if spec := d.ACP(); spec != nil {
 			info.ACP = true
@@ -153,6 +156,9 @@ type AgentSettings struct {
 	// PiTodoTool has Hive's Pi extension add its hive_todo tool to newly
 	// started Pi sessions, which is where a Pi session's plan comes from.
 	PiTodoTool bool `json:"pi_todo_tool"`
+	// PinTool gives newly started Claude and Pi sessions Hive's pin tool
+	// and asks them to pin important responses (spec 566).
+	PinTool bool `json:"pin_tool"`
 	// LayaEnabled / LayaURL / LayaModel configure the optional Laya
 	// state classifier (spec 458). Read live by the daemon.
 	LayaEnabled bool   `json:"laya_enabled"`
@@ -170,7 +176,7 @@ type AgentSettings struct {
 func (a *App) GetAgentSettings() (AgentSettings, error) {
 	s, err := agent.LoadSettings()
 	return AgentSettings{
-		ClaudeTaskTools: s.ClaudeTaskTools, PiTodoTool: s.PiTodoTool,
+		ClaudeTaskTools: s.ClaudeTaskTools, PiTodoTool: s.PiTodoTool, PinTool: s.PinTool,
 		LayaEnabled: s.LayaEnabled, LayaURL: s.LayaURL, LayaModel: s.LayaModel,
 		ACPModeCeiling: s.ACPModeCeiling,
 	}, err
@@ -182,7 +188,7 @@ func (a *App) GetAgentSettings() (AgentSettings, error) {
 // it was started with.
 func (a *App) SaveAgentSettings(s AgentSettings) error {
 	return agent.SaveSettings(agent.Settings{
-		ClaudeTaskTools: s.ClaudeTaskTools, PiTodoTool: s.PiTodoTool,
+		ClaudeTaskTools: s.ClaudeTaskTools, PiTodoTool: s.PiTodoTool, PinTool: s.PinTool,
 		LayaEnabled: s.LayaEnabled, LayaURL: s.LayaURL, LayaModel: s.LayaModel,
 		ACPModeCeiling: s.ACPModeCeiling,
 	})
@@ -925,6 +931,44 @@ func (a *App) GetActivity(sessionID string) error {
 	return cs.WriteJSON(wire.FrameGetActivity, wire.GetActivityReq{SessionID: sessionID})
 }
 
+// GetPins asks for one session's pin headers (spec 566). They arrive as
+// one or more "pins:page" events, done on the last; after that the
+// "pins:changed" fan-out keeps them current.
+func (a *App) GetPins(sessionID string) error {
+	cs, err := a.requireControl()
+	if err != nil {
+		return err
+	}
+	return cs.WriteJSON(wire.FrameGetPins, wire.GetPinsReq{SessionID: sessionID})
+}
+
+// GetPinBody asks for one pin's body, answered as a "pins:body" event.
+func (a *App) GetPinBody(sessionID, pinID string) error {
+	cs, err := a.requireControl()
+	if err != nil {
+		return err
+	}
+	return cs.WriteJSON(wire.FrameGetPinBody, wire.GetPinBodyReq{SessionID: sessionID, ID: pinID})
+}
+
+// Unpin removes one pin; "pins:changed" reports it to every window.
+func (a *App) Unpin(sessionID, pinID string) error {
+	cs, err := a.requireControl()
+	if err != nil {
+		return err
+	}
+	return cs.WriteJSON(wire.FrameUnpin, wire.UnpinReq{SessionID: sessionID, ID: pinID})
+}
+
+// UnpinAll removes every pin in a session. The GUI confirms first.
+func (a *App) UnpinAll(sessionID string) error {
+	cs, err := a.requireControl()
+	if err != nil {
+		return err
+	}
+	return cs.WriteJSON(wire.FrameUnpinAll, wire.UnpinAllReq{SessionID: sessionID})
+}
+
 // GetAcpTranscript asks for an ACP session's whole transcript. The
 // answer arrives as an "acp:transcript" event with reset set; after
 // that the ACP_TRANSCRIPT fan-out keeps it current.
@@ -1006,13 +1050,25 @@ func (a *App) ReportFocusedSession(sessionID string) error {
 // SetGlobalHotkey stores the capture-HUD chord with the daemon (spec
 // 553), as a macOS virtual key code and Carbon modifier mask. The
 // frontend converts the user's keymap chord; the daemon answers with a
-// GLOBAL_HOTKEY broadcast ("hotkey:global") when it changed.
+// DICTATION broadcast ("dictation:settings") when it changed. Only the
+// chord is sent, so the Handy switch is left as it is.
 func (a *App) SetGlobalHotkey(keyCode, modifiers uint32, enabled bool) error {
+	h := wire.GlobalHotkey{KeyCode: keyCode, Modifiers: modifiers, Enabled: enabled}
+	return a.setDictation(wire.SetDictationReq{Hotkey: &h})
+}
+
+// SetHandyAutoStart switches whether opening the capture HUD starts
+// Handy recording (spec 573). Only the switch is sent.
+func (a *App) SetHandyAutoStart(on bool) error {
+	return a.setDictation(wire.SetDictationReq{HandyAutoStart: &on})
+}
+
+func (a *App) setDictation(req wire.SetDictationReq) error {
 	cs, err := a.requireControl()
 	if err != nil {
 		return err
 	}
-	return cs.WriteJSON(wire.FrameSetGlobalHotkey, wire.GlobalHotkey{KeyCode: keyCode, Modifiers: modifiers, Enabled: enabled})
+	return cs.WriteJSON(wire.FrameSetDictation, req)
 }
 
 // SetSessionNotifyWhenIdle arms or disarms the one-shot "ping me when

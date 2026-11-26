@@ -284,6 +284,42 @@ type claudeSettings struct {
 	// the user chose Hive as the plan reviewer. Verified on Claude Code
 	// 2.1.282: a --settings value overrides the user-level true.
 	EnabledPlugins map[string]bool `json:"enabledPlugins,omitempty"`
+	// Permissions pre-allows Hive's pin tool (spec 566), so pinning
+	// never stops the agent for a prompt. Permission rules from every
+	// settings source are combined, like hooks: this adds a rule and
+	// removes none of the user's (checked by TestProbeClaudePinsViaMCP).
+	Permissions *claudePermissions `json:"permissions,omitempty"`
+}
+
+type claudePermissions struct {
+	Allow []string `json:"allow"`
+}
+
+// ClaudePinServer is the MCP server name Hive gives its pin server in a
+// terminal Claude session, so the tool Claude sees is
+// mcp__hive-pin__pin.
+const ClaudePinServer = "hive-pin"
+
+// ClaudePinToolID is the pin tool's name as Claude Code addresses it.
+const ClaudePinToolID = "mcp__" + ClaudePinServer + "__pin"
+
+// claudePinMCPConfig is the --mcp-config value that starts
+// `hived mcp-pin`. The session's credentials are passed by reference:
+// Claude expands ${VAR} in an MCP server's env from its own
+// environment, which Hive spawned with them, and gives stdio servers a
+// filtered environment otherwise. Never the values themselves: the
+// token would then sit in every claude process's argv.
+func claudePinMCPConfig(hivedPath string) string {
+	env := map[string]string{}
+	for _, k := range []string{"HIVE_SESSION_ID", "HIVE_SOCKET", "HIVE_SESSION_TOKEN"} {
+		env[k] = "${" + k + "}"
+	}
+	blob, _ := json.Marshal(map[string]any{"mcpServers": map[string]any{
+		ClaudePinServer: map[string]any{
+			"type": "stdio", "command": hivedPath, "args": []string{"mcp-pin"}, "env": env,
+		},
+	}})
+	return string(blob)
 }
 
 // PlanReviewHookTimeout is the ceiling on how long Claude waits for
@@ -339,12 +375,22 @@ func claudeSpawnArgs(sp SpawnInfo) []string {
 	if claudeSpawnReviewer(sp.settings()) == PlanReviewerHive {
 		settings.EnabledPlugins = pluginReviewersToDisable()
 	}
+	pin := sp.settings().PinTool
+	if pin {
+		settings.Permissions = &claudePermissions{Allow: []string{ClaudePinToolID}}
+	}
 	blob, err := json.Marshal(settings)
 	if err != nil {
 		log.Printf("agent: marshal claude hooks settings: %v", err)
 		return nil
 	}
-	return []string{"--settings", string(blob)}
+	args := []string{"--settings", string(blob)}
+	if pin {
+		// Additive: --strict-mcp-config is never passed, so the user's
+		// own MCP servers still load.
+		args = append(args, "--mcp-config", claudePinMCPConfig(sp.HivedPath))
+	}
+	return args
 }
 
 // claudeSpawnReviewer is who reviews this session's plans, fixed at

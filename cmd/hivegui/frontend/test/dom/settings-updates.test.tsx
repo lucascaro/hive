@@ -18,6 +18,8 @@ const bridge = vi.hoisted(() => ({
   ListCustomAgents: vi.fn(() => Promise.resolve([])),
   SaveCustomAgents: vi.fn(() => Promise.resolve()),
   MenuBarLoginItemStatus: vi.fn(() => Promise.resolve('unsupported')),
+  HandyInstalled: vi.fn(() => Promise.resolve(false)),
+  SetHandyAutoStart: vi.fn(() => Promise.resolve()),
   SetMenuBarLoginItem: vi.fn(() => Promise.resolve()),
   GetUpdateSettings: vi.fn(() =>
     Promise.resolve({ channel: 'release', source_repo: '' }),
@@ -74,6 +76,8 @@ vi.mock('../../src/bridge.js', () => bridge);
 // Mac for any of these assertions to mean anything.
 vi.mock('../../src/lib/platform.js', () => ({
   isMac: true,
+  isWindows: false,
+  dictationSupported: true,
   detectMac: () => true,
   cmdOrCtrl: () => true,
 }));

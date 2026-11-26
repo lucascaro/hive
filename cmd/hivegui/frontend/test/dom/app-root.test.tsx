@@ -46,7 +46,7 @@ import indexHtml from '../../index.html?raw';
 vi.mock('../../src/bridge.js', () => ({
   ApplyUpdateAndRestart: vi.fn(),
   CheckForUpdate: vi.fn(),
-  ClipboardGetText: vi.fn(),
+  ReadClipboard: vi.fn(),
   CloseAttach: vi.fn(),
   CloseWindow: vi.fn(),
   Confirm: vi.fn(),

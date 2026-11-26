@@ -16,6 +16,7 @@ import {
   desiredHotkey,
   sameHotkey,
 } from '../../src/lib/carbon-keys.js';
+import { isWindows } from '../../src/lib/platform.js';
 
 describe('carbonHotkey', () => {
   it('maps the default ⌃⌥Space to kVK_Space with control|option', () => {
@@ -77,12 +78,29 @@ describe('desiredHotkey / sameHotkey', () => {
 });
 
 describe('the dictate-hud binding', () => {
-  it('ships ⌃⌥Space on macOS and nothing elsewhere', () => {
+  it('ships ⌃⌥Space on macOS, Ctrl+Shift+Space on Windows, none on Linux', () => {
     expect(chordsOfIn({}, 'dictate-hud', true)).toEqual(['Ctrl+Alt+[Space]']);
-    expect(chordsOfIn({}, 'dictate-hud', false)).toEqual([]);
+    // Spec 575: only Windows gets an off-mac default. isWindows is read
+    // from the host's navigator when bindings.ts loads (Node reports
+    // Win32 on the Windows CI runner), so expect what the host selects.
+    expect(chordsOfIn({}, 'dictate-hud', false)).toEqual(
+      isWindows ? ['Ctrl+Shift+[Space]'] : [],
+    );
     expect(
       DEFAULT_APP_BINDINGS.filter((b) => b.command === 'dictate-hud'),
     ).toHaveLength(1);
+  });
+
+  it('reads PC chords with mac=false: Ctrl is Control, Mod is Ctrl', () => {
+    expect(desiredHotkey(['Ctrl+Shift+[Space]'], false)).toEqual({
+      key_code: 0x31,
+      modifiers: CARBON_CONTROL | CARBON_SHIFT,
+      enabled: true,
+    });
+    expect(carbonHotkey('Mod+Alt+[KeyD]', false)).toEqual({
+      keyCode: 0x02,
+      modifiers: CARBON_CONTROL | CARBON_OPTION,
+    });
   });
 
   it('follows a keymap override, and an unbind disables the hotkey', () => {

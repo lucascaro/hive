@@ -73,13 +73,13 @@ export function WindowSetTitle(t: string) {
   document.title = t;
 }
 
-// Clipboard bindings. main.ts imports ClipboardGetText (runtime) and
+// Clipboard bindings. main.ts imports ReadClipboard and
 // SetClipboardText (App), both aliased here. The mock keeps an in-memory
 // clipboard so copy/paste paths don't throw at module load.
 let clipboard = '';
-export async function ClipboardGetText() {
-  maybeFail('ClipboardGetText');
-  return clipboard;
+export async function ReadClipboard() {
+  maybeFail('ReadClipboard');
+  return { text: clipboard, image: false };
 }
 export async function SetClipboardText(text: unknown) {
   maybeFail('SetClipboardText');
@@ -227,12 +227,16 @@ const state: {
 function broadcast() {
   emit('project:list', JSON.stringify({ projects: state.projects }));
   emit('session:list', JSON.stringify({ sessions: state.sessions }));
-  emit('hotkey:global', JSON.stringify(globalHotkey));
+  emit('dictation:settings', JSON.stringify(dictation));
 }
 
-// The daemon's copy of the dictation HUD chord (spec 553): ⌃⌥Space until
-// SetGlobalHotkey changes it, broadcast like GLOBAL_HOTKEY.
-let globalHotkey = { key_code: 49, modifiers: 0x1800, enabled: true };
+// The daemon's copy of the dictation HUD settings (specs 553, 573):
+// ⌃⌥Space and Handy auto-start off until SetGlobalHotkey or
+// SetHandyAutoStart changes them, broadcast like DICTATION.
+let dictation = {
+  hotkey: { key_code: 49, modifiers: 0x1800, enabled: true },
+  handy_auto_start: false,
+};
 
 // Wails control bindings — frontend imports these from
 // ../wailsjs/go/main/App.
@@ -1430,6 +1434,82 @@ export async function GetActivity(id: string) {
   return '';
 }
 
+// --- pinned responses (spec 566) ---
+//
+// A session's pins, newest first, as the daemon stores them. Seeded by
+// specs through __hive.setPins, which also sets the session's pin_count
+// and broadcasts the session update, the way the daemon does.
+type MockPin = { id: string; title: string; created_at: number; body: string };
+const pinsById = new Map<string, MockPin[]>();
+const pinRequests: string[] = [];
+const pinHeader = ({ body, ...h }: MockPin) => ({
+  ...h,
+  body_len: body.length,
+});
+
+function setPinCount(id: string) {
+  const s = state.sessions.find((x) => x.id === id);
+  if (!s) return;
+  s.pin_count = pinsById.get(id)?.length ?? 0;
+  emit('session:event', JSON.stringify({ kind: 'updated', session: s }));
+}
+
+export async function GetPins(id: string) {
+  maybeFail('GetPins');
+  pinRequests.push(id);
+  const pins = (pinsById.get(id) ?? []).map(pinHeader);
+  // Pages of 200, like the daemon; done on the last.
+  setTimeout(() => {
+    for (let i = 0; i === 0 || i < pins.length; i += 200) {
+      const page = pins.slice(i, i + 200);
+      emit(
+        'pins:page',
+        JSON.stringify({
+          session_id: id,
+          pins: page,
+          done: i + 200 >= pins.length,
+        }),
+      );
+    }
+  }, 0);
+}
+
+export async function GetPinBody(id: string, pinId: string) {
+  maybeFail('GetPinBody');
+  const p = pinsById.get(id)?.find((x) => x.id === pinId);
+  if (!p) return;
+  setTimeout(
+    () =>
+      emit(
+        'pins:body',
+        JSON.stringify({ session_id: id, id: pinId, body: p.body }),
+      ),
+    0,
+  );
+}
+
+export async function Unpin(id: string, pinId: string) {
+  maybeFail('Unpin');
+  const pins = pinsById.get(id) ?? [];
+  if (!pins.some((p) => p.id === pinId)) return;
+  pinsById.set(
+    id,
+    pins.filter((p) => p.id !== pinId),
+  );
+  emit(
+    'pins:changed',
+    JSON.stringify({ session_id: id, removed_ids: [pinId] }),
+  );
+  setPinCount(id);
+}
+
+export async function UnpinAll(id: string) {
+  maybeFail('UnpinAll');
+  pinsById.set(id, []);
+  emit('pins:changed', JSON.stringify({ session_id: id, cleared: true }));
+  setPinCount(id);
+}
+
 // --- ACP sessions (spec 496) ---
 //
 // A scripted agent: every prompt asks permission for one tool call,
@@ -1751,8 +1831,8 @@ export async function SendToSession(id: string, text: string, queue: boolean) {
   return '';
 }
 
-// Spec 553. Recorded for the specs; the hotkey is echoed back as the
-// daemon's GLOBAL_HOTKEY broadcast when it changed.
+// Specs 553, 573. Recorded for the specs; a change is echoed back as the
+// daemon's DICTATION broadcast, which carries every setting.
 export async function ReportFocusedSession(id: string) {
   bridgeCalls.push({ method: 'ReportFocusedSession', args: [id] });
   return '';
@@ -1769,11 +1849,25 @@ export async function SetGlobalHotkey(
   const next = enabled
     ? { key_code: keyCode, modifiers, enabled }
     : { key_code: 0, modifiers: 0, enabled: false };
-  if (JSON.stringify(next) !== JSON.stringify(globalHotkey)) {
-    globalHotkey = next;
-    emit('hotkey:global', JSON.stringify(globalHotkey));
+  if (JSON.stringify(next) !== JSON.stringify(dictation.hotkey)) {
+    dictation = { ...dictation, hotkey: next };
+    emit('dictation:settings', JSON.stringify(dictation));
   }
   return '';
+}
+export async function SetHandyAutoStart(on: boolean) {
+  maybeFail('SetHandyAutoStart');
+  bridgeCalls.push({ method: 'SetHandyAutoStart', args: [on] });
+  if (dictation.handy_auto_start !== on) {
+    dictation = { ...dictation, handy_auto_start: on };
+    emit('dictation:settings', JSON.stringify(dictation));
+  }
+  return '';
+}
+// Whether Handy is installed is a file check on the Mac. ?handy=1 says
+// it is; the default is the common case, not installed.
+export async function HandyInstalled() {
+  return new URLSearchParams(window.location.search).get('handy') === '1';
 }
 
 export async function SetSessionNotifyWhenIdle(id: string, want: boolean) {
@@ -1828,6 +1922,7 @@ export async function ApplyUpdateAndRestart() {
 const agentSettings = {
   claude_task_tools: true,
   pi_todo_tool: true,
+  pin_tool: true,
   plan_review: false,
   plan_reviewer: 'external',
   laya_enabled: false,
@@ -1840,6 +1935,7 @@ export async function GetAgentSettings() {
 export async function SaveAgentSettings(s: {
   claude_task_tools: boolean;
   pi_todo_tool: boolean;
+  pin_tool?: boolean;
   plan_review?: boolean;
   plan_reviewer?: string;
   laya_enabled?: boolean;
@@ -1848,6 +1944,7 @@ export async function SaveAgentSettings(s: {
 }) {
   agentSettings.claude_task_tools = s.claude_task_tools;
   agentSettings.pi_todo_tool = s.pi_todo_tool;
+  agentSettings.pin_tool = s.pin_tool ?? true;
   agentSettings.plan_review = !!s.plan_review;
   agentSettings.plan_reviewer = s.plan_reviewer ?? 'external';
   agentSettings.laya_enabled = !!s.laya_enabled;
@@ -2222,6 +2319,11 @@ if (typeof window !== 'undefined') {
         agent,
       });
     },
+    // A second project card, for specs that need one further down the
+    // sidebar than the seed project (launcher-viewport.spec.ts).
+    addProject(name: string) {
+      return CreateProject(name, '', '');
+    },
     createSessionWithWorktree(name: string, branch?: string) {
       return CreateSession({
         project: 'p1',
@@ -2349,6 +2451,48 @@ if (typeof window !== 'undefined') {
       emit('activity:event', JSON.stringify(msg));
     },
     activityRequests,
+    /** Seeds a session's pins (newest first) and its pin_count. */
+    setPins(
+      id: string,
+      pins: { title: string; body: string; ageMs?: number }[],
+    ) {
+      const now = Date.now();
+      pinsById.set(
+        id,
+        pins.map((p, i) => ({
+          // Ids sort in creation order, newest first in the list.
+          id: (1e15 + pins.length - i).toString(16).padStart(24, '0'),
+          title: p.title,
+          body: p.body,
+          created_at: now - (p.ageMs ?? i * 60_000),
+        })),
+      );
+      setPinCount(id);
+    },
+    /** An agent pins one more response, as the daemon broadcasts it. */
+    addPin(id: string, title: string, body: string) {
+      const list = pinsById.get(id) ?? [];
+      const top = list[0] ? Number.parseInt(list[0].id, 16) : 1e15;
+      const pin = {
+        id: (top + 1).toString(16).padStart(24, '0'),
+        title,
+        body,
+        created_at: Date.now(),
+      };
+      pinsById.set(id, [pin, ...list]);
+      emit(
+        'pins:changed',
+        JSON.stringify({ session_id: id, added: pinHeader(pin) }),
+      );
+      setPinCount(id);
+    },
+    pins(id: string) {
+      return (pinsById.get(id) ?? []).map((p) => p.title);
+    },
+    pinRequests,
+    clipboard() {
+      return clipboard;
+    },
     listeners,
     stdinLog,
     stdinText(id?: string) {

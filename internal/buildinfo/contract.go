@@ -28,13 +28,35 @@ package buildinfo
 // History (newest first), so a bump is a decision with a record and
 // not just a number going up:
 //
-//	39 — Workflow-engine prerequisites, part 3 (spec 529, B3-R7).
+//	42 — Workflow-engine prerequisites, part 3 (spec 529, B3-R7).
 //	    ARCHIVE_SESSION and REMOVE_WORKTREE now ACK their req_id on
 //	    success, and REMOVE_WORKTREE takes workflow_run_id: a plugin may
 //	    then remove a kept (delete_branch false) hive/wf/<run>/ branch's
 //	    worktree despite unpushed commits. A plugin built against this
 //	    tree would wait forever on an ack an older daemon never sends,
 //	    and would be refused the removal.
+//	41 — Dictation box on Windows (spec 575). A control client whose
+//	    HELLO names wire.DictationClientPrefix is headless, like
+//	    hivebar: it is not counted as a client that can answer a plan
+//	    review or worktree choice, gets no PLUGIN_MESSAGEs and cannot
+//	    announce plugin UIs. A Windows GUI built against this tree opens
+//	    one such connection per window; an older daemon would count it
+//	    as an answerer and park questions on it, so the GUI restarts it.
+//	40 — Dictation settings (spec 573). SET_DICTATION (0x63) and
+//	    DICTATION (0x64) replace SET_GLOBAL_HOTKEY / GLOBAL_HOTKEY,
+//	    whose numbers (0x58/0x59) are retired, not reused: the payload
+//	    now carries the chord and handy_auto_start, persisted in
+//	    dictation.json (migrated once from global-hotkey.json). A GUI
+//	    built against this tree cannot set the chord on an older daemon,
+//	    so it restarts it. A menu bar still running from before the
+//	    upgrade never receives DICTATION and keeps its last chord until
+//	    it restarts; a new menu bar paired with an older daemon registers
+//	    no chord until the GUI restarts that daemon.
+//	39 — Pinned responses (spec 566). ADD_PIN on a session
+//	    connection; GET_PINS / PINS pages, GET_PIN_BODY / PIN_BODY,
+//	    UNPIN, UNPIN_ALL and the PINS_CHANGED broadcast on a control
+//	    connection; SessionInfo.pin_count. A GUI built against this
+//	    asks an older daemon for pins it cannot answer.
 //	38 — Plugin limits. A plugin socket now refuses, with
 //	    mode_not_allowed, DATA and RESIZE on an attach or create
 //	    connection, ANSWER_PERMISSION, RESOLVE_PLAN_REVIEW,
@@ -333,7 +355,7 @@ package buildinfo
 //	    before this cannot see or clear the flag.
 //	1 — first contract; everything up to and including the
 //	    CLIENT_COMMAND relay.
-const DaemonContract = 39
+const DaemonContract = 42
 
 // Identity is this binary's full build identity. `hived --version
 // --json` prints it, and Welcome carries the same three values, so a

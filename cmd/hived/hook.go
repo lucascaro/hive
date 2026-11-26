@@ -209,14 +209,49 @@ const taskToolsNudge = "Hive (the terminal manager running this session) shows t
 	"create one task per step, then mark each in_progress when starting and completed when done. " +
 	"This applies even to quick tasks; skipping it leaves the user blind."
 
+// pinNudge asks a Claude session to use Hive's pin tool (spec 566) on
+// its own initiative. Like the task tools, an MCP tool may be deferred
+// behind ToolSearch, so it names the tool exactly. The wording is firm
+// and names concrete triggers on purpose: the first, "pin sparingly"
+// version reached the model and changed nothing (0 of 3 unprompted pins
+// in TestProbeClaudePinsUnprompted on Claude Code 2.1.329).
+var pinNudge = pinGuidance("the " + agent.ClaudePinToolID + " tool (load it with ToolSearch first if it is not loaded)")
+
+// pinGuidance is the pin instruction, naming the tool as call. Shared by
+// the Claude nudge and the pin tool's own MCP description.
+func pinGuidance(call string) string {
+	return "Hive (the terminal manager running this session) keeps the user's important answers ONLY " +
+		"as pins in its inspector; anything you do not pin scrolls away. Before you end any turn in " +
+		"which you explained a root cause, gave a command or recipe, made or recommended a decision, " +
+		"or summarized findings, call " + call + " with a short title naming what it is and the answer " +
+		"as markdown. Do this even when the user did not ask for it. Skip it only for routine progress, " +
+		"chit-chat, or answers with nothing worth finding again."
+}
+
+// envOn reports whether an on/off variable is set to something other
+// than "0" or "false".
+func envOn(name string) bool {
+	v := os.Getenv(name)
+	return v != "" && v != "0" && !strings.EqualFold(v, "false")
+}
+
 // sessionStartOutput is the hook stdout for a SessionStart payload: the
-// task-tools nudge as additionalContext, or nil for every other event,
-// and when the session was not given the task tools (the setting is off
-// or the user set the variable to 0) — a nudge toward tools that do not
-// exist would only cost context. SessionStart also fires on resume and
-// after compaction, so the nudge survives both.
+// nudges for the tools this session was given, as additionalContext, or
+// nil for every other event and when it was given none. A nudge toward
+// a tool that does not exist would only cost context: the task-tools one
+// goes only when the task tools are on (the setting, or the user's own
+// variable), the pin one only when HIVE_PIN_TOOL is on, which Hive sets
+// exactly when it passed the pin server. SessionStart also fires on
+// resume and after compaction, so the nudges survive both.
 func sessionStartOutput(raw []byte) []byte {
-	if v := os.Getenv(agent.ClaudeTaskToolsEnv); v == "" || v == "0" || strings.EqualFold(v, "false") {
+	var nudges []string
+	if envOn(agent.ClaudeTaskToolsEnv) {
+		nudges = append(nudges, taskToolsNudge)
+	}
+	if envOn(agent.PinToolEnv) {
+		nudges = append(nudges, pinNudge)
+	}
+	if len(nudges) == 0 {
 		return nil
 	}
 	var p hookPayload
@@ -225,7 +260,7 @@ func sessionStartOutput(raw []byte) []byte {
 	}
 	out, err := json.Marshal(map[string]any{"hookSpecificOutput": map[string]string{
 		"hookEventName":     "SessionStart",
-		"additionalContext": taskToolsNudge,
+		"additionalContext": strings.Join(nudges, "\n\n"),
 	}})
 	if err != nil {
 		return nil

@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"testing"
 	"unicode/utf8"
@@ -117,6 +118,8 @@ func TestHookNoEnvExitsZero(t *testing.T) {
 // SessionStart only, and only when the session has the task tools.
 func TestHookSessionStartNudge(t *testing.T) {
 	start := readFixture(t, "session_start.json")
+	// A test run inside a Hive session inherits the pin variable.
+	t.Setenv(agent.PinToolEnv, "")
 
 	t.Setenv(agent.ClaudeTaskToolsEnv, "1")
 	out := sessionStartOutput(start)
@@ -143,6 +146,50 @@ func TestHookSessionStartNudge(t *testing.T) {
 		if out := sessionStartOutput(start); out != nil {
 			t.Errorf("%s=%q: output %s, want none", agent.ClaudeTaskToolsEnv, v, out)
 		}
+	}
+}
+
+// TestSessionStartPinNudgeGatedOnEnv: the pin nudge goes out when Hive
+// gave the session its pin tool, independently of the task tools.
+func TestSessionStartPinNudgeGatedOnEnv(t *testing.T) {
+	start := readFixture(t, "session_start.json")
+	ctx := func() string {
+		t.Helper()
+		var got struct {
+			HookSpecificOutput struct {
+				AdditionalContext string `json:"additionalContext"`
+			} `json:"hookSpecificOutput"`
+		}
+		out := sessionStartOutput(start)
+		if out == nil {
+			return ""
+		}
+		if err := json.Unmarshal(out, &got); err != nil {
+			t.Fatalf("output %q: %v", out, err)
+		}
+		return got.HookSpecificOutput.AdditionalContext
+	}
+
+	t.Setenv(agent.ClaudeTaskToolsEnv, "0")
+	t.Setenv(agent.PinToolEnv, "1")
+	if got := ctx(); got != pinNudge {
+		t.Errorf("pin only: context = %q", got)
+	}
+	if !strings.Contains(pinNudge, "mcp__hive-pin__pin") {
+		t.Errorf("nudge does not name the tool: %q", pinNudge)
+	}
+
+	t.Setenv(agent.ClaudeTaskToolsEnv, "1")
+	if got := ctx(); !strings.Contains(got, taskToolsNudge) || !strings.Contains(got, pinNudge) {
+		t.Errorf("both: context = %q", got)
+	}
+
+	t.Setenv(agent.PinToolEnv, "0")
+	if got := ctx(); got != taskToolsNudge {
+		t.Errorf("pin off: context = %q", got)
+	}
+	if out := sessionStartOutput(readFixture(t, "stop.json")); out != nil {
+		t.Errorf("non-SessionStart event got %s", out)
 	}
 }
 
@@ -557,5 +604,26 @@ func TestHookEmptyTodoWriteClearsPlan(t *testing.T) {
 		"tool_use_id":"toolu_2","tool_input":{}}`))
 	if len(none) != 1 {
 		t.Errorf("got %d events for a TodoWrite with no todos, want only the tool event", len(none))
+	}
+}
+
+// The Pi extension states the pin rule in its own copy (PIN_GUIDANCE in
+// internal/agent/pi/hive.ts). Both agents must get the same rule: tuned
+// on one, it is only as good as the other's stale copy.
+func TestPiPinGuidanceMatchesClaude(t *testing.T) {
+	src, err := os.ReadFile("../../internal/agent/pi/hive.ts")
+	if err != nil {
+		t.Fatal(err)
+	}
+	m := regexp.MustCompile(`(?s)export const PIN_GUIDANCE =\s*(.*?")\s*;\n`).FindSubmatch(src)
+	if m == nil {
+		t.Fatal("PIN_GUIDANCE not found in hive.ts")
+	}
+	var b strings.Builder
+	for _, part := range regexp.MustCompile(`"((?:[^"\\]|\\.)*)"`).FindAllSubmatch(m[1], -1) {
+		b.Write(part[1])
+	}
+	if got, want := b.String(), pinGuidance("hive_pin"); got != want {
+		t.Errorf("Pi PIN_GUIDANCE drifted from the Claude nudge:\n pi:     %s\n claude: %s", got, want)
 	}
 }

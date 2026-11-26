@@ -132,26 +132,32 @@ func TestSetFocusedNotPersisted(t *testing.T) {
 	}
 }
 
-func TestGlobalHotkeyDefaultWhenMissing(t *testing.T) {
+func hk(key uint32) *wire.GlobalHotkey {
+	return &wire.GlobalHotkey{KeyCode: key, Modifiers: wire.HotkeyModCmd | wire.HotkeyModShift, Enabled: true}
+}
+
+func boolp(b bool) *bool { return &b }
+
+func TestDictationDefaultWhenMissing(t *testing.T) {
 	r := freshRegistry(t)
-	if got := r.GlobalHotkey(); got != wire.DefaultGlobalHotkey {
-		t.Fatalf("GlobalHotkey = %+v, want default %+v", got, wire.DefaultGlobalHotkey)
+	if got := r.Dictation(); got != wire.DefaultDictation {
+		t.Fatalf("Dictation = %+v, want default %+v", got, wire.DefaultDictation)
 	}
 }
 
-func TestGlobalHotkeyPersists(t *testing.T) {
+func TestDictationPersists(t *testing.T) {
 	dir := t.TempDir()
 	r, err := Open(dir)
 	if err != nil {
 		t.Fatal(err)
 	}
-	want := wire.GlobalHotkey{KeyCode: 2, Modifiers: wire.HotkeyModCmd | wire.HotkeyModShift, Enabled: true}
-	changed, err := r.SetGlobalHotkey(want)
+	req := wire.SetDictationReq{Hotkey: hk(2), HandyAutoStart: boolp(true)}
+	changed, err := r.SetDictation(req)
 	if err != nil || !changed {
-		t.Fatalf("SetGlobalHotkey = %v, %v; want true, nil", changed, err)
+		t.Fatalf("SetDictation = %v, %v; want true, nil", changed, err)
 	}
-	if changed, _ := r.SetGlobalHotkey(want); changed {
-		t.Error("setting the same chord again reported a change")
+	if changed, _ := r.SetDictation(req); changed {
+		t.Error("setting the same values again reported a change")
 	}
 	_ = r.Close()
 	r2, err := Open(dir)
@@ -159,64 +165,118 @@ func TestGlobalHotkeyPersists(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer r2.Close()
-	if got := r2.GlobalHotkey(); got != want {
+	if got, want := r2.Dictation(), (wire.Dictation{Hotkey: *hk(2), HandyAutoStart: true}); got != want {
 		t.Fatalf("after reopen = %+v, want %+v", got, want)
 	}
 }
 
-func TestGlobalHotkeyDisabledClearsChord(t *testing.T) {
+// The GUI's keymap sync and its Settings toggle each write one field;
+// neither may clobber the other.
+func TestSetDictationMergesFields(t *testing.T) {
 	r := freshRegistry(t)
-	if _, err := r.SetGlobalHotkey(wire.GlobalHotkey{KeyCode: 9, Modifiers: 0xffff, Enabled: false}); err != nil {
+	if _, err := r.SetDictation(wire.SetDictationReq{HandyAutoStart: boolp(true)}); err != nil {
 		t.Fatal(err)
 	}
-	if got := r.GlobalHotkey(); got != (wire.GlobalHotkey{}) {
+	if got := r.Dictation(); got.Hotkey != wire.DefaultGlobalHotkey || !got.HandyAutoStart {
+		t.Fatalf("switch-only set = %+v", got)
+	}
+	if _, err := r.SetDictation(wire.SetDictationReq{Hotkey: hk(2)}); err != nil {
+		t.Fatal(err)
+	}
+	if got := r.Dictation(); got.Hotkey != *hk(2) || !got.HandyAutoStart {
+		t.Fatalf("hotkey-only set = %+v; the switch must survive", got)
+	}
+}
+
+func TestDictationDisabledHotkeyClearsChord(t *testing.T) {
+	r := freshRegistry(t)
+	if _, err := r.SetDictation(wire.SetDictationReq{Hotkey: &wire.GlobalHotkey{KeyCode: 9, Modifiers: 0xffff}}); err != nil {
+		t.Fatal(err)
+	}
+	if got := r.Dictation().Hotkey; got != (wire.GlobalHotkey{}) {
 		t.Fatalf("disabled hotkey stored as %+v, want zero value", got)
 	}
 }
 
-func TestGlobalHotkeyRejectsInvalid(t *testing.T) {
+func TestSetDictationRejectsInvalid(t *testing.T) {
 	r := freshRegistry(t)
-	for _, h := range []wire.GlobalHotkey{
-		{KeyCode: 128, Modifiers: wire.HotkeyModCmd, Enabled: true},
-		{KeyCode: 49, Modifiers: 0, Enabled: true},
-		{KeyCode: 49, Modifiers: wire.HotkeyModCmd | 0x4000, Enabled: true},
+	for _, req := range []wire.SetDictationReq{
+		{},
+		{Hotkey: &wire.GlobalHotkey{KeyCode: 128, Modifiers: wire.HotkeyModCmd, Enabled: true}},
+		{Hotkey: &wire.GlobalHotkey{KeyCode: 49, Enabled: true}, HandyAutoStart: boolp(true)},
+		{Hotkey: &wire.GlobalHotkey{KeyCode: 49, Modifiers: wire.HotkeyModCmd | 0x4000, Enabled: true}},
 	} {
-		if _, err := r.SetGlobalHotkey(h); err == nil {
-			t.Errorf("SetGlobalHotkey(%+v) accepted", h)
+		if _, err := r.SetDictation(req); err == nil {
+			t.Errorf("SetDictation(%+v) accepted", req)
 		}
 	}
-	if got := r.GlobalHotkey(); got != wire.DefaultGlobalHotkey {
-		t.Fatalf("a rejected chord changed the value to %+v", got)
+	if got := r.Dictation(); got != wire.DefaultDictation {
+		t.Fatalf("a rejected request changed the value to %+v", got)
+	}
+}
+
+func writeState(t *testing.T, dir, name, body string) {
+	t.Helper()
+	if err := os.WriteFile(filepath.Join(dir, name), []byte(body), 0o600); err != nil {
+		t.Fatal(err)
+	}
+}
+
+// A user who rebound the chord under contract 36 keeps it.
+func TestDictationMigratesLegacyHotkeyFile(t *testing.T) {
+	dir := t.TempDir()
+	writeState(t, dir, legacyHotkeyFile, `{"key_code":2,"modifiers":768,"enabled":true}`)
+	if got, want := openAt(t, dir).Dictation(), (wire.Dictation{Hotkey: *hk(2)}); got != want {
+		t.Fatalf("Dictation = %+v, want %+v", got, want)
+	}
+}
+
+// Saving writes dictation.json and never the legacy file.
+func TestDictationFirstSaveWritesNewFileOnly(t *testing.T) {
+	dir := t.TempDir()
+	legacy := `{"key_code":2,"modifiers":768,"enabled":true}`
+	writeState(t, dir, legacyHotkeyFile, legacy)
+	r := openAt(t, dir)
+	if _, err := r.SetDictation(wire.SetDictationReq{HandyAutoStart: boolp(true)}); err != nil {
+		t.Fatal(err)
+	}
+	if b, _ := os.ReadFile(filepath.Join(dir, legacyHotkeyFile)); string(b) != legacy {
+		t.Fatalf("legacy file changed to %s", b)
+	}
+	var d wire.Dictation
+	if err := readJSON(filepath.Join(dir, dictationFile), &d); err != nil || d != (wire.Dictation{Hotkey: *hk(2), HandyAutoStart: true}) {
+		t.Fatalf("dictation.json = %+v, %v", d, err)
 	}
 }
 
 // A corrupt or unusable file falls back to the default rather than
-// failing Open: the file is a cache the GUI rewrites from keymap.json.
-func TestGlobalHotkeyCorruptFileFallsBackToDefault(t *testing.T) {
-	for name, body := range map[string]string{
-		"garbage":  "{not json",
-		"unusable": `{"key_code":49,"modifiers":0,"enabled":true}`,
+// failing Open, and once dictation.json exists the legacy file is not
+// consulted again.
+func TestDictationCorruptFileFallsBackToDefault(t *testing.T) {
+	for name, c := range map[string]struct{ body, legacy string }{
+		"garbage":             {"{not json", ""},
+		"unusable":            {`{"hotkey":{"key_code":49,"modifiers":0,"enabled":true}}`, ""},
+		"garbage with legacy": {"{not json", `{"key_code":2,"modifiers":768,"enabled":true}`},
+		"legacy garbage":      {"", "{nope"},
 	} {
 		t.Run(name, func(t *testing.T) {
 			dir := t.TempDir()
-			if err := os.WriteFile(filepath.Join(dir, globalHotkeyFile), []byte(body), 0o600); err != nil {
-				t.Fatal(err)
+			if c.body != "" {
+				writeState(t, dir, dictationFile, c.body)
 			}
-			r, err := Open(dir)
-			if err != nil {
-				t.Fatalf("Open: %v", err)
+			if c.legacy != "" {
+				writeState(t, dir, legacyHotkeyFile, c.legacy)
 			}
-			defer r.Close()
-			if got := r.GlobalHotkey(); got != wire.DefaultGlobalHotkey {
-				t.Fatalf("GlobalHotkey = %+v, want default", got)
+			if got := openAt(t, dir).Dictation(); got != wire.DefaultDictation {
+				t.Fatalf("Dictation = %+v, want default", got)
 			}
 		})
 	}
 }
 
-// A chord that cannot be written is not adopted, so the daemon never
-// relays a hotkey it would forget on restart.
-func TestGlobalHotkeyWriteFailureKeepsValue(t *testing.T) {
+// Settings that cannot be written are not adopted, so the daemon never
+// relays a value it would forget on restart.
+func TestDictationWriteFailureKeepsValue(t *testing.T) {
 	r := freshRegistry(t)
 	// A regular file where the state dir's parent should be: no write or
 	// mkdir under it can succeed.
@@ -225,11 +285,10 @@ func TestGlobalHotkeyWriteFailureKeepsValue(t *testing.T) {
 		t.Fatal(err)
 	}
 	r.stateDir = filepath.Join(blocker, "state")
-	h := wire.GlobalHotkey{KeyCode: 2, Modifiers: wire.HotkeyModCmd | wire.HotkeyModShift, Enabled: true}
-	if changed, err := r.SetGlobalHotkey(h); err == nil || changed {
-		t.Fatalf("SetGlobalHotkey into an unwritable dir: changed %v, err %v", changed, err)
+	if changed, err := r.SetDictation(wire.SetDictationReq{Hotkey: hk(2)}); err == nil || changed {
+		t.Fatalf("SetDictation into an unwritable dir: changed %v, err %v", changed, err)
 	}
-	if got := r.GlobalHotkey(); got != wire.DefaultGlobalHotkey {
+	if got := r.Dictation(); got != wire.DefaultDictation {
 		t.Fatalf("value after a failed write = %+v, want default", got)
 	}
 }

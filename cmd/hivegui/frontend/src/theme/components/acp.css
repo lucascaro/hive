@@ -64,14 +64,15 @@
 .acp-item--plan { list-style: none; padding: 0; font-size: var(--text-sm); }
 .acp-item--tool { font-size: var(--text-sm); }
 
-/* Agent Markdown (components/Markdown.tsx), as plan-review styles it. */
-.acp-item--agent p { margin: 0 0 var(--space-2); }
-.acp-item--agent p:last-child { margin-bottom: 0; }
-.acp-item--agent ul,
-.acp-item--agent ol { margin: 0 0 var(--space-2); padding-left: var(--space-5); }
-.acp-item--agent .hv-md-heading { margin: var(--space-2) 0 var(--space-1); }
-.acp-item--agent code { font-family: var(--font-mono); font-size: var(--text-sm); }
-.acp-item--agent .hv-md-code {
+/* Agent Markdown (components/Markdown.tsx), as plan-review styles it.
+   Pinned response bodies (spec 566) are agent Markdown too. */
+:is(.acp-item--agent, .hv-activity__pin-body) p { margin: 0 0 var(--space-2); }
+:is(.acp-item--agent, .hv-activity__pin-body) p:last-child { margin-bottom: 0; }
+:is(.acp-item--agent, .hv-activity__pin-body) ul,
+:is(.acp-item--agent, .hv-activity__pin-body) ol { margin: 0 0 var(--space-2); padding-left: var(--space-5); }
+:is(.acp-item--agent, .hv-activity__pin-body) .hv-md-heading { margin: var(--space-2) 0 var(--space-1); }
+:is(.acp-item--agent, .hv-activity__pin-body) code { font-family: var(--font-mono); font-size: var(--text-sm); }
+:is(.acp-item--agent, .hv-activity__pin-body) .hv-md-code {
   margin: 0 0 var(--space-2);
   padding: var(--space-2);
   overflow-x: auto;
@@ -80,13 +81,13 @@
   font-family: var(--font-mono);
   font-size: var(--text-sm);
 }
-.acp-item--agent blockquote {
+:is(.acp-item--agent, .hv-activity__pin-body) blockquote {
   margin: 0 0 var(--space-2);
   padding-left: var(--space-3);
   border-left: 2px solid var(--border);
   color: var(--fg-muted);
 }
-.acp-item--agent .hv-md-link { text-decoration: underline dotted; }
+:is(.acp-item--agent, .hv-activity__pin-body) .hv-md-link { text-decoration: underline dotted; }
 
 .acp-permission {
   margin: 0;

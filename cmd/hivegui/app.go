@@ -188,9 +188,9 @@ func (a *App) installMenu(m *menu.Menu) {
 //
 // Replaces wails runtime.ClipboardSetText, which is broken on Windows:
 // the JS-bridged call runs on a non-STA goroutine, so OpenClipboard
-// silently fails and nothing reaches the clipboard. Reads
-// (ClipboardGetText) work since they don't require clipboard ownership.
-// atotto/clipboard shells out to clip.exe on Windows, sidestepping the
+// silently fails and nothing reaches the clipboard. Reads go through
+// ReadClipboard (clipboard.go), not ClipboardGetText, which on Windows
+// fails whenever the clipboard holds no text. atotto/clipboard shells out to clip.exe on Windows, sidestepping the
 // threading constraint entirely.
 func (a *App) SetClipboardText(s string) error {
 	if err := clipboard.WriteAll(s); err != nil {
@@ -263,6 +263,8 @@ func (a *App) startup(ctx context.Context) {
 	// filesystem and nothing downstream waits on it.
 	go pruneRenamedAside()
 	a.startUpdateCheckLoop(ctx)
+	// The dictation box (spec 575); a no-op where the GUI does not host one.
+	a.startDictation()
 }
 
 // beforeClose logs that a quit reached Wails' close path (menu Quit,
@@ -278,6 +280,9 @@ func (a *App) beforeClose(ctx context.Context) bool {
 
 func (a *App) shutdown(ctx context.Context) {
 	log.Printf("hivegui: shutdown")
+	// First: it cancels a Handy recording the box started, which must not
+	// outlive the window and paste into another app.
+	a.stopDictation()
 	a.saveGeometry()
 	a.mu.Lock()
 	defer a.mu.Unlock()

@@ -443,17 +443,38 @@ func (c *Client) SetFocusedSession(sessionID string) error {
 	return c.cli.WriteJSON(wire.FrameSetFocusedSession, wire.SetFocusedSessionReq{SessionID: sessionID})
 }
 
-// SetGlobalHotkey stores the capture-HUD chord (spec 553). Every control
-// client then receives GLOBAL_HOTKEY; use AwaitGlobalHotkey.
-func (c *Client) SetGlobalHotkey(h wire.GlobalHotkey) error {
-	return c.cli.WriteJSON(wire.FrameSetGlobalHotkey, h)
+// SetDictation changes the capture-HUD settings req names (spec 573).
+// Every control client then receives DICTATION; use AwaitDictation.
+func (c *Client) SetDictation(req wire.SetDictationReq) error {
+	return c.cli.WriteJSON(wire.FrameSetDictation, req)
 }
 
-// AwaitGlobalHotkey consumes frames until a GLOBAL_HOTKEY arrives.
-func (c *Client) AwaitGlobalHotkey(timeout time.Duration) (wire.GlobalHotkey, error) {
-	var h wire.GlobalHotkey
-	err := c.awaitSnapshot(wire.FrameGlobalHotkey, "GLOBAL_HOTKEY", timeout, &h)
-	return h, err
+// AwaitDictation consumes frames until a DICTATION arrives.
+func (c *Client) AwaitDictation(timeout time.Duration) (wire.Dictation, error) {
+	var d wire.Dictation
+	err := c.awaitSnapshot(wire.FrameDictation, "DICTATION", timeout, &d)
+	return d, err
+}
+
+// GetPins asks for one session's pin headers (spec 566), answered as
+// one or more PINS pages.
+func (c *Client) GetPins(sessionID string) error {
+	return c.cli.WriteJSON(wire.FrameGetPins, wire.GetPinsReq{SessionID: sessionID})
+}
+
+// GetPinBody asks for one pin's body.
+func (c *Client) GetPinBody(sessionID, pinID string) error {
+	return c.cli.WriteJSON(wire.FrameGetPinBody, wire.GetPinBodyReq{SessionID: sessionID, ID: pinID})
+}
+
+// Unpin removes one pin.
+func (c *Client) Unpin(sessionID, pinID string) error {
+	return c.cli.WriteJSON(wire.FrameUnpin, wire.UnpinReq{SessionID: sessionID, ID: pinID})
+}
+
+// UnpinAll removes every pin in a session.
+func (c *Client) UnpinAll(sessionID string) error {
+	return c.cli.WriteJSON(wire.FrameUnpinAll, wire.UnpinAllReq{SessionID: sessionID})
 }
 
 // GetActivity asks for one session's stored tool ring and plan.

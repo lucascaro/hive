@@ -311,8 +311,13 @@ the same name in [`internal/wire/`](../internal/wire/control.go).
 | `ANSWER_PERMISSION` | `AnswerPermissionReq` | `ACP_TRANSCRIPT`; with a `req_id`, also `ACK`. Not for plugins: a plugin socket gets `mode_not_allowed`, because what an agent may do is the user's decision. A plugin sees the request on `ACP_TRANSCRIPT` and can show it; the user answers in the app |
 | `SUBMIT_RESULT` | `SubmitResultReq` | `SUBMIT_RESULT_OK`, `ACP_TRANSCRIPT` (result). Not for plugins: a plugin socket gets `mode_not_allowed`. An ACP session's own submit server (`hived mcp-submit`) sends it on a session connection, with that session's nonce |
 | `SEND_TO_SESSION` | `SendToSessionReq` | `SENT`, or `ERROR`. Not for plugins: a plugin socket gets `mode_not_allowed`, because typing into another session's terminal is the confused-deputy case until a plugin can be granted it explicitly |
-| `SET_FOCUSED_SESSION` | `SetFocusedSessionReq` | `SESSION_EVENT` (focus) stamping the session's `focused_at`. Not for plugins: a plugin socket gets `mode_not_allowed`, because the newest focus is the default target of the menu bar's dictation HUD (spec 553) |
-| `SET_GLOBAL_HOTKEY` | `GlobalHotkey` | `GLOBAL_HOTKEY` to every control client when the chord changed. Not for plugins: a plugin socket gets `mode_not_allowed`, because it rebinds a system-wide key |
+| `SET_FOCUSED_SESSION` | `SetFocusedSessionReq` | `SESSION_EVENT` (focus) stamping the session's `focused_at`. Not for plugins: a plugin socket gets `mode_not_allowed`, because the newest focus is the default target of the dictation box (specs 553, 575) |
+| `SET_DICTATION` | `SetDictationReq` | `DICTATION` to every control client when a setting changed; only the fields it names change. Not for plugins: a plugin socket gets `mode_not_allowed`, because it rebinds a system-wide key and decides whether opening the HUD turns a microphone on |
+| `ADD_PIN` | `AddPinReq` | `ADD_PIN_OK`, `PINS_CHANGED`; `pin_too_long`, `pin_invalid`, or `pin_limit` at 1000 pins. Not for plugins: a plugin socket gets `mode_not_allowed`. A session's own agent pins a response to its own session on a session connection (spec 566) |
+| `GET_PINS` | `GetPinsReq` | One or more `PINS` pages of headers, newest first; the last has `done` |
+| `GET_PIN_BODY` | `GetPinBodyReq` | `PIN_BODY`, or `no_such_pin` |
+| `UNPIN` | `UnpinReq` | `PINS_CHANGED`, `SESSION_EVENT` (updated). Not for plugins: a plugin socket gets `mode_not_allowed`, because which pins to keep is the user's choice |
+| `UNPIN_ALL` | `UnpinAllReq` | `PINS_CHANGED`, `SESSION_EVENT` (updated). Not for plugins, like `UNPIN` |
 | `SET_SESSION_KIND` | `SetSessionKindReq` | `SESSION_EVENT` (updated, with the new `kind`). `"kind": "pty"` takes an ACP session over in a terminal in the same conversation; `"acp"` hands it back. Refused with `takeover_refused` when the agent's CLI might start a fresh conversation instead, `acp_busy` mid-turn, and `acp_writer_locked` when Codex still holds the conversation (the session is then back in a terminal) |
 
 And everything the daemon sends on a control connection:
@@ -325,7 +330,7 @@ And everything the daemon sends on a control connection:
 | `PREPARED_WORKTREE` | Answer to `PREPARE_WORKTREE`: the worktree's `path` and `branch` (authoritative), whether it was `reattached`, the `base_sha` it started from, its `head_sha`, the branches `merged`, and a `conflict` if a merge stopped. |
 | `ACP_AGENTS` | Answer to `LIST_ACP_AGENTS`: each ACP-capable agent with its permission `modes` (least permissive first), `default_mode`, the user's `ceiling`, `no_approval_gate`, `experimental`, and whether it is `available` now (`reason` when not). |
 | `SESSIONS` | Snapshot after `WELCOME`; answer to `LIST_SESSIONS`. |
-| `GLOBAL_HOTKEY` | After `WELCOME` and on change: the chord (`key_code`, Carbon `modifiers`, `enabled`) that opens the menu bar's dictation HUD (spec 553). Safe to ignore. |
+| `DICTATION` | After `WELCOME` and on change: the dictation box's settings, its `hotkey` (`key_code`, Carbon `modifiers`, `enabled`, in macOS terms on every platform; spec 553) and `handy_auto_start` (spec 573). Safe to ignore. |
 | `SESSION_EVENT` | Broadcast. `kind` is `added`, `removed`, `updated`, `title`, `attention`, `state` or `focus`; `session` is the whole `SessionInfo`. |
 | `PROJECTS` | Snapshot after `WELCOME`; answer to `LIST_PROJECTS`. |
 | `PROJECT_EVENT` | Broadcast: a project was added, removed or updated. |
@@ -345,6 +350,10 @@ And everything the daemon sends on a control connection:
 | `PLUGIN_EVENT` | Broadcast: a plugin was installed, removed, or changed status. |
 | `ACP_TRANSCRIPT` | Answer to `GET_ACP_TRANSCRIPT` (`reset`), and broadcast as an ACP session's transcript changes. Every message also carries the latest prompt's typed result: `prompt_id` (that prompt's user item), `result_status` (`submitted`, `none` once the turn ended without one, or absent while it runs) and `result` (the canonical `{status, summary, data}` envelope the daemon validated and stored: keys in that order, `data` dropped when `status` is `error`). It also carries `stop_reason` (how the latest prompt ended: `end_turn`, `cancelled`, `max_tokens`, `max_turn_requests`, `refusal`, or `error` if the adapter call failed; absent while it runs) and `usage` (the adapter's latest `usage_update` for that prompt). A new prompt clears both. |
 | `SUBMIT_RESULT_OK` | Answer to `SUBMIT_RESULT`: the result is recorded. |
+| `ADD_PIN_OK` | Answer to `ADD_PIN`: the new pin's `id`. Never sent to a plugin, which is refused. |
+| `PINS` | Answer to `GET_PINS`: one page of a session's pin headers (`id`, `title`, `created_at`, `body_len`), newest first, at most 200 per page; `done` on the last. |
+| `PIN_BODY` | Answer to `GET_PIN_BODY`: one pin's markdown `body`. |
+| `PINS_CHANGED` | Broadcast: a session's pins changed — one `added`, some `removed_ids`, or `cleared`. The session's `pin_count` follows on `SESSION_EVENT`. |
 | `SENT` | Answer to `SEND_TO_SESSION`: how the note was delivered (`typed`, `queued` or `acp`). Never sent to a plugin, which is refused. |
 
 ### What a plugin cannot do
@@ -365,9 +374,11 @@ inside a session. The same requests still work from the app.
   `REMOVE_PLUGIN`, and `SET_PLUGIN_CONFIG` for any plugin but itself.
   `LIST_PLUGINS` stays available.
 - **Stop Hive**: `SHUTDOWN`.
-- **Steer the menu bar's dictation HUD**: `SET_FOCUSED_SESSION` and
-  `SET_GLOBAL_HOTKEY`.
-- **Act as a session**: `WAIT_SESSION` and `SUBMIT_RESULT` are served
+- **Remove an agent's pins**: `UNPIN` and `UNPIN_ALL`. `GET_PINS` and
+  `GET_PIN_BODY` stay available.
+- **Steer the dictation box**: `SET_FOCUSED_SESSION` and
+  `SET_DICTATION`.
+- **Act as a session**: `WAIT_SESSION`, `SUBMIT_RESULT` and `ADD_PIN` are served
   to a session's own connection only, and the `event`, `session` and
   `plan_review` modes are not served on a plugin socket.
 

@@ -91,7 +91,7 @@ vi.mock('../../src/bridge.js', () => {
       handlers.set(name, handler);
     },
     WindowSetTitle: vi.fn(),
-    ClipboardGetText: fn(),
+    ReadClipboard: fn(),
   };
 });
 

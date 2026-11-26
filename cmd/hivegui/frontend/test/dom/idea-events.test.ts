@@ -89,13 +89,14 @@ vi.mock('../../src/bridge.js', () => {
       handlers.set(name, handler);
     },
     WindowSetTitle: vi.fn(),
-    ClipboardGetText: fn(),
+    ReadClipboard: fn(),
   };
 });
 
 type Store = typeof import('../../src/store/store.js');
 let store: Store;
 let resolveChoiceDialog: typeof import('../../src/app/modals/choice-dialog.js')['resolveChoiceDialog'];
+let confirmChoiceDialog: typeof import('../../src/app/modals/choice-dialog.js')['confirmChoiceDialog'];
 
 beforeAll(async () => {
   // dom.ts dereferences these at import time.
@@ -103,7 +104,7 @@ beforeAll(async () => {
     '<div id="terms"></div><ul id="projects"></ul><div id="status"><span id="status-text"></span><span id="status-hint"></span></div>';
   const events = await import('../../src/app/events.js');
   store = await import('../../src/store/store.js');
-  ({ resolveChoiceDialog } = await import(
+  ({ resolveChoiceDialog, confirmChoiceDialog } = await import(
     '../../src/app/modals/choice-dialog.js'
   ));
   events.wireDaemonEvents({
@@ -192,6 +193,23 @@ describe('project_has_ideas', () => {
     });
     await flush();
     resolveChoiceDialog('cancel');
+    await flush();
+    expect(KillProject).not.toHaveBeenCalled();
+  });
+
+  // The question arrives after the daemon refuses the native Confirm,
+  // possibly with Enter still held, and its only yes deletes ideas for
+  // good: Enter must cancel.
+  it('Enter cancels', async () => {
+    deliver('control:error', {
+      code: 'project_has_ideas',
+      message: '2 open',
+      project_id: 'p1',
+    });
+    await flush();
+    // Only Escape is advertised; Enter still cancels.
+    expect(store.appStore.getState().choiceDialog?.spec.enterHint).toBe(false);
+    confirmChoiceDialog();
     await flush();
     expect(KillProject).not.toHaveBeenCalled();
   });

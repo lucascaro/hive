@@ -12,12 +12,13 @@ import (
 	"github.com/lucascaro/hive/internal/wire"
 )
 
-// handleHUDFrame serves the two capture-HUD requests (spec 553).
+// handleHUDFrame serves the two capture-HUD requests (specs 553, 573).
 //
 // Both are refused to plugins. SET_FOCUSED_SESSION picks the session the
 // HUD offers by default, so a plugin able to send it could steer what
-// the user's dictated text lands in; SET_GLOBAL_HOTKEY rebinds or
-// disables a system-wide key. They sit with the other verbs a plugin
+// the user's dictated text lands in; SET_DICTATION rebinds or disables a
+// system-wide key and decides whether opening the HUD turns a
+// microphone on. They sit with the other verbs a plugin
 // socket is refused: SEND_TO_SESSION, input on a plugin's attach
 // (serveAttach) and pluginRefusedFrames (daemon.go). docs/plugins.md
 // lists them all. The refusal is per socket, not a sandbox: a plugin
@@ -40,23 +41,25 @@ func (d *Daemon) handleHUDFrame(ops controlOps, ft wire.FrameType, payload []byt
 			}
 			_ = ops.writeJSON(wire.FrameError, wire.Error{Code: code, Message: err.Error(), SessionID: req.SessionID})
 		}
-	case wire.FrameSetGlobalHotkey:
-		req, ok := decodeReq[wire.GlobalHotkey](payload, ops.sendError)
+	case wire.FrameSetDictation:
+		req, ok := decodeReq[wire.SetDictationReq](payload, ops.sendError)
 		if !ok {
 			return
 		}
 		if !req.Valid() {
-			ops.sendError("bad_payload", "SET_GLOBAL_HOTKEY: key_code must be < 128 with at least one of cmd/shift/option/control and no other modifier bits")
+			ops.sendError("bad_payload", "SET_DICTATION: name at least one setting; a hotkey's key_code must be < 128 with at least one of cmd/shift/option/control and no other modifier bits")
 			return
 		}
-		changed, err := d.reg.SetGlobalHotkey(req)
+		changed, err := d.reg.SetDictation(req)
 		if err != nil {
-			ops.sendError("hotkey_failed", err.Error())
+			ops.sendError("dictation_failed", err.Error())
 			return
 		}
 		if changed {
-			log.Printf("daemon: global hotkey set key_code=%d modifiers=%#x enabled=%v", req.KeyCode, req.Modifiers, req.Enabled)
-			d.hotkeys.Publish(d.reg.GlobalHotkey())
+			got := d.reg.Dictation()
+			log.Printf("daemon: dictation set key_code=%d modifiers=%#x enabled=%v handy_auto_start=%v",
+				got.Hotkey.KeyCode, got.Hotkey.Modifiers, got.Hotkey.Enabled, got.HandyAutoStart)
+			d.dictation.Publish(got)
 		}
 	}
 }

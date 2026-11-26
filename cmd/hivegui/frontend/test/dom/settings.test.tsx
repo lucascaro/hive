@@ -114,12 +114,31 @@ const updateBridge = {
 // drive them per test — `isMac` is a module const, not a call.
 let menuBarStatus = 'unsupported';
 let onMac = false;
+// Hoisted: lib/bindings.ts reads isWindows while the mocks load.
+const plat = vi.hoisted(() => ({ windows: false }));
 const setMenuBarLoginItem = vi.fn(() => Promise.resolve());
+// Handy auto-start (spec 573): whether Handy is installed, and the
+// daemon's switch as global-hotkey.ts last heard it (null: not yet).
+let handyInstalled = false;
+let handyAuto: boolean | null = null;
+const setHandyAutoStart = vi.fn((_on: boolean) => Promise.resolve());
+
+vi.mock('../../src/app/global-hotkey.js', async (orig) => ({
+  ...(await orig<typeof import('../../src/app/global-hotkey.js')>()),
+  getHandyAutoStart: () => handyAuto,
+  subscribeHandyAutoStart: () => () => {},
+}));
 
 vi.mock('../../src/lib/platform.js', async (orig) => ({
   ...(await orig<typeof import('../../src/lib/platform.js')>()),
   get isMac() {
     return onMac;
+  },
+  get isWindows() {
+    return plat.windows;
+  },
+  get dictationSupported() {
+    return onMac || plat.windows;
   },
 }));
 
@@ -138,6 +157,8 @@ vi.mock('../../src/bridge.js', () => ({
   MenuBarLoginItemStatus: () => Promise.resolve(menuBarStatus),
   SetMenuBarLoginItem: (...a: Parameters<typeof setMenuBarLoginItem>) =>
     setMenuBarLoginItem(...a),
+  HandyInstalled: () => Promise.resolve(handyInstalled),
+  SetHandyAutoStart: (on: boolean) => setHandyAutoStart(on),
   ...updateBridge,
   ...editorBridge,
   ...pluginBridge,
@@ -206,6 +227,10 @@ beforeEach(() => {
   setMenuBarLoginItem.mockReset().mockResolvedValue(undefined);
   menuBarStatus = 'unsupported';
   onMac = false;
+  handyInstalled = false;
+  handyAuto = null;
+  plat.windows = false;
+  setHandyAutoStart.mockClear();
   resetStore();
   render(<Settings root={el('settings')} />, { container: el('settings') });
 });
@@ -294,6 +319,7 @@ describe('settings: Claude plan progress toggle', () => {
     expect(saveAgentSettings).toHaveBeenCalledWith({
       claude_task_tools: false,
       pi_todo_tool: true,
+      pin_tool: true,
       laya_enabled: false,
       laya_url: '',
       laya_model: '',
@@ -343,6 +369,52 @@ describe('settings: Claude plan progress toggle', () => {
   });
 });
 
+describe('settings: pin tool toggle (spec 566)', () => {
+  const box = () => el<HTMLInputElement>('settings-pin-tool');
+
+  it('defaults to on when an older file has no pin_tool', async () => {
+    getAgentSettings.mockResolvedValue({
+      claude_task_tools: true,
+      pi_todo_tool: true,
+    } as main.AgentSettings);
+    open();
+    await flush();
+    expect(box().checked).toBe(true);
+    expect(box().disabled).toBe(false);
+  });
+
+  it('loads a saved off and saves the toggled value with the rest', async () => {
+    getAgentSettings.mockResolvedValue({
+      claude_task_tools: true,
+      pi_todo_tool: true,
+      pin_tool: false,
+    } as main.AgentSettings);
+    open();
+    await flush();
+    expect(box().checked).toBe(false);
+    fireEvent.click(box());
+    click(el('settings-save'));
+    await flush();
+    expect(saveAgentSettings).toHaveBeenCalledWith(
+      expect.objectContaining({
+        claude_task_tools: true,
+        pi_todo_tool: true,
+        pin_tool: true,
+      }),
+    );
+  });
+
+  it('says what it does and when it applies', async () => {
+    open();
+    await flush();
+    const hint = el('settings-pin-tool-hint').textContent ?? '';
+    expect(hint).toMatch(/newly started sessions only/);
+    expect(box().getAttribute('aria-describedby')).toBe(
+      'settings-pin-tool-hint',
+    );
+  });
+});
+
 describe('settings: Pi plan progress toggle', () => {
   const box = () => el<HTMLInputElement>('settings-pi-todo-tool');
 
@@ -382,6 +454,7 @@ describe('settings: Pi plan progress toggle', () => {
     expect(saveAgentSettings).toHaveBeenCalledWith({
       claude_task_tools: false,
       pi_todo_tool: false,
+      pin_tool: true,
       laya_enabled: false,
       laya_url: '',
       laya_model: '',
@@ -1322,6 +1395,111 @@ describe('settings menu-bar tab', () => {
     expect(el('settings-panel-agents').classList.contains('hidden')).toBe(
       false,
     );
+  });
+});
+
+// Spec 573: the Handy switch sits in the Menu bar tab, offered only when
+// Handy is installed and the daemon has said what the switch is.
+describe('settings: Handy auto-start (spec 573)', () => {
+  const showMenuBar = async () => {
+    menuBarStatus = 'not-registered';
+    onMac = true;
+    open();
+    await flush();
+    click(el('settings-tab-menubar'));
+  };
+
+  it('is hidden when Handy is not installed', async () => {
+    handyAuto = false;
+    await showMenuBar();
+    expect(document.getElementById('settings-handy-auto-start')).toBeNull();
+  });
+
+  it('is hidden until the daemon reports the switch', async () => {
+    handyInstalled = true;
+    await showMenuBar();
+    expect(document.getElementById('settings-handy-auto-start')).toBeNull();
+  });
+
+  it('shows the daemon value and writes only the switch', async () => {
+    handyInstalled = true;
+    handyAuto = false;
+    await showMenuBar();
+    const box = el<HTMLInputElement>('settings-handy-auto-start');
+    expect(el('settings-panel-menubar').contains(box)).toBe(true);
+    expect(box.checked).toBe(false);
+    click(box);
+    await flush();
+    expect(setHandyAutoStart).toHaveBeenCalledWith(true);
+  });
+
+  it('says what Enter and Esc do, naming the bound shortcut', async () => {
+    handyInstalled = true;
+    handyAuto = true;
+    await showMenuBar();
+    const hint = el('settings-handy-auto-start-hint').textContent ?? '';
+    expect(hint).toMatch(/stops Handy and sends/);
+    expect(hint).toMatch(/esc cancels/);
+    expect(hint).toMatch(/already recording/);
+  });
+});
+
+// Spec 575: Windows has no menu bar, so the Handy switch gets a Dictation
+// tab of its own — present only when there is a switch to show.
+describe('settings: Dictation tab on Windows (spec 575)', () => {
+  const tabIds = () =>
+    [...document.querySelectorAll('#settings-tabs [role="tab"]')].map(
+      (t) => t.id,
+    );
+
+  it('shows the Handy switch on Windows when Handy is installed', async () => {
+    plat.windows = true;
+    handyInstalled = true;
+    handyAuto = false;
+    open();
+    await flush();
+    expect(tabIds()).toContain('settings-tab-dictation');
+    expect(tabIds()).not.toContain('settings-tab-menubar');
+    click(el('settings-tab-dictation'));
+    const box = el<HTMLInputElement>('settings-handy-auto-start');
+    expect(el('settings-panel-dictation').contains(box)).toBe(true);
+    click(box);
+    await flush();
+    expect(setHandyAutoStart).toHaveBeenCalledWith(true);
+    const hint = el('settings-handy-auto-start-hint').textContent ?? '';
+    expect(hint).toMatch(/Enter stops Handy and sends/);
+    expect(hint).not.toMatch(/↩/);
+  });
+
+  it('is absent on Windows without Handy', async () => {
+    plat.windows = true;
+    handyAuto = false;
+    open();
+    await flush();
+    expect(tabIds()).not.toContain('settings-tab-dictation');
+  });
+
+  it('is absent on Linux even with Handy', async () => {
+    handyInstalled = true;
+    handyAuto = false;
+    open();
+    await flush();
+    expect(tabIds()).not.toContain('settings-tab-dictation');
+    expect(document.getElementById('settings-handy-auto-start')).toBeNull();
+  });
+
+  it('is absent on macOS, where the switch stays in the Menu bar tab', async () => {
+    onMac = true;
+    menuBarStatus = 'not-registered';
+    handyInstalled = true;
+    handyAuto = false;
+    open();
+    await flush();
+    expect(tabIds()).not.toContain('settings-tab-dictation');
+    click(el('settings-tab-menubar'));
+    expect(
+      el('settings-panel-menubar').contains(el('settings-handy-auto-start')),
+    ).toBe(true);
   });
 });
 

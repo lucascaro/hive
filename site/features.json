@@ -259,6 +259,18 @@
     "since": "Unreleased"
   },
   {
+    "title": "One key to dictate with Handy",
+    "blurb": "With Handy installed, an opt-in setting starts Handy recording as the dictation box opens, and Enter stops it and sends what you said.",
+    "status": "shipped",
+    "since": "Unreleased"
+  },
+  {
+    "title": "Dictate into a session on Windows",
+    "blurb": "On Windows, press Ctrl+Shift+Space anywhere while Hive is open to dictate or type into the same confirm-before-send box, with the optional Handy switch under Settings › Dictation.",
+    "status": "shipped",
+    "since": "Unreleased"
+  },
+  {
     "title": "Waiting sessions first in Go to session",
     "blurb": "With nothing typed, ⌘P now lists the sessions waiting on you right after the one you just left, so a session that needs you is never buried.",
     "status": "shipped",
@@ -267,6 +279,12 @@
   {
     "title": "The sidebar keeps your session in view",
     "blurb": "Switch sessions any way you like and the sidebar scrolls to it, even inside a collapsed project or worktree group.",
+    "status": "shipped",
+    "since": "Unreleased"
+  },
+  {
+    "title": "Pinned responses",
+    "blurb": "Claude and Pi pin the answers worth keeping, and they collect, titled and newest first, in a Pinned section of the inspector that you can copy from, unpin, or collapse.",
     "status": "shipped",
     "since": "Unreleased"
   }

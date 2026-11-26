@@ -25,6 +25,8 @@ import type { HiveAPI } from '../../src/app/plugin-host.js';
 vi.mock('../../src/lib/platform.js', async (orig) => ({
   ...(await orig<typeof import('../../src/lib/platform.js')>()),
   isMac: true,
+  isWindows: false,
+  dictationSupported: true,
 }));
 
 vi.mock('../../src/bridge.js', () => {
@@ -63,7 +65,7 @@ vi.mock('../../src/bridge.js', () => {
     RestartDaemon: fn(),
     CheckForUpdate: fn(),
     SetClipboardText: fn(),
-    ClipboardGetText: fn(),
+    ReadClipboard: fn(),
     ResolvePrompt: fn(),
     ResolveWorktreeChoice: fn(),
     StateDirID: fn(),

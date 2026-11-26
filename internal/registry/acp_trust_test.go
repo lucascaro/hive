@@ -331,7 +331,7 @@ func TestPiACPGetsShimAndSubmitEnv(t *testing.T) {
 			env = f[1:]
 		}
 	}
-	want := []string{"HIVE_PI_PLAN_REVIEW", "HIVE_PI_TODO_TOOL", "HIVE_SESSION_ID", "HIVE_SESSION_TOKEN", "HIVE_SOCKET", "HIVE_SUBMIT_NONCE", "PI_ACP_PI_COMMAND"}
+	want := []string{"HIVE_PIN_TOOL", "HIVE_PI_PLAN_REVIEW", "HIVE_PI_TODO_TOOL", "HIVE_SESSION_ID", "HIVE_SESSION_TOKEN", "HIVE_SOCKET", "HIVE_SUBMIT_NONCE", "PI_ACP_PI_COMMAND"}
 	if !slices.Equal(env, want) {
 		t.Errorf("Pi adapter env = %q, want %q", env, want)
 	}

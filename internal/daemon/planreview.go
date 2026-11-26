@@ -21,13 +21,22 @@ import (
 	"github.com/lucascaro/hive/internal/wire"
 )
 
+// headlessClients are control clients with no UI for a worktree choice
+// or a plan review: hivebar, a menu-bar status item, and the Windows
+// GUI's dictation connection (spec 575), which only feeds the dictation
+// box. Counting either would park questions nobody can answer.
+var headlessClients = []string{"hivebar/", wire.DictationClientPrefix}
+
 // canAnswer reports whether a control client can show the user a
-// dialog. hivebar is a menu-bar status item with no UI for a worktree
-// choice or a plan review, so counting it would park questions nobody
-// can answer. Every other control client — the GUI, the ws-bridge that
-// fronts a browser GUI, the test client — can.
+// dialog. Every control client but the headless ones — the GUI, the
+// ws-bridge that fronts a browser GUI, the test client — can.
 func canAnswer(h wire.Hello) bool {
-	return !strings.HasPrefix(h.Client, "hivebar/")
+	for _, p := range headlessClients {
+		if strings.HasPrefix(h.Client, p) {
+			return false
+		}
+	}
+	return true
 }
 
 // addAnswerer adjusts the answering-client count and mirrors it into

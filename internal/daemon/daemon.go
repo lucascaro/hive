@@ -101,9 +101,9 @@ type Daemon struct {
 	// commands relays client-to-client verbs (see commands.go). Not
 	// state, so it is not in the registry.
 	commands *commandHub
-	// hotkeys tells every control client the capture-HUD chord changed
-	// (GLOBAL_HOTKEY, spec 553); the value itself is the registry's.
-	hotkeys *hotkeyHub
+	// dictation tells every control client the capture HUD's settings
+	// changed (DICTATION, spec 573); the value itself is the registry's.
+	dictation *dictationHub
 	// pluginMsgs relays PLUGIN_MESSAGE between plugins and UI clients
 	// (pluginmsg.go). Not state either.
 	pluginMsgs *pluginMsgHub
@@ -391,7 +391,7 @@ func New(cfg Config) (*Daemon, error) {
 		orphanCandidates: orphanCandidates,
 		clients:          make(map[net.Conn]struct{}),
 		commands:         newCommandHub(),
-		hotkeys:          newHotkeyHub(),
+		dictation:        newDictationHub(),
 		pluginMsgs:       newPluginMsgHub(),
 		pluginFanout:     make(chan struct{}, 1),
 		shutdown:         make(chan struct{}),
@@ -653,8 +653,8 @@ func (d *Daemon) Close() error {
 	if d.commands != nil {
 		d.commands.Close()
 	}
-	if d.hotkeys != nil {
-		d.hotkeys.Close()
+	if d.dictation != nil {
+		d.dictation.Close()
 	}
 	if d.pluginMsgs != nil {
 		d.pluginMsgs.Close()
@@ -1154,10 +1154,12 @@ func (d *Daemon) serveControl(ctx context.Context, conn net.Conn, hello wire.Hel
 	defer aUnsub()
 	acpListener, acpUnsub := d.reg.SubscribeACP()
 	defer acpUnsub()
+	pinsListener, pinsUnsub := d.reg.SubscribePins()
+	defer pinsUnsub()
 	cmdListener, cmdUnsub := d.commands.Subscribe()
 	defer cmdUnsub()
-	hkListener, hkUnsub := d.hotkeys.Subscribe()
-	defer hkUnsub()
+	dictListener, dictUnsub := d.dictation.Subscribe()
+	defer dictUnsub()
 	// A nil channel blocks forever in the select below, which is what
 	// "plugin support did not load" should look like to the fan-out.
 	var plListener chan wire.PluginEvent
@@ -1236,7 +1238,7 @@ func (d *Daemon) serveControl(ctx context.Context, conn net.Conn, hello wire.Hel
 		} else {
 			_ = writeJSON(wire.FrameProjects, wire.ProjectsResp{Projects: d.reg.ListProjects()})
 			_ = writeJSON(wire.FrameSessions, wire.SessionsResp{Sessions: d.reg.List()})
-			_ = writeJSON(wire.FrameGlobalHotkey, d.reg.GlobalHotkey())
+			_ = writeJSON(wire.FrameDictation, d.reg.Dictation())
 		}
 		for {
 			select {
@@ -1293,6 +1295,18 @@ func (d *Daemon) serveControl(ctx context.Context, conn net.Conn, hello wire.Hel
 				if err := writeJSON(wire.FrameActivity, act); err != nil {
 					return
 				}
+			case msg, ok := <-pinsListener:
+				if !ok {
+					return
+				}
+				// Not to a session connection: an agent may add pins to
+				// its own session, and that is all it may do with them.
+				if restricted {
+					continue
+				}
+				if err := writeJSON(wire.FramePinsChanged, msg); err != nil {
+					return
+				}
 			case msg, ok := <-acpListener:
 				if !ok {
 					return
@@ -1316,14 +1330,14 @@ func (d *Daemon) serveControl(ctx context.Context, conn net.Conn, hello wire.Hel
 				if err := writeJSON(wire.FrameClientBroadcast, cmd); err != nil {
 					return
 				}
-			case hk, ok := <-hkListener:
+			case dict, ok := <-dictListener:
 				if !ok {
 					return
 				}
 				if restricted {
 					continue
 				}
-				if err := writeJSON(wire.FrameGlobalHotkey, hk); err != nil {
+				if err := writeJSON(wire.FrameDictation, dict); err != nil {
 					return
 				}
 			case ev, ok := <-plListener:
@@ -1414,12 +1428,16 @@ func (d *Daemon) serveControl(ctx context.Context, conn net.Conn, hello wire.Hel
 }
 
 // sessionModeFrames is everything a ModeSession connection may ask
-// for: capture an idea, read the ideas back, and — for an ACP session's
-// own submit server — submit its typed result. See wire.ModeSession.
+// for: capture an idea, read the ideas back, — for an ACP session's
+// own submit server — submit its typed result, and pin a response to
+// its own session (spec 566). See wire.ModeSession.
 var sessionModeFrames = map[wire.FrameType]bool{
 	wire.FrameAddIdea:      true,
 	wire.FrameListIdeas:    true,
 	wire.FrameSubmitResult: true,
+	// For the caller's own session only; it cannot read, list or remove
+	// pins, which are the user's to curate.
+	wire.FrameAddPin: true,
 	// Served only to a session the user granted (spec 389); the check
 	// lives in the FrameSendToSession arm.
 	wire.FrameSendToSession: true,
@@ -1446,6 +1464,8 @@ var pluginRefusedFrames = map[wire.FrameType]string{
 	wire.FrameRemovePlugin:          "which plugins are installed is the user's choice",
 	wire.FrameResolveWorktreeChoice: "a worktree-setup question is answered by the user",
 	wire.FrameShutdown:              "stopping Hive ends every session",
+	wire.FrameUnpin:                 "which pins to keep is the user's choice",
+	wire.FrameUnpinAll:              "which pins to keep is the user's choice",
 }
 
 // pluginRefusal is why principal (a plugin) may not send ft with this
@@ -1739,7 +1759,7 @@ func (d *Daemon) handleControlFrame(ctx context.Context, ops controlOps, ft wire
 	// which is the direction a mistake here should fail in.
 	if ops.restricted && !sessionModeFrames[ft] {
 		ops.sendError(wire.ErrCodeModeNotAllowed,
-			fmt.Sprintf("%s is not served on a session connection; want ADD_IDEA, LIST_IDEAS, SUBMIT_RESULT, SEND_TO_SESSION, LIST_SESSIONS or WAIT_SESSION", ft))
+			fmt.Sprintf("%s is not served on a session connection; want ADD_IDEA, LIST_IDEAS, SUBMIT_RESULT, ADD_PIN, SEND_TO_SESSION, LIST_SESSIONS or WAIT_SESSION", ft))
 		return false
 	}
 	// The same shape for plugins: a fixed set of verbs a plugin socket
@@ -1889,6 +1909,8 @@ func (d *Daemon) handleControlFrame(ctx context.Context, ops controlOps, ft wire
 					ops.sendError("no_such_archived_session", "that session is no longer archived")
 				case errors.Is(err, registry.ErrExists):
 					ops.sendError("session_already_open", "that session is already open")
+				case errors.Is(err, registry.ErrClosing):
+					ops.sendError("session_closing", "that session is still closing; try again in a moment")
 				default:
 					ops.sendError("unarchive_failed", err.Error())
 				}
@@ -2050,6 +2072,67 @@ func (d *Daemon) handleControlFrame(ctx context.Context, ops controlOps, ft wire
 			return false
 		}
 		_ = ops.writeJSON(wire.FrameSubmitResultOK, struct{}{})
+	case wire.FrameAddPin:
+		// Like SUBMIT_RESULT: only on a session connection, and only for
+		// the session its HELLO named — the payload names no session.
+		if !ops.restricted {
+			ops.sendError(wire.ErrCodeModeNotAllowed, "ADD_PIN is sent on a session connection by the session's own agent")
+			return false
+		}
+		req, ok := decodeReq[wire.AddPinReq](payload, ops.sendError)
+		if !ok {
+			return false
+		}
+		pin, err := d.reg.AddPin(ops.ownSessionID, req.Title, req.Body)
+		if err != nil {
+			sendPinError(ops, err)
+			return false
+		}
+		_ = ops.writeJSON(wire.FrameAddPinOK, wire.AddPinOK{ID: pin.ID})
+	case wire.FrameGetPins:
+		req, ok := decodeReq[wire.GetPinsReq](payload, ops.sendError)
+		if !ok {
+			return false
+		}
+		pins, err := d.reg.Pins(req.SessionID)
+		if err != nil {
+			sendPinError(ops, err)
+			return false
+		}
+		for _, page := range pinPages(req.SessionID, pins) {
+			if err := ops.writeJSON(wire.FramePins, page); err != nil {
+				return false
+			}
+		}
+	case wire.FrameGetPinBody:
+		req, ok := decodeReq[wire.GetPinBodyReq](payload, ops.sendError)
+		if !ok {
+			return false
+		}
+		body, err := d.reg.PinBody(req.SessionID, req.ID)
+		if err != nil {
+			sendPinError(ops, err)
+			return false
+		}
+		_ = ops.writeJSON(wire.FramePinBody, wire.PinBodyMsg{SessionID: req.SessionID, ID: req.ID, Body: body})
+	case wire.FrameUnpin:
+		req, ok := decodeReq[wire.UnpinReq](payload, ops.sendError)
+		if !ok {
+			return false
+		}
+		if err := d.reg.Unpin(req.SessionID, req.ID); err != nil {
+			sendPinError(ops, err)
+			return false
+		}
+	case wire.FrameUnpinAll:
+		req, ok := decodeReq[wire.UnpinAllReq](payload, ops.sendError)
+		if !ok {
+			return false
+		}
+		if err := d.reg.UnpinAll(req.SessionID); err != nil {
+			sendPinError(ops, err)
+			return false
+		}
 	case wire.FrameSetSessionKind:
 		req, ok := decodeReq[wire.SetSessionKindReq](payload, ops.sendError)
 		if !ok {
@@ -2114,6 +2197,8 @@ func (d *Daemon) handleControlFrame(ctx context.Context, ops controlOps, ft wire
 					ops.sendError("no_such_closed_session", "that session is no longer restorable")
 				case errors.Is(err, registry.ErrExists):
 					ops.sendError("session_already_open", "that session is already open")
+				case errors.Is(err, registry.ErrClosing):
+					ops.sendError("session_closing", "that session is still closing; try again in a moment")
 				default:
 					ops.sendError("restore_failed", err.Error())
 				}
@@ -2481,7 +2566,7 @@ func (d *Daemon) handleControlFrame(ctx context.Context, ops controlOps, ft wire
 	case wire.FrameListPlugins, wire.FrameInstallPlugin, wire.FrameSetPluginEnabled, wire.FrameRemovePlugin,
 		wire.FrameSetPluginConfig:
 		d.handlePluginFrame(ctx, ops, ft, payload)
-	case wire.FrameSetFocusedSession, wire.FrameSetGlobalHotkey:
+	case wire.FrameSetFocusedSession, wire.FrameSetDictation:
 		d.handleHUDFrame(ops, ft, payload)
 	case wire.FrameSetClientUI:
 		req, ok := decodeReq[wire.SetClientUIReq](payload, ops.sendError)

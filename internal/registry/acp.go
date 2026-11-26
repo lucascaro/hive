@@ -252,7 +252,11 @@ func newNonce(n int) string {
 // pi-acp shim instead, and the extension registers the same tool. The
 // session's own HIVE_* values reach only these two places: AdapterEnv
 // stripped every inherited one from the adapter.
-func (r *Registry) acpExtras(id string, spec *agent.ACPSpec, as *acpSession, schema json.RawMessage) (env []string, mcp []acp.MCPServer) {
+//
+// pin adds a second server, `hived mcp-pin` (spec 566), under a name
+// derived from the submit server's random one, so its tool is
+// auto-allowed by the same exact-identity rule.
+func (r *Registry) acpExtras(id string, spec *agent.ACPSpec, as *acpSession, schema json.RawMessage, pin bool) (env []string, mcp []acp.MCPServer) {
 	r.mu.Lock()
 	hived, stateDir := r.hivedPath, r.stateDir
 	r.mu.Unlock()
@@ -270,10 +274,10 @@ func (r *Registry) acpExtras(id string, spec *agent.ACPSpec, as *acpSession, sch
 		}
 		// Only the submit tool: the extension's state reports are dropped
 		// for an ACP session, so its plan tools would be dead weight.
-		return append(hive, "PI_ACP_PI_COMMAND="+shim, agent.PiTodoToolEnv+"=0", agent.PiPlanReviewEnv+"=0"), nil
+		return append(hive, "PI_ACP_PI_COMMAND="+shim, agent.PiTodoToolEnv+"=0", agent.PiPlanReviewEnv+"=0", agent.PinToolEnv+"=0"), nil
 	}
 	if hived == "" {
-		log.Printf("registry: acp %s: hived path unknown; this session cannot submit a result", id)
+		log.Printf("registry: acp %s: hived path unknown; this session cannot submit a result or pin", id)
 		return nil, nil
 	}
 	server := acp.MCPServer{Name: as.server, Command: hived, Args: []string{"mcp-submit"}}
@@ -281,7 +285,27 @@ func (r *Registry) acpExtras(id string, spec *agent.ACPSpec, as *acpSession, sch
 		k, v, _ := strings.Cut(kv, "=")
 		server.Env = append(server.Env, acp.EnvVar{Name: k, Value: v})
 	}
-	return nil, []acp.MCPServer{server}
+	servers := []acp.MCPServer{server}
+	if pin {
+		pinServer := acp.MCPServer{Name: acp.PinServerName(as.server), Command: hived, Args: []string{"mcp-pin"}}
+		// The session's identity only; the submit nonce is not its to see.
+		pinServer.Env = sessionEnvOf(server.Env)
+		servers = append(servers, pinServer)
+	}
+	return nil, servers
+}
+
+// sessionEnvOf keeps the session's identity variables from env and
+// drops everything else (the submit nonce and schema).
+func sessionEnvOf(env []acp.EnvVar) []acp.EnvVar {
+	var out []acp.EnvVar
+	for _, kv := range env {
+		switch kv.Name {
+		case "HIVE_SESSION_ID", "HIVE_SOCKET", "HIVE_SESSION_TOKEN":
+			out = append(out, kv)
+		}
+	}
+	return out
 }
 
 // finishCreateACP is finishCreateTail for an ACP entry: start the
@@ -369,7 +393,10 @@ func (r *Registry) startACP(id, cwd, loadID string) error {
 	as := &acpSession{spec: spec, nonce: newNonce(32), server: "hive-" + newNonce(6), tools: map[string]acp.Update{}}
 	as.mode, as.ceiling = acpModeFor(spec, st.ACPCeiling(def.ID), requested)
 	argv, env := acpCommand(def)
-	extraEnv, mcp := r.acpExtras(id, spec, as, schema)
+	// Pins (spec 566) for Claude only: ACP Pi is out of scope, and the
+	// other ACP agents are not pin agents at all.
+	pin := st.PinTool && def.ID == agent.IDClaude
+	extraEnv, mcp := r.acpExtras(id, spec, as, schema, pin)
 	env = append(env, extraEnv...)
 	a, err := acp.Start(acp.Spec{Argv: argv, Env: env, Cwd: cwd}, acp.Handler{
 		Update: func(_ string, u acp.Update) { r.onACPUpdate(id, as, u) },
@@ -638,7 +665,10 @@ func (r *Registry) onACPPermission(ctx context.Context, id string, as *acpSessio
 		if u, ok := as.tools[req.ToolCall.ToolCallID]; ok {
 			earlier = &u
 		}
-		if opt, ok := acp.AutoAllowOption(req, earlier, acp.SubmitIdentities(as.server)); ok {
+		// The pin tool too (spec 566), bound the same way to this
+		// session's own pin server name.
+		allowed := append(acp.SubmitIdentities(as.server), acp.PinIdentities(as.server)...)
+		if opt, ok := acp.AutoAllowOption(req, earlier, allowed); ok {
 			r.mu.Unlock()
 			return acp.Selected(opt)
 		}

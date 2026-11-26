@@ -689,3 +689,49 @@ func TestACPSlowListenerDropped(t *testing.T) {
 		t.Error("slow listener still subscribed")
 	}
 }
+
+// Spec 566: an ACP Claude session gets a second MCP server, mcp-pin,
+// carrying the session's identity but not the submit nonce; ACP Pi gets
+// no pin server and its extension is told the pin tool is off.
+func TestACPExtrasAddsPinServerForClaude(t *testing.T) {
+	r := freshRegistry(t)
+	r.hivedPath = "/usr/local/bin/hived"
+	as := &acpSession{nonce: "n0nce", server: "hive-abc123"}
+	spec := &agent.ACPSpec{}
+
+	_, servers := r.acpExtras("s1", spec, as, nil, true)
+	if len(servers) != 2 {
+		t.Fatalf("servers = %+v, want submit and pin", servers)
+	}
+	pin := servers[1]
+	if pin.Name != "hive-abc123-pin" || pin.Command != "/usr/local/bin/hived" || len(pin.Args) != 1 || pin.Args[0] != "mcp-pin" {
+		t.Fatalf("pin server = %+v", pin)
+	}
+	names := map[string]bool{}
+	for _, kv := range pin.Env {
+		names[kv.Name] = true
+	}
+	if !names["HIVE_SESSION_ID"] || !names["HIVE_SOCKET"] || !names["HIVE_SESSION_TOKEN"] || names["HIVE_SUBMIT_NONCE"] {
+		t.Errorf("pin server env = %+v", pin.Env)
+	}
+
+	if _, servers := r.acpExtras("s1", spec, as, nil, false); len(servers) != 1 {
+		t.Errorf("pin off: servers = %+v", servers)
+	}
+}
+
+func TestACPExtrasNoPinForPi(t *testing.T) {
+	r := freshRegistry(t)
+	if err := agent.EnsurePiExtension(r.stateDir); err != nil {
+		t.Fatal(err)
+	}
+	r.hivedPath = "/usr/local/bin/hived"
+	as := &acpSession{nonce: "n0nce", server: "hive-abc123"}
+	env, servers := r.acpExtras("s1", &agent.ACPSpec{NoApprovalGate: true}, as, nil, true)
+	if servers != nil {
+		t.Fatalf("pi got MCP servers %+v", servers)
+	}
+	if !slices.Contains(env, agent.PinToolEnv+"=0") {
+		t.Errorf("pi env = %v, want %s=0", env, agent.PinToolEnv)
+	}
+}

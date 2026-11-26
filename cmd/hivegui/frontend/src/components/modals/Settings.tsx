@@ -35,6 +35,7 @@ import {
   useLayoutEffect,
   useRef,
   useState,
+  useSyncExternalStore,
   type ReactNode,
 } from 'react';
 import {
@@ -43,7 +44,9 @@ import {
   GetUpdateSettings,
   ListAgents,
   ListCustomAgents,
+  HandyInstalled,
   MenuBarLoginItemStatus,
+  SetHandyAutoStart,
   PickDirectory,
   SetMenuBarLoginItem,
   SaveAgentSettings,
@@ -65,7 +68,7 @@ import {
   sameKeymap,
 } from '../../lib/keymap-edit.js';
 import { type EditorDraft, EditorSettings } from './EditorSettings.js';
-import { isMac } from '../../lib/platform.js';
+import { isMac, isWindows } from '../../lib/platform.js';
 import {
   CHANNEL_LATEST,
   CHANNEL_RELEASE,
@@ -115,6 +118,10 @@ import {
   useAppStore,
 } from '../../store/store.js';
 import { useShortcutLabel } from '../../app/bindings.js';
+import {
+  getHandyAutoStart,
+  subscribeHandyAutoStart,
+} from '../../app/global-hotkey.js';
 import { Button } from '../Button.js';
 import { Tabs } from '../Tabs.js';
 import { Icon } from '../Icon.js';
@@ -130,17 +137,27 @@ type TabId =
   | 'appearance'
   | 'shortcuts'
   | 'menubar'
+  | 'dictation'
   | 'plugins'
   | 'updates';
 // Menu bar is macOS-only and needs a login item the build can actually
 // register, so its tab is absent — not disabled — everywhere else, which
 // is what the section it replaced did with the same guard.
-function tabsFor(showMenuBar: boolean): { id: TabId; label: string }[] {
+// Dictation is Windows-only (spec 575): there is no menu bar to hold the
+// Handy switch, so it gets a tab of its own, present only when there is
+// a switch to show.
+function tabsFor(
+  showMenuBar: boolean,
+  showDictation: boolean,
+): { id: TabId; label: string }[] {
   return [
     { id: 'agents', label: 'Agents' },
     { id: 'appearance', label: 'Appearance' },
     { id: 'shortcuts', label: 'Shortcuts' },
     ...(showMenuBar ? [{ id: 'menubar' as TabId, label: 'Menu bar' }] : []),
+    ...(showDictation
+      ? [{ id: 'dictation' as TabId, label: 'Dictation' }]
+      : []),
     { id: 'plugins', label: 'Plugins' },
     { id: 'updates', label: 'Updates' },
   ];
@@ -217,6 +234,7 @@ function SettingsDialog({ root }: { root: HTMLElement }): ReactNode {
   // slow read never flashes the box unchecked first.
   const [claudeTaskTools, setClaudeTaskTools] = useState(true);
   const [piTodoTool, setPiTodoTool] = useState(true);
+  const [pinTool, setPinTool] = useState(true);
   // Per-agent ACP mode ceiling (spec 496). Only the agents the user has
   // set are keys; a missing one is the agent's acpDefaultMode, as in Go.
   const [acpCeiling, setAcpCeiling] = useState<Record<string, string>>({});
@@ -281,6 +299,7 @@ function SettingsDialog({ root }: { root: HTMLElement }): ReactNode {
   // Applies on change, like density: it is a view preference, not a draft.
   const gridSelectMode = useAppStore((s) => s.gridSelectMode);
   const projectGridKey = useShortcutLabel('toggle-project-grid');
+  const dictateKey = useShortcutLabel('dictate-hud');
   const [overrides, setOverrides] = useState(() =>
     readOverrides().replace(/\n\s*/g, '\n'),
   );
@@ -324,6 +343,38 @@ function SettingsDialog({ root }: { root: HTMLElement }): ReactNode {
       live = false;
     };
   }, []);
+
+  // Handy auto-start (spec 573). Offered only when Handy is installed and
+  // the daemon has said what the switch is: a daemon too old to carry it
+  // would ignore the write. Re-checked on open, like the login item.
+  const [handyInstalled, setHandyInstalled] = useState(false);
+  const [handyError, setHandyError] = useState('');
+  const handyAutoStart = useSyncExternalStore(
+    subscribeHandyAutoStart,
+    getHandyAutoStart,
+  );
+  useEffect(() => {
+    let live = true;
+    HandyInstalled()
+      .then((yes) => {
+        if (live) setHandyInstalled(yes);
+      })
+      .catch(() => {
+        if (live) setHandyInstalled(false);
+      });
+    return () => {
+      live = false;
+    };
+  }, []);
+
+  async function setHandy(on: boolean) {
+    setHandyError('');
+    try {
+      await SetHandyAutoStart(on);
+    } catch (err) {
+      setHandyError(String(err));
+    }
+  }
 
   async function toggleMenuBarLoginItem() {
     const enable = menuBarStatus !== 'enabled';
@@ -436,6 +487,7 @@ function SettingsDialog({ root }: { root: HTMLElement }): ReactNode {
         if (!live) return;
         setClaudeTaskTools(s?.claude_task_tools ?? true);
         setPiTodoTool(s?.pi_todo_tool ?? true);
+        setPinTool(s?.pin_tool ?? true);
         setAcpCeiling(s?.acp_mode_ceiling ?? {});
         setLayaEnabled(s?.laya_enabled ?? false);
         setLayaUrl(s?.laya_url ?? '');
@@ -650,11 +702,39 @@ function SettingsDialog({ root }: { root: HTMLElement }): ReactNode {
   // that from rendering as a strip with no selected tab, no visible panel,
   // and — because Tabs resolves the active id by index — dead arrow keys.
   const showMenuBar = isMac && menuBarStatus !== 'unsupported';
+  const showHandy = handyInstalled && handyAutoStart !== null;
+  const showDictation = isWindows && showHandy;
   const blockedMsg =
     shortcutBlock === 'import'
       ? 'Finish the shortcut import to save.'
       : 'Resolve the shortcut conflict to save.';
-  const tabs = tabsFor(showMenuBar);
+  const tabs = tabsFor(showMenuBar, showDictation);
+  // The Handy switch (spec 573): in the Menu bar tab on macOS, in the
+  // Dictation tab on Windows (spec 575).
+  const handySwitch = (
+    <>
+      <label className="settings-check">
+        <input
+          id="settings-handy-auto-start"
+          type="checkbox"
+          checked={handyAutoStart === true}
+          aria-describedby="settings-handy-auto-start-hint"
+          onChange={(e) => setHandy(e.target.checked)}
+        />
+        <span>Start Handy recording when the dictation box opens</span>
+      </label>
+      <p id="settings-handy-auto-start-hint" className="settings-hint">
+        {handyError
+          ? `Could not change it: ${handyError}`
+          : 'One key to dictate: ' +
+            (dictateKey ? `${dictateKey} ` : 'the dictation shortcut ') +
+            `opens the box and Handy starts listening. ${isMac ? '↩' : 'Enter'} stops Handy ` +
+            `and sends the text; ${isMac ? 'esc' : 'Esc'} cancels. Handy must be running. ` +
+            'If Handy is already recording, the shortcut stops it ' +
+            'instead.'}
+      </p>
+    </>
+  );
   const activeTab = tabs.some((t) => t.id === tab) ? tab : 'agents';
 
   useEffect(() => {
@@ -778,6 +858,7 @@ function SettingsDialog({ root }: { root: HTMLElement }): ReactNode {
           : SaveAgentSettings({
               claude_task_tools: claudeTaskTools,
               pi_todo_tool: piTodoTool,
+              pin_tool: pinTool,
               acp_mode_ceiling: acpCeiling,
               laya_enabled: layaEnabled,
               laya_url: layaUrl.trim(),
@@ -960,6 +1041,23 @@ function SettingsDialog({ root }: { root: HTMLElement }): ReactNode {
           tool to the Pi sessions it starts, and the sidebar shows how far each
           one is through its plan. It uses some of the model's context, and
           applies to newly started sessions only.
+        </p>
+        <label className="settings-check">
+          <input
+            id="settings-pin-tool"
+            type="checkbox"
+            checked={pinTool}
+            disabled={!agentSettingsLoaded || agentSettingsFailed}
+            aria-describedby="settings-pin-tool-hint"
+            onChange={(e) => setPinTool(e.target.checked)}
+          />
+          <span>Let agents pin important responses (Claude, Pi)</span>
+        </label>
+        <p id="settings-pin-tool-hint" className="settings-hint">
+          Gives Claude and Pi sessions a tool to pin answers worth keeping — a
+          decision, a root cause, a recipe — and asks them to use it. Pins show
+          in the session's inspector and survive restarts. It uses some of the
+          model's context, and applies to newly started sessions only.
         </p>
         {(catalog ?? []).some((a) => a.acpModes?.length) && (
           <>
@@ -1343,6 +1441,13 @@ function SettingsDialog({ root }: { root: HTMLElement }): ReactNode {
           <p id="settings-menubar-hint" className="settings-hint">
             {menuBarHint}
           </p>
+          {showHandy ? handySwitch : null}
+        </Panel>
+      ) : null}
+
+      {showDictation ? (
+        <Panel tab="dictation" active={activeTab}>
+          {handySwitch}
         </Panel>
       ) : null}
 

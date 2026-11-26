@@ -27,6 +27,7 @@ import {
   type Keys,
 } from './chord.js';
 import { chordLabel } from './chord-label.js';
+import { isWindows } from './platform.js';
 
 /** keymap.json (spec 477). One half per platform family: a macOS
  * rebind never changes the Windows/Linux keys, and the reverse. Each
@@ -134,15 +135,25 @@ export const DEFAULT_APP_BINDINGS: readonly Binding[] = [
   { keys: 'Mod+Shift+I', command: 'idea-inbox' },
   // Session messaging (spec 338).
   { keys: 'Mod+Shift+M', command: 'message-session' },
-  // The menu bar's dictation capture HUD (spec 553), macOS only. A
-  // SYSTEM-WIDE chord: the menu bar registers it with the OS, which
+  // The dictation box (spec 553 on macOS, 575 on Windows). A
+  // SYSTEM-WIDE chord: the menu bar (or, on Windows, one Hive window)
+  // registers it with the OS, which
   // takes it before any app, Hive included, so it never reaches this
   // dispatcher in a real build. It lives here anyway so Settings ›
   // Shortcuts, the help overlay, keymap import and the overlap rules
   // treat it like every other binding; the GUI converts the effective
-  // chord for the menu bar (app/global-hotkey.ts). [Space], not Space:
+  // chord for the box (app/global-hotkey.ts). [Space], not Space:
   // ⌥Space types a non-breaking space, so e.key cannot name it.
-  { keys: { mac: 'Ctrl+Alt+[Space]', other: [] }, command: 'dictate-hud' },
+  // On Windows, Ctrl+Shift: Ctrl+Alt is AltGr on many layouts (spec 575).
+  // Linux has no dictation box, so no default: a chord nothing registers
+  // would still count as taken and refuse a plugin the same key.
+  {
+    keys: {
+      mac: 'Ctrl+Alt+[Space]',
+      other: isWindows ? 'Ctrl+Shift+[Space]' : [],
+    },
+    command: 'dictate-hud',
+  },
   // ⌥⌘B on macOS, where the ⌥ spelling needs [KeyB] (⌥B types '∫'). Off
   // macOS Ctrl+Alt+Shift, like activity-grid above: AltGr reports as
   // Ctrl+Alt, so a bare Ctrl+Alt chord would lose a layout's character.
