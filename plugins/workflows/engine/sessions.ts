@@ -31,8 +31,8 @@ export interface TranscriptState {
   reset: boolean;
   /** The user turns seen in this epoch, by item id: who sent them and the start of their text (B3c adopts a turn whose ack was lost). */
   users: ReadonlyMap<number, { origin: string; text: string }>;
-  /** Ids of the items in this epoch that are not Hive's own `notice` lines: the conversation, as far as the daemon still holds it. */
-  content: ReadonlySet<number>;
+  /** Whether this epoch has held any item that is not one of Hive's own `notice` lines: a conversation, even if the daemon has since trimmed it. A flag, not the ids: a long turn must cost nothing per update. */
+  content: boolean;
 }
 
 /** How much of a user turn's text is kept: enough to recognise the engine's own re-prompt, not a copy of every prompt. */
@@ -204,9 +204,9 @@ export class SessionFeed {
     // User turns accumulate within an epoch; a snapshot or a new epoch starts the list again.
     const prev = this.#tx.get(m.session_id);
     const users = new Map(m.reset !== true && prev?.epoch === epoch ? prev.users : []);
-    const content = new Set(m.reset !== true && prev?.epoch === epoch ? prev.content : []);
+    let content = m.reset !== true && prev?.epoch === epoch ? prev.content : false;
     for (const it of Array.isArray(m.items) ? m.items : []) {
-      if (isObj(it) && it.kind !== 'notice' && typeof it.id === 'number') content.add(it.id);
+      if (isObj(it) && it.kind !== 'notice' && typeof it.id === 'number') content = true;
       if (isObj(it) && it.kind === 'user' && typeof it.id === 'number') {
         users.set(it.id, { origin: typeof it.origin === 'string' ? it.origin : '', text: typeof it.text === 'string' ? it.text.slice(0, USER_TEXT_KEPT) : '' });
       }

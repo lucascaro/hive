@@ -201,7 +201,7 @@ async function settleOrphans(engine: Engine, runId: string, listed: Listed[], se
     byKey.set(key, [...(byKey.get(key) ?? []), s]);
   }
   const ended = (): boolean => engine.agentRows(runId).length === 0;
-  const neverPrompted = (tx: TranscriptState | undefined): boolean => tx !== undefined && tx.prompt_id === 0 && tx.content.size === 0;
+  const neverPrompted = (tx: TranscriptState | undefined): boolean => tx !== undefined && tx.prompt_id === 0 && !tx.content;
   for (const [key, group] of byKey) {
     if (lost()) return;
     // Which of them were never prompted: no answer from the daemon is not "never prompted".

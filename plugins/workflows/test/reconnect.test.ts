@@ -50,6 +50,7 @@ test('a closed connection is redialled, and the engine reads its running agent a
     });
     await waitFor(() => engine.store.loadRows(id)[0].prompt_id !== undefined, 'the turn to start');
     hive.emit('close', undefined); // the daemon closed us: the fan-out overflowed
+    const pushedBefore = hive.posts.filter((x) => x.topic === 'run.event').length;
     await waitFor(() => reads === 1, 'the redial and the re-read');
     assert.equal(gone, 0, 'the plugin did not end');
     assert.equal(engine.hive, second, 'the engine speaks on the new connection');
@@ -61,6 +62,10 @@ test('a closed connection is redialled, and the engine reads its running agent a
     // One watcher owns the turn: the one the lost connection left is gone, so the result is committed and recorded once.
     assert.equal(sim.of('COMMIT_WORKTREE').length, 1);
     assert.equal(engine.store.events(id, 0, 500).filter((e) => e.key === 'a' && e.type === 'node.finished').length, 1);
+    // Live updates follow the connection: the GUI hears the node finish on the replacement, and nothing more goes to the closed one.
+    const pushed = (h: FakeHive): string[] => h.posts.filter((x) => x.topic === 'run.event').flatMap((x) => ((x.data as { events: { type: string }[] }).events ?? []).map((e) => e.type));
+    assert.ok(pushed(second).includes('node.finished'), 'run.event reached the replacement connection');
+    assert.equal(hive.posts.filter((x) => x.topic === 'run.event').length, pushedBefore, 'and none went to the closed one');
   } finally {
     engine.stopFlush();
     engine.store.close();

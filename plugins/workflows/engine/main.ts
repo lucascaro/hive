@@ -59,7 +59,14 @@ export async function start(hive: HiveConnection, opts: StartOptions): Promise<E
     ...(opts.daemonWaitMs ? { daemonWaitMs: opts.daemonWaitMs } : {}),
     executors: defaultExecutors({ ...(opts.cancelGraceMs === undefined ? {} : { cancelGraceMs: opts.cancelGraceMs }), ...(opts.pause ? { pause: opts.pause } : {}) }),
     onEvents: (runId, events) => {
-      for (const batch of batchForPush(runId, events)) hive.postMessage('run.event', { run_id: runId, events: batch });
+      for (const batch of batchForPush(runId, events)) {
+        try {
+          // The connection the engine is on now, not the one it started with: that one is closed after a reconnect.
+          engine.hive.postMessage('run.event', { run_id: runId, events: batch });
+        } catch {
+          // No connection right now: the event is stored, and the GUI closes the gap with run.events when it asks again.
+        }
+      }
     },
   });
   const topics = new Topics({ engine, ...(opts.testSeam ? { testSeam: true } : {}) });
