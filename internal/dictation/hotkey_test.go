@@ -2,9 +2,7 @@
 // Copyright (C) 2026 Lucas Caro
 // See LICENSE and ADDITIONAL-TERMS.md.
 
-//go:build darwin
-
-package main
+package dictation
 
 import (
 	"strings"
@@ -22,10 +20,10 @@ type menuLine struct {
 	enabled bool
 }
 
-func newTestDictation() (*Dictation, *fakeRegistrar, *[]menuLine) {
+func newTestDictation() (*Hotkeys, *fakeRegistrar, *[]menuLine) {
 	r := &fakeRegistrar{}
 	var lines []menuLine
-	d := NewDictation(r, func(l string, on bool) { lines = append(lines, menuLine{l, on}) })
+	d := NewHotkeys(r, func(l string, on bool) { lines = append(lines, menuLine{l, on}) })
 	return d, r, &lines
 }
 
@@ -33,7 +31,7 @@ func lastLine(lines *[]menuLine) menuLine { return (*lines)[len(*lines)-1] }
 
 func TestDictationRegistersDaemonChord(t *testing.T) {
 	d, r, lines := newTestDictation()
-	d.Connected(hudContract)
+	d.Connected(Contract)
 	d.SetHotkey(wire.DefaultGlobalHotkey)
 	if len(r.got) != 1 || r.got[0] != wire.DefaultGlobalHotkey {
 		t.Fatalf("registered %+v, want the default once", r.got)
@@ -48,10 +46,10 @@ func TestDictationRegistersDaemonChord(t *testing.T) {
 // harmless (the native side unregisters first), but nothing needs to.
 func TestDictationReconnectSameChordNoReregister(t *testing.T) {
 	d, r, _ := newTestDictation()
-	d.Connected(hudContract)
+	d.Connected(Contract)
 	d.SetHotkey(wire.DefaultGlobalHotkey)
 	d.Disconnected()
-	d.Connected(hudContract)
+	d.Connected(Contract)
 	d.SetHotkey(wire.DefaultGlobalHotkey)
 	if len(r.got) != 1 {
 		t.Fatalf("registered %d times, want 1", len(r.got))
@@ -65,7 +63,7 @@ func TestDictationReconnectSameChordNoReregister(t *testing.T) {
 
 func TestDictationTakenChordSaysSo(t *testing.T) {
 	d, _, lines := newTestDictation()
-	d.Connected(hudContract)
+	d.Connected(Contract)
 	d.SetHotkey(wire.DefaultGlobalHotkey)
 	d.Registered(wire.DefaultGlobalHotkey, false)
 	if l := lastLine(lines); !strings.Contains(l.label, "taken by another app") || !l.enabled {
@@ -82,7 +80,7 @@ func TestDictationTakenChordSaysSo(t *testing.T) {
 
 func TestDictationOldDaemonShowsRestartHint(t *testing.T) {
 	d, r, lines := newTestDictation()
-	d.Connected(hudContract - 1)
+	d.Connected(Contract - 1)
 	if l := lastLine(lines); l.enabled || !strings.Contains(l.label, "restart") {
 		t.Fatalf("menu line on an old daemon = %+v", l)
 	}
@@ -93,7 +91,7 @@ func TestDictationOldDaemonShowsRestartHint(t *testing.T) {
 
 func TestDictationDisabledUnregisters(t *testing.T) {
 	d, r, lines := newTestDictation()
-	d.Connected(hudContract)
+	d.Connected(Contract)
 	d.SetHotkey(wire.DefaultGlobalHotkey)
 	d.SetHotkey(wire.GlobalHotkey{Enabled: false})
 	if len(r.got) != 2 || r.got[1].Enabled {

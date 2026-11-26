@@ -2,9 +2,7 @@
 // Copyright (C) 2026 Lucas Caro
 // See LICENSE and ADDITIONAL-TERMS.md.
 
-//go:build darwin
-
-package main
+package dictation
 
 import (
 	"fmt"
@@ -15,14 +13,14 @@ import (
 )
 
 type fakeView struct {
-	shown   []hudState
+	shown   []State
 	clears  int
 	focuses int
 	hidden  int
 	visible bool
 }
 
-func (v *fakeView) Show(st hudState, clear, focus bool) {
+func (v *fakeView) Show(st State, clear, focus bool) {
 	v.shown = append(v.shown, st)
 	v.visible = true
 	if clear {
@@ -38,7 +36,7 @@ func (v *fakeView) Hide(restore bool) {
 	v.visible = false
 }
 
-func (v *fakeView) last() hudState { return v.shown[len(v.shown)-1] }
+func (v *fakeView) last() State { return v.shown[len(v.shown)-1] }
 
 type sent struct {
 	id, text string
@@ -57,7 +55,7 @@ func (s *fakeSender) SendToSession(id, text string, queue bool) bool {
 
 func newTestHUD(sessions ...wire.SessionInfo) (*HUD, *fakeView, *fakeSender) {
 	v, s := &fakeView{}, &fakeSender{connected: true}
-	h := NewHUD(v, s)
+	h := NewHUD(v, s, nil, MacKeys)
 	h.goSend = func(f func()) { f() }
 	h.SetSessions([]wire.ProjectInfo{{ID: "p", Name: "proj"}}, sessions)
 	return h, v, s
@@ -67,7 +65,7 @@ func sess(id string, order int, focusedAt int64) wire.SessionInfo {
 	return wire.SessionInfo{ID: id, Name: id, Title: "t-" + id, Alive: true, ProjectID: "p", Order: order, FocusedAt: focusedAt}
 }
 
-func selected(st hudState) string {
+func selected(st State) string {
 	if st.Selected < 0 {
 		return ""
 	}
@@ -311,7 +309,7 @@ func TestHUDTargetKilledWhileOpen(t *testing.T) {
 
 func TestHUDListsAllLiveSessions(t *testing.T) {
 	var ss []wire.SessionInfo
-	for i := 0; i < maxSessionRows+6; i++ {
+	for i := 0; i < 30; i++ {
 		ss = append(ss, sess(fmt.Sprintf("s%02d", i), i, 0))
 	}
 	h, v, _ := newTestHUD(ss...)
@@ -456,5 +454,38 @@ func TestHUDTagsShellTargets(t *testing.T) {
 		if got := strings.HasPrefix(tg.Label, "[shell] "); got != want {
 			t.Errorf("target %s label %q: shell tag = %v, want %v", tg.ID, tg.Label, got, want)
 		}
+	}
+}
+
+// Spec 575: the Windows box writes its keys out; no macOS glyph may
+// reach it, in the hints or in a status.
+func TestHintsUseInjectedKeyNames(t *testing.T) {
+	v, s := &fakeView{}, &fakeSender{connected: true}
+	h := NewHUD(v, s, nil, PCKeys)
+	h.goSend = func(f func()) { f() }
+	h.SetSessions([]wire.ProjectInfo{{ID: "p", Name: "proj"}}, []wire.SessionInfo{sess("a", 0, 1)})
+	h.Open()
+	if got, want := v.last().Hints, "[Enter] send · [Shift+Enter] new line · [↑↓] target · [esc] cancel"; got != want {
+		t.Fatalf("hints = %q, want %q", got, want)
+	}
+	h.Submit("hi")
+	h.OnError("a", "session_busy", "busy")
+	st := v.last()
+	if strings.ContainsAny(st.Status+st.Hints, "↩⇧") {
+		t.Fatalf("macOS glyph in a Windows box: status %q, hints %q", st.Status, st.Hints)
+	}
+	if !strings.Contains(st.Status, "Press Enter to queue") {
+		t.Fatalf("busy status = %q", st.Status)
+	}
+}
+
+// Spec 575: a Shift+Enter in the Windows box is one rune once
+// normalized, so it cannot pass for Handy's transcription.
+func TestFromEditNormalizesCRLF(t *testing.T) {
+	if got := FromEdit("a\r\nb\r\n"); got != "a\nb\n" {
+		t.Fatalf("FromEdit = %q", got)
+	}
+	if n := len([]rune(FromEdit("hi\r\n"))) - len([]rune("hi")); n != 1 {
+		t.Fatalf("a newline adds %d runes, want 1", n)
 	}
 }

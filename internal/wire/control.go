@@ -338,6 +338,10 @@ type SessionInfo struct {
 	// and not yet ended. Subagent tool calls never drive CurrentTool,
 	// State or the plan; this is the only place they show on the row.
 	SubagentsRunning int `json:"subagents_running,omitempty"`
+	// PinCount is how many responses the agent has pinned (spec 566).
+	// The sidebar badge renders from it; the pins themselves are
+	// fetched with GET_PINS.
+	PinCount int `json:"pin_count,omitempty"`
 
 	// Kind is KindPTY or KindACP; empty means KindPTY.
 	Kind string `json:"kind,omitempty"`
@@ -1474,8 +1478,8 @@ const (
 	// process inside a session cannot use the environment it was
 	// handed to create, attach to or kill sessions. It is also the
 	// code a ModeSession connection gets for any verb outside
-	// ADD_IDEA / LIST_IDEAS / SUBMIT_RESULT, and a control connection
-	// gets for SUBMIT_RESULT.
+	// sessionModeFrames (ADD_IDEA, LIST_IDEAS, SUBMIT_RESULT, ADD_PIN,
+	// …), and a control connection gets for SUBMIT_RESULT or ADD_PIN.
 	ErrCodeModeNotAllowed = "mode_not_allowed"
 	// ErrCodeSessionAuthFailed is returned INSTEAD of serving a
 	// ModeSession, ModeEvent or ModePlanReview HELLO whose session_token
@@ -1866,6 +1870,12 @@ type PluginEvent struct {
 	Nonce string `json:"nonce,omitempty"`
 }
 
+// DictationClientPrefix starts the HELLO client name of the Windows
+// GUI's dictation connection (spec 575). It only feeds the dictation
+// box, so the daemon treats it as headless, like hivebar: no plan
+// review or worktree choice is ever parked on it.
+const DictationClientPrefix = "hive-dictation/"
+
 // MaxMessageLen caps SendToSessionReq.Text in bytes. A note, not a
 // transcript: Claude's own inbox allows far more, and this is smaller
 // on purpose.
@@ -1896,9 +1906,8 @@ type SetFocusedSessionReq struct {
 	SessionID string `json:"session_id"`
 }
 
-// GlobalHotkey is the SET_GLOBAL_HOTKEY payload and the GLOBAL_HOTKEY
-// event (spec 553): the system-wide chord that opens the menu-bar
-// capture HUD. KeyCode is a macOS virtual key code (kVK_*) and
+// GlobalHotkey is the system-wide chord that opens the menu-bar capture
+// HUD (spec 553), carried in Dictation. KeyCode is a macOS virtual key code (kVK_*) and
 // Modifiers a Carbon modifier mask (cmdKey, shiftKey, optionKey,
 // controlKey), so the menu bar can hand both to RegisterEventHotKey
 // without parsing the GUI's chord grammar. Enabled false means "no
@@ -1936,6 +1945,45 @@ func (h GlobalHotkey) Valid() bool {
 		return true
 	}
 	return h.KeyCode < 128 && h.Modifiers != 0 && h.Modifiers&^hotkeyModAll == 0
+}
+
+// Dictation is the DICTATION event (spec 573): every setting of the
+// menu-bar capture HUD.
+type Dictation struct {
+	Hotkey GlobalHotkey `json:"hotkey"`
+	// HandyAutoStart starts Handy recording when the HUD opens.
+	HandyAutoStart bool `json:"handy_auto_start"`
+}
+
+// DefaultDictation is the HUD's settings until the user changes them.
+var DefaultDictation = Dictation{Hotkey: DefaultGlobalHotkey}
+
+// SetDictationReq is the SET_DICTATION payload. A nil field leaves that
+// setting as it is, so the GUI's keymap sync and its Settings toggle
+// each write only their own field.
+type SetDictationReq struct {
+	Hotkey         *GlobalHotkey `json:"hotkey,omitempty"`
+	HandyAutoStart *bool         `json:"handy_auto_start,omitempty"`
+}
+
+// Valid reports whether r names at least one setting and its hotkey,
+// if any, can be registered.
+func (r SetDictationReq) Valid() bool {
+	if r.Hotkey == nil && r.HandyAutoStart == nil {
+		return false
+	}
+	return r.Hotkey == nil || r.Hotkey.Valid()
+}
+
+// Apply returns d with r's non-nil fields.
+func (r SetDictationReq) Apply(d Dictation) Dictation {
+	if r.Hotkey != nil {
+		d.Hotkey = *r.Hotkey
+	}
+	if r.HandyAutoStart != nil {
+		d.HandyAutoStart = *r.HandyAutoStart
+	}
+	return d
 }
 
 // SendToSessionReq is the SEND_TO_SESSION payload.

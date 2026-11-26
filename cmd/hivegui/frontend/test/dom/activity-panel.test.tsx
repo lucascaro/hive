@@ -10,6 +10,18 @@ import { act, cleanup, fireEvent, render } from '@testing-library/react';
 // answer arrives on the event stream, which these tests hand-feed.
 vi.mock('../../src/bridge.js', () => ({
   GetActivity: vi.fn(() => Promise.resolve()),
+  // The Pinned section (spec 566) shares the panel; pinned-section.test.tsx
+  // covers it.
+  GetPins: vi.fn(() => Promise.resolve()),
+  GetPinBody: vi.fn(() => Promise.resolve()),
+  Unpin: vi.fn(() => Promise.resolve()),
+  UnpinAll: vi.fn(() => Promise.resolve()),
+  SetClipboardText: vi.fn(() => Promise.resolve()),
+}));
+// app/dom.js reads #terms at import; the panel only needs its reporters.
+vi.mock('../../src/app/dom.js', () => ({
+  flashStatus: vi.fn(),
+  reportFailure: () => () => {},
 }));
 
 import * as bridge from '../../src/bridge.js';

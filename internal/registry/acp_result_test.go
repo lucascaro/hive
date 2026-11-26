@@ -205,11 +205,18 @@ func TestMCPServersResentOnLoad(t *testing.T) {
 		t.Fatal(err)
 	}
 	waitFor(t, "reload", func() bool { return info(r, e.ID).Alive })
-	var lines []string
+	var lines, pinLines []string
 	for _, c := range acptest.Calls(dir) {
-		if strings.HasPrefix(c, "mcp ") {
+		switch {
+		case strings.HasPrefix(c, "mcp ") && strings.Contains(c, " mcp-pin"):
+			// The pin server (spec 566) rides beside it, on both calls.
+			pinLines = append(pinLines, c)
+		case strings.HasPrefix(c, "mcp "):
 			lines = append(lines, c)
 		}
+	}
+	if len(pinLines) != 2 {
+		t.Errorf("pin server lines = %q, want one for session/new and one for session/load", pinLines)
 	}
 	if len(lines) != 2 {
 		t.Fatalf("mcp server lines = %q, want one for session/new and one for session/load", lines)

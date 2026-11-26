@@ -87,6 +87,15 @@ What works:
   session whose agent stops reporting mid-turn greys out and says how long
   it has been quiet.
   (Ctrl+Shift+J / Ctrl+Alt+Shift+J on Windows and Linux.)
+- Pinned responses — Claude and Pi (not Pi under ACP) pin the answers worth keeping (a
+  decision, a root cause, a recipe) with a title, and they collect in a
+  Pinned section at the top of the inspector, newest first: one line
+  each, a click opens the body, and the section collapses to its header
+  so the activity below stays usable. Copy a pin, unpin it, or unpin all
+  (after a confirm). The sidebar row shows how many a session has, and
+  activity-grid tiles list their titles. Pins survive restarts and come
+  back when you reopen or unarchive the session. Agents pin on their own
+  initiative; turn it off in Settings → Agents.
 - Idea inbox — notes captured against a project instead of derailing the
   session you are in. Every session Hive spawns can file one from its
   own shell:
@@ -264,9 +273,42 @@ permission for the hotkey, which is active whenever Hive's daemon is
 running. Rebind it, or remove it, under
 `Settings ▸ Shortcuts ▸ Global (system-wide)`. The menu bar's
 **Dictate into a Session…** item opens the same box and shows the
-current hotkey, or says so when another app already owns it. One press
-opens the box and a second starts your dictation tool: macOS gives an
-app no supported way to start Dictation for you.
+current hotkey, or says so when another app already owns it. Usually one
+press opens the box and a second starts your dictation tool: macOS gives
+an app no supported way to start Dictation for you.
+
+With [Handy](https://handy.computer) installed, one press can do both.
+Turn on **Start Handy recording when the dictation box opens** under
+`Settings ▸ Menu bar`, and ⌃⌥Space opens the box with Handy already
+listening. Handy must be running (Hive never launches it), and it only
+starts when the box has a live session to send to. Then either:
+
+- stop Handy with its own key, and its text lands in the box for you to
+  read before ↩ sends it; or
+- press **↩** while it is still recording, which stops Handy and sends
+  the transcription as soon as it arrives. If none arrives within 10
+  seconds, nothing is sent and the box says so.
+
+**Esc**, or anything else that closes the box, including quitting the
+menu bar, cancels Handy, so a recording Hive started never pastes into
+another app. Handy can't tell
+other apps whether it is recording, so if it already was when you press
+⌃⌥Space, the press stops it instead.
+
+#### On Windows
+
+The same box works on Windows while at least one Hive window is open
+(there is no menu bar to keep it alive otherwise). The chord is
+**Ctrl+Shift+Space**, because Ctrl+Alt doubles as AltGr on many keyboard
+layouts. In the box, **Enter** sends, **Shift+Enter** starts a new line,
+**Up/Down** picks the target and **Esc** discards. With several Hive
+windows open, one of them holds the chord and a press opens one box; if
+that window closes, another takes over within a couple of seconds.
+
+The Handy switch lives under `Settings ▸ Dictation`, which appears when
+Handy is installed (in `%LOCALAPPDATA%\Handy` or `%ProgramFiles%\Handy`).
+It behaves as on macOS. Leave Handy's paste method on its default,
+Ctrl+V, so the box can tell its transcription from typing.
 
 ## Reloading vs restarting
 
@@ -396,7 +438,7 @@ These are the defaults. Rebind any of them, and any plugin command, under **Sett
 | ⌘E | Worktrees in the active project (browse, resume, delete) |
 | ⌘I | Capture an idea for later (note, kind, project) |
 | ⇧⌘I | Ideas captured for the active project |
-| ⌃⌥Space | Dictate into a session from any app (macOS; system-wide, opens the menu bar's capture box — see [The menu bar](#the-menu-bar-macos)) |
+| ⌃⌥Space | Dictate into a session from any app (system-wide, opens the capture box — see [The menu bar](#the-menu-bar-macos); Ctrl+Shift+Space on Windows, while a Hive window is open) |
 | ⇧⌘M | Message the active session: a note sent to it — through the agent's own inbox for Claude Code and Pi, otherwise typed when it is quiet (queued if it is working) |
 | ⌥⌘B | Notify me once when the active session stops working (Ctrl+Alt+Shift+B on Windows and Linux) |
 | ⌘1–9 | Jump to nth session |

@@ -34,7 +34,7 @@ import {
   KillSession,
   RestartSession,
   SetClipboardText,
-  ClipboardGetText,
+  ReadClipboard,
   OpenURL,
 } from '../bridge.js';
 import {
@@ -685,8 +685,8 @@ export class SessionTerm {
       }
       if (key === 'v') {
         e.preventDefault();
-        ClipboardGetText()
-          .then((text) => {
+        ReadClipboard()
+          .then(({ text, image }) => {
             // term.paste() rather than a raw _writePty: it folds CRLF to
             // CR and applies bracketed-paste framing when the running
             // program asked for it (DECSET 2004). That framing used to
@@ -694,6 +694,16 @@ export class SessionTerm {
             // writing the clipboard raw would make every multi-line
             // paste submit once per line in Claude/Codex.
             if (text) this.term.paste(text);
+            else if (image) {
+              // Only an agent known to read the clipboard on this key
+              // gets it: the same bytes are a stray keystroke to a
+              // shell (bash in vi mode opens $EDITOR on ESC v).
+              const key = appData().agentImagePasteKeys.get(
+                this.info.agent ?? '',
+              );
+              if (key) this._writePty(key);
+              else flashStatus('Clipboard holds an image, not text');
+            }
           })
           .catch(reportFailure('paste'));
         return false;

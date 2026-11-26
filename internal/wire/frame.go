@@ -314,14 +314,35 @@ const (
 
 	// Dictation capture HUD (spec 553). SET_FOCUSED_SESSION is a GUI's
 	// "the user is looking at this session" report, which the menu-bar
-	// HUD uses as its default target. SET_GLOBAL_HOTKEY stores the
-	// system-wide chord that opens the HUD, and GLOBAL_HOTKEY carries it
-	// to every control client after WELCOME and on change. None of the
-	// three carries text for a session: the HUD delivers through
-	// SEND_TO_SESSION, and TestHUDFramesCarryNoText pins that.
+	// HUD uses as its default target. The HUD's settings travel in
+	// SET_DICTATION / DICTATION below. None of these carries text for a
+	// session: the HUD delivers through SEND_TO_SESSION, and
+	// TestHUDFramesCarryNoText pins that.
 	FrameSetFocusedSession FrameType = 0x57 // C → S, JSON, control
-	FrameSetGlobalHotkey   FrameType = 0x58 // C → S, JSON, control
-	FrameGlobalHotkey      FrameType = 0x59 // S → C, JSON, control
+	// 0x58 and 0x59 were SET_GLOBAL_HOTKEY / GLOBAL_HOTKEY (contract 36),
+	// a hotkey-only payload. They are retired, not reused: a menu bar
+	// built against them can outlive a daemon upgrade, and would read a
+	// new payload shape on the old number as "hotkey disabled".
+
+	// Pinned responses (spec 566; types in pins.go). ADD_PIN is sent
+	// only on a session connection, for the session its HELLO named.
+	// GET_PINS answers one or more PINS pages; GET_PIN_BODY answers
+	// PIN_BODY. PINS_CHANGED is the delta broadcast to control clients.
+	FrameAddPin      FrameType = 0x5a // C → S, JSON, session mode only
+	FrameAddPinOK    FrameType = 0x5b // S → C, JSON
+	FrameGetPins     FrameType = 0x5c // C → S, JSON, control
+	FramePins        FrameType = 0x5d // S → C, JSON, control
+	FrameGetPinBody  FrameType = 0x5e // C → S, JSON, control
+	FramePinBody     FrameType = 0x5f // S → C, JSON, control
+	FrameUnpin       FrameType = 0x60 // C → S, JSON, control
+	FrameUnpinAll    FrameType = 0x61 // C → S, JSON, control
+	FramePinsChanged FrameType = 0x62 // S → C, JSON, control
+
+	// Dictation settings (spec 573). SET_DICTATION changes the fields it
+	// names and leaves the rest; DICTATION carries all of them to every
+	// control client after WELCOME and on change.
+	FrameSetDictation FrameType = 0x63 // C → S, JSON, control
+	FrameDictation    FrameType = 0x64 // S → C, JSON, control
 )
 
 // ControlRequestFrames lists every frame a control-mode client may send.
@@ -350,7 +371,8 @@ var ControlRequestFrames = []FrameType{
 	FrameArchiveSession, FrameListArchived, FrameUnarchiveSession, FrameDeleteArchived,
 	FrameWaitSession, FrameCancelAcp, FrameListAcpAgents,
 	FramePluginMessage, FramePrepareWorktree, FrameCommitWorktree,
-	FrameSetFocusedSession, FrameSetGlobalHotkey,
+	FrameSetFocusedSession, FrameSetDictation,
+	FrameAddPin, FrameGetPins, FrameGetPinBody, FrameUnpin, FrameUnpinAll,
 }
 
 // ControlEventFrames lists every frame the daemon sends on a control
@@ -364,7 +386,8 @@ var ControlEventFrames = []FrameType{
 	FramePlugins, FramePluginEvent, FrameAcpTranscript,
 	FrameSubmitResultOK, FrameSent, FrameArchived, FrameWaited,
 	FrameAck, FrameAcpAgents, FramePreparedWorktree,
-	FrameGlobalHotkey,
+	FrameDictation,
+	FrameAddPinOK, FramePins, FramePinBody, FramePinsChanged,
 }
 
 // NonControlFrames are the frames that never travel on a control
@@ -513,10 +536,28 @@ func (t FrameType) String() string {
 		return "COMMIT_WORKTREE"
 	case FrameSetFocusedSession:
 		return "SET_FOCUSED_SESSION"
-	case FrameSetGlobalHotkey:
-		return "SET_GLOBAL_HOTKEY"
-	case FrameGlobalHotkey:
-		return "GLOBAL_HOTKEY"
+	case FrameSetDictation:
+		return "SET_DICTATION"
+	case FrameDictation:
+		return "DICTATION"
+	case FrameAddPin:
+		return "ADD_PIN"
+	case FrameAddPinOK:
+		return "ADD_PIN_OK"
+	case FrameGetPins:
+		return "GET_PINS"
+	case FramePins:
+		return "PINS"
+	case FrameGetPinBody:
+		return "GET_PIN_BODY"
+	case FramePinBody:
+		return "PIN_BODY"
+	case FrameUnpin:
+		return "UNPIN"
+	case FrameUnpinAll:
+		return "UNPIN_ALL"
+	case FramePinsChanged:
+		return "PINS_CHANGED"
 	case FrameArchiveSession:
 		return "ARCHIVE_SESSION"
 	case FrameListArchived:

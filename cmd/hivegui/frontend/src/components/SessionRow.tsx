@@ -179,6 +179,9 @@ export function SessionRow(p: SessionRowProps) {
         p.ideaText.length > 80 ? `${p.ideaText.slice(0, 80)}…` : p.ideaText
       }`
     : '';
+  // Responses the agent pinned (spec 566), listed in the inspector.
+  const pins = s.pin_count ?? 0;
+  const pinsLabel = `${pins} pinned ${pins === 1 ? 'response' : 'responses'}`;
   const hint = p.index === null ? null : `[${p.index}]`;
   // Restart is only offered where it means something (exited/error, both
   // dead): a running session's restart is the tile's job, not a one-click
@@ -316,14 +319,31 @@ export function SessionRow(p: SessionRowProps) {
           for the same reason that one is: `meta` is display:none the
           moment the pointer enters the row. */}
       <PluginBadges session={s} />
-      {p.ideaText ? (
-        <span
-          className="hv-session-row__idea"
-          role="img"
-          title={ideaLabel}
-          aria-label={ideaLabel}
-        >
-          <Icon name="idea" size={12} />
+      {/* Passive marks — where it came from, and what the agent pinned
+          (spec 566). One cell, so either alone adds one gap, not two. */}
+      {p.ideaText || pins > 0 ? (
+        <span className="hv-session-row__marks">
+          {p.ideaText ? (
+            <span
+              className="hv-session-row__idea"
+              role="img"
+              title={ideaLabel}
+              aria-label={ideaLabel}
+            >
+              <Icon name="idea" size={12} />
+            </span>
+          ) : null}
+          {pins > 0 ? (
+            <span
+              className="hv-session-row__pins"
+              role="img"
+              title={pinsLabel}
+              aria-label={pinsLabel}
+            >
+              <Icon name="pin" size={12} />
+              <span className="hv-session-row__pins-count">{pins}</span>
+            </span>
+          ) : null}
         </span>
       ) : null}
       {wtBranch || shared > 1 ? (

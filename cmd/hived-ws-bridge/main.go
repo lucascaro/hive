@@ -463,6 +463,34 @@ func (s *session) dispatch(req rpcReq) {
 			return
 		}
 		s.respond(req.ID, "", s.controlWriteJSON(wire.FrameGetActivity, p))
+	case "GetPins":
+		var p wire.GetPinsReq
+		if err := parseParams(req.Params, &p); err != nil {
+			s.respond(req.ID, nil, err)
+			return
+		}
+		s.respond(req.ID, "", s.controlWriteJSON(wire.FrameGetPins, p))
+	case "GetPinBody":
+		var p wire.GetPinBodyReq
+		if err := parseParams(req.Params, &p); err != nil {
+			s.respond(req.ID, nil, err)
+			return
+		}
+		s.respond(req.ID, "", s.controlWriteJSON(wire.FrameGetPinBody, p))
+	case "Unpin":
+		var p wire.UnpinReq
+		if err := parseParams(req.Params, &p); err != nil {
+			s.respond(req.ID, nil, err)
+			return
+		}
+		s.respond(req.ID, "", s.controlWriteJSON(wire.FrameUnpin, p))
+	case "UnpinAll":
+		var p wire.UnpinAllReq
+		if err := parseParams(req.Params, &p); err != nil {
+			s.respond(req.ID, nil, err)
+			return
+		}
+		s.respond(req.ID, "", s.controlWriteJSON(wire.FrameUnpinAll, p))
 	case "GetAcpTranscript":
 		var p wire.GetAcpTranscriptReq
 		if err := parseParams(req.Params, &p); err != nil {
@@ -518,7 +546,16 @@ func (s *session) dispatch(req rpcReq) {
 			s.respond(req.ID, nil, err)
 			return
 		}
-		s.respond(req.ID, "", s.controlWriteJSON(wire.FrameSetGlobalHotkey, p))
+		s.respond(req.ID, "", s.controlWriteJSON(wire.FrameSetDictation, wire.SetDictationReq{Hotkey: &p}))
+	case "SetHandyAutoStart":
+		var p struct {
+			On bool `json:"on"`
+		}
+		if err := parseParams(req.Params, &p); err != nil {
+			s.respond(req.ID, nil, err)
+			return
+		}
+		s.respond(req.ID, "", s.controlWriteJSON(wire.FrameSetDictation, wire.SetDictationReq{HandyAutoStart: &p.On}))
 	case "SetSessionNotifyWhenIdle":
 		var p struct {
 			SessionID string `json:"session_id"`

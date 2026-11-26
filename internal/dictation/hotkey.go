@@ -2,9 +2,7 @@
 // Copyright (C) 2026 Lucas Caro
 // See LICENSE and ADDITIONAL-TERMS.md.
 
-//go:build darwin
-
-package main
+package dictation
 
 import (
 	"fmt"
@@ -16,25 +14,25 @@ import (
 // The system-wide hotkey that opens the dictation HUD (spec 553).
 //
 // The chord is the user's keymap entry for `dictate-hud`, which the GUI
-// converts and the daemon relays as GLOBAL_HOTKEY. hivebar registers it
+// converts and the daemon relays in DICTATION. hivebar registers it
 // with Carbon's RegisterEventHotKey, which needs no Accessibility or
 // Input Monitoring permission (unlike an event tap, or an NSEvent global
 // monitor) and swallows the chord before any app sees it.
 //
-// Dictation decides what to register and what the menu says about it.
-// The Carbon calls themselves are hud_darwin.m's, behind registrar.
+// Hotkeys decides what to register and what the menu says about it.
+// The Carbon calls themselves are hud_darwin.m's, behind Registrar.
 
-// registrar registers a hotkey with the OS. Register replaces whatever
+// Registrar registers a hotkey with the OS. Register replaces whatever
 // was registered before (so a reconnect that re-delivers the same chord
 // is harmless) and reports the outcome later through
-// Dictation.Registered. A disabled hotkey only unregisters.
-type registrar interface {
+// Hotkeys.Registered. A disabled hotkey only unregisters.
+type Registrar interface {
 	Register(h wire.GlobalHotkey)
 }
 
-// Dictation tracks the hotkey and renders its menu line.
-type Dictation struct {
-	reg registrar
+// Hotkeys tracks the hotkey and renders its menu line.
+type Hotkeys struct {
+	reg Registrar
 	// onChange receives the menu line and whether clicking it opens the
 	// HUD. Called with the lock held; it must not block.
 	onChange func(label string, enabled bool)
@@ -43,18 +41,18 @@ type Dictation struct {
 	connected bool
 	contract  int
 	want      wire.GlobalHotkey
-	have      bool // a GLOBAL_HOTKEY has arrived since connecting
+	have      bool // a DICTATION has arrived since connecting
 	taken     bool // the OS refused the chord: another app holds it
 	sent      wire.GlobalHotkey
 	sentValid bool
 }
 
-func NewDictation(reg registrar, onChange func(string, bool)) *Dictation {
-	return &Dictation{reg: reg, onChange: onChange}
+func NewHotkeys(reg Registrar, onChange func(string, bool)) *Hotkeys {
+	return &Hotkeys{reg: reg, onChange: onChange}
 }
 
 // Connected records a daemon handshake and its contract.
-func (d *Dictation) Connected(contract int) {
+func (d *Hotkeys) Connected(contract int) {
 	d.mu.Lock()
 	defer d.mu.Unlock()
 	d.connected, d.contract, d.have = true, contract, false
@@ -64,15 +62,15 @@ func (d *Dictation) Connected(contract int) {
 // Disconnected records that the daemon went away. The registration is
 // kept: the HUD still opens, and says the daemon is not running if the
 // user tries to send.
-func (d *Dictation) Disconnected() {
+func (d *Hotkeys) Disconnected() {
 	d.mu.Lock()
 	defer d.mu.Unlock()
 	d.connected = false
 	d.renderLocked()
 }
 
-// SetHotkey is a GLOBAL_HOTKEY from the daemon.
-func (d *Dictation) SetHotkey(h wire.GlobalHotkey) {
+// SetHotkey is the chord in a DICTATION from the daemon.
+func (d *Hotkeys) SetHotkey(h wire.GlobalHotkey) {
 	d.mu.Lock()
 	defer d.mu.Unlock()
 	if !h.Valid() {
@@ -93,7 +91,7 @@ func (d *Dictation) SetHotkey(h wire.GlobalHotkey) {
 
 // Registered is the OS's answer to the last Register: ok false means the
 // chord is already registered by another app.
-func (d *Dictation) Registered(h wire.GlobalHotkey, ok bool) {
+func (d *Hotkeys) Registered(h wire.GlobalHotkey, ok bool) {
 	d.mu.Lock()
 	defer d.mu.Unlock()
 	if h != d.sent {
@@ -105,16 +103,16 @@ func (d *Dictation) Registered(h wire.GlobalHotkey, ok bool) {
 
 const dictateTitle = "Dictate into a Session…"
 
-func (d *Dictation) renderLocked() {
+func (d *Hotkeys) renderLocked() {
 	if d.onChange == nil {
 		return
 	}
 	d.onChange(d.labelLocked())
 }
 
-func (d *Dictation) labelLocked() (string, bool) {
+func (d *Hotkeys) labelLocked() (string, bool) {
 	switch {
-	case d.connected && d.contract < hudContract:
+	case d.connected && d.contract < Contract:
 		return "Dictation needs a newer daemon — restart it", false
 	case !d.sentValid || !d.want.Enabled:
 		return dictateTitle, true

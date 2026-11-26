@@ -12,7 +12,7 @@
 import { Fragment, useEffect, useLayoutEffect, useMemo } from 'react';
 import type { ReactNode } from 'react';
 import { closeHelpOverlay } from '../../app/modals/help-overlay.js';
-import { isMac } from '../../lib/platform.js';
+import { dictationSupported, isMac } from '../../lib/platform.js';
 import { shortcutGroups } from '../../lib/shortcuts.js';
 import { pluginCommands } from '../../app/plugin-host.js';
 import { useAppStore } from '../../store/store.js';
@@ -43,7 +43,11 @@ function HelpOverlayBody({ root }: { root: HTMLElement }): ReactNode {
   const keymap = useAppStore((s) => s.keymap);
   const groups = useMemo(() => {
     const bound = pluginCommands().filter((r) => r.bound);
-    const core = shortcutGroups({ isMac, keymap });
+    const core = shortcutGroups({
+      isMac,
+      keymap,
+      dictation: dictationSupported,
+    });
     if (bound.length === 0) return core;
     return [
       ...core,

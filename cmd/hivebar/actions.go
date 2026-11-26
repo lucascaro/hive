@@ -7,8 +7,6 @@
 package main
 
 import (
-	"bytes"
-	"context"
 	"errors"
 	"fmt"
 	"log"
@@ -21,6 +19,7 @@ import (
 	"time"
 
 	hdaemon "github.com/lucascaro/hive/internal/daemon"
+	"github.com/lucascaro/hive/internal/dictation"
 )
 
 // enclosingAppBundle walks up from p to the nearest .app directory,
@@ -213,34 +212,12 @@ func asAppleScriptString(s string) string {
 
 // runner runs an external command with a deadline and returns its stdout.
 // Everything hivebar execs for the menu goes through one so a hung child
-// cannot freeze a menu refresh, and tests can swap it out.
-type runner func(timeout time.Duration, name string, args ...string) (string, error)
+// cannot freeze a menu refresh, and tests can swap it out. The dictation
+// box's Handy calls share the same one.
+type runner = dictation.Runner
 
-// runWithTimeout is the production runner. The deadline is enforced by the
-// context, so a command that outlives it is killed rather than abandoned.
-// The error carries the command's stderr: the failures worth showing the
-// user (an unsigned build refusing a login item) are written there.
-func runWithTimeout(timeout time.Duration, name string, args ...string) (string, error) {
-	ctx, cancel := context.WithTimeout(context.Background(), timeout)
-	defer cancel()
-	var stdout, stderr bytes.Buffer
-	cmd := exec.CommandContext(ctx, name, args...)
-	cmd.Stdout, cmd.Stderr = &stdout, &stderr
-	// Bound the wait for the output pipes after the kill: a grandchild that
-	// inherited them would otherwise hold Run open past the deadline.
-	cmd.WaitDelay = 500 * time.Millisecond
-	err := cmd.Run()
-	if errors.Is(ctx.Err(), context.DeadlineExceeded) {
-		return "", fmt.Errorf("%s: no answer after %s: %w", filepath.Base(name), timeout, context.DeadlineExceeded)
-	}
-	if err != nil {
-		if msg := strings.TrimSpace(stderr.String()); msg != "" {
-			return "", errors.New(msg)
-		}
-		return "", err
-	}
-	return stdout.String(), nil
-}
+// runWithTimeout is the production runner.
+var runWithTimeout = dictation.RunWithTimeout
 
 // guiBinary is the hivegui executable inside the enclosing Hive.app, or ""
 // outside a bundle (a dev tree has no login item to manage anyway).

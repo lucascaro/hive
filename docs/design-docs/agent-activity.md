@@ -371,6 +371,63 @@ this data already fire on both platforms today. The other
 platform-specific details are the separator-agnostic label derivation
 above and the daemon-side duration clock.
 
+## Pinned responses
+
+Spec [566](../product-specs/566-pin-important-agent-responses-to-the-session-s-ins.md).
+Activity shows what an agent is doing; a pin is something it concluded
+and wants the user to be able to find again — a title and a markdown
+body the agent writes. Pins share the inspector with activity, but not
+its lifetime, and that one difference shapes everything below.
+
+**Where pins come from.** Claude has no built-in tool Hive could
+observe the way it observes the task tools, so Hive supplies one: a
+stdio MCP server, `hived mcp-pin`, with a single `pin` tool. A terminal
+Claude gets it through `--mcp-config` (additive; `--strict-mcp-config`
+is never passed), with the session's `HIVE_SESSION_*` passed by
+`${VAR}` reference, not by value, so the rotating token is never in
+argv. The same `--settings` that wires the hooks pre-allows
+`mcp__hive-pin__pin`, so pinning never stops the agent for a prompt;
+permission rules from every settings source are combined, like hooks.
+The SessionStart hook adds a nudge naming the tool, because MCP tools
+may be deferred behind ToolSearch. An ACP Claude gets the same server
+as a second `acp.MCPServer`, named after its random submit server, and
+the registry auto-allows exactly that identity. A terminal Pi gets a
+native `hive_pin` tool from the Hive extension; an ACP Pi gets none,
+since its registry env forces `HIVE_PIN_TOOL=0` as it does Hive's other
+Pi tools. One Hive-owned variable,
+`HIVE_PIN_TOOL`, set both ways from the "Let agents pin" setting,
+decides all of it: off means no server, no allow rule, no nudge, no
+tool. A Bash `hived pin` command was the alternative; it needed an
+absolute path with spaces, heredoc quoting and a permission prompt per
+pin, and could not work under ACP, which strips `HIVE_*`.
+
+**Lifetime.** Pins live on the registry `Entry`, never in the agent-state
+machine: that is replaced on restart and revive. On disk they are
+`sessions/<id>/pins/<pid>.json` (header) and `<pid>.md` (body), body
+first, so a header means a whole pin; boot reads headers only. A close
+or archive moves the directory beside the record and a restore moves it
+back; `discardRecord` removes it, and a boot sweep removes any left
+beside a record that no longer exists. Each session's pins have their
+own mutex, never taken while holding `r.mu`; a close sets a flag under
+it once it is past the point of no return, so a pin racing a close
+either travels with the tombstone or is refused — it can never
+recreate the removed session directory.
+
+**Size.** A session keeps up to 1000 pins (`MaxPinsPerSession`), a
+safety bound against an agent pinning in a loop: the next one is
+refused with `pin_limit`, never an old one evicted, until the user
+prunes with unpin or "Unpin all". Each pin is bounded at the trust
+boundary — title 256 B, body 64 KiB, rejected rather than truncated —
+and the list travels as headers in pages of 200 (`PINS`, `done` on the
+last), with a body fetched when the user opens it (`GET_PIN_BODY`).
+The client merges pages and the `PINS_CHANGED` deltas by id; a clear
+that lands mid-load discards the rest of that load's pages.
+
+**Who may do what.** A session's own connection may only add a pin, to
+itself (`ADD_PIN`; the payload has no session field). Reading,
+unpinning and the deltas are control-only, and a plugin may read but
+not unpin — which pins to keep is the user's choice.
+
 ## What is deliberately not here
 
 - **Persistence.** Activity dies with the daemon. Making it survive

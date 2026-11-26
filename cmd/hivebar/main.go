@@ -34,13 +34,16 @@ import (
 	"io"
 	"log"
 	"os"
+	"os/signal"
 	"path/filepath"
 	"strings"
+	"syscall"
 	"time"
 
 	"fyne.io/systray"
 
 	"github.com/lucascaro/hive/internal/buildinfo"
+	"github.com/lucascaro/hive/internal/dictation"
 	"github.com/lucascaro/hive/internal/registry"
 )
 
@@ -122,18 +125,32 @@ func main() {
 
 	// The dictation capture HUD (spec 553): a native panel, the Carbon
 	// hotkey that opens it, and the menu item that names that hotkey.
-	hud := NewHUD(nativeView{}, client)
-	dict := NewDictation(nativeRegistrar{}, menu.SetDictation)
+	// Handy, when installed and switched on, records as it opens (573).
+	hud := dictation.NewHUD(nativeView{}, client, dictation.NewExecHandy(nativeHandyRunning), dictation.MacKeys)
+	dict := dictation.NewHotkeys(nativeRegistrar{}, menu.SetDictation)
 	setNativeTargets(hud, dict)
 	client.AttachHUD(hud, dict)
 	menu.AttachHUD(hud)
 
 	go client.Run()
 
+	// A Handy recording the HUD started must not outlive the menu bar:
+	// Quit runs the exit hook below, and SIGTERM/SIGINT (a logout, `kill`)
+	// go through the same quit rather than killing the process outright.
+	// SIGKILL and a crash cannot be caught.
+	sigs := make(chan os.Signal, 1)
+	signal.Notify(sigs, syscall.SIGTERM, syscall.SIGINT)
+	go func() {
+		<-sigs
+		hud.Shutdown()
+		systray.Quit()
+	}()
+
 	// systray.Run must be called from main: the package locks the OS
 	// thread itself, and Go guarantees main starts on the initial one —
 	// which is the thread AppKit requires.
 	systray.Run(menu.Ready, func() {
+		hud.Shutdown()
 		log.Printf("hivebar: exiting")
 	})
 }

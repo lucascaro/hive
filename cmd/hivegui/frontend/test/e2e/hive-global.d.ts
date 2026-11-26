@@ -55,6 +55,7 @@ interface HiveTestApi {
     projectId?: string,
     agent?: string,
   ): Promise<string>;
+  addProject?(name: string): Promise<string>;
   killSession?(id: string, force?: boolean): Promise<string>;
   setSessionState?(id: string, next: string, source?: string): void;
   setSessionPlan?(id: string, done: number, total: number, tool?: string): void;
@@ -92,6 +93,14 @@ interface HiveTestApi {
     activity: { events?: unknown[]; plan?: unknown[]; stale_at?: string },
   ): void;
   emitActivity?(msg: Record<string, unknown>): void;
+  setPins?(
+    id: string,
+    pins: { title: string; body: string; ageMs?: number }[],
+  ): void;
+  addPin?(id: string, title: string, body: string): void;
+  pins?(id: string): string[];
+  pinRequests?: string[];
+  clipboard?(): string;
   /** Gives a session a transcript so the find box can search it. */
   setTranscript?(
     id: string,

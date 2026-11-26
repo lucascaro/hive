@@ -58,46 +58,71 @@ func TestSetFocusedSessionStamps(t *testing.T) {
 	}
 }
 
-func TestSetGlobalHotkeyRefusesPlugin(t *testing.T) {
+func TestSetDictationRefusesPlugin(t *testing.T) {
 	d := newFrameTestDaemon(t)
 	ops, errs, _ := asyncOps("plugin:acme")
-	d.handleControlFrame(context.Background(), ops, wire.FrameSetGlobalHotkey, mustJSON(t, wire.GlobalHotkey{Enabled: false}))
+	on := true
+	d.handleControlFrame(context.Background(), ops, wire.FrameSetDictation, mustJSON(t, wire.SetDictationReq{HandyAutoStart: &on}))
 	expectRefused(t, errs)
-	if got := d.reg.GlobalHotkey(); got != wire.DefaultGlobalHotkey {
-		t.Fatalf("a plugin changed the hotkey to %+v", got)
+	if got := d.reg.Dictation(); got != wire.DefaultDictation {
+		t.Fatalf("a plugin changed the dictation settings to %+v", got)
 	}
 }
 
-func TestSetGlobalHotkeyRejectsInvalid(t *testing.T) {
-	d := newFrameTestDaemon(t)
-	ops, errs, _ := asyncOps("")
-	d.handleControlFrame(context.Background(), ops, wire.FrameSetGlobalHotkey, mustJSON(t, wire.GlobalHotkey{KeyCode: 49, Enabled: true}))
-	if e := <-errs; e.Code != "bad_payload" {
-		t.Fatalf("code = %q, want bad_payload", e.Code)
+func TestSetDictationRejectsInvalid(t *testing.T) {
+	for name, req := range map[string]wire.SetDictationReq{
+		"empty":      {},
+		"bad hotkey": {Hotkey: &wire.GlobalHotkey{KeyCode: 49, Enabled: true}},
+	} {
+		t.Run(name, func(t *testing.T) {
+			d := newFrameTestDaemon(t)
+			ops, errs, _ := asyncOps("")
+			d.handleControlFrame(context.Background(), ops, wire.FrameSetDictation, mustJSON(t, req))
+			if e := <-errs; e.Code != "bad_payload" {
+				t.Fatalf("code = %q, want bad_payload", e.Code)
+			}
+		})
 	}
 }
 
-// A change reaches every subscriber; setting the same chord again is
-// silent, so the GUI's reconcile cannot echo into a broadcast storm.
-func TestSetGlobalHotkeyBroadcasts(t *testing.T) {
+// The retired SET_GLOBAL_HOTKEY number is an unknown frame now (logged
+// and ignored, like any other), not a second way to set the chord.
+func TestRetiredSetGlobalHotkeyFrameIgnored(t *testing.T) {
 	d := newFrameTestDaemon(t)
-	ch, unsub := d.hotkeys.Subscribe()
+	ops, _, _ := asyncOps("")
+	// A payload SET_DICTATION would accept, so a wrong routing of 0x58
+	// would show as a changed setting.
+	on := true
+	d.handleControlFrame(context.Background(), ops, wire.FrameType(0x58), mustJSON(t, wire.SetDictationReq{HandyAutoStart: &on}))
+	if got := d.reg.Dictation(); got != wire.DefaultDictation {
+		t.Fatalf("frame 0x58 changed the settings to %+v", got)
+	}
+}
+
+// A change reaches every subscriber with every setting, so a switch-only
+// set still tells the menu bar the chord; setting the same values again
+// is silent, so the GUI's reconcile cannot echo into a broadcast storm.
+func TestSetDictationBroadcastsFullSettings(t *testing.T) {
+	d := newFrameTestDaemon(t)
+	ch, unsub := d.dictation.Subscribe()
 	defer unsub()
 	ops, _, _ := asyncOps("")
-	want := wire.GlobalHotkey{KeyCode: 2, Modifiers: wire.HotkeyModCmd | wire.HotkeyModOption, Enabled: true}
-	d.handleControlFrame(context.Background(), ops, wire.FrameSetGlobalHotkey, mustJSON(t, want))
+	on := true
+	req := wire.SetDictationReq{HandyAutoStart: &on}
+	d.handleControlFrame(context.Background(), ops, wire.FrameSetDictation, mustJSON(t, req))
+	want := wire.Dictation{Hotkey: wire.DefaultGlobalHotkey, HandyAutoStart: true}
 	select {
 	case got := <-ch:
 		if got != want {
 			t.Fatalf("broadcast %+v, want %+v", got, want)
 		}
 	case <-time.After(2 * time.Second):
-		t.Fatal("no GLOBAL_HOTKEY broadcast")
+		t.Fatal("no DICTATION broadcast")
 	}
-	d.handleControlFrame(context.Background(), ops, wire.FrameSetGlobalHotkey, mustJSON(t, want))
+	d.handleControlFrame(context.Background(), ops, wire.FrameSetDictation, mustJSON(t, req))
 	select {
 	case extra := <-ch:
-		t.Fatalf("unchanged chord re-broadcast %+v", extra)
+		t.Fatalf("unchanged settings re-broadcast %+v", extra)
 	case <-time.After(100 * time.Millisecond):
 	}
 }

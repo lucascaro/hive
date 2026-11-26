@@ -15,6 +15,7 @@ import { useEffect, useRef, type ReactNode } from 'react';
 
 import type { PlanItem } from '../../lib/activity.js';
 import { Icon } from '../Icon.js';
+import { PinnedTitles } from './PinnedSection.js';
 import {
   ActivityEmpty,
   NoCalls,
@@ -62,6 +63,7 @@ export function ActivityTile({ sessionId }: { sessionId: string }): ReactNode {
       data-stale={stale ? '' : undefined}
       onMouseDown={keepFocus}
     >
+      <PinnedTitles sessionId={info.id} count={info.pin_count ?? 0} />
       {empty ? (
         <ActivityEmpty />
       ) : (

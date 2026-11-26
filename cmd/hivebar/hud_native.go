@@ -19,6 +19,7 @@ import (
 	"sync/atomic"
 	"unsafe"
 
+	"github.com/lucascaro/hive/internal/dictation"
 	"github.com/lucascaro/hive/internal/wire"
 )
 
@@ -29,21 +30,21 @@ import (
 // nativeTargets are the receivers of the exported callbacks, set once in
 // main before anything can fire.
 var nativeTargets atomic.Pointer[struct {
-	hud  *HUD
-	dict *Dictation
+	hud  *dictation.HUD
+	dict *dictation.Hotkeys
 }]
 
-func setNativeTargets(h *HUD, d *Dictation) {
+func setNativeTargets(h *dictation.HUD, d *dictation.Hotkeys) {
 	nativeTargets.Store(&struct {
-		hud  *HUD
-		dict *Dictation
+		hud  *dictation.HUD
+		dict *dictation.Hotkeys
 	}{h, d})
 }
 
 // nativeView is the AppKit panel.
 type nativeView struct{}
 
-func (nativeView) Show(st hudState, clear, focus bool) {
+func (nativeView) Show(st dictation.State, clear, focus bool) {
 	labels := make([]string, len(st.Targets))
 	for i, t := range st.Targets {
 		// \x1f separates labels on the way into Objective-C; a title is
@@ -114,6 +115,21 @@ func goHUDSubmit(text *C.char) {
 	if t := nativeTargets.Load(); t != nil {
 		t.hud.Submit(C.GoString(text))
 	}
+}
+
+//export goHUDTextChanged
+func goHUDTextChanged(text *C.char, pasted C.int) {
+	if t := nativeTargets.Load(); t != nil {
+		t.hud.TextChanged(C.GoString(text), pasted != 0)
+	}
+}
+
+// nativeHandyRunning reports that Handy is running, from AppKit's list of
+// running applications: cheap, and safe to call on any thread.
+func nativeHandyRunning() bool {
+	id := C.CString(dictation.HandyBundleID)
+	defer C.free(unsafe.Pointer(id))
+	return C.hbAppRunning(id) != 0
 }
 
 //export goHUDCancel

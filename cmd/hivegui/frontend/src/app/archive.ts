@@ -104,6 +104,7 @@ const ARCHIVE_ERRORS: Record<string, string> = {
   archive_failed: 'could not archive the session',
   no_such_archived_session: 'that session is no longer archived',
   session_already_open: 'that session is already open',
+  session_closing: 'that session is still closing — try again in a moment',
   unarchive_failed: 'could not unarchive the session',
   delete_archived_failed: 'could not delete the archived session',
 };
@@ -121,11 +122,15 @@ export function onArchiveError(
     code === 'archive_failed'
       ? pendingArchive
       : pendingUnarchive;
-  // no_such_session and session_already_open are not archive's alone
-  // (an ACP prompt or a restore can raise them too): claim them only
-  // while a request of this kind is outstanding, and never one that
-  // names a session this window did not ask about.
-  if (code === 'no_such_session' || code === 'session_already_open') {
+  // no_such_session, session_already_open and session_closing are not
+  // archive's alone (an ACP prompt or a restore can raise them too):
+  // claim them only while a request of this kind is outstanding, and
+  // never one that names a session this window did not ask about.
+  if (
+    code === 'no_such_session' ||
+    code === 'session_already_open' ||
+    code === 'session_closing'
+  ) {
     if (pending.size === 0) return false;
     if (sessionId && !pending.has(sessionId)) return false;
   }
@@ -161,6 +166,8 @@ export async function confirmAndDeleteArchived(
           ]
         : []),
     ],
+    // Enter takes the delete that keeps the worktree on disk.
+    defaultValue: 'keep',
   });
   if (answer === 'cancel') return;
   DeleteArchivedSession(a.session_id, answer === 'remove', false).catch(
@@ -190,6 +197,12 @@ export async function onArchivedWorktreeDirty(
         danger: true,
       },
     ],
+    // No defaultValue: Enter answers Cancel. This question arrives
+    // after an async gap (the daemon's refusal), possibly while Enter is
+    // still held from the delete, and its only yes destroys uncommitted
+    // changes — the self-raised rule applies (AGENTS.md). Only
+    // `[esc] Cancel` is shown, as on the dirty-close refusal.
+    enterHint: false,
   });
   if (answer !== 'force') return;
   DeleteArchivedSession(sessionId, true, true).catch(

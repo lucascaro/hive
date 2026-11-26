@@ -29,8 +29,9 @@ typed into its capture HUD (spec 553) and then confirmed with Enter. It
 goes through `SEND_TO_SESSION`, the same frame the GUI's ⇧⌘M sheet
 uses. The HUD accepts no text from anywhere but its own focused field:
 no socket, CLI flag or frame feeds it. The panel and the Carbon hotkey
-live in `hud_darwin.m`; every decision is in `hud.go` and `hotkey.go`,
-where it is tested.
+live in `hud_darwin.m`; every decision is in `internal/dictation`
+(`hud.go`, `hotkey.go`), where it is tested and shared with the Windows
+GUI's box (spec 575).
 
 It also does **not** spawn `hived`. A menu bar that started a daemon
 merely by existing would resurrect one the user had just quit, at

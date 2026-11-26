@@ -26,7 +26,7 @@ import (
 // behave differently under back-pressure is one more thing to hold in
 // your head when a client goes quiet.
 //
-// The same stateless fan-out also carries GLOBAL_HOTKEY (spec 553), so
+// The same stateless fan-out also carries DICTATION (spec 573), so
 // it is generic over the payload; describe names a dropped value in the
 // slow-listener log line.
 type hub[T any] struct {
@@ -43,12 +43,12 @@ func newCommandHub() *commandHub {
 	return newHub(func(c wire.ClientCommand) string { return c.Cmd })
 }
 
-// hotkeyHub is the GLOBAL_HOTKEY fan-out: the value itself lives in the
+// dictationHub is the DICTATION fan-out: the value itself lives in the
 // registry; this only tells connected clients it changed.
-type hotkeyHub = hub[wire.GlobalHotkey]
+type dictationHub = hub[wire.Dictation]
 
-func newHotkeyHub() *hotkeyHub {
-	return newHub(func(wire.GlobalHotkey) string { return "global_hotkey" })
+func newDictationHub() *dictationHub {
+	return newHub(func(wire.Dictation) string { return "dictation" })
 }
 
 func newHub[T any](describe func(T) string) *hub[T] {

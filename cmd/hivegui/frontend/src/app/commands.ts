@@ -67,7 +67,10 @@ import { raiseWorktreeChoice } from './events.js';
 import { openFindInSession } from './find-session.js';
 import { cancelInlineRename } from './inline-rename.js';
 import { closeBuildLog } from './modals/build-log.js';
-import { dismissChoiceDialog } from './modals/choice-dialog.js';
+import {
+  confirmChoiceDialog,
+  dismissChoiceDialog,
+} from './modals/choice-dialog.js';
 import {
   closeCommandPalette,
   openCommandPalette,
@@ -179,8 +182,9 @@ const PALETTE: readonly Command[] = [
   },
   // The dictation HUD's system-wide chord (spec 553). No title: it is
   // not something to run from inside Hive, so the palette leaves it out.
-  // The OS hands the chord to the menu bar before the webview sees it;
-  // if the key does arrive here (no menu bar running), decline, so it
+  // The OS hands the chord to the dictation box (the menu bar on macOS,
+  // one Hive window on Windows) before the webview sees it; if the key
+  // does arrive here (no box to take it), decline, so it
   // reaches the terminal like any unbound key.
   {
     id: 'dictate-hud',
@@ -362,6 +366,7 @@ const UNLISTED: readonly Command[] = [
 
   { id: 'inline-rename.cancel', run: () => cancelInlineRename() },
   { id: 'choice-dialog.dismiss', run: () => dismissChoiceDialog() },
+  { id: 'choice-dialog.confirm', run: () => confirmChoiceDialog() },
   { id: 'command-palette.close', run: () => closeCommandPalette() },
   { id: 'settings.close', run: () => dismissSettings() },
   { id: 'worktrees.close', run: () => closeWorktrees() },

@@ -168,7 +168,7 @@ func TestClaudeSpawnArgsPlanReviewTimeout(t *testing.T) {
 	withClaudeVersion(t, "2.1.273")
 	settingsDir(t, "")
 	args := claudeSpawnArgs(hooked)
-	if len(args) != 2 {
+	if len(args) < 2 || args[0] != "--settings" {
 		t.Fatalf("args = %v", args)
 	}
 	var s claudeSettings

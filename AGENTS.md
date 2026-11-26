@@ -87,6 +87,7 @@ Package one-liners (full detail in `DESIGN.md`):
 | `internal/buildinfo/` | Single source for version + commit, plus `DaemonContract` (the GUI's reload-vs-restart signal). |
 | `cmd/hivegui/` + `frontend/` | Wails desktop client. JS + xterm.js; thin client over the wire, never opens a PTY. |
 | `cmd/hivebar/` | macOS menu-bar agent (darwin only). Pure wire client; ships as its own `.app` inside the GUI bundle. |
+| `internal/dictation/` | The dictation box's logic (HUD state machine, hotkey, Handy driver, Windows connection and hotkey owner), shared by `cmd/hivebar` (macOS) and `cmd/hivegui` (Windows). cgo-free. |
 | `internal/menubar/` | Starts `hivebar` best-effort from both `hived` and `hivegui`. No-op off macOS. |
 | `cmd/hived-ws-bridge/` | WebSocket bridge fronting the daemon for the `e2e-real` browser tests. |
 
@@ -189,7 +190,7 @@ Always apply these principles when adding or modifying UI elements in the GUI. V
 
 ### Feedback on Action
 - Destructive actions (kill, quit+kill) must always go through the confirm overlay — never skip it.
-- Overlays must display the relevant keybinding to confirm and cancel (`y/enter` to confirm, `esc/n` to cancel).
+- Overlays must display the keys that confirm and cancel — `[enter]` and `[esc]` — and a displayed key must do exactly what its hint says. Enter confirms: it runs the dialog's default (affirmative) action, which holds focus when the dialog opens; once Tab moves keyboard focus, Enter answers the focused choice and the `[enter]` hint follows it. Esc cancels. Label each hint with the real action (`[enter] Unpin all · [esc] Cancel`), not a generic "choose". Choice dialogs set the default with `ChoiceSpec.defaultValue`. The only exception is a dialog that opens by itself or after an async gap (a daemon refusal), while the user may be typing or still holding Enter: its default stays on an answer that destroys nothing, and its hint names that answer. A held, auto-repeating Enter never answers a dialog. Such a dialog may hide its `[enter]` hint (`ChoiceSpec.enterHint: false`) and show only `[esc]`, when Enter's initial answer is Cancel too (Tab can still move Enter to another choice).
 
 ### Consistency
 - Key hints use the format `[key]` for number/symbol keys and `(key)` for letter keys — pick one format and apply it uniformly across the whole UI.
@@ -245,16 +246,20 @@ A hint for a command with no key shows no key.
 ### Hard-coded exceptions (NOT rebindable)
 
 - `Ctrl+C` — interrupt / force-quit (universal).
-- Dialog confirm/cancel (`Enter` / `Esc`) inside overlays.
-- Inside the menu bar's native dictation HUD (spec 553): `↑`/`↓` change
-  the target session and `⇧↩` inserts a newline. The panel is AppKit and
-  cannot read the TS bindings; its hints row shows these keys. The
-  system-wide chord that opens it (`dictate-hud`) *is* a binding.
+- Dialog confirm/cancel (`Enter` / `Esc`) inside overlays — Enter runs the default action, Esc cancels (see *Feedback on Action*).
+- Inside the native dictation box — the menu bar's HUD on macOS (spec
+  553), each Hive window's box on Windows (spec 575): `↑`/`↓` change
+  the target session and `⇧↩` (Shift+Enter) inserts a newline. With
+  Handy auto-start (spec 573), `↩` while Handy is recording stops it and
+  sends. The box is AppKit or Win32 and cannot read the TS bindings; its
+  hints row shows these keys. The system-wide chord that opens it (`dictate-hud`) *is* a
+  binding.
 
 ### Design rule
 
 Destructive actions (kill session, quit) must go through the confirmation
-overlay, and every overlay must show its confirm/cancel bindings.
+overlay, and every overlay must show its confirm/cancel bindings — keys
+that literally do what their hints say.
 
 ## Documentation Maintenance
 

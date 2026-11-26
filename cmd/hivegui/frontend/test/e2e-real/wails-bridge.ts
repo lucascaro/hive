@@ -425,6 +425,7 @@ export async function GetAgentSettings() {
   return {
     claude_task_tools: true,
     pi_todo_tool: true,
+    pin_tool: true,
     plan_review: false,
     plan_reviewer: 'external',
   };
@@ -535,6 +536,19 @@ export async function RequestReloadAllGUIs() {
 export async function GetActivity(id: string) {
   return call('GetActivity', { session_id: id });
 }
+// Pinned responses (spec 566). Answers arrive as `pins:*` events.
+export async function GetPins(id: string) {
+  return call('GetPins', { session_id: id });
+}
+export async function GetPinBody(id: string, pinId: string) {
+  return call('GetPinBody', { session_id: id, id: pinId });
+}
+export async function Unpin(id: string, pinId: string) {
+  return call('Unpin', { session_id: id, id: pinId });
+}
+export async function UnpinAll(id: string) {
+  return call('UnpinAll', { session_id: id });
+}
 // ACP sessions (spec 496). Answers arrive as `acp:transcript` events.
 export async function GetAcpTranscript(id: string) {
   return call('GetAcpTranscript', { session_id: id });
@@ -614,6 +628,14 @@ export async function SetGlobalHotkey(
   });
 }
 
+export async function SetHandyAutoStart(on: boolean) {
+  return call('SetHandyAutoStart', { on: !!on });
+}
+// The real daemon runs on a CI box with no Handy to find.
+export async function HandyInstalled() {
+  return false;
+}
+
 export async function SetSessionNotifyWhenIdle(id: string, want: boolean) {
   return call('SetSessionNotifyWhenIdle', { session_id: id, want: !!want });
 }
@@ -648,13 +670,13 @@ export async function SourceRepoStatusFor() {
   return { path: '', detected: false, error: '' };
 }
 
-// Clipboard bindings. main.ts imports ClipboardGetText (runtime) and
+// Clipboard bindings. main.ts imports ReadClipboard and
 // SetClipboardText (App), both aliased to this bridge under
 // VITE_WAILS_REAL=1; without these exports the ESM import throws at
 // module load and the app never boots. In-memory is sufficient here.
 let clipboard = '';
-export async function ClipboardGetText() {
-  return clipboard;
+export async function ReadClipboard() {
+  return { text: clipboard, image: false };
 }
 export async function SetClipboardText(text: unknown) {
   clipboard = String(text ?? '');

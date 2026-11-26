@@ -25,6 +25,25 @@ export const isMac = detectMac(
   typeof navigator !== 'undefined' ? navigator : null,
 );
 
+/** Windows, from the same navigator fields as detectMac. */
+export function detectWindows(
+  nav:
+    | { userAgentData?: { platform?: string }; platform?: string }
+    | null
+    | undefined,
+): boolean {
+  const p = (nav && (nav.userAgentData?.platform || nav.platform)) || '';
+  return /^win/i.test(p);
+}
+
+export const isWindows = detectWindows(
+  typeof navigator !== 'undefined' ? navigator : null,
+);
+
+/** Whether this platform has the dictation box: the menu bar's on macOS
+ * (spec 553), each Hive window's on Windows (spec 575). */
+export const dictationSupported = isMac || isWindows;
+
 // cmdOrCtrl returns true when the user pressed the platform's
 // "primary" modifier: Cmd on macOS, Ctrl elsewhere. We deliberately
 // reject the cross-platform combo (Ctrl+Cmd on macOS, Cmd+Ctrl on

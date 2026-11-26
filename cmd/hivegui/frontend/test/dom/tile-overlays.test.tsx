@@ -49,7 +49,7 @@ vi.mock('../../src/bridge.js', () => {
     CreateWorktree: fn(),
     RemoveWorktree: fn(),
     SetClipboardText: fn(),
-    ClipboardGetText: fn(),
+    ReadClipboard: fn(),
     OpenURL: fn(),
     LogFrontend: fn(),
     Version: fn(),

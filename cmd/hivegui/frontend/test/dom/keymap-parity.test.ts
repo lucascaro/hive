@@ -371,16 +371,30 @@ const APPROVED_477 = {
   // H (spec 553): macOS ⌃⌥Space names dictate-hud, the menu bar's
   // system-wide dictation chord. The OS takes it before the webview in a
   // real build; a copy that does arrive declines to the terminal.
+  // Off macOS (spec 575) the chord is Ctrl+Shift+Space: Ctrl+Alt is AltGr
+  // on many layouts. Windows registers it; elsewhere it declines too.
   H: (s: string, e: Ev, mac: boolean, was: string | null, now: string | null) =>
-    mac &&
     s === 'app' &&
-    e.code === 'Space' &&
+    (e.code === 'Space' || e.key === ' ') &&
     e.ctrlKey &&
-    e.altKey &&
     !e.metaKey &&
-    !e.shiftKey &&
+    (mac ? e.altKey && !e.shiftKey : e.shiftKey && !e.altKey) &&
     was === null &&
     now === 'dictate-hud',
+  // C: Enter in the choice dialog is bound to choice-dialog.confirm, so
+  // the footer's `[enter]` hint holds wherever focus sits. It used to be
+  // left to the focused button's native activation.
+  C: (
+    s: string,
+    e: Ev,
+    _mac: boolean,
+    was: string | null,
+    now: string | null,
+  ) =>
+    s === 'choice-dialog' &&
+    e.key === 'Enter' &&
+    was === null &&
+    now === 'choice-dialog.confirm',
   M: (
     s: string,
     _e: Ev,
@@ -397,7 +411,7 @@ describe('key bindings vs the pre-478 matchers', () => {
   const seen: Record<
     keyof typeof APPROVED | keyof typeof APPROVED_477,
     number
-  > = { A: 0, B: 0, D: 0, F: 0, H: 0, M: 0, N: 0, R: 0 };
+  > = { A: 0, B: 0, C: 0, D: 0, F: 0, H: 0, M: 0, N: 0, R: 0 };
   const unexpected: string[] = [];
 
   for (const mac of [true, false]) {
@@ -430,6 +444,7 @@ describe('key bindings vs the pre-478 matchers', () => {
   it('each approved delta actually occurs', () => {
     expect(seen.A).toBeGreaterThan(0);
     expect(seen.B).toBeGreaterThan(0);
+    expect(seen.C).toBeGreaterThan(0);
     expect(seen.D).toBeGreaterThan(0);
     expect(seen.F).toBeGreaterThan(0);
     expect(seen.H).toBeGreaterThan(0);
