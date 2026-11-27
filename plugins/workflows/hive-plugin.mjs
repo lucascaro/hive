@@ -153,6 +153,8 @@ export const REQUEST_VERBS = Object.freeze([
   'LIST_ACP_AGENTS',
   'PREPARE_WORKTREE',
   'COMMIT_WORKTREE',
+  'ARCHIVE_SESSION',
+  'REMOVE_WORKTREE',
 ]);
 
 // request() ids are REQUEST_ID_BASE + n, disjoint from small caller-chosen ids.

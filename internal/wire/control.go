@@ -475,8 +475,9 @@ type SessionsResp struct {
 }
 
 // KillSessionReq is the KILL_SESSION payload. Force=true tells the
-// daemon to skip the dirty-worktree safety check and discard
-// uncommitted changes.
+// daemon to skip the dirty-worktree pre-flight only. It discards
+// nothing: a worktree holding work is still kept on disk. Only
+// RemoveWorktree deletes the worktree, whatever it holds.
 type KillSessionReq struct {
 	SessionID string `json:"session_id"`
 	Force     bool   `json:"force,omitempty"`
@@ -529,6 +530,9 @@ type ClosedSessionInfo struct {
 // the worktree and never asks about uncommitted work.
 type ArchiveSessionReq struct {
 	SessionID string `json:"session_id"`
+	// ReqID asks for an ACK{req_id, session_id} after the ARCHIVED
+	// refresh. A request without one is answered exactly as before.
+	ReqID int `json:"req_id,omitempty"`
 }
 
 // ListArchivedReq is the LIST_ARCHIVED payload.
@@ -1663,6 +1667,15 @@ type RemoveWorktreeReq struct {
 	// DeleteBranch — the remote copy is the last handle on the work
 	// once the local ref is gone, so the two go together or not at all.
 	DeleteRemote bool `json:"delete_remote,omitempty"`
+	// ReqID asks for an ACK{req_id} after the WORKTREES inventory when
+	// the removal succeeded. Errors echo it either way.
+	ReqID int `json:"req_id,omitempty"`
+	// WorkflowRunID names the run whose branch a plugin is cleaning up.
+	// With it, a plugin may remove a worktree whose own branch is under
+	// hive/wf/<run>/ even with unpushed commits, provided DeleteBranch
+	// is false (the branch keeps every commit). Ignored from any other
+	// caller. Dirty and in-use refusals still apply.
+	WorkflowRunID string `json:"workflow_run_id,omitempty"`
 }
 
 // CreateWorktreeReq materializes a worktree for a branch that already

@@ -497,6 +497,60 @@ func TestBridge_WorkflowOpsDecodeAndForward(t *testing.T) {
 	}
 }
 
+// B3-R7: ARCHIVE_SESSION and REMOVE_WORKTREE carry req_id (and the run id)
+// through the bridge to the control connection.
+func TestBridge_ArchiveAndRemoveCarryReqID(t *testing.T) {
+	ws := dialTestBridge(t)
+	for i, op := range []string{"ArchiveSession", "RemoveWorktree"} {
+		if resp := roundTrip(t, ws, 30+i, op, `{"req_id":"not a number","workflow_run_id":5}`); strings.Contains(resp.Error, "no control connection") || resp.Error == "" {
+			t.Errorf("%s with malformed params: error = %q, want a decode error", op, resp.Error)
+		}
+		if resp := roundTrip(t, ws, 40+i, op, `{"session_id":"s","project_id":"p","path":"/x","req_id":7,"workflow_run_id":"run-1"}`); !strings.Contains(resp.Error, "no control connection") {
+			t.Errorf("%s: error = %q, want %q", op, resp.Error, "no control connection")
+		}
+	}
+}
+
+// The fields reach the daemon: a bridge that dropped req_id or
+// workflow_run_id would leave the plugin waiting on an ACK (or lose the
+// run-branch exemption) and still pass the test above.
+func TestBridge_ArchiveAndRemoveForwardReqIDAndRunID(t *testing.T) {
+	for _, tc := range []struct {
+		method string
+		params string
+		ft     wire.FrameType
+		want   map[string]any
+	}{
+		{"ArchiveSession", `{"session_id":"s","req_id":7}`, wire.FrameArchiveSession,
+			map[string]any{"session_id": "s", "req_id": float64(7)}},
+		{"RemoveWorktree", `{"project_id":"p","path":"/x","req_id":8,"workflow_run_id":"run-1"}`, wire.FrameRemoveWorktree,
+			map[string]any{"project_id": "p", "path": "/x", "req_id": float64(8), "workflow_run_id": "run-1"}},
+	} {
+		client, server := net.Pipe()
+		s := &session{ws: dialTestWS(t), control: wire.NewClient(client)}
+		go s.dispatch(rpcReq{ID: 1, Method: tc.method, Params: json.RawMessage(tc.params)})
+		_ = server.SetReadDeadline(time.Now().Add(10 * time.Second))
+		ft, payload, err := wire.ReadFrame(server)
+		if err != nil {
+			t.Fatalf("%s: reading the forwarded frame: %v", tc.method, err)
+		}
+		if ft != tc.ft {
+			t.Errorf("%s: forwarded frame %v, want %v", tc.method, ft, tc.ft)
+		}
+		var got map[string]any
+		if err := json.Unmarshal(payload, &got); err != nil {
+			t.Fatal(err)
+		}
+		for k, v := range tc.want {
+			if got[k] != v {
+				t.Errorf("%s: %s = %v, want %v (payload %s)", tc.method, k, got[k], v, payload)
+			}
+		}
+		_ = server.Close()
+		_ = client.Close()
+	}
+}
+
 // SetClientUI reaches the control connection like any other verb.
 func TestBridge_SetClientUIForwarded(t *testing.T) {
 	ws := dialTestBridge(t)

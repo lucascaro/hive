@@ -187,6 +187,27 @@ test('request ignores broadcasts carrying the same req_id', unixOnly, async () =
   }
 });
 
+// The daemon contract (internal/daemon/reqid.go): a request gets exactly
+// one terminal frame echoing its req_id. A secondary error after a
+// success (REMOVE_WORKTREE's failed inventory refresh) carries no req_id,
+// so it reaches 'ERROR' listeners but cannot reject the request. Had it
+// echoed the id, the first frame would reject and drop the entry, and the
+// later ACK would be lost.
+test('a secondary ERROR without req_id does not reject a request that then ACKs', unixOnly, async () => {
+  const d = await fakeDaemon((_type, p, reply) => {
+    reply(Frame.ERROR, { code: 'list_worktrees_failed', message: 'boom' });
+    reply(Frame.ACK, { req_id: p.req_id });
+  });
+  try {
+    const seen = new Promise((r) => d.hive.once('ERROR', r));
+    const ack = await d.hive.request('REMOVE_WORKTREE', { project_id: 'p', path: '/x', workflow_run_id: 'run-1' });
+    assert.ok(ack.req_id > 0);
+    assert.equal((await seen).code, 'list_worktrees_failed');
+  } finally {
+    await d.close();
+  }
+});
+
 test('timeout rejects', unixOnly, async () => {
   const d = await fakeDaemon(() => {});
   try {
@@ -251,7 +272,7 @@ test('request refuses a verb that has no reply carrying a req_id', unixOnly, asy
     if (p.marker) marker();
   });
   try {
-    for (const name of ['LIST_SESSIONS', 'UPDATE_SESSION', 'REMOVE_WORKTREE', 'SET_PLUGIN_ENABLED', 'WAIT_SESSION', 'ACK']) {
+    for (const name of ['LIST_SESSIONS', 'UPDATE_SESSION', 'DELETE_ARCHIVED', 'SET_PLUGIN_ENABLED', 'WAIT_SESSION', 'ACK']) {
       await assert.rejects(d.hive.request(name, {}), (err) => {
         assert.equal(err.hive.code, 'unsupported_request');
         assert.match(err.message, /use send\(\)/);
@@ -273,6 +294,8 @@ test('request refuses a verb that has no reply carrying a req_id', unixOnly, asy
 test('every request verb is a real frame and none is a reply frame', () => {
   for (const v of REQUEST_VERBS) assert.ok(Frame[v] !== undefined, v);
   for (const v of ['ACK', 'ACP_AGENTS', 'ERROR']) assert.ok(!REQUEST_VERBS.includes(v), v);
+  // B3-R7: the daemon acks both on success.
+  for (const v of ['ARCHIVE_SESSION', 'REMOVE_WORKTREE']) assert.ok(REQUEST_VERBS.includes(v), v);
 });
 
 test('request on an unknown frame name rejects', unixOnly, async () => {
