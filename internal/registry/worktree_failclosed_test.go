@@ -173,6 +173,37 @@ func TestKillProject_KillSessionsKeepsDirtyWorktree(t *testing.T) {
 	}
 }
 
+// The pristine case is the one the empty-cwd guard alone protects: a
+// dirty worktree is kept by Inspect whatever root is used. With the
+// daemon running inside the project's repo, an unguarded Root("")
+// resolves that repo, IsManaged passes and a pristine worktree is
+// removed although its project is gone. Not parallel: it chdirs.
+func TestKillProject_KillSessionsKeepsPristineWorktreeWithEmptyCwd(t *testing.T) {
+	skipNonPosix(t)
+	r, p := freshRegistryWithProject(t)
+	if _, err := r.CreateProject(wire.CreateProjectReq{Name: "other", Cwd: t.TempDir()}); err != nil {
+		t.Fatal(err)
+	}
+	e, err := r.Create(context.Background(), wire.CreateSpec{
+		ProjectID: p.ID, Shell: "/bin/bash", UseWorktree: true,
+	})
+	if err != nil {
+		t.Fatalf("Create: %v", err)
+	}
+	wt := e.WorktreePath
+	if wt == "" {
+		t.Fatal("no worktree created")
+	}
+	time.Sleep(80 * time.Millisecond)
+	t.Chdir(p.Cwd) // restored by t.Chdir's own cleanup
+	if err := r.KillProject(p.ID, true, true); err != nil {
+		t.Fatalf("KillProject: %v", err)
+	}
+	if _, err := os.Stat(wt); err != nil {
+		t.Fatalf("pristine worktree removed with an empty project cwd: %v", err)
+	}
+}
+
 func TestDeleteArchived_StatusFailureRefusesWithoutForce(t *testing.T) {
 	skipNonPosix(t)
 	r, p := freshRegistryWithProject(t)
