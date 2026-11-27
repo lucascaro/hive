@@ -202,18 +202,52 @@ async function settleOrphans(engine: Engine, runId: string, listed: Listed[], se
   }
   const ended = (): boolean => engine.agentRows(runId).length === 0;
   const neverPrompted = (tx: TranscriptState | undefined): boolean => tx !== undefined && tx.prompt_id === 0 && !tx.content;
+  /**
+   * What can be said of a session right now. A transcript lives in the daemon's memory only: after a restart every ACP entry answers
+   * GET_ACP_TRANSCRIPT with an empty one until it is revived (one at a time, in the background), and a revival that failed keeps its
+   * empty transcript for good. So "nothing in it" means "never prompted" only for a session that is alive, past its start or revival
+   * (`phase` empty) and without a `last_error`. 'starting' is waited for, bounded; 'dead' is never killed or adopted (its conversation
+   * may be the user's, and B3d step 2 reconciles it); 'unknown' is a session that did not get ready in time or vanished from the list.
+   */
+  const health = async (s: Listed): Promise<'ready' | 'dead' | 'starting' | 'lost'> => {
+    let info: Listed | undefined = s;
+    const until = Date.now() + engine.settleWaitMs;
+    for (;;) {
+      if (!info) return 'starting';
+      if (info.phase === '') return info.alive && !info.last_error ? 'ready' : 'dead';
+      if (Date.now() >= until) return 'starting';
+      await new Promise<void>((r) => {
+        const t = setTimeout(r, 100);
+        t.unref?.();
+      });
+      const again = await engine.feed.listSessions(send, engine.daemonWaitMs);
+      if (lost()) return 'lost';
+      if (!again) return 'starting';
+      info = again.find((x) => x.id === s.id);
+    }
+  };
   for (const [key, group] of byKey) {
     if (lost()) return;
-    // Which of them were never prompted: no answer from the daemon is not "never prompted".
+    // Which of them were never prompted: no answer from the daemon is not "never prompted", and neither is the answer of a session that is not loaded.
     const idle: Listed[] = [];
     for (const s of group) {
-      const tx = await engine.feed.fetchTranscript(send, s.id, engine.daemonWaitMs);
-      if (lost()) return;
+      const h = await health(s);
+      if (h === 'lost') return;
       const row = engine.rowOf(runId, key);
-      if (neverPrompted(tx)) idle.push(s);
-      else if (!tx && row && (row.state === 'pending' || row.state === 'interrupted')) {
-        // Neither adopted nor removed, so the node must not launch beside it: it fails (run.retry starts it again), naming the session.
-        engine.failNode(runId, key, `a leftover session (${s.id}) from an earlier launch could not be read, so the node was not started in its worktree beside it`, { link });
+      if (h === 'dead') continue; // never killed or adopted: left for B3d step 2
+      let ok = false;
+      if (h === 'ready') {
+        const tx = await engine.feed.fetchTranscript(send, s.id, engine.daemonWaitMs);
+        if (lost()) return;
+        if (neverPrompted(tx)) {
+          idle.push(s);
+          continue;
+        }
+        ok = tx !== undefined; // read, and it has a conversation: left alone, and the node may go on
+      }
+      if (!ok && row && (row.state === 'pending' || row.state === 'interrupted')) {
+        // Neither adopted nor removed and not known to be idle, so the node must not launch beside it: it fails (run.retry starts it again), naming the session.
+        engine.failNode(runId, key, `a leftover session (${s.id}) from an earlier launch ${h === 'starting' ? 'was not ready' : 'could not be read'}, so the node was not started in its worktree beside it`, { link });
         break;
       }
     }
@@ -227,7 +261,12 @@ async function settleOrphans(engine: Engine, runId: string, listed: Listed[], se
     }
     for (const s of idle) {
       if (lost()) return;
-      // Looked at again just before the kill: a turn may have started on it since it was read. (Narrows the window; closing it is the daemon's.)
+      // Looked at again just before the kill, session and transcript both: it may have been revived, or gained a turn, since it was read.
+      // (Narrows the window; closing it is the daemon's.)
+      const relisted = await engine.feed.listSessions(send, engine.daemonWaitMs);
+      if (lost() || ended()) return;
+      const now = relisted?.find((x) => x.id === s.id);
+      if (!now || now.phase !== '' || !now.alive || now.last_error) continue;
       const again = await engine.feed.fetchTranscript(send, s.id, engine.daemonWaitMs);
       if (lost() || ended()) return;
       if (!neverPrompted(again)) continue;

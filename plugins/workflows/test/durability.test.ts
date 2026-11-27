@@ -1479,7 +1479,7 @@ test('run.retry says `recovering` when the engine is disconnected or reading, wh
   }
 });
 
-test('an adopted session that is dead and has a conversation by the time it is looked at is not killed', async () => {
+test('an adopted session that is dead (with a conversation) by the time it is looked at is never killed: the node makes a session beside it', async () => {
   const w = world(one(), { holdCreate: never() });
   await waitFor(() => w.sim.sessions.length === 1, 'the session to be made');
   const sess = w.sim.sessions[0];
@@ -1501,9 +1501,9 @@ test('an adopted session that is dead and has a conversation by the time it is l
   const h = harness({ agent: agentExecutor({ cancelGraceMs: 40, readyTimeoutMs: 400, settlePollMs: 5 }), check: never }, { dir: w.dir, hive });
   try {
     await h.engine.recover();
-    await waitFor(() => rowOf(h, w.id, 'a')?.state === 'failed', 'the node to fail');
-    assert.deepEqual(w.sim.of('KILL_SESSION'), [], 'a session with a conversation is never killed here');
-    assert.equal(w.sim.of('CREATE_SESSION').length, 1);
+    await waitFor(() => w.sim.of('CREATE_SESSION').length === 2, 'the node to make a session of its own');
+    assert.deepEqual(w.sim.of('KILL_SESSION'), [], 'a dead session may hold the user\'s conversation: it is never killed here');
+    assert.notEqual(rowOf(h, w.id, 'a')?.state, 'failed');
   } finally {
     h.close();
     rmSync(w.dir, { recursive: true, force: true });
@@ -1606,11 +1606,11 @@ test('a second pass finds a user turn on a session the first pass adopted: the l
   }
 });
 
-test('a dead adopted session is not killed from a connection the launch no longer belongs to', async () => {
+test('an adopted session in another worktree is not killed from a connection the launch no longer belongs to', async () => {
   const w = world(one(), { holdCreate: never() });
   await waitFor(() => w.sim.sessions.length === 1, 'the session to be made');
   const sess = w.sim.sessions[0];
-  sess.event('updated', { alive: false, last_error: 'adapter exited' });
+  sess.worktree_path = '/somewhere/else'; // healthy and never prompted, but not in the node's worktree: it would be removed after its read
   w.h.engine.disconnect();
   w.h.close();
   const hive = new FakeHive();
@@ -1659,6 +1659,131 @@ test('an adopted session that gains replayed history (prompt id still 0) before 
   try {
     await h.engine.recover();
     await waitFor(() => rowOf(h, w.id, 'a')?.state === 'failed', 'the node to fail');
+    assert.equal(w.sim.of('PROMPT_ACP').length, 0);
+    assert.deepEqual(w.sim.of('KILL_SESSION'), []);
+  } finally {
+    h.close();
+    rmSync(w.dir, { recursive: true, force: true });
+  }
+});
+
+// -------------------- a transcript means something only for a session that is loaded and healthy (round 8)
+
+/** A leftover session `hived` has just restarted around: its transcript is empty whatever it held, and `info` says how far its revival is. */
+async function leftoverState(info: Record<string, unknown>, settleWaitMs = 80): Promise<{ w: World; h: Harness }> {
+  const w = world(one(), { holdCreate: never() });
+  await waitFor(() => w.sim.sessions.length === 1, 'the session to be made');
+  const sess = w.sim.sessions[0];
+  sess.begin(`plugin:workflows/workflow:${w.id}`, 'the user\'s conversation'); // it holds a conversation...
+  w.h.engine.disconnect();
+  w.h.close();
+  const hive = new FakeHive();
+  hive.welcome = { boot_id: 'boot-2' };
+  w.sim.attach(hive);
+  sess.users = []; // ...which the restarted daemon has not loaded: an empty transcript and a prompt id of 0
+  sess.prompt_id = 0;
+  sess.event('updated', info);
+  const h = harness({ agent: agentExecutor({ cancelGraceMs: 40, readyTimeoutMs: 400, settlePollMs: 5 }), check: never }, { dir: w.dir, hive, settleWaitMs });
+  return { w, h };
+}
+
+for (const [name, info] of [
+  ['being revived', { alive: false, phase: 'reviving' }],
+  ['starting', { alive: true, phase: 'spawning' }],
+] as const) {
+  test(`a leftover session that is ${name} is not read as never prompted: it is waited for, then the node does not start beside it, and it is never killed`, async () => {
+    const { w, h } = await leftoverState(info);
+    try {
+      await h.engine.recover();
+      assert.deepEqual(w.sim.of('KILL_SESSION'), [], 'the user\'s conversation is not force-killed');
+      assert.equal(rowOf(h, w.id, 'a')?.state, 'failed');
+      assert.match(rowOf(h, w.id, 'a')?.error ?? '', /was not ready/);
+      assert.equal(w.sim.of('CREATE_SESSION').length, 1);
+    } finally {
+      h.close();
+      rmSync(w.dir, { recursive: true, force: true });
+    }
+  });
+}
+
+test('a leftover session whose revival failed (dead, last_error) is never killed or adopted: the node makes a session beside it', async () => {
+  const { w, h } = await leftoverState({ alive: false, last_error: 'could not load the session' });
+  try {
+    await h.engine.recover();
+    await waitFor(() => w.sim.of('CREATE_SESSION').length === 2, 'the node to make a session of its own');
+    assert.deepEqual(w.sim.of('KILL_SESSION'), []);
+    assert.notEqual(rowOf(h, w.id, 'a')?.session_id, w.sim.sessions[0].id);
+  } finally {
+    h.close();
+    rmSync(w.dir, { recursive: true, force: true });
+  }
+});
+
+test('a leftover session that finishes reviving while it is waited for is then read, and a conversation in it is left alone', async () => {
+  const { w, h } = await leftoverState({ alive: false, phase: 'reviving' }, 2000);
+  const sess = w.sim.sessions[0];
+  try {
+    const rec = h.engine.recover();
+    await new Promise((r) => setTimeout(r, 150));
+    sess.prompt_id = 40; // the revival loaded the conversation
+    sess.users = [{ id: 40, origin: 'user', text: 'the user\'s conversation' }];
+    sess.event('updated');
+    await rec;
+    assert.deepEqual(w.sim.of('KILL_SESSION'), [], 'not killed once it is loaded and has a conversation');
+    await waitFor(() => w.sim.of('CREATE_SESSION').length === 2, 'the node to make a session of its own');
+  } finally {
+    h.close();
+    rmSync(w.dir, { recursive: true, force: true });
+  }
+});
+
+test('a session that is read as never prompted but is being revived or dead by the time it would be removed is not killed', async () => {
+  const w = world(one(), { holdCreate: never() });
+  await waitFor(() => w.sim.sessions.length === 1, 'the session to be made');
+  const twin = Object.assign(Object.create(Object.getPrototypeOf(w.sim.sessions[0])), w.sim.sessions[0], { id: 'sx' });
+  w.sim.sessions.push(twin);
+  w.h.engine.disconnect();
+  w.h.close();
+  const hive = new FakeHive();
+  hive.welcome = { boot_id: 'boot-1' };
+  w.sim.attach(hive);
+  let lists = 0;
+  const list = hive.onSend.LIST_SESSIONS;
+  hive.onSend.LIST_SESSIONS = (q) => {
+    // the first listing is recovery's; the next ones are the look before each removal
+    if (++lists === 2) twin.event('updated', { alive: false, phase: 'reviving' });
+    list(q);
+  };
+  const h = harness({ agent: never, check: never }, { dir: w.dir, hive });
+  try {
+    await h.engine.recover();
+    assert.ok(!w.sim.of('KILL_SESSION').some((k) => k.session_id === 'sx'), 'a session that is no longer healthy is not removed on a read that was true a moment ago');
+  } finally {
+    h.close();
+    rmSync(w.dir, { recursive: true, force: true });
+  }
+});
+
+test('an adopted session that is back to starting when the launch looks at it is not prompted into and not killed', async () => {
+  const w = world(one(), { holdCreate: never() });
+  await waitFor(() => w.sim.sessions.length === 1, 'the session to be made');
+  const sess = w.sim.sessions[0];
+  w.h.engine.disconnect();
+  w.h.close();
+  const hive = new FakeHive();
+  hive.welcome = { boot_id: 'boot-1' };
+  w.sim.attach(hive);
+  let lists = 0;
+  const list = hive.onSend.LIST_SESSIONS;
+  hive.onSend.LIST_SESSIONS = (q) => {
+    if (++lists === 2) sess.event('updated', { alive: false, phase: 'reviving' }); // adopted as healthy, and the daemon's own revival starts it over
+    list(q);
+  };
+  const h = harness({ agent: agentExecutor({ cancelGraceMs: 40, readyTimeoutMs: 200, settlePollMs: 5 }), check: never }, { dir: w.dir, hive });
+  try {
+    await h.engine.recover();
+    await waitFor(() => rowOf(h, w.id, 'a')?.state === 'failed', 'the node to fail');
+    assert.match(rowOf(h, w.id, 'a')?.error ?? '', /still starting/);
     assert.equal(w.sim.of('PROMPT_ACP').length, 0);
     assert.deepEqual(w.sim.of('KILL_SESSION'), []);
   } finally {

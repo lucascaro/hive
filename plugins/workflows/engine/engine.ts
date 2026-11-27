@@ -77,6 +77,8 @@ export interface EngineOptions {
   pluginId?: string;
   /** How long recovery waits for the daemon to list its sessions or send a transcript before it assumes nothing survived. A test shortens it. */
   daemonWaitMs?: number;
+  /** How long recovery waits for a leftover session that is still starting or being revived to become ready, ms. A test shortens it. */
+  settleWaitMs?: number;
   /** Called with every batch of events as stored, for the live push. */
   onEvents?: (runId: string, events: RunEvent[]) => void;
 }
@@ -140,6 +142,8 @@ export class Engine {
   readonly #pluginId: string;
   /** See `EngineOptions.daemonWaitMs`. */
   readonly daemonWaitMs: number;
+  /** See `EngineOptions.settleWaitMs`. */
+  readonly settleWaitMs: number;
   #epochs = 0;
   /** Counts lost connections: an agent launch made under an earlier one is stale and must not fail or kill anything (B3c). */
   #link = 0;
@@ -163,6 +167,7 @@ export class Engine {
     this.#killDeps = o.kill ?? {};
     this.#pluginId = o.pluginId ?? process.env.HIVE_PLUGIN_ID ?? 'workflows';
     this.daemonWaitMs = o.daemonWaitMs ?? 15_000;
+    this.settleWaitMs = o.settleWaitMs ?? 30_000;
     this.feed.attach(o.hive);
   }
 

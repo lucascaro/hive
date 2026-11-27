@@ -277,17 +277,19 @@ class AgentRun {
     if (info === 'stale') return undefined;
     const ws = this.#ws as Workspace;
     if (!info || info.removed) return false;
-    if (info.worktree_path !== undefined && info.worktree_path !== ws.path) {
-      await this.#kill(sid); // not in the worktree this node works in: it is nobody's
-      return false;
-    }
     if (info.kind === 'pty') {
       this.#fail('the previous attempt\'s session was taken over, so it cannot be prompted');
       return undefined;
     }
-    // A session set aside as never prompted is looked at again before it is prompted into or killed, whatever its health: if a turn or a user
-    // item has appeared since (the user's own conversation, say), it is not ours to use or close, and the node does not start beside it either.
+    // A session set aside as never prompted is looked at again before it is prompted into or killed: if a turn or a conversation has appeared since
+    // (the user's own, say), it is not ours to use or close, and the node does not start beside it either. Its transcript is only trusted once the
+    // session is loaded and healthy: a session still being revived or one that failed to start has an empty transcript whatever it held.
     if (orphan) {
+      if (info.phase !== '') {
+        this.#fail(`the leftover session ${sid} was still starting, so the node was not started in its worktree beside it`);
+        return undefined;
+      }
+      if (!info.alive || info.last_error) return false; // dead: never killed (its conversation may be the user's), a fresh session is made beside it
       const send = this.#engine.hive.send?.bind(this.#engine.hive);
       const tx = send ? await this.#engine.feed.fetchTranscript(send, sid, this.#engine.daemonWaitMs) : undefined;
       if (!this.#live('pending', 'interrupted')) return undefined;
@@ -295,6 +297,10 @@ class AgentRun {
         this.#fail(`the leftover session ${sid} was set aside as never prompted but has a conversation now (or could not be read), so the node was not started in its worktree beside it`);
         return undefined;
       }
+    }
+    if (info.worktree_path !== undefined && info.worktree_path !== ws.path) {
+      await this.#kill(sid); // not in the worktree this node works in: it is nobody's (an orphan only after the checks above)
+      return false;
     }
     if (info.alive && !info.last_error) return true;
     if (!orphan) {

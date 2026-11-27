@@ -103,12 +103,12 @@ export interface Harness {
   close(): void;
 }
 
-export function harness(executors: Executors, opts: { store?: StoreOptions; dir?: string; hive?: FakeHive; testSeam?: boolean; kill?: KillDeps; daemonWaitMs?: number } = {}): Harness {
+export function harness(executors: Executors, opts: { store?: StoreOptions; dir?: string; hive?: FakeHive; testSeam?: boolean; kill?: KillDeps; daemonWaitMs?: number; settleWaitMs?: number } = {}): Harness {
   const dir = opts.dir ?? mkdtempSync(join(tmpdir(), 'wf-'));
   const store = new Store(dir, opts.store);
   const hive = opts.hive ?? new FakeHive();
   const pushed: RunEvent[] = [];
-  const engine = new Engine({ store, hive, executors, ...(opts.kill ? { kill: opts.kill } : {}), ...(opts.daemonWaitMs ? { daemonWaitMs: opts.daemonWaitMs } : {}), onEvents: (_id, evs) => pushed.push(...evs) });
+  const engine = new Engine({ store, hive, executors, ...(opts.kill ? { kill: opts.kill } : {}), ...(opts.daemonWaitMs ? { daemonWaitMs: opts.daemonWaitMs } : {}), ...(opts.settleWaitMs ? { settleWaitMs: opts.settleWaitMs } : {}), onEvents: (_id, evs) => pushed.push(...evs) });
   const topics = new Topics({ engine, testSeam: opts.testSeam ?? true });
   return {
     dir,
