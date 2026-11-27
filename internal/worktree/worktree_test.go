@@ -325,6 +325,29 @@ func TestCleanup_MissingDir(t *testing.T) {
 	}
 }
 
+// A stat error other than "does not exist" means we could not look, which
+// is not the same as "nothing to lose": it must not read as clean.
+func TestHasUncommitted_UnstatableIsAnError(t *testing.T) {
+	if runtime.GOOS == "windows" || os.Geteuid() == 0 {
+		t.Skip("needs POSIX permissions and a non-root user")
+	}
+	parent := t.TempDir()
+	wt := filepath.Join(parent, "wt")
+	if err := os.Mkdir(wt, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chmod(parent, 0); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.Chmod(parent, 0o755) })
+	if dirty, err := HasUncommitted(wt); err == nil {
+		t.Fatalf("HasUncommitted on an unstatable path = (%v, nil), want an error", dirty)
+	}
+	if dirty, err := HasUncommitted(filepath.Join(t.TempDir(), "missing")); dirty || err != nil {
+		t.Fatalf("missing path = (%v, %v), want (false, nil)", dirty, err)
+	}
+}
+
 func TestHasUncommitted(t *testing.T) {
 	skipNoGit(t)
 	repo := initRepo(t)

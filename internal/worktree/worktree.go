@@ -451,7 +451,11 @@ func agentConfigExcludes(worktreePath string) []string {
 // spurious prompt there beats deleting real work.
 func HasUncommitted(worktreePath string) (bool, error) {
 	if _, err := os.Stat(worktreePath); err != nil {
-		return false, nil
+		if os.IsNotExist(err) {
+			return false, nil
+		}
+		// EACCES, EIO...: we could not look, which is not "clean".
+		return false, fmt.Errorf("stat worktree: %w", err)
 	}
 	// -uall is load-bearing: without it git collapses an untracked
 	// directory to a single "?? .claude/" entry and never descends far
