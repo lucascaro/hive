@@ -267,7 +267,7 @@ the same name in [`internal/wire/`](../internal/wire/control.go).
 | `RESTART_SESSION` | `RestartSessionReq` | `SESSION_EVENT`; with a `req_id`, also `ACK` once the restart succeeded |
 | `RESTORE_SESSION` | `RestoreSessionReq` | `SESSION_RESTORED`, `CLOSED` |
 | `LIST_CLOSED` | `ListClosedReq` | `CLOSED` |
-| `ARCHIVE_SESSION` | `ArchiveSessionReq` | `SESSION_EVENT` (removed), `ARCHIVED` |
+| `ARCHIVE_SESSION` | `ArchiveSessionReq` | `SESSION_EVENT` (removed), `ARCHIVED`; with a `req_id`, also `ACK` carrying the `session_id` |
 | `LIST_ARCHIVED` | `ListArchivedReq` | `ARCHIVED` |
 | `UNARCHIVE_SESSION` | `UnarchiveSessionReq` | `SESSION_RESTORED`, `ARCHIVED` |
 | `DELETE_ARCHIVED` | `DeleteArchivedReq` | `ARCHIVED` |
@@ -277,7 +277,7 @@ the same name in [`internal/wire/`](../internal/wire/control.go).
 | `KILL_PROJECT` | `KillProjectReq` | `PROJECT_EVENT` (removed) |
 | `UPDATE_PROJECT` | `UpdateProjectReq` | `PROJECT_EVENT` |
 | `LIST_WORKTREES` | `ListWorktreesReq` | `WORKTREES` |
-| `REMOVE_WORKTREE` | `RemoveWorktreeReq` | `WORKTREES` |
+| `REMOVE_WORKTREE` | `RemoveWorktreeReq` | `WORKTREES`; with a `req_id`, also `ACK` once the removal succeeded. A plugin that sends `workflow_run_id` (and `delete_branch: false`) may remove a worktree whose own branch is under `hive/wf/<run>/` despite unpushed commits; dirty and in-use worktrees are still refused |
 | `CREATE_WORKTREE` | `CreateWorktreeReq` | `WORKTREES` |
 | `RENAME_WORKTREE` | `RenameWorktreeReq` | `WORKTREES` |
 | `DELETE_BRANCH` | `DeleteBranchReq` | `WORKTREES` |

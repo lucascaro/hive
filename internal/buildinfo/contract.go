@@ -28,6 +28,13 @@ package buildinfo
 // History (newest first), so a bump is a decision with a record and
 // not just a number going up:
 //
+//	42 — Workflow-engine prerequisites, part 3 (spec 529, B3-R7).
+//	    ARCHIVE_SESSION and REMOVE_WORKTREE now ACK their req_id on
+//	    success, and REMOVE_WORKTREE takes workflow_run_id: a plugin may
+//	    then remove a kept (delete_branch false) hive/wf/<run>/ branch's
+//	    worktree despite unpushed commits. A plugin built against this
+//	    tree would wait forever on an ack an older daemon never sends,
+//	    and would be refused the removal.
 //	41 — Dictation box on Windows (spec 575). A control client whose
 //	    HELLO names wire.DictationClientPrefix is headless, like
 //	    hivebar: it is not counted as a client that can answer a plan
@@ -348,7 +355,7 @@ package buildinfo
 //	    before this cannot see or clear the flag.
 //	1 — first contract; everything up to and including the
 //	    CLIENT_COMMAND relay.
-const DaemonContract = 41
+const DaemonContract = 42
 
 // Identity is this binary's full build identity. `hived --version
 // --json` prints it, and Welcome carries the same three values, so a

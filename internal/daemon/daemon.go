@@ -61,6 +61,10 @@ type Daemon struct {
 	reg  *registry.Registry
 	ln   net.Listener
 
+	// listWorktreesHook, when set, replaces reg.ListWorktrees for the
+	// inventory every worktree mutation ends with. Tests only.
+	listWorktreesHook func(projectID string) (wire.WorktreesResp, error)
+
 	// createFn, when set, replaces reg.Create for ModeCreate. Tests use
 	// it to make a create slow; production leaves it nil.
 	createFn func(context.Context, wire.CreateSpec) (*registry.Entry, error)
@@ -1376,7 +1380,7 @@ func (d *Daemon) serveControl(ctx context.Context, conn net.Conn, hello wire.Hel
 		announceUI, done = d.reviewAnnouncer()
 		defer done()
 	}
-	sendWorktrees, finishMutation := d.worktreeHelpers(writeJSON, sendError)
+	sendWorktrees, finishMutation := d.worktreeHelpers(writeJSON, sendError, sendError)
 	ops := controlOps{
 		bindWorktree:   d.worktreeHelpers,
 		announceUI:     announceUI,
@@ -1558,7 +1562,13 @@ func ownProjectOnly(all []wire.SessionInfo, projectID string) []wire.SessionBrie
 // over a connection's writeJSON and sendError. controlOps.bindWorktree
 // rebuilds them over the per-frame copies withReqID makes, so their ERRORs
 // echo the request's req_id like every other.
-func (d *Daemon) worktreeHelpers(writeJSON func(wire.FrameType, any) error, sendError func(code, msg string)) (
+//
+// secondaryError reports an error that is not the answer to the request:
+// the failed inventory refresh after a mutation that succeeded. A
+// req_id-bearing request gets exactly one terminal frame echoing its id
+// (ACK on success, ERROR on failure), and the SDK settles on the first, so
+// this one must not carry the id or it would reject a request that worked.
+func (d *Daemon) worktreeHelpers(writeJSON func(wire.FrameType, any) error, sendError, secondaryError func(code, msg string)) (
 	sendWorktrees func(projectID, failCode string),
 	finishMutation func(projectID string, err error, failCode string),
 ) {
@@ -1571,16 +1581,21 @@ func (d *Daemon) worktreeHelpers(writeJSON func(wire.FrameType, any) error, send
 	// An empty failCode means "stay quiet if the listing fails" — used
 	// after a refusal, where the client already has one error and a
 	// second would just be a second toast for the same action.
-	sendWorktrees = func(projectID, failCode string) {
-		resp, err := d.reg.ListWorktrees(projectID)
+	list := func(projectID, failCode string, report func(code, msg string)) {
+		listFn := d.reg.ListWorktrees
+		if d.listWorktreesHook != nil {
+			listFn = d.listWorktreesHook
+		}
+		resp, err := listFn(projectID)
 		if err != nil {
 			if failCode != "" {
-				sendError(failCode, err.Error())
+				report(failCode, err.Error())
 			}
 			return
 		}
 		_ = writeJSON(wire.FrameWorktrees, resp)
 	}
+	sendWorktrees = func(projectID, failCode string) { list(projectID, failCode, sendError) }
 	// sendWorktreeError maps the registry's refusal sentinels onto
 	// wire codes the GUI knows how to confirm against, the same way
 	// KILL_SESSION maps ErrWorktreeDirty. Anything unrecognised falls
@@ -1612,7 +1627,7 @@ func (d *Daemon) worktreeHelpers(writeJSON func(wire.FrameType, any) error, send
 			sendWorktrees(projectID, "")
 			return
 		}
-		sendWorktrees(projectID, "list_worktrees_failed")
+		list(projectID, "list_worktrees_failed", secondaryError)
 	}
 	return sendWorktrees, finishMutation
 }
@@ -1657,7 +1672,7 @@ type controlOps struct {
 	// bindWorktree rebuilds sendWorktrees and finishMutation over another
 	// writeJSON / sendError pair (see withReqID). Nil in tests that stub
 	// the two directly.
-	bindWorktree func(writeJSON func(wire.FrameType, any) error, sendError func(code, msg string)) (
+	bindWorktree func(writeJSON func(wire.FrameType, any) error, sendError, secondaryError func(code, msg string)) (
 		func(projectID, failCode string), func(projectID string, err error, failCode string))
 	// announceUI records this client's SET_CLIENT_UI. Nil for clients
 	// that show no UI, whose announcements are dropped.
@@ -1873,6 +1888,7 @@ func (d *Daemon) handleControlFrame(ctx context.Context, ops controlOps, ft wire
 			// The removal reaches every client as a SESSION_EVENT; this
 			// refreshes the requester's archived list.
 			_ = ops.writeJSON(wire.FrameArchived, wire.ArchivedResp{Archived: d.reg.ListArchived()})
+			ops.ack(wire.AckMsg{SessionID: req.SessionID})
 		})
 	case wire.FrameUnarchiveSession:
 		req, ok := decodeReq[wire.UnarchiveSessionReq](payload, ops.sendError)
@@ -2359,9 +2375,18 @@ func (d *Daemon) handleControlFrame(ctx context.Context, ops controlOps, ft wire
 			return false
 		}
 		d.runOp(func() {
-			err := d.reg.RemoveWorktree(req.ProjectID, req.Path,
-				req.Force, req.DeleteBranch, req.DeleteRemote)
+			// The unpushed exemption is a plugin's alone (B-25): the
+			// user has no workflow run, so their run id is ignored.
+			run := ""
+			if ops.principal != "" {
+				run = req.WorkflowRunID
+			}
+			err := d.reg.RemoveWorktreeForRun(req.ProjectID, req.Path,
+				req.Force, req.DeleteBranch, req.DeleteRemote, run)
 			ops.finishMutation(req.ProjectID, err, "remove_worktree_failed")
+			if err == nil {
+				ops.ack(wire.AckMsg{})
+			}
 		})
 	case wire.FrameCreateWorktree:
 		req, ok := decodeReq[wire.CreateWorktreeReq](payload, ops.sendError)

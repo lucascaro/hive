@@ -254,6 +254,18 @@ func (r *Registry) liveSessionsIn(path string) []string {
 // It defaults off because `git worktree remove` deliberately leaves
 // the ref behind, and that ref is the user's last handle on the work.
 func (r *Registry) RemoveWorktree(projectID, path string, force, deleteBranch, deleteRemote bool) error {
+	return r.RemoveWorktreeForRun(projectID, path, force, deleteBranch, deleteRemote, "")
+}
+
+// RemoveWorktreeForRun is RemoveWorktree for a plugin cleaning up after
+// workflow run runID (B-25). It skips ONLY the ErrWorktreeUnpushed
+// refusal, and only when every one of these holds: runID is a valid run
+// id, deleteBranch is false (the branch keeps every commit, so nothing
+// is lost), and the worktree's own branch — read by Inspect, never taken
+// from the caller — is under hive/wf/<runID>/. Dirty and in-use
+// refusals are unchanged. The caller (the daemon) passes a non-empty
+// runID only for a plugin principal.
+func (r *Registry) RemoveWorktreeForRun(projectID, path string, force, deleteBranch, deleteRemote bool, runID string) error {
 	root, err := r.projectRoot(projectID)
 	if err != nil {
 		return err
@@ -290,6 +302,13 @@ func (r *Registry) RemoveWorktree(projectID, path string, force, deleteBranch, d
 	if ids := r.liveSessionsIn(resolved); len(ids) > 0 {
 		return fmt.Errorf("%w: %s", ErrWorktreeInUse, strings.Join(ids, ", "))
 	}
+	// Likewise a session archived in that gap: Archive does not take the
+	// git lock, so it can land between the earlier check and here. This
+	// narrows the window rather than closing it; the exemption is what
+	// made it reachable.
+	if name, held := r.archivedHolder(resolved, ""); held {
+		return fmt.Errorf("%w: archived session %q", ErrWorktreeInUse, name)
+	}
 
 	st, err := worktree.Inspect(root, resolved)
 	if err != nil {
@@ -303,7 +322,9 @@ func (r *Registry) RemoveWorktree(projectID, path string, force, deleteBranch, d
 		if st.Uncommitted {
 			return ErrWorktreeDirty
 		}
-		if (st.Unpushed > 0 && !merged) || st.Unknown {
+		runBranch := runID != "" && wire.ValidWorkflowRunID(runID) && !deleteBranch &&
+			strings.HasPrefix(st.Branch, "hive/wf/"+runID+"/")
+		if ((st.Unpushed > 0 && !merged) || st.Unknown) && !runBranch {
 			return ErrWorktreeUnpushed
 		}
 	}

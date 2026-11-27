@@ -40,11 +40,18 @@ func peekReqID(payload []byte) int {
 // withReqID returns ops for handling one frame that carried req_id id:
 // every ERROR it sends echoes the id (including ones raised later from
 // a goroutine that captured this copy), and ack answers it.
+//
+// Invariant: for a req_id-bearing request exactly one terminal frame
+// echoes the id — ACK on success, ERROR on failure — because the SDK
+// settles on the first one it sees. A secondary failure after a success
+// (a failed inventory refresh) must therefore report through the
+// connection's plain sendError, which carries no req_id.
 func (o controlOps) withReqID(id int) controlOps {
 	if id == 0 {
 		return o
 	}
 	write := o.writeJSON
+	plainError := o.sendError // no req_id: for errors that are not the answer
 	o.reqID = id
 	o.writeJSON = func(ft wire.FrameType, v any) error {
 		if ft == wire.FrameError {
@@ -59,7 +66,7 @@ func (o controlOps) withReqID(id int) controlOps {
 		_ = o.writeJSON(wire.FrameError, wire.Error{Code: code, Message: msg})
 	}
 	if o.bindWorktree != nil {
-		o.sendWorktrees, o.finishMutation = o.bindWorktree(o.writeJSON, o.sendError)
+		o.sendWorktrees, o.finishMutation = o.bindWorktree(o.writeJSON, o.sendError, plainError)
 	}
 	return o
 }
