@@ -1426,7 +1426,10 @@ Files: `engine/engine.ts` (the run-end hook), `engine/worktrees.ts`, and
    `prompt_id` 0 with its history replayed, trimmed or not) is neither adopted
    nor killed at recovery, so this step finds it by its principal and name,
    cancels the running turn pinned to the transcript's own `prompt_id` and
-   `epoch` (a revived session has none running), and archives it. This is not optional: step 1.1's `archive_busy`
+   `epoch` (a revived session has none running), and archives it. It covers
+   leftover sessions that were dead (`alive` false or `last_error`) or still being
+   revived when recovery looked at them (B-26, round 8): those are never killed by
+   the scan, and may hold a conversation the user wants. This is not optional: step 1.1's `archive_busy`
    retry-then-kept would otherwise leave that turn running with the session
    archived "kept".
 3. **The fan-out bench and the chatty-fake reconnect test**, as listed under
@@ -1441,6 +1444,12 @@ Files: `engine/engine.ts` (the run-end hook), `engine/worktrees.ts`, and
   and while it has no connection to the daemon. Nothing changed; the caller
   tries again in a moment. C shows it as "the engine is catching up", not as
   a failure.
+- **Resync on every (re)connect.** The live `run.event` push is dropped while the
+  plugin has no connection to the daemon (the events are stored). A dropped final
+  event, `run.finished` for one, leaves no later `seq` for the client to notice a
+  gap by, so C resyncs (`run.events` with `after_seq`, or `run.get`) whenever its
+  own connection to the plugin is (re)established, and on a `recovering` reply
+  clearing, not only when a `seq` is skipped.
 
 Slice C must be told. Nothing else in the plugin Contract changes. The wire
 change is B3-R7's.
@@ -2628,12 +2637,34 @@ download, the accepted sandbox gap, and `LIST_ACP_AGENTS`.
         "The newest item always stays"), and one item is bounded at 64 KiB raw
         (`maxItemText`, `clip` `:219`) against a 512 KiB budget, so a non-empty
         conversation cannot trim to nothing, and its newest item is an agent, tool,
-        plan or thought item, never a user one. The kinds the daemon can emit
+        plan or thought item, never a user one. **Known theoretical gap (round 8):**
+        that bound holds for text, not for plan items, which are clipped per entry
+        (`UpdatePlan`) and not as a whole; a plan over 512 KiB followed by the
+        untrusted-folder notice could trim to the notice alone. It needs an
+        untrusted folder (an engine node's worktree is trusted) and an absurd plan,
+        and there is no cheap fix on the engine's side, so it is recorded, not
+        patched. The kinds the daemon can emit
         (`wire.AcpItem*`: user, agent, thought, plan, tool, notice) before a first
         prompt are only the untrusted-folder `notice` (`registry/acp.go` after the
         replay, `AddNotice` `transcript.go:85`; engine worktrees are trusted, so a
         node's own session has none); anything else was put there by a replay or a
-        user. One test per kind pins it, and a notice alone is still adopted. This
+        user. One test per kind pins it, and a notice alone is still adopted.
+        **Precondition (gate round 8): "notices only means fresh" holds for a
+        loaded, healthy session only.** A transcript lives in the daemon's memory
+        (`registry.go:153-157`, `transcript.go:26`), so after a `hived` restart every
+        ACP entry answers GET_ACP_TRANSCRIPT with an empty one until it is revived;
+        revival is background and one at a time (`daemon.go:422`, `:510`), entries
+        sit in `PhaseReviving` meanwhile (`registry.go:1019-1021`), and a revival
+        that failed keeps its reset, empty transcript for good (`acp.go:427`, `:368`).
+        An empty transcript therefore proves nothing about such a session, and
+        `kill` does not refuse a forced kill of one (`registry.go:1868`). So an
+        orphan's transcript is trusted only when the listed session is `alive`, has an
+        empty `phase` and no `last_error`: one still starting or being revived is
+        waited for (bounded, `settleWaitMs`, 30 s), and if it does not get ready the
+        node fails naming it (run.retry starts it again), never killing it; a dead one
+        is never killed or adopted, and the node makes a session of its own beside it.
+        The look before a removal re-reads the session as well as the transcript, and
+        `#reuse` applies the same rule to an adopted orphan. This
         rule does not depend on how much of the history survived the trim; and a turn it had running died with the adapter, so nothing
         is running on a revived session either. A
         session with a turn is left alone: nothing in a pass knows whose turn is
@@ -3050,6 +3081,9 @@ what was weighed.
 
 - **2026-11-26 iter 27 (B3c, PR #570)** — verdict: REQUEST_CHANGES (Greptile, 2 threads on af785e7b, after main was merged in for the gorilla/websocket bump); mergeable: MERGEABLE; findings_hash: see list; threads_open: 2 -> 0; action: autofix+push; head_sha: 7437e835. Fixed with tests (mutation-checked): the live `run.event` push went through the connection the plugin started with, which is closed after a reconnect, so clients stopped getting node and run updates; it now uses the engine's current connection (a push with no connection is dropped, the GUI closes the gap with `run.events`), and the reconnect test asserts the replacement receives `node.finished` and the closed one nothing more; audit of other closures over the original connection: the PLUGIN_MESSAGE reply path already used `engine.hive`, and nothing else holds it (timers and subscriptions are per feed and re-attached). The transcript state keeps a boolean "has held a non-notice item" instead of every item id, so a long turn costs nothing per update.
 - **2026-11-26 iter 28 (B3c, PR #570)** — verdict: APPROVE (own); mergeable: MERGEABLE; findings_hash: empty; threads_open: 0; action: stop; head_sha: 7437e835. Code head; the branch head is this docs-only ledger commit, whose CI is the final CI. 381 plugin tests, 3 of 3 default and 3 of 3 with the delay. This stop supersedes iter 26's.
+
+- **2026-11-26 iter 29 (B3c, PR #570)** — verdict: REQUEST_CHANGES (gate round 8 FAIL on 7437e835: an orphan's transcript was trusted without looking at the session's health; after a `hived` restart every transcript is empty until revival, so a prompted leftover that was reviving, starting or dead read as never prompted and was force-killed); mergeable: MERGEABLE; findings_hash: see list; threads_open: 0 -> 0; action: autofix+push; head_sha: 1cc05bf6. Fixed with tests (the gate's three cases, plus revival finishing while waited for, a session going unhealthy before its removal, and the same rule in `#reuse`; mutation-checked, 7 of 7 killed): an orphan's transcript counts only when the listed session is alive, past its start (`phase` empty) and without a `last_error`; one still starting is waited for (bounded) and then fails its node naming it; a dead one is never killed or adopted (the node makes a session beside it); the look before a removal re-reads the session too. Plan: the precondition is stated with the daemon lines, B3d step 2 covers dead and reviving leftovers, the plan-item bound is corrected and recorded as a theoretical gap, and C's contract says to resync on every (re)connect. Suite: 3 of 3 default and 3 of 3 with the delay.
+- **2026-11-26 iter 30 (B3c, PR #570)** — verdict: APPROVE (own); mergeable: MERGEABLE; findings_hash: empty; threads_open: 0; action: stop; head_sha: 1cc05bf6. Code head; the branch head is this docs-only ledger commit, whose CI is the final CI. This stop supersedes iter 28's.
 
 ## Gate verdict
 
