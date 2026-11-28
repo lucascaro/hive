@@ -22,7 +22,7 @@ func TestReadProbesDisableOptionalLocks(t *testing.T) {
 	}
 	dir := t.TempDir()
 	rec := filepath.Join(dir, "rec")
-	stub := "#!/bin/sh\necho \"$GIT_OPTIONAL_LOCKS\" >> '" + rec + "'\n"
+	stub := "#!/bin/sh\necho \"x$GIT_OPTIONAL_LOCKS\" >> '" + rec + "'\n"
 	if err := os.WriteFile(filepath.Join(dir, "git"), []byte(stub), 0o755); err != nil {
 		t.Fatal(err)
 	}
@@ -33,18 +33,21 @@ func TestReadProbesDisableOptionalLocks(t *testing.T) {
 	_, _ = HasUncommitted(wt)
 	_, _ = diffAgainstNull(wt, "x")
 	_, _ = gitPatchIDs(wt, "diff")
+	_, _ = worktreeDirty(context.Background(), wt)
 
 	b, err := os.ReadFile(rec)
 	if err != nil {
 		t.Fatal(err)
 	}
 	lines := strings.Fields(string(b))
-	if len(lines) < 5 { // patch-ids runs two processes
-		t.Fatalf("expected >=5 invocations, got %v", lines)
+	if len(lines) < 6 { // patch-ids runs two processes
+		t.Fatalf("expected >=6 invocations, got %v", lines)
 	}
 	for _, l := range lines {
-		if l != "0" {
-			t.Fatalf("GIT_OPTIONAL_LOCKS=%q, want 0 (all: %v)", l, lines)
+		// Recorded as "x"+value so an unset var is "x", never an empty
+		// line that strings.Fields would drop.
+		if l != "x0" {
+			t.Fatalf("GIT_OPTIONAL_LOCKS=%q, want 0 (all: %v)", strings.TrimPrefix(l, "x"), lines)
 		}
 	}
 }

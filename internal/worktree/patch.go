@@ -36,7 +36,7 @@ func BranchExists(repoDir, branch string) bool {
 }
 
 // DumpPatch writes a `git apply`-able patch of everything uncommitted
-// in worktreePath to outPath: tracked modifications (`git diff HEAD`)
+// in worktreePath to outPath: tracked modifications (`git diff-index -p HEAD`)
 // plus every untracked, non-ignored file rendered as an addition.
 //
 // It exists for exactly one caller: the close path that deletes a
@@ -68,10 +68,13 @@ func DumpPatch(worktreePath, outPath string, capBytes int64) error {
 
 	// Tracked changes, staged and unstaged, against HEAD. --binary so
 	// a modified image or fixture round-trips through git apply.
+	// diff-index, not diff: porcelain `git diff` refreshes the index
+	// (taking index.lock) regardless of GIT_OPTIONAL_LOCKS; the plumbing
+	// never does, and emits the same patch.
 	tracked, err := git(context.Background(), readTimeout, worktreePath,
-		"diff", "--binary", "HEAD")
+		"diff-index", "-p", "--binary", "HEAD")
 	if err != nil {
-		return fmt.Errorf("git diff HEAD: %w", err)
+		return fmt.Errorf("git diff-index HEAD: %w", err)
 	}
 	buf.Write(tracked)
 	if int64(buf.Len()) > capBytes {

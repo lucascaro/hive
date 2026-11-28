@@ -8,6 +8,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"os"
 	"os/exec"
 	"strconv"
 	"strings"
@@ -48,7 +49,12 @@ func runGit(dir string, args ...string) (string, error) {
 	}
 	cmd := proc.CommandContext(ctx, bin, args...)
 	cmd.Dir = dir
-	cmd.Env = env
+	if env == nil {
+		env = os.Environ()
+	}
+	// Read-only probes (preflight `status`) must not take the optional
+	// index.lock and fail the user's own concurrent git command.
+	cmd.Env = append(env, "GIT_OPTIONAL_LOCKS=0")
 	out, err := cmd.Output()
 	if err != nil {
 		var ee *exec.ExitError
