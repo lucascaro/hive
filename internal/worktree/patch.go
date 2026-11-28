@@ -130,7 +130,7 @@ func diffAgainstNull(worktreePath, name string) ([]byte, error) {
 	defer cancel()
 	cmd := proc.CommandContext(ctx, "git", "-C", worktreePath,
 		"diff", "--no-index", "--binary", "--", os.DevNull, name)
-	cmd.Env = append(os.Environ(), "LC_ALL=C", "LANG=C")
+	cmd.Env = append(os.Environ(), "LC_ALL=C", "LANG=C", "GIT_OPTIONAL_LOCKS=0")
 	out, err := cmd.Output()
 	if len(out) > 0 {
 		return out, nil
