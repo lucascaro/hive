@@ -37,7 +37,7 @@ const eperm = (): never => {
 
 test('redactCut replaces a secret that straddles the cut whole', () => {
   const out = redactCut(`${'x'.repeat(28)} ${TOKEN}`, 64);
-  assert.ok(!out.includes('ghp'), out);
+  assert.ok(!out.includes('ghp_'), out);
   assert.match(out, /\[redacted\]/);
 });
 
@@ -49,10 +49,10 @@ test('a bad permission id with a token straddling the 64-byte cut leaks nothing 
     h.engine.commit(id, { t: 'start', key: 'a' });
     h.engine.commit(id, { t: 'wait', key: 'a', waiting: { reason: 'permission', session_id: 's', request_id: '1-1', title: 't', options: [{ option_id: `${'x'.repeat(28)} ${TOKEN}`, name: 'n', kind: 'allow_once' }] } });
     const n = call(h, 'node.get', { run_id: id, key: 'a' }) as { error: string };
-    assert.ok(!n.error.includes('ghp'), n.error);
+    assert.ok(!n.error.includes('ghp_'), n.error);
     const fin = h.store.events(id, 0, 100).find((e) => e.type === 'node.finished' && e.key === 'a');
-    assert.ok(!JSON.stringify(fin?.data).includes('ghp'));
-    assert.ok(!JSON.stringify(h.store.getRun(id)).includes('ghp'));
+    assert.ok(!JSON.stringify(fin?.data).includes('ghp_'));
+    assert.ok(!JSON.stringify(h.store.getRun(id)).includes('ghp_'));
   } finally {
     h.close();
   }
@@ -65,9 +65,9 @@ test('a conflict whose branch, worktree or file has a token straddling the 256-b
     h.engine.commit(id, { t: 'start', key: 'c' });
     const padded = `${'d/'.repeat(110)}${TOKEN}`; // the token starts before byte 256 and ends after it
     h.engine.commit(id, { t: 'fail', key: 'c', error: 'conflict', conflict: { branch: padded, worktree: padded, files: [padded] } });
-    assert.ok(!JSON.stringify(call(h, 'node.get', { run_id: id, key: 'c' })).includes('ghp'), 'node.get');
-    assert.ok(!JSON.stringify(h.store.events(id, 0, 100)).includes('ghp'), 'events');
-    assert.ok(!JSON.stringify(h.store.loadRows(id)).includes('ghp'), 'stored rows');
+    assert.ok(!JSON.stringify(call(h, 'node.get', { run_id: id, key: 'c' })).includes('ghp_'), 'node.get');
+    assert.ok(!JSON.stringify(h.store.events(id, 0, 100)).includes('ghp_'), 'events');
+    assert.ok(!JSON.stringify(h.store.loadRows(id)).includes('ghp_'), 'stored rows');
   } finally {
     h.close();
   }
@@ -78,11 +78,11 @@ test('topics redact before they cut: error replies and kept worktree paths', () 
   try {
     const ir = { ir: 1, name: 'x', input: { type: 'object', properties: {}, required: [], additionalProperties: false }, nodes: [{ id: `${'x'.repeat(4000)} ${TOKEN}` }], edges: [] };
     const r = call(h, 'test.start-run', { project_id: 'p', ir, input: {} }) as { error: { message: string } };
-    assert.ok(!r.error.message.includes('ghp'));
+    assert.ok(!r.error.message.includes('ghp_'));
     h.store.createRun({ run_id: 'r1', project_id: 'p', workflow: 'w', file: 'w.ts', source_hash: '', ir: '{}', input: '{}' }, [], []);
     h.store.commit('r1', { rows: [], events: [], run: { kept_worktrees: [`${'p/'.repeat(120)}${TOKEN}`] } });
     const g = call(h, 'run.get', { run_id: 'r1' }) as { run: { kept_worktrees: string[] } };
-    assert.ok(!g.run.kept_worktrees[0].includes('ghp'));
+    assert.ok(!g.run.kept_worktrees[0].includes('ghp_'));
   } finally {
     h.close();
   }

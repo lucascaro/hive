@@ -1504,6 +1504,7 @@ test('an adopted session that is dead (with a conversation) by the time it is lo
     await waitFor(() => w.sim.of('CREATE_SESSION').length === 2, 'the node to make a session of its own');
     assert.deepEqual(w.sim.of('KILL_SESSION'), [], 'a dead session may hold the user\'s conversation: it is never killed here');
     assert.notEqual(rowOf(h, w.id, 'a')?.state, 'failed');
+    await waitFor(() => rowOf(h, w.id, 'a')?.state === 'running', 'the node to settle in its new session before the test ends');
   } finally {
     h.close();
     rmSync(w.dir, { recursive: true, force: true });

@@ -67,6 +67,7 @@ test('a closed connection is redialled, and the engine reads its running agent a
     assert.ok(pushed(second).includes('node.finished'), 'run.event reached the replacement connection');
     assert.equal(hive.posts.filter((x) => x.topic === 'run.event').length, pushedBefore, 'and none went to the closed one');
   } finally {
+    engine.disconnect(); // nothing a launch still has in flight may reach the store once it is closed
     engine.stopFlush();
     engine.store.close();
     rmSync(dir, { recursive: true, force: true });
@@ -94,6 +95,7 @@ test('when the daemon cannot be reached the plugin ends, as it always did', asyn
     await waitFor(() => gone === 1, 'the plugin to give up');
     assert.equal(dialled, 3, 'a few tries, then the daemon starts a fresh copy');
   } finally {
+    engine.disconnect(); // nothing a launch still has in flight may reach the store once it is closed
     engine.stopFlush();
     engine.store.close();
     rmSync(dir, { recursive: true, force: true });
@@ -111,6 +113,7 @@ test('without a way to redial a closed connection ends the plugin at once', asyn
     hive.emit('close', undefined);
     await waitFor(() => gone === 1, 'the plugin to end');
   } finally {
+    engine.disconnect(); // nothing a launch still has in flight may reach the store once it is closed
     engine.stopFlush();
     engine.store.close();
     rmSync(dir, { recursive: true, force: true });
@@ -169,6 +172,7 @@ test('a close of the redialled connection while its nodes are read is dialled ag
     sim.sessions[0].end();
     await waitFor(() => engine.store.getRun(id)?.state === 'done', 'the run to finish');
   } finally {
+    engine.disconnect(); // nothing a launch still has in flight may reach the store once it is closed
     engine.stopFlush();
     engine.store.close();
     rmSync(dir, { recursive: true, force: true });
@@ -218,6 +222,7 @@ test('a close during the startup recovery does not fail the node whose turn surv
     sim.sessions[0].end();
     await waitFor(() => engine.store.getRun(id)?.state === 'done', 'the run to finish');
   } finally {
+    engine.disconnect(); // nothing a launch still has in flight may reach the store once it is closed
     engine.stopFlush();
     engine.store.close();
     rmSync(dir, { recursive: true, force: true });
@@ -255,6 +260,7 @@ test('connections that keep closing are redialled three times, then the plugin e
     assert.equal(engine.store.loadRows(id)[0].state, 'running', 'the row was never failed or interrupted: the next start reads it');
     assert.equal(engine.disconnected, true);
   } finally {
+    engine.disconnect(); // nothing a launch still has in flight may reach the store once it is closed
     engine.stopFlush();
     engine.store.close();
     rmSync(dir, { recursive: true, force: true });
@@ -281,6 +287,7 @@ test('a failure from a launch the connection outlived is refused, whenever it ar
     assert.equal(engine.store.loadRows(id)[0].state, 'running');
     assert.equal(engine.failNode(id, 'a', 'a current failure', { link: engine.link }), true);
   } finally {
+    engine.disconnect(); // nothing a launch still has in flight may reach the store once it is closed
     engine.stopFlush();
     engine.store.close();
     rmSync(dir, { recursive: true, force: true });
@@ -324,6 +331,7 @@ test('a connection that dies right after every read is redialled with growing pa
     assert.ok(gaps[gaps.length - 1] >= 500 && gaps[gaps.length - 1] > gaps[0], `the pauses grow: 4 ms doubling, so the last is about 1 s (${gaps.join(', ')} ms)`);
     assert.equal(engine.store.loadRows(id)[0].state, 'running', 'never failed or interrupted');
   } finally {
+    engine.disconnect(); // nothing a launch still has in flight may reach the store once it is closed
     engine.stopFlush();
     engine.store.close();
     rmSync(dir, { recursive: true, force: true });
@@ -363,6 +371,7 @@ test('a connection that stays open clears the streak', async () => {
     assert.equal(gone, 0, 'a connection that lasts is not a streak');
     assert.equal(dials, 14);
   } finally {
+    engine.disconnect(); // nothing a launch still has in flight may reach the store once it is closed
     engine.stopFlush();
     engine.store.close();
     rmSync(dir, { recursive: true, force: true });

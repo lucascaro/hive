@@ -118,6 +118,8 @@ export function harness(executors: Executors, opts: { store?: StoreOptions; dir?
     hive,
     pushed,
     close: () => {
+      // A launch still in flight must do nothing once the store is gone: a lost connection makes every agent launch stale (its commits and failures are refused), and nothing new starts.
+      engine.disconnect();
       engine.stopFlush();
       try {
         store.close();
