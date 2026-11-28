@@ -36,7 +36,7 @@ CREATE TABLE IF NOT EXISTS nodes (
   turns INTEGER NOT NULL DEFAULT 0, output_raw TEXT, output TEXT, error TEXT, cap TEXT,
   session_id TEXT, branch TEXT, worktree TEXT, pid INTEGER, pgid INTEGER, proc_start TEXT,
   prompt_id INTEGER, epoch INTEGER, boot_id TEXT, conflict TEXT, waiting TEXT,
-  started_at TEXT, ended_at TEXT,
+  started_at TEXT, ended_at TEXT, reprompted INTEGER,
   PRIMARY KEY (run_id, key)
 );
 CREATE TABLE IF NOT EXISTS events (
@@ -77,6 +77,7 @@ function rowToDb(runId: string, r: Row): Record<string, Sql> {
     prompt_id: r.prompt_id ?? null,
     epoch: r.epoch ?? null,
     boot_id: r.boot_id ?? null,
+    reprompted: r.reprompted ? 1 : null,
     conflict: json(r.conflict),
     waiting: json(r.waiting),
     started_at: r.started_at ?? null,
@@ -111,6 +112,7 @@ function dbToRow(d: Rec): Row {
   set('prompt_id', opt(d.prompt_id));
   set('epoch', opt(d.epoch));
   set('boot_id', opt(d.boot_id));
+  set('reprompted', d.reprompted === 1 ? true : undefined);
   set('conflict', parse(d.conflict) as Row['conflict']);
   set('waiting', parse(d.waiting) as Row['waiting']);
   set('started_at', opt(d.started_at));
@@ -175,6 +177,9 @@ export class Store {
     this.#db = new DatabaseSync(path);
     this.#db.exec('PRAGMA journal_mode=WAL; PRAGMA synchronous=FULL; PRAGMA foreign_keys=ON;');
     this.#db.exec(SCHEMA);
+    // A runs.db made before B3c has no `reprompted` column.
+    const cols = this.#db.prepare('PRAGMA table_info(nodes)').all() as { name: string }[];
+    if (!cols.some((c) => c.name === 'reprompted')) this.#db.exec('ALTER TABLE nodes ADD COLUMN reprompted INTEGER');
     const v = this.#db.prepare('SELECT schema_version AS v FROM meta').get() as { v: number } | undefined;
     if (v === undefined) this.#db.prepare('INSERT INTO meta (schema_version) VALUES (?)').run(SCHEMA_VERSION);
     else if (v.v > SCHEMA_VERSION) throw new Error(`runs.db is schema ${v.v}; this engine understands ${SCHEMA_VERSION}`);

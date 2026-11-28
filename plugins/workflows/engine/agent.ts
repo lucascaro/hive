@@ -11,9 +11,10 @@
 import { type AcpAgentInfo, refusal } from '../ir/catalog.ts';
 import { checkValue } from '../ir/resultschema.ts';
 import type { AgentNode } from '../sdk/dsl.ts';
-import type { Engine, NodeContext } from './engine.ts';
+import type { AgentPlan, Engine, NodeContext } from './engine.ts';
+import type { Row } from './model.ts';
 import { renderAgentPrompt } from './prompt.ts';
-import type { PermissionState, TranscriptState } from './sessions.ts';
+import type { PermissionState, SessionState, TranscriptState } from './sessions.ts';
 import { isConflict, prepare, type Workspace } from './worktrees.ts';
 
 /** How long a cancelled turn gets to report `cancelled` before its session is killed. */
@@ -24,9 +25,19 @@ export const READY_TIMEOUT_MS = 60_000;
 /** F3: the one re-prompt after a turn that ended without a result. */
 export const REPROMPT = 'You ended the turn without calling submit_result. Call it now with your result.';
 
+/** What a retried attempt is told: the worktree is the previous attempt's, and it may hold half of its work. */
+export const INTERRUPTED_NOTE =
+  'Your previous attempt was interrupted; the worktree may hold partial work. Check what is there, finish the task, and call submit_result when done. The original task follows.\n\n';
+
+/** Where a test can hold an agent node still, so a crash lands exactly there (internal/workflowe2e). Never set in a release. */
+export type PausePoint = 'after-create' | 'before-prompt' | 'after-prompt';
+
 export interface AgentDeps {
   cancelGraceMs?: number;
   readyTimeoutMs?: number;
+  /** How often a session being revived is looked at again. */
+  settlePollMs?: number;
+  pause?: (point: PausePoint) => Promise<void>;
 }
 
 interface Outcome {
@@ -48,8 +59,13 @@ class AgentRun {
   readonly #ctx: NodeContext;
   readonly #engine: Engine;
   readonly #n: AgentNode;
+  readonly #deps: AgentDeps;
   readonly #graceMs: number;
   readonly #readyMs: number;
+  /** The connection this launch was made under: once it is lost the launch is stale and touches nothing (B3c). */
+  readonly #link: number;
+  /** This attempt follows an interrupted one: its prompt carries the note, and its old session is reused if it is still there. */
+  #retry = false;
   #ws: Workspace | undefined;
   #sid: string | undefined;
   #ack: { prompt_id: number; epoch: number } | undefined;
@@ -66,32 +82,50 @@ class AgentRun {
     this.#ctx = ctx;
     this.#engine = ctx.engine;
     this.#n = ctx.node as AgentNode;
+    this.#deps = deps;
     this.#graceMs = deps.cancelGraceMs ?? CANCEL_GRACE_MS;
     this.#readyMs = deps.readyTimeoutMs ?? READY_TIMEOUT_MS;
+    this.#link = ctx.link ?? ctx.engine.link;
+  }
+
+  get #row(): Row | undefined {
+    return this.#engine.run(this.#ctx.run_id).model.rows.get(this.#ctx.key);
   }
 
   get #state(): string | undefined {
-    return this.#engine.run(this.#ctx.run_id).model.rows.get(this.#ctx.key)?.state;
+    return this.#row?.state;
   }
 
-  /** Whether this launch still owns the node: the run is the live one and the node is in one of `states`. */
+  /** Whether the connection this launch started under is still the engine's. */
+  #fresh(): boolean {
+    return this.#engine.link === this.#link;
+  }
+
+  /** Whether this launch still owns the node: the connection and run are the live ones and the node is in one of `states`. */
   #live(...states: string[]): boolean {
-    return this.#engine.current(this.#ctx) && states.includes(this.#state ?? '');
+    return this.#fresh() && this.#engine.current(this.#ctx) && states.includes(this.#state ?? '');
   }
 
   #fail(why: string): void {
-    if (this.#engine.current(this.#ctx)) this.#engine.failNode(this.#ctx.run_id, this.#ctx.key, why);
+    if (this.#fresh() && this.#engine.current(this.#ctx)) this.#engine.failNode(this.#ctx.run_id, this.#ctx.key, why, { link: this.#link });
   }
 
   async run(): Promise<void> {
-    const { run_id, key } = this.#ctx;
-    if (!this.#live('pending', 'interrupted')) return;
-    if (!this.#engine.reserveTurn(run_id, key)) return; // the 50-turn cap failed the node
+    const { plan } = this.#ctx;
+    if (plan) {
+      if (!this.#live('running', 'waiting')) return; // picked up after a crash: the row is already running
+    } else {
+      if (!this.#live('pending', 'interrupted')) return;
+      this.#retry = this.#state === 'interrupted';
+    }
     try {
-      await this.#go();
+      await (plan ? this.#resumed(plan) : this.#go());
     } catch (err) {
-      this.#fail(`agent could not run: ${msgOf(err)}`);
-      void this.stop();
+      // A connection lost under this launch is not the node's failure: recovery reads it again from its row.
+      if (this.#fresh()) {
+        this.#fail(`agent could not run: ${msgOf(err)}`);
+        void this.stop();
+      }
     } finally {
       // A stop in progress still needs the feed: let it finish before the session's state is dropped.
       await this.#stopped?.catch(() => {});
@@ -99,41 +133,47 @@ class AgentRun {
     }
   }
 
+  /** The catalog is asked on every launch, so a ceiling the user lowered since the run started applies (R6). The mode is always explicit: an empty one means the ceiling. */
+  async #catalog(): Promise<{ mode: string } | { why: string } | undefined> {
+    const n = this.#n;
+    const listed = await this.#engine.hive.request('LIST_ACP_AGENTS', {}, { timeoutMs: 30_000 });
+    if (!this.#live('pending', 'interrupted', 'running', 'waiting')) return undefined;
+    const agents = (listed?.agents ?? []) as AcpAgentInfo[];
+    const why = refusal(n, agents);
+    if (why) return { why };
+    const mode = n.mode ?? agents.find((a) => a.id === n.agent)?.modes[0]?.id;
+    return mode ? { mode } : { why: `agent "${n.agent}" advertises no permission modes` };
+  }
+
   async #go(): Promise<void> {
     const engine = this.#engine;
-    const hive = engine.hive;
     const { run_id, key } = this.#ctx;
     const n = this.#n;
     const { model, project_id } = engine.run(run_id);
 
-    // The catalog is asked on every launch, so a ceiling the user lowered since the run started applies (R6). The mode is always explicit: an empty one means the ceiling.
-    const listed = await hive.request('LIST_ACP_AGENTS', {}, { timeoutMs: 30_000 });
-    if (!this.#live('pending', 'interrupted')) return;
-    const agents = (listed?.agents ?? []) as AcpAgentInfo[];
-    const why = refusal(n, agents);
-    if (why) return this.#fail(why);
-    const mode = n.mode ?? agents.find((a) => a.id === n.agent)?.modes[0]?.id;
-    if (!mode) return this.#fail(`agent "${n.agent}" advertises no permission modes`);
+    const cat = await this.#catalog();
+    if (!cat) return;
+    if ('why' in cat) return this.#fail(cat.why);
 
-    const prompt = renderAgentPrompt(model, key, engine.store.getRun(run_id)?.nonce ?? '');
+    // A retry carries a note: the worktree is the interrupted attempt's, and may hold half of its work.
+    const task = renderAgentPrompt(model, key, engine.store.getRun(run_id)?.nonce ?? '');
+    const prompt = this.#retry ? INTERRUPTED_NOTE + task : task;
     const ws = await prepare(engine, run_id, key);
     if (!this.#live('pending', 'interrupted')) return;
-    if (isConflict(ws)) return void engine.failNode(run_id, key, ws.message, { conflict: ws.conflict });
+    if (isConflict(ws)) return void engine.failNode(run_id, key, ws.message, { conflict: ws.conflict, link: this.#link });
     this.#ws = ws;
 
-    // No initial_prompt: an opening prompt that fails is only logged by the daemon, and its turn gets no ack.
-    const created = await hive.request(
-      'CREATE_SESSION',
-      { kind: 'acp', agent: n.agent, acp_mode: mode, project_id, worktree_path: ws.path, workflow_run_id: run_id, result_schema: n.output, name: `${model.ix.ir.name} · ${key}` },
-      { timeoutMs: 60_000 },
-    );
-    const sid = created?.session_id as string | undefined;
-    if (!sid) return this.#fail('the daemon did not name the new session');
+    const got = await this.#session(cat.mode, project_id, `${model.ix.ir.name} · ${key}`);
+    if (!got) return;
+    const { sid, ours, created } = got;
     this.#sid = sid;
     engine.feed.track(sid);
+    if (created) await this.#deps.pause?.('after-create');
+    const at = this.#ws as Workspace;
+    const boot = engine.hive.welcome?.boot_id;
     // CREATE_SESSION can take a while: a cancel and retry meanwhile must not let this stale launch claim the new attempt's node.
-    if (!engine.current(this.#ctx) || !engine.beginNode(run_id, key, { session_id: sid, branch: ws.branch, worktree: ws.path })) {
-      await this.#kill(); // cancelled while the session was being made
+    if (!this.#fresh() || !engine.current(this.#ctx) || !engine.beginNode(run_id, key, { session_id: sid, branch: at.branch, worktree: at.path, ...(boot ? { boot_id: boot } : {}) })) {
+      if (ours && this.#fresh()) await this.#kill(); // cancelled while the session was being made
       return;
     }
     engine.onStop(run_id, key, () => this.stop());
@@ -141,16 +181,168 @@ class AgentRun {
     const ready = await this.#ready();
     if (ready !== undefined) return this.#fail(ready);
     this.#arm(n.timeout_s * 1000);
+    await this.#deps.pause?.('before-prompt');
+    return await this.#loop(prompt, undefined, false);
+  }
 
+  /** The turns of the node: send the prompt (or watch the one already sent), and F3 one re-prompt after a turn that ended without a result. */
+  async #loop(prompt: string, watching: { prompt_id: number; epoch: number } | undefined, reprompted: boolean): Promise<void> {
     let text = prompt;
-    for (let again = false; ; again = true) {
-      const out = await this.#turn(text, again);
+    let pending = watching;
+    for (let again = reprompted; ; again = true) {
+      const out = pending ? await this.#watch(pending) : await this.#turn(text, again);
+      pending = undefined;
       if (!out) return;
       if (out.stop_reason !== 'end_turn') return this.#fail(`the agent's turn ended with stop reason "${out.stop_reason}"`);
       if (out.result_status === 'submitted') return await this.#finish(out.result);
       // F3: a turn that ends without submit_result is never taken as success. One more try, then the node fails.
       if (again) return this.#fail('the agent ended its turn twice without calling submit_result');
       text = REPROMPT;
+    }
+  }
+
+  /**
+   * A node whose row is already running, picked up after a plugin crash or a
+   * reconnect (B3c). Its session and worktree are on the row; a turn that was
+   * started is watched from the ack, and one that never was is sent now.
+   */
+  async #resumed(plan: AgentPlan): Promise<void> {
+    const engine = this.#engine;
+    const { run_id, key } = this.#ctx;
+    const row = this.#row as Row;
+    if (!row.session_id || !row.worktree || !row.branch) return this.#fail('the node has no session or worktree recorded to pick up');
+    this.#sid = row.session_id;
+    this.#ws = { path: row.worktree, branch: row.branch };
+    engine.feed.track(row.session_id);
+    engine.onStop(run_id, key, () => this.stop());
+    // The clock kept running while the engine was away.
+    const since = Date.parse(row.started_at ?? '');
+    this.#arm(Math.max(1000, this.#n.timeout_s * 1000 - (Number.isFinite(since) ? Date.now() - since : 0)));
+    if (plan.kind === 'watch') {
+      this.#ack = plan.ack;
+      return await this.#loop('', plan.ack, plan.again);
+    }
+    const cat = await this.#catalog();
+    if (!cat) return;
+    if ('why' in cat) return this.#fail(cat.why);
+    const ready = await this.#ready();
+    if (ready !== undefined) return this.#fail(ready);
+    const { model } = engine.run(run_id);
+    const task = renderAgentPrompt(model, key, engine.store.getRun(run_id)?.nonce ?? '');
+    // An attempt after the first is a retry, whichever launch sends its first turn.
+    return await this.#loop(row.attempt > 1 ? INTERRUPTED_NOTE + task : task, undefined, false);
+  }
+
+  // ---------------------------------------------------------------- session
+
+  /**
+   * The session this attempt runs in. A session an earlier incarnation of the
+   * engine made for this node (an orphan) or this node's own interrupted one
+   * is taken over when it is still usable; otherwise a fresh one is created
+   * in the same worktree. Undefined when the launch is no longer the node's.
+   */
+  async #session(mode: string, project_id: string, name: string): Promise<{ sid: string; ours: boolean; created: boolean } | undefined> {
+    const { run_id, key } = this.#ctx;
+    const orphan = this.#engine.takeOrphan(run_id, key);
+    const cand = orphan ?? (this.#retry ? this.#row?.session_id : undefined);
+    if (cand) {
+      const reused = await this.#reuse(cand, orphan !== undefined);
+      if (reused === undefined) return undefined;
+      if (reused) return { sid: cand, ours: orphan !== undefined, created: false };
+    }
+    const ws = this.#ws as Workspace;
+    const created = await this.#engine.hive.request(
+      'CREATE_SESSION',
+      { kind: 'acp', agent: this.#n.agent, acp_mode: mode, project_id, worktree_path: ws.path, workflow_run_id: run_id, result_schema: this.#n.output, name },
+      { timeoutMs: 60_000 },
+    );
+    const sid = created?.session_id as string | undefined;
+    if (!sid) {
+      this.#fail('the daemon did not name the new session');
+      return undefined;
+    }
+    return { sid, ours: true, created: true };
+  }
+
+  /**
+   * Whether `sid` can run this attempt: true, false (make a new one) or
+   * undefined (the launch is stale or the node failed). A session still being
+   * revived is waited for; a dead one is restarted (R3), and when it cannot be
+   * (no `loadSession`, or the load fails) it is killed with its worktree kept
+   * and a fresh session takes its place. An orphan was never prompted, so a
+   * dead one is just removed.
+   */
+  async #reuse(sid: string, orphan: boolean): Promise<boolean | undefined> {
+    const info = await this.#settled(sid);
+    if (info === 'stale') return undefined;
+    const ws = this.#ws as Workspace;
+    if (!info || info.removed) return false;
+    if (info.kind === 'pty') {
+      this.#fail('the previous attempt\'s session was taken over, so it cannot be prompted');
+      return undefined;
+    }
+    // A session set aside as never prompted is looked at again before it is prompted into or killed: if a turn or a conversation has appeared since
+    // (the user's own, say), it is not ours to use or close, and the node does not start beside it either. Its transcript is only trusted once the
+    // session is loaded and healthy: a session still being revived or one that failed to start has an empty transcript whatever it held.
+    if (orphan) {
+      if (info.phase !== '') {
+        this.#fail(`the leftover session ${sid} was still starting, so the node was not started in its worktree beside it`);
+        return undefined;
+      }
+      if (!info.alive || info.last_error) return false; // dead: never killed (its conversation may be the user's), a fresh session is made beside it
+      const send = this.#engine.hive.send?.bind(this.#engine.hive);
+      const tx = send ? await this.#engine.feed.fetchTranscript(send, sid, this.#engine.daemonWaitMs) : undefined;
+      if (!this.#live('pending', 'interrupted')) return undefined;
+      if (!tx || tx.prompt_id !== 0 || tx.content) {
+        this.#fail(`the leftover session ${sid} was set aside as never prompted but has a conversation now (or could not be read), so the node was not started in its worktree beside it`);
+        return undefined;
+      }
+    }
+    if (info.worktree_path !== undefined && info.worktree_path !== ws.path) {
+      await this.#kill(sid); // not in the worktree this node works in: it is nobody's (an orphan only after the checks above)
+      return false;
+    }
+    if (info.alive && !info.last_error) return true;
+    if (!orphan) {
+      try {
+        await this.#engine.hive.request('RESTART_SESSION', { session_id: sid }, { timeoutMs: 60_000 });
+        const again = await this.#settled(sid);
+        if (again === 'stale') return undefined;
+        if (again?.alive && !again.last_error) return true;
+      } catch (err) {
+        if (!this.#fresh()) throw err;
+        // restart_failed: the agent cannot load the old conversation (or the session is gone). A fresh session, same worktree.
+      }
+    }
+    await this.#kill(sid);
+    if (!this.#live('pending', 'interrupted')) return undefined;
+    // Closing the last session of a hive-managed worktree makes the daemon remove it only when it is Pristine (nothing uncommitted, no unpushed commits, and
+    // it could be inspected): a worktree holding work is kept. Preparing it again re-attaches one that was kept and recreates one that was removed.
+    const again = await prepare(this.#engine, this.#ctx.run_id, this.#ctx.key);
+    if (!this.#live('pending', 'interrupted')) return undefined;
+    if (isConflict(again)) {
+      this.#engine.failNode(this.#ctx.run_id, this.#ctx.key, again.message, { conflict: again.conflict, link: this.#link });
+      return undefined;
+    }
+    this.#ws = again;
+    return false;
+  }
+
+  /** The session once it is no longer starting or being revived (`phase` empty), read from the daemon each time. 'stale' when the launch is no longer the node's. */
+  async #settled(sid: string): Promise<SessionState | undefined | 'stale'> {
+    const engine = this.#engine;
+    const poll = this.#deps.settlePollMs ?? 200;
+    const until = Date.now() + this.#readyMs;
+    for (;;) {
+      const send = engine.hive.send?.bind(engine.hive);
+      const listed = send ? await engine.feed.listSessions(send) : undefined;
+      if (!this.#live('pending', 'interrupted')) return 'stale';
+      const info = listed ? listed.find((s) => s.id === sid) : engine.feed.session(sid);
+      if (!info || info.removed || info.phase === '' || Date.now() >= until) return info;
+      await new Promise<void>((r) => {
+        const t = setTimeout(r, poll);
+        t.unref?.();
+      });
     }
   }
 
@@ -188,8 +380,12 @@ class AgentRun {
 
   async #turn(text: string, again: boolean): Promise<Outcome | undefined> {
     const { run_id, key } = this.#ctx;
-    // Every PROMPT_ACP counts against the run's cap, the re-prompt included.
-    if (again && !this.#engine.reserveTurn(run_id, key)) return undefined;
+    // Every PROMPT_ACP counts against the run's cap, the first and the re-prompt alike. It is charged here, at the send, so a launch that the
+    // connection cut short before any prompt (and is relaunched) is not charged twice.
+    if (!this.#engine.reserveTurn(run_id, key)) {
+      void this.stop(); // the cap failed the node: the session it made has no turn and is closed
+      return undefined;
+    }
     if (!this.#live('running', 'waiting')) return undefined;
     const sending = this.#engine.hive.request('PROMPT_ACP', { session_id: this.#sid, text, workflow_run_id: run_id }, { timeoutMs: 60_000 }).then((ack) => {
       this.#ack = { prompt_id: ack?.prompt_id ?? 0, epoch: ack?.epoch ?? 0 };
@@ -198,10 +394,17 @@ class AgentRun {
     await sending;
     const ack = this.#ack as { prompt_id: number; epoch: number };
     if (ack.prompt_id === 0) throw new Error('the daemon did not report the turn it started');
+    await this.#deps.pause?.('after-prompt');
     // A stop that came while the prompt was in flight cancels this turn itself (stop waits for the ack); there is nothing to wait for here.
     if (!this.#live('running', 'waiting')) return undefined;
-    this.#engine.ackTurn(run_id, key, ack);
+    this.#engine.ackTurn(run_id, key, ack, again);
     return await this.#outcome(ack);
+  }
+
+  /** A turn that was started before this launch existed (a crash or reconnect): it is the node's turn from here on. */
+  #watch(ack: { prompt_id: number; epoch: number }): Promise<Outcome | undefined> {
+    this.#ack = ack;
+    return this.#outcome(ack);
   }
 
   /** Waits for the prompt `ack` names to end. Undefined when the node stopped being ours or failed meanwhile. */
@@ -291,6 +494,7 @@ class AgentRun {
     this.#deadline = Date.now() + ms;
     this.#timer = setTimeout(() => {
       this.#timer = undefined;
+      if (!this.#fresh()) return;
       this.#fail(`timed out after ${this.#n.timeout_s}s`);
       void this.stop();
     }, ms);
@@ -319,6 +523,8 @@ class AgentRun {
    * session is killed; the worktree is kept either way. Safe to call twice.
    */
   stop(): Promise<void> {
+    // A launch the connection outlived is stale: its session belongs to the launch that replaced it, and this one speaks for no one.
+    if (!this.#fresh()) return (this.#stopped ??= Promise.resolve());
     this.#stopped ??= (async () => {
       const sid = this.#sid;
       if (!sid) return;
@@ -339,10 +545,10 @@ class AgentRun {
     return this.#stopped;
   }
 
-  async #kill(): Promise<void> {
-    if (!this.#sid) return;
+  async #kill(sid = this.#sid): Promise<void> {
+    if (!sid) return;
     try {
-      await this.#engine.hive.request('KILL_SESSION', { session_id: this.#sid, force: true });
+      await this.#engine.hive.request('KILL_SESSION', { session_id: sid, force: true });
     } catch {
       // Already gone, or the daemon is: nothing more to do for it.
     }
@@ -367,6 +573,8 @@ class AgentRun {
     clearTimeout(this.#timer);
     for (const u of this.#unsubs) u();
     this.#unsubs.clear();
+    // A launch the connection outlived is stale: the launch that replaced it owns the stop and the session's state now.
+    if (!this.#fresh()) return;
     if (this.#engine.current(this.#ctx)) this.#engine.onStop(this.#ctx.run_id, this.#ctx.key, undefined);
     if (this.#sid) this.#engine.feed.forget(this.#sid);
   }

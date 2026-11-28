@@ -4,10 +4,10 @@
 - **Design:** [workflow-engine.md](../../design-docs/workflow-engine.md), [acp-workflows.md](../../design-docs/acp-workflows.md)
 - **Depends on:** A (#528), planned against `origin/feature/528-daemon-sdk-prereqs:docs/exec-plans/active/528-workflow-engine-a-daemon-sdk-prereqs.md` at `7410f6b7`
 - **Issue:** #529
-- **Branch:** `feature/529-engine-core` (research and plan); one branch per phase PR (B1: `feature/529-b1-validator`, B2: `feature/529-b2-store-interpreter`)
-- **PR:** #538 (B1), #550 (B2), #554 (B3 plan), #555 (B3b), #569 (B3-R7)
-- **Phase:** 3 of 5
-- **Status:** active. Plan approved. B1 (#538) and B2 (#550) merged; the B3 plan is decided (B-22..B-25, 2026-11-15); B3 to B5 remain.
+- **Branch:** `feature/529-engine-core` (research and plan); one branch per phase PR (B1: `feature/529-b1-validator`, B2: `feature/529-b2-store-interpreter`, B3b: `feature/529-b3b-agent-nodes`, B3-R7: `feature/529-b3-r7-daemon-acks`, B3c: `feature/529-b3c-durability`)
+- **PR:** #538 (B1), #550 (B2), #554 (B3 plan), #555 (B3b), #569 (B3-R7), #570 (B3c)
+- **Phase:** 3 of 5 (B3 in progress: B3b and B3-R7 merged, B3c in review; B3a and B3d remain)
+- **Status:** active. Plan approved. B1 (#538), B2 (#550), B3b (#555) and B3-R7 (#569) merged; B3c (#570) in review; the B3 plan is decided (B-22..B-26); the rest of B3 to B5 remain.
   - All open questions are decided (see Decision log, 2026-10-25 user
     decisions).
   - R1–R6 are approved as A changes: R2, R3, R5 and R6 go to A PR1; R1 and
@@ -410,12 +410,16 @@ Decisions.
 - **Conflict.** PREPARED_WORKTREE `conflict` fails the node with this
   message:
 
-  > Merging `<branch>` conflicted in `<files>`. The merge worktree is kept at
-  > `<path>` with the other branches merged. Resolve and commit there, then
-  > resume the run.
+  > Merging `<branch>` conflicted in `<files>`. The conflicting merge was
+  > aborted: the worktree kept at `<path>` is clean, holds the branches merged
+  > before it, and does not contain `<branch>`. Merge `<branch>` there
+  > yourself, resolve the conflicts and commit, then retry the run.
 
-  The resume path is `run.retry`. Re-preparing re-attaches, and the
-  merges already done are no-ops (A).
+  The daemon aborts the conflicting merge (`worktree.MergeBranches`), so the
+  kept tree is clean at the base, never mid-merge. The resume path is
+  `run.retry`. Re-preparing re-attaches, and the merges already done are
+  no-ops (A). *Amended in B3c (B3b gate follow-up): the first wording said
+  "Resolve and commit there", which a clean tree cannot do.*
 - **Sessions at run end** (user decision). *This bullet and Cleanup below
   are amended by B-25: an archived session claims its worktree, and committed
   run branches need B3-R7's unpushed exemption. See Phases, B3-R7 and B3d.* When a run reaches `done`,
@@ -558,6 +562,8 @@ Decisions.
   - A waiting human survives every restart unchanged.
 
 ### Durability (`engine/main.ts` startup, also run after a reconnect)
+
+*Amended in B3c (see "B3c implementation decisions"): the table's rows are read by `engine/durability.ts`. `waiting` agent rows are recovered like `running` ones. The "create sent, no session id stored" row is a **`pending`** row (the session id is stored with the transition to `running`, after the CREATE ack), and an orphan that cannot be adopted is removed without marking the row `interrupted`: nothing was ever prompted. A transcript the daemon has trimmed is never read as "turn not sent".*
 
 The engine connects, reads `boot_id`, and rebuilds its view from SESSIONS,
 from `GET_ACP_TRANSCRIPT` for every `running` agent row, and from `runs.db`.
@@ -940,6 +946,14 @@ interrupted | cancelled`. `cancelled` is an addition to the design's list.
 **Overlay keys.** `node_id` is the IR id (what the overlay colours); `key` is
 the instance (`<map>[<i>]/<node>`, `<loop>[<k>]/<node>`).
 
+**Conflict wording (B3c).** A node failed by a merge conflict carries
+`node.finished.conflict {branch, files, worktree}`. The kept `worktree` is
+**clean at the base**: the daemon aborts the conflicting merge, so the tree
+holds the branches merged before it and not `conflict.branch`. C words its
+recovery hint the same way the engine's `error` does: *merge `<branch>` in
+`<worktree>` yourself, resolve the conflicts and commit, then retry the run.*
+It never says "resolve and commit there", as if a merge were in progress.
+
 ## Phases
 
 Each phase is one PR, and every phase ends green on the Verification
@@ -1297,6 +1311,13 @@ Files: `engine/engine.ts` (`recover()`), `engine/main.ts` (reconnect).
    are rejected by the SDK (`_rejectAll`) and their effects re-derived from
    the rows.
 
+*Built as (#570).* `engine/durability.ts` is the startup table; `recover()`
+and `Engine.reconnect()` both run it. The engine reads the daemon with
+LIST_SESSIONS and GET_ACP_TRANSCRIPT, neither of which is an SDK `request()`
+verb (no `req_id` reply), so `SessionFeed.listSessions` and `fetchTranscript`
+send the frame and wait for its SESSIONS or reset ACP_TRANSCRIPT. The
+decisions are under "B3c implementation decisions" in the Decision log.
+
 #### B3-R7: archive/remove acks and the run-branch unpushed exemption (daemon, B-25)
 
 This is the daemon change B3d depends on. Slice A owns daemon changes, but
@@ -1387,13 +1408,48 @@ Files: `engine/engine.ts` (the run-end hook), `engine/worktrees.ts`, and
    4. An agent worktree lives as long as its archived session. Deleting the
       archived entry with its worktree (DELETE_ARCHIVED, existing) removes it
       and still refuses a dirty one.
-2. **The fan-out bench and the chatty-fake reconnect test**, as listed under
+2. **Turns of a run that ended while the daemon connection was down** (found
+   in B3c's review of #570). A stale launch's `stop()` is inert (it must not
+   speak on a connection that replaced the one it started under). `run.cancel`
+   is refused while the connection is down (B-26), but a run can still end then:
+   a local check's failure fails the run, which cancels its live nodes and calls
+   their registered stops, and those are the stale launches' inert ones. The run
+   ends in `runs.db` and sends no CANCEL_ACP: the node's turn keeps running in
+   the daemon. B3d reconciles it at run end and after a reconnect: for every node of
+   a `cancelled` or `failed` run whose row names a session, read the session
+   (LIST_SESSIONS) and its transcript; when its turn is still running and the
+   boot id is the row's, send CANCEL_ACP pinned to the row's `prompt_id` and
+   `epoch` (never an unpinned cancel, which could stop later work), then archive
+   the session as in step 1. It covers the sessions B3c's orphan scan leaves
+   alone too (B-26): a session of a run's principal that no row names and that
+   has a turn (`prompt_id > 0`) or any conversation item (a revived session has
+   `prompt_id` 0 with its history replayed, trimmed or not) is neither adopted
+   nor killed at recovery, so this step finds it by its principal and name,
+   cancels the running turn pinned to the transcript's own `prompt_id` and
+   `epoch` (a revived session has none running), and archives it. It covers
+   leftover sessions that were dead (`alive` false or `last_error`) or still being
+   revived when recovery looked at them (B-26, round 8): those are never killed by
+   the scan, and may hold a conversation the user wants. This is not optional: step 1.1's `archive_busy`
+   retry-then-kept would otherwise leave that turn running with the session
+   archived "kept".
+3. **The fan-out bench and the chatty-fake reconnect test**, as listed under
    Tests.
 
 #### B3 contract delta for C
 
 - `node.finished` gains `kept_pids?: number[]` (B-23).
 - `run.retry` gains `error.code: "survivors_running"` (B-23).
+- `run.cancel` and `run.retry` gain `error.code: "recovering"` (B-26): the
+  engine refuses them while it reads the daemon after a restart or a reconnect,
+  and while it has no connection to the daemon. Nothing changed; the caller
+  tries again in a moment. C shows it as "the engine is catching up", not as
+  a failure.
+- **Resync on every (re)connect.** The live `run.event` push is dropped while the
+  plugin has no connection to the daemon (the events are stored). A dropped final
+  event, `run.finished` for one, leaves no later `seq` for the client to notice a
+  gap by, so C resyncs (`run.events` with `after_seq`, or `run.get`) whenever its
+  own connection to the plugin is (re)established, and on a `recovering` reply
+  clearing, not only when a `seq` is skipped.
 
 Slice C must be told. Nothing else in the plugin Contract changes. The wire
 change is B3-R7's.
@@ -2338,7 +2394,8 @@ download, the accepted sandbox gap, and `LIST_ACP_AGENTS`.
   - **Interim hazard until B3c.** A plugin crash mid-turn makes `recover()`
     interrupt the node and relaunch it, which creates a second session in the
     same worktree while the old turn may still run. B3c's orphan adoption
-    owns this; nothing reaches users before B5.
+    owns this; nothing reaches users before B5. *Closed by B3c: a running agent row is read against the daemon, and its
+    turn is watched, adopted or retried on the same session.*
   - **`agent.turn.*` events are not emitted in B3b.** They belong to B5's
     events contract with the other `agent.*` types; B3b records the turn on
     the row (`prompt_id`, `epoch`, `boot_id`).
@@ -2363,6 +2420,351 @@ download, the accepted sandbox gap, and `LIST_ACP_AGENTS`.
       resolve, commit. The node's `conflict.branch` names the branch to merge.
     - The e2e GUI client must drain `SESSION_EVENT`s: the test client holds 32
       of them and a full channel stops it reading `PLUGIN_MESSAGE`s too.
+
+- **2026-11-19, B3c implementation decisions (PR #570, branch
+  `feature/529-b3c-durability`).** No daemon change, no DaemonContract bump.
+  - **The engine reads the daemon with `send` plus an event, not `request()`.**
+    GET_ACP_TRANSCRIPT and LIST_SESSIONS are not in the SDK's `REQUEST_VERBS`:
+    neither has a reply that carries a `req_id`. `SessionFeed.listSessions`
+    sends LIST_SESSIONS and takes the next SESSIONS frame; `fetchTranscript`
+    sends GET_ACP_TRANSCRIPT and takes the next `reset` ACP_TRANSCRIPT for the
+    session (or its ERROR). The feed keeps each epoch's user items (id, origin,
+    the first 512 characters of the text), which is what turn adoption reads.
+  - **The Durability table's rows, as built** (`engine/durability.ts`):
+    - *Same `boot_id`* needs the row's own `boot_id`, so `beginNode` now
+      stores it with the session (it was only stored with the first turn's
+      ack, so a crash before the ack had nothing to compare). A row with no
+      `boot_id` is a new boot.
+    - Epoch and prompt ids restart with the daemon, so they cannot tell a
+      restart from a crash; the boot id alone decides, and a test pins that a
+      transcript with the row's exact epoch and prompt id under a new boot is
+      still interrupted.
+    - A recorded turn is followed only while the transcript's epoch is the
+      row's and its latest turn is the recorded one, or a newer user item of
+      this run's principal (`plugin:<id>/workflow:<run>`) that the row did not
+      record (the lost ack, including the F3 re-prompt's). A latest turn that is
+      not ours interrupts the node.
+    - **`waiting` agent rows are recovered too.** The table named `running`
+      only, and B3b's `recover()` skipped `waiting`, so a node waiting on a
+      permission when the plugin crashed had no one watching it.
+    - A `start` of an agent attempt now clears `prompt_id`, `epoch` and
+      `boot_id`. They are the attempt's own: left from attempt 1 they made a
+      lost ack on attempt 2 look like "recorded, other epoch" (interrupted
+      again) instead of "no turn recorded" (adopt).
+    - If LIST_SESSIONS is not answered, running and waiting agent rows are
+      interrupted: nothing can be shown to have survived, and a retry that finds
+      a turn still running is refused by the daemon (`acp_busy`), never doubled.
+  - **Orphans are `pending` rows, not `running` ones.** The table's "agent
+    `running`, create sent, no session id stored" cannot exist: `beginNode`
+    records the session with the transition to `running`, after the CREATE ack.
+    The crash window is a `pending` row whose launch was in flight.
+    Recovery lists the run's sessions (`spawned_by` exactly
+    `plugin:<id>/workflow:<run>`) that no row names. Exactly one, alive, ACP,
+    for a `pending` node that was ready, is adopted; anything else is killed
+    (forced; a worktree with work is kept). The row is **not** marked
+    `interrupted`, as the table said: nothing was ever prompted, so there is no
+    partial work to warn about and no attempt to spend. The adopted session must
+    also be in the worktree PREPARE returns, or it is killed and a fresh one is
+    created.
+  - **Retry of an interrupted node** (the executor, `agent.ts`): the prompt is
+    `INTERRUPTED_NOTE` plus the original; the node's own session is reused when
+    the daemon has it alive, **waited for while it is `reviving` or
+    `spawning`** (the boot revive is sequential, so a plugin that starts first
+    must not RESTART a session `hived` is about to load); a dead one gets
+    RESTART_SESSION; on `restart_failed` it is killed (forced), **the worktree
+    is prepared again** (the kill removes a worktree that holds nothing, and a
+    CREATE on a missing path would fail), and a fresh CREATE uses the same
+    `worktree_path`. The wait polls LIST_SESSIONS: a SESSION_EVENT is not
+    ordered against an ack, and the restart's own events can arrive after it.
+  - **Watching a surviving turn** skips the catalog re-check (the node is
+    mid-turn and a lowered ceiling cannot change that turn) and arms the
+    timeout from the row's `started_at`, so the time the plugin was away counts.
+    Sending a turn that was never sent re-checks the catalog.
+  - **Reconnect.** The SDK exits the process when its connection closes (the
+    daemon then starts a fresh copy, which counts against the crash limit), so
+    "redial through the SDK" needed `connect({exitOnClose: false})`.
+    `main.mjs` does that; `start()` redials three times (300 ms apart) and ends
+    the process only when the daemon cannot be reached. `Engine.disconnect()`
+    bumps a link counter, so every agent launch made under the lost connection is
+    stale (it fails nothing and kills nothing) and no effect starts; `reconnect`
+    reads the agent rows against the new connection exactly like startup, then
+    drives. A launch that was creating a session leaves an orphan, which the same
+    scan adopts.
+  - **B3b gate follow-up 2, the stale launch's kill.** A retry's launch of an
+    agent node now waits for the previous launch of the same node (bounded at
+    130 s, longer than any request a launch makes), so a stale CREATE_SESSION's
+    kill cannot land after the retry has re-attached the worktree and dispose a
+    pristine one. Chosen over "the stale launch must not kill when the worktree
+    is claimed" because the session it made would then be an unowned running
+    session in the same worktree.
+  - **Gate round 1 on #570 (code head 34755fbe) and its fixes.**
+    - *A close that lands while a redial is being read was ignored.* `lost()`
+      returned early while a redial was running and `reconnect()` cleared its
+      flags unconditionally, so the engine went on as if the dead socket were
+      open (15 s listing wait, every node interrupted, launches timing out and
+      failing their nodes, no redial). Now every close of the current
+      connection is recorded at once (`Engine.disconnect(h)`: it bumps the link
+      counter, refuses launches and wakes waiters); `reconnect()` takes the
+      connection synchronously, so a close that lands while the read is still
+      queued is seen; a read that finds its own connection lost leaves every
+      node as it is and returns with the engine still disconnected, and the redial
+      loop counts that as an attempt and dials again. Three attempts per loss,
+      then the plugin ends.
+    - *A close during startup recovery failed a surviving turn.* Recovery and
+      reconnect are serialised, recovery's end no longer lifts the launch hold of
+      a lost connection, `drive()` and `resumeAgent` start nothing without a live
+      connection, and `recoverAgents` returns without interrupting anything when
+      the connection was lost while it read (it used to read "no answer" as "nothing
+      survived").
+    - *A stale launch's failure could fail a node a newer launch owns.*
+      `failNode` takes the connection generation the caller started under and
+      refuses a failure from an older one.
+    - *Trimmed transcripts (gate round 2 corrected round 1's rule).* The daemon
+      drops the oldest items past 2000 items or 512 KiB, but never the state
+      fields: `prompt_id`, `stop_reason` and the result are set when a prompt
+      starts and are not trimmed. So:
+      - **A recorded turn is followed whether or not its item is listed.** Same
+        boot, same epoch and `tx.prompt_id` equal to the row's recorded id prove
+        the turn is the row's: it is watched while it runs and its result is taken
+        when it is done. Round 1 interrupted here, which made the retry hit
+        `acp_busy` on a healthy running turn (then `stop()` force-killed the
+        session) or threw away a finished result.
+      - **"This was the F3 re-prompt" is the engine's own record**, never read
+        back from the transcript's text: the row has a `reprompted` flag written
+        with the turn's ack (a new `nodes.reprompted` column; an older `runs.db`
+        gets it by `ALTER TABLE`). A lost ack on the second turn of an attempt is
+        the re-prompt by construction (an attempt sends no other second turn).
+      - **A lost ack whose user item is trimmed, or a latest turn that is the
+        user's, is ambiguous.** Nothing is sent and nothing is killed while the
+        session has a turn running. The node waits (without holding up recovery of
+        the other nodes) until the session goes idle, then it is interrupted, and
+        its retry prompts an idle session, so it cannot be refused as busy. If the
+        session is already idle the node is interrupted at once. The wait is
+        bounded by the node's own `timeout_s` counted from `started_at`: past it
+        the turn is cancelled (CANCEL_ACP, the session is left alone) and the node
+        fails naming the timeout.
+    - *A SESSIONS frame answered every waiting listing.* LIST_SESSIONS has no
+      `req_id`, so a poll right after a RESTART ack could read an earlier answer
+      and kill a session that had restarted fine. Each listing now takes the
+      answer to its own request: a queue, oldest first, one frame per entry; a
+      listing that timed out keeps its slot so its late answer is not the next
+      one's. (The unsolicited snapshot a connection gets after WELCOME can answer
+      the first listing; it is at least as fresh as that request.)
+    - *Gate round 2 also fixed:* a stale launch's timeout timer and `stop()` no
+      longer act (they would have spoken on the new connection); the orphan scan
+      counts the sessions the rows named when recovery began and skips a run that
+      ended while its nodes were read (a node that failed during recovery had its
+      healthy session killed as an "orphan"); and the redial loop has a streak:
+      the first redial of a streak is at once, each next one waits twice as long
+      (`redialDelayMs`, doubling, capped at 5 s), and ten in a row end the plugin.
+      Only a connection that stays open for `stableMs` (30 s) clears the streak, so
+      one that dies right after every read cannot be redialled without bound. Per
+      redial the plugin keeps no listeners or timers of the old connection: the
+      old object is dropped, `pokeAll` empties the feed's waiters, and the stable
+      timer is cleared on a loss.
+    - *CodeRabbit round on #570* (17 threads on e886b6ba). Fixed: a turn is
+      charged against the cap at the send (`#turn`), not at the start of the
+      launch, so a launch the connection cut short before any prompt is not charged
+      twice; a recovered `send` of a retried attempt carries the interrupted note
+      (`row.attempt > 1`); an unrecorded turn is adopted only if, in a retried
+      attempt, it carries that note, so an earlier attempt's turn in a reused
+      session is not taken as the retry's; the idle waiter checks it is still the
+      same attempt of a running node before it acts; a leftover session that
+      cannot be removed (two tries) fails its node instead of letting it launch
+      beside it; a check's failure after a disconnect is still reported (the
+      generation guard is for agent launches only); a launch queued behind a stale
+      one is stale too (its generation is the one it was queued under); the
+      replacement feed is attached when the connection is handed over; an
+      `inflight` claim is released only by the launch that holds it; the listing
+      queue declines past 64 owed answers instead of dropping a slot; a session a
+      full listing no longer has wakes its waiters; a transcript read is ended only
+      by a refusal that is its own answer (`no_such_session`, `not_acp_session`,
+      `acp_failed`, `session_dead`). **Declined:** reconciling a turn of a run
+      cancelled while the connection was down (`stop()` of a stale launch sends
+      nothing). The run is cancelled in `runs.db` and its sessions are what B3d's
+      run-end cleanup archives or kills; a durable per-turn cleanup record is a
+      design of its own, for B3d. A stale launch must not speak on the new
+      connection, which is why `stop()` is inert.
+    - *Gate round 3 (the CI flake and the surviving mutants).* The redial tests
+      waited on `engine.hive` changing and the engine not being disconnected,
+      which `reconnect()` makes true when it takes the connection, before its read
+      has finished: a `close` sent then landed mid-read and was counted as a
+      failed attempt. They wait on `StartOptions.onReconnected` (called when a
+      redialled connection has been read and the engine runs on it), and the sim
+      can delay its replies (`HIVE_SIM_REPLY_MS`), under which the whole suite is
+      run. Added: a store test for the `reprompted` migration (an old `runs.db`,
+      opened twice); a test that a launch settling late does not release its
+      replacement's claim; a test that a `run.cancel` during a disconnect reaches
+      no stale `stop()`. The orphan scan's `before` rows were removed: they only
+      mattered for a run that ended mid-read, which the ended-run skip covers and
+      a test now pins. **Equivalent mutant:** dropping `r.attempt === attempt` in
+      the idle waiter's check. The waiter is for a session whose turn is running.
+      An attempt can change on the same session only through an interrupt and a new
+      prompt, which the daemon refuses while that turn runs (`acp_busy`), and the
+      node then fails (the state check ends the waiter); once the turn ends the
+      waiter has already ended. The check stays as a cheap guard.
+    - **B-26 (user decision, 2026-11-20): recovery's view is not allowed to go
+      stale, instead of being checked at every await.** Rounds 4 and 5 found that
+      recovery read rows (and a check's process) and then acted on them after
+      awaits during which `run.cancel` + `run.retry` could replace the run with a
+      new in-memory one: point guards for one await at a time kept missing the next
+      (the check reap, a reconnect with no race at all). Two rules replace them.
+      - **(a) `run.cancel` and `run.retry` are refused with an `EngineError` of
+        code `recovering` while the engine reads the daemon or has no connection.**
+        The hold is taken when `recover()` or `reconnect()` is called (not when its
+        serialised pass starts), covers the check reap, and is released in a
+        `finally` on every exit, so an error cannot leave it stuck. A lost
+        connection keeps the refusal until a `reconnect` has read its nodes. It is
+        in the topic reply and the Contract for C. Audited for the same exposure:
+        `human.answer` (completes a waiting human node; replaces no run and
+        launches nothing while held), `run.start` / `test.start-run` (make a new
+        run; no recovery read describes it), `run.get`/`run.nodes`/`node.get`/
+        `run.events` (reads). Only cancel and retry replace what a read describes,
+        so only they are gated.
+      - **(b) The orphan scan adopts only a session that was never prompted**
+        (its transcript has `prompt_id` 0 and holds nothing but Hive's own `notice`
+        lines), and kills only such sessions. "Never prompted" really means "not prompted since its agent
+        last started": a session `hived` revived after a restart also has
+        `prompt_id` 0 (the daemon's counters restart with the adapter, and the
+        history is replayed as `replayed` user items). The empty transcript is what
+        tells such a session, which has a conversation, from one a launch made and
+        never prompted. **Gate round 7 corrected the test from "no user item" to
+        "no item that is not a notice".** The daemon replays a revived session's
+        history and trims it to the newest 2000 items / 512 KiB
+        (`internal/acp/transcript.go:32-33`, `trim` at `:206`), and a long last turn
+        can trim every user item away, leaving a conversation that looked never
+        prompted and was force-killed. `trim` always keeps the newest item (`:204-205`,
+        "The newest item always stays"), and one item is bounded at 64 KiB raw
+        (`maxItemText`, `clip` `:219`) against a 512 KiB budget, so a non-empty
+        conversation cannot trim to nothing, and its newest item is an agent, tool,
+        plan or thought item, never a user one. **Known theoretical gap (round 8):**
+        that bound holds for text, not for plan items, which are clipped per entry
+        (`UpdatePlan`) and not as a whole; a plan over 512 KiB followed by the
+        untrusted-folder notice could trim to the notice alone. It needs an
+        untrusted folder (an engine node's worktree is trusted) and an absurd plan,
+        and there is no cheap fix on the engine's side, so it is recorded, not
+        patched. The kinds the daemon can emit
+        (`wire.AcpItem*`: user, agent, thought, plan, tool, notice) before a first
+        prompt are only the untrusted-folder `notice` (`registry/acp.go` after the
+        replay, `AddNotice` `transcript.go:85`; engine worktrees are trusted, so a
+        node's own session has none); anything else was put there by a replay or a
+        user. One test per kind pins it, and a notice alone is still adopted.
+        **Precondition (gate round 8): "notices only means fresh" holds for a
+        loaded, healthy session only.** A transcript lives in the daemon's memory
+        (`registry.go:153-157`, `transcript.go:26`), so after a `hived` restart every
+        ACP entry answers GET_ACP_TRANSCRIPT with an empty one until it is revived;
+        revival is background and one at a time (`daemon.go:422`, `:510`), entries
+        sit in `PhaseReviving` meanwhile (`registry.go:1019-1021`), and a revival
+        that failed keeps its reset, empty transcript for good (`acp.go:427`, `:368`).
+        An empty transcript therefore proves nothing about such a session, and
+        `kill` does not refuse a forced kill of one (`registry.go:1868`). So an
+        orphan's transcript is trusted only when the listed session is `alive`, has an
+        empty `phase` and no `last_error`: one still starting or being revived is
+        waited for (bounded, `settleWaitMs`, 30 s), and if it does not get ready the
+        node fails naming it (run.retry starts it again), never killing it; a dead one
+        is never killed or adopted, and the node makes a session of its own beside it.
+        The look before a removal re-reads the session as well as the transcript, and
+        `#reuse` applies the same rule to an adopted orphan. This
+        rule does not depend on how much of the history survived the trim; and a turn it had running died with the adapter, so nothing
+        is running on a revived session either. A
+        session with a turn is left alone: nothing in a pass knows whose turn is
+        running on it, and prompting it is refused as busy and then the node's
+        failure force-kills it. B3d step 2 reconciles those. This also settles the
+        earlier question of an adopted session from a cancelled run being prompted
+        without the interrupted note: an adopted session has never had a turn, so
+        there is no earlier attempt's work to warn about.
+      - **Removed as redundant after (a) and (b)**: recovery's run-identity and
+        row-unchanged checks (`epochOf`, `unchanged`, `replaced`, `gone`), and the
+        per-group and per-session replaced-run checks of the orphan removal; the
+        epoch stored with a set-aside orphan. **Corrected in gate round 6:** that
+        was NOT redundant by itself. A run can still END during the scan (a node it
+        fails ends the run), and the scan went on adopting on rows it had read
+        first, so an orphan outlived its run and a later retry took a session the
+        user had since used. What replaced it, and what holds now: the scan re-reads
+        the run's rows at each step and after each read before it adopts or removes
+        (so a run that ended is left alone), `adoptOrphan` does nothing for a run
+        that is gone, the set-aside entry is dropped when its run ends, and
+        `#reuse` reads an adopted session's transcript again before prompting and
+        fails the node, rather than prompting into a conversation or starting
+        beside it, if it has a turn or a user item by then. The earlier doc comment
+        "the rows read here are the run's rows for the whole pass" was false and is
+        replaced. Kept: the lost-connection checks (a connection can be lost
+        during any read, and that is not refused), the ended-run skip of the orphan
+        scan (a run can fail while its nodes are read), and the idle waiter's
+        attempt check (the waiter outlives recovery, when cancel and retry work
+        again). Each removal is equivalent now because the probe tests of rounds 4
+        and 5 (cancel and retry during a node read, during the check reap, and
+        across a disconnect) pass with the point guards gone, and fail again if the
+        refusal is removed (mutants of the refusal, the disconnected case, the
+        early hold and the release on error all die). The stale launch's `stop()`
+        guard stays: it is reachable in two ways, a cancel in the instant between a
+        reconnect finishing and the resumed launch registering its own stop, and a
+        local check that fails while the connection is down (its `failNode` carries
+        no connection generation), which fails the run and calls the registered
+        stops, including the stale agent's. Both leave the node's turn running in
+        the daemon, which is B3d step 2's to cancel, pinned to its turn; the guard
+        keeps the stale launch from speaking on the new connection meanwhile.
+      - **CI.** The plugin suite also runs with `HIVE_SIM_REPLY_MS=30` (the sim
+        answers reads after 30 ms), on the Node 26 leg, bounded at 120 s per file.
+        Gate round 5 found a test that leaked a launch past its cleanup under that
+        delay; the suite was run 5 times at each setting.
+    - **Known daemon-side gap (found in gate round 7, not fixable in B3c).**
+      Between the read that shows an adopted session idle and the PROMPT_ACP that
+      follows it (milliseconds) the user can type into the session: the engine's
+      prompt is then refused as busy, the node fails, and its `stop()` force-kills
+      the session under the user's turn. B3c has no daemon change. Closing it needs
+      the daemon to refuse a forced KILL_SESSION of a session with a running turn
+      (or a compare-and-set prompt: "prompt only if the transcript's `prompt_id` is
+      still N"). Follow-up: raise it with the daemon owners (the registry's
+      `kill`/`disposeWorktree` path and `PromptACPTurn`); the engine-side windows
+      (the scan read, the recheck before a removal, the read before the prompt) are
+      as narrow as the wire allows.
+    - *Gate round 4: a run cancelled and retried while recovery reads it. (Superseded by B-26 above: the per-await guards this entry describes were removed once cancel and retry were refused during recovery.)*
+      `run.cancel` and `run.retry` are not held back during recovery (they are
+      user-facing), and a retry makes a new in-memory run with pending rows and no
+      session. Recovery used the rows it had read before its awaits, so a read that
+      came back late resumed a watch on a node that was pending again (the retried
+      run failed with "executor returned without starting the node") and the orphan
+      scan handed the old node's session, whose turn was still running, to the new
+      node. Now `recoverAgents` records each run's in-memory identity
+      (`Engine.epochOf`) and each node's state, attempt and session at the start,
+      and after every await does nothing to a node or run that is no longer that
+      one (rows, `ackTurn`, `resumeAgent`, the orphan scan and each removal in it);
+      a session set aside as an orphan is valid for one in-memory run only
+      (`takeOrphan` checks the run's identity). Not restored: the `before` rows.
+      **The old run's still-running turn** on that session is not adopted, killed
+      or prompted by the retried run; it is left running, and B3d step 2
+      (reconciliation of a run cancelled while the engine was away or the
+      connection down) is what cancels it, pinned to its `prompt_id` and `epoch`.
+      The orphan removal's stop on a lost link now has its own test. The `#reuse`
+      comment now says what the daemon does: closing the last session of a
+      hive-managed worktree removes it only when it is Pristine (nothing
+      uncommitted, no unpushed commits, inspectable) and keeps one holding work.
+    - *The 130 s launch wait* (follow-up 2) is shorter than `#reuse`'s worst-case
+      chain (two session settles of 60 s each, a restart of 60 s, a kill and a
+      prepare of 120 s). If the wait ends first, the retry's launch goes on beside
+      the stale one. That fails safe: the stale launch can at worst kill a session
+      the retry has not created yet, and the retry's own PREPARE recreates a
+      worktree that holds nothing; no work is lost, because a worktree that holds
+      work is kept by the kill. Accepted, no change.
+  - **Test seams.** `HIVE_WF_TEST_PAUSE=<point>:<ms>` (read only with the test
+    seam on) holds an agent node at `after-create`, `before-prompt` or
+    `after-prompt`, so `internal/workflowe2e` can crash the plugin exactly
+    between the daemon's CREATE and the row, the session and its first turn, or
+    the daemon's ack and the row.
+  - **The crash-loop test cannot shrink the Manager's window.** `crashWindow` is
+    unexported in `internal/plugin`, so `TestDurability_CrashLoopFailedThenRestart_RunsResume`
+    kills the plugin six times through the real backoff (about 32 s; skipped
+    with `-short`). The fake adapter gives up on a held turn after 30 s, so the
+    agent finishes early in the loop and a human node keeps the run open.
+  - **Plan wrongs found while building:** the table named `running` only
+    (`waiting` agents were never recovered); `GET_ACP_TRANSCRIPT` is not a
+    `request()` verb; "no session id stored" is a `pending` row; the SDK does not
+    redial, it exits; `start` kept the previous attempt's turn ids; the crash-loop
+    window cannot be shrunk by a test outside the package.
+  - **Left as they were:** check-node recovery (B2); the `FlagChatty` fan-out
+    overflow test (B3d). B3c's reconnect is covered by unit tests with a scripted
+    daemon, since only B3d's chatty fake can make the daemon close the socket.
 
 ## Progress
 
@@ -2400,6 +2802,16 @@ download, the accepted sandbox gap, and `LIST_ACP_AGENTS`.
   `catalogRefusal`. Tests: `agent`, `prompt`, `worktrees` in
   `plugins/workflows/test/`, and Go `internal/workflowe2e/{agent_turns,agent_modes,worktree}_test.go`
   against the fake adapter. Decisions under "B3b implementation decisions".
+
+- **2026-11-19 (B3c):** Implemented on `feature/529-b3c-durability`, based on
+  `origin/main` at `03a0d2df`. Added `engine/durability.ts`; `engine.ts` gains
+  `recover()`'s agent half, `reconnect`/`disconnect`, orphan hand-off and the
+  per-node launch gate; `agent.ts` gains the resume and retry paths (`AgentPlan`),
+  `sessions.ts` the session list and transcript snapshot reads, `main.ts` the
+  redial. Tests: `durability.test.ts`, `reconnect.test.ts` and Go
+  `internal/workflowe2e/durability_test.go`. Also the three B3b gate follow-ups
+  (conflict wording, the stale launch's kill, this header). Decisions under "B3c
+  implementation decisions".
 
 ## Open questions
 
@@ -2607,6 +3019,78 @@ what was weighed.
 - **2026-11-19 iter 2 (B3-R7, PR #569)** — verdict: APPROVE; mergeable: MERGEABLE; findings_hash: empty; threads_open: 0; action: stop; head_sha: 238acd7a. Code head; the branch head is this docs-only ledger commit, whose CI is the final CI. Guards mutation-checked (12 mutations: run id unvalidated, delete_branch ignored, prefix loosened, prefix without trailing slash, dirty exempted, archived holder removed, both live-session checks removed, principal gate removed, ACK removed, ACK on error, archive ACK removed, run id dropped); all killed except the outer live-session check alone, which is equivalent because the re-check under `gitMu` refuses. `staticcheck` and `go vet` clean on darwin, linux and windows; `check-daemon-contract.sh origin/main HEAD` OK (38 -> 39); 291 plugin tests and 19 SDK tests pass.
 - **2026-11-20 iter 3 (B3-R7, PR #569)** — verdict: gate round 1 FAIL, fixed; threads_open: 0 -> 0; action: autofix+push. Blocker: a successful REMOVE_WORKTREE whose inventory listing failed sent `ERROR{list_worktrees_failed, req_id}` before the ACK, and the SDK settles on the first frame carrying the id, so `request()` rejected a removal that had worked. Fix: `finishMutation`'s success path reports the listing failure through the plain `sendError` (no req_id; the GUI still sees it); invariant, documented on `withReqID`: a req_id-bearing request gets exactly one terminal frame echoing its id (ACK on success, ERROR on failure). Audit of the other ack'ing verbs (ARCHIVE_SESSION, KILL, RESTART, ANSWER_PERMISSION, PROMPT/CANCEL_ACP, COMMIT_WORKTREE, CREATE) found no secondary error before their ACK. Also: the archived-holder check is repeated under `gitMu` (narrows, does not close, the window: `Archive` takes no git lock; untestable deterministically without a sleep or a hook in the registry, so no test); plan header set to phase 3 of 5.
 
+- **2026-11-19 iter 1 (B3c, PR #570)** — verdict: REQUEST_CHANGES (own review plus an advisor pass before the first push; no bot review had landed: CodeRabbit skipped the PR); mergeable: MERGEABLE; findings_hash: see list; threads_open: 0 -> 0; action: autofix+push; head_sha: 34755fbe. Fixed with tests, each mutation-checked (16 mutants of the recovery, adoption and stale-launch guards; 8 survived the first suite and the fixes below kill 6 of them):
+  - a stray unreferenced session of a node that already has its own was not covered (mutant M7, adopting regardless of the row): added a test that it is killed and the row keeps its own;
+  - the boot-id guard and the epoch guard hid behind each other (M1, M2): added a test where only the boot differs (the transcript carries the row's exact epoch and prompt id) and one where only the epoch differs (a restarted session, same daemon, a turn with the same id);
+  - the attempt's prompt-id reset (M10) and the paused-launch guard (M13) had no test: added a lost ack on a retried attempt, and a launch attempted while disconnected;
+  - a test named for what it did not assert (a finished run's sessions) was renamed; the daemon-silent test left a 15 s timer on a closed store, so the listing wait is injectable (`daemonWaitMs`);
+  - `listSessions` and `fetchTranscript` threw when the socket was already closed: they now answer "no word", and recovery interrupts the running nodes;
+  - the crash-loop test finished its agent early (the fake gives up on a held turn at 30 s, shorter than the loop): `acptest.FlagGateLong` holds the turn through all six kills, and the node is asserted running at attempt 1 when the plugin comes back.
+  - Mutants that still survive, both equivalent: dropping the `#fresh()` guard in `AgentRun.#fail` (M9), or in `run()`'s catch (M16), alone. The other, `#live()` and the engine's `#launch` guard each cover the same stale launch, so only dropping them together would show.
+- **2026-11-19 iter 2 (B3c, PR #570)** — verdict: APPROVE (own); mergeable: MERGEABLE; findings_hash: empty; threads_open: 0; action: stop; head_sha: 34755fbe. Code head; the branch head is this docs-only ledger commit, whose CI is the final CI. 326 plugin tests pass on Node 24 and the Node 26 leg; `internal/workflowe2e` green (12 new durability tests, the crash loop through the Manager's real backoff).
+
+- **2026-11-19 iter 3 (B3c, PR #570)** — verdict: REQUEST_CHANGES (gate round 1 FAIL on 34755fbe); mergeable: MERGEABLE; findings_hash: see list; threads_open: 0 -> 0; action: autofix+push; head_sha: e2fc9f75. Fixed with tests, each mutation-checked (12 mutants of the new guards; 9 killed, 3 equivalent below):
+  - a close of the redialled connection while its nodes were read was ignored (the loop returned early and `reconnect()` cleared its flags): every close of the current connection is now recorded at once, `reconnect()` takes its connection synchronously, a read that finds its connection lost touches no node, and the loop dials again (three attempts per loss, then the plugin ends);
+  - a close during the startup recovery failed a surviving turn: recovery and reconnect are serialised, `drive()` and `resumeAgent` start nothing without a live connection, and a lost connection is no longer read as "the daemon said nothing";
+  - `failNode` takes the connection generation of its caller, so a stale launch cannot fail a node a newer launch owns;
+  - a transcript the daemon trimmed: no turn recorded and turns present but none ours, or the recorded turn's item gone, now interrupts the node (never re-sends, never a third prompt);
+  - SESSIONS answers are correlated to their request (a queue), so a poll after a RESTART ack cannot read an earlier answer;
+  - plan: the Durability table is marked amended, the Branch header lists B3b and B3c, and the 130 s launch-wait analysis is recorded.
+  - Equivalent mutants: dropping `reconnect()`'s final `!this.#alive` check (the launch guard in `drive()` covers it), dropping `resumeAgent`'s alive guard (`recoverRunning` checks the connection first), and the listing slot of an abandoned entry being resolved twice (a promise resolves once).
+- **2026-11-19 iter 4 (B3c, PR #570)** — verdict: APPROVE (own); mergeable: MERGEABLE; findings_hash: empty; threads_open: 0; action: stop; head_sha: e2fc9f75. Code head; the branch head is this docs-only ledger commit, whose CI is the final CI. 336 plugin tests pass; `internal/workflowe2e` green.
+
+- **2026-11-20 iter 5 (B3c, PR #570)** — verdict: REQUEST_CHANGES (gate round 2 FAIL on e2fc9f75: round 1's "fail closed to interrupt" for a trimmed recorded turn was wrong); mergeable: MERGEABLE; findings_hash: see list; threads_open: 0 -> 0; action: autofix+push; head_sha: a4ba2081. Fixed with tests, each mutation-checked (12 mutants; 8 killed, 4 equivalent below):
+  - a recorded turn (same boot, same epoch, `tx.prompt_id` equal to the row's) is followed whether or not its user item is listed: watched while running, its result taken when done. Interrupting made the retry hit `acp_busy` on a healthy turn (then a force kill) or discarded a finished result;
+  - "this was the F3 re-prompt" is the engine's own record (`nodes.reprompted`, written with the ack, added to an older `runs.db` by `ALTER TABLE`), never the transcript's text, so a trimmed re-prompt allows no third prompt;
+  - a lost ack whose user item is trimmed (or a latest turn that is the user's) sends nothing and kills nothing: with a turn running the node waits for the session to go idle (bounded by its `timeout_s` from `started_at`, then CANCEL_ACP and a timeout failure), then is interrupted so the retry prompts an idle session; an idle session is interrupted at once. The plan's round-1 sentence ("never sent again, which would run twice or be refused as busy") is corrected;
+  - found by the Go e2e: a session with no turn at all is idle (the in-process daemon keeps its boot id across a "restart"), and the orphan scan killed the healthy session of a node that failed while recovery read it (it now counts the rows from before and skips an ended run); a stale launch's timeout timer and `stop()` no longer act on the new connection;
+  - the sim refuses a PROMPT_ACP on a running turn (`acp_busy`), and the test that asserted a second prompt on one is replaced;
+  - close storm: the redial loop keeps a streak (first redial at once, then doubling pauses capped at 5 s, ten in a row end the plugin); only a connection that stays open for `stableMs` clears it;
+  - mutants that survive, all equivalent: the orphan scan's `before` rows and its ended-run skip each cover the other (dropping both shows), a stale launch's `stop()` and its timer each cover the other.
+- **2026-11-20 iter 6 (B3c, PR #570)** — verdict: APPROVE (own); mergeable: MERGEABLE; findings_hash: empty; threads_open: 0; action: stop; head_sha: a4ba2081. Code head; the branch head is this docs-only ledger commit, whose CI is the final CI. 343 plugin tests pass; `internal/workflowe2e` green.
+
+- **2026-11-20 iter 7 (B3c, PR #570)** — verdict: REQUEST_CHANGES (CodeRabbit, 17 threads on e886b6ba); mergeable: MERGEABLE; findings_hash: see list; threads_open: 17 -> 0; action: autofix+push; head_sha: e58b621b. 16 fixed with tests (mutation-checked: 12 mutants, 8 killed; the 4 survivors are two guards that cover each other (queued-launch generation, idle-waiter row check) and two that no unit test can reach (the feed attached early, a late launch's claim release)); 1 declined with reasons (cancel while disconnected is B3d's run-end cleanup). Details under "CodeRabbit round on #570" in the decision log.
+- **2026-11-20 iter 8 (B3c, PR #570)** — verdict: APPROVE (own); mergeable: MERGEABLE; findings_hash: empty; threads_open: 0; action: stop; head_sha: e58b621b. Code head; the branch head is this docs-only ledger commit, whose CI is the final CI. 352 plugin tests pass; `internal/workflowe2e` green. Linux CI on e886b6ba failed once on `TestSessionTokenRefusesForgedPlanReview` (`internal/daemon`, a broken pipe; untouched, passes 15 of 15 locally) and passed on rerun.
+
+- **2026-11-20 iter 9 (B3c, PR #570)** — verdict: REQUEST_CHANGES (gate round 3 FAIL on 5adfdbd0: a racy redial test and surviving mutants); mergeable: MERGEABLE; findings_hash: see list; threads_open: 0 -> 0; action: autofix+push; head_sha: 2bd26012. Fixed:
+  - the "dies right after every read" test (and the other redial tests) waited before the read had finished, so a `close` landed mid-read and used up redial attempts (failed 2 in 10 full-suite runs); they now wait on `onReconnected`, and the suite also passes with the sim's replies delayed 30 ms: 355 tests, 10 of 10 full-suite runs with 0 failures at the default and 10 of 10 with the delay (the old predicate failed 3 of 3 with it); 5 mutants re-run: 4 killed, 1 equivalent;
+  - tests for the surviving mutants: the `reprompted` migration, a late launch's claim release, a stale `stop()` reached by a `run.cancel` during a disconnect, the ended-run orphan skip (the redundant `before` rows were removed); results in the decision log. The idle waiter's attempt check is shown equivalent;
+  - plan: the cancelled-while-disconnected reconciliation is now numbered step 2 of B3d.
+- **2026-11-20 iter 10 (B3c, PR #570)** — verdict: APPROVE (own); mergeable: MERGEABLE; findings_hash: empty; threads_open: 0; action: stop; head_sha: 2bd26012. Code head; the branch head is this docs-only ledger commit, whose CI is the final CI.
+
+- **2026-11-20 iter 11 (B3c, PR #570)** — verdict: REQUEST_CHANGES (CodeRabbit, 2 threads on 459df1fc); mergeable: MERGEABLE; findings_hash: see list; threads_open: 2 -> 0; action: autofix+push; head_sha: c29f1747. One fixed: the orphan removal's retry now stops once the link is lost, so its second try cannot go to a replacement connection. One answered with a test: a turn is never watched twice after a reconnect (the watcher the lost connection left is woken by `pokeAll` and ends at once, so it does not wait out the 130 s launch wait; the reconnect test now asserts one COMMIT_WORKTREE and one `node.finished`). This entry's stop line supersedes iter 10's.
+- **2026-11-20 iter 12 (B3c, PR #570)** — verdict: APPROVE (own); mergeable: MERGEABLE; findings_hash: empty; threads_open: 0; action: stop; head_sha: c29f1747. Code head; the branch head is this docs-only ledger commit, whose CI is the final CI. 355 plugin tests pass.
+
+- **2026-11-20 iter 13 (B3c, PR #570)** — verdict: REQUEST_CHANGES (gate round 4 FAIL on c29f1747); mergeable: MERGEABLE; findings_hash: see list; threads_open: 0 -> 0; action: autofix+push; head_sha: 17aee59c. Fixed with tests (mutation-checked: 6 of the new guards killed, 3 removed as redundant after showing them equivalent): recovery acted on a stale row snapshot after `run.cancel` + `run.retry` (the gate's probe is now a regression test: the retried run is not failed, nothing prompts or kills the old session, and the old session is not adopted); a session set aside as an orphan is valid for one in-memory run; the orphan-removal retry's stop on a lost link has its own test; the `#reuse` comment matches the daemon's Pristine rule. Decision log: "Gate round 4".
+- **2026-11-20 iter 14 (B3c, PR #570)** — verdict: APPROVE (own); mergeable: MERGEABLE; findings_hash: empty; threads_open: 0; action: stop; head_sha: 17aee59c. Code head; the branch head is this docs-only ledger commit, whose CI is the final CI. 358 plugin tests pass; `internal/workflowe2e` green. This stop supersedes iter 12's.
+
+- **2026-11-20 iter 15 (B3c, PR #570)** — verdict: REQUEST_CHANGES (CodeRabbit, 1 thread on 1d2649da); mergeable: MERGEABLE; findings_hash: see list; threads_open: 1 -> 0; action: autofix+push; head_sha: a5b38c4e. Fixed with a test (mutation-checked): the orphan removal checks the run before each session it removes, not only before each group, so a run retried during one removal does not lose a second session of its old run to an obsolete pass.
+- **2026-11-20 iter 16 (B3c, PR #570)** — verdict: APPROVE (own); mergeable: MERGEABLE; findings_hash: empty; threads_open: 0; action: stop; head_sha: a5b38c4e. Code head; the branch head is this docs-only ledger commit, whose CI is the final CI. 359 plugin tests pass. This stop supersedes iter 14's.
+
+- **2026-11-20 iter 17 (B3c, PR #570)** — verdict: REQUEST_CHANGES (gate round 5 FAIL on a5b38c4e); mergeable: MERGEABLE; findings_hash: see list; threads_open: 0 -> 0; action: autofix+push; head_sha: 4c64419e. B-26 (user decision): `run.cancel` and `run.retry` are refused with `recovering` while the engine reads the daemon or has no connection (held from the call, released on every exit); the orphan scan adopts and removes only never-prompted sessions (a session with a turn is B3d step 2's); the point guards of rounds 4 and 5 that this made redundant are removed. Both gate probes are regression tests; a test that leaked a launch past its cleanup under `HIVE_SIM_REPLY_MS=30` is gone with the guard it tested; the orphan entry of an ended run is dropped; the suite also runs with the delay in CI. 360 plugin tests: 5 of 5 full-suite runs green by default and 5 of 5 with `HIVE_SIM_REPLY_MS=30`. Mutants of the new guards: 7 killed, 1 equivalent (the stale `stop()` guard, kept as defence; reasoning in the decision log).
+- **2026-11-20 iter 18 (B3c, PR #570)** — verdict: APPROVE (own); mergeable: MERGEABLE; findings_hash: empty; threads_open: 0; action: stop; head_sha: 4c64419e. Code head; the branch head is this docs-only ledger commit, whose CI is the final CI. This stop supersedes iter 16's.
+
+- **2026-11-20 iter 19 (B3c, PR #570)** — verdict: REQUEST_CHANGES (CodeRabbit, 5 threads on 9a0b97cb); mergeable: MERGEABLE; findings_hash: see list; threads_open: 5 -> 0; action: autofix+push; head_sha: 6c140a07. Fixed with tests: a ready node whose leftover session cannot be read fails instead of launching beside it; a session is read again just before its removal and skipped if it now has a turn (narrows the window; closing it is the daemon's, outside B3c); a connection lost while a check is reaped skips the startup agent scan, so the reconnect starts the only watcher; the reap test closes its harness on failure; the plan names the second path to the stale `stop()` and rewrites B3d step 2's example (a run that ends while the connection is down, since cancel is refused then).
+- **2026-11-20 iter 20 (B3c, PR #570)** — verdict: APPROVE (own); mergeable: MERGEABLE; findings_hash: empty; threads_open: 0; action: stop; head_sha: 6c140a07. Code head; the branch head is this docs-only ledger commit, whose CI is the final CI. This stop supersedes iter 18's.
+
+- **2026-11-20 iter 21 (B3c, PR #570)** — verdict: REQUEST_CHANGES (gate round 6 FAIL on 6c140a07: the orphan scan trusted rows after its own `failNode` ended the run); mergeable: MERGEABLE; findings_hash: see list; threads_open: 0 -> 0; action: autofix+push; head_sha: 9abb1f37. Fixed with tests (the gate's probe is a regression test): the scan re-reads the run's rows and stops when it has ended, `adoptOrphan` ignores a run that is gone, and `#reuse` reads an adopted session again before prompting; "never prompted" now means no user item and `prompt_id` 0 (a revived session has `prompt_id` 0 and replayed history); the plan's equivalence claim about the orphan epoch is corrected. Nits: a human answered during a held recovery launches nothing (test), a throwing `reconnect` releases its hold (test), `run.retry` reports `recovering` and not `invalid_ir` when the connection goes during the catalog read (test), the Node 26 job runs bounded and with `HIVE_SIM_REPLY_MS=30`, the per-run row checks that nothing needed were removed. Mutants of the new guards: 6 killed (re-read before prompting, empty-transcript rule, recovering reply, hold released on error, drive held, the ended-run check before a removal); the ended-run checks that each covered another were reduced to that one, and `adoptOrphan`'s live-run check stays as an invariant that `row &&` also implies. Suite: 3 of 3 default and 3 of 3 with the delay.
+- **2026-11-20 iter 22 (B3c, PR #570)** — verdict: APPROVE (own); mergeable: MERGEABLE; findings_hash: empty; threads_open: 0; action: stop; head_sha: 9abb1f37. Code head; the branch head is this docs-only ledger commit, whose CI is the final CI. This stop supersedes iter 20's.
+
+- **2026-11-20 iter 23 (B3c, PR #570)** — verdict: REQUEST_CHANGES (CodeRabbit, 2 threads on 4846b0dc); mergeable: MERGEABLE; findings_hash: see list; threads_open: 2 -> 0; action: autofix+push; head_sha: e10a6676. Fixed with tests (mutation-checked): an adopted orphan's transcript is read before it is prompted into or killed, whatever its health, so a dead session with the user's conversation is never killed; `run.retry` is refused as it arrives (before the catalog request) as well as after it. Suite: 3 of 3 default and 3 of 3 with `HIVE_SIM_REPLY_MS=30`.
+- **2026-11-20 iter 24 (B3c, PR #570)** — verdict: APPROVE (own); mergeable: MERGEABLE; findings_hash: empty; threads_open: 0; action: stop; head_sha: e10a6676. Code head; the branch head is this docs-only ledger commit, whose CI is the final CI. 371 plugin tests pass. This stop supersedes iter 22's.
+
+- **2026-11-20 iter 25 (B3c, PR #570)** — verdict: REQUEST_CHANGES (gate round 7 FAIL on e10a6676: a revived session whose replay was trimmed to non-user items read as never prompted and was force-killed); mergeable: MERGEABLE; findings_hash: see list; threads_open: 0 -> 0; action: autofix+push; head_sha: 04fc4eba. Fixed with tests (the gate's probe, one test per item kind, and the notice-only session still adopted; mutation-checked, 4 of 4 killed): "never prompted" is `prompt_id` 0 and no item that is not a notice (`TranscriptState.content`), used by the scan, the recheck before a kill and `#reuse`; the plan cites the daemon's trim and item kinds, and B3d step 2 covers revived sessions. Nits: the second-pass user turn on an adopted session, and a stale launch killing a dead orphan from the new connection, each have a test that fails when the check is removed; the user-types-before-PROMPT_ACP window is recorded as a known daemon-side gap. Suite: 3 of 3 default and 3 of 3 with `HIVE_SIM_REPLY_MS=30`.
+- **2026-11-20 iter 26 (B3c, PR #570)** — verdict: APPROVE (own); mergeable: MERGEABLE; findings_hash: empty; threads_open: 0; action: stop; head_sha: 04fc4eba. Code head; the branch head is this docs-only ledger commit, whose CI is the final CI. This stop supersedes iter 24's.
+
+- **2026-11-26 iter 27 (B3c, PR #570)** — verdict: REQUEST_CHANGES (Greptile, 2 threads on af785e7b, after main was merged in for the gorilla/websocket bump); mergeable: MERGEABLE; findings_hash: see list; threads_open: 2 -> 0; action: autofix+push; head_sha: 7437e835. Fixed with tests (mutation-checked): the live `run.event` push went through the connection the plugin started with, which is closed after a reconnect, so clients stopped getting node and run updates; it now uses the engine's current connection (a push with no connection is dropped, the GUI closes the gap with `run.events`), and the reconnect test asserts the replacement receives `node.finished` and the closed one nothing more; audit of other closures over the original connection: the PLUGIN_MESSAGE reply path already used `engine.hive`, and nothing else holds it (timers and subscriptions are per feed and re-attached). The transcript state keeps a boolean "has held a non-notice item" instead of every item id, so a long turn costs nothing per update.
+- **2026-11-26 iter 28 (B3c, PR #570)** — verdict: APPROVE (own); mergeable: MERGEABLE; findings_hash: empty; threads_open: 0; action: stop; head_sha: 7437e835. Code head; the branch head is this docs-only ledger commit, whose CI is the final CI. 381 plugin tests, 3 of 3 default and 3 of 3 with the delay. This stop supersedes iter 26's.
+
+- **2026-11-26 iter 29 (B3c, PR #570)** — verdict: REQUEST_CHANGES (gate round 8 FAIL on 7437e835: an orphan's transcript was trusted without looking at the session's health; after a `hived` restart every transcript is empty until revival, so a prompted leftover that was reviving, starting or dead read as never prompted and was force-killed); mergeable: MERGEABLE; findings_hash: see list; threads_open: 0 -> 0; action: autofix+push; head_sha: 1cc05bf6. Fixed with tests (the gate's three cases, plus revival finishing while waited for, a session going unhealthy before its removal, and the same rule in `#reuse`; mutation-checked, 7 of 7 killed): an orphan's transcript counts only when the listed session is alive, past its start (`phase` empty) and without a `last_error`; one still starting is waited for (bounded) and then fails its node naming it; a dead one is never killed or adopted (the node makes a session beside it); the look before a removal re-reads the session too. Plan: the precondition is stated with the daemon lines, B3d step 2 covers dead and reviving leftovers, the plan-item bound is corrected and recorded as a theoretical gap, and C's contract says to resync on every (re)connect. Suite: 3 of 3 default and 3 of 3 with the delay.
+- **2026-11-26 iter 30 (B3c, PR #570)** — verdict: APPROVE (own); mergeable: MERGEABLE; findings_hash: empty; threads_open: 0; action: stop; head_sha: 1cc05bf6. Code head; the branch head is this docs-only ledger commit, whose CI is the final CI. This stop supersedes iter 28's.
+
+- **2026-11-27 iter 31 (B3c, PR #570)** — verdict: n/a (a flaky test found by the round-9 gate's 20 runs with `HIVE_SIM_REPLY_MS=30`: "an adopted session that is dead (with a conversation) ..." generated asynchronous activity after its test ended, `database is not open`); mergeable: MERGEABLE; findings_hash: see list; threads_open: 0 -> 0; action: autofix+push; head_sha: f65a9a26. Test-only. The launch the node makes beside a dead session outlived `cleanup()` and wrote to the closed store. Fixed at the harness, not per test: `Harness.close()` now disconnects the engine first, which makes every agent launch stale (its commits and failures are refused) and starts nothing new; the tests that open an engine through `start()` do the same; and that test waits for its node to settle before it ends. The engine needed no change: `shutdown()` already refuses every report after it, and the leak was only the harness closing a store under a live engine. Audit: every test in `durability`, `reconnect` and `sessions` closes through the harness or the same call. One more flake found while proving it, in `round2.test.ts`: its secret-leak checks looked for the substring `ghp`, which a random 12-character run id contains about 3 times in 10,000 (it was seen once in about 100 suite runs); they now look for `ghp_`, which a run id cannot contain. Suite from the full checkout on the fixed head: 30 of 30 runs with `HIVE_SIM_REPLY_MS=30` and 10 of 10 by default, 387 tests each, 0 failures (the run before the `ghp_` change had 1 failure in 40 on that test, 99 runs without it in isolation).
+- **2026-11-27 iter 32 (B3c, PR #570)** — verdict: APPROVE (own); mergeable: MERGEABLE; findings_hash: empty; threads_open: 0; action: stop; head_sha: f65a9a26. Code head; the branch head is this docs-only ledger commit, whose CI is the final CI. This stop supersedes iter 30's.
+
 ## Gate verdict
 
 <!-- /hs-merge-gate appends one line per run here (append-only). -->
@@ -2641,3 +3125,12 @@ what was weighed.
     - doc accuracy — PASS — B3b implementation decisions match the code (force semantics checked against `registry.kill`/`disposeWorktree`, `MergeBranches` aborts a conflict, `instanceCtx` shared, redactCut on every new error path via `failRow`/`clip`). Non-blocking: the conflict message still says "Resolve and commit there" although the kept tree is clean at base (recorded in the decision log; C should word it "merge `<branch>` there"); `internal/wire/control.go:460-462` says force "discard[s] uncommitted changes", contradicting the registry (pre-existing); the plan header still reads `Phase: 2 of 5` and `PR:` omits #555. THEORETICAL, not blocking: `run.retry`'s async preflight lets a later `run.cancel` be handled first (it refuses with `not_running`, so nothing is lost silently); a stale launch's forced kill can dispose a pristine worktree a retried attempt has just re-attached, before its CREATE (pre-existing pristine-dispose semantics, not caused by force). Local Node is 24; CI's plugin leg is 26.
 - **2026-11-26** — B3-R7 R1 FAIL @ 238acd7a — a successful REMOVE_WORKTREE whose inventory listing then failed sent `ERROR{list_worktrees_failed, req_id}` before its ACK; the SDK settles on the first frame carrying the id, so `request()` rejected a removal that had worked.
 - **2026-11-26** — B3-R7 R2 PASS @ 0f7f76ac — the success-path listing failure now goes out without the req_id (`secondaryError`, invariant on `withReqID`); independent audit of all 13 REQUEST_VERBS finds exactly one req_id-echoing terminal frame per request (CREATE's late ERROR follows an ACK that already removed the pending entry, and SDK ids are monotonic, so it cannot settle another request); `listWorktreesHook` is unexported, nil in production, race-clean; DaemonContract 41 -> 42 with main's 40/41 history intact; SDK copies byte-identical; plan diff vs main is this PR's lines only. Go packages all ok, SDK 20/20, workflows 291/291, CI green, 0 open threads; mutations (fix reverted in `finishMutation`, stamped error passed as secondary in `withReqID`, a req_id ERROR before the ARCHIVE ACK) all killed. Nit: the under-`gitMu` archived-holder recheck has no test (acknowledged in the ledger).
+- **2026-11-27** — B3c R1 FAIL @ 34755fbe — a close of the redialled connection mid-read was ignored and a close during startup recovery failed a surviving turn; a stale launch could fail a node a newer launch owned.
+- **2026-11-27** — B3c R2 FAIL @ e2fc9f75 — round 1's "fail closed to interrupt" for a trimmed recorded turn was wrong: a healthy recorded turn was interrupted (retry hit `acp_busy`, then a force kill, or a finished result was discarded).
+- **2026-11-27** — B3c R3 FAIL @ e58b621b — a racy redial test (a close landing mid-read used up redial attempts) and surviving mutants of the new guards (branch head 5adfdbd0).
+- **2026-11-27** — B3c R4 FAIL @ c29f1747 — recovery acted on a stale row snapshot after `run.cancel` + `run.retry`, so it could prompt, kill or adopt the old run's session.
+- **2026-11-27** — B3c R5 FAIL @ a5b38c4e — the point guards of rounds 4-5 still left cancel/retry racing recovery; led to B-26 (`recovering` refusal; only never-prompted orphans adopted or removed).
+- **2026-11-27** — B3c R6 FAIL @ 6c140a07 — the orphan scan trusted rows after its own `failNode` had ended the run (B-26 itself confirmed sound).
+- **2026-11-27** — B3c R7 FAIL @ e10a6676 — a revived session whose replay was trimmed to non-user items read as never prompted and was force-killed.
+- **2026-11-27** — B3c R8 FAIL @ 7437e835 — an orphan's transcript was trusted without its session's health: after a `hived` restart a reviving, starting or failed-revival session reads empty and was force-killed.
+- **2026-11-27** — B3c R9 PASS @ 1f8078d7 — an orphan's transcript counts only when it is alive, `phase` '' (`wire.PhaseReady`; the daemon clears it only after session/load's replay, which the ACP reader applies before the load reply) and without `last_error` (cleared on a successful start); starting orphans are waited for (bounded) then fail their node, dead ones are never killed or adopted. R8 probe 3/3; plugin suite 3/3 default and 11/12 with `HIVE_SIM_REPLY_MS=30` (one unattributed failure, not reproduced in 9 reruns); tsc clean; Go e2e ok; CI green; 0 open threads; mutations: 8 guards, 6 killed alone, 2 (health dead→ready, dead pushed to idle) equivalent behind the pre-kill recheck and killed in combination with it. Engine sends no ARCHIVE_SESSION/REMOVE_WORKTREE; the three SDK copies are identical; plan merge intact. Nits: per-orphan 30 s waits run serially under the `recovering` hold; `settleWaitMs` (30 s) is shorter than `acpStartTimeout` (2 min), so a slow revival fails the node (safe, retry recovers); adoption reads the pre-wait `alive`; an orphan that vanishes mid-wait fails its node.

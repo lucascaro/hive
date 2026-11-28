@@ -177,3 +177,31 @@ test('run.retry resets are visible through run.nodes after the plugin restarts',
     rmSync(dir, { recursive: true, force: true });
   }
 });
+
+test('a runs.db made before B3c (no `reprompted` column) is migrated on open, and opening again is harmless', async () => {
+  const { DatabaseSync } = await import('node:sqlite');
+  const dir = tmp();
+  try {
+    const old = new DatabaseSync(join(dir, 'runs.db'));
+    old.exec(`
+CREATE TABLE meta (schema_version INTEGER NOT NULL);
+INSERT INTO meta VALUES (1);
+CREATE TABLE runs (run_id TEXT PRIMARY KEY, project_id TEXT NOT NULL, workflow TEXT NOT NULL, file TEXT NOT NULL, state TEXT NOT NULL, source_hash TEXT NOT NULL, ir TEXT NOT NULL, input TEXT NOT NULL, base_sha TEXT NOT NULL DEFAULT '', nonce TEXT NOT NULL, boot_id TEXT NOT NULL DEFAULT '', kept_worktrees TEXT NOT NULL DEFAULT '[]', error TEXT, last_seq INTEGER NOT NULL DEFAULT 0, created_at TEXT NOT NULL, updated_at TEXT NOT NULL);
+CREATE TABLE nodes (run_id TEXT NOT NULL, key TEXT NOT NULL, node_id TEXT NOT NULL, state TEXT NOT NULL, attempt INTEGER NOT NULL DEFAULT 0, ready INTEGER NOT NULL DEFAULT 0, progress INTEGER NOT NULL DEFAULT 0, turns INTEGER NOT NULL DEFAULT 0, output_raw TEXT, output TEXT, error TEXT, cap TEXT, session_id TEXT, branch TEXT, worktree TEXT, pid INTEGER, pgid INTEGER, proc_start TEXT, prompt_id INTEGER, epoch INTEGER, boot_id TEXT, conflict TEXT, waiting TEXT, started_at TEXT, ended_at TEXT, PRIMARY KEY (run_id, key));
+CREATE TABLE events (run_id TEXT NOT NULL, seq INTEGER NOT NULL, ts TEXT NOT NULL, key TEXT, node_id TEXT, attempt INTEGER NOT NULL DEFAULT 0, type TEXT NOT NULL, data TEXT NOT NULL, PRIMARY KEY (run_id, seq));
+`);
+    old.close();
+    const first = new Store(dir);
+    first.createRun(newRun, [row('a', 'running', { prompt_id: 20, epoch: 1, reprompted: true })], [started]);
+    first.close();
+    const second = new Store(dir); // the column exists now: opening again must not try to add it
+    try {
+      const r = second.loadRows('r1')[0];
+      assert.deepEqual([r.prompt_id, r.epoch, r.reprompted], [20, 1, true], 'the flag is stored and read back');
+    } finally {
+      second.close();
+    }
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
