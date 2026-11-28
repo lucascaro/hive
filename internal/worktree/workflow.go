@@ -544,7 +544,11 @@ envLoop:
 		}
 		env = append(env, kv)
 	}
-	cmd.Env = append(env, "LC_ALL=C", "LANG=C", "GIT_TERMINAL_PROMPT=0")
+	// GIT_OPTIONAL_LOCKS=0: the opportunistic index refresh a read-only
+	// `status` does must not take index.lock and race the user's own git.
+	// Every safeGit command that writes (add, commit, merge) takes its
+	// mandatory lock regardless, so setting it here is a no-op for them.
+	cmd.Env = append(env, "LC_ALL=C", "LANG=C", "GIT_TERMINAL_PROMPT=0", "GIT_OPTIONAL_LOCKS=0")
 	var stdout, stderr bytes.Buffer
 	cmd.Stdout, cmd.Stderr = &stdout, &stderr
 	// A filter that outlives git and keeps its stderr open must not hold

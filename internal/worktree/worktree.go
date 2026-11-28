@@ -468,6 +468,8 @@ func HasUncommitted(worktreePath string) (bool, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), readTimeout)
 	defer cancel()
 	cmd := proc.CommandContext(ctx, "git", args...)
+	// Read-only probe: never take the optional index.lock (see inventory.go git()).
+	cmd.Env = append(os.Environ(), "GIT_OPTIONAL_LOCKS=0")
 	out, err := cmd.CombinedOutput()
 	if err != nil {
 		if ctx.Err() == context.DeadlineExceeded {

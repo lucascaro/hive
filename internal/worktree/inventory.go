@@ -37,7 +37,7 @@ func git(ctx context.Context, timeout time.Duration, dir string, args ...string)
 	ctx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
 	cmd := proc.CommandContext(ctx, "git", append([]string{"-C", dir}, args...)...)
-	cmd.Env = append(os.Environ(), "LC_ALL=C", "LANG=C")
+	cmd.Env = append(os.Environ(), "LC_ALL=C", "LANG=C", "GIT_OPTIONAL_LOCKS=0")
 	out, err := cmd.CombinedOutput()
 	if err != nil && ctx.Err() == context.DeadlineExceeded {
 		return out, fmt.Errorf("git %s: timed out after %s", args[0], timeout)
@@ -478,7 +478,7 @@ func gitPatchIDs(repoRoot string, args ...string) ([]string, error) {
 	defer cancel()
 
 	producer := proc.CommandContext(ctx, "git", append([]string{"-C", repoRoot}, args...)...)
-	producer.Env = append(os.Environ(), "LC_ALL=C", "LANG=C")
+	producer.Env = append(os.Environ(), "LC_ALL=C", "LANG=C", "GIT_OPTIONAL_LOCKS=0")
 	pipe, err := producer.StdoutPipe()
 	if err != nil {
 		return nil, err
